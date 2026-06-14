@@ -64,6 +64,9 @@ export type ControlCommand =
   | { type: "intent.submit"; title: string; body: string; scopeHint?: string; submittedByClientRef?: string }
   | { type: "intent.list"; sinceCursor?: string }
   | { type: "accounts.list" }
+  // CL-16 approvals: read-only pending list + exactly-once resolve.
+  | { type: "approvals.list" }
+  | { type: "approvals.resolve"; approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }
   // CL-14 bridge transport: operator (dev-token authed) mints a single-use
   // bootstrap that a client exchanges at /bridge/pair for a scoped credential.
   | { type: "bridge.issueBootstrap" }
@@ -86,6 +89,11 @@ export interface ControlCommandActions {
   }
   // CL-18: read-only accounts + readiness panel (public-projection-safe).
   accountsList?: () => Promise<unknown>
+  // CL-16: read-only pending approvals + exactly-once resolve (approve/deny/answer).
+  approvals?: {
+    list: () => Promise<unknown>
+    resolve: (input: { approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }) => Promise<unknown>
+  }
 }
 
 export async function ensureControlToken(homeDir: string): Promise<string> {
@@ -194,6 +202,16 @@ export const startControlServer = (
         case "wallet.status":
           if (!options.actions.walletStatus) throw new Error("wallet status unavailable on this node")
           return options.actions.walletStatus()
+        case "approvals.list":
+          if (!options.actions.approvals) throw new Error("approvals unavailable on this node")
+          return options.actions.approvals.list()
+        case "approvals.resolve":
+          if (!options.actions.approvals) throw new Error("approvals unavailable on this node")
+          return options.actions.approvals.resolve({
+            approvalRef: command.approvalRef,
+            decision: command.decision,
+            ...(command.answer === undefined ? {} : { answer: command.answer }),
+          })
         case "assignments.poll":
           if (!options.actions.assignmentsPoll) throw new Error("assignments unavailable on this node")
           return options.actions.assignmentsPoll()

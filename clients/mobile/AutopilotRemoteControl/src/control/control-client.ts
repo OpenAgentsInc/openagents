@@ -200,6 +200,50 @@ export async function fetchAccountsRaw(conn: ConnectInfo): Promise<unknown[]> {
   return Array.isArray(accounts) ? accounts : []
 }
 
+export type ApprovalRow = {
+  approvalRef: string
+  kind: string
+  prompt: string
+  createdAt: string
+}
+
+// CL-16 approvals: read-only pending list. The node enforces exactly-once on
+// resolve, so the client never needs to dedupe.
+export async function fetchApprovals(conn: ConnectInfo): Promise<ApprovalRow[]> {
+  const json = (await command(conn, { type: "approvals.list" })) as {
+    ok?: boolean
+    result?: { approvals?: unknown }
+  }
+  const rows = json.ok === true ? json.result?.approvals : undefined
+  if (!Array.isArray(rows)) return []
+  return rows.map((a: any) => ({
+    approvalRef: String(a.approvalRef ?? "?"),
+    kind: String(a.kind ?? "approval"),
+    prompt: String(a.prompt ?? ""),
+    createdAt: String(a.createdAt ?? ""),
+  }))
+}
+
+// Resolve a pending approval (approve/deny/answer). Exactly-once is enforced on
+// the node; a duplicate resolve returns {duplicate:true} and keeps the original.
+export async function resolveApproval(
+  conn: ConnectInfo,
+  input: { approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string },
+): Promise<{ applied: boolean; duplicate: boolean; decision: string }> {
+  const json = (await command(conn, {
+    type: "approvals.resolve",
+    approvalRef: input.approvalRef,
+    decision: input.decision,
+    ...(input.answer ? { answer: input.answer } : {}),
+  })) as { ok?: boolean; result?: { applied?: unknown; duplicate?: unknown; decision?: unknown } }
+  const r = json.ok === true ? json.result : undefined
+  return {
+    applied: r?.applied === true,
+    duplicate: r?.duplicate === true,
+    decision: typeof r?.decision === "string" ? r.decision : input.decision,
+  }
+}
+
 export type IntentRow = {
   intentId: string
   title: string

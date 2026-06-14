@@ -230,6 +230,9 @@ export type LaborMarketOptions = {
   claudeAgentProbe?: ClaudeAgentProbeOptions
   verificationCommands?: Readonly<Record<string, ReadonlyArray<string>>>
   now?: () => Date
+  // CL-16: invoked when a job is deferred for first-run operator approval, so
+  // the node can enqueue a pending approval for the clients to resolve.
+  onDeferredForApproval?: (input: { approvalRef: string; jobType: string; policyRef: string }) => void
 }
 
 function decodeLbrRequest(event: NostrEvent): LbrAgenticCodingRequest | null {
@@ -406,6 +409,12 @@ async function executeAcceptedLbrJob(input: {
 
   const approved = await hasLaborFirstRunApproval(input.state.paths, request.labor)
   if (!approved) {
+    // CL-16: surface a pending operator approval for the clients to resolve.
+    input.options.onDeferredForApproval?.({
+      approvalRef: stableRef("approval.public.pylon.labor.first_run", `${request.labor.jobType}:${request.labor.policyRef}`),
+      jobType: request.labor.jobType,
+      policyRef: request.labor.policyRef,
+    })
     return { handled: true, action: "deferred", reasonRef: "labor_first_run_approval_required" }
   }
 

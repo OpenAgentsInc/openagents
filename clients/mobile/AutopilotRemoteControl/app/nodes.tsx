@@ -10,15 +10,18 @@ import {
   type AccountRow,
   type SessionArtifact,
   type WalletStatus,
+  type ApprovalRow,
   type AssignmentRow,
   type IntentRow,
   cancelSession,
   decodeConnectCode,
   fetchAccounts,
   fetchAccountsRaw,
+  fetchApprovals,
   fetchAssignments,
   fetchIntents,
   fetchWalletStatus,
+  resolveApproval,
   fetchSessionArtifact,
   fetchSessionEvents,
   fetchSessions,
@@ -93,6 +96,7 @@ export default function NodesScreen() {
   const [wallet, setWallet] = useState<WalletStatus | null>(null)
   const [assignments, setAssignments] = useState<AssignmentRow[]>([])
   const [intents, setIntents] = useState<IntentRow[]>([])
+  const [approvals, setApprovals] = useState<ApprovalRow[]>([])
   const [drawerOpen, setDrawerOpen] = useState(false)
   const navigation = useNavigation<{ navigate: (route: string) => void }>()
   const [artifact, setArtifact] = useState<SessionArtifact | null>(null)
@@ -183,6 +187,9 @@ export default function NodesScreen() {
       })
       void fetchIntents(conn).then((rows) => {
         if (!cancelled) setIntents(rows)
+      })
+      void fetchApprovals(conn).then((rows) => {
+        if (!cancelled) setApprovals(rows)
       })
     }
     loadWallet()
@@ -406,6 +413,33 @@ export default function NodesScreen() {
               </Pressable>
               {askStatus ? <Text style={styles.askStatus}>{askStatus}</Text> : null}
             </View>
+            {approvals.length > 0 ? (
+              <View style={[styles.card, styles.approvalCard]}>
+                <Text style={styles.cardTitle}>Needs you ({approvals.length})</Text>
+                {approvals.map((a) => {
+                  const resolve = (decision: "approve" | "deny") => {
+                    if (conn === null) return
+                    setApprovals((prev) => prev.filter((x) => x.approvalRef !== a.approvalRef))
+                    void resolveApproval(conn, { approvalRef: a.approvalRef, decision }).catch(() => {})
+                  }
+                  return (
+                    <View key={a.approvalRef} style={styles.approvalRow}>
+                      <Text style={styles.acctText} numberOfLines={2}>
+                        {a.prompt || a.kind}
+                      </Text>
+                      <View style={styles.approvalButtons}>
+                        <Pressable style={[styles.approvalBtn, styles.approveBtn]} onPress={() => resolve("approve")}>
+                          <Text style={styles.approvalBtnText}>Approve</Text>
+                        </Pressable>
+                        <Pressable style={[styles.approvalBtn, styles.denyBtn]} onPress={() => resolve("deny")}>
+                          <Text style={styles.approvalBtnText}>Deny</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  )
+                })}
+              </View>
+            ) : null}
             {intents.length > 0 ? (
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Your asks</Text>
@@ -623,6 +657,13 @@ const styles = StyleSheet.create({
   acctRow: { alignItems: "center", flexDirection: "row", marginTop: 10 },
   acctText: { color: C.text, fontFamily: "Courier", fontSize: 13 },
   acctSummary: { color: C.textSecondary, fontFamily: "Courier", fontSize: 12, marginTop: 6 },
+  approvalCard: { borderColor: C.warning, borderWidth: 1 },
+  approvalRow: { borderTopColor: C.outline, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 10, paddingTop: 10 },
+  approvalButtons: { flexDirection: "row", gap: 10, marginTop: 8 },
+  approvalBtn: { borderRadius: 6, paddingHorizontal: 16, paddingVertical: 8 },
+  approveBtn: { backgroundColor: C.success },
+  denyBtn: { backgroundColor: C.danger },
+  approvalBtnText: { color: C.bg, fontWeight: "700" },
   acctHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
   acctDetailRow: {
     borderTopColor: C.outline,

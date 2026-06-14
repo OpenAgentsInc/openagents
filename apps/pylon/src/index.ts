@@ -55,6 +55,7 @@ import {
   type BrokerRegistrationHosts,
 } from "./node/discovery-register"
 import { createIntentQueue } from "./node/intent-intake"
+import { createApprovalQueue } from "./node/approval-queue"
 import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime"
 import { evaluateShipSpendGate } from "./coordinator/ship-spend-gate"
 import {
@@ -332,6 +333,46 @@ function makeIntentActions(intentQueue: ReturnType<typeof createIntentQueue>) {
     },
     list: async (sinceCursor?: string) => intentQueue.listSince(sinceCursor),
   }
+}
+
+// CL-16: a single shared approval queue for the node. The labor-market defers a
+// job's first run for operator approval (labor_first_run_approval_required);
+// that enqueues here, the client lists + resolves it, and an `approve` grants
+// the real first-run approval so the job can proceed.
+const approvalQueue = createApprovalQueue()
+
+function makeApprovalActions(paths: BootstrapSummary["paths"]) {
+  return {
+    list: async () => ({ approvals: approvalQueue.list() }),
+    resolve: async (input: { approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }) => {
+      const result = approvalQueue.resolve(input.approvalRef, input.decision, input.answer ? { answer: input.answer } : undefined)
+      // Granting a labor first-run approval is the one side effect of "approve".
+      if (result.applied && input.decision === "approve" && result.resolved?.jobType) {
+        try {
+          await approveLaborFirstRun({
+            paths,
+            approvedByRef: "operator.control",
+            jobType: result.resolved.jobType as Parameters<typeof approveLaborFirstRun>[0]["jobType"],
+            ...(result.resolved.policyRef ? { policyRef: result.resolved.policyRef } : {}),
+          })
+        } catch {
+          // grant failure shouldn't crash the control path; the resolution stands
+        }
+      }
+      return result
+    },
+  }
+}
+
+// Labor-market deferrals feed the approval queue (the real pending source).
+export function enqueueLaborApproval(input: { approvalRef: string; jobType?: string; policyRef?: string; prompt?: string }) {
+  approvalQueue.enqueue({
+    approvalRef: input.approvalRef,
+    kind: "labor_first_run",
+    prompt: input.prompt ?? `Approve first run of ${input.jobType ?? "labor job"}?`,
+    ...(input.jobType ? { jobType: input.jobType } : {}),
+    ...(input.policyRef ? { policyRef: input.policyRef } : {}),
+  })
 }
 
 // #4951 external agent sessions: poll the host Claude Code logs and expose them
@@ -1045,6 +1086,7 @@ const runPylonNode = Effect.gen(function* () {
       sessions: sessionsWithExternal,
       intents: makeIntentActions(intentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
+      approvals: makeApprovalActions(bootstrapSummary.paths),
     },
     port: controlPort,
     hostname: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
@@ -1270,6 +1312,7 @@ const runHeadlessNode = Effect.gen(function* () {
       sessions: headlessSessionsWithExternal,
       intents: makeIntentActions(headlessIntentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
+      approvals: makeApprovalActions(bootstrapSummary.paths),
     },
     port: controlPort,
     hostname: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
