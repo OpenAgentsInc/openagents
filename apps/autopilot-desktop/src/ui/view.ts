@@ -618,6 +618,26 @@ const reconcileWindowRef = (model: Model): string | null => {
   return null
 }
 
+const lifecycleCountsFromTrainingSummary = (summary: TrainingRunSummaryRow) => {
+  const metrics = summary.metrics
+  const device = summary.realGradient.deviceRequirement
+  const assigned = Math.max(0, metrics.assignedContributorCount.value)
+  const observed = Math.max(0, device.observedDistinctContributorDevices)
+  const durableSeals =
+    metrics.sealedWindowCount.value + metrics.reconciledWindowCount.value
+  return {
+    active: metrics.verifiedWorkCount.value,
+    qualified: observed,
+    registered: Math.max(0, assigned - observed),
+    state_synced: durableSeals > 0 ? Math.max(1, observed) : 0,
+    sync_reentry: metrics.rejectedWorkCount.value,
+    warmup:
+      metrics.activeWindowCount.value + metrics.plannedWindowCount.value > 0
+        ? Math.max(1, assigned - metrics.verifiedWorkCount.value)
+        : 0,
+  }
+}
+
 const trainingSceneOptions = (
   projection: TrainingRunsResponse | null,
 ): TrainingRunVisualizationOptions | undefined => {
@@ -638,15 +658,23 @@ const trainingSceneOptions = (
       realGradient.closeoutRequirement.freivaldsCommitmentRefs.length,
     gradientCloseoutRefCount:
       realGradient.closeoutRequirement.gradientCloseoutRefs.length,
+    blockerRefCount:
+      realGradient.externalAsk.blockerRefs.length +
+      realGradient.externalAsk.requirementRefs.length,
+    closeoutSatisfied: realGradient.closeoutRequirement.satisfied,
+    lifecycleCounts: lifecycleCountsFromTrainingSummary(summary),
     lossUnderBudget: realGradient.lossUnderBudget.satisfied,
     maxAllowedStaleSteps: summary.run.maxAllowedStale,
     maxValidationLoss: realGradient.lossUnderBudget.maxValidationLoss,
+    pendingPayoutCount: metrics.pendingPayoutCount.value,
     plannedWindowCount: metrics.plannedWindowCount.value,
+    receiptRefCount: metrics.receiptRefCount.value,
     reconciledWindowCount: metrics.reconciledWindowCount.value,
     rejectedWorkCount: metrics.rejectedWorkCount.value,
     runDetail: summary.run.trainingRunRef,
     runLabel: summary.run.promiseRef,
     runState: summary.run.state,
+    sealInFlight: summary.run.sealInFlight,
     sealedWindowCount: metrics.sealedWindowCount.value,
     settledPayoutSats: metrics.providerConfirmedSettledPayoutSats.value,
     verifiedWorkCount: metrics.verifiedWorkCount.value,
