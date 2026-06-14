@@ -986,6 +986,108 @@ describe('training run window routes', () => {
     expect(overCap.status).toBe(400)
   })
 
+  it('projects only Verified exact_trace_replay closed ticks as the Tassadar verified-trace corpus, rebuilding on verdict transitions (#5010)', async () => {
+    const store = makeMemoryStore()
+    const planned = buildTrainingRunRecord({
+      makeId: () => 'run5010',
+      nowIso: '2026-06-14T10:00:00.000Z',
+      request: {
+        promiseRef: 'training.monday_decentralized_training_launch.v1',
+        trainingRunRef: 'run.tassadar.executor.20260615',
+      },
+    })
+    store._testSeedRun({ ...planned, state: 'active' })
+
+    const seedChallenge = (
+      id: string,
+      verificationClass:
+        | 'exact_trace_replay'
+        | 'deterministic_recompute',
+      verify: boolean,
+    ): void => {
+      const built = buildTrainingVerificationChallengeRecord({
+        makeId: () => id,
+        nowIso: '2026-06-14T10:02:00.000Z',
+        request: {
+          commitmentRefs: [`commitment.tassadar.${id}`],
+          contributionRef: `contribution.tassadar.${id}`,
+          homeworkKind: 'admin_dispatched_homework',
+          payload: { traceCommitmentDigestRef: `digest.commitment.${id}` },
+          trainingRunRef: 'run.tassadar.executor.20260615',
+          verificationClass,
+          windowRef: 'training.window.tassadar.executor.20260615.w1',
+        },
+      }).challenge
+      const leased = leaseTrainingVerificationChallengeRecord({
+        challenge: built,
+        eventId: `${id}-lease`,
+        nowIso: '2026-06-14T10:02:30.000Z',
+        request: { validatorRef: `validator.tassadar.${id}` },
+      }).challenge
+
+      store._testSeedChallenge(
+        verify
+          ? finalizeTrainingVerificationChallengeRecord({
+              challenge: leased,
+              eventId: `${id}-final`,
+              nowIso: '2026-06-14T10:03:00.000Z',
+              request: { receiptRefs: [`receipt.tassadar.verdict.${id}`] },
+              verdict: {
+                failureCodes: [],
+                state: 'Verified',
+                verdictRefs: [`verdict.tassadar.${id}`],
+              },
+            }).challenge
+          : leased,
+      )
+    }
+
+    // corpus: a Verified exact_trace_replay closed tick.
+    seedChallenge('5010a', 'exact_trace_replay', true)
+    // excluded: Verified but wrong class.
+    seedChallenge('5010b', 'deterministic_recompute', true)
+    // excluded: exact_trace_replay but only Leased (not yet Verified).
+    seedChallenge('5010c', 'exact_trace_replay', false)
+
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => 'id5010',
+      makeStore: () => store,
+      nowIso: () => '2026-06-14T10:05:00.000Z',
+      requireAdminApiToken: async () => true,
+    })
+
+    const detail = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request(
+          'https://openagents.test/api/training/runs/run.tassadar.executor.20260615',
+        ),
+        {},
+      ),
+    )
+    const body = (await detail.json()) as TrainingRunDetailJson
+
+    expect(detail.status).toBe(200)
+    expect(body.summary.corpus.acceptedTraceCount).toBe(1)
+    expect(body.summary.corpus.laneRef).toBe('tassadar.verified_trace_corpus')
+    expect(body.summary.corpus.traceRefs).toContain(
+      'training.verification.challenge.5010a',
+    )
+    expect(body.summary.corpus.traceRefs).not.toContain(
+      'training.verification.challenge.5010b',
+    )
+    expect(body.summary.corpus.traceRefs).not.toContain(
+      'training.verification.challenge.5010c',
+    )
+    expect(body.summary.corpus.verdictRefs).toContain('verdict.tassadar.5010a')
+    // Distinct from generic verifiedWorkCount, which counts both Verified rows.
+    expect(body.summary.metrics.verifiedWorkCount.value).toBe(2)
+    // Live-at-read, rebuilds on verification-challenge transitions, not reg.
+    expect(body.summary.corpus.staleness.maxStalenessSeconds).toBe(0)
+    expect(body.summary.corpus.staleness.rebuildsOn).toContain(
+      'training_verification_challenge_verified_transition_recorded',
+    )
+  })
+
   it('returns an honest idle empty state for runs with no windows or verification data', async () => {
     const store = makeMemoryStore()
     const routes = makeTrainingRunWindowRoutes({

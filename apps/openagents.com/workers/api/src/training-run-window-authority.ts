@@ -365,6 +365,25 @@ export type TrainingRunPublicMetric = Readonly<{
   value: number
 }>
 
+/**
+ * The run-scoped Tassadar verified-trace corpus (openagents #5010, W2 in
+ * docs/tassadar/RESEARCH_PLAN.md §5). Counts accepted, replay-verified
+ * `exact_trace_replay` closed-tick traces tied to the run — the tetrahedron
+ * acceptance predicate (intent + execution + state delta + evaluation all
+ * closed; "closed ticks _are_ training records"). It rebuilds on
+ * verification-challenge transitions, never on registration; carries only
+ * public-safe trace/verdict refs; and is bounded evidence, not a Tassadar
+ * exactness or model-capability claim.
+ */
+export type TrainingRunCorpusAccumulation = Readonly<{
+  acceptedTraceCount: number
+  laneRef: string
+  provenanceLabel: string
+  staleness: PublicProjectionStalenessContract
+  traceRefs: ReadonlyArray<string>
+  verdictRefs: ReadonlyArray<string>
+}>
+
 export type TrainingRunLossPoint = Readonly<{
   provenanceLabel: string
   sourceRefs: ReadonlyArray<string>
@@ -421,6 +440,7 @@ export type TrainingRunRealGradientStatus = Readonly<{
 
 export type TrainingRunPublicSummary = Readonly<{
   copyBoundaryRefs: ReadonlyArray<string>
+  corpus: TrainingRunCorpusAccumulation
   emptyState: Readonly<{
     idle: boolean
     reason: string
@@ -593,6 +613,47 @@ const trainingRunProjectionStaleness = (): PublicProjectionStalenessContract =>
     'training_window_state_transition_recorded',
     'training_run_evidence_attached',
   ])
+
+// The corpus count rebuilds on verification-challenge verdict transitions, never
+// on registration or heartbeat events (openagents #5010; RESEARCH_PLAN §6.3 +
+// Standing Order 5; case law #4744-#4747).
+const trainingRunCorpusStaleness = (): PublicProjectionStalenessContract =>
+  liveAtReadStaleness([
+    'training_verification_challenge_verified_transition_recorded',
+    'training_verification_challenge_state_transition_recorded',
+  ])
+
+/**
+ * Project the run's accumulating Tassadar verified-trace corpus from its
+ * verification challenges (openagents #5010, W2). A closed-tick corpus record is
+ * a `Verified` `exact_trace_replay` challenge tied to the run: its trace is the
+ * work product/state delta and the Verified replay verdict is the evaluation
+ * corner of the tetrahedron. Generic `verifiedWorkCount` spans all verification
+ * classes; this counts only the exact-replay corpus.
+ */
+export const publicTrainingRunCorpusAccumulation = (
+  challenges: ReadonlyArray<TrainingVerificationChallengeRecord>,
+): TrainingRunCorpusAccumulation => {
+  const corpusChallenges = challenges.filter(
+    challenge =>
+      challenge.state === 'Verified' &&
+      challenge.verificationClass === 'exact_trace_replay',
+  )
+
+  return {
+    acceptedTraceCount: corpusChallenges.length,
+    laneRef: 'tassadar.verified_trace_corpus',
+    provenanceLabel:
+      'Accepted, replay-verified exact_trace_replay closed-tick traces tied to this run (Verified verdicts only). Excludes queued, leased, retrying, rejected, timed-out, and non-exact-replay verification, and every registration or heartbeat signal. Rebuilds on verification-challenge transitions; bounded verified-trace evidence, not a Tassadar exactness or model-capability claim.',
+    staleness: trainingRunCorpusStaleness(),
+    traceRefs: uniqueRefs(
+      corpusChallenges.map(challenge => challenge.challengeRef),
+    ),
+    verdictRefs: uniqueRefs(
+      corpusChallenges.flatMap(challenge => challenge.verdictRefs),
+    ),
+  }
+}
 
 export const publicTrainingRunProjection = (
   record: TrainingRunRecord,
@@ -1012,6 +1073,7 @@ export const publicTrainingRunSummary = (
       'copy.public.training.no_pending_as_paid',
       'copy.public.training.no_unbounded_model_training_claim',
     ],
+    corpus: publicTrainingRunCorpusAccumulation(input.challenges),
     emptyState: {
       idle: empty,
       reason: empty
