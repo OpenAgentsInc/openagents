@@ -67,7 +67,32 @@ import {
 } from './model'
 import { ThreadFileUploadResponse, ThreadFilesResponse } from './model'
 import { MulletBootstrapResponse } from './mullet/model'
+import {
+  FailedLoadWorkroomLifecycle,
+  FailedLoadWorkroomSurface,
+  FailedWorkroomLifecycleDecision,
+  RequestedLoadWorkroomLifecycle,
+  RequestedLoadWorkroomSurface,
+  SelectedWorkroomTab,
+  SubmittedWorkroomLifecycleDecision,
+  SucceededLoadWorkroomLifecycle,
+  SucceededLoadWorkroomSurface,
+  SucceededWorkroomLifecycleDecision,
+} from './page/workroom'
 import { SiteElementContext } from './site-element-context'
+
+export {
+  FailedLoadWorkroomLifecycle,
+  FailedLoadWorkroomSurface,
+  FailedWorkroomLifecycleDecision,
+  RequestedLoadWorkroomLifecycle,
+  RequestedLoadWorkroomSurface,
+  SelectedWorkroomTab,
+  SubmittedWorkroomLifecycleDecision,
+  SucceededLoadWorkroomLifecycle,
+  SucceededLoadWorkroomSurface,
+  SucceededWorkroomLifecycleDecision,
+}
 
 // MESSAGE
 
@@ -1237,6 +1262,16 @@ export const Message = S.Union([
   SubmittedAutopilotDecisionAction,
   SucceededAutopilotDecisionAction,
   FailedAutopilotDecisionAction,
+  SelectedWorkroomTab,
+  RequestedLoadWorkroomSurface,
+  SucceededLoadWorkroomSurface,
+  FailedLoadWorkroomSurface,
+  RequestedLoadWorkroomLifecycle,
+  SucceededLoadWorkroomLifecycle,
+  FailedLoadWorkroomLifecycle,
+  SubmittedWorkroomLifecycleDecision,
+  SucceededWorkroomLifecycleDecision,
+  FailedWorkroomLifecycleDecision,
   UpdatedCustomerOrderDraft,
   SubmittedCustomerOrder,
   SucceededSubmitCustomerOrder,

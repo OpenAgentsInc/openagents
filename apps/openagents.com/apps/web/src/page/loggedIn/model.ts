@@ -37,6 +37,11 @@ import {
 } from '../../route'
 import { MulletModel, init as initMullet } from './mullet/model'
 import {
+  Model as WorkroomModel,
+  OverviewTab as WorkroomOverviewTab,
+  init as initWorkroom,
+} from './page/workroom'
+import {
   NotificationsModel,
   initNotifications,
 } from './notifications/model'
@@ -2987,6 +2992,7 @@ export const Model = ts('LoggedIn', {
   autopilotWorkReview: AutopilotWorkReviewState,
   autopilotDecisions: AutopilotDecisionsState,
   autopilotDecisionAct: AutopilotDecisionActState,
+  workroom: WorkroomModel,
   billingAction: BillingAction,
   billingCouponCode: S.String,
   chatComposerValue: S.String,
@@ -3539,6 +3545,7 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
     autopilotWorkReview: AutopilotWorkReviewIdle(),
     autopilotDecisions: AutopilotDecisionsIdle(),
     autopilotDecisionAct: AutopilotDecisionActIdle(),
+    workroom: initWorkroom('', WorkroomOverviewTab),
     billingAction: IdleBillingAction(),
     billingCouponCode: '',
     chatComposerValue: '',

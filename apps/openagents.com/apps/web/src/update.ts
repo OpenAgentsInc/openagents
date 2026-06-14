@@ -15,6 +15,11 @@ import {
 import { Demo, LoggedIn, LoggedOut, Model } from './model'
 import { ThreadRouteIdle } from './page/loggedIn/thread-route'
 import {
+  OverviewTab as WorkroomOverviewTab,
+  init as initWorkroom,
+  tabFromRef as workroomTabFromRef,
+} from './page/loggedIn/page/workroom'
+import {
   defaultLoggedInHrefForAuth,
   loggedInWorkroomAllowed,
 } from './product-policy'
@@ -128,6 +133,24 @@ const updateLoggedInRoute = (
   route: LoggedInRoute,
 ): UpdateReturn => {
   const routedModel = evo(loggedInModel, { route: () => route })
+
+  if (route._tag === 'Workroom' || route._tag === 'WorkroomTab') {
+    const activeTab =
+      route._tag === 'WorkroomTab'
+        ? workroomTabFromRef(route.tab)
+        : WorkroomOverviewTab
+    const enteredModel = evo(routedModel, {
+      threadRoute: () => ThreadRouteIdle(),
+      workroom: () => initWorkroom(route.workroomId, activeTab),
+    })
+
+    return [
+      enteredModel,
+      Command.mapMessages(LoggedIn.initialCommands(enteredModel), message =>
+        GotLoggedInMessage({ message }),
+      ),
+    ]
+  }
 
   if (
     route._tag === 'Onboarding' ||

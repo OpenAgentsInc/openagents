@@ -232,6 +232,8 @@ export const browserRouteProductIntents = {
   TeamProjectChat: 'workroom.chat.project',
   Thread: 'workroom.thread',
   Usage: 'billing.usage',
+  Workroom: 'workroom.delivery.overview',
+  WorkroomTab: 'workroom.delivery.tab',
 } as const satisfies Record<AppRoute['_tag'], string>
 
 export type BrowserRouteName = keyof typeof browserRouteProductIntents
@@ -293,6 +295,8 @@ export const browserCommandProductIntents = {
   LoadTeamChatMessages: 'workroom.chat.team.messages.load',
   LoadThreadFileDetail: 'files.thread.detail.load',
   LoadThreadFiles: 'files.thread.index.load',
+  LoadWorkroomLifecycle: 'workroom.delivery.lifecycle.load',
+  LoadWorkroomSurface: 'workroom.delivery.surface.load',
   LogError: 'telemetry.error.log',
   NavigateInternal: 'navigation.internal.navigate',
   PollProviderDeviceLogin: 'providers.chatgpt-device-login.poll',
@@ -325,6 +329,7 @@ export const browserCommandProductIntents = {
   SubmitOnboardingGoal: 'onboarding.goal.submit',
   SubmitCustomerOrder: 'customer.order.submit',
   SubmitCustomerSiteFeedback: 'customer.order.site-feedback.submit',
+  SubmitWorkroomLifecycleDecision: 'workroom.delivery.lifecycle.decision.submit',
   UpdateOnboardingRepository: 'onboarding.repository.update',
   UpdateThreadFileDownload: 'files.thread.download-policy.update',
   UpdateAgentGoalAction: 'autopilot.goal.action',
