@@ -47,12 +47,38 @@ Core records:
 Every lane should produce typed events and a closeout. A parent run may
 complete only when its declared acceptance policy is satisfied.
 
+### Orchestrator → lane messaging (capability gap, nice-to-have)
+
+Today's lane lifecycle is effectively fire-and-forget: the orchestrator spawns
+a lane, then can only `pause`, `cancel`, or `resume` it and await its closeout
+— there is no way to **send a steering message into a running lane**. In
+practice this bites: an orchestrator that has already spawned a subagent and
+then learns new, relevant context (e.g. "the funded MDK wallets are at these
+paths, use them" or "repoint the objective at a smaller bounded issue") cannot
+relay it. The only options are to wait for the closeout and re-spawn with the
+new context (wasting the in-flight work) or to over-specify everything up front
+(impossible when the context arrives mid-run). Observed live on
+2026-06-14 driving the first negotiated labor job: the orchestrator had to say
+"I can't message a running agent" and fall back to doing the side-task itself.
+
+Proposed: a `LaneInboxService` / `LaneSteerService` that lets the orchestrator
+deliver a typed, append-only message to a running lane's inbox (additional
+context, a scope amendment, a soft-redirect, or a "prefer this approach" hint),
+which the lane drains between steps. Keep it bounded and typed (not arbitrary
+control): messages are advisory context + scoped amendments, the lane still
+owns its own decisions and closeout, and every injected message is a recorded
+coordination event for the audit trail. This makes long-running lanes
+correctable without the kill-and-respawn tax.
+
 ## Bun/Effect Boundary
 
 Use Effect services for:
 
 - `CoordinationPlannerService`: builds a typed plan and dependency graph.
 - `LaneSchedulerService`: starts, pauses, cancels, and resumes lanes.
+- `LaneInboxService` (proposed, see gap above): delivers typed, advisory
+  steering messages into a running lane's inbox so the orchestrator can relay
+  context that arrived after spawn without a kill-and-respawn.
 - `AgentAdapterSelectionService`: picks local, hosted, Pylon, or market
   adapters under policy.
 - `ConflictResolutionService`: manages overlapping edits and incompatible
