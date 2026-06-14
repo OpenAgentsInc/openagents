@@ -14,6 +14,11 @@ import {
   AUTOPILOT_CONTINUATION_PROGRAM_SIGNATURES,
   AUTOPILOT_CONTINUATION_RELEASE_GATES,
 } from './autopilot-continuation-signatures'
+import type { BlueprintProgramSignature } from '../schemas/program'
+import {
+  DELIVERY_PIPELINE_PROGRAM_TYPES,
+  DELIVERY_PIPELINE_PROGRAMS,
+} from '../delivery-pipeline-programs'
 
 const familyForAction = (
   action: AutopilotContinuationAction,
@@ -105,11 +110,68 @@ const programTypeForAction = (
 export const AUTOPILOT_CONTINUATION_PROGRAM_TYPES =
   AUTOPILOT_CONTINUATION_ACTIONS.map(programTypeForAction)
 
+// ---------------------------------------------------------------------------
+// Delivery-pipeline programs (WS-B, OpenAgents #4980).
+//
+// The delivery-pipeline stage programs (declared on main in
+// `../delivery-pipeline-programs`) are evidence-only Blueprint programs
+// (`directMutationAllowed: false`, status `draft`). They are folded into the
+// registry projection so they appear alongside the Autopilot continuation
+// programs. Each stage mints one `BlueprintProgramSignature` whose
+// `programTypeId` equals the program type id and whose `outputSchema.schemaRef`
+// equals the program's `outputSchemaRef`.
+//
+// These programs ship no module versions or release gates in the seeded
+// registry yet, so their registry entries carry zero module/gate ids until a
+// candidate module is promoted through the per-stage `operator_review` gate.
+// ---------------------------------------------------------------------------
+
+const deliveryPipelineProgramSignatureFor = (
+  program: (typeof DELIVERY_PIPELINE_PROGRAMS)[number],
+): BlueprintProgramSignature => ({
+  decodePolicy: {
+    unknownFieldPolicy: 'reject',
+    validationMode: 'strict',
+    validationPolicyRef: 'policy.delivery_pipeline.strict_v1',
+  },
+  evidenceRequirements: program.programType.evidenceRequirements,
+  id: `${program.programType.id}.signature.v1`,
+  inputSchema: {
+    kind: 'input',
+    schemaRef: `schema.delivery_pipeline.${program.stage.replace(/-/g, '_')}.input`,
+    versionRef: `schema.delivery_pipeline.${program.stage.replace(/-/g, '_')}.input.v1`,
+  },
+  outputSchema: {
+    kind: 'output',
+    schemaRef: program.outputSchemaRef,
+    versionRef: program.outputSchemaRef,
+  },
+  programTypeId: program.programType.id,
+  receiptRequirements: program.programType.receiptRequirements,
+  status: program.programType.status,
+  supportsContext: false,
+  supportsContinuation: false,
+  supportsProofProjection: false,
+  supportsReview: true,
+  supportsRouting: false,
+  toolScopes: program.programType.toolScopes,
+  versionRef: `${program.programType.id}.signature.v1`,
+})
+
+export const DELIVERY_PIPELINE_PROGRAM_SIGNATURES: ReadonlyArray<BlueprintProgramSignature> =
+  DELIVERY_PIPELINE_PROGRAMS.map(deliveryPipelineProgramSignatureFor)
+
 export const AUTOPILOT_CONTINUATION_PROGRAM_REGISTRY =
   blueprintProgramRegistryProjection({
     moduleVersions: AUTOPILOT_CONTINUATION_MODULE_VERSIONS,
-    programSignatures: AUTOPILOT_CONTINUATION_PROGRAM_SIGNATURES,
-    programTypes: AUTOPILOT_CONTINUATION_PROGRAM_TYPES,
+    programSignatures: [
+      ...AUTOPILOT_CONTINUATION_PROGRAM_SIGNATURES,
+      ...DELIVERY_PIPELINE_PROGRAM_SIGNATURES,
+    ],
+    programTypes: [
+      ...AUTOPILOT_CONTINUATION_PROGRAM_TYPES,
+      ...DELIVERY_PIPELINE_PROGRAM_TYPES,
+    ],
     releaseGates: AUTOPILOT_CONTINUATION_RELEASE_GATES,
   })
 
