@@ -28,6 +28,7 @@ import {
   submitIntent,
 } from "../src/control/control-client"
 import { parseNodesResponse, pickConnect } from "../src/control/discovery-client"
+import { ensureNotificationPermission, notifyNewSessionStates } from "../src/notifications"
 import { fixedRowLabelHeight } from "../src/ui/row-metrics"
 import { DrawerIconButton } from "../src/ui/DrawerIconButton"
 import {
@@ -99,6 +100,9 @@ export default function NodesScreen() {
   const [approvals, setApprovals] = useState<ApprovalRow[]>([])
   const [drawerOpen, setDrawerOpen] = useState(false)
   const navigation = useNavigation<{ navigate: (route: string) => void }>()
+  // CL-30 notifications: permission + the set of session states already notified.
+  const notifPermitted = useRef(false)
+  const seenNotifRefs = useRef<string[]>([])
   const [artifact, setArtifact] = useState<SessionArtifact | null>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const eventsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -164,6 +168,12 @@ export default function NodesScreen() {
   useEffect(() => {
     if (conn === null) return
     let cancelled = false
+    // CL-30: request OS notification permission once per connection.
+    void ensureNotificationPermission()
+      .then((p) => {
+        notifPermitted.current = p.state === "enabled"
+      })
+      .catch(() => {})
     void fetchAccounts(conn)
       .then((rows) => {
         if (!cancelled) setAccounts(rows)
@@ -199,6 +209,24 @@ export default function NodesScreen() {
       clearInterval(walletTimer)
     }
   }, [conn])
+
+  // CL-30: fire OS notifications when sessions newly enter a notify-worthy
+  // state (needs_decision / failed / completed). Derive via the shared core;
+  // seen set persists across polls so each transition notifies once.
+  useEffect(() => {
+    if (sessions.length === 0) return
+    let cancelled = false
+    void notifyNewSessionStates(
+      sessions.map((s) => ({ sessionRef: s.sessionRef, state: s.state, latestActivity: s.latestActivity })),
+      seenNotifRefs.current,
+      notifPermitted.current,
+    ).then((next) => {
+      if (!cancelled) seenNotifRefs.current = next
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [sessions])
 
   useEffect(() => {
     if (conn === null || selected === null) return

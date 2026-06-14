@@ -7,6 +7,9 @@ const config: ExpoConfig = {
   owner: "openagents",
   scheme: "autopilot-remote-control",
   version: "0.1.0",
+  // CL-30: expo-notifications config plugin (local notifications on session
+  // state changes). Native module — ships in the next local build.
+  plugins: ["expo-notifications"],
   // EAS Update: fingerprint runtime + the project's update server. JS-only
   // changes ship OTA to matching builds via `eas update`; a changed fingerprint
   // (native/config) requires a new build. See src/updates/README.md.
