@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { sanitizeTree } from "../src/ui/view"
+import { initialModel } from "../src/ui/model"
+import { sanitizeTree, view } from "../src/ui/view"
 
 // Regression for the blank-screen crash: Foldkit's element constructors strip
 // `null` children but NOT `undefined`/`false`, so such a child reaches
@@ -11,6 +12,15 @@ const vnode = (children: unknown[]): { sel: string; children: unknown[] } => ({
   sel: "div",
   children,
 })
+
+const treeContainsSelector = (node: unknown, selector: string): boolean => {
+  if (node === null || typeof node !== "object") return false
+  const vnode = node as { sel?: string; children?: unknown[] }
+  if (vnode.sel === selector) return true
+  return Array.isArray(vnode.children)
+    ? vnode.children.some((child) => treeContainsSelector(child, selector))
+    : false
+}
 
 describe("CL-53 sanitizeTree", () => {
   test("drops undefined / null / false children", () => {
@@ -35,5 +45,10 @@ describe("CL-53 sanitizeTree", () => {
   test("leaves strings and childless nodes untouched", () => {
     expect(sanitizeTree("hello")).toBe("hello")
     expect(sanitizeTree({ sel: "br" })).toEqual({ sel: "br" })
+  })
+
+  test("nodes home includes the three-effect cube", () => {
+    const document = view(initialModel)
+    expect(treeContainsSelector(document.body, "oa-spinning-cube")).toBe(true)
   })
 })

@@ -20,6 +20,7 @@ import {
   SessionList,
   type AccountSummary,
 } from "@openagentsinc/autopilot-ui"
+import { spinningCubeView } from "@openagentsinc/three-effect/foldkit"
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 
@@ -84,6 +85,21 @@ const card = (title: string, children: ReadonlyArray<Html>): Html =>
 const emptyLine = (text: string): Html => h.p([cls("empty-state")], [text])
 
 const paneTitle = (text: string): Html => h.h1([cls("pane-title")], [text])
+
+const liveScenePreview = (): Html =>
+  h.section(
+    [cls("three-effect-panel")],
+    [
+      h.header(
+        [cls("three-effect-header")],
+        [
+          h.h2([cls("three-effect-title")], ["Live Scene"]),
+          h.p([cls("three-effect-caption")], ["spinning cube"]),
+        ],
+      ),
+      spinningCubeView<Message>([cls("three-effect-cube")]),
+    ],
+  )
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -401,6 +417,7 @@ const nodesPane = (model: Model): Html => {
         [cls("node-status")],
         [node ? nodeStatusLine({ ok: node.ok, sessions: node.sessions }) : "connecting…"],
       ),
+      liveScenePreview(),
       deployCard(model),
       askCard(model),
       approvalsCard(model),
