@@ -272,12 +272,19 @@ spine; E makes it honest; F→G make it usable and public.
   run, and a reconciled/accepted trace cannot leave the run claiming `planned`
   (existing `TrainingRunPlannedWithReconciledWindowsBlocker`); settled receipts
   surface only when dereferenceable + redacted.
-- **Remaining:** surface the **accepted verified traces accumulating toward the
-  Tassadar corpus** on the tick ledger / run page (the growing accepted-trace
-  count), so the public run shows both a real settled total **and** a growing
-  corpus.
+- **Remaining (#5010 — W2 surface):** project the **accumulating verified-trace
+  corpus** on the run page — the count of accepted, replay-verified
+  `exact_trace_replay` **closed ticks** (RESEARCH_PLAN §5 W2.5: tick closure as
+  acceptance — intent + execution + state delta + evaluation; "closed ticks _are_
+  training records"). It must **rebuild on validation transitions, not
+  registration** (RESEARCH_PLAN §6.3 + Standing Order 5; case law #4744–#4747)
+  and stay bounded evidence — no Tassadar exactness / model-capability claim. It
+  is **evidence toward** `artanis.tassadar_evolution_loop.v1`'s
+  `tassadar_distillation_dataset_receipt_missing` blocker, not the dataset
+  receipt itself.
 - **Done when:** the public run shows a non-zero settled total equal to reality
-  and a growing accepted-trace count.
+  **and** a growing accepted verified-`exact_trace_replay` corpus count that
+  rebuilds on verdict transitions.
 
 ### F. Autopilot Desktop install path contributors can use · pylon + desktop
 - **The install is Autopilot Desktop** (signed + notarized macOS `.app`, OTA feed
@@ -325,7 +332,8 @@ Run before announcing that contributors are earning:
       box flips when the real stranger settlement lands._
 - [ ] Leaderboard/run `settledPayoutSats` non-zero + accepted-trace count growing
       (E). _`settledPayoutSats` read is wired (#5009); goes non-zero on the first
-      real settlement. Accepted-trace count surface is the §E remainder._
+      real settlement. The verified-trace corpus (closed-tick) count surface is
+      the §E remainder (#5010, W2)._
 - [ ] The linked install path is reproducible on a clean machine (F).
 - [ ] Copy passes §7, cites live registry version + promise IDs.
 
