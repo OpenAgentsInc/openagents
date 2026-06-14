@@ -1,4 +1,7 @@
-import type { SessionSummary } from "@openagentsinc/autopilot-control-protocol"
+import type {
+  NotificationCenterView,
+  SessionSummary,
+} from "@openagentsinc/autopilot-control-protocol"
 
 export type SessionEventRow = {
   readonly eventIndex: number
@@ -43,6 +46,9 @@ export type DesktopRPCSchema = {
     readonly requests: Record<string, never>
     readonly messages: {
       readonly nodeState: NodeStateMessage
+      // CL-30: in-app notification center (unread count + recent items),
+      // derived from newly notify-worthy sessions on the Bun side.
+      readonly notifications: NotificationCenterView
     }
   }
 }

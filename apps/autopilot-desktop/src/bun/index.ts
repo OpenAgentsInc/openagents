@@ -1,6 +1,8 @@
 import { join } from "node:path"
 import { BrowserView, BrowserWindow } from "electrobun/bun"
 import { createNodeStatePoller } from "./node-state-poll"
+import { createSessionNotifier } from "./notifier"
+import { raiseOsNotification } from "./os-notification"
 import { fetchNodeState, readControlToken } from "./pylon-control"
 import type { DesktopRPCSchema } from "../shared/rpc"
 
@@ -21,10 +23,16 @@ const window = new BrowserWindow({
   rpc,
 })
 
+// CL-30: each poll, fold the session list into the notifier so a session that
+// newly enters a notify-worthy state (needs_decision / failed / completed)
+// raises a native OS notification and updates the in-app notification center.
+const notifier = createSessionNotifier({ raise: raiseOsNotification })
+
 const poller = createNodeStatePoller({
   intervalMs: Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 2000,
   onState(message) {
     rpc.send.nodeState(message)
+    rpc.send.notifications(notifier.ingest(message.sessions))
   },
   async fetchNodeState() {
     const token = readControlToken(pylonHome)
