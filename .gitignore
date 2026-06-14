@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 .secrets/
+.pylon*/
 node_modules/
 .bun/
 .wrangler/
