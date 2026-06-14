@@ -1,0 +1,441 @@
+{
+  "schema": "openagents.pylon.m10_overnight_summary.v0.1",
+  "runRef": "run.m10.overnight.fe89b989a4adfdde61631a79",
+  "issueRefs": [
+    "OpenAgentsInc/openagents#4768"
+  ],
+  "supervision": {
+    "label": "unattended_overnight_owner_directed_batch",
+    "ownerDirected": true,
+    "humanInLoopDuringRun": false,
+    "executionMode": "local_bounded",
+    "paymentMode": "no-spend"
+  },
+  "startedAt": "2026-06-13T00:49:44.268Z",
+  "completedAt": "2026-06-13T03:59:46.366Z",
+  "stoppedEarly": null,
+  "plan": {
+    "cycles": 8,
+    "cellsPerCycle": 4,
+    "lanes": [
+      "codex",
+      "claude_agent"
+    ],
+    "surfaces": [
+      "composer",
+      "work_order"
+    ],
+    "sleepSeconds": 1500,
+    "deadlineMinutes": 420
+  },
+  "counts": {
+    "tasksAttempted": 32,
+    "tasksCompleted": 31,
+    "tasksFailed": 1,
+    "heartbeatsWritten": 167,
+    "byCell": {
+      "codexComposer": 8,
+      "claudeComposer": 8,
+      "codexWorkOrder": 8,
+      "claudeWorkOrder": 8
+    }
+  },
+  "tasks": [
+    {
+      "taskIndex": 1,
+      "cycle": 1,
+      "lane": "codex",
+      "surface": "composer",
+      "taskRef": "task.m10.stats_util",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.725c0248835f7ef29d81c27e",
+      "artifactFile": "m10-c1-codex-composer-proof.json",
+      "startedAt": "2026-06-13T00:49:44.270Z",
+      "completedAt": "2026-06-13T00:50:15.937Z"
+    },
+    {
+      "taskIndex": 2,
+      "cycle": 1,
+      "lane": "claude_agent",
+      "surface": "composer",
+      "taskRef": "task.m10.stats_util",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.4dcdf82fa08332e4e8955447",
+      "artifactFile": "m10-c1-claude-composer-proof.json",
+      "startedAt": "2026-06-13T00:50:15.937Z",
+      "completedAt": "2026-06-13T00:50:43.556Z"
+    },
+    {
+      "taskIndex": 3,
+      "cycle": 1,
+      "lane": "codex",
+      "surface": "work_order",
+      "taskRef": "task.m10.codex_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.codex_agent_task.m10_overnight_c1",
+      "artifactFile": "m10-c1-codex-work-order-proof.json",
+      "startedAt": "2026-06-13T00:50:43.557Z",
+      "completedAt": "2026-06-13T00:51:08.694Z"
+    },
+    {
+      "taskIndex": 4,
+      "cycle": 1,
+      "lane": "claude_agent",
+      "surface": "work_order",
+      "taskRef": "task.m10.claude_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.claude_agent_task.m10_overnight_c1",
+      "artifactFile": "m10-c1-claude-work-order-proof.json",
+      "startedAt": "2026-06-13T00:51:08.694Z",
+      "completedAt": "2026-06-13T00:51:18.007Z"
+    },
+    {
+      "taskIndex": 5,
+      "cycle": 2,
+      "lane": "codex",
+      "surface": "composer",
+      "taskRef": "task.m10.timer_doc",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.8c476c2bf10cead763051cb2",
+      "artifactFile": "m10-c2-codex-composer-proof.json",
+      "startedAt": "2026-06-13T01:16:18.079Z",
+      "completedAt": "2026-06-13T01:16:43.845Z"
+    },
+    {
+      "taskIndex": 6,
+      "cycle": 2,
+      "lane": "claude_agent",
+      "surface": "composer",
+      "taskRef": "task.m10.timer_doc",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.7e95516c505d35d51cfbe281",
+      "artifactFile": "m10-c2-claude-composer-proof.json",
+      "startedAt": "2026-06-13T01:16:43.845Z",
+      "completedAt": "2026-06-13T01:17:04.356Z"
+    },
+    {
+      "taskIndex": 7,
+      "cycle": 2,
+      "lane": "codex",
+      "surface": "work_order",
+      "taskRef": "task.m10.codex_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.codex_agent_task.m10_overnight_c2",
+      "artifactFile": "m10-c2-codex-work-order-proof.json",
+      "startedAt": "2026-06-13T01:17:04.357Z",
+      "completedAt": "2026-06-13T01:17:22.286Z"
+    },
+    {
+      "taskIndex": 8,
+      "cycle": 2,
+      "lane": "claude_agent",
+      "surface": "work_order",
+      "taskRef": "task.m10.claude_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.claude_agent_task.m10_overnight_c2",
+      "artifactFile": "m10-c2-claude-work-order-proof.json",
+      "startedAt": "2026-06-13T01:17:22.286Z",
+      "completedAt": "2026-06-13T01:17:31.724Z"
+    },
+    {
+      "taskIndex": 9,
+      "cycle": 3,
+      "lane": "codex",
+      "surface": "composer",
+      "taskRef": "task.m10.slug_util",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.6753db8f891ba2dc02150ddd",
+      "artifactFile": "m10-c3-codex-composer-proof.json",
+      "startedAt": "2026-06-13T01:42:31.797Z",
+      "completedAt": "2026-06-13T01:43:12.114Z"
+    },
+    {
+      "taskIndex": 10,
+      "cycle": 3,
+      "lane": "claude_agent",
+      "surface": "composer",
+      "taskRef": "task.m10.slug_util",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.fc49cf81eb787764245054eb",
+      "artifactFile": "m10-c3-claude-composer-proof.json",
+      "startedAt": "2026-06-13T01:43:12.114Z",
+      "completedAt": "2026-06-13T01:43:25.182Z"
+    },
+    {
+      "taskIndex": 11,
+      "cycle": 3,
+      "lane": "codex",
+      "surface": "work_order",
+      "taskRef": "task.m10.codex_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.codex_agent_task.m10_overnight_c3",
+      "artifactFile": "m10-c3-codex-work-order-proof.json",
+      "startedAt": "2026-06-13T01:43:25.182Z",
+      "completedAt": "2026-06-13T01:43:43.684Z"
+    },
+    {
+      "taskIndex": 12,
+      "cycle": 3,
+      "lane": "claude_agent",
+      "surface": "work_order",
+      "taskRef": "task.m10.failed_work_order",
+      "outcome": "failed",
+      "resultRef": "digest.m10.task_error.606c6fc8a0a9fc88fc70eb21",
+      "artifactFile": "m10-task-failure-12.json",
+      "startedAt": "2026-06-13T01:43:43.684Z",
+      "completedAt": "2026-06-13T01:43:43.737Z"
+    },
+    {
+      "taskIndex": 13,
+      "cycle": 4,
+      "lane": "codex",
+      "surface": "composer",
+      "taskRef": "task.m10.stats_util",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.959c8754d98eea144c1d5358",
+      "artifactFile": "m10-c4-codex-composer-proof.json",
+      "startedAt": "2026-06-13T02:08:43.824Z",
+      "completedAt": "2026-06-13T02:09:17.961Z"
+    },
+    {
+      "taskIndex": 14,
+      "cycle": 4,
+      "lane": "claude_agent",
+      "surface": "composer",
+      "taskRef": "task.m10.stats_util",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.57bbff491be7d52857af4819",
+      "artifactFile": "m10-c4-claude-composer-proof.json",
+      "startedAt": "2026-06-13T02:09:17.961Z",
+      "completedAt": "2026-06-13T02:09:35.466Z"
+    },
+    {
+      "taskIndex": 15,
+      "cycle": 4,
+      "lane": "codex",
+      "surface": "work_order",
+      "taskRef": "task.m10.codex_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.codex_agent_task.m10_overnight_c4",
+      "artifactFile": "m10-c4-codex-work-order-proof.json",
+      "startedAt": "2026-06-13T02:09:35.466Z",
+      "completedAt": "2026-06-13T02:09:51.264Z"
+    },
+    {
+      "taskIndex": 16,
+      "cycle": 4,
+      "lane": "claude_agent",
+      "surface": "work_order",
+      "taskRef": "task.m10.claude_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.claude_agent_task.m10_overnight_c4",
+      "artifactFile": "m10-c4-claude-work-order-proof.json",
+      "startedAt": "2026-06-13T02:09:51.265Z",
+      "completedAt": "2026-06-13T02:10:04.575Z"
+    },
+    {
+      "taskIndex": 17,
+      "cycle": 5,
+      "lane": "codex",
+      "surface": "composer",
+      "taskRef": "task.m10.timer_doc",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.fcb57a31ef3ed5392abeffb2",
+      "artifactFile": "m10-c5-codex-composer-proof.json",
+      "startedAt": "2026-06-13T02:35:04.646Z",
+      "completedAt": "2026-06-13T02:37:28.412Z"
+    },
+    {
+      "taskIndex": 18,
+      "cycle": 5,
+      "lane": "claude_agent",
+      "surface": "composer",
+      "taskRef": "task.m10.timer_doc",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.7dce0cf3b1d1c0ef6ac888b2",
+      "artifactFile": "m10-c5-claude-composer-proof.json",
+      "startedAt": "2026-06-13T02:37:28.412Z",
+      "completedAt": "2026-06-13T02:37:45.892Z"
+    },
+    {
+      "taskIndex": 19,
+      "cycle": 5,
+      "lane": "codex",
+      "surface": "work_order",
+      "taskRef": "task.m10.codex_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.codex_agent_task.m10_overnight_c5",
+      "artifactFile": "m10-c5-codex-work-order-proof.json",
+      "startedAt": "2026-06-13T02:37:45.892Z",
+      "completedAt": "2026-06-13T02:38:11.171Z"
+    },
+    {
+      "taskIndex": 20,
+      "cycle": 5,
+      "lane": "claude_agent",
+      "surface": "work_order",
+      "taskRef": "task.m10.claude_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.claude_agent_task.m10_overnight_c5",
+      "artifactFile": "m10-c5-claude-work-order-proof.json",
+      "startedAt": "2026-06-13T02:38:11.171Z",
+      "completedAt": "2026-06-13T02:38:23.371Z"
+    },
+    {
+      "taskIndex": 21,
+      "cycle": 6,
+      "lane": "codex",
+      "surface": "composer",
+      "taskRef": "task.m10.slug_util",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.784773103689daf2f4f68387",
+      "artifactFile": "m10-c6-codex-composer-proof.json",
+      "startedAt": "2026-06-13T03:03:23.400Z",
+      "completedAt": "2026-06-13T03:03:48.474Z"
+    },
+    {
+      "taskIndex": 22,
+      "cycle": 6,
+      "lane": "claude_agent",
+      "surface": "composer",
+      "taskRef": "task.m10.slug_util",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.8be66aea5e3159b44fc0c114",
+      "artifactFile": "m10-c6-claude-composer-proof.json",
+      "startedAt": "2026-06-13T03:03:48.474Z",
+      "completedAt": "2026-06-13T03:04:04.586Z"
+    },
+    {
+      "taskIndex": 23,
+      "cycle": 6,
+      "lane": "codex",
+      "surface": "work_order",
+      "taskRef": "task.m10.codex_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.codex_agent_task.m10_overnight_c6",
+      "artifactFile": "m10-c6-codex-work-order-proof.json",
+      "startedAt": "2026-06-13T03:04:04.586Z",
+      "completedAt": "2026-06-13T03:04:23.272Z"
+    },
+    {
+      "taskIndex": 24,
+      "cycle": 6,
+      "lane": "claude_agent",
+      "surface": "work_order",
+      "taskRef": "task.m10.claude_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.claude_agent_task.m10_overnight_c6",
+      "artifactFile": "m10-c6-claude-work-order-proof.json",
+      "startedAt": "2026-06-13T03:04:23.272Z",
+      "completedAt": "2026-06-13T03:04:36.582Z"
+    },
+    {
+      "taskIndex": 25,
+      "cycle": 7,
+      "lane": "codex",
+      "surface": "composer",
+      "taskRef": "task.m10.stats_util",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.426f6f331c5b9fb0fc7fa14d",
+      "artifactFile": "m10-c7-codex-composer-proof.json",
+      "startedAt": "2026-06-13T03:29:36.621Z",
+      "completedAt": "2026-06-13T03:31:56.086Z"
+    },
+    {
+      "taskIndex": 26,
+      "cycle": 7,
+      "lane": "claude_agent",
+      "surface": "composer",
+      "taskRef": "task.m10.stats_util",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.55b1250204fc64d9f7dd799e",
+      "artifactFile": "m10-c7-claude-composer-proof.json",
+      "startedAt": "2026-06-13T03:31:56.086Z",
+      "completedAt": "2026-06-13T03:32:18.852Z"
+    },
+    {
+      "taskIndex": 27,
+      "cycle": 7,
+      "lane": "codex",
+      "surface": "work_order",
+      "taskRef": "task.m10.codex_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.codex_agent_task.m10_overnight_c7",
+      "artifactFile": "m10-c7-codex-work-order-proof.json",
+      "startedAt": "2026-06-13T03:32:18.852Z",
+      "completedAt": "2026-06-13T03:32:35.508Z"
+    },
+    {
+      "taskIndex": 28,
+      "cycle": 7,
+      "lane": "claude_agent",
+      "surface": "work_order",
+      "taskRef": "task.m10.claude_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.claude_agent_task.m10_overnight_c7",
+      "artifactFile": "m10-c7-claude-work-order-proof.json",
+      "startedAt": "2026-06-13T03:32:35.508Z",
+      "completedAt": "2026-06-13T03:32:46.442Z"
+    },
+    {
+      "taskIndex": 29,
+      "cycle": 8,
+      "lane": "codex",
+      "surface": "composer",
+      "taskRef": "task.m10.timer_doc",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.081c2980af5d20541a161d15",
+      "artifactFile": "m10-c8-codex-composer-proof.json",
+      "startedAt": "2026-06-13T03:57:46.457Z",
+      "completedAt": "2026-06-13T03:58:09.155Z"
+    },
+    {
+      "taskIndex": 30,
+      "cycle": 8,
+      "lane": "claude_agent",
+      "surface": "composer",
+      "taskRef": "task.m10.timer_doc",
+      "outcome": "completed",
+      "resultRef": "digest.composer.response.b0a55d27fd541f6b311810dc",
+      "artifactFile": "m10-c8-claude-composer-proof.json",
+      "startedAt": "2026-06-13T03:58:09.155Z",
+      "completedAt": "2026-06-13T03:58:33.422Z"
+    },
+    {
+      "taskIndex": 31,
+      "cycle": 8,
+      "lane": "codex",
+      "surface": "work_order",
+      "taskRef": "task.m10.codex_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.codex_agent_task.m10_overnight_c8",
+      "artifactFile": "m10-c8-codex-work-order-proof.json",
+      "startedAt": "2026-06-13T03:58:33.422Z",
+      "completedAt": "2026-06-13T03:59:33.555Z"
+    },
+    {
+      "taskIndex": 32,
+      "cycle": 8,
+      "lane": "claude_agent",
+      "surface": "work_order",
+      "taskRef": "task.m10.claude_work_order_fixture",
+      "outcome": "completed",
+      "resultRef": "assignment.closeout.assignment.public.claude_agent_task.m10_overnight_c8",
+      "artifactFile": "m10-c8-claude-work-order-proof.json",
+      "startedAt": "2026-06-13T03:59:33.555Z",
+      "completedAt": "2026-06-13T03:59:46.339Z"
+    }
+  ],
+  "redactionScan": {
+    "state": "clean",
+    "appliedToEveryArtifact": true
+  },
+  "deviations": [
+    "deviation.m10.shc_lane_deferred_requires_live_scheduled_launch",
+    "deviation.m10.web_ui_surface_deferred_requires_live_api",
+    "deviation.m10.work_status_cli_surface_deferred_requires_live_api",
+    "deviation.m10.work_order_surface_used_local_assignment_harness",
+    "deviation.m10.metering_ledger_check_deferred_to_live_lane",
+    "deviation.m10.lanes_interpreted_as_local_codex_and_claude_adapters"
+  ]
+}

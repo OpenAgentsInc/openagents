@@ -1,0 +1,45 @@
+{
+  "schema": "openagents.pylon.m10_overnight_task.v0.1",
+  "runRef": "run.m10.overnight.fe89b989a4adfdde61631a79",
+  "taskIndex": 28,
+  "cycle": 7,
+  "lane": "claude_agent",
+  "surface": "work_order",
+  "observedAt": "2026-06-13T03:32:35.509Z",
+  "completedAt": "2026-06-13T03:32:46.442Z",
+  "executionMode": "local_bounded",
+  "paymentMode": "no-spend",
+  "assignmentApi": "local_harness",
+  "ok": true,
+  "assignmentRef": "assignment.public.claude_agent_task.m10_overnight_c7",
+  "closeoutStatus": "accepted",
+  "closeoutRef": "assignment.closeout.assignment.public.claude_agent_task.m10_overnight_c7",
+  "receiptRefs": [
+    "assignment.accepted.assignment.public.claude_agent_task.m10_overnight_c7",
+    "assignment.progress.assignment.public.claude_agent_task.m10_overnight_c7",
+    "assignment.artifacts.assignment.public.claude_agent_task.m10_overnight_c7",
+    "run.pylon.claude_agent_task.5d3153de02bf60b9c6e2a285",
+    "session.pylon.claude_agent.81889208b3dd023480f1251b"
+  ],
+  "proofRefs": [
+    "proof.pylon.claude_agent_task.test.861d558b59d9b626d5e0000d"
+  ],
+  "resultRefs": [
+    "result.public.pylon.claude_agent_task.fixture_repair_passed",
+    "result.public.pylon.claude_agent_task.edited_files.1"
+  ],
+  "blockerRefs": [],
+  "boundaryChecks": {
+    "paymentMode": "no-spend",
+    "settlementState": "not_applicable",
+    "payoutClaimAllowed": false,
+    "redacted": true
+  },
+  "harnessRequestCount": 6,
+  "redactionScan": {
+    "state": "clean"
+  },
+  "deviations": [
+    "deviation.m10.work_order_surface_used_local_assignment_harness"
+  ]
+}

@@ -1,0 +1,270 @@
+{
+  "schema": "openagents.pylon.dev_proof_run.v0.1",
+  "observedAt": "2026-06-13T01:43:12.114Z",
+  "completedAt": "2026-06-13T01:43:25.182Z",
+  "adapter": "claude_agent",
+  "supervision": {
+    "label": "agent_supervised_owner_directed_session",
+    "ownerDirected": true,
+    "sourceCheckout": true,
+    "executionMode": "local_bounded"
+  },
+  "doctor": {
+    "schema": "openagents.pylon.dev_doctor.v0.3",
+    "observedAt": "2026-06-13T01:43:12.114Z",
+    "package": {
+      "name": "@openagentsinc/pylon",
+      "version": "0.3.0-rc2",
+      "sourceCommit": "e380ca039cc0e0413b49938fac278659d5d54963"
+    },
+    "repo": {
+      "state": "ready",
+      "provider": null,
+      "fullName": null,
+      "branch": "main",
+      "commit": "fc02277a57b0004d16de5f213fe0d7e230bf44d6",
+      "dirty": {
+        "state": "dirty",
+        "changedCount": 1
+      },
+      "blockerRefs": [
+        "blocker.dev_doctor.repo_dirty",
+        "blocker.dev_doctor.remote_unknown"
+      ]
+    },
+    "instructions": {
+      "refs": [
+        {
+          "sourceRef": "instruction.workspace.agents",
+          "state": "missing",
+          "relativePath": "AGENTS.md",
+          "digestRef": null
+        },
+        {
+          "sourceRef": "instruction.repo.agents",
+          "state": "missing",
+          "relativePath": "AGENTS.md",
+          "digestRef": null
+        },
+        {
+          "sourceRef": "instruction.workspace.invariants",
+          "state": "missing",
+          "relativePath": "INVARIANTS.md",
+          "digestRef": null
+        },
+        {
+          "sourceRef": "instruction.repo.invariants",
+          "state": "missing",
+          "relativePath": "INVARIANTS.md",
+          "digestRef": null
+        }
+      ],
+      "blockerRefs": [
+        "blocker.dev_doctor.workspace_agents_missing",
+        "blocker.dev_doctor.repo_agents_missing",
+        "blocker.dev_doctor.workspace_invariants_missing",
+        "blocker.dev_doctor.repo_invariants_missing"
+      ]
+    },
+    "pylonConfig": {
+      "state": "present",
+      "configRef": "config.pylon.local",
+      "digestRef": "file.digest.248d7ff5fa1e1b18ce5a1bc2",
+      "devOverlayRef": null,
+      "claudeDevOverlayRef": null,
+      "defaultAdapter": "codex"
+    },
+    "codex": {
+      "cli": "present",
+      "sdkReadiness": {
+        "schema": "openagents.pylon.codex_agent_readiness.v0.3",
+        "state": "ready",
+        "enabled": true,
+        "capabilityRefs": [
+          "capability.pylon.local_codex"
+        ],
+        "blockerRefs": [],
+        "credentialSourceRef": "credential.source.codex_agent.codex_cli_login"
+      },
+      "credentialSourceRef": "credential.source.codex_agent.codex_cli_login",
+      "configuredModel": null,
+      "executionMode": "local_bounded",
+      "sandboxMode": "workspace-write",
+      "blockerRefs": []
+    },
+    "claudeAgent": {
+      "readiness": {
+        "schema": "openagents.pylon.claude_agent_readiness.v0.3",
+        "state": "ready",
+        "enabled": true,
+        "capabilityRefs": [
+          "capability.pylon.local_claude_agent"
+        ],
+        "blockerRefs": [],
+        "credentialSourceRef": "credential.source.claude_agent.local_claude_session"
+      },
+      "configuredModel": null,
+      "fableReviewAvailable": false,
+      "executionMode": "local_bounded",
+      "permissionMode": "acceptEdits",
+      "dangerPublicPathBlockerRef": null,
+      "blockerRefs": []
+    },
+    "backends": {
+      "refs": [
+        {
+          "backendRef": "backend.opencode.cli",
+          "state": "ready",
+          "modelRef": "model.opencode.default",
+          "blockerRefs": []
+        },
+        {
+          "backendRef": "backend.codex.future_adapter",
+          "state": "unknown",
+          "modelRef": null,
+          "blockerRefs": [
+            "blocker.backend.codex_adapter_not_wired"
+          ]
+        },
+        {
+          "backendRef": "backend.apple_fm",
+          "state": "ready",
+          "modelRef": "model.apple_foundation_model",
+          "blockerRefs": []
+        },
+        {
+          "backendRef": "backend.gemini",
+          "state": "missing",
+          "modelRef": null,
+          "blockerRefs": [
+            "blocker.backend.gemini_auth_missing"
+          ]
+        },
+        {
+          "backendRef": "backend.psionic.qwen35",
+          "state": "missing",
+          "modelRef": null,
+          "blockerRefs": [
+            "blocker.psionic_qwen35.connector_unconfigured"
+          ]
+        },
+        {
+          "backendRef": "backend.local_model",
+          "state": "unknown",
+          "modelRef": null,
+          "blockerRefs": [
+            "blocker.backend.local_model_inventory_unproven"
+          ]
+        }
+      ],
+      "blockerRefs": []
+    },
+    "blockerRefs": [
+      "blocker.dev_doctor.repo_dirty",
+      "blocker.dev_doctor.remote_unknown",
+      "blocker.dev_doctor.workspace_agents_missing",
+      "blocker.dev_doctor.repo_agents_missing",
+      "blocker.dev_doctor.workspace_invariants_missing",
+      "blocker.dev_doctor.repo_invariants_missing"
+    ]
+  },
+  "task": {
+    "objective": "In the directory tasks/c3/claude (relative to the repository root), create slug.ts exporting slugify(input: string): string that lowercases, trims, collapses whitespace to single hyphens, and strips characters outside [a-z0-9-], plus slug.test.ts covering at least four cases with bun:test. Run `bun test tasks/c3/claude` and make every test pass. Only create or modify files inside tasks/c3/claude.",
+    "promptDigestRef": "digest.composer.prompt.a2f661c590e216da0c5f2c23",
+    "issueRefs": [
+      "OpenAgentsInc/openagents#4768"
+    ]
+  },
+  "executor": {
+    "executionPathRef": "composer.run_stream",
+    "executionMode": "local_bounded",
+    "boundary": {
+      "adapter": "claude_agent",
+      "permissionMode": "acceptEdits",
+      "allowedToolsProfile": "composer_default",
+      "settingSourcesExcluded": true
+    },
+    "outcome": "completed",
+    "eventCount": 11,
+    "turnCount": 5,
+    "commandCount": 1,
+    "editedFileCount": 2,
+    "totalTokens": 2837,
+    "sessionRef": "session.pylon.claude_composer.bee49e86385759006c5ad274",
+    "responseDigestRef": "digest.composer.response.fc49cf81eb787764245054eb"
+  },
+  "devCheck": {
+    "schema": "openagents.pylon.dev_check.v0.3",
+    "observedAt": "2026-06-13T01:43:25.151Z",
+    "action": "check",
+    "state": "passed",
+    "changeSummary": {
+      "repo": {
+        "state": "ready",
+        "rootRef": "repo.root.9c4f65662ae344f647cc3407",
+        "branch": "main",
+        "commit": "fc02277a57b0004d16de5f213fe0d7e230bf44d6"
+      },
+      "dirty": {
+        "state": "dirty",
+        "changedCount": 1,
+        "stagedCount": 0,
+        "unstagedCount": 0,
+        "untrackedCount": 1
+      },
+      "changedFileRefs": [
+        {
+          "fileRef": "file.local_change.d8fa1d274f10a339938ed6ab",
+          "status": "untracked",
+          "area": "unknown",
+          "extension": null
+        }
+      ],
+      "areaRefs": [
+        "area.unknown"
+      ],
+      "blockerRefs": []
+    },
+    "checkPlan": {
+      "state": "ready",
+      "commandRefs": [
+        "command.dev_check.7f9f9e3ae47506d7be56f1b5"
+      ],
+      "blockerRefs": []
+    },
+    "commandResults": [
+      {
+        "commandRef": "command.dev_check.7f9f9e3ae47506d7be56f1b5",
+        "reasonRef": "check.pylon.proof_verification",
+        "cwdRef": "command.cwd.61cec2cab9a9ee2315778cfd",
+        "argvRef": "command.argv.1b67b7bdf12927698632d2b5",
+        "exitCode": 0,
+        "status": "passed",
+        "durationMs": 9,
+        "stdoutBytes": 28,
+        "stderrBytes": 71,
+        "stdoutDigestRef": "command.stdout.72af121bdc4cbb1d32d4d345",
+        "stderrDigestRef": "command.stderr.ee48c78b9262c4f7f2ad6021"
+      }
+    ],
+    "latestRecordRef": "record.pylon_dev.776027b689efe5e1a4c76ee3",
+    "branchUntouched": true,
+    "commitUntouched": true,
+    "pushPerformed": false,
+    "blockerRefs": []
+  },
+  "redactionScan": {
+    "state": "clean",
+    "patternRefs": [
+      "redaction.local_user_path",
+      "redaction.local_home_path",
+      "redaction.tmp_path",
+      "redaction.sk_prefix",
+      "redaction.provider_key_name",
+      "redaction.auth_scheme",
+      "redaction.credential_file",
+      "redaction.raw_session_uuid"
+    ]
+  },
+  "deviations": []
+}
