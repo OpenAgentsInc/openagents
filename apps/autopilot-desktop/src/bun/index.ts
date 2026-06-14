@@ -1,14 +1,35 @@
-import { join } from "node:path"
 import { BrowserView, BrowserWindow } from "electrobun/bun"
+import { discoverPylonHome } from "./node-home"
 import { createNodeStatePoller } from "./node-state-poll"
 import { createSessionNotifier } from "./notifier"
 import { raiseOsNotification } from "./os-notification"
-import { deployToCloud, fetchNodeState, readControlToken } from "./pylon-control"
+import {
+  cancelSession,
+  deployToCloud,
+  fetchNodeState,
+  readControlToken,
+  resolveApproval,
+  setCoordinatorPaused,
+  spawnSession,
+  submitIntent,
+} from "./pylon-control"
 import type { DesktopRPCSchema } from "../shared/rpc"
 
 const controlBaseUrl = Bun.env.PYLON_CONTROL_BASE_URL ?? "http://127.0.0.1:4716"
-const pylonHome = Bun.env.PYLON_HOME ?? join(process.cwd(), ".pylon-local")
 const pollIntervalMs = Number(Bun.env.AUTOPILOT_DESKTOP_NODE_POLL_MS ?? "2000")
+
+// CL-45: resolve the node home once per call so a node that starts after the app
+// (or rotates its home) is picked up without a restart. Falls back to the env
+// default. `readControlToken` returns null when the chosen home has no token,
+// which the poll surfaces as an honest offline state.
+function resolveHome(): string | null {
+  return discoverPylonHome({ env: Bun.env.PYLON_HOME, cwd: process.cwd() })
+}
+
+function tokenForCommand(): string | null {
+  const home = resolveHome()
+  return home === null ? null : readControlToken(home)
+}
 
 const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
   handlers: {
@@ -18,7 +39,7 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       // node enforces the OA_DEPLOY_ENABLE=1 fail-safe, so nothing deploys by
       // default.
       async deployCloud(params) {
-        const token = readControlToken(pylonHome)
+        const token = tokenForCommand()
         if (token === null) {
           return { accepted: false, reason: "control token unavailable", errors: [] }
         }
@@ -28,6 +49,42 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           target: params.target,
           ref: params.ref,
           ...(params.env ? { env: params.env } : {}),
+        })
+      },
+      // CL-47: submit an "ask" (work intent) to the node.
+      async submitIntent(params) {
+        const token = tokenForCommand()
+        if (token === null) return { ok: false, status: "error", error: "control token unavailable" }
+        return submitIntent({ baseUrl: controlBaseUrl, token, title: params.title, body: params.body })
+      },
+      // CL-48: resolve a pending approval (approve/deny).
+      async resolveApproval(params) {
+        const token = tokenForCommand()
+        if (token === null) return { applied: false, duplicate: false, decision: params.decision }
+        return resolveApproval({ baseUrl: controlBaseUrl, token, approvalRef: params.approvalRef, decision: params.decision })
+      },
+      // CL-51: pause/resume the node's autonomous coordinator loop.
+      async setCoordinatorPaused(params) {
+        const token = tokenForCommand()
+        if (token === null) return { paused: params.paused }
+        return setCoordinatorPaused({ baseUrl: controlBaseUrl, token, paused: params.paused })
+      },
+      // CL-52: cancel a running/queued session.
+      async cancelSession(params) {
+        const token = tokenForCommand()
+        if (token === null) return { ok: false, state: "error" }
+        return cancelSession({ baseUrl: controlBaseUrl, token, sessionRef: params.sessionRef })
+      },
+      // CL-57: directly spawn a bounded session on the node.
+      async spawnSession(params) {
+        const token = tokenForCommand()
+        if (token === null) return { ok: false, sessionRef: "", error: "control token unavailable" }
+        return spawnSession({
+          baseUrl: controlBaseUrl,
+          token,
+          adapter: params.adapter,
+          objective: params.objective,
+          ...(params.verify ? { verify: params.verify } : {}),
         })
       },
     },
@@ -53,7 +110,7 @@ const poller = createNodeStatePoller({
     rpc.send.notifications(notifier.ingest(message.sessions))
   },
   async fetchNodeState() {
-    const token = readControlToken(pylonHome)
+    const token = tokenForCommand()
     if (token === null) throw new Error("Pylon control token is not available")
     return fetchNodeState({
       baseUrl: controlBaseUrl,

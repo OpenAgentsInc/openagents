@@ -7,7 +7,15 @@ import {
   type BridgeCredential,
   type SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
-import type { AccountRow, SessionArtifactStats, SessionEventRow } from "../shared/rpc"
+import type {
+  AccountRow,
+  ApprovalRow,
+  AssignmentRow,
+  IntentRow,
+  SessionArtifactStats,
+  SessionEventRow,
+  WalletStatusRow,
+} from "../shared/rpc"
 
 // ── CL-14 bridge transport (desktop) ──────────────────────────────────────
 // Same secure path as mobile, via the shared protocol transport: mint a
@@ -94,6 +102,8 @@ async function fetchSessionEventRows(input: {
       state: String(e.state ?? "?"),
       observedAt: String(e.observedAt ?? ""),
       detail: typeof e.messageText === "string" ? e.messageText : "",
+      // CL-52: full untruncated content, revealed on click-to-expand.
+      full: typeof e.messageFull === "string" ? e.messageFull : "",
     }))
   } catch {
     return []
@@ -242,11 +252,136 @@ async function fetchArtifactStats(input: {
   }
 }
 
+// CL-47: the owner's recent asks + their ship-status (intent.list).
+async function fetchIntentRows(input: { baseUrl: string; token: string; fetchFn: typeof fetch }): Promise<IntentRow[]> {
+  try {
+    const res = await input.fetchFn(`${input.baseUrl}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "intent.list" }),
+    })
+    if (!res.ok) return []
+    const json = (await res.json()) as { ok?: unknown; result?: { intents?: unknown } }
+    const intents = json.ok === true ? json.result?.intents : undefined
+    if (!Array.isArray(intents)) return []
+    return intents.map((i: any) => ({
+      intentId: String(i.intentId ?? "?"),
+      title: String(i.title ?? ""),
+      status: String(i.status ?? "received"),
+      submittedByClientRef: String(i.submittedByClientRef ?? ""),
+    }))
+  } catch {
+    return []
+  }
+}
+
+// CL-48: pending approvals/decisions awaiting the owner (approvals.list).
+async function fetchApprovalRows(input: { baseUrl: string; token: string; fetchFn: typeof fetch }): Promise<ApprovalRow[]> {
+  try {
+    const res = await input.fetchFn(`${input.baseUrl}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "approvals.list" }),
+    })
+    if (!res.ok) return []
+    const json = (await res.json()) as { ok?: unknown; result?: { approvals?: unknown } }
+    const rows = json.ok === true ? json.result?.approvals : undefined
+    if (!Array.isArray(rows)) return []
+    return rows.map((a: any) => ({
+      approvalRef: String(a.approvalRef ?? "?"),
+      kind: String(a.kind ?? "approval"),
+      prompt: String(a.prompt ?? ""),
+      createdAt: String(a.createdAt ?? ""),
+    }))
+  } catch {
+    return []
+  }
+}
+
+// CL-49: read-only MDK wallet status (wallet.status). Null when unavailable.
+async function fetchWalletRow(input: { baseUrl: string; token: string; fetchFn: typeof fetch }): Promise<WalletStatusRow | null> {
+  try {
+    const res = await input.fetchFn(`${input.baseUrl}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "wallet.status" }),
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as { ok?: unknown; result?: any }
+    const r = json.ok === true ? json.result : undefined
+    if (!r || typeof r !== "object") return null
+    return {
+      configured: r.configured === true,
+      daemonOnline: r.daemonOnline === true,
+      balanceSats: typeof r.balanceSats === "number" ? r.balanceSats : null,
+      receiveReady: r.receiveReady === true,
+      sendReady: r.sendReady === true,
+      readiness: typeof r.readiness === "string" ? r.readiness : "unknown",
+    }
+  } catch {
+    return null
+  }
+}
+
+// CL-50: open work-lease assignments (assignments.poll). Read-only.
+async function fetchAssignmentRows(input: { baseUrl: string; token: string; fetchFn: typeof fetch }): Promise<AssignmentRow[]> {
+  try {
+    const res = await input.fetchFn(`${input.baseUrl}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "assignments.poll" }),
+    })
+    if (!res.ok) return []
+    const json = (await res.json()) as { ok?: unknown; result?: unknown }
+    const rows = json.ok === true ? json.result : undefined
+    if (!Array.isArray(rows)) return []
+    return rows.map((a: any) => ({
+      assignmentRef: String(a.assignmentRef ?? "?"),
+      leaseRef: String(a.leaseRef ?? "?"),
+      goal: String(a.goal ?? ""),
+      paymentMode: String(a.paymentMode ?? "unknown"),
+      expiresAt: String(a.expiresAt ?? ""),
+    }))
+  } catch {
+    return []
+  }
+}
+
+// CL-51: node coordinator paused flag (coordinator.status). Null if unexposed.
+async function fetchCoordinatorPausedFlag(input: { baseUrl: string; token: string; fetchFn: typeof fetch }): Promise<boolean | null> {
+  try {
+    const res = await input.fetchFn(`${input.baseUrl}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "coordinator.status" }),
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as { ok?: unknown; result?: { paused?: unknown } }
+    const r = json.ok === true ? json.result : undefined
+    return typeof r?.paused === "boolean" ? r.paused : null
+  } catch {
+    return null
+  }
+}
+
 export async function fetchNodeState(input: {
   baseUrl: string
   token: string
   fetchFn?: typeof fetch
-}): Promise<{ ok: boolean; schema: string; sessions: SessionSummary[]; events: Record<string, SessionEventRow[]>; accounts: AccountRow[]; artifacts: Record<string, SessionArtifactStats>; deploy: DesktopDeployStatus }> {
+}): Promise<{
+  ok: boolean
+  schema: string
+  sessions: SessionSummary[]
+  events: Record<string, SessionEventRow[]>
+  accounts: AccountRow[]
+  artifacts: Record<string, SessionArtifactStats>
+  deploy: DesktopDeployStatus
+  intents: IntentRow[]
+  approvals: ApprovalRow[]
+  wallet: WalletStatusRow | null
+  assignments: AssignmentRow[]
+  coordinatorPaused: boolean | null
+}> {
   const fetchFn = input.fetchFn ?? fetch
   const baseUrl = input.baseUrl.replace(/\/+$/, "")
 
@@ -308,6 +443,16 @@ export async function fetchNodeState(input: {
   const accounts = await fetchAccountRows({ baseUrl, token: input.token, fetchFn })
   // CL-26: read-only projection of the node's last deploy.
   const deploy = await fetchDeployStatus({ baseUrl, token: input.token, fetchFn })
+  // CL-47..CL-51: parity surfaces — owner asks, approvals, wallet, assignments,
+  // and the coordinator paused flag. All read-only; each degrades to empty/null
+  // independently so one missing command can't blank the whole projection.
+  const [intents, approvals, wallet, assignments, coordinatorPaused] = await Promise.all([
+    fetchIntentRows({ baseUrl, token: input.token, fetchFn }),
+    fetchApprovalRows({ baseUrl, token: input.token, fetchFn }),
+    fetchWalletRow({ baseUrl, token: input.token, fetchFn }),
+    fetchAssignmentRows({ baseUrl, token: input.token, fetchFn }),
+    fetchCoordinatorPausedFlag({ baseUrl, token: input.token, fetchFn }),
+  ])
 
   return {
     ok: health.ok,
@@ -317,5 +462,140 @@ export async function fetchNodeState(input: {
     accounts,
     artifacts,
     deploy,
+    intents,
+    approvals,
+    wallet,
+    assignments,
+    coordinatorPaused,
+  }
+}
+
+// ── CL-46 mutation verbs (desktop) ─────────────────────────────────────────
+// Webview → Bun RPC handlers forward these over loopback /command. The control
+// token stays in the Bun process; the webview only ever sees the result shape.
+
+// CL-47: submit an "ask" (work intent) to the node. The coordinator plans and
+// fans it out; returns the initial ship-status.
+export async function submitIntent(input: {
+  baseUrl: string
+  token: string
+  title: string
+  body: string
+  fetchFn?: typeof fetch
+}): Promise<{ ok: boolean; status: string; error?: string }> {
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "intent.submit", title: input.title, body: input.body, submittedByClientRef: "desktop" }),
+    })
+    if (!res.ok) return { ok: false, status: "error", error: `control ${res.status}` }
+    const json = (await res.json()) as { ok?: unknown; result?: { status?: unknown } }
+    if (json.ok !== true) return { ok: false, status: "error", error: "submit failed" }
+    return { ok: true, status: String(json.result?.status ?? "received") }
+  } catch (e) {
+    return { ok: false, status: "error", error: e instanceof Error ? e.message : "unavailable" }
+  }
+}
+
+// CL-48: resolve a pending approval. Exactly-once is enforced on the node; a
+// duplicate resolve returns {duplicate:true} and keeps the original decision.
+export async function resolveApproval(input: {
+  baseUrl: string
+  token: string
+  approvalRef: string
+  decision: "approve" | "deny"
+  fetchFn?: typeof fetch
+}): Promise<{ applied: boolean; duplicate: boolean; decision: string }> {
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "approvals.resolve", approvalRef: input.approvalRef, decision: input.decision }),
+    })
+    if (!res.ok) return { applied: false, duplicate: false, decision: input.decision }
+    const json = (await res.json()) as { ok?: unknown; result?: { applied?: unknown; duplicate?: unknown; decision?: unknown } }
+    const r = json.ok === true ? json.result : undefined
+    return {
+      applied: r?.applied === true,
+      duplicate: r?.duplicate === true,
+      decision: typeof r?.decision === "string" ? r.decision : input.decision,
+    }
+  } catch {
+    return { applied: false, duplicate: false, decision: input.decision }
+  }
+}
+
+// CL-51: pause/resume the node's autonomous coordinator loop.
+export async function setCoordinatorPaused(input: {
+  baseUrl: string
+  token: string
+  paused: boolean
+  fetchFn?: typeof fetch
+}): Promise<{ paused: boolean }> {
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: input.paused ? "coordinator.pause" : "coordinator.resume" }),
+    })
+    if (!res.ok) return { paused: input.paused }
+    const json = (await res.json()) as { ok?: unknown; result?: { paused?: unknown } }
+    const r = json.ok === true ? json.result : undefined
+    return { paused: typeof r?.paused === "boolean" ? r.paused : input.paused }
+  } catch {
+    return { paused: input.paused }
+  }
+}
+
+// CL-52: cancel a running/queued session. Best-effort; returns the new state.
+export async function cancelSession(input: {
+  baseUrl: string
+  token: string
+  sessionRef: string
+  fetchFn?: typeof fetch
+}): Promise<{ ok: boolean; state: string }> {
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "session.cancel", sessionRef: input.sessionRef }),
+    })
+    if (!res.ok) return { ok: false, state: "error" }
+    const json = (await res.json()) as { ok?: unknown; result?: { state?: unknown } }
+    if (json.ok !== true) return { ok: false, state: "error" }
+    return { ok: true, state: String(json.result?.state ?? "cancelled") }
+  } catch {
+    return { ok: false, state: "error" }
+  }
+}
+
+// CL-57: directly spawn a bounded session on the node. Validation is the
+// caller's responsibility (see validateSpawnRequest in the shared protocol).
+export async function spawnSession(input: {
+  baseUrl: string
+  token: string
+  adapter: "codex" | "claude_agent"
+  objective: string
+  verify?: string[]
+  fetchFn?: typeof fetch
+}): Promise<{ ok: boolean; sessionRef: string; error?: string }> {
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "session.spawn", adapter: input.adapter, objective: input.objective, verify: input.verify ?? [] }),
+    })
+    if (!res.ok) return { ok: false, sessionRef: "", error: `control ${res.status}` }
+    const json = (await res.json()) as { ok?: unknown; result?: { sessionRef?: unknown } }
+    if (json.ok !== true) return { ok: false, sessionRef: "", error: "spawn failed" }
+    return { ok: true, sessionRef: String(json.result?.sessionRef ?? "spawned") }
+  } catch (e) {
+    return { ok: false, sessionRef: "", error: e instanceof Error ? e.message : "unavailable" }
   }
 }
