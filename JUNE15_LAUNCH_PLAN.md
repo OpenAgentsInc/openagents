@@ -1,303 +1,308 @@
-# JUNE 15 LAUNCH PLAN — "Training Run Starts / Users Earn Bitcoin for Contributing"
+# JUNE 15 LAUNCH PLAN — The Tassadar Run
 
-Date authored: 2026-06-14 (Sunday). Target: Monday 2026-06-15.
+Date authored: 2026-06-14 (Sunday). Target: **Monday 2026-06-15**.
 
-This is the critical-path ops plan for the **one thing that has to be true
-tomorrow**: a public training run is live, real (non-owner) people can install
-Pylon and contribute useful work, and they get **paid real Bitcoin** for it,
-with public receipts. Everything else — coding-agent earning, the labor market,
-the Tassadar model story, the "largest run" comparison — is **bonus** and must
-not sit on this critical path.
+We are launching the **Tassadar run** tomorrow. This is the plan to make the core
+experience real: a public Tassadar training run goes live, real (non-owner)
+people install Pylon v0.3, get dispatched **executor-trace work**, it's verified
+by **exact replay**, and they **earn real Bitcoin** for it — with public
+receipts — while their accepted work accumulates the verified-trace corpus that
+trains Tassadar.
 
-> Grounding: this plan is built from
-> `docs/2026-06-12-episode-236-training-launch-gap-audit.md` (the canonical gap
-> list), the live surfaces below, and the product-promise registry
-> (`/api/public/product-promises`, currently `2026-06-14.4`). Read the gap audit
-> before executing — this plan turns its "What Still Needs To Be Built" section
-> into a sequenced, gated launch.
+This is not CS336. CS336 is shared plumbing (training-run routes, the settlement
+ladder, the verification-class registry). The **run we are launching is
+Tassadar** — the Percepta Executor Class model direction from Episode 236.
+
+> From Episode 236 (`docs/transcripts/236.md`): "Monday we're launching the
+> largest decentralized training run… you're just going to install our node
+> software and you're going to get paid Bitcoin to contribute to a training run…
+> a very fancy new architecture… Percepta Executor Class model… CPU computation
+> transform… adding support for that to Pylon version 0.3 paired with the Bitcoin
+> payments… one piece of software that's going to earn you Bitcoin in multiple
+> different ways, including helping train this very experimental but we think very
+> powerful new kind of model which we're calling **Tassadar**. We'll launch that
+> Monday."
+
+> Grounding: built from `docs/transcripts/236.md`, the Tassadar lane
+> (`docs/tassadar/README.md`, `compute.tassadar_executor_poc.v1` green,
+> `artanis.tassadar_evolution_loop.v1` yellow), the Episode 236 gap audit
+> (`docs/2026-06-12-episode-236-training-launch-gap-audit.md`), the live surfaces
+> below, and the promise registry (`/api/public/product-promises`, `2026-06-14.4`).
 
 ---
 
-## 1. Definition of Done (the only scoreboard that matters)
+## 1. What the Tassadar run actually is
 
-The launch is real — not just copy — when **all** of these are true and publicly
+Tassadar is the **compiled exact-executor lane**: digest-pinned exact-program
+workloads dispatched to contributor machines, run, and **verified by exact trace
+replay** on a separate device (a verdict is just re-execution + a digest
+comparison — the cheapest, strongest verification that exists). Accepted work is
+paid in sats and its verified traces accumulate the corpus that trains the
+Tassadar / Percepta Executor Class model.
+
+Why Tassadar is the **right** run to launch into a public, paid, many-contributor
+event — these are advantages, not hedges:
+
+- **Verification is trivial and strong.** Exact replay means even the weakest
+  device in the funnel can both contribute *and* validate. No gradient quorum, no
+  statistical grading — replay + digest match.
+- **It already settled real money.** `compute.tassadar_executor_poc.v1` is green:
+  a real Pylon ran a digest-pinned workload, the worker re-executed it as a
+  separate validator (Verified, plus a Rejected on a tampered digest), and one
+  paid closeout settled over real Lightning.
+- **The dispatch/verify loop is already live.** The Artanis evolution loop
+  (`/api/public/artanis/admin-ticks`) is in production, dispatching executor-trace
+  workloads and publishing per-tick receipts. Today it's mostly no-spend and
+  dispatch-fails for lack of eligible online devices — which is exactly what a
+  public launch fixes by bringing the fleet online.
+
+The job for tomorrow is to turn that bounded, owner-driven loop into a **public
+Tassadar run a stranger can join self-serve and earn from.**
+
+---
+
+## 2. Definition of Done (the scoreboard)
+
+The Tassadar run launch is real — not just copy — when all of these are publicly
 verifiable:
 
-1. **A run is RUNNING.** A public run page reports a live state (not `planned`),
-   with a stable `trainingRunRef`, a published manifest, and a fresh
-   `generatedAt`/staleness contract.
-2. **A non-owner contributor joined self-serve.** Someone who is not the owner
-   installed Pylon v0.3, was admitted to the run, claimed a lease, and submitted
-   work — without an operator hand-staging it.
-3. **The work was verified.** The submitted training window passed a named
-   verification class (deterministic_recompute / freivalds_merkle), with a
-   public verdict ref.
-4. **They earned real sats, and can see it.** Accepted work settled a real
-   Lightning payout to the contributor's wallet, with a public settlement
-   receipt, AND the public run page / leaderboard shows
-   `settledPayoutSats > 0` (today it shows `0` everywhere).
+1. **The Tassadar run is RUNNING.** A public run page reports a live state (not
+   `planned`), with a stable `trainingRunRef` for the Tassadar run, a published
+   manifest, and a fresh `generatedAt` / staleness contract.
+2. **A non-owner joined self-serve.** Someone who is not the owner installed
+   Pylon v0.3, declared the executor capability, was admitted to the Tassadar
+   run, and was dispatched real executor-trace work — without operator
+   hand-staging.
+3. **Their work was verified by exact replay.** A public
+   `training.verification.challenge.<id>` `Verified` (exact_trace_replay) verdict
+   references their submission.
+4. **They earned real sats, and can see it.** Accepted executor-trace work
+   settled a real Lightning payout to the contributor's wallet, with a
+   dereferenceable public receipt, AND the public run / leaderboard shows
+   `settledPayoutSats > 0` (today it's `0`).
+5. **The corpus grew.** The accepted verified traces are recorded toward the
+   Tassadar training corpus (the evolution loop's accumulation), visible on the
+   tick ledger.
 
-If #2 or #4 can't be true for a stranger by tomorrow, see **§6 Launch tiers** —
-we launch honestly at the tier we can actually back, and we do **not** say
-"earn Bitcoin from training today" until a stranger has.
-
----
-
-## 2. Current reality (honest snapshot, 2026-06-14)
-
-What's **green / proven**:
-
-- Bounded **two-device real-gradient run** `run.cs336.a1.real_gradient.demo`:
-  2 assigned contributors, 2 reconciled windows, 3 verified work items, public
-  loss curve, two 30-sat settled receipts (operator-staged).
-  (`pylon.first_real_model_training_run.v1` = yellow.)
-- **Verification classes** live and exercised on real dispatched work
-  (exact_trace_replay, deterministic_recompute, freivalds_merkle); a weak-device
-  validator was paid for a Freivalds recheck. (`training.verification_classes.v1`
-  = yellow.)
-- **Device-capability dataset** with paid benchmark closeouts (yellow).
-- **Reliable tips ladder** settles real sats to registered offers, never fails
-  (green). **Tassadar executor PoC** settled real Lightning (green).
-- **Join-lifecycle + device-admission + staleness-priced acceptance contracts**
-  landed on main (#4848–#4854) — the rails for admitting and pricing
-  contributors.
-- Pylon **v0.3.0-rc2** runs the agent surface from the device (green
-  `pylon.v03_agent_economy.v1`); operator-staged **install-to-bitcoin** smoke
-  passed end to end with a real 21-sat payout (yellow
-  `pylon.install_without_wallet_knowledge.v1`).
-
-What's **red / the gap** (this is the critical path):
-
-- The live run row still reports **`state: planned`** even though windows are
-  reconciled. No run **state-transition route / lifecycle**.
-- Leaderboard `settledPayoutSats: 0` — **settlement isn't joined into the public
-  projection**.
-- **No self-serve contributor path** — every real run to date was
-  operator-staged; the A1 evidence used owner-operated Pylons.
-- **No Monday run + manifest** — no `trainingRunRef` for tomorrow, no public
-  status URL, no admission/payout policy.
-- **Hosted-MDK programmatic payouts are disabled on the production account** —
-  so the "earn" payout leg currently needs an operator-approved small-sats path,
-  not unattended dispatch.
-- Fleet is thin: ~4 Pylons online / 51 registered, **mostly 0.3.0-rc1**; no
-  stable 0.3.0 publish.
-
-Net: **the pieces exist and have each been proven in isolation; nothing yet
-stitches them into one public run a stranger can join and earn from.** That
-stitch is the entire job for tomorrow.
+Hitting #2 + #4 for one stranger is the moment "install Pylon, help train
+Tassadar, get paid Bitcoin" becomes a fact instead of a promise.
 
 ---
 
-## 3. Critical path (dependency-ordered)
+## 3. Current reality (honest snapshot, 2026-06-14)
 
-Each step has an **owner lane**, a **done-when**, and the **promise it moves**.
-Steps A→D are the spine; E→F make it safe and real; G is the announce.
+Green / proven:
 
-### A. Run authority + Monday manifest  ·  owner: worker-api + product
-Create the run and make it announce itself.
-- Build/finish the **run state-transition route + projection** so a run moves
-  `planned → active → sealed → reconciled → closed` without D1 patches
-  (gap audit §1). Public-safe fields: runRef, promiseRef, state, admission rule,
-  window/lease refs, workload ref, verifier policy, artifact/digest refs,
-  payment mode, settlement state, `generatedAt` + staleness, typed blockers.
-- Publish the **Monday Launch Manifest** (gap audit §3): `trainingRunRef`,
-  objective, model/rung scope, dataset scope, max participants + admission
-  policy, minimum useful work, validator policy, **payout policy + spend cap**,
-  live public status URL, abort/stale rules, affected promise IDs. Public-safe
-  (no secrets/paths/wallet material).
-- **Done when:** `GET /api/training/runs/<monday-run>` returns a non-`planned`
-  state with the manifest fields and a staleness contract.
-- **Moves:** unblocks `training.monday_decentralized_training_launch.v1` and
-  `training.public_distributed_training_run.v1` (still red until D lands).
+- **`compute.tassadar_executor_poc.v1` (green):** one bounded executor-trace
+  workload, dispatched to a real Pylon, replay-verified on a separate device,
+  one paid Lightning closeout with balance receipts on both sides.
+- **`artanis.tassadar_evolution_loop.v1` (yellow):** the automated
+  dispatch → replay-verify → accumulate loop is deployed; the public tick monitor
+  is live; it dispatched and closed out no-spend executor work autonomously once.
+- **Verification:** `exact_trace_replay` is a live, exercised verification class;
+  the **reliable-tips ladder** settles real sats and never drops them (green).
+- **Pylon v0.3-rc2** runs the agent surface from the device (green
+  `pylon.v03_agent_economy.v1`); operator-staged install-to-bitcoin settled a real
+  21-sat payout (yellow).
 
-### B. Self-serve admission + assignment  ·  owner: pylon + worker-api
-Let a stranger's Pylon actually join.
-- A fresh contributor Pylon **registers capability**, the run **admits** it via
-  the reasoned device-admission gates (#4852, every admit/exclude carries a
-  measured reason), it **claims a lease** and receives a training window/shard.
-- Use the landed join-lifecycle ladder + staleness-priced acceptance
-  (sync_reentry routing, not bare rejection) (#4848–#4853).
-- **Done when:** a Pylon **not operated by the owner** appears as an admitted,
-  assigned contributor in the run projection.
-- **Moves:** the "contributes" half of the core promise. (Gap audit §6.)
+Red / the gap (this is the critical path):
 
-### C. Verified work  ·  owner: worker-api
-- The submitted window is verified by a named class
-  (deterministic_recompute and/or freivalds_merkle), producing a public verdict
-  ref. This rail already works on real dispatched work — confirm it fires on the
+- **No public Tassadar run** with a `trainingRunRef`, live state, manifest, or
+  status URL. (The only live run row is the bounded CS336 A1 demo, still reporting
+  `planned`.)
+- **No self-serve contributor path** — the PoC and loop were owner-driven; the
+  fleet is thin (~4 Pylons online / 51 registered, mostly rc1) and the loop is
+  currently dispatch-failing for lack of eligible online devices.
+- **Payout leg constrained:** hosted-MDK **programmatic payouts are disabled on
+  the production account**, so tomorrow's earn leg is operator-approved small-sats
+  with a hard spend cap, not unattended dispatch.
+- **Settlement projection:** `settledPayoutSats` reads `0` even where receipts
+  exist — settlement isn't joined into the public projection.
+- **`models.tassadar_percepta_executor.v1` stays red** — we are launching the
+  **run that trains it / earns contributors sats for contributing**, not claiming
+  a trained model. "Help train Tassadar" = contribute verified work. Do not claim
+  Tassadar is trained or CPU-equivalent.
+
+---
+
+## 4. Critical path (dependency-ordered) — drive all the way to a paid stranger
+
+Each step: **owner lane** · **done-when** · **promise it moves**. A→D is the
+spine; E makes it honest; F→G make it usable and public.
+
+### A. Tassadar run authority + manifest · worker-api + product
+- Create the **Tassadar run** (its own `trainingRunRef`, e.g.
+  `run.tassadar.executor.20260615`) and finish the **run state-transition route +
+  projection** so it can be `active` (not `planned`) without D1 patches. Fields:
+  runRef, promiseRef, state, admission rule, workload family (executor-trace),
+  verifier policy (`exact_trace_replay`), artifact/digest refs, payment mode,
+  settlement state, `generatedAt` + staleness, typed blockers.
+- Publish the **Monday Launch Manifest** (gap audit §3): runRef, objective ("grow
+  the Tassadar verified-trace corpus via paid executor-trace work"), workload
+  scope, max participants + admission policy, **minimum useful work**, validator
+  policy, **payout policy + spend cap**, live status URL, abort/stale rules,
+  affected promise IDs. Public-safe.
+- **Done when:** `GET /api/training/runs/run.tassadar.executor.20260615` returns a
+  live state + manifest + staleness contract.
+- **Moves:** `training.monday_decentralized_training_launch.v1` (red → eligible
+  once D lands).
+
+### B. Self-serve executor-capability admission + dispatch · pylon + worker-api
+- A fresh contributor Pylon declares the **executor-trace capability**, the run
+  **admits** it via the reasoned device-admission gates (#4852), and the
+  evolution loop / dispatcher hands it a **digest-pinned executor workload** (not
+  no-spend — a real paid assignment under the run's spend cap).
+- This is the loop already running, pointed at the public run and real
+  contributors instead of idle owner devices.
+- **Done when:** a **non-owner** Pylon is admitted and dispatched real
+  executor-trace work in the Tassadar run projection.
+
+### C. Exact-replay verification · worker-api
+- The submission is re-executed on a separate validator device; a public
+  `exact_trace_replay` `Verified` verdict is recorded (and would `Reject` a
+  tampered digest). This rail is green for the PoC — confirm it fires on the
   stranger's submission.
-- **Done when:** a public `training.verification.challenge.<id>` `Verified`
-  verdict references the stranger's window.
+- **Done when:** a public `Verified` verdict references the stranger's trace.
 
-### D. Payment + settlement to the contributor  ·  owner: worker-api + pylon
-**This is the "earn Bitcoin" leg — the highest-risk item.**
-- Accepted work → payout to the contributor's wallet over the **reliable-tips
-  ladder / MDK bridge** (the path that already settles real sats), with a
-  **public settlement receipt**.
-- **Production constraint:** hosted-MDK programmatic payouts are disabled on the
-  prod account. So tomorrow's payout leg is almost certainly **operator-approved
-  small-sats** (strict spend cap), not unattended dispatch. That is fine for the
-  DoD — a stranger earning 21 sats with a real receipt beats a perfect
-  unattended system that pays no one.
-- **Done when:** a stranger contributor holds a real settled Lightning payout
-  from this run with a dereferenceable public receipt, and the payout is **not**
-  collapsed with "accepted" or "credited" state (keep paid ≠ accepted ≠ settled
-  distinct).
-- **Moves:** the "earn bitcoin" half. With A–D done for one stranger, the core
-  experience is real.
+### D. Payout + settlement to the contributor · worker-api + pylon
+**The "earn Bitcoin" leg — highest-risk, drive it first.**
+- Accepted executor-trace work → real-sats payout to the contributor's wallet
+  over the reliable-tips ladder / MDK bridge → **public settlement receipt**.
+- Given prod programmatic payouts are off: wire the **operator-approved
+  small-sats** payout path with a strict per-payout + per-run spend cap. A
+  stranger earning 21 sats with a real receipt is the win; an elegant unattended
+  system that pays no one is not.
+- Keep `paid ≠ accepted ≠ credited ≠ settled` distinct — never collapse them.
+- **Done when:** a non-owner holds a real settled Lightning payout from the
+  Tassadar run with a dereferenceable public receipt.
 
-### E. Settlement projection consistency  ·  owner: worker-api
-- Join settlement receipts into the **run page + leaderboard** so
-  `settledPayoutSats` reflects reality (today it's `0` while receipts exist).
-  Add the test from the gap audit: a reconciled window cannot leave the run
-  claiming `planned`, and settled receipts surface only when refs are
-  dereferenceable + redacted (gap audit §2).
-- **Done when:** leaderboard/run `settledPayoutSats` is non-zero and equals the
-  real settled total; no projection shows a payout a recipient can't see.
+### E. Settlement + corpus projection consistency · worker-api
+- Join settlement receipts into the run page / leaderboard so `settledPayoutSats`
+  is real (not `0`), and surface the **accepted verified traces accumulating
+  toward the Tassadar corpus** on the tick ledger. Test: a reconciled/accepted
+  trace cannot leave the run claiming `planned`; settled receipts surface only
+  when dereferenceable + redacted (gap audit §2).
+- **Done when:** the public run shows a non-zero settled total equal to reality
+  and a growing accepted-trace count.
 
-### F. Pylon v0.3 install path contributors can actually use  ·  owner: pylon
-- Either a **stable 0.3.0** publish OR a **documented, smoke-passed source/
-  install path** with register → heartbeat → wallet-ready → assignment-ready
-  smokes on macOS + Linux, plus documented failure modes (gap audit §5).
-- The fleet is mostly rc1 — make sure the install the announcement points to is
-  the one the run actually admits and pays.
-- **Done when:** a clean machine can go from "install" to "admitted +
-  wallet-ready" following only public instructions.
+### F. Pylon v0.3 install path contributors can use · pylon
+- A **published install** (stable 0.3.0 or a documented, smoke-passed source/
+  install path) carrying the **executor-trace lane**, with register → heartbeat →
+  wallet-ready → assignment-ready smokes on macOS + Linux, plus failure modes
+  (gap audit §5). Make sure the install the announcement links is the one the run
+  admits and pays.
+- **Done when:** a clean machine goes from "install" to "admitted +
+  wallet-ready + dispatched executor work" following only public instructions.
 
-### G. Announce (copy gate)  ·  owner: product/forum
-- Only after the **Go/No-Go gate (§5)** passes. Use the live registry version,
-  cite exact promise IDs, link the manifest/status URL. See **§7 Copy gate**.
+### G. Announce · product/forum
+- After the Go/No-Go gate (§6), with the manifest/status URL, the live registry
+  version, and exact promise IDs. See **§7 Copy gate**.
 
 ---
 
-## 4. What is explicitly OUT (bonus / do not block on)
+## 5. Scale ambition vs the "largest" claim
 
-Per the gap audit and the owner's direction, **do not** put these on tomorrow's
-critical path:
-
-- **Coding-agent / labor-market earning** (#4777/#4781/#4782/#4783 Lane C) —
-  bonus. The labor market is green for its own first job, but it is **not**
-  required for a training run to start and pay contributors.
-- **Tassadar/Percepta trained-model claims** — the executor PoC is green;
-  a *trained* model is not, and is not needed to run CS336-style training and
-  pay people. Keep `models.tassadar_percepta_executor.v1` red.
-- **"Largest run" / "200 contributors"** — no participant-count methodology, no
-  comparable evidence, thin fleet. **Do not claim it.** (Gap audit §4 defines
-  the count rule to build *before* any such claim — admitted contributors with
-  accepted work and receipt refs only.)
-- **Pylon multi-earning node** — each mode needs its own receipts; don't claim
-  one install earns five ways tomorrow.
-- **W3 student sweep (#4749)** — research, not launch runtime.
+Bring the fleet online and admit as many contributors as the run can verify and
+pay — that ambition is the whole point, and exact-replay work scales to weak
+devices better than gradient work does. **But** the "largest decentralized
+training run / beat 200 contributors" *claim* needs the participant-count rule
+first (gap audit §4): count only **admitted contributors with accepted useful
+work and public-safe receipt refs**, never raw registrations or stale heartbeats.
+Define that rule in the manifest; make the comparison claim only once the count
+clears it. Launching big is the goal; claiming "largest" without the count is the
+one thing to hold.
 
 ---
 
-## 5. Go / No-Go gate (run this before announcing)
+## 6. Go / No-Go gate
 
-Announce the **full** "training run is live and paying contributors" message
-only if every line is checked:
+Run before announcing that contributors are earning:
 
-- [ ] Run page returns a non-`planned` live state + manifest + staleness
-      contract (A).
-- [ ] ≥1 **non-owner** Pylon admitted + assigned self-serve (B).
-- [ ] That contributor's work has a public `Verified` verdict (C).
-- [ ] That contributor holds a **real settled sats payout** with a public
-      receipt (D).
-- [ ] Leaderboard/run `settledPayoutSats` reflects it, non-zero (E).
-- [ ] The install path the announcement links is reproducible on a clean
-      machine (F).
-- [ ] Copy passes §7 and cites the live registry version + promise IDs.
+- [ ] Tassadar run page: live state + manifest + staleness (A).
+- [ ] ≥1 **non-owner** Pylon admitted + dispatched executor work self-serve (B).
+- [ ] Public `exact_trace_replay` `Verified` verdict for that contributor (C).
+- [ ] That contributor holds a real settled-sats payout + public receipt (D).
+- [ ] Leaderboard/run `settledPayoutSats` non-zero + accepted-trace count growing
+      (E).
+- [ ] The linked install path is reproducible on a clean machine (F).
+- [ ] Copy passes §7, cites live registry version + promise IDs.
 
-If any line fails, drop to the matching tier in §6. **Do not** upgrade
-`training.monday_decentralized_training_launch.v1` to green until all of A–E are
-real for a stranger; that flip is receipt-first per
-`proof.claim_upgrade_receipts.v1`.
+When all of A–E are real for a stranger, flip
+`training.monday_decentralized_training_launch.v1` green **receipt-first** per
+`proof.claim_upgrade_receipts.v1`. Until then the run is still **launched and
+live** — you just describe the earn loop by what the receipts actually show
+(§7), without claiming a payout nobody can dereference.
 
 ---
 
-## 6. Launch tiers (launch honestly at the tier you can back)
+## 7. Copy gate (Tassadar wording)
 
-- **Tier 1 — Full (all of §5 green):** "The run is live. Install Pylon, join,
-  and earn Bitcoin for verified training work — here are the first contributors'
-  receipts." Flip the Monday-launch promise green, receipt-first.
-- **Tier 2 — Live run, earning switching on (A–C + at least one operator-
-  approved small-sats payout to a non-owner, D partial):** "The run is live and
-  the first contributors are being paid in small sats — here's a receipt;
-  payouts are scaling this week." Promise stays **yellow/red** with the explicit
-  caveat; do not say "earn Bitcoin today" as a general claim.
-- **Tier 3 — Run live, no stranger payout yet:** "The run is live — install
-  Pylon and contribute; payouts are coming online this week." Keep the promise
-  **red**. Do **not** say anyone earned Bitcoin from training. This is still a
-  real, honest launch of the run; it just doesn't claim the payout until it's
-  true.
+Before any copy: query `/api/public/product-promises`, use the live version, cite
+exact promise IDs.
 
-Tier 2 is the realistic target given the prod-MDK-payouts-disabled constraint.
-Tier 1 is the stretch. Tier 3 is the floor and is still a legitimate launch.
+**Say:** "the Tassadar run is live"; "install Pylon v0.3 and contribute
+executor-trace work to help train Tassadar"; "work is verified by exact replay";
+and — only with a real receipt — "the first contributors earned Bitcoin, here's
+the receipt."
 
----
-
-## 7. Copy gate (what you may / may not say)
-
-**Before any announcement copy:** query `/api/public/product-promises`, use the
-live version, cite exact promise IDs.
-
-**May say** (Tier-appropriate): "a public training run is live"; "install Pylon
-v0.3 and contribute"; "verified training work"; and — only with a real receipt —
-"the first contributors earned Bitcoin, here's the receipt."
-
-**May NOT say** until the matching promise is green or the copy is explicitly
-caveated: "largest decentralized training run"; "200+ contributors"; "earn
-Bitcoin from training today" (as a general claim before a stranger has);
-"stable Pylon v0.3"; "Tassadar model is trained / CPU-equivalent"; any payout
-number that isn't a settled, dereferenceable receipt.
+**Do NOT say** (until the matching promise is green or the copy is explicitly
+caveated): "Tassadar is trained / outperforms a CPU / is a working model";
+"largest decentralized training run" or "200+ contributors" (no count rule yet);
+"earn Bitcoin from training today" as a blanket claim before a stranger has;
+"stable Pylon v0.3"; any payout number that isn't a settled, dereferenceable
+receipt. We are launching the **run that trains Tassadar**, not a trained
+Tassadar.
 
 ---
 
-## 8. Owner lanes & suggested smokes
+## 8. Owner lanes & smokes
 
-- **worker-api:** run state-transition route + projection (A), settlement
-  projection consistency (E), payout leg wiring (D). Tests: a reconciled window
-  cannot leave the run `planned`; settled receipts surface only when
-  dereferenceable + redacted.
-- **pylon:** self-serve admission/lease (B), install path + smokes (F), payout
-  receive on the contributor side (D).
-- **product/forum:** manifest (A), count methodology decision (out-of-scope
-  claim guard, §4), Go/No-Go (§5), announcement (G), receipt-first promise flip.
+- **worker-api:** Tassadar run state-transition route + projection (A),
+  exact-replay verdict on the live submission (C), payout leg (D),
+  settlement+corpus projection consistency (E).
+- **pylon:** self-serve executor-capability admission + dispatch (B), install
+  path + smokes (F), contributor-side payout receive (D).
+- **product/forum:** manifest + count rule (A, §5), Go/No-Go (§6), announcement
+  (G), receipt-first promise flip.
 
-Suggested focused checks (from the gap audit):
+Suggested checks (gap audit + Tassadar lane):
 
 ```sh
-bun run --cwd apps/openagents.com/workers/api smoke:cs336-a1:no-spend
-bun run --cwd apps/openagents.com/workers/api smoke:training-runs:public
 bun run --cwd apps/openagents.com/workers/api smoke:tassadar:executor-trace
+bun run --cwd apps/openagents.com/workers/api smoke:training-runs:public
 ```
 
-Plus a new end-to-end **stranger smoke**: fresh non-owner Pylon → admit → lease
-→ submit → verify → operator-approved small-sats payout → public receipt →
-leaderboard reflects it. Passing this smoke *is* Tier 1.
+New end-to-end **stranger smoke** (passing it *is* the launch): fresh non-owner
+Pylon → declare executor capability → admit to the Tassadar run → dispatch a
+digest-pinned workload → exact-replay verify → operator-approved small-sats payout
+→ public receipt → run/leaderboard reflects it + corpus count grows.
 
 ---
 
 ## 9. Risks & abort rules
 
-- **Payout leg (D) is the gating risk.** Prod programmatic MDK payouts are off;
-  plan the operator-approved small-sats path with a hard spend cap, and treat
-  any unattended-payout idea as out of scope for tomorrow.
-- **Owner-operated Pylons are not a stranger.** Do not present an owner Pylon as
-  independent contributor proof — the DoD requires a non-owner.
-- **Stale/empty projections read as "covered."** If the run can't show live
-  state, ship Tier 3 honestly rather than faking `active`.
-- **Abort:** if a settlement lands somewhere a recipient can't see, stop and fix
-  the projection before announcing — a payout the recipient can't dereference is
-  the projection-staleness bug wearing money.
-- **No secrets** in the manifest, receipts, Forum posts, or this run's public
+- **Payout leg (D) is the gating risk** (prod programmatic MDK payouts off) — wire
+  the operator-approved small-sats path with a hard cap; do not block the launch
+  on unattended payout.
+- **Thin/rc1 fleet** — the loop is dispatch-failing for lack of eligible online
+  devices; the launch's job is to bring devices online, so make install + admit
+  frictionless and make sure rc-version Pylons are actually admittable.
+- **Owner Pylons are not strangers** — the DoD requires a non-owner.
+- **A payout the recipient can't see is the projection-staleness bug wearing
+  money** — if settlement lands somewhere undereferenceable, stop and fix the
+  projection before announcing.
+- **No secrets** in the manifest, receipts, tick ledger, Forum posts, or run
   projection: no prompts, host paths, provider payloads, invoices, preimages,
   payment hashes, mnemonics, or bearer tokens.
+- **Don't leak the PoC into a model claim** — `compute.tassadar_executor_poc.v1`
+  green proves replay of bounded workloads, not a trained Tassadar.
 
 ---
 
 ## 10. One-line status to repeat tomorrow
 
-> The run is live at `<status URL>`. Install Pylon v0.3, join, do verified
-> training work, get paid sats — first receipts at `<leaderboard URL>`. (Tier
-> the wording to what §5 actually shows; never claim a payout without a
-> dereferenceable receipt.)
+> The Tassadar run is live at `<status URL>`. Install Pylon v0.3, contribute
+> executor-trace work, it's verified by exact replay, and you get paid sats —
+> first receipts at `<leaderboard URL>`, corpus growing toward Tassadar. (Word it
+> to what §6 actually shows; never claim a payout without a dereferenceable
+> receipt.)
