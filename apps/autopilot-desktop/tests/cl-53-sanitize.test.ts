@@ -459,6 +459,131 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-operator-feed")).toBe(true)
   })
 
+  test("training pane includes projection catch-up feedback", () => {
+    const trainingRunRef = "training.run.desktop.r1.test"
+    const windowRef = "training.window.desktop.r1.test"
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: {
+        ...liveTrainingProjection,
+        fetchedAt: "2026-06-14T00:05:00.000Z",
+        runs: [
+          {
+            ...liveTrainingProjection.runs[0],
+            receiptRefs: ["receipt.1", "receipt.2", "receipt.3"],
+            state: "active",
+            trainingRunRef,
+          },
+        ],
+        summaries: [
+          {
+            ...liveTrainingProjection.summaries[0],
+            metrics: {
+              ...liveTrainingProjection.summaries[0].metrics,
+              activeWindowCount: metric(1),
+              plannedWindowCount: metric(0),
+              receiptRefCount: metric(3),
+            },
+            receiptRefs: ["receipt.1", "receipt.2", "receipt.3"],
+            run: {
+              ...liveTrainingProjection.summaries[0].run,
+              receiptRefs: ["receipt.1", "receipt.2", "receipt.3"],
+              state: "active",
+              trainingRunRef,
+            },
+            windows: [
+              {
+                datasetRefs: ["dataset.cs336.a1"],
+                homeworkKind: "cs336_a1",
+                plannedAtDisplay: "today",
+                priority: 1,
+                receiptRefs: ["receipt.1"],
+                sealMetadata: null,
+                sourceRefs: [],
+                state: "active",
+                trainingRunRef,
+                updatedAtDisplay: "today",
+                windowRef,
+              },
+            ],
+          },
+        ],
+      },
+      trainingPlan: {
+        ok: true,
+        enabled: true,
+        fetchedAt: "2026-06-14T00:00:00.000Z",
+        sourceUrl: "https://openagents.test/api/training/windows/plan",
+        trainingRunRef,
+        windowRef,
+        run: null,
+        window: null,
+        runPlanned: true,
+        windowPlanned: true,
+        reason: "planned",
+        message: "planned",
+      },
+      trainingPlanFirstObservedAt: "2026-06-14T00:05:00.000Z",
+      trainingActivation: {
+        ok: true,
+        enabled: true,
+        fetchedAt: "2026-06-14T00:01:00.000Z",
+        sourceUrl: `https://openagents.test/api/training/windows/${windowRef}/activate`,
+        windowRef,
+        window: null,
+        reason: "activated",
+        message: "activated",
+      },
+      trainingLease: {
+        ok: true,
+        enabled: true,
+        fetchedAt: "2026-06-14T00:02:00.000Z",
+        sourceUrl: "https://openagents.test/api/training/leases/claim",
+        pylonRef: "pylon.training.1",
+        lease: {
+          claimedAtDisplay: "now",
+          leaseExpiresInSeconds: 900,
+          leaseRef: "training.lease.1",
+          pylonRef: "pylon.training.1",
+          receiptRefs: ["receipt.lease.1"],
+          state: "active",
+          trainingRunRef,
+          windowRef,
+        },
+        reason: "claimed",
+        message: "claimed",
+      },
+      trainingEvidenceAdmission: {
+        ok: true,
+        enabled: true,
+        fetchedAt: "2026-06-14T00:03:00.000Z",
+        sourceUrl:
+          "https://openagents.test/api/training/runs/training.run.desktop.r1.test/real-gradient-evidence",
+        trainingRunRef,
+        packetSource: "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
+        run: null,
+        realGradient: null,
+        reason: "admitted",
+        message: "admitted",
+        evidenceRefCount: 6,
+        receiptRefCount: 3,
+        shardContributionCount: 2,
+        distinctPylonCount: 2,
+      },
+    })
+
+    expect(
+      treeContainsClass(document.body, "training-projection-catchup-panel"),
+    ).toBe(true)
+    expect(treeContainsText(document.body, "Projection Catch-Up")).toBe(true)
+    expect(
+      treeContainsText(document.body, "2026-06-14T00:05:00.000Z"),
+    ).toBe(true)
+    expect(treeContainsText(document.body, "training.lease.1")).toBe(true)
+    expect(treeContainsText(document.body, "3/3 receipts")).toBe(true)
+  })
+
   test("training pane includes the operator readiness panel", () => {
     const document = view({
       ...initialModel,

@@ -1356,6 +1356,46 @@ const selectedTrainingSummary = (
   )
 }
 
+const trainingSummaryByRunRef = (
+  projection: TrainingRunsResponse | null,
+  runRef: string | null | undefined,
+): TrainingRunSummaryRow | null => {
+  const target = runRef?.trim() ?? ""
+  if (target === "") return null
+  return (
+    projection?.summaries.find(summary => summary.run.trainingRunRef === target) ??
+    null
+  )
+}
+
+const trainingWindowByRef = (
+  projection: TrainingRunsResponse | null,
+  windowRef: string | null | undefined,
+) => {
+  const target = windowRef?.trim() ?? ""
+  if (target === "") return null
+  for (const summary of projection?.summaries ?? []) {
+    const match = summary.windows.find(window => window.windowRef === target)
+    if (match !== undefined) return match
+  }
+  return null
+}
+
+const trainingWindowStateRank = (state: string): number => {
+  switch (state) {
+    case "planned":
+      return 0
+    case "active":
+      return 1
+    case "sealed":
+      return 2
+    case "reconciled":
+      return 3
+    default:
+      return -1
+  }
+}
+
 const activationWindowRef = (model: Model): string | null => {
   const summary = selectedTrainingSummary(modelTrainingRuns(model))
   const projectedPlannedWindow =
@@ -2153,6 +2193,245 @@ const trainingProjectionFeedTone = (
         ? "blocked"
         : trainingStatusTone(status)
 
+type TrainingProjectionCatchUpRow = Readonly<{
+  label: string
+  value: string
+  tone: TrainingGateTone
+}>
+
+const trainingProjectionCatchUpRows = (
+  model: Model,
+): readonly TrainingProjectionCatchUpRow[] => {
+  const projection = modelTrainingRuns(model)
+  const plan = modelTrainingPlan(model)
+  const activation = modelTrainingActivation(model)
+  const lease = modelTrainingLease(model)
+  const admission = modelTrainingEvidenceAdmission(model)
+  const reconcile = modelTrainingReconcile(model)
+
+  const planSummary = trainingSummaryByRunRef(
+    projection,
+    plan?.trainingRunRef,
+  )
+  const planWindow = trainingWindowByRef(projection, plan?.windowRef)
+  const activationWindow = trainingWindowByRef(
+    projection,
+    activation?.windowRef,
+  )
+  const admissionSummary = trainingSummaryByRunRef(
+    projection,
+    admission?.trainingRunRef,
+  )
+  const reconcileWindow = trainingWindowByRef(
+    projection,
+    reconcile?.windowRef,
+  )
+
+  const planRow: TrainingProjectionCatchUpRow =
+    model.trainingPlanPending
+      ? {
+          label: "plan observed",
+          value: "planning command in flight",
+          tone: "watch",
+        }
+      : plan === null
+        ? {
+            label: "plan observed",
+            value: "no plan yet",
+            tone: "watch",
+          }
+        : !plan.ok
+          ? {
+              label: "plan observed",
+              value: plan.reason,
+              tone: "blocked",
+            }
+          : projection === null
+            ? {
+                label: "plan observed",
+                value: `${plan.trainingRunRef ?? "run pending"} · waiting for projection`,
+                tone: "watch",
+              }
+            : planSummary === null
+              ? {
+                  label: "plan observed",
+                  value: `${plan.trainingRunRef ?? "run pending"} · not projected yet`,
+                  tone: "watch",
+                }
+              : {
+                  label: "plan observed",
+                  value: `${model.trainingPlanFirstObservedAt ?? projection.fetchedAt} · ${planSummary.run.state} · ${planWindow?.state ?? "window pending"}`,
+                  tone: "ready",
+                }
+
+  const activationRow: TrainingProjectionCatchUpRow =
+    model.trainingActivationPending
+      ? {
+          label: "activation",
+          value: "activation command in flight",
+          tone: "watch",
+        }
+      : activation === null
+        ? {
+            label: "activation",
+            value: "no activation yet",
+            tone: "watch",
+          }
+        : !activation.ok
+          ? {
+              label: "activation",
+              value: activation.reason,
+              tone: "blocked",
+            }
+          : activationWindow === null
+            ? {
+                label: "activation",
+                value: `${activation.windowRef ?? "window pending"} · waiting for projection`,
+                tone: "watch",
+              }
+            : trainingWindowStateRank(activationWindow.state) >=
+                trainingWindowStateRank("active")
+              ? {
+                  label: "activation",
+                  value: `${activationWindow.windowRef} · ${activationWindow.state}`,
+                  tone: "ready",
+                }
+              : {
+                  label: "activation",
+                  value: `${activationWindow.windowRef} · still ${activationWindow.state}`,
+                  tone: "watch",
+                }
+
+  const leaseRow: TrainingProjectionCatchUpRow =
+    model.trainingLeasePending
+      ? {
+          label: "lease claim",
+          value: "lease command in flight",
+          tone: "watch",
+        }
+      : lease === null
+        ? {
+            label: "lease claim",
+            value: "no lease claim yet",
+            tone: "watch",
+          }
+        : !lease.ok
+          ? {
+              label: "lease claim",
+              value: lease.reason,
+              tone: "blocked",
+            }
+          : lease.lease === null
+            ? {
+                label: "lease claim",
+                value: lease.reason,
+                tone: "watch",
+              }
+            : {
+                label: "lease claim",
+                value: `${lease.lease.state} · ${lease.lease.leaseRef} · ${lease.lease.leaseExpiresInSeconds}s`,
+                tone: lease.lease.state === "active" ? "ready" : "watch",
+              }
+
+  const admissionReceiptTarget = admission?.receiptRefCount ?? 0
+  const projectedReceiptCount =
+    admissionSummary?.metrics.receiptRefCount.value ?? 0
+  const evidenceRow: TrainingProjectionCatchUpRow =
+    model.trainingEvidenceAdmissionPending
+      ? {
+          label: "evidence receipts",
+          value: "admission command in flight",
+          tone: "watch",
+        }
+      : admission === null
+        ? {
+            label: "evidence receipts",
+            value: "no admission yet",
+            tone: "watch",
+          }
+        : !admission.ok
+          ? {
+              label: "evidence receipts",
+              value: admission.reason,
+              tone: "blocked",
+            }
+          : admissionSummary === null
+            ? {
+                label: "evidence receipts",
+                value: `${admission.trainingRunRef ?? "run pending"} · waiting for projection`,
+                tone: "watch",
+              }
+            : projectedReceiptCount >= admissionReceiptTarget
+              ? {
+                  label: "evidence receipts",
+                  value: `${projectedReceiptCount}/${admissionReceiptTarget} receipts · ${admission.evidenceRefCount} evidence refs`,
+                  tone: "ready",
+                }
+              : {
+                  label: "evidence receipts",
+                  value: `${projectedReceiptCount}/${admissionReceiptTarget} receipts projected`,
+                  tone: "watch",
+                }
+
+  const reconcileRow: TrainingProjectionCatchUpRow =
+    model.trainingReconcilePending
+      ? {
+          label: "reconcile",
+          value: "reconcile command in flight",
+          tone: "watch",
+        }
+      : reconcile === null
+        ? {
+            label: "reconcile",
+            value: "no reconcile yet",
+            tone: "watch",
+          }
+        : !reconcile.ok
+          ? {
+              label: "reconcile",
+              value: reconcile.reason,
+              tone: "blocked",
+            }
+          : reconcileWindow === null
+            ? {
+                label: "reconcile",
+                value: `${reconcile.windowRef ?? "window pending"} · waiting for projection`,
+                tone: "watch",
+              }
+            : reconcileWindow.state === "reconciled"
+              ? {
+                  label: "reconcile",
+                  value: `${reconcileWindow.windowRef} · reconciled`,
+                  tone: "ready",
+                }
+              : {
+                  label: "reconcile",
+                  value: `${reconcileWindow.windowRef} · still ${reconcileWindow.state}`,
+                  tone: "watch",
+                }
+
+  return [planRow, activationRow, leaseRow, evidenceRow, reconcileRow]
+}
+
+const trainingProjectionCatchUpPanel = (model: Model): Html =>
+  h.section([cls("training-panel training-projection-catchup-panel")], [
+    h.div([cls("training-panel-heading")], [
+      h.h2([cls("training-panel-title")], ["Projection Catch-Up"]),
+      h.span([cls("training-panel-kicker")], [
+        model.trainingPlanFirstObservedAt ?? "awaiting planned run",
+      ]),
+    ]),
+    h.p([cls("training-panel-copy")], [
+      "Compares Bun-held command results with the latest Worker projection so the operator can see when public state has caught up.",
+    ]),
+    h.ul(
+      [cls("training-gates training-projection-catchup")],
+      trainingProjectionCatchUpRows(model).map(row =>
+        trainingGate(row.label, row.value, row.tone),
+      ),
+    ),
+  ])
+
 const trainingOperatorFeedPanel = (model: Model): Html => {
   const runs = modelTrainingRuns(model)
   const dashboard = modelTrainingDashboard(model)
@@ -2735,6 +3014,7 @@ const trainingPane = (model: Model): Html => {
         trainingOperatorReadinessPanel(model),
         trainingEvidencePacketPanel(model),
         trainingOperatorFeedPanel(model),
+        trainingProjectionCatchUpPanel(model),
         trainingControlSurfacePanel(model),
         trainingAuthorityBoundaryPanel(),
         h.section([cls("training-panel")], [

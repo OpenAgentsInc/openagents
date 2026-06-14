@@ -31,6 +31,7 @@ The first implemented slice follows that boundary:
 - The pane can now admit a local, file-backed CS336 A1 real-gradient evidence packet through a Bun-only admin bridge to `POST /api/training/runs/{runRef}/real-gradient-evidence`. It refuses unless evidence admission is explicitly enabled and `OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH` points at a JSON packet.
 - The pane now includes an Operator Readiness panel that shows the pre-click admin/lease/Pylon gates and blocker refs before the operator tries to plan, lease, or bootstrap a run.
 - The pane now includes an Operator Feed that consolidates public projection refresh state, dashboard/promise/readiness fetch state, and every operator command result so an admin can see immediate feedback and later projection catch-up in one place.
+- The pane now includes a Projection Catch-Up panel that compares Bun-held command results with the latest Worker projection for plan observation time, activation state, lease claim state, admitted evidence receipt counts, and reconcile state.
 - The pane now includes a Control Surface panel that maps each Training button to its Foldkit message, Bun RPC, Worker/local route, Foldkit status field, authority boundary, and source file. This is the literal "training code at fingertips" layer for live operation.
 - The pane now includes an Authority Boundary panel that spells out the Foldkit webview, Bun main process, OpenAgents Worker, and Pylon responsibilities, including the typed Training messages that can cross the webview boundary.
 - The pane now includes an Evidence Ledger panel for the selected run, exposing public authority refs, window refs, Freivalds/gradient closeout refs, receipt refs, and blocker refs without moving raw worker payloads into the webview.
@@ -221,6 +222,6 @@ The third risk is claim confusion. Public real-gradient claims have explicit blo
 ## Next Steps
 
 1. Add richer closeout metadata to the Pylon-emitted worker receipt bundle: budget refs, eval refs, merge refs, loss curves, and distinct multi-Pylon aggregation once real R1/R2 devices submit them.
-2. Add command result state for admission queue count, lease claim state, evidence refs, and first observed projection timestamp after planning.
+2. Add Worker-exposed post-admission queue depth and first projection-lag deltas once the training authority emits those counters directly.
 3. Add stronger runtime smoke coverage with screenshots or canvas-pixel checks proving the `oa-training-run` WebGL surface is nonblank in the packaged desktop shell.
 4. Add a lower-detail responsive scene mode before sharing the same visualization with mobile.

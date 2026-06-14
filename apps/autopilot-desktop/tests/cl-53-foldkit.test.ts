@@ -53,6 +53,7 @@ import {
   GotTrainingEvidencePacketSummary,
   GotTrainingOperatorReadiness,
   GotTrainingPromiseGates,
+  GotTrainingRuns,
   GotNodeState,
   NavigatedTo,
   SelectedSession,
@@ -276,6 +277,89 @@ describe("update reducer (CL-53)", () => {
       windowRef: "training.window.desktop.r1.test",
     })
     expect(followups).toHaveLength(5)
+  })
+
+  test("training run projection records first observation after planning", () => {
+    const [, planFollowups] = update(initialModel, ClickedPlanTrainingWindow())
+    expect(planFollowups).toHaveLength(1)
+
+    const [planned] = update(
+      initialModel,
+      SettledPlanTrainingWindow({
+        projection: {
+          ok: true,
+          enabled: true,
+          fetchedAt: "2026-06-14T00:00:00.000Z",
+          sourceUrl: "https://openagents.test/api/training/windows/plan",
+          trainingRunRef: "training.run.desktop.r1.test",
+          windowRef: "training.window.desktop.r1.test",
+          run: null,
+          window: null,
+          runPlanned: true,
+          windowPlanned: true,
+          reason: "planned",
+          message: "planned training.run.desktop.r1.test / training.window.desktop.r1.test",
+        },
+      }),
+    )
+
+    const [observed] = update(
+      planned,
+      GotTrainingRuns({
+        projection: {
+          ok: true,
+          fetchedAt: "2026-06-14T00:01:00.000Z",
+          sourceUrl: "https://openagents.test/api/training/runs",
+          runs: [
+            {
+              createdAtDisplay: "today",
+              maxAllowedStale: 5,
+              promiseRef: "pylon.first_real_model_training_run.v1",
+              receiptRefs: [],
+              sealInFlight: false,
+              sealPublicationCadenceWindows: 1,
+              sourceRefs: [],
+              state: "planned",
+              trainingRunRef: "training.run.desktop.r1.test",
+              updatedAtDisplay: "today",
+            },
+          ],
+          summaries: [],
+        },
+      }),
+    )
+    expect(observed.trainingPlanFirstObservedAt).toBe(
+      "2026-06-14T00:01:00.000Z",
+    )
+
+    const [refreshed] = update(
+      observed,
+      GotTrainingRuns({
+        projection: {
+          ok: true,
+          fetchedAt: "2026-06-14T00:02:00.000Z",
+          sourceUrl: "https://openagents.test/api/training/runs",
+          runs: [
+            {
+              createdAtDisplay: "today",
+              maxAllowedStale: 5,
+              promiseRef: "pylon.first_real_model_training_run.v1",
+              receiptRefs: [],
+              sealInFlight: false,
+              sealPublicationCadenceWindows: 1,
+              sourceRefs: [],
+              state: "active",
+              trainingRunRef: "training.run.desktop.r1.test",
+              updatedAtDisplay: "today",
+            },
+          ],
+          summaries: [],
+        },
+      }),
+    )
+    expect(refreshed.trainingPlanFirstObservedAt).toBe(
+      "2026-06-14T00:01:00.000Z",
+    )
   })
 
   test("training refresh loads run, dashboard, promise, readiness, and packet projections", () => {

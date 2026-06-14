@@ -67,6 +67,26 @@ const trainingBootstrapShouldRefresh = (
   projection.reason === "queued" ||
   projection.reason === "refused"
 
+const plannedRunFirstObservedAt = (
+  model: Model,
+  projection: TrainingRunsResponse,
+): string | null => {
+  if (model.trainingPlanFirstObservedAt !== null) {
+    return model.trainingPlanFirstObservedAt
+  }
+  if (!projection.ok) return null
+
+  const plan = model.trainingPlan as TrainingPlanResponse | null
+  const runRef = plan?.trainingRunRef ?? null
+  if (runRef === null || runRef.trim() === "") return null
+
+  const observed =
+    projection.runs.some(run => run.trainingRunRef === runRef) ||
+    projection.summaries.some(summary => summary.run.trainingRunRef === runRef)
+
+  return observed ? projection.fetchedAt : null
+}
+
 export const update = (model: Model, message: Message): Result => {
   switch (message._tag) {
     // ── Inbound projections ────────────────────────────────────────────────
@@ -274,6 +294,10 @@ export const update = (model: Model, message: Message): Result => {
           ...model,
           trainingRuns: projection,
           trainingRunsPending: false,
+          trainingPlanFirstObservedAt: plannedRunFirstObservedAt(
+            model,
+            projection,
+          ),
           trainingRunsStatus: projection.ok
             ? {
                 text: `${runCount} runs from ${projection.sourceUrl}`,
@@ -382,6 +406,7 @@ export const update = (model: Model, message: Message): Result => {
         Model.make({
           ...model,
           trainingPlanPending: true,
+          trainingPlanFirstObservedAt: null,
           trainingPlanStatus: {
             text: "planning R1 run window...",
             tone: "info",
@@ -399,6 +424,7 @@ export const update = (model: Model, message: Message): Result => {
           ...model,
           trainingPlan: projection,
           trainingPlanPending: false,
+          trainingPlanFirstObservedAt: null,
           trainingPlanStatus: {
             text: projection.message,
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
