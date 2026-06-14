@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-12.8')
+    expect(decoded.version).toBe('2026-06-14.1')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -273,7 +273,7 @@ describe('public product promises document', () => {
             'apps/openagents.com/docs/2026-06-10-compliant-usage-labor-policy.md',
           ]),
           promiseId: 'provider.compliant_usage_labor.v1',
-          state: 'red',
+          state: 'yellow',
         }),
         expect.objectContaining({
           blockerRefs: [],
@@ -291,12 +291,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-12.8', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-14.1', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-12.8',
+      expectedVersion: '2026-06-14.1',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-12.8',
+      servedVersion: '2026-06-14.1',
       status: 'ready',
     })
     expect(
@@ -306,7 +306,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-12.8',
+      servedVersion: '2026-06-14.1',
       status: 'blocked',
     })
   })

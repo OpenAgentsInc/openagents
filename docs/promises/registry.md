@@ -1,5 +1,19 @@
 # Promise Registry
 
+> Latest reconciliation: registry `2026-06-14.1` (see
+> [`2026-06-14-registry-reality-reconciliation-audit.md`](2026-06-14-registry-reality-reconciliation-audit.md)).
+> The machine-readable source of truth served at
+> `/api/public/product-promises` is
+> `apps/openagents.com/workers/api/src/product-promises.ts`; this narrative doc
+> documents the record contract and families and may trail the source registry
+> between full rewrites. As of `2026-06-14.1`: the agent labor market is green
+> (`labor.forum_work_requests.v1`, `labor.nostr_negotiation_market.v1`), with
+> `provider.compliant_usage_labor.v1` and
+> `autopilot.control_center_fanout_marketplace.v1` yellow; eight new wave-3
+> Autopilot Sites / client-surface records were added at conservative states;
+> the Monday 2026-06-15 training launch promises stay red until the run yields
+> receipts.
+
 The promise registry is the product-facing contract for claims. It should be
 backed by data and tests over time, but the same shape works in docs, issues,
 dashboards, manifests, OpenAPI descriptions, and agent-readable instructions.

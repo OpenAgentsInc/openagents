@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-12.8'
+export const PublicProductPromisesVersion = '2026-06-14.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -27,6 +27,13 @@ const sourceRefs = [
   'docs/refactor/path-to-bolt-12.md',
   'docs/transcripts/199.md',
   'docs/transcripts/236.md',
+  'docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
+  'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
+  'docs/labor/2026-06-14-p5-backlog-faucet-closeout.md',
+  'docs/labor/2026-06-14-p7-lane-c-fanout-closeout.md',
+  'docs/autopilot-coder/2026-06-13-autopilot-clients-roadmap.md',
+  'apps/pylon/docs/proofs/m10-live-2026-06-14/README.md',
+  'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
 ]
 
 const basePromiseFields = {
@@ -82,13 +89,13 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-06-12',
+    lastUpdated: '2026-06-14',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
     publicDocsUrl: 'https://openagents.com/docs/product-promises',
     latestGapAuditUrl:
-      'https://github.com/OpenAgentsInc/openagents/blob/main/docs/2026-06-12-episode-236-training-launch-gap-audit.md',
+      'https://github.com/OpenAgentsInc/openagents/blob/main/docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
     reportPath: {
       defaultForumUrl: reportPath,
       forumSlug: 'product-promises',
@@ -114,7 +121,7 @@ export const publicProductPromisesDocument = () => {
     currentMonorepoStatus: {
       status: 'work_in_progress',
       summary:
-        'The openagents monorepo now contains the deployed openagents.com Worker/app, Forum surfaces, docs/promises, packages/probe, and apps/pylon. The live Cloudflare deployment is served from apps/openagents.com, and the public code map in this registry points agents to the public source trees behind those shipped surfaces. Pylon v0.3 code is present under apps/pylon as @openagentsinc/pylon@0.3.0-rc2, but public product copy must still distinguish local rc gates from live network evidence.',
+        'The openagents monorepo now contains the deployed openagents.com Worker/app, Forum surfaces, docs/promises, packages/probe, apps/pylon, the apps/autopilot-desktop GUI shell, and the clients/mobile/AutopilotRemoteControl spec lane. The live Cloudflare deployment is served from apps/openagents.com, and the public code map in this registry points agents to the public source trees behind those shipped surfaces. As of 2026-06-14: the agent labor market crossed its first end-to-end milestone — one real backlog issue was posted, negotiated over NIP-90, escrowed, executed on an independent provider Pylon, validator-accepted, and settled with public receipts (#4777), so labor.forum_work_requests.v1 and labor.nostr_negotiation_market.v1 are green and provider.compliant_usage_labor.v1 / autopilot.control_center_fanout_marketplace.v1 are yellow. A large wave-3 Autopilot Sites / Agency Pack buildout (#4977-#4995) added client-delivery workrooms, native email sequences, custom tenant hostnames, partner-payout ledger, voice evidence, and a credits UI as operator-gated infrastructure — entered here as new conservative promise records. Pylon v0.3 remains @openagentsinc/pylon@0.3.0-rc2; public product copy must still distinguish local rc gates from live network evidence.',
       liveDeploymentRefs: [
         'https://openagents.com',
         'https://openagents.com/docs/product-promises',
@@ -138,6 +145,9 @@ export const publicProductPromisesDocument = () => {
         'Open-source availability covers public product code and docs in the OpenAgentsInc/openagents repository; it does not publish secrets, production data, Cloudflare account bindings, wallet material, provider credentials, customer-private workroom content, or third-party service internals.',
         'The full training-pipeline program (the training.* promises) is planned scope from docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md; no Psion model rung above the retained tri-host rehearsal exists, and no pipeline stage is live as a broadly paid network workload.',
         'Episode 236 is launch-direction source material only: the Monday decentralized training run, Pylon v0.3 multi-earning node, largest-run comparison, and Tassadar executor-model language stay red until run, participant, work, validation, payment, settlement, and projection receipts exist. The former models.tasadar_percepta_executor.v1 typo record is withdrawn in favor of models.tassadar_percepta_executor.v1.',
+        'The Monday 2026-06-15 decentralized-training launch is imminent but has NOT happened as of this registry version (2026-06-14). Contributor join-lifecycle and device-admission contracts landed on main (#4848-#4854) and the SHC+Pylon fallback closeout route is deployed (m10-live 2026-06-14), so the rails are ready, but every training launch promise stays red/yellow until the run produces a public run identifier, participant admission, accepted-work, validation, and settlement receipts. Rails-ready is not launched.',
+        'Owner-authorized state flips 2026-06-14 (registry 2026-06-14.1): labor.forum_work_requests.v1 and labor.nostr_negotiation_market.v1 to green and provider.compliant_usage_labor.v1 / autopilot.control_center_fanout_marketplace.v1 to yellow were applied in source ahead of the receipt-first operator-route transition receipts, on the strength of the #4777/#4781/#4783 settlement evidence. The matching promise_transition receipts must still be recorded by the operator against the deployed 2026-06-14.1 version; they are not fabricated in source. The reconciliation record is docs/promises/2026-06-14-registry-reality-reconciliation-audit.md.',
+        'Wave-3 Autopilot Sites / Agency Pack surfaces (#4977-#4995) enter as conservative new records: autopilot.desktop_gui_client.v1 (yellow, local-only), mobile.autopilot_remote_control.v1 (planned), workrooms.omni_client_delivery_workrooms.v1 (red), autopilot_sites.native_email_sequences.v1 (yellow, no send service), autopilot_sites.custom_tenant_hostnames.v1 (yellow, no self-serve/SSL), autopilot_sites.partner_payout_ledger.v1 (red), autopilot.cloud_credits_ui.v1 (yellow, presentational), mobile.voice_session_evidence_transcript_ingest.v1 (red, contracts only). All are operator-gated or pre-customer; none claims green.',
       ],
     },
     promises: [
@@ -392,10 +402,17 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents/Pylon plans a Monday launch of a large decentralized training run where contributors install node software and earn Bitcoin for useful training contribution.',
         safeCopy:
-          'Episode 236 says a launch is targeted for Monday; treat it as a planned launch claim until receipts and public run state exist.',
+          'The launch is targeted for Monday 2026-06-15 and is imminent but has NOT happened as of registry 2026-06-14.1. Rails are ready: contributor join-lifecycle and reasoned device-admission contracts landed on main (#4848-#4854), the SHC+Pylon fallback closeout route is deployed (m10-live 2026-06-14 accepted both an SHC lane work order and a remote requester-Pylon lane), and Pylon v0.3-rc2 install/agent surfaces are green. Stays red until the run produces a public run identifier, participant admission, accepted-work, validation, and settlement receipts.',
         unsafeCopy:
-          'Do not claim the Monday launch has happened, is accepting contributors, is paying, or is the largest run until evidence exists.',
-        evidenceRefs: ['docs/transcripts/236.md', 'docs/promises/registry.md'],
+          'Do not claim the Monday launch has happened, is accepting contributors, is paying, or is the largest run until evidence exists. Rails-ready is not launched.',
+        evidenceRefs: [
+          'docs/transcripts/236.md',
+          'docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
+          'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
+          'apps/pylon/docs/proofs/m10-live-2026-06-14/README.md',
+          'apps/pylon/docs/proofs/m10-overnight-2026-06-13/README.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/4855',
+        ],
         blockerRefs: [
           'blocker.product_promises.monday_training_launch_receipts_missing',
           'blocker.product_promises.training_run_public_state_missing',
@@ -469,13 +486,14 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The Tassadar model direction uses a Percepta Executor Class architecture, with CPU computation transformation support added to Pylon v0.3 for experimental training.',
         safeCopy:
-          'Episode 236 names a Tassadar/Percepta Executor Class direction. Existing code and product records use Tassadar for the executor lane; treat the model spec, Pylon integration, training plan, and public evidence as unresolved until receipts exist.',
+          'Episode 236 names a Tassadar/Percepta Executor Class direction. Existing code and product records use Tassadar for the executor lane; treat the model spec, Pylon integration, training plan, and public evidence as unresolved until receipts exist. The bounded executor proof of concept is green (compute.tassadar_executor_poc.v1) but proves exact replay only, not a model. The 2026-06-14 W3 student-program report validated the frozen-analytic-executor-plus-learned-interface research direction (baseline D reached exact-rollout pass@1 while purely-learned baselines failed) but is explicitly research/evaluation only: it creates no public model claim and does not move this promise.',
         unsafeCopy:
-          'Do not claim a Tassadar trained model exists, is trained, outperforms CPUs, replaces a CPU, or is earning contributors Bitcoin.',
+          'Do not claim a Tassadar trained model exists, is trained, outperforms CPUs, replaces a CPU, or is earning contributors Bitcoin, and do not present the W3 student-program results or the executor PoC as proof of a trained Percepta model.',
         evidenceRefs: [
           'docs/transcripts/236.md',
-          'docs/promises/registry.md',
           'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
+          'docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
+          'docs/tassadar/2026-06-14-w3-student-program-report.md',
           'promise:compute.tassadar_executor_poc.v1',
           'promise:artanis.tassadar_evolution_loop.v1',
         ],
@@ -833,25 +851,31 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.control_center_fanout_marketplace.v1',
         productArea: 'Autopilot',
         audience: ['operator', 'agent'],
-        state: 'red',
+        state: 'yellow',
         claim:
           'Control center / Autopilot can fan out work to many agents and pull from a plugin marketplace.',
         safeCopy:
-          'Operator assignment and marketplace gate surfaces exist, but self-serve multi-agent fanout plus plugin marketplace execution is not live.',
+          'First-live: on 2026-06-14 one real Autopilot work order (f374a475) had its owned capacity forced dark and fanned out to the open agent labor market (market work request 432420e6) behind a server-side customerOptIn gate (opt-out returns 409 lane_c_fanout_blocked); an independent provider Pylon quoted and executed it, the validator re-ran bun test (pass), and escrow settled with public receipts (#4783, P7 lane-C). This proves single-order fanout to the market. Self-serve customer-initiated fanout (the run was operator-staged) and a general plugin marketplace beyond the code_task work class are not live.',
         unsafeCopy:
-          'Do not claim a self-serve control center can fan out paid work to many agents from a live marketplace.',
+          'Do not claim a self-serve control center fans out paid work to many agents from a broad live marketplace; the proven flow is one operator-staged order fanned to the labor market for a code_task, and plugin-marketplace execution beyond that work class is not live.',
         evidenceRefs: [
+          'docs/labor/2026-06-14-p7-lane-c-fanout-closeout.md',
+          'autopilot_work_order.f374a475-0465-4f65-b9e1-c1bffb6778f6',
+          'work_request:432420e6-7245-4d44-96c4-9e0b149a6020',
+          'apps/openagents.com/workers/api/src/lane-c-fanout-policy.ts',
+          'apps/openagents.com/workers/api/src/lane-c-fanout-bridge.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/4783',
           'route:/api/operator/pylons/assignments',
           'apps/openagents.com/docs/2026-06-08-signature-marketplace-revenue-gate.md',
         ],
         blockerRefs: [
           'blocker.product_promises.self_serve_fanout_missing',
-          'blocker.product_promises.plugin_marketplace_execution_missing',
+          'blocker.product_promises.plugin_marketplace_beyond_code_task_missing',
         ],
         verification:
-          'Requires self-serve scope, marketplace policy, idempotent dispatch, no-duplicate assignment, spend cap, proof, and settlement gates.',
+          'Requires self-serve scope, marketplace policy, idempotent dispatch, no-duplicate assignment, spend cap, proof, and settlement gates. First-live single-order market fanout met by #4783 (lane-C, customerOptIn-gated, validator-accepted, escrow-settled). Green requires customer-initiated self-serve fanout and plugin-marketplace execution beyond the code_task work class. State set to yellow under owner authorization 2026-06-14; the matching promise_transition receipt must be recorded against the deployed 2026-06-14.1 version.',
         authorityBoundary:
-          'Operator-only APIs and validation gates are not public self-serve marketplace authority.',
+          'Operator-only APIs and validation gates are not public self-serve marketplace authority; the customerOptIn gate must authorize any fanout, and the market produces accepted candidate work only.',
       },
       {
         ...basePromiseFields,
@@ -883,22 +907,31 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'provider.compliant_usage_labor.v1',
         productArea: 'labor',
         audience: ['contributor', 'agent', 'operator', 'public'],
-        state: 'red',
+        state: 'yellow',
         claim:
           'Contributors can connect their own provider accounts or prepaid API budgets and earn Bitcoin by doing useful work with that compliant usage through the agent labor market; OpenAgents never resells provider access.',
         safeCopy:
-          'Provider-account connection and device-login flows exist and contributors keep full custody of their own accounts; paid labor jobs that monetize that compliant usage by selling work output are not live yet.',
+          'First-live: on 2026-06-14 an independent provider Pylon (e3a6991c) did useful work on its own agent under first-run approval, delivered output-only, was validator-accepted (bun test pass), and was paid for accepted work output through the labor market (#4777). Contributors keep full custody of their own accounts; OpenAgents paid for the work output, never for account access. The first payout settled on the credit ledger (1 sat), not yet the external reliable-tips ladder, and the flow was operator-staged — broad self-serve, external-wallet labor earning is the remaining gate.',
         unsafeCopy:
-          'Do not claim or imply OpenAgents resells, rents, shares, proxies, or brokers anyone’s subscription seat, provider account, session, or API access. OpenAgents pays for accepted work output only; contributors run their own accounts under their own provider terms.',
+          'Do not claim or imply OpenAgents resells, rents, shares, proxies, or brokers anyone’s subscription seat, provider account, session, or API access. OpenAgents pays for accepted work output only; contributors run their own accounts under their own provider terms. Do not claim self-serve external-wallet labor earning is broadly live; the proven settlement was credit-ledger and operator-staged.',
         evidenceRefs: [
+          'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
+          'docs/labor/2026-06-14-labor-market-owner-default-policy.md',
+          'provider.public.pylon.e3a6991ccdf71036048ae540',
+          'closeout.public.pylon.labor_market.fe1ee748e332a9b9ff7f1e0b',
+          'verdict.public.pylon.labor_market.b74bb55c.bun_test.pass',
+          'receipt.labor_escrow.release.b74bb55c-849c-43a3-b8d9-9a741316b528.quote.public.pylon.labor_market.b97f312478504e9df212e333',
+          'https://github.com/OpenAgentsInc/openagents/issues/4777',
           'docs/transcripts/214.md',
-          'apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md',
           'apps/openagents.com/docs/2026-06-10-compliant-usage-labor-policy.md',
           'apps/pylon/packages/runtime/src/contracts/provider-account.ts',
         ],
-        blockerRefs: ['blocker.product_promises.labor_stream_not_live'],
+        blockerRefs: [
+          'blocker.product_promises.labor_external_ladder_settlement_missing',
+          'blocker.product_promises.labor_self_serve_earning_missing',
+        ],
         verification:
-          'A labor job must run on the contributor’s own connected account or API budget with output-only delivery, payment for accepted results, and a public settlement receipt. No provider credentials, session tokens, or account access may be transferred, metered for resale, or brokered.',
+          'A labor job must run on the contributor’s own connected account or API budget with output-only delivery, payment for accepted results, and a public settlement receipt. No provider credentials, session tokens, or account access may be transferred, metered for resale, or brokered. First-live met by #4777 (output-only delivery, validator acceptance, credit-ledger settlement). Green requires the same compliant flow settling external sats over the reliable-tips ladder and running self-serve (not operator-staged). State set to yellow under owner authorization 2026-06-14; the matching promise_transition receipt must be recorded against the deployed 2026-06-14.1 version.',
         authorityBoundary:
           'Account connection is custody-neutral: OpenAgents never takes provider credentials for resale, and payment buys accepted work output only.',
       },
@@ -1724,27 +1757,32 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'labor.forum_work_requests.v1',
         productArea: 'Forum',
         audience: ['contributor', 'operator', 'customer'],
-        state: 'yellow',
+        state: 'green',
         claim:
           'Anyone with a registered identity - the owner, Artanis, any registered agent, or an external Nostr agent - can post a budgeted work request on the OpenAgents Forum with an objective, acceptance criteria, and a deadline, and that request automatically becomes a machine-negotiable NIP-90 job on the owned market relay, with quote, acceptance, delivery, and settlement receipts posted back to the Forum thread.',
         safeCopy:
-          'The Forum work-request API now supports ref-only request creation, durable topic-to-job linkage, relay bridge publication through an injected publisher, relay-native twin ingestion, status reads, offer listing, single quote acceptance, escrow reserve, and lifecycle posts. Live market-key signing, production relay hook activation, and a complete request-through-settlement receipt trail remain required before calling the whole promise green.',
+          'Live: the Forum work-request lifecycle ran end to end on 2026-06-14 against a real backlog issue (#4773), not a fixture. A budgeted work request (workRequest b74bb55c) became a Forum topic (forum_topic 098e36a8) and a NIP-90 kind-5934 job on the owned relay; an independent provider Pylon quoted it (kind-7000), the requester accepted exactly one quote, escrow reserved on the audited credit ledger, the provider delivered output-only (kind-6934 result), the validator re-ran the stated verification command (bun test: 1 pass), escrow released, and the request reached terminal state settled with public reserve/release receipts and lifecycle posts on the thread. The current proven settlement moved 1 sat on the credit ledger; external reliable-tips-ladder payout for labor is the separate provider.compliant_usage_labor.v1 gate.',
         unsafeCopy:
-          'Do not claim a live production work-request lifecycle has completed or settled. Do not describe the bridge key as giving the platform authority over requester funds or identities - the bridge publishes transport events only; budget authority begins only when escrow is reserved on the audited credit ledger.',
+          'Do not describe the bridge key as giving the platform authority over requester funds or identities - the bridge publishes transport events only; budget authority begins only when escrow is reserved on the audited credit ledger. Do not claim labor payouts settle to external wallets yet (the first settlement was credit-ledger only), and do not generalize one settled lifecycle into broad self-serve, high-value, or unattended market liveness.',
         evidenceRefs: [
+          'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
+          'docs/labor/2026-06-14-p5-backlog-faucet-closeout.md',
+          'work_request:b74bb55c-849c-43a3-b8d9-9a741316b528',
+          'forum_topic.public.098e36a8-ee29-476a-99f4-73d25e5d9e76',
+          'receipt.labor_escrow.reserve.b74bb55c-849c-43a3-b8d9-9a741316b528.quote.public.pylon.labor_market.b97f312478504e9df212e333',
+          'receipt.labor_escrow.release.b74bb55c-849c-43a3-b8d9-9a741316b528.quote.public.pylon.labor_market.b97f312478504e9df212e333',
+          'verdict.public.pylon.labor_market.b74bb55c.bun_test.pass',
+          'https://github.com/OpenAgentsInc/openagents/issues/4773',
+          'https://github.com/OpenAgentsInc/openagents/issues/4777',
           'docs/labor/2026-06-10-open-agent-labor-market-roadmap.md',
           'apps/nostr-relay/README.md',
-          'docs/nips/README.md',
           'docs/nips/LBR.md',
           'apps/openagents.com/workers/api/src/forum-work-requests.ts',
           'apps/openagents.com/workers/api/src/forum-work-request-negotiation.ts',
         ],
-        blockerRefs: [
-          'blocker.product_promises.labor_live_request_lifecycle_missing',
-          'blocker.product_promises.labor_live_settlement_receipts_missing',
-        ],
+        blockerRefs: [],
         verification:
-          'A registered identity posts a budgeted work request through the Forum API; the matching NIP-90 job event appears on the owned relay with public-safe ref-only tags and a durable topic link; quote, acceptance, delivery, and settlement lifecycle posts appear on the Forum thread as the job progresses; the retained projections pass the redaction scan. Green requires one full request lifecycle with public receipts.',
+          'A registered identity posts a budgeted work request through the Forum API; the matching NIP-90 job event appears on the owned relay with public-safe ref-only tags and a durable topic link; quote, acceptance, delivery, and settlement lifecycle posts appear on the Forum thread as the job progresses; the retained projections pass the redaction scan. The green gate (one full request lifecycle with public receipts) was met by #4777 (bundle docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md). This green flip was applied in source under owner authorization 2026-06-14 ahead of the receipt-first operator transition; the matching promise_transition receipt must be recorded against the deployed 2026-06-14.1 version per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'A work request grants no assignment, payment, payout, deploy, or moderation authority; the relay is event transport only; budgets bind only when escrowed on the audited credit ledger; raw prompts, credentials, and private repository content are rejected at intake.',
       },
@@ -1753,25 +1791,31 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'labor.nostr_negotiation_market.v1',
         productArea: 'Pylon',
         audience: ['contributor', 'operator', 'customer'],
-        state: 'yellow',
+        state: 'green',
         claim:
-          'Agents discover, quote, negotiate, and transact labor jobs over NIP-90 on the owned scoped relay: a provider Pylon quotes a budgeted job it is capability-true for, the requester accepts exactly one quote, the budget is escrowed on the agent credit ledger, the work executes on the contributor own local agent in a bounded sandbox with output-only delivery, acceptance releases escrow, and sats settle to the provider wallet over the reliable-tips ladder with a public labor receipt.',
+          'Agents discover, quote, negotiate, and transact labor jobs over NIP-90 on the owned scoped relay: a provider Pylon quotes a budgeted job it is capability-true for, the requester accepts exactly one quote, the budget is escrowed on the agent credit ledger, the work executes on the contributor own local agent in a bounded sandbox with output-only delivery, acceptance releases escrow, and sats settle to the provider over a public labor receipt.',
         safeCopy:
-          'The rails are live and proven separately: the scoped relay accepts NIP-90 job/result/feedback kinds, the NIP-LBR contract is documented and typed, the Pylon provider loop runs behind GO ONLINE, the requester accept route reserves escrow exactly once, the labor runtime enforces bounded workspaces with first-run approval and auth-exfiltration blocking, the local Claude Agent executor ships in Pylon (epic #4717), the credit ledger with 1:1 buffer backing is green, and a paid closeout has settled real sats through the assignment loop (Tassadar PoC). A complete live negotiated labor job has not yet been posted, quoted, accepted, executed, released, and settled over the relay.',
+          'Live: one real negotiated labor job ran end to end over the owned relay on 2026-06-14 (#4777). A kind-5934 job (215ffa0b) was quoted by an independent provider Pylon (pubkey 3fd9b3f1, 1000 msat quote 3d7ec6bb), the requester accepted exactly one quote (acceptance 3cecbc2c), escrow reserved on the audited credit ledger, the work executed on the provider own local agent in a bounded output-only sandbox, the validator re-ran the stated verification command (bun test pass), escrow released, and 1 sat settled requester→provider on the ledger with a public labor receipt. The first settlement is credit-ledger; external reliable-tips-ladder payout is the separate provider.compliant_usage_labor.v1 gate. No provider credentials, sessions, or account access are ever transferred.',
         unsafeCopy:
-          'Do not claim agents negotiate or earn over the relay today, that any negotiated labor job has settled, or that this market resells provider access - work runs only on the contributor own agent, own credentials, own machine, with output-only delivery and no provider-auth material anywhere. Do not call escrowed amounts settled bitcoin before the payout receipt exists.',
+          'Do not claim this market resells provider access - work runs only on the contributor own agent, own credentials, own machine, with output-only delivery and no provider-auth material anywhere. Do not call ledger-credited amounts external-wallet settlement, and do not generalize one negotiated job into broad, high-value, or unattended relay liveness.',
         evidenceRefs: [
+          'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
+          'nostr.event.215ffa0b005d4640a6f719a8640efd2ab8cafc36b868a6ceef5d03becb18c515',
+          'nostr.event.3d7ec6bb9f96fd241f2fd9729f55f087c9e67a4875f25ee16bc36b69a13152cd',
+          'nostr.event.3cecbc2c12417ecd63425155bdf8b273216ef9563bd7c2dbe19dbe0765aa5174',
+          'result.public.pylon.labor_market.32751b623cbf3e01071182f7bc52b642d944b345404524871ffe8f5c03e905dd',
+          'closeout.public.pylon.labor_market.fe1ee748e332a9b9ff7f1e0b',
+          'provider.public.pylon.e3a6991ccdf71036048ae540',
+          'https://github.com/OpenAgentsInc/openagents/issues/4777',
           'docs/labor/2026-06-10-open-agent-labor-market-roadmap.md',
           'apps/nostr-relay/README.md',
           'apps/pylon/src/provider-nip90.ts',
           'apps/pylon/src/labor.ts',
           'apps/pylon/src/claude-agent-executor.ts',
         ],
-        blockerRefs: [
-          'blocker.product_promises.labor_live_negotiated_settlement_missing',
-        ],
+        blockerRefs: [],
         verification:
-          'One real labor job: posted with a budget, quoted over kind-7000 feedback by an independent contributor Pylon, accepted by the requester, escrow reserved on the ledger, executed on the contributor own local agent through the labor runtime with the stated verification command passing, delivered output-only, accepted, escrow released, sats settled to the provider wallet over the ladder, and the public labor receipt retrievable - with zero provider-auth material in any artifact, event, receipt, or post. Green requires that full flow with receipts cited.',
+          'One real labor job: posted with a budget, quoted over kind-7000 feedback by an independent contributor Pylon, accepted by the requester, escrow reserved on the ledger, executed on the contributor own local agent through the labor runtime with the stated verification command passing, delivered output-only, accepted, escrow released, sats settled to the provider, and the public labor receipt retrievable - with zero provider-auth material in any artifact, event, receipt, or post. The green gate was met by #4777 (bundle docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md). This green flip was applied in source under owner authorization 2026-06-14 ahead of the receipt-first operator transition; the matching promise_transition receipt must be recorded against the deployed 2026-06-14.1 version per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'The relay grants no payment, identity, assignment, or settlement authority; quotes and acceptances are typed events, not authority transfers; the provider never self-accepts; escrow release requires requester acceptance evidence; settlement requires a ladder payout receipt; contributor pricing policy is contributor-configured; no provider credentials, session tokens, or account access are ever transferred, metered for resale, or brokered.',
       },
@@ -1801,6 +1845,232 @@ export const publicProductPromisesDocument = () => {
         authorityBoundary:
           'The mind proposes; typed schemas validate; gates hold. Artanis labor spend comes only from its seeded ledger balance under a per-tick labor budget; acceptance authority is the validator verdict, not mind discretion; no moderation, payout-policy, or registry authority.',
       },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot.desktop_gui_client.v1',
+        productArea: 'Autopilot',
+        audience: ['operator', 'agent', 'user'],
+        state: 'yellow',
+        claim:
+          'Autopilot Desktop is a GUI client for observing and steering local Autopilot coding sessions.',
+        safeCopy:
+          'Autopilot Desktop (Bun/Electrobun shell with a Foldkit webview reusing the shared Autopilot UI) connects to a local Pylon node over loopback and renders a live session list, decision cards, and an event timeline, with bounded local document/PDF/Sites-preview and asset-ingestion cores. It is local-only: remote/Tailnet and cloud connectivity, full TUI parity, and pricing/distribution are not decided or wired.',
+        unsafeCopy:
+          'Do not claim Autopilot Desktop administers cloud or remote multi-node sessions, has full TUI parity, or is a priced/distributed product; the Bun host holds the control token and the webview only sees public-safe projections.',
+        evidenceRefs: [
+          'apps/autopilot-desktop/README.md',
+          'apps/autopilot-desktop/AGENTS.md',
+          'docs/autopilot-coder/2026-06-13-autopilot-desktop-app-audit.md',
+          'docs/autopilot-coder/2026-06-13-autopilot-desktop-reality-vs-claim-status.md',
+          'docs/autopilot-coder/2026-06-14-cloud-desktop-mobile-coding-sessions-full-flow-audit.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/4993',
+          'https://github.com/OpenAgentsInc/openagents/issues/4994',
+          'https://github.com/OpenAgentsInc/openagents/issues/4995',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.autopilot_desktop_remote_cloud_bridge_not_wired',
+          'blocker.product_promises.autopilot_desktop_pricing_distribution_undecided',
+        ],
+        verification:
+          'Launch the desktop shell, pair with a local Pylon, spawn a session, and confirm the Foldkit UI renders session list, decision cards, and timeline live from public-safe projections while the Bun host holds the control token. Green requires wired remote/cloud connectivity and a decided distribution/pricing path.',
+        authorityBoundary:
+          'Desktop is a view-and-bounded-action client; it cannot supervise the Pylon node, reach remote/cloud nodes, deploy, or mutate repository/provider access.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'mobile.autopilot_remote_control.v1',
+        productArea: 'mobile and Autopilot',
+        audience: ['operator', 'agent', 'user'],
+        state: 'planned',
+        claim:
+          'Autopilot Remote Control is a mobile app for pairing with a Pylon node and watching and steering Autopilot coding sessions from a phone.',
+        safeCopy:
+          'The mobile remote-control app is a design + roadmap target (milestones M0-M6, issues #4902-#4948) sharing the Autopilot control protocol with the desktop/web clients. The app scaffold is not built. Per owner mandate, native iOS builds locally and ships via TestFlight with JS OTA from self-hosted updates.openagents.com (no Expo/EAS cloud).',
+        unsafeCopy:
+          'Do not claim the mobile app is live, downloadable, or can approve or spawn sessions; nothing has shipped to TestFlight and the read-only client is the first planned milestone.',
+        evidenceRefs: [
+          'docs/autopilot-coder/2026-06-13-autopilot-clients-roadmap.md',
+          'docs/autopilot-coder/2026-06-13-autopilot-remote-control-mobile-app-audit.md',
+          'clients/mobile/AutopilotRemoteControl/README.md',
+          'clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.mobile_app_scaffold_not_created',
+          'blocker.product_promises.mobile_pylon_bridge_transport_incomplete',
+          'blocker.product_promises.mobile_testflight_distribution_not_live',
+        ],
+        verification:
+          'Green path: scaffold the app, finish the Pylon bridge transport, ship a read-only build to TestFlight, then add bounded write actions + notifications behind server-side approval. Each phase needs a shipped artifact and passing protocol-conformance tests.',
+        authorityBoundary:
+          'Mobile is a client, not execution authority; the Pylon node remains the decision/approval gateway and the app only relays bounded commands under server-side policy.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'workrooms.omni_client_delivery_workrooms.v1',
+        productArea: 'workrooms',
+        audience: ['user', 'customer', 'operator'],
+        state: 'red',
+        claim:
+          'Omni client-delivery workrooms route chat, tasks, and artifacts into client-scoped delivery contexts.',
+        safeCopy:
+          'Operator-gated client-delivery workroom infrastructure exists: a typed workroom record (status, visibility, trust tier, data classification), lifecycle routes, and kind templates (#4977). Customer-facing rendering, source authority, AI inference on workroom content, and approval-gated business writes are not integrated. This is precursor infrastructure for workrooms.source_authorized_business_objects.v1.',
+        unsafeCopy:
+          'Do not claim customers can see, post to, or approve changes in workrooms, or that generated summaries mutate CRM, documents, or send communications without source refs and human approval.',
+        evidenceRefs: [
+          'apps/openagents.com/workers/api/src/omni-workroom-routes.ts',
+          'apps/openagents.com/workers/api/src/omni-workroom-lifecycle-routes.ts',
+          'apps/openagents.com/workers/api/src/omni-workroom-kind-templates.ts',
+          'apps/openagents.com/workers/api/src/omni-workroom-surface-projections.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/4977',
+          'docs/autopilot-coder/2026-06-14-cloud-desktop-mobile-coding-sessions-full-flow-audit.md',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.workroom_customer_facing_ui_missing',
+          'blocker.product_promises.workroom_source_authority_not_integrated',
+          'blocker.product_promises.workroom_approval_gated_writes_missing',
+        ],
+        verification:
+          'Operator routes exist and pass type checks. Green requires a customer-facing workroom view, source refs for proposed updates, an approval flow, acceptance receipts, and liability/copy gates.',
+        authorityBoundary:
+          'Workroom data structure grants no customer write authority, source mutation, CRM sync, notification send, or third-party integration without separate approval gates.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot_sites.native_email_sequences.v1',
+        productArea: 'Sites',
+        audience: ['customer', 'operator'],
+        state: 'yellow',
+        claim:
+          'Autopilot Sites can define native email sequences and enroll subscribers in multi-step campaigns.',
+        safeCopy:
+          'Operator-gated email campaign/sequence authoring and native list → sequence enrollment exist (#4983/#4984): campaigns, steps, enrollments, and sends are stored in D1 and operators can create campaigns, move lifecycle state, and enroll subscribers. There is no integrated email send-service or deliverability proof, and customer self-serve authoring is not live.',
+        unsafeCopy:
+          'Do not claim customers can self-author email campaigns or that live email delivery/deliverability is proven; no send service is wired.',
+        evidenceRefs: [
+          'apps/openagents.com/workers/api/src/email-sequence-authoring-routes.ts',
+          'apps/openagents.com/workers/api/src/email-sequence-authoring.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/4983',
+          'https://github.com/OpenAgentsInc/openagents/issues/4984',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.email_sequence_customer_ui_missing',
+          'blocker.product_promises.email_send_service_integration_missing',
+          'blocker.product_promises.email_deliverability_unproven',
+        ],
+        verification:
+          'Operator authoring/enrollment routes pass type checks. Green requires a customer UI, a wired send service, deliverability smokes, and bounce/complaint handling.',
+        authorityBoundary:
+          'Email campaign creation is not subscriber consent, list ownership, or delivery authority.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot_sites.custom_tenant_hostnames.v1',
+        productArea: 'Sites',
+        audience: ['customer', 'operator'],
+        state: 'yellow',
+        claim:
+          'Autopilot Sites customers can serve their sites under custom branded hostnames.',
+        safeCopy:
+          'Operator-gated tenant custom-hostname registration, DNS-token verification, hostname→tenant mapping, and request-time resolution exist (#4988/#4989), with a config-owner-gated Cloudflare custom-hostname client. Customer self-serve hostname claiming, automated SSL issuance, and tenant-scoped rendering context switch are not wired.',
+        unsafeCopy:
+          'Do not claim customers can self-serve claim hostnames or that DNS/SSL/branding switching works end to end without operator steps.',
+        evidenceRefs: [
+          'apps/openagents.com/workers/api/src/tenant-custom-hostnames.ts',
+          'apps/openagents.com/workers/api/src/cloudflare-custom-hostname-client.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/4988',
+          'https://github.com/OpenAgentsInc/openagents/issues/4989',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.hostname_customer_self_serve_missing',
+          'blocker.product_promises.hostname_ssl_issuance_not_wired',
+          'blocker.product_promises.hostname_rendering_context_switch_not_wired',
+        ],
+        verification:
+          'Operator registration/verification works and passes type checks. Green requires a customer hostname-claim UI, automated DNS verification + SSL provisioning, and request routing to tenant-scoped rendering.',
+        authorityBoundary:
+          'Hostname registration is not DNS authority, SSL certificate authority, or site-content publication authority.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot_sites.partner_payout_ledger.v1',
+        productArea: 'payments',
+        audience: ['partner', 'operator'],
+        state: 'red',
+        claim:
+          'Autopilot Sites/Agency partners can earn Bitcoin payouts when their referred customers become paying OpenAgents customers.',
+        safeCopy:
+          'An operator-gated partner-payout ledger and state-transition routes exist (#4986): operators can move a payout through approve/dispatch/settle/reverse states. There is no partner-attribution policy, no settlement dispatch wiring, no public settlement receipt, and no partner-facing projection or API.',
+        unsafeCopy:
+          'Do not claim partners are earning, can withdraw payouts, or have an earnings dashboard, and do not describe this as a live partner revenue stream.',
+        evidenceRefs: [
+          'apps/openagents.com/workers/api/src/partner-payout-ledger-routes.ts',
+          'apps/openagents.com/workers/api/src/partner-payout-ledger.ts',
+          'docs/autopilot-coder/2026-06-13-cloud-remote-execution-commercial-plan.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/4986',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.partner_attribution_policy_missing',
+          'blocker.product_promises.partner_payout_settlement_not_wired',
+          'blocker.product_promises.partner_projection_api_missing',
+        ],
+        verification:
+          'Operator routes and the ledger module pass type/unit tests. Green requires partner attribution (referral→customer mapping), payout-ledger linkage to public settlement receipts, and a partner-accessible earnings projection.',
+        authorityBoundary:
+          'Ledger state is not spendable value; settlement requires separate dispatch authority and public-safe settlement evidence.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot.cloud_credits_ui.v1',
+        productArea: 'payments',
+        audience: ['customer', 'user'],
+        state: 'yellow',
+        claim:
+          'Autopilot users can see their cloud credit balance and a cost preview before and during a session.',
+        safeCopy:
+          'A Foldkit credits panel renders credit balance, status, rate labels, a minimum-run threshold, and a cost preview (blocked / under-cap / over-cap / exact-cap), embedded in the workroom page (#4985). It is presentational and caller-data-driven: credit purchase, spend tracking, and settlement are not wired into this UI.',
+        unsafeCopy:
+          'Do not claim customers can purchase or spend cloud credits from this UI, or treat the cost preview as final spend authority or a price guarantee.',
+        evidenceRefs: [
+          'apps/openagents.com/apps/web/src/ui/credits-panel.ts',
+          'docs/autopilot-coder/2026-06-13-cloud-remote-execution-commercial-plan.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/4985',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.cloud_credits_purchase_not_wired',
+          'blocker.product_promises.cloud_credits_spend_backend_not_wired',
+        ],
+        verification:
+          'The component renders correctly from supplied inputs and passes its tests. Green requires a purchase flow, spend tracking, cost-accurate preview, and settlement receipts behind the billing backend.',
+        authorityBoundary:
+          'The credits UI is view-only; spend authority and credit-ledger mutation live in the billing backend, not the component.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'mobile.voice_session_evidence_transcript_ingest.v1',
+        productArea: 'mobile and voice',
+        audience: ['user', 'operator'],
+        state: 'red',
+        claim:
+          'Spoken commands and intent can be ingested into Autopilot workrooms as transcribed, approval-gated action proposals.',
+        safeCopy:
+          'Voice-session evidence contracts and read-only projections exist (#4992): voice-session metadata, transcript segments, and command proposals with approval-required and risk labels, projected with mutation disabled. The ingestion endpoint, transcription service, AI proposal generation, and the approval UI are not wired. This is foundation infrastructure for mobile.voice_approval_companion.v1.',
+        unsafeCopy:
+          'Do not claim users can speak commands that execute, or that voice transcripts are trusted for mutations (CRM, email send, code, deploy, spend) without server-side approval; only contracts and read-only projections exist.',
+        evidenceRefs: [
+          'apps/openagents.com/workers/api/src/omni-voice-session-evidence.ts',
+          'apps/openagents.com/workers/api/src/omni-voice-session-evidence.test.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/4992',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.voice_ingestion_endpoint_missing',
+          'blocker.product_promises.voice_transcription_service_missing',
+          'blocker.product_promises.voice_proposal_and_approval_ui_missing',
+        ],
+        verification:
+          'Voice evidence contracts and projection logic pass tests. Green requires an ingestion endpoint, a transcription service, proposal generation, and an approval UI, with every proposed action gated server-side.',
+        authorityBoundary:
+          'A voice transcript is evidence of user intent, not command authority; all proposed actions require server-side policy checks and explicit approval.',
+      },
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
@@ -1821,6 +2091,9 @@ export const publicProductPromisesDocument = () => {
       'The public code map records where shipped public code lives in the open source repository. Report stale or missing source links in the Product Promises Forum.',
       'Forum direct BOLT 12 tipping uses MDK/provider payment evidence as the source of truth; the public promise stays yellow until strict funded live smokes and webhook callback evidence pass without timeout recovery.',
       'Claude/Codex parity pass 2026-06-12 (registry 2026-06-12.4): both coding-agent lanes now carry live production task receipts — Claude via #4755/#4756 closeouts, Codex via the CX lane (epic #4793, live device closeout assignment.closeout.f264043a9f173b20514521da plus the API-parity git_checkout leg). The stale "no live Claude run" copy was corrected; the Claude bridge blocker narrowed to packaged-binary repeatability; the Codex successor blocker live_probe_pylon_runtime_gates_incomplete was cleared on the CX4 evidence, which is the maintainer edit the receipt-first transition proposal on the Forum asked for. No state flips were auto-applied at .4. At 2026-06-12.6 the codex successor flipped to green receipt-first (#4857): registry .5 served from worker 44109e05, then transition receipt promise_transition_c2328369-09d0-4972-9a3b-8d530440cade recorded with all mechanical checks passing, then this source flip. The Claude bridge stays yellow on the packaged-binary repeat (#4858/#4859). The local supervised daily-driver surface exists for Codex in source (#4839-#4841) and is tracked for Claude as issues #4844-#4847; the parity audit is docs/autopilot-coder/claude/2026-06-12-pylon-claude-codex-parity-audit.md.',
+      'Registry 2026-06-14.1 reconciliation: the agent labor market crossed its first end-to-end milestone on 2026-06-14. The first live negotiated, escrowed, executed, validator-accepted, settled job ran against real backlog issue #4773 (evidence bundle docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md, work request b74bb55c, forum topic 098e36a8, kind-5934/7000/6934 events, escrow reserve/release receipts, bun-test verdict, terminal state settled). On that evidence labor.forum_work_requests.v1 and labor.nostr_negotiation_market.v1 are green, provider.compliant_usage_labor.v1 is yellow (output-only compliant labor paid for accepted work; first settlement was credit-ledger, not external ladder), and autopilot.control_center_fanout_marketplace.v1 is yellow (lane-C single-order fanout #4783). These four flips were applied in source under owner authorization 2026-06-14 ahead of the receipt-first operator-route transition receipts; the matching promise_transition receipts must still be recorded against the deployed 2026-06-14.1 version per proof.claim_upgrade_receipts.v1, and were not fabricated in source. artanis.labor_requester.v1 stays yellow (no unattended Artanis labor request has settled).',
+      'Registry 2026-06-14.1 added eight conservative new records for wave-3 Autopilot Sites / Agency Pack and client surfaces (#4977-#4995): autopilot.desktop_gui_client.v1 (yellow, local-only), mobile.autopilot_remote_control.v1 (planned), workrooms.omni_client_delivery_workrooms.v1 (red), autopilot_sites.native_email_sequences.v1 (yellow, no send service), autopilot_sites.custom_tenant_hostnames.v1 (yellow, no self-serve/SSL), autopilot_sites.partner_payout_ledger.v1 (red), autopilot.cloud_credits_ui.v1 (yellow, presentational), mobile.voice_session_evidence_transcript_ingest.v1 (red, contracts only). All are operator-gated or pre-customer; none claims green. The reconciliation record is docs/promises/2026-06-14-registry-reality-reconciliation-audit.md.',
+      'The Monday 2026-06-15 decentralized-training launch is imminent but had not happened at registry 2026-06-14.1; training.* launch promises stay red/yellow until the run yields public run state, participant admission, accepted-work, validation, and settlement receipts. The W3 student-program report (docs/tassadar/2026-06-14-w3-student-program-report.md) is research/evaluation only and moves no promise.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
