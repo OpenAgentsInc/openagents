@@ -1,4 +1,8 @@
 import type {
+  TrainingDashboardSummaryResponse,
+  TrainingLeaderboardLane,
+  TrainingLeaderboardLaneSummary,
+  TrainingLeaderboardTopRow,
   TrainingPublicMetric,
   TrainingPlanResponse,
   TrainingRunMetricsRow,
@@ -15,6 +19,12 @@ import type {
 } from "../shared/rpc"
 
 type FetchTrainingRunsInput = Readonly<{
+  baseUrl: string
+  fetchFn?: typeof fetch
+  nowIso?: () => string
+}>
+
+type FetchTrainingDashboardInput = Readonly<{
   baseUrl: string
   fetchFn?: typeof fetch
   nowIso?: () => string
@@ -78,6 +88,13 @@ const stringArray = (value: unknown): readonly string[] =>
 
 const publicSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/
 const publicSafePylonRefPattern = /^[a-z0-9][a-z0-9_.:-]*$/
+const trainingLeaderboardLanes = new Set<TrainingLeaderboardLane>([
+  "a1_loss",
+  "a2_throughput",
+  "a3_isoflop",
+  "a4_eval_delta",
+  "a5_accuracy",
+])
 
 const normalizeBaseUrl = (baseUrl: string): string => baseUrl.replace(/\/+$/, "")
 
@@ -176,6 +193,28 @@ const postPublicJson = async (
   return { ok: true, json }
 }
 
+const getPublicJson = async (
+  fetchFn: typeof fetch,
+  url: string,
+): Promise<
+  | { readonly ok: true; readonly json: unknown }
+  | { readonly ok: false; readonly error: string }
+> => {
+  const response = await fetchFn(url, {
+    headers: { accept: "application/json" },
+  })
+
+  const json = (await response.json().catch(() => null)) as unknown
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: errorMessageFromJson(json, `training dashboard ${response.status}`),
+    }
+  }
+
+  return { ok: true, json }
+}
+
 const disabledPlanResponse = (input: {
   enabled: boolean
   fetchedAt: string
@@ -231,6 +270,44 @@ const disabledLeaseResponse = (input: {
   lease: null,
   reason: input.reason,
   message: input.message,
+})
+
+const emptyTrainingDashboardResponse = (input: {
+  error?: string
+  fetchedAt: string
+  ok: boolean
+  sourceUrl: string
+}): TrainingDashboardSummaryResponse => ({
+  ok: input.ok,
+  fetchedAt: input.fetchedAt,
+  sourceUrl: input.sourceUrl,
+  leaderboards: { blockerRefs: [], lanes: [] },
+  a2: {
+    blockerRefs: [],
+    observedDeviceClassCount: 0,
+    observedMeasurementCount: 0,
+    verifiedMeasurementCount: 0,
+  },
+  a3: {
+    blockerRefs: [],
+    cellCount: 0,
+    fitArtifactCount: 0,
+    verifiedCellCount: 0,
+  },
+  a4: {
+    blockerRefs: [],
+    evalDeltaBonusBlockerRefs: [],
+    observedVerifiedStages: [],
+    requiredVerifiedStageCount: 0,
+    shardCount: 0,
+  },
+  a5: {
+    blockerRefs: [],
+    evalSuiteCount: 0,
+    updateBoundaryRef: null,
+    verifiedSuiteCount: 0,
+  },
+  ...(input.error === undefined ? {} : { error: input.error }),
 })
 
 const publicMetric = (value: unknown): TrainingPublicMetric => {
@@ -448,6 +525,183 @@ const fallbackSummary = (run: TrainingRunProjectionRow): TrainingRunSummaryRow =
   sourceRefs: run.sourceRefs,
   windows: [],
 })
+
+const leaderboardLane = (value: unknown): TrainingLeaderboardLane | null =>
+  typeof value === "string" &&
+  trainingLeaderboardLanes.has(value as TrainingLeaderboardLane)
+    ? (value as TrainingLeaderboardLane)
+    : null
+
+const leaderboardTopRow = (value: unknown): TrainingLeaderboardTopRow | null => {
+  if (!isRecord(value)) return null
+  const contributorRef = asString(value.contributorRef)
+  const trainingRunRef = asString(value.trainingRunRef)
+  if (contributorRef === "" || trainingRunRef === "") return null
+  return {
+    contributorRef,
+    rank: asNumber(value.rank),
+    score: asNumber(value.score),
+    scoreLabel: asString(value.scoreLabel),
+    settledPayoutSats: asNumber(value.settledPayoutSats),
+    trainingRunRef,
+  }
+}
+
+const leaderboardSection = (
+  value: unknown,
+): TrainingLeaderboardLaneSummary | null => {
+  if (!isRecord(value)) return null
+  const lane = leaderboardLane(value.lane)
+  if (lane === null) return null
+  const rows = asArray(value.rows).filter(isRecord)
+  const topRow =
+    [...rows]
+      .sort(
+        (a, b) =>
+          asNumber(a.rank, Number.MAX_SAFE_INTEGER) -
+          asNumber(b.rank, Number.MAX_SAFE_INTEGER),
+      )
+      .map(leaderboardTopRow)
+      .find((row): row is TrainingLeaderboardTopRow => row !== null) ?? null
+  return {
+    blockerRefs: stringArray(value.blockerRefs),
+    lane,
+    rowCount: rows.length,
+    title: asString(value.title, lane),
+    topRow,
+  }
+}
+
+export async function fetchTrainingDashboard(
+  input: FetchTrainingDashboardInput,
+): Promise<TrainingDashboardSummaryResponse> {
+  const fetchFn = input.fetchFn ?? fetch
+  const fetchedAt = input.nowIso?.() ?? new Date().toISOString()
+  const baseUrl = normalizeBaseUrl(input.baseUrl)
+  const sourceUrl = `${baseUrl}/api/training/leaderboards`
+  const endpoints = {
+    leaderboards: sourceUrl,
+    a2: `${baseUrl}/api/training/device-capabilities/a2`,
+    a3: `${baseUrl}/api/training/isoflop/a3`,
+    a4: `${baseUrl}/api/training/refinery/a4`,
+    a5: `${baseUrl}/api/training/evals/a5`,
+  } as const
+
+  try {
+    const [leaderboards, a2, a3, a4, a5] = await Promise.all([
+      getPublicJson(fetchFn, endpoints.leaderboards),
+      getPublicJson(fetchFn, endpoints.a2),
+      getPublicJson(fetchFn, endpoints.a3),
+      getPublicJson(fetchFn, endpoints.a4),
+      getPublicJson(fetchFn, endpoints.a5),
+    ])
+
+    if (!leaderboards.ok) {
+      return emptyTrainingDashboardResponse({
+        ok: false,
+        fetchedAt,
+        sourceUrl,
+        error: `leaderboards: ${leaderboards.error}`,
+      })
+    }
+    if (!a2.ok) {
+      return emptyTrainingDashboardResponse({
+        ok: false,
+        fetchedAt,
+        sourceUrl,
+        error: `a2: ${a2.error}`,
+      })
+    }
+    if (!a3.ok) {
+      return emptyTrainingDashboardResponse({
+        ok: false,
+        fetchedAt,
+        sourceUrl,
+        error: `a3: ${a3.error}`,
+      })
+    }
+    if (!a4.ok) {
+      return emptyTrainingDashboardResponse({
+        ok: false,
+        fetchedAt,
+        sourceUrl,
+        error: `a4: ${a4.error}`,
+      })
+    }
+    if (!a5.ok) {
+      return emptyTrainingDashboardResponse({
+        ok: false,
+        fetchedAt,
+        sourceUrl,
+        error: `a5: ${a5.error}`,
+      })
+    }
+
+    const leaderboardsRecord = isRecord(leaderboards.json) ? leaderboards.json : {}
+    const a2Record = isRecord(a2.json) ? a2.json : {}
+    const a3Record = isRecord(a3.json) ? a3.json : {}
+    const a4Record = isRecord(a4.json) ? a4.json : {}
+    const a5Record = isRecord(a5.json) ? a5.json : {}
+    const a2ClassDistributions = asArray(a2Record.classDistributions)
+    const a3Cells = asArray(a3Record.cells)
+    const a5Suites = asArray(a5Record.evalSuites)
+
+    return {
+      ok: true,
+      fetchedAt,
+      sourceUrl,
+      leaderboards: {
+        blockerRefs: stringArray(leaderboardsRecord.blockerRefs),
+        lanes: asArray(leaderboardsRecord.lanes)
+          .map(leaderboardSection)
+          .filter((lane): lane is TrainingLeaderboardLaneSummary => lane !== null),
+      },
+      a2: {
+        blockerRefs: stringArray(a2Record.blockerRefs),
+        observedDeviceClassCount: asNumber(a2Record.observedDeviceClassCount),
+        observedMeasurementCount: asNumber(a2Record.observedMeasurementCount),
+        verifiedMeasurementCount: a2ClassDistributions.filter(
+          item => isRecord(item) && item.verified === true,
+        ).length,
+      },
+      a3: {
+        blockerRefs: stringArray(a3Record.blockerRefs),
+        cellCount: a3Cells.length,
+        fitArtifactCount: asArray(a3Record.fitArtifacts).length,
+        verifiedCellCount: a3Cells.filter(
+          item => isRecord(item) && item.verified === true,
+        ).length,
+      },
+      a4: {
+        blockerRefs: stringArray(a4Record.blockerRefs),
+        evalDeltaBonusBlockerRefs: stringArray(
+          a4Record.evalDeltaBonusBlockerRefs,
+        ),
+        observedVerifiedStages: stringArray(a4Record.observedVerifiedStages),
+        requiredVerifiedStageCount: asNumber(
+          a4Record.requiredVerifiedStageCount,
+        ),
+        shardCount: asArray(a4Record.shards).length,
+      },
+      a5: {
+        blockerRefs: stringArray(a5Record.blockerRefs),
+        evalSuiteCount: a5Suites.length,
+        updateBoundaryRef: asNullableString(a5Record.updateBoundaryRef),
+        verifiedSuiteCount: a5Suites.filter(
+          item =>
+            isRecord(item) && stringArray(item.verificationRefs).length > 0,
+        ).length,
+      },
+    }
+  } catch (error) {
+    return emptyTrainingDashboardResponse({
+      ok: false,
+      fetchedAt,
+      sourceUrl,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
 
 export async function fetchTrainingRuns(
   input: FetchTrainingRunsInput,

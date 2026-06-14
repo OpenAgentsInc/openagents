@@ -24,15 +24,22 @@ import {
   verifyLineText,
   walletSummary,
 } from "../src/ui/helpers"
-import { initialModel, Model, modelNode } from "../src/ui/model"
+import {
+  initialModel,
+  Model,
+  modelNode,
+  modelTrainingDashboard,
+} from "../src/ui/model"
 import {
   ChangedAskTitle,
   ClickedActivateTrainingWindow,
   ClickedClaimTrainingLease,
   ClickedPlanTrainingWindow,
+  ClickedRefreshTrainingRuns,
   ClickedReconcileTrainingWindow,
   ClickedResolveApproval,
   ClickedSubmitIntent,
+  GotTrainingDashboard,
   GotNodeState,
   NavigatedTo,
   SelectedSession,
@@ -251,7 +258,75 @@ describe("update reducer (CL-53)", () => {
       trainingRunRef: "training.run.desktop.r1.test",
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(1)
+    expect(followups).toHaveLength(2)
+  })
+
+  test("training refresh loads run and dashboard projections", () => {
+    const [pending, commands] = update(initialModel, ClickedRefreshTrainingRuns())
+    expect(pending.trainingRunsPending).toBe(true)
+    expect(pending.trainingDashboardPending).toBe(true)
+    expect(commands).toHaveLength(2)
+  })
+
+  test("training dashboard projection is stored with a lane summary", () => {
+    const [settled] = update(
+      initialModel,
+      GotTrainingDashboard({
+        projection: {
+          ok: true,
+          fetchedAt: "2026-06-14T00:00:00.000Z",
+          sourceUrl: "https://openagents.test/api/training/leaderboards",
+          leaderboards: {
+            blockerRefs: [],
+            lanes: [
+              {
+                blockerRefs: [],
+                lane: "a1_loss",
+                rowCount: 1,
+                title: "A1 Loss Under Budget",
+                topRow: {
+                  contributorRef: "pylon.training.1",
+                  rank: 1,
+                  score: 3.1,
+                  scoreLabel: "validation_loss=3.1",
+                  settledPayoutSats: 21,
+                  trainingRunRef: "training.run.1",
+                },
+              },
+            ],
+          },
+          a2: {
+            blockerRefs: [],
+            observedDeviceClassCount: 2,
+            observedMeasurementCount: 3,
+            verifiedMeasurementCount: 2,
+          },
+          a3: {
+            blockerRefs: [],
+            cellCount: 2,
+            fitArtifactCount: 1,
+            verifiedCellCount: 1,
+          },
+          a4: {
+            blockerRefs: [],
+            evalDeltaBonusBlockerRefs: [],
+            observedVerifiedStages: ["pii_masking"],
+            requiredVerifiedStageCount: 3,
+            shardCount: 1,
+          },
+          a5: {
+            blockerRefs: [],
+            evalSuiteCount: 1,
+            updateBoundaryRef: "issue.github.openagents.4669",
+            verifiedSuiteCount: 1,
+          },
+        },
+      }),
+    )
+
+    expect(settled.trainingDashboardPending).toBe(false)
+    expect(settled.trainingDashboardStatus.tone).toBe("success")
+    expect(modelTrainingDashboard(settled)?.leaderboards.lanes[0]?.rowCount).toBe(1)
   })
 
   test("training activation action dispatches and stores the public-safe result", () => {
@@ -286,7 +361,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingActivation).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(1)
+    expect(followups).toHaveLength(2)
   })
 
   test("training lease claim action dispatches and stores the public-safe result", () => {
@@ -324,7 +399,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingLease).toMatchObject({
       lease: { leaseRef: "training.lease.1" },
     })
-    expect(followups).toHaveLength(1)
+    expect(followups).toHaveLength(2)
   })
 
   test("training reconcile action dispatches and stores the public-safe result", () => {
@@ -359,6 +434,6 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingReconcile).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(1)
+    expect(followups).toHaveLength(2)
   })
 })

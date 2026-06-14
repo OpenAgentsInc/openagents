@@ -149,6 +149,66 @@ export type TrainingRunsResponse = {
   readonly error?: string
 }
 
+export type TrainingLeaderboardLane =
+  | "a1_loss"
+  | "a2_throughput"
+  | "a3_isoflop"
+  | "a4_eval_delta"
+  | "a5_accuracy"
+
+export type TrainingLeaderboardTopRow = {
+  readonly contributorRef: string
+  readonly rank: number
+  readonly score: number
+  readonly scoreLabel: string
+  readonly settledPayoutSats: number
+  readonly trainingRunRef: string
+}
+
+export type TrainingLeaderboardLaneSummary = {
+  readonly blockerRefs: readonly string[]
+  readonly lane: TrainingLeaderboardLane
+  readonly rowCount: number
+  readonly title: string
+  readonly topRow: TrainingLeaderboardTopRow | null
+}
+
+export type TrainingDashboardSummaryResponse = {
+  readonly ok: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: string
+  readonly leaderboards: {
+    readonly blockerRefs: readonly string[]
+    readonly lanes: readonly TrainingLeaderboardLaneSummary[]
+  }
+  readonly a2: {
+    readonly blockerRefs: readonly string[]
+    readonly observedDeviceClassCount: number
+    readonly observedMeasurementCount: number
+    readonly verifiedMeasurementCount: number
+  }
+  readonly a3: {
+    readonly blockerRefs: readonly string[]
+    readonly cellCount: number
+    readonly fitArtifactCount: number
+    readonly verifiedCellCount: number
+  }
+  readonly a4: {
+    readonly blockerRefs: readonly string[]
+    readonly evalDeltaBonusBlockerRefs: readonly string[]
+    readonly observedVerifiedStages: readonly string[]
+    readonly requiredVerifiedStageCount: number
+    readonly shardCount: number
+  }
+  readonly a5: {
+    readonly blockerRefs: readonly string[]
+    readonly evalSuiteCount: number
+    readonly updateBoundaryRef: string | null
+    readonly verifiedSuiteCount: number
+  }
+  readonly error?: string
+}
+
 export type TrainingPlanReason =
   | "disabled"
   | "admin_token_missing"
@@ -303,6 +363,10 @@ export type DesktopRPCSchema = {
       readonly listTrainingRuns: {
         readonly params: Record<string, never>
         readonly response: TrainingRunsResponse
+      }
+      readonly listTrainingDashboard: {
+        readonly params: Record<string, never>
+        readonly response: TrainingDashboardSummaryResponse
       }
       // Admin planning stays in Bun. The webview receives only the public-safe
       // run/window refs and projections that the Worker returns.

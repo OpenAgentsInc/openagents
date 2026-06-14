@@ -13,12 +13,13 @@ The first implemented slice follows that boundary:
 - `@openagentsinc/three-effect` now provides an `oa-training-run` Foldkit custom element.
 - Autopilot Desktop now has a sidebar `Training` pane centered on that Three scene.
 - The pane fetches public Worker-authoritative training projections from `/api/training/runs` through the Bun main process.
+- The pane also fetches public CS336 dashboard summaries from `/api/training/leaderboards`, `/api/training/device-capabilities/a2`, `/api/training/isoflop/a3`, `/api/training/refinery/a4`, and `/api/training/evals/a5`.
 - The selected public run summary is converted into a `three-effect` snapshot so the scene reflects live run state, windows, devices, Freivalds refs, closeouts, verified work, external blockers, and settlement.
 - The pane exposes a launch/readiness feedback button that queues a local Pylon intent through the existing `intent.submit` path.
 - The pane also exposes Bun-main-process, env-gated actions for planning an R1 rehearsal run/window, activating a planned window, claiming the active training lease for a local Pylon ref, and reconciling a sealed window. The webview receives only public-safe run/window/lease refs and projections.
 - Evidence admission, settlement, and real worker execution remain outside the webview.
 
-That is the right initial shape. The next high-value step is not more static dashboard decoration; it is wiring the plan result to the actual run admission and evidence pipeline while preserving the same authority boundary.
+That is the right initial shape. The next high-value step is wiring the plan result to the actual run admission and evidence pipeline while preserving the same authority boundary.
 
 ## Sources Inspected
 
@@ -37,6 +38,7 @@ OpenAgents authority code:
 
 - `apps/openagents.com/workers/api/src/training-run-window-authority.ts`.
 - `apps/openagents.com/workers/api/src/training-run-window-routes.ts`.
+- `apps/openagents.com/workers/api/src/training-leaderboards.ts`.
 - `apps/openagents.com/workers/api/src/training-real-gradient-evidence.ts`.
 - `apps/openagents.com/workers/api/src/training-window-bootstrap.ts`.
 - `apps/openagents.com/apps/web/src/page/loggedOut/page/trainingRuns.ts`.
@@ -123,7 +125,9 @@ The operations panel has five buttons. `Plan R1 window` calls a typed desktop RP
 
 The `Queue launch check` button still queues a local Pylon intent titled `Training run launch check`. Its body asks the node to inspect the issue 4855 gates, `/api/training/runs`, R1 readiness, seal/staleness state, distinct contributors, Freivalds refs, gradient closeout refs, receipts, and settlement blockers. This gives the operator immediate visible feedback when admin planning is disabled or when the local node should inspect readiness before the operator plans another window.
 
-The refresh button and Training pane navigation call a typed desktop RPC that reads the public Worker endpoint. This is intentionally read-only and produces a desktop-local projection with the live run count, per-run state, verified work count, assigned contributor count, device requirement status, Freivalds refs, gradient closeout refs, loss budget, external blocker state, and settled sats.
+The refresh button and Training pane navigation call typed desktop RPCs that read public Worker endpoints. This is intentionally read-only and produces desktop-local projections with the live run count, per-run state, verified work count, assigned contributor count, device requirement status, Freivalds refs, gradient closeout refs, loss budget, external blocker state, and settled sats.
+
+The desktop also summarizes the public CS336 dashboard surfaces in a compact panel. It counts ranked leaderboard lanes from `/api/training/leaderboards`, A2 observed/verified device measurements from `/api/training/device-capabilities/a2`, A3 verified ISOFLOP cells from `/api/training/isoflop/a3`, A4 verified data-refinery stages from `/api/training/refinery/a4`, A5 verified eval suites from `/api/training/evals/a5`, and public blocker refs across those projections. This gives the operator the same public readiness context available to the web dashboards without moving raw evidence, private worker payloads, or admin authority into the webview.
 
 The Three scene receives the same selected summary through a compact snapshot mapper in `three-effect`. That mapper updates node labels/statuses, contributor dots, stale bound, receipt/settlement gates, and loss curve inputs without importing OpenAgents Worker internals into the rendering package.
 
@@ -159,7 +163,7 @@ The same pattern can be reused in the web app and mobile app if Foldkit remains 
 
 ## Risks
 
-The current pane is now partly live: it reads public projections and can plan, activate, claim a lease, and reconcile sealed windows through Bun when explicitly enabled. It is still not a full run dashboard. The most likely failure mode is visual polish outrunning authority integration. That would create a good-looking control room that does not answer the operator's actual question after a lease is claimed: which worker process accepted the lease, which evidence landed, which seal metadata was verified, and which receipts settled?
+The current pane is now partly live: it reads public run and dashboard projections and can plan, activate, claim a lease, and reconcile sealed windows through Bun when explicitly enabled. It is still not a full worker-execution dashboard. The most likely failure mode is visual polish outrunning authority integration. That would create a good-looking control room that does not answer the operator's actual question after a lease is claimed: which worker process accepted the lease, which evidence landed, which seal metadata was verified, and which receipts settled?
 
 The second risk is authority leakage. The implemented planning bridge keeps admin tokens in Bun, but future evidence admission and launch controls must follow the same pattern. Do not add admin tokens, private evidence, wallet material, or raw payout details to the Foldkit webview model.
 

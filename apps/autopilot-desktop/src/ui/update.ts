@@ -14,6 +14,7 @@ import {
   CancelSession,
   ClaimTrainingWindowLease,
   DeployCloud,
+  LoadTrainingDashboard,
   LoadTrainingRuns,
   PlanTrainingRunWindow,
   QueueTrainingLaunch,
@@ -27,6 +28,7 @@ import { parseVerifyLines } from "./helpers"
 import type { Message } from "./message"
 import { Model } from "./model"
 import type {
+  TrainingDashboardSummaryResponse,
   TrainingPlanResponse,
   TrainingRunsResponse,
   TrainingWindowActionResponse,
@@ -36,6 +38,11 @@ import type {
 type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
 const noCommands: ReadonlyArray<Command.Command<Message>> = []
+
+const loadTrainingProjectionCommands = (): ReadonlyArray<Command.Command<Message>> => [
+  LoadTrainingRuns(),
+  LoadTrainingDashboard(),
+]
 
 export const update = (model: Model, message: Message): Result => {
   switch (message._tag) {
@@ -59,10 +66,17 @@ export const update = (model: Model, message: Message): Result => {
                   text: "loading Worker projection...",
                   tone: "info" as const,
                 },
+                trainingDashboardPending: true,
+                trainingDashboardStatus: {
+                  text: "loading public dashboards...",
+                  tone: "info" as const,
+                },
               }
             : {}),
         }),
-        message.pane === "training" ? [LoadTrainingRuns()] : noCommands,
+        message.pane === "training"
+          ? loadTrainingProjectionCommands()
+          : noCommands,
       ]
     case "SelectedSession":
       return [
@@ -191,8 +205,13 @@ export const update = (model: Model, message: Message): Result => {
             text: "refreshing Worker projection...",
             tone: "info",
           },
+          trainingDashboardPending: true,
+          trainingDashboardStatus: {
+            text: "refreshing public dashboards...",
+            tone: "info",
+          },
         }),
-        [LoadTrainingRuns()],
+        loadTrainingProjectionCommands(),
       ]
     case "GotTrainingRuns": {
       const projection = message.projection as TrainingRunsResponse
@@ -209,6 +228,28 @@ export const update = (model: Model, message: Message): Result => {
               }
             : {
                 text: projection.error ?? "training projection unavailable",
+                tone: "error",
+              },
+        }),
+        noCommands,
+      ]
+    }
+    case "GotTrainingDashboard": {
+      const projection = message.projection as TrainingDashboardSummaryResponse
+      const lanes = projection.leaderboards?.lanes ?? []
+      const rankedLaneCount = lanes.filter(lane => lane.rowCount > 0).length
+      return [
+        Model.make({
+          ...model,
+          trainingDashboard: projection,
+          trainingDashboardPending: false,
+          trainingDashboardStatus: projection.ok
+            ? {
+                text: `${rankedLaneCount}/${lanes.length} ranked lanes from ${projection.sourceUrl}`,
+                tone: "success",
+              }
+            : {
+                text: projection.error ?? "training dashboards unavailable",
                 tone: "error",
               },
         }),
@@ -242,7 +283,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },
         }),
-        projection.ok ? [LoadTrainingRuns()] : noCommands,
+        projection.ok ? loadTrainingProjectionCommands() : noCommands,
       ]
     }
     case "ClickedActivateTrainingWindow":
@@ -284,7 +325,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },
         }),
-        projection.ok ? [LoadTrainingRuns()] : noCommands,
+        projection.ok ? loadTrainingProjectionCommands() : noCommands,
       ]
     }
     case "ClickedReconcileTrainingWindow":
@@ -326,7 +367,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },
         }),
-        projection.ok ? [LoadTrainingRuns()] : noCommands,
+        projection.ok ? loadTrainingProjectionCommands() : noCommands,
       ]
     }
     case "ClickedClaimTrainingLease":
@@ -356,7 +397,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },
         }),
-        projection.ok ? [LoadTrainingRuns()] : noCommands,
+        projection.ok ? loadTrainingProjectionCommands() : noCommands,
       ]
     }
     case "ClickedQueueTrainingLaunch":
@@ -381,7 +422,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: message.ok ? "success" : "error",
           },
         }),
-        message.ok ? [LoadTrainingRuns()] : noCommands,
+        message.ok ? loadTrainingProjectionCommands() : noCommands,
       ]
 
     // ── Spawn ──────────────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import { getRequest } from "./bridge"
 import {
   FailedCoordinatorToggle,
   FailedSpawn,
+  GotTrainingDashboard,
   GotTrainingRuns,
   SettledCancelSession,
   SettledActivateTrainingWindow,
@@ -28,6 +29,39 @@ import {
 
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
+
+const emptyTrainingDashboardProjection = (error: string) => ({
+  ok: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:training-dashboard",
+  leaderboards: { blockerRefs: [], lanes: [] },
+  a2: {
+    blockerRefs: [],
+    observedDeviceClassCount: 0,
+    observedMeasurementCount: 0,
+    verifiedMeasurementCount: 0,
+  },
+  a3: {
+    blockerRefs: [],
+    cellCount: 0,
+    fitArtifactCount: 0,
+    verifiedCellCount: 0,
+  },
+  a4: {
+    blockerRefs: [],
+    evalDeltaBonusBlockerRefs: [],
+    observedVerifiedStages: [],
+    requiredVerifiedStageCount: 0,
+    shardCount: 0,
+  },
+  a5: {
+    blockerRefs: [],
+    evalSuiteCount: 0,
+    updateBoundaryRef: null,
+    verifiedSuiteCount: 0,
+  },
+  error,
+})
 
 // CL-51: pause/resume the coordinator loop.
 export const SetCoordinatorPaused = Command.define(
@@ -132,6 +166,23 @@ export const LoadTrainingRuns = Command.define(
             summaries: [],
             error: errorText(error),
           },
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadTrainingDashboard = Command.define(
+  "LoadTrainingDashboard",
+  {},
+  GotTrainingDashboard,
+)(() =>
+  Effect.tryPromise(() => getRequest().listTrainingDashboard({})).pipe(
+    Effect.map((projection) => GotTrainingDashboard({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotTrainingDashboard({
+          projection: emptyTrainingDashboardProjection(errorText(error)),
         }),
       ),
     ),

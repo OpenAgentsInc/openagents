@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   activateTrainingWindow,
   claimTrainingWindowLease,
+  fetchTrainingDashboard,
   fetchTrainingRuns,
   planTrainingRunWindow,
   reconcileTrainingWindow,
@@ -132,6 +133,122 @@ describe("fetchTrainingRuns", () => {
     expect(result.ok).toBe(false)
     expect(result.runs).toEqual([])
     expect(result.error).toBe("training runs 503")
+  })
+})
+
+describe("fetchTrainingDashboard", () => {
+  test("decodes public leaderboard and CS336 dashboard summaries", async () => {
+    const result = await fetchTrainingDashboard({
+      baseUrl: "https://openagents.test/",
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      fetchFn: async (url) => {
+        const href = String(url)
+        if (href.endsWith("/api/training/leaderboards")) {
+          return new Response(
+            JSON.stringify({
+              blockerRefs: ["blocker.all"],
+              lanes: [
+                {
+                  blockerRefs: [],
+                  lane: "a1_loss",
+                  rows: [
+                    {
+                      contributorRef: "pylon.training.1",
+                      rank: 1,
+                      score: 3.1,
+                      scoreLabel: "validation_loss=3.1",
+                      settledPayoutSats: 21,
+                      trainingRunRef: "training.run.1",
+                    },
+                  ],
+                  title: "A1 Loss Under Budget",
+                },
+                {
+                  blockerRefs: ["blocker.a2"],
+                  lane: "a2_throughput",
+                  rows: [],
+                  title: "A2 Throughput",
+                },
+              ],
+            }),
+          )
+        }
+        if (href.endsWith("/api/training/device-capabilities/a2")) {
+          return new Response(
+            JSON.stringify({
+              blockerRefs: [],
+              classDistributions: [
+                { verified: true },
+                { verified: false },
+                { verified: true },
+              ],
+              observedDeviceClassCount: 2,
+              observedMeasurementCount: 3,
+            }),
+          )
+        }
+        if (href.endsWith("/api/training/isoflop/a3")) {
+          return new Response(
+            JSON.stringify({
+              blockerRefs: ["blocker.a3"],
+              cells: [{ verified: true }, { verified: false }],
+              fitArtifacts: [{}],
+            }),
+          )
+        }
+        if (href.endsWith("/api/training/refinery/a4")) {
+          return new Response(
+            JSON.stringify({
+              blockerRefs: [],
+              evalDeltaBonusBlockerRefs: ["blocker.bonus"],
+              observedVerifiedStages: ["pii_masking", "gopher_rules"],
+              requiredVerifiedStageCount: 3,
+              shards: [{}, {}],
+            }),
+          )
+        }
+        return new Response(
+          JSON.stringify({
+            blockerRefs: [],
+            evalSuites: [{ verificationRefs: ["v1"] }, { verificationRefs: [] }],
+            updateBoundaryRef: "issue.github.openagents.4669",
+          }),
+        )
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.sourceUrl).toBe(
+      "https://openagents.test/api/training/leaderboards",
+    )
+    expect(result.leaderboards.blockerRefs).toEqual(["blocker.all"])
+    expect(result.leaderboards.lanes).toHaveLength(2)
+    expect(result.leaderboards.lanes[0]?.topRow).toMatchObject({
+      contributorRef: "pylon.training.1",
+      rank: 1,
+      trainingRunRef: "training.run.1",
+    })
+    expect(result.a2.verifiedMeasurementCount).toBe(2)
+    expect(result.a3.verifiedCellCount).toBe(1)
+    expect(result.a4.shardCount).toBe(2)
+    expect(result.a5.verifiedSuiteCount).toBe(1)
+  })
+
+  test("returns a typed error projection when a dashboard endpoint fails", async () => {
+    const result = await fetchTrainingDashboard({
+      baseUrl: "https://openagents.test",
+      fetchFn: async (url) =>
+        String(url).endsWith("/api/training/isoflop/a3")
+          ? new Response(JSON.stringify({ reason: "a3 offline" }), {
+              status: 503,
+            })
+          : new Response(JSON.stringify({ lanes: [], blockerRefs: [] })),
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe("a3: a3 offline")
+    expect(result.leaderboards.lanes).toEqual([])
+    expect(result.a3.cellCount).toBe(0)
   })
 })
 

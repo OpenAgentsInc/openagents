@@ -14,6 +14,7 @@ import { ts } from "foldkit/schema"
 import type { NotificationCenterView } from "@openagentsinc/autopilot-control-protocol"
 import type {
   NodeStateMessage,
+  TrainingDashboardSummaryResponse,
   TrainingPlanResponse,
   TrainingRunsResponse,
   TrainingWindowActionResponse,
@@ -130,6 +131,9 @@ export const Model = ts("AutopilotDesktop", {
   trainingRuns: S.NullOr(S.Unknown),
   trainingRunsStatus: TrainingRunsStatus,
   trainingRunsPending: S.Boolean,
+  trainingDashboard: S.NullOr(S.Unknown),
+  trainingDashboardStatus: TrainingRunsStatus,
+  trainingDashboardPending: S.Boolean,
   trainingPlan: S.NullOr(S.Unknown),
   trainingPlanStatus: TrainingPlanStatus,
   trainingPlanPending: S.Boolean,
@@ -165,6 +169,11 @@ export const modelNotifications = (model: Model): NotificationCenterView | null 
 
 export const modelTrainingRuns = (model: Model): TrainingRunsResponse | null =>
   model.trainingRuns as TrainingRunsResponse | null
+
+export const modelTrainingDashboard = (
+  model: Model,
+): TrainingDashboardSummaryResponse | null =>
+  model.trainingDashboard as TrainingDashboardSummaryResponse | null
 
 export const modelTrainingPlan = (model: Model): TrainingPlanResponse | null =>
   model.trainingPlan as TrainingPlanResponse | null
@@ -204,6 +213,9 @@ export const initialModel: Model = Model.make({
   trainingRuns: null,
   trainingRunsStatus: { text: "not loaded", tone: "idle" },
   trainingRunsPending: false,
+  trainingDashboard: null,
+  trainingDashboardStatus: { text: "not loaded", tone: "idle" },
+  trainingDashboardPending: false,
   trainingPlan: null,
   trainingPlanStatus: { text: "", tone: "idle" },
   trainingPlanPending: false,

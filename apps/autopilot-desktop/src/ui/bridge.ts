@@ -16,6 +16,7 @@
 
 import type { Message } from "./message"
 import type {
+  TrainingDashboardSummaryResponse,
   TrainingPlanResponse,
   TrainingRunsResponse,
   TrainingWindowActionResponse,
@@ -34,6 +35,9 @@ export type DesktopRequests = {
     body: string
   }): Promise<{ ok: boolean; status: string; error?: string }>
   listTrainingRuns(p: Record<string, never>): Promise<TrainingRunsResponse>
+  listTrainingDashboard(
+    p: Record<string, never>,
+  ): Promise<TrainingDashboardSummaryResponse>
   planTrainingRunWindow(
     p: Record<string, never>,
   ): Promise<TrainingPlanResponse>

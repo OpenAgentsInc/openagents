@@ -40,6 +40,7 @@ import type {
   IntentRow,
   NodeStateMessage,
   SessionEventRow,
+  TrainingLeaderboardLaneSummary,
   TrainingRunSummaryRow,
   TrainingRunsResponse,
 } from "../shared/rpc"
@@ -87,6 +88,7 @@ import {
   type PaneId,
   type SessionFilter,
   modelTrainingActivation,
+  modelTrainingDashboard,
   modelTrainingLease,
   modelNode,
   modelNotifications,
@@ -718,6 +720,109 @@ const selectedTrainingEvidencePanel = (
   ])
 }
 
+const dashboardGateTone = (
+  blockerRefs: readonly string[],
+  observedCount: number,
+): "ready" | "watch" | "blocked" =>
+  blockerRefs.length > 0 ? "blocked" : observedCount > 0 ? "ready" : "watch"
+
+const leaderboardGate = (lane: TrainingLeaderboardLaneSummary): Html => {
+  const top = lane.topRow
+  return trainingGate(
+    lane.title,
+    top === null
+      ? `${lane.blockerRefs.length} blockers`
+      : `#${top.rank} ${top.contributorRef} · ${top.scoreLabel || top.score}`,
+    lane.rowCount > 0 ? "ready" : dashboardGateTone(lane.blockerRefs, 0),
+  )
+}
+
+const trainingDashboardPanel = (model: Model): Html => {
+  const dashboard = modelTrainingDashboard(model)
+  const lanes = dashboard?.leaderboards.lanes ?? []
+  const rankedLaneCount = lanes.filter(lane => lane.rowCount > 0).length
+  const blockerCount = dashboard
+    ? [
+        ...dashboard.leaderboards.blockerRefs,
+        ...dashboard.a2.blockerRefs,
+        ...dashboard.a3.blockerRefs,
+        ...dashboard.a4.blockerRefs,
+        ...dashboard.a4.evalDeltaBonusBlockerRefs,
+        ...dashboard.a5.blockerRefs,
+      ].length
+    : 0
+  const laneRows =
+    lanes.length === 0
+      ? [trainingGate("leaderboards", "not loaded", "watch")]
+      : lanes.slice(0, 5).map(leaderboardGate)
+
+  return h.section([cls("training-panel training-dashboard-panel")], [
+    h.div([cls("training-panel-heading")], [
+      h.h2([cls("training-panel-title")], ["CS336 Dashboards"]),
+      h.span([cls("training-panel-kicker")], [
+        dashboard === null ? "public summaries" : dashboard.sourceUrl,
+      ]),
+    ]),
+    h.p(
+      [cls(`training-panel-copy training-${model.trainingDashboardStatus.tone}`)],
+      [model.trainingDashboardStatus.text],
+    ),
+    h.div([cls("training-metrics")], [
+      trainingMetric(
+        "ranked lanes",
+        `${rankedLaneCount}/${lanes.length}`,
+        rankedLaneCount > 0 ? "ready" : "watch",
+      ),
+      trainingMetric(
+        "A2 classes",
+        String(dashboard?.a2.observedDeviceClassCount ?? 0),
+        dashboard === null
+          ? "watch"
+          : dashboardGateTone(
+              dashboard.a2.blockerRefs,
+              dashboard.a2.observedDeviceClassCount,
+            ),
+      ),
+      trainingMetric(
+        "A3 cells",
+        `${dashboard?.a3.verifiedCellCount ?? 0}/${dashboard?.a3.cellCount ?? 0}`,
+        dashboard === null
+          ? "watch"
+          : dashboardGateTone(
+              dashboard.a3.blockerRefs,
+              dashboard.a3.verifiedCellCount,
+            ),
+      ),
+      trainingMetric(
+        "A4 stages",
+        `${dashboard?.a4.observedVerifiedStages.length ?? 0}/${dashboard?.a4.requiredVerifiedStageCount ?? 0}`,
+        dashboard === null
+          ? "watch"
+          : dashboardGateTone(
+              dashboard.a4.blockerRefs,
+              dashboard.a4.observedVerifiedStages.length,
+            ),
+      ),
+      trainingMetric(
+        "A5 suites",
+        `${dashboard?.a5.verifiedSuiteCount ?? 0}/${dashboard?.a5.evalSuiteCount ?? 0}`,
+        dashboard === null
+          ? "watch"
+          : dashboardGateTone(
+              dashboard.a5.blockerRefs,
+              dashboard.a5.verifiedSuiteCount,
+            ),
+      ),
+      trainingMetric(
+        "blockers",
+        String(blockerCount),
+        blockerCount === 0 ? "ready" : "blocked",
+      ),
+    ]),
+    h.ul([cls("training-gates training-dashboard-lanes")], laneRows),
+  ])
+}
+
 const trainingLaunchPanel = (model: Model): Html => {
   const plan = modelTrainingPlan(model)
   const lease = modelTrainingLease(model)?.lease ?? null
@@ -932,6 +1037,7 @@ const trainingPane = (model: Model): Html => {
       ]),
       h.div([cls("training-grid")], [
         liveTrainingProjectionPanel(model),
+        trainingDashboardPanel(model),
         selectedTrainingEvidencePanel(projection),
         h.section([cls("training-panel")], [
           h.h2([cls("training-panel-title")], ["Issue 4855 Gates"]),
