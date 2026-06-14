@@ -175,4 +175,54 @@ Ordered. Items needing the owner are flagged.
 
 ## Task 2 — shipped while offline (running log)
 
-(Appended below as bounded, verifiable items land on `main`.)
+Bounded, verifiable items shipped to `main` (each: scoped change, tsc + tests
+green, committed + pushed). Both are the honest Coder-Cloud follow-ups noted in
+the brief. No tracked issues existed for these (repo policy keeps such items in
+the Forum, not GitHub issues), so none to close.
+
+1. **Mobile: poll session list over the bridge credential** (`60b35d5b4`).
+   The session-list poll used the long-lived dev-token `/command` path even
+   when a capability-scoped bridge credential was established. Added
+   `fetchSessionRowsViaBridge` (projects the bridge-native `session.list`
+   `SessionSummary` into the `ControlSessionRow` shape the screens consume) and
+   made `ConnectionContext.poll` prefer it, falling back to the dev-token path
+   when no bridge credential is ready yet or the bridge read fails — the same
+   bridge-prefer pattern already used for cancel/events/decision dispatch.
+   Files: `src/control/control-client.ts`,
+   `src/connection/ConnectionContext.tsx`. `tsc --noEmit` clean; `bun test`
+   green (56 pass).
+
+2. **Mobile: dev-token-free bridge pairing from a bootstrap code** (`8628d12da`).
+   Added `connectBridgeWithBootstrap`: pair onto `/bridge` using a single-use
+   bootstrap decoded from a QR/pasted pairing code or URI (the
+   `autopilot://pair` URI, rendered text block, or raw `bootstrapId:secret`),
+   instead of minting the bootstrap over a dev token. Resolves the bootstrap's
+   tailnet/LAN/loopback address (tailnet-first), exchanges at `/bridge/pair`,
+   returns the paired session + resolved baseUrl with no dev token on the wire.
+   Makes the previously-dead `createPairingFlow` machinery reachable and gives a
+   QR-scanner UI a concrete API to call. Refactored `connectBridge` to share a
+   `pairBridgeWithBootstrap` tail (no behavior change on the dev-token path).
+   New unit tests mock global `fetch` (no node/device): success returns the
+   tailnet base + pairing ref; undecodable code → null without any fetch;
+   rejected exchange → null. Files: `src/control/control-client.ts`,
+   `src/control/bridge-bootstrap.test.ts`. `tsc --noEmit` clean; `bun test`
+   green (59 pass, +3).
+
+   Remaining for full dev-token-free QR pairing (NEEDS-DEVICE, not shipped):
+   a camera QR-scanner component (no camera dep installed) + a `ConnectionContext`
+   path that connects from a stored pairing credential rather than a dev token.
+   Deferred deliberately — that change needs on-device verification I cannot do
+   while the owner is traveling, and risks breaking the working connect flow.
+
+### Repo-health notes (no change shipped)
+
+- `packages/autopilot-control-protocol`: `bun test` green (748 pass). Its
+  `npm run typecheck` (`tsc -p tsconfig.json`) reports many **pre-existing**
+  `node16` "needs `.js` extension" errors across test files — a repo-wide
+  config state, not introduced here, and out of scope to flip (bun runs the
+  `.ts` directly). Left untouched.
+- `cloud/openagents-cloud-contract`: `cargo fmt/check/test` green (32 pass)
+  after the Task 0 SHC-invoice change.
+- GCE hygiene re-verified at finish: zero `oa-codex-sess*` instances in the
+  accessible Compute-enabled projects (`openagentsgemini`, `openagents-lyra`).
+  No GCE VM created this session.
