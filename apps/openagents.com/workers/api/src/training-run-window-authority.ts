@@ -8,6 +8,10 @@ import {
   parseJsonStringArray,
   stringArrayFromUnknown,
 } from './json-boundary'
+import {
+  type PublicProjectionStalenessContract,
+  liveAtReadStaleness,
+} from './public-projection-staleness'
 import { isoTimestampAfterIso } from './runtime-primitives'
 import {
   type TrainingVerificationChallengeRecord,
@@ -164,7 +168,48 @@ export const TrainingWindowSealMetadata = S.Struct({
 export type TrainingWindowSealMetadata =
   typeof TrainingWindowSealMetadata.Type
 
+/**
+ * Typed caveat raised when a run is still `planned` while one or more of its
+ * windows has reconciled. The public run projection must carry this blocker so
+ * a reconciled-but-not-promoted run never reads as a clean `planned` state
+ * (#5006). The run state-transition route (planned -> active -> ...) clears it.
+ */
+export const TrainingRunPlannedWithReconciledWindowsBlocker =
+  'blocker.training.run_state_planned_with_reconciled_windows'
+
+const ManifestText = NonEmptyTrimmedString.check(S.isMaxLength(600))
+
+/**
+ * Public-safe launch manifest for a training run (#5006). Every field is
+ * optional so runs created before the manifest existed still decode. No raw
+ * prompts, wallet material, hostnames, tokens, invoices, preimages, or local
+ * paths belong here; refs are public-safe.
+ */
+export const TrainingRunManifest = S.Struct({
+  abortRule: S.optionalKey(ManifestText),
+  admissionRule: S.optionalKey(ManifestText),
+  artifactDigestRefs: PublicSafeRefs,
+  blockerRefs: PublicSafeRefs,
+  maxParticipants: S.optionalKey(
+    S.Number.check(S.isInt(), S.isBetween({ minimum: 1, maximum: 100_000_000 })),
+  ),
+  objective: S.optionalKey(ManifestText),
+  paymentMode: S.optionalKey(PublicSafeRef),
+  settlementState: S.optionalKey(PublicSafeRef),
+  spendCapSats: S.optionalKey(
+    S.Number.check(
+      S.isInt(),
+      S.isBetween({ minimum: 0, maximum: 1_000_000_000 }),
+    ),
+  ),
+  statusUrl: S.optionalKey(PublicSafeRef),
+  verifierPolicy: S.optionalKey(PublicSafeRef),
+  workloadFamily: S.optionalKey(PublicSafeRef),
+})
+export type TrainingRunManifest = typeof TrainingRunManifest.Type
+
 export const TrainingRunPlanRequest = S.Struct({
+  manifest: S.optionalKey(TrainingRunManifest),
   maxAllowedStale: S.optionalKey(
     S.Number.check(S.isInt(), S.isBetween({ minimum: 1, maximum: 100_000 })),
   ),
@@ -177,6 +222,13 @@ export const TrainingRunPlanRequest = S.Struct({
   trainingRunRef: S.optionalKey(PublicSafeRef),
 })
 export type TrainingRunPlanRequest = typeof TrainingRunPlanRequest.Type
+
+export const TrainingRunTransitionRequest = S.Struct({
+  actorRef: S.optionalKey(PublicSafeRef),
+  receiptRef: PublicSafeRef,
+})
+export type TrainingRunTransitionRequest =
+  typeof TrainingRunTransitionRequest.Type
 
 export const TrainingWindowPlanRequest = S.Struct({
   datasetRefs: PublicSafeRefs,
@@ -208,6 +260,7 @@ export type TrainingWindowLeaseClaimRequest =
 export type TrainingRunRecord = Readonly<{
   createdAt: string
   id: string
+  manifest: TrainingRunManifest | null
   maxAllowedStale: number
   promiseRef: string
   publicProjectionJson: string
@@ -264,13 +317,18 @@ export type TrainingWindowEventRecord = Readonly<{
 }>
 
 export type TrainingRunProjection = Readonly<{
+  blockers: ReadonlyArray<string>
   createdAtDisplay: string
+  generatedAt: string
+  manifest: TrainingRunManifest | null
   maxAllowedStale: number
+  maxStalenessSeconds: number
   promiseRef: string
   receiptRefs: ReadonlyArray<string>
   sealInFlight: boolean
   sealPublicationCadenceWindows: number
   sourceRefs: ReadonlyArray<string>
+  staleness: PublicProjectionStalenessContract
   state: TrainingRunState
   trainingRunRef: string
   updatedAtDisplay: string
@@ -425,6 +483,7 @@ export type TrainingAuthorityStore = Readonly<{
   planRun: (run: TrainingRunRecord) => Promise<TrainingRunRecord>
   planWindow: (window: TrainingWindowRecord) => Promise<TrainingWindowRecord>
   readRun: (trainingRunRef: string) => Promise<TrainingRunRecord | undefined>
+  transitionRun: (run: TrainingRunRecord) => Promise<TrainingRunRecord>
   readWindow: (windowRef: string) => Promise<TrainingWindowRecord | undefined>
   transitionWindow: (
     window: TrainingWindowRecord,
@@ -449,6 +508,7 @@ export class TrainingAuthorityStoreError extends S.TaggedErrorClass<TrainingAuth
 export type TrainingRunRow = Readonly<{
   created_at: string
   id: string
+  manifest_json: string | null
   max_allowed_stale: number
   promise_ref: string
   public_projection_json: string
@@ -527,27 +587,91 @@ export const selectTrainingLeaseCandidate = (
     return left.plannedAt.localeCompare(right.plannedAt)
   })[0]
 
+const trainingRunProjectionStaleness = (): PublicProjectionStalenessContract =>
+  liveAtReadStaleness([
+    'training_run_state_transition_recorded',
+    'training_window_state_transition_recorded',
+    'training_run_evidence_attached',
+  ])
+
 export const publicTrainingRunProjection = (
   record: TrainingRunRecord,
   nowIso: string,
-): TrainingRunProjection => ({
-  createdAtDisplay: friendlyBlueprintMissionBriefingTime(
-    record.createdAt,
-    nowIso,
-  ),
-  maxAllowedStale: record.maxAllowedStale,
-  promiseRef: record.promiseRef,
-  receiptRefs: uniqueRefs(record.receiptRefs),
-  sealInFlight: record.sealInFlightAt !== null,
-  sealPublicationCadenceWindows: record.sealPublicationCadenceWindows,
-  sourceRefs: uniqueRefs(record.sourceRefs),
-  state: record.state,
-  trainingRunRef: record.trainingRunRef,
-  updatedAtDisplay: friendlyBlueprintMissionBriefingTime(
-    record.updatedAt,
-    nowIso,
-  ),
-})
+  extraBlockers: ReadonlyArray<string> = [],
+): TrainingRunProjection => {
+  const staleness = trainingRunProjectionStaleness()
+
+  return {
+    blockers: uniqueRefs([
+      ...(record.manifest?.blockerRefs ?? []),
+      ...extraBlockers,
+    ]),
+    createdAtDisplay: friendlyBlueprintMissionBriefingTime(
+      record.createdAt,
+      nowIso,
+    ),
+    generatedAt: nowIso,
+    manifest: record.manifest,
+    maxAllowedStale: record.maxAllowedStale,
+    maxStalenessSeconds: staleness.maxStalenessSeconds,
+    promiseRef: record.promiseRef,
+    receiptRefs: uniqueRefs(record.receiptRefs),
+    sealInFlight: record.sealInFlightAt !== null,
+    sealPublicationCadenceWindows: record.sealPublicationCadenceWindows,
+    sourceRefs: uniqueRefs(record.sourceRefs),
+    staleness,
+    state: record.state,
+    trainingRunRef: record.trainingRunRef,
+    updatedAtDisplay: friendlyBlueprintMissionBriefingTime(
+      record.updatedAt,
+      nowIso,
+    ),
+  }
+}
+
+/**
+ * Run-level state transition (#5006). Allowed edges mirror the window
+ * lifecycle: planned -> active -> sealed -> reconciled. The run row's CHECK
+ * constraint enforces the same four states. Returns the next record with its
+ * receipt appended and projection regenerated; the route persists it through
+ * `transitionRun`.
+ */
+export const transitionTrainingRunRecord = (
+  input: Readonly<{
+    nextState: TrainingRunState
+    nowIso: string
+    receiptRef: string
+    run: TrainingRunRecord
+  }>,
+): Readonly<{ run: TrainingRunRecord }> => {
+  const allowed =
+    (input.run.state === 'planned' && input.nextState === 'active') ||
+    (input.run.state === 'active' && input.nextState === 'sealed') ||
+    (input.run.state === 'sealed' && input.nextState === 'reconciled')
+
+  if (!allowed) {
+    throw new TrainingAuthorityStoreError({
+      kind: 'conflict',
+      reason: `Cannot transition training run from ${input.run.state} to ${input.nextState}.`,
+    })
+  }
+
+  const nextRun: TrainingRunRecord = {
+    ...input.run,
+    receiptRefs: uniqueRefs([...input.run.receiptRefs, input.receiptRef]),
+    state: input.nextState,
+    updatedAt: input.nowIso,
+  }
+
+  return {
+    run: {
+      ...nextRun,
+      publicProjectionJson: JSON.stringify(
+        publicTrainingRunProjection(nextRun, input.nowIso),
+      ),
+    },
+  }
+}
 
 export const publicTrainingWindowProjection = (
   record: TrainingWindowRecord,
@@ -910,7 +1034,14 @@ export const publicTrainingRunSummary = (
     },
     realGradient: publicRealGradientStatus(input),
     receiptRefs,
-    run: publicTrainingRunProjection(input.run, input.nowIso),
+    run: publicTrainingRunProjection(
+      input.run,
+      input.nowIso,
+      input.run.state === 'planned' &&
+        input.windows.some(window => window.state === 'reconciled')
+        ? [TrainingRunPlannedWithReconciledWindowsBlocker]
+        : [],
+    ),
     sourceRefs,
     windows: windowProjections,
   }
@@ -927,6 +1058,7 @@ export const buildTrainingRunRecord = (
   const record: TrainingRunRecord = {
     createdAt: input.nowIso,
     id: `training_run_${id}`,
+    manifest: input.request.manifest ?? null,
     maxAllowedStale: input.request.maxAllowedStale ?? DefaultMaxAllowedStaleSteps,
     promiseRef: input.request.promiseRef,
     publicProjectionJson: '{}',
@@ -1271,6 +1403,20 @@ const decodeTrainingWindowSealMetadataOption = S.decodeUnknownOption(
   TrainingWindowSealMetadata,
 )
 
+const decodeTrainingRunManifestOption = S.decodeUnknownOption(
+  TrainingRunManifest,
+)
+
+const manifestFromJson = (
+  value: string | null,
+): TrainingRunManifest | null => {
+  const record = parseJsonRecord(value)
+
+  return record === undefined
+    ? null
+    : Option.getOrNull(decodeTrainingRunManifestOption(record))
+}
+
 const sealMetadataFromJson = (
   value: string | null,
 ): TrainingWindowSealMetadata | null => {
@@ -1284,6 +1430,7 @@ const sealMetadataFromJson = (
 export const rowToTrainingRun = (row: TrainingRunRow): TrainingRunRecord => ({
   createdAt: row.created_at,
   id: row.id,
+  manifest: manifestFromJson(row.manifest_json ?? null),
   maxAllowedStale: row.max_allowed_stale ?? DefaultMaxAllowedStaleSteps,
   promiseRef: row.promise_ref,
   publicProjectionJson: row.public_projection_json,
@@ -1505,10 +1652,10 @@ export const makeD1TrainingAuthorityStore = (
       .prepare(
         `INSERT INTO training_runs
           (id, training_run_ref, promise_ref, state, max_allowed_stale,
-           seal_publication_cadence_windows, seal_in_flight_at,
+           seal_publication_cadence_windows, seal_in_flight_at, manifest_json,
            source_refs_json, receipt_refs_json, public_projection_json,
            created_at, updated_at, archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
       .bind(
         run.id,
@@ -1518,6 +1665,7 @@ export const makeD1TrainingAuthorityStore = (
         run.maxAllowedStale,
         run.sealPublicationCadenceWindows,
         run.sealInFlightAt,
+        run.manifest === null ? null : JSON.stringify(run.manifest),
         JSON.stringify(run.sourceRefs),
         JSON.stringify(run.receiptRefs),
         run.publicProjectionJson,
@@ -1587,6 +1735,35 @@ export const makeD1TrainingAuthorityStore = (
       .first<TrainingWindowRow>()
 
     return row === null ? undefined : rowToTrainingWindow(row)
+  },
+  transitionRun: async run => {
+    const result = await db
+      .prepare(
+        `UPDATE training_runs
+            SET state = ?,
+                receipt_refs_json = ?,
+                public_projection_json = ?,
+                updated_at = ?
+          WHERE training_run_ref = ?
+            AND archived_at IS NULL`,
+      )
+      .bind(
+        run.state,
+        JSON.stringify(run.receiptRefs),
+        run.publicProjectionJson,
+        run.updatedAt,
+        run.trainingRunRef,
+      )
+      .run()
+
+    if ((result.meta?.changes ?? 0) === 0) {
+      throw new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found for state transition.',
+      })
+    }
+
+    return run
   },
   transitionWindow: async (window, event) => {
     await db.batch([

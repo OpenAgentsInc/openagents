@@ -171,6 +171,11 @@ const makeMemoryStore = (): MemoryTrainingAuthorityStore => {
     },
     readRun: async trainingRunRef => runs.get(trainingRunRef),
     readWindow: async windowRef => windows.get(windowRef),
+    transitionRun: async run => {
+      runs.set(run.trainingRunRef, run)
+
+      return run
+    },
     transitionWindow: async (window, event) => {
       windows.set(window.windowRef, window)
       events.push(event)
@@ -520,6 +525,66 @@ describe('training run window routes', () => {
         settledPayoutSats: 0,
       }),
     ])
+  })
+
+  it('transitions a run planned -> active through the run state-transition route (#5006)', async () => {
+    const store = makeMemoryStore()
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => 'tassadar',
+      makeStore: () => store,
+      nowIso: () => '2026-06-14T10:00:00.000Z',
+      requireAdminApiToken: async () => true,
+    })
+
+    await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/runs', {
+          manifest: {
+            verifierPolicy: 'exact_trace_replay',
+            workloadFamily: 'executor-trace',
+          },
+          promiseRef: 'training.monday_decentralized_training_launch.v1',
+          trainingRunRef: 'run.tassadar.executor.20260615',
+        }),
+        {},
+      ),
+    )
+
+    const activated = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          '/api/training/runs/run.tassadar.executor.20260615/activate',
+          { receiptRef: 'approval.operator.20260614.tassadar_run_authority' },
+        ),
+        {},
+      ),
+    )
+    const activatedBody = (await activated.json()) as {
+      run: {
+        generatedAt: string
+        manifest: { workloadFamily?: string } | null
+        maxStalenessSeconds: number
+        state: string
+      }
+    }
+
+    expect(activated.status).toBe(200)
+    expect(activatedBody.run.state).toBe('active')
+    expect(activatedBody.run.manifest?.workloadFamily).toBe('executor-trace')
+    expect(activatedBody.run.maxStalenessSeconds).toBe(0)
+    expect(activatedBody.run.generatedAt).toBe('2026-06-14T10:00:00.000Z')
+
+    const illegal = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          '/api/training/runs/run.tassadar.executor.20260615/activate',
+          { receiptRef: 'approval.operator.20260614.again' },
+        ),
+        {},
+      ),
+    )
+
+    expect(illegal.status).toBe(409)
   })
 
   it('returns an honest idle empty state for runs with no windows or verification data', async () => {

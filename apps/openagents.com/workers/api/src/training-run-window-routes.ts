@@ -22,6 +22,8 @@ import {
   type TrainingAuthorityStore,
   TrainingAuthorityStoreError,
   TrainingRunPlanRequest,
+  type TrainingRunState,
+  TrainingRunTransitionRequest,
   TrainingWindowLeaseClaimRequest,
   TrainingWindowPlanRequest,
   type TrainingWindowState,
@@ -34,6 +36,7 @@ import {
   publicTrainingWindowProjection,
   selectTrainingLeaseCandidate,
   trainingAuthorityStoreErrorFromUnknown,
+  transitionTrainingRunRecord,
   transitionTrainingWindowRecord,
 } from './training-run-window-authority'
 import {
@@ -286,6 +289,50 @@ const routeTransitionWindow = <Bindings extends TrainingRunWindowRouteEnv>(
 
     return noStoreJsonResponse({
       window: publicTrainingWindowProjection(stored, nowIso),
+    })
+  })
+
+const routeTransitionRun = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  trainingRunRef: string,
+  nextState: TrainingRunState,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* decodeBody(request, TrainingRunTransitionRequest)
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const current = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(trainingRunRef),
+    })
+
+    if (current === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const transitioned = yield* Effect.try({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () =>
+        transitionTrainingRunRecord({
+          nextState,
+          nowIso,
+          receiptRef: body.receiptRef,
+          run: current,
+        }),
+    })
+    const stored = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.transitionRun(transitioned.run),
+    })
+
+    return noStoreJsonResponse({
+      run: publicTrainingRunProjection(stored, nowIso),
     })
   })
 
@@ -1497,6 +1544,33 @@ export const makeTrainingRunWindowRoutes = <
         request,
         env,
         decodeURIComponent(alignmentEvidenceMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const runTransitionMatch =
+      /^\/api\/training\/runs\/([^/]+)\/(activate|seal|reconcile)$/.exec(
+        url.pathname,
+      )
+
+    if (runTransitionMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      const action = runTransitionMatch[2]!
+      const nextState: TrainingRunState =
+        action === 'activate'
+          ? 'active'
+          : action === 'seal'
+            ? 'sealed'
+            : 'reconciled'
+
+      return routeTransitionRun(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(runTransitionMatch[1]!),
+        nextState,
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 

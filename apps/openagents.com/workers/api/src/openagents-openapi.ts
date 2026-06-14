@@ -1725,7 +1725,10 @@ const requestSchemas = (): JsonSchema => ({
     'Registered Pylon worker closeout report with public-safe closeoutRefs, resultRefs, summaryRefs, artifactRefs, proofRefs, buildRefs, testRefs, previewRefs, blockerRefs, and optional status. Worker closeout records closeout_submitted evidence only; accepted-work closeout, payout, and settlement remain separate operator-gated decisions.',
   ),
   TrainingRunPlanRequest: objectSummary(
-    'Admin-only request to plan a D1-authoritative training run linked to a promiseRef with public-safe sourceRefs and receiptRefs.',
+    'Admin-only request to plan a D1-authoritative training run linked to a promiseRef with public-safe sourceRefs and receiptRefs, plus an optional public-safe launch manifest.',
+  ),
+  TrainingRunTransitionRequest: objectSummary(
+    'Admin-only request to activate, seal, or reconcile a training run with a public-safe receiptRef and optional actorRef.',
   ),
   TrainingWindowPlanRequest: objectSummary(
     'Admin-only request to plan a training window for a trainingRunRef, including homeworkKind, priority, datasetRefs, sourceRefs, and receiptRefs as public-safe refs only.',
@@ -3287,6 +3290,69 @@ const paths = (): JsonSchema => ({
       tags: ['Training'],
       security: publicRead,
       parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      responses: {
+        '200': okJson(
+          'Training run projection.',
+          '#/components/schemas/TrainingRunEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/activate': {
+    post: operation({
+      operationId: 'activateTrainingRun',
+      summary: 'Activate training run',
+      description:
+        'Admin-only run-level transition from planned to active (#5006). Moves a run off planned so the public projection reports a live, running state with its launch manifest; the receiptRef is appended and the projection regenerated.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingRunTransitionRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Training run projection.',
+          '#/components/schemas/TrainingRunEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/seal': {
+    post: operation({
+      operationId: 'sealTrainingRun',
+      summary: 'Seal training run',
+      description:
+        'Admin-only run-level transition from active to sealed (#5006). The receiptRef is appended and the public run projection regenerated.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingRunTransitionRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Training run projection.',
+          '#/components/schemas/TrainingRunEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/reconcile': {
+    post: operation({
+      operationId: 'reconcileTrainingRun',
+      summary: 'Reconcile training run',
+      description:
+        'Admin-only run-level transition from sealed to reconciled (#5006). The receiptRef is appended and the public run projection regenerated.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingRunTransitionRequest',
+      ),
       responses: {
         '200': okJson(
           'Training run projection.',

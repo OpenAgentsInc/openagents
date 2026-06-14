@@ -21,6 +21,7 @@ const makeRun = (
 ): TrainingRunRecord => ({
   createdAt: nowIso,
   id: 'run-1',
+  manifest: null,
   maxAllowedStale: 5,
   promiseRef: 'promise.training.4673',
   publicProjectionJson: '{}',
