@@ -13,6 +13,11 @@ export const AutopilotWorkDetailRoute = r('AutopilotWorkDetail', {
   workOrderRef: S.String,
 })
 export const DecisionsRoute = r('Decisions')
+export const WorkroomRoute = r('Workroom', { workroomId: S.String })
+export const WorkroomTabRoute = r('WorkroomTab', {
+  tab: S.String,
+  workroomId: S.String,
+})
 export const ChatRoute = r('Chat')
 export const TeamChatRoute = r('TeamChat', { teamRef: S.String })
 export const TeamProjectChatRoute = r('TeamProjectChat', {
@@ -91,6 +96,8 @@ export type OrderDetailRoute = typeof OrderDetailRoute.Type
 export type AutopilotWorkRoute = typeof AutopilotWorkRoute.Type
 export type AutopilotWorkDetailRoute = typeof AutopilotWorkDetailRoute.Type
 export type DecisionsRoute = typeof DecisionsRoute.Type
+export type WorkroomRoute = typeof WorkroomRoute.Type
+export type WorkroomTabRoute = typeof WorkroomTabRoute.Type
 export type ChatRoute = typeof ChatRoute.Type
 export type TeamChatRoute = typeof TeamChatRoute.Type
 export type TeamProjectChatRoute = typeof TeamProjectChatRoute.Type
@@ -173,6 +180,8 @@ export const LoggedInRoute = S.Union([
   AutopilotWorkRoute,
   AutopilotWorkDetailRoute,
   DecisionsRoute,
+  WorkroomRoute,
+  WorkroomTabRoute,
   ChatRoute,
   TeamChatRoute,
   TeamProjectChatRoute,
@@ -214,6 +223,8 @@ export const AppRoute = S.Union([
   AutopilotWorkRoute,
   AutopilotWorkDetailRoute,
   DecisionsRoute,
+  WorkroomRoute,
+  WorkroomTabRoute,
   ChatRoute,
   TeamChatRoute,
   TeamProjectChatRoute,
@@ -294,6 +305,17 @@ export const autopilotWorkDetailRouter = pipe(
 export const decisionsRouter = pipe(
   literal('decisions'),
   Route.mapTo(DecisionsRoute),
+)
+export const workroomRouter = pipe(
+  literal('workrooms'),
+  slash(string('workroomId')),
+  Route.mapTo(WorkroomRoute),
+)
+export const workroomTabRouter = pipe(
+  literal('workrooms'),
+  slash(string('workroomId')),
+  slash(string('tab')),
+  Route.mapTo(WorkroomTabRoute),
 )
 export const teamChatRouter = pipe(
   literal('teams'),
@@ -529,6 +551,8 @@ const routeParser = Route.oneOf(
   autopilotWorkDetailRouter,
   autopilotWorkRouter,
   decisionsRouter,
+  workroomTabRouter,
+  workroomRouter,
   orderDetailRouter,
   orderRouter,
   teamProjectChatRouter,
