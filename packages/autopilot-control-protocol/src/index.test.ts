@@ -36,6 +36,47 @@ describe("control schema", () => {
     expect(spawn.type).toBe("session.spawn")
     expect(() => decodeControlCommand({ type: "session.nope" })).toThrow()
   })
+
+  // #4998: the lane selector defaults to `auto`, accepts the enum, rejects junk.
+  test("spawn lane defaults to auto and accepts the lane enum", () => {
+    const defaulted = decodeControlCommand({
+      type: "session.spawn",
+      adapter: "codex",
+      objective: "x",
+      verify: ["bun", "test"],
+    })
+    expect(defaulted.type === "session.spawn" && defaulted.lane).toBe("auto")
+
+    for (const lane of ["auto", "local", "cloud-gcp", "cloud-shc"] as const) {
+      const decoded = decodeControlCommand({
+        type: "session.spawn",
+        adapter: "codex",
+        objective: "x",
+        verify: ["bun", "test"],
+        lane,
+      })
+      expect(decoded.type === "session.spawn" && decoded.lane).toBe(lane)
+    }
+
+    expect(() =>
+      decodeControlCommand({
+        type: "session.spawn",
+        adapter: "codex",
+        objective: "x",
+        verify: ["bun", "test"],
+        lane: "cloud-aws",
+      }),
+    ).toThrow()
+  })
+
+  // #4998: a session summary carries its recorded lane through decode.
+  test("session summary round-trips an optional lane", () => {
+    const base = sessionListFixture[0]
+    const withLane = decodeSessionSummary({ ...base, lane: "cloud-gcp" })
+    expect(withLane.lane).toBe("cloud-gcp")
+    const withoutLane = decodeSessionSummary(base)
+    expect(withoutLane.lane).toBeUndefined()
+  })
 })
 
 describe("cursor / dedup / resume", () => {

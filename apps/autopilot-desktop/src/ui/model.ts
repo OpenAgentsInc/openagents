@@ -126,6 +126,9 @@ export const Model = ts("AutopilotDesktop", {
   spawnAdapter: S.Literals(["codex", "claude_agent"]),
   spawnObjective: S.String,
   spawnVerify: S.String,
+  // #4998: requested execution lane for the spawn form. Default `auto`
+  // (own-Pylon-first then cloud-gcp); cloud-gcp = Google GCE, cloud-shc = SHC.
+  spawnLane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
   spawnStatus: SpawnStatus,
   spawnPending: S.Boolean,
 
@@ -264,6 +267,7 @@ export const initialModel: Model = Model.make({
   spawnAdapter: "codex",
   spawnObjective: "",
   spawnVerify: "",
+  spawnLane: "auto",
   spawnStatus: { text: "", tone: "idle" },
   spawnPending: false,
   askTitle: "",

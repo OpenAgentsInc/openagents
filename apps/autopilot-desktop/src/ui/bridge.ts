@@ -84,6 +84,8 @@ export type DesktopRequests = {
     adapter: "codex" | "claude_agent"
     objective: string
     verify?: string[]
+    // #4998: requested execution lane (auto|local|cloud-gcp|cloud-shc).
+    lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
   }): Promise<{ ok: boolean; sessionRef: string; error?: string }>
 }
 

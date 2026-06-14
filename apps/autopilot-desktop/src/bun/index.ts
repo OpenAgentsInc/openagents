@@ -304,6 +304,8 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           adapter: params.adapter,
           objective: params.objective,
           ...(params.verify ? { verify: params.verify } : {}),
+          // #4998: thread the requested execution lane through to the node.
+          ...(params.lane ? { lane: params.lane } : {}),
         })
       },
     },

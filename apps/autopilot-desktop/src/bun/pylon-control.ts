@@ -582,6 +582,9 @@ export async function spawnSession(input: {
   adapter: "codex" | "claude_agent"
   objective: string
   verify?: string[]
+  // #4998: requested execution lane (auto|local|cloud-gcp|cloud-shc). Optional;
+  // when omitted the node defaults to `auto`.
+  lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
   fetchFn?: typeof fetch
 }): Promise<{ ok: boolean; sessionRef: string; error?: string }> {
   const fetchFn = input.fetchFn ?? fetch
@@ -589,7 +592,13 @@ export async function spawnSession(input: {
     const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
       method: "POST",
       headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
-      body: JSON.stringify({ type: "session.spawn", adapter: input.adapter, objective: input.objective, verify: input.verify ?? [] }),
+      body: JSON.stringify({
+        type: "session.spawn",
+        adapter: input.adapter,
+        objective: input.objective,
+        verify: input.verify ?? [],
+        ...(input.lane ? { lane: input.lane } : {}),
+      }),
     })
     if (!res.ok) return { ok: false, sessionRef: "", error: `control ${res.status}` }
     const json = (await res.json()) as { ok?: unknown; result?: { sessionRef?: unknown } }

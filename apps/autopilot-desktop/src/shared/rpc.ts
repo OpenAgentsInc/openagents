@@ -615,8 +615,16 @@ export type DesktopRPCSchema = {
         readonly response: { ok: boolean; state: string }
       }
       // CL-57: directly spawn a bounded session on the node.
+      // #4998: `lane` selects the execution lane (auto|local|cloud-gcp|cloud-shc,
+      // default auto = own-Pylon-first then cloud-gcp). Optional for backward
+      // compat; omitted means the node defaults to auto.
       readonly spawnSession: {
-        readonly params: { adapter: "codex" | "claude_agent"; objective: string; verify?: string[] }
+        readonly params: {
+          adapter: "codex" | "claude_agent"
+          objective: string
+          verify?: string[]
+          lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
+        }
         readonly response: { ok: boolean; sessionRef: string; error?: string }
       }
     }

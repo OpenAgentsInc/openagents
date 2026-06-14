@@ -1,4 +1,4 @@
-import { Schema as S } from "effect"
+import { Effect, Schema as S } from "effect"
 
 // The shared Autopilot control protocol — the typed vocabulary every client
 // (web / desktop / mobile) speaks to a Pylon node. This is the package-level
@@ -9,6 +9,23 @@ export const CONTROL_SCHEMA_TAG = "openagents.pylon.control.v0.3" as const
 
 export const Adapter = S.Literals(["codex", "claude_agent"])
 export type Adapter = typeof Adapter.Type
+
+// Execution lane for a spawned session (#4998). Owner direction:
+//   - `auto`       — own-Pylon-first-and-free, then overflow to cloud-gcp
+//   - `local`      — run on the local Pylon node (today's behavior)
+//   - `cloud-gcp`  — OpenAgents Cloud on Google GCE (the default cloud lane)
+//   - `cloud-shc`  — OpenAgents Cloud SHC capacity (the cloud fallback)
+// Full cloud dispatch is tracked by #4997; this enum is the typed selector that
+// round-trips through spawn so the requested lane is recorded on the session.
+export const SessionLane = S.Literals([
+  "auto",
+  "local",
+  "cloud-gcp",
+  "cloud-shc",
+])
+export type SessionLane = typeof SessionLane.Type
+
+export const DEFAULT_SESSION_LANE: SessionLane = "auto"
 
 export const SessionState = S.Literals([
   "queued",
@@ -39,6 +56,10 @@ export const SessionSummary = S.Struct({
   parentRef: S.optional(S.String),
   agentKind: S.optional(S.String),
   pylonManaged: S.optional(S.Boolean),
+  // Requested execution lane this session was spawned with (#4998). Optional so
+  // older nodes that do not record a lane still decode; surfaces the
+  // "running on Google GCE / SHC / local" provenance to clients.
+  lane: S.optional(SessionLane),
   updatedAt: S.String,
 })
 export type SessionSummary = typeof SessionSummary.Type
@@ -79,6 +100,12 @@ export const SpawnCommand = S.Struct({
   verify: S.Array(S.String),
   worktreePath: S.optional(S.String),
   timeoutSeconds: S.optional(S.Number),
+  // Requested execution lane (#4998). Optional on the wire for backward compat;
+  // when the key is absent the node treats it as `auto` (own-Pylon-first, then
+  // cloud-gcp). Effect 4 fills the decoded default via `withDecodingDefaultKey`.
+  lane: SessionLane.pipe(
+    S.withDecodingDefaultKey(Effect.succeed(DEFAULT_SESSION_LANE)),
+  ),
 })
 export const ListCommand = S.Struct({ type: S.Literal("session.list") })
 export const EventsCommand = S.Struct({

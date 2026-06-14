@@ -48,6 +48,23 @@ export const CONTROL_SESSION_FAILURE_SCHEMA = "openagents.pylon.control_session_
 
 type ControlSessionRepositoryRef = GitCheckoutWorkspace["repository"]
 
+// Requested execution lane for a control session (#4998). Owner direction:
+//   - `auto`       — own-Pylon-first-and-free, then overflow to `cloud-gcp`
+//   - `local`      — run on this local Pylon node (today's behavior)
+//   - `cloud-gcp`  — OpenAgents Cloud on Google GCE (the default cloud lane)
+//   - `cloud-shc`  — OpenAgents Cloud SHC capacity (the cloud fallback)
+// Full cloud dispatch is tracked by #4997. Here we accept, default, persist, and
+// surface the requested lane so it round-trips on the session record; `local`
+// and `auto` (resolved local) execute as today.
+export type ControlSessionLane = "auto" | "local" | "cloud-gcp" | "cloud-shc"
+export const DEFAULT_CONTROL_SESSION_LANE: ControlSessionLane = "auto"
+const CONTROL_SESSION_LANES: readonly ControlSessionLane[] = [
+  "auto",
+  "local",
+  "cloud-gcp",
+  "cloud-shc",
+]
+
 export type ControlSessionSpawnCommand = {
   type: "session.spawn"
   adapter: PylonComposerAdapter
@@ -61,6 +78,7 @@ export type ControlSessionSpawnCommand = {
   objective: string
   verify: string[]
   timeoutSeconds?: number
+  lane?: ControlSessionLane
 }
 
 export type ControlSessionListCommand = { type: "session.list" }
@@ -112,6 +130,10 @@ export type ControlSessionEvent = {
 export type ControlSessionProjection = {
   sessionRef: string
   adapter: PylonComposerAdapter
+  // Requested execution lane (#4998), surfaced for "running on Google GCE / SHC
+  // / local" provenance. `auto`/`local` execute locally today; cloud lanes are
+  // recorded pending full cloud dispatch (#4997).
+  lane: ControlSessionLane
   account: PublicPylonAccountSelection | null
   workspaceRef: string
   objectiveDigestRef: string
@@ -212,6 +234,7 @@ export function codexControlSessionExecutionSettings(
 type SessionRecord = {
   sessionRef: string
   adapter: PylonComposerAdapter
+  lane: ControlSessionLane
   account: ResolvedPylonAccountSelection | null
   workspace: WorkspaceSelection
   objective: string
@@ -277,6 +300,17 @@ function rejectDangerFields(record: Record<string, unknown>) {
   }
 }
 
+function parseLane(value: unknown): ControlSessionLane {
+  if (value === undefined || value === null) return DEFAULT_CONTROL_SESSION_LANE
+  if (
+    typeof value === "string" &&
+    (CONTROL_SESSION_LANES as readonly string[]).includes(value)
+  ) {
+    return value as ControlSessionLane
+  }
+  throw new Error("session.spawn lane must be one of auto|local|cloud-gcp|cloud-shc")
+}
+
 function parseSpawnCommand(raw: ControlSessionSpawnCommand): ControlSessionSpawnCommand {
   const record = raw as Record<string, unknown>
   rejectDangerFields(record)
@@ -304,9 +338,11 @@ function parseSpawnCommand(raw: ControlSessionSpawnCommand): ControlSessionSpawn
   if (repoRef !== undefined && worktreePath !== undefined) {
     throw new Error("session.spawn must use only one workspace selector")
   }
+  const lane = parseLane(raw.lane)
   return {
     type: "session.spawn",
     adapter: raw.adapter,
+    lane,
     ...(typeof raw.accountRef === "string" ? { accountRef: raw.accountRef } : {}),
     ...(typeof raw.accountHome === "string" ? { accountHome: raw.accountHome } : {}),
     ...(typeof raw.codexHome === "string" ? { codexHome: raw.codexHome } : {}),
@@ -325,6 +361,7 @@ function projectionFor(record: SessionRecord): ControlSessionProjection {
   return {
     sessionRef: record.sessionRef,
     adapter: record.adapter,
+    lane: record.lane,
     account: publicPylonAccountSelection(record.account),
     workspaceRef: record.workspace.workspaceRef,
     objectiveDigestRef: record.objectiveDigestRef,
@@ -808,6 +845,7 @@ export function createControlSessionActions(options: {
       const record: SessionRecord = {
         sessionRef,
         adapter: command.adapter,
+        lane: command.lane ?? DEFAULT_CONTROL_SESSION_LANE,
         account,
         workspace,
         objective: command.objective,

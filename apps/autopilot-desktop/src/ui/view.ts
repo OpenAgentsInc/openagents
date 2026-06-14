@@ -60,6 +60,7 @@ import {
   ChangedSpawnAdapter,
   ChangedSpawnObjective,
   ChangedSpawnVerify,
+  ChangedSpawnLane,
   ClickedCancelSession,
   ClickedActivateTrainingWindow,
   ClickedAdmitTrainingEvidence,
@@ -3484,6 +3485,40 @@ const decisionsPane = (model: Model): Html => {
 
 // ── Spawn pane ────────────────────────────────────────────────────────────────
 
+// #4998: human-readable label for an execution lane in the spawn picker.
+const spawnLaneLabel = (
+  lane: "auto" | "local" | "cloud-gcp" | "cloud-shc",
+): string => {
+  switch (lane) {
+    case "auto":
+      return "Auto"
+    case "local":
+      return "Local"
+    case "cloud-gcp":
+      return "Google GCE"
+    case "cloud-shc":
+      return "SHC"
+  }
+}
+
+// #4998: short "running on …" provenance for a session's recorded lane, shown
+// where the session's lane is available (session list / detail).
+export const sessionLaneProvenance = (
+  lane: "auto" | "local" | "cloud-gcp" | "cloud-shc" | undefined,
+): string | null => {
+  switch (lane) {
+    case "cloud-gcp":
+      return "running on Google GCE"
+    case "cloud-shc":
+      return "running on SHC"
+    case "local":
+      return "running locally"
+    case "auto":
+    case undefined:
+      return null
+  }
+}
+
 const spawnPane = (model: Model): Html => {
   const statusVisible = model.spawnStatus.tone !== "idle"
   return h.div(
@@ -3502,6 +3537,22 @@ const spawnPane = (model: Model): Html => {
                 h.OnClick(ChangedSpawnAdapter({ adapter })),
               ],
               [adapter],
+            ),
+          ),
+        ),
+        // #4998: execution-lane selector. auto = own-Pylon-first then Google
+        // GCE; cloud-gcp = Google GCE (default cloud); cloud-shc = SHC fallback.
+        h.label([cls("field-label")], ["Execution lane"]),
+        h.div(
+          [cls("adapter-toggle")],
+          (["auto", "local", "cloud-gcp", "cloud-shc"] as const).map((lane) =>
+            h.button(
+              [
+                cls(`adapter-btn${model.spawnLane === lane ? " active" : ""}`),
+                h.Type("button"),
+                h.OnClick(ChangedSpawnLane({ lane })),
+              ],
+              [spawnLaneLabel(lane)],
             ),
           ),
         ),
@@ -3645,6 +3696,14 @@ const sessionDetailPane = (model: Model): Html => {
     [
       back,
       h.p([cls("detail-ref")], [ref]),
+      // #4998: lane provenance ("running on Google GCE / SHC / local") where the
+      // session recorded a non-auto lane.
+      (() => {
+        const provenance = sessionLaneProvenance(session.lane)
+        return provenance === null
+          ? h.empty
+          : h.p([cls("session-lane-provenance")], [provenance])
+      })(),
       h.p([cls(`verify-line ${toneClass}`)], [verifyText]),
       artText.length > 0 ? h.p([cls("artifact-line")], [artText]) : h.empty,
       sessionCancellable(session.state)

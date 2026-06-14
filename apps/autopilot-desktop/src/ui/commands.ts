@@ -648,15 +648,18 @@ export const SpawnSession = Command.define(
     adapter: S.Literals(["codex", "claude_agent"]),
     objective: S.String,
     verify: S.Array(S.String),
+    // #4998: requested execution lane (auto|local|cloud-gcp|cloud-shc).
+    lane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
   },
   SucceededSpawn,
   FailedSpawn,
-)(({ adapter, objective, verify }) =>
+)(({ adapter, objective, verify, lane }) =>
   Effect.tryPromise(() =>
     getRequest().spawnSession({
       adapter,
       objective,
       verify: verify.length > 0 ? [...verify] : undefined,
+      lane,
     }),
   ).pipe(
     Effect.map((r) =>

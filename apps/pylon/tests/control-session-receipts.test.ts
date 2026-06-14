@@ -77,6 +77,57 @@ describe("control session receipts", () => {
     })
   })
 
+  // #4998: the requested lane defaults to `auto`, accepts cloud lanes, and is
+  // surfaced on the session projection so it round-trips to clients.
+  test("session.spawn records and surfaces the requested execution lane", async () => {
+    await withControlSessionFixture(async ({ proofDir, summary, worktree }) => {
+      const executor: ControlSessionExecutor = async () => {
+        // Never resolves; we cancel to reach a terminal state deterministically.
+        return await new Promise<never>((_resolve, reject) => {
+          setTimeout(() => reject(new Error("cancelled")), 0)
+        })
+      }
+      const actions = createControlSessionActions({ executor, proofsDir: proofDir, summary })
+
+      const defaulted = await actions.spawn({
+        type: "session.spawn",
+        adapter: "codex",
+        worktreePath: worktree,
+        objective: "default lane session",
+        verify: ["bun", "--version"],
+      })
+      const gce = await actions.spawn({
+        type: "session.spawn",
+        adapter: "codex",
+        worktreePath: worktree,
+        objective: "gce lane session",
+        verify: ["bun", "--version"],
+        lane: "cloud-gcp",
+      })
+
+      const list = await actions.list()
+      const defaultedRow = list.find((s) => s.sessionRef === defaulted.sessionRef)
+      const gceRow = list.find((s) => s.sessionRef === gce.sessionRef)
+      expect(defaultedRow?.lane).toBe("auto")
+      expect(gceRow?.lane).toBe("cloud-gcp")
+
+      await expect(
+        actions.spawn({
+          type: "session.spawn",
+          adapter: "codex",
+          worktreePath: worktree,
+          objective: "bad lane session",
+          verify: ["bun", "--version"],
+          // @ts-expect-error invalid lane is rejected at parse time
+          lane: "cloud-aws",
+        }),
+      ).rejects.toThrow(/lane must be one of/)
+
+      await actions.cancel(defaulted.sessionRef)
+      await actions.cancel(gce.sessionRef)
+    })
+  })
+
   test("executor failures retain typed refs without raw thrown error text", async () => {
     await withControlSessionFixture(async ({ proofDir, summary, worktree }) => {
       const rawErrorSentence = "raw provider failure sentence must not be retained"

@@ -779,6 +779,8 @@ export const update = (model: Model, message: Message): Result => {
       return [Model.make({ ...model, spawnObjective: message.value }), noCommands]
     case "ChangedSpawnVerify":
       return [Model.make({ ...model, spawnVerify: message.value }), noCommands]
+    case "ChangedSpawnLane":
+      return [Model.make({ ...model, spawnLane: message.lane }), noCommands]
     case "ClickedSpawn": {
       const validation = validateSpawnRequest({
         adapter: model.spawnAdapter,
@@ -808,6 +810,7 @@ export const update = (model: Model, message: Message): Result => {
             adapter: validation.adapter,
             objective: validation.objective,
             verify,
+            lane: model.spawnLane,
           }),
         ],
       ]

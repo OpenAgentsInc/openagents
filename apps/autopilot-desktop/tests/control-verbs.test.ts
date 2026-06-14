@@ -84,6 +84,43 @@ describe("CL-46 control verbs", () => {
     expect(r).toEqual({ ok: true, sessionRef: "sess-123" })
   })
 
+  // #4998: the lane selector must round-trip onto the session.spawn command body.
+  test("spawnSession forwards the requested cloud-gcp lane", async () => {
+    let captured: Record<string, unknown> | null = null
+    const captureFetch = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/health")) {
+        return new Response(JSON.stringify({ ok: true, schema: "openagents.pylon.control.v0.3" }), { status: 200 })
+      }
+      captured = init?.body ? JSON.parse(String(init.body)) : null
+      return new Response(JSON.stringify({ ok: true, result: { sessionRef: "sess-gce" } }), { status: 200 })
+    }) as unknown as typeof fetch
+    const r = await spawnSession({
+      ...base,
+      adapter: "codex",
+      objective: "deploy to gce",
+      lane: "cloud-gcp",
+      fetchFn: captureFetch,
+    })
+    expect(r).toEqual({ ok: true, sessionRef: "sess-gce" })
+    expect(captured).not.toBeNull()
+    expect(captured).toMatchObject({ type: "session.spawn", lane: "cloud-gcp" })
+  })
+
+  // #4998: omitting the lane must not put a lane key on the wire (node defaults).
+  test("spawnSession omits lane when none is requested", async () => {
+    let captured: Record<string, unknown> | null = null
+    const captureFetch = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/health")) {
+        return new Response(JSON.stringify({ ok: true, schema: "openagents.pylon.control.v0.3" }), { status: 200 })
+      }
+      captured = init?.body ? JSON.parse(String(init.body)) : null
+      return new Response(JSON.stringify({ ok: true, result: { sessionRef: "sess-x" } }), { status: 200 })
+    }) as unknown as typeof fetch
+    await spawnSession({ ...base, adapter: "codex", objective: "x", fetchFn: captureFetch })
+    expect(captured).not.toBeNull()
+    expect(Object.prototype.hasOwnProperty.call(captured ?? {}, "lane")).toBe(false)
+  })
+
   test("fetchNodeState aggregates the parity surfaces", async () => {
     const state = await fetchNodeState({
       ...base,

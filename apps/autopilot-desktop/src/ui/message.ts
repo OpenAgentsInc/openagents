@@ -141,6 +141,10 @@ export const ChangedSpawnObjective = m("ChangedSpawnObjective", {
   value: S.String,
 })
 export const ChangedSpawnVerify = m("ChangedSpawnVerify", { value: S.String })
+// #4998: execution-lane selector for the spawn form.
+export const ChangedSpawnLane = m("ChangedSpawnLane", {
+  lane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
+})
 export const ClickedSpawn = m("ClickedSpawn")
 export const SucceededSpawn = m("SucceededSpawn", { sessionRef: S.String })
 export const FailedSpawn = m("FailedSpawn", { error: S.String })
@@ -197,6 +201,7 @@ export const Message = S.Union([
   ChangedSpawnAdapter,
   ChangedSpawnObjective,
   ChangedSpawnVerify,
+  ChangedSpawnLane,
   ClickedSpawn,
   SucceededSpawn,
   FailedSpawn,
