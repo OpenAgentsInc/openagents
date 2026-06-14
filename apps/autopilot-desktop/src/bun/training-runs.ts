@@ -8,6 +8,8 @@ import type {
   TrainingRunSummaryRow,
   TrainingRunsResponse,
   TrainingWindowActionResponse,
+  TrainingWindowLeaseResponse,
+  TrainingWindowLeaseRow,
   TrainingWindowProjectionRow,
   TrainingWindowState,
 } from "../shared/rpc"
@@ -35,6 +37,15 @@ type ActivateTrainingWindowInput = Readonly<{
   windowRef: string
 }>
 
+type ClaimTrainingWindowLeaseInput = Readonly<{
+  baseUrl: string
+  enabled: boolean
+  fetchFn?: typeof fetch
+  leaseSeconds?: number
+  nowIso?: () => string
+  pylonRef: string | null
+}>
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
 
@@ -57,6 +68,7 @@ const stringArray = (value: unknown): readonly string[] =>
   asArray(value).filter((item): item is string => typeof item === "string")
 
 const publicSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/
+const publicSafePylonRefPattern = /^[a-z0-9][a-z0-9_.:-]*$/
 
 const normalizeBaseUrl = (baseUrl: string): string => baseUrl.replace(/\/+$/, "")
 
@@ -127,6 +139,34 @@ const postJson = async (
   return { ok: true, json }
 }
 
+const postPublicJson = async (
+  fetchFn: typeof fetch,
+  url: string,
+  body: unknown,
+): Promise<
+  | { readonly ok: true; readonly json: unknown }
+  | { readonly ok: false; readonly error: string }
+> => {
+  const response = await fetchFn(url, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  })
+
+  const json = (await response.json().catch(() => null)) as unknown
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: errorMessageFromJson(json, `training lease ${response.status}`),
+    }
+  }
+
+  return { ok: true, json }
+}
+
 const disabledPlanResponse = (input: {
   enabled: boolean
   fetchedAt: string
@@ -162,6 +202,24 @@ const disabledWindowActionResponse = (input: {
   sourceUrl: input.sourceUrl,
   windowRef: input.windowRef,
   window: null,
+  reason: input.reason,
+  message: input.message,
+})
+
+const disabledLeaseResponse = (input: {
+  enabled: boolean
+  fetchedAt: string
+  message: string
+  pylonRef: string | null
+  reason: TrainingWindowLeaseResponse["reason"]
+  sourceUrl: string
+}): TrainingWindowLeaseResponse => ({
+  ok: false,
+  enabled: input.enabled,
+  fetchedAt: input.fetchedAt,
+  sourceUrl: input.sourceUrl,
+  pylonRef: input.pylonRef,
+  lease: null,
   reason: input.reason,
   message: input.message,
 })
@@ -232,6 +290,51 @@ const windowProjection = (value: unknown): TrainingWindowProjectionRow | null =>
     state: windowState(value.state),
     trainingRunRef,
     updatedAtDisplay: asString(value.updatedAtDisplay),
+    windowRef,
+  }
+}
+
+const leaseProjection = (
+  value: unknown,
+  nowIso: string,
+): TrainingWindowLeaseRow | null => {
+  if (!isRecord(value)) return null
+  const leaseRef = asString(value.leaseRef)
+  const pylonRef = asString(value.pylonRef)
+  const trainingRunRef = asString(value.trainingRunRef)
+  const windowRef = asString(value.windowRef)
+  if (
+    leaseRef === "" ||
+    pylonRef === "" ||
+    trainingRunRef === "" ||
+    windowRef === ""
+  ) {
+    return null
+  }
+  const expiresIn =
+    typeof value.leaseExpiresInSeconds === "number"
+      ? value.leaseExpiresInSeconds
+      : typeof value.leaseExpiresAt === "string"
+        ? Math.max(
+            0,
+            Math.floor(
+              (Date.parse(value.leaseExpiresAt) - Date.parse(nowIso)) / 1000,
+            ),
+          )
+        : 0
+  return {
+    claimedAtDisplay: asString(
+      value.claimedAtDisplay,
+      asString(value.claimedAt),
+    ),
+    leaseExpiresInSeconds: Number.isFinite(expiresIn)
+      ? Math.max(0, Math.floor(expiresIn))
+      : 0,
+    leaseRef,
+    pylonRef,
+    receiptRefs: stringArray(value.receiptRefs),
+    state: value.state === "released" ? "released" : "active",
+    trainingRunRef,
     windowRef,
   }
 }
@@ -629,6 +732,111 @@ export async function activateTrainingWindow(
       window: null,
       reason: "request_failed",
       message: `training admin activation failed: ${text}`,
+      error: text,
+    }
+  }
+}
+
+export async function claimTrainingWindowLease(
+  input: ClaimTrainingWindowLeaseInput,
+): Promise<TrainingWindowLeaseResponse> {
+  const fetchFn = input.fetchFn ?? fetch
+  const fetchedAt = input.nowIso?.() ?? new Date().toISOString()
+  const baseUrl = normalizeBaseUrl(input.baseUrl)
+  const sourceUrl = `${baseUrl}/api/training/leases/claim`
+  const trimmedPylonRef = input.pylonRef?.trim() ?? ""
+
+  if (!input.enabled) {
+    return disabledLeaseResponse({
+      enabled: false,
+      fetchedAt,
+      message: "training lease claiming disabled",
+      pylonRef: trimmedPylonRef === "" ? null : trimmedPylonRef,
+      reason: "disabled",
+      sourceUrl,
+    })
+  }
+
+  if (trimmedPylonRef === "") {
+    return disabledLeaseResponse({
+      enabled: true,
+      fetchedAt,
+      message: "training Pylon ref unavailable",
+      pylonRef: null,
+      reason: "pylon_ref_missing",
+      sourceUrl,
+    })
+  }
+
+  if (
+    trimmedPylonRef.length < 3 ||
+    trimmedPylonRef.length > 120 ||
+    !publicSafePylonRefPattern.test(trimmedPylonRef)
+  ) {
+    return disabledLeaseResponse({
+      enabled: true,
+      fetchedAt,
+      message: "invalid training Pylon ref",
+      pylonRef: trimmedPylonRef,
+      reason: "invalid_pylon_ref",
+      sourceUrl,
+    })
+  }
+
+  const stamp = safeRefStamp(fetchedAt)
+
+  try {
+    const result = await postPublicJson(fetchFn, sourceUrl, {
+      ...(input.leaseSeconds === undefined
+        ? {}
+        : { leaseSeconds: input.leaseSeconds }),
+      pylonRef: trimmedPylonRef,
+      receiptRefs: [`receipt.desktop.training.lease.claim.${stamp}`],
+    })
+
+    if (!result.ok) {
+      return {
+        ok: false,
+        enabled: true,
+        fetchedAt,
+        sourceUrl,
+        pylonRef: trimmedPylonRef,
+        lease: null,
+        reason: "claim_failed",
+        message: `lease claim failed: ${result.error}`,
+        error: result.error,
+      }
+    }
+
+    const record = isRecord(result.json) ? result.json : {}
+    const lease = leaseProjection(record.lease, fetchedAt)
+    return {
+      ok: lease !== null,
+      enabled: true,
+      fetchedAt,
+      sourceUrl,
+      pylonRef: trimmedPylonRef,
+      lease,
+      reason: lease === null ? "claim_failed" : "claimed",
+      message:
+        lease === null
+          ? "lease claim response did not include a lease"
+          : `claimed ${lease.leaseRef} for ${lease.windowRef}`,
+      ...(lease === null
+        ? { error: "lease claim response did not include a lease" }
+        : {}),
+    }
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error)
+    return {
+      ok: false,
+      enabled: true,
+      fetchedAt,
+      sourceUrl,
+      pylonRef: trimmedPylonRef,
+      lease: null,
+      reason: "request_failed",
+      message: `training lease claim failed: ${text}`,
       error: text,
     }
   }

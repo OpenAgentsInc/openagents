@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   activateTrainingWindow,
+  claimTrainingWindowLease,
   fetchTrainingRuns,
   planTrainingRunWindow,
 } from "../src/bun/training-runs"
@@ -361,5 +362,122 @@ describe("activateTrainingWindow", () => {
     expect(result.reason).toBe("transition_failed")
     expect(result.error).toBe("Training window not found.")
     expect(result.message).not.toContain("admin-token")
+  })
+})
+
+describe("claimTrainingWindowLease", () => {
+  test("does not call the Worker when lease claiming is disabled", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await claimTrainingWindowLease({
+      baseUrl: "https://openagents.test",
+      enabled: false,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response("{}")
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      pylonRef: "pylon.training.1",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("disabled")
+    expect(calls).toHaveLength(0)
+  })
+
+  test("does not call the Worker without a Pylon ref", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await claimTrainingWindowLease({
+      baseUrl: "https://openagents.test",
+      enabled: true,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response("{}")
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      pylonRef: null,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("pylon_ref_missing")
+    expect(calls).toHaveLength(0)
+  })
+
+  test("rejects invalid Pylon refs before calling the Worker", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await claimTrainingWindowLease({
+      baseUrl: "https://openagents.test",
+      enabled: true,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response("{}")
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      pylonRef: "Pylon.Bad",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("invalid_pylon_ref")
+    expect(calls).toHaveLength(0)
+  })
+
+  test("claims a training lease and decodes raw Worker records", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await claimTrainingWindowLease({
+      baseUrl: "https://openagents.test/",
+      enabled: true,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response(
+          JSON.stringify({
+            lease: {
+              claimedAt: "2026-06-14T00:00:00.000Z",
+              leaseExpiresAt: "2026-06-14T00:15:00.000Z",
+              leaseRef: "training.lease.1",
+              pylonRef: "pylon.training.1",
+              receiptRefs: ["receipt.training.lease"],
+              state: "active",
+              trainingRunRef: "training.run.desktop.r1.test",
+              windowRef: "training.window.desktop.r1.test",
+            },
+          }),
+        )
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      pylonRef: "pylon.training.1",
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.reason).toBe("claimed")
+    expect(result.lease?.leaseRef).toBe("training.lease.1")
+    expect(result.lease?.leaseExpiresInSeconds).toBe(900)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toBe(
+      "https://openagents.test/api/training/leases/claim",
+    )
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      pylonRef: "pylon.training.1",
+      receiptRefs: ["receipt.desktop.training.lease.claim.2026.06.14t00.00.00.000z"],
+    })
+  })
+
+  test("reports lease claim failures without leaking local state", async () => {
+    const result = await claimTrainingWindowLease({
+      baseUrl: "https://openagents.test",
+      enabled: true,
+      fetchFn: async () =>
+        new Response(
+          JSON.stringify({
+            reason: "No active training window is currently claimable.",
+          }),
+          { status: 404 },
+        ),
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      pylonRef: "pylon.training.1",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("claim_failed")
+    expect(result.error).toBe("No active training window is currently claimable.")
+    expect(result.message).not.toContain("identity.json")
   })
 })

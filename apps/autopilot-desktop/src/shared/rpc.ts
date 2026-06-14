@@ -193,6 +193,37 @@ export type TrainingWindowActionResponse = {
   readonly error?: string
 }
 
+export type TrainingWindowLeaseRow = {
+  readonly claimedAtDisplay: string
+  readonly leaseExpiresInSeconds: number
+  readonly leaseRef: string
+  readonly pylonRef: string
+  readonly receiptRefs: readonly string[]
+  readonly state: "active" | "released"
+  readonly trainingRunRef: string
+  readonly windowRef: string
+}
+
+export type TrainingWindowLeaseReason =
+  | "disabled"
+  | "pylon_ref_missing"
+  | "invalid_pylon_ref"
+  | "claim_failed"
+  | "request_failed"
+  | "claimed"
+
+export type TrainingWindowLeaseResponse = {
+  readonly ok: boolean
+  readonly enabled: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: string
+  readonly pylonRef: string | null
+  readonly lease: TrainingWindowLeaseRow | null
+  readonly reason: TrainingWindowLeaseReason
+  readonly message: string
+  readonly error?: string
+}
+
 // CL-47: an "ask" the owner submitted, with its ship-status round-trip state.
 export type IntentRow = {
   readonly intentId: string
@@ -281,6 +312,10 @@ export type DesktopRPCSchema = {
       readonly activateTrainingWindow: {
         readonly params: { windowRef: string }
         readonly response: TrainingWindowActionResponse
+      }
+      readonly claimTrainingWindowLease: {
+        readonly params: Record<string, never>
+        readonly response: TrainingWindowLeaseResponse
       }
       // CL-48: resolve a pending approval (approve/deny). Node enforces
       // exactly-once; a duplicate resolve returns duplicate:true.

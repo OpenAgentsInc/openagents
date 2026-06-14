@@ -17,6 +17,7 @@ import type {
   TrainingPlanResponse,
   TrainingRunsResponse,
   TrainingWindowActionResponse,
+  TrainingWindowLeaseResponse,
 } from "../shared/rpc"
 
 // Which content pane is showing. The desktop equivalent of mobile's tab set
@@ -135,6 +136,9 @@ export const Model = ts("AutopilotDesktop", {
   trainingActivation: S.NullOr(S.Unknown),
   trainingActivationStatus: TrainingWindowActionStatus,
   trainingActivationPending: S.Boolean,
+  trainingLease: S.NullOr(S.Unknown),
+  trainingLeaseStatus: TrainingWindowActionStatus,
+  trainingLeasePending: S.Boolean,
   trainingLaunchStatus: TrainingLaunchStatus,
   trainingLaunchPending: S.Boolean,
 
@@ -167,6 +171,11 @@ export const modelTrainingActivation = (
 ): TrainingWindowActionResponse | null =>
   model.trainingActivation as TrainingWindowActionResponse | null
 
+export const modelTrainingLease = (
+  model: Model,
+): TrainingWindowLeaseResponse | null =>
+  model.trainingLease as TrainingWindowLeaseResponse | null
+
 export const initialModel: Model = Model.make({
   node: null,
   notifications: null,
@@ -193,6 +202,9 @@ export const initialModel: Model = Model.make({
   trainingActivation: null,
   trainingActivationStatus: { text: "", tone: "idle" },
   trainingActivationPending: false,
+  trainingLease: null,
+  trainingLeaseStatus: { text: "", tone: "idle" },
+  trainingLeasePending: false,
   trainingLaunchStatus: { text: "", tone: "idle" },
   trainingLaunchPending: false,
   deployFeedback: null,

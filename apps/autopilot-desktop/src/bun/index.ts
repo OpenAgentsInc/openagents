@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 import { BrowserView, BrowserWindow } from "electrobun/bun"
 import { discoverPylonHome } from "./node-home"
 import { createNodeStatePoller } from "./node-state-poll"
@@ -15,6 +17,7 @@ import {
 } from "./pylon-control"
 import {
   activateTrainingWindow,
+  claimTrainingWindowLease,
   fetchTrainingRuns,
   planTrainingRunWindow,
 } from "./training-runs"
@@ -32,6 +35,12 @@ const trainingAdminToken =
   null
 const trainingAdminEnabled =
   Bun.env.OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE === "1"
+const trainingLeaseEnabled =
+  Bun.env.OPENAGENTS_DESKTOP_TRAINING_LEASE_ENABLE === "1"
+const configuredTrainingPylonRef =
+  Bun.env.OPENAGENTS_TRAINING_PYLON_REF ??
+  Bun.env.PYLON_REF ??
+  null
 
 // CL-45: resolve the node home once per call so a node that starts after the app
 // (or rotates its home) is picked up without a restart. Falls back to the env
@@ -44,6 +53,28 @@ function resolveHome(): string | null {
 function tokenForCommand(): string | null {
   const home = resolveHome()
   return home === null ? null : readControlToken(home)
+}
+
+function readIdentityPylonRef(home: string): string | null {
+  const path = join(home, "identity.json")
+  if (!existsSync(path)) return null
+  try {
+    const record = JSON.parse(readFileSync(path, "utf8")) as {
+      pylonRef?: unknown
+    }
+    return typeof record.pylonRef === "string" && record.pylonRef.length > 0
+      ? record.pylonRef
+      : null
+  } catch {
+    return null
+  }
+}
+
+function trainingPylonRefForCommand(): string | null {
+  const configured = configuredTrainingPylonRef?.trim() ?? ""
+  if (configured.length > 0) return configured
+  const home = resolveHome()
+  return home === null ? null : readIdentityPylonRef(home)
 }
 
 const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
@@ -88,6 +119,13 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           baseUrl: trainingBaseUrl,
           enabled: trainingAdminEnabled,
           windowRef: params.windowRef,
+        })
+      },
+      async claimTrainingWindowLease() {
+        return claimTrainingWindowLease({
+          baseUrl: trainingBaseUrl,
+          enabled: trainingLeaseEnabled,
+          pylonRef: trainingPylonRefForCommand(),
         })
       },
       // CL-48: resolve a pending approval (approve/deny).

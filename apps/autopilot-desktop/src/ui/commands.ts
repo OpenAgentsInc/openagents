@@ -15,6 +15,7 @@ import {
   GotTrainingRuns,
   SettledCancelSession,
   SettledActivateTrainingWindow,
+  SettledClaimTrainingLease,
   SettledCoordinatorToggle,
   SettledPlanTrainingWindow,
   SettledQueueTrainingLaunch,
@@ -186,6 +187,33 @@ export const ActivateTrainingWindow = Command.define(
             window: null,
             reason: "request_failed",
             message: `training admin activation failed: ${errorText(error)}`,
+            error: errorText(error),
+          },
+        }),
+      ),
+    ),
+  ),
+)
+
+export const ClaimTrainingWindowLease = Command.define(
+  "ClaimTrainingWindowLease",
+  {},
+  SettledClaimTrainingLease,
+)(() =>
+  Effect.tryPromise(() => getRequest().claimTrainingWindowLease({})).pipe(
+    Effect.map((projection) => SettledClaimTrainingLease({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledClaimTrainingLease({
+          projection: {
+            ok: false,
+            enabled: false,
+            fetchedAt: new Date().toISOString(),
+            sourceUrl: "desktop:training-lease",
+            pylonRef: null,
+            lease: null,
+            reason: "request_failed",
+            message: `training lease claim failed: ${errorText(error)}`,
             error: errorText(error),
           },
         }),

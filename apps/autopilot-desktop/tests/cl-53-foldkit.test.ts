@@ -28,6 +28,7 @@ import { initialModel, Model, modelNode } from "../src/ui/model"
 import {
   ChangedAskTitle,
   ClickedActivateTrainingWindow,
+  ClickedClaimTrainingLease,
   ClickedPlanTrainingWindow,
   ClickedResolveApproval,
   ClickedSubmitIntent,
@@ -35,6 +36,7 @@ import {
   NavigatedTo,
   SelectedSession,
   SettledActivateTrainingWindow,
+  SettledClaimTrainingLease,
   SettledPlanTrainingWindow,
   SettledResolveApproval,
   SettledSubmitIntent,
@@ -281,6 +283,44 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingActivationStatus.tone).toBe("success")
     expect(settled.trainingActivation).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
+    })
+    expect(followups).toHaveLength(1)
+  })
+
+  test("training lease claim action dispatches and stores the public-safe result", () => {
+    const [pending, commands] = update(initialModel, ClickedClaimTrainingLease())
+    expect(pending.trainingLeasePending).toBe(true)
+    expect(pending.trainingLeaseStatus.tone).toBe("info")
+    expect(commands).toHaveLength(1)
+
+    const [settled, followups] = update(
+      pending,
+      SettledClaimTrainingLease({
+        projection: {
+          ok: true,
+          enabled: true,
+          fetchedAt: "2026-06-14T00:00:00.000Z",
+          sourceUrl: "https://openagents.test/api/training/leases/claim",
+          pylonRef: "pylon.training.1",
+          lease: {
+            claimedAtDisplay: "now",
+            leaseExpiresInSeconds: 900,
+            leaseRef: "training.lease.1",
+            pylonRef: "pylon.training.1",
+            receiptRefs: ["receipt.training.lease"],
+            state: "active",
+            trainingRunRef: "training.run.desktop.r1.test",
+            windowRef: "training.window.desktop.r1.test",
+          },
+          reason: "claimed",
+          message: "claimed training.lease.1 for training.window.desktop.r1.test",
+        },
+      }),
+    )
+    expect(settled.trainingLeasePending).toBe(false)
+    expect(settled.trainingLeaseStatus.tone).toBe("success")
+    expect(settled.trainingLease).toMatchObject({
+      lease: { leaseRef: "training.lease.1" },
     })
     expect(followups).toHaveLength(1)
   })

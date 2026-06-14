@@ -52,6 +52,7 @@ import {
   ChangedSpawnVerify,
   ClickedCancelSession,
   ClickedActivateTrainingWindow,
+  ClickedClaimTrainingLease,
   ClickedCoordinatorToggle,
   ClickedDeploy,
   ClickedPlanTrainingWindow,
@@ -85,6 +86,7 @@ import {
   type PaneId,
   type SessionFilter,
   modelTrainingActivation,
+  modelTrainingLease,
   modelNode,
   modelNotifications,
   modelTrainingPlan,
@@ -531,6 +533,13 @@ const activationWindowRef = (model: Model): string | null => {
   return null
 }
 
+const hasClaimableTrainingWindow = (model: Model): boolean => {
+  const activation = modelTrainingActivation(model)
+  if (activation?.ok === true) return true
+  const summary = selectedTrainingSummary(modelTrainingRuns(model))
+  return summary?.windows.some(window => window.state === "active") ?? false
+}
+
 const trainingSceneOptions = (
   projection: TrainingRunsResponse | null,
 ): TrainingRunVisualizationOptions | undefined => {
@@ -696,10 +705,13 @@ const selectedTrainingEvidencePanel = (
 
 const trainingLaunchPanel = (model: Model): Html => {
   const plan = modelTrainingPlan(model)
+  const lease = modelTrainingLease(model)?.lease ?? null
   const activatableWindowRef = activationWindowRef(model)
+  const claimableWindowKnown = hasClaimableTrainingWindow(model)
   const planStatusVisible = model.trainingPlanStatus.tone !== "idle"
   const activationStatusVisible =
     model.trainingActivationStatus.tone !== "idle"
+  const leaseStatusVisible = model.trainingLeaseStatus.tone !== "idle"
   const launchStatusVisible = model.trainingLaunchStatus.tone !== "idle"
   const activateAttrs: Attribute<Message>[] = [
     cls("training-action-button training-activate-button secondary"),
@@ -713,6 +725,14 @@ const trainingLaunchPanel = (model: Model): Html => {
       ),
     )
   }
+  const leaseAttrs: Attribute<Message>[] = [
+    cls("training-action-button training-lease-button secondary"),
+    h.Type("button"),
+    h.Disabled(model.trainingLeasePending || !claimableWindowKnown),
+  ]
+  if (claimableWindowKnown) {
+    leaseAttrs.push(h.OnClick(ClickedClaimTrainingLease()))
+  }
   const refRows: Html[] = []
   if (plan?.trainingRunRef !== null && plan?.trainingRunRef !== undefined) {
     refRows.push(
@@ -724,13 +744,21 @@ const trainingLaunchPanel = (model: Model): Html => {
       h.li([], [h.code([], [plan.windowRef])]),
     )
   }
+  if (lease !== null) {
+    refRows.push(
+      h.li([], [
+        h.code([], [lease.leaseRef]),
+        ` · ${lease.windowRef} · ${lease.leaseExpiresInSeconds}s`,
+      ]),
+    )
+  }
 
   return h.section([cls("training-panel training-action-panel")], [
     h.h2([cls("training-panel-title")], ["Run Operations"]),
     h.p(
       [cls("training-panel-copy")],
       [
-        "Plan and activate the Worker-authoritative run/window from Bun, or queue a local Pylon readiness check.",
+        "Plan, activate, and claim Worker-authoritative training work from Bun, or queue a local Pylon readiness check.",
       ],
     ),
     h.div(
@@ -764,6 +792,16 @@ const trainingLaunchPanel = (model: Model): Html => {
                 : "Activate window",
           ],
         ),
+        h.button(
+          leaseAttrs,
+          [
+            model.trainingLeasePending
+              ? "Claiming..."
+              : claimableWindowKnown
+                ? "Claim lease"
+                : "No active window",
+          ],
+        ),
       ],
     ),
     planStatusVisible
@@ -787,6 +825,14 @@ const trainingLaunchPanel = (model: Model): Html => {
             ),
           ],
           [model.trainingActivationStatus.text],
+        )
+      : h.p([cls("training-action-status")], [" "]),
+    leaseStatusVisible
+      ? h.p(
+          [
+            cls(`training-action-status training-${model.trainingLeaseStatus.tone}`),
+          ],
+          [model.trainingLeaseStatus.text],
         )
       : h.p([cls("training-action-status")], [" "]),
     launchStatusVisible

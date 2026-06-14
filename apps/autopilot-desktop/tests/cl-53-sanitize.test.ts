@@ -189,6 +189,25 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-activate-button")).toBe(true)
   })
 
+  test("training pane includes the training lease action", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingActivation: {
+        ok: true,
+        enabled: true,
+        fetchedAt: "2026-06-14T00:00:00.000Z",
+        sourceUrl:
+          "https://openagents.test/api/training/windows/training.window.desktop.r1.test/activate",
+        windowRef: "training.window.desktop.r1.test",
+        window: null,
+        reason: "activated",
+        message: "activated",
+      },
+    })
+    expect(treeContainsClass(document.body, "training-lease-button")).toBe(true)
+  })
+
   test("training pane renders live run projection rows", () => {
     const document = view({
       ...initialModel,

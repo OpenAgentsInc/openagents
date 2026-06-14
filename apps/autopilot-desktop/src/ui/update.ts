@@ -12,6 +12,7 @@ import { Command } from "foldkit"
 import {
   ActivateTrainingWindow,
   CancelSession,
+  ClaimTrainingWindowLease,
   DeployCloud,
   LoadTrainingRuns,
   PlanTrainingRunWindow,
@@ -28,6 +29,7 @@ import type {
   TrainingPlanResponse,
   TrainingRunsResponse,
   TrainingWindowActionResponse,
+  TrainingWindowLeaseResponse,
 } from "../shared/rpc"
 
 type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
@@ -277,6 +279,36 @@ export const update = (model: Model, message: Message): Result => {
           trainingActivation: projection,
           trainingActivationPending: false,
           trainingActivationStatus: {
+            text: projection.message,
+            tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
+          },
+        }),
+        projection.ok ? [LoadTrainingRuns()] : noCommands,
+      ]
+    }
+    case "ClickedClaimTrainingLease":
+      return [
+        Model.make({
+          ...model,
+          trainingLeasePending: true,
+          trainingLeaseStatus: {
+            text: "claiming training lease...",
+            tone: "info",
+          },
+        }),
+        [ClaimTrainingWindowLease()],
+      ]
+    case "SettledClaimTrainingLease": {
+      const projection = message.projection as TrainingWindowLeaseResponse
+      const inactiveReason =
+        projection.reason === "disabled" ||
+        projection.reason === "pylon_ref_missing"
+      return [
+        Model.make({
+          ...model,
+          trainingLease: projection,
+          trainingLeasePending: false,
+          trainingLeaseStatus: {
             text: projection.message,
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },

@@ -19,6 +19,7 @@ import type {
   TrainingPlanResponse,
   TrainingRunsResponse,
   TrainingWindowActionResponse,
+  TrainingWindowLeaseResponse,
 } from "../shared/rpc"
 
 // The webview→Bun request surface (mirrors DesktopRPCSchema["bun"]["requests"]).
@@ -39,6 +40,9 @@ export type DesktopRequests = {
   activateTrainingWindow(p: {
     windowRef: string
   }): Promise<TrainingWindowActionResponse>
+  claimTrainingWindowLease(
+    p: Record<string, never>,
+  ): Promise<TrainingWindowLeaseResponse>
   resolveApproval(p: {
     approvalRef: string
     decision: "approve" | "deny"
