@@ -356,6 +356,95 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsText(document.body, "examples/training-run")).toBe(true)
   })
 
+  test("training pane includes the webview authority boundary", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: liveTrainingProjection,
+    })
+    expect(
+      treeContainsClass(document.body, "training-authority-boundary-panel"),
+    ).toBe(true)
+    expect(treeContainsText(document.body, "Foldkit webview")).toBe(true)
+    expect(treeContainsText(document.body, "Bun main process")).toBe(true)
+    expect(treeContainsText(document.body, "OpenAgents Worker")).toBe(true)
+    expect(treeContainsText(document.body, "Pylon")).toBe(true)
+    expect(
+      treeContainsText(document.body, "ClickedBuildTrainingEvidencePacket"),
+    ).toBe(true)
+    expect(treeContainsText(document.body, "ClickedAdmitTrainingEvidence")).toBe(
+      true,
+    )
+  })
+
+  test("training pane boundary render excludes credential values and local paths", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: liveTrainingProjection,
+      trainingOperatorReadiness: {
+        ok: true,
+        fetchedAt: "2026-06-14T00:00:00.000Z",
+        sourceUrl: "desktop:training-operator-readiness",
+        trainingBaseUrl: "https://openagents.test",
+        adminEnabled: true,
+        adminTokenPresent: true,
+        adminReady: true,
+        leaseEnabled: true,
+        leaseReady: true,
+        pylonRefPresent: true,
+        pylonRefSource: "identity",
+        pylonRef: "pylon.training.1",
+        pylonHomePresent: true,
+        controlTokenPresent: true,
+        localPylonReady: true,
+        evidenceEnabled: true,
+        evidencePacketPathPresent: true,
+        evidenceReady: true,
+        blockerRefs: [],
+      },
+      trainingEvidencePacketSummary: {
+        ok: true,
+        configured: true,
+        fetchedAt: "2026-06-14T00:00:00.000Z",
+        sourceUrl: "desktop:training-evidence-packet",
+        packetSource: "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
+        budgetLabel: "desktop tiny loss budget",
+        budgetRefPresent: true,
+        evalRefPresent: true,
+        mergeRefPresent: true,
+        finalValidationLoss: 2.8,
+        maxValidationLoss: 3,
+        lossPointCount: 2,
+        freivaldsCommitmentRefCount: 1,
+        gradientCloseoutRefCount: 1,
+        evidenceRefCount: 10,
+        receiptRefCount: 3,
+        shardContributionCount: 2,
+        distinctPylonCount: 2,
+        blockerRefs: [],
+      },
+      trainingPlanStatus: {
+        text: "planned",
+        tone: "success",
+      },
+      trainingEvidencePacketBuildStatus: {
+        text: "packet ready",
+        tone: "success",
+      },
+    })
+    expect(treeContainsText(document.body, "ClickedPlanTrainingWindow")).toBe(
+      true,
+    )
+    expect(
+      treeContainsText(document.body, "ClickedBuildTrainingEvidencePacket"),
+    ).toBe(true)
+    expect(treeContainsText(document.body, "admin-token-value")).toBe(false)
+    expect(treeContainsText(document.body, "sk-openagents-test")).toBe(false)
+    expect(treeContainsText(document.body, "/Users/")).toBe(false)
+    expect(treeContainsText(document.body, "/private/tmp/")).toBe(false)
+  })
+
   test("training pane includes the operator feedback feed", () => {
     const document = view({
       ...initialModel,

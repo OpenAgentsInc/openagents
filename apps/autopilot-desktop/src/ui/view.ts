@@ -789,6 +789,87 @@ const trainingSourceMapPanel = (): Html =>
     ),
   ])
 
+type TrainingAuthorityBoundaryRow = Readonly<{
+  layer: string
+  owns: string
+  contract: string
+  refs: readonly string[]
+}>
+
+const trainingAuthorityBoundaryRows: readonly TrainingAuthorityBoundaryRow[] = [
+  {
+    layer: "Foldkit webview",
+    owns: "display, WebGL projection, and typed operator messages",
+    contract:
+      "May render public-safe summaries and dispatch known Training messages; never receives credential values, packet bodies, wallet material, or local path strings.",
+    refs: [
+      "ClickedPlanTrainingWindow",
+      "ClickedActivateTrainingWindow",
+      "ClickedClaimTrainingLease",
+      "ClickedBuildTrainingEvidencePacket",
+      "ClickedAdmitTrainingEvidence",
+      "ClickedReconcileTrainingWindow",
+    ],
+  },
+  {
+    layer: "Bun main process",
+    owns: "environment gates, local file reads, and Pylon-home access",
+    contract:
+      "Holds private local inputs and converts them into booleans, counts, refs, and status text before anything reaches Foldkit.",
+    refs: [
+      "apps/autopilot-desktop/src/bun/index.ts",
+      "apps/autopilot-desktop/src/bun/training-runs.ts",
+      "apps/autopilot-desktop/src/shared/rpc.ts",
+    ],
+  },
+  {
+    layer: "OpenAgents Worker",
+    owns: "run/window transitions, evidence admission, and settlement projection",
+    contract:
+      "Remains the network authority for planned, active, sealed, reconciled, and evidence-backed training state.",
+    refs: [
+      "/api/training/runs",
+      "/api/training/windows/{windowRef}/activate",
+      "/api/training/runs/{runRef}/real-gradient-evidence",
+    ],
+  },
+  {
+    layer: "Pylon",
+    owns: "assignment closeouts and worker-receipt bundle handoff",
+    contract:
+      "Writes public-safe receipt refs and closeout metadata for Desktop packet building without becoming the training authority.",
+    refs: [
+      "apps/pylon/src/assignment.ts",
+      "training-worker-receipts.json",
+      "intent.submit",
+    ],
+  },
+]
+
+const trainingAuthorityBoundaryPanel = (): Html =>
+  h.section([cls("training-panel training-authority-boundary-panel")], [
+    h.h2([cls("training-panel-title")], ["Authority Boundary"]),
+    h.p([cls("training-panel-copy")], [
+      "Where Training data may live before Foldkit renders it, and which typed commands can cross from the webview.",
+    ]),
+    h.ul(
+      [cls("training-source-map-list training-authority-boundary-list")],
+      trainingAuthorityBoundaryRows.map(row =>
+        h.li([cls("training-source-map-section training-authority-boundary-row")], [
+          h.div([cls("training-source-map-heading")], [
+            h.strong([], [row.layer]),
+            h.span([], [row.owns]),
+          ]),
+          h.p([cls("training-panel-copy")], [row.contract]),
+          h.ul(
+            [cls("training-api-list training-source-map-refs")],
+            row.refs.map(ref => h.li([], [h.code([], [ref])])),
+          ),
+        ]),
+      ),
+    ),
+  ])
+
 type TrainingControlSurfaceRow = Readonly<{
   action: string
   authority: string
@@ -2655,6 +2736,7 @@ const trainingPane = (model: Model): Html => {
         trainingEvidencePacketPanel(model),
         trainingOperatorFeedPanel(model),
         trainingControlSurfacePanel(model),
+        trainingAuthorityBoundaryPanel(),
         h.section([cls("training-panel")], [
           h.h2([cls("training-panel-title")], ["Live API Boundary"]),
           h.p(

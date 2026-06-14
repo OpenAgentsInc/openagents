@@ -32,6 +32,7 @@ The first implemented slice follows that boundary:
 - The pane now includes an Operator Readiness panel that shows the pre-click admin/lease/Pylon gates and blocker refs before the operator tries to plan, lease, or bootstrap a run.
 - The pane now includes an Operator Feed that consolidates public projection refresh state, dashboard/promise/readiness fetch state, and every operator command result so an admin can see immediate feedback and later projection catch-up in one place.
 - The pane now includes a Control Surface panel that maps each Training button to its Foldkit message, Bun RPC, Worker/local route, Foldkit status field, authority boundary, and source file. This is the literal "training code at fingertips" layer for live operation.
+- The pane now includes an Authority Boundary panel that spells out the Foldkit webview, Bun main process, OpenAgents Worker, and Pylon responsibilities, including the typed Training messages that can cross the webview boundary.
 - The pane now includes an Evidence Ledger panel for the selected run, exposing public authority refs, window refs, Freivalds/gradient closeout refs, receipt refs, and blocker refs without moving raw worker payloads into the webview.
 - The pane now includes an Issue 4855 Ledger panel that carries the Pluralis-to-Pylon child issue phases, the closed implementation status, the SPARTA/run/economics caveats, and the registry handoff for live R1/R2 evidence.
 - The pane includes a Source Map panel that groups the Worker authority, evidence routes, desktop bridge, `three-effect` scene, and training docs by responsibility.
@@ -221,5 +222,5 @@ The third risk is claim confusion. Public real-gradient claims have explicit blo
 
 1. Add richer closeout metadata to the Pylon-emitted worker receipt bundle: budget refs, eval refs, merge refs, loss curves, and distinct multi-Pylon aggregation once real R1/R2 devices submit them.
 2. Add command result state for admission queue count, lease claim state, evidence refs, and first observed projection timestamp after planning.
-3. Add tests proving the webview cannot access admin credentials and only dispatches typed training messages.
+3. Add stronger runtime smoke coverage with screenshots or canvas-pixel checks proving the `oa-training-run` WebGL surface is nonblank in the packaged desktop shell.
 4. Add a lower-detail responsive scene mode before sharing the same visualization with mobile.
