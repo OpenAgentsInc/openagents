@@ -625,6 +625,21 @@ const decodeReviewDecisionRequest = (
       ),
   })
 
+const decodeFallbackCloseoutRequest = (
+  request: Request,
+): Effect.Effect<AutopilotWorkFallbackCloseoutRequest, AutopilotWorkStoreError> =>
+  Effect.tryPromise({
+    catch: error =>
+      new AutopilotWorkStoreError({
+        kind: 'validation_error',
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    try: async () =>
+      S.decodeUnknownSync(AutopilotWorkFallbackCloseoutRequest)(
+        await readJsonObject(request),
+      ),
+  })
+
 const routeNowIso = <Bindings>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
 ): string => dependencies.nowIso?.() ?? currentIsoTimestamp()
@@ -1089,6 +1104,22 @@ const AutopilotWorkReviewDecisionRequest = S.Struct({
 })
 type AutopilotWorkReviewDecisionRequest =
   typeof AutopilotWorkReviewDecisionRequest.Type
+
+const AutopilotWorkFallbackCloseoutRequest = S.Struct({
+  assignmentRefs: S.Array(S.String),
+  artifactRefs: S.optionalKey(S.Array(S.String)),
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  buildRefs: S.optionalKey(S.Array(S.String)),
+  closeoutRefs: S.Array(S.String),
+  previewRefs: S.optionalKey(S.Array(S.String)),
+  proofRefs: S.Array(S.String),
+  resultRefs: S.Array(S.String),
+  runnerKind: OpenAgentsAutopilotRunnerKind,
+  summaryRefs: S.optionalKey(S.Array(S.String)),
+  testRefs: S.optionalKey(S.Array(S.String)),
+})
+type AutopilotWorkFallbackCloseoutRequest =
+  typeof AutopilotWorkFallbackCloseoutRequest.Type
 
 const safeBuyerPaymentProofRef = (value: string | null): string | undefined =>
   value !== null &&
@@ -1848,6 +1879,20 @@ const validateExecutionCloseoutForWork = (
   return Effect.succeed(executionCloseout)
 }
 
+const executionCloseoutRefsArePublicSafe = (
+  executionCloseout: AutopilotWorkExecutionCloseoutRecord,
+): boolean =>
+  allPublicSafeExecutionCloseoutRefs(executionCloseout.assignmentRefs) &&
+  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.artifactRefs) &&
+  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.blockerRefs) &&
+  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.buildRefs) &&
+  allPublicSafeExecutionCloseoutRefs(executionCloseout.closeoutRefs) &&
+  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.previewRefs) &&
+  allPublicSafeExecutionCloseoutRefs(executionCloseout.proofRefs) &&
+  allPublicSafeExecutionCloseoutRefs(executionCloseout.resultRefs) &&
+  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.summaryRefs) &&
+  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.testRefs)
+
 const codingAssignmentString = (
   assignment: PylonApiAssignmentRecord,
   key: string,
@@ -1901,16 +1946,7 @@ const executionCloseoutFromPylonWorkerCloseout = (
     testRefs,
   }
   const refsArePublicSafe =
-    allPublicSafeExecutionCloseoutRefs(executionCloseout.assignmentRefs) &&
-    optionalPublicSafeExecutionCloseoutRefs(executionCloseout.artifactRefs) &&
-    optionalPublicSafeExecutionCloseoutRefs(executionCloseout.blockerRefs) &&
-    optionalPublicSafeExecutionCloseoutRefs(executionCloseout.buildRefs) &&
-    allPublicSafeExecutionCloseoutRefs(executionCloseout.closeoutRefs) &&
-    optionalPublicSafeExecutionCloseoutRefs(executionCloseout.previewRefs) &&
-    allPublicSafeExecutionCloseoutRefs(executionCloseout.proofRefs) &&
-    allPublicSafeExecutionCloseoutRefs(executionCloseout.resultRefs) &&
-    optionalPublicSafeExecutionCloseoutRefs(executionCloseout.summaryRefs) &&
-    optionalPublicSafeExecutionCloseoutRefs(executionCloseout.testRefs)
+    executionCloseoutRefsArePublicSafe(executionCloseout)
   const refsMatch =
     workOrderRef === input.record.workOrderRef &&
     taskRef !== undefined &&
@@ -1923,6 +1959,69 @@ const executionCloseoutFromPylonWorkerCloseout = (
         kind: 'validation_error',
         reason:
           'Autopilot worker closeout must match the work order, task, assignment owner, and contain only public-safe closeout refs.',
+      }),
+    )
+  }
+
+  return Effect.succeed(executionCloseout)
+}
+
+const executionCloseoutRecordFromFallbackCloseoutBody = (
+  body: AutopilotWorkFallbackCloseoutRequest,
+): AutopilotWorkExecutionCloseoutRecord => ({
+  assignmentRefs: body.assignmentRefs,
+  ...(body.artifactRefs === undefined ? {} : { artifactRefs: body.artifactRefs }),
+  ...(body.blockerRefs === undefined ? {} : { blockerRefs: body.blockerRefs }),
+  ...(body.buildRefs === undefined ? {} : { buildRefs: body.buildRefs }),
+  closeoutRefs: body.closeoutRefs,
+  ...(body.previewRefs === undefined ? {} : { previewRefs: body.previewRefs }),
+  proofRefs: body.proofRefs,
+  resultRefs: body.resultRefs,
+  runnerKind: body.runnerKind,
+  ...(body.summaryRefs === undefined ? {} : { summaryRefs: body.summaryRefs }),
+  ...(body.testRefs === undefined ? {} : { testRefs: body.testRefs }),
+})
+
+const executionCloseoutFromFallbackCloseout = (
+  input: Readonly<{
+    body: AutopilotWorkFallbackCloseoutRequest
+    nowIso: string
+    pylonRegistrations: ReadonlyArray<PylonApiRegistrationRecord>
+    record: AutopilotWorkOrderRecord
+  }>,
+): Effect.Effect<AutopilotWorkExecutionCloseoutRecord, AutopilotWorkStoreError> => {
+  const work = projectionForRecord(
+    input.record,
+    false,
+    input.nowIso,
+    input.pylonRegistrations,
+  )
+  const fallbackLeaseIntents = new Map(
+    work.fallbackLeaseIntents.map(intent => [intent.assignmentRef, intent]),
+  )
+  const assignmentRefsMatch =
+    input.body.assignmentRefs.length > 0 &&
+    input.body.assignmentRefs.every(ref => fallbackLeaseIntents.has(ref))
+  const runnerMatches =
+    work.placementDecision.source === 'fallback' &&
+    work.placementDecision.selectedRunnerKind === input.body.runnerKind &&
+    input.body.assignmentRefs.every(
+      ref => fallbackLeaseIntents.get(ref)?.runnerKind === input.body.runnerKind,
+    )
+  const executionCloseout = executionCloseoutRecordFromFallbackCloseoutBody(
+    input.body,
+  )
+
+  if (
+    !assignmentRefsMatch ||
+    !runnerMatches ||
+    !executionCloseoutRefsArePublicSafe(executionCloseout)
+  ) {
+    return Effect.fail(
+      new AutopilotWorkStoreError({
+        kind: 'validation_error',
+        reason:
+          'Autopilot fallback closeout must match the selected fallback assignment and runner, and contain only public-safe closeout refs.',
       }),
     )
   }
@@ -2787,6 +2886,137 @@ const reviewDecisionRecordFromRequest = (
   revisionRequestRefs: input.body.revisionRequestRefs ?? [],
 })
 
+const closeoutRecordsEqual = (
+  left: AutopilotWorkExecutionCloseoutRecord,
+  right: AutopilotWorkExecutionCloseoutRecord,
+): boolean => JSON.stringify(left) === JSON.stringify(right)
+
+const closeoutWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  workOrderRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const pylonRegistrations = yield* routePylonRegistrations(
+      dependencies,
+      env,
+    )
+    const auth = yield* authenticateAutopilotWorkRequest(
+      dependencies,
+      request,
+      env,
+      {
+        ctx,
+        nowIso: () => nowIso,
+        requiredScope: 'customer_orders.write',
+      },
+    )
+    yield* requireIdempotencyHash(request)
+    const body = yield* decodeFallbackCloseoutRequest(request)
+    const existing = yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () => dependencies.makeStore(env).readWorkOrder(workOrderRef),
+    })
+
+    if (existing === undefined || existing.ownerUserId !== auth.ownerUserId) {
+      return noStoreJsonResponse(
+        {
+          error: 'autopilot_work_not_found',
+          reason: 'Autopilot work order was not found.',
+        },
+        { status: 404 },
+      )
+    }
+
+    const requestedExecutionCloseout =
+      executionCloseoutRecordFromFallbackCloseoutBody(body)
+
+    if (existing.executionCloseout !== null) {
+      if (
+        executionCloseoutRefsArePublicSafe(requestedExecutionCloseout) &&
+        closeoutRecordsEqual(
+          existing.executionCloseout,
+          requestedExecutionCloseout,
+        )
+      ) {
+        return noStoreJsonResponse(
+          {
+            generatedAt: nowIso,
+            idempotent: true,
+            work: projectionForRecord(
+              existing,
+              true,
+              nowIso,
+              pylonRegistrations,
+            ),
+          },
+          { status: 200 },
+        )
+      }
+
+      return yield* new AutopilotWorkStoreError({
+        kind: 'conflict',
+        reason:
+          'Autopilot work already has execution closeout evidence.',
+      })
+    }
+
+    const executionCloseout = yield* executionCloseoutFromFallbackCloseout({
+      body,
+      nowIso,
+      pylonRegistrations,
+      record: existing,
+    })
+
+    const delivered = yield* Effect.tryPromise({
+      catch: error =>
+        error instanceof AutopilotWorkStoreError
+          ? error
+          : new AutopilotWorkStoreError({
+              kind: 'storage_error',
+              reason: error instanceof Error ? error.message : String(error),
+            }),
+      try: () =>
+        dependencies.makeStore(env).recordExecutionCloseout({
+          executionCloseout,
+          ownerUserId: auth.ownerUserId,
+          updatedAt: nowIso,
+          workOrderRef,
+        }),
+    })
+
+    if (delivered === undefined) {
+      return noStoreJsonResponse(
+        {
+          error: 'autopilot_work_not_found',
+          reason: 'Autopilot work order was not found.',
+        },
+        { status: 404 },
+      )
+    }
+
+    return noStoreJsonResponse(
+      {
+        generatedAt: nowIso,
+        idempotent: false,
+        work: projectionForRecord(delivered, false, nowIso, pylonRegistrations),
+      },
+      { status: 201 },
+    )
+  }).pipe(
+    Effect.catchTag('CustomerOrderAgentAuthFailure', () =>
+      Effect.succeed(unauthorized())
+    ),
+    Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+  )
+
 const reviewWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
   request: Request,
@@ -3061,6 +3291,12 @@ const workOrderEventsRefFromPath = (pathname: string): string | undefined => {
   return match?.[1]
 }
 
+const workOrderCloseoutRefFromPath = (pathname: string): string | undefined => {
+  const match = /^\/api\/autopilot\/work\/([^/]+)\/closeout$/.exec(pathname)
+
+  return match?.[1]
+}
+
 const workOrderReviewRefFromPath = (pathname: string): string | undefined => {
   const match = /^\/api\/autopilot\/work\/([^/]+)\/review$/.exec(pathname)
 
@@ -3197,6 +3433,23 @@ export const makeAutopilotWorkRoutes = <
           )
         ),
         M.orElse(() => Effect.succeed(methodNotAllowed(['GET']))),
+      )
+    }
+
+    const workOrderCloseoutRef = workOrderCloseoutRefFromPath(url.pathname)
+
+    if (workOrderCloseoutRef !== undefined) {
+      return M.value(request.method).pipe(
+        M.when('POST', () =>
+          closeoutWorkOrder(
+            dependencies,
+            request,
+            env,
+            ctx,
+            workOrderCloseoutRef,
+          )
+        ),
+        M.orElse(() => Effect.succeed(methodNotAllowed(['POST']))),
       )
     }
 

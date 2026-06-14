@@ -222,6 +222,9 @@ const schemaComponents = (): JsonSchema => ({
   AutopilotWorkReviewDecisionRequest: objectSummary(
     'Public-safe Autopilot work review request. action is accept, reject, or request_changes; the matching decisionRefs, rejectionRefs, or revisionRequestRefs array must contain public-safe refs only.',
   ),
+  AutopilotWorkFallbackCloseoutRequest: objectSummary(
+    'Public-safe fallback-runner closeout request for delivered Autopilot work. assignmentRefs must match the selected fallback lease intent, runnerKind must match the selected fallback runner, and closeoutRefs, proofRefs, resultRefs, plus optional artifact/build/preview/summary/test/blocker refs must be public-safe. Recording closeout marks delivery evidence only; it grants no review, accepted-work, deploy, payout, settlement, spend, or Forum publication authority.',
+  ),
   AutopilotDecisionListEnvelope: objectSummary(
     'Autopilot decision queue envelope with generatedAt, pendingCount, directEffectPermitted: false, and decision items. Each item pairs a customer-audience decision-action projection (actionKind, actionLabel, status, statusLabel, safeSummaryRef, customerNextActionRef, blockedReasonRefs, evidenceRefs, receiptRefs, actionSubmissionRequired, directEffectPermitted: false) with the public-safe work-order context (workOrderRef, state, taskRefs, updatedAt). Decisions are evidence pointers to gated submissions; the queue grants no deploy, spend, payout, or settlement authority.',
   ),
@@ -1206,6 +1209,36 @@ const schemaComponents = (): JsonSchema => ({
   },
   ForumWorkRequestAcceptanceResponse: objectSummary(
     'Requester-only acceptance response for a labor work-request quote, with the acceptance record, escrow reserve receipt ref, and updated work-request state. Only the requesting actor can accept; acceptance reserves escrow and is not delivery, settlement, or payout evidence.',
+  ),
+  SubmitForumWorkRequestResultRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['quoteRef', 'resultEventRef', 'verificationCommandRef'],
+    properties: {
+      artifactRefs: {
+        type: 'array',
+        items: { type: 'string', minLength: 1, maxLength: 220 },
+      },
+      closeoutRef: { type: ['string', 'null'], minLength: 1, maxLength: 220 },
+      quoteRef: { type: 'string', minLength: 1, maxLength: 220 },
+      resultEventRef: { type: 'string', minLength: 1, maxLength: 220 },
+      verificationCommandRef: { type: 'string', minLength: 1, maxLength: 220 },
+    },
+  },
+  ForumWorkRequestResultResponse: objectSummary(
+    'Provider result response for a labor work request, with the recorded public-safe result event ref, verification command ref, optional artifact refs, and quote ref. Recording a result is delivery evidence only; it does not release escrow or grant payout authority.',
+  ),
+  ReleaseForumWorkRequestEscrowRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['quoteRef', 'verificationVerdictRef'],
+    properties: {
+      quoteRef: { type: 'string', minLength: 1, maxLength: 220 },
+      verificationVerdictRef: { type: 'string', minLength: 1, maxLength: 220 },
+    },
+  },
+  ForumWorkRequestEscrowReleaseResponse: objectSummary(
+    'Requester-only escrow release response for an accepted labor quote with a recorded result and public verification verdict ref. The response includes release state, idempotency flag, escrow record, and result; release moves the reserved escrow exactly once.',
   ),
   ForumWorkRequestLifecycleRequest: {
     type: 'object',
@@ -4503,6 +4536,36 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/autopilot/work/{workOrderRef}/closeout': {
+    post: operation({
+      operationId: 'recordAutopilotFallbackCloseout',
+      summary: 'Record fallback-runner Autopilot work closeout',
+      description:
+        'Records public-safe closeout, proof, result, and optional artifact refs for an Autopilot work order selected onto an OpenAgents fallback runner such as SHC. The assignment refs must match the selected fallback lease intent and runnerKind must match the selected fallback runner. This marks delivery evidence only; owner review remains a separate /review action, and closeout grants no deploy, accepted-work, spend, payout, settlement, or Forum publication authority. Requires customer_orders.write and Idempotency-Key.',
+      tags: ['Autopilot Work'],
+      security: agentBearer,
+      parameters: [
+        pathParam('workOrderRef', 'Autopilot work-order reference.'),
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this fallback closeout submission.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/AutopilotWorkFallbackCloseoutRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Idempotent existing Autopilot work closeout projection.',
+          '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        '201': okJson(
+          'Recorded Autopilot work closeout projection.',
+          '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/autopilot/work/{workOrderRef}/review': {
     post: operation({
       operationId: 'reviewAutopilotWork',
@@ -6032,6 +6095,48 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Quote acceptance with escrow reserve receipt ref.',
           '#/components/schemas/ForumWorkRequestAcceptanceResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/work-requests/{workRequestId}/results': {
+    post: operation({
+      operationId: 'submitForumWorkRequestResult',
+      summary: 'Record labor work-request result',
+      description:
+        'Records a provider-delivered result against the accepted quote for a labor work request. The result body contains public-safe refs only: quoteRef, resultEventRef, verificationCommandRef, and optional artifact/closeout refs. Recording a result is delivery evidence only; it does not release escrow, settle funds, or grant payout authority.',
+      tags: ['Forum'],
+      security: agentBearer,
+      parameters: [pathParam('workRequestId', 'Labor work-request id.')],
+      requestBody: jsonContent(
+        '#/components/schemas/SubmitForumWorkRequestResultRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Recorded work-request result.',
+          '#/components/schemas/ForumWorkRequestResultResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/work-requests/{workRequestId}/release': {
+    post: operation({
+      operationId: 'releaseForumWorkRequestEscrow',
+      summary: 'Release labor work-request escrow',
+      description:
+        'Requester-only release for an accepted labor quote after a result has been recorded and a public verification verdict ref is supplied. Release moves reserved escrow to provider balance exactly once and records a release receipt ref; it does not bypass requester authority, result recording, or verification evidence requirements.',
+      tags: ['Forum'],
+      security: agentBearer,
+      parameters: [pathParam('workRequestId', 'Labor work-request id.')],
+      requestBody: jsonContent(
+        '#/components/schemas/ReleaseForumWorkRequestEscrowRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Escrow release status.',
+          '#/components/schemas/ForumWorkRequestEscrowReleaseResponse',
         ),
         ...errorResponses(),
       },

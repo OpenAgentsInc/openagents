@@ -2005,6 +2005,200 @@ describe('Autopilot work routes', () => {
     })
   })
 
+  test('records SHC fallback closeout refs and keeps review as a separate gate', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      clientRequestRef: 'client.example.20260609.shc_closeout',
+      placementPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].placementPolicy,
+        allowedRunnerKinds: ['openagents_shc'] as const,
+        preferredRunnerKinds: ['openagents_shc'] as const,
+        privacyTier: 'openagents_shc' as const,
+        publicTraceAllowed: false,
+      },
+      tasks: [
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+          accessRequests: [],
+        },
+      ],
+    }
+    const create = await route(store, '/api/autopilot/work', {
+      body: request,
+      idempotencyKey: 'idem-autopilot-work-shc-closeout',
+      pylonRegistrations: [],
+    })
+    const createJson = await responseJson(create)
+    const workOrderRef = createJson.work?.workOrderRef
+    const assignmentRef =
+      createJson.work?.fallbackLeaseIntents?.[0]?.assignmentRef
+
+    if (workOrderRef === undefined || assignmentRef === undefined) {
+      throw new Error('Expected SHC fallback work and assignment refs.')
+    }
+
+    expect(create.status).toBe(202)
+    expect(createJson.work).toMatchObject({
+      fallbackLeaseIntents: [
+        expect.objectContaining({
+          assignmentRef:
+            'fallback_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract',
+          runnerKind: 'openagents_shc',
+          workerPayoutAuthority: false,
+        }),
+      ],
+      placementDecision: {
+        selectedRunnerKind: 'openagents_shc',
+        source: 'fallback',
+      },
+      state: 'accepted_free_slice',
+    })
+
+    const closeoutBody = {
+      artifactRefs: ['artifact.public.autopilot_shc.patch_summary'],
+      assignmentRefs: [assignmentRef],
+      buildRefs: ['build.public.autopilot_shc.not_required'],
+      closeoutRefs: ['closeout.public.autopilot_shc.worker_summary'],
+      previewRefs: ['preview.public.autopilot_shc.not_required'],
+      proofRefs: ['proof.public.autopilot_shc.worker_closeout'],
+      resultRefs: ['result.public.autopilot_shc.delivered'],
+      runnerKind: 'openagents_shc',
+      summaryRefs: ['summary.public.autopilot_shc.customer_safe'],
+      testRefs: ['test.public.autopilot_shc.bun_passed'],
+    }
+    const closeout = await route(store, `/api/autopilot/work/${workOrderRef}/closeout`, {
+      body: closeoutBody,
+      idempotencyKey: 'closeout-autopilot-work-shc',
+      method: 'POST',
+      pylonRegistrations: [],
+    })
+    const replay = await route(store, `/api/autopilot/work/${workOrderRef}/closeout`, {
+      body: closeoutBody,
+      idempotencyKey: 'closeout-autopilot-work-shc',
+      method: 'POST',
+      pylonRegistrations: [],
+    })
+    const review = await route(store, `/api/autopilot/work/${workOrderRef}/review`, {
+      body: {
+        action: 'accept',
+        decisionRefs: ['review.public.autopilot_shc.customer_accepts'],
+      },
+      idempotencyKey: 'review-autopilot-work-shc',
+      method: 'POST',
+      pylonRegistrations: [],
+    })
+    const closeoutJson = await responseJson(closeout)
+    const replayJson = await responseJson(replay)
+    const reviewJson = await responseJson(review)
+
+    expect(closeout.status).toBe(201)
+    expect(closeoutJson.work).toMatchObject({
+      executionCloseout: {
+        acceptedWorkAuthority: false,
+        artifactRefs: ['artifact.public.autopilot_shc.patch_summary'],
+        assignmentRefs: [assignmentRef],
+        closeoutRefs: ['closeout.public.autopilot_shc.worker_summary'],
+        forumAutoPublishAllowed: false,
+        proofRefs: ['proof.public.autopilot_shc.worker_closeout'],
+        publicSafe: true,
+        resultRefs: ['result.public.autopilot_shc.delivered'],
+        runnerKind: 'openagents_shc',
+        workerPayoutAuthority: false,
+      },
+      nextAction: {
+        reasonRefs: ['next_action.review_delivered_work'],
+        state: 'delivered',
+      },
+      state: 'delivered',
+    })
+    expect(replay.status).toBe(200)
+    expect(replayJson.idempotent).toBe(true)
+    expect(review.status).toBe(201)
+    expect(reviewJson.work).toMatchObject({
+      reviewDecision: {
+        action: 'accept',
+        acceptedWorkAuthority: false,
+        deployAuthority: false,
+        forumAutoPublishAllowed: false,
+        settlementAuthority: false,
+        workerPayoutAuthority: false,
+      },
+      state: 'accepted',
+    })
+  })
+
+  test('rejects unsafe or mismatched SHC fallback closeout refs before delivery persistence', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      clientRequestRef: 'client.example.20260609.shc_closeout_reject',
+      placementPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].placementPolicy,
+        allowedRunnerKinds: ['openagents_shc'] as const,
+        preferredRunnerKinds: ['openagents_shc'] as const,
+        privacyTier: 'openagents_shc' as const,
+        publicTraceAllowed: false,
+      },
+      tasks: [
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+          accessRequests: [],
+        },
+      ],
+    }
+    const create = await route(store, '/api/autopilot/work', {
+      body: request,
+      idempotencyKey: 'idem-autopilot-work-shc-closeout-reject',
+      pylonRegistrations: [],
+    })
+    const createJson = await responseJson(create)
+    const workOrderRef = createJson.work?.workOrderRef
+    const assignmentRef =
+      createJson.work?.fallbackLeaseIntents?.[0]?.assignmentRef
+
+    if (workOrderRef === undefined || assignmentRef === undefined) {
+      throw new Error('Expected SHC fallback work and assignment refs.')
+    }
+
+    const unsafe = await route(store, `/api/autopilot/work/${workOrderRef}/closeout`, {
+      body: {
+        assignmentRefs: [assignmentRef],
+        closeoutRefs: ['closeout.public.autopilot_shc.worker_summary'],
+        proofRefs: ['proof.public./Users/christopher/raw_runner_log'],
+        resultRefs: ['result.public.autopilot_shc.delivered'],
+        runnerKind: 'openagents_shc',
+      },
+      idempotencyKey: 'closeout-autopilot-work-shc-unsafe',
+      method: 'POST',
+      pylonRegistrations: [],
+    })
+    const mismatch = await route(store, `/api/autopilot/work/${workOrderRef}/closeout`, {
+      body: {
+        assignmentRefs: [assignmentRef],
+        closeoutRefs: ['closeout.public.autopilot_shc.worker_summary'],
+        proofRefs: ['proof.public.autopilot_shc.worker_closeout'],
+        resultRefs: ['result.public.autopilot_shc.delivered'],
+        runnerKind: 'cloud_sandbox',
+      },
+      idempotencyKey: 'closeout-autopilot-work-shc-mismatch',
+      method: 'POST',
+      pylonRegistrations: [],
+    })
+    const detail = await route(store, `/api/autopilot/work/${workOrderRef}`, {
+      method: 'GET',
+      pylonRegistrations: [],
+    })
+    const detailJson = await responseJson(detail)
+
+    expect(unsafe.status).toBe(400)
+    expect(mismatch.status).toBe(400)
+    expect(detailJson.work).toMatchObject({
+      executionCloseout: null,
+      state: 'accepted_free_slice',
+    })
+  })
+
   test('accepts delivered Autopilot work without granting payout or settlement authority', async () => {
     const { pylonApiStore, store } = await createDeliveredPylonBackedWork()
     const review = await route(

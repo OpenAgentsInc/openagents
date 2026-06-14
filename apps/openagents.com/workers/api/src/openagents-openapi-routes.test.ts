@@ -247,6 +247,10 @@ describe('OpenAgents OpenAPI route', () => {
         .operationId,
     ).toBe('getAutopilotWork')
     expect(
+      operationAt(body, '/api/autopilot/work/{workOrderRef}/closeout', 'post')
+        .operationId,
+    ).toBe('recordAutopilotFallbackCloseout')
+    expect(
       operationAt(body, '/api/autopilot/work/{workOrderRef}/review', 'post')
         .operationId,
     ).toBe('reviewAutopilotWork')

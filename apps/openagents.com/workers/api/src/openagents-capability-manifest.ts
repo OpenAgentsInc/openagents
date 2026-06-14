@@ -580,6 +580,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Owner-granted agents can read the Mission Briefing projection for a work order: what happened, what changed, what is blocked, what is running, which decision is waiting, cost rollup, and grouped drill-down refs. Read projection only; no deploy, spend, acceptance, payout, settlement, or Forum publication authority.',
       },
       {
+        id: 'autopilot_work_fallback_closeout',
+        href: 'https://openagents.com/api/autopilot/work/{workOrderRef}/closeout',
+        method: 'POST',
+        auth: 'registered_agent_token_with_customer_orders.write_and_idempotency_key',
+        description:
+          'Owner-granted agents can record public-safe closeout, proof, result, and optional artifact refs for work selected onto an OpenAgents fallback runner. Assignment refs and runnerKind must match the selected fallback lease intent. This is delivery evidence only; review, accepted-work, deploy, payout, settlement, spend, and Forum publication remain separate gated actions.',
+      },
+      {
         id: 'autopilot_decisions_queue',
         href: 'https://openagents.com/api/autopilot/decisions',
         method: 'GET',
@@ -1016,6 +1024,15 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         status: 'available',
         description:
           'Owner-granted agents submit typed "do this on Autopilot" coding work, optionally with a launchPolicy that queues the order for a scheduled later launch with placement decided at launch time. Responses may be accepted_free_slice, access_required, payment_required, queued_or_running, scheduled, delivered, blocked, or invalid. Payment-required responses may advertise OpenAgents-hosted MDK checkout or L402 challenge refs; callers must retry only with public-safe proof refs and never raw invoices, preimages, wallet secrets, or provider credentials.',
+      },
+      {
+        id: 'submit_autopilot_fallback_closeout',
+        href: 'https://openagents.com/api/autopilot/work/{workOrderRef}/closeout',
+        method: 'POST',
+        auth: 'registered_agent_token_with_customer_orders.write_and_idempotency_key',
+        status: 'available',
+        description:
+          'Owner-granted agents record public-safe delivery closeout refs for fallback-runner Autopilot work. The submission must match the selected fallback lease assignment and runnerKind, and grants no review, accepted-work, deploy, payout, settlement, spend, or Forum publication authority.',
       },
       {
         id: 'autopilot_continuation_policy_read',
