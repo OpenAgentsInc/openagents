@@ -27,6 +27,7 @@ import {
 } from "@openagentsinc/three-effect/foldkit"
 import {
   trainingRunVisualizationOptionsFromSnapshot,
+  type TrainingRunPromiseSignalDefinition,
   type TrainingRunVisualizationOptions,
 } from "@openagentsinc/three-effect/core"
 import type { Attribute, Document, Html } from "foldkit/html"
@@ -889,11 +890,51 @@ const lifecycleCountsFromTrainingSummary = (summary: TrainingRunSummaryRow) => {
   }
 }
 
-const trainingSceneOptions = (
-  projection: TrainingRunsResponse | null,
-): TrainingRunVisualizationOptions | undefined => {
+const promiseSignalLabel = (promiseId: string): string => {
+  const simplified = promiseId
+    .replace(/^training\./, "")
+    .replace(/\.v\d+$/, "")
+    .replaceAll("_", " ")
+  return simplified.length > 16 ? `${simplified.slice(0, 15)}...` : simplified
+}
+
+const trainingPromiseSignals = (
+  promises: readonly TrainingPromiseSummary[],
+): readonly TrainingRunPromiseSignalDefinition[] =>
+  promises.slice(0, 7).map(promise => ({
+    blockerCount: promise.blockerRefs.length,
+    evidenceRefCount: promise.evidenceRefCount,
+    id: promise.promiseId,
+    label: promiseSignalLabel(promise.promiseId),
+    state: promise.state,
+  }))
+
+const trainingSceneOptions = (model: Model): TrainingRunVisualizationOptions | undefined => {
+  const projection = modelTrainingRuns(model)
+  const gates = modelTrainingPromiseGates(model)
+  const promises = gates?.promises ?? []
+  const promiseEvidenceRefCount = promises.reduce(
+    (total, promise) => total + promise.evidenceRefCount,
+    0,
+  )
+  const promiseSignalSnapshot = {
+    promiseBlockerRefCount: gates?.blockerRefs.length ?? 0,
+    promiseDegradedCount: gates?.stateCounts.degraded ?? 0,
+    promiseEvidenceRefCount,
+    promiseGreenCount: gates?.stateCounts.green ?? 0,
+    promisePlannedCount: gates?.stateCounts.planned ?? 0,
+    promiseRedCount: gates?.stateCounts.red ?? 0,
+    promiseSignals: trainingPromiseSignals(promises),
+    promiseUnknownCount: gates?.stateCounts.unknown ?? 0,
+    promiseWithdrawnCount: gates?.stateCounts.withdrawn ?? 0,
+    promiseYellowCount: gates?.stateCounts.yellow ?? 0,
+  }
   const summary = selectedTrainingSummary(projection)
-  if (summary === null) return undefined
+  if (summary === null) {
+    return promises.length === 0
+      ? undefined
+      : trainingRunVisualizationOptionsFromSnapshot(promiseSignalSnapshot)
+  }
   const metrics = summary.metrics
   const realGradient = summary.realGradient
   return trainingRunVisualizationOptionsFromSnapshot({
@@ -919,6 +960,7 @@ const trainingSceneOptions = (
     maxValidationLoss: realGradient.lossUnderBudget.maxValidationLoss,
     pendingPayoutCount: metrics.pendingPayoutCount.value,
     plannedWindowCount: metrics.plannedWindowCount.value,
+    ...promiseSignalSnapshot,
     receiptRefCount: metrics.receiptRefCount.value,
     reconciledWindowCount: metrics.reconciledWindowCount.value,
     rejectedWorkCount: metrics.rejectedWorkCount.value,
@@ -1874,7 +1916,7 @@ const trainingPane = (model: Model): Html => {
         ]),
         trainingRunView<Message>(
           [cls("three-effect-training")],
-          trainingSceneOptions(projection),
+          trainingSceneOptions(model),
         ),
       ]),
       h.div([cls("training-grid")], [
