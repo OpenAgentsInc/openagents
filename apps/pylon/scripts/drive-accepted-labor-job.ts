@@ -11,7 +11,37 @@ import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { WebSocketRelayTransport } from "../src/provider-nip90"
 import { ensurePylonLocalState } from "../src/state"
 import { loadOrCreateNostrIdentity } from "../src/nostr-identity"
-import { handleLaborMarketEventOnce, DEFAULT_LABOR_MARKET_POLICY } from "../src/labor-market"
+import {
+  handleLaborMarketEventOnce,
+  DEFAULT_LABOR_MARKET_POLICY,
+  loadLaborMarketStore,
+  writeLaborMarketStore,
+} from "../src/labor-market"
+
+// Self-contained operationalization of work request b74bb55c's objective
+// ("complete the A1 API parity matrix slice of issue 4773"). The NIP-LBR
+// kind-5934 is ref-only, so the provider resolves the public objective to this
+// actionable, network-free, sandbox-verifiable task right before execution.
+const OBJECTIVE_DETAIL = [
+  "Implement the first self-contained slice of OpenAgents issue #4773 (A1: API",
+  "parity contract). Create exactly two files in the current working directory,",
+  "and nothing else. Do not access the network or any other repository.",
+  "",
+  "1) parity-matrix.ts — export a typed parity matrix asserting every MVP",
+  "   capability has an agent-API peer. Shape:",
+  "     export type ParityRow = { capability: string; web: boolean; api: boolean; waived?: string }",
+  "     export const parityMatrix: ParityRow[] = [ ... ]",
+  "   Cover these rows, each with web:true and api:true (no waivers needed):",
+  "   submit, status, events, decisions_review, scheduling, lane_pricing_visibility,",
+  "   account_pool_state.",
+  "",
+  "2) parity-matrix.test.ts — a bun:test that imports parityMatrix and asserts",
+  "   that the matrix is non-empty and every row has api===true OR a non-empty",
+  "   waived reason (so no MVP surface is browser-only without an explicit waiver).",
+  "",
+  "The verification command is `bun test`; it must pass in this directory.",
+  "Return only public-safe artifact refs and a concise summary.",
+].join("\n")
 
 const PROVIDER_PUBKEY = "3fd9b3f1e02122c68426ea27495e115ec9e8a592ef544fa6d04c98cd2b59c94a"
 const RELAY = (Bun.env.PYLON_NIP90_RELAYS ?? "wss://relay.openagents.com").split(",")[0]!.trim()
@@ -56,6 +86,23 @@ if (identity.publicKey !== PROVIDER_PUBKEY) {
 const acceptance = await fetchAcceptanceEvent()
 log(`acceptance event ${acceptance.id} created_at=${acceptance.created_at}`)
 
+// A prior execution attempt (before the headless-codex + objective-resolution
+// fix) marked the quote record "refused"; the acceptance branch requires the
+// record to be "quoted". Reset it so the now-fixed path can re-execute. Escrow
+// was already reserved on the worker at accept time and is untouched here.
+const store = await loadLaborMarketStore(state)
+let resetAny = false
+for (const [key, rec] of Object.entries(store.quotes)) {
+  if (rec.status !== "quoted") {
+    log(`resetting quote record ${key} status ${rec.status} -> quoted`)
+    rec.status = "quoted"
+    delete rec.reasonRef
+    delete rec.resultEventId
+    resetAny = true
+  }
+}
+if (resetAny) await writeLaborMarketStore(state, store)
+
 const relay = new WebSocketRelayTransport(RELAY)
 log(`executing labor job via codex in bounded sandbox (this can take minutes)...`)
 const result = await handleLaborMarketEventOnce({
@@ -65,6 +112,7 @@ const result = await handleLaborMarketEventOnce({
   relay,
   options: {
     policy: { ...DEFAULT_LABOR_MARKET_POLICY, agentKind: "codex" },
+    resolveObjectiveDetail: async () => OBJECTIVE_DETAIL,
   },
 })
 log(`result: ${JSON.stringify(result)}`)

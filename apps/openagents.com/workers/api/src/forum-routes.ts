@@ -98,7 +98,9 @@ import { verifyOpenAgentsForumMdkWebhook } from './forum-mdk-webhooks'
 import {
   type ForumWorkRequestAcceptanceRecord,
   type ForumWorkRequestOfferRecord,
+  type ForumWorkRequestResultRecord,
   listForumWorkRequestOffers,
+  markForumWorkRequestSettled,
   readForumWorkRequestAcceptanceByIdempotencyKey,
   readForumWorkRequestAcceptanceByWorkRequestId,
   readForumWorkRequestOfferByQuoteRef,
@@ -2532,23 +2534,40 @@ const forumWorkRequestStatusEnvelope = (
     offers: ReadonlyArray<ForumWorkRequestOfferRecord>
     relayLink: ForumWorkRequestRelayLink | null
     workRequest: ForumWorkRequestRecord
+    // The live escrow + result records, when available, so the public status
+    // reflects settlement (released_to_provider, release receipt, delivered
+    // result) instead of freezing at the accept-time "reserved" snapshot.
+    escrow?: LaborEscrowRecord | null
+    result?: ForumWorkRequestResultRecord | null
   }>,
-) => ({
-  acceptance: input.acceptance,
-  escrowState:
-    input.acceptance === null
-      ? 'pending'
-      : {
-          escrowId: input.acceptance.escrowId,
-          reserveReceiptRef: input.acceptance.reserveReceiptRef,
-          state: 'reserved',
-        },
-  offers: input.offers,
-  relayLink: input.relayLink,
-  receiptRefs:
-    input.acceptance === null ? [] : [input.acceptance.reserveReceiptRef],
-  workRequest: input.workRequest,
-})
+) => {
+  const escrow = input.escrow ?? null
+  const receiptRefs: string[] = []
+  if (input.acceptance !== null) receiptRefs.push(input.acceptance.reserveReceiptRef)
+  if (escrow?.releaseReceiptRef) receiptRefs.push(escrow.releaseReceiptRef)
+  if (escrow?.refundReceiptRef) receiptRefs.push(escrow.refundReceiptRef)
+  return {
+    acceptance: input.acceptance,
+    escrowState:
+      input.acceptance === null
+        ? 'pending'
+        : {
+            escrowId: input.acceptance.escrowId,
+            reserveReceiptRef: input.acceptance.reserveReceiptRef,
+            // Prefer the live escrow record's state; fall back to "reserved"
+            // for callers that have not fetched it (e.g. accept-time).
+            state: escrow?.state ?? 'reserved',
+            ...(escrow?.releaseReceiptRef
+              ? { releaseReceiptRef: escrow.releaseReceiptRef }
+              : {}),
+          },
+    offers: input.offers,
+    relayLink: input.relayLink,
+    receiptRefs,
+    result: input.result ?? null,
+    workRequest: input.workRequest,
+  }
+}
 
 const readForumWorkRequestStatusResponse = (
   db: D1Database,
@@ -2566,11 +2585,37 @@ const readForumWorkRequestStatusResponse = (
       return notFound()
     }
 
+    // Settlement-aware projection: read the live escrow + delivered result so a
+    // released escrow surfaces its release receipt instead of staying "reserved".
+    // Best-effort: a read failure falls back to the reserved snapshot rather
+    // than failing the whole status response.
+    const [escrow, result] = yield* Effect.all([
+      acceptance === null
+        ? Effect.succeed(null)
+        : Effect.tryPromise({
+            catch: error =>
+              new ForumStorageError({
+                operation: 'forumWorkRequests.readEscrowForStatus',
+                reason: error instanceof Error ? error.message : String(error),
+              }),
+            try: () => readLaborEscrowById(db, acceptance.escrowId),
+          }).pipe(Effect.orElseSucceed(() => null)),
+      acceptance === null
+        ? Effect.succeed(null)
+        : readForumWorkRequestResultByQuoteRef(
+            db,
+            workRequestId,
+            acceptance.quoteRef,
+          ).pipe(Effect.orElseSucceed(() => null)),
+    ])
+
     return noStoreJsonResponse(
       forumWorkRequestStatusEnvelope({
         acceptance,
+        escrow,
         offers,
         relayLink,
+        result,
         workRequest,
       }),
     )
@@ -3188,6 +3233,7 @@ const releaseForumWorkRequestEscrowResponse = (
         release.reason === 'escrow_not_reserved' &&
         escrowBefore.state === 'released_to_provider'
       ) {
+        yield* markForumWorkRequestSettled(db, workRequestId, nowIso)
         return noStoreJsonResponse({
           escrow: escrowBefore,
           idempotent: true,
@@ -3205,6 +3251,10 @@ const releaseForumWorkRequestEscrowResponse = (
         { status: 409 },
       )
     }
+
+    // Escrow moved to the provider — advance the request to terminal `settled`
+    // so the public projection and lifecycle reflect the closed-out job.
+    yield* markForumWorkRequestSettled(db, workRequestId, nowIso)
 
     return noStoreJsonResponse({
       escrow: release.escrow,

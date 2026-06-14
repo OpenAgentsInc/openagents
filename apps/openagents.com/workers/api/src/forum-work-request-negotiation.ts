@@ -628,6 +628,28 @@ export const recordForumWorkRequestResult = (
     return recorded
   })
 
+// Advances a work request to the terminal `settled` state after its escrow has
+// released to the provider. Bounded to a request whose escrow was accepted, so
+// it is safe to call from the release route; a no-op if already settled.
+export const markForumWorkRequestSettled = (
+  db: D1Database,
+  workRequestId: string,
+  nowIso: string,
+): Effect.Effect<void, ForumStorageError> =>
+  d1Effect('forumWorkRequests.markWorkRequestSettled', () =>
+    db
+      .prepare(
+        `UPDATE forum_work_requests
+            SET state = 'settled',
+                updated_at = ?
+          WHERE id = ?
+            AND state IN ('quote_accepted', 'running', 'delivered', 'accepted')
+            AND archived_at IS NULL`,
+      )
+      .bind(nowIso, workRequestId)
+      .run(),
+  ).pipe(Effect.asVoid)
+
 export const readForumWorkRequestAcceptanceByIdempotencyKey = (
   db: D1Database,
   idempotencyKey: string,
