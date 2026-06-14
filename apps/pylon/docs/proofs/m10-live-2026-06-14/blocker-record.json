@@ -1,0 +1,22 @@
+{
+  "schema": "openagents.proof.m10.live_blocker_record.v1",
+  "issue": 4768,
+  "recordedAt": "2026-06-14T02:46:42.757Z",
+  "blockerRefs": [
+    "blocker.m10.shc.closeout_route_missing"
+  ],
+  "summary": "Lane A SHC scheduled launch dispatched and produced an openagents_shc fallbackLeaseIntent, but production exposes no live SHC/fallback worker closeout route analogous to the Pylon worker closeout ingestion route. The work order remains accepted_free_slice with executionCloseout null.",
+  "codeEvidenceRefs": [
+    "apps/openagents.com/workers/api/src/autopilot-work-routes.ts:1982",
+    "apps/openagents.com/workers/api/src/autopilot-work-routes.ts:1872",
+    "apps/openagents.com/workers/api/src/openagents-openapi.ts:3193"
+  ],
+  "liveEvidenceRefs": [
+    "autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3",
+    "fallback_assignment.autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3.task.autopilot_coder.m10_shc_m10-shc-20260614T023213Z"
+  ],
+  "closeDecision": {
+    "closeIssue": false,
+    "reason": "Full M10 acceptance requires Lane A terminal completion/decision evidence. This bundle advances Lane A to scheduled dispatch and Lane B to accepted live closeout, but does not prove SHC terminal closeout."
+  }
+}
