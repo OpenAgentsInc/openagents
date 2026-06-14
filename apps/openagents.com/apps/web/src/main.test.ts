@@ -1,4 +1,5 @@
 import { Effect, Option } from 'effect'
+import { Scene } from 'foldkit'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import {
@@ -6,6 +7,8 @@ import {
   incompleteOnboardingStatus,
 } from './domain/session'
 import { Flags, flags, init } from './main'
+import { update } from './update'
+import { view } from './view'
 
 const appUrl = (pathname: string) => ({
   protocol: 'https:',
@@ -237,6 +240,20 @@ describe('authenticated startup routing', () => {
       route: { _tag: 'Moksha' },
     })
     expect(commands).toHaveLength(0)
+  })
+
+  test('renders the Moksha route through the top-level view', () => {
+    const [model] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/moksha'),
+    )
+
+    Scene.scene(
+      { update, view },
+      Scene.with(model),
+      Scene.expect(Scene.selector('[data-route="moksha"]')).toExist(),
+      Scene.expect(Scene.selector('oa-moksha')).toExist(),
+    )
   })
 
   test('keeps onboarding behind the logged-out application gate', () => {
