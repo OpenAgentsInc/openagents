@@ -44,5 +44,5 @@ worker closeout route. The blocker is recorded in `blocker-record.json`.
   Pylon registration projection.
 - `arch-pylon-worker-closeout.json` — worker closeout refs admitted by the live
   Pylon assignment API.
-- `arch-pylon-proof-smoke-checklist-test.log` — verification command output.
+- `arch-pylon-proof-smoke-checklist-test.txt` — verification command output.
 - `blocker-record.json` — exact remaining close blocker.
