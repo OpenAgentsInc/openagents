@@ -3,6 +3,7 @@ import {
   activateTrainingWindow,
   claimTrainingWindowLease,
   fetchTrainingDashboard,
+  fetchTrainingPromiseGates,
   fetchTrainingRuns,
   planTrainingRunWindow,
   reconcileTrainingWindow,
@@ -249,6 +250,85 @@ describe("fetchTrainingDashboard", () => {
     expect(result.error).toBe("a3: a3 offline")
     expect(result.leaderboards.lanes).toEqual([])
     expect(result.a3.cellCount).toBe(0)
+  })
+})
+
+describe("fetchTrainingPromiseGates", () => {
+  test("decodes public training promise gates", async () => {
+    const result = await fetchTrainingPromiseGates({
+      baseUrl: "https://openagents.test/",
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      fetchFn: async () =>
+        new Response(
+          JSON.stringify({
+            registryVersion: "2026-06-12.8",
+            promises: [
+              {
+                blockerRefs: [
+                  "blocker.product_promises.public_distributed_training_run_receipts_missing",
+                ],
+                claim: "Pylons participate in public distributed model-training runs.",
+                evidenceRefs: ["docs/transcripts/236.md"],
+                productArea: "training",
+                promiseId: "training.public_distributed_training_run.v1",
+                safeCopy: "Not green yet.",
+                state: "red",
+                verification: "Requires run, work, validation, and settlement refs.",
+              },
+              {
+                blockerRefs: [],
+                claim: "The code map is public.",
+                evidenceRefs: ["https://github.com/OpenAgentsInc/openagents"],
+                productArea: "source transparency",
+                promiseId: "repo.open_source_code_map.v1",
+                safeCopy: "Use the public code map.",
+                state: "green",
+                verification: "Fetch the code map.",
+              },
+              {
+                blockerRefs: ["blocker.model_spec_missing"],
+                claim: "Tassadar executor-model direction.",
+                evidenceRefs: ["docs/transcripts/236.md"],
+                productArea: "models",
+                promiseId: "models.tassadar_percepta_executor.v1",
+                safeCopy: "Research candidate only.",
+                state: "red",
+                verification: "Requires model spec and public evidence refs.",
+              },
+            ],
+          }),
+        ),
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.sourceUrl).toBe(
+      "https://openagents.test/api/public/product-promises",
+    )
+    expect(result.registryVersion).toBe("2026-06-12.8")
+    expect(result.promises.map(promise => promise.promiseId)).toEqual([
+      "models.tassadar_percepta_executor.v1",
+      "training.public_distributed_training_run.v1",
+    ])
+    expect(result.stateCounts.red).toBe(2)
+    expect(result.blockerRefs).toEqual([
+      "blocker.model_spec_missing",
+      "blocker.product_promises.public_distributed_training_run_receipts_missing",
+    ])
+  })
+
+  test("returns a typed error projection on registry failure", async () => {
+    const result = await fetchTrainingPromiseGates({
+      baseUrl: "https://openagents.test",
+      fetchFn: async () =>
+        new Response(JSON.stringify({ reason: "registry unavailable" }), {
+          status: 503,
+        }),
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe("registry unavailable")
+    expect(result.promises).toEqual([])
+    expect(result.stateCounts.red).toBe(0)
   })
 })
 

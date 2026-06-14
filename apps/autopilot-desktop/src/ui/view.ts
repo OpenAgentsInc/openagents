@@ -41,6 +41,8 @@ import type {
   NodeStateMessage,
   SessionEventRow,
   TrainingLeaderboardLaneSummary,
+  TrainingPromiseState,
+  TrainingPromiseSummary,
   TrainingRunSummaryRow,
   TrainingRunsResponse,
 } from "../shared/rpc"
@@ -93,6 +95,7 @@ import {
   modelNode,
   modelNotifications,
   modelTrainingPlan,
+  modelTrainingPromiseGates,
   modelTrainingReconcile,
   modelTrainingRuns,
 } from "./model"
@@ -823,6 +826,85 @@ const trainingDashboardPanel = (model: Model): Html => {
   ])
 }
 
+const promiseTone = (
+  state: TrainingPromiseState,
+): "ready" | "watch" | "blocked" => {
+  switch (state) {
+    case "green":
+      return "ready"
+    case "yellow":
+    case "planned":
+      return "watch"
+    case "degraded":
+    case "red":
+    case "withdrawn":
+    case "unknown":
+      return "blocked"
+  }
+}
+
+const promiseGate = (promise: TrainingPromiseSummary): Html =>
+  trainingGate(
+    promise.promiseId,
+    `${promise.state} · ${promise.blockerRefs.length} blockers · ${promise.evidenceRefCount} refs`,
+    promiseTone(promise.state),
+  )
+
+const trainingPromiseGatesPanel = (model: Model): Html => {
+  const gates = modelTrainingPromiseGates(model)
+  const promises = gates?.promises ?? []
+  const rows =
+    promises.length === 0
+      ? [trainingGate("product promises", "not loaded", "watch")]
+      : promises.slice(0, 7).map(promiseGate)
+
+  return h.section([cls("training-panel training-promise-gates-panel")], [
+    h.div([cls("training-panel-heading")], [
+      h.h2([cls("training-panel-title")], ["Promise Gates"]),
+      h.span([cls("training-panel-kicker")], [
+        gates === null ? "public registry" : gates.sourceUrl,
+      ]),
+    ]),
+    h.p(
+      [
+        cls(
+          `training-panel-copy training-${model.trainingPromiseGatesStatus.tone}`,
+        ),
+      ],
+      [model.trainingPromiseGatesStatus.text],
+    ),
+    h.div([cls("training-metrics")], [
+      trainingMetric("promises", String(promises.length)),
+      trainingMetric(
+        "green",
+        String(gates?.stateCounts.green ?? 0),
+        (gates?.stateCounts.green ?? 0) > 0 ? "ready" : "watch",
+      ),
+      trainingMetric(
+        "yellow",
+        String(gates?.stateCounts.yellow ?? 0),
+        (gates?.stateCounts.yellow ?? 0) > 0 ? "watch" : "ready",
+      ),
+      trainingMetric(
+        "red",
+        String(gates?.stateCounts.red ?? 0),
+        (gates?.stateCounts.red ?? 0) > 0 ? "blocked" : "ready",
+      ),
+      trainingMetric(
+        "planned",
+        String(gates?.stateCounts.planned ?? 0),
+        (gates?.stateCounts.planned ?? 0) > 0 ? "watch" : "ready",
+      ),
+      trainingMetric(
+        "blockers",
+        String(gates?.blockerRefs.length ?? 0),
+        (gates?.blockerRefs.length ?? 0) > 0 ? "blocked" : "ready",
+      ),
+    ]),
+    h.ul([cls("training-gates training-promise-gates")], rows),
+  ])
+}
+
 const trainingLaunchPanel = (model: Model): Html => {
   const plan = modelTrainingPlan(model)
   const lease = modelTrainingLease(model)?.lease ?? null
@@ -1038,6 +1120,7 @@ const trainingPane = (model: Model): Html => {
       h.div([cls("training-grid")], [
         liveTrainingProjectionPanel(model),
         trainingDashboardPanel(model),
+        trainingPromiseGatesPanel(model),
         selectedTrainingEvidencePanel(projection),
         h.section([cls("training-panel")], [
           h.h2([cls("training-panel-title")], ["Issue 4855 Gates"]),

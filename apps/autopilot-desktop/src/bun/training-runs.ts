@@ -3,6 +3,9 @@ import type {
   TrainingLeaderboardLane,
   TrainingLeaderboardLaneSummary,
   TrainingLeaderboardTopRow,
+  TrainingPromiseGatesResponse,
+  TrainingPromiseState,
+  TrainingPromiseSummary,
   TrainingPublicMetric,
   TrainingPlanResponse,
   TrainingRunMetricsRow,
@@ -25,6 +28,12 @@ type FetchTrainingRunsInput = Readonly<{
 }>
 
 type FetchTrainingDashboardInput = Readonly<{
+  baseUrl: string
+  fetchFn?: typeof fetch
+  nowIso?: () => string
+}>
+
+type FetchTrainingPromiseGatesInput = Readonly<{
   baseUrl: string
   fetchFn?: typeof fetch
   nowIso?: () => string
@@ -94,6 +103,24 @@ const trainingLeaderboardLanes = new Set<TrainingLeaderboardLane>([
   "a3_isoflop",
   "a4_eval_delta",
   "a5_accuracy",
+])
+const trainingPromiseStates = new Set<TrainingPromiseState>([
+  "degraded",
+  "green",
+  "planned",
+  "red",
+  "withdrawn",
+  "yellow",
+])
+const trainingPromiseIds = new Set([
+  "pylon.first_real_model_training_run.v1",
+  "training.public_distributed_training_run.v1",
+  "training.monday_decentralized_training_launch.v1",
+  "pylon.largest_decentralized_training_claim.v1",
+  "models.tassadar_percepta_executor.v1",
+  "training.model_ladder.v1",
+  "training.marathon_operations.v1",
+  "training.verification_classes.v1",
 ])
 
 const normalizeBaseUrl = (baseUrl: string): string => baseUrl.replace(/\/+$/, "")
@@ -306,6 +333,30 @@ const emptyTrainingDashboardResponse = (input: {
     evalSuiteCount: 0,
     updateBoundaryRef: null,
     verifiedSuiteCount: 0,
+  },
+  ...(input.error === undefined ? {} : { error: input.error }),
+})
+
+const emptyTrainingPromiseGatesResponse = (input: {
+  error?: string
+  fetchedAt: string
+  ok: boolean
+  sourceUrl: string
+}): TrainingPromiseGatesResponse => ({
+  ok: input.ok,
+  fetchedAt: input.fetchedAt,
+  registryVersion: "",
+  sourceUrl: input.sourceUrl,
+  blockerRefs: [],
+  promises: [],
+  stateCounts: {
+    degraded: 0,
+    green: 0,
+    planned: 0,
+    red: 0,
+    withdrawn: 0,
+    yellow: 0,
+    unknown: 0,
   },
   ...(input.error === undefined ? {} : { error: input.error }),
 })
@@ -695,6 +746,127 @@ export async function fetchTrainingDashboard(
     }
   } catch (error) {
     return emptyTrainingDashboardResponse({
+      ok: false,
+      fetchedAt,
+      sourceUrl,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+const promiseState = (value: unknown): TrainingPromiseState =>
+  typeof value === "string" &&
+  trainingPromiseStates.has(value as TrainingPromiseState)
+    ? (value as TrainingPromiseState)
+    : "unknown"
+
+const trainingPromiseSummary = (
+  value: unknown,
+): TrainingPromiseSummary | null => {
+  if (!isRecord(value)) return null
+  const promiseId = asString(value.promiseId)
+  const productArea = asString(value.productArea)
+  if (
+    promiseId === "" ||
+    !(productArea === "training" || trainingPromiseIds.has(promiseId))
+  ) {
+    return null
+  }
+
+  return {
+    blockerRefs: stringArray(value.blockerRefs),
+    claim: asString(value.claim),
+    evidenceRefCount: stringArray(value.evidenceRefs).length,
+    productArea,
+    promiseId,
+    safeCopy: asString(value.safeCopy),
+    state: promiseState(value.state),
+    verification: asString(value.verification),
+  }
+}
+
+const emptyTrainingPromiseStateCounts = (): Record<
+  TrainingPromiseState,
+  number
+> => ({
+  degraded: 0,
+  green: 0,
+  planned: 0,
+  red: 0,
+  withdrawn: 0,
+  yellow: 0,
+  unknown: 0,
+})
+
+const promiseStateSortRank = (state: TrainingPromiseState): number => {
+  switch (state) {
+    case "red":
+      return 0
+    case "yellow":
+      return 1
+    case "degraded":
+      return 2
+    case "planned":
+      return 3
+    case "green":
+      return 4
+    case "withdrawn":
+      return 5
+    case "unknown":
+      return 6
+  }
+}
+
+export async function fetchTrainingPromiseGates(
+  input: FetchTrainingPromiseGatesInput,
+): Promise<TrainingPromiseGatesResponse> {
+  const fetchFn = input.fetchFn ?? fetch
+  const fetchedAt = input.nowIso?.() ?? new Date().toISOString()
+  const sourceUrl = `${normalizeBaseUrl(input.baseUrl)}/api/public/product-promises`
+
+  try {
+    const result = await getPublicJson(fetchFn, sourceUrl)
+    if (!result.ok) {
+      return emptyTrainingPromiseGatesResponse({
+        ok: false,
+        fetchedAt,
+        sourceUrl,
+        error: result.error,
+      })
+    }
+
+    const record = isRecord(result.json) ? result.json : {}
+    const promises = asArray(record.promises)
+      .map(trainingPromiseSummary)
+      .filter((item): item is TrainingPromiseSummary => item !== null)
+      .sort((left, right) => {
+        const stateRank =
+          promiseStateSortRank(left.state) - promiseStateSortRank(right.state)
+        return stateRank === 0
+          ? left.promiseId.localeCompare(right.promiseId)
+          : stateRank
+      })
+    const stateCounts = emptyTrainingPromiseStateCounts()
+    for (const promise of promises) {
+      stateCounts[promise.state] += 1
+    }
+
+    return {
+      ok: true,
+      fetchedAt,
+      registryVersion: asString(
+        record.registryVersion,
+        asString(record.version),
+      ),
+      sourceUrl,
+      blockerRefs: [
+        ...new Set(promises.flatMap(promise => promise.blockerRefs)),
+      ].sort(),
+      promises,
+      stateCounts,
+    }
+  } catch (error) {
+    return emptyTrainingPromiseGatesResponse({
       ok: false,
       fetchedAt,
       sourceUrl,

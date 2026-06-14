@@ -15,6 +15,7 @@ import {
   ClaimTrainingWindowLease,
   DeployCloud,
   LoadTrainingDashboard,
+  LoadTrainingPromiseGates,
   LoadTrainingRuns,
   PlanTrainingRunWindow,
   QueueTrainingLaunch,
@@ -30,6 +31,7 @@ import { Model } from "./model"
 import type {
   TrainingDashboardSummaryResponse,
   TrainingPlanResponse,
+  TrainingPromiseGatesResponse,
   TrainingRunsResponse,
   TrainingWindowActionResponse,
   TrainingWindowLeaseResponse,
@@ -42,6 +44,7 @@ const noCommands: ReadonlyArray<Command.Command<Message>> = []
 const loadTrainingProjectionCommands = (): ReadonlyArray<Command.Command<Message>> => [
   LoadTrainingRuns(),
   LoadTrainingDashboard(),
+  LoadTrainingPromiseGates(),
 ]
 
 export const update = (model: Model, message: Message): Result => {
@@ -69,6 +72,11 @@ export const update = (model: Model, message: Message): Result => {
                 trainingDashboardPending: true,
                 trainingDashboardStatus: {
                   text: "loading public dashboards...",
+                  tone: "info" as const,
+                },
+                trainingPromiseGatesPending: true,
+                trainingPromiseGatesStatus: {
+                  text: "loading promise gates...",
                   tone: "info" as const,
                 },
               }
@@ -210,6 +218,11 @@ export const update = (model: Model, message: Message): Result => {
             text: "refreshing public dashboards...",
             tone: "info",
           },
+          trainingPromiseGatesPending: true,
+          trainingPromiseGatesStatus: {
+            text: "refreshing promise gates...",
+            tone: "info",
+          },
         }),
         loadTrainingProjectionCommands(),
       ]
@@ -228,6 +241,27 @@ export const update = (model: Model, message: Message): Result => {
               }
             : {
                 text: projection.error ?? "training projection unavailable",
+                tone: "error",
+              },
+        }),
+        noCommands,
+      ]
+    }
+    case "GotTrainingPromiseGates": {
+      const projection = message.projection as TrainingPromiseGatesResponse
+      const blockerCount = projection.blockerRefs?.length ?? 0
+      return [
+        Model.make({
+          ...model,
+          trainingPromiseGates: projection,
+          trainingPromiseGatesPending: false,
+          trainingPromiseGatesStatus: projection.ok
+            ? {
+                text: `${projection.promises.length} training promises · ${blockerCount} blockers · ${projection.registryVersion}`,
+                tone: blockerCount === 0 ? "success" : "info",
+              }
+            : {
+                text: projection.error ?? "training promise gates unavailable",
                 tone: "error",
               },
         }),

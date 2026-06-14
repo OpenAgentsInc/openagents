@@ -19,6 +19,7 @@ import {
   activateTrainingWindow,
   claimTrainingWindowLease,
   fetchTrainingDashboard,
+  fetchTrainingPromiseGates,
   fetchTrainingRuns,
   planTrainingRunWindow,
   reconcileTrainingWindow,
@@ -110,6 +111,9 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       async listTrainingDashboard() {
         return fetchTrainingDashboard({ baseUrl: trainingBaseUrl })
+      },
+      async listTrainingPromiseGates() {
+        return fetchTrainingPromiseGates({ baseUrl: trainingBaseUrl })
       },
       async planTrainingRunWindow() {
         return planTrainingRunWindow({

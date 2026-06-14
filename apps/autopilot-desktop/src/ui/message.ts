@@ -61,6 +61,9 @@ export const GotTrainingRuns = m("GotTrainingRuns", { projection: S.Unknown })
 export const GotTrainingDashboard = m("GotTrainingDashboard", {
   projection: S.Unknown,
 })
+export const GotTrainingPromiseGates = m("GotTrainingPromiseGates", {
+  projection: S.Unknown,
+})
 export const ClickedPlanTrainingWindow = m("ClickedPlanTrainingWindow")
 export const SettledPlanTrainingWindow = m("SettledPlanTrainingWindow", {
   projection: S.Unknown,
@@ -126,6 +129,7 @@ export const Message = S.Union([
   ClickedRefreshTrainingRuns,
   GotTrainingRuns,
   GotTrainingDashboard,
+  GotTrainingPromiseGates,
   ClickedPlanTrainingWindow,
   SettledPlanTrainingWindow,
   ClickedActivateTrainingWindow,

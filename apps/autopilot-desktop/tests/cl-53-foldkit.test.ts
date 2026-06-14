@@ -29,6 +29,7 @@ import {
   Model,
   modelNode,
   modelTrainingDashboard,
+  modelTrainingPromiseGates,
 } from "../src/ui/model"
 import {
   ChangedAskTitle,
@@ -40,6 +41,7 @@ import {
   ClickedResolveApproval,
   ClickedSubmitIntent,
   GotTrainingDashboard,
+  GotTrainingPromiseGates,
   GotNodeState,
   NavigatedTo,
   SelectedSession,
@@ -258,14 +260,15 @@ describe("update reducer (CL-53)", () => {
       trainingRunRef: "training.run.desktop.r1.test",
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(2)
+    expect(followups).toHaveLength(3)
   })
 
-  test("training refresh loads run and dashboard projections", () => {
+  test("training refresh loads run, dashboard, and promise projections", () => {
     const [pending, commands] = update(initialModel, ClickedRefreshTrainingRuns())
     expect(pending.trainingRunsPending).toBe(true)
     expect(pending.trainingDashboardPending).toBe(true)
-    expect(commands).toHaveLength(2)
+    expect(pending.trainingPromiseGatesPending).toBe(true)
+    expect(commands).toHaveLength(3)
   })
 
   test("training dashboard projection is stored with a lane summary", () => {
@@ -329,6 +332,50 @@ describe("update reducer (CL-53)", () => {
     expect(modelTrainingDashboard(settled)?.leaderboards.lanes[0]?.rowCount).toBe(1)
   })
 
+  test("training promise gates projection is stored with blocker status", () => {
+    const [settled] = update(
+      initialModel,
+      GotTrainingPromiseGates({
+        projection: {
+          ok: true,
+          fetchedAt: "2026-06-14T00:00:00.000Z",
+          registryVersion: "2026-06-12.8",
+          sourceUrl: "https://openagents.test/api/public/product-promises",
+          blockerRefs: [
+            "blocker.product_promises.public_distributed_training_run_receipts_missing",
+          ],
+          promises: [
+            {
+              blockerRefs: [
+                "blocker.product_promises.public_distributed_training_run_receipts_missing",
+              ],
+              claim: "Pylons participate in public distributed model-training runs.",
+              evidenceRefCount: 3,
+              productArea: "training",
+              promiseId: "training.public_distributed_training_run.v1",
+              safeCopy: "Not green yet.",
+              state: "red",
+              verification: "Requires run, work, validation, and settlement refs.",
+            },
+          ],
+          stateCounts: {
+            degraded: 0,
+            green: 0,
+            planned: 0,
+            red: 1,
+            withdrawn: 0,
+            yellow: 0,
+            unknown: 0,
+          },
+        },
+      }),
+    )
+
+    expect(settled.trainingPromiseGatesPending).toBe(false)
+    expect(settled.trainingPromiseGatesStatus.tone).toBe("info")
+    expect(modelTrainingPromiseGates(settled)?.promises[0]?.state).toBe("red")
+  })
+
   test("training activation action dispatches and stores the public-safe result", () => {
     const [pending, commands] = update(
       initialModel,
@@ -361,7 +408,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingActivation).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(2)
+    expect(followups).toHaveLength(3)
   })
 
   test("training lease claim action dispatches and stores the public-safe result", () => {
@@ -399,7 +446,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingLease).toMatchObject({
       lease: { leaseRef: "training.lease.1" },
     })
-    expect(followups).toHaveLength(2)
+    expect(followups).toHaveLength(3)
   })
 
   test("training reconcile action dispatches and stores the public-safe result", () => {
@@ -434,6 +481,6 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingReconcile).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(2)
+    expect(followups).toHaveLength(3)
   })
 })

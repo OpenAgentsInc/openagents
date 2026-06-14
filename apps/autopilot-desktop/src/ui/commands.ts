@@ -13,6 +13,7 @@ import {
   FailedCoordinatorToggle,
   FailedSpawn,
   GotTrainingDashboard,
+  GotTrainingPromiseGates,
   GotTrainingRuns,
   SettledCancelSession,
   SettledActivateTrainingWindow,
@@ -59,6 +60,25 @@ const emptyTrainingDashboardProjection = (error: string) => ({
     evalSuiteCount: 0,
     updateBoundaryRef: null,
     verifiedSuiteCount: 0,
+  },
+  error,
+})
+
+const emptyTrainingPromiseGatesProjection = (error: string) => ({
+  ok: false,
+  fetchedAt: new Date().toISOString(),
+  registryVersion: "",
+  sourceUrl: "desktop:training-promise-gates",
+  blockerRefs: [],
+  promises: [],
+  stateCounts: {
+    degraded: 0,
+    green: 0,
+    planned: 0,
+    red: 0,
+    withdrawn: 0,
+    yellow: 0,
+    unknown: 0,
   },
   error,
 })
@@ -183,6 +203,23 @@ export const LoadTrainingDashboard = Command.define(
       Effect.succeed(
         GotTrainingDashboard({
           projection: emptyTrainingDashboardProjection(errorText(error)),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadTrainingPromiseGates = Command.define(
+  "LoadTrainingPromiseGates",
+  {},
+  GotTrainingPromiseGates,
+)(() =>
+  Effect.tryPromise(() => getRequest().listTrainingPromiseGates({})).pipe(
+    Effect.map((projection) => GotTrainingPromiseGates({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotTrainingPromiseGates({
+          projection: emptyTrainingPromiseGatesProjection(errorText(error)),
         }),
       ),
     ),

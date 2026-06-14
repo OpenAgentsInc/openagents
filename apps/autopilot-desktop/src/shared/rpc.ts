@@ -209,6 +209,37 @@ export type TrainingDashboardSummaryResponse = {
   readonly error?: string
 }
 
+export type TrainingPromiseState =
+  | "degraded"
+  | "green"
+  | "planned"
+  | "red"
+  | "withdrawn"
+  | "yellow"
+  | "unknown"
+
+export type TrainingPromiseSummary = {
+  readonly blockerRefs: readonly string[]
+  readonly claim: string
+  readonly evidenceRefCount: number
+  readonly productArea: string
+  readonly promiseId: string
+  readonly safeCopy: string
+  readonly state: TrainingPromiseState
+  readonly verification: string
+}
+
+export type TrainingPromiseGatesResponse = {
+  readonly ok: boolean
+  readonly fetchedAt: string
+  readonly registryVersion: string
+  readonly sourceUrl: string
+  readonly blockerRefs: readonly string[]
+  readonly promises: readonly TrainingPromiseSummary[]
+  readonly stateCounts: Readonly<Record<TrainingPromiseState, number>>
+  readonly error?: string
+}
+
 export type TrainingPlanReason =
   | "disabled"
   | "admin_token_missing"
@@ -367,6 +398,10 @@ export type DesktopRPCSchema = {
       readonly listTrainingDashboard: {
         readonly params: Record<string, never>
         readonly response: TrainingDashboardSummaryResponse
+      }
+      readonly listTrainingPromiseGates: {
+        readonly params: Record<string, never>
+        readonly response: TrainingPromiseGatesResponse
       }
       // Admin planning stays in Bun. The webview receives only the public-safe
       // run/window refs and projections that the Worker returns.

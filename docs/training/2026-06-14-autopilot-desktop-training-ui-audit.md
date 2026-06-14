@@ -14,6 +14,7 @@ The first implemented slice follows that boundary:
 - Autopilot Desktop now has a sidebar `Training` pane centered on that Three scene.
 - The pane fetches public Worker-authoritative training projections from `/api/training/runs` through the Bun main process.
 - The pane also fetches public CS336 dashboard summaries from `/api/training/leaderboards`, `/api/training/device-capabilities/a2`, `/api/training/isoflop/a3`, `/api/training/refinery/a4`, and `/api/training/evals/a5`.
+- The pane reads `/api/public/product-promises` and filters the training/Tassadar promises so the remaining registry blockers from issue 4855 are visible beside the live run data.
 - The selected public run summary is converted into a `three-effect` snapshot so the scene reflects live run state, windows, devices, Freivalds refs, closeouts, verified work, external blockers, and settlement.
 - The pane exposes a launch/readiness feedback button that queues a local Pylon intent through the existing `intent.submit` path.
 - The pane also exposes Bun-main-process, env-gated actions for planning an R1 rehearsal run/window, activating a planned window, claiming the active training lease for a local Pylon ref, and reconciling a sealed window. The webview receives only public-safe run/window/lease refs and projections.
@@ -129,6 +130,8 @@ The refresh button and Training pane navigation call typed desktop RPCs that rea
 
 The desktop also summarizes the public CS336 dashboard surfaces in a compact panel. It counts ranked leaderboard lanes from `/api/training/leaderboards`, A2 observed/verified device measurements from `/api/training/device-capabilities/a2`, A3 verified ISOFLOP cells from `/api/training/isoflop/a3`, A4 verified data-refinery stages from `/api/training/refinery/a4`, A5 verified eval suites from `/api/training/evals/a5`, and public blocker refs across those projections. This gives the operator the same public readiness context available to the web dashboards without moving raw evidence, private worker payloads, or admin authority into the webview.
 
+The Promise Gates panel closes a different gap: issue 4855 itself is closed, but its final comment delegates remaining live R1/R2 receipt evidence to the public promise registry. The desktop now pulls that registry through Bun, filters the training and Tassadar-related promise records, and shows state counts plus blocker/evidence counts for the relevant promises. This keeps "the code says the tracking issue is done" separate from "the registry says the broad training claim is green."
+
 The Three scene receives the same selected summary through a compact snapshot mapper in `three-effect`. That mapper updates node labels/statuses, contributor dots, stale bound, receipt/settlement gates, and loss curve inputs without importing OpenAgents Worker internals into the rendering package.
 
 ## Authority Boundary
@@ -163,7 +166,7 @@ The same pattern can be reused in the web app and mobile app if Foldkit remains 
 
 ## Risks
 
-The current pane is now partly live: it reads public run and dashboard projections and can plan, activate, claim a lease, and reconcile sealed windows through Bun when explicitly enabled. It is still not a full worker-execution dashboard. The most likely failure mode is visual polish outrunning authority integration. That would create a good-looking control room that does not answer the operator's actual question after a lease is claimed: which worker process accepted the lease, which evidence landed, which seal metadata was verified, and which receipts settled?
+The current pane is now partly live: it reads public run, dashboard, and promise-registry projections and can plan, activate, claim a lease, and reconcile sealed windows through Bun when explicitly enabled. It is still not a full worker-execution dashboard. The most likely failure mode is visual polish outrunning authority integration. That would create a good-looking control room that does not answer the operator's actual question after a lease is claimed: which worker process accepted the lease, which evidence landed, which seal metadata was verified, and which receipts settled?
 
 The second risk is authority leakage. The implemented planning bridge keeps admin tokens in Bun, but future evidence admission and launch controls must follow the same pattern. Do not add admin tokens, private evidence, wallet material, or raw payout details to the Foldkit webview model.
 

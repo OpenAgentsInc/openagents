@@ -18,6 +18,7 @@ import type { Message } from "./message"
 import type {
   TrainingDashboardSummaryResponse,
   TrainingPlanResponse,
+  TrainingPromiseGatesResponse,
   TrainingRunsResponse,
   TrainingWindowActionResponse,
   TrainingWindowLeaseResponse,
@@ -38,6 +39,9 @@ export type DesktopRequests = {
   listTrainingDashboard(
     p: Record<string, never>,
   ): Promise<TrainingDashboardSummaryResponse>
+  listTrainingPromiseGates(
+    p: Record<string, never>,
+  ): Promise<TrainingPromiseGatesResponse>
   planTrainingRunWindow(
     p: Record<string, never>,
   ): Promise<TrainingPlanResponse>

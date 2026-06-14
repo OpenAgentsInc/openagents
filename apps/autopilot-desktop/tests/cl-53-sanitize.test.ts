@@ -167,6 +167,11 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-dashboard-panel")).toBe(true)
   })
 
+  test("training pane includes the promise gates panel", () => {
+    const document = view({ ...initialModel, pane: "training" })
+    expect(treeContainsClass(document.body, "training-promise-gates-panel")).toBe(true)
+  })
+
   test("training pane includes the admin plan action", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsClass(document.body, "training-admin-plan-button")).toBe(true)

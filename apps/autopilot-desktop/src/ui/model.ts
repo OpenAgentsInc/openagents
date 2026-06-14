@@ -16,6 +16,7 @@ import type {
   NodeStateMessage,
   TrainingDashboardSummaryResponse,
   TrainingPlanResponse,
+  TrainingPromiseGatesResponse,
   TrainingRunsResponse,
   TrainingWindowActionResponse,
   TrainingWindowLeaseResponse,
@@ -134,6 +135,9 @@ export const Model = ts("AutopilotDesktop", {
   trainingDashboard: S.NullOr(S.Unknown),
   trainingDashboardStatus: TrainingRunsStatus,
   trainingDashboardPending: S.Boolean,
+  trainingPromiseGates: S.NullOr(S.Unknown),
+  trainingPromiseGatesStatus: TrainingRunsStatus,
+  trainingPromiseGatesPending: S.Boolean,
   trainingPlan: S.NullOr(S.Unknown),
   trainingPlanStatus: TrainingPlanStatus,
   trainingPlanPending: S.Boolean,
@@ -174,6 +178,11 @@ export const modelTrainingDashboard = (
   model: Model,
 ): TrainingDashboardSummaryResponse | null =>
   model.trainingDashboard as TrainingDashboardSummaryResponse | null
+
+export const modelTrainingPromiseGates = (
+  model: Model,
+): TrainingPromiseGatesResponse | null =>
+  model.trainingPromiseGates as TrainingPromiseGatesResponse | null
 
 export const modelTrainingPlan = (model: Model): TrainingPlanResponse | null =>
   model.trainingPlan as TrainingPlanResponse | null
@@ -216,6 +225,9 @@ export const initialModel: Model = Model.make({
   trainingDashboard: null,
   trainingDashboardStatus: { text: "not loaded", tone: "idle" },
   trainingDashboardPending: false,
+  trainingPromiseGates: null,
+  trainingPromiseGatesStatus: { text: "not loaded", tone: "idle" },
+  trainingPromiseGatesPending: false,
   trainingPlan: null,
   trainingPlanStatus: { text: "", tone: "idle" },
   trainingPlanPending: false,
