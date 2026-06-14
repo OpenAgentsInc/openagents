@@ -365,6 +365,24 @@ function makeApprovalActions(paths: BootstrapSummary["paths"]) {
   }
 }
 
+// CL-17 (rescoped): pause/resume autonomous coordinator work. The coordinator
+// starts after the control server is created, so the action reads a mutable
+// holder set once startCoordinator returns.
+type CoordinatorHolder = { rt: CoordinatorRuntime | null }
+function makeCoordinatorActions(holder: CoordinatorHolder) {
+  return {
+    pause: () => {
+      holder.rt?.pause()
+      return { paused: holder.rt?.isPaused() ?? false }
+    },
+    resume: () => {
+      holder.rt?.resume()
+      return { paused: holder.rt?.isPaused() ?? false }
+    },
+    status: () => ({ paused: holder.rt?.isPaused() ?? false }),
+  }
+}
+
 // Labor-market deferrals feed the approval queue (the real pending source).
 export function enqueueLaborApproval(input: { approvalRef: string; jobType?: string; policyRef?: string; prompt?: string }) {
   approvalQueue.enqueue({
@@ -1076,6 +1094,7 @@ const runPylonNode = Effect.gen(function* () {
   // and non-fatal.
   const controlToken = yield* Effect.promise(() => ensureControlToken(bootstrapSummary.paths.home))
   const controlPort = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
+  const coordinatorHolder: CoordinatorHolder = { rt: null }
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
     actions: {
@@ -1090,6 +1109,7 @@ const runPylonNode = Effect.gen(function* () {
       intents: makeIntentActions(intentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
       approvals: makeApprovalActions(bootstrapSummary.paths),
+      coordinator: makeCoordinatorActions(coordinatorHolder),
       // CL-26 "Deploy to Cloud": gated behind OA_DEPLOY_ENABLE=1 (fail-safe).
       // Uses the real Bun.spawn fire-and-forget path; deploy.status projects
       // the node's last deploy.
@@ -1118,7 +1138,7 @@ const runPylonNode = Effect.gen(function* () {
     })
   }
   // CL-36: close the self-driving loop — submitted asks auto-plan + fan out.
-  startCoordinator(intentQueue, nodeSessionActions)
+  coordinatorHolder.rt = startCoordinator(intentQueue, nodeSessionActions)
 
   // User keybind overrides (apps/pylon home keybinds.json, Effect-Schema
   // validated). Invalid files are reported and ignored.
@@ -1306,6 +1326,7 @@ const runHeadlessNode = Effect.gen(function* () {
   const headlessExternalTailer = startExternalSessionTailer()
   const headlessSessionsWithExternal = wrapSessionsWithExternal(headlessSessionActions, headlessExternalTailer)
   const headlessIntentQueue = createIntentQueue({ persistPath: `${bootstrapSummary.paths.home}/intents.json` })
+  const headlessCoordinatorHolder: CoordinatorHolder = { rt: null }
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
     actions: {
@@ -1320,6 +1341,7 @@ const runHeadlessNode = Effect.gen(function* () {
       intents: makeIntentActions(headlessIntentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
       approvals: makeApprovalActions(bootstrapSummary.paths),
+      coordinator: makeCoordinatorActions(headlessCoordinatorHolder),
     },
     port: controlPort,
     hostname: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
@@ -1336,7 +1358,7 @@ const runHeadlessNode = Effect.gen(function* () {
     boundHost: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
   })
   // CL-36: close the self-driving loop on the headless node (the launchd path).
-  startCoordinator(headlessIntentQueue, headlessSessionActions)
+  headlessCoordinatorHolder.rt = startCoordinator(headlessIntentQueue, headlessSessionActions)
 
   const localState = yield* Effect.tryPromise({
     try: () => ensurePylonLocalState(bootstrapSummary),

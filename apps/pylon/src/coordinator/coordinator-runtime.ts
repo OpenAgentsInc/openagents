@@ -58,6 +58,13 @@ export type CoordinatorRuntime = {
   start: (intervalMs: number) => void
   stop: () => void
   view: () => CoordinatorIntentView[]
+  // CL-17 (rescoped): pause/resume the AUTONOMOUS work loop. Pausing holds new
+  // fan-out (no new intents dispatched) while letting in-flight sessions finish
+  // and reconcile; resuming dispatches again. (Per-session pause/resume isn't
+  // possible — the agent CLIs run to completion; use cancel to stop a session.)
+  pause: () => void
+  resume: () => void
+  isPaused: () => boolean
 }
 
 const TERMINAL: ReadonlySet<string> = new Set<TerminalState>(["completed", "failed", "cancelled"])
@@ -69,6 +76,7 @@ export function createCoordinatorRuntime(deps: CoordinatorRuntimeDeps): Coordina
   const intentSessions = new Map<string, string[]>()
   let timer: ReturnType<typeof setInterval> | null = null
   let running = false
+  let paused = false
 
   const dispatch = async (intent: SubmittedWorkIntent): Promise<void> => {
     deps.intentQueue.advanceStatus(intent.intentId, "planning")
@@ -162,6 +170,8 @@ export function createCoordinatorRuntime(deps: CoordinatorRuntimeDeps): Coordina
     try {
       for (const projection of deps.intentQueue.list()) {
         if (projection.status === "received") {
+          // Paused: hold new fan-out, but keep reconciling in-flight work below.
+          if (paused) continue
           const intent = deps.intentQueue.getIntent(projection.intentId)
           if (intent !== null) await dispatch(intent)
         } else if (projection.status === "fanning_out") {
@@ -175,6 +185,15 @@ export function createCoordinatorRuntime(deps: CoordinatorRuntimeDeps): Coordina
 
   return {
     tick,
+    pause() {
+      paused = true
+      log("[coordinator] paused — holding new fan-out")
+    },
+    resume() {
+      paused = false
+      log("[coordinator] resumed")
+    },
+    isPaused: () => paused,
     start(intervalMs) {
       if (timer !== null) return
       void tick()

@@ -92,6 +92,32 @@ describe("coordinator runtime (CL-36)", () => {
     expect(recorded[0].decision).toBe("auto")
   })
 
+  test("pause holds new fan-out; resume dispatches again (CL-17)", async () => {
+    const q = createIntentQueue()
+    q.enqueue({ intentId: "p1", title: "One thing", body: "do it", submittedByClientRef: "m", createdAt: "2026-06-13T12:00:00.000Z" })
+    const states = new Map<string, string>()
+    let n = 0
+    const rt = createCoordinatorRuntime({
+      intentQueue: q,
+      spawnSession: async () => { const ref = `s${n++}`; states.set(ref, "running"); return { sessionRef: ref } },
+      sessionState: async (ref) => states.get(ref) ?? null,
+      createWorktree: async () => "/tmp/wt/x",
+    })
+    rt.pause()
+    expect(rt.isPaused()).toBe(true)
+    await rt.tick()
+    // Paused: the received intent was NOT dispatched.
+    expect(q.get("p1")?.status).toBe("received")
+    expect(rt.view().length).toBe(0)
+
+    rt.resume()
+    expect(rt.isPaused()).toBe(false)
+    await rt.tick()
+    // Resumed: now it fans out.
+    expect(q.get("p1")?.status).toBe("fanning_out")
+    expect(rt.view()[0].sessionRefs.length).toBe(1)
+  })
+
   test("ship step escalates when spend is denied (CL-41)", async () => {
     const q = createIntentQueue()
     q.enqueue({ intentId: "i4", title: "ship it", body: "do the thing", submittedByClientRef: "m", createdAt: "2026-06-13T12:00:00.000Z" })

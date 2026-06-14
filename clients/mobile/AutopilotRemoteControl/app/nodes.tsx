@@ -21,10 +21,12 @@ import {
   fetchAccountsRaw,
   fetchApprovals,
   fetchAssignments,
+  fetchCoordinatorPaused,
   fetchDeployStatus,
   fetchIntents,
   fetchWalletStatus,
   resolveApproval,
+  setCoordinatorPaused,
   fetchSessionArtifact,
   fetchSessionEvents,
   fetchSessions,
@@ -102,6 +104,7 @@ export default function NodesScreen() {
   const [assignments, setAssignments] = useState<AssignmentRow[]>([])
   const [intents, setIntents] = useState<IntentRow[]>([])
   const [approvals, setApprovals] = useState<ApprovalRow[]>([])
+  const [coordPaused, setCoordPaused] = useState<boolean | null>(null)
   // CL-26 "Deploy to Cloud": last-deploy status + a transient line after a tap.
   const [deployStatus, setDeployStatus] = useState<DeployStatus | null>(null)
   const [deployLine, setDeployLine] = useState<string | null>(null)
@@ -210,6 +213,9 @@ export default function NodesScreen() {
       })
       void fetchDeployStatus(conn).then((s) => {
         if (!cancelled) setDeployStatus(s)
+      })
+      void fetchCoordinatorPaused(conn).then((p) => {
+        if (!cancelled) setCoordPaused(p)
       })
     }
     loadWallet()
@@ -322,6 +328,21 @@ export default function NodesScreen() {
       <View style={styles.container}>
         <View style={styles.headerBar}>
           <DrawerIconButton onPress={() => setDrawerOpen((o) => !o)} />
+          {conn !== null && coordPaused !== null ? (
+            <Pressable
+              style={[styles.coordToggle, coordPaused ? styles.coordPaused : null]}
+              onPress={() => {
+                if (conn === null) return
+                const next = !coordPaused
+                setCoordPaused(next)
+                void setCoordinatorPaused(conn, next)
+                  .then((p) => setCoordPaused(p))
+                  .catch(() => {})
+              }}
+            >
+              <Text style={styles.coordToggleText}>{coordPaused ? "▶ Resume" : "⏸ Pause"}</Text>
+            </Pressable>
+          ) : null}
         </View>
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.h1}>Autopilot</Text>
@@ -711,7 +732,18 @@ function DrawerNav({
 const styles = StyleSheet.create({
   container: { backgroundColor: C.bg, flex: 1 },
   content: { padding: 24, paddingTop: 12 },
-  headerBar: { backgroundColor: C.bg, paddingBottom: 4, paddingHorizontal: 16, paddingTop: 50 },
+  headerBar: {
+    alignItems: "center",
+    backgroundColor: C.bg,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingBottom: 4,
+    paddingHorizontal: 16,
+    paddingTop: 50,
+  },
+  coordToggle: { backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 6, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6 },
+  coordPaused: { borderColor: C.warning },
+  coordToggleText: { color: C.text, fontFamily: "Courier", fontSize: 12 },
   drawer: { backgroundColor: C.bgSecondary, width: 300 },
   drawerContent: { backgroundColor: C.bgSecondary, flex: 1, paddingTop: 60 },
   drawerHeader: {

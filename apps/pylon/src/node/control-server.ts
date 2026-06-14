@@ -67,6 +67,10 @@ export type ControlCommand =
   // CL-16 approvals: read-only pending list + exactly-once resolve.
   | { type: "approvals.list" }
   | { type: "approvals.resolve"; approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }
+  // CL-17 (rescoped): pause/resume the autonomous coordinator work loop.
+  | { type: "coordinator.pause" }
+  | { type: "coordinator.resume" }
+  | { type: "coordinator.status" }
   // CL-26 "Deploy to Cloud": a node-triggered deploy through OUR cloud pipeline.
   // Execution is gated behind OA_DEPLOY_ENABLE=1 (fail-safe). deploy.status is
   // a read-only projection of the node's last deploy.
@@ -106,6 +110,12 @@ export interface ControlCommandActions {
   deploy?: {
     deployCloud: (input: { target: unknown; ref: unknown; env?: unknown }) => Promise<unknown>
     deployStatus: () => Promise<unknown>
+  }
+  // CL-17 (rescoped): pause/resume autonomous coordinator work.
+  coordinator?: {
+    pause: () => { paused: boolean }
+    resume: () => { paused: boolean }
+    status: () => { paused: boolean }
   }
 }
 
@@ -235,6 +245,15 @@ export const startControlServer = (
         case "deploy.status":
           if (!options.actions.deploy) throw new Error("deploy unavailable on this node")
           return options.actions.deploy.deployStatus()
+        case "coordinator.pause":
+          if (!options.actions.coordinator) throw new Error("coordinator unavailable on this node")
+          return options.actions.coordinator.pause()
+        case "coordinator.resume":
+          if (!options.actions.coordinator) throw new Error("coordinator unavailable on this node")
+          return options.actions.coordinator.resume()
+        case "coordinator.status":
+          if (!options.actions.coordinator) throw new Error("coordinator unavailable on this node")
+          return options.actions.coordinator.status()
         case "assignments.poll":
           if (!options.actions.assignmentsPoll) throw new Error("assignments unavailable on this node")
           return options.actions.assignmentsPoll()

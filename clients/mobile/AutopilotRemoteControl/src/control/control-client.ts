@@ -200,6 +200,27 @@ export async function fetchAccountsRaw(conn: ConnectInfo): Promise<unknown[]> {
   return Array.isArray(accounts) ? accounts : []
 }
 
+// CL-17 (rescoped): pause/resume the node's autonomous coordinator work loop.
+// (Per-session pause isn't possible — agents run to completion; use cancel.)
+export async function fetchCoordinatorPaused(conn: ConnectInfo): Promise<boolean | null> {
+  try {
+    const json = (await command(conn, { type: "coordinator.status" })) as { ok?: boolean; result?: { paused?: unknown } }
+    const r = json.ok === true ? json.result : undefined
+    return typeof r?.paused === "boolean" ? r.paused : null
+  } catch {
+    return null
+  }
+}
+
+export async function setCoordinatorPaused(conn: ConnectInfo, paused: boolean): Promise<boolean> {
+  const json = (await command(conn, { type: paused ? "coordinator.pause" : "coordinator.resume" })) as {
+    ok?: boolean
+    result?: { paused?: unknown }
+  }
+  const r = json.ok === true ? json.result : undefined
+  return typeof r?.paused === "boolean" ? r.paused : paused
+}
+
 export type ApprovalRow = {
   approvalRef: string
   kind: string
