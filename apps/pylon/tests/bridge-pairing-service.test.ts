@@ -67,6 +67,36 @@ describe("bridge pairing service (CL-14)", () => {
     expect(svc.validate(fake, new Date("2026-06-13T12:30:00.000Z"))).toBe(false)
   })
 
+  test("listClients reports paired roster (refs-only) and revoked flag; revoke returns found", () => {
+    const svc3 = createBridgePairingService({ rand: () => `c${seq++}` })
+    const a = svc3.issueBootstrap()
+    const okA = svc3.exchange(
+      baseExchange(a.bootstrapId, a.secret, {
+        clientId: "phone.a",
+        capabilities: ["observe_public", "answer_decision"],
+        jti: "jti.a",
+      }),
+    )
+    const b = svc3.issueBootstrap()
+    const okB = svc3.exchange(baseExchange(b.bootstrapId, b.secret, { clientId: "phone.b", jti: "jti.b" }))
+    if (!okA.ok || !okB.ok) throw new Error("exchange failed")
+
+    const clients = svc3.listClients()
+    expect(clients.length).toBe(2)
+    const refA = clients.find((c) => c.clientId === "phone.a")
+    expect(refA?.capabilities).toEqual(["observe_public", "answer_decision"])
+    expect(refA?.projectionLevel).toBe("private")
+    expect(refA?.revoked).toBe(false)
+    // refs-only: no secret material leaks into the roster
+    expect(JSON.stringify(clients)).not.toContain(a.secret)
+
+    // revoke returns true for a known pairing, false for an unknown one, and
+    // flips the roster's revoked flag.
+    expect(svc3.revoke(okA.claims.pairingRef)).toBe(true)
+    expect(svc3.revoke("no-such-pairing")).toBe(false)
+    expect(svc3.listClients().find((c) => c.clientId === "phone.a")?.revoked).toBe(true)
+  })
+
   test("authorize returns stored claims; rejects mismatched jti / unknown / revoked", () => {
     const svc2 = createBridgePairingService({ rand: () => `k${seq++}` })
     const { bootstrapId, secret } = svc2.issueBootstrap()

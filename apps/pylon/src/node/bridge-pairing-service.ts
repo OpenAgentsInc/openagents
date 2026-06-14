@@ -18,6 +18,18 @@ import {
 
 export type IssueBootstrapResult = { bootstrapId: string; secret: string }
 
+// Operator-facing summary of a paired client (refs-only, no secrets). Powers
+// `bridge.clients.list` so the operator can see and revoke paired devices.
+export type BridgeClientSummary = {
+  pairingRef: string
+  clientId: string
+  deviceClass: string
+  projectionLevel: "public_safe" | "team" | "private"
+  capabilities: ReadonlyArray<Capability>
+  expiresAt: string
+  revoked: boolean
+}
+
 export type BridgeExchangeInput = {
   bootstrapId: string
   secret: string
@@ -45,7 +57,9 @@ export type BridgePairingService = {
   // not be able to escalate its own scope), verifies the presented jti matches
   // and the pairing is active+unexpired, and returns the stored claims or null.
   authorize: (pairingRef: string, jti: string, now: Date) => PairingCredentialClaims | null
-  revoke: (pairingRef: string) => void
+  revoke: (pairingRef: string) => boolean
+  // Operator-facing roster of paired clients (refs-only). `bridge.clients.list`.
+  listClients: () => BridgeClientSummary[]
 }
 
 export function createBridgePairingService(options: { rand?: () => string } = {}): BridgePairingService {
@@ -98,7 +112,26 @@ export function createBridgePairingService(options: { rand?: () => string } = {}
 
     revoke(pairingRef) {
       const record = pairings.get(pairingRef)
-      if (record !== undefined) pairings.set(pairingRef, { ...record, revoked: true })
+      if (record === undefined) return false
+      pairings.set(pairingRef, { ...record, revoked: true })
+      return true
+    },
+
+    listClients() {
+      const summaries: BridgeClientSummary[] = []
+      for (const [pairingRef, claims] of issuedClaims) {
+        const record = pairings.get(pairingRef)
+        summaries.push({
+          pairingRef,
+          clientId: claims.clientId,
+          deviceClass: claims.deviceClass,
+          projectionLevel: claims.projectionLevel,
+          capabilities: claims.capabilities,
+          expiresAt: claims.expiresAt,
+          revoked: record?.revoked ?? false,
+        })
+      }
+      return summaries
     },
   }
 }

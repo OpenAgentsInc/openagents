@@ -79,6 +79,10 @@ export type ControlCommand =
   // CL-14 bridge transport: operator (dev-token authed) mints a single-use
   // bootstrap that a client exchanges at /bridge/pair for a scoped credential.
   | { type: "bridge.issueBootstrap" }
+  // #5000 bridge admin (dev-token authed): operator lists paired clients and
+  // revokes a paired credential by its pairingRef.
+  | { type: "bridge.clients.list" }
+  | { type: "bridge.revoke"; pairingRef: string }
 
 export interface ControlCommandActions {
   walletSend: (destinationRef: string, amountSats?: number) => Promise<unknown>
@@ -294,6 +298,17 @@ export const startControlServer = (
           // (QR/connect payload). Single-use; the secret is exchanged at
           // /bridge/pair. Authed by the dev token (this runs via /command).
           return bridgePairing.issueBootstrap()
+        case "bridge.clients.list":
+          // Operator roster of paired clients (refs-only, no secrets).
+          return { clients: bridgePairing.listClients() }
+        case "bridge.revoke": {
+          // Operator revokes a paired credential by pairingRef. Idempotent;
+          // `revoked: false` means no such pairing was found.
+          if (typeof command.pairingRef !== "string" || command.pairingRef.length === 0) {
+            throw new Error("pairingRef is required")
+          }
+          return { revoked: bridgePairing.revoke(command.pairingRef) }
+        }
         default:
           throw new Error(`unknown command: ${(command as { type?: string }).type}`)
       }
@@ -369,26 +384,134 @@ export const startControlServer = (
                 return Response.json({ error: "invalid or expired pairing" }, { status: 401 })
               }
               try {
-                const envelope = (await request.json()) as { verb?: unknown; sessionRef?: unknown }
+                const envelope = (await request.json()) as {
+                  verb?: unknown
+                  sessionRef?: unknown
+                  approvalRef?: unknown
+                  decision?: unknown
+                  answer?: unknown
+                }
                 const verb = typeof envelope.verb === "string" ? envelope.verb : ""
                 if (!verbAllowedByCapabilities(verb as BridgeRequestVerb, claims.capabilities)) {
                   return Response.json({ error: "capability not granted", verb }, { status: 403 })
                 }
+
+                // capability.list: echo the credential's granted scope (refs
+                // only). Lets a paired client discover what it may do.
+                if (verb === "capability.list") {
+                  return Response.json({
+                    ok: true,
+                    result: {
+                      pairingRef: claims.pairingRef,
+                      projectionLevel: claims.projectionLevel,
+                      capabilities: claims.capabilities,
+                    },
+                  })
+                }
+
+                // decision.resolve: exactly-once approval relay. Backed by the
+                // node's approval queue, which is itself exactly-once (a repeat
+                // resolve is a no-op duplicate). Requires answer_decision.
+                if (verb === "decision.resolve") {
+                  if (!options.actions.approvals) {
+                    return Response.json({ error: "approvals unavailable on this node" }, { status: 404 })
+                  }
+                  const approvalRef = envelope.approvalRef
+                  const decision = envelope.decision
+                  if (
+                    typeof approvalRef !== "string" ||
+                    (decision !== "approve" && decision !== "deny" && decision !== "answer")
+                  ) {
+                    return Response.json(
+                      { error: "approvalRef and decision (approve|deny|answer) required" },
+                      { status: 400 },
+                    )
+                  }
+                  const result = await options.actions.approvals.resolve({
+                    approvalRef,
+                    decision,
+                    ...(typeof envelope.answer === "string" ? { answer: envelope.answer } : {}),
+                  })
+                  return Response.json({ ok: true, result })
+                }
+
+                // All remaining bridge verbs operate on sessions.
                 if (!options.actions.sessions) {
                   return Response.json({ error: "sessions unavailable on this node" }, { status: 404 })
                 }
                 if (verb === "session.list") {
                   return Response.json({ ok: true, result: await options.actions.sessions.list() })
                 }
-                if (verb === "session.snapshot" || verb === "session.history") {
+                // Cursor-resumable catch-up: return the session's events; the
+                // client dedups/resumes via the shared cursor model. Live
+                // streaming uses GET /sessions/:ref/events with the bridge cred.
+                if (verb === "session.snapshot" || verb === "session.history" || verb === "session.subscribe") {
                   if (typeof envelope.sessionRef !== "string") {
                     return Response.json({ error: "sessionRef required" }, { status: 400 })
                   }
                   return Response.json({ ok: true, result: await options.actions.sessions.events(envelope.sessionRef) })
                 }
+                // artifact.read: the retained proof/failure artifact (read_artifact).
+                if (verb === "artifact.read") {
+                  if (typeof envelope.sessionRef !== "string") {
+                    return Response.json({ error: "sessionRef required" }, { status: 400 })
+                  }
+                  return Response.json({ ok: true, result: await options.actions.sessions.artifact(envelope.sessionRef) })
+                }
+                // session.cancel: request cancellation (cancel capability).
+                if (verb === "session.cancel") {
+                  if (typeof envelope.sessionRef !== "string") {
+                    return Response.json({ error: "sessionRef required" }, { status: 400 })
+                  }
+                  return Response.json({ ok: true, result: await options.actions.sessions.cancel(envelope.sessionRef) })
+                }
                 return Response.json({ error: "unsupported bridge verb", verb }, { status: 501 })
               } catch {
                 return Response.json({ error: "malformed bridge request" }, { status: 400 })
+              }
+            }
+
+            // #5000 cursor-resumable live subscribe over the bridge: a paired
+            // client presenting a valid Bridge credential with an observe-class
+            // capability streams a session's live events (same SSE the dev-token
+            // path serves). Client resumes/dedups via the shared cursor model.
+            const bridgeSessionEventsMatch = /^\/sessions\/([^/]+)\/events$/.exec(url.pathname)
+            if (
+              bridgeSessionEventsMatch &&
+              request.method === "GET" &&
+              /^Bridge\s+/.test(request.headers.get("authorization") ?? "")
+            ) {
+              const header = request.headers.get("authorization") ?? ""
+              const bridgeMatch = /^Bridge\s+([^:]+):(.+)$/.exec(header)
+              if (bridgeMatch === null) {
+                return Response.json({ error: "bridge credential required" }, { status: 401 })
+              }
+              const claims = bridgePairing.authorize(bridgeMatch[1] ?? "", bridgeMatch[2] ?? "", new Date())
+              if (claims === null) {
+                return Response.json({ error: "invalid or expired pairing" }, { status: 401 })
+              }
+              if (!verbAllowedByCapabilities("session.subscribe", claims.capabilities)) {
+                return Response.json({ error: "capability not granted", verb: "session.subscribe" }, { status: 403 })
+              }
+              if (!options.actions.sessions) {
+                return Response.json({ error: "sessions unavailable on this node" }, { status: 404 })
+              }
+              try {
+                const stream = options.actions.sessions.eventStream(
+                  decodeURIComponent(bridgeSessionEventsMatch[1] ?? ""),
+                )
+                return new Response(stream, {
+                  headers: {
+                    "content-type": "text/event-stream",
+                    "cache-control": "no-cache",
+                    connection: "keep-alive",
+                  },
+                })
+              } catch (error) {
+                return Response.json(
+                  { error: error instanceof Error ? error.message : String(error) },
+                  { status: 404 },
+                )
               }
             }
 
