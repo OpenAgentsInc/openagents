@@ -208,6 +208,29 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-lease-button")).toBe(true)
   })
 
+  test("training pane includes the reconcile action for sealed windows", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: {
+        ...liveTrainingProjection,
+        summaries: [
+          {
+            ...liveTrainingProjection.summaries[0],
+            windows: [
+              {
+                ...liveTrainingProjection.summaries[0].windows[0],
+                state: "sealed",
+                windowRef: "training.window.desktop.r1.sealed",
+              },
+            ],
+          },
+        ],
+      },
+    })
+    expect(treeContainsClass(document.body, "training-reconcile-button")).toBe(true)
+  })
+
   test("training pane renders live run projection rows", () => {
     const document = view({
       ...initialModel,

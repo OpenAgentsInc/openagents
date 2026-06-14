@@ -17,6 +17,7 @@ import {
   LoadTrainingRuns,
   PlanTrainingRunWindow,
   QueueTrainingLaunch,
+  ReconcileTrainingWindow,
   ResolveApproval,
   SetCoordinatorPaused,
   SpawnSession,
@@ -279,6 +280,48 @@ export const update = (model: Model, message: Message): Result => {
           trainingActivation: projection,
           trainingActivationPending: false,
           trainingActivationStatus: {
+            text: projection.message,
+            tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
+          },
+        }),
+        projection.ok ? [LoadTrainingRuns()] : noCommands,
+      ]
+    }
+    case "ClickedReconcileTrainingWindow":
+      if (message.windowRef.trim() === "") {
+        return [
+          Model.make({
+            ...model,
+            trainingReconcileStatus: {
+              text: "no sealed window selected",
+              tone: "error",
+            },
+          }),
+          noCommands,
+        ]
+      }
+      return [
+        Model.make({
+          ...model,
+          trainingReconcilePending: true,
+          trainingReconcileStatus: {
+            text: `reconciling ${message.windowRef}...`,
+            tone: "info",
+          },
+        }),
+        [ReconcileTrainingWindow({ windowRef: message.windowRef })],
+      ]
+    case "SettledReconcileTrainingWindow": {
+      const projection = message.projection as TrainingWindowActionResponse
+      const inactiveReason =
+        projection.reason === "disabled" ||
+        projection.reason === "admin_token_missing"
+      return [
+        Model.make({
+          ...model,
+          trainingReconcile: projection,
+          trainingReconcilePending: false,
+          trainingReconcileStatus: {
             text: projection.message,
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },

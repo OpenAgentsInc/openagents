@@ -37,6 +37,15 @@ type ActivateTrainingWindowInput = Readonly<{
   windowRef: string
 }>
 
+type ReconcileTrainingWindowInput = Readonly<{
+  adminToken: string | null
+  baseUrl: string
+  enabled: boolean
+  fetchFn?: typeof fetch
+  nowIso?: () => string
+  windowRef: string
+}>
+
 type ClaimTrainingWindowLeaseInput = Readonly<{
   baseUrl: string
   enabled: boolean
@@ -639,20 +648,59 @@ export async function planTrainingRunWindow(
 export async function activateTrainingWindow(
   input: ActivateTrainingWindowInput,
 ): Promise<TrainingWindowActionResponse> {
+  return transitionTrainingWindow({
+    ...input,
+    action: "activate",
+    actorRef: "operator.openagents.autopilot_desktop",
+    disabledMessage: "training admin activation disabled",
+    failurePrefix: "window activation failed",
+    receiptPrefix: "receipt.desktop.training.window.activate",
+    requestFailurePrefix: "training admin activation failed",
+    successReason: "activated",
+  })
+}
+
+export async function reconcileTrainingWindow(
+  input: ReconcileTrainingWindowInput,
+): Promise<TrainingWindowActionResponse> {
+  return transitionTrainingWindow({
+    ...input,
+    action: "reconcile",
+    actorRef: "operator.openagents.autopilot_desktop",
+    disabledMessage: "training admin reconciliation disabled",
+    failurePrefix: "window reconciliation failed",
+    receiptPrefix: "receipt.desktop.training.window.reconcile",
+    requestFailurePrefix: "training admin reconciliation failed",
+    successReason: "reconciled",
+  })
+}
+
+async function transitionTrainingWindow(
+  input: (ActivateTrainingWindowInput | ReconcileTrainingWindowInput) &
+    Readonly<{
+      action: "activate" | "reconcile"
+      actorRef: string
+      disabledMessage: string
+      failurePrefix: string
+      receiptPrefix: string
+      requestFailurePrefix: string
+      successReason: "activated" | "reconciled"
+    }>,
+): Promise<TrainingWindowActionResponse> {
   const fetchFn = input.fetchFn ?? fetch
   const fetchedAt = input.nowIso?.() ?? new Date().toISOString()
   const baseUrl = normalizeBaseUrl(input.baseUrl)
   const trimmedWindowRef = input.windowRef.trim()
   const sourceUrl =
     trimmedWindowRef === ""
-      ? `${baseUrl}/api/training/windows/activate`
-      : `${baseUrl}/api/training/windows/${encodeURIComponent(trimmedWindowRef)}/activate`
+      ? `${baseUrl}/api/training/windows/${input.action}`
+      : `${baseUrl}/api/training/windows/${encodeURIComponent(trimmedWindowRef)}/${input.action}`
 
   if (!input.enabled) {
     return disabledWindowActionResponse({
       enabled: false,
       fetchedAt,
-      message: "training admin activation disabled",
+      message: input.disabledMessage,
       reason: "disabled",
       sourceUrl,
       windowRef: trimmedWindowRef === "" ? null : trimmedWindowRef,
@@ -690,8 +738,8 @@ export async function activateTrainingWindow(
 
   try {
     const result = await postJson(fetchFn, sourceUrl, token, {
-      actorRef: "operator.openagents.autopilot_desktop",
-      receiptRef: `receipt.desktop.training.window.activate.${stamp}`,
+      actorRef: input.actorRef,
+      receiptRef: `${input.receiptPrefix}.${stamp}`,
     })
 
     if (!result.ok) {
@@ -703,7 +751,7 @@ export async function activateTrainingWindow(
         windowRef: trimmedWindowRef,
         window: null,
         reason: "transition_failed",
-        message: `window activation failed: ${result.error}`,
+        message: `${input.failurePrefix}: ${result.error}`,
         error: result.error,
       }
     }
@@ -718,8 +766,8 @@ export async function activateTrainingWindow(
       sourceUrl,
       windowRef: activatedWindowRef,
       window,
-      reason: "activated",
-      message: `activated ${activatedWindowRef}`,
+      reason: input.successReason,
+      message: `${input.successReason} ${activatedWindowRef}`,
     }
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error)
@@ -731,7 +779,7 @@ export async function activateTrainingWindow(
       windowRef: trimmedWindowRef,
       window: null,
       reason: "request_failed",
-      message: `training admin activation failed: ${text}`,
+      message: `${input.requestFailurePrefix}: ${text}`,
       error: text,
     }
   }

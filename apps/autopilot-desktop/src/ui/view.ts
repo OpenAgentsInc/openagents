@@ -56,6 +56,7 @@ import {
   ClickedCoordinatorToggle,
   ClickedDeploy,
   ClickedPlanTrainingWindow,
+  ClickedReconcileTrainingWindow,
   ClickedRefreshTrainingRuns,
   ClickedQueueTrainingLaunch,
   ClickedResolveApproval,
@@ -90,6 +91,7 @@ import {
   modelNode,
   modelNotifications,
   modelTrainingPlan,
+  modelTrainingReconcile,
   modelTrainingRuns,
 } from "./model"
 
@@ -540,6 +542,19 @@ const hasClaimableTrainingWindow = (model: Model): boolean => {
   return summary?.windows.some(window => window.state === "active") ?? false
 }
 
+const reconcileWindowRef = (model: Model): string | null => {
+  const summary = selectedTrainingSummary(modelTrainingRuns(model))
+  const projectedSealedWindow =
+    summary?.windows.find(window => window.state === "sealed")?.windowRef ??
+    null
+  if (projectedSealedWindow !== null) return projectedSealedWindow
+
+  const reconcile = modelTrainingReconcile(model)
+  if (reconcile?.ok === true) return null
+
+  return null
+}
+
 const trainingSceneOptions = (
   projection: TrainingRunsResponse | null,
 ): TrainingRunVisualizationOptions | undefined => {
@@ -707,10 +722,13 @@ const trainingLaunchPanel = (model: Model): Html => {
   const plan = modelTrainingPlan(model)
   const lease = modelTrainingLease(model)?.lease ?? null
   const activatableWindowRef = activationWindowRef(model)
+  const reconciliableWindowRef = reconcileWindowRef(model)
   const claimableWindowKnown = hasClaimableTrainingWindow(model)
   const planStatusVisible = model.trainingPlanStatus.tone !== "idle"
   const activationStatusVisible =
     model.trainingActivationStatus.tone !== "idle"
+  const reconcileStatusVisible =
+    model.trainingReconcileStatus.tone !== "idle"
   const leaseStatusVisible = model.trainingLeaseStatus.tone !== "idle"
   const launchStatusVisible = model.trainingLaunchStatus.tone !== "idle"
   const activateAttrs: Attribute<Message>[] = [
@@ -732,6 +750,18 @@ const trainingLaunchPanel = (model: Model): Html => {
   ]
   if (claimableWindowKnown) {
     leaseAttrs.push(h.OnClick(ClickedClaimTrainingLease()))
+  }
+  const reconcileAttrs: Attribute<Message>[] = [
+    cls("training-action-button training-reconcile-button secondary"),
+    h.Type("button"),
+    h.Disabled(model.trainingReconcilePending || reconciliableWindowRef === null),
+  ]
+  if (reconciliableWindowRef !== null) {
+    reconcileAttrs.push(
+      h.OnClick(
+        ClickedReconcileTrainingWindow({ windowRef: reconciliableWindowRef }),
+      ),
+    )
   }
   const refRows: Html[] = []
   if (plan?.trainingRunRef !== null && plan?.trainingRunRef !== undefined) {
@@ -758,7 +788,7 @@ const trainingLaunchPanel = (model: Model): Html => {
     h.p(
       [cls("training-panel-copy")],
       [
-        "Plan, activate, and claim Worker-authoritative training work from Bun, or queue a local Pylon readiness check.",
+        "Plan, activate, claim, and reconcile Worker-authoritative training work from Bun, or queue a local Pylon readiness check.",
       ],
     ),
     h.div(
@@ -802,6 +832,16 @@ const trainingLaunchPanel = (model: Model): Html => {
                 : "No active window",
           ],
         ),
+        h.button(
+          reconcileAttrs,
+          [
+            model.trainingReconcilePending
+              ? "Reconciling..."
+              : reconciliableWindowRef === null
+                ? "No sealed window"
+                : "Reconcile window",
+          ],
+        ),
       ],
     ),
     planStatusVisible
@@ -833,6 +873,16 @@ const trainingLaunchPanel = (model: Model): Html => {
             cls(`training-action-status training-${model.trainingLeaseStatus.tone}`),
           ],
           [model.trainingLeaseStatus.text],
+        )
+      : h.p([cls("training-action-status")], [" "]),
+    reconcileStatusVisible
+      ? h.p(
+          [
+            cls(
+              `training-action-status training-${model.trainingReconcileStatus.tone}`,
+            ),
+          ],
+          [model.trainingReconcileStatus.text],
         )
       : h.p([cls("training-action-status")], [" "]),
     launchStatusVisible

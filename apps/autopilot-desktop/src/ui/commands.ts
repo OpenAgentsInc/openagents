@@ -19,6 +19,7 @@ import {
   SettledCoordinatorToggle,
   SettledPlanTrainingWindow,
   SettledQueueTrainingLaunch,
+  SettledReconcileTrainingWindow,
   SettledResolveApproval,
   SettledSubmitIntent,
   SucceededDeploy,
@@ -187,6 +188,33 @@ export const ActivateTrainingWindow = Command.define(
             window: null,
             reason: "request_failed",
             message: `training admin activation failed: ${errorText(error)}`,
+            error: errorText(error),
+          },
+        }),
+      ),
+    ),
+  ),
+)
+
+export const ReconcileTrainingWindow = Command.define(
+  "ReconcileTrainingWindow",
+  { windowRef: S.String },
+  SettledReconcileTrainingWindow,
+)(({ windowRef }) =>
+  Effect.tryPromise(() => getRequest().reconcileTrainingWindow({ windowRef })).pipe(
+    Effect.map((projection) => SettledReconcileTrainingWindow({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledReconcileTrainingWindow({
+          projection: {
+            ok: false,
+            enabled: false,
+            fetchedAt: new Date().toISOString(),
+            sourceUrl: "desktop:training-reconcile",
+            windowRef,
+            window: null,
+            reason: "request_failed",
+            message: `training admin reconciliation failed: ${errorText(error)}`,
             error: errorText(error),
           },
         }),

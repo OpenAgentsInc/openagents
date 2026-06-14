@@ -68,6 +68,12 @@ export const ClickedActivateTrainingWindow = m("ClickedActivateTrainingWindow", 
 export const SettledActivateTrainingWindow = m("SettledActivateTrainingWindow", {
   projection: S.Unknown,
 })
+export const ClickedReconcileTrainingWindow = m("ClickedReconcileTrainingWindow", {
+  windowRef: S.String,
+})
+export const SettledReconcileTrainingWindow = m("SettledReconcileTrainingWindow", {
+  projection: S.Unknown,
+})
 export const ClickedClaimTrainingLease = m("ClickedClaimTrainingLease")
 export const SettledClaimTrainingLease = m("SettledClaimTrainingLease", {
   projection: S.Unknown,
@@ -120,6 +126,8 @@ export const Message = S.Union([
   SettledPlanTrainingWindow,
   ClickedActivateTrainingWindow,
   SettledActivateTrainingWindow,
+  ClickedReconcileTrainingWindow,
+  SettledReconcileTrainingWindow,
   ClickedClaimTrainingLease,
   SettledClaimTrainingLease,
   ClickedQueueTrainingLaunch,

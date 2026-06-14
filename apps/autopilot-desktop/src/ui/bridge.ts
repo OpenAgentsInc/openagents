@@ -40,6 +40,9 @@ export type DesktopRequests = {
   activateTrainingWindow(p: {
     windowRef: string
   }): Promise<TrainingWindowActionResponse>
+  reconcileTrainingWindow(p: {
+    windowRef: string
+  }): Promise<TrainingWindowActionResponse>
   claimTrainingWindowLease(
     p: Record<string, never>,
   ): Promise<TrainingWindowLeaseResponse>

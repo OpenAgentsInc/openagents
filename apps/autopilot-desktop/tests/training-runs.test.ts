@@ -4,6 +4,7 @@ import {
   claimTrainingWindowLease,
   fetchTrainingRuns,
   planTrainingRunWindow,
+  reconcileTrainingWindow,
 } from "../src/bun/training-runs"
 
 const sampleRun = {
@@ -361,6 +362,80 @@ describe("activateTrainingWindow", () => {
     expect(result.ok).toBe(false)
     expect(result.reason).toBe("transition_failed")
     expect(result.error).toBe("Training window not found.")
+    expect(result.message).not.toContain("admin-token")
+  })
+})
+
+describe("reconcileTrainingWindow", () => {
+  test("does not call admin routes when disabled", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await reconcileTrainingWindow({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test",
+      enabled: false,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response("{}")
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      windowRef: "training.window.desktop.r1.test",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("disabled")
+    expect(calls).toHaveLength(0)
+  })
+
+  test("reconciles a sealed training window through the admin route", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await reconcileTrainingWindow({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test/",
+      enabled: true,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response(
+          JSON.stringify({
+            window: {
+              ...sampleSummary.windows[0],
+              state: "reconciled",
+              windowRef: "training.window.desktop.r1.test",
+            },
+          }),
+        )
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      windowRef: "training.window.desktop.r1.test",
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.reason).toBe("reconciled")
+    expect(result.window?.state).toBe("reconciled")
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toBe(
+      "https://openagents.test/api/training/windows/training.window.desktop.r1.test/reconcile",
+    )
+    expect(JSON.parse(String(calls[0]?.init?.body)).receiptRef).toBe(
+      "receipt.desktop.training.window.reconcile.2026.06.14t00.00.00.000z",
+    )
+  })
+
+  test("reports reconciliation failures without leaking credentials", async () => {
+    const result = await reconcileTrainingWindow({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test",
+      enabled: true,
+      fetchFn: async () =>
+        new Response(JSON.stringify({ reason: "Invalid transition." }), {
+          status: 400,
+        }),
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      windowRef: "training.window.active",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("transition_failed")
+    expect(result.error).toBe("Invalid transition.")
     expect(result.message).not.toContain("admin-token")
   })
 })

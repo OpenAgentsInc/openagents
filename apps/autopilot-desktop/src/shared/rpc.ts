@@ -180,6 +180,7 @@ export type TrainingWindowActionReason =
   | "transition_failed"
   | "request_failed"
   | "activated"
+  | "reconciled"
 
 export type TrainingWindowActionResponse = {
   readonly ok: boolean
@@ -310,6 +311,10 @@ export type DesktopRPCSchema = {
         readonly response: TrainingPlanResponse
       }
       readonly activateTrainingWindow: {
+        readonly params: { windowRef: string }
+        readonly response: TrainingWindowActionResponse
+      }
+      readonly reconcileTrainingWindow: {
         readonly params: { windowRef: string }
         readonly response: TrainingWindowActionResponse
       }

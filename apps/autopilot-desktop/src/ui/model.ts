@@ -136,6 +136,9 @@ export const Model = ts("AutopilotDesktop", {
   trainingActivation: S.NullOr(S.Unknown),
   trainingActivationStatus: TrainingWindowActionStatus,
   trainingActivationPending: S.Boolean,
+  trainingReconcile: S.NullOr(S.Unknown),
+  trainingReconcileStatus: TrainingWindowActionStatus,
+  trainingReconcilePending: S.Boolean,
   trainingLease: S.NullOr(S.Unknown),
   trainingLeaseStatus: TrainingWindowActionStatus,
   trainingLeasePending: S.Boolean,
@@ -171,6 +174,11 @@ export const modelTrainingActivation = (
 ): TrainingWindowActionResponse | null =>
   model.trainingActivation as TrainingWindowActionResponse | null
 
+export const modelTrainingReconcile = (
+  model: Model,
+): TrainingWindowActionResponse | null =>
+  model.trainingReconcile as TrainingWindowActionResponse | null
+
 export const modelTrainingLease = (
   model: Model,
 ): TrainingWindowLeaseResponse | null =>
@@ -202,6 +210,9 @@ export const initialModel: Model = Model.make({
   trainingActivation: null,
   trainingActivationStatus: { text: "", tone: "idle" },
   trainingActivationPending: false,
+  trainingReconcile: null,
+  trainingReconcileStatus: { text: "", tone: "idle" },
+  trainingReconcilePending: false,
   trainingLease: null,
   trainingLeaseStatus: { text: "", tone: "idle" },
   trainingLeasePending: false,

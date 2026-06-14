@@ -30,6 +30,7 @@ import {
   ClickedActivateTrainingWindow,
   ClickedClaimTrainingLease,
   ClickedPlanTrainingWindow,
+  ClickedReconcileTrainingWindow,
   ClickedResolveApproval,
   ClickedSubmitIntent,
   GotNodeState,
@@ -38,6 +39,7 @@ import {
   SettledActivateTrainingWindow,
   SettledClaimTrainingLease,
   SettledPlanTrainingWindow,
+  SettledReconcileTrainingWindow,
   SettledResolveApproval,
   SettledSubmitIntent,
   ToggledEvent,
@@ -321,6 +323,41 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingLeaseStatus.tone).toBe("success")
     expect(settled.trainingLease).toMatchObject({
       lease: { leaseRef: "training.lease.1" },
+    })
+    expect(followups).toHaveLength(1)
+  })
+
+  test("training reconcile action dispatches and stores the public-safe result", () => {
+    const [pending, commands] = update(
+      initialModel,
+      ClickedReconcileTrainingWindow({
+        windowRef: "training.window.desktop.r1.test",
+      }),
+    )
+    expect(pending.trainingReconcilePending).toBe(true)
+    expect(pending.trainingReconcileStatus.tone).toBe("info")
+    expect(commands).toHaveLength(1)
+
+    const [settled, followups] = update(
+      pending,
+      SettledReconcileTrainingWindow({
+        projection: {
+          ok: true,
+          enabled: true,
+          fetchedAt: "2026-06-14T00:00:00.000Z",
+          sourceUrl:
+            "https://openagents.test/api/training/windows/training.window.desktop.r1.test/reconcile",
+          windowRef: "training.window.desktop.r1.test",
+          window: null,
+          reason: "reconciled",
+          message: "reconciled training.window.desktop.r1.test",
+        },
+      }),
+    )
+    expect(settled.trainingReconcilePending).toBe(false)
+    expect(settled.trainingReconcileStatus.tone).toBe("success")
+    expect(settled.trainingReconcile).toMatchObject({
+      windowRef: "training.window.desktop.r1.test",
     })
     expect(followups).toHaveLength(1)
   })

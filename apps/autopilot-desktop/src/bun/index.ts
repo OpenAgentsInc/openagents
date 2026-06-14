@@ -20,6 +20,7 @@ import {
   claimTrainingWindowLease,
   fetchTrainingRuns,
   planTrainingRunWindow,
+  reconcileTrainingWindow,
 } from "./training-runs"
 import type { DesktopRPCSchema } from "../shared/rpc"
 
@@ -115,6 +116,14 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       async activateTrainingWindow(params) {
         return activateTrainingWindow({
+          adminToken: trainingAdminToken,
+          baseUrl: trainingBaseUrl,
+          enabled: trainingAdminEnabled,
+          windowRef: params.windowRef,
+        })
+      },
+      async reconcileTrainingWindow(params) {
+        return reconcileTrainingWindow({
           adminToken: trainingAdminToken,
           baseUrl: trainingBaseUrl,
           enabled: trainingAdminEnabled,
