@@ -117,7 +117,10 @@ verifiable:
 4. **They earned real sats, and can see it.** Accepted executor-trace work
    settled a real Lightning payout to the contributor's wallet, with a
    dereferenceable public receipt, AND the public run / leaderboard shows
-   `settledPayoutSats > 0` (today it's `0`).
+   `settledPayoutSats > 0`. **Seam met (#5009):** the settlement-receipt route +
+   projection read are live — `settledPayoutSats` / `providerConfirmedSettledPayoutSats`
+   now reflect run-linked settled receipts (no longer hardcoded `0`). Goes
+   non-zero the moment the first real settlement lands — the launch event.
 5. **The corpus grew.** The accepted verified traces are recorded toward the
    Tassadar training corpus (the evolution loop's accumulation), visible on the
    tick ledger.
@@ -245,25 +248,34 @@ spine; E makes it honest; F→G make it usable and public.
   is replayed; not faked.
 - **Next:** Step D below — pay the contributor real sats for accepted work.
 
-### D. Payout + settlement to the contributor · worker-api + pylon
-**The "earn Bitcoin" leg — drive it first.**
-- Accepted executor-trace work → real-sats payout to the contributor's wallet
-  from the **OpenAgents treasury wallet** (the `/treasury` MDK-backed wallet that
-  **Artanis already pays out from**, via the nexus-treasury payout ledger) →
-  **public settlement receipt** linked to the run.
-- Payouts are **programmatic** under the run's per-payout + per-run **spend cap**
-  (not operator-manual-only — see the §3 correction). A stranger earning a few
-  sats with a real, dereferenceable receipt is the win.
-- Keep `paid ≠ accepted ≠ credited ≠ settled` distinct — never collapse them.
-- **Done when:** a non-owner holds a real settled Lightning payout from the
-  Tassadar run with a dereferenceable public receipt.
+### D. Payout + settlement to the contributor · ✅ ledger + projection seam DONE (#5009)
+**The "earn Bitcoin" leg.**
+- ✅ **Ledger + projection seam is live** (#5009, deployed). Accepted
+  (`Verified`) `exact_trace_replay` work →
+  `POST /api/training/runs/{runRef}/settlement-receipt` records the
+  operator-approved treasury payout chain (intent → attempt → reconciliation →
+  `settlement_recorded` receipt) under the run manifest `spendCapSats` + a hard
+  per-payout cap, and links the **public settlement receipt** onto the run.
+  Payout is **programmatic** via the `/treasury` MDK wallet (Artanis dispatches
+  under bounded spend authority). `providerConfirmedSettledPayoutSats` and the A1
+  `settledPayoutSats` now read the linked settled receipts (no longer hardcoded
+  `0`); `paid ≠ accepted ≠ credited ≠ settled` stays strict.
+- **Remaining (the launch event, §6):** a real **non-owner stranger** holding a
+  real settled Lightning payout from the Tassadar run with a dereferenceable
+  public receipt — the live send is performed by the treasury container/Artanis
+  and recorded by the #5009 route. This is the Go/No-Go event, not a separate
+  build step.
 
 ### E. Settlement + corpus projection consistency · worker-api
-- Join settlement receipts into the run page / leaderboard so `settledPayoutSats`
-  is real (not `0`), and surface the **accepted verified traces accumulating
-  toward the Tassadar corpus** on the tick ledger. Test: a reconciled/accepted
-  trace cannot leave the run claiming `planned`; settled receipts surface only
-  when dereferenceable + redacted (gap audit §2).
+- ✅ **`settledPayoutSats` is joined into the projection** (#5009): the run page
+  and A1 leaderboard read real provider-confirmed settled receipts linked to the
+  run, and a reconciled/accepted trace cannot leave the run claiming `planned`
+  (existing `TrainingRunPlannedWithReconciledWindowsBlocker`); settled receipts
+  surface only when dereferenceable + redacted.
+- **Remaining:** surface the **accepted verified traces accumulating toward the
+  Tassadar corpus** on the tick ledger / run page (the growing accepted-trace
+  count), so the public run shows both a real settled total **and** a growing
+  corpus.
 - **Done when:** the public run shows a non-zero settled total equal to reality
   and a growing accepted-trace count.
 
@@ -309,8 +321,11 @@ Run before announcing that contributors are earning:
 - [ ] ≥1 **non-owner** Pylon admitted + dispatched executor work self-serve (B).
 - [ ] Public `exact_trace_replay` `Verified` verdict for that contributor (C).
 - [ ] That contributor holds a real settled-sats payout + public receipt (D).
+      _Seam wired (#5009): the settlement-receipt route + run link are live;
+      box flips when the real stranger settlement lands._
 - [ ] Leaderboard/run `settledPayoutSats` non-zero + accepted-trace count growing
-      (E).
+      (E). _`settledPayoutSats` read is wired (#5009); goes non-zero on the first
+      real settlement. Accepted-trace count surface is the §E remainder._
 - [ ] The linked install path is reproducible on a clean machine (F).
 - [ ] Copy passes §7, cites live registry version + promise IDs.
 
