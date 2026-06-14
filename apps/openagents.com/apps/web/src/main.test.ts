@@ -133,6 +133,16 @@ describe('auth bootstrap flags', () => {
     }
   })
 
+  test('does not request the auth session on the Moksha route', async () => {
+    window.history.replaceState({}, '', '/moksha')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const loadedFlags = await Effect.runPromise(flags)
+
+    expect(loadedFlags.maybeAuth).toEqual(Option.none())
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   test('requests the auth session on application routes', async () => {
     window.history.replaceState({}, '', '/teams/openagents-core-team/chat')
     const fetchSpy = vi
@@ -212,6 +222,19 @@ describe('authenticated startup routing', () => {
       loggedIn: {
         route: { _tag: 'Thread', threadId: 'pylon-release-demo' },
       },
+    })
+    expect(commands).toHaveLength(0)
+  })
+
+  test('opens Moksha without an auth session', () => {
+    const [model, commands] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/moksha'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: { _tag: 'Moksha' },
     })
     expect(commands).toHaveLength(0)
   })

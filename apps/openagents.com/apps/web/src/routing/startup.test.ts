@@ -25,6 +25,7 @@ import {
   ForumReceiptRoute,
   HomeRoute,
   InviteRoute,
+  MokshaRoute,
   MulletRoute,
   NotFoundRoute,
   OnboardingRoute,
@@ -135,6 +136,26 @@ describe('startup route policy', () => {
       _tag: 'LoggedOutStartupRoute',
       redirect: Option.none(),
       route: shareRoute,
+    })
+  })
+
+  test('keeps Moksha public for every auth state', () => {
+    const mokshaRoute = MokshaRoute()
+
+    expect(startupRouteForLoggedOut(mokshaRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: mokshaRoute,
+    })
+    expect(startupRouteForLoggedIn(mokshaRoute, completeAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: mokshaRoute,
+    })
+    expect(startupRouteForLoggedIn(mokshaRoute, incompleteAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: mokshaRoute,
     })
   })
 
@@ -395,6 +416,7 @@ describe('startup route policy', () => {
       ),
     ).toBe(false)
     expect(routeRequiresAuthBootstrap(SiteCheckoutDemoRoute())).toBe(false)
+    expect(routeRequiresAuthBootstrap(MokshaRoute())).toBe(false)
     expect(
       routeRequiresAuthBootstrap(
         SiteCheckoutDemoReturnRoute({ returnAction: 'status' }),

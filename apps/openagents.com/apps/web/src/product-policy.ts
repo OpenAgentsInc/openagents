@@ -157,6 +157,7 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'PublicTrainingRuns' &&
   route._tag !== 'PublicTrainingRun' &&
   route._tag !== 'Share' &&
+  route._tag !== 'Moksha' &&
   route._tag !== 'Demo' &&
   route._tag !== 'DemoOrder' &&
   route._tag !== 'DemoThread' &&
@@ -199,6 +200,7 @@ export const browserRouteProductIntents = {
   Demo2Thread: 'demo2.workroom.thread',
   Images: 'image.generation',
   Mullet: 'mullet.runner',
+  Moksha: 'public.moksha',
   Docs: 'public.docs.index',
   DocsPage: 'public.docs.page',
   Forum: 'public.forum.index',
