@@ -22,6 +22,7 @@ The first implemented slice follows that boundary:
 - The pane can request a public bootstrap grant for the local Pylon ref against the selected training run, showing whether the joiner is granted the last durable seal, queued by the seal barrier, or refused because no durable seal exists.
 - The pane can queue a local Pylon closeout packet task with the selected run/window/lease/bootstrap refs, but it does not synthesize seal metadata or call evidence-admission routes from the webview.
 - The pane now includes an Evidence Ledger panel for the selected run, exposing public authority refs, window refs, Freivalds/gradient closeout refs, receipt refs, and blocker refs without moving raw worker payloads into the webview.
+- The pane includes a Source Map panel that groups the Worker authority, evidence routes, desktop bridge, `three-effect` scene, and training docs by responsibility.
 - Evidence admission, settlement, and real worker execution remain outside the webview.
 
 That is the right initial shape. The next high-value step is wiring the plan result to the actual run admission and evidence pipeline while preserving the same authority boundary.
@@ -121,6 +122,7 @@ The Foldkit pane adds operator panels for:
 - Issue 4855 gates.
 - Launch feedback.
 - Public and admin API boundary.
+- Source-map references for the Worker, desktop, `three-effect`, and training-doc implementation homes.
 
 The operations panel has seven buttons. `Plan R1 window` calls a typed desktop RPC handled only by the Bun main process. The Bun side refuses to call admin routes unless `OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE=1` and either `OPENAGENTS_TRAINING_ADMIN_API_TOKEN` or `OPENAGENTS_ADMIN_API_TOKEN` is available. When enabled, it calls `POST /api/training/runs` and then `POST /api/training/windows/plan`, using public-safe refs derived from the local timestamp and the issue 4855 / Tassadar source docs. The webview stores the returned `TrainingPlanResponse` as an opaque projection and displays only refs/status.
 
@@ -141,6 +143,8 @@ The refresh button and Training pane navigation call typed desktop RPCs that rea
 The Run Lifecycle panel is a compact translation layer for issue 4855. It derives `registered`, `qualified`, `state_synced`, `warmup`, `active`, and `sync_reentry` from assigned contributors, device qualification, durable seal visibility, active/planned windows, verified work, rejected work, and the configured stale bound. A second strip shows the Worker window authority counts for `planned`, `active`, `sealed`, and `reconciled`, plus seal-barrier and closeout readiness. This makes admin-triggered progress visible immediately after projection refreshes without adding a second source of truth.
 
 The Evidence Ledger panel is the bridge between the high-level gates and the actual code-facing refs an operator needs. For the selected run it lists authority refs, the first projected window records, evidence refs including Freivalds and gradient closeouts, receipt refs, and external blocker/requirement refs. It is still a public projection surface: it never displays private worker output, credentials, wallet material, or raw evidence payloads.
+
+The Source Map panel is the "code at fingertips" layer. It does not execute code or carry authority; it points at the owning implementation files and public/admin route families for the Worker authority, evidence gates, desktop Bun/Foldkit bridge, `three-effect` scene, and training docs.
 
 The desktop also summarizes the public CS336 dashboard surfaces in a compact panel. It counts ranked leaderboard lanes from `/api/training/leaderboards`, A2 observed/verified device measurements from `/api/training/device-capabilities/a2`, A3 verified ISOFLOP cells from `/api/training/isoflop/a3`, A4 verified data-refinery stages from `/api/training/refinery/a4`, A5 verified eval suites from `/api/training/evals/a5`, and public blocker refs across those projections. This gives the operator the same public readiness context available to the web dashboards without moving raw evidence, private worker payloads, or admin authority into the webview.
 

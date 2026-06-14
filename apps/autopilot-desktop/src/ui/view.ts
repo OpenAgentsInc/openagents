@@ -531,6 +531,89 @@ const trainingRefList = (
         ),
   ])
 
+const trainingSourceMapSections: ReadonlyArray<{
+  title: string
+  detail: string
+  refs: readonly string[]
+}> = [
+  {
+    title: "Worker authority",
+    detail: "run/window state, transitions, public projection",
+    refs: [
+      "apps/openagents.com/workers/api/src/training-run-window-authority.ts",
+      "apps/openagents.com/workers/api/src/training-run-window-routes.ts",
+      "/api/training/runs",
+      "/api/training/windows/{windowRef}/activate",
+      "/api/training/windows/{windowRef}/reconcile",
+    ],
+  },
+  {
+    title: "Evidence and gates",
+    detail: "real-gradient claim boundary, bootstrap, receipts, dashboards",
+    refs: [
+      "apps/openagents.com/workers/api/src/training-real-gradient-evidence.ts",
+      "apps/openagents.com/workers/api/src/training-window-bootstrap.ts",
+      "apps/openagents.com/workers/api/src/training-presence-compute-receipts.ts",
+      "apps/openagents.com/workers/api/src/training-leaderboards.ts",
+      "/api/training/runs/{runRef}/bootstrap-grant",
+    ],
+  },
+  {
+    title: "Desktop bridge",
+    detail: "Bun-held authority, Foldkit messages, public-safe model",
+    refs: [
+      "apps/autopilot-desktop/src/bun/training-runs.ts",
+      "apps/autopilot-desktop/src/bun/index.ts",
+      "apps/autopilot-desktop/src/shared/rpc.ts",
+      "apps/autopilot-desktop/src/ui/commands.ts",
+      "apps/autopilot-desktop/src/ui/view.ts",
+    ],
+  },
+  {
+    title: "Three scene",
+    detail: "Effect-scoped WebGL scene and Foldkit custom element",
+    refs: [
+      "OpenAgentsInc/three-effect:packages/core/src/trainingRun.ts",
+      "OpenAgentsInc/three-effect:packages/foldkit/src/index.ts",
+      "@openagentsinc/three-effect/foldkit",
+      "oa-training-run",
+    ],
+  },
+  {
+    title: "Training docs",
+    detail: "Pluralis adaptation, Psion plan, Tassadar research source",
+    refs: [
+      "docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md",
+      "docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md",
+      "docs/training/2026-06-14-autopilot-desktop-training-ui-audit.md",
+      "docs/tassadar/RESEARCH_PLAN.md",
+    ],
+  },
+]
+
+const trainingSourceMapPanel = (): Html =>
+  h.section([cls("training-panel training-source-map-panel")], [
+    h.h2([cls("training-panel-title")], ["Source Map"]),
+    h.p([cls("training-panel-copy")], [
+      "Implementation homes for the live Training pane, grouped by authority boundary.",
+    ]),
+    h.ul(
+      [cls("training-source-map-list")],
+      trainingSourceMapSections.map(section =>
+        h.li([cls("training-source-map-section")], [
+          h.div([cls("training-source-map-heading")], [
+            h.strong([], [section.title]),
+            h.span([], [section.detail]),
+          ]),
+          h.ul(
+            [cls("training-api-list training-source-map-refs")],
+            section.refs.map(ref => h.li([], [h.code([], [ref])])),
+          ),
+        ]),
+      ),
+    ),
+  ])
+
 const trainingProjectionMeta = (
   projection: TrainingRunsResponse | null,
 ): string => {
@@ -1517,6 +1600,7 @@ const trainingPane = (model: Model): Html => {
             h.li([], [h.code([], ["admin: plan window / admit evidence"])]),
           ]),
         ]),
+        trainingSourceMapPanel(),
       ]),
     ],
   )

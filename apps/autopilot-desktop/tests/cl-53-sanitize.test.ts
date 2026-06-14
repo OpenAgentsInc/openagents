@@ -248,6 +248,12 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-ledger-ref")).toBe(true)
   })
 
+  test("training pane includes the source map panel", () => {
+    const document = view({ ...initialModel, pane: "training" })
+    expect(treeContainsClass(document.body, "training-source-map-panel")).toBe(true)
+    expect(treeContainsClass(document.body, "training-source-map-refs")).toBe(true)
+  })
+
   test("training pane includes the closeout packet action", () => {
     const document = view({
       ...initialModel,
