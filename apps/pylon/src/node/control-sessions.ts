@@ -149,6 +149,11 @@ export type ControlSessionProjection = {
   eventCount: number
   // Latest human-readable action (for the session list — what it's doing now).
   latestActivity: string
+  // #4997: cloud runner provenance for the "running on Google GCE / SHC"
+  // indicator. `null` for local/auto-resolved-local sessions.
+  cloudRunner: ControlSessionCloudRunner | null
+  // #4997: the resource_usage_receipt ref surfaced by a cloud run, if any.
+  resourceUsageReceiptRef: string | null
 }
 
 export type ControlSessionActions = {
@@ -177,6 +182,9 @@ export type ControlSessionActions = {
 export type ControlSessionExecutorInput = {
   adapter: PylonComposerAdapter
   account: ResolvedPylonAccountSelection | null
+  // Requested execution lane (#4998). Cloud executors (#4997) use this to pick
+  // the cloud compute lane; the local executor ignores it.
+  lane: ControlSessionLane
   abortSignal: AbortSignal
   cwd: string
   env: Record<string, string | undefined>
@@ -201,6 +209,21 @@ export type ControlSessionExecutorResult = {
   responseDigestRef: string | null
   sandboxMode?: "read-only" | "workspace-write" | "danger-full-access"
   totalTokens: number
+  // #4997: when the session ran on a cloud runner, the resolved runner
+  // provenance ("running on Google GCE / SHC") and the surfaced
+  // resource_usage_receipt ref, so the desktop indicator is real.
+  cloudRunner?: ControlSessionCloudRunner
+  resourceUsageReceiptRef?: string | null
+}
+
+// #4997: bounded, refs-and-limits-only provenance for a cloud-executed session.
+// No raw owner identity, cost, GCP project id, instance name, IP, credentials,
+// or topology — only the lane and the runner id/label.
+export type ControlSessionCloudRunner = {
+  lane: "cloud-gcp" | "cloud-shc"
+  providerLane: "gcp" | "shc"
+  runnerId: string
+  externalRunId: string
 }
 
 export type ControlSessionExecutor = (
@@ -252,6 +275,8 @@ type SessionRecord = {
   errorClass: string | null
   errorDigestRef: string | null
   events: ControlSessionEvent[]
+  cloudRunner: ControlSessionCloudRunner | null
+  resourceUsageReceiptRef: string | null
 }
 
 function stableRef(prefix: string, value: string) {
@@ -376,6 +401,8 @@ function projectionFor(record: SessionRecord): ControlSessionProjection {
     completedAt: record.completedAt,
     eventCount: record.events.length,
     latestActivity: latestActivityOf(record.events),
+    cloudRunner: record.cloudRunner,
+    resourceUsageReceiptRef: record.resourceUsageReceiptRef,
   }
 }
 
@@ -577,6 +604,13 @@ async function defaultControlSessionExecutor(
 export function createControlSessionActions(options: {
   env?: Record<string, string | undefined>
   executor?: ControlSessionExecutor
+  // #4997: optional cloud executor used when a session's lane resolves to a
+  // cloud lane and a cloud control plane is configured. When omitted, the
+  // factory builds one from env via `cloudExecutorFactory`. When neither is
+  // available (no cloud config), cloud lanes fall back to the local executor so
+  // a Pylon with no cloud config still works locally exactly as before.
+  cloudExecutor?: ControlSessionExecutor
+  cloudExecutorFactory?: (env: Record<string, string | undefined>) => ControlSessionExecutor | null
   proofsDir?: string
   summary: BootstrapSummary
 }): ControlSessionActions {
@@ -585,6 +619,18 @@ export function createControlSessionActions(options: {
   const subscribers = new Map<string, Set<ReadableStreamDefaultController<Uint8Array>>>()
   const executor = options.executor ?? defaultControlSessionExecutor
   const baseEnv = options.env ?? (Bun.env as Record<string, string | undefined>)
+  // Resolve the cloud executor lazily: explicit injection wins (tests), else a
+  // factory-from-env builds one when cloud config is present. `null` means "no
+  // cloud configured" and cloud lanes degrade to the local executor.
+  const cloudExecutor =
+    options.cloudExecutor ??
+    (options.cloudExecutorFactory ? options.cloudExecutorFactory(baseEnv) : null)
+  const laneIsCloud = (lane: ControlSessionLane): boolean =>
+    lane === "cloud-gcp" || lane === "cloud-shc"
+  const selectExecutor = (lane: ControlSessionLane): ControlSessionExecutor => {
+    if (laneIsCloud(lane) && cloudExecutor) return cloudExecutor
+    return executor
+  }
   const proofsDir = options.proofsDir ?? join(options.summary.paths.home, "proofs", "control-sessions")
   let spawnIndex = 0
 
@@ -753,9 +799,10 @@ export function createControlSessionActions(options: {
     record.startedAt = nowIso()
     emit(record, { phase: "started" })
     try {
-      const result = await executor({
+      const result = await selectExecutor(record.lane)({
         adapter: record.adapter,
         account: record.account,
+        lane: record.lane,
         abortSignal: record.abort.signal,
         cwd: record.workspace.workingDirectory,
         env: pylonAccountEnvironment(baseEnv, record.account),
@@ -779,6 +826,10 @@ export function createControlSessionActions(options: {
         workspaceRef: record.workspace.workspaceRef,
       })
       if (record.state === "cancelled" || record.abort.signal.aborted) return
+      if (result.cloudRunner !== undefined) record.cloudRunner = result.cloudRunner
+      if (result.resourceUsageReceiptRef !== undefined && result.resourceUsageReceiptRef !== null) {
+        record.resourceUsageReceiptRef = result.resourceUsageReceiptRef
+      }
       record.completedAt = nowIso()
       record.artifactRef = await writeRetainedArtifact(record, result)
       if (result.devCheck.state === "passed") {
@@ -863,6 +914,8 @@ export function createControlSessionActions(options: {
         errorClass: null,
         errorDigestRef: null,
         events: [],
+        cloudRunner: null,
+        resourceUsageReceiptRef: null,
       }
       records.set(sessionRef, record)
       emit(record, { phase: "queued" })

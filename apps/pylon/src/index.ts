@@ -75,6 +75,8 @@ import {
   type ControlCommandActions,
 } from "./node/control-server"
 import { createControlSessionActions } from "./node/control-sessions"
+import { resolveCloudControlConfig } from "./cloud-control-client"
+import { makeCloudControlSessionExecutor } from "./openagents-cloud-provider"
 import { runControlClient, sendControlCommand } from "./node/control-client"
 import { loadComposerState, saveComposerState } from "./node/composer-store"
 import { collectPylonContextProjection } from "./context-projection"
@@ -608,7 +610,18 @@ function makeContextActions(summary: ReturnType<typeof createBootstrapSummary>):
 }
 
 function makeSessionActions(summary: ReturnType<typeof createBootstrapSummary>) {
-  return createControlSessionActions({ summary })
+  return createControlSessionActions({
+    summary,
+    // #4997: build the OpenAgents Cloud executor from env when a cloud control
+    // plane is configured (OA_CLOUD_CONTROL_URL + OA_CLOUD_CONTROL_TOKEN). When
+    // it is not, this returns null and cloud lanes degrade to the local
+    // executor, so a Pylon with no cloud config still works locally as before.
+    cloudExecutorFactory: (env) => {
+      const resolved = resolveCloudControlConfig(env)
+      if (!resolved.configured) return null
+      return makeCloudControlSessionExecutor({ config: resolved.config, env })
+    },
+  })
 }
 
 function codexComposerWorkingDirectory() {

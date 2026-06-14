@@ -500,6 +500,49 @@ on OpenAgents Cloud (Google-first).*
   (non-Vortex).
 - cloud **#88** — GCE ephemeral-VM Codex session lane as default (warm path).
 
+### #4997 implemented — Pylon `openagents-cloud` execution backend (2026-06-14)
+
+The Pylon `openagents-cloud` provider now dispatches cloud-lane control
+sessions to the cloud control plane instead of running them locally. It builds
+on #4998 (lane plumbing) and #4999 (Vortex-independent grant resolver).
+
+- **Modules:** `apps/pylon/src/cloud-control-client.ts` (HTTP transport + event
+  normalization) and `apps/pylon/src/openagents-cloud-provider.ts`
+  (`makeCloudControlSessionExecutor`, the `ControlSessionExecutor` for cloud
+  lanes). Wired into `createControlSessionActions` via a lane-aware executor
+  selector and into production through `makeSessionActions` in
+  `apps/pylon/src/index.ts`.
+- **Env gate (new, neutral):** `OA_CLOUD_CONTROL_URL` + `OA_CLOUD_CONTROL_TOKEN`
+  enable the cloud control plane. Grant resolution reuses
+  `OA_CODEX_GRANT_RESOLVE_URL` / `OA_CODEX_GRANT_RESOLVE_TOKEN` (#4999). When
+  the cloud vars are unset, cloud lanes degrade to the local executor, so a
+  Pylon with no cloud config still works locally exactly as before.
+- **Loop:** resolve grant (when grant refs present) → `POST /v1/placement`
+  (`openagents.codex_placement_assignment.v1`, lane GCE primary / SHC secondary)
+  → poll `GET /v1/codex-runs/{externalRunId}/events?cursor=N` →
+  `POST /v1/codex-runs/{externalRunId}/cancel` on abort.
+- **Event mapping** (cloud `openagents.codex_workroom_event.v1` kind → Pylon
+  `ControlSessionEvent`): `queued`/`placement.bound`/`started`/`log`/`redacted`
+  → `composer_event` (bounded, redaction-scanned message text);
+  `artifact` → `composer_event` + collected `artifactRef`s; `receipt` →
+  `composer_event` + the `openagents.resource_usage_receipt.v1` ref surfaced on
+  the session; `completed` → terminal `completed`; `failed`/`timeout` →
+  terminal `failed`; `cancelled` → terminal `cancelled`. The existing
+  `/sessions/:ref/events` stream is therefore lane-transparent.
+- **Provenance:** the resolved runner binding (lane + `providerLane` + runner
+  id + `externalRunId`) is recorded on the session record/projection
+  (`cloudRunner`) so the desktop "running on Google GCE / SHC" indicator is
+  real. Refs-and-limits only; no raw owner identity, cost, project id, IP, or
+  credentials.
+- **Tests:** `apps/pylon/tests/openagents-cloud-execution-backend.test.ts`
+  drives a faked cloud control plane proving spawn `cloud-gcp` → grant resolved
+  → placement/events called → events mapped into the Pylon stream → terminal +
+  artifact + receipt surfaced, plus the failed-terminal path and the
+  no-cloud-config local fallback.
+- **Scope deferred (cloud repo):** live GCE/SHC VM provisioning, warm pools,
+  and CND-042 cost-driven placement. Pylon targets the documented HTTP contract
+  only.
+
 **Phase 2 — Remote-reachable bridge + Expo read-only app:**
 - openagents **#5000** — Pylon bridge transport (system #39).
 - openagents **#5001** — scaffold Expo remote-control app (read-only),
