@@ -27,6 +27,8 @@ import {
 } from "@openagentsinc/three-effect/foldkit"
 import {
   trainingRunVisualizationOptionsFromSnapshot,
+  type TrainingRunOperatorSignalDefinition,
+  type TrainingRunOperatorSignalState,
   type TrainingRunPromiseSignalDefinition,
   type TrainingRunVisualizationOptions,
 } from "@openagentsinc/three-effect/core"
@@ -909,6 +911,81 @@ const trainingPromiseSignals = (
     state: promise.state,
   }))
 
+const operatorSignalState = (
+  status: TrainingStatusLike,
+  pending: boolean,
+): TrainingRunOperatorSignalState =>
+  pending
+    ? "info"
+    : status.tone === "success"
+      ? "success"
+      : status.tone === "error"
+        ? "error"
+        : status.tone === "info"
+          ? "info"
+          : "idle"
+
+const operatorSignalDetail = (
+  status: TrainingStatusLike,
+  fallback: string,
+): string => {
+  const detail = trainingStatusText(status, fallback).replace(/\s+/g, " ")
+  return detail.length > 18 ? `${detail.slice(0, 17)}...` : detail
+}
+
+const trainingOperatorSignals = (
+  model: Model,
+): readonly TrainingRunOperatorSignalDefinition[] => [
+  {
+    detail: operatorSignalDetail(model.trainingPlanStatus, "idle"),
+    id: "plan",
+    label: "plan",
+    state: operatorSignalState(model.trainingPlanStatus, model.trainingPlanPending),
+  },
+  {
+    detail: operatorSignalDetail(model.trainingActivationStatus, "idle"),
+    id: "activate",
+    label: "activate",
+    state: operatorSignalState(
+      model.trainingActivationStatus,
+      model.trainingActivationPending,
+    ),
+  },
+  {
+    detail: operatorSignalDetail(model.trainingLeaseStatus, "idle"),
+    id: "lease",
+    label: "lease",
+    state: operatorSignalState(model.trainingLeaseStatus, model.trainingLeasePending),
+  },
+  {
+    detail: operatorSignalDetail(model.trainingBootstrapStatus, "idle"),
+    id: "bootstrap",
+    label: "bootstrap",
+    state: operatorSignalState(
+      model.trainingBootstrapStatus,
+      model.trainingBootstrapPending,
+    ),
+  },
+  {
+    detail: operatorSignalDetail(model.trainingCloseoutStatus, "idle"),
+    id: "closeout",
+    label: "closeout",
+    state: operatorSignalState(
+      model.trainingCloseoutStatus,
+      model.trainingCloseoutPending,
+    ),
+  },
+  {
+    detail: operatorSignalDetail(model.trainingReconcileStatus, "idle"),
+    id: "reconcile",
+    label: "reconcile",
+    state: operatorSignalState(
+      model.trainingReconcileStatus,
+      model.trainingReconcilePending,
+    ),
+  },
+]
+
 const trainingSceneOptions = (model: Model): TrainingRunVisualizationOptions | undefined => {
   const projection = modelTrainingRuns(model)
   const gates = modelTrainingPromiseGates(model)
@@ -918,6 +995,7 @@ const trainingSceneOptions = (model: Model): TrainingRunVisualizationOptions | u
     0,
   )
   const promiseSignalSnapshot = {
+    operatorSignals: trainingOperatorSignals(model),
     promiseBlockerRefCount: gates?.blockerRefs.length ?? 0,
     promiseDegradedCount: gates?.stateCounts.degraded ?? 0,
     promiseEvidenceRefCount,

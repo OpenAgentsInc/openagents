@@ -22,6 +22,18 @@ const treeContainsSelector = (node: unknown, selector: string): boolean => {
     : false
 }
 
+const findSelectorNode = (node: unknown, selector: string): unknown | null => {
+  if (node === null || typeof node !== "object") return null
+  const vnode = node as { sel?: string; children?: unknown[] }
+  if (vnode.sel === selector) return vnode
+  if (!Array.isArray(vnode.children)) return null
+  for (const child of vnode.children) {
+    const match = findSelectorNode(child, selector)
+    if (match !== null) return match
+  }
+  return null
+}
+
 const treeContainsClass = (node: unknown, className: string): boolean => {
   if (node === null || typeof node !== "object") return false
   const vnode = node as {
@@ -160,6 +172,43 @@ describe("CL-53 sanitizeTree", () => {
   test("training pane includes the training scene", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)
+  })
+
+  test("training scene receives operator command signals", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: liveTrainingProjection,
+      trainingLeasePending: true,
+      trainingLeaseStatus: { text: "claiming training lease...", tone: "info" },
+      trainingPlanStatus: { text: "planned", tone: "success" },
+    })
+    const scene = findSelectorNode(document.body, "oa-training-run") as {
+      data?: {
+        props?: {
+          visualization?: {
+            operatorSignals?: Array<{
+              detail: string
+              id: string
+              label: string
+              state: string
+            }>
+          }
+        }
+      }
+    } | null
+    expect(scene?.data?.props?.visualization?.operatorSignals).toContainEqual({
+      detail: "planned",
+      id: "plan",
+      label: "plan",
+      state: "success",
+    })
+    expect(scene?.data?.props?.visualization?.operatorSignals).toContainEqual({
+      detail: "claiming training...",
+      id: "lease",
+      label: "lease",
+      state: "info",
+    })
   })
 
   test("training pane includes the CS336 dashboard panel", () => {
