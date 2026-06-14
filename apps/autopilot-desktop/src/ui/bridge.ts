@@ -15,7 +15,7 @@
 // free of electrobun imports and remain unit-testable.
 
 import type { Message } from "./message"
-import type { TrainingRunsResponse } from "../shared/rpc"
+import type { TrainingPlanResponse, TrainingRunsResponse } from "../shared/rpc"
 
 // The webview→Bun request surface (mirrors DesktopRPCSchema["bun"]["requests"]).
 export type DesktopRequests = {
@@ -29,6 +29,9 @@ export type DesktopRequests = {
     body: string
   }): Promise<{ ok: boolean; status: string; error?: string }>
   listTrainingRuns(p: Record<string, never>): Promise<TrainingRunsResponse>
+  planTrainingRunWindow(
+    p: Record<string, never>,
+  ): Promise<TrainingPlanResponse>
   resolveApproval(p: {
     approvalRef: string
     decision: "approve" | "deny"

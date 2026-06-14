@@ -12,7 +12,11 @@ import { Schema as S } from "effect"
 import { ts } from "foldkit/schema"
 
 import type { NotificationCenterView } from "@openagentsinc/autopilot-control-protocol"
-import type { NodeStateMessage, TrainingRunsResponse } from "../shared/rpc"
+import type {
+  NodeStateMessage,
+  TrainingPlanResponse,
+  TrainingRunsResponse,
+} from "../shared/rpc"
 
 // Which content pane is showing. The desktop equivalent of mobile's tab set
 // plus the focused session-detail leaf.
@@ -68,6 +72,12 @@ export const TrainingRunsStatus = S.Struct({
 })
 export type TrainingRunsStatus = typeof TrainingRunsStatus.Type
 
+export const TrainingPlanStatus = S.Struct({
+  text: S.String,
+  tone: S.Literals(["error", "info", "success", "idle"]),
+})
+export type TrainingPlanStatus = typeof TrainingPlanStatus.Type
+
 // Transient status for the Deploy card.
 export const DeployFeedback = S.Struct({
   state: S.Literals(["queued", "building", "deployed", "failed", "unknown"]),
@@ -112,6 +122,9 @@ export const Model = ts("AutopilotDesktop", {
   trainingRuns: S.NullOr(S.Unknown),
   trainingRunsStatus: TrainingRunsStatus,
   trainingRunsPending: S.Boolean,
+  trainingPlan: S.NullOr(S.Unknown),
+  trainingPlanStatus: TrainingPlanStatus,
+  trainingPlanPending: S.Boolean,
   trainingLaunchStatus: TrainingLaunchStatus,
   trainingLaunchPending: S.Boolean,
 
@@ -136,6 +149,9 @@ export const modelNotifications = (model: Model): NotificationCenterView | null 
 export const modelTrainingRuns = (model: Model): TrainingRunsResponse | null =>
   model.trainingRuns as TrainingRunsResponse | null
 
+export const modelTrainingPlan = (model: Model): TrainingPlanResponse | null =>
+  model.trainingPlan as TrainingPlanResponse | null
+
 export const initialModel: Model = Model.make({
   node: null,
   notifications: null,
@@ -156,6 +172,9 @@ export const initialModel: Model = Model.make({
   trainingRuns: null,
   trainingRunsStatus: { text: "not loaded", tone: "idle" },
   trainingRunsPending: false,
+  trainingPlan: null,
+  trainingPlanStatus: { text: "", tone: "idle" },
+  trainingPlanPending: false,
   trainingLaunchStatus: { text: "", tone: "idle" },
   trainingLaunchPending: false,
   deployFeedback: null,

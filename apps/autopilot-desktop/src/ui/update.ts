@@ -13,6 +13,7 @@ import {
   CancelSession,
   DeployCloud,
   LoadTrainingRuns,
+  PlanTrainingRunWindow,
   QueueTrainingLaunch,
   ResolveApproval,
   SetCoordinatorPaused,
@@ -22,7 +23,7 @@ import {
 import { parseVerifyLines } from "./helpers"
 import type { Message } from "./message"
 import { Model } from "./model"
-import type { TrainingRunsResponse } from "../shared/rpc"
+import type { TrainingPlanResponse, TrainingRunsResponse } from "../shared/rpc"
 
 type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
@@ -204,6 +205,36 @@ export const update = (model: Model, message: Message): Result => {
               },
         }),
         noCommands,
+      ]
+    }
+    case "ClickedPlanTrainingWindow":
+      return [
+        Model.make({
+          ...model,
+          trainingPlanPending: true,
+          trainingPlanStatus: {
+            text: "planning R1 run window...",
+            tone: "info",
+          },
+        }),
+        [PlanTrainingRunWindow()],
+      ]
+    case "SettledPlanTrainingWindow": {
+      const projection = message.projection as TrainingPlanResponse
+      const inactiveReason =
+        projection.reason === "disabled" ||
+        projection.reason === "admin_token_missing"
+      return [
+        Model.make({
+          ...model,
+          trainingPlan: projection,
+          trainingPlanPending: false,
+          trainingPlanStatus: {
+            text: projection.message,
+            tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
+          },
+        }),
+        projection.ok ? [LoadTrainingRuns()] : noCommands,
       ]
     }
     case "ClickedQueueTrainingLaunch":

@@ -149,6 +149,30 @@ export type TrainingRunsResponse = {
   readonly error?: string
 }
 
+export type TrainingPlanReason =
+  | "disabled"
+  | "admin_token_missing"
+  | "run_plan_failed"
+  | "window_plan_failed"
+  | "request_failed"
+  | "planned"
+
+export type TrainingPlanResponse = {
+  readonly ok: boolean
+  readonly enabled: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: string
+  readonly trainingRunRef: string | null
+  readonly windowRef: string | null
+  readonly run: TrainingRunProjectionRow | null
+  readonly window: TrainingWindowProjectionRow | null
+  readonly runPlanned: boolean
+  readonly windowPlanned: boolean
+  readonly reason: TrainingPlanReason
+  readonly message: string
+  readonly error?: string
+}
+
 // CL-47: an "ask" the owner submitted, with its ship-status round-trip state.
 export type IntentRow = {
   readonly intentId: string
@@ -227,6 +251,12 @@ export type DesktopRPCSchema = {
       readonly listTrainingRuns: {
         readonly params: Record<string, never>
         readonly response: TrainingRunsResponse
+      }
+      // Admin planning stays in Bun. The webview receives only the public-safe
+      // run/window refs and projections that the Worker returns.
+      readonly planTrainingRunWindow: {
+        readonly params: Record<string, never>
+        readonly response: TrainingPlanResponse
       }
       // CL-48: resolve a pending approval (approve/deny). Node enforces
       // exactly-once; a duplicate resolve returns duplicate:true.

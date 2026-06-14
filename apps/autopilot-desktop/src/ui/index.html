@@ -93,12 +93,15 @@
       .training-gate.training-blocked .training-gate-dot { background:#ff7b72; box-shadow:0 0 12px rgba(255,123,114,.38); }
       .training-gate-label { color:#d8dee9; font-size:.82rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .training-gate-value { color:#8b93a7; font-family:ui-monospace,monospace; font-size:.74rem; text-align:right; white-space:nowrap; }
+      .training-action-row { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
       .training-action-button { width:100%; border:1px solid #f2f4f8; background:#f2f4f8; color:#050505; border-radius:.35rem; padding:.65rem .8rem; font:inherit; font-weight:700; cursor:pointer; }
+      .training-action-button.secondary { background:#12161d; color:#f2f4f8; border-color:#353b45; }
       .training-action-button:disabled { opacity:.55; cursor:default; }
       .training-action-status { min-height:18px; margin:.6rem 0 0; color:#8b93a7; font-family:ui-monospace,monospace; font-size:.78rem; }
       .training-action-status.training-info { color:#9ba3b3; }
       .training-action-status.training-success { color:#5ee08a; }
       .training-action-status.training-error { color:#ff7b72; }
+      .training-plan-refs { margin-top:.45rem; }
       .training-api-list li { color:#9ba3b3; font-size:.82rem; }
       .training-api-list code { color:#f2f4f8; }
       @media (max-width: 820px) {
@@ -109,6 +112,7 @@
         .training-metrics { grid-template-columns:1fr; }
         .training-run-row { grid-template-columns:1fr; gap:.3rem; }
         .training-run-facts { justify-content:flex-start; flex-wrap:wrap; }
+        .training-action-row { grid-template-columns:1fr; }
         .three-effect-training { height:380px; }
       }
 

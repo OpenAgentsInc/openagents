@@ -13,7 +13,7 @@ import {
   spawnSession,
   submitIntent,
 } from "./pylon-control"
-import { fetchTrainingRuns } from "./training-runs"
+import { fetchTrainingRuns, planTrainingRunWindow } from "./training-runs"
 import type { DesktopRPCSchema } from "../shared/rpc"
 
 const controlBaseUrl = Bun.env.PYLON_CONTROL_BASE_URL ?? "http://127.0.0.1:4716"
@@ -22,6 +22,12 @@ const trainingBaseUrl =
   Bun.env.OPENAGENTS_TRAINING_BASE_URL ??
   Bun.env.OPENAGENTS_COM_BASE_URL ??
   "https://openagents.com"
+const trainingAdminToken =
+  Bun.env.OPENAGENTS_TRAINING_ADMIN_API_TOKEN ??
+  Bun.env.OPENAGENTS_ADMIN_API_TOKEN ??
+  null
+const trainingAdminEnabled =
+  Bun.env.OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE === "1"
 
 // CL-45: resolve the node home once per call so a node that starts after the app
 // (or rotates its home) is picked up without a restart. Falls back to the env
@@ -64,6 +70,13 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       async listTrainingRuns() {
         return fetchTrainingRuns({ baseUrl: trainingBaseUrl })
+      },
+      async planTrainingRunWindow() {
+        return planTrainingRunWindow({
+          adminToken: trainingAdminToken,
+          baseUrl: trainingBaseUrl,
+          enabled: trainingAdminEnabled,
+        })
       },
       // CL-48: resolve a pending approval (approve/deny).
       async resolveApproval(params) {

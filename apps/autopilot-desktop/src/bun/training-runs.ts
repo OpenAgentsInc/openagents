@@ -1,5 +1,6 @@
 import type {
   TrainingPublicMetric,
+  TrainingPlanResponse,
   TrainingRunMetricsRow,
   TrainingRunProjectionRow,
   TrainingRunRealGradientRow,
@@ -12,6 +13,14 @@ import type {
 
 type FetchTrainingRunsInput = Readonly<{
   baseUrl: string
+  fetchFn?: typeof fetch
+  nowIso?: () => string
+}>
+
+type PlanTrainingRunWindowInput = Readonly<{
+  adminToken: string | null
+  baseUrl: string
+  enabled: boolean
   fetchFn?: typeof fetch
   nowIso?: () => string
 }>
@@ -37,6 +46,18 @@ const asArray = (value: unknown): readonly unknown[] =>
 const stringArray = (value: unknown): readonly string[] =>
   asArray(value).filter((item): item is string => typeof item === "string")
 
+const normalizeBaseUrl = (baseUrl: string): string => baseUrl.replace(/\/+$/, "")
+
+const safeRefStamp = (value: string): string => {
+  const stamp = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
+    .slice(0, 80)
+  return stamp === "" ? "manual" : stamp
+}
+
 const runState = (value: unknown): TrainingRunState => {
   switch (value) {
     case "active":
@@ -58,6 +79,62 @@ const windowState = (value: unknown): TrainingWindowState => {
       return "planned"
   }
 }
+
+const errorMessageFromJson = (json: unknown, fallback: string): string => {
+  const record = isRecord(json) ? json : {}
+  return asString(record.reason, asString(record.error, fallback))
+}
+
+const postJson = async (
+  fetchFn: typeof fetch,
+  url: string,
+  token: string,
+  body: unknown,
+): Promise<
+  | { readonly ok: true; readonly json: unknown }
+  | { readonly ok: false; readonly error: string }
+> => {
+  const response = await fetchFn(url, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  })
+
+  const json = (await response.json().catch(() => null)) as unknown
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: errorMessageFromJson(json, `training admin ${response.status}`),
+    }
+  }
+
+  return { ok: true, json }
+}
+
+const disabledPlanResponse = (input: {
+  enabled: boolean
+  fetchedAt: string
+  message: string
+  reason: TrainingPlanResponse["reason"]
+  sourceUrl: string
+}): TrainingPlanResponse => ({
+  ok: false,
+  enabled: input.enabled,
+  fetchedAt: input.fetchedAt,
+  sourceUrl: input.sourceUrl,
+  trainingRunRef: null,
+  windowRef: null,
+  run: null,
+  window: null,
+  runPlanned: false,
+  windowPlanned: false,
+  reason: input.reason,
+  message: input.message,
+})
 
 const publicMetric = (value: unknown): TrainingPublicMetric => {
   const record = isRecord(value) ? value : {}
@@ -235,7 +312,7 @@ export async function fetchTrainingRuns(
 ): Promise<TrainingRunsResponse> {
   const fetchFn = input.fetchFn ?? fetch
   const fetchedAt = input.nowIso?.() ?? new Date().toISOString()
-  const sourceUrl = `${input.baseUrl.replace(/\/+$/, "")}/api/training/runs`
+  const sourceUrl = `${normalizeBaseUrl(input.baseUrl)}/api/training/runs`
 
   try {
     const response = await fetchFn(sourceUrl, {
@@ -284,6 +361,144 @@ export async function fetchTrainingRuns(
       sourceUrl,
       runs: [],
       summaries: [],
+    }
+  }
+}
+
+export async function planTrainingRunWindow(
+  input: PlanTrainingRunWindowInput,
+): Promise<TrainingPlanResponse> {
+  const fetchFn = input.fetchFn ?? fetch
+  const fetchedAt = input.nowIso?.() ?? new Date().toISOString()
+  const baseUrl = normalizeBaseUrl(input.baseUrl)
+  const runUrl = `${baseUrl}/api/training/runs`
+  const windowUrl = `${baseUrl}/api/training/windows/plan`
+
+  if (!input.enabled) {
+    return disabledPlanResponse({
+      enabled: false,
+      fetchedAt,
+      message: "training admin planning disabled",
+      reason: "disabled",
+      sourceUrl: runUrl,
+    })
+  }
+
+  const token = input.adminToken?.trim() ?? ""
+  if (token === "") {
+    return disabledPlanResponse({
+      enabled: true,
+      fetchedAt,
+      message: "training admin token unavailable",
+      reason: "admin_token_missing",
+      sourceUrl: runUrl,
+    })
+  }
+
+  const stamp = safeRefStamp(fetchedAt)
+  const trainingRunRef = `training.run.desktop.r1.${stamp}`
+  const windowRef = `training.window.desktop.r1.${stamp}`
+  const sourceRefs = [
+    "issue.github.openagents.4855",
+    "docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md",
+    "docs/training/2026-06-14-autopilot-desktop-training-ui-audit.md",
+    "docs/tassadar/RESEARCH_PLAN.md",
+  ] as const
+
+  try {
+    const runResult = await postJson(fetchFn, runUrl, token, {
+      maxAllowedStale: 5,
+      promiseRef: "pylon.first_real_model_training_run.v1",
+      receiptRefs: [`receipt.desktop.training.run.planned.${stamp}`],
+      sealPublicationCadenceWindows: 1,
+      sourceRefs,
+      trainingRunRef,
+    })
+
+    if (!runResult.ok) {
+      return {
+        ok: false,
+        enabled: true,
+        fetchedAt,
+        sourceUrl: runUrl,
+        trainingRunRef,
+        windowRef: null,
+        run: null,
+        window: null,
+        runPlanned: false,
+        windowPlanned: false,
+        reason: "run_plan_failed",
+        message: `run plan failed: ${runResult.error}`,
+        error: runResult.error,
+      }
+    }
+
+    const runRecord = isRecord(runResult.json) ? runResult.json : {}
+    const run = runProjection(runRecord.run)
+    const plannedRunRef = run?.trainingRunRef ?? trainingRunRef
+
+    const windowResult = await postJson(fetchFn, windowUrl, token, {
+      datasetRefs: ["dataset.cs336.a1.public"],
+      homeworkKind: "admin_dispatched_homework",
+      priority: 100,
+      receiptRefs: [`receipt.desktop.training.window.planned.${stamp}`],
+      sourceRefs,
+      trainingRunRef: plannedRunRef,
+      windowRef,
+    })
+
+    if (!windowResult.ok) {
+      return {
+        ok: false,
+        enabled: true,
+        fetchedAt,
+        sourceUrl: windowUrl,
+        trainingRunRef: plannedRunRef,
+        windowRef,
+        run,
+        window: null,
+        runPlanned: true,
+        windowPlanned: false,
+        reason: "window_plan_failed",
+        message: `run planned; window plan failed: ${windowResult.error}`,
+        error: windowResult.error,
+      }
+    }
+
+    const windowRecord = isRecord(windowResult.json) ? windowResult.json : {}
+    const window = windowProjection(windowRecord.window)
+    const plannedWindowRef = window?.windowRef ?? windowRef
+
+    return {
+      ok: true,
+      enabled: true,
+      fetchedAt,
+      sourceUrl: windowUrl,
+      trainingRunRef: plannedRunRef,
+      windowRef: plannedWindowRef,
+      run,
+      window,
+      runPlanned: true,
+      windowPlanned: true,
+      reason: "planned",
+      message: `planned ${plannedRunRef} / ${plannedWindowRef}`,
+    }
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error)
+    return {
+      ok: false,
+      enabled: true,
+      fetchedAt,
+      sourceUrl: runUrl,
+      trainingRunRef: null,
+      windowRef: null,
+      run: null,
+      window: null,
+      runPlanned: false,
+      windowPlanned: false,
+      reason: "request_failed",
+      message: `training admin request failed: ${text}`,
+      error: text,
     }
   }
 }

@@ -53,6 +53,7 @@ import {
   ClickedCancelSession,
   ClickedCoordinatorToggle,
   ClickedDeploy,
+  ClickedPlanTrainingWindow,
   ClickedRefreshTrainingRuns,
   ClickedQueueTrainingLaunch,
   ClickedResolveApproval,
@@ -84,6 +85,7 @@ import {
   type SessionFilter,
   modelNode,
   modelNotifications,
+  modelTrainingPlan,
   modelTrainingRuns,
 } from "./model"
 
@@ -672,25 +674,66 @@ const selectedTrainingEvidencePanel = (
 }
 
 const trainingLaunchPanel = (model: Model): Html => {
-  const statusVisible = model.trainingLaunchStatus.tone !== "idle"
+  const plan = modelTrainingPlan(model)
+  const planStatusVisible = model.trainingPlanStatus.tone !== "idle"
+  const launchStatusVisible = model.trainingLaunchStatus.tone !== "idle"
+  const refRows: Html[] = []
+  if (plan?.trainingRunRef !== null && plan?.trainingRunRef !== undefined) {
+    refRows.push(
+      h.li([], [h.code([], [plan.trainingRunRef])]),
+    )
+  }
+  if (plan?.windowRef !== null && plan?.windowRef !== undefined) {
+    refRows.push(
+      h.li([], [h.code([], [plan.windowRef])]),
+    )
+  }
+
   return h.section([cls("training-panel training-action-panel")], [
-    h.h2([cls("training-panel-title")], ["Launch Feedback"]),
+    h.h2([cls("training-panel-title")], ["Run Operations"]),
     h.p(
       [cls("training-panel-copy")],
       [
-        "Queues a local Pylon intent to inspect the run gates. Admin planning and admission still belong behind authenticated training routes.",
+        "Plan the Worker-authoritative run/window from Bun, or queue a local Pylon readiness check.",
       ],
     ),
-    h.button(
+    h.div(
+      [cls("training-action-row")],
       [
-        cls("training-action-button"),
-        h.Type("button"),
-        h.Disabled(model.trainingLaunchPending),
-        h.OnClick(ClickedQueueTrainingLaunch()),
+        h.button(
+          [
+            cls("training-action-button training-admin-plan-button"),
+            h.Type("button"),
+            h.Disabled(model.trainingPlanPending),
+            h.OnClick(ClickedPlanTrainingWindow()),
+          ],
+          [model.trainingPlanPending ? "Planning..." : "Plan R1 window"],
+        ),
+        h.button(
+          [
+            cls("training-action-button training-queue-button secondary"),
+            h.Type("button"),
+            h.Disabled(model.trainingLaunchPending),
+            h.OnClick(ClickedQueueTrainingLaunch()),
+          ],
+          [model.trainingLaunchPending ? "Queueing..." : "Queue launch check"],
+        ),
       ],
-      [model.trainingLaunchPending ? "Queueing..." : "Queue launch check"],
     ),
-    statusVisible
+    planStatusVisible
+      ? h.p(
+          [
+            cls(
+              `training-action-status training-${model.trainingPlanStatus.tone}`,
+            ),
+          ],
+          [model.trainingPlanStatus.text],
+        )
+      : h.p([cls("training-action-status")], [" "]),
+    refRows.length > 0
+      ? h.ul([cls("training-api-list training-plan-refs")], refRows)
+      : h.p([cls("training-action-status")], [" "]),
+    launchStatusVisible
       ? h.p(
           [
             cls(

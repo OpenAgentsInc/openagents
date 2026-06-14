@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { fetchTrainingRuns } from "../src/bun/training-runs"
+import {
+  fetchTrainingRuns,
+  planTrainingRunWindow,
+} from "../src/bun/training-runs"
 
 const sampleRun = {
   createdAtDisplay: "2 days ago",
@@ -126,5 +129,121 @@ describe("fetchTrainingRuns", () => {
     expect(result.ok).toBe(false)
     expect(result.runs).toEqual([])
     expect(result.error).toBe("training runs 503")
+  })
+})
+
+describe("planTrainingRunWindow", () => {
+  test("does not call admin routes when disabled", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await planTrainingRunWindow({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test",
+      enabled: false,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response("{}")
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("disabled")
+    expect(calls).toHaveLength(0)
+  })
+
+  test("does not call admin routes without a token", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await planTrainingRunWindow({
+      adminToken: null,
+      baseUrl: "https://openagents.test",
+      enabled: true,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response("{}")
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("admin_token_missing")
+    expect(calls).toHaveLength(0)
+  })
+
+  test("plans a run and window through admin routes", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const expectedRunRef =
+      "training.run.desktop.r1.2026.06.14t00.00.00.000z"
+    const expectedWindowRef =
+      "training.window.desktop.r1.2026.06.14t00.00.00.000z"
+    const result = await planTrainingRunWindow({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test/",
+      enabled: true,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        if (String(url).endsWith("/api/training/runs")) {
+          return new Response(
+            JSON.stringify({
+              run: { ...sampleRun, trainingRunRef: expectedRunRef },
+            }),
+          )
+        }
+        return new Response(
+          JSON.stringify({
+            window: {
+              ...sampleSummary.windows[0],
+              trainingRunRef: expectedRunRef,
+              windowRef: expectedWindowRef,
+            },
+          }),
+        )
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.trainingRunRef).toBe(expectedRunRef)
+    expect(result.windowRef).toBe(expectedWindowRef)
+    expect(result.runPlanned).toBe(true)
+    expect(result.windowPlanned).toBe(true)
+    expect(calls.map(call => call.url)).toEqual([
+      "https://openagents.test/api/training/runs",
+      "https://openagents.test/api/training/windows/plan",
+    ])
+    expect((calls[0]?.init?.headers as Record<string, string>).authorization).toBe(
+      "Bearer admin-token",
+    )
+    expect(
+      JSON.parse(String(calls[1]?.init?.body)).trainingRunRef,
+    ).toBe(expectedRunRef)
+  })
+
+  test("reports a partial plan if window planning fails", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await planTrainingRunWindow({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test",
+      enabled: true,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        if (String(url).endsWith("/api/training/runs")) {
+          return new Response(
+            JSON.stringify({ run: { ...sampleRun, trainingRunRef: "run.ok" } }),
+          )
+        }
+        return new Response(JSON.stringify({ reason: "window duplicate" }), {
+          status: 409,
+        })
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("window_plan_failed")
+    expect(result.trainingRunRef).toBe("run.ok")
+    expect(result.runPlanned).toBe(true)
+    expect(result.windowPlanned).toBe(false)
+    expect(result.error).toBe("window duplicate")
+    expect(calls).toHaveLength(2)
   })
 })
