@@ -44,6 +44,7 @@ import type {
   NodeStateMessage,
   SessionEventRow,
   TrainingLeaderboardLaneSummary,
+  TrainingOperatorReadinessResponse,
   TrainingPromiseState,
   TrainingPromiseSummary,
   TrainingRunSummaryRow,
@@ -100,6 +101,7 @@ import {
   modelTrainingLease,
   modelNode,
   modelNotifications,
+  modelTrainingOperatorReadiness,
   modelTrainingPlan,
   modelTrainingPromiseGates,
   modelTrainingReconcile,
@@ -800,22 +802,24 @@ const trainingControlSurfaceRows: readonly TrainingControlSurfaceRow[] = [
     authority: "public Worker reads through Bun",
     dispatch: "ClickedRefreshTrainingRuns",
     route:
-      "GET /api/training/runs + /api/training/leaderboards + /api/public/product-promises",
+      "GET /api/training/runs + dashboards + promises + desktop readiness",
     rpc:
-      "listTrainingRuns + listTrainingDashboard + listTrainingPromiseGates",
-    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
+      "listTrainingRuns + listTrainingDashboard + listTrainingPromiseGates + listTrainingOperatorReadiness",
+    source: "apps/autopilot-desktop/src/bun/index.ts + training-runs.ts",
     statusField:
-      "trainingRunsStatus / trainingDashboardStatus / trainingPromiseGatesStatus",
+      "trainingRunsStatus / trainingDashboardStatus / trainingPromiseGatesStatus / trainingOperatorReadinessStatus",
     status: model => model.trainingRunsStatus,
     pending: model =>
       model.trainingRunsPending ||
       model.trainingDashboardPending ||
-      model.trainingPromiseGatesPending,
+      model.trainingPromiseGatesPending ||
+      model.trainingOperatorReadinessPending,
     current: model =>
       [
         trainingStatusText(model.trainingRunsStatus, "runs idle"),
         trainingStatusText(model.trainingDashboardStatus, "dashboards idle"),
         trainingStatusText(model.trainingPromiseGatesStatus, "promises idle"),
+        trainingStatusText(model.trainingOperatorReadinessStatus, "operator idle"),
       ].join(" / "),
   },
   {
@@ -957,6 +961,84 @@ const trainingControlSurfacePanel = (model: Model): Html =>
       }),
     ),
   ])
+
+const readinessFlag = (value: boolean): string => value ? "ready" : "missing"
+
+const trainingOperatorReadinessRows = (
+  readiness: TrainingOperatorReadinessResponse | null,
+  model: Model,
+): readonly Html[] => {
+  if (readiness === null) {
+    return [
+      trainingGate(
+        "operator readiness",
+        trainingStatusText(model.trainingOperatorReadinessStatus, "not loaded"),
+        trainingStatusTone(
+          model.trainingOperatorReadinessStatus,
+          model.trainingOperatorReadinessPending,
+        ),
+      ),
+    ]
+  }
+
+  return [
+    trainingGate(
+      "admin plan gate",
+      `${readiness.adminEnabled ? "enabled" : "disabled"} · token ${readinessFlag(readiness.adminTokenPresent)}`,
+      readiness.adminReady ? "ready" : "blocked",
+    ),
+    trainingGate(
+      "lease gate",
+      `${readiness.leaseEnabled ? "enabled" : "disabled"} · pylon ${readinessFlag(readiness.pylonRefPresent)}`,
+      readiness.leaseReady ? "ready" : "blocked",
+    ),
+    trainingGate(
+      "local Pylon",
+      `home ${readinessFlag(readiness.pylonHomePresent)} · token ${readinessFlag(readiness.controlTokenPresent)}`,
+      readiness.localPylonReady ? "ready" : "blocked",
+    ),
+    trainingGate(
+      "pylon ref source",
+      readiness.pylonRef === null
+        ? `${readiness.pylonRefSource} · missing`
+        : `${readiness.pylonRefSource} · ${readiness.pylonRef}`,
+      readiness.pylonRefPresent ? "ready" : "blocked",
+    ),
+    trainingGate(
+      "training base",
+      readiness.trainingBaseUrl,
+      readiness.ok ? "ready" : "watch",
+    ),
+  ]
+}
+
+const trainingOperatorReadinessPanel = (model: Model): Html => {
+  const readiness = modelTrainingOperatorReadiness(model)
+  const blockerRefs = readiness?.blockerRefs ?? []
+  return h.section([cls("training-panel training-operator-readiness-panel")], [
+    h.div([cls("training-panel-heading")], [
+      h.h2([cls("training-panel-title")], ["Operator Readiness"]),
+      h.span([cls("training-panel-kicker")], [
+        trainingStatusText(model.trainingOperatorReadinessStatus, "not loaded"),
+      ]),
+    ]),
+    h.p([cls("training-panel-copy")], [
+      "Public-safe Bun readiness for admin planning, lease claims, local Pylon control, and bootstrap prerequisites.",
+    ]),
+    h.ul(
+      [cls("training-gates training-operator-readiness")],
+      trainingOperatorReadinessRows(readiness, model),
+    ),
+    h.ul([cls("training-api-list training-readiness-blockers")], [
+      blockerRefs.length === 0
+        ? h.li([], ["no readiness blockers"])
+        : h.li([], [
+            `${blockerRefs.length} blockers`,
+          ]),
+      ...blockerRefs.map(ref => h.li([], [h.code([], [ref])])),
+    ]),
+  ])
+}
 
 const trainingRoadmapPanel = (): Html =>
   h.section([cls("training-panel training-roadmap-panel")], [
@@ -1141,6 +1223,18 @@ const operatorSignalDetail = (
 const trainingOperatorSignals = (
   model: Model,
 ): readonly TrainingRunOperatorSignalDefinition[] => [
+  {
+    detail: operatorSignalDetail(
+      model.trainingOperatorReadinessStatus,
+      "not loaded",
+    ),
+    id: "readiness",
+    label: "ready",
+    state: operatorSignalState(
+      model.trainingOperatorReadinessStatus,
+      model.trainingOperatorReadinessPending,
+    ),
+  },
   {
     detail: operatorSignalDetail(model.trainingPlanStatus, "idle"),
     id: "plan",
@@ -1769,6 +1863,7 @@ const trainingOperatorFeedPanel = (model: Model): Html => {
   const runs = modelTrainingRuns(model)
   const dashboard = modelTrainingDashboard(model)
   const gates = modelTrainingPromiseGates(model)
+  const readiness = modelTrainingOperatorReadiness(model)
   const plan = modelTrainingPlan(model)
   const activation = modelTrainingActivation(model)
   const reconcile = modelTrainingReconcile(model)
@@ -1841,6 +1936,23 @@ const trainingOperatorFeedPanel = (model: Model): Html => {
           model.trainingPromiseGatesPending,
           gates?.ok ?? null,
           model.trainingPromiseGatesStatus,
+        ),
+      ),
+      trainingGate(
+        "operator readiness",
+        readiness === null
+          ? trainingStatusText(
+              model.trainingOperatorReadinessStatus,
+              "not loaded",
+            )
+          : trainingStatusText(
+              model.trainingOperatorReadinessStatus,
+              `${readiness.blockerRefs.length} blockers`,
+            ),
+        trainingProjectionFeedTone(
+          model.trainingOperatorReadinessPending,
+          readiness?.ok ?? null,
+          model.trainingOperatorReadinessStatus,
         ),
       ),
       trainingGate(
@@ -2211,6 +2323,7 @@ const trainingPane = (model: Model): Html => {
         selectedTrainingLedgerPanel(projection),
         trainingRoadmapPanel(),
         trainingLaunchPanel(model),
+        trainingOperatorReadinessPanel(model),
         trainingOperatorFeedPanel(model),
         trainingControlSurfacePanel(model),
         h.section([cls("training-panel")], [

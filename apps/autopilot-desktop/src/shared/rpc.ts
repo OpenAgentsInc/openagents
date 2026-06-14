@@ -240,6 +240,31 @@ export type TrainingPromiseGatesResponse = {
   readonly error?: string
 }
 
+export type TrainingOperatorReadinessPylonRefSource =
+  | "env"
+  | "identity"
+  | "missing"
+
+export type TrainingOperatorReadinessResponse = {
+  readonly ok: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: string
+  readonly trainingBaseUrl: string
+  readonly adminEnabled: boolean
+  readonly adminTokenPresent: boolean
+  readonly adminReady: boolean
+  readonly leaseEnabled: boolean
+  readonly leaseReady: boolean
+  readonly pylonRefPresent: boolean
+  readonly pylonRefSource: TrainingOperatorReadinessPylonRefSource
+  readonly pylonRef: string | null
+  readonly pylonHomePresent: boolean
+  readonly controlTokenPresent: boolean
+  readonly localPylonReady: boolean
+  readonly blockerRefs: readonly string[]
+  readonly error?: string
+}
+
 export type TrainingPlanReason =
   | "disabled"
   | "admin_token_missing"
@@ -453,6 +478,10 @@ export type DesktopRPCSchema = {
       readonly listTrainingPromiseGates: {
         readonly params: Record<string, never>
         readonly response: TrainingPromiseGatesResponse
+      }
+      readonly listTrainingOperatorReadiness: {
+        readonly params: Record<string, never>
+        readonly response: TrainingOperatorReadinessResponse
       }
       // Admin planning stays in Bun. The webview receives only the public-safe
       // run/window refs and projections that the Worker returns.

@@ -15,6 +15,7 @@ import {
   ClaimTrainingWindowLease,
   DeployCloud,
   LoadTrainingDashboard,
+  LoadTrainingOperatorReadiness,
   LoadTrainingPromiseGates,
   LoadTrainingRuns,
   PlanTrainingRunWindow,
@@ -33,6 +34,7 @@ import { Model } from "./model"
 import type {
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
+  TrainingOperatorReadinessResponse,
   TrainingPlanResponse,
   TrainingPromiseGatesResponse,
   TrainingRunsResponse,
@@ -48,6 +50,7 @@ const loadTrainingProjectionCommands = (): ReadonlyArray<Command.Command<Message
   LoadTrainingRuns(),
   LoadTrainingDashboard(),
   LoadTrainingPromiseGates(),
+  LoadTrainingOperatorReadiness(),
 ]
 
 const trainingBootstrapShouldRefresh = (
@@ -87,6 +90,11 @@ export const update = (model: Model, message: Message): Result => {
                 trainingPromiseGatesPending: true,
                 trainingPromiseGatesStatus: {
                   text: "loading promise gates...",
+                  tone: "info" as const,
+                },
+                trainingOperatorReadinessPending: true,
+                trainingOperatorReadinessStatus: {
+                  text: "checking operator readiness...",
                   tone: "info" as const,
                 },
               }
@@ -233,6 +241,11 @@ export const update = (model: Model, message: Message): Result => {
             text: "refreshing promise gates...",
             tone: "info",
           },
+          trainingOperatorReadinessPending: true,
+          trainingOperatorReadinessStatus: {
+            text: "refreshing operator readiness...",
+            tone: "info",
+          },
         }),
         loadTrainingProjectionCommands(),
       ]
@@ -273,6 +286,29 @@ export const update = (model: Model, message: Message): Result => {
             : {
                 text: projection.error ?? "training promise gates unavailable",
                 tone: "error",
+              },
+        }),
+        noCommands,
+      ]
+    }
+    case "GotTrainingOperatorReadiness": {
+      const projection = message.projection as TrainingOperatorReadinessResponse
+      const blockerCount = projection.blockerRefs?.length ?? 0
+      return [
+        Model.make({
+          ...model,
+          trainingOperatorReadiness: projection,
+          trainingOperatorReadinessPending: false,
+          trainingOperatorReadinessStatus: projection.ok
+            ? {
+                text: `operator ready · ${projection.trainingBaseUrl}`,
+                tone: "success",
+              }
+            : {
+                text:
+                  projection.error ??
+                  `${blockerCount} operator blockers · ${projection.trainingBaseUrl}`,
+                tone: projection.error ? "error" : "info",
               },
         }),
         noCommands,

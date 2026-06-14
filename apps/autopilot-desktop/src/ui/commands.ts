@@ -13,6 +13,7 @@ import {
   FailedCoordinatorToggle,
   FailedSpawn,
   GotTrainingDashboard,
+  GotTrainingOperatorReadiness,
   GotTrainingPromiseGates,
   GotTrainingRuns,
   SettledCancelSession,
@@ -87,6 +88,26 @@ const emptyTrainingPromiseGatesProjection = (error: string) => ({
     yellow: 0,
     unknown: 0,
   },
+  error,
+})
+
+const emptyTrainingOperatorReadinessProjection = (error: string) => ({
+  ok: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:training-operator-readiness",
+  trainingBaseUrl: "unknown",
+  adminEnabled: false,
+  adminTokenPresent: false,
+  adminReady: false,
+  leaseEnabled: false,
+  leaseReady: false,
+  pylonRefPresent: false,
+  pylonRefSource: "missing",
+  pylonRef: null,
+  pylonHomePresent: false,
+  controlTokenPresent: false,
+  localPylonReady: false,
+  blockerRefs: ["desktop.training.operator_readiness_request_failed"],
   error,
 })
 
@@ -242,6 +263,23 @@ export const LoadTrainingPromiseGates = Command.define(
       Effect.succeed(
         GotTrainingPromiseGates({
           projection: emptyTrainingPromiseGatesProjection(errorText(error)),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadTrainingOperatorReadiness = Command.define(
+  "LoadTrainingOperatorReadiness",
+  {},
+  GotTrainingOperatorReadiness,
+)(() =>
+  Effect.tryPromise(() => getRequest().listTrainingOperatorReadiness({})).pipe(
+    Effect.map((projection) => GotTrainingOperatorReadiness({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotTrainingOperatorReadiness({
+          projection: emptyTrainingOperatorReadinessProjection(errorText(error)),
         }),
       ),
     ),

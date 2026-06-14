@@ -232,6 +232,12 @@ describe("CL-53 sanitizeTree", () => {
       state: "success",
     })
     expect(scene?.data?.props?.visualization?.operatorSignals).toContainEqual({
+      detail: "not loaded",
+      id: "readiness",
+      label: "ready",
+      state: "idle",
+    })
+    expect(scene?.data?.props?.visualization?.operatorSignals).toContainEqual({
       detail: "claiming training...",
       id: "lease",
       label: "lease",
@@ -344,6 +350,51 @@ describe("CL-53 sanitizeTree", () => {
       true,
     )
     expect(treeContainsClass(document.body, "training-operator-feed")).toBe(true)
+  })
+
+  test("training pane includes the operator readiness panel", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingOperatorReadiness: {
+        ok: false,
+        fetchedAt: "2026-06-14T00:00:00.000Z",
+        sourceUrl: "desktop:training-operator-readiness",
+        trainingBaseUrl: "https://openagents.test",
+        adminEnabled: false,
+        adminTokenPresent: false,
+        adminReady: false,
+        leaseEnabled: true,
+        leaseReady: true,
+        pylonRefPresent: true,
+        pylonRefSource: "identity",
+        pylonRef: "pylon.training.1",
+        pylonHomePresent: true,
+        controlTokenPresent: true,
+        localPylonReady: true,
+        blockerRefs: [
+          "env.OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE",
+          "env.OPENAGENTS_TRAINING_ADMIN_API_TOKEN",
+        ],
+      },
+      trainingOperatorReadinessStatus: {
+        text: "2 operator blockers · https://openagents.test",
+        tone: "info",
+      },
+    })
+    expect(treeContainsClass(document.body, "training-operator-readiness-panel")).toBe(
+      true,
+    )
+    expect(treeContainsClass(document.body, "training-readiness-blockers")).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, "pylon.training.1")).toBe(true)
+    expect(
+      treeContainsText(
+        document.body,
+        "env.OPENAGENTS_TRAINING_ADMIN_API_TOKEN",
+      ),
+    ).toBe(true)
   })
 
   test("training pane includes the control surface map", () => {

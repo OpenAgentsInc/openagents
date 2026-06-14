@@ -30,6 +30,7 @@ import {
   modelNode,
   modelTrainingBootstrap,
   modelTrainingDashboard,
+  modelTrainingOperatorReadiness,
   modelTrainingPromiseGates,
 } from "../src/ui/model"
 import {
@@ -44,6 +45,7 @@ import {
   ClickedRequestTrainingBootstrap,
   ClickedSubmitIntent,
   GotTrainingDashboard,
+  GotTrainingOperatorReadiness,
   GotTrainingPromiseGates,
   GotNodeState,
   NavigatedTo,
@@ -265,15 +267,16 @@ describe("update reducer (CL-53)", () => {
       trainingRunRef: "training.run.desktop.r1.test",
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(3)
+    expect(followups).toHaveLength(4)
   })
 
-  test("training refresh loads run, dashboard, and promise projections", () => {
+  test("training refresh loads run, dashboard, promise, and readiness projections", () => {
     const [pending, commands] = update(initialModel, ClickedRefreshTrainingRuns())
     expect(pending.trainingRunsPending).toBe(true)
     expect(pending.trainingDashboardPending).toBe(true)
     expect(pending.trainingPromiseGatesPending).toBe(true)
-    expect(commands).toHaveLength(3)
+    expect(pending.trainingOperatorReadinessPending).toBe(true)
+    expect(commands).toHaveLength(4)
   })
 
   test("training dashboard projection is stored with a lane summary", () => {
@@ -381,6 +384,44 @@ describe("update reducer (CL-53)", () => {
     expect(modelTrainingPromiseGates(settled)?.promises[0]?.state).toBe("red")
   })
 
+  test("training operator readiness projection is stored with blocker status", () => {
+    const [settled] = update(
+      initialModel,
+      GotTrainingOperatorReadiness({
+        projection: {
+          ok: false,
+          fetchedAt: "2026-06-14T00:00:00.000Z",
+          sourceUrl: "desktop:training-operator-readiness",
+          trainingBaseUrl: "https://openagents.test",
+          adminEnabled: false,
+          adminTokenPresent: false,
+          adminReady: false,
+          leaseEnabled: true,
+          leaseReady: true,
+          pylonRefPresent: true,
+          pylonRefSource: "identity",
+          pylonRef: "pylon.training.1",
+          pylonHomePresent: true,
+          controlTokenPresent: true,
+          localPylonReady: true,
+          blockerRefs: [
+            "env.OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE",
+            "env.OPENAGENTS_TRAINING_ADMIN_API_TOKEN",
+          ],
+        },
+      }),
+    )
+
+    expect(settled.trainingOperatorReadinessPending).toBe(false)
+    expect(settled.trainingOperatorReadinessStatus).toEqual({
+      text: "2 operator blockers · https://openagents.test",
+      tone: "info",
+    })
+    expect(modelTrainingOperatorReadiness(settled)?.pylonRefSource).toBe(
+      "identity",
+    )
+  })
+
   test("training activation action dispatches and stores the public-safe result", () => {
     const [pending, commands] = update(
       initialModel,
@@ -413,7 +454,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingActivation).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(3)
+    expect(followups).toHaveLength(4)
   })
 
   test("training lease claim action dispatches and stores the public-safe result", () => {
@@ -451,7 +492,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingLease).toMatchObject({
       lease: { leaseRef: "training.lease.1" },
     })
-    expect(followups).toHaveLength(3)
+    expect(followups).toHaveLength(4)
   })
 
   test("training bootstrap action dispatches and stores the public-safe result", () => {
@@ -497,7 +538,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingBootstrapPending).toBe(false)
     expect(settled.trainingBootstrapStatus.tone).toBe("success")
     expect(modelTrainingBootstrap(settled)?.outcome?.kind).toBe("granted")
-    expect(followups).toHaveLength(3)
+    expect(followups).toHaveLength(4)
   })
 
   test("training bootstrap queue feedback refreshes public projections", () => {
@@ -529,7 +570,7 @@ describe("update reducer (CL-53)", () => {
       tone: "info",
     })
     expect(modelTrainingBootstrap(settled)?.outcome?.kind).toBe("queued")
-    expect(followups).toHaveLength(3)
+    expect(followups).toHaveLength(4)
   })
 
   test("training closeout packet action dispatches and stores local queue feedback", () => {
@@ -559,7 +600,7 @@ describe("update reducer (CL-53)", () => {
       text: "queued · accepted",
       tone: "success",
     })
-    expect(followups).toHaveLength(3)
+    expect(followups).toHaveLength(4)
   })
 
   test("training reconcile action dispatches and stores the public-safe result", () => {
@@ -594,6 +635,6 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingReconcile).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(3)
+    expect(followups).toHaveLength(4)
   })
 })

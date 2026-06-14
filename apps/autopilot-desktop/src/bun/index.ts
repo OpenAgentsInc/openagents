@@ -25,7 +25,11 @@ import {
   reconcileTrainingWindow,
   requestTrainingBootstrapGrant,
 } from "./training-runs"
-import type { DesktopRPCSchema } from "../shared/rpc"
+import type {
+  DesktopRPCSchema,
+  TrainingOperatorReadinessPylonRefSource,
+  TrainingOperatorReadinessResponse,
+} from "../shared/rpc"
 
 const controlBaseUrl = Bun.env.PYLON_CONTROL_BASE_URL ?? "http://127.0.0.1:4716"
 const pollIntervalMs = Number(Bun.env.AUTOPILOT_DESKTOP_NODE_POLL_MS ?? "2000")
@@ -74,11 +78,74 @@ function readIdentityPylonRef(home: string): string | null {
   }
 }
 
-function trainingPylonRefForCommand(): string | null {
+function trainingPylonRefStatus(home = resolveHome()): {
+  readonly pylonRef: string | null
+  readonly source: TrainingOperatorReadinessPylonRefSource
+} {
   const configured = configuredTrainingPylonRef?.trim() ?? ""
-  if (configured.length > 0) return configured
+  if (configured.length > 0) {
+    return { pylonRef: configured, source: "env" }
+  }
+  if (home === null) {
+    return { pylonRef: null, source: "missing" }
+  }
+  const identityRef = readIdentityPylonRef(home)
+  return identityRef === null
+    ? { pylonRef: null, source: "missing" }
+    : { pylonRef: identityRef, source: "identity" }
+}
+
+function trainingPylonRefForCommand(): string | null {
+  return trainingPylonRefStatus().pylonRef
+}
+
+function trainingOperatorReadinessProjection(): TrainingOperatorReadinessResponse {
   const home = resolveHome()
-  return home === null ? null : readIdentityPylonRef(home)
+  const controlToken = home === null ? null : readControlToken(home)
+  const pylon = trainingPylonRefStatus(home)
+  const adminTokenPresent = (trainingAdminToken?.trim() ?? "").length > 0
+  const adminReady = trainingAdminEnabled && adminTokenPresent
+  const leaseReady = trainingLeaseEnabled && pylon.pylonRef !== null
+  const localPylonReady = home !== null && controlToken !== null
+  const blockerRefs: string[] = []
+
+  if (!trainingAdminEnabled) {
+    blockerRefs.push("env.OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE")
+  }
+  if (!adminTokenPresent) {
+    blockerRefs.push("env.OPENAGENTS_TRAINING_ADMIN_API_TOKEN")
+  }
+  if (!trainingLeaseEnabled) {
+    blockerRefs.push("env.OPENAGENTS_DESKTOP_TRAINING_LEASE_ENABLE")
+  }
+  if (pylon.pylonRef === null) {
+    blockerRefs.push("pylon.identity.pylonRef")
+  }
+  if (home === null) {
+    blockerRefs.push("pylon.home")
+  }
+  if (controlToken === null) {
+    blockerRefs.push("pylon.control_token")
+  }
+
+  return {
+    ok: blockerRefs.length === 0,
+    fetchedAt: new Date().toISOString(),
+    sourceUrl: "desktop:training-operator-readiness",
+    trainingBaseUrl,
+    adminEnabled: trainingAdminEnabled,
+    adminTokenPresent,
+    adminReady,
+    leaseEnabled: trainingLeaseEnabled,
+    leaseReady,
+    pylonRefPresent: pylon.pylonRef !== null,
+    pylonRefSource: pylon.source,
+    pylonRef: pylon.pylonRef,
+    pylonHomePresent: home !== null,
+    controlTokenPresent: controlToken !== null,
+    localPylonReady,
+    blockerRefs,
+  }
 }
 
 const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
@@ -115,6 +182,9 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       async listTrainingPromiseGates() {
         return fetchTrainingPromiseGates({ baseUrl: trainingBaseUrl })
+      },
+      async listTrainingOperatorReadiness() {
+        return trainingOperatorReadinessProjection()
       },
       async planTrainingRunWindow() {
         return planTrainingRunWindow({
