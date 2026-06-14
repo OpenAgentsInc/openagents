@@ -4,14 +4,51 @@ Date authored: 2026-06-14 (Sunday). Target: **Monday 2026-06-15**.
 
 We are launching the **Tassadar run** tomorrow. This is the plan to make the core
 experience real: a public Tassadar training run goes live, real (non-owner)
-people install Pylon v0.3, get dispatched **executor-trace work**, it's verified
-by **exact replay**, and they **earn real Bitcoin** for it — with public
-receipts — while their accepted work accumulates the verified-trace corpus that
-trains Tassadar.
+people install **Autopilot** (our Electrobun desktop app), get dispatched
+**executor-trace work**, it's verified by **exact replay**, and they **earn real
+Bitcoin** for it — with public receipts — while their accepted work accumulates
+the verified-trace corpus that trains Tassadar.
 
 This is not CS336. CS336 is shared plumbing (training-run routes, the settlement
 ladder, the verification-class registry). The **run we are launching is
 Tassadar** — the Percepta Executor Class model direction from Episode 236.
+
+## 0. The node software is Autopilot (Electrobun desktop), not a standalone Pylon CLI
+
+**Clarification (2026-06-14):** the contributor-facing install is now **Autopilot
+Desktop** — `@openagentsinc/autopilot-desktop`, an Electrobun + Foldkit app — not
+a standalone "Pylon v0.3" CLI/TUI. Audited state of `apps/autopilot-desktop`:
+
+- It is the **cockpit over the local node**: the Bun main process owns local node
+  control over loopback (via the shared `autopilot-control-protocol` bridge /
+  control token), and the webview renders the operator UI. The **Pylon runtime
+  still exists as the local node Autopilot drives** — "Pylon v0.3" is superseded
+  as a separate user-facing install, not deleted as a runtime.
+- It already drives the **full training-contribution loop** through local node
+  intents: request bootstrap, claim training lease, plan/activate/reconcile a
+  training window, build the evidence packet, admit evidence, and queue training
+  launch + closeout (`ClaimTrainingLease`, `ActivateTrainingWindow`,
+  `ReconcileTrainingWindow`, `BuildTrainingEvidencePacket`, `QueueTrainingLaunch`,
+  `QueueTrainingCloseout`), plus the lane selector (auto|local|cloud-gcp|cloud-shc)
+  and session spawn. It has a Training cockpit pane (`oa-training-run`, gated by
+  `verify:autopilot-desktop:training`).
+- It ships as a **signed + notarized macOS `.app`** with an OTA update feed
+  (`updates.openagents.com/desktop/stable/feed.json`, BSDIFF deltas). Pricing TBD.
+
+**The honest seam for the launch:** today Autopilot Desktop **discovers an
+existing running local node** (it reads the control token from a `.pylon-*` home);
+it does **not yet bundle/launch the node itself**. So "install Autopilot and
+contribute" is only one-step once the app bundles + launches the node runtime.
+Making that one-step is on the install-path critical path (§4.F). Where this plan
+says "the node" it means the local Pylon runtime Autopilot controls; where it says
+"install," it means installing **Autopilot Desktop**.
+
+> Follow-up: the product-promise registry still frames the install as Pylon v0.3
+> (`pylon.v03_release_candidate.v1`, `pylon.release_tomorrow.v1`,
+> `pylon.install_without_wallet_knowledge.v1`) alongside
+> `autopilot.desktop_gui_client.v1`. Reconcile that copy to the Autopilot-is-the-
+> install positioning in a registry pass (separate from this doc; it needs a
+> Worker deploy).
 
 > From Episode 236 (`docs/transcripts/236.md`): "Monday we're launching the
 > largest decentralized training run… you're just going to install our node
@@ -70,9 +107,9 @@ verifiable:
    `planned`), with a stable `trainingRunRef` for the Tassadar run, a published
    manifest, and a fresh `generatedAt` / staleness contract.
 2. **A non-owner joined self-serve.** Someone who is not the owner installed
-   Pylon v0.3, declared the executor capability, was admitted to the Tassadar
-   run, and was dispatched real executor-trace work — without operator
-   hand-staging.
+   **Autopilot Desktop**, brought a node online, declared the executor capability,
+   was admitted to the Tassadar run, and was dispatched real executor-trace work —
+   without operator hand-staging.
 3. **Their work was verified by exact replay.** A public
    `training.verification.challenge.<id>` `Verified` (exact_trace_replay) verdict
    references their submission.
@@ -84,7 +121,7 @@ verifiable:
    Tassadar training corpus (the evolution loop's accumulation), visible on the
    tick ledger.
 
-Hitting #2 + #4 for one stranger is the moment "install Pylon, help train
+Hitting #2 + #4 for one stranger is the moment "install Autopilot, help train
 Tassadar, get paid Bitcoin" becomes a fact instead of a promise.
 
 ---
@@ -101,9 +138,10 @@ Green / proven:
   is live; it dispatched and closed out no-spend executor work autonomously once.
 - **Verification:** `exact_trace_replay` is a live, exercised verification class;
   the **reliable-tips ladder** settles real sats and never drops them (green).
-- **Pylon v0.3-rc2** runs the agent surface from the device (green
-  `pylon.v03_agent_economy.v1`); operator-staged install-to-bitcoin settled a real
-  21-sat payout (yellow).
+- The **node runtime** (Pylon v0.3-rc2) runs the agent surface from the device
+  (green `pylon.v03_agent_economy.v1`) and is what **Autopilot Desktop** drives
+  over loopback; operator-staged install-to-bitcoin settled a real 21-sat payout
+  (yellow).
 
 Red / the gap (this is the critical path):
 
@@ -111,8 +149,9 @@ Red / the gap (this is the critical path):
   status URL. (The only live run row is the bounded CS336 A1 demo, still reporting
   `planned`.)
 - **No self-serve contributor path** — the PoC and loop were owner-driven; the
-  fleet is thin (~4 Pylons online / 51 registered, mostly rc1) and the loop is
-  currently dispatch-failing for lack of eligible online devices.
+  fleet is thin (~4 nodes online / 51 registered, mostly rc1) and the loop is
+  currently dispatch-failing for lack of eligible online devices. Autopilot
+  Desktop is the new install but does not yet bundle/launch the node (§0 seam).
 - **Payout leg constrained:** hosted-MDK **programmatic payouts are disabled on
   the production account**, so tomorrow's earn leg is operator-approved small-sats
   with a hard spend cap, not unattended dispatch.
@@ -185,14 +224,19 @@ spine; E makes it honest; F→G make it usable and public.
 - **Done when:** the public run shows a non-zero settled total equal to reality
   and a growing accepted-trace count.
 
-### F. Pylon v0.3 install path contributors can use · pylon
-- A **published install** (stable 0.3.0 or a documented, smoke-passed source/
-  install path) carrying the **executor-trace lane**, with register → heartbeat →
-  wallet-ready → assignment-ready smokes on macOS + Linux, plus failure modes
-  (gap audit §5). Make sure the install the announcement links is the one the run
-  admits and pays.
-- **Done when:** a clean machine goes from "install" to "admitted +
-  wallet-ready + dispatched executor work" following only public instructions.
+### F. Autopilot Desktop install path contributors can use · pylon + desktop
+- **The install is Autopilot Desktop** (signed + notarized macOS `.app`, OTA feed
+  at `updates.openagents.com/desktop`; Linux path documented). Resolve the §0
+  seam: a fresh install must **bundle and launch the node runtime** (or ship a
+  one-command node bring-up) so a contributor does not have to separately stand up
+  a Pylon node — today the app only *discovers* an existing one.
+- Carry the **executor-trace lane** through the desktop's training cockpit, with
+  install → node online → register → heartbeat → wallet-ready → assignment-ready
+  smokes on macOS + Linux, plus failure modes (gap audit §5). Make sure the build
+  the announcement links is the one the run admits and pays.
+- **Done when:** a clean machine goes from "install Autopilot Desktop" to
+  "admitted + wallet-ready + dispatched executor work" following only public
+  instructions, with no separate Pylon-node setup step.
 
 ### G. Announce · product/forum
 - After the Go/No-Go gate (§6), with the manifest/status URL, the live registry
@@ -240,18 +284,18 @@ live** — you just describe the earn loop by what the receipts actually show
 Before any copy: query `/api/public/product-promises`, use the live version, cite
 exact promise IDs.
 
-**Say:** "the Tassadar run is live"; "install Pylon v0.3 and contribute
-executor-trace work to help train Tassadar"; "work is verified by exact replay";
-and — only with a real receipt — "the first contributors earned Bitcoin, here's
-the receipt."
+**Say:** "the Tassadar run is live"; "install Autopilot (the desktop app) and
+contribute executor-trace work to help train Tassadar"; "work is verified by
+exact replay"; and — only with a real receipt — "the first contributors earned
+Bitcoin, here's the receipt."
 
 **Do NOT say** (until the matching promise is green or the copy is explicitly
 caveated): "Tassadar is trained / outperforms a CPU / is a working model";
 "largest decentralized training run" or "200+ contributors" (no count rule yet);
 "earn Bitcoin from training today" as a blanket claim before a stranger has;
-"stable Pylon v0.3"; any payout number that isn't a settled, dereferenceable
-receipt. We are launching the **run that trains Tassadar**, not a trained
-Tassadar.
+"stable / GA Autopilot Desktop"; any payout number that isn't a settled,
+dereferenceable receipt. We are launching the **run that trains Tassadar**, not a
+trained Tassadar.
 
 ---
 
@@ -260,22 +304,25 @@ Tassadar.
 - **worker-api:** Tassadar run state-transition route + projection (A),
   exact-replay verdict on the live submission (C), payout leg (D),
   settlement+corpus projection consistency (E).
-- **pylon:** self-serve executor-capability admission + dispatch (B), install
+- **pylon + desktop:** Autopilot Desktop install that bundles/launches the node
+  (§0 seam), self-serve executor-capability admission + dispatch (B), install
   path + smokes (F), contributor-side payout receive (D).
 - **product/forum:** manifest + count rule (A, §5), Go/No-Go (§6), announcement
   (G), receipt-first promise flip.
 
-Suggested checks (gap audit + Tassadar lane):
+Suggested checks (gap audit + Tassadar lane + desktop cockpit):
 
 ```sh
 bun run --cwd apps/openagents.com/workers/api smoke:tassadar:executor-trace
 bun run --cwd apps/openagents.com/workers/api smoke:training-runs:public
+bun run verify:autopilot-desktop:training   # Autopilot Desktop training cockpit gate
 ```
 
 New end-to-end **stranger smoke** (passing it *is* the launch): fresh non-owner
-Pylon → declare executor capability → admit to the Tassadar run → dispatch a
-digest-pinned workload → exact-replay verify → operator-approved small-sats payout
-→ public receipt → run/leaderboard reflects it + corpus count grows.
+**Autopilot Desktop install → node online → declare executor capability** → admit
+to the Tassadar run → dispatch a digest-pinned workload → exact-replay verify →
+operator-approved small-sats payout → public receipt → run/leaderboard reflects it
++ corpus count grows.
 
 ---
 
@@ -284,9 +331,10 @@ digest-pinned workload → exact-replay verify → operator-approved small-sats 
 - **Payout leg (D) is the gating risk** (prod programmatic MDK payouts off) — wire
   the operator-approved small-sats path with a hard cap; do not block the launch
   on unattended payout.
-- **Thin/rc1 fleet** — the loop is dispatch-failing for lack of eligible online
-  devices; the launch's job is to bring devices online, so make install + admit
-  frictionless and make sure rc-version Pylons are actually admittable.
+- **Thin/rc1 fleet + the §0 install seam** — the loop is dispatch-failing for lack
+  of eligible online devices; the launch's job is to bring devices online, so make
+  Autopilot-install → node-online → admit frictionless (resolve the bundle/launch
+  seam) and make sure rc-version nodes are actually admittable.
 - **Owner Pylons are not strangers** — the DoD requires a non-owner.
 - **A payout the recipient can't see is the projection-staleness bug wearing
   money** — if settlement lands somewhere undereferenceable, stop and fix the
@@ -301,7 +349,7 @@ digest-pinned workload → exact-replay verify → operator-approved small-sats 
 
 ## 10. One-line status to repeat tomorrow
 
-> The Tassadar run is live at `<status URL>`. Install Pylon v0.3, contribute
+> The Tassadar run is live at `<status URL>`. Install Autopilot, contribute
 > executor-trace work, it's verified by exact replay, and you get paid sats —
 > first receipts at `<leaderboard URL>`, corpus growing toward Tassadar. (Word it
 > to what §6 actually shows; never claim a payout without a dereferenceable
