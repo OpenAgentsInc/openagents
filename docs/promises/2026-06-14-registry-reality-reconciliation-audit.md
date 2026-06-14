@@ -1,6 +1,35 @@
 # Product-Promise Registry Reality Reconciliation — 2026-06-14
 
-Registry transition: `2026-06-12.8` → `2026-06-14.1` → `2026-06-14.2` (deployed).
+Registry transition: `2026-06-12.8` → `2026-06-14.1` → `2026-06-14.2` →
+`2026-06-14.3` (deployed).
+
+## Update — 2026-06-14.3 (Nostr resilience + Coder Cloud landed contracts)
+
+**Nostr fallback coordination.** Per owner direction, `docs/live/AGENTS.md`
+gained a firm "Infrastructure Resilience" instruction: on any OpenAgents
+infrastructure falldown, agents keep retrying (backoff + idempotency) AND
+coordinate over Nostr (NIP-01 pub/sub on `wss://relay.openagents.com` + public
+relays; NIP-02/65/66 discovery; NIP-38 status; NIP-17/44/59 private DMs; NIP-29
+groups; NIP-90 to keep the labor market moving) until OpenAgents recovers, then
+reconcile on OpenAgents as authority of record. The pre-existing
+"do not use Nostr for live Forum work" line was amended to carve out this outage
+exception, and a "Your Job" item was added. The `docs/live/AGENTS.md` and
+`docs/live/AGENTS-CORE.md` sha256 guards (`OpenAgentsAgentOnboardingSha256`,
+`OpenAgentsAgentCoreSha256`) were regenerated — both were pre-existingly drifted
+and are now correct (`2c6fff…`, `55bff5…`), and the public mirror was synced.
+
+New record `agents.nostr_fallback_coordination.v1` (**yellow**): the owned relay
+and NIP-90 negotiation are live (first labor job settled over the relay, #4777)
+and Pylon v0.3 provisions Nostr credentials, but an end-to-end
+coordination-during-outage drill is not yet demonstrated.
+
+**Coder Cloud contract layer (concurrent agent work, merged).** The lane
+selector `auto|local|cloud-gcp|cloud-shc` is wired end to end (#4998), the
+Vortex-independent Codex grant endpoint contract is in place (#4999), and the
+cloud placement endpoint shipped Google-first (cloud #86/#87/#88).
+`autopilot.cloud_coding_sessions.v1` copy/blockers updated to reflect this; it
+**stays red** because the remaining seam (#4997) is real: cloud-gcp spawns still
+execute locally and per-session GCE provisioning is unwired.
 
 > The `.2` batch (Coder Cloud + Agency Pack reflection) is appended at the end
 > of this document under "Update — 2026-06-14.2". The `.1` content below

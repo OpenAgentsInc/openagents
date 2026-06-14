@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-14.2'
+export const PublicProductPromisesVersion = '2026-06-14.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1889,13 +1889,14 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Owners can run coding sessions on OpenAgents Cloud (Google GCE first, SHC second) and administer them from desktop and the Expo mobile app — spawn, watch, approve, accept — so work continues without the owner at their computer.',
         safeCopy:
-          'The Coder Cloud initiative (epic #4996, "code on the go") is the active top-priority build: Pylon as the single control front door brokering desktop-originated session.spawn to a cloud lane, lane-transparent event streams, a remote-reachable bridge, and an Expo remote-control app. Foundation work (cloud remote-exec C-0..C-15, #4886-#4901) is closed and the m10-live 2026-06-14 proof had an SHC-lane work order and a remote requester-Pylon lane accepted, but the desktop->Google-GCE end-to-end loop is NOT demonstrable yet — Phase 1 (#4997-#4999) revalidates and repairs it. Stays red until a desktop-originated cloud session runs a real repo-edit on Google GCE, streams to the timeline, and produces a content-addressed artifact plus a usage receipt.',
+          'The Coder Cloud initiative (epic #4996, "code on the go") is the active top-priority build, and the contract layer has started landing: the lane selector auto|local|cloud-gcp|cloud-shc is wired end to end through the shared control protocol, Pylon session.spawn, and the desktop RPC/UI with a provenance chip (#4998, merged), the Vortex-independent Codex grant-resolution endpoint contract is in place (#4999, merged), and the cloud repo shipped the placement endpoint with Google-first default (cloud #86/#87/#88). The remaining seam to a live loop is actual cloud dispatch: cloud-gcp/cloud-shc spawns currently record and round-trip the lane but still execute locally, and per-session GCE VM provisioning is selected/labelled but not fully wired — that is #4997 (Phase 1), paired with the Pylon remote bridge transport (#5000, Phase 2). Foundation (C-0..C-15, #4886-#4901) is closed but closed != demonstrable. Stays red until a desktop-originated cloud session runs a real repo-edit on Google GCE, streams to the timeline, and produces a content-addressed artifact plus a usage receipt.',
         unsafeCopy:
-          'Do not claim cloud coding sessions are live, that the owner can already code from a phone via the cloud, or that the desktop->GCE/SHC loop is demonstrable; the foundation issues are closed but the working end-to-end loop is the open Phase 1-3 work (#4996-#5004).',
+          'Do not claim cloud coding sessions are live or that the owner can already code from a phone via the cloud; the lane selector and grant/placement contracts have landed but cloud-gcp spawns still execute locally — the live desktop->GCE dispatch loop is the open #4997 work.',
         evidenceRefs: [
           'docs/autopilot-coder/2026-06-14-cloud-desktop-mobile-coding-sessions-full-flow-audit.md',
           'docs/autopilot-coder/2026-06-13-cloud-remote-execution-commercial-plan.md',
           'apps/pylon/docs/proofs/m10-live-2026-06-14/README.md',
+          'packages/autopilot-control-protocol/src/control.ts',
           'https://github.com/OpenAgentsInc/openagents/issues/4996',
           'https://github.com/OpenAgentsInc/openagents/issues/4997',
           'https://github.com/OpenAgentsInc/openagents/issues/4998',
@@ -1903,12 +1904,12 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/5000',
         ],
         blockerRefs: [
-          'blocker.product_promises.cloud_session_desktop_to_gce_loop_not_demonstrable',
-          'blocker.product_promises.cloud_lane_selector_not_end_to_end',
+          'blocker.product_promises.cloud_session_desktop_to_gce_dispatch_executes_locally',
+          'blocker.product_promises.cloud_per_session_gce_provisioning_not_wired',
           'blocker.product_promises.pylon_remote_bridge_transport_missing',
         ],
         verification:
-          'Phase 1 exit proof: a desktop-originated session.spawn{lane:"cloud-gcp"} runs a real repo-edit Codex session on a Google GCE ephemeral VM, streams openagents.codex_workroom_event.v1 into the desktop timeline lane-transparently, and produces a content-addressed artifact plus an openagents.resource_usage_receipt.v1. Green additionally requires the lane selector (#4998) and the Vortex-independent Codex grant endpoint (#4999); remote phone administration is the Phase 2-3 mobile.autopilot_remote_control.v1 path.',
+          'Phase 1 exit proof: a desktop-originated session.spawn{lane:"cloud-gcp"} runs a real repo-edit Codex session on a Google GCE ephemeral VM, streams openagents.codex_workroom_event.v1 into the desktop timeline lane-transparently, and produces a content-addressed artifact plus an openagents.resource_usage_receipt.v1. The lane selector (#4998) and Vortex-independent grant endpoint (#4999) have landed and the cloud placement endpoint exists (cloud #86/#87/#88); the remaining work is #4997 (Pylon actually calls the placement endpoint and provisions/streams the GCE session instead of executing locally). Remote phone administration is the Phase 2-3 mobile.autopilot_remote_control.v1 path.',
         authorityBoundary:
           'Cloud sessions run under owner-resolved Codex grants on ephemeral VMs; placement honors repo trust tiers (regulated->SHC-only, private->own/verified, public->any). This promise grants no multi-tenant, settlement, or non-owner authority — that is deferred Phase 4 (credits gateway, tenant caps, settlement, microVM isolation).',
       },
@@ -2113,6 +2114,36 @@ export const publicProductPromisesDocument = () => {
         authorityBoundary:
           'A voice transcript is evidence of user intent, not command authority; all proposed actions require server-side policy checks and explicit approval.',
       },
+      {
+        ...basePromiseFields,
+        promiseId: 'agents.nostr_fallback_coordination.v1',
+        productArea: 'agent-readable surfaces',
+        audience: ['agent', 'operator', 'public'],
+        state: 'yellow',
+        claim:
+          'If OpenAgents HTTP infrastructure falls down, agents keep retrying it and coordinate over the Nostr protocol in the meantime, so they never go idle waiting on a human or a single server.',
+        safeCopy:
+          'AGENTS.md now instructs agents, on any OpenAgents infrastructure falldown, to keep retrying with backoff/idempotency AND fall back to Nostr to communicate with their owner and other agents until OpenAgents recovers (then reconcile on OpenAgents as authority of record). The rails this leans on are partially live: the owned relay (wss://relay.openagents.com and the scoped market relay) is up, the agent labor market already negotiates and settled its first job over NIP-90 on it (#4777), and Pylon v0.3 provisions Nostr credentials. A full agent-to-agent coordination-during-outage drill (status, discovery, private DMs, group coordination over NIP-01/02/17/29/65/90 with OpenAgents offline) has not been demonstrated end to end.',
+        unsafeCopy:
+          'Do not claim Nostr coordination replaces OpenAgents authority during normal operation, that a Nostr message is proof of accepted work/payment/settlement, or that the outage-resilience flow has been drilled end to end. Never put secrets, raw invoices, preimages, mnemonics, wallet keys, provider credentials, or private repo contents in any Nostr event.',
+        evidenceRefs: [
+          'https://openagents.com/AGENTS.md',
+          'apps/openagents.com/docs/live/AGENTS.md',
+          'apps/nostr-relay/README.md',
+          'docs/nips/LBR.md',
+          'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
+          'docs/transcripts/235.md',
+          'promise:labor.nostr_negotiation_market.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.nostr_outage_coordination_drill_missing',
+          'blocker.product_promises.agent_nostr_messaging_tooling_incomplete',
+        ],
+        verification:
+          'AGENTS.md carries the firm falldown instruction (keep retrying OpenAgents; coordinate over Nostr meanwhile; reconcile on recovery) and the owned relay plus NIP-90 negotiation are live (first labor job settled over the relay, #4777). Green requires a demonstrated drill: with OpenAgents HTTP unreachable, agents publish status (NIP-38), discover peers (NIP-02/65), exchange private coordination (NIP-17/44/59) and/or group messages (NIP-29), keep a NIP-90 job moving, and then reconcile cleanly on OpenAgents when it returns — with public-safe evidence and zero secret leakage.',
+        authorityBoundary:
+          'Nostr is a communication and coordination substrate and an outage fallback, not OpenAgents authority. Identity, posting authority, payment, and settlement remain OpenAgents systems; Nostr coordination during an outage is intent and messaging only, reconciled to OpenAgents receipts on recovery.',
+      },
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
@@ -2138,6 +2169,8 @@ export const publicProductPromisesDocument = () => {
       'The Monday 2026-06-15 decentralized-training launch is imminent but had not happened at registry 2026-06-14.1; training.* launch promises stay red/yellow until the run yields public run state, participant admission, accepted-work, validation, and settlement receipts. The W3 student-program report (docs/tassadar/2026-06-14-w3-student-program-report.md) is research/evaluation only and moves no promise.',
       'Registry 2026-06-14.2: Coder Cloud is the current top priority. New record autopilot.cloud_coding_sessions.v1 (red) tracks running coding sessions on OpenAgents Cloud (Google GCE first, SHC second) and administering them remotely so work continues while the owner travels; the 9 open issues are epic #4996 plus Phase 1-3 #4997-#5004. Foundation (C-0..C-15, #4886-#4901) is closed but the desktop->Google-GCE end-to-end loop is not demonstrable yet (Phase 1 revalidates). mobile.autopilot_remote_control.v1 is the Expo app (Phase 2-3; the iOS Swift control app is ignored per owner direction 2026-06-14) and depends on the Pylon remote bridge transport (#5000). autopilot.decision_queue.v1 cross-client exactly-once work is #5004.',
       'Registry 2026-06-14.2: the wave-3 Agency Pack initiative (epic #4973 + 21 children, including #4993/#4994/#4995) closed 2026-06-14 (~375 new tests green, typecheck:api + apps/web clean, build:web succeeds, OpenAPI gate green, migrations 0180-0182 and 0184). Reflected: workrooms.omni_client_delivery_workrooms.v1 -> yellow (client-delivery workroom page live-wired into the logged-in loop with CRUD/lifecycle/bundle/handoff routes and client-scoped views; source authority + approval-gated writes still pending). Desktop PDF/preview/ingest/browser cores are built behind seams with fakes (34 tests) but live runtimes are unwired (autopilot.desktop_gui_client.v1). The honest residue is config/credentials/product decisions, not code: custom hostnames need CLOUDFLARE_API_TOKEN+CLOUDFLARE_ZONE_ID and a mounted provision route; partner payout needs owner sign-off on percentage/caps plus settlement wiring; voice needs an STT vendor + capture path; the form-capture route needs a home for site form-specs. Per openagents/CLAUDE.md these surfaces were filed as GitHub issues by explicit owner instruction though the repo convention reserves issues for strict bugs (feature work Forum-first) - flagged for reconciliation.',
+      'Registry 2026-06-14.3: Nostr resilience. AGENTS.md now carries a firm falldown instruction — on any OpenAgents infrastructure outage, agents keep retrying with backoff/idempotency AND coordinate over Nostr (NIP-01/02/17/29/38/65/90 on the owned relay wss://relay.openagents.com and public relays) until OpenAgents recovers, then reconcile on OpenAgents as authority of record. New record agents.nostr_fallback_coordination.v1 (yellow): the relay + NIP-90 negotiation are live (first labor job settled over the relay, #4777) and Pylon v0.3 provisions Nostr credentials, but an end-to-end coordination-during-outage drill is not yet demonstrated. Nostr is a communication/coordination substrate and outage fallback, never a replacement for OpenAgents authority during normal operation.',
+      'Registry 2026-06-14.3: Coder Cloud contract layer started landing (concurrent agent work merged): the lane selector auto|local|cloud-gcp|cloud-shc is wired end to end (#4998), the Vortex-independent Codex grant endpoint contract is in place (#4999), and the cloud placement endpoint shipped Google-first (cloud #86/#87/#88). The remaining seam to a live loop is #4997: cloud-gcp spawns still execute locally and per-session GCE provisioning is unwired. autopilot.cloud_coding_sessions.v1 stays red until the desktop->GCE dispatch loop is demonstrable.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
