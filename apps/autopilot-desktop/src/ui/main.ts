@@ -14,6 +14,7 @@
 
 import { Electroview } from "electrobun/view"
 import { Runtime } from "foldkit"
+import { html } from "foldkit/html"
 
 import type { DesktopRPCSchema } from "../shared/rpc"
 import { type DesktopRequests, pushInbound, setRequest } from "./bridge"
@@ -22,6 +23,46 @@ import { initialModel, Model } from "./model"
 import { subscriptions } from "./subscriptions"
 import { update } from "./update"
 import { view } from "./view"
+
+// Dev error boundary: when a render/update crashes, Foldkit's `crash.view`
+// replaces the (otherwise blank) screen with the error + stack so failures are
+// visible instead of a white window. This is a local operator tool, so we always
+// show the stack; gate on a prod flag here later if the app ever ships hardened.
+const ch = html<never>()
+const crashView = (error: Error) =>
+  ch.div(
+    [
+      ch.Style(
+        "position:fixed;inset:0;overflow:auto;padding:24px;background:#0b0d12;color:#e6e9ef;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5;z-index:99999",
+      ),
+    ],
+    [
+      ch.h1(
+        [ch.Style("margin:0 0 8px;font-size:16px;color:#ff6b6b")],
+        ["⚠ Autopilot Desktop — render error"],
+      ),
+      ch.p(
+        [ch.Style("margin:0 0 12px;color:#8b93a7")],
+        ["The webview hit an unrecoverable error. Details below (dev build)."],
+      ),
+      ch.pre(
+        [
+          ch.Style(
+            "margin:0;white-space:pre-wrap;word-break:break-word;color:#ffb454;font-weight:600",
+          ),
+        ],
+        [error.message],
+      ),
+      ch.pre(
+        [
+          ch.Style(
+            "margin:12px 0 0;white-space:pre-wrap;word-break:break-word;color:#cdd3e0;background:#11151d;border:1px solid #1c2230;border-radius:6px;padding:12px",
+          ),
+        ],
+        [error.stack ?? "(no stack)"],
+      ),
+    ],
+  )
 
 const rpc = Electroview.defineRPC<DesktopRPCSchema>({
   handlers: {
@@ -51,6 +92,10 @@ function start(): void {
       view,
       subscriptions,
       container: document.getElementById("root"),
+      crash: {
+        view: ({ error }) => crashView(error),
+        report: ({ error }) => console.error("[autopilot-desktop] crash:", error),
+      },
     }),
   )
 }

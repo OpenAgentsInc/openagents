@@ -696,8 +696,32 @@ const paneView = (model: Model): Html => {
   }
 }
 
-export const view = (model: Model): Html =>
+const rootView = (model: Model): Html =>
   h.div(
     [cls("app-shell")],
     [sidebar(model), h.main([cls("content")], [h.div([cls("pane")], [paneView(model)])])],
   )
+
+// Foldkit's element constructors strip `null` children (`Predicate.isNotNull`)
+// but NOT `undefined` or `false`. An `undefined`/`false` child reaches
+// `dedupeSharedVNodes`, which then does `child.children` and throws
+// "undefined is not an object". `h.empty` (= null) is safe, but any helper or
+// branch that yields `undefined`/`false` as a child would crash the whole view
+// (blank screen). This pass drops those defensively before the tree hits the
+// runtime — bulletproofing the entire view against that crash class.
+export const sanitizeTree = (node: unknown): unknown => {
+  if (node === null || typeof node !== "object") return node
+  const vnode = node as { children?: unknown }
+  const children = vnode.children
+  if (Array.isArray(children)) {
+    const next: unknown[] = []
+    for (const child of children) {
+      if (child === null || child === undefined || child === false) continue
+      next.push(typeof child === "object" ? sanitizeTree(child) : child)
+    }
+    vnode.children = next
+  }
+  return node
+}
+
+export const view = (model: Model): Html => sanitizeTree(rootView(model)) as Html
