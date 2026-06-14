@@ -714,6 +714,7 @@ const trainingSourceMapSections: ReadonlyArray<{
     refs: [
       "OpenAgentsInc/three-effect:packages/core/src/trainingRun.ts",
       "OpenAgentsInc/three-effect:packages/foldkit/src/index.ts",
+      "OpenAgentsInc/three-effect:examples/training-run/",
       "@openagentsinc/three-effect/foldkit",
       "oa-training-run",
     ],

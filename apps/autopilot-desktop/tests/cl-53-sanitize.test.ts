@@ -46,6 +46,16 @@ const treeContainsClass = (node: unknown, className: string): boolean => {
     : false
 }
 
+const treeContainsText = (node: unknown, text: string): boolean => {
+  if (typeof node === "string") return node.includes(text)
+  if (node === null || typeof node !== "object") return false
+  const vnode = node as { children?: unknown[]; text?: unknown }
+  if (typeof vnode.text === "string" && vnode.text.includes(text)) return true
+  return Array.isArray(vnode.children)
+    ? vnode.children.some((child) => treeContainsText(child, text))
+    : false
+}
+
 const metric = (value: number) => ({
   provenanceLabel: "",
   sourceRefs: [],
@@ -301,6 +311,7 @@ describe("CL-53 sanitizeTree", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsClass(document.body, "training-source-map-panel")).toBe(true)
     expect(treeContainsClass(document.body, "training-source-map-refs")).toBe(true)
+    expect(treeContainsText(document.body, "examples/training-run")).toBe(true)
   })
 
   test("training pane includes the operator feedback feed", () => {

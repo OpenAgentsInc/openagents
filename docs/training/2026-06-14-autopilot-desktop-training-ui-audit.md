@@ -18,6 +18,7 @@ The first implemented slice follows that boundary:
 - The selected public run summary is converted into a `three-effect` snapshot so the scene reflects live run state, lifecycle counts, windows, seal-barrier state, devices, Freivalds refs, closeouts, receipts, verified work, external blockers, pending payouts, and settlement.
 - The Three scene now also receives compact product-promise registry signals, so the visual surface shows the live acceptance owner and blocker/evidence pressure instead of leaving that context only in adjacent HTML panels.
 - The Three scene also receives compact operator-command signals for plan, activate, lease, bootstrap, closeout, and reconcile, so immediate admin feedback is visible in the primary WebGL surface.
+- `three-effect` now carries `examples/training-run/`, a runnable visual smoke for the same dark Training scene with lifecycle, promise, and operator signals.
 - The pane includes a Run Lifecycle panel that maps the selected public run onto the issue 4855 / Pluralis join ramp (`registered`, `qualified`, `state_synced`, `warmup`, `active`, `sync_reentry`) and the Worker window timeline (`planned`, `active`, `sealed`, `reconciled`).
 - The pane exposes a launch/readiness feedback button that queues a local Pylon intent through the existing `intent.submit` path.
 - The pane also exposes Bun-main-process, env-gated actions for planning an R1 rehearsal run/window, activating a planned window, claiming the active training lease for a local Pylon ref, and reconciling a sealed window. The webview receives only public-safe run/window/lease refs and projections.
@@ -159,7 +160,7 @@ The desktop also summarizes the public CS336 dashboard surfaces in a compact pan
 
 The Promise Gates panel closes a different gap: issue 4855 itself is closed, but its final comment delegates remaining live R1/R2 receipt evidence to the public promise registry. The desktop now pulls that registry through Bun, filters the training and Tassadar-related promise records, and shows state counts plus blocker/evidence counts for the relevant promises. This keeps "the code says the tracking issue is done" separate from "the registry says the broad training claim is green."
 
-The Three scene receives the same selected summary through a compact snapshot mapper in `three-effect`. That mapper updates node labels/statuses, lifecycle contributor dots, stale bound, seal-barrier state, receipt/settlement gates, blocker counts, pending-payout state, loss curve inputs, promise-registry signal dots, and operator-command signal dots without importing OpenAgents Worker internals into the rendering package.
+The Three scene receives the same selected summary through a compact snapshot mapper in `three-effect`. That mapper updates node labels/statuses, lifecycle contributor dots, stale bound, seal-barrier state, receipt/settlement gates, blocker counts, pending-payout state, loss curve inputs, promise-registry signal dots, and operator-command signal dots without importing OpenAgents Worker internals into the rendering package. The standalone visual smoke is `OpenAgentsInc/three-effect:examples/training-run/`; build it with `bun run build:demo:training` in the `three-effect` repo and open `examples/training-run/index.html`.
 
 ## Authority Boundary
 
