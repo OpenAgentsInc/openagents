@@ -816,6 +816,26 @@ const srcRoot = import.meta.dirname
 // Removing a route from the OpenAPI document requires adding it here, which
 // keeps undocumented surface an explicit decision instead of silent drift.
 const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
+  // Agency / services-business vertical pack (internal omni + operator surfaces;
+  // session/operator-gated, not part of the public OpenAPI surface yet):
+  '/api/autopilot/work/{param}/lane-c-fanout',
+  '/api/lists/{param}',
+  '/api/lists/{param}/subscribers',
+  '/api/omni/evidence-bundles/{param}',
+  '/api/omni/public-proof-bundles/{param}',
+  '/api/omni/workrooms',
+  '/api/omni/workrooms/{param}',
+  '/api/omni/workrooms/{param}/handoff',
+  '/api/omni/workrooms/{param}/lifecycle-decisions',
+  '/api/operator/email-sequences',
+  '/api/operator/email-sequences/{param}/enroll',
+  '/api/operator/email-sequences/{param}/status',
+  '/api/operator/partners/payout-ledger/{param}',
+  '/api/operator/partners/payout-ledger/{param}/transitions',
+  '/api/operator/sites/orchestration/{param}',
+  '/api/operator/sites/orchestration/{param}/advance',
+  '/api/sites/forms/{param}/submit',
+  '/api/tenant/client/workrooms/{param}',
   // Owner/admin and operator consoles (admin session or admin bearer only):
   '/api/admin/overview',
   '/api/admin/provider-accounts/usage',

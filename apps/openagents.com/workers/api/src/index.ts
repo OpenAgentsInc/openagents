@@ -101,6 +101,7 @@ import { makeNativeListsService } from './native-lists'
 import { makeTenantClientRoutes } from './tenant-client-routes'
 import { makeEmailSequenceAuthoringRoutes } from './email-sequence-authoring-routes'
 import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
+import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { makeTenantCustomHostnames } from './tenant-custom-hostnames'
 import { readOmniEvidenceBundleById } from './omni-evidence-bundles'
 import { readOmniPublicProofBundleById } from './omni-public-proof-bundles'
@@ -5904,6 +5905,11 @@ const sitesOrchestrationRoutes = makeSitesOrchestrationRoutes({
   requireBrowserSession,
 })
 
+const partnerPayoutLedgerRoutes = makePartnerPayoutLedgerRoutes<WorkerBindings>({
+  nowIso: currentIsoTimestamp,
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+})
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
@@ -7130,7 +7136,8 @@ const routeRequest = makeWorkerRouteRequest({
       env,
       ctx,
     ) ??
-    sitesOrchestrationRoutes.routeSitesOrchestrationRequest(request, env, ctx),
+    sitesOrchestrationRoutes.routeSitesOrchestrationRequest(request, env, ctx) ??
+    partnerPayoutLedgerRoutes.routePartnerPayoutLedgerRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,
