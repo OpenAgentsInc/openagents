@@ -254,6 +254,20 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-source-map-refs")).toBe(true)
   })
 
+  test("training pane includes the operator feedback feed", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: liveTrainingProjection,
+      trainingRunsStatus: { text: "1 run", tone: "success" },
+      trainingPlanStatus: { text: "planned", tone: "success" },
+    })
+    expect(treeContainsClass(document.body, "training-operator-feed-panel")).toBe(
+      true,
+    )
+    expect(treeContainsClass(document.body, "training-operator-feed")).toBe(true)
+  })
+
   test("training pane includes the closeout packet action", () => {
     const document = view({
       ...initialModel,

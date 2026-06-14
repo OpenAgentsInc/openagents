@@ -500,6 +500,33 @@ const trainingGate = (
 
 type TrainingGateTone = "ready" | "watch" | "blocked"
 
+type TrainingStatusTone = "error" | "info" | "success" | "idle"
+
+type TrainingStatusLike = {
+  readonly text: string
+  readonly tone: TrainingStatusTone
+}
+
+const trainingStatusTone = (
+  status: TrainingStatusLike,
+  pending = false,
+): TrainingGateTone =>
+  pending
+    ? "watch"
+    : status.tone === "success"
+      ? "ready"
+      : status.tone === "error"
+        ? "blocked"
+        : "watch"
+
+const trainingStatusText = (
+  status: TrainingStatusLike,
+  fallback: string,
+): string => {
+  const trimmed = status.text.trim()
+  return trimmed.length > 0 ? trimmed : fallback
+}
+
 const uniqueTrainingRefs = (
   refs: ReadonlyArray<string | null | undefined>,
 ): string[] => {
@@ -1259,6 +1286,151 @@ const trainingPromiseGatesPanel = (model: Model): Html => {
   ])
 }
 
+const trainingProjectionFeedTone = (
+  pending: boolean,
+  ok: boolean | null,
+  status: TrainingStatusLike,
+): TrainingGateTone =>
+  pending
+    ? "watch"
+    : ok === true
+      ? "ready"
+      : ok === false
+        ? "blocked"
+        : trainingStatusTone(status)
+
+const trainingOperatorFeedPanel = (model: Model): Html => {
+  const runs = modelTrainingRuns(model)
+  const dashboard = modelTrainingDashboard(model)
+  const gates = modelTrainingPromiseGates(model)
+  const plan = modelTrainingPlan(model)
+  const activation = modelTrainingActivation(model)
+  const reconcile = modelTrainingReconcile(model)
+  const lease = modelTrainingLease(model)
+  const bootstrap = modelTrainingBootstrap(model)
+
+  const planRef =
+    plan?.windowRef ?? plan?.trainingRunRef ?? plan?.reason ?? "idle"
+  const activationRef = activation?.windowRef ?? activation?.reason ?? "idle"
+  const reconcileRef = reconcile?.windowRef ?? reconcile?.reason ?? "idle"
+  const leaseRef =
+    lease?.lease?.leaseRef ??
+    lease?.pylonRef ??
+    lease?.reason ??
+    "idle"
+  const bootstrapRef =
+    bootstrap?.outcome?.kind === "granted"
+      ? bootstrap.outcome.grant.grantRef
+      : bootstrap?.outcome?.kind ?? bootstrap?.reason ?? "idle"
+
+  return h.section([cls("training-panel training-operator-feed-panel")], [
+    h.div([cls("training-panel-heading")], [
+      h.h2([cls("training-panel-title")], ["Operator Feed"]),
+      h.span([cls("training-panel-kicker")], [
+        runs === null
+          ? "waiting for projection"
+          : runs.ok
+            ? `${runs.runs.length} public runs`
+            : "projection unavailable",
+      ]),
+    ]),
+    h.p([cls("training-panel-copy")], [
+      "Immediate command feedback and projection catch-up from the public Worker reads and Bun-held operator calls.",
+    ]),
+    h.ul([cls("training-gates training-operator-feed")], [
+      trainingGate(
+        "projection",
+        runs === null
+          ? trainingStatusText(model.trainingRunsStatus, "not loaded")
+          : trainingProjectionMeta(runs),
+        trainingProjectionFeedTone(
+          model.trainingRunsPending,
+          runs?.ok ?? null,
+          model.trainingRunsStatus,
+        ),
+      ),
+      trainingGate(
+        "dashboards",
+        dashboard === null
+          ? trainingStatusText(model.trainingDashboardStatus, "not loaded")
+          : trainingStatusText(
+              model.trainingDashboardStatus,
+              `${dashboard.leaderboards.lanes.length} lanes`,
+            ),
+        trainingProjectionFeedTone(
+          model.trainingDashboardPending,
+          dashboard?.ok ?? null,
+          model.trainingDashboardStatus,
+        ),
+      ),
+      trainingGate(
+        "promise gates",
+        gates === null
+          ? trainingStatusText(model.trainingPromiseGatesStatus, "not loaded")
+          : trainingStatusText(
+              model.trainingPromiseGatesStatus,
+              `${gates.promises.length} promises`,
+            ),
+        trainingProjectionFeedTone(
+          model.trainingPromiseGatesPending,
+          gates?.ok ?? null,
+          model.trainingPromiseGatesStatus,
+        ),
+      ),
+      trainingGate(
+        "plan R1",
+        `${trainingStatusText(model.trainingPlanStatus, "idle")} · ${planRef}`,
+        trainingStatusTone(model.trainingPlanStatus, model.trainingPlanPending),
+      ),
+      trainingGate(
+        "activate",
+        `${trainingStatusText(model.trainingActivationStatus, "idle")} · ${activationRef}`,
+        trainingStatusTone(
+          model.trainingActivationStatus,
+          model.trainingActivationPending,
+        ),
+      ),
+      trainingGate(
+        "claim lease",
+        `${trainingStatusText(model.trainingLeaseStatus, "idle")} · ${leaseRef}`,
+        trainingStatusTone(model.trainingLeaseStatus, model.trainingLeasePending),
+      ),
+      trainingGate(
+        "bootstrap",
+        `${trainingStatusText(model.trainingBootstrapStatus, "idle")} · ${bootstrapRef}`,
+        trainingStatusTone(
+          model.trainingBootstrapStatus,
+          model.trainingBootstrapPending,
+        ),
+      ),
+      trainingGate(
+        "closeout",
+        trainingStatusText(model.trainingCloseoutStatus, "idle"),
+        trainingStatusTone(
+          model.trainingCloseoutStatus,
+          model.trainingCloseoutPending,
+        ),
+      ),
+      trainingGate(
+        "reconcile",
+        `${trainingStatusText(model.trainingReconcileStatus, "idle")} · ${reconcileRef}`,
+        trainingStatusTone(
+          model.trainingReconcileStatus,
+          model.trainingReconcilePending,
+        ),
+      ),
+      trainingGate(
+        "launch check",
+        trainingStatusText(model.trainingLaunchStatus, "idle"),
+        trainingStatusTone(
+          model.trainingLaunchStatus,
+          model.trainingLaunchPending,
+        ),
+      ),
+    ]),
+  ])
+}
+
 const trainingLaunchPanel = (model: Model): Html => {
   const plan = modelTrainingPlan(model)
   const lease = modelTrainingLease(model)?.lease ?? null
@@ -1583,6 +1755,7 @@ const trainingPane = (model: Model): Html => {
           ]),
         ]),
         trainingLaunchPanel(model),
+        trainingOperatorFeedPanel(model),
         h.section([cls("training-panel")], [
           h.h2([cls("training-panel-title")], ["Live API Boundary"]),
           h.p(
