@@ -346,6 +346,34 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-operator-feed")).toBe(true)
   })
 
+  test("training pane includes the control surface map", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: liveTrainingProjection,
+      trainingPlanStatus: { text: "planned", tone: "success" },
+    })
+    expect(treeContainsClass(document.body, "training-control-surface-panel")).toBe(
+      true,
+    )
+    expect(
+      treeContainsClass(document.body, "training-control-surface-list"),
+    ).toBe(true)
+    expect(treeContainsText(document.body, "ClickedPlanTrainingWindow")).toBe(
+      true,
+    )
+    expect(
+      treeContainsText(document.body, "/api/training/windows/{windowRef}/activate"),
+    ).toBe(true)
+    expect(treeContainsText(document.body, "trainingPlanStatus")).toBe(true)
+    expect(
+      treeContainsText(
+        document.body,
+        "apps/autopilot-desktop/src/bun/training-runs.ts",
+      ),
+    ).toBe(true)
+  })
+
   test("training pane includes the issue roadmap ledger", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsClass(document.body, "training-roadmap-panel")).toBe(true)

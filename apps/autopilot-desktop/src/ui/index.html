@@ -110,6 +110,18 @@
       .training-plan-refs { margin-top:.45rem; }
       .training-api-list li { color:#9ba3b3; font-size:.82rem; }
       .training-api-list code { color:#f2f4f8; }
+      .training-control-surface-list { list-style:none; margin:0; padding:0; display:grid; gap:.6rem; }
+      .training-control-surface-row { border-top:1px solid #1d2128; padding-top:.58rem; min-width:0; }
+      .training-control-surface-row:first-child { border-top:none; padding-top:0; }
+      .training-control-surface-head { display:flex; align-items:center; justify-content:space-between; gap:.7rem; }
+      .training-control-surface-head strong { color:#f2f4f8; font-size:.82rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .training-control-surface-head span { color:#8b93a7; font-family:ui-monospace,monospace; font-size:.72rem; text-align:right; white-space:nowrap; }
+      .training-control-surface-row.training-ready .training-control-surface-head span { color:#5ee08a; }
+      .training-control-surface-row.training-watch .training-control-surface-head span { color:#ffcc66; }
+      .training-control-surface-row.training-blocked .training-control-surface-head span { color:#ff7b72; }
+      .training-control-surface-current { color:#9ba3b3; font-family:ui-monospace,monospace; font-size:.72rem; margin:.2rem 0 .35rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .training-control-surface-refs { gap:.24rem; }
+      .training-control-surface-refs li { font-size:.74rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       @media (max-width: 820px) {
         .training-topline, .training-visual-copy { display:block; }
         .training-ref { white-space:normal; }
@@ -119,6 +131,8 @@
         .training-run-row { grid-template-columns:1fr; gap:.3rem; }
         .training-run-facts { justify-content:flex-start; flex-wrap:wrap; }
         .training-action-row { grid-template-columns:1fr; }
+        .training-control-surface-head { display:block; }
+        .training-control-surface-head span { display:block; margin-top:.16rem; text-align:left; }
         .three-effect-training { height:380px; }
       }
 

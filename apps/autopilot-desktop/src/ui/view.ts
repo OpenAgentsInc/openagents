@@ -781,6 +781,183 @@ const trainingSourceMapPanel = (): Html =>
     ),
   ])
 
+type TrainingControlSurfaceRow = Readonly<{
+  action: string
+  authority: string
+  dispatch: string
+  route: string
+  rpc: string
+  source: string
+  statusField: string
+  status: (model: Model) => TrainingStatusLike
+  pending: (model: Model) => boolean
+  current: (model: Model) => string
+}>
+
+const trainingControlSurfaceRows: readonly TrainingControlSurfaceRow[] = [
+  {
+    action: "Refresh projections",
+    authority: "public Worker reads through Bun",
+    dispatch: "ClickedRefreshTrainingRuns",
+    route:
+      "GET /api/training/runs + /api/training/leaderboards + /api/public/product-promises",
+    rpc:
+      "listTrainingRuns + listTrainingDashboard + listTrainingPromiseGates",
+    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
+    statusField:
+      "trainingRunsStatus / trainingDashboardStatus / trainingPromiseGatesStatus",
+    status: model => model.trainingRunsStatus,
+    pending: model =>
+      model.trainingRunsPending ||
+      model.trainingDashboardPending ||
+      model.trainingPromiseGatesPending,
+    current: model =>
+      [
+        trainingStatusText(model.trainingRunsStatus, "runs idle"),
+        trainingStatusText(model.trainingDashboardStatus, "dashboards idle"),
+        trainingStatusText(model.trainingPromiseGatesStatus, "promises idle"),
+      ].join(" / "),
+  },
+  {
+    action: "Plan R1 window",
+    authority: "Bun admin env gate",
+    dispatch: "ClickedPlanTrainingWindow",
+    route: "POST /api/training/runs -> POST /api/training/windows/plan",
+    rpc: "planTrainingRunWindow",
+    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
+    statusField: "trainingPlanStatus",
+    status: model => model.trainingPlanStatus,
+    pending: model => model.trainingPlanPending,
+    current: model => {
+      const plan = modelTrainingPlan(model)
+      return plan?.windowRef ?? plan?.trainingRunRef ?? "no planned ref"
+    },
+  },
+  {
+    action: "Activate window",
+    authority: "Bun admin env gate",
+    dispatch: "ClickedActivateTrainingWindow",
+    route: "POST /api/training/windows/{windowRef}/activate",
+    rpc: "activateTrainingWindow",
+    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
+    statusField: "trainingActivationStatus",
+    status: model => model.trainingActivationStatus,
+    pending: model => model.trainingActivationPending,
+    current: model =>
+      modelTrainingActivation(model)?.windowRef ??
+      activationWindowRef(model) ??
+      "no planned window",
+  },
+  {
+    action: "Claim lease",
+    authority: "Bun lease env gate + public Pylon ref",
+    dispatch: "ClickedClaimTrainingLease",
+    route: "POST /api/training/leases/claim",
+    rpc: "claimTrainingWindowLease",
+    source: "apps/autopilot-desktop/src/bun/index.ts",
+    statusField: "trainingLeaseStatus",
+    status: model => model.trainingLeaseStatus,
+    pending: model => model.trainingLeasePending,
+    current: model =>
+      modelTrainingLease(model)?.lease?.leaseRef ??
+      (hasClaimableTrainingWindow(model) ? "claimable window" : "no active window"),
+  },
+  {
+    action: "Request bootstrap",
+    authority: "public joiner bootstrap gate",
+    dispatch: "ClickedRequestTrainingBootstrap",
+    route: "POST /api/training/runs/{runRef}/bootstrap-grant",
+    rpc: "requestTrainingBootstrapGrant",
+    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
+    statusField: "trainingBootstrapStatus",
+    status: model => model.trainingBootstrapStatus,
+    pending: model => model.trainingBootstrapPending,
+    current: model => {
+      const bootstrap = modelTrainingBootstrap(model)
+      return bootstrap?.outcome?.kind === "granted"
+        ? bootstrap.outcome.grant.grantRef
+        : bootstrap?.outcome?.kind ??
+            selectedTrainingSummary(modelTrainingRuns(model))?.run.trainingRunRef ??
+            "no run selected"
+    },
+  },
+  {
+    action: "Queue closeout packet",
+    authority: "local Pylon intent, no evidence admission",
+    dispatch: "ClickedQueueTrainingCloseout",
+    route: "intent.submit",
+    rpc: "submitIntent",
+    source: "apps/autopilot-desktop/src/ui/commands.ts",
+    statusField: "trainingCloseoutStatus",
+    status: model => model.trainingCloseoutStatus,
+    pending: model => model.trainingCloseoutPending,
+    current: model =>
+      selectedTrainingSummary(modelTrainingRuns(model))?.run.trainingRunRef ??
+      modelTrainingPlan(model)?.trainingRunRef ??
+      "no run selected",
+  },
+  {
+    action: "Reconcile sealed window",
+    authority: "Bun admin env gate",
+    dispatch: "ClickedReconcileTrainingWindow",
+    route: "POST /api/training/windows/{windowRef}/reconcile",
+    rpc: "reconcileTrainingWindow",
+    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
+    statusField: "trainingReconcileStatus",
+    status: model => model.trainingReconcileStatus,
+    pending: model => model.trainingReconcilePending,
+    current: model =>
+      modelTrainingReconcile(model)?.windowRef ??
+      reconcileWindowRef(model) ??
+      "no sealed window",
+  },
+  {
+    action: "Queue launch check",
+    authority: "local Pylon readiness intent",
+    dispatch: "ClickedQueueTrainingLaunch",
+    route: "intent.submit",
+    rpc: "submitIntent",
+    source: "apps/autopilot-desktop/src/ui/commands.ts",
+    statusField: "trainingLaunchStatus",
+    status: model => model.trainingLaunchStatus,
+    pending: model => model.trainingLaunchPending,
+    current: () => "issue 4855 gate inspection",
+  },
+]
+
+const trainingControlSurfacePanel = (model: Model): Html =>
+  h.section([cls("training-panel training-control-surface-panel")], [
+    h.div([cls("training-panel-heading")], [
+      h.h2([cls("training-panel-title")], ["Control Surface"]),
+      h.span([cls("training-panel-kicker")], ["button -> RPC -> authority"]),
+    ]),
+    h.p([cls("training-panel-copy")], [
+      "Each operator control mapped to its webview message, Bun RPC, authority route, current feedback field, and source file.",
+    ]),
+    h.ul(
+      [cls("training-control-surface-list")],
+      trainingControlSurfaceRows.map(row => {
+        const status = row.status(model)
+        const tone = trainingStatusTone(status, row.pending(model))
+        return h.li([cls(`training-control-surface-row training-${tone}`)], [
+          h.div([cls("training-control-surface-head")], [
+            h.strong([], [row.action]),
+            h.span([], [trainingStatusText(status, "idle")]),
+          ]),
+          h.p([cls("training-control-surface-current")], [row.current(model)]),
+          h.ul([cls("training-api-list training-control-surface-refs")], [
+            h.li([], [h.code([], [row.dispatch])]),
+            h.li([], [h.code([], [row.rpc])]),
+            h.li([], [h.code([], [row.route])]),
+            h.li([], [h.code([], [row.statusField])]),
+            h.li([], [row.authority]),
+            h.li([], [h.code([], [row.source])]),
+          ]),
+        ])
+      }),
+    ),
+  ])
+
 const trainingRoadmapPanel = (): Html =>
   h.section([cls("training-panel training-roadmap-panel")], [
     h.div([cls("training-panel-heading")], [
@@ -2035,6 +2212,7 @@ const trainingPane = (model: Model): Html => {
         trainingRoadmapPanel(),
         trainingLaunchPanel(model),
         trainingOperatorFeedPanel(model),
+        trainingControlSurfacePanel(model),
         h.section([cls("training-panel")], [
           h.h2([cls("training-panel-title")], ["Live API Boundary"]),
           h.p(
