@@ -41,6 +41,8 @@ import {
   teamProjectChatRouter,
   threadRouter,
   usageRouter,
+  workroomRouter,
+  workroomTabRouter,
 } from '../../route'
 import * as Ui from '../../ui'
 import * as ClientsPreview from '../clientsPreview'
@@ -64,6 +66,7 @@ import * as Order from './page/order'
 import * as Settings from './page/settings'
 import * as Stats from './page/stats'
 import * as Usage from './page/usage'
+import * as Workroom from './page/workroom'
 
 const currentHref = (model: Model): string =>
   M.value(model.route).pipe(
@@ -75,6 +78,9 @@ const currentHref = (model: Model): string =>
       AutopilotWorkDetail: ({ workOrderRef }) =>
         autopilotWorkDetailRouter({ workOrderRef }),
       Decisions: () => decisionsRouter(),
+      Workroom: ({ workroomId }) => workroomRouter({ workroomId }),
+      WorkroomTab: ({ tab, workroomId }) =>
+        workroomTabRouter({ tab, workroomId }),
       Invite: () => inviteRouter(),
       Chat: () => chatRouter(),
       TeamChat: ({ teamRef }) => teamChatRouter({ teamRef }),
@@ -123,6 +129,9 @@ const routeKey = (model: Model): string =>
       AutopilotWorkDetail: ({ workOrderRef }) =>
         `AutopilotWorkDetail:${workOrderRef}`,
       Decisions: () => 'Decisions',
+      Workroom: ({ workroomId }) => `Workroom:${workroomId}`,
+      WorkroomTab: ({ tab, workroomId }) =>
+        `WorkroomTab:${workroomId}:${tab}`,
       Invite: () => 'Invite',
       Chat: () => 'Chat',
       TeamChat: ({ teamRef }) => `TeamChat:${teamRef}`,
@@ -384,6 +393,14 @@ const routeView = (model: Model): Html => {
             ]),
           Decisions: () =>
             Ui.workroomScrollableRoute<Message>([Decisions.view(model)]),
+          Workroom: () =>
+            Ui.workroomScrollableRoute<Message>([
+              Workroom.view(model.workroom),
+            ]),
+          WorkroomTab: () =>
+            Ui.workroomScrollableRoute<Message>([
+              Workroom.view(model.workroom),
+            ]),
           TeamChat: ({ teamRef }) =>
             Ui.workroomChatRoute<Message>(Chat.teamRoomView(model, teamRef)),
           TeamProjectChat: ({ projectRef, teamRef }) =>

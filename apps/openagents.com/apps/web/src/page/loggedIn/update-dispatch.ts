@@ -21,6 +21,7 @@ import { updateSync } from './sync/transitions'
 import { updateTeamChat } from './team-chat/transitions'
 import { updateThreadFiles } from './thread-files/transitions'
 import { type UpdateReturn } from './transition'
+import { updateWorkroom } from './workroom/transitions'
 
 export {
   FocusChatComposer,
@@ -69,6 +70,7 @@ export const update = (model: Model, message: Message): UpdateReturn => {
   const artanisConsole = () => updateArtanisConsole(model, message)
   const autopilotWork = () => updateAutopilotWork(model, message)
   const autopilotDecisions = () => updateAutopilotDecisions(model, message)
+  const workroom = () => updateWorkroom(model, message)
 
   return M.value(message).pipe(
     withUpdateReturn,
@@ -174,6 +176,16 @@ export const update = (model: Model, message: Message): UpdateReturn => {
       SubmittedAutopilotDecisionAction: autopilotDecisions,
       SucceededAutopilotDecisionAction: autopilotDecisions,
       FailedAutopilotDecisionAction: autopilotDecisions,
+      SelectedWorkroomTab: workroom,
+      RequestedLoadWorkroomSurface: workroom,
+      SucceededLoadWorkroomSurface: workroom,
+      FailedLoadWorkroomSurface: workroom,
+      RequestedLoadWorkroomLifecycle: workroom,
+      SucceededLoadWorkroomLifecycle: workroom,
+      FailedLoadWorkroomLifecycle: workroom,
+      SubmittedWorkroomLifecycleDecision: workroom,
+      SucceededWorkroomLifecycleDecision: workroom,
+      FailedWorkroomLifecycleDecision: workroom,
       UpdatedCustomerOrderDraft: customerOrder,
       SubmittedCustomerOrder: customerOrder,
       SucceededSubmitCustomerOrder: customerOrder,

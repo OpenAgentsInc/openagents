@@ -37,6 +37,10 @@ import { LoadSyncSnapshot } from './sync/commands'
 import { syncSnapshotHref } from './sync/projection'
 import { LoadTeamChatMessages } from './team-chat/commands'
 import { LoadThreadFileDetail, LoadThreadFiles } from './thread-files/commands'
+import {
+  LoadWorkroomLifecycle,
+  LoadWorkroomSurface,
+} from './workroom/transitions'
 
 export const initialCommands = (
   model: Model,
@@ -78,6 +82,14 @@ export const initialCommands = (
 
   if (model.route._tag === 'Decisions') {
     return [InstallAccountMenuOutsideClick(), LoadAutopilotDecisions({})]
+  }
+
+  if (model.route._tag === 'Workroom' || model.route._tag === 'WorkroomTab') {
+    return [
+      InstallAccountMenuOutsideClick(),
+      LoadWorkroomSurface({ workroomId: model.route.workroomId }),
+      LoadWorkroomLifecycle({ workroomId: model.route.workroomId }),
+    ]
   }
 
   if (model.route._tag === 'AutopilotWorkDetail') {

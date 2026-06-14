@@ -232,6 +232,8 @@ export const browserRouteProductIntents = {
   TeamProjectChat: 'workroom.chat.project',
   Thread: 'workroom.thread',
   Usage: 'billing.usage',
+  Workroom: 'workroom.delivery.overview',
+  WorkroomTab: 'workroom.delivery.tab',
 } as const satisfies Record<AppRoute['_tag'], string>
 
 export type BrowserRouteName = keyof typeof browserRouteProductIntents
