@@ -27,6 +27,12 @@ export async function pollNodeStateOnce(input: {
       ...(state.events ? { events: state.events } : {}),
       ...(state.accounts ? { accounts: state.accounts } : {}),
       ...(state.artifacts ? { artifacts: state.artifacts } : {}),
+      ...(state.deploy ? { deploy: state.deploy } : {}),
+      ...(state.intents ? { intents: state.intents } : {}),
+      ...(state.approvals ? { approvals: state.approvals } : {}),
+      ...(state.wallet !== undefined ? { wallet: state.wallet } : {}),
+      ...(state.assignments ? { assignments: state.assignments } : {}),
+      ...(state.coordinatorPaused !== undefined ? { coordinatorPaused: state.coordinatorPaused } : {}),
     }
   } catch {
     return offlineNodeState(input.fallbackSchema)

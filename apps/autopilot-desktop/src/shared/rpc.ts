@@ -9,6 +9,9 @@ export type SessionEventRow = {
   readonly state: string
   readonly observedAt: string
   readonly detail: string
+  // CL-52: full untruncated content, revealed on click-to-expand. Optional so
+  // existing fixtures stay valid; the Bun side always populates it.
+  readonly full?: string
 }
 
 export type AccountRow = {
@@ -39,6 +42,41 @@ export type DeployResultRow = {
   readonly errors: string[]
 }
 
+// CL-47: an "ask" the owner submitted, with its ship-status round-trip state.
+export type IntentRow = {
+  readonly intentId: string
+  readonly title: string
+  readonly status: string
+  readonly submittedByClientRef: string
+}
+
+// CL-48: a pending approval/decision the node is waiting on.
+export type ApprovalRow = {
+  readonly approvalRef: string
+  readonly kind: string
+  readonly prompt: string
+  readonly createdAt: string
+}
+
+// CL-49: read-only MDK wallet status (no spend authority).
+export type WalletStatusRow = {
+  readonly configured: boolean
+  readonly daemonOnline: boolean
+  readonly balanceSats: number | null
+  readonly receiveReady: boolean
+  readonly sendReady: boolean
+  readonly readiness: string
+}
+
+// CL-50: an open work-lease assignment (read-only).
+export type AssignmentRow = {
+  readonly assignmentRef: string
+  readonly leaseRef: string
+  readonly goal: string
+  readonly paymentMode: string
+  readonly expiresAt: string
+}
+
 export type NodeStateMessage = {
   readonly ok: boolean
   readonly schema: string
@@ -51,17 +89,52 @@ export type NodeStateMessage = {
   readonly artifacts?: Record<string, SessionArtifactStats>
   // CL-26: read-only projection of the node's last "Deploy to Cloud".
   readonly deploy?: DeployStatusRow
+  // CL-47: the owner's recent asks + their ship-status.
+  readonly intents?: IntentRow[]
+  // CL-48: pending approvals/decisions awaiting the owner.
+  readonly approvals?: ApprovalRow[]
+  // CL-49: read-only MDK wallet balance/readiness.
+  readonly wallet?: WalletStatusRow | null
+  // CL-50: open work-lease assignments (read-only).
+  readonly assignments?: AssignmentRow[]
+  // CL-51: node coordinator paused flag (null when the node doesn't expose it).
+  readonly coordinatorPaused?: boolean | null
 }
 
 export type DesktopRPCSchema = {
   readonly bun: {
-    // CL-26: the webview asks the Bun side to trigger a deploy of the node's
-    // own cloud service. The node fail-safe-gates execution behind
-    // OA_DEPLOY_ENABLE=1, so an un-enabled node returns accepted:false.
     readonly requests: {
+      // CL-26: trigger a deploy of the node's own cloud service. The node
+      // fail-safe-gates execution behind OA_DEPLOY_ENABLE=1.
       readonly deployCloud: {
         readonly params: { target: "cloudrun" | "workers"; ref: string; env?: "production" | "preview" }
         readonly response: DeployResultRow
+      }
+      // CL-47: submit an "ask" (work intent) to the node.
+      readonly submitIntent: {
+        readonly params: { title: string; body: string }
+        readonly response: { ok: boolean; status: string; error?: string }
+      }
+      // CL-48: resolve a pending approval (approve/deny). Node enforces
+      // exactly-once; a duplicate resolve returns duplicate:true.
+      readonly resolveApproval: {
+        readonly params: { approvalRef: string; decision: "approve" | "deny" }
+        readonly response: { applied: boolean; duplicate: boolean; decision: string }
+      }
+      // CL-51: pause/resume the node's autonomous coordinator loop.
+      readonly setCoordinatorPaused: {
+        readonly params: { paused: boolean }
+        readonly response: { paused: boolean }
+      }
+      // CL-52: cancel a running/queued session.
+      readonly cancelSession: {
+        readonly params: { sessionRef: string }
+        readonly response: { ok: boolean; state: string }
+      }
+      // CL-57: directly spawn a bounded session on the node.
+      readonly spawnSession: {
+        readonly params: { adapter: "codex" | "claude_agent"; objective: string; verify?: string[] }
+        readonly response: { ok: boolean; sessionRef: string; error?: string }
       }
     }
     readonly messages: Record<string, never>

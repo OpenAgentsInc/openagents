@@ -6,12 +6,35 @@
     <title>Autopilot Desktop</title>
     <style>
       :root { color-scheme: dark; }
-      body { margin:0; font-family:-apple-system,system-ui,sans-serif; background:#0b0d12; color:#e6e9ef;
-             display:flex; min-height:100vh; align-items:center; justify-content:center; }
-      main { text-align:center; padding:2rem; max-width:640px; }
-      h1 { font-size:1.7rem; margin:0 0 .6rem; }
-      p { color:#8b93a7; margin:.3rem 0; line-height:1.5; }
+      body { margin:0; font-family:-apple-system,system-ui,sans-serif; background:#0b0d12; color:#e6e9ef; min-height:100vh; }
       code { color:#7dd3fc; }
+
+      /* CL-44 sidebar shell layout */
+      .app-shell { display:flex; min-height:100vh; }
+      .sidebar { flex:0 0 240px; background:#0e1117; border-right:1px solid #1c2230; display:flex; flex-direction:column; padding:1rem .75rem; gap:.25rem; position:sticky; top:0; height:100vh; box-sizing:border-box; }
+      .sidebar-header { padding:.4rem .5rem 1rem; border-bottom:1px solid #1c2230; margin-bottom:.5rem; }
+      .sidebar-title { font-size:1.05rem; font-weight:700; }
+      .sidebar-status { font-size:.75rem; font-family:ui-monospace,monospace; margin-top:.3rem; }
+      .status-online { color:#5ee08a; }
+      .status-offline { color:#8b93a7; }
+      .coord-slot:empty { display:none; }
+      .coord-slot { padding:.2rem .5rem .6rem; }
+      .nav-item { display:flex; align-items:center; justify-content:space-between; gap:.5rem; width:100%; text-align:left; font:inherit; font-size:.92rem; color:#cdd3e0; background:transparent; border:none; border-radius:.4rem; padding:.5rem .6rem; cursor:pointer; }
+      .nav-item:hover { background:#161b25; }
+      .nav-item.active { background:#1c2230; color:#7dd3fc; font-weight:600; }
+      .nav-badge { background:#ff6b6b; color:#0b0d12; font-size:.7rem; font-weight:700; border-radius:.6rem; padding:.05rem .4rem; }
+      .content { flex:1 1 auto; overflow-y:auto; height:100vh; box-sizing:border-box; }
+      .pane { max-width:720px; margin:0 auto; padding:2rem; }
+      .pane-title { font-size:1.5rem; margin:0 0 .4rem; }
+      .node-status { color:#8b93a7; font-family:ui-monospace,monospace; font-size:.85rem; margin:.2rem 0 1rem; }
+      .card { text-align:left; margin-top:1rem; padding:.8rem 1rem; border:1px solid #1c2230; border-radius:.4rem; }
+      .card-title { font-size:1rem; margin:0 0 .4rem; color:#7dd3fc; }
+      .card-body { font-size:.85rem; }
+      .empty-state { color:#8b93a7; font-size:.85rem; margin:.3rem 0; }
+      .link-button { font:inherit; color:#7dd3fc; background:transparent; border:none; cursor:pointer; padding:0; margin-bottom:.6rem; }
+      .session-click { cursor:pointer; border-radius:.4rem; }
+      .session-click:hover { background:#11151d; }
+      p { color:#8b93a7; margin:.3rem 0; line-height:1.5; }
       .session-list { text-align:left; margin-top:1rem; }
       .session-row { display:flex; gap:.6rem; align-items:center; padding:.5rem 0; border-top:1px solid #1c2230; }
       .state-chip { font-size:.75rem; padding:.1rem .4rem; border-radius:.3rem; background:#1c2230; flex:0 0 auto; }
