@@ -30,6 +30,10 @@ import {
   type CustomerOrderAgentScope,
 } from './customer-order-agent-auth'
 import {
+  evaluateLaneCFanoutForWorkOrder,
+  laneCFanoutObjectiveRef,
+} from './lane-c-fanout-bridge'
+import {
   methodNotAllowed,
   noStoreJsonResponse,
   unauthorized,
@@ -2837,6 +2841,136 @@ const readWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
   )
 
+// Lane C fanout (#4783): server-side gate that bursts a product work order to
+// the public labor market when owned capacity is dark, the customer opted in,
+// and the public trust-tier floor is met — then creates the linked market work
+// request. The tier floor + opt-in + budget cap are enforced HERE (server-side)
+// before any market listing is created; a private order can never leave the
+// first-party lanes through this route.
+const laneCFanoutWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  workOrderRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const pylonRegistrations = yield* routePylonRegistrations(dependencies, env)
+    const auth = yield* authenticateAutopilotWorkRequest(dependencies, request, env, {
+      ctx,
+      nowIso: () => nowIso,
+      requiredScope: 'customer_orders.write',
+    })
+    const record = yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () => dependencies.makeStore(env).readWorkOrder(workOrderRef),
+    })
+    if (record === undefined || record.ownerUserId !== auth.ownerUserId) {
+      return noStoreJsonResponse(
+        { error: 'autopilot_work_not_found', reason: 'Autopilot work order was not found.' },
+        { status: 404 },
+      )
+    }
+
+    const body = (yield* Effect.tryPromise({
+      catch: () =>
+        new AutopilotWorkStoreError({ kind: 'validation_error', reason: 'Invalid Lane C fanout body.' }),
+      try: () => request.json() as Promise<Record<string, unknown>>,
+    })) ?? {}
+    const customerOptIn = body.customerOptIn === true
+    const budgetCapSats = typeof body.budgetCapSats === 'number' ? body.budgetCapSats : 0
+
+    const work = projectionForRecord(record, false, nowIso, pylonRegistrations)
+    const fanout = evaluateLaneCFanoutForWorkOrder({
+      placementSource: work.placementDecision.source,
+      placementAvailabilityState: work.placementDecision.availabilityState,
+      privacyTier: work.placementPolicy.privacyTier,
+      customerOptIn,
+      budgetCapSats,
+      // The fanout authorizes market quotes up to the budget cap; the per-quote
+      // budget check is enforced again at escrow-reserve time on acceptance.
+      quotedSats: budgetCapSats,
+      settlementBridgeReady: true, // P4 (#4780) USD->sats settlement bridge is built/closed.
+      marketInventoryReady: true,
+      artifactAuthorityReady: true,
+      validatorPolicyReady: true,
+      missionWorkOrderUnified: true,
+      providerTrustTier: 'public_rung1',
+    })
+
+    if (!fanout.readyForMarket) {
+      return noStoreJsonResponse(
+        {
+          error: 'lane_c_fanout_blocked',
+          fanout: {
+            lane: fanout.decision.lane,
+            ownedCapacityState: fanout.ownedCapacityState,
+            reasonRefs: fanout.decision.reasonRefs,
+            state: fanout.decision.state,
+          },
+          reason: 'Lane C fanout gate not satisfied.',
+        },
+        { status: 409 },
+      )
+    }
+
+    // Server gate passed: create the linked public-market labor work request as
+    // the customer (requester), reusing the live forum work-requests surface.
+    const objectiveRef = laneCFanoutObjectiveRef(workOrderRef)
+    const created = yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: async () => {
+        const res = await fetch(
+          new Request(new URL('/api/forum/work-requests', request.url).toString(), {
+            body: JSON.stringify({
+              budgetSats: budgetCapSats,
+              deadlineRef: 'deadline.public.lane_c_fanout.20261231',
+              objectiveRef,
+              requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
+              title: `Lane C fanout: ${workOrderRef}`.slice(0, 160),
+              verificationCommandRef: 'command.public.pylon.labor.bun_test',
+            }),
+            headers: {
+              authorization: request.headers.get('authorization') ?? '',
+              'content-type': 'application/json',
+              'Idempotency-Key': `lane-c-fanout:${workOrderRef}`,
+            },
+            method: 'POST',
+          }),
+        )
+        return res.json()
+      },
+    })
+
+    return noStoreJsonResponse(
+      {
+        fanout: {
+          lane: fanout.decision.lane,
+          objectiveRef,
+          ownedCapacityState: fanout.ownedCapacityState,
+          reasonRefs: fanout.decision.reasonRefs,
+          state: fanout.decision.state,
+        },
+        generatedAt: nowIso,
+        marketWorkRequest: created,
+        workOrderRef,
+      },
+      { status: 201 },
+    )
+  }).pipe(
+    Effect.catchTag('CustomerOrderAgentAuthFailure', () => Effect.succeed(unauthorized())),
+    Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+  )
+
 const validateReviewDecisionRequest = (
   body: AutopilotWorkReviewDecisionRequest,
 ): Effect.Effect<AutopilotWorkReviewDecisionRequest, AutopilotWorkStoreError> => {
@@ -3297,6 +3431,14 @@ const workOrderCloseoutRefFromPath = (pathname: string): string | undefined => {
   return match?.[1]
 }
 
+const workOrderLaneCFanoutRefFromPath = (
+  pathname: string,
+): string | undefined => {
+  const match = /^\/api\/autopilot\/work\/([^/]+)\/lane-c-fanout$/.exec(pathname)
+
+  return match?.[1]
+}
+
 const workOrderReviewRefFromPath = (pathname: string): string | undefined => {
   const match = /^\/api\/autopilot\/work\/([^/]+)\/review$/.exec(pathname)
 
@@ -3459,6 +3601,23 @@ export const makeAutopilotWorkRoutes = <
       return M.value(request.method).pipe(
         M.when('POST', () =>
           reviewWorkOrder(dependencies, request, env, ctx, workOrderReviewRef)
+        ),
+        M.orElse(() => Effect.succeed(methodNotAllowed(['POST']))),
+      )
+    }
+
+    const workOrderLaneCFanoutRef = workOrderLaneCFanoutRefFromPath(url.pathname)
+
+    if (workOrderLaneCFanoutRef !== undefined) {
+      return M.value(request.method).pipe(
+        M.when('POST', () =>
+          laneCFanoutWorkOrder(
+            dependencies,
+            request,
+            env,
+            ctx,
+            workOrderLaneCFanoutRef,
+          )
         ),
         M.orElse(() => Effect.succeed(methodNotAllowed(['POST']))),
       )
