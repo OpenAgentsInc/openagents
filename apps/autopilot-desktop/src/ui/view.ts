@@ -25,6 +25,10 @@ import {
   spinningCubeView,
   trainingRunView,
 } from "@openagentsinc/three-effect/foldkit"
+import {
+  trainingRunVisualizationOptionsFromSnapshot,
+  type TrainingRunVisualizationOptions,
+} from "@openagentsinc/three-effect/core"
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 
@@ -504,6 +508,41 @@ const selectedTrainingSummary = (
   )
 }
 
+const trainingSceneOptions = (
+  projection: TrainingRunsResponse | null,
+): TrainingRunVisualizationOptions | undefined => {
+  const summary = selectedTrainingSummary(projection)
+  if (summary === null) return undefined
+  const metrics = summary.metrics
+  const realGradient = summary.realGradient
+  return trainingRunVisualizationOptionsFromSnapshot({
+    activeWindowCount: metrics.activeWindowCount.value,
+    assignedContributorCount: metrics.assignedContributorCount.value,
+    deviceObserved:
+      realGradient.deviceRequirement.observedDistinctContributorDevices,
+    deviceRequired:
+      realGradient.deviceRequirement.requiredDistinctContributorDevices,
+    externalStatus: realGradient.externalAsk.status,
+    finalValidationLoss: realGradient.lossUnderBudget.finalValidationLoss,
+    freivaldsRefCount:
+      realGradient.closeoutRequirement.freivaldsCommitmentRefs.length,
+    gradientCloseoutRefCount:
+      realGradient.closeoutRequirement.gradientCloseoutRefs.length,
+    lossUnderBudget: realGradient.lossUnderBudget.satisfied,
+    maxAllowedStaleSteps: summary.run.maxAllowedStale,
+    maxValidationLoss: realGradient.lossUnderBudget.maxValidationLoss,
+    plannedWindowCount: metrics.plannedWindowCount.value,
+    reconciledWindowCount: metrics.reconciledWindowCount.value,
+    rejectedWorkCount: metrics.rejectedWorkCount.value,
+    runDetail: summary.run.trainingRunRef,
+    runLabel: summary.run.promiseRef,
+    runState: summary.run.state,
+    sealedWindowCount: metrics.sealedWindowCount.value,
+    settledPayoutSats: metrics.providerConfirmedSettledPayoutSats.value,
+    verifiedWorkCount: metrics.verifiedWorkCount.value,
+  })
+}
+
 const stateCounts = (
   projection: TrainingRunsResponse | null,
 ): Record<string, number> => {
@@ -691,7 +730,10 @@ const trainingPane = (model: Model): Html => {
             ],
           ),
         ]),
-        trainingRunView<Message>([cls("three-effect-training")]),
+        trainingRunView<Message>(
+          [cls("three-effect-training")],
+          trainingSceneOptions(projection),
+        ),
       ]),
       h.div([cls("training-grid")], [
         liveTrainingProjectionPanel(model),

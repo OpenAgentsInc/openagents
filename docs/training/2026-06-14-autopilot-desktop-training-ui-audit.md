@@ -13,6 +13,7 @@ The first implemented slice follows that boundary:
 - `@openagentsinc/three-effect` now provides an `oa-training-run` Foldkit custom element.
 - Autopilot Desktop now has a sidebar `Training` pane centered on that Three scene.
 - The pane fetches public Worker-authoritative training projections from `/api/training/runs` through the Bun main process.
+- The selected public run summary is converted into a `three-effect` snapshot so the scene reflects live run state, windows, devices, Freivalds refs, closeouts, verified work, external blockers, and settlement.
 - The pane exposes a launch/readiness feedback button that queues a local Pylon intent through the existing `intent.submit` path.
 - Admin planning, evidence admission, and run/window transitions remain outside the webview.
 
@@ -115,6 +116,8 @@ The launch button queues a local Pylon intent titled `Training run launch check`
 
 The refresh button and Training pane navigation call a typed desktop RPC that reads the public Worker endpoint. This is intentionally read-only and produces a desktop-local projection with the live run count, per-run state, verified work count, assigned contributor count, device requirement status, Freivalds refs, gradient closeout refs, loss budget, external blocker state, and settled sats.
 
+The Three scene receives the same selected summary through a compact snapshot mapper in `three-effect`. That mapper updates node labels/statuses, contributor dots, stale bound, receipt/settlement gates, and loss curve inputs without importing OpenAgents Worker internals into the rendering package.
+
 ## Authority Boundary
 
 The desktop webview must remain a Foldkit UI over typed projections and commands. It should not store:
@@ -155,8 +158,7 @@ The third risk is claim confusion. Public real-gradient claims have explicit blo
 
 ## Next Steps
 
-1. Feed live run/window status, staleness summary, contributor counts, and real-gradient claim blockers into `three-effect` scene options instead of rendering the Three scene from static defaults.
-2. Add a Bun-main-process admin bridge for approved operators to plan runs and windows. Keep tokens out of the webview.
-3. Add command result state for `plannedRunRef`, `plannedWindowRef`, admission queue count, and first observed projection timestamp.
-4. Add tests proving the webview cannot access admin credentials and only dispatches typed training messages.
-5. Add a lower-detail responsive scene mode before sharing the same visualization with mobile.
+1. Add a Bun-main-process admin bridge for approved operators to plan runs and windows. Keep tokens out of the webview.
+2. Add command result state for `plannedRunRef`, `plannedWindowRef`, admission queue count, and first observed projection timestamp.
+3. Add tests proving the webview cannot access admin credentials and only dispatches typed training messages.
+4. Add a lower-detail responsive scene mode before sharing the same visualization with mobile.
