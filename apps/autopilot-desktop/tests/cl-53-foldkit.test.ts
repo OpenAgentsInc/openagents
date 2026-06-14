@@ -465,7 +465,7 @@ describe("update reducer (CL-53)", () => {
     expect(pending.trainingBootstrapStatus.tone).toBe("info")
     expect(commands).toHaveLength(1)
 
-    const [settled] = update(
+    const [settled, followups] = update(
       pending,
       SettledRequestTrainingBootstrap({
         projection: {
@@ -497,6 +497,39 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingBootstrapPending).toBe(false)
     expect(settled.trainingBootstrapStatus.tone).toBe("success")
     expect(modelTrainingBootstrap(settled)?.outcome?.kind).toBe("granted")
+    expect(followups).toHaveLength(3)
+  })
+
+  test("training bootstrap queue feedback refreshes public projections", () => {
+    const [settled, followups] = update(
+      initialModel,
+      SettledRequestTrainingBootstrap({
+        projection: {
+          ok: false,
+          fetchedAt: "2026-06-14T00:00:00.000Z",
+          sourceUrl:
+            "https://openagents.test/api/training/runs/training.run.4850/bootstrap-grant",
+          pylonRef: "pylon.training.1",
+          trainingRunRef: "training.run.4850",
+          outcome: {
+            joinerRef: "pylon.training.1",
+            kind: "queued",
+            reasonCode: "seal_in_flight",
+            trainingRunRef: "training.run.4850",
+          },
+          reason: "queued",
+          message: "bootstrap queued: seal_in_flight",
+        },
+      }),
+    )
+
+    expect(settled.trainingBootstrapPending).toBe(false)
+    expect(settled.trainingBootstrapStatus).toEqual({
+      text: "bootstrap queued: seal_in_flight",
+      tone: "info",
+    })
+    expect(modelTrainingBootstrap(settled)?.outcome?.kind).toBe("queued")
+    expect(followups).toHaveLength(3)
   })
 
   test("training closeout packet action dispatches and stores local queue feedback", () => {

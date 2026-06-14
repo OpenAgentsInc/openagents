@@ -50,6 +50,13 @@ const loadTrainingProjectionCommands = (): ReadonlyArray<Command.Command<Message
   LoadTrainingPromiseGates(),
 ]
 
+const trainingBootstrapShouldRefresh = (
+  projection: TrainingBootstrapGrantResponse,
+): boolean =>
+  projection.reason === "granted" ||
+  projection.reason === "queued" ||
+  projection.reason === "refused"
+
 export const update = (model: Model, message: Message): Result => {
   switch (message._tag) {
     // ── Inbound projections ────────────────────────────────────────────────
@@ -482,7 +489,9 @@ export const update = (model: Model, message: Message): Result => {
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },
         }),
-        noCommands,
+        trainingBootstrapShouldRefresh(projection)
+          ? loadTrainingProjectionCommands()
+          : noCommands,
       ]
     }
     case "ClickedQueueTrainingLaunch":
