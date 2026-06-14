@@ -39,6 +39,7 @@ import {
   capacityBar,
   projectAccountRegistryDetail,
   projectFailover,
+  renderCloudCard,
   validateIntentDraft,
 } from "@openagentsinc/autopilot-control-protocol"
 
@@ -599,6 +600,21 @@ export default function NodesScreen() {
                 })()}
               </View>
             ) : null}
+            {status === "connected"
+              ? (() => {
+                  // CL-27 (rescoped): a contributor node exposes no cloud-metering
+                  // feed, so render the honest "unavailable" cloud card. Provider
+                  // failover is shown in the Accounts card above.
+                  const cloud = renderCloudCard(null)
+                  return cloud.visible ? (
+                    <View style={styles.card}>
+                      <Text style={styles.cardTitle}>{cloud.title}</Text>
+                      <Text style={styles.acctSummary}>{cloud.body}</Text>
+                      <Text style={styles.acctSummary}>Provider failover: see Accounts above.</Text>
+                    </View>
+                  ) : null
+                })()
+              : null}
             {assignments.length > 0 ? (
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Assignments ({assignments.length})</Text>
