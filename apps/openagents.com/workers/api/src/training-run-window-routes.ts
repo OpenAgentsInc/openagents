@@ -28,6 +28,7 @@ import {
   TrainingWindowPlanRequest,
   type TrainingWindowState,
   TrainingWindowTransitionRequest,
+  appendTrainingRunReceiptRefs,
   buildTrainingRunRecord,
   buildTrainingWindowLeaseRecord,
   buildTrainingWindowRecord,
@@ -39,6 +40,13 @@ import {
   transitionTrainingRunRecord,
   transitionTrainingWindowRecord,
 } from './training-run-window-authority'
+import type { NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
+import {
+  TassadarRunSettlementRequest,
+  TassadarRunSettlementUnsafe,
+  buildTassadarRunSettlement,
+} from './tassadar-run-settlement'
+import { parseJsonRecord } from './json-boundary'
 import {
   Cs336A3ScalingSweepEvidenceRequest,
   admitCs336A3ScalingSweepEvidence,
@@ -78,24 +86,16 @@ import {
 
 type HttpResponse = globalThis.Response
 
-type TrainingLeaderboardSettlementReceiptReader = Readonly<{
-  readPaymentAuthorityReceiptByRef: (
-    receiptRef: string,
-  ) => Promise<
-    | Readonly<{ publicProjectionJson: string; receiptKind: string }>
-    | undefined
-  >
-}>
-
 type TrainingRunWindowRouteDependencies<Bindings> = Readonly<{
   createVerificationChallenge?: (
     env: Bindings,
     request: TrainingVerificationChallengeCreateRequest,
   ) => Promise<TrainingVerificationChallengeRecord>
   makeId?: () => string
-  makePayoutLedgerStore?: (
-    env: Bindings,
-  ) => TrainingLeaderboardSettlementReceiptReader
+  // The treasury payout ledger store both reads provider-confirmed settlement
+  // receipts (for settledPayoutSats projections) and writes the run-tied
+  // settlement chain (openagents #5009).
+  makePayoutLedgerStore?: (env: Bindings) => NexusTreasuryPayoutLedgerStore
   makeStore: (env: Bindings) => TrainingAuthorityStore
   nowIso?: () => string
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
@@ -473,6 +473,151 @@ const routeExecutorTraceCloseout = <Bindings extends TrainingRunWindowRouteEnv>(
     })
   })
 
+const settlementErrorFromUnsafe = (
+  error: TassadarRunSettlementUnsafe,
+): TrainingAuthorityStoreError =>
+  new TrainingAuthorityStoreError({
+    kind: error.kind,
+    reason: error.reason,
+  })
+
+/**
+ * Settle one accepted (Verified) executor-trace work item for a run
+ * (openagents #5009, JUNE15_LAUNCH_PLAN §4.D — the earn-Bitcoin leg). Records
+ * the operator-approved treasury payout chain (intent -> attempt ->
+ * reconciliation -> settlement_recorded receipt) under the run spend cap and
+ * links the public settlement receipt back onto the run, so the run summary
+ * `providerConfirmedSettledPayoutSats` and the A1 leaderboard `settledPayoutSats`
+ * reflect real confirmed settlement. Admin-only.
+ */
+const routeRunSettlementReceipt = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* decodeBody(request, TassadarRunSettlementRequest)
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const makePayoutLedgerStore = dependencies.makePayoutLedgerStore
+
+    if (makePayoutLedgerStore === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'storage_error',
+        reason: 'Treasury payout ledger is not configured.',
+      })
+    }
+
+    const run = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(trainingRunRef),
+    })
+
+    if (run === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const challenges = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listVerificationChallengesForRun(trainingRunRef, 1000),
+    })
+    const challenge = challenges.find(
+      candidate => candidate.challengeRef === body.challengeRef,
+    )
+
+    if (challenge === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Verification challenge not found for this run.',
+      })
+    }
+
+    const leases = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowLeasesForRun(trainingRunRef, 1000),
+    })
+    const lease = leases.find(candidate => candidate.leaseRef === body.leaseRef)
+
+    if (lease === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Window lease not found for this run.',
+      })
+    }
+
+    const settlement = yield* Effect.try({
+      catch: error =>
+        error instanceof TassadarRunSettlementUnsafe
+          ? settlementErrorFromUnsafe(error)
+          : new TrainingAuthorityStoreError({
+              kind: 'validation_error',
+              reason: error instanceof Error ? error.message : String(error),
+            }),
+      try: () =>
+        buildTassadarRunSettlement({
+          challenge,
+          lease,
+          nowIso,
+          request: body,
+          run,
+        }),
+    })
+    const ledger = makePayoutLedgerStore(env)
+
+    yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: async () => {
+        await ledger.createPayoutIntent(settlement.intent)
+        await ledger.createPayoutAttempt(settlement.attempt)
+        await ledger.createReconciliationEvent(settlement.reconciliationEvent)
+        await ledger.createPaymentAuthorityReceipt(settlement.settlementReceipt)
+      },
+    })
+
+    const linked = appendTrainingRunReceiptRefs({
+      nowIso,
+      receiptRefs: [settlement.settlementReceiptRef],
+      run,
+    })
+    const storedRun = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.transitionRun(linked.run),
+    })
+    const windows = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowsForRun(trainingRunRef, 100),
+    })
+    const resolved = yield* resolveRunSettlements(dependencies, env, [
+      ...storedRun.receiptRefs,
+      ...windows.flatMap(window => window.receiptRefs),
+      ...leases.flatMap(candidate => candidate.receiptRefs),
+      ...challenges.flatMap(candidate => candidate.verdictRefs),
+    ])
+
+    return noStoreJsonResponse({
+      run: publicTrainingRunProjection(storedRun, nowIso),
+      settlement: {
+        amountSats: settlement.amountSats,
+        contributorRef: settlement.contributorRef,
+        settlementReceiptRef: settlement.settlementReceiptRef,
+        verificationChallengeRef: challenge.challengeRef,
+      },
+      summary: publicTrainingRunSummary({
+        challenges,
+        leases,
+        nowIso,
+        run: storedRun,
+        settledSatsByReceiptRef: resolved.settledSatsByReceiptRef,
+        windows,
+      }),
+    })
+  })
+
 const routeBootstrapGrant = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   request: Request,
@@ -579,6 +724,12 @@ const routeReadRun = <Bindings extends TrainingRunWindowRouteEnv>(
       catch: trainingAuthorityStoreErrorFromUnknown,
       try: () => store.listVerificationChallengesForRun(trainingRunRef, 1000),
     })
+    const settlement = yield* resolveRunSettlements(dependencies, env, [
+      ...record.receiptRefs,
+      ...windows.flatMap(window => window.receiptRefs),
+      ...leases.flatMap(lease => lease.receiptRefs),
+      ...challenges.flatMap(challenge => challenge.verdictRefs),
+    ])
 
     return noStoreJsonResponse({
       run: publicTrainingRunProjection(record, nowIso),
@@ -587,6 +738,7 @@ const routeReadRun = <Bindings extends TrainingRunWindowRouteEnv>(
         leases,
         nowIso,
         run: record,
+        settledSatsByReceiptRef: settlement.settledSatsByReceiptRef,
         windows,
       }),
     })
@@ -618,12 +770,19 @@ const routeListRuns = <Bindings extends TrainingRunWindowRouteEnv>(
           try: () =>
             store.listVerificationChallengesForRun(run.trainingRunRef, 1000),
         })
+        const settlement = yield* resolveRunSettlements(dependencies, env, [
+          ...run.receiptRefs,
+          ...windows.flatMap(window => window.receiptRefs),
+          ...leases.flatMap(lease => lease.receiptRefs),
+          ...challenges.flatMap(challenge => challenge.verdictRefs),
+        ])
 
         return publicTrainingRunSummary({
           challenges,
           leases,
           nowIso,
           run,
+          settledSatsByReceiptRef: settlement.settledSatsByReceiptRef,
           windows,
         })
       }),
@@ -661,12 +820,19 @@ const routeA1Leaderboard = <Bindings extends TrainingRunWindowRouteEnv>(
           try: () =>
             store.listVerificationChallengesForRun(run.trainingRunRef, 1000),
         })
+        const settlement = yield* resolveRunSettlements(dependencies, env, [
+          ...run.receiptRefs,
+          ...windows.flatMap(window => window.receiptRefs),
+          ...leases.flatMap(lease => lease.receiptRefs),
+          ...challenges.flatMap(challenge => challenge.verdictRefs),
+        ])
 
         return publicTrainingRunSummary({
           challenges,
           leases,
           nowIso,
           run,
+          settledSatsByReceiptRef: settlement.settledSatsByReceiptRef,
           windows,
         })
       }),
@@ -709,39 +875,69 @@ const routeA1Leaderboard = <Bindings extends TrainingRunWindowRouteEnv>(
 
 const maxSettlementReceiptLookups = 128
 
-const resolveSettledSatsByReceiptRef = <
-  Bindings extends TrainingRunWindowRouteEnv,
->(
+type RunSettlementInfo = Readonly<{
+  contributorRef: string | null
+  settledSats: number
+}>
+
+type RunSettlementResolution = Readonly<{
+  settledSatsByReceiptRef: ReadonlyMap<string, number>
+  settlementReceiptRefsByContributor: ReadonlyMap<string, ReadonlyArray<string>>
+}>
+
+const emptyRunSettlementResolution: RunSettlementResolution = {
+  settledSatsByReceiptRef: new Map<string, number>(),
+  settlementReceiptRefsByContributor: new Map<string, ReadonlyArray<string>>(),
+}
+
+const settlementInfoFromReceipt = (
+  record: Readonly<{ publicProjectionJson: string; receiptKind: string }>,
+): RunSettlementInfo => {
+  const settledSats = settledSatsFromPaymentAuthorityReceipt(record)
+
+  if (settledSats <= 0) {
+    return { contributorRef: null, settledSats: 0 }
+  }
+
+  const projection = parseJsonRecord(record.publicProjectionJson)
+  const contributorRef =
+    typeof projection?.contributorRef === 'string'
+      ? projection.contributorRef
+      : null
+
+  return { contributorRef, settledSats }
+}
+
+/**
+ * Resolve provider-confirmed settlement for a set of run-linked receipt refs
+ * (openagents #5009). Returns settled sats keyed by receipt ref (for the run
+ * summary metric and leaderboard sums) plus the settlement receipt refs grouped
+ * by contributor (so per-contributor leaderboard rows can surface their settled
+ * sats). Only `settlement_recorded` receipts whose projection is `state:
+ * 'settled'` with a positive integer `amountSats` count; everything else is 0.
+ */
+const resolveRunSettlements = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
-  draft: ReturnType<typeof buildTrainingLeaderboardsProjection>,
-): Effect.Effect<
-  ReadonlyMap<string, number>,
-  TrainingRunWindowRouteError
-> =>
+  receiptRefs: ReadonlyArray<string>,
+): Effect.Effect<RunSettlementResolution, TrainingRunWindowRouteError> =>
   Effect.gen(function* () {
     const makePayoutLedgerStore = dependencies.makePayoutLedgerStore
 
     if (makePayoutLedgerStore === undefined) {
-      return new Map<string, number>()
+      return emptyRunSettlementResolution
     }
 
-    const receiptRefs = [
-      ...new Set(
-        draft.lanes.flatMap(lane =>
-          lane.rows.flatMap(row => row.receiptRefs),
-        ),
-      ),
-    ]
+    const refs = [...new Set(receiptRefs)]
       .sort()
       .slice(0, maxSettlementReceiptLookups)
 
-    if (receiptRefs.length === 0) {
-      return new Map<string, number>()
+    if (refs.length === 0) {
+      return emptyRunSettlementResolution
     }
 
     const ledger = makePayoutLedgerStore(env)
-    const entries = yield* Effect.forEach(receiptRefs, receiptRef =>
+    const entries = yield* Effect.forEach(refs, receiptRef =>
       Effect.tryPromise({
         catch: trainingAuthorityStoreErrorFromUnknown,
         try: async () => {
@@ -752,14 +948,33 @@ const resolveSettledSatsByReceiptRef = <
           return [
             receiptRef,
             record === undefined
-              ? 0
-              : settledSatsFromPaymentAuthorityReceipt(record),
+              ? { contributorRef: null, settledSats: 0 }
+              : settlementInfoFromReceipt(record),
           ] as const
         },
       }),
     )
+    const settled = entries.filter(([, info]) => info.settledSats > 0)
+    const settledSatsByReceiptRef = new Map<string, number>(
+      settled.map(([receiptRef, info]) => [receiptRef, info.settledSats]),
+    )
+    const settlementReceiptRefsByContributor = new Map<
+      string,
+      ReadonlyArray<string>
+    >()
 
-    return new Map(entries.filter(([, settledSats]) => settledSats > 0))
+    for (const [receiptRef, info] of settled) {
+      if (info.contributorRef === null) {
+        continue
+      }
+
+      settlementReceiptRefsByContributor.set(info.contributorRef, [
+        ...(settlementReceiptRefsByContributor.get(info.contributorRef) ?? []),
+        receiptRef,
+      ])
+    }
+
+    return { settledSatsByReceiptRef, settlementReceiptRefsByContributor }
   })
 
 const routeTrainingLeaderboards = <Bindings extends TrainingRunWindowRouteEnv>(
@@ -790,50 +1005,50 @@ const routeTrainingLeaderboards = <Bindings extends TrainingRunWindowRouteEnv>(
             store.listVerificationChallengesForRun(run.trainingRunRef, 1000),
         })
 
-        return {
-          a2Projection: publicDeviceCapabilityProjection({
-            challenges,
-            leases,
-            run,
-            windows,
-          }),
-          a3Projection: publicScalingSweepProjection({
-            challenges,
-            leases,
-            run,
-            windows,
-          }),
-          a5Projection: publicCs336A5EvalProjection({
-            challenges,
-            leases,
-            run,
-            windows,
-          }),
-          summary: publicTrainingRunSummary({
-            challenges,
-            leases,
-            nowIso,
-            run,
-            windows,
-          }),
-        }
+        return { challenges, leases, run, windows }
       }),
     )
-    const builderInput = {
-      a2Projections: inputs.map(input => input.a2Projection),
-      a3Projections: inputs.map(input => input.a3Projection),
-      a5Projections: inputs.map(input => input.a5Projection),
+    const baseBuilderInput = {
+      a2Projections: inputs.map(input =>
+        publicDeviceCapabilityProjection(input),
+      ),
+      a3Projections: inputs.map(input => publicScalingSweepProjection(input)),
+      a5Projections: inputs.map(input => publicCs336A5EvalProjection(input)),
       runs,
-      summaries: inputs.map(input => input.summary),
     }
-    const settledSatsByReceiptRef = yield* resolveSettledSatsByReceiptRef(
-      dependencies,
-      env,
-      buildTrainingLeaderboardsProjection(builderInput),
+    // A draft (no settlement) only to harvest the a2/a3/a4/a5 lane receipt refs,
+    // which carry their own settlement receipts independent of the run link
+    // (a1 settlement is contributor-linked below). Resolve over those refs plus
+    // every run/window/lease/challenge ref so the run summary and all lanes see
+    // the same provider-confirmed settlement (openagents #5009).
+    const draftSummaries = inputs.map(input =>
+      publicTrainingRunSummary({ ...input, nowIso }),
     )
+    const draft = buildTrainingLeaderboardsProjection({
+      ...baseBuilderInput,
+      summaries: draftSummaries,
+    })
+    const settlement = yield* resolveRunSettlements(dependencies, env, [
+      ...inputs.flatMap(input => [
+        ...input.run.receiptRefs,
+        ...input.windows.flatMap(window => window.receiptRefs),
+        ...input.leases.flatMap(lease => lease.receiptRefs),
+        ...input.challenges.flatMap(challenge => challenge.verdictRefs),
+      ]),
+      ...draft.lanes.flatMap(lane => lane.rows.flatMap(row => row.receiptRefs)),
+    ])
     const projection = buildTrainingLeaderboardsProjection({
-      ...builderInput,
-      settledSatsByReceiptRef,
+      ...baseBuilderInput,
+      settledSatsByReceiptRef: settlement.settledSatsByReceiptRef,
+      settlementReceiptRefsByContributor:
+        settlement.settlementReceiptRefsByContributor,
+      summaries: inputs.map(input =>
+        publicTrainingRunSummary({
+          ...input,
+          nowIso,
+          settledSatsByReceiptRef: settlement.settledSatsByReceiptRef,
+        }),
+      ),
     })
     const lanes =
       laneFilter === undefined
@@ -1742,6 +1957,22 @@ export const makeTrainingRunWindowRoutes = <
         request,
         env,
         decodeURIComponent(executorTraceCloseoutMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const runSettlementMatch =
+      /^\/api\/training\/runs\/([^/]+)\/settlement-receipt$/.exec(url.pathname)
+
+    if (runSettlementMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeRunSettlementReceipt(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(runSettlementMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 

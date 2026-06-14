@@ -673,6 +673,37 @@ export const transitionTrainingRunRecord = (
   }
 }
 
+/**
+ * Append settlement (or other) receipt refs to a run without changing its
+ * state, regenerating the public projection (openagents #5009). The run keeps
+ * its current state; only `receiptRefs`, the projection, and `updatedAt` move.
+ * The route persists the returned record through `transitionRun`, whose UPDATE
+ * writes `receipt_refs_json` (unlike `attachRunEvidence`, which only rewrites
+ * the projection JSON and would drop the appended refs on the next read).
+ */
+export const appendTrainingRunReceiptRefs = (
+  input: Readonly<{
+    nowIso: string
+    receiptRefs: ReadonlyArray<string>
+    run: TrainingRunRecord
+  }>,
+): Readonly<{ run: TrainingRunRecord }> => {
+  const nextRun: TrainingRunRecord = {
+    ...input.run,
+    receiptRefs: uniqueRefs([...input.run.receiptRefs, ...input.receiptRefs]),
+    updatedAt: input.nowIso,
+  }
+
+  return {
+    run: {
+      ...nextRun,
+      publicProjectionJson: JSON.stringify(
+        publicTrainingRunProjection(nextRun, input.nowIso),
+      ),
+    },
+  }
+}
+
 export const publicTrainingWindowProjection = (
   record: TrainingWindowRecord,
   nowIso: string,
@@ -932,6 +963,10 @@ export const publicTrainingRunSummary = (
     leases: ReadonlyArray<TrainingWindowLeaseRecord>
     nowIso: string
     run: TrainingRunRecord
+    // Provider-confirmed settled sats keyed by receipt ref (openagents #5009).
+    // Only refs already linked to this run/windows/leases/challenges are summed,
+    // so a settlement that is not dereferenceable from this run contributes 0.
+    settledSatsByReceiptRef?: ReadonlyMap<string, number>
     windows: ReadonlyArray<TrainingWindowRecord>
   }>,
 ): TrainingRunPublicSummary => {
@@ -958,6 +993,11 @@ export const publicTrainingRunSummary = (
     `training.run.${input.run.trainingRunRef}.verification_challenges`,
     ...input.challenges.map(challenge => challenge.challengeRef),
   ]
+  const settledSatsByReceiptRef = input.settledSatsByReceiptRef
+  const providerConfirmedSettledPayoutSats = receiptRefs.reduce(
+    (total, ref) => total + (settledSatsByReceiptRef?.get(ref) ?? 0),
+    0,
+  )
   const payoutMetricRefs = [
     `training.run.${input.run.trainingRunRef}.provider_confirmed_settlements`,
   ]
@@ -1000,8 +1040,8 @@ export const publicTrainingRunSummary = (
         windowMetricRefs,
       ),
       providerConfirmedSettledPayoutSats: metric(
-        0,
-        'Provider-confirmed settlement receipts linked to this run only; pending, offered, claimed, or wallet-side records are excluded.',
+        providerConfirmedSettledPayoutSats,
+        'Sum of provider-confirmed settlement receipts (receiptKind settlement_recorded, state settled) linked to this run only; pending, offered, claimed, or wallet-side records are excluded.',
         payoutMetricRefs,
       ),
       receiptRefCount: metric(

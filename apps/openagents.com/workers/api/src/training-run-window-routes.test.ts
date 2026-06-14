@@ -11,12 +11,90 @@ import {
   type TrainingWindowRecord,
 } from './training-run-window-authority'
 import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
+import type {
+  NexusPaymentAuthorityReceiptRecord,
+  NexusTreasuryPayoutAttemptRecord,
+  NexusTreasuryPayoutIntentRecord,
+  NexusTreasuryPayoutLedgerStore,
+  NexusTreasuryPayoutReconciliationEventRecord,
+} from './nexus-treasury-payout-ledger'
 import {
   type TrainingVerificationChallengeRecord,
   buildTrainingVerificationChallengeRecord,
   finalizeTrainingVerificationChallengeRecord,
   leaseTrainingVerificationChallengeRecord,
 } from './training-verification'
+
+/**
+ * In-memory treasury payout ledger stub. Reads come from the seeded receipt map
+ * (and anything written through createPaymentAuthorityReceipt); the payout
+ * intent/attempt/reconciliation creates record into in-memory maps so the
+ * settlement-receipt route (openagents #5009) can be exercised end to end.
+ */
+const makeLedgerStoreStub = (
+  seededReceipts: ReadonlyArray<
+    readonly [string, { publicProjectionJson: string; receiptKind: string }]
+  > = [],
+): NexusTreasuryPayoutLedgerStore & {
+  readonly receipts: Map<string, NexusPaymentAuthorityReceiptRecord>
+} => {
+  const receipts = new Map<string, NexusPaymentAuthorityReceiptRecord>()
+
+  for (const [ref, partial] of seededReceipts) {
+    receipts.set(ref, {
+      archivedAt: null,
+      audience: 'public',
+      createdAt: '2026-06-10T10:00:00.000Z',
+      eventRef: null,
+      id: `seed_${ref}`,
+      metadataRefs: [],
+      payoutAttemptRef: null,
+      payoutIntentRef: `intent_${ref}`,
+      publicProjectionJson: partial.publicProjectionJson,
+      receiptKind:
+        partial.receiptKind as NexusPaymentAuthorityReceiptRecord['receiptKind'],
+      receiptRef: ref,
+    })
+  }
+
+  const intents = new Map<string, NexusTreasuryPayoutIntentRecord>()
+  const attempts = new Map<string, NexusTreasuryPayoutAttemptRecord>()
+  const events = new Map<
+    string,
+    NexusTreasuryPayoutReconciliationEventRecord
+  >()
+  const notImplemented = async (): Promise<never> => {
+    throw new Error('not implemented in ledger stub')
+  }
+
+  return {
+    createPaymentAuthorityReceipt: async record => {
+      receipts.set(record.receiptRef, record)
+    },
+    createPayoutAttempt: async record => {
+      attempts.set(record.payoutAttemptRef, record)
+    },
+    createPayoutIntent: async record => {
+      intents.set(record.payoutIntentRef, record)
+    },
+    createPayoutTargetApproval: async () => {},
+    createReconciliationEvent: async record => {
+      events.set(record.eventRef, record)
+    },
+    createReleaseGate: async () => {},
+    listPaymentAuthorityReceipts: async () => [...receipts.values()],
+    readPaymentAuthorityReceiptByRef: async receiptRef =>
+      receipts.get(receiptRef),
+    readPayoutAttemptByIdempotencyKeyHash: notImplemented,
+    readPayoutAttemptByRef: notImplemented,
+    readPayoutIntentByBuyerPaymentRef: notImplemented,
+    readPayoutIntentByIdempotencyKeyHash: notImplemented,
+    readPayoutIntentByRef: async payoutIntentRef =>
+      intents.get(payoutIntentRef),
+    readReconciliationEventByRef: notImplemented,
+    receipts,
+  }
+}
 
 const jsonRequest = (
   path: string,
@@ -211,12 +289,10 @@ describe('training run window routes', () => {
         },
       ],
     ])
+    const ledgerStore = makeLedgerStoreStub([...settlementReceipts])
     const routes = makeTrainingRunWindowRoutes({
       makeId: () => String(++counter).padStart(4, '0'),
-      makePayoutLedgerStore: () => ({
-        readPaymentAuthorityReceiptByRef: async receiptRef =>
-          settlementReceipts.get(receiptRef),
-      }),
+      makePayoutLedgerStore: () => ledgerStore,
       makeStore: () => store,
       nowIso: () => '2026-06-10T10:00:00.000Z',
       requireAdminApiToken: async () => true,
@@ -761,6 +837,153 @@ describe('training run window routes', () => {
       ),
     )
     expect(unknownWindow.status).toBe(404)
+  })
+
+  it('settles accepted exact_trace_replay work into a run-linked settlement receipt that surfaces settledPayoutSats (#5009)', async () => {
+    const store = makeMemoryStore()
+    const ledgerStore = makeLedgerStoreStub()
+    const planned = buildTrainingRunRecord({
+      makeId: () => 'run5009',
+      nowIso: '2026-06-14T10:00:00.000Z',
+      request: {
+        manifest: { artifactDigestRefs: [], blockerRefs: [], spendCapSats: 100 },
+        promiseRef: 'training.monday_decentralized_training_launch.v1',
+        trainingRunRef: 'run.tassadar.executor.20260615',
+      },
+    })
+    store._testSeedRun({ ...planned, state: 'active' })
+
+    const lease: TrainingWindowLeaseRecord = {
+      claimedAt: '2026-06-14T10:01:00.000Z',
+      id: 'lease5009',
+      leaseExpiresAt: '2026-06-14T12:00:00.000Z',
+      leaseRef: 'lease.tassadar.5009',
+      publicProjectionJson: '{}',
+      pylonRef: 'pylon.contributor.stranger',
+      receiptRefs: [],
+      state: 'active',
+      trainingRunRef: 'run.tassadar.executor.20260615',
+      windowRef: 'training.window.tassadar.executor.20260615.w1',
+    }
+    await store.claimLease(lease, '2026-06-14T10:01:00.000Z')
+
+    const challenge = buildTrainingVerificationChallengeRecord({
+      makeId: () => '5009',
+      nowIso: '2026-06-14T10:02:00.000Z',
+      request: {
+        commitmentRefs: ['commitment.tassadar.5009'],
+        contributionRef: 'contribution.tassadar.5009',
+        homeworkKind: 'admin_dispatched_homework',
+        payload: {
+          replayDigestRef: 'digest.replay.5009',
+          traceCommitmentDigestRef: 'digest.commitment.5009',
+        },
+        trainingRunRef: 'run.tassadar.executor.20260615',
+        verificationClass: 'exact_trace_replay',
+        windowRef: 'training.window.tassadar.executor.20260615.w1',
+      },
+    }).challenge
+    const leased = leaseTrainingVerificationChallengeRecord({
+      challenge,
+      eventId: '5009-lease',
+      nowIso: '2026-06-14T10:02:30.000Z',
+      request: { validatorRef: 'validator.tassadar.5009' },
+    }).challenge
+    const verified = finalizeTrainingVerificationChallengeRecord({
+      challenge: leased,
+      eventId: '5009-final',
+      nowIso: '2026-06-14T10:03:00.000Z',
+      request: { receiptRefs: ['receipt.tassadar.verdict.5009'] },
+      verdict: {
+        failureCodes: [],
+        state: 'Verified',
+        verdictRefs: ['verdict.tassadar.5009'],
+      },
+    }).challenge
+    store._testSeedChallenge(verified)
+
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => 'id5009',
+      makePayoutLedgerStore: () => ledgerStore,
+      makeStore: () => store,
+      nowIso: () => '2026-06-14T10:05:00.000Z',
+      requireAdminApiToken: async () => true,
+    })
+
+    const settled = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          '/api/training/runs/run.tassadar.executor.20260615/settlement-receipt',
+          {
+            amountSats: 21,
+            challengeRef: verified.challengeRef,
+            idempotencyRef: 'idem.tassadar.5009',
+            leaseRef: 'lease.tassadar.5009',
+            operatorApprovalRef: 'operator.approval.5009',
+            payoutTargetApprovalRef: 'payout.target.approval.5009',
+            payoutTargetRef: 'payout.target.5009',
+          },
+        ),
+        {},
+      ),
+    )
+    const settledBody = (await settled.json()) as {
+      settlement: {
+        amountSats: number
+        contributorRef: string
+        settlementReceiptRef: string
+      }
+      summary: TrainingRunPublicSummary
+    }
+
+    expect(settled.status).toBe(200)
+    expect(settledBody.settlement.amountSats).toBe(21)
+    expect(settledBody.settlement.contributorRef).toBe(
+      'pylon.contributor.stranger',
+    )
+    expect(settledBody.settlement.settlementReceiptRef).toMatch(
+      /^receipt\.nexus\.tassadar_run_settlement\./,
+    )
+    expect(
+      settledBody.summary.metrics.providerConfirmedSettledPayoutSats.value,
+    ).toBe(21)
+
+    // The settlement receipt is provider-confirmed (settlement_recorded, settled)
+    // and linked onto the run, so a fresh GET reflects it from the ledger.
+    const detail = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request(
+          'https://openagents.test/api/training/runs/run.tassadar.executor.20260615',
+        ),
+        {},
+      ),
+    )
+    const detailBody = (await detail.json()) as TrainingRunDetailJson
+
+    expect(detail.status).toBe(200)
+    expect(
+      detailBody.summary.metrics.providerConfirmedSettledPayoutSats.value,
+    ).toBe(21)
+
+    // Over the run spend cap -> rejected, no money-shaped projection leaks.
+    const overCap = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          '/api/training/runs/run.tassadar.executor.20260615/settlement-receipt',
+          {
+            amountSats: 5000,
+            challengeRef: verified.challengeRef,
+            idempotencyRef: 'idem.tassadar.5009.overcap',
+            leaseRef: 'lease.tassadar.5009',
+            operatorApprovalRef: 'operator.approval.5009',
+            payoutTargetApprovalRef: 'payout.target.approval.5009',
+            payoutTargetRef: 'payout.target.5009',
+          },
+        ),
+        {},
+      ),
+    )
+    expect(overCap.status).toBe(400)
   })
 
   it('returns an honest idle empty state for runs with no windows or verification data', async () => {

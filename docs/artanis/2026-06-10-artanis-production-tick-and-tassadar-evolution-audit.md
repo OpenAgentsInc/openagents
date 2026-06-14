@@ -243,10 +243,14 @@ tick model in §2 is for.
   delegated Artanis sub-identity with narrower scope? Registration
   ownership (the PoC's `pylon_api_forbidden` residual) is the same
   question from the other side.
-- **The payout adapter**: hosted-MDK programmatic payouts are disabled
-  upstream and the agent-wallet adapter is unregistered in the payment
-  authority. Which gets fixed first? (The loop's paid stage depends on
-  one of them; the local bridge pattern does not automate.)
+- **The payout adapter**: the OpenAgents treasury wallet (the `/treasury`
+  MDK-backed wallet) makes payouts programmatically, and Artanis is already
+  wired to pay out from it under bounded spend authority (the nexus-treasury
+  payout ledger). Any earlier note here that "hosted-MDK programmatic payouts
+  are disabled" describes only the hosted-MDK SDK's own payout path, which is
+  not what the loop uses — it is not a constraint on the treasury/Artanis
+  payout path. The open question is the standing cap and per-payout policy, not
+  whether payout can run automatically.
 - **Candidate model architecture**: what do Stage-2 candidates actually
   train — a small from-scratch transformer (Psion-adjacent), a LoRA on
   an existing open model, or both as separate eval rows? Out of this

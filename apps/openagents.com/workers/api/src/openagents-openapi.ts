@@ -1739,6 +1739,12 @@ const requestSchemas = (): JsonSchema => ({
   TrainingRunExecutorTraceCloseoutRequest: objectSummary(
     'Admin-only executor-trace closeout submission for a run: a public-safe closeout evidence object (assignmentRef, pylonDeviceRef, validatorDeviceRef, replayDigestRef, traceCommitmentDigestRef, sampledWindow + sampledWindowRef, workerReceiptRef, workloadFamily) plus the windowRef. Builds a run+window-tied exact_trace_replay verification challenge; the validator device must differ from the worker Pylon.',
   ),
+  TrainingRunSettlementRequest: objectSummary(
+    'Admin-only operator-approved settlement of one accepted (Verified) exact_trace_replay executor-trace work item for a run: amountSats (within the run manifest spendCapSats and the hard per-payout cap), the challengeRef and leaseRef being settled, an idempotencyRef, an operatorApprovalRef, a redacted payoutTargetRef + payoutTargetApprovalRef, and an optional adapterKind (simulation for proofs; mdk_agent_wallet for the real treasury/Artanis dispatch). Records the treasury payout chain and links a provider-confirmed settlement receipt onto the run. No raw invoices, preimages, payment hashes, wallet material, or payout-target addresses are accepted or returned.',
+  ),
+  TrainingRunSettlementEnvelope: objectSummary(
+    'Settlement result: the updated run projection, a settlement block (amountSats, contributorRef, settlementReceiptRef, verificationChallengeRef), and the run summary whose providerConfirmedSettledPayoutSats now reflects the provider-confirmed settled receipt linked to the run.',
+  ),
   TrainingWindowPlanRequest: objectSummary(
     'Admin-only request to plan a training window for a trainingRunRef, including homeworkKind, priority, datasetRefs, sourceRefs, and receiptRefs as public-safe refs only.',
   ),
@@ -3408,6 +3414,27 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Created run-tied exact_trace_replay verification challenge.',
           '#/components/schemas/TrainingVerificationChallengeEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/settlement-receipt': {
+    post: operation({
+      operationId: 'settleTrainingRunAcceptedWork',
+      summary: 'Settle accepted executor-trace work into a run-linked receipt',
+      description:
+        'Admin-only (#5009 — the earn-Bitcoin leg). Settles one accepted (Verified) exact_trace_replay executor-trace work item for the run: it records the operator-approved treasury payout chain (intent -> attempt -> reconciliation -> settlement_recorded receipt) under the run manifest spendCapSats plus a hard per-payout cap, then links the provider-confirmed settlement receipt onto the run. Payout itself is programmatic via the OpenAgents treasury wallet (Artanis pays out under bounded spend authority); adapterKind selects simulation (proofs, no money movement) or mdk_agent_wallet (real dispatch). After settlement the run summary providerConfirmedSettledPayoutSats and the A1 leaderboard settledPayoutSats reflect the settled receipt; pending/credited/payment-received states are never counted as settled. A non-Verified or wrong-class challenge, a challenge/lease not on the run, a missing run cap, or an over-cap amount is rejected. No raw invoices, preimages, payment hashes, wallet material, or payout-target addresses are accepted or returned.',
+      tags: ['Training', 'Operator', 'Pylon'],
+      security: adminBearer,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingRunSettlementRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Recorded run-linked provider-confirmed settlement receipt.',
+          '#/components/schemas/TrainingRunSettlementEnvelope',
         ),
         ...errorResponses(),
       },

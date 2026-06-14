@@ -178,9 +178,14 @@ Red / the gap (the rest of the critical path):
   fleet is thin (~4 nodes online / 51 registered, mostly rc1) and the loop is
   currently dispatch-failing for lack of eligible online devices. Autopilot
   Desktop is the new install but does not yet bundle/launch the node (§0 seam).
-- **Payout leg constrained:** hosted-MDK **programmatic payouts are disabled on
-  the production account**, so tomorrow's earn leg is operator-approved small-sats
-  with a hard spend cap, not unattended dispatch.
+- **Payout leg — programmatic via the treasury wallet.** Correction (2026-06-14,
+  owner): payouts are **not** blocked. The OpenAgents **treasury wallet** (the
+  `/treasury` MDK-backed wallet) can make payouts, and **Artanis is already wired
+  to pay out from it** under bounded spend authority (the nexus-treasury payout
+  ledger). So the earn leg is **programmatic treasury payout under the run's spend
+  cap** — the "hosted-MDK checkout payout adapter is off" note is about one
+  specific adapter and does **not** mean payouts are operator-manual-only. The
+  spend cap + receipt discipline still bind.
 - **Settlement projection:** `settledPayoutSats` reads `0` even where receipts
   exist — settlement isn't joined into the public projection.
 - **`models.tassadar_percepta_executor.v1` stays red** — we are launching the
@@ -241,13 +246,14 @@ spine; E makes it honest; F→G make it usable and public.
 - **Next:** Step D below — pay the contributor real sats for accepted work.
 
 ### D. Payout + settlement to the contributor · worker-api + pylon
-**The "earn Bitcoin" leg — highest-risk, drive it first.**
+**The "earn Bitcoin" leg — drive it first.**
 - Accepted executor-trace work → real-sats payout to the contributor's wallet
-  over the reliable-tips ladder / MDK bridge → **public settlement receipt**.
-- Given prod programmatic payouts are off: wire the **operator-approved
-  small-sats** payout path with a strict per-payout + per-run spend cap. A
-  stranger earning 21 sats with a real receipt is the win; an elegant unattended
-  system that pays no one is not.
+  from the **OpenAgents treasury wallet** (the `/treasury` MDK-backed wallet that
+  **Artanis already pays out from**, via the nexus-treasury payout ledger) →
+  **public settlement receipt** linked to the run.
+- Payouts are **programmatic** under the run's per-payout + per-run **spend cap**
+  (not operator-manual-only — see the §3 correction). A stranger earning a few
+  sats with a real, dereferenceable receipt is the win.
 - Keep `paid ≠ accepted ≠ credited ≠ settled` distinct — never collapse them.
 - **Done when:** a non-owner holds a real settled Lightning payout from the
   Tassadar run with a dereferenceable public receipt.
@@ -358,16 +364,20 @@ bun run verify:autopilot-desktop:training   # Autopilot Desktop training cockpit
 New end-to-end **stranger smoke** (passing it *is* the launch): fresh non-owner
 **Autopilot Desktop install → node online → declare executor capability** → admit
 to the Tassadar run → dispatch a digest-pinned workload → exact-replay verify →
-operator-approved small-sats payout → public receipt → run/leaderboard reflects it
-+ corpus count grows.
+programmatic treasury payout (capped) → public receipt → run/leaderboard reflects
+it + corpus count grows.
 
 ---
 
 ## 9. Risks & abort rules
 
-- **Payout leg (D) is the gating risk** (prod programmatic MDK payouts off) — wire
-  the operator-approved small-sats path with a hard cap; do not block the launch
-  on unattended payout.
+- **Payout leg (D) is the gating risk** — the read/write seam linking accepted
+  executor work to a run-referenced settlement receipt is the part that isn't
+  wired yet. Payout itself is programmatic: the OpenAgents treasury wallet (the
+  `/treasury` MDK-backed wallet) makes the payout and Artanis is already wired to
+  pay out from it under bounded spend authority (the nexus-treasury payout
+  ledger). Keep a hard per-payout cap; do not block the launch on large
+  unattended dispatch.
 - **Thin/rc1 fleet + the §0 install seam** — the loop is dispatch-failing for lack
   of eligible online devices; the launch's job is to bring devices online, so make
   Autopilot-install → node-online → admit frictionless (resolve the bundle/launch

@@ -115,6 +115,10 @@ const sortRows = (
 
 const a1Rows = (
   summaries: ReadonlyArray<TrainingRunPublicSummary>,
+  settlementReceiptRefsByContributor: ReadonlyMap<
+    string,
+    ReadonlyArray<string>
+  >,
 ): ReadonlyArray<TrainingLeaderboardDraftRow> =>
   summaries.flatMap(summary =>
     summary.realGradient.leaderboardRows
@@ -131,7 +135,10 @@ const a1Rows = (
           contributorRef: row.pylonRef,
           lane: 'a1_loss' as const,
           metricRef: 'metric.cs336_a1.validation_loss',
-          receiptRefs: [],
+          // Provider-confirmed settlement receipts linked to this run for this
+          // contributor (openagents #5009). sortRows sums their settled sats.
+          receiptRefs:
+            settlementReceiptRefsByContributor.get(row.pylonRef) ?? [],
           score: row.bestValidationLoss ?? Number.POSITIVE_INFINITY,
           scoreLabel: 'validation_loss',
           scoreSortDirection: 'asc' as const,
@@ -286,16 +293,23 @@ export const buildTrainingLeaderboardsProjection = (
     a5Projections: ReadonlyArray<Cs336A5EvalDashboardProjection>
     runs: ReadonlyArray<TrainingRunRecord>
     settledSatsByReceiptRef?: ReadonlyMap<string, number>
+    settlementReceiptRefsByContributor?: ReadonlyMap<
+      string,
+      ReadonlyArray<string>
+    >
     summaries: ReadonlyArray<TrainingRunPublicSummary>
   }>,
 ): TrainingLeaderboardsProjection => {
   const settledSatsByReceiptRef =
     input.settledSatsByReceiptRef ?? new Map<string, number>()
+  const settlementReceiptRefsByContributor =
+    input.settlementReceiptRefsByContributor ??
+    new Map<string, ReadonlyArray<string>>()
   const rowsByLane: Record<
     TrainingLeaderboardLane,
     ReadonlyArray<TrainingLeaderboardDraftRow>
   > = {
-    a1_loss: a1Rows(input.summaries),
+    a1_loss: a1Rows(input.summaries, settlementReceiptRefsByContributor),
     a2_throughput: a2Rows(input.a2Projections),
     a3_isoflop: a3Rows(input.a3Projections),
     a4_eval_delta: input.runs.flatMap(a4RowsFromRun),
