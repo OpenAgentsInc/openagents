@@ -71,6 +71,37 @@ public-tier floor enforced server-side, paid in USD credits → P4 USD→sats br
   quotes/executes/settles (reuse `drive-labor-chain.ts` for the market leg) →
   USD credit debit funds the sats escrow via P4 → settle → public receipts.
 
+## NEEDS-OWNER (the real wall, found 2026-06-14)
+
+Progress this iteration: the provider Pylon is now **registered** as the owner's
+node (`pylon presence register`, `registrationRef registration.pylon.5e0fbea1…`).
+
+But the **owner-job / product-order submission is auth-gated**, and this is the
+genuine blocker for both #4782 and #4783's live proofs:
+
+- `pylon work submit` and `POST /api/autopilot/work` use
+  `authenticateCustomerOrderAgentRequest`
+  (`customer-order-agent-auth.ts`), which requires the bearer agent to carry an
+  **active customer-order grant with the required scope**. The labor requester
+  token (Raynor) authenticates as an agent but has **no customer-order grant**,
+  so every submit returns **401 unauthorized** (verified by direct probe).
+- #4782's owner-job leg needs a *real* owner Autopilot work order dispatched to
+  the provider node; #4783's leg needs a *real* product order. Both require that
+  customer-order-granted credential. It cannot be faked (and the run mandate
+  says not to fake the owner-job receipt).
+
+**To unblock (owner action — one of):**
+1. Provision a **customer-order grant** for an existing agent (e.g. Raynor) so
+   `pylon work submit` is authorized, or
+2. Provide an **agent token that already has a customer-order grant**, or
+3. Submit the owner work order / product order via an **authenticated browser
+   session** (the route also accepts `requireBrowserSession`).
+
+Once any of those is available, the remaining steps are fully mapped above and
+the market leg + drivers are proven — both issues can then close with live
+receipts. Until then they are honestly owner-blocked on this credential, not on
+missing engineering.
+
 ## Honesty posture (unchanged)
 
 The provider is a genuinely independent node identity (separate home + pubkey),
