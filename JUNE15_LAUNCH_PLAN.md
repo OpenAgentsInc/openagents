@@ -153,6 +153,16 @@ Shipped since this plan was written:
   spend cap, status URL, abort rule), a `live_at_read` staleness contract, and
   typed blockers; a run-level state-transition route now moves runs off `planned`
   without D1 patches. No promise flipped green.
+- ✅ **Step B — executor-trace admission + claimable work is live** (#5007,
+  deployed). `POST /api/training/runs/{ref}/admit` makes a **reasoned admission
+  decision** (receipted executor capability + owner-operated check + the #4852
+  host-RAM device gate, every branch with a stated measured reason), and the run
+  now carries a claimable, **digest-pinned executor-trace work window**
+  (`activeWindowCount: 1`); verification is already run-aware (`exact_trace_replay`
+  challenge carries `trainingRunRef` + `windowRef`). The **live non-owner
+  admit→claim→verify run-through is the launch event** (§6), not faked on the
+  production run; `assignedContributorCount` stays 0 until a real contributor
+  claims. No-spend only; no promise flipped green.
 
 Red / the gap (the rest of the critical path):
 
@@ -194,15 +204,20 @@ spine; E makes it honest; F→G make it usable and public.
 - **Next:** Step B below — make a non-owner contributor able to join and be
   dispatched real executor-trace work from this run.
 
-### B. Self-serve executor-capability admission + dispatch · pylon + worker-api
-- A fresh contributor Pylon declares the **executor-trace capability**, the run
-  **admits** it via the reasoned device-admission gates (#4852), and the
-  evolution loop / dispatcher hands it a **digest-pinned executor workload** (not
-  no-spend — a real paid assignment under the run's spend cap).
-- This is the loop already running, pointed at the public run and real
-  contributors instead of idle owner devices.
-- **Done when:** a **non-owner** Pylon is admitted and dispatched real
-  executor-trace work in the Tassadar run projection.
+### B. Self-serve executor-capability admission + claimable work · ✅ machinery DONE (#5007)
+- Shipped + deployed: `POST /api/training/runs/{ref}/admit` makes a reasoned
+  admit/exclude decision (receipted **executor-trace capability** + owner-operated
+  check + the reasoned device-admission gates #4852, every branch with a stated
+  measured reason), and the run carries a claimable **digest-pinned executor-trace
+  work window** (`activeWindowCount: 1`) that an admitted contributor claims via
+  `POST /api/training/leases/claim`.
+- **Done when (machinery, met):** the run gates contributors with measured
+  reasons and exposes claimable executor-trace work. **The live non-owner
+  admit→claim run-through is the launch event** (§6) — `assignedContributorCount`
+  stays 0 until a real contributor claims; not faked on the production run.
+- **Next:** Step C below — wire the contributor's executor-trace closeout
+  submission to the run-tied `exact_trace_replay` verification so verified work
+  surfaces in the run's `verifiedWorkCount`.
 
 ### C. Exact-replay verification · worker-api
 - The submission is re-executed on a separate validator device; a public
