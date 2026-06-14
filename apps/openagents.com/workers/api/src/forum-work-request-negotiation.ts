@@ -19,11 +19,26 @@ export type ForumWorkRequestOfferRecord = Readonly<{
   createdAt: string
   offerId: string
   providerActorRef: string
+  providerPubkey: string | null
   publicProjection: Record<string, unknown>
   quoteRef: string
   relayEventRef: string | null
   state: ForumWorkRequestOfferState
   updatedAt: string
+  workRequestId: string
+}>
+
+export type ForumWorkRequestResultRecord = Readonly<{
+  artifactRefs: ReadonlyArray<string>
+  closeoutRef: string | null
+  createdAt: string
+  offerId: string
+  providerActorRef: string
+  publicProjection: Record<string, unknown>
+  quoteRef: string
+  resultEventRef: string
+  resultId: string
+  verificationCommandRef: string
   workRequestId: string
 }>
 
@@ -48,8 +63,21 @@ export type ForumWorkRequestOfferInput = Readonly<{
   capabilityRefs: ReadonlyArray<string>
   offerId: string
   providerActorRef: string
+  providerPubkey?: string | null
   quoteRef: string
   relayEventRef?: string | null
+  workRequestId: string
+}>
+
+export type ForumWorkRequestResultInput = Readonly<{
+  artifactRefs?: ReadonlyArray<string> | undefined
+  closeoutRef?: string | null
+  offerId: string
+  providerActorRef: string
+  quoteRef: string
+  resultEventRef: string
+  resultId: string
+  verificationCommandRef: string
   workRequestId: string
 }>
 
@@ -79,11 +107,26 @@ type ForumWorkRequestOfferRow = Readonly<{
   created_at: string
   id: string
   provider_actor_ref: string
+  provider_pubkey: string | null
   public_projection_json: string
   quote_ref: string
   relay_event_ref: string | null
   state: ForumWorkRequestOfferState
   updated_at: string
+  work_request_id: string
+}>
+
+type ForumWorkRequestResultRow = Readonly<{
+  artifact_refs_json: string
+  closeout_ref: string | null
+  created_at: string
+  id: string
+  offer_id: string
+  provider_actor_ref: string
+  public_projection_json: string
+  quote_ref: string
+  result_event_ref: string
+  verification_command_ref: string
   work_request_id: string
 }>
 
@@ -132,12 +175,54 @@ const normalizeRefs = (
   return normalized
 }
 
+const ProviderPubkeyPattern = /^[0-9a-f]{64}$/i
+
+const normalizeProviderPubkey = (
+  pubkey: string | null | undefined,
+): string | null => {
+  if (pubkey === null || pubkey === undefined) {
+    return null
+  }
+
+  const trimmed = pubkey.trim().toLowerCase()
+
+  if (trimmed.length === 0) {
+    return null
+  }
+
+  if (!ProviderPubkeyPattern.test(trimmed)) {
+    throw new ForumWorkRequestNegotiationUnsafe(
+      'providerPubkey must be a 64-char hex nostr pubkey.',
+    )
+  }
+
+  return trimmed
+}
+
+const normalizeResultArtifactRefs = (
+  refs: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> => {
+  const normalized = Array.from(
+    new Set((refs ?? []).map(ref => ref.trim()).filter(ref => ref.length > 0)),
+  )
+
+  if (normalized.length > 12) {
+    throw new ForumWorkRequestNegotiationUnsafe(
+      'artifactRefs accepts at most 12 public refs.',
+    )
+  }
+
+  assertPublicSafe(normalized, 'artifactRefs')
+  return normalized
+}
+
 const offerProjection = (
   input: Readonly<{
     amountMsats: number
     capabilityRefs: ReadonlyArray<string>
     offerId: string
     providerActorRef: string
+    providerPubkey: string | null
     quoteRef: string
     relayEventRef: string | null
     state: ForumWorkRequestOfferState
@@ -149,12 +234,41 @@ const offerProjection = (
     capabilityRefs: input.capabilityRefs,
     offerRef: `work_offer.public.${input.offerId}`,
     providerActorRef: input.providerActorRef,
+    providerPubkey: input.providerPubkey,
     quoteRef: input.quoteRef,
     relayEventRef: input.relayEventRef,
     state: input.state,
     workRequestRef: `work_request.public.${input.workRequestId}`,
   }
   assertPublicSafe(projection, 'work request offer projection')
+  return projection
+}
+
+const resultProjection = (
+  input: Readonly<{
+    artifactRefs: ReadonlyArray<string>
+    closeoutRef: string | null
+    offerId: string
+    providerActorRef: string
+    quoteRef: string
+    resultEventRef: string
+    resultId: string
+    verificationCommandRef: string
+    workRequestId: string
+  }>,
+): Record<string, unknown> => {
+  const projection = {
+    artifactRefs: input.artifactRefs,
+    closeoutRef: input.closeoutRef,
+    offerRef: `work_offer.public.${input.offerId}`,
+    providerActorRef: input.providerActorRef,
+    quoteRef: input.quoteRef,
+    resultEventRef: input.resultEventRef,
+    resultRef: `work_result.public.${input.resultId}`,
+    verificationCommandRef: input.verificationCommandRef,
+    workRequestRef: `work_request.public.${input.workRequestId}`,
+  }
+  assertPublicSafe(projection, 'work request result projection')
   return projection
 }
 
@@ -203,11 +317,28 @@ const offerFromRow = (row: ForumWorkRequestOfferRow): ForumWorkRequestOfferRecor
   createdAt: row.created_at,
   offerId: row.id,
   providerActorRef: row.provider_actor_ref,
+  providerPubkey: row.provider_pubkey ?? null,
   publicProjection: parseJsonRecord(row.public_projection_json) ?? {},
   quoteRef: row.quote_ref,
   relayEventRef: row.relay_event_ref,
   state: row.state,
   updatedAt: row.updated_at,
+  workRequestId: row.work_request_id,
+})
+
+const resultFromRow = (
+  row: ForumWorkRequestResultRow,
+): ForumWorkRequestResultRecord => ({
+  artifactRefs: parseJsonStringArray(row.artifact_refs_json),
+  closeoutRef: row.closeout_ref,
+  createdAt: row.created_at,
+  offerId: row.offer_id,
+  providerActorRef: row.provider_actor_ref,
+  publicProjection: parseJsonRecord(row.public_projection_json) ?? {},
+  quoteRef: row.quote_ref,
+  resultEventRef: row.result_event_ref,
+  resultId: row.id,
+  verificationCommandRef: row.verification_command_ref,
   workRequestId: row.work_request_id,
 })
 
@@ -241,13 +372,14 @@ export const recordForumWorkRequestOffer = (
 
     const amountMsats = input.amountSats * 1000
     const relayEventRef = input.relayEventRef ?? null
-    const { capabilityRefs, projection } = yield* Effect.try({
+    const { capabilityRefs, projection, providerPubkey } = yield* Effect.try({
       catch: validationError,
       try: () => {
         const capabilityRefs = normalizeRefs(
           input.capabilityRefs,
           'capabilityRefs',
         )
+        const providerPubkey = normalizeProviderPubkey(input.providerPubkey)
         return {
           capabilityRefs,
           projection: offerProjection({
@@ -255,11 +387,13 @@ export const recordForumWorkRequestOffer = (
             capabilityRefs,
             offerId: input.offerId,
             providerActorRef: input.providerActorRef,
+            providerPubkey,
             quoteRef: input.quoteRef,
             relayEventRef,
             state: 'offered',
             workRequestId: input.workRequestId,
           }),
+          providerPubkey,
         }
       },
     })
@@ -272,6 +406,7 @@ export const recordForumWorkRequestOffer = (
              work_request_id,
              quote_ref,
              provider_actor_ref,
+             provider_pubkey,
              amount_sats,
              amount_msats,
              capability_refs_json,
@@ -281,13 +416,14 @@ export const recordForumWorkRequestOffer = (
              created_at,
              updated_at
            )
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'offered', ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'offered', ?, ?, ?)`,
         )
         .bind(
           input.offerId,
           input.workRequestId,
           input.quoteRef,
           input.providerActorRef,
+          providerPubkey,
           input.amountSats,
           amountMsats,
           JSON.stringify(capabilityRefs),
@@ -353,6 +489,144 @@ export const readForumWorkRequestOfferByQuoteRef = (
       .bind(workRequestId, quoteRef)
       .first<ForumWorkRequestOfferRow>(),
   ).pipe(Effect.map(row => (row === null ? null : offerFromRow(row))))
+
+export const listForumWorkRequestResults = (
+  db: D1Database,
+  workRequestId: string,
+): Effect.Effect<ReadonlyArray<ForumWorkRequestResultRecord>, ForumStorageError> =>
+  d1Effect('forumWorkRequests.listResults', () =>
+    db
+      .prepare(
+        `SELECT *
+           FROM forum_work_request_results
+          WHERE work_request_id = ?
+            AND archived_at IS NULL
+          ORDER BY created_at DESC, id DESC`,
+      )
+      .bind(workRequestId)
+      .all<ForumWorkRequestResultRow>(),
+  ).pipe(Effect.map(result => (result.results ?? []).map(resultFromRow)))
+
+export const readForumWorkRequestResultByQuoteRef = (
+  db: D1Database,
+  workRequestId: string,
+  quoteRef: string,
+): Effect.Effect<ForumWorkRequestResultRecord | null, ForumStorageError> =>
+  d1Effect('forumWorkRequests.readResultByQuoteRef', () =>
+    db
+      .prepare(
+        `SELECT *
+           FROM forum_work_request_results
+          WHERE work_request_id = ?
+            AND quote_ref = ?
+            AND archived_at IS NULL
+          LIMIT 1`,
+      )
+      .bind(workRequestId, quoteRef)
+      .first<ForumWorkRequestResultRow>(),
+  ).pipe(Effect.map(row => (row === null ? null : resultFromRow(row))))
+
+export const recordForumWorkRequestResult = (
+  db: D1Database,
+  input: ForumWorkRequestResultInput,
+  nowIso: string,
+): Effect.Effect<
+  ForumWorkRequestResultRecord,
+  ForumStorageError | ForumValidationError
+> =>
+  Effect.gen(function* () {
+    const { artifactRefs, closeoutRef, projection } = yield* Effect.try({
+      catch: validationError,
+      try: () => {
+        const artifactRefs = normalizeResultArtifactRefs(input.artifactRefs)
+        const closeoutRefRaw = input.closeoutRef?.trim() ?? ''
+        const closeoutRef = closeoutRefRaw.length === 0 ? null : closeoutRefRaw
+        const resultEventRef = input.resultEventRef.trim()
+        const verificationCommandRef = input.verificationCommandRef.trim()
+
+        if (resultEventRef.length === 0) {
+          throw new ForumWorkRequestNegotiationUnsafe(
+            'resultEventRef is required.',
+          )
+        }
+
+        if (verificationCommandRef.length === 0) {
+          throw new ForumWorkRequestNegotiationUnsafe(
+            'verificationCommandRef is required.',
+          )
+        }
+
+        assertPublicSafe(
+          { closeoutRef, resultEventRef, verificationCommandRef },
+          'work request result refs',
+        )
+
+        return {
+          artifactRefs,
+          closeoutRef,
+          projection: resultProjection({
+            artifactRefs,
+            closeoutRef,
+            offerId: input.offerId,
+            providerActorRef: input.providerActorRef,
+            quoteRef: input.quoteRef,
+            resultEventRef,
+            resultId: input.resultId,
+            verificationCommandRef,
+            workRequestId: input.workRequestId,
+          }),
+        }
+      },
+    })
+
+    yield* d1Effect('forumWorkRequests.insertResult', () =>
+      db
+        .prepare(
+          `INSERT INTO forum_work_request_results (
+             id,
+             work_request_id,
+             offer_id,
+             quote_ref,
+             provider_actor_ref,
+             result_event_ref,
+             verification_command_ref,
+             artifact_refs_json,
+             closeout_ref,
+             public_projection_json,
+             created_at
+           )
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          input.resultId,
+          input.workRequestId,
+          input.offerId,
+          input.quoteRef,
+          input.providerActorRef,
+          input.resultEventRef.trim(),
+          input.verificationCommandRef.trim(),
+          JSON.stringify(artifactRefs),
+          closeoutRef,
+          JSON.stringify(projection),
+          nowIso,
+        )
+        .run(),
+    )
+
+    const recorded = yield* readForumWorkRequestResultByQuoteRef(
+      db,
+      input.workRequestId,
+      input.quoteRef,
+    )
+
+    if (recorded === null) {
+      return yield* new ForumValidationError({
+        reason: 'Forum work request result was not persisted.',
+      })
+    }
+
+    return recorded
+  })
 
 export const readForumWorkRequestAcceptanceByIdempotencyKey = (
   db: D1Database,

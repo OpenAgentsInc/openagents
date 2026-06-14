@@ -13,10 +13,16 @@
  *   `accepted: false` with a public-safe relayRef reason slug; the route
  *   surfaces that as a 503 before any Forum/DB side effects.
  */
+import {
+  lbrAcceptanceToDraft,
+  makeLbrAcceptance,
+} from '@openagentsinc/nip90'
 import { finalizeEvent } from 'nostr-effect/pure'
 
 import { sha256Hex } from './agent-registration'
 import type {
+  ForumWorkRequestAcceptanceRelayPublishInput,
+  ForumWorkRequestAcceptanceRelayPublishReceipt,
   ForumWorkRequestRelayPublishInput,
   ForumWorkRequestRelayPublishReceipt,
   ForumWorkRequestRelayPublisher,
@@ -145,6 +151,19 @@ const awaitRelayOk = (
     })
   })
 
+const acceptanceFailureReceipt = async (
+  input: ForumWorkRequestAcceptanceRelayPublishInput,
+  reasonSlug: string,
+): Promise<ForumWorkRequestAcceptanceRelayPublishReceipt> => ({
+  accepted: false,
+  acceptanceEventId: null,
+  event: null,
+  relayRef: `relay.public.${reasonSlug}.${(
+    await sha256Hex(input.relayUrl)
+  ).slice(0, 32)}`,
+  relayUrl: input.relayUrl,
+})
+
 export const makeLiveForumWorkRequestRelayPublisher = (
   options: LiveForumWorkRequestRelayPublisherOptions,
 ): ForumWorkRequestRelayPublisher => {
@@ -153,6 +172,73 @@ export const makeLiveForumWorkRequestRelayPublisher = (
   const publishTimeoutMs = options.publishTimeoutMs ?? DefaultPublishTimeoutMs
 
   return {
+    publishAcceptance: async input => {
+      if (!MarketSecretKeyHexPattern.test(options.marketSecretKeyHex)) {
+        return acceptanceFailureReceipt(input, 'market_key_invalid')
+      }
+
+      let draft
+      try {
+        const acceptance = makeLbrAcceptance({
+          acceptanceRef: input.acceptanceRef,
+          escrowReceiptRef: input.escrowReceiptRef,
+          providerPubkey: input.providerPubkey,
+          requestId: input.jobEventId,
+          requestRelay: input.relayUrl,
+        })
+        draft = lbrAcceptanceToDraft(acceptance)
+      } catch {
+        // Protocol-unsafe refs or a non-hex job event id / provider pubkey:
+        // never publish, surface a public-safe failure slug instead.
+        return acceptanceFailureReceipt(input, 'acceptance_draft_invalid')
+      }
+
+      const event = finalizeEvent(
+        {
+          content: draft.content,
+          created_at: nowEpochSeconds(),
+          kind: draft.kind,
+          tags: draft.tags.map(tag => [...tag]),
+        },
+        hexToBytes(options.marketSecretKeyHex.toLowerCase()),
+      )
+
+      let socket: ForumWorkRequestRelaySocket
+
+      try {
+        socket = await connect(input.relayUrl)
+      } catch {
+        return acceptanceFailureReceipt(input, 'relay_connect_failed')
+      }
+
+      try {
+        const okPromise = awaitRelayOk(socket, event.id, publishTimeoutMs)
+
+        socket.send(JSON.stringify(['EVENT', event]))
+
+        const verdict = await okPromise
+
+        if (!verdict.accepted) {
+          return acceptanceFailureReceipt(input, 'relay_publish_rejected')
+        }
+
+        return {
+          accepted: true,
+          acceptanceEventId: event.id,
+          event,
+          relayRef: `relay.public.market.${(
+            await sha256Hex(input.relayUrl)
+          ).slice(0, 32)}`,
+          relayUrl: input.relayUrl,
+        }
+      } finally {
+        try {
+          socket.close()
+        } catch {
+          // socket already closed
+        }
+      }
+    },
     publishWorkRequest: async input => {
       if (!MarketSecretKeyHexPattern.test(options.marketSecretKeyHex)) {
         return failureReceipt(input, 'market_key_invalid')

@@ -97,10 +97,37 @@ export type ForumWorkRequestRelayPublishReceipt = Readonly<{
   relayUrl: string
 }>
 
+// Requester-side quote acceptance published to the scoped market relay as a
+// ref-only NIP-LBR kind-7000 acceptance feedback event so the watching
+// provider executes. Only public-safe refs cross this boundary: the job event
+// id (64-hex), the public quote ref, the public escrow reserve receipt ref,
+// the public acceptance ref, and the provider's nostr pubkey. No wallet,
+// invoice, preimage, payment-hash, or credential material is ever included.
+export type ForumWorkRequestAcceptanceRelayPublishInput = Readonly<{
+  acceptanceRef: string
+  escrowReceiptRef: string
+  jobEventId: string
+  providerPubkey: string
+  quoteRef: string
+  relayUrl: string
+  workRequestId: string
+}>
+
+export type ForumWorkRequestAcceptanceRelayPublishReceipt = Readonly<{
+  accepted: boolean
+  acceptanceEventId: string | null
+  event: unknown
+  relayRef: string
+  relayUrl: string
+}>
+
 export type ForumWorkRequestRelayPublisher = Readonly<{
   publishWorkRequest: (
     input: ForumWorkRequestRelayPublishInput,
   ) => Promise<ForumWorkRequestRelayPublishReceipt>
+  publishAcceptance?: (
+    input: ForumWorkRequestAcceptanceRelayPublishInput,
+  ) => Promise<ForumWorkRequestAcceptanceRelayPublishReceipt>
 }>
 
 export type ForumWorkRequestRecord = Readonly<{

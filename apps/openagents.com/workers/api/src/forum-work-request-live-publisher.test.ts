@@ -1,3 +1,4 @@
+import { decodeLbrAcceptanceEvent } from '@openagentsinc/nip90'
 import { type Event as SignedNostrEvent, verifyEvent } from 'nostr-effect/pure'
 import { describe, expect, it } from 'vitest'
 
@@ -6,9 +7,22 @@ import {
   forumWorkRequestRelayPublisherForEnv,
   makeLiveForumWorkRequestRelayPublisher,
 } from './forum-work-request-live-publisher'
-import type { ForumWorkRequestRelayPublishInput } from './forum-work-requests'
+import type {
+  ForumWorkRequestAcceptanceRelayPublishInput,
+  ForumWorkRequestRelayPublishInput,
+} from './forum-work-requests'
 
 const testMarketSecretKeyHex = 'aa'.repeat(32)
+
+const acceptanceInput = (): ForumWorkRequestAcceptanceRelayPublishInput => ({
+  acceptanceRef: 'acceptance.public.forum_lbr.wr1.quote1',
+  escrowReceiptRef: 'receipt.labor_escrow.reserve.wr1.quote1',
+  jobEventId: 'a'.repeat(64),
+  providerPubkey: '2'.repeat(64),
+  quoteRef: 'quote.public.live.one',
+  relayUrl: 'wss://relay.openagents.com',
+  workRequestId: 'wr1',
+})
 
 const publishInput = (): ForumWorkRequestRelayPublishInput => ({
   bridgeActorRef: 'agent:openagents_market_bridge',
@@ -179,6 +193,85 @@ describe('makeLiveForumWorkRequestRelayPublisher', () => {
 
     expect(receipt.accepted).toBe(false)
     expect(receipt.relayRef).toMatch(/^relay\.public\.relay_publish_rejected\./)
+  })
+})
+
+describe('makeLiveForumWorkRequestRelayPublisher.publishAcceptance', () => {
+  it('signs a ref-only kind-7000 acceptance carrying the reserve receipt + provider pubkey', async () => {
+    // Distinct from any all-`a`/all-`2` fixture refs so the secret-leak check
+    // cannot coincidentally collide with public event material.
+    const acceptanceMarketSecretKeyHex = 'bc'.repeat(32)
+    const socket = ackingSocket(true)
+    const publisher = makeLiveForumWorkRequestRelayPublisher({
+      connect: async () => socket,
+      marketSecretKeyHex: acceptanceMarketSecretKeyHex,
+      nowEpochSeconds: () => 1_770_000_000,
+    })
+
+    const input = acceptanceInput()
+    const receipt = await publisher.publishAcceptance!(input)
+
+    expect(receipt.accepted).toBe(true)
+    expect(receipt.relayRef).toMatch(/^relay\.public\.market\.[0-9a-f]{32}$/)
+
+    const event = receipt.event as SignedNostrEvent
+    expect(receipt.acceptanceEventId).toBe(event.id)
+    expect(event.kind).toBe(7000)
+    expect(verifyEvent(event)).toBe(true)
+
+    const decoded = decodeLbrAcceptanceEvent(event)
+    expect(decoded.escrowReceiptRef).toBe(input.escrowReceiptRef)
+    expect(decoded.acceptanceRef).toBe(input.acceptanceRef)
+    expect(decoded.providerPubkey).toBe(input.providerPubkey)
+    expect(decoded.requestId).toBe(input.jobEventId)
+
+    // public-safe: no wallet/payment material and never the market secret key.
+    expect(JSON.stringify(receipt)).not.toContain(acceptanceMarketSecretKeyHex)
+    expect(JSON.stringify(receipt)).not.toMatch(
+      /lnbc|preimage|payment_hash|mnemonic|secret|xprv|\/Users\//i,
+    )
+    expect(socket.closed()).toBe(true)
+  })
+
+  it('refuses without connecting when the market key is malformed', async () => {
+    let connected = false
+    const publisher = makeLiveForumWorkRequestRelayPublisher({
+      connect: async () => {
+        connected = true
+        return makeFakeSocket()
+      },
+      marketSecretKeyHex: 'not-a-key',
+    })
+
+    const receipt = await publisher.publishAcceptance!(acceptanceInput())
+
+    expect(receipt.accepted).toBe(false)
+    expect(receipt.acceptanceEventId).toBe(null)
+    expect(receipt.relayRef).toMatch(/^relay\.public\.market_key_invalid\./)
+    expect(connected).toBe(false)
+  })
+
+  it('refuses without connecting when refs are protocol-unsafe', async () => {
+    let connected = false
+    const publisher = makeLiveForumWorkRequestRelayPublisher({
+      connect: async () => {
+        connected = true
+        return makeFakeSocket()
+      },
+      marketSecretKeyHex: testMarketSecretKeyHex,
+    })
+
+    const receipt = await publisher.publishAcceptance!({
+      ...acceptanceInput(),
+      // not a 64-hex request id: draft construction must reject before publish
+      jobEventId: 'not-a-hex-id',
+    })
+
+    expect(receipt.accepted).toBe(false)
+    expect(receipt.relayRef).toMatch(
+      /^relay\.public\.acceptance_draft_invalid\./,
+    )
+    expect(connected).toBe(false)
   })
 })
 
