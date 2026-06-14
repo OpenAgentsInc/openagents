@@ -22,6 +22,7 @@ import {
   SettledPlanTrainingWindow,
   SettledQueueTrainingLaunch,
   SettledReconcileTrainingWindow,
+  SettledRequestTrainingBootstrap,
   SettledResolveApproval,
   SettledSubmitIntent,
   SucceededDeploy,
@@ -80,6 +81,21 @@ const emptyTrainingPromiseGatesProjection = (error: string) => ({
     yellow: 0,
     unknown: 0,
   },
+  error,
+})
+
+const emptyTrainingBootstrapProjection = (
+  trainingRunRef: string,
+  error: string,
+) => ({
+  ok: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:training-bootstrap",
+  pylonRef: null,
+  trainingRunRef,
+  outcome: null,
+  reason: "request_failed",
+  message: `training bootstrap grant failed: ${error}`,
   error,
 })
 
@@ -332,6 +348,28 @@ export const ClaimTrainingWindowLease = Command.define(
             message: `training lease claim failed: ${errorText(error)}`,
             error: errorText(error),
           },
+        }),
+      ),
+    ),
+  ),
+)
+
+export const RequestTrainingBootstrapGrant = Command.define(
+  "RequestTrainingBootstrapGrant",
+  { trainingRunRef: S.String },
+  SettledRequestTrainingBootstrap,
+)(({ trainingRunRef }) =>
+  Effect.tryPromise(() =>
+    getRequest().requestTrainingBootstrapGrant({ trainingRunRef }),
+  ).pipe(
+    Effect.map((projection) => SettledRequestTrainingBootstrap({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledRequestTrainingBootstrap({
+          projection: emptyTrainingBootstrapProjection(
+            trainingRunRef,
+            errorText(error),
+          ),
         }),
       ),
     ),

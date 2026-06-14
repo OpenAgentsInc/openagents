@@ -18,6 +18,7 @@ The first implemented slice follows that boundary:
 - The selected public run summary is converted into a `three-effect` snapshot so the scene reflects live run state, windows, devices, Freivalds refs, closeouts, verified work, external blockers, and settlement.
 - The pane exposes a launch/readiness feedback button that queues a local Pylon intent through the existing `intent.submit` path.
 - The pane also exposes Bun-main-process, env-gated actions for planning an R1 rehearsal run/window, activating a planned window, claiming the active training lease for a local Pylon ref, and reconciling a sealed window. The webview receives only public-safe run/window/lease refs and projections.
+- The pane can request a public bootstrap grant for the local Pylon ref against the selected training run, showing whether the joiner is granted the last durable seal, queued by the seal barrier, or refused because no durable seal exists.
 - Evidence admission, settlement, and real worker execution remain outside the webview.
 
 That is the right initial shape. The next high-value step is wiring the plan result to the actual run admission and evidence pipeline while preserving the same authority boundary.
@@ -116,11 +117,13 @@ The Foldkit pane adds operator panels for:
 - Launch feedback.
 - Public and admin API boundary.
 
-The operations panel has five buttons. `Plan R1 window` calls a typed desktop RPC handled only by the Bun main process. The Bun side refuses to call admin routes unless `OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE=1` and either `OPENAGENTS_TRAINING_ADMIN_API_TOKEN` or `OPENAGENTS_ADMIN_API_TOKEN` is available. When enabled, it calls `POST /api/training/runs` and then `POST /api/training/windows/plan`, using public-safe refs derived from the local timestamp and the issue 4855 / Tassadar source docs. The webview stores the returned `TrainingPlanResponse` as an opaque projection and displays only refs/status.
+The operations panel has six buttons. `Plan R1 window` calls a typed desktop RPC handled only by the Bun main process. The Bun side refuses to call admin routes unless `OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE=1` and either `OPENAGENTS_TRAINING_ADMIN_API_TOKEN` or `OPENAGENTS_ADMIN_API_TOKEN` is available. When enabled, it calls `POST /api/training/runs` and then `POST /api/training/windows/plan`, using public-safe refs derived from the local timestamp and the issue 4855 / Tassadar source docs. The webview stores the returned `TrainingPlanResponse` as an opaque projection and displays only refs/status.
 
 `Activate window` uses the same Bun-only admin gate and calls `POST /api/training/windows/{windowRef}/activate` for either the just-planned window or the first planned window in the selected public run summary. It returns a `TrainingWindowActionResponse`, refreshes `/api/training/runs` on success, and still exposes only the public-safe window projection to the webview.
 
 `Claim lease` is separately gated by `OPENAGENTS_DESKTOP_TRAINING_LEASE_ENABLE=1`. It resolves a public Pylon ref from `OPENAGENTS_TRAINING_PYLON_REF`, `PYLON_REF`, or the local Pylon identity file in the discovered Pylon home, then calls `POST /api/training/leases/claim`. It is disabled in the Foldkit view until the desktop has seen an active window from the public projection or the activation result. The result is stored as a `TrainingWindowLeaseResponse` and displays only lease/window/ref/expiry fields.
+
+`Request bootstrap` uses the same public Pylon ref resolution and calls `POST /api/training/runs/{runRef}/bootstrap-grant` for the selected public run. It is not an admin mutation. The returned outcome is displayed immediately as `granted`, `queued`, or `refused`, preserving the issue 4850/4851 rule that joiners bootstrap only from the last durable seal and queue during an in-flight seal barrier.
 
 `Reconcile window` uses the admin gate and calls `POST /api/training/windows/{windowRef}/reconcile`, but it is only enabled for a sealed window already visible in the public Worker projection. The desktop deliberately does not synthesize seal metadata. Sealing requires evidence-bearing closeout metadata, so that remains a later Bun-side bridge from actual worker closeout records rather than a button that fabricates a checkpoint digest.
 

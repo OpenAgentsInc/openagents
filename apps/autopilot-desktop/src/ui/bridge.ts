@@ -16,6 +16,7 @@
 
 import type { Message } from "./message"
 import type {
+  TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingPlanResponse,
   TrainingPromiseGatesResponse,
@@ -54,6 +55,9 @@ export type DesktopRequests = {
   claimTrainingWindowLease(
     p: Record<string, never>,
   ): Promise<TrainingWindowLeaseResponse>
+  requestTrainingBootstrapGrant(p: {
+    trainingRunRef: string
+  }): Promise<TrainingBootstrapGrantResponse>
   resolveApproval(p: {
     approvalRef: string
     decision: "approve" | "deny"

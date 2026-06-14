@@ -3,6 +3,9 @@ import type {
   TrainingLeaderboardLane,
   TrainingLeaderboardLaneSummary,
   TrainingLeaderboardTopRow,
+  TrainingBootstrapGrantResponse,
+  TrainingBootstrapGrantRow,
+  TrainingBootstrapOutcome,
   TrainingPromiseGatesResponse,
   TrainingPromiseState,
   TrainingPromiseSummary,
@@ -72,6 +75,14 @@ type ClaimTrainingWindowLeaseInput = Readonly<{
   leaseSeconds?: number
   nowIso?: () => string
   pylonRef: string | null
+}>
+
+type RequestTrainingBootstrapGrantInput = Readonly<{
+  baseUrl: string
+  fetchFn?: typeof fetch
+  nowIso?: () => string
+  pylonRef: string | null
+  trainingRunRef: string
 }>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -299,6 +310,24 @@ const disabledLeaseResponse = (input: {
   message: input.message,
 })
 
+const disabledBootstrapResponse = (input: {
+  fetchedAt: string
+  message: string
+  pylonRef: string | null
+  reason: TrainingBootstrapGrantResponse["reason"]
+  sourceUrl: string
+  trainingRunRef: string | null
+}): TrainingBootstrapGrantResponse => ({
+  ok: false,
+  fetchedAt: input.fetchedAt,
+  sourceUrl: input.sourceUrl,
+  pylonRef: input.pylonRef,
+  trainingRunRef: input.trainingRunRef,
+  outcome: null,
+  reason: input.reason,
+  message: input.message,
+})
+
 const emptyTrainingDashboardResponse = (input: {
   error?: string
   fetchedAt: string
@@ -474,6 +503,71 @@ const leaseProjection = (
     trainingRunRef,
     windowRef,
   }
+}
+
+const bootstrapGrant = (value: unknown): TrainingBootstrapGrantRow | null => {
+  if (!isRecord(value)) return null
+  const checkpointDigestRef = asString(value.checkpointDigestRef)
+  const grantRef = asString(value.grantRef)
+  const joinerRef = asString(value.joinerRef)
+  const sealedWindowRef = asString(value.sealedWindowRef)
+  const trainingRunRef = asString(value.trainingRunRef)
+  if (
+    checkpointDigestRef === "" ||
+    grantRef === "" ||
+    joinerRef === "" ||
+    sealedWindowRef === "" ||
+    trainingRunRef === ""
+  ) {
+    return null
+  }
+
+  return {
+    checkpointDigestRef,
+    grantRef,
+    joinerReceiptRefs: stringArray(value.joinerReceiptRefs),
+    joinerRef,
+    sealReceiptRefs: stringArray(value.sealReceiptRefs),
+    sealedAtDisplay: asString(value.sealedAtDisplay),
+    sealedWindowRef,
+    trainingRunRef,
+  }
+}
+
+const bootstrapOutcome = (value: unknown): TrainingBootstrapOutcome | null => {
+  if (!isRecord(value)) return null
+  const kind = value.kind
+  if (kind === "granted") {
+    const grant = bootstrapGrant(value.grant)
+    return grant === null ? null : { kind, grant }
+  }
+
+  if (kind === "queued") {
+    const joinerRef = asString(value.joinerRef)
+    const trainingRunRef = asString(value.trainingRunRef)
+    if (joinerRef === "" || trainingRunRef === "") return null
+    return {
+      joinerRef,
+      kind,
+      reasonCode: asString(value.reasonCode),
+      trainingRunRef,
+    }
+  }
+
+  if (kind === "refused") {
+    const joinerRef = asString(value.joinerRef)
+    const trainingRunRef = asString(value.trainingRunRef)
+    if (joinerRef === "" || trainingRunRef === "") return null
+    return {
+      joinerRef,
+      kind,
+      reason: asString(value.reason),
+      reasonCode: asString(value.reasonCode),
+      trainingRunRef,
+    }
+  }
+
+  return null
 }
 
 const realGradient = (value: unknown): TrainingRunRealGradientRow => {
@@ -1311,6 +1405,126 @@ export async function claimTrainingWindowLease(
       lease: null,
       reason: "request_failed",
       message: `training lease claim failed: ${text}`,
+      error: text,
+    }
+  }
+}
+
+export async function requestTrainingBootstrapGrant(
+  input: RequestTrainingBootstrapGrantInput,
+): Promise<TrainingBootstrapGrantResponse> {
+  const fetchFn = input.fetchFn ?? fetch
+  const fetchedAt = input.nowIso?.() ?? new Date().toISOString()
+  const baseUrl = normalizeBaseUrl(input.baseUrl)
+  const trimmedRunRef = input.trainingRunRef.trim()
+  const sourceUrl =
+    trimmedRunRef === ""
+      ? `${baseUrl}/api/training/runs/bootstrap-grant`
+      : `${baseUrl}/api/training/runs/${encodeURIComponent(trimmedRunRef)}/bootstrap-grant`
+  const trimmedPylonRef = input.pylonRef?.trim() ?? ""
+
+  if (trimmedRunRef.length < 3 || !publicSafeRefPattern.test(trimmedRunRef)) {
+    return disabledBootstrapResponse({
+      fetchedAt,
+      message: "invalid training run ref",
+      pylonRef: trimmedPylonRef === "" ? null : trimmedPylonRef,
+      reason: "invalid_run_ref",
+      sourceUrl,
+      trainingRunRef: trimmedRunRef === "" ? null : trimmedRunRef,
+    })
+  }
+
+  if (trimmedPylonRef === "") {
+    return disabledBootstrapResponse({
+      fetchedAt,
+      message: "training Pylon ref unavailable",
+      pylonRef: null,
+      reason: "pylon_ref_missing",
+      sourceUrl,
+      trainingRunRef: trimmedRunRef,
+    })
+  }
+
+  if (
+    trimmedPylonRef.length < 3 ||
+    trimmedPylonRef.length > 120 ||
+    !publicSafePylonRefPattern.test(trimmedPylonRef)
+  ) {
+    return disabledBootstrapResponse({
+      fetchedAt,
+      message: "invalid training Pylon ref",
+      pylonRef: trimmedPylonRef,
+      reason: "invalid_pylon_ref",
+      sourceUrl,
+      trainingRunRef: trimmedRunRef,
+    })
+  }
+
+  const stamp = safeRefStamp(fetchedAt)
+
+  try {
+    const result = await postPublicJson(fetchFn, sourceUrl, {
+      joinerRef: trimmedPylonRef,
+      receiptRefs: [`receipt.desktop.training.bootstrap.request.${stamp}`],
+    })
+
+    if (!result.ok) {
+      return {
+        ok: false,
+        fetchedAt,
+        sourceUrl,
+        pylonRef: trimmedPylonRef,
+        trainingRunRef: trimmedRunRef,
+        outcome: null,
+        reason: "request_failed",
+        message: `bootstrap grant failed: ${result.error}`,
+        error: result.error,
+      }
+    }
+
+    const record = isRecord(result.json) ? result.json : {}
+    const outcome = bootstrapOutcome(record.outcome)
+    const reason =
+      outcome?.kind === "granted"
+        ? "granted"
+        : outcome?.kind === "queued"
+          ? "queued"
+          : outcome?.kind === "refused"
+            ? "refused"
+            : "request_failed"
+    const message =
+      outcome?.kind === "granted"
+        ? `bootstrap grant ${outcome.grant.grantRef} from ${outcome.grant.sealedWindowRef}`
+        : outcome?.kind === "queued"
+          ? `bootstrap queued: ${outcome.reasonCode}`
+          : outcome?.kind === "refused"
+            ? `bootstrap refused: ${outcome.reasonCode}`
+            : "bootstrap grant response did not include an outcome"
+
+    return {
+      ok: outcome?.kind === "granted",
+      fetchedAt,
+      sourceUrl,
+      pylonRef: trimmedPylonRef,
+      trainingRunRef: trimmedRunRef,
+      outcome,
+      reason,
+      message,
+      ...(outcome === null
+        ? { error: "bootstrap grant response did not include an outcome" }
+        : {}),
+    }
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error)
+    return {
+      ok: false,
+      fetchedAt,
+      sourceUrl,
+      pylonRef: trimmedPylonRef,
+      trainingRunRef: trimmedRunRef,
+      outcome: null,
+      reason: "request_failed",
+      message: `training bootstrap grant failed: ${text}`,
       error: text,
     }
   }

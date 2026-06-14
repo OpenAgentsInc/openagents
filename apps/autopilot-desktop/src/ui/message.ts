@@ -84,6 +84,14 @@ export const ClickedClaimTrainingLease = m("ClickedClaimTrainingLease")
 export const SettledClaimTrainingLease = m("SettledClaimTrainingLease", {
   projection: S.Unknown,
 })
+export const ClickedRequestTrainingBootstrap = m(
+  "ClickedRequestTrainingBootstrap",
+  { trainingRunRef: S.String },
+)
+export const SettledRequestTrainingBootstrap = m(
+  "SettledRequestTrainingBootstrap",
+  { projection: S.Unknown },
+)
 export const ClickedQueueTrainingLaunch = m("ClickedQueueTrainingLaunch")
 export const SettledQueueTrainingLaunch = m("SettledQueueTrainingLaunch", {
   ok: S.Boolean,
@@ -138,6 +146,8 @@ export const Message = S.Union([
   SettledReconcileTrainingWindow,
   ClickedClaimTrainingLease,
   SettledClaimTrainingLease,
+  ClickedRequestTrainingBootstrap,
+  SettledRequestTrainingBootstrap,
   ClickedQueueTrainingLaunch,
   SettledQueueTrainingLaunch,
   ChangedSpawnAdapter,

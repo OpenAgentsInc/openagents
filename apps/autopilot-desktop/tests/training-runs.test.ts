@@ -7,6 +7,7 @@ import {
   fetchTrainingRuns,
   planTrainingRunWindow,
   reconcileTrainingWindow,
+  requestTrainingBootstrapGrant,
 } from "../src/bun/training-runs"
 
 const sampleRun = {
@@ -751,5 +752,88 @@ describe("claimTrainingWindowLease", () => {
     expect(result.reason).toBe("claim_failed")
     expect(result.error).toBe("No active training window is currently claimable.")
     expect(result.message).not.toContain("identity.json")
+  })
+})
+
+describe("requestTrainingBootstrapGrant", () => {
+  test("requests a bootstrap grant for the local Pylon ref", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await requestTrainingBootstrapGrant({
+      baseUrl: "https://openagents.test/",
+      pylonRef: "pylon.training.1",
+      trainingRunRef: "training.run.4850",
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response(
+          JSON.stringify({
+            outcome: {
+              grant: {
+                checkpointDigestRef: "checkpoint.digest.1",
+                grantRef: "training.bootstrap.grant.1",
+                joinerReceiptRefs: ["receipt.desktop.training.bootstrap.request.1"],
+                joinerRef: "pylon.training.1",
+                sealReceiptRefs: ["receipt.seal.1"],
+                sealedAtDisplay: "1 minute ago",
+                sealedWindowRef: "training.window.sealed.1",
+                trainingRunRef: "training.run.4850",
+              },
+              kind: "granted",
+            },
+          }),
+        )
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.reason).toBe("granted")
+    expect(result.outcome?.kind).toBe("granted")
+    expect(calls.map(call => call.url)).toEqual([
+      "https://openagents.test/api/training/runs/training.run.4850/bootstrap-grant",
+    ])
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      joinerRef: "pylon.training.1",
+      receiptRefs: ["receipt.desktop.training.bootstrap.request.2026.06.14t00.00.00.000z"],
+    })
+  })
+
+  test("reports queued bootstrap grants as public-safe feedback", async () => {
+    const result = await requestTrainingBootstrapGrant({
+      baseUrl: "https://openagents.test",
+      pylonRef: "pylon.training.1",
+      trainingRunRef: "training.run.4851",
+      fetchFn: async () =>
+        new Response(
+          JSON.stringify({
+            outcome: {
+              joinerRef: "pylon.training.1",
+              kind: "queued",
+              reasonCode: "join_lifecycle.public.join_deferred_seal_in_flight",
+              trainingRunRef: "training.run.4851",
+            },
+          }),
+        ),
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("queued")
+    expect(result.message).toContain("join_deferred_seal_in_flight")
+  })
+
+  test("does not call the Worker without a local Pylon ref", async () => {
+    const calls: string[] = []
+    const result = await requestTrainingBootstrapGrant({
+      baseUrl: "https://openagents.test",
+      pylonRef: null,
+      trainingRunRef: "training.run.4850",
+      fetchFn: async (url) => {
+        calls.push(String(url))
+        return new Response("{}")
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("pylon_ref_missing")
+    expect(calls).toHaveLength(0)
   })
 })

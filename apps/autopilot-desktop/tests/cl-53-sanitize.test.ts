@@ -218,6 +218,15 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-lease-button")).toBe(true)
   })
 
+  test("training pane includes the bootstrap grant action", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: liveTrainingProjection,
+    })
+    expect(treeContainsClass(document.body, "training-bootstrap-button")).toBe(true)
+  })
+
   test("training pane includes the reconcile action for sealed windows", () => {
     const document = view({
       ...initialModel,

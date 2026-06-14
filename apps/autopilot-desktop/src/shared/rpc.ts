@@ -316,6 +316,57 @@ export type TrainingWindowLeaseResponse = {
   readonly error?: string
 }
 
+export type TrainingBootstrapGrantRow = {
+  readonly checkpointDigestRef: string
+  readonly grantRef: string
+  readonly joinerReceiptRefs: readonly string[]
+  readonly joinerRef: string
+  readonly sealReceiptRefs: readonly string[]
+  readonly sealedAtDisplay: string
+  readonly sealedWindowRef: string
+  readonly trainingRunRef: string
+}
+
+export type TrainingBootstrapOutcome =
+  | {
+      readonly kind: "granted"
+      readonly grant: TrainingBootstrapGrantRow
+    }
+  | {
+      readonly joinerRef: string
+      readonly kind: "queued"
+      readonly reasonCode: string
+      readonly trainingRunRef: string
+    }
+  | {
+      readonly joinerRef: string
+      readonly kind: "refused"
+      readonly reason: string
+      readonly reasonCode: string
+      readonly trainingRunRef: string
+    }
+
+export type TrainingBootstrapGrantReason =
+  | "pylon_ref_missing"
+  | "invalid_pylon_ref"
+  | "invalid_run_ref"
+  | "request_failed"
+  | "granted"
+  | "queued"
+  | "refused"
+
+export type TrainingBootstrapGrantResponse = {
+  readonly ok: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: string
+  readonly pylonRef: string | null
+  readonly trainingRunRef: string | null
+  readonly outcome: TrainingBootstrapOutcome | null
+  readonly reason: TrainingBootstrapGrantReason
+  readonly message: string
+  readonly error?: string
+}
+
 // CL-47: an "ask" the owner submitted, with its ship-status round-trip state.
 export type IntentRow = {
   readonly intentId: string
@@ -420,6 +471,10 @@ export type DesktopRPCSchema = {
       readonly claimTrainingWindowLease: {
         readonly params: Record<string, never>
         readonly response: TrainingWindowLeaseResponse
+      }
+      readonly requestTrainingBootstrapGrant: {
+        readonly params: { trainingRunRef: string }
+        readonly response: TrainingBootstrapGrantResponse
       }
       // CL-48: resolve a pending approval (approve/deny). Node enforces
       // exactly-once; a duplicate resolve returns duplicate:true.

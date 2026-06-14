@@ -63,6 +63,7 @@ import {
   ClickedRefreshTrainingRuns,
   ClickedQueueTrainingLaunch,
   ClickedResolveApproval,
+  ClickedRequestTrainingBootstrap,
   ClickedSpawn,
   ClickedSubmitIntent,
   type Message,
@@ -90,6 +91,7 @@ import {
   type PaneId,
   type SessionFilter,
   modelTrainingActivation,
+  modelTrainingBootstrap,
   modelTrainingDashboard,
   modelTrainingLease,
   modelNode,
@@ -908,6 +910,11 @@ const trainingPromiseGatesPanel = (model: Model): Html => {
 const trainingLaunchPanel = (model: Model): Html => {
   const plan = modelTrainingPlan(model)
   const lease = modelTrainingLease(model)?.lease ?? null
+  const bootstrap = modelTrainingBootstrap(model)
+  const bootstrapRunRef =
+    selectedTrainingSummary(modelTrainingRuns(model))?.run.trainingRunRef ??
+    plan?.trainingRunRef ??
+    null
   const activatableWindowRef = activationWindowRef(model)
   const reconciliableWindowRef = reconcileWindowRef(model)
   const claimableWindowKnown = hasClaimableTrainingWindow(model)
@@ -917,6 +924,8 @@ const trainingLaunchPanel = (model: Model): Html => {
   const reconcileStatusVisible =
     model.trainingReconcileStatus.tone !== "idle"
   const leaseStatusVisible = model.trainingLeaseStatus.tone !== "idle"
+  const bootstrapStatusVisible =
+    model.trainingBootstrapStatus.tone !== "idle"
   const launchStatusVisible = model.trainingLaunchStatus.tone !== "idle"
   const activateAttrs: Attribute<Message>[] = [
     cls("training-action-button training-activate-button secondary"),
@@ -937,6 +946,18 @@ const trainingLaunchPanel = (model: Model): Html => {
   ]
   if (claimableWindowKnown) {
     leaseAttrs.push(h.OnClick(ClickedClaimTrainingLease()))
+  }
+  const bootstrapAttrs: Attribute<Message>[] = [
+    cls("training-action-button training-bootstrap-button secondary"),
+    h.Type("button"),
+    h.Disabled(model.trainingBootstrapPending || bootstrapRunRef === null),
+  ]
+  if (bootstrapRunRef !== null) {
+    bootstrapAttrs.push(
+      h.OnClick(
+        ClickedRequestTrainingBootstrap({ trainingRunRef: bootstrapRunRef }),
+      ),
+    )
   }
   const reconcileAttrs: Attribute<Message>[] = [
     cls("training-action-button training-reconcile-button secondary"),
@@ -966,6 +987,14 @@ const trainingLaunchPanel = (model: Model): Html => {
       h.li([], [
         h.code([], [lease.leaseRef]),
         ` · ${lease.windowRef} · ${lease.leaseExpiresInSeconds}s`,
+      ]),
+    )
+  }
+  if (bootstrap?.outcome?.kind === "granted") {
+    refRows.push(
+      h.li([], [
+        h.code([], [bootstrap.outcome.grant.grantRef]),
+        ` · ${bootstrap.outcome.grant.sealedWindowRef}`,
       ]),
     )
   }
@@ -1020,6 +1049,16 @@ const trainingLaunchPanel = (model: Model): Html => {
           ],
         ),
         h.button(
+          bootstrapAttrs,
+          [
+            model.trainingBootstrapPending
+              ? "Requesting..."
+              : bootstrapRunRef === null
+                ? "No run selected"
+                : "Request bootstrap",
+          ],
+        ),
+        h.button(
           reconcileAttrs,
           [
             model.trainingReconcilePending
@@ -1060,6 +1099,16 @@ const trainingLaunchPanel = (model: Model): Html => {
             cls(`training-action-status training-${model.trainingLeaseStatus.tone}`),
           ],
           [model.trainingLeaseStatus.text],
+        )
+      : h.p([cls("training-action-status")], [" "]),
+    bootstrapStatusVisible
+      ? h.p(
+          [
+            cls(
+              `training-action-status training-${model.trainingBootstrapStatus.tone}`,
+            ),
+          ],
+          [model.trainingBootstrapStatus.text],
         )
       : h.p([cls("training-action-status")], [" "]),
     reconcileStatusVisible
@@ -1145,6 +1194,9 @@ const trainingPane = (model: Model): Html => {
           h.ul([cls("training-api-list")], [
             h.li([], [h.code([], ["/api/training/runs"])]),
             h.li([], [h.code([], ["/api/training/leaderboards"])]),
+            h.li([], [
+              h.code([], ["/api/training/runs/{runRef}/bootstrap-grant"]),
+            ]),
             h.li([], [h.code([], ["admin: plan window / admit evidence"])]),
           ]),
         ]),

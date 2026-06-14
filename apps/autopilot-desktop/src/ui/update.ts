@@ -20,6 +20,7 @@ import {
   PlanTrainingRunWindow,
   QueueTrainingLaunch,
   ReconcileTrainingWindow,
+  RequestTrainingBootstrapGrant,
   ResolveApproval,
   SetCoordinatorPaused,
   SpawnSession,
@@ -29,6 +30,7 @@ import { parseVerifyLines } from "./helpers"
 import type { Message } from "./message"
 import { Model } from "./model"
 import type {
+  TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingPlanResponse,
   TrainingPromiseGatesResponse,
@@ -432,6 +434,54 @@ export const update = (model: Model, message: Message): Result => {
           },
         }),
         projection.ok ? loadTrainingProjectionCommands() : noCommands,
+      ]
+    }
+    case "ClickedRequestTrainingBootstrap":
+      if (message.trainingRunRef.trim() === "") {
+        return [
+          Model.make({
+            ...model,
+            trainingBootstrapStatus: {
+              text: "no training run selected",
+              tone: "error",
+            },
+          }),
+          noCommands,
+        ]
+      }
+      return [
+        Model.make({
+          ...model,
+          trainingBootstrapPending: true,
+          trainingBootstrapStatus: {
+            text: `requesting bootstrap for ${message.trainingRunRef}...`,
+            tone: "info",
+          },
+        }),
+        [
+          RequestTrainingBootstrapGrant({
+            trainingRunRef: message.trainingRunRef,
+          }),
+        ],
+      ]
+    case "SettledRequestTrainingBootstrap": {
+      const projection = message.projection as TrainingBootstrapGrantResponse
+      const inactiveReason =
+        projection.reason === "pylon_ref_missing" ||
+        projection.reason === "invalid_pylon_ref" ||
+        projection.reason === "refused" ||
+        projection.reason === "queued"
+      return [
+        Model.make({
+          ...model,
+          trainingBootstrap: projection,
+          trainingBootstrapPending: false,
+          trainingBootstrapStatus: {
+            text: projection.message,
+            tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
+          },
+        }),
+        noCommands,
       ]
     }
     case "ClickedQueueTrainingLaunch":

@@ -23,6 +23,7 @@ import {
   fetchTrainingRuns,
   planTrainingRunWindow,
   reconcileTrainingWindow,
+  requestTrainingBootstrapGrant,
 } from "./training-runs"
 import type { DesktopRPCSchema } from "../shared/rpc"
 
@@ -143,6 +144,13 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           baseUrl: trainingBaseUrl,
           enabled: trainingLeaseEnabled,
           pylonRef: trainingPylonRefForCommand(),
+        })
+      },
+      async requestTrainingBootstrapGrant(params) {
+        return requestTrainingBootstrapGrant({
+          baseUrl: trainingBaseUrl,
+          pylonRef: trainingPylonRefForCommand(),
+          trainingRunRef: params.trainingRunRef,
         })
       },
       // CL-48: resolve a pending approval (approve/deny).

@@ -28,6 +28,7 @@ import {
   initialModel,
   Model,
   modelNode,
+  modelTrainingBootstrap,
   modelTrainingDashboard,
   modelTrainingPromiseGates,
 } from "../src/ui/model"
@@ -39,6 +40,7 @@ import {
   ClickedRefreshTrainingRuns,
   ClickedReconcileTrainingWindow,
   ClickedResolveApproval,
+  ClickedRequestTrainingBootstrap,
   ClickedSubmitIntent,
   GotTrainingDashboard,
   GotTrainingPromiseGates,
@@ -49,6 +51,7 @@ import {
   SettledClaimTrainingLease,
   SettledPlanTrainingWindow,
   SettledReconcileTrainingWindow,
+  SettledRequestTrainingBootstrap,
   SettledResolveApproval,
   SettledSubmitIntent,
   ToggledEvent,
@@ -447,6 +450,51 @@ describe("update reducer (CL-53)", () => {
       lease: { leaseRef: "training.lease.1" },
     })
     expect(followups).toHaveLength(3)
+  })
+
+  test("training bootstrap action dispatches and stores the public-safe result", () => {
+    const [pending, commands] = update(
+      initialModel,
+      ClickedRequestTrainingBootstrap({
+        trainingRunRef: "training.run.4850",
+      }),
+    )
+    expect(pending.trainingBootstrapPending).toBe(true)
+    expect(pending.trainingBootstrapStatus.tone).toBe("info")
+    expect(commands).toHaveLength(1)
+
+    const [settled] = update(
+      pending,
+      SettledRequestTrainingBootstrap({
+        projection: {
+          ok: true,
+          fetchedAt: "2026-06-14T00:00:00.000Z",
+          sourceUrl:
+            "https://openagents.test/api/training/runs/training.run.4850/bootstrap-grant",
+          pylonRef: "pylon.training.1",
+          trainingRunRef: "training.run.4850",
+          outcome: {
+            grant: {
+              checkpointDigestRef: "checkpoint.digest.1",
+              grantRef: "training.bootstrap.grant.1",
+              joinerReceiptRefs: ["receipt.bootstrap.1"],
+              joinerRef: "pylon.training.1",
+              sealReceiptRefs: ["receipt.seal.1"],
+              sealedAtDisplay: "now",
+              sealedWindowRef: "training.window.sealed.1",
+              trainingRunRef: "training.run.4850",
+            },
+            kind: "granted",
+          },
+          reason: "granted",
+          message: "bootstrap grant training.bootstrap.grant.1",
+        },
+      }),
+    )
+
+    expect(settled.trainingBootstrapPending).toBe(false)
+    expect(settled.trainingBootstrapStatus.tone).toBe("success")
+    expect(modelTrainingBootstrap(settled)?.outcome?.kind).toBe("granted")
   })
 
   test("training reconcile action dispatches and stores the public-safe result", () => {
