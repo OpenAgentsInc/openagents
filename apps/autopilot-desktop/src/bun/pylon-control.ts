@@ -2,9 +2,57 @@ import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   decodeSessionSummary,
+  pairBridge,
+  createBridgeTransport,
+  type BridgeCredential,
   type SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
 import type { AccountRow, SessionArtifactStats, SessionEventRow } from "../shared/rpc"
+
+// ── CL-14 bridge transport (desktop) ──────────────────────────────────────
+// Same secure path as mobile, via the shared protocol transport: mint a
+// single-use bootstrap (dev-token authed `bridge.issueBootstrap`), exchange it
+// for a scoped pairing credential, then list sessions over POST /bridge.
+export async function connectBridgeDesktop(input: {
+  baseUrl: string
+  token: string
+  fetchFn?: typeof fetch
+}): Promise<{ list: () => Promise<SessionSummary[]>; credential: BridgeCredential } | null> {
+  const fetchFn = input.fetchFn ?? fetch
+  let boot: { bootstrapId: string; secret: string }
+  try {
+    const res = await fetchFn(`${input.baseUrl}/command`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "bridge.issueBootstrap" }),
+    })
+    const json = (await res.json()) as { ok?: boolean; result?: { bootstrapId?: unknown; secret?: unknown } }
+    if (json.ok !== true || typeof json.result?.bootstrapId !== "string" || typeof json.result?.secret !== "string") {
+      return null
+    }
+    boot = { bootstrapId: json.result.bootstrapId, secret: json.result.secret }
+  } catch {
+    return null
+  }
+  const pair = await pairBridge({
+    baseUrl: input.baseUrl,
+    bootstrapId: boot.bootstrapId,
+    secret: boot.secret,
+    clientId: "desktop",
+    deviceClass: "desktop",
+    capabilities: ["observe_public"],
+    projectionLevel: "public_safe",
+    fetchImpl: fetchFn,
+  })
+  if (!pair.ok) return null
+  const credential: BridgeCredential = {
+    pairingRef: pair.claims.pairingRef,
+    jti: pair.claims.jti,
+    capabilityRef: "observe_public",
+  }
+  const transport = createBridgeTransport({ baseUrl: input.baseUrl, credential, fetchImpl: fetchFn })
+  return { list: () => transport.list(), credential }
+}
 
 type NodeHealth = {
   ok?: unknown

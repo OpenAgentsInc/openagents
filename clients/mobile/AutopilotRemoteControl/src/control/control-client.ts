@@ -1,8 +1,17 @@
 // Dev-transport control client: the mobile app reaches a Pylon control server
 // over the network (loopback for a simulator, or the host's tailnet/LAN IP for a
 // real device on the same tailnet/Wi-Fi) using the node's bearer token.
-// Pure-ish: just fetch + shape; no UI. (The secure bridge pairing layer supersedes
-// this later; this is the M1/dev path to a first live view.)
+// Pure-ish: just fetch + shape; no UI. The secure bridge pairing layer (CL-14)
+// is wired below and supersedes the dev token for read access.
+
+import {
+  pairBridge,
+  createBridgeTransport,
+  type BridgeCredential,
+  type Capability,
+  type ProjectionLevel,
+  type SessionSummary,
+} from "@openagentsinc/autopilot-control-protocol"
 
 export type ConnectInfo = { baseUrl: string; token: string }
 
@@ -21,6 +30,65 @@ export function decodeConnectCode(code: string): ConnectInfo | null {
   } catch {
     return null
   }
+}
+
+// ── CL-14 bridge transport ────────────────────────────────────────────────
+// The secure path: exchange a single-use bootstrap (minted by the node via the
+// `bridge.issueBootstrap` command) for a scoped, expiring pairing credential,
+// then read sessions over POST /bridge — capability-gated, no long-lived dev
+// token on the wire. Uses the shared `@openagentsinc/autopilot-control-protocol`
+// transport (same code path as desktop).
+
+export type BridgeSession = { transport: ReturnType<typeof createBridgeTransport>; credential: BridgeCredential }
+
+// Mint a single-use bridge bootstrap from the node (dev-token authed). The
+// secret is exchanged immediately at /bridge/pair and never re-used.
+export async function issueBridgeBootstrap(conn: ConnectInfo): Promise<{ bootstrapId: string; secret: string }> {
+  const json = (await command(conn, { type: "bridge.issueBootstrap" })) as {
+    ok?: boolean
+    result?: { bootstrapId?: unknown; secret?: unknown }
+  }
+  const r = json.ok === true ? json.result : undefined
+  if (!r || typeof r.bootstrapId !== "string" || typeof r.secret !== "string") {
+    throw new Error("bridge bootstrap unavailable")
+  }
+  return { bootstrapId: r.bootstrapId, secret: r.secret }
+}
+
+// Pair onto the bridge and return a transport bound to the scoped credential.
+// Read-only by default (observe_public). Falls back to the dev token if the
+// node doesn't expose bridge pairing.
+export async function connectBridge(
+  conn: ConnectInfo,
+  opts: { capabilities?: Capability[]; projectionLevel?: ProjectionLevel; clientId?: string } = {},
+): Promise<BridgeSession | null> {
+  let boot: { bootstrapId: string; secret: string }
+  try {
+    boot = await issueBridgeBootstrap(conn)
+  } catch {
+    return null
+  }
+  const pair = await pairBridge({
+    baseUrl: conn.baseUrl,
+    bootstrapId: boot.bootstrapId,
+    secret: boot.secret,
+    clientId: opts.clientId ?? "mobile",
+    deviceClass: "ios",
+    capabilities: opts.capabilities ?? ["observe_public"],
+    projectionLevel: opts.projectionLevel ?? "public_safe",
+  })
+  if (!pair.ok) return null
+  const credential: BridgeCredential = {
+    pairingRef: pair.claims.pairingRef,
+    jti: pair.claims.jti,
+    capabilityRef: opts.capabilities?.[0] ?? "observe_public",
+  }
+  return { transport: createBridgeTransport({ baseUrl: conn.baseUrl, credential }), credential }
+}
+
+// List sessions over the bridge transport (CL-14 secure read path).
+export async function fetchSessionsViaBridge(bridge: BridgeSession): Promise<SessionSummary[]> {
+  return bridge.transport.list()
 }
 
 export type ControlSessionRow = {
