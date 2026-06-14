@@ -18,6 +18,11 @@ and accepted review.
 - Review: accepted at `2026-06-14T03:02:29.428Z`.
 - Funding: `buyerFundingState: "not_required"`, `fundedAmountCents: 0`,
   `settlementBlockedReasonRef: "settlement.no_worker_payout_mode"`.
+- Morning review projection: `/api/autopilot/morning-report?sinceHours=2`
+  returned `reviewed: 2` and listed both live work orders as `accepted`.
+- Decision queue projection: `/api/autopilot/decisions` returned completed
+  customer decisions for both work orders with `directEffectPermitted: false`
+  and receipt refs.
 - Authority boundaries: closeout and review both carry no deploy, Forum
   autopublish, accepted-work, payout, spend, or settlement authority.
 

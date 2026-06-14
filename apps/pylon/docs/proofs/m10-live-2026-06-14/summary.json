@@ -40,6 +40,47 @@
     "laneA_shc": "autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3",
     "laneB_requesterPylon": "autopilot_work_order.fa64ac58-901c-4a90-a125-03792decb300"
   },
+  "surfaceEvidence": {
+    "decisionQueue": {
+      "capturedAt": "2026-06-14T03:04:24.686Z",
+      "directEffectPermitted": false,
+      "matchingWorkOrders": [
+        {
+          "status": "completed",
+          "workOrderRef": "autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3"
+        },
+        {
+          "status": "completed",
+          "workOrderRef": "autopilot_work_order.fa64ac58-901c-4a90-a125-03792decb300"
+        }
+      ]
+    },
+    "missionBriefing": {
+      "laneAState": "accepted",
+      "laneBState": "accepted",
+      "publicSafe": true,
+      "reviewActions": [
+        "accept",
+        "accept"
+      ]
+    },
+    "morningReport": {
+      "capturedAt": "2026-06-14T03:04:31.047Z",
+      "reviewedCount": 2,
+      "workItems": [
+        {
+          "group": "reviewed",
+          "state": "accepted",
+          "workOrderRef": "autopilot_work_order.fa64ac58-901c-4a90-a125-03792decb300"
+        },
+        {
+          "group": "reviewed",
+          "state": "accepted",
+          "workOrderRef": "autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3"
+        }
+      ]
+    }
+  },
   "redaction": {
     "publicRefsOnly": true,
     "rawTokensIncluded": false,
