@@ -2,10 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import {
   CHATGPT_CODEX_PROVIDER,
+  DEFAULT_GRANT_RESOLVE_BASE_URL,
   decodeProbeRunAssignment,
   GOOGLE_GEMINI_PROVIDER,
+  LEGACY_OMEGA_BASE_URL_ENV,
   makeOmegaGrantResolver,
+  makeOmegaGrantResolverFromEnv,
   makeStaticOmegaGrantResolver,
+  OA_CODEX_GRANT_RESOLVE_URL_ENV,
+  resolveCodexGrantResolveEndpoint,
   validateResolvedAuthGrantForAssignment,
   type OmegaResolvedAuthGrant,
   type ProbeRunAssignment,
@@ -241,5 +246,56 @@ describe("Omega grant resolution", () => {
       _tag: "ProbeAuthGrantResolveError",
       statusCode: 503,
     });
+  });
+});
+
+// #4999 — Vortex-independent Codex grant-resolution endpoint contract.
+describe("neutral Codex grant-resolution endpoint (#4999)", () => {
+  test("prefers the neutral OA_CODEX_GRANT_RESOLVE_URL when set", () => {
+    const endpoint = resolveCodexGrantResolveEndpoint({
+      [OA_CODEX_GRANT_RESOLVE_URL_ENV]: "https://grants.openagents.example",
+      [LEGACY_OMEGA_BASE_URL_ENV]: "https://legacy-vortex.invalid",
+    });
+    expect(endpoint.baseUrl).toBe("https://grants.openagents.example");
+    expect(endpoint.baseUrlSource).toBe(OA_CODEX_GRANT_RESOLVE_URL_ENV);
+  });
+
+  test("falls back to the legacy PROBE_OMEGA_BASE_URL when the neutral var is unset", () => {
+    const endpoint = resolveCodexGrantResolveEndpoint({
+      [LEGACY_OMEGA_BASE_URL_ENV]: "https://legacy-vortex.example",
+    });
+    expect(endpoint.baseUrl).toBe("https://legacy-vortex.example");
+    expect(endpoint.baseUrlSource).toBe(LEGACY_OMEGA_BASE_URL_ENV);
+  });
+
+  test("falls back to the public default when neither var is set", () => {
+    const endpoint = resolveCodexGrantResolveEndpoint({});
+    expect(endpoint.baseUrl).toBe(DEFAULT_GRANT_RESOLVE_BASE_URL);
+    expect(endpoint.baseUrlSource).toBe("default");
+  });
+
+  test("treats blank values as unset", () => {
+    const endpoint = resolveCodexGrantResolveEndpoint({
+      [OA_CODEX_GRANT_RESOLVE_URL_ENV]: "   ",
+      [LEGACY_OMEGA_BASE_URL_ENV]: "https://legacy.example",
+    });
+    expect(endpoint.baseUrl).toBe("https://legacy.example");
+    expect(endpoint.baseUrlSource).toBe(LEGACY_OMEGA_BASE_URL_ENV);
+  });
+
+  test("makeOmegaGrantResolverFromEnv resolves against the neutral base URL", async () => {
+    const seen: string[] = [];
+    const resolver = makeOmegaGrantResolverFromEnv(
+      { [OA_CODEX_GRANT_RESOLVE_URL_ENV]: "https://grants.openagents.example" },
+      async (input) => {
+        seen.push(String(input));
+        return Response.json(grant());
+      },
+    );
+
+    await Effect.runPromise(resolver.resolveGrant(assignment()));
+    expect(seen).toEqual([
+      "https://grants.openagents.example/api/provider-accounts/chatgpt-codex/grants/resolve",
+    ]);
   });
 });

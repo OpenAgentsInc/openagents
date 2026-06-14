@@ -114,6 +114,90 @@ export function makeOmegaGrantResolver(options: OmegaGrantClientOptions): OmegaG
   };
 }
 
+// #4999 — Vortex-independent Codex grant-resolution endpoint contract.
+//
+// The Vortex *credential / endpoint* is fine to keep using, but the Vortex
+// *codebase* is deprecated. Pylon-originated cloud sessions must therefore reach
+// grant resolution through a neutral, Vortex-independent endpoint contract.
+//
+// Canonical neutral env var:  OA_CODEX_GRANT_RESOLVE_URL
+// Legacy fallback env var:    PROBE_OMEGA_BASE_URL (kept for backward compat)
+//
+// Both name the *base URL* of the grant-resolution service. The provider-scoped
+// path (`/api/provider-accounts/<provider>/grants/resolve`) is appended by
+// `resolveOmegaAuthGrant`. The cloud provider (#4997) consumes this contract via
+// `makeOmegaGrantResolverFromEnv` so it never imports anything Vortex-specific.
+export const OA_CODEX_GRANT_RESOLVE_URL_ENV = "OA_CODEX_GRANT_RESOLVE_URL" as const;
+export const LEGACY_OMEGA_BASE_URL_ENV = "PROBE_OMEGA_BASE_URL" as const;
+export const OA_CODEX_GRANT_RESOLVE_BEARER_TOKEN_ENV = "OA_CODEX_GRANT_RESOLVE_TOKEN" as const;
+export const LEGACY_OMEGA_BEARER_TOKEN_ENV = "PROBE_OMEGA_BEARER_TOKEN" as const;
+export const DEFAULT_GRANT_RESOLVE_BASE_URL = "https://openagents.com" as const;
+
+export type GrantResolveBaseUrlSource =
+  | typeof OA_CODEX_GRANT_RESOLVE_URL_ENV
+  | typeof LEGACY_OMEGA_BASE_URL_ENV
+  | "default";
+
+export interface ResolvedGrantResolveEndpoint {
+  readonly baseUrl: string;
+  readonly baseUrlSource: GrantResolveBaseUrlSource;
+  readonly bearerToken?: string;
+}
+
+function isNonEmpty(value: string | undefined): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+// Prefer the neutral OA_CODEX_GRANT_RESOLVE_URL; fall back to the legacy
+// Vortex-era PROBE_OMEGA_BASE_URL when the neutral one is unset; finally fall
+// back to the public openagents.com default. The bearer token follows the same
+// preference order.
+export function resolveCodexGrantResolveEndpoint(
+  env: Readonly<Record<string, string | undefined>> = {},
+): ResolvedGrantResolveEndpoint {
+  const neutral = env[OA_CODEX_GRANT_RESOLVE_URL_ENV];
+  const legacy = env[LEGACY_OMEGA_BASE_URL_ENV];
+  const bearerToken =
+    env[OA_CODEX_GRANT_RESOLVE_BEARER_TOKEN_ENV] ?? env[LEGACY_OMEGA_BEARER_TOKEN_ENV];
+
+  if (isNonEmpty(neutral)) {
+    return {
+      baseUrl: neutral,
+      baseUrlSource: OA_CODEX_GRANT_RESOLVE_URL_ENV,
+      ...(isNonEmpty(bearerToken) ? { bearerToken } : {}),
+    };
+  }
+
+  if (isNonEmpty(legacy)) {
+    return {
+      baseUrl: legacy,
+      baseUrlSource: LEGACY_OMEGA_BASE_URL_ENV,
+      ...(isNonEmpty(bearerToken) ? { bearerToken } : {}),
+    };
+  }
+
+  return {
+    baseUrl: DEFAULT_GRANT_RESOLVE_BASE_URL,
+    baseUrlSource: "default",
+    ...(isNonEmpty(bearerToken) ? { bearerToken } : {}),
+  };
+}
+
+// Build a grant resolver from the environment using the neutral, Vortex-
+// independent endpoint contract. This is the entry point the cloud provider
+// (#4997) should use; it must not import any Vortex-specific module.
+export function makeOmegaGrantResolverFromEnv(
+  env: Readonly<Record<string, string | undefined>> = {},
+  fetchImpl?: typeof fetch,
+): OmegaGrantResolver {
+  const endpoint = resolveCodexGrantResolveEndpoint(env);
+  return makeOmegaGrantResolver({
+    baseUrl: endpoint.baseUrl,
+    ...(endpoint.bearerToken === undefined ? {} : { bearerToken: endpoint.bearerToken }),
+    ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
+  });
+}
+
 export function makeStaticOmegaGrantResolver(grant: unknown): OmegaGrantResolver {
   return {
     resolveGrant: (assignment) => validateResolvedAuthGrantForAssignment(grant, assignment),

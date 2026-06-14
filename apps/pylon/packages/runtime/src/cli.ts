@@ -53,6 +53,7 @@ import {
 } from "./llm";
 import { PROBE_APPLE_FM_BACKEND_CAPABILITY } from "./runner/identity";
 import { makeOmegaAccountClient, type OmegaAccountClient } from "./omega/account-client";
+import { resolveCodexGrantResolveEndpoint } from "./omega/grant-client";
 import { sanitizeProbePublicProjection } from "./contracts/provider-account";
 import { createProbeRenderer, createAssistantText, createCodeWithLineNumbers, detectFiletype, createDefaultSyntaxStyle, parseColor, TextRenderable, BoxRenderable, ScrollBoxRenderable } from "./opentui-renderer";
 import { type ProbeRunnerIdentity } from "./runner/identity";
@@ -645,7 +646,12 @@ function clientOptions(options: Record<string, string | true>, env: Readonly<Rec
 }
 
 function omegaBaseUrl(options: Record<string, string | true>, env: Readonly<Record<string, string | undefined>> = {}) {
-  return stringOption(options, "base-url") ?? env.PROBE_OMEGA_BASE_URL ?? "https://openagents.com";
+  // An explicit --base-url flag always wins. Otherwise resolve through the
+  // neutral, Vortex-independent grant-resolution contract (#4999): prefer
+  // OA_CODEX_GRANT_RESOLVE_URL, fall back to the legacy PROBE_OMEGA_BASE_URL,
+  // then the public openagents.com default. Both name the same openagents.com
+  // surface that serves account linking and grant resolution.
+  return stringOption(options, "base-url") ?? resolveCodexGrantResolveEndpoint(env).baseUrl;
 }
 
 function resolveStatePath(
