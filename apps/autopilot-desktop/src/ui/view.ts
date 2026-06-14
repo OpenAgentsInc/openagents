@@ -498,6 +498,8 @@ const trainingGate = (
     h.span([cls("training-gate-value")], [value]),
   ])
 
+type TrainingGateTone = "ready" | "watch" | "blocked"
+
 const uniqueTrainingRefs = (
   refs: ReadonlyArray<string | null | undefined>,
 ): string[] => {
@@ -869,6 +871,98 @@ const selectedTrainingLedgerPanel = (
     trainingRefList("evidence", evidenceRefs),
     trainingRefList("receipts", receiptRefs),
     trainingRefList("blockers", blockerRefs, "no blockers observed"),
+  ])
+}
+
+const countTone = (count: number): TrainingGateTone =>
+  count > 0 ? "ready" : "watch"
+
+const selectedTrainingLifecyclePanel = (
+  projection: TrainingRunsResponse | null,
+): Html => {
+  const summary = selectedTrainingSummary(projection)
+  if (summary === null) {
+    return h.section([cls("training-panel training-lifecycle-panel")], [
+      h.h2([cls("training-panel-title")], ["Run Lifecycle"]),
+      emptyLine("No selected run lifecycle loaded yet."),
+    ])
+  }
+
+  const metrics = summary.metrics
+  const device = summary.realGradient.deviceRequirement
+  const closeout = summary.realGradient.closeoutRequirement
+  const activeWindows = metrics.activeWindowCount.value
+  const plannedWindows = metrics.plannedWindowCount.value
+  const sealedWindows = metrics.sealedWindowCount.value
+  const reconciledWindows = metrics.reconciledWindowCount.value
+  const verifiedWork = metrics.verifiedWorkCount.value
+  const rejectedWork = metrics.rejectedWorkCount.value
+  const hasDurableSeal = sealedWindows + reconciledWindows > 0
+
+  return h.section([cls("training-panel training-lifecycle-panel")], [
+    h.div([cls("training-panel-heading")], [
+      h.h2([cls("training-panel-title")], ["Run Lifecycle"]),
+      h.span([cls("training-panel-kicker")], [summary.run.trainingRunRef]),
+    ]),
+    h.p([cls("training-panel-copy")], [
+      "Pluralis join ramp mapped onto the Worker run/window authority.",
+    ]),
+    h.ul([cls("training-gates training-lifecycle-gates")], [
+      trainingGate(
+        "registered",
+        `${metrics.assignedContributorCount.value} pylons assigned`,
+        countTone(metrics.assignedContributorCount.value),
+      ),
+      trainingGate(
+        "qualified",
+        `${device.observedDistinctContributorDevices}/${device.requiredDistinctContributorDevices} devices`,
+        device.satisfied ? "ready" : "watch",
+      ),
+      trainingGate(
+        "state_synced",
+        hasDurableSeal ? "last durable seal visible" : "awaiting sealed window",
+        hasDurableSeal ? "ready" : "watch",
+      ),
+      trainingGate(
+        "warmup",
+        activeWindows > 0
+          ? `${activeWindows} active windows`
+          : `${plannedWindows} planned windows`,
+        activeWindows > 0 ? "ready" : plannedWindows > 0 ? "watch" : "blocked",
+      ),
+      trainingGate(
+        "active",
+        `${verifiedWork} verified work refs`,
+        verifiedWork > 0 ? "ready" : "watch",
+      ),
+      trainingGate(
+        "sync_reentry",
+        rejectedWork > 0
+          ? `${rejectedWork} rejected work refs`
+          : `max stale ${summary.run.maxAllowedStale}`,
+        rejectedWork > 0 ? "blocked" : "watch",
+      ),
+    ]),
+    h.ul([cls("training-gates training-window-timeline")], [
+      trainingGate("planned", String(plannedWindows), countTone(plannedWindows)),
+      trainingGate("active", String(activeWindows), countTone(activeWindows)),
+      trainingGate("sealed", String(sealedWindows), countTone(sealedWindows)),
+      trainingGate(
+        "reconciled",
+        String(reconciledWindows),
+        countTone(reconciledWindows),
+      ),
+      trainingGate(
+        "seal barrier",
+        summary.run.sealInFlight ? "in flight" : "open",
+        summary.run.sealInFlight ? "watch" : "ready",
+      ),
+      trainingGate(
+        "closeout",
+        closeout.satisfied ? "satisfied" : "missing refs",
+        closeout.satisfied ? "ready" : "watch",
+      ),
+    ]),
   ])
 }
 
@@ -1361,6 +1455,7 @@ const trainingPane = (model: Model): Html => {
       ]),
       h.div([cls("training-grid")], [
         liveTrainingProjectionPanel(model),
+        selectedTrainingLifecyclePanel(projection),
         trainingDashboardPanel(model),
         trainingPromiseGatesPanel(model),
         selectedTrainingEvidencePanel(projection),

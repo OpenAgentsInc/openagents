@@ -167,6 +167,17 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-dashboard-panel")).toBe(true)
   })
 
+  test("training pane includes the selected run lifecycle panel", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: liveTrainingProjection,
+    })
+    expect(treeContainsClass(document.body, "training-lifecycle-panel")).toBe(true)
+    expect(treeContainsClass(document.body, "training-lifecycle-gates")).toBe(true)
+    expect(treeContainsClass(document.body, "training-window-timeline")).toBe(true)
+  })
+
   test("training pane includes the promise gates panel", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsClass(document.body, "training-promise-gates-panel")).toBe(true)

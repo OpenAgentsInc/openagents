@@ -16,6 +16,7 @@ The first implemented slice follows that boundary:
 - The pane also fetches public CS336 dashboard summaries from `/api/training/leaderboards`, `/api/training/device-capabilities/a2`, `/api/training/isoflop/a3`, `/api/training/refinery/a4`, and `/api/training/evals/a5`.
 - The pane reads `/api/public/product-promises` and filters the training/Tassadar promises so the remaining registry blockers from issue 4855 are visible beside the live run data.
 - The selected public run summary is converted into a `three-effect` snapshot so the scene reflects live run state, windows, devices, Freivalds refs, closeouts, verified work, external blockers, and settlement.
+- The pane includes a Run Lifecycle panel that maps the selected public run onto the issue 4855 / Pluralis join ramp (`registered`, `qualified`, `state_synced`, `warmup`, `active`, `sync_reentry`) and the Worker window timeline (`planned`, `active`, `sealed`, `reconciled`).
 - The pane exposes a launch/readiness feedback button that queues a local Pylon intent through the existing `intent.submit` path.
 - The pane also exposes Bun-main-process, env-gated actions for planning an R1 rehearsal run/window, activating a planned window, claiming the active training lease for a local Pylon ref, and reconciling a sealed window. The webview receives only public-safe run/window/lease refs and projections.
 - The pane can request a public bootstrap grant for the local Pylon ref against the selected training run, showing whether the joiner is granted the last durable seal, queued by the seal barrier, or refused because no durable seal exists.
@@ -114,6 +115,7 @@ The Foldkit pane adds operator panels for:
 
 - Run authority status.
 - Live Worker training run summaries.
+- A selected-run lifecycle timeline for contributor admission, state sync, warmup, active work, staleness reentry, and Worker window state.
 - Evidence requirements from the public real-gradient projection.
 - A selected-run Evidence Ledger for concrete public refs behind the current gates.
 - Issue 4855 gates.
@@ -135,6 +137,8 @@ The operations panel has seven buttons. `Plan R1 window` calls a typed desktop R
 The `Queue launch check` button still queues a local Pylon intent titled `Training run launch check`. Its body asks the node to inspect the issue 4855 gates, `/api/training/runs`, R1 readiness, seal/staleness state, distinct contributors, Freivalds refs, gradient closeout refs, receipts, and settlement blockers. This gives the operator immediate visible feedback when admin planning is disabled or when the local node should inspect readiness before the operator plans another window.
 
 The refresh button and Training pane navigation call typed desktop RPCs that read public Worker endpoints. This is intentionally read-only and produces desktop-local projections with the live run count, per-run state, verified work count, assigned contributor count, device requirement status, Freivalds refs, gradient closeout refs, loss budget, external blocker state, and settled sats.
+
+The Run Lifecycle panel is a compact translation layer for issue 4855. It derives `registered`, `qualified`, `state_synced`, `warmup`, `active`, and `sync_reentry` from assigned contributors, device qualification, durable seal visibility, active/planned windows, verified work, rejected work, and the configured stale bound. A second strip shows the Worker window authority counts for `planned`, `active`, `sealed`, and `reconciled`, plus seal-barrier and closeout readiness. This makes admin-triggered progress visible immediately after projection refreshes without adding a second source of truth.
 
 The Evidence Ledger panel is the bridge between the high-level gates and the actual code-facing refs an operator needs. For the selected run it lists authority refs, the first projected window records, evidence refs including Freivalds and gradient closeouts, receipt refs, and external blocker/requirement refs. It is still a public projection surface: it never displays private worker output, credentials, wallet material, or raw evidence payloads.
 
