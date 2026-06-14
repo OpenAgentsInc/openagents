@@ -2919,41 +2919,17 @@ const laneCFanoutWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
       )
     }
 
-    // Server gate passed: create the linked public-market labor work request as
-    // the customer (requester), reusing the live forum work-requests surface.
+    // Server gate passed. The public-tier floor + opt-in + budget cap are now
+    // enforced server-side; the route authorizes the fanout and returns the
+    // public-safe objective ref + the market work-request input the requester
+    // uses to list the linked job on the open market
+    // (POST /api/forum/work-requests). A private/non-public order never reaches
+    // this branch (it gets a 409 above), so the floor cannot be bypassed.
     const objectiveRef = laneCFanoutObjectiveRef(workOrderRef)
-    const created = yield* Effect.tryPromise({
-      catch: error =>
-        new AutopilotWorkStoreError({
-          kind: 'storage_error',
-          reason: error instanceof Error ? error.message : String(error),
-        }),
-      try: async () => {
-        const res = await fetch(
-          new Request(new URL('/api/forum/work-requests', request.url).toString(), {
-            body: JSON.stringify({
-              budgetSats: budgetCapSats,
-              deadlineRef: 'deadline.public.lane_c_fanout.20261231',
-              objectiveRef,
-              requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
-              title: `Lane C fanout: ${workOrderRef}`.slice(0, 160),
-              verificationCommandRef: 'command.public.pylon.labor.bun_test',
-            }),
-            headers: {
-              authorization: request.headers.get('authorization') ?? '',
-              'content-type': 'application/json',
-              'Idempotency-Key': `lane-c-fanout:${workOrderRef}`,
-            },
-            method: 'POST',
-          }),
-        )
-        return res.json()
-      },
-    })
-
     return noStoreJsonResponse(
       {
         fanout: {
+          authorized: true,
           lane: fanout.decision.lane,
           objectiveRef,
           ownedCapacityState: fanout.ownedCapacityState,
@@ -2961,7 +2937,14 @@ const laneCFanoutWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
           state: fanout.decision.state,
         },
         generatedAt: nowIso,
-        marketWorkRequest: created,
+        marketWorkRequestInput: {
+          budgetSats: budgetCapSats,
+          deadlineRef: 'deadline.public.lane_c_fanout.20261231',
+          objectiveRef,
+          requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
+          title: `Lane C fanout: ${workOrderRef}`.slice(0, 160),
+          verificationCommandRef: 'command.public.pylon.labor.bun_test',
+        },
         workOrderRef,
       },
       { status: 201 },
