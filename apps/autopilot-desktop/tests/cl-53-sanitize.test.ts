@@ -179,6 +179,24 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsSelector(document.body, "oa-bezier-nodes")).toBe(true)
   })
 
+  test("nodes home includes the pmndrs bezier source map", () => {
+    const document = view(initialModel)
+    expect(treeContainsClass(document.body, "three-effect-source-list")).toBe(true)
+    expect(treeContainsText(document.body, "examples/bezier-nodes")).toBe(true)
+    expect(
+      treeContainsText(
+        document.body,
+        "projects/repos/examples/demos/bezier-curves-and-nodes/src/Nodes.jsx",
+      ),
+    ).toBe(true)
+    expect(
+      treeContainsText(
+        document.body,
+        "projects/repos/drei/src/core/QuadraticBezierLine.tsx",
+      ),
+    ).toBe(true)
+  })
+
   test("training pane includes the training scene", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)

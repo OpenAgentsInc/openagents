@@ -141,7 +141,7 @@ const bezierNodesPanel = (): Html =>
         [cls("three-effect-header")],
         [
           h.h2([cls("three-effect-title")], ["Bezier Nodes"]),
-          h.p([cls("three-effect-caption")], ["drag graph"]),
+          h.p([cls("three-effect-caption")], ["pmndrs/drei port"]),
         ],
       ),
       bezierNodesView<Message>([cls("three-effect-bezier")]),
@@ -150,6 +150,32 @@ const bezierNodesPanel = (): Html =>
 
 const threeEffectPreview = (): Html =>
   h.div([cls("three-effect-grid")], [liveScenePanel(), bezierNodesPanel()])
+
+const threeEffectSourceCard = (): Html =>
+  card("three-effect sources", [
+    h.p([cls("card-subtitle")], [
+      "Owned Effect/Foldkit package plus the local reference files used for the Bezier port.",
+    ]),
+    h.ul([cls("three-effect-source-list")], [
+      h.li([], [
+        h.code([], ["OpenAgentsInc/three-effect:examples/bezier-nodes/"]),
+      ]),
+      h.li([], [
+        h.code([], ["OpenAgentsInc/three-effect:packages/core/src/bezierNodes.ts"]),
+      ]),
+      h.li([], [
+        h.code([], [
+          "projects/repos/examples/demos/bezier-curves-and-nodes/src/Nodes.jsx",
+        ]),
+      ]),
+      h.li([], [
+        h.code([], ["projects/repos/drei/src/core/QuadraticBezierLine.tsx"]),
+      ]),
+      h.li([], [
+        h.code([], ["projects/repos/drei/src/web/DragControls.tsx"]),
+      ]),
+    ]),
+  ])
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -469,6 +495,7 @@ const nodesPane = (model: Model): Html => {
         [node ? nodeStatusLine({ ok: node.ok, sessions: node.sessions }) : "connecting…"],
       ),
       threeEffectPreview(),
+      threeEffectSourceCard(),
       deployCard(model),
       askCard(model),
       approvalsCard(model),
