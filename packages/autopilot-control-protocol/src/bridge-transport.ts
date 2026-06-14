@@ -4,7 +4,7 @@
 // (POST /bridge with `Authorization: Bridge <pairingRef>:<jti>`). Pure +
 // transport-agnostic (inject fetch) so web / desktop / mobile share it.
 
-import { buildListRequest } from "./bridge-client"
+import { buildHistoryRequest, buildListRequest } from "./bridge-client"
 import type { Capability, PairingCredentialClaims, ProjectionLevel } from "./bridge"
 import { decodeSessionSummary, type SessionSummary } from "./control"
 
@@ -52,6 +52,10 @@ export type BridgeCredential = { pairingRef: string; jti: string; capabilityRef?
 
 export type BridgeTransport = {
   list: () => Promise<SessionSummary[]>
+  // Cursor-resumable catch-up for one session over the bridge (#5000
+  // session.history). Returns the node's session-events projection (e.g.
+  // { recentEvents }); the caller dedups/resumes via the shared cursor model.
+  history: (sessionRef: string) => Promise<unknown>
 }
 
 // A transport bound to a pairing credential. Sends capability-scoped read
@@ -91,6 +95,17 @@ export function createBridgeTransport(input: {
         idempotencyKey: requestId,
       })
       return (await send(envelope) as unknown[]).map((row) => decodeSessionSummary(row))
+    },
+    async history(sessionRef) {
+      const requestId = nextId()
+      const envelope = buildHistoryRequest({
+        sessionRef,
+        pairingRef: input.credential.pairingRef,
+        capabilityRef: input.credential.capabilityRef ?? "observe_public",
+        clientRequestId: requestId,
+        idempotencyKey: requestId,
+      })
+      return send(envelope)
     },
   }
 }

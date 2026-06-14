@@ -91,6 +91,28 @@ export async function fetchSessionsViaBridge(bridge: BridgeSession): Promise<Ses
   return bridge.transport.list()
 }
 
+// Stream a session's events over the bridge (#5000 session.history). Same row
+// shape as the dev-token fetchSessionEvents; the node returns its session-events
+// projection (recentEvents) over the capability-scoped bridge, so the read-only
+// app can watch a session (local OR cloud — #5005 made the stream lane-uniform)
+// without a long-lived dev token on the wire.
+export async function fetchSessionEventsViaBridge(
+  bridge: BridgeSession,
+  sessionRef: string,
+): Promise<ControlSessionEventRow[]> {
+  const result = (await bridge.transport.history(sessionRef)) as { recentEvents?: unknown }
+  const events = result?.recentEvents
+  if (!Array.isArray(events)) return []
+  return events.map((e: any) => ({
+    eventIndex: Number(e.eventIndex ?? 0),
+    observedAt: String(e.observedAt ?? ""),
+    phase: String(e.phase ?? "?"),
+    state: String(e.state ?? "?"),
+    detail: typeof e.messageText === "string" && e.messageText.length > 0 ? e.messageText : "",
+    full: typeof e.messageFull === "string" ? e.messageFull : "",
+  }))
+}
+
 export type ControlSessionRow = {
   sessionRef: string
   adapter: string

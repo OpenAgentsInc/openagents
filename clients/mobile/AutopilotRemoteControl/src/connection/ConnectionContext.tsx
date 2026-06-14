@@ -20,9 +20,11 @@ import {
   type DeployStatus,
   type DeployTarget,
   type IntentRow,
+  type BridgeSession,
   type SessionArtifact,
   type WalletStatus,
   cancelSession as cancelSessionCall,
+  connectBridge,
   decodeConnectCode,
   deployToCloud as deployToCloudCall,
   fetchAccounts,
@@ -34,6 +36,7 @@ import {
   fetchIntents,
   fetchSessionArtifact as fetchSessionArtifactCall,
   fetchSessionEvents as fetchSessionEventsCall,
+  fetchSessionEventsViaBridge,
   fetchSessions,
   fetchWalletStatus,
   resolveApproval as resolveApprovalCall,
@@ -99,6 +102,10 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [deployStatus, setDeployStatus] = useState<DeployStatus | null>(null)
 
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  // #5001: a scoped bridge credential for capability-gated reads. Established
+  // additively after connect; the session event stream reads over it (no
+  // long-lived dev token on the wire), falling back to the dev-token path.
+  const bridge = useRef<BridgeSession | null>(null)
 
   const poll = useCallback(async (c: ConnectInfo) => {
     try {
@@ -146,6 +153,27 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       if (timer.current) clearInterval(timer.current)
     }
   }, [conn, poll])
+
+  // #5001: pair onto the capability-scoped bridge once per connection. Reads
+  // (the session event stream) prefer this credential over the dev token; if
+  // the node doesn't expose bridge pairing, connectBridge returns null and the
+  // dev-token path is used unchanged.
+  useEffect(() => {
+    if (conn === null) {
+      bridge.current = null
+      return
+    }
+    let cancelled = false
+    void connectBridge(conn, { capabilities: ["observe_public"] })
+      .then((session) => {
+        if (!cancelled) bridge.current = session
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+      bridge.current = null
+    }
+  }, [conn])
 
   // Accounts (once per connection) + the periodic wallet/intents/approvals/
   // deploy/coordinator refresh, plus one notification-permission request.
@@ -260,6 +288,16 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const fetchSessionEvents = useCallback(
     async (sessionRef: string) => {
       if (conn === null) return []
+      // Prefer the capability-scoped bridge (#5000 session.history); fall back
+      // to the dev-token path if no bridge credential or the read fails.
+      const session = bridge.current
+      if (session !== null) {
+        try {
+          return await fetchSessionEventsViaBridge(session, sessionRef)
+        } catch {
+          // fall through to dev-token path
+        }
+      }
       return fetchSessionEventsCall(conn, sessionRef)
     },
     [conn],

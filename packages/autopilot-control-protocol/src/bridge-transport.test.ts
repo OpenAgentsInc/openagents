@@ -34,4 +34,27 @@ describe("client bridge transport (CL-14)", () => {
     const t2 = createBridgeTransport({ baseUrl: "https://node.example", credential: { pairingRef: "p1", jti: "bad" }, fetchImpl: errFetch })
     await expect(t2.list()).rejects.toThrow(/invalid or expired/)
   })
+
+  test("transport.history sends session.history verb + sessionRef and returns the events projection", async () => {
+    let body: any = null
+    let auth: string | null = null
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      auth = (init!.headers as Record<string, string>).authorization
+      body = JSON.parse(init!.body as string)
+      return new Response(
+        JSON.stringify({ ok: true, result: { recentEvents: [{ eventIndex: 0, state: "running" }] } }),
+        { status: 200 },
+      )
+    }) as unknown as typeof fetch
+    const t = createBridgeTransport({
+      baseUrl: "https://node.example",
+      credential: { pairingRef: "p1", jti: "j1" },
+      fetchImpl,
+    })
+    const result = (await t.history("sess.42")) as { recentEvents: unknown[] }
+    expect(auth).toBe("Bridge p1:j1")
+    expect(body.verb).toBe("session.history")
+    expect(body.sessionRef).toBe("sess.42")
+    expect(result.recentEvents.length).toBe(1)
+  })
 })
