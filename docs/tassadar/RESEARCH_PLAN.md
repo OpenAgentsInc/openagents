@@ -32,7 +32,7 @@ until evidence exists — is a machine for driving the cost of trust down
 faster than the cost of work ([`work-that-proves-itself.md`](work-that-proves-itself.md), §I).
 
 In March 2026, Percepta published a construction that closes the
-verification gap to *zero* for one class of work: compile a program — do
+verification gap to _zero_ for one class of work: compile a program — do
 not train it — into the weights of a completely standard transformer,
 which then executes that program exactly, token by token, for millions of
 steps, with a decode path that runs in logarithmic rather than linear
@@ -68,9 +68,9 @@ load-bearing enough that psionic enforces it as a documented naming rule
 (`PSION_EXECUTOR_PROGRAM.md`):
 
 - **Tassadar** is the compiled lane: exact, integer, hard-max,
-  digest-pinned, *written* rather than learned. Its guarantees are
+  digest-pinned, _written_ rather than learned. Its guarantees are
   proofs. Its claim boundary is equally hard: it proves transformers
-  *can* compute exactly, not that trained ones do.
+  _can_ compute exactly, not that trained ones do.
 - **Psion** is the learned lane: the compact-decoder model family with
   governance, data, training, eval, serving, and rollback contracts
   (`PSION_PROGRAM_MAP.md`). Its guarantees are statistical, bounded, and
@@ -82,7 +82,7 @@ trained models with compiled exact cores for the operations that must
 never be wrong — arithmetic, ledger updates, state machines, protocol
 execution — and trained flexibility everywhere else. The executor is
 differentiable (the trace is part of the forward pass; gradients
-propagate *through the computation*), which makes exact computation a
+propagate _through the computation_), which makes exact computation a
 trainable organ rather than an external prosthetic
 ([`work-that-proves-itself.md`](work-that-proves-itself.md), §V). No
 other tool, plugin, or sandbox has that property.
@@ -109,7 +109,7 @@ These are settled, sourced, and citable without hedging:
 2. **We own an independent implementation of the pipeline shape.** ALM
    gate-graph IR with exact evaluator; four-phase scheduler with
    interval-coloring slot reuse and explicit stale-slot subtraction;
-   parabolic-key geometric legs that *refuse near-misses* rather than
+   parabolic-key geometric legs that _refuse near-misses_ rather than
    interpolate; a Li Chao hull fast path with deterministic visit-count
    evidence; a Futamura specializer (v2, shared indicator subgraphs); a
    branch-capable interpreter for our twelve-opcode i32 window
@@ -147,7 +147,7 @@ a falsifier is marketing.
 - **H1 — Purely learned exactness fails.** A student transformer trained
   on execution traces, without architectural bias or auxiliary
   supervision, will imitate local trace texture and diverge under length
-  extrapolation. *Falsifier:* a next-token-only baseline achieving high
+  extrapolation. _Falsifier:_ a next-token-only baseline achieving high
   exact-rollout pass rates at 4–8× training lengths on held-out program
   families. The external analysis concurs and the trace-learning
   literature it cites (limited gains, diminishing with trace complexity)
@@ -155,14 +155,14 @@ a falsifier is marketing.
 - **H2 — Frozen exact cores plus learned control succeeds.** Compiled,
   verified, frozen executor modules behind explicit ABI tokens, with a
   trained planner marshaling inputs and outputs, will produce useful and
-  *verifiable* hybrid behavior fastest. This is the program's strongest
+  _verifiable_ hybrid behavior fastest. This is the program's strongest
   product bet and the analysis's strongest recommendation; both arrived
   independently.
 - **H3 — The 2D geometry is trainable only with help.** Gradient descent
   alone will not discover hull-compatible parabolic dictionaries, but
   analytic initialization, max-margin lookup losses, and hard-max
-  temperature schedules may preserve them. *Falsifier in either
-  direction* is cheap to obtain and high-value; this is the most
+  temperature schedules may preserve them. _Falsifier in either
+  direction_ is cheap to obtain and high-value; this is the most
   lab-worthy pure-research question we own.
 - **H4 — Programs-in-weights becomes a module system.** The Futamura
   projection generalizes from "bake one program" to a library of
@@ -172,7 +172,7 @@ a falsifier is marketing.
   ([`work-that-proves-itself.md`](work-that-proves-itself.md), §VI).
 - **H5 — Verified-trace distillation is the best training data we will
   ever have.** The executor is teacher, grader, and curriculum generator
-  at once; its labels are *provably* correct, unlike any chain-of-thought
+  at once; its labels are _provably_ correct, unlike any chain-of-thought
   corpus in existence; and the harness's generator mints unlimited fresh
   curriculum. The open question is whether students trained on it
   extrapolate (see H1) — but even partial extrapolation with auxiliary
@@ -182,6 +182,26 @@ a falsifier is marketing.
   the pricing ladder drops to the floor, weak devices become first-class
   sellers and validators, and the long tail of dark capacity becomes the
   trust layer. The PoC is one data point; the hypothesis needs volume.
+
+### W3 Verdicts Recorded 2026-06-14
+
+The W3 four-baseline sweep on
+`corpus.tassadar_trace.v0_2.w3_100m` is complete. The closeout report is
+`docs/tassadar/2026-06-14-w3-student-program-report.md`; the executable
+student harness and artifacts are in
+`OpenAgentsInc/psionic@7497713e`, under
+`fixtures/tassadar/w3_student_sweep_20260612/`.
+
+- **H1 supported.** Baseline A, next-token-only distillation, trained to
+  completion and achieved `0.0` exact rollout pass@1 and `0.0` replay
+  acceptance. Every eval record diverged at step zero.
+- **H2 supported.** Baseline D, frozen analytic executor plus learned
+  interface, achieved `1.0` pass@1, `1.0` replay acceptance, and `1.0`
+  output-digest match across all 748 eval records.
+- **H3 falsified for this setup.** Baseline C, the analytic lookup
+  variant, reached lookup accuracy `1.0` in training but still achieved
+  `0.0` pass@1 and `0.0` replay acceptance. The lookup helper solved its
+  local target; it did not make the learned backbone replay-safe.
 
 ## 5. The Directive: Four Workstreams
 
@@ -261,7 +281,7 @@ live with receipts.
    intent, execution, state delta, and evaluation all close — agent
    Kenobi's tetrahedron criterion, independently re-derived by the
    external analysis, adopted as the evolution loop's acceptance
-   predicate. Closed ticks *are* training records; the distillation
+   predicate. Closed ticks _are_ training records; the distillation
    dataset is the byproduct of operation, not a separate pipeline.
 
 ### W3 — The student program (Psion learns what Tassadar compiles)
@@ -282,7 +302,7 @@ No training run before W2's first 100M verified tokens exist. Then:
    acceptance rate. The evaluator is our shipped replay verifier pointed
    at student rollouts; the eval harness was built before the first
    student existed, which is the correct order.
-3. **Splits designed against memorization:** held-out program *families*
+3. **Splits designed against memorization:** held-out program _families_
    (not seeds), train-short/evaluate-long (2×/4×/8×), branch and memory
    stress suites, near-miss lookup adversaries, and an economic-workload
    suite (ledger/state-machine programs) because that is the demand
@@ -308,7 +328,7 @@ No training run before W2's first 100M verified tokens exist. Then:
 1. **Exact compute as an agent-facing paid work class.** Frontier-model
    agents fail at long multiplication constitutionally; every agent in
    our economy performs the write-code/pause/trust-the-sandbox ritual
-   today. An executor endpoint whose response *is* a replayable trace is
+   today. An executor endpoint whose response _is_ a replayable trace is
    a product with a permanent demand floor and zero-cost verification.
    Sequencing per the audit's continuation list: capability envelopes in
    Pylon reporting, executor-trace homework through the assignment
@@ -317,7 +337,7 @@ No training run before W2's first 100M verified tokens exist. Then:
 2. **The module library (H4).** Compile small exact modules — arithmetic,
    ledger updates, finite-state protocol validators, interpreter slices
    — behind explicit ABI tokens with fixed schemas and replayable module
-   traces. Then the H2 planner experiments train *around* them. If H2
+   traces. Then the H2 planner experiments train _around_ them. If H2
    and H4 both hold, the artifact rails gain a new asset class: weight
    modules, conformance-tested before purchase clears.
 3. **The evolution loop as the standing automation.** The yellow promise
@@ -335,9 +355,9 @@ Three rules distinguish our method, and this week supplied the evidence
 that they work:
 
 1. **Adversarial verification is funded, not tolerated.** Outside agents
-   (Orrery, Kenobi, Mr_Tibbs, Comunero) audited our claims this week,
+   (Orrery, Kenobi, Mr*Tibbs, Comunero) audited our claims this week,
    found real defects — frozen projections, unresolvable evidence,
-   invisible payments — and were *paid in settled Bitcoin* for it on the
+   invisible payments — and were \_paid in settled Bitcoin* for it on the
    same rails the program studies. The standing rule of this folder —
    the report that we overclaimed outranks the work — is an economic
    mechanism, not a slogan. Researchers should expect their claims to be
@@ -392,7 +412,7 @@ A program that cannot say what would kill it is not a research program
   unverified — H6 is dead and the executor remains a benchmark and a
   training-data factory, not a product. We keep the factory; we stop the
   product line.
-- **Students never extrapolate.** If H1's null holds *and* auxiliary
+- **Students never extrapolate.** If H1's null holds _and_ auxiliary
   supervision (H5) and architectural bias (H3) fail to produce length
   extrapolation beyond small multiples, the spectrum collapses to its
   compiled end: W3 shrinks to an eval program, W4's hybrid becomes
