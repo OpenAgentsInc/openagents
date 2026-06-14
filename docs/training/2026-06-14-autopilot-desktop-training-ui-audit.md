@@ -20,6 +20,7 @@ The first implemented slice follows that boundary:
 - The Three scene now also receives compact product-promise registry signals, so the visual surface shows the live acceptance owner and blocker/evidence pressure instead of leaving that context only in adjacent HTML panels.
 - The Three scene also receives compact operator-readiness and operator-command signals for readiness, evidence-packet inspection, plan, activate, lease, bootstrap, closeout, admit, and reconcile, so immediate admin feedback is visible in the primary WebGL surface.
 - `three-effect` now carries `examples/training-run/`, a runnable visual smoke for the same dark Training scene with lifecycle, promise, and operator signals.
+- Autopilot Desktop now carries `bun run smoke:training-scene`, a Chrome-backed canvas-pixel smoke that builds a Training scene harness from the pinned `@openagentsinc/three-effect`, mounts `oa-training-run`, captures the rendered page, and fails if the WebGL surface is blank or undersized.
 - The pane includes a Run Lifecycle panel that maps the selected public run onto the issue 4855 / Pluralis join ramp (`registered`, `qualified`, `state_synced`, `warmup`, `active`, `sync_reentry`) and the Worker window timeline (`planned`, `active`, `sealed`, `reconciled`).
 - The pane exposes a launch/readiness feedback button that queues a local Pylon intent through the existing `intent.submit` path.
 - The pane also exposes Bun-main-process, env-gated actions for planning an R1 rehearsal run/window, activating a planned window, claiming the active training lease for a local Pylon ref, and reconciling a sealed window. The webview receives only public-safe run/window/lease refs and projections.
@@ -223,5 +224,5 @@ The third risk is claim confusion. Public real-gradient claims have explicit blo
 
 1. Add richer closeout metadata to the Pylon-emitted worker receipt bundle: budget refs, eval refs, merge refs, loss curves, and distinct multi-Pylon aggregation once real R1/R2 devices submit them.
 2. Add Worker-exposed post-admission queue depth and first projection-lag deltas once the training authority emits those counters directly.
-3. Add stronger runtime smoke coverage with screenshots or canvas-pixel checks proving the `oa-training-run` WebGL surface is nonblank in the packaged desktop shell.
+3. Wire `smoke:training-scene` into the desktop CI gate and add an Electrobun-packaged shell variant once the build artifact path is stable.
 4. Add a lower-detail responsive scene mode before sharing the same visualization with mobile.

@@ -7,6 +7,7 @@
     "dev": "bun run build:css && electrobun dev",
     "build:css": "bunx @tailwindcss/cli -i src/ui/styles.css -o src/ui/styles.out.css",
     "build": "bun run build:css && electrobun build",
+    "smoke:training-scene": "bun scripts/training-scene-canvas-smoke.ts",
     "test": "bun test",
     "notarize:macos": "bash scripts/notarize-macos.sh"
   },

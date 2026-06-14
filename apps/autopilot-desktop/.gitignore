@@ -5,3 +5,6 @@ src/ui/styles.out.css
 
 # Electrobun build output
 build/
+
+# Temporary Chrome/CDP harness output from `bun run smoke:training-scene`.
+.training-scene-smoke-*/
