@@ -20,7 +20,7 @@ import {
   SessionList,
   type AccountSummary,
 } from "@openagentsinc/autopilot-ui"
-import type { Attribute, Html } from "foldkit/html"
+import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 
 import { chooseUpdate } from "../shared/update-feed"
@@ -724,4 +724,11 @@ export const sanitizeTree = (node: unknown): unknown => {
   return node
 }
 
-export const view = (model: Model): Html => sanitizeTree(rootView(model)) as Html
+// Foldkit's runtime renders `view(model).body` — `view` MUST return a
+// `Document` ({ title, body }), not a bare `Html`. Returning an `Html` left
+// `.body` undefined, so nothing ever mounted (blank screen). The body is the
+// sanitized app shell.
+export const view = (model: Model): Document => ({
+  title: "Autopilot Desktop",
+  body: sanitizeTree(rootView(model)) as Html,
+})

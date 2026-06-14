@@ -14,6 +14,7 @@
 
 import { Electroview } from "electrobun/view"
 import { Runtime } from "foldkit"
+import type { Document } from "foldkit/html"
 import { html } from "foldkit/html"
 
 import type { DesktopRPCSchema } from "../shared/rpc"
@@ -29,8 +30,11 @@ import { view } from "./view"
 // visible instead of a white window. This is a local operator tool, so we always
 // show the stack; gate on a prod flag here later if the app ever ships hardened.
 const ch = html<never>()
-const crashView = (error: Error) =>
-  ch.div(
+// Must return a Document ({ title, body }) — the runtime renders `.body`. A bare
+// Html here left the crash overlay's body undefined (blank crash screen).
+const crashView = (error: Error): Document => ({
+  title: "Autopilot Desktop — error",
+  body: ch.div(
     [
       ch.Style(
         "position:fixed;inset:0;overflow:auto;padding:24px;background:#0b0d12;color:#e6e9ef;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5;z-index:99999",
@@ -62,7 +66,8 @@ const crashView = (error: Error) =>
         [error.stack ?? "(no stack)"],
       ),
     ],
-  )
+  ),
+})
 
 const rpc = Electroview.defineRPC<DesktopRPCSchema>({
   handlers: {
