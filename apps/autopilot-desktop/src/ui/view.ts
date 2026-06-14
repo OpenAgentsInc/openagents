@@ -527,6 +527,115 @@ const trainingStatusText = (
   return trimmed.length > 0 ? trimmed : fallback
 }
 
+const trainingRoadmapItems: ReadonlyArray<{
+  phase: string
+  issue: string
+  title: string
+  status: string
+  tone: TrainingGateTone
+}> = [
+  {
+    phase: "P0.1",
+    issue: "#4848",
+    title: "typed contributor ladder",
+    status: "closed",
+    tone: "ready",
+  },
+  {
+    phase: "P0.2",
+    issue: "#4849",
+    title: "seal staleness + maxAllowedStale",
+    status: "closed",
+    tone: "ready",
+  },
+  {
+    phase: "P0.3",
+    issue: "psionic#1124",
+    title: "Pluralis mechanism ledger",
+    status: "closed",
+    tone: "ready",
+  },
+  {
+    phase: "P1.1",
+    issue: "psionic#1125",
+    title: "shadow-window ramp",
+    status: "closed",
+    tone: "ready",
+  },
+  {
+    phase: "P1.2",
+    issue: "#4850",
+    title: "bootstrap from durable seal",
+    status: "closed",
+    tone: "ready",
+  },
+  {
+    phase: "P1.3",
+    issue: "#4851",
+    title: "join blocking during seal",
+    status: "closed",
+    tone: "ready",
+  },
+  {
+    phase: "P1.4",
+    issue: "#4852",
+    title: "hardware admission gates",
+    status: "closed",
+    tone: "ready",
+  },
+  {
+    phase: "P2.1",
+    issue: "psionic#1126",
+    title: "collective failure semantics",
+    status: "closed",
+    tone: "ready",
+  },
+  {
+    phase: "P2.2",
+    issue: "#4853",
+    title: "staleness-priced acceptance",
+    status: "closed",
+    tone: "ready",
+  },
+  {
+    phase: "P2.3",
+    issue: "#4854",
+    title: "presence/compute receipt split",
+    status: "closed",
+    tone: "ready",
+  },
+  {
+    phase: "P2.4",
+    issue: "psionic#1127",
+    title: "SPARTA side canary",
+    status: "harness closed, run pending",
+    tone: "watch",
+  },
+  {
+    phase: "P3.2",
+    issue: "psionic#1128",
+    title: "PowerSGD x Freivalds question",
+    status: "closed",
+    tone: "ready",
+  },
+  {
+    phase: "P3.1",
+    issue: "unfiled",
+    title: "pipeline-stage sharding",
+    status: "wait for R2 economics",
+    tone: "watch",
+  },
+]
+
+const trainingRoadmapRefs: readonly string[] = [
+  "GitHub OpenAgentsInc/openagents#4855",
+  "docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md",
+  "docs/promises/product-promises.json",
+  "training.model_ladder.v1",
+  "training.marathon_operations.v1",
+  "training.public_distributed_training_run.v1",
+]
+
 const uniqueTrainingRefs = (
   refs: ReadonlyArray<string | null | undefined>,
 ): string[] => {
@@ -638,6 +747,38 @@ const trainingSourceMapPanel = (): Html =>
           ),
         ]),
       ),
+    ),
+  ])
+
+const trainingRoadmapPanel = (): Html =>
+  h.section([cls("training-panel training-roadmap-panel")], [
+    h.div([cls("training-panel-heading")], [
+      h.h2([cls("training-panel-title")], ["Issue 4855 Ledger"]),
+      h.span([cls("training-panel-kicker")], ["closed; receipts move to registry"]),
+    ]),
+    h.p([cls("training-panel-copy")], [
+      "Pluralis-to-Pylon child work by phase, with live R1/R2 hardware and settlement evidence now owned by the training promise registry.",
+    ]),
+    h.ul(
+      [cls("training-gates training-roadmap-gates")],
+      [
+        trainingGate(
+          "acceptance owner",
+          "training.* promises own live receipts",
+          "watch",
+        ),
+        ...trainingRoadmapItems.map(item =>
+          trainingGate(
+            `${item.phase} ${item.issue}`,
+            `${item.status} · ${item.title}`,
+            item.tone,
+          ),
+        ),
+      ],
+    ),
+    h.ul(
+      [cls("training-api-list training-roadmap-refs")],
+      trainingRoadmapRefs.map(ref => h.li([], [h.code([], [ref])])),
     ),
   ])
 
@@ -1743,17 +1884,7 @@ const trainingPane = (model: Model): Html => {
         trainingPromiseGatesPanel(model),
         selectedTrainingEvidencePanel(projection),
         selectedTrainingLedgerPanel(projection),
-        h.section([cls("training-panel")], [
-          h.h2([cls("training-panel-title")], ["Issue 4855 Gates"]),
-          h.ul([cls("training-gates")], [
-            trainingGate("join lifecycle", "registered -> active", "ready"),
-            trainingGate("bootstrap", "last durable seal only", "ready"),
-            trainingGate("seal barrier", "queue joins during merge", "watch"),
-            trainingGate("staleness", "sync reentry beyond bound", "watch"),
-            trainingGate("receipts", "presence split from compute", "ready"),
-            trainingGate("SPARTA", "side canary only", "blocked"),
-          ]),
-        ]),
+        trainingRoadmapPanel(),
         trainingLaunchPanel(model),
         trainingOperatorFeedPanel(model),
         h.section([cls("training-panel")], [

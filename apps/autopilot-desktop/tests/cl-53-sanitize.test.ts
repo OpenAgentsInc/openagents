@@ -268,6 +268,13 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-operator-feed")).toBe(true)
   })
 
+  test("training pane includes the issue roadmap ledger", () => {
+    const document = view({ ...initialModel, pane: "training" })
+    expect(treeContainsClass(document.body, "training-roadmap-panel")).toBe(true)
+    expect(treeContainsClass(document.body, "training-roadmap-gates")).toBe(true)
+    expect(treeContainsClass(document.body, "training-roadmap-refs")).toBe(true)
+  })
+
   test("training pane includes the closeout packet action", () => {
     const document = view({
       ...initialModel,

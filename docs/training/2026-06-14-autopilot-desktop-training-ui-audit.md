@@ -23,6 +23,7 @@ The first implemented slice follows that boundary:
 - The pane can queue a local Pylon closeout packet task with the selected run/window/lease/bootstrap refs, but it does not synthesize seal metadata or call evidence-admission routes from the webview.
 - The pane now includes an Operator Feed that consolidates public projection refresh state, dashboard/promise fetch state, and every operator command result so an admin can see immediate feedback and later projection catch-up in one place.
 - The pane now includes an Evidence Ledger panel for the selected run, exposing public authority refs, window refs, Freivalds/gradient closeout refs, receipt refs, and blocker refs without moving raw worker payloads into the webview.
+- The pane now includes an Issue 4855 Ledger panel that carries the Pluralis-to-Pylon child issue phases, the closed implementation status, the SPARTA/run/economics caveats, and the registry handoff for live R1/R2 evidence.
 - The pane includes a Source Map panel that groups the Worker authority, evidence routes, desktop bridge, `three-effect` scene, and training docs by responsibility.
 - Evidence admission, settlement, and real worker execution remain outside the webview.
 
@@ -120,7 +121,7 @@ The Foldkit pane adds operator panels for:
 - A selected-run lifecycle timeline for contributor admission, state sync, warmup, active work, staleness reentry, and Worker window state.
 - Evidence requirements from the public real-gradient projection.
 - A selected-run Evidence Ledger for concrete public refs behind the current gates.
-- Issue 4855 gates.
+- An Issue 4855 Ledger that shows the roadmap phase, issue ref, closed implementation status, and the promise-registry owner for remaining hardware/settlement receipts.
 - Launch feedback.
 - An Operator Feed for public projection catch-up plus the latest plan, activate, lease, bootstrap, closeout, reconcile, and launch-check command states.
 - Public and admin API boundary.
@@ -145,6 +146,8 @@ The refresh button and Training pane navigation call typed desktop RPCs that rea
 The Run Lifecycle panel is a compact translation layer for issue 4855. It derives `registered`, `qualified`, `state_synced`, `warmup`, `active`, and `sync_reentry` from assigned contributors, device qualification, durable seal visibility, active/planned windows, verified work, rejected work, and the configured stale bound. A second strip shows the Worker window authority counts for `planned`, `active`, `sealed`, and `reconciled`, plus seal-barrier and closeout readiness. This makes admin-triggered progress visible immediately after projection refreshes without adding a second source of truth.
 
 The Operator Feed is the immediate-feedback strip for the same contract. It does not create new authority or add a second command path; it reads the Foldkit model fields already populated by typed messages. The first rows show whether `/api/training/runs`, dashboard summaries, and promise gates are loaded, refreshing, blocked, or caught up. The remaining rows show the latest local plan, activate, lease, bootstrap, closeout, reconcile, and launch-check status with the public run/window/lease/grant refs that are safe to display. That gives the admin a single place to look after a button press while the public Worker projection refresh catches up.
+
+The Issue 4855 Ledger panel reflects the current GitHub state rather than the original open tracking state. Issue 4855 is closed because all child implementation issues landed on the canonical branches and the roadmap doc records the outcome. The panel keeps the phase ledger visible in the desktop cockpit while making the important handoff explicit: live R1/R2 device, receipt, settlement, and canary evidence now belongs to the `training.*` product-promise registry, not to a still-open tracking issue.
 
 The Evidence Ledger panel is the bridge between the high-level gates and the actual code-facing refs an operator needs. For the selected run it lists authority refs, the first projected window records, evidence refs including Freivalds and gradient closeouts, receipt refs, and external blocker/requirement refs. It is still a public projection surface: it never displays private worker output, credentials, wallet material, or raw evidence payloads.
 
