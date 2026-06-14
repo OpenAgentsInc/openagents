@@ -13,6 +13,7 @@ import {
   FailedCoordinatorToggle,
   FailedSpawn,
   GotTrainingDashboard,
+  GotTrainingEvidencePacketSummary,
   GotTrainingOperatorReadiness,
   GotTrainingPromiseGates,
   GotTrainingRuns,
@@ -112,6 +113,29 @@ const emptyTrainingOperatorReadinessProjection = (error: string) => ({
   evidencePacketPathPresent: false,
   evidenceReady: false,
   blockerRefs: ["desktop.training.operator_readiness_request_failed"],
+  error,
+})
+
+const emptyTrainingEvidencePacketSummaryProjection = (error: string) => ({
+  ok: false,
+  configured: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:training-evidence-packet",
+  packetSource: null,
+  budgetLabel: null,
+  budgetRefPresent: false,
+  evalRefPresent: false,
+  mergeRefPresent: false,
+  finalValidationLoss: null,
+  maxValidationLoss: null,
+  lossPointCount: 0,
+  freivaldsCommitmentRefCount: 0,
+  gradientCloseoutRefCount: 0,
+  evidenceRefCount: 0,
+  receiptRefCount: 0,
+  shardContributionCount: 0,
+  distinctPylonCount: 0,
+  blockerRefs: ["desktop.training.evidence_packet_request_failed"],
   error,
 })
 
@@ -305,6 +329,27 @@ export const LoadTrainingOperatorReadiness = Command.define(
       Effect.succeed(
         GotTrainingOperatorReadiness({
           projection: emptyTrainingOperatorReadinessProjection(errorText(error)),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadTrainingEvidencePacketSummary = Command.define(
+  "LoadTrainingEvidencePacketSummary",
+  {},
+  GotTrainingEvidencePacketSummary,
+)(() =>
+  Effect.tryPromise(() =>
+    getRequest().listTrainingEvidencePacketSummary({}),
+  ).pipe(
+    Effect.map((projection) => GotTrainingEvidencePacketSummary({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotTrainingEvidencePacketSummary({
+          projection: emptyTrainingEvidencePacketSummaryProjection(
+            errorText(error),
+          ),
         }),
       ),
     ),

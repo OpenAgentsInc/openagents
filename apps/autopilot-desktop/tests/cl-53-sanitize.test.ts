@@ -238,6 +238,12 @@ describe("CL-53 sanitizeTree", () => {
       state: "idle",
     })
     expect(scene?.data?.props?.visualization?.operatorSignals).toContainEqual({
+      detail: "not loaded",
+      id: "packet",
+      label: "packet",
+      state: "idle",
+    })
+    expect(scene?.data?.props?.visualization?.operatorSignals).toContainEqual({
       detail: "claiming training...",
       id: "lease",
       label: "lease",
@@ -411,6 +417,54 @@ describe("CL-53 sanitizeTree", () => {
         "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
       ),
     ).toBe(true)
+  })
+
+  test("training pane includes the evidence packet summary panel", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingEvidencePacketSummary: {
+        ok: false,
+        configured: true,
+        fetchedAt: "2026-06-14T00:00:00.000Z",
+        sourceUrl: "desktop:training-evidence-packet",
+        packetSource: "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
+        budgetLabel: "desktop tiny loss budget",
+        budgetRefPresent: true,
+        evalRefPresent: true,
+        mergeRefPresent: true,
+        finalValidationLoss: 3.4,
+        maxValidationLoss: 3,
+        lossPointCount: 2,
+        freivaldsCommitmentRefCount: 1,
+        gradientCloseoutRefCount: 1,
+        evidenceRefCount: 10,
+        receiptRefCount: 3,
+        shardContributionCount: 1,
+        distinctPylonCount: 1,
+        blockerRefs: [
+          "training.evidence_packet.loss_exceeds_budget",
+          "training.evidence_packet.requires_two_distinct_pylons",
+        ],
+      },
+      trainingEvidencePacketSummaryStatus: {
+        text: "packet blocked · 2 blockers",
+        tone: "info",
+      },
+    })
+    expect(treeContainsClass(document.body, "training-evidence-packet-panel")).toBe(
+      true,
+    )
+    expect(treeContainsClass(document.body, "training-evidence-packet-blockers")).toBe(
+      true,
+    )
+    expect(
+      treeContainsText(
+        document.body,
+        "training.evidence_packet.requires_two_distinct_pylons",
+      ),
+    ).toBe(true)
+    expect(treeContainsText(document.body, "/Users/")).toBe(false)
   })
 
   test("training pane includes the control surface map", () => {

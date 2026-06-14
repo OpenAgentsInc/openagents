@@ -16,6 +16,7 @@ import {
   ClaimTrainingWindowLease,
   DeployCloud,
   LoadTrainingDashboard,
+  LoadTrainingEvidencePacketSummary,
   LoadTrainingOperatorReadiness,
   LoadTrainingPromiseGates,
   LoadTrainingRuns,
@@ -36,6 +37,7 @@ import type {
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
+  TrainingEvidencePacketSummaryResponse,
   TrainingOperatorReadinessResponse,
   TrainingPlanResponse,
   TrainingPromiseGatesResponse,
@@ -53,6 +55,7 @@ const loadTrainingProjectionCommands = (): ReadonlyArray<Command.Command<Message
   LoadTrainingDashboard(),
   LoadTrainingPromiseGates(),
   LoadTrainingOperatorReadiness(),
+  LoadTrainingEvidencePacketSummary(),
 ]
 
 const trainingBootstrapShouldRefresh = (
@@ -97,6 +100,11 @@ export const update = (model: Model, message: Message): Result => {
                 trainingOperatorReadinessPending: true,
                 trainingOperatorReadinessStatus: {
                   text: "checking operator readiness...",
+                  tone: "info" as const,
+                },
+                trainingEvidencePacketSummaryPending: true,
+                trainingEvidencePacketSummaryStatus: {
+                  text: "checking evidence packet...",
                   tone: "info" as const,
                 },
               }
@@ -248,6 +256,11 @@ export const update = (model: Model, message: Message): Result => {
             text: "refreshing operator readiness...",
             tone: "info",
           },
+          trainingEvidencePacketSummaryPending: true,
+          trainingEvidencePacketSummaryStatus: {
+            text: "refreshing evidence packet...",
+            tone: "info",
+          },
         }),
         loadTrainingProjectionCommands(),
       ]
@@ -310,6 +323,30 @@ export const update = (model: Model, message: Message): Result => {
                 text:
                   projection.error ??
                   `${blockerCount} operator blockers · ${projection.trainingBaseUrl}`,
+                tone: projection.error ? "error" : "info",
+              },
+        }),
+        noCommands,
+      ]
+    }
+    case "GotTrainingEvidencePacketSummary": {
+      const projection =
+        message.projection as TrainingEvidencePacketSummaryResponse
+      const blockerCount = projection.blockerRefs?.length ?? 0
+      return [
+        Model.make({
+          ...model,
+          trainingEvidencePacketSummary: projection,
+          trainingEvidencePacketSummaryPending: false,
+          trainingEvidencePacketSummaryStatus: projection.ok
+            ? {
+                text: `packet ready · ${projection.receiptRefCount} receipts · ${projection.distinctPylonCount} pylons`,
+                tone: "success",
+              }
+            : {
+                text:
+                  projection.error ??
+                  `packet blocked · ${blockerCount} blockers`,
                 tone: projection.error ? "error" : "info",
               },
         }),

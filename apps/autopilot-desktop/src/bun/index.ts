@@ -23,6 +23,7 @@ import {
   fetchTrainingPromiseGates,
   fetchTrainingRuns,
   planTrainingRunWindow,
+  readTrainingEvidencePacketSummary,
   reconcileTrainingWindow,
   requestTrainingBootstrapGrant,
 } from "./training-runs"
@@ -203,6 +204,11 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       async listTrainingOperatorReadiness() {
         return trainingOperatorReadinessProjection()
+      },
+      async listTrainingEvidencePacketSummary() {
+        return readTrainingEvidencePacketSummary({
+          evidencePacketPath: trainingEvidencePacketPath,
+        })
       },
       async planTrainingRunWindow() {
         return planTrainingRunWindow({

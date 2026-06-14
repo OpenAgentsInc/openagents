@@ -31,6 +31,7 @@ import {
   modelTrainingBootstrap,
   modelTrainingDashboard,
   modelTrainingEvidenceAdmission,
+  modelTrainingEvidencePacketSummary,
   modelTrainingOperatorReadiness,
   modelTrainingPromiseGates,
 } from "../src/ui/model"
@@ -47,6 +48,7 @@ import {
   ClickedRequestTrainingBootstrap,
   ClickedSubmitIntent,
   GotTrainingDashboard,
+  GotTrainingEvidencePacketSummary,
   GotTrainingOperatorReadiness,
   GotTrainingPromiseGates,
   GotNodeState,
@@ -270,16 +272,17 @@ describe("update reducer (CL-53)", () => {
       trainingRunRef: "training.run.desktop.r1.test",
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(4)
+    expect(followups).toHaveLength(5)
   })
 
-  test("training refresh loads run, dashboard, promise, and readiness projections", () => {
+  test("training refresh loads run, dashboard, promise, readiness, and packet projections", () => {
     const [pending, commands] = update(initialModel, ClickedRefreshTrainingRuns())
     expect(pending.trainingRunsPending).toBe(true)
     expect(pending.trainingDashboardPending).toBe(true)
     expect(pending.trainingPromiseGatesPending).toBe(true)
     expect(pending.trainingOperatorReadinessPending).toBe(true)
-    expect(commands).toHaveLength(4)
+    expect(pending.trainingEvidencePacketSummaryPending).toBe(true)
+    expect(commands).toHaveLength(5)
   })
 
   test("training dashboard projection is stored with a lane summary", () => {
@@ -428,6 +431,47 @@ describe("update reducer (CL-53)", () => {
     )
   })
 
+  test("training evidence packet summary is stored with blocker status", () => {
+    const [settled] = update(
+      initialModel,
+      GotTrainingEvidencePacketSummary({
+        projection: {
+          ok: false,
+          configured: true,
+          fetchedAt: "2026-06-14T00:00:00.000Z",
+          sourceUrl: "desktop:training-evidence-packet",
+          packetSource: "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
+          budgetLabel: "desktop tiny loss budget",
+          budgetRefPresent: true,
+          evalRefPresent: true,
+          mergeRefPresent: true,
+          finalValidationLoss: 3.4,
+          maxValidationLoss: 3,
+          lossPointCount: 2,
+          freivaldsCommitmentRefCount: 1,
+          gradientCloseoutRefCount: 1,
+          evidenceRefCount: 10,
+          receiptRefCount: 3,
+          shardContributionCount: 1,
+          distinctPylonCount: 1,
+          blockerRefs: [
+            "training.evidence_packet.loss_exceeds_budget",
+            "training.evidence_packet.requires_two_distinct_pylons",
+          ],
+        },
+      }),
+    )
+
+    expect(settled.trainingEvidencePacketSummaryPending).toBe(false)
+    expect(settled.trainingEvidencePacketSummaryStatus).toEqual({
+      text: "packet blocked · 2 blockers",
+      tone: "info",
+    })
+    expect(
+      modelTrainingEvidencePacketSummary(settled)?.distinctPylonCount,
+    ).toBe(1)
+  })
+
   test("training activation action dispatches and stores the public-safe result", () => {
     const [pending, commands] = update(
       initialModel,
@@ -460,7 +504,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingActivation).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(4)
+    expect(followups).toHaveLength(5)
   })
 
   test("training lease claim action dispatches and stores the public-safe result", () => {
@@ -498,7 +542,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingLease).toMatchObject({
       lease: { leaseRef: "training.lease.1" },
     })
-    expect(followups).toHaveLength(4)
+    expect(followups).toHaveLength(5)
   })
 
   test("training bootstrap action dispatches and stores the public-safe result", () => {
@@ -544,7 +588,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingBootstrapPending).toBe(false)
     expect(settled.trainingBootstrapStatus.tone).toBe("success")
     expect(modelTrainingBootstrap(settled)?.outcome?.kind).toBe("granted")
-    expect(followups).toHaveLength(4)
+    expect(followups).toHaveLength(5)
   })
 
   test("training bootstrap queue feedback refreshes public projections", () => {
@@ -576,7 +620,7 @@ describe("update reducer (CL-53)", () => {
       tone: "info",
     })
     expect(modelTrainingBootstrap(settled)?.outcome?.kind).toBe("queued")
-    expect(followups).toHaveLength(4)
+    expect(followups).toHaveLength(5)
   })
 
   test("training closeout packet action dispatches and stores local queue feedback", () => {
@@ -606,7 +650,7 @@ describe("update reducer (CL-53)", () => {
       text: "queued · accepted",
       tone: "success",
     })
-    expect(followups).toHaveLength(4)
+    expect(followups).toHaveLength(5)
   })
 
   test("training evidence admission action dispatches and refreshes projections on success", () => {
@@ -646,7 +690,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingEvidenceAdmissionPending).toBe(false)
     expect(settled.trainingEvidenceAdmissionStatus.tone).toBe("success")
     expect(modelTrainingEvidenceAdmission(settled)?.receiptRefCount).toBe(3)
-    expect(followups).toHaveLength(4)
+    expect(followups).toHaveLength(5)
   })
 
   test("training reconcile action dispatches and stores the public-safe result", () => {
@@ -681,6 +725,6 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingReconcile).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(4)
+    expect(followups).toHaveLength(5)
   })
 })

@@ -68,6 +68,10 @@ export const GotTrainingOperatorReadiness = m(
   "GotTrainingOperatorReadiness",
   { projection: S.Unknown },
 )
+export const GotTrainingEvidencePacketSummary = m(
+  "GotTrainingEvidencePacketSummary",
+  { projection: S.Unknown },
+)
 export const ClickedPlanTrainingWindow = m("ClickedPlanTrainingWindow")
 export const SettledPlanTrainingWindow = m("SettledPlanTrainingWindow", {
   projection: S.Unknown,
@@ -159,6 +163,7 @@ export const Message = S.Union([
   GotTrainingDashboard,
   GotTrainingPromiseGates,
   GotTrainingOperatorReadiness,
+  GotTrainingEvidencePacketSummary,
   ClickedPlanTrainingWindow,
   SettledPlanTrainingWindow,
   ClickedActivateTrainingWindow,

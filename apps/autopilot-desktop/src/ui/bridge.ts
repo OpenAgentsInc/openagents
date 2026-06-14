@@ -19,6 +19,7 @@ import type {
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
+  TrainingEvidencePacketSummaryResponse,
   TrainingOperatorReadinessResponse,
   TrainingPlanResponse,
   TrainingPromiseGatesResponse,
@@ -48,6 +49,9 @@ export type DesktopRequests = {
   listTrainingOperatorReadiness(
     p: Record<string, never>,
   ): Promise<TrainingOperatorReadinessResponse>
+  listTrainingEvidencePacketSummary(
+    p: Record<string, never>,
+  ): Promise<TrainingEvidencePacketSummaryResponse>
   planTrainingRunWindow(
     p: Record<string, never>,
   ): Promise<TrainingPlanResponse>

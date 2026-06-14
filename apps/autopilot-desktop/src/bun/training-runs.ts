@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs"
 
 import type {
   TrainingDashboardSummaryResponse,
+  TrainingEvidencePacketSummaryResponse,
   TrainingLeaderboardLane,
   TrainingLeaderboardLaneSummary,
   TrainingLeaderboardTopRow,
@@ -99,6 +100,12 @@ type AdmitTrainingRealGradientEvidenceInput = Readonly<{
   trainingRunRef: string
 }>
 
+type ReadTrainingEvidencePacketSummaryInput = Readonly<{
+  evidencePacketPath: string | null
+  nowIso?: () => string
+  readPacket?: (path: string) => unknown
+}>
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
 
@@ -147,6 +154,8 @@ const trainingPromiseIds = new Set([
   "training.marathon_operations.v1",
   "training.verification_classes.v1",
 ])
+
+const evidencePacketSource = "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH"
 
 const normalizeBaseUrl = (baseUrl: string): string => baseUrl.replace(/\/+$/, "")
 
@@ -701,6 +710,174 @@ const evidencePacketStats = (value: unknown): {
     evidenceRefCount: new Set(evidenceRefs).size,
     receiptRefCount: new Set(receiptRefs).size,
     shardContributionCount: shards.length,
+  }
+}
+
+const emptyEvidencePacketSummary = (input: {
+  blockerRefs: readonly string[]
+  configured: boolean
+  error?: string
+  fetchedAt: string
+  packetSource: string | null
+}): TrainingEvidencePacketSummaryResponse => ({
+  ok: false,
+  configured: input.configured,
+  fetchedAt: input.fetchedAt,
+  sourceUrl: "desktop:training-evidence-packet",
+  packetSource: input.packetSource,
+  budgetLabel: null,
+  budgetRefPresent: false,
+  evalRefPresent: false,
+  mergeRefPresent: false,
+  finalValidationLoss: null,
+  maxValidationLoss: null,
+  lossPointCount: 0,
+  freivaldsCommitmentRefCount: 0,
+  gradientCloseoutRefCount: 0,
+  evidenceRefCount: 0,
+  receiptRefCount: 0,
+  shardContributionCount: 0,
+  distinctPylonCount: 0,
+  blockerRefs: input.blockerRefs,
+  ...(input.error === undefined ? {} : { error: input.error }),
+})
+
+const uniqueStringCount = (value: unknown): number =>
+  new Set(stringArray(value).filter(ref => ref.trim() !== "")).size
+
+const packetFinalValidationLoss = (
+  lossCurve: readonly Record<string, unknown>[],
+): number | null => {
+  const losses = lossCurve
+    .map(point => point.validationLoss)
+    .filter(
+      (value): value is number =>
+        typeof value === "number" && Number.isFinite(value),
+    )
+  return losses.length === 0 ? null : losses[losses.length - 1] ?? null
+}
+
+export function readTrainingEvidencePacketSummary(
+  input: ReadTrainingEvidencePacketSummaryInput,
+): TrainingEvidencePacketSummaryResponse {
+  const fetchedAt = input.nowIso?.() ?? new Date().toISOString()
+  const packetPath = input.evidencePacketPath?.trim() ?? ""
+
+  if (packetPath === "") {
+    return emptyEvidencePacketSummary({
+      blockerRefs: ["env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH"],
+      configured: false,
+      fetchedAt,
+      packetSource: null,
+    })
+  }
+
+  let packet: unknown
+  try {
+    packet =
+      input.readPacket?.(packetPath) ??
+      (JSON.parse(readFileSync(packetPath, "utf8")) as unknown)
+  } catch {
+    return emptyEvidencePacketSummary({
+      blockerRefs: ["training.evidence_packet.read_failed"],
+      configured: true,
+      error: "training evidence packet read failed",
+      fetchedAt,
+      packetSource: evidencePacketSource,
+    })
+  }
+
+  if (!isRecord(packet)) {
+    return emptyEvidencePacketSummary({
+      blockerRefs: ["training.evidence_packet.invalid_json_object"],
+      configured: true,
+      error: "training evidence packet must be a JSON object",
+      fetchedAt,
+      packetSource: evidencePacketSource,
+    })
+  }
+
+  const stats = evidencePacketStats(packet)
+  const lossCurve = asArray(packet.lossCurve).filter(isRecord)
+  const finalValidationLoss = packetFinalValidationLoss(lossCurve)
+  const maxValidationLoss =
+    typeof packet.maxValidationLoss === "number" &&
+    Number.isFinite(packet.maxValidationLoss)
+      ? packet.maxValidationLoss
+      : null
+  const budgetLabel = asString(packet.budgetLabel).trim()
+  const budgetRefPresent = asString(packet.budgetRef).trim() !== ""
+  const evalRefPresent = asString(packet.evalRef).trim() !== ""
+  const mergeRefPresent = asString(packet.mergeRef).trim() !== ""
+  const freivaldsCommitmentRefCount = uniqueStringCount(
+    packet.freivaldsCommitmentRefs,
+  )
+  const gradientCloseoutRefCount = uniqueStringCount(
+    packet.gradientCloseoutRefs,
+  )
+  const blockerRefs: string[] = []
+
+  if (!budgetRefPresent) {
+    blockerRefs.push("training.evidence_packet.budget_ref_missing")
+  }
+  if (!evalRefPresent) {
+    blockerRefs.push("training.evidence_packet.eval_ref_missing")
+  }
+  if (!mergeRefPresent) {
+    blockerRefs.push("training.evidence_packet.merge_ref_missing")
+  }
+  if (lossCurve.length < 2) {
+    blockerRefs.push("training.evidence_packet.loss_curve_missing")
+  }
+  if (finalValidationLoss === null) {
+    blockerRefs.push("training.evidence_packet.final_validation_loss_missing")
+  }
+  if (maxValidationLoss === null) {
+    blockerRefs.push("training.evidence_packet.max_validation_loss_missing")
+  }
+  if (
+    finalValidationLoss !== null &&
+    maxValidationLoss !== null &&
+    finalValidationLoss > maxValidationLoss
+  ) {
+    blockerRefs.push("training.evidence_packet.loss_exceeds_budget")
+  }
+  if (freivaldsCommitmentRefCount === 0) {
+    blockerRefs.push("training.evidence_packet.freivalds_commitment_missing")
+  }
+  if (gradientCloseoutRefCount === 0) {
+    blockerRefs.push("training.evidence_packet.gradient_closeout_missing")
+  }
+  if (stats.receiptRefCount === 0) {
+    blockerRefs.push("training.evidence_packet.receipt_refs_missing")
+  }
+  if (stats.shardContributionCount === 0) {
+    blockerRefs.push("training.evidence_packet.shard_contributions_missing")
+  }
+  if (stats.distinctPylonCount < 2) {
+    blockerRefs.push("training.evidence_packet.requires_two_distinct_pylons")
+  }
+
+  return {
+    ok: blockerRefs.length === 0,
+    configured: true,
+    fetchedAt,
+    sourceUrl: "desktop:training-evidence-packet",
+    packetSource: evidencePacketSource,
+    budgetLabel: budgetLabel === "" ? null : budgetLabel,
+    budgetRefPresent,
+    evalRefPresent,
+    mergeRefPresent,
+    finalValidationLoss,
+    maxValidationLoss,
+    lossPointCount: lossCurve.length,
+    freivaldsCommitmentRefCount,
+    gradientCloseoutRefCount,
+    evidenceRefCount: stats.evidenceRefCount,
+    receiptRefCount: stats.receiptRefCount,
+    shardContributionCount: stats.shardContributionCount,
+    distinctPylonCount: stats.distinctPylonCount,
+    blockerRefs,
   }
 }
 
@@ -1621,7 +1798,7 @@ export async function admitTrainingRealGradientEvidence(
     trimmedRunRef === ""
       ? `${baseUrl}/api/training/runs/real-gradient-evidence`
       : `${baseUrl}/api/training/runs/${encodeURIComponent(trimmedRunRef)}/real-gradient-evidence`
-  const packetSource = "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH"
+  const packetSource = evidencePacketSource
 
   if (!input.enabled) {
     return disabledEvidenceAdmissionResponse({

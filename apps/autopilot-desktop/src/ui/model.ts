@@ -17,6 +17,7 @@ import type {
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
+  TrainingEvidencePacketSummaryResponse,
   TrainingOperatorReadinessResponse,
   TrainingPlanResponse,
   TrainingPromiseGatesResponse,
@@ -144,6 +145,9 @@ export const Model = ts("AutopilotDesktop", {
   trainingOperatorReadiness: S.NullOr(S.Unknown),
   trainingOperatorReadinessStatus: TrainingRunsStatus,
   trainingOperatorReadinessPending: S.Boolean,
+  trainingEvidencePacketSummary: S.NullOr(S.Unknown),
+  trainingEvidencePacketSummaryStatus: TrainingRunsStatus,
+  trainingEvidencePacketSummaryPending: S.Boolean,
   trainingPlan: S.NullOr(S.Unknown),
   trainingPlanStatus: TrainingPlanStatus,
   trainingPlanPending: S.Boolean,
@@ -203,6 +207,11 @@ export const modelTrainingOperatorReadiness = (
 ): TrainingOperatorReadinessResponse | null =>
   model.trainingOperatorReadiness as TrainingOperatorReadinessResponse | null
 
+export const modelTrainingEvidencePacketSummary = (
+  model: Model,
+): TrainingEvidencePacketSummaryResponse | null =>
+  model.trainingEvidencePacketSummary as TrainingEvidencePacketSummaryResponse | null
+
 export const modelTrainingPlan = (model: Model): TrainingPlanResponse | null =>
   model.trainingPlan as TrainingPlanResponse | null
 
@@ -260,6 +269,9 @@ export const initialModel: Model = Model.make({
   trainingOperatorReadiness: null,
   trainingOperatorReadinessStatus: { text: "not loaded", tone: "idle" },
   trainingOperatorReadinessPending: false,
+  trainingEvidencePacketSummary: null,
+  trainingEvidencePacketSummaryStatus: { text: "not loaded", tone: "idle" },
+  trainingEvidencePacketSummaryPending: false,
   trainingPlan: null,
   trainingPlanStatus: { text: "", tone: "idle" },
   trainingPlanPending: false,

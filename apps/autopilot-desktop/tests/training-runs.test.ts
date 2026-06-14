@@ -7,6 +7,7 @@ import {
   fetchTrainingPromiseGates,
   fetchTrainingRuns,
   planTrainingRunWindow,
+  readTrainingEvidencePacketSummary,
   reconcileTrainingWindow,
   requestTrainingBootstrapGrant,
 } from "../src/bun/training-runs"
@@ -878,6 +879,77 @@ describe("requestTrainingBootstrapGrant", () => {
 })
 
 describe("admitTrainingRealGradientEvidence", () => {
+  test("summarizes missing evidence packet configuration without reading", () => {
+    const result = readTrainingEvidencePacketSummary({
+      evidencePacketPath: null,
+      readPacket: () => {
+        throw new Error("should not read packet")
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.configured).toBe(false)
+    expect(result.packetSource).toBe(null)
+    expect(result.blockerRefs).toContain(
+      "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
+    )
+  })
+
+  test("summarizes packet read failures without leaking the local path", () => {
+    const result = readTrainingEvidencePacketSummary({
+      evidencePacketPath: "/Users/chris/private/evidence.json",
+      readPacket: () => {
+        throw new Error("/Users/chris/private/evidence.json: denied")
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.configured).toBe(true)
+    expect(result.error).toBe("training evidence packet read failed")
+    expect(result.blockerRefs).toContain("training.evidence_packet.read_failed")
+    expect(JSON.stringify(result)).not.toContain("/Users/chris/private")
+  })
+
+  test("summarizes a ready evidence packet before admission", () => {
+    const result = readTrainingEvidencePacketSummary({
+      evidencePacketPath: "/tmp/training-evidence.json",
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      readPacket: () => sampleEvidencePacket,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.packetSource).toBe(
+      "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
+    )
+    expect(result.receiptRefCount).toBe(3)
+    expect(result.distinctPylonCount).toBe(2)
+    expect(result.shardContributionCount).toBe(2)
+    expect(result.lossPointCount).toBe(2)
+    expect(result.finalValidationLoss).toBe(3.1)
+    expect(result.maxValidationLoss).toBe(4)
+    expect(result.blockerRefs).toEqual([])
+    expect(JSON.stringify(result)).not.toContain("/tmp/training-evidence.json")
+  })
+
+  test("summarizes packet blockers before admission", () => {
+    const result = readTrainingEvidencePacketSummary({
+      evidencePacketPath: "/tmp/training-evidence.json",
+      readPacket: () => ({
+        ...sampleEvidencePacket,
+        maxValidationLoss: 3,
+        shardContributions: [sampleEvidencePacket.shardContributions[0]],
+      }),
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.blockerRefs).toContain(
+      "training.evidence_packet.loss_exceeds_budget",
+    )
+    expect(result.blockerRefs).toContain(
+      "training.evidence_packet.requires_two_distinct_pylons",
+    )
+  })
+
   test("does not read or call the Worker when evidence admission is disabled", async () => {
     const calls: string[] = []
     const result = await admitTrainingRealGradientEvidence({

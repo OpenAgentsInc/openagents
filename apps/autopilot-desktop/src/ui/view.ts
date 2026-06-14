@@ -43,6 +43,7 @@ import type {
   IntentRow,
   NodeStateMessage,
   SessionEventRow,
+  TrainingEvidencePacketSummaryResponse,
   TrainingLeaderboardLaneSummary,
   TrainingOperatorReadinessResponse,
   TrainingPromiseState,
@@ -100,6 +101,7 @@ import {
   modelTrainingBootstrap,
   modelTrainingDashboard,
   modelTrainingEvidenceAdmission,
+  modelTrainingEvidencePacketSummary,
   modelTrainingLease,
   modelNode,
   modelNotifications,
@@ -804,24 +806,29 @@ const trainingControlSurfaceRows: readonly TrainingControlSurfaceRow[] = [
     authority: "public Worker reads through Bun",
     dispatch: "ClickedRefreshTrainingRuns",
     route:
-      "GET /api/training/runs + dashboards + promises + desktop readiness",
+      "GET /api/training/runs + dashboards + promises + desktop readiness + packet summary",
     rpc:
-      "listTrainingRuns + listTrainingDashboard + listTrainingPromiseGates + listTrainingOperatorReadiness",
+      "listTrainingRuns + listTrainingDashboard + listTrainingPromiseGates + listTrainingOperatorReadiness + listTrainingEvidencePacketSummary",
     source: "apps/autopilot-desktop/src/bun/index.ts + training-runs.ts",
     statusField:
-      "trainingRunsStatus / trainingDashboardStatus / trainingPromiseGatesStatus / trainingOperatorReadinessStatus",
+      "trainingRunsStatus / trainingDashboardStatus / trainingPromiseGatesStatus / trainingOperatorReadinessStatus / trainingEvidencePacketSummaryStatus",
     status: model => model.trainingRunsStatus,
     pending: model =>
       model.trainingRunsPending ||
       model.trainingDashboardPending ||
       model.trainingPromiseGatesPending ||
-      model.trainingOperatorReadinessPending,
+      model.trainingOperatorReadinessPending ||
+      model.trainingEvidencePacketSummaryPending,
     current: model =>
       [
         trainingStatusText(model.trainingRunsStatus, "runs idle"),
         trainingStatusText(model.trainingDashboardStatus, "dashboards idle"),
         trainingStatusText(model.trainingPromiseGatesStatus, "promises idle"),
         trainingStatusText(model.trainingOperatorReadinessStatus, "operator idle"),
+        trainingStatusText(
+          model.trainingEvidencePacketSummaryStatus,
+          "packet idle",
+        ),
       ].join(" / "),
   },
   {
@@ -1063,6 +1070,134 @@ const trainingOperatorReadinessPanel = (model: Model): Html => {
   ])
 }
 
+const trainingEvidencePacketLossText = (
+  summary: TrainingEvidencePacketSummaryResponse,
+): string =>
+  summary.finalValidationLoss === null || summary.maxValidationLoss === null
+    ? "loss budget missing"
+    : `${summary.finalValidationLoss} / ${summary.maxValidationLoss}`
+
+const trainingEvidencePacketRows = (
+  summary: TrainingEvidencePacketSummaryResponse | null,
+  model: Model,
+): readonly Html[] => {
+  if (summary === null) {
+    return [
+      trainingGate(
+        "packet summary",
+        trainingStatusText(
+          model.trainingEvidencePacketSummaryStatus,
+          "not loaded",
+        ),
+        trainingStatusTone(
+          model.trainingEvidencePacketSummaryStatus,
+          model.trainingEvidencePacketSummaryPending,
+        ),
+      ),
+    ]
+  }
+
+  const refCount =
+    Number(summary.budgetRefPresent) +
+    Number(summary.evalRefPresent) +
+    Number(summary.mergeRefPresent)
+
+  return [
+    trainingGate(
+      "packet source",
+      summary.configured
+        ? summary.packetSource ?? "configured"
+        : "not configured",
+      summary.configured ? "ready" : "blocked",
+    ),
+    trainingGate(
+      "loss budget",
+      trainingEvidencePacketLossText(summary),
+      summary.finalValidationLoss !== null &&
+        summary.maxValidationLoss !== null &&
+        summary.finalValidationLoss <= summary.maxValidationLoss
+        ? "ready"
+        : "blocked",
+    ),
+    trainingGate(
+      "budget label",
+      summary.budgetLabel ?? "not supplied",
+      summary.budgetLabel === null ? "watch" : "ready",
+    ),
+    trainingGate(
+      "merge/eval/budget refs",
+      `${refCount}/3 present`,
+      refCount === 3 ? "ready" : "blocked",
+    ),
+    trainingGate(
+      "distinct Pylons",
+      `${summary.distinctPylonCount}/2 observed`,
+      summary.distinctPylonCount >= 2 ? "ready" : "blocked",
+    ),
+  ]
+}
+
+const trainingEvidencePacketPanel = (model: Model): Html => {
+  const summary = modelTrainingEvidencePacketSummary(model)
+  const blockerRefs = summary?.blockerRefs ?? []
+  return h.section([cls("training-panel training-evidence-packet-panel")], [
+    h.div([cls("training-panel-heading")], [
+      h.h2([cls("training-panel-title")], ["Evidence Packet"]),
+      h.span([cls("training-panel-kicker")], [
+        trainingStatusText(
+          model.trainingEvidencePacketSummaryStatus,
+          "not loaded",
+        ),
+      ]),
+    ]),
+    h.p([cls("training-panel-copy")], [
+      "Public-safe Bun inspection of the configured local packet before admission; only counts, booleans, and blocker refs reach the webview.",
+    ]),
+    h.div([cls("training-metrics training-evidence-packet-metrics")], [
+      trainingMetric(
+        "receipts",
+        String(summary?.receiptRefCount ?? 0),
+        summary?.receiptRefCount ? "ready" : "watch",
+      ),
+      trainingMetric(
+        "shards",
+        String(summary?.shardContributionCount ?? 0),
+        summary?.shardContributionCount ? "ready" : "watch",
+      ),
+      trainingMetric(
+        "pylons",
+        String(summary?.distinctPylonCount ?? 0),
+        (summary?.distinctPylonCount ?? 0) >= 2 ? "ready" : "watch",
+      ),
+      trainingMetric(
+        "loss points",
+        String(summary?.lossPointCount ?? 0),
+        (summary?.lossPointCount ?? 0) >= 2 ? "ready" : "watch",
+      ),
+      trainingMetric(
+        "freivalds",
+        String(summary?.freivaldsCommitmentRefCount ?? 0),
+        summary?.freivaldsCommitmentRefCount ? "ready" : "watch",
+      ),
+      trainingMetric(
+        "closeouts",
+        String(summary?.gradientCloseoutRefCount ?? 0),
+        summary?.gradientCloseoutRefCount ? "ready" : "watch",
+      ),
+    ]),
+    h.ul(
+      [cls("training-gates training-evidence-packet-gates")],
+      trainingEvidencePacketRows(summary, model),
+    ),
+    h.ul([cls("training-api-list training-evidence-packet-blockers")], [
+      blockerRefs.length === 0
+        ? h.li([], ["no packet blockers"])
+        : h.li([], [`${blockerRefs.length} blockers`]),
+      ...blockerRefs.map(ref => h.li([], [h.code([], [ref])])),
+    ]),
+  ])
+}
+
 const trainingRoadmapPanel = (): Html =>
   h.section([cls("training-panel training-roadmap-panel")], [
     h.div([cls("training-panel-heading")], [
@@ -1256,6 +1391,18 @@ const trainingOperatorSignals = (
     state: operatorSignalState(
       model.trainingOperatorReadinessStatus,
       model.trainingOperatorReadinessPending,
+    ),
+  },
+  {
+    detail: operatorSignalDetail(
+      model.trainingEvidencePacketSummaryStatus,
+      "not loaded",
+    ),
+    id: "packet",
+    label: "packet",
+    state: operatorSignalState(
+      model.trainingEvidencePacketSummaryStatus,
+      model.trainingEvidencePacketSummaryPending,
     ),
   },
   {
@@ -1899,6 +2046,7 @@ const trainingOperatorFeedPanel = (model: Model): Html => {
   const dashboard = modelTrainingDashboard(model)
   const gates = modelTrainingPromiseGates(model)
   const readiness = modelTrainingOperatorReadiness(model)
+  const packetSummary = modelTrainingEvidencePacketSummary(model)
   const plan = modelTrainingPlan(model)
   const activation = modelTrainingActivation(model)
   const reconcile = modelTrainingReconcile(model)
@@ -1923,6 +2071,12 @@ const trainingOperatorFeedPanel = (model: Model): Html => {
     evidenceAdmission?.ok === true
       ? `${evidenceAdmission.receiptRefCount} receipts`
       : evidenceAdmission?.reason ?? "idle"
+  const packetRef =
+    packetSummary === null
+      ? "idle"
+      : packetSummary.ok
+        ? `${packetSummary.receiptRefCount} receipts`
+        : `${packetSummary.blockerRefs.length} blockers`
 
   return h.section([cls("training-panel training-operator-feed-panel")], [
     h.div([cls("training-panel-heading")], [
@@ -1993,6 +2147,15 @@ const trainingOperatorFeedPanel = (model: Model): Html => {
           model.trainingOperatorReadinessPending,
           readiness?.ok ?? null,
           model.trainingOperatorReadinessStatus,
+        ),
+      ),
+      trainingGate(
+        "evidence packet",
+        `${trainingStatusText(model.trainingEvidencePacketSummaryStatus, "not loaded")} · ${packetRef}`,
+        trainingProjectionFeedTone(
+          model.trainingEvidencePacketSummaryPending,
+          packetSummary?.ok ?? null,
+          model.trainingEvidencePacketSummaryStatus,
         ),
       ),
       trainingGate(
@@ -2410,6 +2573,7 @@ const trainingPane = (model: Model): Html => {
         trainingRoadmapPanel(),
         trainingLaunchPanel(model),
         trainingOperatorReadinessPanel(model),
+        trainingEvidencePacketPanel(model),
         trainingOperatorFeedPanel(model),
         trainingControlSurfacePanel(model),
         h.section([cls("training-panel")], [

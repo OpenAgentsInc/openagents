@@ -268,6 +268,29 @@ export type TrainingOperatorReadinessResponse = {
   readonly error?: string
 }
 
+export type TrainingEvidencePacketSummaryResponse = {
+  readonly ok: boolean
+  readonly configured: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: string
+  readonly packetSource: string | null
+  readonly budgetLabel: string | null
+  readonly budgetRefPresent: boolean
+  readonly evalRefPresent: boolean
+  readonly mergeRefPresent: boolean
+  readonly finalValidationLoss: number | null
+  readonly maxValidationLoss: number | null
+  readonly lossPointCount: number
+  readonly freivaldsCommitmentRefCount: number
+  readonly gradientCloseoutRefCount: number
+  readonly evidenceRefCount: number
+  readonly receiptRefCount: number
+  readonly shardContributionCount: number
+  readonly distinctPylonCount: number
+  readonly blockerRefs: readonly string[]
+  readonly error?: string
+}
+
 export type TrainingPlanReason =
   | "disabled"
   | "admin_token_missing"
@@ -514,6 +537,10 @@ export type DesktopRPCSchema = {
       readonly listTrainingOperatorReadiness: {
         readonly params: Record<string, never>
         readonly response: TrainingOperatorReadinessResponse
+      }
+      readonly listTrainingEvidencePacketSummary: {
+        readonly params: Record<string, never>
+        readonly response: TrainingEvidencePacketSummaryResponse
       }
       // Admin planning stays in Bun. The webview receives only the public-safe
       // run/window refs and projections that the Worker returns.
