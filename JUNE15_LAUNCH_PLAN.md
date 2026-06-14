@@ -123,7 +123,10 @@ verifiable:
    non-zero the moment the first real settlement lands — the launch event.
 5. **The corpus grew.** The accepted verified traces are recorded toward the
    Tassadar training corpus (the evolution loop's accumulation), visible on the
-   tick ledger.
+   run. **Seam met (#5010, W2):** the run summary `corpus` block projects the
+   count of accepted, replay-verified `exact_trace_replay` closed ticks with
+   public-safe refs, rebuilding on verdict transitions. Goes non-zero on the
+   first Verified `exact_trace_replay` trace — the launch event.
 
 Hitting #2 + #4 for one stranger is the moment "install Autopilot, help train
 Tassadar, get paid Bitcoin" becomes a fact instead of a promise.
@@ -266,25 +269,28 @@ spine; E makes it honest; F→G make it usable and public.
   and recorded by the #5009 route. This is the Go/No-Go event, not a separate
   build step.
 
-### E. Settlement + corpus projection consistency · worker-api
+### E. Settlement + corpus projection consistency · ✅ read-paths DONE (#5009, #5010)
 - ✅ **`settledPayoutSats` is joined into the projection** (#5009): the run page
   and A1 leaderboard read real provider-confirmed settled receipts linked to the
   run, and a reconciled/accepted trace cannot leave the run claiming `planned`
   (existing `TrainingRunPlannedWithReconciledWindowsBlocker`); settled receipts
   surface only when dereferenceable + redacted.
-- **Remaining (#5010 — W2 surface):** project the **accumulating verified-trace
-  corpus** on the run page — the count of accepted, replay-verified
+- ✅ **Verified-trace corpus surface is live** (#5010, W2, deployed). The run
+  summary `corpus` block projects the count of accepted, replay-verified
   `exact_trace_replay` **closed ticks** (RESEARCH_PLAN §5 W2.5: tick closure as
   acceptance — intent + execution + state delta + evaluation; "closed ticks _are_
-  training records"). It must **rebuild on validation transitions, not
-  registration** (RESEARCH_PLAN §6.3 + Standing Order 5; case law #4744–#4747)
-  and stay bounded evidence — no Tassadar exactness / model-capability claim. It
-  is **evidence toward** `artanis.tassadar_evolution_loop.v1`'s
+  training records"), with public-safe trace/verdict refs and a live-at-read
+  staleness contract that **rebuilds on validation transitions, not registration**
+  (RESEARCH_PLAN §6.3 + Standing Order 5; case law #4744–#4747). It stays bounded
+  evidence — no Tassadar exactness / model-capability claim — and is **evidence
+  toward** `artanis.tassadar_evolution_loop.v1`'s
   `tassadar_distillation_dataset_receipt_missing` blocker, not the dataset
-  receipt itself.
+  receipt itself. Count goes non-zero on the first Verified `exact_trace_replay`
+  trace (today `0`).
 - **Done when:** the public run shows a non-zero settled total equal to reality
-  **and** a growing accepted verified-`exact_trace_replay` corpus count that
-  rebuilds on verdict transitions.
+  **and** a growing accepted verified-`exact_trace_replay` corpus count — both
+  read-paths are now wired (#5009 settled, #5010 corpus); they populate as real
+  accepted work lands at launch.
 
 ### F. Autopilot Desktop install path contributors can use · pylon + desktop
 - **The install is Autopilot Desktop** (signed + notarized macOS `.app`, OTA feed
@@ -331,9 +337,9 @@ Run before announcing that contributors are earning:
       _Seam wired (#5009): the settlement-receipt route + run link are live;
       box flips when the real stranger settlement lands._
 - [ ] Leaderboard/run `settledPayoutSats` non-zero + accepted-trace count growing
-      (E). _`settledPayoutSats` read is wired (#5009); goes non-zero on the first
-      real settlement. The verified-trace corpus (closed-tick) count surface is
-      the §E remainder (#5010, W2)._
+      (E). _Both read-paths wired: `settledPayoutSats` (#5009) and the
+      verified-trace `corpus` count (#5010, W2). Each goes non-zero on the first
+      real settlement / Verified `exact_trace_replay` trace; box flips at launch._
 - [ ] The linked install path is reproducible on a clean machine (F).
 - [ ] Copy passes §7, cites live registry version + promise IDs.
 
