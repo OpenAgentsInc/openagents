@@ -9,6 +9,7 @@ import {
   notificationsFromSessions,
   projectNotificationPermission,
 } from "@openagentsinc/autopilot-control-protocol"
+import { DEFAULT_QUIET_HOURS, selectNotificationsToFire, type QuietHoursWindow } from "./notification-policy"
 
 // Foreground notifications should still show a banner.
 Notifications.setNotificationHandler({
@@ -53,13 +54,17 @@ export async function notifyNewSessionStates(
   sessions: SessionLike[],
   seenRefs: string[],
   permitted: boolean,
+  // #5003: quiet-hours policy. Pass `null` to disable; defaults to 22:00–07:00
+  // local, during which only decision_required (high) fires.
+  quietHours: QuietHoursWindow | null = DEFAULT_QUIET_HOURS,
 ): Promise<string[]> {
   const result = notificationsFromSessions(
     sessions.map((s) => ({ sessionRef: s.sessionRef, state: s.state, latestActivity: s.latestActivity })),
     seenRefs,
   )
   if (permitted) {
-    for (const n of result.new) {
+    const toFire = selectNotificationsToFire(result.new, quietHours, new Date().getHours())
+    for (const n of toFire) {
       await fireLocal(n.title, n.body)
     }
   }
