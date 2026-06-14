@@ -22,6 +22,32 @@ single end-to-end picture, then names exactly what is missing to make the
 
 ---
 
+## 0a. Revision 2026-06-14 — owner direction
+
+This revision fixes four priorities into the plan; everything below is read
+through them:
+
+1. **Ignore the iOS `control/` app.** The Swift Tailnet/WGPU console is not the
+   mobile path. The **Expo remote-control app** is the single mobile surface
+   for administering coding sessions. (`control/` may stay as an owner-only
+   legacy console or be retired; it is out of scope here.)
+2. **Cloud lane priority: Google Cloud first, SHC second.** For *running*
+   coding sessions, GCE is the primary/default cloud lane; `oa-shc-katy-01` is
+   the secondary lane. (This reverses the SHC-default recommendation in the
+   first draft of this audit.)
+3. **The Expo app already has OTA updates on our Google infra.** Self-hosted
+   OpenAgents Updates (cloud `CND-OTA-1…8`, cloud issues #78–#85) run on Google
+   Cloud; the Expo app ships via local builds (no Expo/EAS cloud) with JS OTA
+   from that Google-hosted update service.
+4. **Vortex credential is fine to reuse, but the Vortex codebase is
+   deprecated.** Reusing the Vortex *grant-resolution credential/endpoint* for
+   Codex/ChatGPT auth is acceptable; **do not add new code dependencies on the
+   Vortex codebase.** New cloud-session wiring must reach grant resolution
+   through a stable, Vortex-independent endpoint contract so the deprecated
+   Vortex code can be removed without breaking the loop.
+
+Issues filed for this plan are listed in **§9**.
+
 ## 0. TL;DR
 
 **The two halves of this loop both exist, but they are not connected to each
@@ -141,14 +167,16 @@ Contracts: `openagents.codex_workroom_assignment.v1`,
 `workspace-write` sandbox fails at the loopback layer on this host
 (CND-041 / CND-055).
 
-**Google** = GCE capacity class. `oa-gcp-shc-katy-01` is deployed and
-smoke-tested (CND-033…CND-035) as the **measured baseline / fallback
-reference**. The commercial plan's C-5 shipped ephemeral per-session GCE VMs
-(SSH metadata, firewall, labels, lifecycle, cleanup). Routing between SHC and
-Google is governed by `openagents.compute_quota_routing.v1` (classes
+**Google** = GCE capacity class — **the primary/default lane for running
+sessions per owner direction (2026-06-14).** `oa-gcp-shc-katy-01` is deployed
+and smoke-tested (CND-033…CND-035). The commercial plan's C-5 shipped ephemeral
+per-session GCE VMs (SSH metadata, firewall, labels, lifecycle, cleanup). SHC
+(`oa-shc-katy-01`) is the **secondary** lane. Routing between Google and SHC is
+governed by `openagents.compute_quota_routing.v1` (classes
 `micro|standard|compute|gpu-standard|gpu-high`; caps 4 sessions/owner,
 20/org; cost-plus-10% billing) — schema complete, **receipt comparison
-(CND-042) not yet done**, so there is no live cost-driven placement yet.
+(CND-042) not yet done**, so until then placement is policy-driven (Google
+default) rather than cost-driven.
 
 **Commercial plan status** (`cloud-remote-execution-commercial-plan.md`):
 foundation wave **C-0…C-8 + C-11 merged** (#4886–#4894, #4897). Remaining
@@ -159,19 +187,23 @@ the Pylon client to the `cloud/` coordinator**, and C-15 isolation benchmarks.
 
 ### 1.3 Mobile / remote administration
 
-- **Shipped:** iOS `control/` (Swift/SwiftUI, 6 files, vendored
-  `Wgpui.xcframework`). Polls `GET /v1/snapshot` over Tailnet every 10s and
-  renders a Tailnet device roster + optional workspace context. Bearer token in
-  plaintext `AppStorage`. **No session list, no approvals, no spawn/cancel, no
-  notifications.**
-- **Designed, not built:** React Native/Expo app at
-  `openagents/clients/mobile/AutopilotRemoteControl/` (directory empty). Spec
+**The mobile path is the Expo app. The iOS `control/` Swift app is out of
+scope (see §0a).**
+
+- **The mobile surface (designed, not yet scaffolded):** React Native/Expo app
+  at `openagents/clients/mobile/AutopilotRemoteControl/` (directory empty). Spec
   in `2026-06-13-autopilot-remote-control-mobile-app-audit.md`: bridge pairing
   (QR/bootstrap → scoped `PairingCredentialClaims`), cursor-resumable streams,
   decision relay, `expo-notifications` (APNs), projection levels. Build/ship
-  policy (2026-06-13): **off Expo/EAS cloud** — local `expo prebuild` →
-  `xcodebuild`/`fastlane` → `xcrun altool`/ASC, JS OTA over self-hosted
-  `updates.openagents.com`.
+  policy: **off Expo/EAS cloud** — local `expo prebuild` →
+  `xcodebuild`/`fastlane` → `xcrun altool`/ASC.
+- **OTA already runs on Google infra.** Self-hosted OpenAgents Updates
+  (`CND-OTA-1…8`, cloud issues #78–#85) serve the Expo app's JS OTA from Google
+  Cloud — manifest endpoint, content-addressed asset store, `oa-update publish`
+  CLI, channels/rollback, code signing, bsdiff/CDN, and the
+  `openagents.mobile_update.v1` contract. So the *delivery* leg for the phone is
+  already on the same Google infra we will run sessions on; what is missing is
+  the *control* leg (session admin), not the update leg.
 - **Web team dashboard:** `/autopilot`, `/autopilot/work`, `/decisions`,
   `/clients-preview` in `apps/openagents.com/apps/web` — currently
   fixtures-only, no live Pylon path, no team RBAC yet.
@@ -299,13 +331,18 @@ node live; GCE deploy tested.
   `OA_VORTEX_CODEX_VM_RUNNER_ID`. Need a placement endpoint that accepts a
   lane-agnostic assignment and returns a runner binding (SHC vs GCE) per
   `compute_quota_routing.v1`.
-- **Auth-grant brokering for Pylon-originated sessions.** The cloud runner
-  resolves Codex/ChatGPT grants from Vortex
-  (`OA_VORTEX_GRANT_RESOLVE_URL`). A Pylon/desktop-originated cloud session
-  needs the same grant-resolution path (BYO key per commercial-plan Model 1, or
-  OpenAgents credits via the Model-2 egress gateway **C-10**, not yet built).
-- **CND-042 receipt comparison** so SHC↔GCE placement is cost-driven, not
-  manual.
+- **Auth-grant brokering for Pylon-originated sessions, Vortex-codebase-free.**
+  The cloud runner resolves Codex/ChatGPT grants from Vortex today
+  (`OA_VORTEX_GRANT_RESOLVE_URL`). Per §0a the Vortex *credential/endpoint* is
+  fine to reuse, but the Vortex *codebase is deprecated* — a Pylon/
+  desktop-originated cloud session must reach grant resolution through a stable,
+  Vortex-independent endpoint contract (rename the env to a neutral
+  `OA_CODEX_GRANT_RESOLVE_URL`, keep the Vortex URL behind it for now) so the
+  deprecated Vortex code can be deleted without breaking the loop. BYO key per
+  commercial-plan Model 1, or OpenAgents credits via the Model-2 egress gateway
+  (**C-10**), apply unchanged.
+- **CND-042 receipt comparison** so Google↔SHC placement can become
+  cost-driven; until then Google is the policy default.
 
 ### Leg C — Mobile can administer sessions
 **Have:** shared `autopilot-control-protocol` package; Pylon bridge verbs
@@ -346,32 +383,38 @@ makes Pylon the **single front door** (the desktop and phone keep speaking
 to speak `oa-codex-control` directly.
 
 **Phase 1 — Pylon becomes a cloud client (unblocks desktop cloud sessions).**
-1. Implement the Pylon `openagents-cloud` provider backend (commercial-plan
-   **C-14**): on `session.spawn{lane:"cloud-shc"|"cloud-gcp"}`, Pylon resolves
-   a `codex_auth_grant.v1`, calls `oa-codex-control POST /v1/codex-runs`, and
-   maps `codex_workroom_event.v1` → Pylon `SessionEvent` so the existing
-   `/sessions/:ref/events` stream is lane-transparent.
+1. Validate/repair the Pylon `openagents-cloud` provider backend
+   (commercial-plan **C-14**, closed but not demonstrably end-to-end): on
+   `session.spawn{lane:"cloud-gcp"|"cloud-shc"}`, Pylon resolves a
+   `codex_auth_grant.v1` (via the Vortex-independent endpoint, §0a), calls the
+   cloud control API, and maps `codex_workroom_event.v1` → Pylon `SessionEvent`
+   so the existing `/sessions/:ref/events` stream is lane-transparent.
 2. Add a thin placement endpoint in `cloud/` (or extend `oa-codex-control`)
-   that accepts a lane-agnostic assignment and binds SHC vs GCE per
-   `compute_quota_routing.v1`. Until CND-042 lands, default SHC, GCE on
-   explicit request.
+   that accepts a lane-agnostic assignment and binds the runner per
+   `compute_quota_routing.v1`. **Default Google GCE (primary); SHC secondary.**
+   Until CND-042 lands, placement is policy-driven (Google default), not
+   cost-driven.
 3. Add the `lane` parameter end-to-end (control protocol → desktop RPC → UI),
-   defaulting to `auto` = own-Pylon-first-and-free, cloud on overflow/opt-in.
+   `auto` = own-Pylon-first-and-free, then **Google GCE** for cloud, SHC as
+   fallback.
 
    *Exit proof:* spawn a real repo-edit session from Autopilot Desktop that
-   runs on `oa-shc-katy-01`, streams events back into the desktop timeline, and
-   produces a content-addressed artifact + `resource_usage_receipt.v1`.
+   runs on a **Google GCE** ephemeral VM, streams events back into the desktop
+   timeline, and produces a content-addressed artifact +
+   `resource_usage_receipt.v1`.
 
 **Phase 2 — Remote-reachable bridge (unblocks the phone).**
 4. Finish Pylon bridge transport / system #39: pairing, capability scoping,
    cursor-resumable subscribe, decision relay, revoke/clients.list, over
    Tailnet/LAN bind (clients-roadmap M2).
 5. Scaffold the Expo app and ship a **read-only** build to TestFlight via the
-   local build path (#4919): pair → list sessions → stream one session's
-   events (works identically for local and cloud sessions because Phase 1 made
-   the stream lane-transparent).
+   local build path (no Expo/EAS cloud), with JS OTA from the Google-hosted
+   OpenAgents Updates service (`CND-OTA-*`): pair → list sessions → stream one
+   session's events (works identically for local and cloud sessions because
+   Phase 1 made the stream lane-transparent).
 
-   *Exit proof:* on the phone, watch the Phase-1 SHC session stream live.
+   *Exit proof:* on the phone, watch the Phase-1 **Google GCE** session stream
+   live.
 
 **Phase 3 — Mobile write actions + push.**
 6. Add `decision.resolve`, `session.spawn{lane}`, `session.cancel`,
@@ -380,9 +423,9 @@ to speak `oa-codex-control` directly.
 8. Make the decision queue exactly-once across desktop/web/mobile (M5–M8).
 
    *Exit proof (the actual goal):* from the phone, away from the desk, spawn a
-   coding session that runs on SHC (or GCE), get a push when it needs a
-   decision, approve it, and accept the artifact — desktop shows the same
-   session state throughout.
+   coding session that runs on **Google GCE** (SHC fallback), get a push when it
+   needs a decision, approve it, and accept the artifact — desktop shows the
+   same session state throughout.
 
 **Phase 4 — Hardening for non-owner / billed use (only when opening up).**
 9. Model-2 inference gateway (C-10), tenant identity + spend caps + kill switch
@@ -391,24 +434,27 @@ to speak `oa-codex-control` directly.
 
 ---
 
-## 6. Key Decisions Needed From the Owner
+## 6. Decisions
+
+**Settled (owner direction, 2026-06-14 — see §0a):**
+
+- **Cloud lane:** Google GCE first, SHC second.
+- **Mobile:** Expo app is the mobile surface; iOS `control/` app is ignored.
+- **OTA:** Expo updates already run on Google infra (`CND-OTA-*`); reuse, don't
+  rebuild.
+- **Auth:** reuse the Vortex grant *credential/endpoint*, but add no new
+  dependency on the deprecated Vortex *codebase* — route grant resolution
+  through a Vortex-independent endpoint contract.
+
+**Still open:**
 
 1. **Front door:** make **Pylon the single control front door** (recommended —
    one protocol for all clients, Pylon brokers to cloud) vs. teaching the
-   desktop/phone to speak `oa-codex-control` directly (more parts, two
-   protocols to maintain on every client). This audit assumes Pylon-as-front-door.
-2. **SHC vs Google default for owner sessions:** SHC (`oa-shc-katy-01`) is the
-   live, real-account Codex lane and is free-to-us; GCE is metered. Recommend
-   **SHC default, GCE on explicit request** until CND-042 receipt comparison
-   makes routing cost-driven.
-3. **Auth for cloud sessions:** owner dogfood can use the existing Vortex grant
-   resolver (ChatGPT/Codex subscription-backed, `internal-accounting`,
-   no-wallet). Confirm we reuse that path for Pylon-originated cloud sessions
-   rather than building Model-2 (C-10) first.
-4. **Mobile app identity:** the new Expo remote-control app is open-source and
-   single-user (any Pylon user), distinct from the owner-only Swift `control/`
-   app. Confirm we invest in the Expo app and let `control/` stay the
-   owner-only Tailnet/WGPU console (or retire it).
+   desktop/phone to speak `oa-codex-control` directly (two protocols on every
+   client). This audit assumes Pylon-as-front-door.
+2. **Model-2 timing:** owner dogfood can run cloud sessions on the existing
+   subscription-backed grant path (`internal-accounting`, no-wallet). Confirm
+   we defer the Model-2 credits gateway (C-10) until we open up to non-owners.
 
 ---
 
@@ -436,7 +482,44 @@ to speak `oa-codex-control` directly.
 
 ---
 
-## 8. Bottom Line
+## 8. Issues filed (2026-06-14)
+
+**Epic:** openagents **#4996** — *Code on the go: desktop + Expo coding sessions
+on OpenAgents Cloud (Google-first).*
+
+**Phase 1 — Pylon becomes a cloud client (desktop → Google GCE):**
+- openagents **#4997** — Pylon `openagents-cloud` provider: live desktop→Google
+  GCE session proof (revalidate C-14).
+- openagents **#4998** — lane selector (`auto|local|cloud-gcp|cloud-shc`)
+  end-to-end (Google default).
+- openagents **#4999** — Vortex-independent Codex grant-resolution endpoint
+  contract.
+- cloud **#86** — placement endpoint: lane-agnostic → runner binding (GCE
+  primary / SHC secondary).
+- cloud **#87** — `oa-codex-control`: Pylon-originated assignments + callbacks
+  (non-Vortex).
+- cloud **#88** — GCE ephemeral-VM Codex session lane as default (warm path).
+
+**Phase 2 — Remote-reachable bridge + Expo read-only app:**
+- openagents **#5000** — Pylon bridge transport (system #39).
+- openagents **#5001** — scaffold Expo remote-control app (read-only),
+  TestFlight via local build, OTA from Google.
+
+**Phase 3 — Expo write actions + push:**
+- openagents **#5002** — Expo write actions (decision.resolve/spawn/cancel/steer).
+- openagents **#5003** — Expo push (expo-notifications/APNs).
+- openagents **#5004** — exactly-once decision queue across desktop/web/Expo.
+
+**Placement maturity (deferred):**
+- cloud **#89** — CND-042: GCE↔SHC receipt comparison → cost-driven placement.
+
+**Foundation, already closed (do not re-file):** Cloud remote-exec C-0…C-15
+(openagents #4886–#4901). C-14/#4900, C-10, C-12, C-13 are closed-as-completed
+but the loop is not yet demonstrable end-to-end; #4997 + the cloud children
+revalidate/repair rather than rebuild. C-10/C-12/C-13/C-15 are reopened only
+when we open to non-owners (Phase 4).
+
+## 9. Bottom Line
 
 You already own both engines: a working **local** coding-session runtime
 (Pylon + Electrobun desktop) and a working **cloud** coding-session runtime
