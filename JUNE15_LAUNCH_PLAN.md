@@ -163,6 +163,14 @@ Shipped since this plan was written:
   admit→claim→verify run-through is the launch event** (§6), not faked on the
   production run; `assignedContributorCount` stays 0 until a real contributor
   claims. No-spend only; no promise flipped green.
+- ✅ **Step C — closeout → run-tied verification is live** (#5008, deployed).
+  `POST /api/training/runs/{ref}/executor-trace-closeout` takes a contributor's
+  executor-trace closeout and creates a **run+window-tied `exact_trace_replay`
+  verification challenge** (the builder was previously unwired), enforcing the
+  distinct-validator-device rule. On validator replay a `Verified` verdict
+  surfaces in the run's `verifiedWorkCount` (a tampered digest → `rejectedWorkCount`).
+  The live closeout→replay run-through is the launch event (§6);
+  `verifiedWorkCount` stays 0 until then. No-spend only; no promise flipped green.
 
 Red / the gap (the rest of the critical path):
 
@@ -219,12 +227,18 @@ spine; E makes it honest; F→G make it usable and public.
   submission to the run-tied `exact_trace_replay` verification so verified work
   surfaces in the run's `verifiedWorkCount`.
 
-### C. Exact-replay verification · worker-api
-- The submission is re-executed on a separate validator device; a public
-  `exact_trace_replay` `Verified` verdict is recorded (and would `Reject` a
-  tampered digest). This rail is green for the PoC — confirm it fires on the
-  stranger's submission.
-- **Done when:** a public `Verified` verdict references the stranger's trace.
+### C. Exact-replay verification · ✅ machinery DONE (#5008)
+- Shipped + deployed: `POST /api/training/runs/{ref}/executor-trace-closeout`
+  turns a contributor's executor-trace closeout into a run+window-tied
+  `exact_trace_replay` challenge (the builder was previously unwired), enforcing
+  the distinct-validator-device rule. The submission is re-executed on a separate
+  validator device; a `Verified` verdict surfaces in the run's `verifiedWorkCount`
+  and a tampered digest in `rejectedWorkCount`.
+- **Done when (machinery, met):** a contributor closeout creates a run-tied
+  `exact_trace_replay` challenge. **The live closeout→`Verified` run-through is
+  the launch event** (§6) — `verifiedWorkCount` stays 0 until a real submission
+  is replayed; not faked.
+- **Next:** Step D below — pay the contributor real sats for accepted work.
 
 ### D. Payout + settlement to the contributor · worker-api + pylon
 **The "earn Bitcoin" leg — highest-risk, drive it first.**
