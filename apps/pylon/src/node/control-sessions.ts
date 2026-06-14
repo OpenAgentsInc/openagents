@@ -9,10 +9,22 @@ import {
   type PylonAccountProvider,
   type ResolvedPylonAccountSelection,
 } from "../account-registry"
-import { loadClaudeAgentConfig } from "../claude-agent"
-import { runClaudeComposerStream } from "../claude-composer"
-import { loadCodexAgentConfig, type PylonComposerAdapter } from "../codex-agent"
-import { runCodexComposerStream, sandboxModeForCodexComposerExecutionMode } from "../codex-composer"
+import { loadClaudeAgentConfig, loadClaudeDevConfig } from "../claude-agent"
+import {
+  permissionModeForClaudeComposerExecutionMode,
+  runClaudeComposerStream,
+} from "../claude-composer"
+import {
+  type CodexAgentConfig,
+  type CodexDevConfig,
+  loadCodexAgentConfig,
+  loadCodexDevConfig,
+  type PylonComposerAdapter,
+} from "../codex-agent"
+import {
+  runCodexComposerStream,
+  sandboxModeForCodexComposerExecutionMode,
+} from "../codex-composer"
 import type { BootstrapSummary } from "../bootstrap"
 import {
   recordPylonDevCodexRun,
@@ -160,8 +172,12 @@ export type ControlSessionExecutorResult = {
   devCheck: PylonDevCheckProjection
   editedFileCount: number
   eventCount: number
+  executionMode?: "local_bounded" | "local_supervised_danger"
   externalSessionRef: string | null
+  networkAccessEnabled?: boolean
+  permissionMode?: "acceptEdits" | "bypassPermissions"
   responseDigestRef: string | null
+  sandboxMode?: "read-only" | "workspace-write" | "danger-full-access"
   totalTokens: number
 }
 
@@ -172,6 +188,25 @@ export type ControlSessionExecutor = (
 type WorkspaceSelection = {
   workspaceRef: string
   workingDirectory: string
+}
+
+export function codexControlSessionExecutionSettings(
+  config: Pick<CodexAgentConfig, "sandboxMode">,
+  devConfig: Pick<CodexDevConfig, "codexExecutionMode">,
+): {
+  executionMode: "local_bounded" | "local_supervised_danger"
+  networkAccessEnabled: boolean
+  sandboxMode: "read-only" | "workspace-write" | "danger-full-access"
+} {
+  const executionMode =
+    devConfig.codexExecutionMode === "local_supervised_danger"
+      ? "local_supervised_danger"
+      : "local_bounded"
+  return {
+    executionMode,
+    networkAccessEnabled: executionMode === "local_supervised_danger",
+    sandboxMode: sandboxModeForCodexComposerExecutionMode(executionMode, config.sandboxMode),
+  }
 }
 
 type SessionRecord = {
@@ -375,11 +410,18 @@ async function defaultControlSessionExecutor(
   let totalTokens = 0
   let externalSessionRef: string | null = null
   let responseDigestRef: string | null = null
+  let executionMode: "local_bounded" | "local_supervised_danger" = "local_bounded"
+  let networkAccessEnabled: boolean | undefined
+  let permissionMode: "acceptEdits" | "bypassPermissions" | undefined
+  let sandboxMode: "read-only" | "workspace-write" | "danger-full-access" | undefined
 
   if (input.adapter === "codex") {
     const config = await loadCodexAgentConfig(input.summary)
-    const sandboxMode = sandboxModeForCodexComposerExecutionMode("local_bounded", config.sandboxMode)
-    if (sandboxMode === "danger-full-access") throw new Error("control sessions never use danger-full-access")
+    const devConfig = await loadCodexDevConfig(input.summary)
+    const settings = codexControlSessionExecutionSettings(config, devConfig)
+    executionMode = settings.executionMode
+    sandboxMode = settings.sandboxMode
+    networkAccessEnabled = settings.networkAccessEnabled
     const result = await runCodexComposerStream(
       input.objective,
       {
@@ -389,9 +431,9 @@ async function defaultControlSessionExecutor(
         config,
         cwd: input.cwd,
         env: input.env,
-        executionMode: "local_bounded",
+        executionMode,
         ...(config.model === undefined ? {} : { model: config.model }),
-        networkAccessEnabled: false,
+        networkAccessEnabled,
         sandboxMode,
         timeoutMs: input.timeoutMs,
         usageStateSummary: input.summary,
@@ -406,7 +448,7 @@ async function defaultControlSessionExecutor(
         cwd: input.cwd,
         editedFileCount: result.editedFileCount,
         eventCount: result.eventCount,
-        executionMode: "local_bounded",
+        executionMode,
         sandboxMode,
         totalTokens: result.totalTokens,
       },
@@ -420,8 +462,21 @@ async function defaultControlSessionExecutor(
       result.threadId === null ? null : stableRef("session.pylon.codex_composer", result.threadId)
     responseDigestRef =
       result.text.length === 0 ? null : stableRef("digest.pylon.control_session.response", result.text)
+    input.emit({
+      phase: "composer_event",
+      message: `control session mode: ${executionMode}; sandbox: ${sandboxMode}; network: ${
+        networkAccessEnabled ? "enabled" : "disabled"
+      }`,
+      composerEventIndex: result.eventCount + 1,
+    })
   } else {
     const config = await loadClaudeAgentConfig(input.summary)
+    const devConfig = await loadClaudeDevConfig(input.summary)
+    executionMode =
+      devConfig.claudeExecutionMode === "local_supervised_danger"
+        ? "local_supervised_danger"
+        : "local_bounded"
+    permissionMode = permissionModeForClaudeComposerExecutionMode(executionMode)
     const result = await runClaudeComposerStream(
       input.objective,
       {
@@ -430,9 +485,9 @@ async function defaultControlSessionExecutor(
         config,
         cwd: input.cwd,
         env: input.env,
-        executionMode: "local_bounded",
+        executionMode,
         ...(config.model === undefined ? {} : { model: config.model }),
-        permissionMode: "acceptEdits",
+        permissionMode,
         timeoutMs: input.timeoutMs,
         usageStateSummary: input.summary,
       },
@@ -447,6 +502,11 @@ async function defaultControlSessionExecutor(
     externalSessionRef = result.sessionRef
     responseDigestRef =
       result.text.length === 0 ? null : stableRef("digest.pylon.control_session.response", result.text)
+    input.emit({
+      phase: "composer_event",
+      message: `control session mode: ${executionMode}; permissions: ${permissionMode}`,
+      composerEventIndex: result.eventCount + 1,
+    })
   }
 
   input.emit({ phase: "dev_check_started" })
@@ -467,8 +527,12 @@ async function defaultControlSessionExecutor(
     devCheck,
     editedFileCount,
     eventCount,
+    executionMode,
     externalSessionRef,
+    ...(networkAccessEnabled === undefined ? {} : { networkAccessEnabled }),
+    ...(permissionMode === undefined ? {} : { permissionMode }),
     responseDigestRef,
+    ...(sandboxMode === undefined ? {} : { sandboxMode }),
     totalTokens,
   }
 }
@@ -566,7 +630,12 @@ export function createControlSessionActions(options: {
       },
       executor: {
         executionPathRef: "control_session.composer",
-        executionMode: "local_bounded",
+        executionMode: result.executionMode ?? "local_bounded",
+        ...(result.sandboxMode === undefined ? {} : { sandboxMode: result.sandboxMode }),
+        ...(result.permissionMode === undefined ? {} : { permissionMode: result.permissionMode }),
+        ...(result.networkAccessEnabled === undefined
+          ? {}
+          : { networkAccessEnabled: result.networkAccessEnabled }),
         outcome: result.devCheck.state === "passed" ? "completed" : "failed",
         eventCount: result.eventCount,
         commandCount: result.commandCount,

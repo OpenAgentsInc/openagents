@@ -45,9 +45,11 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Pylon payment, assignment, and earning claims must remain receipt-backed and
   explicit about unsettled, rejected, unpaid, credited, and settled states.
 - Pylon local supervised danger modes (Codex `danger-full-access`, Claude
-  `bypassPermissions`) are explicit local-composer opt-ins only: every public
-  command path rejects them with a typed blocker, and the assignment-safe
-  config loaders never read a permissive mode.
+  `bypassPermissions`) are explicit owner-local opt-ins only: local composer
+  and authenticated local control sessions may honor the local dev overlay;
+  every public command, assignment, labor, and provider path rejects them with
+  a typed blocker, and the assignment-safe config loaders never read a
+  permissive mode.
 - Secrets, wallet material, raw prompts, private repo content, provider
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.

@@ -19,7 +19,11 @@ import {
   runControlClient,
   sendControlCommand,
 } from "../src/node/control-client"
-import { createControlSessionActions, type ControlSessionExecutor } from "../src/node/control-sessions"
+import {
+  codexControlSessionExecutionSettings,
+  createControlSessionActions,
+  type ControlSessionExecutor,
+} from "../src/node/control-sessions"
 import type { PylonEvent } from "../src/node/state"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { PYLON_DEV_CHECK_SCHEMA, type PylonDevCheckProjection } from "../src/dev-loop"
@@ -245,6 +249,25 @@ describe("control protocol", () => {
         }),
       ),
     )
+  })
+
+  test("local control sessions honor the owner supervised Codex dev overlay", () => {
+    expect(
+      codexControlSessionExecutionSettings(
+        { sandboxMode: "workspace-write" },
+        { codexExecutionMode: "local_supervised_danger" },
+      ),
+    ).toEqual({
+      executionMode: "local_supervised_danger",
+      networkAccessEnabled: true,
+      sandboxMode: "danger-full-access",
+    })
+
+    expect(codexControlSessionExecutionSettings({}, {})).toEqual({
+      executionMode: "local_bounded",
+      networkAccessEnabled: false,
+      sandboxMode: "workspace-write",
+    })
   })
 
   test("session commands spawn, list, retain artifacts, and replay per-session events", async () => {
