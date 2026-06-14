@@ -52,4 +52,9 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsSelector(document.body, "oa-spinning-cube")).toBe(true)
     expect(treeContainsSelector(document.body, "oa-bezier-nodes")).toBe(true)
   })
+
+  test("training pane includes the training scene", () => {
+    const document = view({ ...initialModel, pane: "training" })
+    expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)
+  })
 })

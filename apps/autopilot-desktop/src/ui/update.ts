@@ -12,6 +12,7 @@ import { Command } from "foldkit"
 import {
   CancelSession,
   DeployCloud,
+  QueueTrainingLaunch,
   ResolveApproval,
   SetCoordinatorPaused,
   SpawnSession,
@@ -152,6 +153,32 @@ export const update = (model: Model, message: Message): Result => {
           askPending: false,
           askStatus: { text: message.text, tone: message.ok ? "success" : "error" },
           ...(message.ok ? { askTitle: "", askBody: "" } : {}),
+        }),
+        noCommands,
+      ]
+
+    // ── Training launch/readiness feedback ───────────────────────────────────
+    case "ClickedQueueTrainingLaunch":
+      return [
+        Model.make({
+          ...model,
+          trainingLaunchPending: true,
+          trainingLaunchStatus: {
+            text: "queueing launch check...",
+            tone: "info",
+          },
+        }),
+        [QueueTrainingLaunch()],
+      ]
+    case "SettledQueueTrainingLaunch":
+      return [
+        Model.make({
+          ...model,
+          trainingLaunchPending: false,
+          trainingLaunchStatus: {
+            text: message.text,
+            tone: message.ok ? "success" : "error",
+          },
         }),
         noCommands,
       ]

@@ -14,6 +14,7 @@ import {
   FailedSpawn,
   SettledCancelSession,
   SettledCoordinatorToggle,
+  SettledQueueTrainingLaunch,
   SettledResolveApproval,
   SettledSubmitIntent,
   SucceededDeploy,
@@ -103,6 +104,45 @@ export const SubmitIntent = Command.define(
     Effect.catch((error) =>
       Effect.succeed(
         SettledSubmitIntent({ ok: false, text: `error: ${errorText(error)}` }),
+      ),
+    ),
+  ),
+)
+
+// Queue a training launch/readiness check through the existing Pylon intent
+// bridge. This intentionally does not call admin training routes from the
+// webview; main-process authority can later translate the intent into an
+// authenticated run plan once the node exposes that command.
+export const QueueTrainingLaunch = Command.define(
+  "QueueTrainingLaunch",
+  {},
+  SettledQueueTrainingLaunch,
+)(() =>
+  Effect.tryPromise(() =>
+    getRequest().submitIntent({
+      title: "Training run launch check",
+      body: [
+        "Inspect readiness for a Tassadar/Psion training run.",
+        "Use the OpenAgents training authority projections at /api/training/runs and the issue 4855 gates.",
+        "Confirm R1 rehearsal readiness, last durable seal bootstrap, seal barrier state, staleness acceptance bound, distinct contributor evidence, Freivalds refs, gradient closeout refs, receipts, and settlement blockers.",
+        "Do not bypass admin-only training routes from the desktop webview.",
+      ].join("\n"),
+    }),
+  ).pipe(
+    Effect.map((r) =>
+      r.ok
+        ? SettledQueueTrainingLaunch({ ok: true, text: `queued · ${r.status}` })
+        : SettledQueueTrainingLaunch({
+            ok: false,
+            text: `error: ${r.error ?? r.status}`,
+          }),
+    ),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledQueueTrainingLaunch({
+          ok: false,
+          text: `error: ${errorText(error)}`,
+        }),
       ),
     ),
   ),

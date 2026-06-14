@@ -23,6 +23,7 @@ import {
 import {
   bezierNodesView,
   spinningCubeView,
+  trainingRunView,
 } from "@openagentsinc/three-effect/foldkit"
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
@@ -46,6 +47,7 @@ import {
   ClickedCancelSession,
   ClickedCoordinatorToggle,
   ClickedDeploy,
+  ClickedQueueTrainingLaunch,
   ClickedResolveApproval,
   ClickedSpawn,
   ClickedSubmitIntent,
@@ -126,6 +128,7 @@ const threeEffectPreview = (): Html =>
 
 const NAV: ReadonlyArray<{ id: PaneId; label: string }> = [
   { id: "nodes", label: "Nodes" },
+  { id: "training", label: "Training" },
   { id: "sessions", label: "Sessions" },
   { id: "decisions", label: "Decisions" },
   { id: "spawn", label: "Spawn" },
@@ -452,6 +455,125 @@ const nodesPane = (model: Model): Html => {
   )
 }
 
+// ── Training pane ────────────────────────────────────────────────────────────
+
+const trainingMetric = (label: string, value: string, tone = "ready"): Html =>
+  h.div([cls(`training-metric training-${tone}`)], [
+    h.span([cls("training-metric-label")], [label]),
+    h.strong([cls("training-metric-value")], [value]),
+  ])
+
+const trainingGate = (
+  label: string,
+  value: string,
+  tone: "ready" | "watch" | "blocked",
+): Html =>
+  h.li([cls(`training-gate training-${tone}`)], [
+    h.span([cls("training-gate-dot")], []),
+    h.span([cls("training-gate-label")], [label]),
+    h.span([cls("training-gate-value")], [value]),
+  ])
+
+const trainingLaunchPanel = (model: Model): Html => {
+  const statusVisible = model.trainingLaunchStatus.tone !== "idle"
+  return h.section([cls("training-panel training-action-panel")], [
+    h.h2([cls("training-panel-title")], ["Launch Feedback"]),
+    h.p(
+      [cls("training-panel-copy")],
+      [
+        "Queues a local Pylon intent to inspect the run gates. Admin planning and admission still belong behind authenticated training routes.",
+      ],
+    ),
+    h.button(
+      [
+        cls("training-action-button"),
+        h.Type("button"),
+        h.Disabled(model.trainingLaunchPending),
+        h.OnClick(ClickedQueueTrainingLaunch()),
+      ],
+      [model.trainingLaunchPending ? "Queueing..." : "Queue launch check"],
+    ),
+    statusVisible
+      ? h.p(
+          [
+            cls(
+              `training-action-status training-${model.trainingLaunchStatus.tone}`,
+            ),
+          ],
+          [model.trainingLaunchStatus.text],
+        )
+      : h.p([cls("training-action-status")], [" "]),
+  ])
+}
+
+const trainingPane = (model: Model): Html =>
+  h.div(
+    [cls("training-page")],
+    [
+      h.header([cls("training-topline")], [
+        h.div([], [
+          paneTitle("Training"),
+          h.p(
+            [cls("node-status")],
+            [
+              "Tassadar/Psion run projection · Pluralis lifecycle adapted by issue 4855",
+            ],
+          ),
+        ]),
+        h.div([cls("training-ref")], ["source: /api/training/runs"]),
+      ]),
+      h.section([cls("training-visual")], [
+        h.div([cls("training-visual-copy")], [
+          h.h2([cls("training-visual-title")], ["Run Window"]),
+          h.p(
+            [cls("training-visual-caption")],
+            [
+              "Lifecycle, staleness, seal, Freivalds, receipts, settlement, and ladder readiness in one live Three surface.",
+            ],
+          ),
+        ]),
+        trainingRunView<Message>([cls("three-effect-training")]),
+      ]),
+      h.div([cls("training-grid")], [
+        h.section([cls("training-panel")], [
+          h.h2([cls("training-panel-title")], ["Run Authority"]),
+          h.div([cls("training-metrics")], [
+            trainingMetric("run state", "planned"),
+            trainingMetric("window", "seal cadence 1"),
+            trainingMetric("stale bound", "5 steps", "watch"),
+            trainingMetric("claim", "no broad gradient", "blocked"),
+          ]),
+        ]),
+        h.section([cls("training-panel")], [
+          h.h2([cls("training-panel-title")], ["Issue 4855 Gates"]),
+          h.ul([cls("training-gates")], [
+            trainingGate("join lifecycle", "registered -> active", "ready"),
+            trainingGate("bootstrap", "last durable seal only", "ready"),
+            trainingGate("seal barrier", "queue joins during merge", "watch"),
+            trainingGate("staleness", "sync reentry beyond bound", "watch"),
+            trainingGate("receipts", "presence split from compute", "ready"),
+            trainingGate("SPARTA", "side canary only", "blocked"),
+          ]),
+        ]),
+        trainingLaunchPanel(model),
+        h.section([cls("training-panel")], [
+          h.h2([cls("training-panel-title")], ["Live API Boundary"]),
+          h.p(
+            [cls("training-panel-copy")],
+            [
+              "Read projections from public training summaries. Put authenticated plan, admit, and evidence writes in the Bun main process or Worker admin surface, never in the webview.",
+            ],
+          ),
+          h.ul([cls("training-api-list")], [
+            h.li([], [h.code([], ["/api/training/runs"])]),
+            h.li([], [h.code([], ["/api/training/leaderboards"])]),
+            h.li([], [h.code([], ["admin: plan window / admit evidence"])]),
+          ]),
+        ]),
+      ]),
+    ],
+  )
+
 // ── Sessions pane ─────────────────────────────────────────────────────────────
 
 const FILTERS: ReadonlyArray<SessionFilter> = [
@@ -721,6 +843,8 @@ const paneView = (model: Model): Html => {
   switch (model.pane) {
     case "nodes":
       return nodesPane(model)
+    case "training":
+      return trainingPane(model)
     case "sessions":
       return sessionsPane(model)
     case "decisions":

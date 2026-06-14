@@ -55,6 +55,13 @@ export const SettledSubmitIntent = m("SettledSubmitIntent", {
   text: S.String,
 })
 
+// ── Training launch/readiness feedback ──────────────────────────────────────
+export const ClickedQueueTrainingLaunch = m("ClickedQueueTrainingLaunch")
+export const SettledQueueTrainingLaunch = m("SettledQueueTrainingLaunch", {
+  ok: S.Boolean,
+  text: S.String,
+})
+
 // ── Spawn ──────────────────────────────────────────────────────────────────
 export const ChangedSpawnAdapter = m("ChangedSpawnAdapter", {
   adapter: S.Literals(["codex", "claude_agent"]),
@@ -91,6 +98,8 @@ export const Message = S.Union([
   ChangedAskBody,
   ClickedSubmitIntent,
   SettledSubmitIntent,
+  ClickedQueueTrainingLaunch,
+  SettledQueueTrainingLaunch,
   ChangedSpawnAdapter,
   ChangedSpawnObjective,
   ChangedSpawnVerify,

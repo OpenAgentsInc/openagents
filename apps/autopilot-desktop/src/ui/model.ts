@@ -18,6 +18,7 @@ import type { NodeStateMessage } from "../shared/rpc"
 // plus the focused session-detail leaf.
 export const PaneId = S.Literals([
   "nodes",
+  "training",
   "sessions",
   "decisions",
   "spawn",
@@ -51,6 +52,15 @@ export const AskStatus = S.Struct({
   tone: S.Literals(["error", "info", "success", "idle"]),
 })
 export type AskStatus = typeof AskStatus.Type
+
+// Transient status for queueing a training launch/readiness check through the
+// existing local Pylon intent bridge. The desktop webview never receives admin
+// training authority or secrets.
+export const TrainingLaunchStatus = S.Struct({
+  text: S.String,
+  tone: S.Literals(["error", "info", "success", "idle"]),
+})
+export type TrainingLaunchStatus = typeof TrainingLaunchStatus.Type
 
 // Transient status for the Deploy card.
 export const DeployFeedback = S.Struct({
@@ -92,6 +102,10 @@ export const Model = ts("AutopilotDesktop", {
   askStatus: AskStatus,
   askPending: S.Boolean,
 
+  // Training pane launch/readiness feedback.
+  trainingLaunchStatus: TrainingLaunchStatus,
+  trainingLaunchPending: S.Boolean,
+
   // Deploy feedback (null until the card has been interacted with or a deploy
   // projection has landed).
   deployFeedback: S.NullOr(DeployFeedback),
@@ -127,5 +141,7 @@ export const initialModel: Model = Model.make({
   askBody: "",
   askStatus: { text: "", tone: "idle" },
   askPending: false,
+  trainingLaunchStatus: { text: "", tone: "idle" },
+  trainingLaunchPending: false,
   deployFeedback: null,
 })
