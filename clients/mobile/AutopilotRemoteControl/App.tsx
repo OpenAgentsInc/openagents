@@ -10,12 +10,15 @@ import SessionDetailScreen from "./app/session-detail"
 import SessionsScreen from "./app/sessions"
 import SettingsScreen from "./app/settings"
 import SpawnScreen from "./app/spawn"
+import { ConnectionProvider } from "./src/connection/ConnectionContext"
 import { UpdateGate } from "./src/update-gate"
 
 export type RootStackParamList = {
   Nodes: undefined
   Sessions: undefined
-  SessionDetail: undefined
+  // CL-59: the dedicated detail route takes a sessionRef (optional so a bare
+  // navigate still type-checks).
+  SessionDetail: { sessionRef: string } | undefined
   Decisions: undefined
   Spawn: undefined
   Settings: undefined
@@ -27,16 +30,18 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#000000" }}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
-      <NavigationContainer>
-        <Stack.Navigator initialRouteName="Nodes" screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Nodes" component={NodesScreen} />
-          <Stack.Screen name="Sessions" component={SessionsScreen} />
-          <Stack.Screen name="SessionDetail" component={SessionDetailScreen} />
-          <Stack.Screen name="Decisions" component={DecisionsScreen} />
-          <Stack.Screen name="Spawn" component={SpawnScreen} />
-          <Stack.Screen name="Settings" component={SettingsScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
+      <ConnectionProvider>
+        <NavigationContainer>
+          <Stack.Navigator initialRouteName="Nodes" screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="Nodes" component={NodesScreen} />
+            <Stack.Screen name="Sessions" component={SessionsScreen} />
+            <Stack.Screen name="SessionDetail" component={SessionDetailScreen} />
+            <Stack.Screen name="Decisions" component={DecisionsScreen} />
+            <Stack.Screen name="Spawn" component={SpawnScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </ConnectionProvider>
       <UpdateGate />
     </GestureHandlerRootView>
   )
