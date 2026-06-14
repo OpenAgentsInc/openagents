@@ -1,7 +1,36 @@
 # Product-Promise Registry Reality Reconciliation — 2026-06-14
 
 Registry transition: `2026-06-12.8` → `2026-06-14.1` → `2026-06-14.2` →
-`2026-06-14.3` (deployed).
+`2026-06-14.3` → `2026-06-14.4` (deployed).
+
+## Update — 2026-06-14.4 (deploy unblock: zero-debt gate green + #4997)
+
+The canonical gated deploy (`bun run deploy`) was blocked by a pre-existing
+`check:architecture` (zero-debt) failure introduced by the merged wave-3 Agency
+Pack code — independent of the registry work. Brought back to green (owner
+authorized relaxing budgets given the expanded scope):
+
+- **Fixed (no behavior change):** reworded the comment-only false positives that
+  the regex counted (`// env.OPENAGENTS_DB`, `// Effect.runPromise(...)` scaffold
+  comments in cloudflare-custom-hostname-client, omni-handoff/bundle,
+  tenant-client); routed the 7 real raw `JSON.parse` calls
+  (omni-workroom-routes, omni-workroom-lifecycle-routes,
+  workroom-template-repository) through the `parseJsonUnknown` json-boundary
+  helper (`parseJsonUnknown === JSON.parse`, so identical behavior).
+- **Relaxed (ratchet-down notes in the check script):** route Effect.promise
+  adapters 8→18, Worker Response surfaces 80→83, index.ts runPromise allowlist
+  6→7 — migration bridges from the wave-3 routes, to be paid down as those route
+  signatures finish migrating to Effect programs.
+- Two spurious working-tree UU conflicts (recipient-wallet-readiness.ts,
+  docs/autopilot-coder/README.md) were restored to clean HEAD.
+
+`typecheck:api` clean, `check:architecture` green, product-promises test green.
+
+**#4997 landed:** the Pylon openagents-cloud provider now dispatches cloud lanes
+to the placement endpoint (gated by OA_CLOUD_CONTROL_URL/TOKEN, local fallback)
+with cloud #90 GCE lease lifecycle. `autopilot.cloud_coding_sessions.v1` stays
+red — live GCE provisioning is a fake-default ADC-gated stub and the cloud.gce.*
+event kinds don't round-trip to the desktop yet (#5005, open).
 
 ## Update — 2026-06-14.3 (Nostr resilience + Coder Cloud landed contracts)
 

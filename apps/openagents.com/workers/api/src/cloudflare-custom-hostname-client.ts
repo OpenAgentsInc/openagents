@@ -46,7 +46,7 @@ import {
 //       // fetchImpl defaults to globalThis.fetch; pass one only to override.
 //     })
 //     const provisioning = makeTenantHostnameProvisioning(
-//       env.OPENAGENTS_DB,
+//       openAgentsDatabase(env),
 //       liveClient,
 //     )
 //     // ... mount provisioning.provision / provisioning.reconcile on an

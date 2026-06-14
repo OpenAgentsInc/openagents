@@ -198,7 +198,7 @@ export const makeTenantClientRoutes = <
 //       // SEPARATE FOLLOW-UP. Today this can call the existing resolver
 //       // directly off the Host header:
 //       const host = request.headers.get('Host') ?? ''
-//       const tenant = await Effect.runPromise(
+//       const tenant = await runEffectProgram(
 //         makeTenantCustomHostnames(openAgentsDatabase(env))
 //           .resolveTenantByHostname(host),
 //       )
@@ -212,7 +212,7 @@ export const makeTenantClientRoutes = <
 //   const tenantClient = tenantClientRoutes.routeTenantClientRequest(
 //     request, env, ctx,
 //   )
-//   if (tenantClient !== undefined) return Effect.runPromise(tenantClient)
+//   if (tenantClient !== undefined) return runEffectProgram(tenantClient)
 //
 // Notes:
 //   - The route only "applies" when the path matches

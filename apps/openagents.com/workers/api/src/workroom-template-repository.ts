@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from 'effect'
 
-import { stringArrayFromUnknown } from './json-boundary'
+import { parseJsonUnknown, stringArrayFromUnknown } from './json-boundary'
 import type {
   OmniWorkroomKindRequiredArtifact,
   OmniWorkroomKindRequiredEvidence,
@@ -134,7 +134,7 @@ export type WorkroomTemplatePackageStoredRecord = Readonly<{
 const parseRequiredEvidence = (
   json: string,
 ): ReadonlyArray<OmniWorkroomKindRequiredEvidence> => {
-  const parsed = JSON.parse(json)
+  const parsed = parseJsonUnknown(json)
 
   return Array.isArray(parsed)
     ? parsed.map(item => ({
@@ -148,7 +148,7 @@ const parseRequiredEvidence = (
 const parseRequiredArtifacts = (
   json: string,
 ): ReadonlyArray<OmniWorkroomKindRequiredArtifact> => {
-  const parsed = JSON.parse(json)
+  const parsed = parseJsonUnknown(json)
 
   return Array.isArray(parsed)
     ? parsed.map(item => ({
@@ -165,7 +165,7 @@ export const toWorkroomKindTemplateRecord = (
   acceptedOutcomeWorkKind:
     row.accepted_outcome_work_kind as OmniAcceptedOutcomeWorkKind,
   closeoutRequirements: stringArrayFromUnknown(
-    JSON.parse(row.closeout_requirements_json),
+    parseJsonUnknown(row.closeout_requirements_json),
   ) as ReadonlyArray<OmniAcceptedOutcomeCloseoutRequirementKind>,
   createdAtIso: row.created_at,
   descriptionRef: row.description_ref,
@@ -232,7 +232,7 @@ type PackageVersionRow = Readonly<{
 }>
 
 const refs = (json: string): ReadonlyArray<string> =>
-  stringArrayFromUnknown(JSON.parse(json))
+  stringArrayFromUnknown(parseJsonUnknown(json))
 
 const toPackageRecord = (
   row: PackageRow,

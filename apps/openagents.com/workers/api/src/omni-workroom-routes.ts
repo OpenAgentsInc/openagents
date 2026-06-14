@@ -22,7 +22,7 @@ import {
   noStoreJsonResponse,
   unauthorized,
 } from './http/responses'
-import { readJsonObject } from './json-boundary'
+import { parseJsonUnknown, readJsonObject } from './json-boundary'
 import {
   type OmniWorkroomError,
   type OmniWorkroomRecord,
@@ -366,7 +366,7 @@ type WorkroomRow = Readonly<{
 
 const parseJsonArray = (value: string): ReadonlyArray<string> => {
   try {
-    const parsed = JSON.parse(value)
+    const parsed = parseJsonUnknown(value)
 
     return Array.isArray(parsed) ? parsed.filter(item => typeof item === 'string') : []
   } catch {
@@ -376,7 +376,7 @@ const parseJsonArray = (value: string): ReadonlyArray<string> => {
 
 const parseJsonRecordSafe = (value: string): Readonly<Record<string, unknown>> => {
   try {
-    const parsed = JSON.parse(value)
+    const parsed = parseJsonUnknown(value)
 
     return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)

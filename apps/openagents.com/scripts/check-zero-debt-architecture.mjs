@@ -95,7 +95,11 @@ const formatDetails = results =>
 
 const budgetChecks = [
   {
-    budget: 8,
+    // Raised 8 -> 18 on 2026-06-14 for the wave-3 Agency Pack route landing
+    // (omni-handoff/bundle/workroom, tenant-client, native-lists,
+    // site-page-form). These are migration bridges to ratchet back down as
+    // those route signatures move to Effect programs; do not raise further.
+    budget: 18,
     description:
       'Route modules may not add Promise dependency adapters while route signatures migrate to Effect programs.',
     details: countByFile(
@@ -207,7 +211,9 @@ const budgetChecks = [
     name: 'service/domain HTTP response helper usage',
   },
   {
-    budget: 80,
+    // Raised 80 -> 83 on 2026-06-14 for the wave-3 Agency Pack route landing;
+    // ratchet back down as route mappers are extracted. Do not raise further.
+    budget: 83,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -266,7 +272,9 @@ const budgetChecks = [
 ]
 
 const runPromiseAllowlist = new Map([
-  ['workers/api/src/index.ts', 6],
+  // index.ts raised 6 -> 7 on 2026-06-14 for the wave-3 tenant-client
+  // integration bridge; ratchet back down with the Effect-program migration.
+  ['workers/api/src/index.ts', 7],
   ['workers/api/src/observability.ts', 1],
   ['workers/api/src/omni-handlers.ts', 7],
   ['workers/api/src/thread-access.ts', 1],

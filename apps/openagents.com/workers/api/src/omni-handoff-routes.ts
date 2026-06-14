@@ -20,7 +20,7 @@
 //       ctx,
 //     )
 //     if (omniHandoffResponse !== undefined) {
-//       return await Effect.runPromise(omniHandoffResponse)
+//       return await runEffectProgram(omniHandoffResponse)
 //     }
 
 import { Effect, Match as M, Schema as S } from 'effect'

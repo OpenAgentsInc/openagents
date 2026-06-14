@@ -40,7 +40,7 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { readJsonObject } from './json-boundary'
+import { parseJsonUnknown, readJsonObject } from './json-boundary'
 import {
   type OmniWorkroomLifecycleDecisionRecord,
   type OmniWorkroomLifecycleError,
@@ -243,7 +243,7 @@ const decisionFromHistoryRow = (
   idempotencyKey: row.idempotency_key,
   metadata: ((): Readonly<Record<string, unknown>> => {
     try {
-      const parsed: unknown = JSON.parse(row.metadata_json)
+      const parsed: unknown = parseJsonUnknown(row.metadata_json)
 
       return parsed !== null && typeof parsed === 'object'
         ? (parsed as Readonly<Record<string, unknown>>)

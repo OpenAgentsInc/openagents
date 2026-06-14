@@ -31,7 +31,7 @@
 //       ctx,
 //     )
 //     if (omniBundleResponse !== undefined) {
-//       return await Effect.runPromise(omniBundleResponse)
+//       return await runEffectProgram(omniBundleResponse)
 //     }
 //
 // NOTE: the GET read path needs an id-keyed lookup. The existing services only
