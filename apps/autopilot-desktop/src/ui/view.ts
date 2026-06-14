@@ -498,6 +498,37 @@ const trainingGate = (
     h.span([cls("training-gate-value")], [value]),
   ])
 
+const uniqueTrainingRefs = (
+  refs: ReadonlyArray<string | null | undefined>,
+): string[] => {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const ref of refs) {
+    const trimmed = ref?.trim() ?? ""
+    if (trimmed === "" || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    result.push(trimmed)
+  }
+  return result
+}
+
+const trainingRefList = (
+  title: string,
+  refs: readonly string[],
+  emptyText = "not observed",
+): Html =>
+  h.div([cls("training-ledger-block")], [
+    h.h3([cls("training-ledger-title")], [title]),
+    refs.length === 0
+      ? h.p([cls("training-ledger-empty")], [emptyText])
+      : h.ul(
+          [cls("training-ledger-list")],
+          refs.slice(0, 8).map(ref =>
+            h.li([cls("training-ledger-ref")], [h.code([], [ref])]),
+          ),
+        ),
+  ])
+
 const trainingProjectionMeta = (
   projection: TrainingRunsResponse | null,
 ): string => {
@@ -745,6 +776,99 @@ const selectedTrainingEvidencePanel = (
           : "watch",
       ),
     ]),
+  ])
+}
+
+const selectedTrainingLedgerPanel = (
+  projection: TrainingRunsResponse | null,
+): Html => {
+  const summary = selectedTrainingSummary(projection)
+  if (summary === null) {
+    return h.section([cls("training-panel training-ledger-panel")], [
+      h.h2([cls("training-panel-title")], ["Evidence Ledger"]),
+      emptyLine("No selected run refs loaded yet."),
+    ])
+  }
+
+  const closeout = summary.realGradient.closeoutRequirement
+  const loss = summary.realGradient.lossUnderBudget
+  const externalAsk = summary.realGradient.externalAsk
+  const latestWindows = summary.windows.slice(0, 4)
+  const authorityRefs = uniqueTrainingRefs([
+    summary.run.trainingRunRef,
+    summary.run.promiseRef,
+    ...summary.run.sourceRefs,
+    ...summary.sourceRefs,
+    ...summary.copyBoundaryRefs,
+    ...summary.realGradient.scopeBoundaryRefs,
+  ])
+  const evidenceRefs = uniqueTrainingRefs([
+    ...closeout.freivaldsCommitmentRefs,
+    ...closeout.gradientCloseoutRefs,
+    closeout.mergeRef,
+    closeout.evalRef,
+    loss.budgetRef,
+    ...loss.sourceRefs,
+    ...summary.realGradient.deviceRequirement.sourceRefs,
+  ])
+  const receiptRefs = uniqueTrainingRefs([
+    ...summary.receiptRefs,
+    ...summary.run.receiptRefs,
+    ...latestWindows.flatMap(window =>
+      Array.isArray(window.receiptRefs) ? window.receiptRefs : [],
+    ),
+  ])
+  const blockerRefs = uniqueTrainingRefs([
+    ...externalAsk.blockerRefs,
+    ...externalAsk.requirementRefs,
+  ])
+
+  return h.section([cls("training-panel training-ledger-panel")], [
+    h.div([cls("training-panel-heading")], [
+      h.h2([cls("training-panel-title")], ["Evidence Ledger"]),
+      h.span([cls("training-panel-kicker")], [summary.run.state]),
+    ]),
+    h.p([cls("training-panel-copy")], [
+      "Selected public refs behind the run, windows, evidence, receipts, and blockers.",
+    ]),
+    h.div([cls("training-metrics")], [
+      trainingMetric("windows", String(summary.windows.length)),
+      trainingMetric("receipts", String(receiptRefs.length)),
+      trainingMetric(
+        "evidence refs",
+        String(evidenceRefs.length),
+        evidenceRefs.length > 0 ? "ready" : "watch",
+      ),
+      trainingMetric(
+        "blockers",
+        String(blockerRefs.length),
+        blockerRefs.length === 0 ? "ready" : "blocked",
+      ),
+    ]),
+    latestWindows.length === 0
+      ? emptyLine("No window records projected for this run yet.")
+      : h.ul(
+          [cls("training-ledger-windows")],
+          latestWindows.map(window => {
+            const datasetCount = Array.isArray(window.datasetRefs)
+              ? window.datasetRefs.length
+              : 0
+            const receiptCount = Array.isArray(window.receiptRefs)
+              ? window.receiptRefs.length
+              : 0
+            const homeworkKind = window.homeworkKind ?? "unknown"
+            return h.li([cls(`training-ledger-window training-${window.state}`)], [
+              h.code([], [window.windowRef]),
+              h.span([], [
+                `${window.state} · ${homeworkKind} · ${datasetCount} datasets · ${receiptCount} receipts`,
+              ]),
+            ])
+          }),
+        ),
+    trainingRefList("authority", authorityRefs),
+    trainingRefList("evidence", evidenceRefs),
+    trainingRefList("receipts", receiptRefs),
+    trainingRefList("blockers", blockerRefs, "no blockers observed"),
   ])
 }
 
@@ -1240,6 +1364,7 @@ const trainingPane = (model: Model): Html => {
         trainingDashboardPanel(model),
         trainingPromiseGatesPanel(model),
         selectedTrainingEvidencePanel(projection),
+        selectedTrainingLedgerPanel(projection),
         h.section([cls("training-panel")], [
           h.h2([cls("training-panel-title")], ["Issue 4855 Gates"]),
           h.ul([cls("training-gates")], [

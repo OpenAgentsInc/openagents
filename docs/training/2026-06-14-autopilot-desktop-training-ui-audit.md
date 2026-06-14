@@ -20,6 +20,7 @@ The first implemented slice follows that boundary:
 - The pane also exposes Bun-main-process, env-gated actions for planning an R1 rehearsal run/window, activating a planned window, claiming the active training lease for a local Pylon ref, and reconciling a sealed window. The webview receives only public-safe run/window/lease refs and projections.
 - The pane can request a public bootstrap grant for the local Pylon ref against the selected training run, showing whether the joiner is granted the last durable seal, queued by the seal barrier, or refused because no durable seal exists.
 - The pane can queue a local Pylon closeout packet task with the selected run/window/lease/bootstrap refs, but it does not synthesize seal metadata or call evidence-admission routes from the webview.
+- The pane now includes an Evidence Ledger panel for the selected run, exposing public authority refs, window refs, Freivalds/gradient closeout refs, receipt refs, and blocker refs without moving raw worker payloads into the webview.
 - Evidence admission, settlement, and real worker execution remain outside the webview.
 
 That is the right initial shape. The next high-value step is wiring the plan result to the actual run admission and evidence pipeline while preserving the same authority boundary.
@@ -114,6 +115,7 @@ The Foldkit pane adds operator panels for:
 - Run authority status.
 - Live Worker training run summaries.
 - Evidence requirements from the public real-gradient projection.
+- A selected-run Evidence Ledger for concrete public refs behind the current gates.
 - Issue 4855 gates.
 - Launch feedback.
 - Public and admin API boundary.
@@ -133,6 +135,8 @@ The operations panel has seven buttons. `Plan R1 window` calls a typed desktop R
 The `Queue launch check` button still queues a local Pylon intent titled `Training run launch check`. Its body asks the node to inspect the issue 4855 gates, `/api/training/runs`, R1 readiness, seal/staleness state, distinct contributors, Freivalds refs, gradient closeout refs, receipts, and settlement blockers. This gives the operator immediate visible feedback when admin planning is disabled or when the local node should inspect readiness before the operator plans another window.
 
 The refresh button and Training pane navigation call typed desktop RPCs that read public Worker endpoints. This is intentionally read-only and produces desktop-local projections with the live run count, per-run state, verified work count, assigned contributor count, device requirement status, Freivalds refs, gradient closeout refs, loss budget, external blocker state, and settled sats.
+
+The Evidence Ledger panel is the bridge between the high-level gates and the actual code-facing refs an operator needs. For the selected run it lists authority refs, the first projected window records, evidence refs including Freivalds and gradient closeouts, receipt refs, and external blocker/requirement refs. It is still a public projection surface: it never displays private worker output, credentials, wallet material, or raw evidence payloads.
 
 The desktop also summarizes the public CS336 dashboard surfaces in a compact panel. It counts ranked leaderboard lanes from `/api/training/leaderboards`, A2 observed/verified device measurements from `/api/training/device-capabilities/a2`, A3 verified ISOFLOP cells from `/api/training/isoflop/a3`, A4 verified data-refinery stages from `/api/training/refinery/a4`, A5 verified eval suites from `/api/training/evals/a5`, and public blocker refs across those projections. This gives the operator the same public readiness context available to the web dashboards without moving raw evidence, private worker payloads, or admin authority into the webview.
 

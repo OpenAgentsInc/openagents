@@ -227,6 +227,16 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-bootstrap-button")).toBe(true)
   })
 
+  test("training pane includes the selected run evidence ledger", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: liveTrainingProjection,
+    })
+    expect(treeContainsClass(document.body, "training-ledger-panel")).toBe(true)
+    expect(treeContainsClass(document.body, "training-ledger-ref")).toBe(true)
+  })
+
   test("training pane includes the closeout packet action", () => {
     const document = view({
       ...initialModel,
