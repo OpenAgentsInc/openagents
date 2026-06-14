@@ -81,9 +81,14 @@ of building against them.
 > clients off the website's dark mode is pulled forward as **CL-42 (#4948)**.
 
 > **Dark-mode theming (owner request):** the website's dark theme is the single
-> source of truth for look-and-feel across **all three** clients. Desktop already
-> shares the Foldkit components; mobile (RN) maps the same tokens. Tracked as the
-> fast-tracked **CL-42 (#4948)** (pulls the full CL-31 parity work forward).
+> source of truth for look-and-feel across **all three** clients. Desktop and web
+> share the canonical dark **tokens** (`cssVars`/`darkTokens` from
+> `@openagentsinc/autopilot-ui`); mobile (RN) maps the same tokens. NOTE
+> (2026-06-13): desktop shares the **tokens + protocol + conformance**, not yet
+> the shared Foldkit **components** — desktop renders hand-DOM panes/cards
+> (CL-44..CL-58). Adopting the shared Foldkit components on desktop for true
+> pixel-parity is tracked as **CL-53 (#4966)**. Tokens tracked as the
+> fast-tracked **CL-42 (#4948)**.
 
 ---
 

@@ -6,6 +6,23 @@ Electrobun desktop app shows only a static shell ("🛩️ Autopilot Desktop …
 Electrobun + Bun + (Foldkit next) … offline · 0 sessions") and **no real UI**,
 despite roadmap claims of web/desktop/mobile parity.
 
+> **UPDATE (2026-06-13, later) — RESOLVED.** Everything below was fixed and
+> merged to `main`:
+> - **Connectivity (R1):** node-home auto-discovery (`.pylon-tailnet`/`.pylon-local`,
+>   walking up from cwd) — CL-45 (#4958). No more false "offline".
+> - **Sidebar shell (R3 structure):** the placeholder render is gone; a real
+>   sidebar + pane router ships — CL-44 (#4957). Full parity feature set landed:
+>   Ask/approvals/balance/assignments/cloud + Pause/Resume + session detail
+>   (CL-46..CL-52), and dedicated Sessions/Decisions/Spawn/Settings/SessionDetail
+>   screens on both clients (CL-55..CL-59, on the mobile `ConnectionProvider`).
+> - **Foldkit (R3 the real parity):** the desktop webview is being migrated off
+>   hand-DOM onto Foldkit + the shared `@openagentsinc/autopilot-ui` components
+>   (CL-53 #4966), so web + desktop render from one component library. Going
+>   forward the desktop webview is **Foldkit-only — no hand-DOM** (see
+>   `apps/autopilot-desktop/AGENTS.md`).
+> - **Roadmap claim (R4):** corrected in
+>   `2026-06-13-autopilot-clients-roadmap.md`.
+
 This audit answers two questions:
 
 1. **Why is it "offline · 0 sessions"** when a healthy local Pylon node is
