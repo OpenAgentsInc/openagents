@@ -1,6 +1,10 @@
 # Product-Promise Registry Reality Reconciliation — 2026-06-14
 
-Registry transition: `2026-06-12.8` → `2026-06-14.1`.
+Registry transition: `2026-06-12.8` → `2026-06-14.1` → `2026-06-14.2` (deployed).
+
+> The `.2` batch (Coder Cloud + Agency Pack reflection) is appended at the end
+> of this document under "Update — 2026-06-14.2". The `.1` content below
+> records the labor green flips and the first eight new records.
 
 This audit reconciles the public product-promise registry
 (`apps/openagents.com/workers/api/src/product-promises.ts`) with what actually
@@ -90,9 +94,57 @@ states; none claim green.
 
 ## Operator checklist at deploy
 
-1. Deploy the Worker so `/api/public/product-promises` serves `2026-06-14.1`.
+1. Deploy the Worker so `/api/public/product-promises` serves `2026-06-14.2`.
 2. Record transition receipts via `POST /api/operator/product-promises/transitions`
-   for the four state changes above (mechanical checks should pass: promise
-   exists, state differs, evidence present, verification named, blockers clear
-   for the two greens).
-3. Confirm the public transitions feed lists them and `lastVerifiedAt` updates.
+   for the state changes (mechanical checks should pass: promise exists,
+   evidence present, verification named, blockers clear for greens). Note: the
+   labor greens and provider/fanout yellows were applied directly in source
+   under owner authorization, so the served state already matches the target;
+   record these as owner-authorized policy-exception transitions (or accept the
+   in-source owner authorization documented in the registry notes as the
+   transition record of authority).
+3. Confirm the public transitions feed and `lastVerifiedAt` where applicable.
+
+## Update — 2026-06-14.2 (Coder Cloud + Agency Pack reflection)
+
+A second batch, bumping `2026-06-14.1` → `2026-06-14.2`, applied alongside the
+deploy.
+
+**Coder Cloud (top priority — unblocks remote work while traveling).** Driven
+by the 9 open issues (epic #4996 + Phase 1-3 #4997-#5004):
+
+- New record `autopilot.cloud_coding_sessions.v1` (**red**): run coding sessions
+  on OpenAgents Cloud (Google GCE first, SHC second) and administer them from
+  desktop + the Expo app. Foundation (C-0..C-15, #4886-#4901) is closed and the
+  m10-live 2026-06-14 proof accepted an SHC-lane work order and a remote
+  requester-Pylon lane, but the desktop→Google-GCE end-to-end loop is not
+  demonstrable yet; Phase 1 (#4997-#4999) revalidates it.
+- `mobile.autopilot_remote_control.v1` (planned): reframed as the Expo app
+  (iOS Swift control app ignored per owner direction 2026-06-14), aligned to
+  Phase 2-3 (#5000-#5004), gated on the Pylon remote bridge transport (#5000).
+- `autopilot.decision_queue.v1` (planned): cross-client exactly-once decision
+  queue is #5004; `autopilot.desktop_gui_client.v1` notes the cloud lane
+  selector (#4998) as the cloud-session entry.
+
+**Agency Pack (epic #4973 + 21 children closed 2026-06-14).** ~375 new tests
+green, typecheck:api + apps/web clean, build:web succeeds, OpenAPI gate green,
+migrations 0180-0182 + 0184.
+
+- `workrooms.omni_client_delivery_workrooms.v1`: **red → yellow** — the
+  client-delivery workroom page is live-wired into the logged-in loop with
+  CRUD/lifecycle/bundle/handoff routes and client-scoped views (#4977). Source
+  authority + approval-gated business writes remain the gate to the
+  source-authorized promise.
+- `autopilot.desktop_gui_client.v1`: PDF/preview/ingest/browser cores built
+  behind seams with fakes (34 tests; #4993/#4994/#4995); live runtimes unwired.
+- Residue (config/credentials/product decisions, not code), reflected in copy:
+  custom hostnames need `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ZONE_ID` and a
+  mounted provision route; partner payout needs owner sign-off on percentage +
+  caps and settlement wiring; voice needs an STT vendor + capture path; the
+  form-capture route needs a home for site form-specs.
+
+No additional state flips beyond `workrooms…` red→yellow; all other agency
+records keep their conservative entry states. The convention flag (these were
+filed as GitHub issues by explicit owner instruction though the repo reserves
+issues for strict bugs) is recorded in the registry notes for later
+reconciliation.

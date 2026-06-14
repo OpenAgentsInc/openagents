@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-14.1'
+export const PublicProductPromisesVersion = '2026-06-14.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -995,16 +995,18 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot should expose a decision queue for continue, steer, provide context, rerun tests, retry with another account, stop, accept, or create a follow-up mission.',
         safeCopy:
-          'Decision-queue actions are planned/scoped and must remain route-authorized and receipt-backed.',
+          'Decision-queue actions are planned/scoped and must remain route-authorized and receipt-backed. The exactly-once decision queue spanning desktop / web / Expo is tracked as Coder Cloud Phase 3 (#5004), gated behind the Pylon remote bridge transport (#5000); workroom decisions and voice command proposals provide precursor decision/approval state.',
         unsafeCopy:
-          'Do not claim agents can freely continue, retry, spend, mutate repositories, or switch accounts from public docs.',
+          'Do not claim agents can freely continue, retry, spend, mutate repositories, or switch accounts from public docs, or that the cross-client decision queue is live.',
         evidenceRefs: [
           'docs/promises/2026-06-09-product-promises-green-roadmap.md',
+          'docs/autopilot-coder/2026-06-14-cloud-desktop-mobile-coding-sessions-full-flow-audit.md',
           'apps/openagents.com/workers/api/src/agent-goal-runtime.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/5004',
         ],
         blockerRefs: [
           'blocker.product_promises.decision_queue_api_missing',
-          'blocker.product_promises.account_retry_authority_not_public',
+          'blocker.product_promises.cross_client_exactly_once_decisions_missing',
           'blocker.product_promises.receipt_backed_command_closeout_missing',
         ],
         verification:
@@ -1854,27 +1856,61 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Desktop is a GUI client for observing and steering local Autopilot coding sessions.',
         safeCopy:
-          'Autopilot Desktop (Bun/Electrobun shell with a Foldkit webview reusing the shared Autopilot UI) connects to a local Pylon node over loopback and renders a live session list, decision cards, and an event timeline, with bounded local document/PDF/Sites-preview and asset-ingestion cores. It is local-only: remote/Tailnet and cloud connectivity, full TUI parity, and pricing/distribution are not decided or wired.',
+          'Autopilot Desktop (Bun/Electrobun shell with a Foldkit webview reusing the shared Autopilot UI) connects to a local Pylon node over loopback and renders a live session list, decision cards, and an event timeline. The PDF-production, loopback Sites-preview, and FS/MCP asset-ingestion + ambient-auth browser-automation cores are built as runtime-agnostic src/bun cores with injected runtimes and fake-based tests (34 desktop tests pass; epic #4973 and #4993/#4994/#4995 closed 2026-06-14). It is local-only: the live runtimes (real PDF renderer, Bun.serve loopback bind, FS-MCP + browser clients, Electrobun RPC exposure) are not yet wired and cannot be headlessly verified; cloud-lane sessions (autopilot.cloud_coding_sessions.v1), remote/Tailnet control, full TUI parity, and pricing/distribution are not wired or decided.',
         unsafeCopy:
-          'Do not claim Autopilot Desktop administers cloud or remote multi-node sessions, has full TUI parity, or is a priced/distributed product; the Bun host holds the control token and the webview only sees public-safe projections.',
+          'Do not claim Autopilot Desktop administers cloud or remote multi-node sessions, runs the local PDF/preview/ingest/browser runtimes end to end, has full TUI parity, or is a priced/distributed product; the cores are built behind clean seams with fakes, not yet wired to live runtimes, and the Bun host holds the control token while the webview only sees public-safe projections.',
         evidenceRefs: [
           'apps/autopilot-desktop/README.md',
           'apps/autopilot-desktop/AGENTS.md',
           'docs/autopilot-coder/2026-06-13-autopilot-desktop-app-audit.md',
           'docs/autopilot-coder/2026-06-13-autopilot-desktop-reality-vs-claim-status.md',
           'docs/autopilot-coder/2026-06-14-cloud-desktop-mobile-coding-sessions-full-flow-audit.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/4973',
           'https://github.com/OpenAgentsInc/openagents/issues/4993',
           'https://github.com/OpenAgentsInc/openagents/issues/4994',
           'https://github.com/OpenAgentsInc/openagents/issues/4995',
         ],
         blockerRefs: [
-          'blocker.product_promises.autopilot_desktop_remote_cloud_bridge_not_wired',
+          'blocker.product_promises.autopilot_desktop_live_runtimes_not_wired',
+          'blocker.product_promises.autopilot_desktop_remote_cloud_lane_not_wired',
           'blocker.product_promises.autopilot_desktop_pricing_distribution_undecided',
         ],
         verification:
-          'Launch the desktop shell, pair with a local Pylon, spawn a session, and confirm the Foldkit UI renders session list, decision cards, and timeline live from public-safe projections while the Bun host holds the control token. Green requires wired remote/cloud connectivity and a decided distribution/pricing path.',
+          'Launch the desktop shell, pair with a local Pylon, spawn a session, and confirm the Foldkit UI renders session list, decision cards, and timeline live from public-safe projections while the Bun host holds the control token. The PDF/preview/ingest/browser cores pass fake-based tests; green requires their live runtimes wired and observed, plus cloud-lane sessions and a decided distribution/pricing path.',
         authorityBoundary:
           'Desktop is a view-and-bounded-action client; it cannot supervise the Pylon node, reach remote/cloud nodes, deploy, or mutate repository/provider access.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot.cloud_coding_sessions.v1',
+        productArea: 'Autopilot',
+        audience: ['operator', 'agent', 'user'],
+        state: 'red',
+        claim:
+          'Owners can run coding sessions on OpenAgents Cloud (Google GCE first, SHC second) and administer them from desktop and the Expo mobile app — spawn, watch, approve, accept — so work continues without the owner at their computer.',
+        safeCopy:
+          'The Coder Cloud initiative (epic #4996, "code on the go") is the active top-priority build: Pylon as the single control front door brokering desktop-originated session.spawn to a cloud lane, lane-transparent event streams, a remote-reachable bridge, and an Expo remote-control app. Foundation work (cloud remote-exec C-0..C-15, #4886-#4901) is closed and the m10-live 2026-06-14 proof had an SHC-lane work order and a remote requester-Pylon lane accepted, but the desktop->Google-GCE end-to-end loop is NOT demonstrable yet — Phase 1 (#4997-#4999) revalidates and repairs it. Stays red until a desktop-originated cloud session runs a real repo-edit on Google GCE, streams to the timeline, and produces a content-addressed artifact plus a usage receipt.',
+        unsafeCopy:
+          'Do not claim cloud coding sessions are live, that the owner can already code from a phone via the cloud, or that the desktop->GCE/SHC loop is demonstrable; the foundation issues are closed but the working end-to-end loop is the open Phase 1-3 work (#4996-#5004).',
+        evidenceRefs: [
+          'docs/autopilot-coder/2026-06-14-cloud-desktop-mobile-coding-sessions-full-flow-audit.md',
+          'docs/autopilot-coder/2026-06-13-cloud-remote-execution-commercial-plan.md',
+          'apps/pylon/docs/proofs/m10-live-2026-06-14/README.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/4996',
+          'https://github.com/OpenAgentsInc/openagents/issues/4997',
+          'https://github.com/OpenAgentsInc/openagents/issues/4998',
+          'https://github.com/OpenAgentsInc/openagents/issues/4999',
+          'https://github.com/OpenAgentsInc/openagents/issues/5000',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.cloud_session_desktop_to_gce_loop_not_demonstrable',
+          'blocker.product_promises.cloud_lane_selector_not_end_to_end',
+          'blocker.product_promises.pylon_remote_bridge_transport_missing',
+        ],
+        verification:
+          'Phase 1 exit proof: a desktop-originated session.spawn{lane:"cloud-gcp"} runs a real repo-edit Codex session on a Google GCE ephemeral VM, streams openagents.codex_workroom_event.v1 into the desktop timeline lane-transparently, and produces a content-addressed artifact plus an openagents.resource_usage_receipt.v1. Green additionally requires the lane selector (#4998) and the Vortex-independent Codex grant endpoint (#4999); remote phone administration is the Phase 2-3 mobile.autopilot_remote_control.v1 path.',
+        authorityBoundary:
+          'Cloud sessions run under owner-resolved Codex grants on ephemeral VMs; placement honors repo trust tiers (regulated->SHC-only, private->own/verified, public->any). This promise grants no multi-tenant, settlement, or non-owner authority — that is deferred Phase 4 (credits gateway, tenant caps, settlement, microVM isolation).',
       },
       {
         ...basePromiseFields,
@@ -1883,24 +1919,30 @@ export const publicProductPromisesDocument = () => {
         audience: ['operator', 'agent', 'user'],
         state: 'planned',
         claim:
-          'Autopilot Remote Control is a mobile app for pairing with a Pylon node and watching and steering Autopilot coding sessions from a phone.',
+          'The Expo mobile app pairs with a Pylon node and lets the owner watch and steer Autopilot coding sessions (local or cloud) from a phone — spawn, observe, approve, cancel, steer.',
         safeCopy:
-          'The mobile remote-control app is a design + roadmap target (milestones M0-M6, issues #4902-#4948) sharing the Autopilot control protocol with the desktop/web clients. The app scaffold is not built. Per owner mandate, native iOS builds locally and ships via TestFlight with JS OTA from self-hosted updates.openagents.com (no Expo/EAS cloud).',
+          'The mobile remote-control surface is the Expo app and is the Coder Cloud Phase 2-3 target (epic #4996): Phase 2 scaffolds a read-only app over a remote-reachable Pylon bridge (#5000/#5001), Phase 3 adds capability-gated write actions, push notifications, and an exactly-once decision queue (#5002-#5004). It shares the Autopilot control protocol with desktop/web. The app scaffold is not built and depends on the Pylon bridge transport (system #39). Per owner direction 2026-06-14 the iOS Swift control app is ignored in favor of Expo; native iOS builds locally and ships via TestFlight with OTA reused from the existing Google infra (no Expo/EAS cloud).',
         unsafeCopy:
-          'Do not claim the mobile app is live, downloadable, or can approve or spawn sessions; nothing has shipped to TestFlight and the read-only client is the first planned milestone.',
+          'Do not claim the mobile app is live, downloadable, or can approve or spawn sessions; nothing has shipped to TestFlight, the bridge transport is unbuilt, and the read-only client is the first milestone.',
         evidenceRefs: [
+          'docs/autopilot-coder/2026-06-14-cloud-desktop-mobile-coding-sessions-full-flow-audit.md',
           'docs/autopilot-coder/2026-06-13-autopilot-clients-roadmap.md',
           'docs/autopilot-coder/2026-06-13-autopilot-remote-control-mobile-app-audit.md',
           'clients/mobile/AutopilotRemoteControl/README.md',
           'clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/5000',
+          'https://github.com/OpenAgentsInc/openagents/issues/5001',
+          'https://github.com/OpenAgentsInc/openagents/issues/5002',
+          'https://github.com/OpenAgentsInc/openagents/issues/5003',
+          'https://github.com/OpenAgentsInc/openagents/issues/5004',
         ],
         blockerRefs: [
           'blocker.product_promises.mobile_app_scaffold_not_created',
-          'blocker.product_promises.mobile_pylon_bridge_transport_incomplete',
+          'blocker.product_promises.pylon_remote_bridge_transport_missing',
           'blocker.product_promises.mobile_testflight_distribution_not_live',
         ],
         verification:
-          'Green path: scaffold the app, finish the Pylon bridge transport, ship a read-only build to TestFlight, then add bounded write actions + notifications behind server-side approval. Each phase needs a shipped artifact and passing protocol-conformance tests.',
+          'Green path: finish the Pylon remote bridge transport (#5000), scaffold the read-only Expo app and ship it to TestFlight (#5001), then add capability-gated write actions, APNs push, and exactly-once decisions (#5002-#5004) behind server-side approval. Each phase needs a shipped artifact and passing protocol-conformance tests.',
         authorityBoundary:
           'Mobile is a client, not execution authority; the Pylon node remains the decision/approval gateway and the app only relays bounded commands under server-side policy.',
       },
@@ -1909,28 +1951,28 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'workrooms.omni_client_delivery_workrooms.v1',
         productArea: 'workrooms',
         audience: ['user', 'customer', 'operator'],
-        state: 'red',
+        state: 'yellow',
         claim:
           'Omni client-delivery workrooms route chat, tasks, and artifacts into client-scoped delivery contexts.',
         safeCopy:
-          'Operator-gated client-delivery workroom infrastructure exists: a typed workroom record (status, visibility, trust tier, data classification), lifecycle routes, and kind templates (#4977). Customer-facing rendering, source authority, AI inference on workroom content, and approval-gated business writes are not integrated. This is precursor infrastructure for workrooms.source_authorized_business_objects.v1.',
+          'The client-delivery workroom surface shipped in the wave-3 Agency Pack (epic #4973, closed 2026-06-14): a typed workroom record (status, visibility, trust tier, data classification), CRUD/lifecycle/bundle/handoff routes, kind templates, client-scoped views, and the client-delivery workroom page live-wired into the logged-in loop (#4977), with a credits/cost-preview panel embedded. Still missing for the full source-authorized promise: source authority over connectors, AI inference on workroom content, and approval-gated business writes (those remain workrooms.source_authorized_business_objects.v1). Treat this as a live client-delivery workspace surface, not operational CRM/legal/finance truth.',
         unsafeCopy:
-          'Do not claim customers can see, post to, or approve changes in workrooms, or that generated summaries mutate CRM, documents, or send communications without source refs and human approval.',
+          'Do not claim generated summaries mutate CRM, documents, or send communications without source refs and human approval, or that the workroom is source-authorized business truth; the live surface is a client-scoped delivery workspace, not an approval-gated business-object system.',
         evidenceRefs: [
           'apps/openagents.com/workers/api/src/omni-workroom-routes.ts',
           'apps/openagents.com/workers/api/src/omni-workroom-lifecycle-routes.ts',
           'apps/openagents.com/workers/api/src/omni-workroom-kind-templates.ts',
           'apps/openagents.com/workers/api/src/omni-workroom-surface-projections.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/4973',
           'https://github.com/OpenAgentsInc/openagents/issues/4977',
           'docs/autopilot-coder/2026-06-14-cloud-desktop-mobile-coding-sessions-full-flow-audit.md',
         ],
         blockerRefs: [
-          'blocker.product_promises.workroom_customer_facing_ui_missing',
           'blocker.product_promises.workroom_source_authority_not_integrated',
           'blocker.product_promises.workroom_approval_gated_writes_missing',
         ],
         verification:
-          'Operator routes exist and pass type checks. Green requires a customer-facing workroom view, source refs for proposed updates, an approval flow, acceptance receipts, and liability/copy gates.',
+          'The client-delivery workroom page is wired into the logged-in loop with CRUD/lifecycle/bundle/handoff routes and client-scoped views passing type checks and tests. Green (as the source-authorized business-object promise) requires source refs for proposed updates, an approval flow, acceptance receipts, and liability/copy gates.',
         authorityBoundary:
           'Workroom data structure grants no customer write authority, source mutation, CRM sync, notification send, or third-party integration without separate approval gates.',
       },
@@ -1943,9 +1985,9 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Sites can define native email sequences and enroll subscribers in multi-step campaigns.',
         safeCopy:
-          'Operator-gated email campaign/sequence authoring and native list → sequence enrollment exist (#4983/#4984): campaigns, steps, enrollments, and sends are stored in D1 and operators can create campaigns, move lifecycle state, and enroll subscribers. There is no integrated email send-service or deliverability proof, and customer self-serve authoring is not live.',
+          'Email campaign/sequence authoring, native lists/subscribers, page-kinds, form-capture, and the native-list→sequence enrollment bridge shipped in wave-3 (#4983/#4984): campaigns, steps, enrollments, and sends are stored in D1 and operators can create campaigns, move lifecycle state, and enroll subscribers. Remaining: a wired email send-service and deliverability proof, a home for site form-specs to make the form-capture route live, and customer self-serve authoring.',
         unsafeCopy:
-          'Do not claim customers can self-author email campaigns or that live email delivery/deliverability is proven; no send service is wired.',
+          'Do not claim customers can self-author email campaigns or that live email delivery/deliverability is proven; no send service is wired and the form route needs a form-spec home.',
         evidenceRefs: [
           'apps/openagents.com/workers/api/src/email-sequence-authoring-routes.ts',
           'apps/openagents.com/workers/api/src/email-sequence-authoring.ts',
@@ -1971,9 +2013,9 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Sites customers can serve their sites under custom branded hostnames.',
         safeCopy:
-          'Operator-gated tenant custom-hostname registration, DNS-token verification, hostname→tenant mapping, and request-time resolution exist (#4988/#4989), with a config-owner-gated Cloudflare custom-hostname client. Customer self-serve hostname claiming, automated SSL issuance, and tenant-scoped rendering context switch are not wired.',
+          'Tenant custom-hostname registration, DNS-token verification, hostname→tenant mapping, request-time resolution, and a live Cloudflare custom-hostname client shipped in wave-3 (#4988/#4989). Going live needs configuration, not code: set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID and mount the provision route. Customer self-serve hostname claiming, automated SSL issuance, and tenant-scoped rendering context switch are not wired.',
         unsafeCopy:
-          'Do not claim customers can self-serve claim hostnames or that DNS/SSL/branding switching works end to end without operator steps.',
+          'Do not claim customers can self-serve claim hostnames or that DNS/SSL/branding switching works end to end; the Cloudflare client is built but unmounted and unconfigured.',
         evidenceRefs: [
           'apps/openagents.com/workers/api/src/tenant-custom-hostnames.ts',
           'apps/openagents.com/workers/api/src/cloudflare-custom-hostname-client.ts',
@@ -1999,9 +2041,9 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Sites/Agency partners can earn Bitcoin payouts when their referred customers become paying OpenAgents customers.',
         safeCopy:
-          'An operator-gated partner-payout ledger and state-transition routes exist (#4986): operators can move a payout through approve/dispatch/settle/reverse states. There is no partner-attribution policy, no settlement dispatch wiring, no public settlement receipt, and no partner-facing projection or API.',
+          'An operator-gated partner-payout ledger and state-transition routes shipped in wave-3 (#4986): operators can move a payout through approve/dispatch/settle/reverse states. Remaining work is part product decision, part code: owner sign-off on payout percentage and caps, a partner-attribution policy (referral→customer mapping), settlement dispatch wiring to a public receipt, and a partner-facing projection or API.',
         unsafeCopy:
-          'Do not claim partners are earning, can withdraw payouts, or have an earnings dashboard, and do not describe this as a live partner revenue stream.',
+          'Do not claim partners are earning, can withdraw payouts, or have an earnings dashboard, and do not describe this as a live partner revenue stream; the ledger exists but payout percentage/caps are unsigned and settlement is unwired.',
         evidenceRefs: [
           'apps/openagents.com/workers/api/src/partner-payout-ledger-routes.ts',
           'apps/openagents.com/workers/api/src/partner-payout-ledger.ts',
@@ -2053,9 +2095,9 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Spoken commands and intent can be ingested into Autopilot workrooms as transcribed, approval-gated action proposals.',
         safeCopy:
-          'Voice-session evidence contracts and read-only projections exist (#4992): voice-session metadata, transcript segments, and command proposals with approval-required and risk labels, projected with mutation disabled. The ingestion endpoint, transcription service, AI proposal generation, and the approval UI are not wired. This is foundation infrastructure for mobile.voice_approval_companion.v1.',
+          'Voice-session evidence contracts, read-only projections, and a voice-transcript→program ingest core shipped in wave-3 (#4992): voice-session metadata, transcript segments, and command proposals with approval-required and risk labels, projected with mutation disabled. Going further is a product decision plus wiring: pick an STT vendor and capture path, then wire the live ingestion endpoint, AI proposal generation, and the approval UI. Foundation infrastructure for mobile.voice_approval_companion.v1.',
         unsafeCopy:
-          'Do not claim users can speak commands that execute, or that voice transcripts are trusted for mutations (CRM, email send, code, deploy, spend) without server-side approval; only contracts and read-only projections exist.',
+          'Do not claim users can speak commands that execute, or that voice transcripts are trusted for mutations (CRM, email send, code, deploy, spend) without server-side approval; the ingest core exists but no STT vendor or live capture path is chosen.',
         evidenceRefs: [
           'apps/openagents.com/workers/api/src/omni-voice-session-evidence.ts',
           'apps/openagents.com/workers/api/src/omni-voice-session-evidence.test.ts',
@@ -2094,6 +2136,8 @@ export const publicProductPromisesDocument = () => {
       'Registry 2026-06-14.1 reconciliation: the agent labor market crossed its first end-to-end milestone on 2026-06-14. The first live negotiated, escrowed, executed, validator-accepted, settled job ran against real backlog issue #4773 (evidence bundle docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md, work request b74bb55c, forum topic 098e36a8, kind-5934/7000/6934 events, escrow reserve/release receipts, bun-test verdict, terminal state settled). On that evidence labor.forum_work_requests.v1 and labor.nostr_negotiation_market.v1 are green, provider.compliant_usage_labor.v1 is yellow (output-only compliant labor paid for accepted work; first settlement was credit-ledger, not external ladder), and autopilot.control_center_fanout_marketplace.v1 is yellow (lane-C single-order fanout #4783). These four flips were applied in source under owner authorization 2026-06-14 ahead of the receipt-first operator-route transition receipts; the matching promise_transition receipts must still be recorded against the deployed 2026-06-14.1 version per proof.claim_upgrade_receipts.v1, and were not fabricated in source. artanis.labor_requester.v1 stays yellow (no unattended Artanis labor request has settled).',
       'Registry 2026-06-14.1 added eight conservative new records for wave-3 Autopilot Sites / Agency Pack and client surfaces (#4977-#4995): autopilot.desktop_gui_client.v1 (yellow, local-only), mobile.autopilot_remote_control.v1 (planned), workrooms.omni_client_delivery_workrooms.v1 (red), autopilot_sites.native_email_sequences.v1 (yellow, no send service), autopilot_sites.custom_tenant_hostnames.v1 (yellow, no self-serve/SSL), autopilot_sites.partner_payout_ledger.v1 (red), autopilot.cloud_credits_ui.v1 (yellow, presentational), mobile.voice_session_evidence_transcript_ingest.v1 (red, contracts only). All are operator-gated or pre-customer; none claims green. The reconciliation record is docs/promises/2026-06-14-registry-reality-reconciliation-audit.md.',
       'The Monday 2026-06-15 decentralized-training launch is imminent but had not happened at registry 2026-06-14.1; training.* launch promises stay red/yellow until the run yields public run state, participant admission, accepted-work, validation, and settlement receipts. The W3 student-program report (docs/tassadar/2026-06-14-w3-student-program-report.md) is research/evaluation only and moves no promise.',
+      'Registry 2026-06-14.2: Coder Cloud is the current top priority. New record autopilot.cloud_coding_sessions.v1 (red) tracks running coding sessions on OpenAgents Cloud (Google GCE first, SHC second) and administering them remotely so work continues while the owner travels; the 9 open issues are epic #4996 plus Phase 1-3 #4997-#5004. Foundation (C-0..C-15, #4886-#4901) is closed but the desktop->Google-GCE end-to-end loop is not demonstrable yet (Phase 1 revalidates). mobile.autopilot_remote_control.v1 is the Expo app (Phase 2-3; the iOS Swift control app is ignored per owner direction 2026-06-14) and depends on the Pylon remote bridge transport (#5000). autopilot.decision_queue.v1 cross-client exactly-once work is #5004.',
+      'Registry 2026-06-14.2: the wave-3 Agency Pack initiative (epic #4973 + 21 children, including #4993/#4994/#4995) closed 2026-06-14 (~375 new tests green, typecheck:api + apps/web clean, build:web succeeds, OpenAPI gate green, migrations 0180-0182 and 0184). Reflected: workrooms.omni_client_delivery_workrooms.v1 -> yellow (client-delivery workroom page live-wired into the logged-in loop with CRUD/lifecycle/bundle/handoff routes and client-scoped views; source authority + approval-gated writes still pending). Desktop PDF/preview/ingest/browser cores are built behind seams with fakes (34 tests) but live runtimes are unwired (autopilot.desktop_gui_client.v1). The honest residue is config/credentials/product decisions, not code: custom hostnames need CLOUDFLARE_API_TOKEN+CLOUDFLARE_ZONE_ID and a mounted provision route; partner payout needs owner sign-off on percentage/caps plus settlement wiring; voice needs an STT vendor + capture path; the form-capture route needs a home for site form-specs. Per openagents/CLAUDE.md these surfaces were filed as GitHub issues by explicit owner instruction though the repo convention reserves issues for strict bugs (feature work Forum-first) - flagged for reconciliation.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
