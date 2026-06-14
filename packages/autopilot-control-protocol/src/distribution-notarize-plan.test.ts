@@ -5,7 +5,12 @@ import { planDistribution } from "./distribution-notarize-plan"
 describe("distribution notarize plan", () => {
   test("requires notarization for desktop delta builds", () => {
     expect(planDistribution({ target: "desktop", hasPrevBuild: true })).toEqual({
-      steps: ["notarize desktop build", "create bsdiff delta"],
+      steps: [
+        "sign and notarize desktop build",
+        "publish full desktop artifact",
+        "create bsdiff delta",
+        "publish desktop update feed",
+      ],
       usesBsdiff: true,
       requiresNotarize: true,
     })
@@ -13,7 +18,11 @@ describe("distribution notarize plan", () => {
 
   test("uses a full desktop build when no previous build exists", () => {
     expect(planDistribution({ target: "desktop", hasPrevBuild: false })).toEqual({
-      steps: ["notarize desktop build", "publish full desktop build"],
+      steps: [
+        "sign and notarize desktop build",
+        "publish full desktop artifact",
+        "publish desktop update feed",
+      ],
       usesBsdiff: false,
       requiresNotarize: true,
     })
@@ -25,7 +34,10 @@ describe("distribution notarize plan", () => {
 
   test("plans mobile store submission steps", () => {
     expect(planDistribution({ target: "mobile", hasPrevBuild: false })).toEqual({
-      steps: ["prepare mobile store submission", "submit mobile build to store"],
+      steps: [
+        "build and upload local iOS binary to TestFlight",
+        "submit owner-approved build to App Store review",
+      ],
       usesBsdiff: false,
       requiresNotarize: false,
     })

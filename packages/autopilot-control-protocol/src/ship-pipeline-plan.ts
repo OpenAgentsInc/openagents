@@ -41,10 +41,7 @@ export function planShipPipeline(input: ShipPipelinePlanInput): ShipPipelinePlan
   return {
     action: otaDecision.mode,
     steps: otaDecision.mode === "ota"
-      ? [
-        ...buildPlan.steps,
-        `eas update --platform ${input.platform} --non-interactive`,
-      ]
+      ? ["apps/oa-updates/scripts/publish-ota.sh"]
       : buildPlan.steps,
     reason: otaDecision.reason,
   }

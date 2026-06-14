@@ -2,8 +2,10 @@ export type UpdateManifest = {
   readonly version: string
   readonly artifactUrl: string
   readonly sha256: string
+  readonly createdAt?: string
   readonly bsdiffFromVersion?: string
   readonly bsdiffUrl?: string
+  readonly bsdiffSha256?: string
 }
 
 export type UpdateChoice =

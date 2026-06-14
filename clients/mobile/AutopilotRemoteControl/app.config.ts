@@ -10,9 +10,9 @@ const config: ExpoConfig = {
   // CL-30: expo-notifications config plugin (local notifications on session
   // state changes). Native module — ships in the next local build.
   plugins: ["expo-notifications"],
-  // EAS Update: fingerprint runtime + the project's update server. JS-only
-  // changes ship OTA to matching builds via `eas update`; a changed fingerprint
-  // (native/config) requires a new build. See src/updates/README.md.
+  // Expo Updates runtime + our own OpenAgents Updates server. JS-only changes
+  // ship OTA to matching builds via apps/oa-updates/scripts/publish-ota.sh; a
+  // changed fingerprint (native/config) requires a new local build.
   runtimeVersion: { policy: "fingerprint" },
   updates: {
     // Off Expo's CDN: our own OpenAgents Updates server (Cloud Run behind the

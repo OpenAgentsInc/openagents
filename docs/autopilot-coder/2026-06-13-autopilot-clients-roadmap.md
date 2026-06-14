@@ -1,6 +1,6 @@
 # Autopilot Clients Roadmap — Web, Desktop, Mobile
 
-> **⚠️ BUILD/SHIP POLICY — UPDATED 2026-06-13 (supersedes EAS mentions below).**
+> **⚠️ BUILD/SHIP POLICY — UPDATED 2026-06-13.**
 > **We have switched OFF Expo/EAS.** Native iOS `.ipa` is compiled **locally on
 > our own Mac** (`expo prebuild` → `xcodebuild`/`fastlane`) and uploaded to
 > TestFlight **Apple-native via `xcrun altool`** (ASC API key in
@@ -9,8 +9,7 @@
 > never `eas update`/u.expo.dev. **Do not use `eas build`, `eas submit`, `eas
 > update`, or any Expo cloud service.** The `expo` CLI itself (`expo install`,
 > `expo export`, `expo prebuild`) stays. Canonical runbook:
-> `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`. Any "EAS …" phrasing
-> below is historical and superseded by this banner.
+> `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`.
 
 Date: 2026-06-13
 Status: implementation roadmap. Sequences the buildout of the three Autopilot
@@ -48,20 +47,20 @@ of building against them.
 | **M3** | Actions + TUI parity | Each client does what the TUI does today: spawn, approve, steer, cancel, accounts/quota, artifacts |
 | **M4** | Cloud integration | Clients deploy/observe OpenAgents Cloud sessions (BYO-key / credits, quota/failover) |
 | **M5** | Cross-client polish | Perfect interop: dedup across clients, notifications, theming parity, distribution, conformance suite |
-| **M6** | **The Self-Driving Loop** ◀ **ASAP** | A message composed on the **phone** is heard by **Pylon**, a **coordinator agent fans it out** to coding agents, and at the right moment it **auto-ships back to the phone** — an **OTA update** (via `eas update` now → our own **OpenAgents Updates** server next) for JS/mobile changes, or a **local binary build** (on our own Mac, `eas build --local` → `prebuild`+`fastlane`) uploaded **straight to Apple** for native changes. No Expo cloud, no GitHub |
+| **M6** | **The Self-Driving Loop** ◀ **ASAP** | A message composed on the **phone** is heard by **Pylon**, a **coordinator agent fans it out** to coding agents, and at the right moment it **auto-ships back to the phone** — an **OTA update** through our **OpenAgents Updates** server for JS/mobile changes, or a **local binary build** on our own Mac (`expo prebuild` → `xcodebuild`/`fastlane`) uploaded **straight to Apple** for native changes. No Expo cloud, no GitHub |
 
-> **Issue tracker:** the full roadmap is now filed. M0–M2 = **#4902–#4916** (CL-0…CL-14); M3 = **#4921–#4930** (CL-15…CL-24); M4 = **#4931–#4934** (CL-25…CL-28); M5 = **#4935–#4939** (CL-29…CL-33); **M6 (self-driving loop) = #4940–#4947 (CL-34…CL-41)**; theming fast-track CL-42 = **#4948**. Plus fast-track #4919 (TestFlight) and #4920 (EAS Update).
+> **Issue tracker:** the full roadmap is now filed. M0–M2 = **#4902–#4916** (CL-0…CL-14); M3 = **#4921–#4930** (CL-15…CL-24); M4 = **#4931–#4934** (CL-25…CL-28); M5 = **#4935–#4939** (CL-29…CL-33); **M6 (self-driving loop) = #4940–#4947 (CL-34…CL-41)**; theming fast-track CL-42 = **#4948**. Plus fast-track #4919 (TestFlight) and #4920 (self-hosted Expo Updates).
 
 > **Fast-track (out of milestone order, owner request):** ship the mobile
-> **shell to TestFlight ASAP** so it's on a personal device now — EAS Build +
-> Submit (#4919). Distribution normally lives in M5 (CL-32), but TestFlight for
+> **shell to TestFlight ASAP** so it's on a personal device now — local build +
+> Apple-native upload (#4919). Distribution normally lives in M5 (CL-32), but TestFlight for
 > the shell is pulled forward and does not block the M1–M4 sequence. iOS bundle
 > `com.openagents.autopilot-mobile`, Apple team OpenAgents, Inc. `HQWSG26L43`;
 > runbook `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`. The desktop
 > equivalent (sign/notarize + BSDIFF feed) remains M5.
 >
-> **Fast-track follow-on:** once on TestFlight, adopt **EAS Update
-> (`expo-updates`)** so JS-only fixes ship OTA without a rebuild — #4920.
+> **Fast-track follow-on:** once on TestFlight, adopt self-hosted
+> **Expo Updates** so JS-only fixes ship OTA without a rebuild — #4920.
 > Formal home is M5 (CL-32); pulled forward with TestFlight, also non-blocking.
 
 > **★ ASAP critical path (owner priority) — M6, the Self-Driving Loop.** The
@@ -69,14 +68,13 @@ of building against them.
 > the mobile app → Pylon hears it → a coordinator agent (the productized version
 > of the loop a human coordinator runs today) fans it out to coding agents
 > across the account pool → and at the appropriate time it ships the result back
-> to my phone automatically** — an **EAS Update (OTA)** when the change is
+> to my phone automatically** — an **OpenAgents Updates OTA** when the change is
 > JS/mobile-only, or a **local binary build** (on our own Mac) submitted
 > **straight to Apple** when there are native/config changes. **No Expo cloud,
-> no GitHub:** OTA publishes via `eas update` today and our own self-hosted
-> **OpenAgents Updates** server next (cloud audit
+> no GitHub:** OTA publishes through our self-hosted
+> **OpenAgents Updates** server (cloud audit
 > `cloud/docs/2026-06-13-openagents-updates-and-deployment-infra-audit.md`);
-> binaries build locally (`eas build --local` now → `expo prebuild` +
-> `xcodebuild`/`fastlane` later) and upload directly to App Store Connect. Apple
+> binaries build locally (`expo prebuild` → `xcodebuild`/`fastlane`) and upload directly to App Store Connect. Apple
 > is the only external party. The MVP runs on the **M1 dev transport + local
 > tooling + #4920 fingerprinting** — it does **not** wait for the full M2 bridge.
 > Rungs **CL-34…CL-41 (#4940–#4947)**; see **M6** below. Theming the three
@@ -240,8 +238,9 @@ operator console for OpenAgents Cloud.
   (Foldkit) and mobile (RN) feel consistent; status/staleness/lag chips identical
   in meaning. Builds on the fast-tracked dark-mode tokens **CL-42 (#4948)**.
 - **CL-32** (#4938) Distribution: desktop code-sign/notarize + BSDIFF auto-update
-  feed; mobile EAS build + App Store submission ($4.99); mobile OTA JS updates via
-  EAS Update / `expo-updates` (#4920, fast-tracked after #4919). Repo: openagents.
+  feed; mobile local build/TestFlight + owner-approved App Store submission
+  ($4.99); mobile OTA JS updates via self-hosted `expo-updates` (#4920,
+  fast-tracked after #4919). Repo: openagents.
 - **CL-33** (#4939) **Cross-client conformance suite**: one fixture-driven test
   matrix (the CL-1 fixtures) every client runs, proving identical protocol
   behavior — cursor resume, dedup, exactly-once decisions, read-only gating,
@@ -257,8 +256,8 @@ it out to coding agents across the account pool; and at the appropriate time the
 result is shipped back to my device automatically.
 
 **MVP runs now, no full bridge required:** it builds on the **M1 dev transport**,
-the **already-connected Expo EAS MCP**, the **#4918 campaign scheduler**, and the
-**#4920 EAS-Update fingerprinting** — then hardens onto the **M2 bridge**
+local Expo tooling, the **#4918 campaign scheduler**, and the
+**#4920 Expo Updates fingerprinting** — then hardens onto the **M2 bridge**
 (CL-9..CL-12) for off-LAN/secure use.
 
 - **CL-34** (#4940) **Mobile intent capture** — a compose surface in the mobile
@@ -273,28 +272,23 @@ the **already-connected Expo EAS MCP**, the **#4918 campaign scheduler**, and th
   out coding agents across the account pool — exactly today's manual loop, made
   autonomous, with escalation hooks (CL-41). Repo: openagents/apps/pylon (+ forge).
 - **CL-37** (#4943) **Ship-mode classifier (Expo fingerprint)** — after the
-  fan-out merges, compute the EAS Update runtime fingerprint of `clients/mobile`
+  fan-out merges, compute the Expo Updates runtime fingerprint of `clients/mobile`
   vs the deployed build: unchanged ⇒ **OTA-eligible** (JS only), changed ⇒
   **rebuild required** (native/config). Pure, testable; decides CL-38 vs CL-39.
   Depends on #4920. Repo: openagents.
 - **CL-38** (#4944) **Auto OTA publish** — when OTA-eligible, the coordinator
   publishes a JS-only update to the build's channel so it reaches the phone with
-  no rebuild, by shelling out to **`eas update --branch <channel>
-  --non-interactive`** (local JS upload — no GitHub). **Target end-state: our own
-  OTA server** (the self-hosted "OpenAgents Updates" service on Cloud — see the
-  cloud audit `2026-06-13-openagents-updates-and-deployment-infra-audit.md`),
-  removing the Expo-cloud dependency entirely; `app.config.ts updates.url` points
-  at `updates.openagents.com`. Emits an update-id receipt. Repo: openagents (+ cloud).
+  no rebuild by shelling out to **`apps/oa-updates/scripts/publish-ota.sh`**.
+  The self-hosted "OpenAgents Updates" service on Cloud serves the signed
+  manifest and assets; `app.config.ts updates.url` points at
+  `updates.openagents.com`. Emits an update-id receipt. Repo: openagents (+ cloud).
 - **CL-39** (#4945) **Auto local build + submit (no Expo cloud)** — when a
   rebuild is required, the coordinator runs a **local build on our own Mac** and
-  uploads the binary **straight to Apple**: near-term `eas build --platform ios
-  --profile production --local` (full build on-machine, no build minutes, no
-  GitHub, no server-side git), graduating to a fully Expo-cloud-free `expo
-  prebuild → xcodebuild`/`fastlane gym` + direct App Store Connect upload
-  (`fastlane pilot`/`xcrun altool`/ASC API). Run a local `expo export` bundle
-  pre-check before building. We deliberately do **not** use EAS cloud build or
-  the MCP `build_run` (needs a connected git repo). Apple is the only external
-  dependency. Repo: openagents.
+  uploads the binary **straight to Apple** through
+  `clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh`
+  (`expo prebuild` → `xcodebuild`/`fastlane gym` + `xcrun altool`/ASC API).
+  Run a local `expo export` bundle pre-check before building. Apple is the only
+  external dependency. Repo: openagents.
 - **CL-40** (#4946) **Ship-status round-trip** — the originating mobile client
   sees live coordinator progress + the final ship outcome ("OTA published / build
   N on its way to TestFlight"), as a projection of the intent status. Closes the
@@ -330,10 +324,10 @@ CL-0 ─┬─ CL-1/CL-2 (parallel)
                                           │
                  M5 polish (CL-29..CL-33)
 
-★ M6 — Self-Driving Loop (ASAP; runs on the M1 dev transport + Expo EAS MCP, not gated on M2):
+★ M6 — Self-Driving Loop (ASAP; runs on the M1 dev transport + local Expo/OpenAgents Updates tooling, not gated on M2):
    CL-34 (phone intent) ─ CL-35 (Pylon intake) ─ CL-36 (coordinator fan-out, uses #4918)
-        └─ on merge ─ CL-37 (fingerprint classify) ─┬─ OTA-eligible ─ CL-38 (eas update) ─┐
-                                                     └─ rebuild ───── CL-39 (eas build/submit) ┘
+        └─ on merge ─ CL-37 (fingerprint classify) ─┬─ OTA-eligible ─ CL-38 (publish-ota.sh) ─┐
+                                                     └─ rebuild ───── CL-39 (local build/altool) ┘
         └─ CL-40 (status back to phone)   CL-41 (spend/authority gating) wraps CL-36/38/39
    CL-42 (shared dark-mode tokens) — fast-track, parallel
 ```

@@ -2,6 +2,7 @@ import type { AssetStore } from "./asset-store.ts"
 import { readExportedUpdate } from "./export-reader.ts"
 import type { PublishExportResult } from "./publish.ts"
 import type { Platform } from "./publish-builder.ts"
+import { seedDesktopReleases } from "./desktop-seed.ts"
 import {
   createUpdatesServer,
   type UpdatesServer,
@@ -59,6 +60,14 @@ if (import.meta.main) {
       platform: (process.env.OA_SEED_PLATFORM ?? "ios") as Platform,
       branch: "production",
       runtimeVersion: process.env.OA_SEED_RUNTIME,
+      baseUrl: process.env.OA_PUBLIC_URL ?? `http://localhost:${port}`,
+    })
+  }
+
+  if (process.env.OA_DESKTOP_RELEASES_DIST) {
+    await seedDesktopReleases({
+      server,
+      distDir: process.env.OA_DESKTOP_RELEASES_DIST,
       baseUrl: process.env.OA_PUBLIC_URL ?? `http://localhost:${port}`,
     })
   }

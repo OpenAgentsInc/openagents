@@ -225,4 +225,34 @@ describe("updates server", () => {
     )
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes)
   })
+
+  test("serves desktop update feeds by channel", async () => {
+    const server = createUpdatesServer()
+
+    server.registerDesktopUpdate("stable", {
+      version: "1.2.0",
+      artifactUrl: "https://updates.openagents.test/assets/full-1.2.0",
+      sha256: "full-sha",
+      bsdiffFromVersion: "1.1.0",
+      bsdiffUrl: "https://updates.openagents.test/assets/delta-1.1.0-1.2.0",
+      bsdiffSha256: "delta-sha",
+    })
+
+    const response = await server.fetch(
+      new Request("https://updates.openagents.test/desktop/stable/feed.json"),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("cache-control")).toBe("no-store")
+    expect(await response.json()).toEqual([
+      {
+        version: "1.2.0",
+        artifactUrl: "https://updates.openagents.test/assets/full-1.2.0",
+        sha256: "full-sha",
+        bsdiffFromVersion: "1.1.0",
+        bsdiffUrl: "https://updates.openagents.test/assets/delta-1.1.0-1.2.0",
+        bsdiffSha256: "delta-sha",
+      },
+    ])
+  })
 })

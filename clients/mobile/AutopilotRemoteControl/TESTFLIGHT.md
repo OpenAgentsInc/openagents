@@ -57,6 +57,37 @@ Apple processing takes ~10–15 min; the build then appears in **TestFlight**
 
 Bump the build number per native build (CFBundleVersion) before archiving.
 
+The scripted paths are:
+
+```sh
+# build only
+bun run build:ios:local
+
+# upload an existing IPA to TestFlight
+OA_BUILD_IPA_OUT=/tmp/oa-autopilot-local.ipa bun run testflight:upload
+
+# build and upload
+bun run ship:testflight
+```
+
+## App Store Release
+
+Public App Store release is intentionally owner-gated. A processed TestFlight
+build can be submitted for review only when the owner has approved the public
+release, pricing, metadata, screenshots, and release timing.
+
+```sh
+OA_STORE_RELEASE_APPROVED=true \
+OA_STORE_VERSION=0.1.0 \
+OA_STORE_BUILD_NUMBER=<processed-build-number> \
+bun run store:submit
+```
+
+`scripts/submit-store-release.sh` uses `fastlane deliver` with the same App
+Store Connect API key material as TestFlight upload. It skips binary upload,
+metadata upload, and screenshot upload, so App Store Connect must already carry
+the approved public metadata and price tier.
+
 ## What goes OTA vs. native (decide before shipping)
 - JS / React / styles / assets only → **OTA** (our server), no build.
 - New/updated native module, native config, app icon, entitlements, SDK bump

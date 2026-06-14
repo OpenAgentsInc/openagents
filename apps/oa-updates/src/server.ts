@@ -9,6 +9,10 @@ import {
 } from "./manifest-resolver.ts"
 import { buildSignedManifestResponse } from "./signed-response.ts"
 import { createNodeRegistry, type NodeRegistration } from "./node-registry.ts"
+import {
+  sortDesktopFeed,
+  type DesktopUpdateManifest,
+} from "./desktop-release.ts"
 
 type CreateUpdatesServerOptions = {
   port?: number
@@ -19,7 +23,14 @@ type CreateUpdatesServerOptions = {
 export type UpdatesServer = {
   fetch: (request: Request) => Promise<Response>
   registerUpdate: (update: Update) => void
-  putAsset: (bytes: Uint8Array) => Promise<{ hash: string; url: string }>
+  registerDesktopUpdate: (
+    channel: string,
+    manifest: DesktopUpdateManifest,
+  ) => void
+  putAsset: (
+    bytes: Uint8Array,
+    contentType?: string,
+  ) => Promise<{ hash: string; url: string }>
 }
 
 const defaultPort = 3000
@@ -94,6 +105,8 @@ export function createUpdatesServer(
   const port = options.port ?? defaultPort
   const updates = new Map<string, Update>()
   const channelToBranch = new Map<string, string>()
+  const desktopFeeds = new Map<string, DesktopUpdateManifest[]>()
+  const assetContentTypes = new Map<string, string>()
   const assetStore: AssetStore = createInMemoryAssetStore(
     `http://localhost:${port}`,
   )
@@ -161,8 +174,21 @@ export function createUpdatesServer(
           return new Response(bytes, {
             headers: {
               "cache-control": "public, max-age=31536000, immutable",
-              "content-type": assetContentType(updates.values(), hash),
+              "content-type":
+                assetContentTypes.get(hash) ??
+                assetContentType(updates.values(), hash),
             },
+          })
+        }
+
+        const desktopFeedMatch = url.pathname.match(
+          /^\/desktop\/([^/]+)\/feed\.json$/,
+        )
+
+        if (desktopFeedMatch !== null) {
+          const channel = desktopFeedMatch[1]
+          return jsonResponse(sortDesktopFeed(desktopFeeds.get(channel) ?? []), {
+            "cache-control": "no-store",
           })
         }
 
@@ -196,8 +222,22 @@ export function createUpdatesServer(
       channelToBranch.set(update.branch, update.branch)
     },
 
-    putAsset(bytes) {
-      return assetStore.put(bytes)
+    registerDesktopUpdate(channel, manifest) {
+      const normalizedChannel = channel.trim()
+      const current = desktopFeeds.get(normalizedChannel) ?? []
+      desktopFeeds.set(normalizedChannel, [
+        manifest,
+        ...current.filter((candidate) => candidate.version !== manifest.version),
+      ])
+    },
+
+    async putAsset(bytes, contentType) {
+      const stored = await assetStore.put(bytes)
+      if (contentType !== undefined) {
+        assetContentTypes.set(stored.hash, contentType)
+      }
+
+      return stored
     },
   }
 }

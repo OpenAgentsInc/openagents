@@ -5,7 +5,11 @@
   "scripts": {
     "start": "expo start",
     "ios": "expo start --ios",
-    "android": "expo start --android"
+    "android": "expo start --android",
+    "build:ios:local": "bash scripts/build-and-submit.sh --build-only",
+    "testflight:upload": "bash scripts/build-and-submit.sh --upload-only",
+    "ship:testflight": "bash scripts/build-and-submit.sh",
+    "store:submit": "bash scripts/submit-store-release.sh"
   },
   "dependencies": {
     "@expo/metro-runtime": "~55.0.11",

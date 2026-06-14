@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { planEasBuild } from "./eas-build-plan"
 
-describe("eas build plan", () => {
+describe("local mobile build plan", () => {
   test("does not build for an OTA update", () => {
     expect(planEasBuild({
       mode: "ota",
@@ -35,7 +35,7 @@ describe("eas build plan", () => {
       platform: "ios",
       autoSubmit: false,
     })).toEqual({
-      steps: ["eas build --local --platform ios"],
+      steps: ["clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh --build-only"],
       willBuild: true,
       willSubmit: false,
       reason: "rebuild_required",
@@ -48,10 +48,12 @@ describe("eas build plan", () => {
       platform: "android",
       autoSubmit: false,
     })).toEqual({
-      steps: ["eas build --local --platform android"],
-      willBuild: true,
+      steps: [
+        "android local release build is not configured; add a signed Gradle bundle path before shipping Android",
+      ],
+      willBuild: false,
       willSubmit: false,
-      reason: "rebuild_required",
+      reason: "android_local_release_not_configured",
     })
   })
 
@@ -61,10 +63,7 @@ describe("eas build plan", () => {
       platform: "ios",
       autoSubmit: true,
     })).toEqual({
-      steps: [
-        "eas build --local --platform ios",
-        "eas submit -p ios",
-      ],
+      steps: ["clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh"],
       willBuild: true,
       willSubmit: true,
       reason: "rebuild_required",
@@ -78,12 +77,11 @@ describe("eas build plan", () => {
       autoSubmit: true,
     })).toEqual({
       steps: [
-        "eas build --local --platform android",
-        "eas submit -p android",
+        "android local release build is not configured; add a signed Gradle bundle path before shipping Android",
       ],
-      willBuild: true,
-      willSubmit: true,
-      reason: "rebuild_required",
+      willBuild: false,
+      willSubmit: false,
+      reason: "android_local_release_not_configured",
     })
   })
 })

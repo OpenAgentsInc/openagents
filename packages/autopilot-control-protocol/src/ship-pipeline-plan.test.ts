@@ -13,7 +13,7 @@ describe("ship pipeline plan", () => {
       autoSubmit: false,
     })).toEqual({
       action: "ota",
-      steps: ["eas update --platform ios --non-interactive"],
+      steps: ["apps/oa-updates/scripts/publish-ota.sh"],
       reason: "JavaScript changes are OTA-eligible for the published native fingerprint",
     })
   })
@@ -28,7 +28,7 @@ describe("ship pipeline plan", () => {
       autoSubmit: true,
     })).toEqual({
       action: "ota",
-      steps: ["eas update --platform android --non-interactive"],
+      steps: ["apps/oa-updates/scripts/publish-ota.sh"],
       reason: "JavaScript changes are OTA-eligible for the published native fingerprint",
     })
   })
@@ -43,7 +43,7 @@ describe("ship pipeline plan", () => {
       autoSubmit: false,
     })).toEqual({
       action: "rebuild",
-      steps: ["eas build --local --platform ios"],
+      steps: ["clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh --build-only"],
       reason: "native changes require a rebuild",
     })
   })
@@ -59,8 +59,7 @@ describe("ship pipeline plan", () => {
     })).toEqual({
       action: "rebuild",
       steps: [
-        "eas build --local --platform android",
-        "eas submit -p android",
+        "android local release build is not configured; add a signed Gradle bundle path before shipping Android",
       ],
       reason: "current native fingerprint has not been published",
     })
@@ -76,10 +75,7 @@ describe("ship pipeline plan", () => {
       autoSubmit: true,
     })).toEqual({
       action: "rebuild",
-      steps: [
-        "eas build --local --platform ios",
-        "eas submit -p ios",
-      ],
+      steps: ["clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh"],
       reason: "current native fingerprint has not been published",
     })
   })
@@ -109,10 +105,7 @@ describe("ship pipeline plan", () => {
       autoSubmit: true,
     })).toEqual({
       action: "rebuild",
-      steps: [
-        "eas build --local --platform ios",
-        "eas submit -p ios",
-      ],
+      steps: ["clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh"],
       reason: "native changes require a rebuild",
     })
   })

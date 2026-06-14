@@ -21,10 +21,22 @@ export function planEasBuild(input: EasBuildPlanInput): EasBuildPlan {
     }
   }
 
+  if (input.platform === "android") {
+    return {
+      steps: [
+        "android local release build is not configured; add a signed Gradle bundle path before shipping Android",
+      ],
+      willBuild: false,
+      willSubmit: false,
+      reason: "android_local_release_not_configured",
+    }
+  }
+
   return {
     steps: [
-      `eas build --local --platform ${input.platform}`,
-      ...(input.autoSubmit ? [`eas submit -p ${input.platform}`] : []),
+      input.autoSubmit
+        ? "clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh"
+        : "clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh --build-only",
     ],
     willBuild: true,
     willSubmit: input.autoSubmit,

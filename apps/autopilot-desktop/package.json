@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "electrobun dev",
-    "build": "electrobun build"
+    "build": "electrobun build",
+    "notarize:macos": "bash scripts/notarize-macos.sh"
   },
   "dependencies": {
     "@openagentsinc/autopilot-control-protocol": "workspace:*",

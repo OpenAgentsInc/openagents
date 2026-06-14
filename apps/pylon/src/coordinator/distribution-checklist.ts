@@ -4,7 +4,10 @@ export type DistributionReadinessInput = {
   target: DistributionTarget
   signed?: boolean
   notarized?: boolean
+  artifactPublished?: boolean
   bsdiffAvailable?: boolean
+  desktopFeedPublished?: boolean
+  testflightUploaded?: boolean
   storeSubmitted?: boolean
   otaPublished?: boolean
 }
@@ -30,9 +33,14 @@ export function evaluateDistributionReadiness(
     desktop: [
       { name: "signed", done: input.signed === true },
       { name: "notarized", done: input.notarized === true },
+      { name: "artifactPublished", done: input.artifactPublished === true },
       { name: "bsdiffAvailable", done: input.bsdiffAvailable === true },
+      { name: "desktopFeedPublished", done: input.desktopFeedPublished === true },
     ],
-    mobile: [{ name: "storeSubmitted", done: input.storeSubmitted === true }],
+    mobile: [
+      { name: "testflightUploaded", done: input.testflightUploaded === true },
+      { name: "storeSubmitted", done: input.storeSubmitted === true },
+    ],
     ota: [{ name: "otaPublished", done: input.otaPublished === true }],
   }
 

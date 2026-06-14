@@ -3,13 +3,15 @@ import { describe, expect, test } from "bun:test"
 import { evaluateDistributionReadiness } from "../src/coordinator/distribution-checklist"
 
 describe("distribution checklist", () => {
-  test("marks desktop ready when signed, notarized, and BSDIFF are available", () => {
+  test("marks desktop ready when signed, notarized, artifact, BSDIFF, and feed are available", () => {
     expect(
       evaluateDistributionReadiness({
         target: "desktop",
         signed: true,
         notarized: true,
+        artifactPublished: true,
         bsdiffAvailable: true,
+        desktopFeedPublished: true,
       }),
     ).toEqual({
       ready: true,
@@ -17,7 +19,9 @@ describe("distribution checklist", () => {
       steps: [
         { name: "signed", done: true },
         { name: "notarized", done: true },
+        { name: "artifactPublished", done: true },
         { name: "bsdiffAvailable", done: true },
+        { name: "desktopFeedPublished", done: true },
       ],
     })
   })
@@ -25,11 +29,19 @@ describe("distribution checklist", () => {
   test("reports all missing desktop gates when no booleans are supplied", () => {
     expect(evaluateDistributionReadiness({ target: "desktop" })).toEqual({
       ready: false,
-      missing: ["signed", "notarized", "bsdiffAvailable"],
+      missing: [
+        "signed",
+        "notarized",
+        "artifactPublished",
+        "bsdiffAvailable",
+        "desktopFeedPublished",
+      ],
       steps: [
         { name: "signed", done: false },
         { name: "notarized", done: false },
+        { name: "artifactPublished", done: false },
         { name: "bsdiffAvailable", done: false },
+        { name: "desktopFeedPublished", done: false },
       ],
     })
   })
@@ -40,7 +52,9 @@ describe("distribution checklist", () => {
         target: "desktop",
         signed: true,
         notarized: false,
+        artifactPublished: true,
         bsdiffAvailable: true,
+        desktopFeedPublished: true,
       }),
     ).toEqual({
       ready: false,
@@ -48,29 +62,38 @@ describe("distribution checklist", () => {
       steps: [
         { name: "signed", done: true },
         { name: "notarized", done: false },
+        { name: "artifactPublished", done: true },
         { name: "bsdiffAvailable", done: true },
+        { name: "desktopFeedPublished", done: true },
       ],
     })
   })
 
-  test("marks mobile ready after store submission", () => {
+  test("marks mobile ready after TestFlight upload and store submission", () => {
     expect(
       evaluateDistributionReadiness({
         target: "mobile",
+        testflightUploaded: true,
         storeSubmitted: true,
       }),
     ).toEqual({
       ready: true,
       missing: [],
-      steps: [{ name: "storeSubmitted", done: true }],
+      steps: [
+        { name: "testflightUploaded", done: true },
+        { name: "storeSubmitted", done: true },
+      ],
     })
   })
 
-  test("reports mobile store submission as missing", () => {
+  test("reports mobile TestFlight upload and store submission as missing", () => {
     expect(evaluateDistributionReadiness({ target: "mobile" })).toEqual({
       ready: false,
-      missing: ["storeSubmitted"],
-      steps: [{ name: "storeSubmitted", done: false }],
+      missing: ["testflightUploaded", "storeSubmitted"],
+      steps: [
+        { name: "testflightUploaded", done: false },
+        { name: "storeSubmitted", done: false },
+      ],
     })
   })
 

@@ -17,8 +17,17 @@ export function planDistribution(input: DistributionNotarizePlanInput): Distribu
 
     return {
       steps: usesBsdiff
-        ? ["notarize desktop build", "create bsdiff delta"]
-        : ["notarize desktop build", "publish full desktop build"],
+        ? [
+          "sign and notarize desktop build",
+          "publish full desktop artifact",
+          "create bsdiff delta",
+          "publish desktop update feed",
+        ]
+        : [
+          "sign and notarize desktop build",
+          "publish full desktop artifact",
+          "publish desktop update feed",
+        ],
       usesBsdiff,
       requiresNotarize: true,
     }
@@ -26,7 +35,10 @@ export function planDistribution(input: DistributionNotarizePlanInput): Distribu
 
   if (input.target === "mobile") {
     return {
-      steps: ["prepare mobile store submission", "submit mobile build to store"],
+      steps: [
+        "build and upload local iOS binary to TestFlight",
+        "submit owner-approved build to App Store review",
+      ],
       usesBsdiff: false,
       requiresNotarize: false,
     }
