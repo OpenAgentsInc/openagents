@@ -1,9 +1,6 @@
 import { Effect, Schema as S } from 'effect'
 
-import {
-  type OmniAcceptedOutcomeWorkKind,
-  OmniAcceptedOutcomeWorkKind as OmniAcceptedOutcomeWorkKindSchema,
-} from './omni-accepted-outcome-contracts'
+import { type OmniAcceptedOutcomeWorkKind } from './omni-accepted-outcome-contracts'
 import {
   type CreateOmniEvidenceBundleInput,
   type OmniEvidenceBundleEntry,

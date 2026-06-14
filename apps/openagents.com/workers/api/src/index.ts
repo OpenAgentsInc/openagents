@@ -95,6 +95,9 @@ import { makeAutopilotDecisionRoutes } from './autopilot-decision-routes'
 import { makeOmniWorkroomRoutes } from './omni-workroom-routes'
 import { makeOmniWorkroomLifecycleRoutes } from './omni-workroom-lifecycle-routes'
 import { makeOmniBundleRoutes } from './omni-bundle-routes'
+import { makeOmniHandoffRoutes } from './omni-handoff-routes'
+import { makeNativeListsRoutes } from './native-lists-routes'
+import { makeNativeListsService } from './native-lists'
 import { readOmniEvidenceBundleById } from './omni-evidence-bundles'
 import { readOmniPublicProofBundleById } from './omni-public-proof-bundles'
 import {
@@ -5859,6 +5862,16 @@ const omniBundleRoutes = makeOmniBundleRoutes<WorkerBindings>({
   readProofBundle: (db, id) => readOmniPublicProofBundleById(db, id),
 })
 
+const omniHandoffRoutes = makeOmniHandoffRoutes<WorkerBindings>({
+  db: env => openAgentsDatabase(env),
+  requireOperator: (request, env) => requireAdminApiToken(request, env),
+})
+
+const nativeListsRoutes = makeNativeListsRoutes<WorkerBindings>({
+  makeStore: env => makeNativeListsService(openAgentsDatabase(env)),
+  requireOperator: (request, env) => requireAdminApiToken(request, env),
+})
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
@@ -7076,7 +7089,9 @@ const routeRequest = makeWorkerRouteRequest({
       env,
       ctx,
     ) ??
-    omniBundleRoutes.routeOmniBundleRequest(request, env, ctx),
+    omniBundleRoutes.routeOmniBundleRequest(request, env, ctx) ??
+    omniHandoffRoutes.routeOmniHandoffRequest(request, env, ctx) ??
+    nativeListsRoutes.routeNativeListsRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,
