@@ -5789,6 +5789,15 @@ const autopilotWorkRouteDependencies = {
     makeD1PylonApiStore(openAgentsDatabase(env)),
   makeStore: (env: WorkerBindings) =>
     makeD1AutopilotWorkStore(openAgentsDatabase(env)),
+  // Feed the registered-pylon registry into the work-order placement selector
+  // so an owner's online, heartbeat-fresh Pylon is eligible for `requester_pylon`
+  // placement (own jobs run on the owner's own node). Without this the selector
+  // only ever sees an empty list and every order falls back to the SHC lane,
+  // which is what blocked the spare-capacity provider from picking up its
+  // owner's job (#4782). The selector itself enforces owner-match + active +
+  // fresh-heartbeat eligibility.
+  pylonRegistrations: (env: WorkerBindings) =>
+    makeD1PylonApiStore(openAgentsDatabase(env)).listRegistrations(100),
   requireBrowserSession,
   verifyL402PaymentProof: (
     env: WorkerBindings,
