@@ -265,14 +265,14 @@ const baseToolScopes = (
 
 export interface DeliveryPipelineProgram {
   readonly stage: DeliveryPipelineStage
-  readonly outputSchema: S.Schema<unknown, unknown>
+  readonly outputSchema: S.Schema<unknown>
   readonly outputSchemaRef: string
   readonly programType: BlueprintProgramType
 }
 
 const declareProgram = (params: {
   readonly stage: DeliveryPipelineStage
-  readonly outputSchema: S.Schema<unknown, unknown>
+  readonly outputSchema: S.Schema<unknown>
   readonly evidenceRequirements: ReadonlyArray<BlueprintProgramEvidenceRequirement>
 }): DeliveryPipelineProgram => {
   const slug = stageSlug(params.stage)
