@@ -83,11 +83,12 @@ of building against them.
 > **Dark-mode theming (owner request):** the website's dark theme is the single
 > source of truth for look-and-feel across **all three** clients. Desktop and web
 > share the canonical dark **tokens** (`cssVars`/`darkTokens` from
-> `@openagentsinc/autopilot-ui`); mobile (RN) maps the same tokens. NOTE
-> (2026-06-13): desktop shares the **tokens + protocol + conformance**, not yet
-> the shared Foldkit **components** — desktop renders hand-DOM panes/cards
-> (CL-44..CL-58). Adopting the shared Foldkit components on desktop for true
-> pixel-parity is tracked as **CL-53 (#4966)**. Tokens tracked as the
+> `@openagentsinc/autopilot-ui`); mobile (RN) maps the same tokens. UPDATE
+> (2026-06-13): desktop now **also renders through the shared Foldkit
+> components** — the webview was converted from hand-DOM to a Foldkit TEA app
+> (CL-53 #4966), so web + desktop share one component library and look-and-feel;
+> mobile (RN) still maps the same tokens. The desktop webview is Foldkit-only
+> going forward (`apps/autopilot-desktop/AGENTS.md`). Tokens tracked as the
 > fast-tracked **CL-42 (#4948)**.
 
 ---
