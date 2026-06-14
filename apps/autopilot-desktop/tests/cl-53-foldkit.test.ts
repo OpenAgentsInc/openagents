@@ -9,18 +9,21 @@ import { describe, expect, test } from "bun:test"
 import type {
   AssignmentRow,
   NodeStateMessage,
+  TrainingRunsResponse,
   WalletStatusRow,
 } from "../src/shared/rpc"
 import {
   approvalLabel,
   artifactLineText,
   assignmentMeta,
+  commandErrorText,
   connectionSummary,
   coordinatorToggleLabel,
   nodeStatusLine,
   parseVerifyLines,
   shipStatusLine,
   stateBreakdown,
+  trainingProjectionMeta,
   verifyLineText,
   walletSummary,
 } from "../src/ui/helpers"
@@ -82,6 +85,28 @@ const session = (sessionRef: string, state: string) =>
   }) as never
 
 describe("helpers (CL-47..CL-58 parity, pure)", () => {
+  test("commandErrorText unwraps Effect.tryPromise causes", () => {
+    const wrapped = Object.assign(
+      new Error("An error occurred in Effect.tryPromise"),
+      { cause: new Error("desktop RPC bridge unavailable") },
+    )
+    expect(commandErrorText(wrapped)).toBe("desktop RPC bridge unavailable")
+  })
+
+  test("trainingProjectionMeta hides internal Effect.tryPromise wrappers", () => {
+    const projection: TrainingRunsResponse = {
+      ok: false,
+      fetchedAt: "2026-06-14T00:00:00.000Z",
+      sourceUrl: "desktop:training-runs",
+      runs: [],
+      summaries: [],
+      error: "An error occurred in Effect.tryPromise",
+    }
+    expect(trainingProjectionMeta(projection)).toBe(
+      "waiting for Worker projection",
+    )
+  })
+
   test("nodeStatusLine summarizes connection + breakdown", () => {
     expect(nodeStatusLine({ ok: true, sessions: [] })).toBe("connected · 0 sessions")
     expect(

@@ -9,6 +9,7 @@ import type {
   AssignmentRow,
   SessionArtifactStats,
   SessionEventRow,
+  TrainingRunsResponse,
   WalletStatusRow,
 } from "../shared/rpc"
 
@@ -104,6 +105,49 @@ export function connectionSummary(node: { ok: boolean } | null): string {
 // ── Coordinator toggle label ──────────────────────────────────────────────────
 export function coordinatorToggleLabel(paused: boolean): string {
   return paused ? "▶ Resume" : "⏸ Pause"
+}
+
+const genericTryPromiseError = "An error occurred in Effect.tryPromise"
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null
+
+export const commandErrorText = (error: unknown, depth = 0): string => {
+  if (depth > 5) return String(error)
+  if (error instanceof Error) {
+    const cause = isRecord(error) ? error.cause : undefined
+    if (error.message === genericTryPromiseError && cause !== undefined) {
+      return commandErrorText(cause, depth + 1)
+    }
+    return error.message
+  }
+  if (isRecord(error)) {
+    const message = typeof error.message === "string" ? error.message : ""
+    const cause = error.cause
+    if (message === genericTryPromiseError && cause !== undefined) {
+      return commandErrorText(cause, depth + 1)
+    }
+    if (message.trim() !== "") return message
+  }
+  return String(error)
+}
+
+const trainingProjectionFailureMeta = (error: string | undefined): string =>
+  error === undefined || error === genericTryPromiseError
+    ? "waiting for Worker projection"
+    : `Worker projection unavailable · ${error}`
+
+export const trainingProjectionMeta = (
+  projection: TrainingRunsResponse | null,
+): string => {
+  if (projection === null) return "waiting for Worker projection"
+  const when =
+    projection.fetchedAt.length > 0
+      ? new Date(projection.fetchedAt).toLocaleTimeString()
+      : "unknown time"
+  return projection.ok
+    ? `${projection.runs.length} runs · fetched ${when}`
+    : trainingProjectionFailureMeta(projection.error)
 }
 
 // ── Spawn: split a verify textarea into trimmed non-empty lines ───────────────

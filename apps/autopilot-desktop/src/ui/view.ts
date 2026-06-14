@@ -94,6 +94,7 @@ import {
   sessionCancellable,
   shipStatusLine,
   stateBreakdown,
+  trainingProjectionMeta,
   verifyLineText,
   walletSummary,
 } from "./helpers"
@@ -1333,19 +1334,6 @@ const trainingRoadmapPanel = (): Html =>
       trainingRoadmapRefs.map(ref => h.li([], [h.code([], [ref])])),
     ),
   ])
-
-const trainingProjectionMeta = (
-  projection: TrainingRunsResponse | null,
-): string => {
-  if (projection === null) return "not loaded"
-  const when =
-    projection.fetchedAt.length > 0
-      ? new Date(projection.fetchedAt).toLocaleTimeString()
-      : "unknown time"
-  return projection.ok
-    ? `${projection.runs.length} runs · fetched ${when}`
-    : `unavailable · ${projection.error ?? "fetch failed"}`
-}
 
 const selectedTrainingSummary = (
   projection: TrainingRunsResponse | null,

@@ -9,6 +9,7 @@ import { Effect, Schema as S } from "effect"
 import { Command } from "foldkit"
 
 import { getRequest } from "./bridge"
+import { commandErrorText } from "./helpers"
 import {
   FailedCoordinatorToggle,
   FailedSpawn,
@@ -34,8 +35,7 @@ import {
   SucceededSpawn,
 } from "./message"
 
-const errorText = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
+const errorText = commandErrorText
 
 const refLine = (label: string, value: string | null): string =>
   value !== null && value.trim() !== ""
