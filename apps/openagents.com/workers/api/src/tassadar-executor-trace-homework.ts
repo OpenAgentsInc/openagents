@@ -1,7 +1,19 @@
 import { TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND } from '@openagentsinc/tassadar-executor'
+import { Schema as S } from 'effect'
 
 import type { BuyModeDispatchInput } from './buy-mode-dispatcher'
 import type { TrainingVerificationChallengeCreateRequest } from './training-verification'
+
+const ExecutorTraceCloseoutRef = S.Trim.check(
+  S.isNonEmpty(),
+  S.isMinLength(3),
+  S.isMaxLength(260),
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/),
+)
+const ExecutorTraceSampledStep = S.Number.check(
+  S.isInt(),
+  S.isBetween({ minimum: 0, maximum: 100_000_000 }),
+)
 
 export const TassadarExecutorTraceJobKind =
   TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND
@@ -66,6 +78,26 @@ export type TassadarExecutorTraceCloseoutEvidence = Readonly<{
   workerReceiptRef: string
   workloadFamily: TassadarExecutorTraceWorkloadFamily
 }>
+
+/**
+ * Decoder for a public-safe executor-trace closeout submission (#5008). All
+ * fields are public-safe refs or bounded step integers; no raw prompts, host
+ * paths, wallet material, or preimages are accepted.
+ */
+export const TassadarExecutorTraceCloseoutEvidenceSchema = S.Struct({
+  assignmentRef: ExecutorTraceCloseoutRef,
+  pylonDeviceRef: ExecutorTraceCloseoutRef,
+  replayDigestRef: ExecutorTraceCloseoutRef,
+  sampledWindow: S.Struct({
+    endStep: ExecutorTraceSampledStep,
+    startStep: ExecutorTraceSampledStep,
+  }),
+  sampledWindowRef: ExecutorTraceCloseoutRef,
+  traceCommitmentDigestRef: ExecutorTraceCloseoutRef,
+  validatorDeviceRef: ExecutorTraceCloseoutRef,
+  workerReceiptRef: ExecutorTraceCloseoutRef,
+  workloadFamily: S.Literals([...TassadarExecutorTraceWorkloadFamilies]),
+})
 
 export type TassadarExecutorTraceDisclosureChecklist = Readonly<{
   agentsCapabilityClaimAllowed: false

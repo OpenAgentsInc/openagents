@@ -1736,6 +1736,9 @@ const requestSchemas = (): JsonSchema => ({
   TrainingRunAdmissionEnvelope: objectSummary(
     'Typed executor-trace run admission decision: overall admitted/excluded, the receipted-capability state, the #4852 device-admission decision record (with stated measured reason), the owner-operated flag, and public-safe reason refs.',
   ),
+  TrainingRunExecutorTraceCloseoutRequest: objectSummary(
+    'Admin-only executor-trace closeout submission for a run: a public-safe closeout evidence object (assignmentRef, pylonDeviceRef, validatorDeviceRef, replayDigestRef, traceCommitmentDigestRef, sampledWindow + sampledWindowRef, workerReceiptRef, workloadFamily) plus the windowRef. Builds a run+window-tied exact_trace_replay verification challenge; the validator device must differ from the worker Pylon.',
+  ),
   TrainingWindowPlanRequest: objectSummary(
     'Admin-only request to plan a training window for a trainingRunRef, including homeworkKind, priority, datasetRefs, sourceRefs, and receiptRefs as public-safe refs only.',
   ),
@@ -3384,6 +3387,27 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Typed executor-trace admission decision: admitted or excluded with stated measured reasons.',
           '#/components/schemas/TrainingRunAdmissionEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/executor-trace-closeout': {
+    post: operation({
+      operationId: 'submitTrainingRunExecutorTraceCloseout',
+      summary: 'Submit an executor-trace closeout for run-tied verification',
+      description:
+        'Admin-only (#5008). Takes a contributor executor-trace closeout for the run and one of its executor-trace windows and creates a run+window-tied exact_trace_replay verification challenge: it pins the trainingRunRef and windowRef, enforces the distinct-validator-device rule (validator must differ from the worker Pylon — a violation is a 400), and creates the challenge through the verification store. On validator replay the verdict resolves Verified/Rejected and surfaces in the run projection. Grants no payout, settlement, or serving authority.',
+      tags: ['Training', 'Operator', 'Pylon'],
+      security: adminBearer,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingRunExecutorTraceCloseoutRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Created run-tied exact_trace_replay verification challenge.',
+          '#/components/schemas/TrainingVerificationChallengeEnvelope',
         ),
         ...errorResponses(),
       },

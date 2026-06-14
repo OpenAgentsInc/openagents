@@ -660,6 +660,109 @@ describe('training run window routes', () => {
     expect(notFound.status).toBe(404)
   })
 
+  it('creates a run+window-tied exact_trace_replay challenge from an executor-trace closeout (#5008)', async () => {
+    const store = makeMemoryStore()
+    const routes = makeTrainingRunWindowRoutes({
+      createVerificationChallenge: async (_env, request) =>
+        buildTrainingVerificationChallengeRecord({
+          makeId: () => 'chal',
+          nowIso: '2026-06-14T10:00:00.000Z',
+          request,
+        }).challenge,
+      makeId: () => 'cl',
+      makeStore: () => store,
+      nowIso: () => '2026-06-14T10:00:00.000Z',
+      requireAdminApiToken: async () => true,
+    })
+
+    await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/runs', {
+          promiseRef: 'training.monday_decentralized_training_launch.v1',
+          trainingRunRef: 'run.tassadar.executor.20260615',
+        }),
+        {},
+      ),
+    )
+    await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/windows/plan', {
+          trainingRunRef: 'run.tassadar.executor.20260615',
+          windowRef: 'training.window.tassadar.executor.20260615.w1',
+        }),
+        {},
+      ),
+    )
+
+    const closeout = {
+      assignmentRef: 'assignment.tassadar.5008',
+      pylonDeviceRef: 'pylon.device.worker',
+      replayDigestRef: 'digest.replay.5008',
+      sampledWindow: { endStep: 100, startStep: 0 },
+      sampledWindowRef: 'sampled.window.5008',
+      traceCommitmentDigestRef: 'digest.commitment.5008',
+      validatorDeviceRef: 'pylon.device.validator',
+      workerReceiptRef: 'receipt.worker.5008',
+      workloadFamily: 'article_closeout',
+    }
+
+    const created = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          '/api/training/runs/run.tassadar.executor.20260615/executor-trace-closeout',
+          {
+            closeout,
+            windowRef: 'training.window.tassadar.executor.20260615.w1',
+          },
+        ),
+        {},
+      ),
+    )
+    const createdBody = (await created.json()) as {
+      challenge: {
+        trainingRunRef: string
+        verificationClass: string
+        windowRef: string | null
+      }
+    }
+
+    expect(created.status).toBe(200)
+    expect(createdBody.challenge.trainingRunRef).toBe(
+      'run.tassadar.executor.20260615',
+    )
+    expect(createdBody.challenge.verificationClass).toBe('exact_trace_replay')
+    expect(createdBody.challenge.windowRef).toBe(
+      'training.window.tassadar.executor.20260615.w1',
+    )
+
+    // distinct-validator-device rule: validator == worker -> 400
+    const sameDevice = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          '/api/training/runs/run.tassadar.executor.20260615/executor-trace-closeout',
+          {
+            closeout: { ...closeout, validatorDeviceRef: 'pylon.device.worker' },
+            windowRef: 'training.window.tassadar.executor.20260615.w1',
+          },
+        ),
+        {},
+      ),
+    )
+    expect(sameDevice.status).toBe(400)
+
+    // unknown window -> 404
+    const unknownWindow = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          '/api/training/runs/run.tassadar.executor.20260615/executor-trace-closeout',
+          { closeout, windowRef: 'training.window.unknown' },
+        ),
+        {},
+      ),
+    )
+    expect(unknownWindow.status).toBe(404)
+  })
+
   it('returns an honest idle empty state for runs with no windows or verification data', async () => {
     const store = makeMemoryStore()
     const routes = makeTrainingRunWindowRoutes({

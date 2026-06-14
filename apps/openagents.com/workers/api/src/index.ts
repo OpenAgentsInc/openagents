@@ -403,7 +403,10 @@ import {
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
 import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
 import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
-import { makeD1TrainingVerificationStore } from './training-verification'
+import {
+  buildTrainingVerificationChallengeRecord,
+  makeD1TrainingVerificationStore,
+} from './training-verification'
 import { makeTrainingVerificationRoutes } from './training-verification-routes'
 import {
   makeD1TreasuryTransactionStore,
@@ -6177,6 +6180,17 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
 })
 
 const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
+  createVerificationChallenge: (env, request) => {
+    const built = buildTrainingVerificationChallengeRecord({
+      makeId: randomUuid,
+      nowIso: currentIsoTimestamp(),
+      request,
+    })
+
+    return makeD1TrainingVerificationStore(
+      openAgentsDatabase(env),
+    ).createChallenge(built.challenge, built.event)
+  },
   makePayoutLedgerStore: env =>
     makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(env)),
   makeStore: env => makeD1TrainingAuthorityStore(openAgentsDatabase(env)),

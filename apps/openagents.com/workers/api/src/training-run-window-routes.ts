@@ -66,6 +66,15 @@ import {
   TrainingRunAdmissionRequest,
   decideTassadarRunAdmission,
 } from './tassadar-run-admission'
+import {
+  TassadarExecutorTraceCloseoutEvidenceSchema,
+  tassadarExecutorTraceVerificationChallengeRequest,
+} from './tassadar-executor-trace-homework'
+import {
+  type TrainingVerificationChallengeCreateRequest,
+  type TrainingVerificationChallengeRecord,
+  publicTrainingVerificationChallengeProjection,
+} from './training-verification'
 
 type HttpResponse = globalThis.Response
 
@@ -79,6 +88,10 @@ type TrainingLeaderboardSettlementReceiptReader = Readonly<{
 }>
 
 type TrainingRunWindowRouteDependencies<Bindings> = Readonly<{
+  createVerificationChallenge?: (
+    env: Bindings,
+    request: TrainingVerificationChallengeCreateRequest,
+  ) => Promise<TrainingVerificationChallengeRecord>
   makeId?: () => string
   makePayoutLedgerStore?: (
     env: Bindings,
@@ -87,6 +100,11 @@ type TrainingRunWindowRouteDependencies<Bindings> = Readonly<{
   nowIso?: () => string
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
 }>
+
+const TrainingRunExecutorTraceCloseoutRequest = S.Struct({
+  closeout: TassadarExecutorTraceCloseoutEvidenceSchema,
+  windowRef: S.Trim.check(S.isNonEmpty(), S.isMaxLength(260)),
+})
 
 type TrainingRunWindowRouteEnv = Readonly<Record<string, unknown>>
 
@@ -372,6 +390,87 @@ const routeAdmitRunContributor = <Bindings extends TrainingRunWindowRouteEnv>(
     })
 
     return noStoreJsonResponse({ admission, trainingRunRef: run.trainingRunRef })
+  })
+
+const routeExecutorTraceCloseout = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* decodeBody(
+      request,
+      TrainingRunExecutorTraceCloseoutRequest,
+    )
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const run = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(trainingRunRef),
+    })
+
+    if (run === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const window = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readWindow(body.windowRef),
+    })
+
+    if (window === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training window not found.',
+      })
+    }
+
+    if (window.trainingRunRef !== run.trainingRunRef) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'conflict',
+        reason: 'Training window does not belong to this run.',
+      })
+    }
+
+    const createVerificationChallenge = dependencies.createVerificationChallenge
+
+    if (createVerificationChallenge === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'storage_error',
+        reason: 'Verification challenge creation is not configured.',
+      })
+    }
+
+    // The builder enforces the distinct-validator-device rule (exact_trace_replay
+    // requires the validator device to differ from the worker Pylon); a violation
+    // surfaces as a 400 validation error.
+    const challengeRequest = yield* Effect.try({
+      catch: error =>
+        new TrainingAuthorityStoreError({
+          kind: 'validation_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        tassadarExecutorTraceVerificationChallengeRequest({
+          closeout: body.closeout,
+          trainingRunRef: run.trainingRunRef,
+          windowRef: window.windowRef,
+        }),
+    })
+    const stored = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => createVerificationChallenge(env, challengeRequest),
+    })
+
+    return noStoreJsonResponse({
+      challenge: publicTrainingVerificationChallengeProjection(stored, nowIso),
+      trainingRunRef: run.trainingRunRef,
+    })
   })
 
 const routeBootstrapGrant = <Bindings extends TrainingRunWindowRouteEnv>(
@@ -1625,6 +1724,24 @@ export const makeTrainingRunWindowRoutes = <
         request,
         env,
         decodeURIComponent(runAdmitMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const executorTraceCloseoutMatch =
+      /^\/api\/training\/runs\/([^/]+)\/executor-trace-closeout$/.exec(
+        url.pathname,
+      )
+
+    if (executorTraceCloseoutMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeExecutorTraceCloseout(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(executorTraceCloseoutMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
