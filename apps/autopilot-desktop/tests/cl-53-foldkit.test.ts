@@ -31,6 +31,7 @@ import {
   modelTrainingBootstrap,
   modelTrainingDashboard,
   modelTrainingEvidenceAdmission,
+  modelTrainingEvidencePacketBuild,
   modelTrainingEvidencePacketSummary,
   modelTrainingOperatorReadiness,
   modelTrainingPromiseGates,
@@ -39,6 +40,7 @@ import {
   ChangedAskTitle,
   ClickedActivateTrainingWindow,
   ClickedAdmitTrainingEvidence,
+  ClickedBuildTrainingEvidencePacket,
   ClickedClaimTrainingLease,
   ClickedPlanTrainingWindow,
   ClickedQueueTrainingCloseout,
@@ -56,6 +58,7 @@ import {
   SelectedSession,
   SettledActivateTrainingWindow,
   SettledAdmitTrainingEvidence,
+  SettledBuildTrainingEvidencePacket,
   SettledClaimTrainingLease,
   SettledPlanTrainingWindow,
   SettledQueueTrainingCloseout,
@@ -650,6 +653,47 @@ describe("update reducer (CL-53)", () => {
       text: "queued · accepted",
       tone: "success",
     })
+    expect(followups).toHaveLength(5)
+  })
+
+  test("training evidence packet build action dispatches and refreshes packet summary", () => {
+    const [pending, commands] = update(
+      initialModel,
+      ClickedBuildTrainingEvidencePacket({
+        trainingRunRef: "training.run.4855",
+      }),
+    )
+    expect(pending.trainingEvidencePacketBuildPending).toBe(true)
+    expect(pending.trainingEvidencePacketBuildStatus.tone).toBe("info")
+    expect(commands).toHaveLength(1)
+
+    const [settled, followups] = update(
+      pending,
+      SettledBuildTrainingEvidencePacket({
+        projection: {
+          ok: false,
+          enabled: true,
+          fetchedAt: "2026-06-14T00:00:00.000Z",
+          sourceUrl: "desktop:training-evidence-packet-build",
+          trainingRunRef: "training.run.4855",
+          inputSource: "env.OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH",
+          packetSource: "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
+          reason: "packet_blocked",
+          message: "wrote evidence packet candidate · 1 blockers",
+          summary: null,
+          blockerRefs: ["training.evidence_packet.requires_two_distinct_pylons"],
+        },
+      }),
+    )
+
+    expect(settled.trainingEvidencePacketBuildPending).toBe(false)
+    expect(settled.trainingEvidencePacketBuildStatus).toEqual({
+      text: "wrote evidence packet candidate · 1 blockers",
+      tone: "info",
+    })
+    expect(modelTrainingEvidencePacketBuild(settled)?.reason).toBe(
+      "packet_blocked",
+    )
     expect(followups).toHaveLength(5)
   })
 

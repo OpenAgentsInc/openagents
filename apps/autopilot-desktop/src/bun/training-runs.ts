@@ -1,7 +1,8 @@
-import { readFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 
 import type {
   TrainingDashboardSummaryResponse,
+  TrainingEvidencePacketBuildResponse,
   TrainingEvidencePacketSummaryResponse,
   TrainingLeaderboardLane,
   TrainingLeaderboardLaneSummary,
@@ -106,6 +107,16 @@ type ReadTrainingEvidencePacketSummaryInput = Readonly<{
   readPacket?: (path: string) => unknown
 }>
 
+type BuildTrainingEvidencePacketInput = Readonly<{
+  enabled: boolean
+  evidencePacketPath: string | null
+  nowIso?: () => string
+  readBundle?: (path: string) => unknown
+  trainingRunRef: string
+  workerReceiptsPath: string | null
+  writePacket?: (path: string, packet: unknown) => void
+}>
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
 
@@ -156,6 +167,9 @@ const trainingPromiseIds = new Set([
 ])
 
 const evidencePacketSource = "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH"
+const workerReceiptsSource = "env.OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH"
+const evidencePacketWriteSource =
+  "env.OPENAGENTS_DESKTOP_TRAINING_EVIDENCE_WRITE_ENABLE"
 
 const normalizeBaseUrl = (baseUrl: string): string => baseUrl.replace(/\/+$/, "")
 
@@ -879,6 +893,369 @@ export function readTrainingEvidencePacketSummary(
     distinctPylonCount: stats.distinctPylonCount,
     blockerRefs,
   }
+}
+
+const unsafeGeneratedPacketRefPattern =
+  /(\/Users\/|\/home\/|api[_-]?key|bearer|checkpoint[-_]?path|invoice|lnbc|lno1|mnemonic|payment[_-]?(hash|preimage)|preimage|private|prompt|secret|token|wallet|weights\.(bin|gguf|safetensors|pt|pth))/i
+
+const buildEvidencePacketResponse = (input: {
+  blockerRefs?: readonly string[]
+  enabled: boolean
+  error?: string
+  fetchedAt: string
+  inputSource: string | null
+  message: string
+  packetSource: string | null
+  reason: TrainingEvidencePacketBuildResponse["reason"]
+  summary?: TrainingEvidencePacketSummaryResponse | null
+  trainingRunRef: string | null
+}): TrainingEvidencePacketBuildResponse => ({
+  ok: input.reason === "written",
+  enabled: input.enabled,
+  fetchedAt: input.fetchedAt,
+  sourceUrl: "desktop:training-evidence-packet-build",
+  trainingRunRef: input.trainingRunRef,
+  inputSource: input.inputSource,
+  packetSource: input.packetSource,
+  reason: input.reason,
+  message: input.message,
+  summary: input.summary ?? null,
+  blockerRefs: input.blockerRefs ?? input.summary?.blockerRefs ?? [],
+  ...(input.error === undefined ? {} : { error: input.error }),
+})
+
+const safePacketRef = (value: unknown): string | null => {
+  const ref = asString(value).trim()
+  return ref !== "" &&
+    publicSafeRefPattern.test(ref) &&
+    !unsafeGeneratedPacketRefPattern.test(ref)
+    ? ref
+    : null
+}
+
+const safePacketRefs = (value: unknown): readonly string[] =>
+  [
+    ...new Set(
+      stringArray(value)
+        .map(safePacketRef)
+        .filter((ref): ref is string => ref !== null),
+    ),
+  ]
+
+const asNumericLossCurve = (
+  value: unknown,
+): readonly { readonly step: number; readonly validationLoss: number }[] =>
+  asArray(value)
+    .filter(isRecord)
+    .flatMap(point => {
+      const step = point.step
+      const validationLoss = point.validationLoss
+      return typeof step === "number" &&
+        Number.isFinite(step) &&
+        typeof validationLoss === "number" &&
+        Number.isFinite(validationLoss)
+        ? [{ step, validationLoss }]
+        : []
+    })
+
+const workerReceiptRecords = (
+  value: unknown,
+): readonly Record<string, unknown>[] => {
+  const record = isRecord(value) ? value : {}
+  const rawReceipts = Array.isArray(record.workerReceipts)
+    ? record.workerReceipts
+    : Array.isArray(record.receipts)
+      ? record.receipts
+      : Array.isArray(value)
+        ? value
+        : isRecord(value)
+          ? [value]
+          : []
+  return rawReceipts.filter(isRecord)
+}
+
+const signatureRecord = (value: unknown): Record<string, unknown> =>
+  isRecord(value) ? value : {}
+
+const generatedPacketFromWorkerReceipts = (input: {
+  bundle: unknown
+  fetchedAt: string
+  trainingRunRef: string
+}): {
+  readonly blockerRefs: readonly string[]
+  readonly packet: Record<string, unknown> | null
+} => {
+  const bundle = isRecord(input.bundle) ? input.bundle : {}
+  const receipts = workerReceiptRecords(input.bundle)
+  const blockerRefs: string[] = []
+
+  if (receipts.length === 0) {
+    blockerRefs.push("training.worker_receipts.empty")
+  }
+
+  const shards = receipts.flatMap((receipt, index) => {
+    const receiptRef = safePacketRef(receipt.receiptRef)
+    const workerRef = safePacketRef(receipt.workerRef)
+    const assignmentRef = safePacketRef(receipt.assignmentRef)
+    const runRef = safePacketRef(receipt.runRef)
+    const artifactRefs = safePacketRefs(receipt.artifactRefs)
+    const checkpointRefs = safePacketRefs(receipt.checkpointRefs)
+    const metricRefs = safePacketRefs(receipt.metricRefs)
+    const proofRefs = safePacketRefs(receipt.proofRefs)
+    const signature = signatureRecord(receipt.signature)
+    const verificationRef = safePacketRef(signature.verificationRef)
+
+    if (receiptRef === null) {
+      blockerRefs.push("training.worker_receipts.receipt_ref_missing")
+    }
+    if (workerRef === null) {
+      blockerRefs.push("training.worker_receipts.worker_ref_missing")
+    }
+    if (receiptRef === null || workerRef === null) return []
+
+    const sourceRefs = [
+      assignmentRef,
+      runRef,
+      ...artifactRefs,
+      ...checkpointRefs,
+      ...metricRefs,
+      ...proofRefs,
+      safePacketRef(signature.signatureRef),
+      safePacketRef(signature.signerRef),
+      verificationRef,
+    ].filter((ref): ref is string => ref !== null)
+
+    return [
+      {
+        dataUnitCount: asNumber(receipt.dataUnitCount, 0),
+        gradientCommitmentRef:
+          proofRefs[0] ??
+          checkpointRefs[0] ??
+          stableRef("gradient.worker_receipt", receiptRef),
+        pylonRef: workerRef,
+        receiptRefs: [receiptRef],
+        shardIndex: index,
+        shardLoss:
+          typeof receipt.shardLoss === "number" && Number.isFinite(receipt.shardLoss)
+            ? receipt.shardLoss
+            : null,
+        sourceRefs,
+        stepIndex: asNumber(receipt.stepIndex, index),
+        verificationRefs: verificationRef === null ? [] : [verificationRef],
+      },
+    ]
+  })
+
+  const allProofRefs = receipts.flatMap(receipt => safePacketRefs(receipt.proofRefs))
+  const allCheckpointRefs = receipts.flatMap(receipt =>
+    safePacketRefs(receipt.checkpointRefs),
+  )
+  const receiptRefs = shards.flatMap(shard => shard.receiptRefs)
+  const sourceRefs = [
+    ...safePacketRefs(bundle.sourceRefs),
+    ...receipts.flatMap(receipt => [
+      safePacketRef(receipt.assignmentRef),
+      safePacketRef(receipt.runRef),
+      ...safePacketRefs(receipt.artifactRefs),
+      ...safePacketRefs(receipt.metricRefs),
+    ]),
+  ].filter((ref): ref is string => ref !== null)
+  const maxValidationLoss =
+    typeof bundle.maxValidationLoss === "number" &&
+    Number.isFinite(bundle.maxValidationLoss)
+      ? bundle.maxValidationLoss
+      : undefined
+  const lossCurve = asNumericLossCurve(bundle.lossCurve)
+
+  if (blockerRefs.length > 0) {
+    return { blockerRefs: [...new Set(blockerRefs)], packet: null }
+  }
+
+  return {
+    blockerRefs: [],
+    packet: {
+      schema: "openagents.training.real_gradient_evidence_packet.v0.1",
+      budgetLabel: asString(bundle.budgetLabel, "worker receipt packet"),
+      budgetRef: safePacketRef(bundle.budgetRef),
+      evalRef: safePacketRef(bundle.evalRef),
+      freivaldsCommitmentRefs: [...new Set(allProofRefs)],
+      generatedAt: input.fetchedAt,
+      gradientCloseoutRefs: [...new Set(allCheckpointRefs)],
+      lossCurve,
+      maxValidationLoss,
+      mergeRef: safePacketRef(bundle.mergeRef),
+      receiptRefs: [...new Set(receiptRefs)],
+      shardContributions: shards,
+      sourceRefs: [...new Set(sourceRefs)],
+      trainingRunRef: input.trainingRunRef,
+    },
+  }
+}
+
+export function buildTrainingEvidencePacket(
+  input: BuildTrainingEvidencePacketInput,
+): TrainingEvidencePacketBuildResponse {
+  const fetchedAt = input.nowIso?.() ?? new Date().toISOString()
+  const trimmedRunRef = input.trainingRunRef.trim()
+
+  if (!input.enabled) {
+    return buildEvidencePacketResponse({
+      blockerRefs: [evidencePacketWriteSource],
+      enabled: false,
+      fetchedAt,
+      inputSource: null,
+      message: "training evidence packet writing disabled",
+      packetSource: null,
+      reason: "disabled",
+      trainingRunRef: trimmedRunRef === "" ? null : trimmedRunRef,
+    })
+  }
+
+  if (
+    trimmedRunRef.length < 3 ||
+    trimmedRunRef.length > 260 ||
+    !publicSafeRefPattern.test(trimmedRunRef)
+  ) {
+    return buildEvidencePacketResponse({
+      blockerRefs: ["training.run_ref.invalid"],
+      enabled: true,
+      fetchedAt,
+      inputSource: null,
+      message: "invalid training run ref",
+      packetSource: null,
+      reason: "invalid_run_ref",
+      trainingRunRef: trimmedRunRef === "" ? null : trimmedRunRef,
+    })
+  }
+
+  const receiptsPath = input.workerReceiptsPath?.trim() ?? ""
+  if (receiptsPath === "") {
+    return buildEvidencePacketResponse({
+      blockerRefs: [workerReceiptsSource],
+      enabled: true,
+      fetchedAt,
+      inputSource: null,
+      message: "training worker receipts path unavailable",
+      packetSource: null,
+      reason: "worker_receipts_path_missing",
+      trainingRunRef: trimmedRunRef,
+    })
+  }
+
+  const packetPath = input.evidencePacketPath?.trim() ?? ""
+  if (packetPath === "") {
+    return buildEvidencePacketResponse({
+      blockerRefs: [evidencePacketSource],
+      enabled: true,
+      fetchedAt,
+      inputSource: workerReceiptsSource,
+      message: "training evidence packet path unavailable",
+      packetSource: null,
+      reason: "packet_path_missing",
+      trainingRunRef: trimmedRunRef,
+    })
+  }
+
+  let bundle: unknown
+  try {
+    bundle =
+      input.readBundle?.(receiptsPath) ??
+      (JSON.parse(readFileSync(receiptsPath, "utf8")) as unknown)
+  } catch {
+    return buildEvidencePacketResponse({
+      blockerRefs: ["training.worker_receipts.read_failed"],
+      enabled: true,
+      error: "training worker receipts read failed",
+      fetchedAt,
+      inputSource: workerReceiptsSource,
+      message: "training worker receipts read failed",
+      packetSource: evidencePacketSource,
+      reason: "worker_receipts_read_failed",
+      trainingRunRef: trimmedRunRef,
+    })
+  }
+
+  if (!isRecord(bundle) && !Array.isArray(bundle)) {
+    return buildEvidencePacketResponse({
+      blockerRefs: ["training.worker_receipts.invalid_json"],
+      enabled: true,
+      error: "training worker receipts must be a JSON object or array",
+      fetchedAt,
+      inputSource: workerReceiptsSource,
+      message: "training worker receipts must be a JSON object or array",
+      packetSource: evidencePacketSource,
+      reason: "worker_receipts_invalid",
+      trainingRunRef: trimmedRunRef,
+    })
+  }
+
+  const generated = generatedPacketFromWorkerReceipts({
+    bundle,
+    fetchedAt,
+    trainingRunRef: trimmedRunRef,
+  })
+
+  if (generated.packet === null) {
+    return buildEvidencePacketResponse({
+      blockerRefs: generated.blockerRefs,
+      enabled: true,
+      fetchedAt,
+      inputSource: workerReceiptsSource,
+      message: "training worker receipts did not contain enough public-safe refs",
+      packetSource: evidencePacketSource,
+      reason: "worker_receipts_invalid",
+      trainingRunRef: trimmedRunRef,
+    })
+  }
+
+  let summary = readTrainingEvidencePacketSummary({
+    evidencePacketPath: packetPath,
+    nowIso: () => fetchedAt,
+    readPacket: () => generated.packet,
+  })
+
+  try {
+    if (input.writePacket !== undefined) {
+      input.writePacket(packetPath, generated.packet)
+    } else {
+      writeFileSync(
+        packetPath,
+        `${JSON.stringify(generated.packet, null, 2)}\n`,
+        "utf8",
+      )
+    }
+  } catch {
+    return buildEvidencePacketResponse({
+      blockerRefs: ["training.evidence_packet.write_failed"],
+      enabled: true,
+      error: "training evidence packet write failed",
+      fetchedAt,
+      inputSource: workerReceiptsSource,
+      message: "training evidence packet write failed",
+      packetSource: evidencePacketSource,
+      reason: "packet_write_failed",
+      summary,
+      trainingRunRef: trimmedRunRef,
+    })
+  }
+
+  summary = {
+    ...summary,
+    fetchedAt,
+  }
+  const blockerCount = summary.blockerRefs.length
+  return buildEvidencePacketResponse({
+    enabled: true,
+    fetchedAt,
+    inputSource: workerReceiptsSource,
+    message: summary.ok
+      ? `wrote evidence packet candidate · ${summary.receiptRefCount} receipts`
+      : `wrote evidence packet candidate · ${blockerCount} blockers`,
+    packetSource: evidencePacketSource,
+    reason: summary.ok ? "written" : "packet_blocked",
+    summary,
+    trainingRunRef: trimmedRunRef,
+  })
 }
 
 const summaryProjection = (value: unknown): TrainingRunSummaryRow | null => {

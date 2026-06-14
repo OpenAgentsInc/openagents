@@ -18,6 +18,7 @@ import {
 import {
   activateTrainingWindow,
   admitTrainingRealGradientEvidence,
+  buildTrainingEvidencePacket,
   claimTrainingWindowLease,
   fetchTrainingDashboard,
   fetchTrainingPromiseGates,
@@ -49,8 +50,12 @@ const trainingLeaseEnabled =
   Bun.env.OPENAGENTS_DESKTOP_TRAINING_LEASE_ENABLE === "1"
 const trainingEvidenceEnabled =
   Bun.env.OPENAGENTS_DESKTOP_TRAINING_EVIDENCE_ENABLE === "1"
+const trainingEvidenceWriteEnabled =
+  Bun.env.OPENAGENTS_DESKTOP_TRAINING_EVIDENCE_WRITE_ENABLE === "1"
 const trainingEvidencePacketPath =
   Bun.env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH ?? null
+const trainingWorkerReceiptsPath =
+  Bun.env.OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH ?? null
 const configuredTrainingPylonRef =
   Bun.env.OPENAGENTS_TRAINING_PYLON_REF ??
   Bun.env.PYLON_REF ??
@@ -208,6 +213,14 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       async listTrainingEvidencePacketSummary() {
         return readTrainingEvidencePacketSummary({
           evidencePacketPath: trainingEvidencePacketPath,
+        })
+      },
+      async buildTrainingEvidencePacket(params) {
+        return buildTrainingEvidencePacket({
+          enabled: trainingEvidenceWriteEnabled,
+          evidencePacketPath: trainingEvidencePacketPath,
+          trainingRunRef: params.trainingRunRef,
+          workerReceiptsPath: trainingWorkerReceiptsPath,
         })
       },
       async planTrainingRunWindow() {

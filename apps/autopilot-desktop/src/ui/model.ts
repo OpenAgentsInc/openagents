@@ -17,6 +17,7 @@ import type {
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
+  TrainingEvidencePacketBuildResponse,
   TrainingEvidencePacketSummaryResponse,
   TrainingOperatorReadinessResponse,
   TrainingPlanResponse,
@@ -163,6 +164,9 @@ export const Model = ts("AutopilotDesktop", {
   trainingBootstrap: S.NullOr(S.Unknown),
   trainingBootstrapStatus: TrainingWindowActionStatus,
   trainingBootstrapPending: S.Boolean,
+  trainingEvidencePacketBuild: S.NullOr(S.Unknown),
+  trainingEvidencePacketBuildStatus: TrainingWindowActionStatus,
+  trainingEvidencePacketBuildPending: S.Boolean,
   trainingEvidenceAdmission: S.NullOr(S.Unknown),
   trainingEvidenceAdmissionStatus: TrainingWindowActionStatus,
   trainingEvidenceAdmissionPending: S.Boolean,
@@ -235,6 +239,11 @@ export const modelTrainingBootstrap = (
 ): TrainingBootstrapGrantResponse | null =>
   model.trainingBootstrap as TrainingBootstrapGrantResponse | null
 
+export const modelTrainingEvidencePacketBuild = (
+  model: Model,
+): TrainingEvidencePacketBuildResponse | null =>
+  model.trainingEvidencePacketBuild as TrainingEvidencePacketBuildResponse | null
+
 export const modelTrainingEvidenceAdmission = (
   model: Model,
 ): TrainingEvidenceAdmissionResponse | null =>
@@ -287,6 +296,9 @@ export const initialModel: Model = Model.make({
   trainingBootstrap: null,
   trainingBootstrapStatus: { text: "", tone: "idle" },
   trainingBootstrapPending: false,
+  trainingEvidencePacketBuild: null,
+  trainingEvidencePacketBuildStatus: { text: "", tone: "idle" },
+  trainingEvidencePacketBuildPending: false,
   trainingEvidenceAdmission: null,
   trainingEvidenceAdmissionStatus: { text: "", tone: "idle" },
   trainingEvidenceAdmissionPending: false,

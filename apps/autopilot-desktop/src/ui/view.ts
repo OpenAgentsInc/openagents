@@ -61,6 +61,7 @@ import {
   ClickedCancelSession,
   ClickedActivateTrainingWindow,
   ClickedAdmitTrainingEvidence,
+  ClickedBuildTrainingEvidencePacket,
   ClickedClaimTrainingLease,
   ClickedCoordinatorToggle,
   ClickedDeploy,
@@ -101,6 +102,7 @@ import {
   modelTrainingBootstrap,
   modelTrainingDashboard,
   modelTrainingEvidenceAdmission,
+  modelTrainingEvidencePacketBuild,
   modelTrainingEvidencePacketSummary,
   modelTrainingLease,
   modelNode,
@@ -910,6 +912,23 @@ const trainingControlSurfaceRows: readonly TrainingControlSurfaceRow[] = [
       "no run selected",
   },
   {
+    action: "Build evidence packet",
+    authority: "Bun env gate + local worker receipts",
+    dispatch: "ClickedBuildTrainingEvidencePacket",
+    route:
+      "OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH -> OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
+    rpc: "buildTrainingEvidencePacket",
+    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
+    statusField: "trainingEvidencePacketBuildStatus",
+    status: model => model.trainingEvidencePacketBuildStatus,
+    pending: model => model.trainingEvidencePacketBuildPending,
+    current: model =>
+      modelTrainingEvidencePacketBuild(model)?.reason ??
+      selectedTrainingSummary(modelTrainingRuns(model))?.run.trainingRunRef ??
+      modelTrainingPlan(model)?.trainingRunRef ??
+      "no run selected",
+  },
+  {
     action: "Admit evidence packet",
     authority: "Bun admin env gate + local evidence packet path",
     dispatch: "ClickedAdmitTrainingEvidence",
@@ -1442,6 +1461,18 @@ const trainingOperatorSignals = (
     state: operatorSignalState(
       model.trainingCloseoutStatus,
       model.trainingCloseoutPending,
+    ),
+  },
+  {
+    detail: operatorSignalDetail(
+      model.trainingEvidencePacketBuildStatus,
+      "idle",
+    ),
+    id: "packet-build",
+    label: "build",
+    state: operatorSignalState(
+      model.trainingEvidencePacketBuildStatus,
+      model.trainingEvidencePacketBuildPending,
     ),
   },
   {
@@ -2052,6 +2083,7 @@ const trainingOperatorFeedPanel = (model: Model): Html => {
   const reconcile = modelTrainingReconcile(model)
   const lease = modelTrainingLease(model)
   const bootstrap = modelTrainingBootstrap(model)
+  const packetBuild = modelTrainingEvidencePacketBuild(model)
   const evidenceAdmission = modelTrainingEvidenceAdmission(model)
 
   const planRef =
@@ -2077,6 +2109,7 @@ const trainingOperatorFeedPanel = (model: Model): Html => {
       : packetSummary.ok
         ? `${packetSummary.receiptRefCount} receipts`
         : `${packetSummary.blockerRefs.length} blockers`
+  const packetBuildRef = packetBuild?.reason ?? "idle"
 
   return h.section([cls("training-panel training-operator-feed-panel")], [
     h.div([cls("training-panel-heading")], [
@@ -2193,6 +2226,14 @@ const trainingOperatorFeedPanel = (model: Model): Html => {
         ),
       ),
       trainingGate(
+        "build packet",
+        `${trainingStatusText(model.trainingEvidencePacketBuildStatus, "idle")} · ${packetBuildRef}`,
+        trainingStatusTone(
+          model.trainingEvidencePacketBuildStatus,
+          model.trainingEvidencePacketBuildPending,
+        ),
+      ),
+      trainingGate(
         "admit evidence",
         `${trainingStatusText(model.trainingEvidenceAdmissionStatus, "idle")} · ${evidenceRef}`,
         trainingStatusTone(
@@ -2246,6 +2287,8 @@ const trainingLaunchPanel = (model: Model): Html => {
   const leaseStatusVisible = model.trainingLeaseStatus.tone !== "idle"
   const bootstrapStatusVisible =
     model.trainingBootstrapStatus.tone !== "idle"
+  const evidencePacketBuildStatusVisible =
+    model.trainingEvidencePacketBuildStatus.tone !== "idle"
   const evidenceAdmissionStatusVisible =
     model.trainingEvidenceAdmissionStatus.tone !== "idle"
   const launchStatusVisible = model.trainingLaunchStatus.tone !== "idle"
@@ -2296,6 +2339,22 @@ const trainingLaunchPanel = (model: Model): Html => {
           windowRef: closeoutWindow,
           leaseRef: lease?.leaseRef ?? null,
           bootstrapGrantRef,
+        }),
+      ),
+    )
+  }
+  const evidenceBuildAttrs: Attribute<Message>[] = [
+    cls("training-action-button training-evidence-build-button secondary"),
+    h.Type("button"),
+    h.Disabled(
+      model.trainingEvidencePacketBuildPending || closeoutRunRef === null,
+    ),
+  ]
+  if (closeoutRunRef !== null) {
+    evidenceBuildAttrs.push(
+      h.OnClick(
+        ClickedBuildTrainingEvidencePacket({
+          trainingRunRef: closeoutRunRef,
         }),
       ),
     )
@@ -2361,7 +2420,7 @@ const trainingLaunchPanel = (model: Model): Html => {
     h.p(
       [cls("training-panel-copy")],
       [
-        "Plan, activate, claim, bootstrap, reconcile, and queue closeout prep through Bun and local Pylon.",
+        "Plan, activate, claim, bootstrap, build evidence packets, admit evidence, reconcile, and queue closeout prep through Bun and local Pylon.",
       ],
     ),
     h.div(
@@ -2423,6 +2482,16 @@ const trainingLaunchPanel = (model: Model): Html => {
               : closeoutRunRef === null
                 ? "No run selected"
                 : "Queue closeout packet",
+          ],
+        ),
+        h.button(
+          evidenceBuildAttrs,
+          [
+            model.trainingEvidencePacketBuildPending
+              ? "Building..."
+              : closeoutRunRef === null
+                ? "No run selected"
+                : "Build evidence packet",
           ],
         ),
         h.button(
@@ -2496,6 +2565,16 @@ const trainingLaunchPanel = (model: Model): Html => {
             ),
           ],
           [model.trainingReconcileStatus.text],
+        )
+      : h.p([cls("training-action-status")], [" "]),
+    evidencePacketBuildStatusVisible
+      ? h.p(
+          [
+            cls(
+              `training-action-status training-${model.trainingEvidencePacketBuildStatus.tone}`,
+            ),
+          ],
+          [model.trainingEvidencePacketBuildStatus.text],
         )
       : h.p([cls("training-action-status")], [" "]),
     evidenceAdmissionStatusVisible

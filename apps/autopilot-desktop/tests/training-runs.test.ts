@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   activateTrainingWindow,
   admitTrainingRealGradientEvidence,
+  buildTrainingEvidencePacket,
   claimTrainingWindowLease,
   fetchTrainingDashboard,
   fetchTrainingPromiseGates,
@@ -133,6 +134,53 @@ const sampleEvidencePacket = {
     },
   ],
   sourceRefs: ["source.desktop.training.a1"],
+}
+
+const sampleWorkerReceiptsBundle = {
+  budgetLabel: "desktop tiny loss budget",
+  budgetRef: "budget.desktop.training.a1",
+  evalRef: "eval.desktop.training.a1",
+  lossCurve: [
+    { step: 0, validationLoss: 4.2 },
+    { step: 1, validationLoss: 3.1 },
+  ],
+  maxValidationLoss: 4,
+  mergeRef: "merge.desktop.training.a1",
+  sourceRefs: ["source.desktop.training.worker_receipts"],
+  workerReceipts: [
+    {
+      schema: "openagents.psionic.training_worker_receipt.v0.3",
+      receiptRef: "receipt.psionic.training_worker.1",
+      assignmentRef: "assignment.public.psionic_training.1",
+      workerRef: "pylon.training.1",
+      runRef: "run.cs336.a1.real_gradient.demo",
+      artifactRefs: ["artifact.psionic.training.output.1"],
+      checkpointRefs: ["checkpoint.psionic.training.1"],
+      metricRefs: ["metric.psionic.training.loss_curve.1"],
+      proofRefs: ["proof.psionic.training.freivalds.1"],
+      signature: {
+        signatureRef: "signature.psionic.worker_receipt.1",
+        signerRef: "signer.psionic.release.authority.v1",
+        verificationRef: "verification.psionic.worker_receipt.1",
+      },
+    },
+    {
+      schema: "openagents.psionic.training_worker_receipt.v0.3",
+      receiptRef: "receipt.psionic.training_worker.2",
+      assignmentRef: "assignment.public.psionic_training.2",
+      workerRef: "pylon.training.2",
+      runRef: "run.cs336.a1.real_gradient.demo",
+      artifactRefs: ["artifact.psionic.training.output.2"],
+      checkpointRefs: ["checkpoint.psionic.training.2"],
+      metricRefs: ["metric.psionic.training.loss_curve.2"],
+      proofRefs: ["proof.psionic.training.freivalds.2"],
+      signature: {
+        signatureRef: "signature.psionic.worker_receipt.2",
+        signerRef: "signer.psionic.release.authority.v1",
+        verificationRef: "verification.psionic.worker_receipt.2",
+      },
+    },
+  ],
 }
 
 describe("fetchTrainingRuns", () => {
@@ -879,6 +927,83 @@ describe("requestTrainingBootstrapGrant", () => {
 })
 
 describe("admitTrainingRealGradientEvidence", () => {
+  test("does not build an evidence packet when packet writing is disabled", () => {
+    const result = buildTrainingEvidencePacket({
+      enabled: false,
+      evidencePacketPath: "/tmp/evidence.json",
+      readBundle: () => {
+        throw new Error("should not read receipts")
+      },
+      trainingRunRef: "training.run.4855",
+      workerReceiptsPath: "/tmp/worker-receipts.json",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("disabled")
+    expect(result.blockerRefs).toContain(
+      "env.OPENAGENTS_DESKTOP_TRAINING_EVIDENCE_WRITE_ENABLE",
+    )
+  })
+
+  test("builds an evidence packet candidate from worker receipt refs", () => {
+    const writes: Array<{ packet: unknown; path: string }> = []
+    const result = buildTrainingEvidencePacket({
+      enabled: true,
+      evidencePacketPath: "/tmp/training-evidence.json",
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      readBundle: () => sampleWorkerReceiptsBundle,
+      trainingRunRef: sampleRun.trainingRunRef,
+      workerReceiptsPath: "/tmp/worker-receipts.json",
+      writePacket: (path, packet) => {
+        writes.push({ path, packet })
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.reason).toBe("written")
+    expect(result.inputSource).toBe(
+      "env.OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH",
+    )
+    expect(result.packetSource).toBe(
+      "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
+    )
+    expect(result.summary?.receiptRefCount).toBe(2)
+    expect(result.summary?.distinctPylonCount).toBe(2)
+    expect(result.summary?.freivaldsCommitmentRefCount).toBe(2)
+    expect(result.summary?.gradientCloseoutRefCount).toBe(2)
+    expect(writes).toHaveLength(1)
+    expect(JSON.stringify(writes[0]?.packet)).not.toContain("/tmp/")
+    expect(JSON.stringify(result)).not.toContain("/tmp/")
+  })
+
+  test("returns packet blockers for incomplete worker receipt bundles", () => {
+    const writes: unknown[] = []
+    const result = buildTrainingEvidencePacket({
+      enabled: true,
+      evidencePacketPath: "/tmp/training-evidence.json",
+      readBundle: () => ({
+        ...sampleWorkerReceiptsBundle,
+        budgetRef: null,
+        workerReceipts: [sampleWorkerReceiptsBundle.workerReceipts[0]],
+      }),
+      trainingRunRef: sampleRun.trainingRunRef,
+      workerReceiptsPath: "/tmp/worker-receipts.json",
+      writePacket: (_path, packet) => {
+        writes.push(packet)
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("packet_blocked")
+    expect(result.summary?.blockerRefs).toContain(
+      "training.evidence_packet.budget_ref_missing",
+    )
+    expect(result.summary?.blockerRefs).toContain(
+      "training.evidence_packet.requires_two_distinct_pylons",
+    )
+    expect(writes).toHaveLength(1)
+  })
+
   test("summarizes missing evidence packet configuration without reading", () => {
     const result = readTrainingEvidencePacketSummary({
       evidencePacketPath: null,

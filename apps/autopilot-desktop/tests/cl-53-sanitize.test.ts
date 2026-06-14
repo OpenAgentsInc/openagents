@@ -251,6 +251,12 @@ describe("CL-53 sanitizeTree", () => {
     })
     expect(scene?.data?.props?.visualization?.operatorSignals).toContainEqual({
       detail: "idle",
+      id: "packet-build",
+      label: "build",
+      state: "idle",
+    })
+    expect(scene?.data?.props?.visualization?.operatorSignals).toContainEqual({
+      detail: "idle",
       id: "admit",
       label: "admit",
       state: "idle",
@@ -509,6 +515,31 @@ describe("CL-53 sanitizeTree", () => {
       trainingRuns: liveTrainingProjection,
     })
     expect(treeContainsClass(document.body, "training-closeout-button")).toBe(true)
+  })
+
+  test("training pane includes the evidence packet build action", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: liveTrainingProjection,
+      trainingEvidencePacketBuildStatus: {
+        text: "wrote evidence packet candidate · 1 blockers",
+        tone: "info",
+      },
+    })
+    expect(treeContainsClass(document.body, "training-evidence-build-button")).toBe(
+      true,
+    )
+    expect(
+      treeContainsText(document.body, "ClickedBuildTrainingEvidencePacket"),
+    ).toBe(true)
+    expect(
+      treeContainsText(
+        document.body,
+        "OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH",
+      ),
+    ).toBe(true)
+    expect(treeContainsText(document.body, "/Users/")).toBe(false)
   })
 
   test("training pane includes the real-gradient evidence admission action", () => {

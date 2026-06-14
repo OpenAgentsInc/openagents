@@ -100,6 +100,14 @@ export const SettledRequestTrainingBootstrap = m(
   "SettledRequestTrainingBootstrap",
   { projection: S.Unknown },
 )
+export const ClickedBuildTrainingEvidencePacket = m(
+  "ClickedBuildTrainingEvidencePacket",
+  { trainingRunRef: S.String },
+)
+export const SettledBuildTrainingEvidencePacket = m(
+  "SettledBuildTrainingEvidencePacket",
+  { projection: S.Unknown },
+)
 export const ClickedAdmitTrainingEvidence = m("ClickedAdmitTrainingEvidence", {
   trainingRunRef: S.String,
 })
@@ -174,6 +182,8 @@ export const Message = S.Union([
   SettledClaimTrainingLease,
   ClickedRequestTrainingBootstrap,
   SettledRequestTrainingBootstrap,
+  ClickedBuildTrainingEvidencePacket,
+  SettledBuildTrainingEvidencePacket,
   ClickedAdmitTrainingEvidence,
   SettledAdmitTrainingEvidence,
   ClickedQueueTrainingLaunch,

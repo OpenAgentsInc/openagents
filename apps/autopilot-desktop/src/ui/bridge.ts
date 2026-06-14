@@ -19,6 +19,7 @@ import type {
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
+  TrainingEvidencePacketBuildResponse,
   TrainingEvidencePacketSummaryResponse,
   TrainingOperatorReadinessResponse,
   TrainingPlanResponse,
@@ -52,6 +53,9 @@ export type DesktopRequests = {
   listTrainingEvidencePacketSummary(
     p: Record<string, never>,
   ): Promise<TrainingEvidencePacketSummaryResponse>
+  buildTrainingEvidencePacket(p: {
+    trainingRunRef: string
+  }): Promise<TrainingEvidencePacketBuildResponse>
   planTrainingRunWindow(
     p: Record<string, never>,
   ): Promise<TrainingPlanResponse>

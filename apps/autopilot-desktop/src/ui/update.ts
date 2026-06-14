@@ -12,6 +12,7 @@ import { Command } from "foldkit"
 import {
   ActivateTrainingWindow,
   AdmitTrainingRealGradientEvidence,
+  BuildTrainingEvidencePacket,
   CancelSession,
   ClaimTrainingWindowLease,
   DeployCloud,
@@ -37,6 +38,7 @@ import type {
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
+  TrainingEvidencePacketBuildResponse,
   TrainingEvidencePacketSummaryResponse,
   TrainingOperatorReadinessResponse,
   TrainingPlanResponse,
@@ -567,6 +569,57 @@ export const update = (model: Model, message: Message): Result => {
         trainingBootstrapShouldRefresh(projection)
           ? loadTrainingProjectionCommands()
           : noCommands,
+      ]
+    }
+    case "ClickedBuildTrainingEvidencePacket":
+      if (message.trainingRunRef.trim() === "") {
+        return [
+          Model.make({
+            ...model,
+            trainingEvidencePacketBuildStatus: {
+              text: "no training run selected",
+              tone: "error",
+            },
+          }),
+          noCommands,
+        ]
+      }
+      return [
+        Model.make({
+          ...model,
+          trainingEvidencePacketBuildPending: true,
+          trainingEvidencePacketBuildStatus: {
+            text: `building evidence packet for ${message.trainingRunRef}...`,
+            tone: "info",
+          },
+        }),
+        [
+          BuildTrainingEvidencePacket({
+            trainingRunRef: message.trainingRunRef,
+          }),
+        ],
+      ]
+    case "SettledBuildTrainingEvidencePacket": {
+      const projection =
+        message.projection as TrainingEvidencePacketBuildResponse
+      const infoReason =
+        projection.reason === "disabled" ||
+        projection.reason === "worker_receipts_path_missing" ||
+        projection.reason === "packet_path_missing" ||
+        projection.reason === "packet_blocked"
+      const shouldRefresh =
+        projection.reason === "written" || projection.reason === "packet_blocked"
+      return [
+        Model.make({
+          ...model,
+          trainingEvidencePacketBuild: projection,
+          trainingEvidencePacketBuildPending: false,
+          trainingEvidencePacketBuildStatus: {
+            text: projection.message,
+            tone: projection.ok ? "success" : infoReason ? "info" : "error",
+          },
+        }),
+        shouldRefresh ? loadTrainingProjectionCommands() : noCommands,
       ]
     }
     case "ClickedAdmitTrainingEvidence":

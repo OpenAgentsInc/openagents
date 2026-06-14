@@ -20,6 +20,7 @@ import {
   SettledCancelSession,
   SettledActivateTrainingWindow,
   SettledAdmitTrainingEvidence,
+  SettledBuildTrainingEvidencePacket,
   SettledClaimTrainingLease,
   SettledCoordinatorToggle,
   SettledPlanTrainingWindow,
@@ -172,6 +173,24 @@ const emptyTrainingEvidenceAdmissionProjection = (
   receiptRefCount: 0,
   shardContributionCount: 0,
   distinctPylonCount: 0,
+  error,
+})
+
+const emptyTrainingEvidencePacketBuildProjection = (
+  trainingRunRef: string,
+  error: string,
+) => ({
+  ok: false,
+  enabled: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:training-evidence-packet-build",
+  trainingRunRef,
+  inputSource: null,
+  packetSource: null,
+  reason: "packet_write_failed",
+  message: `training evidence packet build failed: ${error}`,
+  summary: null,
+  blockerRefs: ["desktop.training.evidence_packet_build_request_failed"],
   error,
 })
 
@@ -503,6 +522,30 @@ export const AdmitTrainingRealGradientEvidence = Command.define(
       Effect.succeed(
         SettledAdmitTrainingEvidence({
           projection: emptyTrainingEvidenceAdmissionProjection(
+            trainingRunRef,
+            errorText(error),
+          ),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const BuildTrainingEvidencePacket = Command.define(
+  "BuildTrainingEvidencePacket",
+  { trainingRunRef: S.String },
+  SettledBuildTrainingEvidencePacket,
+)(({ trainingRunRef }) =>
+  Effect.tryPromise(() =>
+    getRequest().buildTrainingEvidencePacket({ trainingRunRef }),
+  ).pipe(
+    Effect.map((projection) =>
+      SettledBuildTrainingEvidencePacket({ projection }),
+    ),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledBuildTrainingEvidencePacket({
+          projection: emptyTrainingEvidencePacketBuildProjection(
             trainingRunRef,
             errorText(error),
           ),
