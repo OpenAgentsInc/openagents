@@ -103,9 +103,10 @@ Tassadar run a stranger can join self-serve and earn from.**
 The Tassadar run launch is real — not just copy — when all of these are publicly
 verifiable:
 
-1. **The Tassadar run is RUNNING.** A public run page reports a live state (not
-   `planned`), with a stable `trainingRunRef` for the Tassadar run, a published
-   manifest, and a fresh `generatedAt` / staleness contract.
+1. **The Tassadar run is RUNNING.** ✅ **met (#5006)** — the public run page
+   reports `state: active` (not `planned`), with the stable `trainingRunRef`
+   `run.tassadar.executor.20260615`, a published manifest, and a fresh
+   `generatedAt` / `live_at_read` staleness contract.
 2. **A non-owner joined self-serve.** Someone who is not the owner installed
    **Autopilot Desktop**, brought a node online, declared the executor capability,
    was admitted to the Tassadar run, and was dispatched real executor-trace work —
@@ -143,11 +144,18 @@ Green / proven:
   over loopback; operator-staged install-to-bitcoin settled a real 21-sat payout
   (yellow).
 
-Red / the gap (this is the critical path):
+Shipped since this plan was written:
 
-- **No public Tassadar run** with a `trainingRunRef`, live state, manifest, or
-  status URL. (The only live run row is the bounded CS336 A1 demo, still reporting
-  `planned`.)
+- ✅ **Step A — run authority + manifest is live** (#5006, deployed). The public
+  Tassadar run `run.tassadar.executor.20260615` reports `state: active` (not
+  `planned`) with its launch manifest (`workloadFamily: executor-trace`,
+  `verifierPolicy: exact_trace_replay`, `paymentMode: operator_approved_small_sats`,
+  spend cap, status URL, abort rule), a `live_at_read` staleness contract, and
+  typed blockers; a run-level state-transition route now moves runs off `planned`
+  without D1 patches. No promise flipped green.
+
+Red / the gap (the rest of the critical path):
+
 - **No self-serve contributor path** — the PoC and loop were owner-driven; the
   fleet is thin (~4 nodes online / 51 registered, mostly rc1) and the loop is
   currently dispatch-failing for lack of eligible online devices. Autopilot
@@ -169,22 +177,22 @@ Red / the gap (this is the critical path):
 Each step: **owner lane** · **done-when** · **promise it moves**. A→D is the
 spine; E makes it honest; F→G make it usable and public.
 
-### A. Tassadar run authority + manifest · worker-api + product
-- Create the **Tassadar run** (its own `trainingRunRef`, e.g.
-  `run.tassadar.executor.20260615`) and finish the **run state-transition route +
-  projection** so it can be `active` (not `planned`) without D1 patches. Fields:
-  runRef, promiseRef, state, admission rule, workload family (executor-trace),
-  verifier policy (`exact_trace_replay`), artifact/digest refs, payment mode,
-  settlement state, `generatedAt` + staleness, typed blockers.
-- Publish the **Monday Launch Manifest** (gap audit §3): runRef, objective ("grow
-  the Tassadar verified-trace corpus via paid executor-trace work"), workload
-  scope, max participants + admission policy, **minimum useful work**, validator
-  policy, **payout policy + spend cap**, live status URL, abort/stale rules,
-  affected promise IDs. Public-safe.
-- **Done when:** `GET /api/training/runs/run.tassadar.executor.20260615` returns a
-  live state + manifest + staleness contract.
-- **Moves:** `training.monday_decentralized_training_launch.v1` (red → eligible
-  once D lands).
+### A. Tassadar run authority + manifest · worker-api + product — ✅ DONE (#5006)
+- Shipped + deployed + verified live: the **Tassadar run**
+  `run.tassadar.executor.20260615` exists with a **run-level state-transition
+  route** (`POST /api/training/runs/{ref}/(activate|seal|reconcile)`) that moves
+  runs `planned → active → sealed → reconciled` without D1 patches, a public-safe
+  **launch manifest** (runRef, promiseRef, state, admission rule, workload family
+  `executor-trace`, verifier policy `exact_trace_replay`, payment mode, settlement
+  state, spend cap, status URL, abort rule, blockers), and a run projection
+  carrying `generatedAt` + a `live_at_read` staleness contract + typed blockers
+  (including the planned-with-reconciled-windows caveat).
+- **Done (verified):** `GET /api/training/runs/run.tassadar.executor.20260615`
+  returns `state: active` + manifest + staleness contract.
+- **Moves:** `training.monday_decentralized_training_launch.v1` stays **red** until
+  D lands (no promise flipped green).
+- **Next:** Step B below — make a non-owner contributor able to join and be
+  dispatched real executor-trace work from this run.
 
 ### B. Self-serve executor-capability admission + dispatch · pylon + worker-api
 - A fresh contributor Pylon declares the **executor-trace capability**, the run
@@ -262,7 +270,7 @@ one thing to hold.
 
 Run before announcing that contributors are earning:
 
-- [ ] Tassadar run page: live state + manifest + staleness (A).
+- [x] Tassadar run page: live state + manifest + staleness (A). ✅ #5006
 - [ ] ≥1 **non-owner** Pylon admitted + dispatched executor work self-serve (B).
 - [ ] Public `exact_trace_replay` `Verified` verdict for that contributor (C).
 - [ ] That contributor holds a real settled-sats payout + public receipt (D).
