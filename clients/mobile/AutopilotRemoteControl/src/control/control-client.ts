@@ -91,6 +91,28 @@ export async function fetchSessionsViaBridge(bridge: BridgeSession): Promise<Ses
   return bridge.transport.list()
 }
 
+// List sessions over the capability-scoped bridge, projected into the same
+// ControlSessionRow shape the screens consume (CL-14 secure read path). This is
+// the bridge-native session LIST: it reads over the scoped credential with no
+// long-lived dev token on the wire. SessionSummary does not carry the
+// artifact/result/error refs (those are detail-level), so they project to null
+// here — the session-detail screen fetches the artifact separately.
+export async function fetchSessionRowsViaBridge(bridge: BridgeSession): Promise<ControlSessionRow[]> {
+  const summaries = await fetchSessionsViaBridge(bridge)
+  return summaries.map((s) => ({
+    sessionRef: s.sessionRef,
+    adapter: String(s.adapter),
+    state: String(s.state),
+    lastProgressRef: s.lastProgressRef ?? "none",
+    artifactRef: null,
+    resultRef: null,
+    errorClass: null,
+    latestActivity: s.latestActivity ?? "",
+    parentRef: s.parentRef ?? null,
+    agentKind: s.agentKind ?? null,
+  }))
+}
+
 // Stream a session's events over the bridge (#5000 session.history). Same row
 // shape as the dev-token fetchSessionEvents; the node returns its session-events
 // projection (recentEvents) over the capability-scoped bridge, so the read-only

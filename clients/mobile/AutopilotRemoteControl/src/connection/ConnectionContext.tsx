@@ -39,6 +39,7 @@ import {
   fetchSessionArtifact as fetchSessionArtifactCall,
   fetchSessionEvents as fetchSessionEventsCall,
   fetchSessionEventsViaBridge,
+  fetchSessionRowsViaBridge,
   fetchSessions,
   fetchWalletStatus,
   resolveApproval as resolveApprovalCall,
@@ -124,6 +125,22 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
 
   const poll = useCallback(async (c: ConnectInfo) => {
     try {
+      // Prefer the bridge-native session.list over the capability-scoped
+      // credential (#5001) so the session list polls with no long-lived dev
+      // token on the wire; fall back to the dev-token /command path when no
+      // bridge credential is established yet or the bridge read fails. Matches
+      // the bridge-prefer pattern used by cancel/events/decision dispatch.
+      const session = bridge.current
+      if (session !== null) {
+        try {
+          setSessions(await fetchSessionRowsViaBridge(session))
+          setStatus("connected")
+          setError(null)
+          return
+        } catch {
+          // fall through to dev-token path
+        }
+      }
       setSessions(await fetchSessions(c))
       setStatus("connected")
       setError(null)
