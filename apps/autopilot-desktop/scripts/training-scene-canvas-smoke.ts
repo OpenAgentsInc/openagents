@@ -1,11 +1,35 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { join } from "node:path"
 import { inflateSync } from "node:zlib"
 import net from "node:net"
 
-const chromePath =
-  process.env.CHROME_PATH ??
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+const chromeCandidates = [
+  process.env.CHROME_PATH,
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/opt/google/chrome/chrome",
+].filter((candidate): candidate is string => candidate !== undefined)
+
+const resolveChromePath = (): string => {
+  const chromePath = chromeCandidates.find(candidate => existsSync(candidate))
+  if (chromePath !== undefined) return chromePath
+
+  throw new Error(
+    "Chrome executable not found. Set CHROME_PATH to a Chrome, Chromium, or Edge binary before running smoke:training-scene.",
+  )
+}
 
 const wait = (ms: number): Promise<void> =>
   new Promise(resolve => setTimeout(resolve, ms))
@@ -509,7 +533,7 @@ const main = async (): Promise<void> => {
     const smokeUrl = `http://127.0.0.1:${server.port}/`
     chrome = Bun.spawn({
       cmd: [
-        chromePath,
+        resolveChromePath(),
         "--headless=new",
         "--no-first-run",
         "--no-default-browser-check",

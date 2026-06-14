@@ -9,6 +9,25 @@ The UI is intended to reuse the same Effect and Foldkit stack as
 `apps/openagents.com`, with typed bun<->webview RPC as the boundary between
 credentialed local control and public-safe projections.
 
+## Training Pane Verification
+
+Run the focused Training cockpit gate from the repo root with:
+
+```sh
+bun run verify:autopilot-desktop:training
+```
+
+or inside this app with:
+
+```sh
+bun run verify:training
+```
+
+That command runs the Foldkit reducer/view tests, CSS build, browser and Bun
+bundle checks, and the Chrome-backed `oa-training-run` canvas-pixel smoke. The
+smoke auto-detects common Chrome, Chromium, and Edge install paths; set
+`CHROME_PATH=/path/to/chrome` if the browser binary is somewhere else.
+
 ## macOS Signing And Notarization
 
 Build the app with:

@@ -8,6 +8,7 @@
     "build:css": "bunx @tailwindcss/cli -i src/ui/styles.css -o src/ui/styles.out.css",
     "build": "bun run build:css && electrobun build",
     "smoke:training-scene": "bun scripts/training-scene-canvas-smoke.ts",
+    "verify:training": "bun test tests/cl-53-foldkit.test.ts tests/cl-53-sanitize.test.ts && bun run build:css && bun build src/ui/main.ts --outdir /tmp/autopilot-desktop-ui-build --target browser && bun build src/bun/index.ts --outdir /tmp/autopilot-desktop-bun-build --target bun && bun run smoke:training-scene",
     "test": "bun test",
     "notarize:macos": "bash scripts/notarize-macos.sh"
   },

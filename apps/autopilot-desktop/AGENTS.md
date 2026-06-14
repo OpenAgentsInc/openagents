@@ -45,4 +45,9 @@ the `Runtime.makeProgram` + `view()` pattern).
   any pure view-model helpers. The repo's desktop `tsc` config carries
   pre-existing nodenext type-resolution noise against the protocol package; rely
   on `bun test` + a `bun build` bundle check, not a clean `tsc`.
+- For Training pane changes, run `bun run verify:training` in
+  `apps/autopilot-desktop` (or `bun run verify:autopilot-desktop:training` from
+  the repo root). It runs the focused Foldkit tests, CSS/build bundle checks,
+  and the Chrome-backed `oa-training-run` canvas-pixel smoke. Set `CHROME_PATH`
+  if Chrome, Chromium, or Edge is not installed in a common path.
 - `electrobun dev` runs the app; `electrobun build` produces the distributable.

@@ -35,6 +35,7 @@
     "deploy:nostr-relay": "bun run --cwd apps/nostr-relay deploy",
     "smoke:nostr-relay": "bun run --cwd apps/nostr-relay smoke",
     "test": "bun run test:forum && bun run test:pylon && bun run test:probe && bun run test:nip90",
+    "verify:autopilot-desktop:training": "bun run --cwd apps/autopilot-desktop verify:training",
     "test:openagents.com": "bun run --cwd apps/openagents.com test",
     "test:forum": "bun run --cwd apps/forum test",
     "test:pylon": "bun run --cwd apps/pylon test",
