@@ -7,6 +7,8 @@
 import {
   pairBridge,
   createBridgeTransport,
+  decodeBootstrapPayload,
+  resolveBaseUrls,
   type BridgeCredential,
   type Capability,
   type ProjectionLevel,
@@ -68,8 +70,20 @@ export async function connectBridge(
   } catch {
     return null
   }
+  return pairBridgeWithBootstrap(conn.baseUrl, boot, opts)
+}
+
+// Shared pairing tail: exchange an already-minted single-use bootstrap for a
+// scoped credential and return a transport bound to it. Used by both the
+// dev-token mint path (connectBridge) and the dev-token-free external-bootstrap
+// path (connectBridgeWithBootstrap).
+async function pairBridgeWithBootstrap(
+  baseUrl: string,
+  boot: { bootstrapId: string; secret: string },
+  opts: { capabilities?: Capability[]; projectionLevel?: ProjectionLevel; clientId?: string },
+): Promise<BridgeSession | null> {
   const pair = await pairBridge({
-    baseUrl: conn.baseUrl,
+    baseUrl,
     bootstrapId: boot.bootstrapId,
     secret: boot.secret,
     clientId: opts.clientId ?? "mobile",
@@ -83,7 +97,35 @@ export async function connectBridge(
     jti: pair.claims.jti,
     capabilityRef: opts.capabilities?.[0] ?? "observe_public",
   }
-  return { transport: createBridgeTransport({ baseUrl: conn.baseUrl, credential }), credential }
+  return { transport: createBridgeTransport({ baseUrl, credential }), credential }
+}
+
+// Dev-token-FREE pairing: pair onto the bridge using an externally supplied
+// single-use bootstrap (decoded from a QR/pasted pairing code or URI the node
+// operator displays) instead of minting one over the dev token. Accepts the
+// three bootstrap encodings the node renders: an `autopilot://pair?...` URI, the
+// rendered text block, or a raw `bootstrapId:secret` code. Returns the paired
+// BridgeSession plus the resolved baseUrl (so the caller can drive reads without
+// ever holding a long-lived dev token), or null if the code is undecodable / no
+// reachable address / the exchange is rejected.
+export async function connectBridgeWithBootstrap(
+  qrOrCode: string,
+  opts: { capabilities?: Capability[]; projectionLevel?: ProjectionLevel; clientId?: string } = {},
+): Promise<{ session: BridgeSession; baseUrl: string } | null> {
+  let payload: ReturnType<typeof decodeBootstrapPayload>
+  try {
+    payload = decodeBootstrapPayload(qrOrCode.trim())
+  } catch {
+    return null
+  }
+  const baseUrl = resolveBaseUrls(payload.addresses)[0]
+  if (!baseUrl) return null
+  const session = await pairBridgeWithBootstrap(
+    baseUrl,
+    { bootstrapId: payload.bootstrapId, secret: payload.secret },
+    opts,
+  )
+  return session ? { session, baseUrl } : null
 }
 
 // List sessions over the bridge transport (CL-14 secure read path).
