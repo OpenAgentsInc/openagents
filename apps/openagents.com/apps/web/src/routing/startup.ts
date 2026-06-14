@@ -87,6 +87,7 @@ export const startupRouteForLoggedOut = (
       'ForumReceipt',
       'SiteCheckoutDemo',
       'SiteCheckoutDemoReturn',
+      'ClientsPreview',
       'Blog',
       'BlogPost',
       'PublicAgent',
@@ -148,6 +149,7 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
       'ForumReceipt',
       'SiteCheckoutDemo',
       'SiteCheckoutDemoReturn',
+      'ClientsPreview',
       'Blog',
       'BlogPost',
       route =>
@@ -224,6 +226,7 @@ const startupRouteForCompleteOnboarding = (
       'ForumReceipt',
       'SiteCheckoutDemo',
       'SiteCheckoutDemoReturn',
+      'ClientsPreview',
       'Blog',
       'BlogPost',
       'Admin',

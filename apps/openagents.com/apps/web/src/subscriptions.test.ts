@@ -14,6 +14,7 @@ import {
   ChatRoute,
   DashboardRoute,
   DemoOrderRoute,
+  DemoRoute,
   TeamChatRoute,
   TeamFileRoute,
   TeamFilesRoute,
@@ -387,6 +388,24 @@ describe('workspace sync subscriptions', () => {
 })
 
 describe('demo keyboard subscriptions', () => {
+  test('does not install playback controls for the fullscreen training demo', () => {
+    const demo = Demo.init(DemoRoute())
+
+    expect(demoKeyboardDependenciesForModel(demo)).toEqual({
+      isActive: false,
+      key: '',
+    })
+    expect(demoPlaybackDependenciesForModel(demo)).toEqual({
+      cursorMs: 0,
+      isActive: false,
+      key: '',
+    })
+    expect(demoClockDependenciesForModel(demo)).toEqual({
+      isActive: false,
+      key: '',
+    })
+  })
+
   test('listens for spacebar while demo playback can be toggled', () => {
     const demo = Demo.init(DemoOrderRoute())
 

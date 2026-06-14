@@ -121,13 +121,16 @@ describe('auth bootstrap flags', () => {
   })
 
   test('does not request the auth session on demo routes', async () => {
-    window.history.replaceState({}, '', '/demo')
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    for (const path of ['/demo', '/demo2']) {
+      window.history.replaceState({}, '', path)
+      const fetchSpy = vi.spyOn(globalThis, 'fetch')
 
-    const loadedFlags = await Effect.runPromise(flags)
+      const loadedFlags = await Effect.runPromise(flags)
 
-    expect(loadedFlags.maybeAuth).toEqual(Option.none())
-    expect(fetchSpy).not.toHaveBeenCalled()
+      expect(loadedFlags.maybeAuth).toEqual(Option.none())
+      expect(fetchSpy).not.toHaveBeenCalled()
+      vi.restoreAllMocks()
+    }
   })
 
   test('requests the auth session on application routes', async () => {
@@ -156,10 +159,27 @@ describe('authenticated startup routing', () => {
 
     expect(model).toMatchObject({
       _tag: 'Demo',
+      mode: 'training',
+      playback: 'complete',
+      routeKey: 'demo:training-fullscreen',
+    })
+    expect(commands).toHaveLength(0)
+  })
+
+  test('opens workroom playback at demo2 without an auth session', () => {
+    const [model, commands] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/demo2'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'Demo',
       loggedIn: {
         route: { _tag: 'TeamProjectChat' },
       },
+      mode: 'workroom',
       playback: 'playing',
+      routeKey: 'demo:pylon-release',
     })
     expect(commands).toHaveLength(0)
   })
@@ -167,7 +187,7 @@ describe('authenticated startup routing', () => {
   test('opens customer order demo without an auth session', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.none() }),
-      appUrl('/demo/order'),
+      appUrl('/demo2/order'),
     )
 
     expect(model).toMatchObject({
@@ -184,7 +204,7 @@ describe('authenticated startup routing', () => {
   test('opens demo without using the authenticated product startup gate', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.some(authWithProject) }),
-      appUrl('/demo/t/pylon-release-demo'),
+      appUrl('/demo2/t/pylon-release-demo'),
     )
 
     expect(model).toMatchObject({

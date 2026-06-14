@@ -1,4 +1,10 @@
-export { Model, init, loggedInRouteForDemoRoute } from './model'
+export {
+  Model,
+  demoModeForRoute,
+  init,
+  isDemoAppRoute,
+  loggedInRouteForDemoRoute,
+} from './model'
 export { Message, PressedDemoSpacebar, TickedDemoPlayback } from './message'
 export { demoPlaybackStream } from './playback'
 export { update } from './update'

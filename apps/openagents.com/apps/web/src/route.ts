@@ -67,6 +67,18 @@ export const DemoTeamFileRoute = r('DemoTeamFile', {
   teamRef: S.String,
   fileId: S.String,
 })
+export const Demo2Route = r('Demo2')
+export const Demo2OrderRoute = r('Demo2Order')
+export const Demo2ThreadRoute = r('Demo2Thread', { threadId: S.String })
+export const Demo2TeamProjectChatRoute = r('Demo2TeamProjectChat', {
+  projectRef: S.String,
+  teamRef: S.String,
+})
+export const Demo2TeamFilesRoute = r('Demo2TeamFiles', { teamRef: S.String })
+export const Demo2TeamFileRoute = r('Demo2TeamFile', {
+  teamRef: S.String,
+  fileId: S.String,
+})
 export const NotFoundRoute = r('NotFound', { path: S.String })
 
 export type HomeRoute = typeof HomeRoute.Type
@@ -75,8 +87,7 @@ export type OnboardingRoute = typeof OnboardingRoute.Type
 export type OrderRoute = typeof OrderRoute.Type
 export type OrderDetailRoute = typeof OrderDetailRoute.Type
 export type AutopilotWorkRoute = typeof AutopilotWorkRoute.Type
-export type AutopilotWorkDetailRoute =
-  typeof AutopilotWorkDetailRoute.Type
+export type AutopilotWorkDetailRoute = typeof AutopilotWorkDetailRoute.Type
 export type DecisionsRoute = typeof DecisionsRoute.Type
 export type ChatRoute = typeof ChatRoute.Type
 export type TeamChatRoute = typeof TeamChatRoute.Type
@@ -117,6 +128,12 @@ export type DemoThreadRoute = typeof DemoThreadRoute.Type
 export type DemoTeamProjectChatRoute = typeof DemoTeamProjectChatRoute.Type
 export type DemoTeamFilesRoute = typeof DemoTeamFilesRoute.Type
 export type DemoTeamFileRoute = typeof DemoTeamFileRoute.Type
+export type Demo2Route = typeof Demo2Route.Type
+export type Demo2OrderRoute = typeof Demo2OrderRoute.Type
+export type Demo2ThreadRoute = typeof Demo2ThreadRoute.Type
+export type Demo2TeamProjectChatRoute = typeof Demo2TeamProjectChatRoute.Type
+export type Demo2TeamFilesRoute = typeof Demo2TeamFilesRoute.Type
+export type Demo2TeamFileRoute = typeof Demo2TeamFileRoute.Type
 export type NotFoundRoute = typeof NotFoundRoute.Type
 
 export const LoggedOutRoute = S.Union([
@@ -229,6 +246,12 @@ export const AppRoute = S.Union([
   DemoTeamProjectChatRoute,
   DemoTeamFilesRoute,
   DemoTeamFileRoute,
+  Demo2Route,
+  Demo2OrderRoute,
+  Demo2ThreadRoute,
+  Demo2TeamProjectChatRoute,
+  Demo2TeamFilesRoute,
+  Demo2TeamFileRoute,
   NotFoundRoute,
 ])
 
@@ -423,8 +446,50 @@ export const demoTeamFileRouter = pipe(
   slash(string('fileId')),
   Route.mapTo(DemoTeamFileRoute),
 )
+export const demo2Router = pipe(literal('demo2'), Route.mapTo(Demo2Route))
+export const demo2OrderRouter = pipe(
+  literal('demo2'),
+  slash(literal('order')),
+  Route.mapTo(Demo2OrderRoute),
+)
+export const demo2ThreadRouter = pipe(
+  literal('demo2'),
+  slash(literal('t')),
+  slash(string('threadId')),
+  Route.mapTo(Demo2ThreadRoute),
+)
+export const demo2TeamProjectChatRouter = pipe(
+  literal('demo2'),
+  slash(literal('teams')),
+  slash(string('teamRef')),
+  slash(literal('projects')),
+  slash(string('projectRef')),
+  slash(literal('chat')),
+  Route.mapTo(Demo2TeamProjectChatRoute),
+)
+export const demo2TeamFilesRouter = pipe(
+  literal('demo2'),
+  slash(literal('teams')),
+  slash(string('teamRef')),
+  slash(literal('files')),
+  Route.mapTo(Demo2TeamFilesRoute),
+)
+export const demo2TeamFileRouter = pipe(
+  literal('demo2'),
+  slash(literal('teams')),
+  slash(string('teamRef')),
+  slash(literal('files')),
+  slash(string('fileId')),
+  Route.mapTo(Demo2TeamFileRoute),
+)
 
 const routeParser = Route.oneOf(
+  demo2TeamProjectChatRouter,
+  demo2TeamFileRouter,
+  demo2TeamFilesRouter,
+  demo2ThreadRouter,
+  demo2OrderRouter,
+  demo2Router,
   demoTeamProjectChatRouter,
   demoTeamFileRouter,
   demoTeamFilesRouter,

@@ -196,14 +196,7 @@ export const init: Runtime.RoutingProgramInit<Model, Message, Flags> = (
 ): InitReturn => {
   const route = urlToAppRoute(url)
 
-  if (
-    route._tag === 'Demo' ||
-    route._tag === 'DemoOrder' ||
-    route._tag === 'DemoThread' ||
-    route._tag === 'DemoTeamProjectChat' ||
-    route._tag === 'DemoTeamFiles' ||
-    route._tag === 'DemoTeamFile'
-  ) {
+  if (Demo.isDemoAppRoute(route)) {
     return [Demo.init(route), []]
   }
 

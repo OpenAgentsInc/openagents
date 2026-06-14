@@ -13,6 +13,7 @@ import {
   blogPostRouter,
   blogRouter,
   chatRouter,
+  clientsPreviewRouter,
   decisionsRouter,
   docsPageRouter,
   docsRouter,
@@ -42,6 +43,7 @@ import {
   usageRouter,
 } from '../../route'
 import * as Ui from '../../ui'
+import * as ClientsPreview from '../clientsPreview'
 import * as Forum from '../forum'
 import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import { ClickedLogout, ClickedNewChat, Message } from './message'
@@ -91,6 +93,7 @@ const currentHref = (model: Model): string =>
       SiteCheckoutDemo: () => siteCheckoutDemoRouter(),
       SiteCheckoutDemoReturn: ({ returnAction }) =>
         siteCheckoutDemoReturnRouter({ returnAction }),
+      ClientsPreview: () => clientsPreviewRouter(),
       Blog: () => blogRouter(),
       BlogPost: ({ slug }) => blogPostRouter({ slug }),
       PublicAgent: ({ agentRef }) => publicAgentRouter({ agentRef }),
@@ -138,6 +141,7 @@ const routeKey = (model: Model): string =>
       SiteCheckoutDemo: () => 'SiteCheckoutDemo',
       SiteCheckoutDemoReturn: ({ returnAction }) =>
         `SiteCheckoutDemoReturn:${returnAction}`,
+      ClientsPreview: () => 'ClientsPreview',
       Blog: () => 'Blog',
       BlogPost: ({ slug }) => `BlogPost:${slug}`,
       PublicAgent: ({ agentRef }) => `PublicAgent:${agentRef}`,
@@ -462,6 +466,8 @@ const routeView = (model: Model): Html => {
                 onLogout: ClickedLogout(),
               }),
             ]),
+          ClientsPreview: () =>
+            Ui.workroomScrollableRoute<Message>([ClientsPreview.view()]),
           Blog: () =>
             Ui.workroomScrollableRoute<Message>([
               notFoundView('/blog', chatRouter(), 'Go to Chat'),

@@ -1,4 +1,4 @@
-import { Match as M } from 'effect'
+import { Match as M, Option } from 'effect'
 import { Command } from 'foldkit'
 import { evo } from 'foldkit/struct'
 
@@ -332,24 +332,64 @@ const applyCue = (model: Model, cueName: DemoCueName): Model => {
   return evo(model, { playback: () => 'complete' })
 }
 
-const initialDemoModel = (model: Model): Model =>
-  model.mode === 'order'
-    ? Model({
-        cueIndex: -1,
-        elapsedMs: 0,
-        loggedIn: LoggedIn.init(OnboardingRoute(), demoCustomerAuthBootstrap),
-        mode: 'order',
-        playback: 'paused',
-        routeKey: model.routeKey,
-      })
-    : Model({
-        cueIndex: -1,
-        elapsedMs: 0,
-        loggedIn: LoggedIn.init(demoProjectRoute(), demoAuthBootstrap),
-        mode: 'workroom',
-        playback: 'paused',
-        routeKey: model.routeKey,
-      })
+const initialDemoModel = (model: Model): Model => {
+  if (model.mode === 'training') {
+    return Model({
+      cueIndex: -1,
+      elapsedMs: 0,
+      loggedIn: LoggedIn.init(demoProjectRoute(), demoAuthBootstrap),
+      maybeSelectedTrainingSceneNodeId: Option.none(),
+      mode: 'training',
+      playback: 'complete',
+      routeKey: model.routeKey,
+    })
+  }
+
+  if (model.mode === 'order') {
+    return Model({
+      cueIndex: -1,
+      elapsedMs: 0,
+      loggedIn: LoggedIn.init(OnboardingRoute(), demoCustomerAuthBootstrap),
+      maybeSelectedTrainingSceneNodeId: Option.none(),
+      mode: 'order',
+      playback: 'paused',
+      routeKey: model.routeKey,
+    })
+  }
+
+  return Model({
+    cueIndex: -1,
+    elapsedMs: 0,
+    loggedIn: LoggedIn.init(demoProjectRoute(), demoAuthBootstrap),
+    maybeSelectedTrainingSceneNodeId: Option.none(),
+    mode: 'workroom',
+    playback: 'paused',
+    routeKey: model.routeKey,
+  })
+}
+
+const replayDemoModel = (model: Model): Model =>
+  model.mode === 'training'
+    ? initialDemoModel(model)
+    : model.mode === 'order'
+      ? Model({
+          cueIndex: -1,
+          elapsedMs: 0,
+          loggedIn: LoggedIn.init(OnboardingRoute(), demoCustomerAuthBootstrap),
+          maybeSelectedTrainingSceneNodeId: Option.none(),
+          mode: 'order',
+          playback: 'playing',
+          routeKey: model.routeKey,
+        })
+      : Model({
+          cueIndex: -1,
+          elapsedMs: 0,
+          loggedIn: LoggedIn.init(demoProjectRoute(), demoAuthBootstrap),
+          maybeSelectedTrainingSceneNodeId: Option.none(),
+          mode: 'workroom',
+          playback: 'playing',
+          routeKey: model.routeKey,
+        })
 
 const applyManualCue = (model: Model, cue: DemoCue): Model =>
   evo(applyCue(model, cue.name), {
@@ -374,7 +414,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         [],
       ],
       AdvancedDemoCue: ({ cue }) => {
-        if (model.playback !== 'playing') {
+        if (model.mode === 'training' || model.playback !== 'playing') {
           return [model, []]
         }
 
@@ -385,47 +425,48 @@ export const update = (model: Model, message: Message): UpdateReturn =>
           [],
         ]
       },
-      ClickedReplayDemo: () => [
-        model.mode === 'order'
-          ? Model({
-              cueIndex: -1,
-              elapsedMs: 0,
-              loggedIn: LoggedIn.init(
-                OnboardingRoute(),
-                demoCustomerAuthBootstrap,
-              ),
-              mode: 'order',
-              playback: 'playing',
-              routeKey: model.routeKey,
-            })
-          : Model({
-              cueIndex: -1,
-              elapsedMs: 0,
-              loggedIn: LoggedIn.init(demoProjectRoute(), demoAuthBootstrap),
-              mode: 'workroom',
-              playback: 'playing',
-              routeKey: model.routeKey,
-            }),
+      ClickedReplayDemo: () => [replayDemoModel(model), []],
+      ClickedPauseDemo: () => [
+        model.mode === 'training'
+          ? model
+          : evo(model, { playback: () => 'paused' }),
         [],
       ],
-      ClickedPauseDemo: () => [evo(model, { playback: () => 'paused' }), []],
-      ClickedResumeDemo: () => [evo(model, { playback: () => 'playing' }), []],
+      ClickedResumeDemo: () => [
+        model.mode === 'training'
+          ? model
+          : evo(model, { playback: () => 'playing' }),
+        [],
+      ],
       ClickedPreviousDemoStep: () => [
-        jumpToCue(model, previousDemoCue(model.routeKey, model.cueIndex)),
+        model.mode === 'training'
+          ? model
+          : jumpToCue(model, previousDemoCue(model.routeKey, model.cueIndex)),
         [],
       ],
       ClickedNextDemoStep: () => [
-        jumpToCue(model, nextDemoCue(model.routeKey, model.cueIndex)),
+        model.mode === 'training'
+          ? model
+          : jumpToCue(model, nextDemoCue(model.routeKey, model.cueIndex)),
         [],
       ],
       PressedDemoSpacebar: () => [
+        model.mode === 'training'
+          ? model
+          : evo(model, {
+              playback: playback =>
+                playback === 'playing' ? 'paused' : 'playing',
+            }),
+        [],
+      ],
+      SelectedTrainingSceneNode: ({ nodeId }) => [
         evo(model, {
-          playback: playback => (playback === 'playing' ? 'paused' : 'playing'),
+          maybeSelectedTrainingSceneNodeId: () => Option.some(nodeId),
         }),
         [],
       ],
       TickedDemoPlayback: ({ deltaMs }) => {
-        if (model.playback !== 'playing') {
+        if (model.mode === 'training' || model.playback !== 'playing') {
           return [model, []]
         }
 

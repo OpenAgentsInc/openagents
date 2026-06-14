@@ -443,8 +443,8 @@ const filePlan: ThreadFileApiRecord = {
   filename: 'pylon-release-plan.md',
   contentType: 'text/markdown',
   sizeBytes: 2840,
-  downloadUrl: '/demo/files/pylon-release-plan.md',
-  detailUrl: `/demo/teams/${DEMO_TEAM_REF}/files/${DEMO_FILE_PLAN_ID}`,
+  downloadUrl: '/demo2/files/pylon-release-plan.md',
+  detailUrl: `/demo2/teams/${DEMO_TEAM_REF}/files/${DEMO_FILE_PLAN_ID}`,
   downloadEnabled: false,
   createdAt: DEMO_NOW,
 }
@@ -458,8 +458,8 @@ const fileResult: ThreadFileApiRecord = {
   filename: 'result.md',
   contentType: 'text/markdown',
   sizeBytes: 1210,
-  downloadUrl: '/demo/files/result.md',
-  detailUrl: `/demo/teams/${DEMO_TEAM_REF}/files/${DEMO_FILE_RESULT_ID}`,
+  downloadUrl: '/demo2/files/result.md',
+  detailUrl: `/demo2/teams/${DEMO_TEAM_REF}/files/${DEMO_FILE_RESULT_ID}`,
   downloadEnabled: false,
   createdAt: '2026-06-04T15:00:08.500Z',
 }
@@ -483,7 +483,7 @@ export const demoThreadFileDetailResponse = ThreadFileDetailResponse.make({
         referenceKind: 'input',
         body: teamMessage.body,
         excerpt: 'prepare the Pylon release briefing from the attached plan',
-        href: `/demo/t/${DEMO_RUN_ID}`,
+        href: `/demo2/t/${DEMO_RUN_ID}`,
         createdAt: teamMessage.createdAt,
         author: demoAuthor,
       },
@@ -497,7 +497,7 @@ export const demoThreadFileDetailResponse = ThreadFileDetailResponse.make({
         referenceKind: 'answer',
         body: answerMessage.body,
         excerpt: 'Release briefing ready',
-        href: `/demo/t/${DEMO_RUN_ID}`,
+        href: `/demo2/t/${DEMO_RUN_ID}`,
         createdAt: answerMessage.createdAt,
         author: autopilotAuthor,
       },
@@ -520,17 +520,17 @@ export const demoPostResponse = TeamChatPostResponse.make({
   },
   run: runWith('running', 1),
   events: firstEvents.slice(0, 1),
-  statusUrl: `/demo/t/${DEMO_RUN_ID}`,
-  streamUrl: `/demo/t/${DEMO_RUN_ID}`,
+  statusUrl: `/demo2/t/${DEMO_RUN_ID}`,
+  streamUrl: `/demo2/t/${DEMO_RUN_ID}`,
   threadId: DEMO_RUN_ID,
-  threadUrl: `/demo/t/${DEMO_RUN_ID}`,
+  threadUrl: `/demo2/t/${DEMO_RUN_ID}`,
 })
 
 export const demoLaunchResponse = AgentRunLaunchResponse.make({
   run: runWith('running', 1),
   events: firstEvents.slice(0, 1),
-  statusUrl: `/demo/t/${DEMO_RUN_ID}`,
-  streamUrl: `/demo/t/${DEMO_RUN_ID}`,
+  statusUrl: `/demo2/t/${DEMO_RUN_ID}`,
+  streamUrl: `/demo2/t/${DEMO_RUN_ID}`,
 })
 
 export const demoActiveRunResponse = AgentRunDetailResponse.make({
@@ -607,7 +607,7 @@ export const demoTeamSnapshot = (completed: boolean) =>
         [DEMO_RUN_ID]: {
           title: 'Pylon release briefing',
           detail: 'OpenAgentsInc/pylon-demo - release briefing',
-          href: `/demo/t/${DEMO_RUN_ID}`,
+          href: `/demo2/t/${DEMO_RUN_ID}`,
           projectId: DEMO_PROJECT_ID,
           status: completed ? 'complete' : 'active',
         },

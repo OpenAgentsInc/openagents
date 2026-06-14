@@ -204,32 +204,29 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ChangedUrl: ({ url }) => {
         const route = urlToAppRoute(url)
 
-        if (
-          route._tag === 'Demo' ||
-          route._tag === 'DemoOrder' ||
-          route._tag === 'DemoThread' ||
-          route._tag === 'DemoTeamProjectChat' ||
-          route._tag === 'DemoTeamFiles' ||
-          route._tag === 'DemoTeamFile'
-        ) {
+        if (Demo.isDemoAppRoute(route)) {
           return M.value(model).pipe(
             withUpdateReturn,
             M.tagsExhaustive({
-              Demo: demoModel =>
-                route._tag === 'DemoOrder' && demoModel.mode !== 'order'
-                  ? [Demo.init(route), []]
-                  : route._tag !== 'DemoOrder' && demoModel.mode !== 'workroom'
-                    ? [Demo.init(route), []]
-                    : [
-                        evo(demoModel, {
-                          loggedIn: loggedIn =>
-                            evo(loggedIn, {
-                              route: () =>
-                                Demo.loggedInRouteForDemoRoute(route),
-                            }),
-                        }),
-                        [],
-                      ],
+              Demo: demoModel => {
+                if (Demo.demoModeForRoute(route) !== demoModel.mode) {
+                  return [Demo.init(route), []]
+                }
+
+                if (demoModel.mode === 'training') {
+                  return [demoModel, []]
+                }
+
+                return [
+                  evo(demoModel, {
+                    loggedIn: loggedIn =>
+                      evo(loggedIn, {
+                        route: () => Demo.loggedInRouteForDemoRoute(route),
+                      }),
+                  }),
+                  [],
+                ]
+              },
               LoggedIn: () => [Demo.init(route), []],
               LoggedOut: () => [Demo.init(route), []],
             }),

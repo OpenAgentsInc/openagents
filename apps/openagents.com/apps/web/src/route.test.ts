@@ -6,6 +6,12 @@ import {
   AutopilotWorkDetailRoute,
   AutopilotWorkRoute,
   ChatRoute,
+  Demo2OrderRoute,
+  Demo2Route,
+  Demo2TeamFileRoute,
+  Demo2TeamFilesRoute,
+  Demo2TeamProjectChatRoute,
+  Demo2ThreadRoute,
   DemoOrderRoute,
   DemoRoute,
   DemoTeamFileRoute,
@@ -55,9 +61,7 @@ describe('app route parser', () => {
       AutopilotWorkRoute(),
     )
     expect(
-      urlToAppRoute(
-        appUrl('/autopilot/work/autopilot_work_order.visible_1'),
-      ),
+      urlToAppRoute(appUrl('/autopilot/work/autopilot_work_order.visible_1')),
     ).toEqual(
       AutopilotWorkDetailRoute({
         workOrderRef: 'autopilot_work_order.visible_1',
@@ -174,6 +178,36 @@ describe('app route parser', () => {
       ),
     ).toEqual(
       DemoTeamFileRoute({
+        teamRef: 'openagents-core-team',
+        fileId: 'file_pylon_release_plan',
+      }),
+    )
+    expect(urlToAppRoute(appUrl('/demo2'))).toEqual(Demo2Route())
+    expect(urlToAppRoute(appUrl('/demo2/order'))).toEqual(Demo2OrderRoute())
+    expect(urlToAppRoute(appUrl('/demo2/t/pylon-release-demo'))).toEqual(
+      Demo2ThreadRoute({ threadId: 'pylon-release-demo' }),
+    )
+    expect(
+      urlToAppRoute(
+        appUrl('/demo2/teams/openagents-core-team/projects/artanis/chat'),
+      ),
+    ).toEqual(
+      Demo2TeamProjectChatRoute({
+        teamRef: 'openagents-core-team',
+        projectRef: 'artanis',
+      }),
+    )
+    expect(
+      urlToAppRoute(appUrl('/demo2/teams/openagents-core-team/files')),
+    ).toEqual(Demo2TeamFilesRoute({ teamRef: 'openagents-core-team' }))
+    expect(
+      urlToAppRoute(
+        appUrl(
+          '/demo2/teams/openagents-core-team/files/file_pylon_release_plan',
+        ),
+      ),
+    ).toEqual(
+      Demo2TeamFileRoute({
         teamRef: 'openagents-core-team',
         fileId: 'file_pylon_release_plan',
       }),

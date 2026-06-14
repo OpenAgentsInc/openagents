@@ -1,11 +1,13 @@
+import { Option } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { DemoOrderRoute, DemoRoute } from '../../route'
+import { Demo2Route, DemoOrderRoute, DemoRoute } from '../../route'
 import {
   AdvancedDemoCue,
   ClickedNextDemoStep,
   ClickedPreviousDemoStep,
   PressedDemoSpacebar,
+  SelectedTrainingSceneNode,
   TickedDemoPlayback,
 } from './message'
 import { type DemoCueName, init } from './model'
@@ -22,7 +24,7 @@ const sendCue = (model: ReturnType<typeof init>, name: DemoCueName) =>
 describe('demo update', () => {
   test('applies playback cues through the nested logged-in model without commands', () => {
     const [loaded, loadedCommands] = sendCue(
-      init(DemoRoute()),
+      init(Demo2Route()),
       'LoadedProjectRoom',
     )
     const [filled, filledCommands] = sendCue(loaded, 'FilledComposer')
@@ -103,6 +105,24 @@ describe('demo update', () => {
     expect(resumed.playback).toBe('playing')
     expect(pauseCommands).toHaveLength(0)
     expect(resumeCommands).toHaveLength(0)
+  })
+
+  test('selects training scene nodes without activating playback', () => {
+    const [selected, commands] = update(
+      init(DemoRoute()),
+      SelectedTrainingSceneNode({ nodeId: 'freivalds' }),
+    )
+    const [spacebar] = update(selected, PressedDemoSpacebar())
+    const [tick] = update(spacebar, TickedDemoPlayback({ deltaMs: 100 }))
+
+    expect(selected.mode).toBe('training')
+    expect(selected.playback).toBe('complete')
+    expect(selected.maybeSelectedTrainingSceneNodeId).toEqual(
+      Option.some('freivalds'),
+    )
+    expect(tick.elapsedMs).toBe(0)
+    expect(tick.playback).toBe('complete')
+    expect(commands).toHaveLength(0)
   })
 
   test('ticks visible playback time independently from cue timestamps', () => {

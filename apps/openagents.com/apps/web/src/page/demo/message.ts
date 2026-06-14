@@ -14,6 +14,9 @@ export const ClickedResumeDemo = m('ClickedResumeDemo')
 export const ClickedPreviousDemoStep = m('ClickedPreviousDemoStep')
 export const ClickedNextDemoStep = m('ClickedNextDemoStep')
 export const PressedDemoSpacebar = m('PressedDemoSpacebar')
+export const SelectedTrainingSceneNode = m('SelectedTrainingSceneNode', {
+  nodeId: S.String,
+})
 export const TickedDemoPlayback = m('TickedDemoPlayback', { deltaMs: S.Number })
 
 export const Message = S.Union([
@@ -25,6 +28,7 @@ export const Message = S.Union([
   ClickedPreviousDemoStep,
   ClickedNextDemoStep,
   PressedDemoSpacebar,
+  SelectedTrainingSceneNode,
   TickedDemoPlayback,
 ])
 export type Message = typeof Message.Type

@@ -9,6 +9,12 @@ import {
 import {
   AutopilotWorkRoute,
   ChatRoute,
+  Demo2OrderRoute,
+  Demo2Route,
+  Demo2TeamFileRoute,
+  Demo2TeamFilesRoute,
+  Demo2TeamProjectChatRoute,
+  Demo2ThreadRoute,
   DemoOrderRoute,
   DemoRoute,
   DemoTeamFileRoute,
@@ -441,6 +447,34 @@ describe('startup route policy', () => {
     expect(
       routeRequiresAuthBootstrap(
         DemoTeamFileRoute({
+          teamRef: 'openagents-core-team',
+          fileId: 'file_pylon_release_plan',
+        }),
+      ),
+    ).toBe(false)
+    expect(routeRequiresAuthBootstrap(Demo2Route())).toBe(false)
+    expect(routeRequiresAuthBootstrap(Demo2OrderRoute())).toBe(false)
+    expect(
+      routeRequiresAuthBootstrap(
+        Demo2ThreadRoute({ threadId: 'pylon-release-demo' }),
+      ),
+    ).toBe(false)
+    expect(
+      routeRequiresAuthBootstrap(
+        Demo2TeamProjectChatRoute({
+          teamRef: 'openagents-core-team',
+          projectRef: 'artanis',
+        }),
+      ),
+    ).toBe(false)
+    expect(
+      routeRequiresAuthBootstrap(
+        Demo2TeamFilesRoute({ teamRef: 'openagents-core-team' }),
+      ),
+    ).toBe(false)
+    expect(
+      routeRequiresAuthBootstrap(
+        Demo2TeamFileRoute({
           teamRef: 'openagents-core-team',
           fileId: 'file_pylon_release_plan',
         }),

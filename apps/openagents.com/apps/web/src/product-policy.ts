@@ -150,6 +150,7 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'ForumReceipt' &&
   route._tag !== 'SiteCheckoutDemo' &&
   route._tag !== 'SiteCheckoutDemoReturn' &&
+  route._tag !== 'ClientsPreview' &&
   route._tag !== 'Blog' &&
   route._tag !== 'BlogPost' &&
   route._tag !== 'PublicAgent' &&
@@ -162,6 +163,12 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'DemoTeamProjectChat' &&
   route._tag !== 'DemoTeamFiles' &&
   route._tag !== 'DemoTeamFile' &&
+  route._tag !== 'Demo2' &&
+  route._tag !== 'Demo2Order' &&
+  route._tag !== 'Demo2Thread' &&
+  route._tag !== 'Demo2TeamProjectChat' &&
+  route._tag !== 'Demo2TeamFiles' &&
+  route._tag !== 'Demo2TeamFile' &&
   route._tag !== 'NotFound' &&
   route._tag !== 'Home'
     ? true
@@ -175,14 +182,21 @@ export const browserRouteProductIntents = {
   Blog: 'public.blog.index',
   BlogPost: 'public.blog.post',
   Chat: 'workroom.chat.personal',
+  ClientsPreview: 'public.clients-preview',
   Dashboard: 'disabled.dashboard',
   Decisions: 'autopilot.decisions.index',
-  Demo: 'demo.workroom.project',
+  Demo: 'demo.training.fullscreen',
   DemoOrder: 'demo.customer.order',
   DemoTeamFile: 'demo.files.team.detail',
   DemoTeamFiles: 'demo.files.team.index',
   DemoTeamProjectChat: 'demo.workroom.project',
   DemoThread: 'demo.workroom.thread',
+  Demo2: 'demo2.workroom.project',
+  Demo2Order: 'demo2.customer.order',
+  Demo2TeamFile: 'demo2.files.team.detail',
+  Demo2TeamFiles: 'demo2.files.team.index',
+  Demo2TeamProjectChat: 'demo2.workroom.project',
+  Demo2Thread: 'demo2.workroom.thread',
   Images: 'image.generation',
   Mullet: 'mullet.runner',
   Docs: 'public.docs.index',
