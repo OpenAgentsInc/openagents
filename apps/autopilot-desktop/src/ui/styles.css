@@ -1,0 +1,39 @@
+/*
+ * CL-53: Tailwind v4 source for the Autopilot Desktop webview.
+ *
+ * The shared @openagentsinc/autopilot-ui components render with Tailwind utility
+ * and arbitrary classes (e.g. `border-[var(--outline,#525458)]`); without this
+ * generated stylesheet they are unstyled. We scan this app's own .ts views plus
+ * the autopilot-ui package source so every class either side emits is present.
+ *
+ * The :root block mirrors `cssVars(darkTokens)` from autopilot-ui/tokens so the
+ * components' `var(--bg, …)` references resolve to the canonical dark palette
+ * (the same values the deleted theme.ts produced at runtime).
+ *
+ * Build:  bunx @tailwindcss/cli -i src/ui/styles.css -o src/ui/styles.out.css
+ * The generated styles.out.css is git-ignored and copied to the view bundle as
+ * views/autopilot-desktop/styles.css by electrobun.config.ts.
+ */
+
+@import "tailwindcss";
+
+@source "./**/*.ts";
+@source "../../../../packages/autopilot-ui/src/**/*.ts";
+
+:root {
+  --bg: #000;
+  --bg-secondary: #151515;
+  --text: #d7d8e5;
+  --text-secondary: #8a8c93;
+  --outline: #525458;
+  --primary: #fff;
+  --success: #00c853;
+  --warning: #ffb400;
+  --danger: #d32f2f;
+  --info: #2979ff;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}

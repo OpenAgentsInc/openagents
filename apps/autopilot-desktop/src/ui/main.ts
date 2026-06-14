@@ -1,23 +1,37 @@
-// CL-44: webview entrypoint. Thin bootstrap — define the typed RPC bridge to the
-// Bun main process, mount the sidebar shell, and feed it the live node-state /
-// notification messages. All presentation lives in shell.ts + panes/ + cards/.
+// CL-53: webview entrypoint (the Electrobun view entry — filename kept as
+// main.ts so electrobun.config.ts still resolves it).
+//
+// Thin bootstrap:
+//   1. define the Electroview RPC bridge whose `nodeState` / `notifications`
+//      message handlers PUSH GotNodeState / GotNotifications into the Foldkit
+//      runtime via the persistent subscription stream (bridge.pushInbound).
+//   2. construct the Electroview and stash `rpc.request` in the bridge so
+//      Commands can reach the typed verbs.
+//   3. run the Foldkit program (Model / init / update / view / subscriptions).
+//
+// All presentation lives in view.ts; all reducer logic in update.ts; all RPC
+// effects in commands.ts. No hand DOM.
 
 import { Electroview } from "electrobun/view"
-import type { DesktopRequests } from "./context"
-import { mountShell, type Shell } from "./shell"
-import type { DesktopRPCSchema } from "../shared/rpc"
+import { Runtime } from "foldkit"
 
-let shell: Shell | null = null
+import type { DesktopRPCSchema } from "../shared/rpc"
+import { type DesktopRequests, pushInbound, setRequest } from "./bridge"
+import { GotNodeState, GotNotifications } from "./message"
+import { initialModel, Model } from "./model"
+import { subscriptions } from "./subscriptions"
+import { update } from "./update"
+import { view } from "./view"
 
 const rpc = Electroview.defineRPC<DesktopRPCSchema>({
   handlers: {
     requests: {},
     messages: {
       nodeState(message) {
-        shell?.onNodeState(message)
+        pushInbound(GotNodeState({ node: message }))
       },
       notifications(view) {
-        shell?.onNotifications(view)
+        pushInbound(GotNotifications({ view }))
       },
     },
   },
@@ -25,9 +39,20 @@ const rpc = Electroview.defineRPC<DesktopRPCSchema>({
 
 new Electroview({ rpc })
 
+// rpc.request mirrors the DesktopRequests surface (webview → Bun verbs).
+setRequest(rpc.request as unknown as DesktopRequests)
+
 function start(): void {
-  // rpc.request matches the DesktopRequests surface (webview → Bun verbs).
-  shell = mountShell(rpc.request as unknown as DesktopRequests)
+  Runtime.run(
+    Runtime.makeProgram({
+      Model,
+      init: () => [initialModel, []],
+      update,
+      view,
+      subscriptions,
+      container: document.getElementById("root"),
+    }),
+  )
 }
 
 if (document.readyState === "loading") {

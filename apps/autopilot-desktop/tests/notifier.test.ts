@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { SessionSummary } from "@openagentsinc/autopilot-control-protocol"
 import { createSessionNotifier } from "../src/bun/notifier.ts"
-import { notificationsHtml } from "../src/ui/notification-view.ts"
+import { notificationsHtml } from "../src/shared/notification-html.ts"
 
 function session(input: Partial<SessionSummary> & { sessionRef: string; state: SessionSummary["state"] }): SessionSummary {
   return {

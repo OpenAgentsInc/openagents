@@ -4,18 +4,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "electrobun dev",
-    "build": "electrobun build",
+    "dev": "bun run build:css && electrobun dev",
+    "build:css": "tailwindcss -i src/ui/styles.css -o src/ui/styles.out.css",
+    "build": "bun run build:css && electrobun build",
+    "test": "bun test",
     "notarize:macos": "bash scripts/notarize-macos.sh"
   },
   "dependencies": {
     "@openagentsinc/autopilot-control-protocol": "workspace:*",
+    "@openagentsinc/autopilot-ui": "workspace:*",
     "effect": "catalog:",
     "electrobun": "1.18.1",
     "foldkit": "^0.102.1"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.3.1",
     "bun-types": "^1.0.0",
+    "tailwindcss": "^4.3.1",
     "typescript": "catalog:"
   }
 }
