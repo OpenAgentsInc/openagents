@@ -71,7 +71,7 @@ export const AssignmentList = (input: {
                     h.div([
                       className("h-full bg-[var(--info,#3ea6ff)]"),
                       h.Style({ width: `${progress}%` }),
-                    ]),
+                    ], []),
                   ],
                 ),
                 h.span([className("font-mono text-xs text-[var(--text-secondary,#8a8c93)]")], [

@@ -23,7 +23,7 @@ export type CloudQuotaSummary = {
 export function buildCloudSummary(
   input: CloudQuotaSummaryInput,
 ): CloudQuotaSummary {
-  const record = isRecord(input) ? input : {}
+  const record: Record<string, unknown> = isRecord(input) ? input : {}
   const failover = projectFailover(record.accounts as ProviderFailoverAccount[])
   const estimate = estimateCloudCost(readUsage(record.usage))
 

@@ -48,7 +48,15 @@ export function validateApprovalReceipt(receipt: unknown): boolean {
   if (typeof receipt.actor !== "string") return false
   if (typeof receipt.line !== "string") return false
 
-  return receipt.line === formatApprovalReceiptLine(receipt)
+  // Each field is validated above; build the typed shape explicitly so the
+  // formatter receives the exact type rather than a broad Record.
+  return receipt.line === formatApprovalReceiptLine({
+    ref: receipt.ref,
+    decision: receipt.decision,
+    hasAnswer: receipt.hasAnswer,
+    decidedAt: receipt.decidedAt,
+    actor: receipt.actor,
+  })
 }
 
 function formatApprovalReceiptLine(receipt: {

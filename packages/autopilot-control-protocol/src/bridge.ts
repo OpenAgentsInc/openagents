@@ -2,6 +2,12 @@ import { Schema as S } from "effect"
 
 import { ProjectionLevel } from "./control"
 
+// Re-export so consumers (e.g. ./bridge-transport) can treat ProjectionLevel as
+// part of the bridge vocabulary surface. Canonical source remains ./control.
+// `ProjectionLevel` is declared in ./control as both a schema value and a type,
+// so this single re-export carries both meanings.
+export { ProjectionLevel }
+
 // The remote session bridge vocabulary (terminal-agent system #39). Clients
 // reach a non-local node through this typed protocol rather than the node's
 // all-purpose bearer token. Verbs and events are explicit names, never log

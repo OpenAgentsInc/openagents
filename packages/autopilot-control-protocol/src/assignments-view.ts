@@ -20,8 +20,10 @@ function isRecord(value: unknown): value is RawRecord {
 }
 
 function readRecord(value: unknown, key: string): RawRecord | undefined {
-  if (!isRecord(value[key])) return undefined
-  return value[key]
+  if (!isRecord(value)) return undefined
+  const child = value[key]
+  if (!isRecord(child)) return undefined
+  return child
 }
 
 function readString(value: unknown): string | undefined {

@@ -46,7 +46,15 @@ export function validateShipReceipt(receipt: unknown): boolean {
   if (typeof receipt.shippedAt !== "string") return false
   if (typeof receipt.line !== "string") return false
 
-  return receipt.line === formatShipReceiptLine(receipt)
+  // Each field is validated above; build the typed shape explicitly so the
+  // formatter receives the exact type rather than a broad Record.
+  return receipt.line === formatShipReceiptLine({
+    mode: receipt.mode,
+    version: receipt.version,
+    allowed: receipt.allowed,
+    actor: receipt.actor,
+    shippedAt: receipt.shippedAt,
+  })
 }
 
 function formatShipReceiptLine(receipt: {

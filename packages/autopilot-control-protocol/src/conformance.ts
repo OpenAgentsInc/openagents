@@ -29,10 +29,16 @@ export const CONFORMANCE_CASE_NAMES = [
 
 function claimsAt(level: PairingCredentialClaims["projectionLevel"]): PairingCredentialClaims {
   return {
+    pairingRef: "pairing.fixture",
+    clientId: "client.fixture",
+    deviceClass: "test",
+    issuer: "issuer.fixture",
+    audience: "audience.fixture",
+    expiresAt: "2030-01-01T00:00:00.000Z",
+    jti: "jti.fixture",
     projectionLevel: level,
     capabilities: ["observe_public"] as Capability[],
-    expiresAt: "2030-01-01T00:00:00.000Z",
-  } as PairingCredentialClaims
+  }
 }
 
 export function runConformanceMatrix(): ConformanceResult[] {
@@ -55,12 +61,14 @@ export function runConformanceMatrix(): ConformanceResult[] {
       cursor = result.cursor
     }
     const last = sessionEventStreamFixture[sessionEventStreamFixture.length - 1]
+    if (!last) return false
     return cursor.lastSequence === last.sequence
   })
 
   // Dedup: replaying the same eventId is rejected without moving the cursor.
   check("dedup-duplicate-id", () => {
     const first = sessionEventStreamFixture[0]
+    if (!first) return false
     const cursor = acceptEvent(initialCursor(), { eventId: first.eventId, sequence: first.sequence }).cursor
     const dup = acceptEvent(cursor, { eventId: first.eventId, sequence: first.sequence })
     return dup.accepted === false && dup.reason === "duplicate" && dup.cursor.lastSequence === first.sequence

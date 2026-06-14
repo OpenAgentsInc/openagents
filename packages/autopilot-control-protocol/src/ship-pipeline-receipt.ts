@@ -43,7 +43,14 @@ export function validate(receipt: unknown): boolean {
   if (typeof receipt.ranAt !== "string") return false
   if (typeof receipt.line !== "string") return false
 
-  return receipt.line === formatPipelineReceiptLine(receipt)
+  // Each field is validated above; build the typed shape explicitly so the
+  // formatter receives the exact type rather than a broad Record.
+  return receipt.line === formatPipelineReceiptLine({
+    action: receipt.action,
+    version: receipt.version,
+    allowed: receipt.allowed,
+    ranAt: receipt.ranAt,
+  })
 }
 
 function formatPipelineReceiptLine(receipt: {

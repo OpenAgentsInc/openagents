@@ -36,13 +36,21 @@ export * from "./deploy-request-validate"
 export * from "./earnings-balance-view"
 export * from "./notification-permission-state"
 export * from "./distribution-notarize-plan"
-export * from "./session-state-reducer"
+// `SessionState` is canonically the Effect-Schema literal from ./control. The
+// reducer module defines its own plain string-union of the same name for the
+// reduce loop; re-export everything else from it but not that duplicate name.
+export { reduceSessionState } from "./session-state-reducer"
+export type { SessionPhaseEvent, SessionStateReduction } from "./session-state-reducer"
 export * from "./approval-queue-view"
 export * from "./steer-availability"
 export * from "./cloud-quota-summary"
 export * from "./autonomous-ship-receipt"
 export * from "./ota-channel-resolve"
-export * from "./approval-answer"
+// `ApprovalDecision` is canonically owned by ./approval-exactly-once. The
+// approval-answer module re-declares the same union locally; re-export its
+// builder surface without re-exporting that duplicate name.
+export { buildApprovalResponse } from "./approval-answer"
+export type { ApprovalResponse, BuildApprovalResponseInput } from "./approval-answer"
 export * from "./deeplink-parse"
 export * from "./session-sort"
 export * from "./client-capability-matrix"
@@ -71,9 +79,16 @@ export * from "./ship-pipeline-receipt"
 export * from "./deeplink-route"
 export * from "./bridge-renew-plan"
 export * from "./session-filter-view"
-export * from "./assignment-claim-receipt"
+// The generic `validate` name is canonically owned by ./ship-pipeline-receipt.
+// assignment-claim-receipt also exports a `validate`; expose its distinct
+// surface (builder + receipt type) without re-exporting that duplicate name.
+export { buildClaimReceipt } from "./assignment-claim-receipt"
+export type { AssignmentClaimReceipt, BuildAssignmentClaimReceiptInput } from "./assignment-claim-receipt"
 export * from "./ship-fingerprint-drift"
-export * from "./notification-feed-sort"
+// `NotificationFeedItem` is canonically owned by ./notification-render-model.
+// notification-feed-sort defines its own minimal item shape of the same name
+// for sorting; re-export its sorter without re-exporting that duplicate name.
+export { sortNotificationFeed } from "./notification-feed-sort"
 export * from "./decision-prompt-view"
 export * from "./cloud-metering-source-state"
 export * from "./steer-disabled-reason"
