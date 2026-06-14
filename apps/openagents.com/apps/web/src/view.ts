@@ -395,6 +395,17 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     })
   }
 
+  if (model._tag === 'LoggedOut' && model.route._tag === 'Moksha2') {
+    const h = html<Message>()
+
+    return h.submodel({
+      slotId: 'logged-out-moksha2',
+      model,
+      view: LoggedOut.view,
+      toParentMessage: message => GotLoggedOutMessage({ message }),
+    })
+  }
+
   if (
     model._tag === 'LoggedOut' &&
     (model.route._tag === 'Home' || model.route._tag === 'ProductPromises')

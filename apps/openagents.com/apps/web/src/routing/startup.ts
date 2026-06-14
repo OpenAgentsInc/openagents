@@ -93,6 +93,7 @@ export const startupRouteForLoggedOut = (
       'PublicAgent',
       'Share',
       'Moksha',
+      'Moksha2',
       route =>
         LoggedOutStartupRoute({
           route,
@@ -129,11 +130,17 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
         redirect: Option.none(),
       }),
     ),
-    M.tag('PublicAgent', 'ProductPromises', 'Share', 'Moksha', route =>
-      LoggedOutStartupRoute({
-        route,
-        redirect: Option.none(),
-      }),
+    M.tag(
+      'PublicAgent',
+      'ProductPromises',
+      'Share',
+      'Moksha',
+      'Moksha2',
+      route =>
+        LoggedOutStartupRoute({
+          route,
+          redirect: Option.none(),
+        }),
     ),
     M.tag('PublicTrainingRuns', 'PublicTrainingRun', route =>
       LoggedOutStartupRoute({
@@ -203,6 +210,7 @@ const startupRouteForCompleteOnboarding = (
       'PublicTrainingRun',
       'Share',
       'Moksha',
+      'Moksha2',
       route =>
         LoggedOutStartupRoute({
           route,

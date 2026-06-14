@@ -36,6 +36,12 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('keeps the OpenAgents Moksha document route in the app shell', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/moksha2'), '/moksha2'),
+    ).toBe(false)
+  })
+
   test('redirects unknown direct browser document paths to the homepage', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(

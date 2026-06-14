@@ -15,6 +15,7 @@ import { Message } from './message'
 import { Model } from './model'
 import * as Home from './page/home'
 import * as Moksha from './page/moksha'
+import * as Moksha2 from './page/moksha2'
 import * as Onboarding from './page/onboarding'
 import * as Promises from './page/promises'
 import * as PublicAgent from './page/publicAgent'
@@ -34,6 +35,12 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
   if (model.route._tag === 'Moksha') {
     return Ui.pageShell<Message>([
       h.keyed('div')(model.route._tag, [], [Moksha.view()]),
+    ])
+  }
+
+  if (model.route._tag === 'Moksha2') {
+    return Ui.pageShell<Message>([
+      h.keyed('div')(model.route._tag, [], [Moksha2.view()]),
     ])
   }
 

@@ -23,6 +23,7 @@ import {
   ForumRoute,
   ForumTopicRoute,
   ImagesRoute,
+  Moksha2Route,
   MulletRoute,
   NotFoundRoute,
   OrderDetailRoute,
@@ -107,6 +108,10 @@ describe('app route parser', () => {
     expect(urlToAppRoute(appUrl('/training/runs/run.cs336.a1.demo'))).toEqual(
       PublicTrainingRunRoute({ runId: 'run.cs336.a1.demo' }),
     )
+  })
+
+  test('accepts the OpenAgents Moksha narrative route', () => {
+    expect(urlToAppRoute(appUrl('/moksha2'))).toEqual(Moksha2Route())
   })
 
   test('accepts the admin overview route', () => {

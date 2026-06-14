@@ -146,6 +146,16 @@ describe('auth bootstrap flags', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
+  test('does not request the auth session on the OpenAgents Moksha route', async () => {
+    window.history.replaceState({}, '', '/moksha2')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const loadedFlags = await Effect.runPromise(flags)
+
+    expect(loadedFlags.maybeAuth).toEqual(Option.none())
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   test('requests the auth session on application routes', async () => {
     window.history.replaceState({}, '', '/teams/openagents-core-team/chat')
     const fetchSpy = vi
@@ -252,6 +262,20 @@ describe('authenticated startup routing', () => {
       { update, view },
       Scene.with(model),
       Scene.expect(Scene.selector('[data-route="moksha"]')).toExist(),
+      Scene.expect(Scene.selector('oa-moksha')).toExist(),
+    )
+  })
+
+  test('renders the OpenAgents Moksha route through the top-level view', () => {
+    const [model] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/moksha2'),
+    )
+
+    Scene.scene(
+      { update, view },
+      Scene.with(model),
+      Scene.expect(Scene.selector('[data-route="moksha2"]')).toExist(),
       Scene.expect(Scene.selector('oa-moksha')).toExist(),
     )
   })
