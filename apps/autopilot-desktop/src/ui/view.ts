@@ -59,6 +59,7 @@ import {
   ClickedCoordinatorToggle,
   ClickedDeploy,
   ClickedPlanTrainingWindow,
+  ClickedQueueTrainingCloseout,
   ClickedReconcileTrainingWindow,
   ClickedRefreshTrainingRuns,
   ClickedQueueTrainingLaunch,
@@ -549,6 +550,28 @@ const hasClaimableTrainingWindow = (model: Model): boolean => {
   return summary?.windows.some(window => window.state === "active") ?? false
 }
 
+const closeoutWindowRef = (model: Model): string | null => {
+  const lease = modelTrainingLease(model)?.lease ?? null
+  if (lease !== null) return lease.windowRef
+
+  const activation = modelTrainingActivation(model)
+  if (activation?.ok === true) return activation.windowRef
+
+  const bootstrap = modelTrainingBootstrap(model)
+  if (bootstrap?.outcome?.kind === "granted") {
+    return bootstrap.outcome.grant.sealedWindowRef
+  }
+
+  const summary = selectedTrainingSummary(modelTrainingRuns(model))
+  return (
+    summary?.windows.find(window => window.state === "active")?.windowRef ??
+    summary?.windows.find(window => window.state === "sealed")?.windowRef ??
+    summary?.windows.find(window => window.state === "planned")?.windowRef ??
+    modelTrainingPlan(model)?.windowRef ??
+    null
+  )
+}
+
 const reconcileWindowRef = (model: Model): string | null => {
   const summary = selectedTrainingSummary(modelTrainingRuns(model))
   const projectedSealedWindow =
@@ -911,10 +934,17 @@ const trainingLaunchPanel = (model: Model): Html => {
   const plan = modelTrainingPlan(model)
   const lease = modelTrainingLease(model)?.lease ?? null
   const bootstrap = modelTrainingBootstrap(model)
-  const bootstrapRunRef =
+  const selectedRunRef =
     selectedTrainingSummary(modelTrainingRuns(model))?.run.trainingRunRef ??
     plan?.trainingRunRef ??
     null
+  const bootstrapRunRef = selectedRunRef
+  const closeoutRunRef = selectedRunRef
+  const closeoutWindow = closeoutWindowRef(model)
+  const bootstrapGrantRef =
+    bootstrap?.outcome?.kind === "granted"
+      ? bootstrap.outcome.grant.grantRef
+      : null
   const activatableWindowRef = activationWindowRef(model)
   const reconciliableWindowRef = reconcileWindowRef(model)
   const claimableWindowKnown = hasClaimableTrainingWindow(model)
@@ -927,6 +957,8 @@ const trainingLaunchPanel = (model: Model): Html => {
   const bootstrapStatusVisible =
     model.trainingBootstrapStatus.tone !== "idle"
   const launchStatusVisible = model.trainingLaunchStatus.tone !== "idle"
+  const closeoutStatusVisible =
+    model.trainingCloseoutStatus.tone !== "idle"
   const activateAttrs: Attribute<Message>[] = [
     cls("training-action-button training-activate-button secondary"),
     h.Type("button"),
@@ -956,6 +988,23 @@ const trainingLaunchPanel = (model: Model): Html => {
     bootstrapAttrs.push(
       h.OnClick(
         ClickedRequestTrainingBootstrap({ trainingRunRef: bootstrapRunRef }),
+      ),
+    )
+  }
+  const closeoutAttrs: Attribute<Message>[] = [
+    cls("training-action-button training-closeout-button secondary"),
+    h.Type("button"),
+    h.Disabled(model.trainingCloseoutPending || closeoutRunRef === null),
+  ]
+  if (closeoutRunRef !== null) {
+    closeoutAttrs.push(
+      h.OnClick(
+        ClickedQueueTrainingCloseout({
+          trainingRunRef: closeoutRunRef,
+          windowRef: closeoutWindow,
+          leaseRef: lease?.leaseRef ?? null,
+          bootstrapGrantRef,
+        }),
       ),
     )
   }
@@ -1004,7 +1053,7 @@ const trainingLaunchPanel = (model: Model): Html => {
     h.p(
       [cls("training-panel-copy")],
       [
-        "Plan, activate, claim, and reconcile Worker-authoritative training work from Bun, or queue a local Pylon readiness check.",
+        "Plan, activate, claim, bootstrap, reconcile, and queue closeout prep through Bun and local Pylon.",
       ],
     ),
     h.div(
@@ -1056,6 +1105,16 @@ const trainingLaunchPanel = (model: Model): Html => {
               : bootstrapRunRef === null
                 ? "No run selected"
                 : "Request bootstrap",
+          ],
+        ),
+        h.button(
+          closeoutAttrs,
+          [
+            model.trainingCloseoutPending
+              ? "Queueing..."
+              : closeoutRunRef === null
+                ? "No run selected"
+                : "Queue closeout packet",
           ],
         ),
         h.button(
@@ -1129,6 +1188,16 @@ const trainingLaunchPanel = (model: Model): Html => {
             ),
           ],
           [model.trainingLaunchStatus.text],
+        )
+      : h.p([cls("training-action-status")], [" "]),
+    closeoutStatusVisible
+      ? h.p(
+          [
+            cls(
+              `training-action-status training-${model.trainingCloseoutStatus.tone}`,
+            ),
+          ],
+          [model.trainingCloseoutStatus.text],
         )
       : h.p([cls("training-action-status")], [" "]),
   ])

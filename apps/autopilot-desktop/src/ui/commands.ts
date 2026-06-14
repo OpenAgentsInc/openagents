@@ -20,6 +20,7 @@ import {
   SettledClaimTrainingLease,
   SettledCoordinatorToggle,
   SettledPlanTrainingWindow,
+  SettledQueueTrainingCloseout,
   SettledQueueTrainingLaunch,
   SettledReconcileTrainingWindow,
   SettledRequestTrainingBootstrap,
@@ -31,6 +32,11 @@ import {
 
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
+
+const refLine = (label: string, value: string | null): string =>
+  value !== null && value.trim() !== ""
+    ? `${label}: ${value.trim()}`
+    : `${label}: not observed in the desktop projection yet`
 
 const emptyTrainingDashboardProjection = (error: string) => ({
   ok: false,
@@ -407,6 +413,53 @@ export const QueueTrainingLaunch = Command.define(
     Effect.catch((error) =>
       Effect.succeed(
         SettledQueueTrainingLaunch({
+          ok: false,
+          text: `error: ${errorText(error)}`,
+        }),
+      ),
+    ),
+  ),
+)
+
+// Queue a worker closeout/evidence preparation task through local Pylon. This
+// is intentionally not a `/seal` call: seal metadata must come from real worker
+// output and Bun-side evidence admission, not from the Foldkit webview.
+export const QueueTrainingCloseout = Command.define(
+  "QueueTrainingCloseout",
+  {
+    trainingRunRef: S.String,
+    windowRef: S.NullOr(S.String),
+    leaseRef: S.NullOr(S.String),
+    bootstrapGrantRef: S.NullOr(S.String),
+  },
+  SettledQueueTrainingCloseout,
+)(({ trainingRunRef, windowRef, leaseRef, bootstrapGrantRef }) =>
+  Effect.tryPromise(() =>
+    getRequest().submitIntent({
+      title: "Training closeout evidence packet",
+      body: [
+        "Prepare a public-safe closeout packet for the selected Tassadar/Psion training run.",
+        refLine("trainingRunRef", trainingRunRef),
+        refLine("windowRef", windowRef),
+        refLine("leaseRef", leaseRef),
+        refLine("bootstrapGrantRef", bootstrapGrantRef),
+        "Collect real worker output refs only: checkpoint digest, checkpoint artifact, merge ref, eval ref, Freivalds commitments, gradient closeouts, loss curve, shard receipts, and settlement blockers.",
+        "Do not fabricate seal metadata or call admin-only evidence routes from the desktop webview.",
+        "Return the refs and blocker list needed for a later Bun-side evidence-admission bridge.",
+      ].join("\n"),
+    }),
+  ).pipe(
+    Effect.map((r) =>
+      r.ok
+        ? SettledQueueTrainingCloseout({ ok: true, text: `queued · ${r.status}` })
+        : SettledQueueTrainingCloseout({
+            ok: false,
+            text: `error: ${r.error ?? r.status}`,
+          }),
+    ),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledQueueTrainingCloseout({
           ok: false,
           text: `error: ${errorText(error)}`,
         }),

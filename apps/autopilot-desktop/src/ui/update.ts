@@ -18,6 +18,7 @@ import {
   LoadTrainingPromiseGates,
   LoadTrainingRuns,
   PlanTrainingRunWindow,
+  QueueTrainingCloseout,
   QueueTrainingLaunch,
   ReconcileTrainingWindow,
   RequestTrainingBootstrapGrant,
@@ -502,6 +503,49 @@ export const update = (model: Model, message: Message): Result => {
           ...model,
           trainingLaunchPending: false,
           trainingLaunchStatus: {
+            text: message.text,
+            tone: message.ok ? "success" : "error",
+          },
+        }),
+        message.ok ? loadTrainingProjectionCommands() : noCommands,
+      ]
+    case "ClickedQueueTrainingCloseout":
+      if (message.trainingRunRef.trim() === "") {
+        return [
+          Model.make({
+            ...model,
+            trainingCloseoutStatus: {
+              text: "no training run selected",
+              tone: "error",
+            },
+          }),
+          noCommands,
+        ]
+      }
+      return [
+        Model.make({
+          ...model,
+          trainingCloseoutPending: true,
+          trainingCloseoutStatus: {
+            text: "queueing closeout packet...",
+            tone: "info",
+          },
+        }),
+        [
+          QueueTrainingCloseout({
+            trainingRunRef: message.trainingRunRef,
+            windowRef: message.windowRef,
+            leaseRef: message.leaseRef,
+            bootstrapGrantRef: message.bootstrapGrantRef,
+          }),
+        ],
+      ]
+    case "SettledQueueTrainingCloseout":
+      return [
+        Model.make({
+          ...model,
+          trainingCloseoutPending: false,
+          trainingCloseoutStatus: {
             text: message.text,
             tone: message.ok ? "success" : "error",
           },

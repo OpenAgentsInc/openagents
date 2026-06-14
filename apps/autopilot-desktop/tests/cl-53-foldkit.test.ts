@@ -37,6 +37,7 @@ import {
   ClickedActivateTrainingWindow,
   ClickedClaimTrainingLease,
   ClickedPlanTrainingWindow,
+  ClickedQueueTrainingCloseout,
   ClickedRefreshTrainingRuns,
   ClickedReconcileTrainingWindow,
   ClickedResolveApproval,
@@ -50,6 +51,7 @@ import {
   SettledActivateTrainingWindow,
   SettledClaimTrainingLease,
   SettledPlanTrainingWindow,
+  SettledQueueTrainingCloseout,
   SettledReconcileTrainingWindow,
   SettledRequestTrainingBootstrap,
   SettledResolveApproval,
@@ -495,6 +497,36 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingBootstrapPending).toBe(false)
     expect(settled.trainingBootstrapStatus.tone).toBe("success")
     expect(modelTrainingBootstrap(settled)?.outcome?.kind).toBe("granted")
+  })
+
+  test("training closeout packet action dispatches and stores local queue feedback", () => {
+    const [pending, commands] = update(
+      initialModel,
+      ClickedQueueTrainingCloseout({
+        trainingRunRef: "training.run.4850",
+        windowRef: "training.window.4850.active",
+        leaseRef: "training.lease.4850",
+        bootstrapGrantRef: "training.bootstrap.grant.4850",
+      }),
+    )
+    expect(pending.trainingCloseoutPending).toBe(true)
+    expect(pending.trainingCloseoutStatus.tone).toBe("info")
+    expect(commands).toHaveLength(1)
+
+    const [settled, followups] = update(
+      pending,
+      SettledQueueTrainingCloseout({
+        ok: true,
+        text: "queued · accepted",
+      }),
+    )
+
+    expect(settled.trainingCloseoutPending).toBe(false)
+    expect(settled.trainingCloseoutStatus).toEqual({
+      text: "queued · accepted",
+      tone: "success",
+    })
+    expect(followups).toHaveLength(3)
   })
 
   test("training reconcile action dispatches and stores the public-safe result", () => {

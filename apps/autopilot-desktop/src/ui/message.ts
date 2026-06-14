@@ -97,6 +97,16 @@ export const SettledQueueTrainingLaunch = m("SettledQueueTrainingLaunch", {
   ok: S.Boolean,
   text: S.String,
 })
+export const ClickedQueueTrainingCloseout = m("ClickedQueueTrainingCloseout", {
+  trainingRunRef: S.String,
+  windowRef: S.NullOr(S.String),
+  leaseRef: S.NullOr(S.String),
+  bootstrapGrantRef: S.NullOr(S.String),
+})
+export const SettledQueueTrainingCloseout = m("SettledQueueTrainingCloseout", {
+  ok: S.Boolean,
+  text: S.String,
+})
 
 // ── Spawn ──────────────────────────────────────────────────────────────────
 export const ChangedSpawnAdapter = m("ChangedSpawnAdapter", {
@@ -150,6 +160,8 @@ export const Message = S.Union([
   SettledRequestTrainingBootstrap,
   ClickedQueueTrainingLaunch,
   SettledQueueTrainingLaunch,
+  ClickedQueueTrainingCloseout,
+  SettledQueueTrainingCloseout,
   ChangedSpawnAdapter,
   ChangedSpawnObjective,
   ChangedSpawnVerify,

@@ -156,6 +156,8 @@ export const Model = ts("AutopilotDesktop", {
   trainingBootstrapPending: S.Boolean,
   trainingLaunchStatus: TrainingLaunchStatus,
   trainingLaunchPending: S.Boolean,
+  trainingCloseoutStatus: TrainingLaunchStatus,
+  trainingCloseoutPending: S.Boolean,
 
   // Deploy feedback (null until the card has been interacted with or a deploy
   // projection has landed).
@@ -254,5 +256,7 @@ export const initialModel: Model = Model.make({
   trainingBootstrapPending: false,
   trainingLaunchStatus: { text: "", tone: "idle" },
   trainingLaunchPending: false,
+  trainingCloseoutStatus: { text: "", tone: "idle" },
+  trainingCloseoutPending: false,
   deployFeedback: null,
 })
