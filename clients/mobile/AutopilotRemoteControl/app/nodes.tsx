@@ -13,12 +13,15 @@ import {
   type ApprovalRow,
   type AssignmentRow,
   type IntentRow,
+  type DeployStatus,
   cancelSession,
   decodeConnectCode,
+  deployToCloud,
   fetchAccounts,
   fetchAccountsRaw,
   fetchApprovals,
   fetchAssignments,
+  fetchDeployStatus,
   fetchIntents,
   fetchWalletStatus,
   resolveApproval,
@@ -98,6 +101,9 @@ export default function NodesScreen() {
   const [assignments, setAssignments] = useState<AssignmentRow[]>([])
   const [intents, setIntents] = useState<IntentRow[]>([])
   const [approvals, setApprovals] = useState<ApprovalRow[]>([])
+  // CL-26 "Deploy to Cloud": last-deploy status + a transient line after a tap.
+  const [deployStatus, setDeployStatus] = useState<DeployStatus | null>(null)
+  const [deployLine, setDeployLine] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const navigation = useNavigation<{ navigate: (route: string) => void }>()
   // CL-30 notifications: permission + the set of session states already notified.
@@ -201,6 +207,9 @@ export default function NodesScreen() {
       void fetchApprovals(conn).then((rows) => {
         if (!cancelled) setApprovals(rows)
       })
+      void fetchDeployStatus(conn).then((s) => {
+        if (!cancelled) setDeployStatus(s)
+      })
     }
     loadWallet()
     const walletTimer = setInterval(loadWallet, 8000)
@@ -258,6 +267,28 @@ export default function NodesScreen() {
       })
       .catch((e) => setAskStatus(`error: ${e instanceof Error ? e.message : String(e)}`))
   }, [conn, askTitle, askBody])
+
+  // CL-26: trigger a deploy of the node's own Cloud Run service through OUR
+  // pipeline. Sensible default target/ref (cloudrun · main · production). The
+  // node fail-safe-gates execution behind OA_DEPLOY_ENABLE=1, so a tap with the
+  // gate unset comes back {accepted:false, reason:"deploy_disabled"} and the UI
+  // shows it without anything deploying.
+  const triggerDeploy = useCallback(() => {
+    if (conn === null) return
+    setDeployLine("deploying…")
+    void deployToCloud(conn, { target: "cloudrun", ref: "main", env: "production" })
+      .then((r) => {
+        setDeployLine(
+          r.accepted
+            ? "queued · cloudrun · main"
+            : r.reason === "deploy_disabled"
+              ? "disabled (set OA_DEPLOY_ENABLE=1 on the node)"
+              : `not accepted: ${r.errors[0] ?? r.reason}`,
+        )
+        void fetchDeployStatus(conn).then(setDeployStatus)
+      })
+      .catch((e) => setDeployLine(`error: ${e instanceof Error ? e.message : String(e)}`))
+  }, [conn])
 
   const connectManual = useCallback(() => {
     const info = decodeConnectCode(code)
@@ -440,6 +471,20 @@ export default function NodesScreen() {
                 <Text style={styles.buttonText}>Send to node</Text>
               </Pressable>
               {askStatus ? <Text style={styles.askStatus}>{askStatus}</Text> : null}
+            </View>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Deploy to Cloud</Text>
+              <Text style={styles.cardBody}>
+                Deploy this node's Cloud Run service (cloudrun · main · production)
+                through our pipeline. Disabled unless the node has OA_DEPLOY_ENABLE=1.
+              </Text>
+              <Pressable style={styles.button} onPress={triggerDeploy}>
+                <Text style={styles.buttonText}>Deploy to Cloud</Text>
+              </Pressable>
+              <Text style={styles.askStatus}>
+                {deployLine ??
+                  (deployStatus ? `${deployStatus.state} · ${deployStatus.message}` : "no deploy yet")}
+              </Text>
             </View>
             {approvals.length > 0 ? (
               <View style={[styles.card, styles.approvalCard]}>

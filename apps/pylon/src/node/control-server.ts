@@ -67,6 +67,11 @@ export type ControlCommand =
   // CL-16 approvals: read-only pending list + exactly-once resolve.
   | { type: "approvals.list" }
   | { type: "approvals.resolve"; approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }
+  // CL-26 "Deploy to Cloud": a node-triggered deploy through OUR cloud pipeline.
+  // Execution is gated behind OA_DEPLOY_ENABLE=1 (fail-safe). deploy.status is
+  // a read-only projection of the node's last deploy.
+  | { type: "deploy.cloud"; target: string; ref: string; env?: string }
+  | { type: "deploy.status" }
   // CL-14 bridge transport: operator (dev-token authed) mints a single-use
   // bootstrap that a client exchanges at /bridge/pair for a scoped credential.
   | { type: "bridge.issueBootstrap" }
@@ -93,6 +98,14 @@ export interface ControlCommandActions {
   approvals?: {
     list: () => Promise<unknown>
     resolve: (input: { approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }) => Promise<unknown>
+  }
+  // CL-26: node-triggered "Deploy to Cloud". `deployCloud` validates + (only
+  // when OA_DEPLOY_ENABLE=1) fire-and-forgets the deploy; `deployStatus`
+  // projects the node's last deploy. Optional so nodes without it report it
+  // as unavailable.
+  deploy?: {
+    deployCloud: (input: { target: unknown; ref: unknown; env?: unknown }) => Promise<unknown>
+    deployStatus: () => Promise<unknown>
   }
 }
 
@@ -212,6 +225,16 @@ export const startControlServer = (
             decision: command.decision,
             ...(command.answer === undefined ? {} : { answer: command.answer }),
           })
+        case "deploy.cloud":
+          if (!options.actions.deploy) throw new Error("deploy unavailable on this node")
+          return options.actions.deploy.deployCloud({
+            target: command.target,
+            ref: command.ref,
+            ...(command.env === undefined ? {} : { env: command.env }),
+          })
+        case "deploy.status":
+          if (!options.actions.deploy) throw new Error("deploy unavailable on this node")
+          return options.actions.deploy.deployStatus()
         case "assignments.poll":
           if (!options.actions.assignmentsPoll) throw new Error("assignments unavailable on this node")
           return options.actions.assignmentsPoll()

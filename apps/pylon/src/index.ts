@@ -56,6 +56,7 @@ import {
 } from "./node/discovery-register"
 import { createIntentQueue } from "./node/intent-intake"
 import { createApprovalQueue } from "./node/approval-queue"
+import { createDeployCloudActions } from "./node/deploy-cloud"
 import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime"
 import { evaluateShipSpendGate } from "./coordinator/ship-spend-gate"
 import {
@@ -1067,6 +1068,8 @@ const runPylonNode = Effect.gen(function* () {
   const externalTailer = startExternalSessionTailer()
   const sessionsWithExternal = wrapSessionsWithExternal(nodeSessionActions, externalTailer)
   const intentQueue = createIntentQueue({ persistPath: `${bootstrapSummary.paths.home}/intents.json` })
+  // CL-26 "Deploy to Cloud": defaults read OA_DEPLOY_ENABLE and use Bun.spawn.
+  const deployCloudActions = createDeployCloudActions()
 
   // Control server (issue #4740): a second terminal can attach to this
   // running node. Port conflicts (another node already serving) are reported
@@ -1087,6 +1090,10 @@ const runPylonNode = Effect.gen(function* () {
       intents: makeIntentActions(intentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
       approvals: makeApprovalActions(bootstrapSummary.paths),
+      // CL-26 "Deploy to Cloud": gated behind OA_DEPLOY_ENABLE=1 (fail-safe).
+      // Uses the real Bun.spawn fire-and-forget path; deploy.status projects
+      // the node's last deploy.
+      deploy: deployCloudActions,
     },
     port: controlPort,
     hostname: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",

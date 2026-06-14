@@ -321,6 +321,71 @@ export async function fetchWalletStatus(conn: ConnectInfo): Promise<WalletStatus
   }
 }
 
+export type DeployTarget = "cloudrun" | "workers"
+export type DeployEnv = "production" | "preview"
+
+export type DeployResult = {
+  accepted: boolean
+  reason: string
+  errors: string[]
+}
+
+export type DeployStatus = {
+  state: "queued" | "building" | "deployed" | "failed" | "unknown"
+  url: string | null
+  deployedAt: string | null
+  message: string
+}
+
+// CL-26 "Deploy to Cloud": trigger a deploy of one of the node's OWN cloud
+// services through OUR pipeline (Cloud Run / Workers). The node validates the
+// request and only runs anything when OA_DEPLOY_ENABLE=1 (fail-safe) — otherwise
+// it returns {accepted:false, reason:"deploy_disabled"} and nothing deploys.
+export async function deployToCloud(
+  conn: ConnectInfo,
+  input: { target: DeployTarget; ref: string; env?: DeployEnv },
+): Promise<DeployResult> {
+  try {
+    const json = (await command(conn, {
+      type: "deploy.cloud",
+      target: input.target,
+      ref: input.ref,
+      ...(input.env ? { env: input.env } : {}),
+    })) as { ok?: boolean; result?: { accepted?: unknown; reason?: unknown; errors?: unknown } }
+    const r = json.ok === true ? json.result : undefined
+    return {
+      accepted: r?.accepted === true,
+      reason: typeof r?.reason === "string" ? r.reason : json.ok === true ? "unknown" : "unavailable",
+      errors: Array.isArray(r?.errors) ? r.errors.map((e: unknown) => String(e)) : [],
+    }
+  } catch (e) {
+    return { accepted: false, reason: e instanceof Error ? e.message : "unavailable", errors: [] }
+  }
+}
+
+// Read-only projection of the node's last deploy (CL-26). Returns "unknown" when
+// the node has no deploy yet or doesn't expose the deploy actions.
+export async function fetchDeployStatus(conn: ConnectInfo): Promise<DeployStatus> {
+  try {
+    const json = (await command(conn, { type: "deploy.status" })) as { ok?: boolean; result?: any }
+    const r = json.ok === true ? json.result : undefined
+    if (!r || typeof r !== "object") {
+      return { state: "unknown", url: null, deployedAt: null, message: "Deployment status unavailable" }
+    }
+    return {
+      state:
+        r.state === "queued" || r.state === "building" || r.state === "deployed" || r.state === "failed"
+          ? r.state
+          : "unknown",
+      url: typeof r.url === "string" ? r.url : null,
+      deployedAt: typeof r.deployedAt === "string" ? r.deployedAt : null,
+      message: typeof r.message === "string" ? r.message : "Deployment status unavailable",
+    }
+  } catch {
+    return { state: "unknown", url: null, deployedAt: null, message: "Deployment status unavailable" }
+  }
+}
+
 // Submit a composed "ask" to the node (CL-34). The node enqueues it as a work
 // intent for the coordinator to plan + fan out. Returns the intent status.
 export async function submitIntent(

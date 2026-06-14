@@ -3,7 +3,7 @@ import { BrowserView, BrowserWindow } from "electrobun/bun"
 import { createNodeStatePoller } from "./node-state-poll"
 import { createSessionNotifier } from "./notifier"
 import { raiseOsNotification } from "./os-notification"
-import { fetchNodeState, readControlToken } from "./pylon-control"
+import { deployToCloud, fetchNodeState, readControlToken } from "./pylon-control"
 import type { DesktopRPCSchema } from "../shared/rpc"
 
 const controlBaseUrl = Bun.env.PYLON_CONTROL_BASE_URL ?? "http://127.0.0.1:4716"
@@ -12,7 +12,25 @@ const pollIntervalMs = Number(Bun.env.AUTOPILOT_DESKTOP_NODE_POLL_MS ?? "2000")
 
 const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
   handlers: {
-    requests: {},
+    requests: {
+      // CL-26: the webview's "Deploy to Cloud" button routes here. We read the
+      // node's control token and forward the gated deploy.cloud command — the
+      // node enforces the OA_DEPLOY_ENABLE=1 fail-safe, so nothing deploys by
+      // default.
+      async deployCloud(params) {
+        const token = readControlToken(pylonHome)
+        if (token === null) {
+          return { accepted: false, reason: "control token unavailable", errors: [] }
+        }
+        return deployToCloud({
+          baseUrl: controlBaseUrl,
+          token,
+          target: params.target,
+          ref: params.ref,
+          ...(params.env ? { env: params.env } : {}),
+        })
+      },
+    },
     messages: {},
   },
 })

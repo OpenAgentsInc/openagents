@@ -125,6 +125,94 @@ async function fetchAccountRows(input: {
   }
 }
 
+export type DesktopDeployStatus = {
+  state: "queued" | "building" | "deployed" | "failed" | "unknown"
+  url: string | null
+  deployedAt: string | null
+  message: string
+}
+
+export type DesktopDeployResult = {
+  accepted: boolean
+  reason: string
+  errors: string[]
+}
+
+// CL-26 "Deploy to Cloud" (desktop): trigger a deploy of the node's OWN cloud
+// service through OUR pipeline. The node validates and only runs anything when
+// OA_DEPLOY_ENABLE=1 (fail-safe) — otherwise it returns
+// {accepted:false, reason:"deploy_disabled"} and nothing deploys.
+export async function deployToCloud(input: {
+  baseUrl: string
+  token: string
+  target: "cloudrun" | "workers"
+  ref: string
+  env?: "production" | "preview"
+  fetchFn?: typeof fetch
+}): Promise<DesktopDeployResult> {
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "deploy.cloud",
+        target: input.target,
+        ref: input.ref,
+        ...(input.env ? { env: input.env } : {}),
+      }),
+    })
+    if (!res.ok) return { accepted: false, reason: `control ${res.status}`, errors: [] }
+    const json = (await res.json()) as { ok?: unknown; result?: { accepted?: unknown; reason?: unknown; errors?: unknown } }
+    const r = json.ok === true ? json.result : undefined
+    return {
+      accepted: r?.accepted === true,
+      reason: typeof r?.reason === "string" ? r.reason : json.ok === true ? "unknown" : "unavailable",
+      errors: Array.isArray(r?.errors) ? r.errors.map((e: unknown) => String(e)) : [],
+    }
+  } catch (e) {
+    return { accepted: false, reason: e instanceof Error ? e.message : "unavailable", errors: [] }
+  }
+}
+
+// Read-only projection of the node's last deploy (CL-26). Returns "unknown"
+// when the node has no deploy yet or doesn't expose the deploy actions.
+export async function fetchDeployStatus(input: {
+  baseUrl: string
+  token: string
+  fetchFn?: typeof fetch
+}): Promise<DesktopDeployStatus> {
+  const unavailable: DesktopDeployStatus = {
+    state: "unknown",
+    url: null,
+    deployedAt: null,
+    message: "Deployment status unavailable",
+  }
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "deploy.status" }),
+    })
+    if (!res.ok) return unavailable
+    const json = (await res.json()) as { ok?: unknown; result?: any }
+    const r = json.ok === true ? json.result : undefined
+    if (!r || typeof r !== "object") return unavailable
+    return {
+      state:
+        r.state === "queued" || r.state === "building" || r.state === "deployed" || r.state === "failed"
+          ? r.state
+          : "unknown",
+      url: typeof r.url === "string" ? r.url : null,
+      deployedAt: typeof r.deployedAt === "string" ? r.deployedAt : null,
+      message: typeof r.message === "string" ? r.message : unavailable.message,
+    }
+  } catch {
+    return unavailable
+  }
+}
+
 async function fetchArtifactStats(input: {
   baseUrl: string
   token: string
@@ -158,7 +246,7 @@ export async function fetchNodeState(input: {
   baseUrl: string
   token: string
   fetchFn?: typeof fetch
-}): Promise<{ ok: boolean; schema: string; sessions: SessionSummary[]; events: Record<string, SessionEventRow[]>; accounts: AccountRow[]; artifacts: Record<string, SessionArtifactStats> }> {
+}): Promise<{ ok: boolean; schema: string; sessions: SessionSummary[]; events: Record<string, SessionEventRow[]>; accounts: AccountRow[]; artifacts: Record<string, SessionArtifactStats>; deploy: DesktopDeployStatus }> {
   const fetchFn = input.fetchFn ?? fetch
   const baseUrl = input.baseUrl.replace(/\/+$/, "")
 
@@ -218,6 +306,8 @@ export async function fetchNodeState(input: {
   }
 
   const accounts = await fetchAccountRows({ baseUrl, token: input.token, fetchFn })
+  // CL-26: read-only projection of the node's last deploy.
+  const deploy = await fetchDeployStatus({ baseUrl, token: input.token, fetchFn })
 
   return {
     ok: health.ok,
@@ -226,5 +316,6 @@ export async function fetchNodeState(input: {
     events,
     accounts,
     artifacts,
+    deploy,
   }
 }

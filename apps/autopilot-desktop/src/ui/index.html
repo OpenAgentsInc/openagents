@@ -45,6 +45,17 @@
       .notif-body { font-size:.78rem; color:#8b93a7; font-family:ui-monospace,monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .notif-high .notif-title { color:#ff6b6b; }
       .notif-normal .notif-title { color:#5ee08a; }
+      #deploy { text-align:left; margin-top:1rem; padding:.8rem 1rem; border:1px solid #1c2230; border-radius:.4rem; }
+      #deploy h2 { font-size:1rem; margin:0 0 .3rem; color:#7dd3fc; }
+      #deploy .deploy-help { font-size:.78rem; color:#8b93a7; margin:0 0 .6rem; }
+      #deploy button { font:inherit; font-weight:600; background:#7dd3fc; color:#0b0d12; border:none; border-radius:.4rem; padding:.5rem .9rem; cursor:pointer; }
+      #deploy button:disabled { opacity:.5; cursor:default; }
+      .deploy-status { margin:.5rem 0 0; font-size:.8rem; font-family:ui-monospace,monospace; color:#cdd3e0; }
+      .deploy-queued { color:#ffb454; }
+      .deploy-building { color:#ffb454; }
+      .deploy-deployed { color:#5ee08a; }
+      .deploy-failed { color:#ff6b6b; }
+      .deploy-unknown { color:#8b93a7; }
     </style>
     <script src="views://autopilot-desktop/main.js"></script>
   </head>

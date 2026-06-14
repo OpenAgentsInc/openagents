@@ -25,6 +25,20 @@ export type SessionArtifactStats = {
   readonly totalTokens: number | null
 }
 
+// CL-26 "Deploy to Cloud": read-only projection of the node's last deploy.
+export type DeployStatusRow = {
+  readonly state: "queued" | "building" | "deployed" | "failed" | "unknown"
+  readonly url: string | null
+  readonly deployedAt: string | null
+  readonly message: string
+}
+
+export type DeployResultRow = {
+  readonly accepted: boolean
+  readonly reason: string
+  readonly errors: string[]
+}
+
 export type NodeStateMessage = {
   readonly ok: boolean
   readonly schema: string
@@ -35,11 +49,21 @@ export type NodeStateMessage = {
   readonly accounts?: AccountRow[]
   // CL-19: retained artifact stats per terminal session.
   readonly artifacts?: Record<string, SessionArtifactStats>
+  // CL-26: read-only projection of the node's last "Deploy to Cloud".
+  readonly deploy?: DeployStatusRow
 }
 
 export type DesktopRPCSchema = {
   readonly bun: {
-    readonly requests: Record<string, never>
+    // CL-26: the webview asks the Bun side to trigger a deploy of the node's
+    // own cloud service. The node fail-safe-gates execution behind
+    // OA_DEPLOY_ENABLE=1, so an un-enabled node returns accepted:false.
+    readonly requests: {
+      readonly deployCloud: {
+        readonly params: { target: "cloudrun" | "workers"; ref: string; env?: "production" | "preview" }
+        readonly response: DeployResultRow
+      }
+    }
     readonly messages: Record<string, never>
   }
   readonly webview: {
