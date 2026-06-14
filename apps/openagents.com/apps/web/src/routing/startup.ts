@@ -94,6 +94,7 @@ export const startupRouteForLoggedOut = (
       'Share',
       'Moksha',
       'Moksha2',
+      'Pylon',
       route =>
         LoggedOutStartupRoute({
           route,
@@ -136,6 +137,7 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
       'Share',
       'Moksha',
       'Moksha2',
+      'Pylon',
       route =>
         LoggedOutStartupRoute({
           route,
@@ -211,6 +213,7 @@ const startupRouteForCompleteOnboarding = (
       'Share',
       'Moksha',
       'Moksha2',
+      'Pylon',
       route =>
         LoggedOutStartupRoute({
           route,

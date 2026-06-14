@@ -156,6 +156,16 @@ describe('auth bootstrap flags', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
+  test('does not request the auth session on the Pylon route', async () => {
+    window.history.replaceState({}, '', '/pylon')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const loadedFlags = await Effect.runPromise(flags)
+
+    expect(loadedFlags.maybeAuth).toEqual(Option.none())
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   test('requests the auth session on application routes', async () => {
     window.history.replaceState({}, '', '/teams/openagents-core-team/chat')
     const fetchSpy = vi
@@ -277,6 +287,33 @@ describe('authenticated startup routing', () => {
       Scene.with(model),
       Scene.expect(Scene.selector('[data-route="moksha2"]')).toExist(),
       Scene.expect(Scene.selector('oa-moksha')).toExist(),
+    )
+  })
+
+  test('opens Pylon without an auth session', () => {
+    const [model, commands] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/pylon'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: { _tag: 'Pylon' },
+    })
+    expect(commands).toHaveLength(0)
+  })
+
+  test('renders the Pylon route through the top-level view', () => {
+    const [model] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/pylon'),
+    )
+
+    Scene.scene(
+      { update, view },
+      Scene.with(model),
+      Scene.expect(Scene.selector('[data-route="pylon"]')).toExist(),
+      Scene.expect(Scene.selector('oa-pylon')).toExist(),
     )
   })
 

@@ -32,6 +32,7 @@ import {
   OnboardingRoute,
   OrderRoute,
   PublicAgentRoute,
+  PylonRoute,
   ShareRoute,
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
@@ -177,6 +178,26 @@ describe('startup route policy', () => {
       _tag: 'LoggedOutStartupRoute',
       redirect: Option.none(),
       route: mokshaRoute,
+    })
+  })
+
+  test('keeps Pylon public for every auth state', () => {
+    const pylonRoute = PylonRoute()
+
+    expect(startupRouteForLoggedOut(pylonRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: pylonRoute,
+    })
+    expect(startupRouteForLoggedIn(pylonRoute, completeAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: pylonRoute,
+    })
+    expect(startupRouteForLoggedIn(pylonRoute, incompleteAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: pylonRoute,
     })
   })
 
@@ -439,6 +460,7 @@ describe('startup route policy', () => {
     expect(routeRequiresAuthBootstrap(SiteCheckoutDemoRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(MokshaRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(Moksha2Route())).toBe(false)
+    expect(routeRequiresAuthBootstrap(PylonRoute())).toBe(false)
     expect(
       routeRequiresAuthBootstrap(
         SiteCheckoutDemoReturnRoute({ returnAction: 'status' }),

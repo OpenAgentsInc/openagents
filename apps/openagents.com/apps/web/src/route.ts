@@ -53,6 +53,7 @@ export const PublicAgentRoute = r('PublicAgent', { agentRef: S.String })
 export const ShareRoute = r('Share', { shareId: S.String })
 export const MokshaRoute = r('Moksha')
 export const Moksha2Route = r('Moksha2')
+export const PylonRoute = r('Pylon')
 export const DashboardRoute = r('Dashboard')
 export const BillingRoute = r('Billing')
 export const UsageRoute = r('Usage')
@@ -124,6 +125,7 @@ export type PublicAgentRoute = typeof PublicAgentRoute.Type
 export type ShareRoute = typeof ShareRoute.Type
 export type MokshaRoute = typeof MokshaRoute.Type
 export type Moksha2Route = typeof Moksha2Route.Type
+export type PylonRoute = typeof PylonRoute.Type
 export type DashboardRoute = typeof DashboardRoute.Type
 export type BillingRoute = typeof BillingRoute.Type
 export type UsageRoute = typeof UsageRoute.Type
@@ -170,6 +172,7 @@ export const LoggedOutRoute = S.Union([
   ShareRoute,
   MokshaRoute,
   Moksha2Route,
+  PylonRoute,
   NotFoundRoute,
 ])
 export const LoggedInRoute = S.Union([
@@ -250,6 +253,7 @@ export const AppRoute = S.Union([
   ShareRoute,
   MokshaRoute,
   Moksha2Route,
+  PylonRoute,
   DashboardRoute,
   BillingRoute,
   UsageRoute,
@@ -430,6 +434,7 @@ export const moksha2Router = pipe(
   literal('moksha2'),
   Route.mapTo(Moksha2Route),
 )
+export const pylonRouter = pipe(literal('pylon'), Route.mapTo(PylonRoute))
 export const billingRouter = pipe(literal('billing'), Route.mapTo(BillingRoute))
 export const usageRouter = pipe(literal('usage'), Route.mapTo(UsageRoute))
 export const statsRouter = pipe(literal('stats'), Route.mapTo(StatsRoute))
@@ -546,6 +551,7 @@ const routeParser = Route.oneOf(
   shareRouter,
   moksha2Router,
   mokshaRouter,
+  pylonRouter,
   inviteRouter,
   onboardingRouter,
   autopilotWorkDetailRouter,

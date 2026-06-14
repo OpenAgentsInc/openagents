@@ -31,6 +31,7 @@ import {
   PublicAgentRoute,
   PublicTrainingRunRoute,
   PublicTrainingRunsRoute,
+  PylonRoute,
   ShareRoute,
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
@@ -112,6 +113,10 @@ describe('app route parser', () => {
 
   test('accepts the OpenAgents Moksha narrative route', () => {
     expect(urlToAppRoute(appUrl('/moksha2'))).toEqual(Moksha2Route())
+  })
+
+  test('accepts the Pylon scene route', () => {
+    expect(urlToAppRoute(appUrl('/pylon'))).toEqual(PylonRoute())
   })
 
   test('accepts the admin overview route', () => {

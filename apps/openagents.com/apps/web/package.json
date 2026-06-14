@@ -24,11 +24,13 @@
     "clsx": "^2.1.1",
     "effect": "4.0.0-beta.70",
     "foldkit": "^0.102.1",
-    "tailwindcss": "^4.2.4"
+    "tailwindcss": "^4.2.4",
+    "three": "0.184.0"
   },
   "devDependencies": {
     "@foldkit/devtools-mcp": "^0.9.0",
     "@foldkit/vite-plugin": "^0.7.0",
+    "@types/three": "0.184.0",
     "happy-dom": "^20.9.0",
     "vite": "^8.0.10"
   }

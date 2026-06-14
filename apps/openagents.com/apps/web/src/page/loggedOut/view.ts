@@ -19,6 +19,7 @@ import * as Moksha2 from './page/moksha2'
 import * as Onboarding from './page/onboarding'
 import * as Promises from './page/promises'
 import * as PublicAgent from './page/publicAgent'
+import * as Pylon from './page/pylon'
 import * as Share from './page/share'
 import * as Stats from './page/stats'
 import * as TrainingRuns from './page/trainingRuns'
@@ -41,6 +42,12 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
   if (model.route._tag === 'Moksha2') {
     return Ui.pageShell<Message>([
       h.keyed('div')(model.route._tag, [], [Moksha2.view()]),
+    ])
+  }
+
+  if (model.route._tag === 'Pylon') {
+    return Ui.pageShell<Message>([
+      h.keyed('div')(model.route._tag, [], [Pylon.view()]),
     ])
   }
 
