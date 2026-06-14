@@ -1,9 +1,16 @@
+// CL-30 / CL-53: pure string rendering of the in-app notification center.
+//
+// This is the read-only projection of the NotificationCenterView built by the
+// shared `buildNotificationCenter` core on the Bun side. It is kept as a pure,
+// DOM-free string helper (no electrobun, no foldkit) so the Bun-side notifier
+// test can assert the unread count, the high-priority class, and HTML escaping
+// without a runtime. The Foldkit notifications view (src/ui/view.ts) renders the
+// same center view as real VNodes; this helper stays the canonical place for the
+// escaping/labeling contract that notifier.test.ts pins.
+
 import type { NotificationCenterView } from "@openagentsinc/autopilot-control-protocol"
 
-// CL-30 (desktop): render the in-app notification center built by the shared
-// `buildNotificationCenter` core. Read-only: it shows what already happened.
-
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -36,8 +43,4 @@ export function notificationsHtml(view: NotificationCenterView): string {
     "</header>",
     body,
   ].join("")
-}
-
-export function renderNotifications(container: HTMLElement, view: NotificationCenterView): void {
-  container.innerHTML = notificationsHtml(view)
 }

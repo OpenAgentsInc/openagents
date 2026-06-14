@@ -4,7 +4,6 @@ import {
   sessionListFixture,
 } from "@openagentsinc/autopilot-control-protocol/fixtures"
 import { fetchNodeState, readControlToken } from "../src/bun/pylon-control.ts"
-import { sessionRows } from "../src/ui/session-view.ts"
 
 const bearerToken = "local-bearer-token-fixture"
 
@@ -34,13 +33,10 @@ describe("Pylon control client", () => {
     expect(state.sessions.map((session) => session.sessionRef)).toEqual(
       sessionListFixture.map((session) => session.sessionRef),
     )
-  })
 
-  test("renders session rows without leaking bearer tokens", () => {
-    const rows = sessionRows(sessionListFixture)
-
-    for (const session of sessionListFixture) expect(rows).toContain(session.sessionRef.slice(-6))
-    expect(rows).not.toContain(bearerToken)
+    // The decoded node-state projection (what crosses the RPC to the webview)
+    // must never carry the bearer token used to fetch it.
+    expect(JSON.stringify(state)).not.toContain(bearerToken)
   })
 
   test("returns null for a missing control token path", () => {

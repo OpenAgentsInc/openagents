@@ -1,0 +1,7 @@
+# CL-53: generated Tailwind output (built by `bun run build:css`, copied into
+# the view bundle as styles.css). The styles.css SOURCE is committed; this
+# generated artifact is not.
+src/ui/styles.out.css
+
+# Electrobun build output
+build/
