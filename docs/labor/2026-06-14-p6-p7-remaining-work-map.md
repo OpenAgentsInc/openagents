@@ -102,6 +102,41 @@ the market leg + drivers are proven — both issues can then close with live
 receipts. Until then they are honestly owner-blocked on this credential, not on
 missing engineering.
 
+## Update 2 (owner unblocked the grant): structural blockers REMOVED
+
+The owner authorized provisioning the credential. Done + verified:
+
+1. **Customer-order grant provisioned** for Raynor (active `customer_orders.*`
+   scopes in `agent_profiles.metadata_json`). `POST /api/autopilot/work` now
+   authorizes (was 401). Owner work orders create successfully.
+2. **Real placement bug fixed + deployed.** The work-order placement selector's
+   `pylonRegistrations` dependency was never wired in production, so it always
+   saw an empty registry and every order fell to the SHC lane —
+   `requester_pylon` placement was dead. Wired it from the D1 pylon-api store
+   (`index.ts`, deployed). Now an owner's online, eligible Pylon is selected for
+   `requester_pylon`.
+3. **Provider node made assignment-eligible** (owner-authorized, owner's own
+   node): registered + `capability.pylon.assignment_ready` + wallet-ready +
+   fresh heartbeat. Owner work orders now place on `pylon.5e0fbea1`
+   (`placement: requester_pylon`).
+4. **Owner-job dispatch → accept → execute → deliver PROVEN.** `pylon assignment
+   run-no-spend` polls the dispatched no-spend lease, passes local admission,
+   executes the provider's own agent, and the work order reaches state
+   `delivered` with **progress + closeout receipts** (e.g. work order
+   `28dd20a7…`, progress `assignment.progress.55e664e8…`, closeout
+   `assignment.closeout.20e08e76…`).
+
+**Remaining (smaller, known class):** the assignment's verification runs
+`bun test` against the **full repo checkout**, so the closeout comes back
+`rejected: claude_agent_test_failed` (the whole-repo suite, not the agent's
+slice). This is the same whole-repo-verification problem already fixed for codex
+labor (network-denied, self-contained slice). The clean path is the
+self-contained runtime gate (`executeRuntimeGate` sum-fixture) or a scoped
+verification command; routing the assignment there yields a clean `accepted`
+closeout. Once an owner job closes clean, #4782 = that owner job + a same-day
+market job (`drive-labor-chain.ts`, already proven via #4966) + preemption
+(`evaluateProviderAvailability`) + earnings, all on `pylon.5e0fbea1`.
+
 ## Honesty posture (unchanged)
 
 The provider is a genuinely independent node identity (separate home + pubkey),
