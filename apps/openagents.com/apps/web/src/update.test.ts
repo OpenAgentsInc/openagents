@@ -386,6 +386,7 @@ describe('app link routing', () => {
       'LoadSyncSnapshot',
       'InstallAccountMenuOutsideClick',
       'LoadThreadFiles',
+      'RequestNotificationPermission',
     ])
     expect(commands[2]?.args).toEqual({
       href: '/api/teams/team_openagents_core/files',
@@ -411,6 +412,7 @@ describe('app link routing', () => {
       'LoadSyncSnapshot',
       'InstallAccountMenuOutsideClick',
       'LoadThreadFileDetail',
+      'RequestNotificationPermission',
     ])
     expect(commands[2]?.args).toEqual({
       fileId: 'file_1',
@@ -432,6 +434,7 @@ describe('app link routing', () => {
       'LoadSyncSnapshot',
       'InstallAccountMenuOutsideClick',
       'LoadThreadFileDetail',
+      'RequestNotificationPermission',
     ])
     expect(commands[2]?.args).toEqual({
       fileId: 'file_personal_1',

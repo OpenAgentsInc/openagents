@@ -1,4 +1,5 @@
 import { Match as M, Option } from 'effect'
+import type { Command } from 'foldkit'
 import { evo } from 'foldkit/struct'
 
 import { loggedInWorkroomAllowed } from '../../../product-policy'
@@ -42,6 +43,7 @@ import {
   unavailableThreadRoute,
 } from '../thread-route'
 import { type UpdateReturn, noUpdate } from '../transition'
+import { ingestSessionNotifications } from '../notifications/transitions'
 import { FetchAutopilotRun, LaunchAutopilotRun } from './commands'
 
 type AgentRunResponseWithOptionalUrls =
@@ -130,6 +132,27 @@ export const applySyncRunResponse = (
         ? authorizedThreadRoute(threadRoute.routeId, response.run.id)
         : threadRoute,
   })
+}
+
+/**
+ * Apply a polled run response, then derive Pylon-session notifications from the
+ * resulting model via the shared `notificationsFromSessions` core. Returns the
+ * notification commands (browser-notification raise) merged with `extraCommands`.
+ */
+const applyRunResponseWithNotifications = (
+  model: Model,
+  response: AgentRunDetailResponse,
+  extraCommands: ReadonlyArray<Command.Command<Message>>,
+): UpdateReturn => {
+  const applied = applySyncRunResponse(model, response)
+  const [ingestedModel, notificationCommands] =
+    ingestSessionNotifications(applied)
+
+  return [
+    ingestedModel,
+    [...extraCommands, ...notificationCommands],
+    Option.none(),
+  ]
 }
 
 export const submitRunChatComposer = (
@@ -294,11 +317,9 @@ export const updateRunState = (model: Model, message: Message): UpdateReturn =>
           return noUpdate(model)
         }
 
-        return [
-          applySyncRunResponse(model, response),
-          [ScrollChatTimelineToEnd()],
-          Option.none(),
-        ]
+        return applyRunResponseWithNotifications(model, response, [
+          ScrollChatTimelineToEnd(),
+        ])
       },
       FailedFetchAutopilotRun: ({ error, runId }) => {
         if (

@@ -47,6 +47,7 @@ import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import { ClickedLogout, ClickedNewChat, Message } from './message'
 import { type Model, type SidebarModel, teamRouteRef } from './model'
 import * as Mullet from './mullet/view'
+import { notificationsPanel } from './notifications/view'
 import * as Admin from './page/admin'
 import * as AutopilotWork from './page/autopilot-work'
 import * as Billing from './page/billing'
@@ -356,6 +357,9 @@ const routeView = (model: Model): Html => {
         : 'scroll',
     mobileSidebar: mobileSidebarView(model),
     children: [
+      ...(model.notifications.items.length > 0
+        ? [notificationsPanel(model)]
+        : []),
       M.value(model.route).pipe(
         M.tagsExhaustive({
           Invite: () =>

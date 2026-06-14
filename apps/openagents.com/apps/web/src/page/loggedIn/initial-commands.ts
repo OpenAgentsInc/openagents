@@ -29,6 +29,7 @@ import { agentGoalScopeForRoute } from './goals/scope'
 import { Message } from './message'
 import { Model } from './model'
 import { LoadMulletBootstrap } from './mullet/transitions'
+import { notificationInitialCommands } from './notifications/transitions'
 import { LoadOnboardingRepositories } from './onboarding/transitions'
 import { LoadProviderAccountPool } from './providers/commands'
 import { LoadTokenUsageStats } from './stats/transitions'
@@ -147,5 +148,6 @@ export const initialCommands = (
     ...fileDetailCommands,
     ...chatCommands,
     ...providerAccountPoolCommands,
+    ...notificationInitialCommands(model),
   ]
 }

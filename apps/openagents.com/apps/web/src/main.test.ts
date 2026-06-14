@@ -496,6 +496,7 @@ describe('authenticated startup routing', () => {
       'LoadAgentGoal',
       'LoadThreadFiles',
       'FocusChatComposer',
+      'RequestNotificationPermission',
     ])
     expect(commands[0]?.args).toEqual({
       href: '/api/sync/workspace/github%3A14167547/snapshot',
@@ -516,6 +517,7 @@ describe('authenticated startup routing', () => {
     expect(commands.map(command => command.name)).toEqual([
       'LoadSyncSnapshot',
       'InstallAccountMenuOutsideClick',
+      'RequestNotificationPermission',
     ])
   })
 
@@ -534,6 +536,7 @@ describe('authenticated startup routing', () => {
       'LoadSyncSnapshot',
       'InstallAccountMenuOutsideClick',
       'LoadThreadFiles',
+      'RequestNotificationPermission',
     ])
     expect(commands[2]?.args).toEqual({
       href: '/api/teams/team_openagents_core/files',
@@ -577,6 +580,7 @@ describe('authenticated startup routing', () => {
       'LoadSyncSnapshot',
       'InstallAccountMenuOutsideClick',
       'LoadThreadFileDetail',
+      'RequestNotificationPermission',
     ])
     expect(commands[2]?.args).toEqual({
       fileId: 'file_1',
@@ -598,6 +602,7 @@ describe('authenticated startup routing', () => {
       'LoadSyncSnapshot',
       'InstallAccountMenuOutsideClick',
       'LoadThreadFileDetail',
+      'RequestNotificationPermission',
     ])
     expect(commands[2]?.args).toEqual({
       fileId: 'file_personal_1',

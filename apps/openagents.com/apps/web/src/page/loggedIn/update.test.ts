@@ -940,6 +940,7 @@ describe('logged-in Autopilot chat runs', () => {
       'LoadAgentGoal',
       'LoadThreadFiles',
       'FocusChatComposer',
+      'RequestNotificationPermission',
     ])
     expect(commands[2]?.args).toEqual({
       agentId: 'autopilot',
@@ -1209,6 +1210,7 @@ describe('logged-in Autopilot chat runs', () => {
       'LoadTeamChatMessages',
       'LoadThreadFiles',
       'FocusChatComposer',
+      'RequestNotificationPermission',
     ])
     expect(commands[3]?.args).toEqual({
       href: '/api/teams/team_openagents_core/chat/messages',
@@ -1234,6 +1236,7 @@ describe('logged-in Autopilot chat runs', () => {
       'LoadSyncSnapshot',
       'InstallAccountMenuOutsideClick',
       'FocusChatComposer',
+      'RequestNotificationPermission',
     ])
   })
 
@@ -1951,6 +1954,7 @@ describe('logged-in Autopilot chat runs', () => {
       'LoadSyncSnapshot',
       'InstallAccountMenuOutsideClick',
       'LoadThreadFileDetail',
+      'RequestNotificationPermission',
     ])
     expect(commands[2]?.args).toEqual({
       fileId: 'file_1',

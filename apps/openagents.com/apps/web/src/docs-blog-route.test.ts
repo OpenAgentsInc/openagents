@@ -96,6 +96,7 @@ describe('docs and blog routes', () => {
     expect(commands.map(command => command.name)).toEqual([
       'LoadSyncSnapshot',
       'InstallAccountMenuOutsideClick',
+      'RequestNotificationPermission',
     ])
   })
 

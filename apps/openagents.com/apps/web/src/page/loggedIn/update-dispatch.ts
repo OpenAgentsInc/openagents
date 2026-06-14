@@ -11,6 +11,7 @@ import { updateImages } from './images/transitions'
 import { Message } from './message'
 import { Model } from './model'
 import { updateMullet } from './mullet/transitions'
+import { updateNotifications } from './notifications/transitions'
 import { updateOnboarding } from './onboarding/transitions'
 import { updateProviders } from './providers/transitions'
 import { updateRunState } from './runs/transitions'
@@ -258,6 +259,13 @@ export const update = (model: Model, message: Message): UpdateReturn => {
       RequestedPollAutopilotRun: () => updateRunState(model, message),
       SucceededFetchAutopilotRun: () => updateRunState(model, message),
       FailedFetchAutopilotRun: () => updateRunState(model, message),
+
+      RequestedNotificationPermission: () =>
+        updateNotifications(model, message),
+      ResolvedNotificationPermission: () =>
+        updateNotifications(model, message),
+      RaisedBrowserNotifications: () => updateNotifications(model, message),
+      DismissedNotifications: () => updateNotifications(model, message),
 
       RequestedLoadAgentGoal: () => updateAgentGoals(model, message),
       SucceededLoadAgentGoal: () => updateAgentGoals(model, message),

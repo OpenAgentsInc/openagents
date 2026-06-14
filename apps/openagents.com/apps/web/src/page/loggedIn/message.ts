@@ -955,6 +955,18 @@ export const FailedFetchAutopilotRun = m('FailedFetchAutopilotRun', {
   runId: S.String,
   error: S.String,
 })
+export const RequestedNotificationPermission = m(
+  'RequestedNotificationPermission',
+)
+export const ResolvedNotificationPermission = m(
+  'ResolvedNotificationPermission',
+  {
+    granted: S.Boolean,
+    canAskAgain: S.Boolean,
+  },
+)
+export const RaisedBrowserNotifications = m('RaisedBrowserNotifications')
+export const DismissedNotifications = m('DismissedNotifications')
 export const RequestedLoadAgentGoal = m('RequestedLoadAgentGoal', {
   href: S.String,
   scopeKey: S.String,
@@ -1326,6 +1338,10 @@ export const Message = S.Union([
   RequestedPollAutopilotRun,
   SucceededFetchAutopilotRun,
   FailedFetchAutopilotRun,
+  RequestedNotificationPermission,
+  ResolvedNotificationPermission,
+  RaisedBrowserNotifications,
+  DismissedNotifications,
   RequestedLoadAgentGoal,
   SucceededLoadAgentGoal,
   FailedLoadAgentGoal,

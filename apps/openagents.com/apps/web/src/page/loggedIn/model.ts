@@ -36,6 +36,10 @@ import {
   teamProjectChatRouter,
 } from '../../route'
 import { MulletModel, init as initMullet } from './mullet/model'
+import {
+  NotificationsModel,
+  initNotifications,
+} from './notifications/model'
 import { SiteElementContext } from './site-element-context'
 import { ThreadRouteIdle, ThreadRouteState } from './thread-route'
 
@@ -3016,6 +3020,7 @@ export const Model = ts('LoggedIn', {
   inviteCodeAction: InviteCodeAction,
   inviteCodeValue: S.String,
   mullet: MulletModel,
+  notifications: NotificationsModel,
   onboarding: OnboardingFlowModel,
   providerAccountPool: ProviderAccountPoolState,
   providerConnectionAction: ProviderConnectionAction,
@@ -3564,6 +3569,7 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
     imageGenerationProvider: 'google-gemini',
     inviteCodeValue: '',
     mullet: initMullet(),
+    notifications: initNotifications(),
     onboarding: initOnboardingFlow(auth.onboarding),
     providerAccountPool: ProviderAccountPoolIdle(),
     providerConnectionAction: IdleProviderConnectionAction(),
