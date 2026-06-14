@@ -243,6 +243,12 @@ describe("CL-53 sanitizeTree", () => {
       label: "lease",
       state: "info",
     })
+    expect(scene?.data?.props?.visualization?.operatorSignals).toContainEqual({
+      detail: "idle",
+      id: "admit",
+      label: "admit",
+      state: "idle",
+    })
   })
 
   test("training pane includes the CS336 dashboard panel", () => {
@@ -372,13 +378,17 @@ describe("CL-53 sanitizeTree", () => {
         pylonHomePresent: true,
         controlTokenPresent: true,
         localPylonReady: true,
+        evidenceEnabled: true,
+        evidencePacketPathPresent: false,
+        evidenceReady: false,
         blockerRefs: [
           "env.OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE",
           "env.OPENAGENTS_TRAINING_ADMIN_API_TOKEN",
+          "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
         ],
       },
       trainingOperatorReadinessStatus: {
-        text: "2 operator blockers · https://openagents.test",
+        text: "3 operator blockers · https://openagents.test",
         tone: "info",
       },
     })
@@ -393,6 +403,12 @@ describe("CL-53 sanitizeTree", () => {
       treeContainsText(
         document.body,
         "env.OPENAGENTS_TRAINING_ADMIN_API_TOKEN",
+      ),
+    ).toBe(true)
+    expect(
+      treeContainsText(
+        document.body,
+        "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
       ),
     ).toBe(true)
   })
@@ -439,6 +455,24 @@ describe("CL-53 sanitizeTree", () => {
       trainingRuns: liveTrainingProjection,
     })
     expect(treeContainsClass(document.body, "training-closeout-button")).toBe(true)
+  })
+
+  test("training pane includes the real-gradient evidence admission action", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: liveTrainingProjection,
+    })
+    expect(treeContainsClass(document.body, "training-evidence-button")).toBe(true)
+    expect(treeContainsText(document.body, "ClickedAdmitTrainingEvidence")).toBe(
+      true,
+    )
+    expect(
+      treeContainsText(
+        document.body,
+        "/api/training/runs/{runRef}/real-gradient-evidence",
+      ),
+    ).toBe(true)
   })
 
   test("training pane includes the reconcile action for sealed windows", () => {

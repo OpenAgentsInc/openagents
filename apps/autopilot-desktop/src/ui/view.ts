@@ -59,6 +59,7 @@ import {
   ChangedSpawnVerify,
   ClickedCancelSession,
   ClickedActivateTrainingWindow,
+  ClickedAdmitTrainingEvidence,
   ClickedClaimTrainingLease,
   ClickedCoordinatorToggle,
   ClickedDeploy,
@@ -98,6 +99,7 @@ import {
   modelTrainingActivation,
   modelTrainingBootstrap,
   modelTrainingDashboard,
+  modelTrainingEvidenceAdmission,
   modelTrainingLease,
   modelNode,
   modelNotifications,
@@ -901,6 +903,22 @@ const trainingControlSurfaceRows: readonly TrainingControlSurfaceRow[] = [
       "no run selected",
   },
   {
+    action: "Admit evidence packet",
+    authority: "Bun admin env gate + local evidence packet path",
+    dispatch: "ClickedAdmitTrainingEvidence",
+    route: "POST /api/training/runs/{runRef}/real-gradient-evidence",
+    rpc: "admitTrainingRealGradientEvidence",
+    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
+    statusField: "trainingEvidenceAdmissionStatus",
+    status: model => model.trainingEvidenceAdmissionStatus,
+    pending: model => model.trainingEvidenceAdmissionPending,
+    current: model =>
+      modelTrainingEvidenceAdmission(model)?.trainingRunRef ??
+      selectedTrainingSummary(modelTrainingRuns(model))?.run.trainingRunRef ??
+      modelTrainingPlan(model)?.trainingRunRef ??
+      "no run selected",
+  },
+  {
     action: "Reconcile sealed window",
     authority: "Bun admin env gate",
     dispatch: "ClickedReconcileTrainingWindow",
@@ -996,6 +1014,11 @@ const trainingOperatorReadinessRows = (
       "local Pylon",
       `home ${readinessFlag(readiness.pylonHomePresent)} · token ${readinessFlag(readiness.controlTokenPresent)}`,
       readiness.localPylonReady ? "ready" : "blocked",
+    ),
+    trainingGate(
+      "evidence packet",
+      `${readiness.evidenceEnabled ? "enabled" : "disabled"} · packet ${readinessFlag(readiness.evidencePacketPathPresent)}`,
+      readiness.evidenceReady ? "ready" : "blocked",
     ),
     trainingGate(
       "pylon ref source",
@@ -1272,6 +1295,18 @@ const trainingOperatorSignals = (
     state: operatorSignalState(
       model.trainingCloseoutStatus,
       model.trainingCloseoutPending,
+    ),
+  },
+  {
+    detail: operatorSignalDetail(
+      model.trainingEvidenceAdmissionStatus,
+      "idle",
+    ),
+    id: "admit",
+    label: "admit",
+    state: operatorSignalState(
+      model.trainingEvidenceAdmissionStatus,
+      model.trainingEvidenceAdmissionPending,
     ),
   },
   {
@@ -1869,6 +1904,7 @@ const trainingOperatorFeedPanel = (model: Model): Html => {
   const reconcile = modelTrainingReconcile(model)
   const lease = modelTrainingLease(model)
   const bootstrap = modelTrainingBootstrap(model)
+  const evidenceAdmission = modelTrainingEvidenceAdmission(model)
 
   const planRef =
     plan?.windowRef ?? plan?.trainingRunRef ?? plan?.reason ?? "idle"
@@ -1883,6 +1919,10 @@ const trainingOperatorFeedPanel = (model: Model): Html => {
     bootstrap?.outcome?.kind === "granted"
       ? bootstrap.outcome.grant.grantRef
       : bootstrap?.outcome?.kind ?? bootstrap?.reason ?? "idle"
+  const evidenceRef =
+    evidenceAdmission?.ok === true
+      ? `${evidenceAdmission.receiptRefCount} receipts`
+      : evidenceAdmission?.reason ?? "idle"
 
   return h.section([cls("training-panel training-operator-feed-panel")], [
     h.div([cls("training-panel-heading")], [
@@ -1990,6 +2030,14 @@ const trainingOperatorFeedPanel = (model: Model): Html => {
         ),
       ),
       trainingGate(
+        "admit evidence",
+        `${trainingStatusText(model.trainingEvidenceAdmissionStatus, "idle")} · ${evidenceRef}`,
+        trainingStatusTone(
+          model.trainingEvidenceAdmissionStatus,
+          model.trainingEvidenceAdmissionPending,
+        ),
+      ),
+      trainingGate(
         "reconcile",
         `${trainingStatusText(model.trainingReconcileStatus, "idle")} · ${reconcileRef}`,
         trainingStatusTone(
@@ -2035,6 +2083,8 @@ const trainingLaunchPanel = (model: Model): Html => {
   const leaseStatusVisible = model.trainingLeaseStatus.tone !== "idle"
   const bootstrapStatusVisible =
     model.trainingBootstrapStatus.tone !== "idle"
+  const evidenceAdmissionStatusVisible =
+    model.trainingEvidenceAdmissionStatus.tone !== "idle"
   const launchStatusVisible = model.trainingLaunchStatus.tone !== "idle"
   const closeoutStatusVisible =
     model.trainingCloseoutStatus.tone !== "idle"
@@ -2083,6 +2133,22 @@ const trainingLaunchPanel = (model: Model): Html => {
           windowRef: closeoutWindow,
           leaseRef: lease?.leaseRef ?? null,
           bootstrapGrantRef,
+        }),
+      ),
+    )
+  }
+  const evidenceAttrs: Attribute<Message>[] = [
+    cls("training-action-button training-evidence-button secondary"),
+    h.Type("button"),
+    h.Disabled(
+      model.trainingEvidenceAdmissionPending || closeoutRunRef === null,
+    ),
+  ]
+  if (closeoutRunRef !== null) {
+    evidenceAttrs.push(
+      h.OnClick(
+        ClickedAdmitTrainingEvidence({
+          trainingRunRef: closeoutRunRef,
         }),
       ),
     )
@@ -2197,6 +2263,16 @@ const trainingLaunchPanel = (model: Model): Html => {
           ],
         ),
         h.button(
+          evidenceAttrs,
+          [
+            model.trainingEvidenceAdmissionPending
+              ? "Admitting..."
+              : closeoutRunRef === null
+                ? "No run selected"
+                : "Admit evidence packet",
+          ],
+        ),
+        h.button(
           reconcileAttrs,
           [
             model.trainingReconcilePending
@@ -2257,6 +2333,16 @@ const trainingLaunchPanel = (model: Model): Html => {
             ),
           ],
           [model.trainingReconcileStatus.text],
+        )
+      : h.p([cls("training-action-status")], [" "]),
+    evidenceAdmissionStatusVisible
+      ? h.p(
+          [
+            cls(
+              `training-action-status training-${model.trainingEvidenceAdmissionStatus.tone}`,
+            ),
+          ],
+          [model.trainingEvidenceAdmissionStatus.text],
         )
       : h.p([cls("training-action-status")], [" "]),
     launchStatusVisible

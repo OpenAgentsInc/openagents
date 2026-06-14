@@ -18,6 +18,7 @@ import {
   GotTrainingRuns,
   SettledCancelSession,
   SettledActivateTrainingWindow,
+  SettledAdmitTrainingEvidence,
   SettledClaimTrainingLease,
   SettledCoordinatorToggle,
   SettledPlanTrainingWindow,
@@ -107,6 +108,9 @@ const emptyTrainingOperatorReadinessProjection = (error: string) => ({
   pylonHomePresent: false,
   controlTokenPresent: false,
   localPylonReady: false,
+  evidenceEnabled: false,
+  evidencePacketPathPresent: false,
+  evidenceReady: false,
   blockerRefs: ["desktop.training.operator_readiness_request_failed"],
   error,
 })
@@ -123,6 +127,27 @@ const emptyTrainingBootstrapProjection = (
   outcome: null,
   reason: "request_failed",
   message: `training bootstrap grant failed: ${error}`,
+  error,
+})
+
+const emptyTrainingEvidenceAdmissionProjection = (
+  trainingRunRef: string,
+  error: string,
+) => ({
+  ok: false,
+  enabled: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:training-real-gradient-evidence",
+  trainingRunRef,
+  packetSource: null,
+  run: null,
+  realGradient: null,
+  reason: "request_failed",
+  message: `training evidence admission failed: ${error}`,
+  evidenceRefCount: 0,
+  receiptRefCount: 0,
+  shardContributionCount: 0,
+  distinctPylonCount: 0,
   error,
 })
 
@@ -411,6 +436,28 @@ export const RequestTrainingBootstrapGrant = Command.define(
       Effect.succeed(
         SettledRequestTrainingBootstrap({
           projection: emptyTrainingBootstrapProjection(
+            trainingRunRef,
+            errorText(error),
+          ),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const AdmitTrainingRealGradientEvidence = Command.define(
+  "AdmitTrainingRealGradientEvidence",
+  { trainingRunRef: S.String },
+  SettledAdmitTrainingEvidence,
+)(({ trainingRunRef }) =>
+  Effect.tryPromise(() =>
+    getRequest().admitTrainingRealGradientEvidence({ trainingRunRef }),
+  ).pipe(
+    Effect.map((projection) => SettledAdmitTrainingEvidence({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledAdmitTrainingEvidence({
+          projection: emptyTrainingEvidenceAdmissionProjection(
             trainingRunRef,
             errorText(error),
           ),

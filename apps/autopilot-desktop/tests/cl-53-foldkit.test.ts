@@ -30,12 +30,14 @@ import {
   modelNode,
   modelTrainingBootstrap,
   modelTrainingDashboard,
+  modelTrainingEvidenceAdmission,
   modelTrainingOperatorReadiness,
   modelTrainingPromiseGates,
 } from "../src/ui/model"
 import {
   ChangedAskTitle,
   ClickedActivateTrainingWindow,
+  ClickedAdmitTrainingEvidence,
   ClickedClaimTrainingLease,
   ClickedPlanTrainingWindow,
   ClickedQueueTrainingCloseout,
@@ -51,6 +53,7 @@ import {
   NavigatedTo,
   SelectedSession,
   SettledActivateTrainingWindow,
+  SettledAdmitTrainingEvidence,
   SettledClaimTrainingLease,
   SettledPlanTrainingWindow,
   SettledQueueTrainingCloseout,
@@ -404,6 +407,9 @@ describe("update reducer (CL-53)", () => {
           pylonHomePresent: true,
           controlTokenPresent: true,
           localPylonReady: true,
+          evidenceEnabled: true,
+          evidencePacketPathPresent: true,
+          evidenceReady: true,
           blockerRefs: [
             "env.OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE",
             "env.OPENAGENTS_TRAINING_ADMIN_API_TOKEN",
@@ -600,6 +606,46 @@ describe("update reducer (CL-53)", () => {
       text: "queued · accepted",
       tone: "success",
     })
+    expect(followups).toHaveLength(4)
+  })
+
+  test("training evidence admission action dispatches and refreshes projections on success", () => {
+    const [pending, commands] = update(
+      initialModel,
+      ClickedAdmitTrainingEvidence({
+        trainingRunRef: "training.run.4855",
+      }),
+    )
+    expect(pending.trainingEvidenceAdmissionPending).toBe(true)
+    expect(pending.trainingEvidenceAdmissionStatus.tone).toBe("info")
+    expect(commands).toHaveLength(1)
+
+    const [settled, followups] = update(
+      pending,
+      SettledAdmitTrainingEvidence({
+        projection: {
+          ok: true,
+          enabled: true,
+          fetchedAt: "2026-06-14T00:00:00.000Z",
+          sourceUrl:
+            "https://openagents.test/api/training/runs/training.run.4855/real-gradient-evidence",
+          trainingRunRef: "training.run.4855",
+          packetSource: "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
+          run: null,
+          realGradient: null,
+          reason: "admitted",
+          message: "admitted A1 real-gradient evidence for training.run.4855 · 3 receipts",
+          evidenceRefCount: 6,
+          receiptRefCount: 3,
+          shardContributionCount: 2,
+          distinctPylonCount: 2,
+        },
+      }),
+    )
+
+    expect(settled.trainingEvidenceAdmissionPending).toBe(false)
+    expect(settled.trainingEvidenceAdmissionStatus.tone).toBe("success")
+    expect(modelTrainingEvidenceAdmission(settled)?.receiptRefCount).toBe(3)
     expect(followups).toHaveLength(4)
   })
 

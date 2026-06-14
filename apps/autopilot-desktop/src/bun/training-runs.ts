@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+
 import type {
   TrainingDashboardSummaryResponse,
   TrainingLeaderboardLane,
@@ -6,6 +8,7 @@ import type {
   TrainingBootstrapGrantResponse,
   TrainingBootstrapGrantRow,
   TrainingBootstrapOutcome,
+  TrainingEvidenceAdmissionResponse,
   TrainingPromiseGatesResponse,
   TrainingPromiseState,
   TrainingPromiseSummary,
@@ -82,6 +85,17 @@ type RequestTrainingBootstrapGrantInput = Readonly<{
   fetchFn?: typeof fetch
   nowIso?: () => string
   pylonRef: string | null
+  trainingRunRef: string
+}>
+
+type AdmitTrainingRealGradientEvidenceInput = Readonly<{
+  adminToken: string | null
+  baseUrl: string
+  enabled: boolean
+  evidencePacketPath: string | null
+  fetchFn?: typeof fetch
+  nowIso?: () => string
+  readPacket?: (path: string) => unknown
   trainingRunRef: string
 }>
 
@@ -326,6 +340,33 @@ const disabledBootstrapResponse = (input: {
   outcome: null,
   reason: input.reason,
   message: input.message,
+})
+
+const disabledEvidenceAdmissionResponse = (input: {
+  enabled: boolean
+  fetchedAt: string
+  message: string
+  packetSource: string | null
+  reason: TrainingEvidenceAdmissionResponse["reason"]
+  sourceUrl: string
+  trainingRunRef: string | null
+  error?: string
+}): TrainingEvidenceAdmissionResponse => ({
+  ok: false,
+  enabled: input.enabled,
+  fetchedAt: input.fetchedAt,
+  sourceUrl: input.sourceUrl,
+  trainingRunRef: input.trainingRunRef,
+  packetSource: input.packetSource,
+  run: null,
+  realGradient: null,
+  reason: input.reason,
+  message: input.message,
+  evidenceRefCount: 0,
+  receiptRefCount: 0,
+  shardContributionCount: 0,
+  distinctPylonCount: 0,
+  ...(input.error === undefined ? {} : { error: input.error }),
 })
 
 const emptyTrainingDashboardResponse = (input: {
@@ -621,6 +662,45 @@ const realGradient = (value: unknown): TrainingRunRealGradientRow => {
       sourceRefs: stringArray(loss.sourceRefs),
     },
     scopeBoundaryRefs: stringArray(record.scopeBoundaryRefs),
+  }
+}
+
+const evidencePacketStats = (value: unknown): {
+  readonly distinctPylonCount: number
+  readonly evidenceRefCount: number
+  readonly receiptRefCount: number
+  readonly shardContributionCount: number
+} => {
+  const packet = isRecord(value) ? value : {}
+  const shards = asArray(packet.shardContributions).filter(isRecord)
+  const shardPylons = shards
+    .map(shard => asString(shard.pylonRef))
+    .filter(ref => ref !== "")
+  const receiptRefs = [
+    ...stringArray(packet.receiptRefs),
+    ...shards.flatMap(shard => stringArray(shard.receiptRefs)),
+  ]
+  const evidenceRefs = [
+    ...stringArray(packet.freivaldsCommitmentRefs),
+    ...stringArray(packet.gradientCloseoutRefs),
+    ...stringArray(packet.lossSourceRefs),
+    ...stringArray(packet.sourceRefs),
+    asString(packet.budgetRef),
+    asString(packet.evalRef),
+    asString(packet.mergeRef),
+    ...shards.flatMap(shard => [
+      asString(shard.deviceClassRef),
+      asString(shard.gradientCommitmentRef),
+      ...stringArray(shard.sourceRefs),
+      ...stringArray(shard.verificationRefs),
+    ]),
+  ].filter(ref => ref !== "")
+
+  return {
+    distinctPylonCount: new Set(shardPylons).size,
+    evidenceRefCount: new Set(evidenceRefs).size,
+    receiptRefCount: new Set(receiptRefs).size,
+    shardContributionCount: shards.length,
   }
 }
 
@@ -1525,6 +1605,194 @@ export async function requestTrainingBootstrapGrant(
       outcome: null,
       reason: "request_failed",
       message: `training bootstrap grant failed: ${text}`,
+      error: text,
+    }
+  }
+}
+
+export async function admitTrainingRealGradientEvidence(
+  input: AdmitTrainingRealGradientEvidenceInput,
+): Promise<TrainingEvidenceAdmissionResponse> {
+  const fetchFn = input.fetchFn ?? fetch
+  const fetchedAt = input.nowIso?.() ?? new Date().toISOString()
+  const baseUrl = normalizeBaseUrl(input.baseUrl)
+  const trimmedRunRef = input.trainingRunRef.trim()
+  const sourceUrl =
+    trimmedRunRef === ""
+      ? `${baseUrl}/api/training/runs/real-gradient-evidence`
+      : `${baseUrl}/api/training/runs/${encodeURIComponent(trimmedRunRef)}/real-gradient-evidence`
+  const packetSource = "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH"
+
+  if (!input.enabled) {
+    return disabledEvidenceAdmissionResponse({
+      enabled: false,
+      fetchedAt,
+      message: "training evidence admission disabled",
+      packetSource: null,
+      reason: "disabled",
+      sourceUrl,
+      trainingRunRef: trimmedRunRef === "" ? null : trimmedRunRef,
+    })
+  }
+
+  const token = input.adminToken?.trim() ?? ""
+  if (token === "") {
+    return disabledEvidenceAdmissionResponse({
+      enabled: true,
+      fetchedAt,
+      message: "training admin token unavailable",
+      packetSource: null,
+      reason: "admin_token_missing",
+      sourceUrl,
+      trainingRunRef: trimmedRunRef === "" ? null : trimmedRunRef,
+    })
+  }
+
+  if (
+    trimmedRunRef.length < 3 ||
+    trimmedRunRef.length > 260 ||
+    !publicSafeRefPattern.test(trimmedRunRef)
+  ) {
+    return disabledEvidenceAdmissionResponse({
+      enabled: true,
+      fetchedAt,
+      message: "invalid training run ref",
+      packetSource: null,
+      reason: "invalid_run_ref",
+      sourceUrl,
+      trainingRunRef: trimmedRunRef === "" ? null : trimmedRunRef,
+    })
+  }
+
+  const packetPath = input.evidencePacketPath?.trim() ?? ""
+  if (packetPath === "") {
+    return disabledEvidenceAdmissionResponse({
+      enabled: true,
+      fetchedAt,
+      message: "training evidence packet path unavailable",
+      packetSource: null,
+      reason: "packet_path_missing",
+      sourceUrl,
+      trainingRunRef: trimmedRunRef,
+    })
+  }
+
+  let packet: unknown
+  try {
+    packet =
+      input.readPacket?.(packetPath) ??
+      JSON.parse(readFileSync(packetPath, "utf8")) as unknown
+  } catch {
+    return disabledEvidenceAdmissionResponse({
+      enabled: true,
+      error: "training evidence packet read failed",
+      fetchedAt,
+      message: "training evidence packet read failed",
+      packetSource,
+      reason: "packet_read_failed",
+      sourceUrl,
+      trainingRunRef: trimmedRunRef,
+    })
+  }
+
+  if (!isRecord(packet)) {
+    return disabledEvidenceAdmissionResponse({
+      enabled: true,
+      error: "training evidence packet must be a JSON object",
+      fetchedAt,
+      message: "training evidence packet must be a JSON object",
+      packetSource,
+      reason: "packet_invalid",
+      sourceUrl,
+      trainingRunRef: trimmedRunRef,
+    })
+  }
+
+  const stats = evidencePacketStats(packet)
+
+  try {
+    const result = await postJson(fetchFn, sourceUrl, token, packet)
+
+    if (!result.ok) {
+      return {
+        ok: false,
+        enabled: true,
+        fetchedAt,
+        sourceUrl,
+        trainingRunRef: trimmedRunRef,
+        packetSource,
+        run: null,
+        realGradient: null,
+        reason: "admission_failed",
+        message: `real-gradient evidence admission failed: ${result.error}`,
+        evidenceRefCount: stats.evidenceRefCount,
+        receiptRefCount: stats.receiptRefCount,
+        shardContributionCount: stats.shardContributionCount,
+        distinctPylonCount: stats.distinctPylonCount,
+        error: result.error,
+      }
+    }
+
+    const record = isRecord(result.json) ? result.json : {}
+    const run = runProjection(record.run)
+    const admittedGradient = isRecord(record.realGradient)
+      ? realGradient(record.realGradient)
+      : null
+
+    if (run === null || admittedGradient === null) {
+      return {
+        ok: false,
+        enabled: true,
+        fetchedAt,
+        sourceUrl,
+        trainingRunRef: trimmedRunRef,
+        packetSource,
+        run,
+        realGradient: admittedGradient,
+        reason: "admission_failed",
+        message: "real-gradient evidence response did not include run and realGradient projections",
+        evidenceRefCount: stats.evidenceRefCount,
+        receiptRefCount: stats.receiptRefCount,
+        shardContributionCount: stats.shardContributionCount,
+        distinctPylonCount: stats.distinctPylonCount,
+        error:
+          "real-gradient evidence response did not include run and realGradient projections",
+      }
+    }
+
+    return {
+      ok: true,
+      enabled: true,
+      fetchedAt,
+      sourceUrl,
+      trainingRunRef: run.trainingRunRef,
+      packetSource,
+      run,
+      realGradient: admittedGradient,
+      reason: "admitted",
+      message: `admitted A1 real-gradient evidence for ${run.trainingRunRef} · ${stats.receiptRefCount} receipts`,
+      evidenceRefCount: stats.evidenceRefCount,
+      receiptRefCount: stats.receiptRefCount,
+      shardContributionCount: stats.shardContributionCount,
+      distinctPylonCount: stats.distinctPylonCount,
+    }
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error)
+    return {
+      ok: false,
+      enabled: true,
+      fetchedAt,
+      sourceUrl,
+      trainingRunRef: trimmedRunRef,
+      packetSource,
+      run: null,
+      realGradient: null,
+      reason: "request_failed",
+      message: `training evidence admission failed: ${text}`,
+      evidenceRefCount: stats.evidenceRefCount,
+      receiptRefCount: stats.receiptRefCount,
+      shardContributionCount: stats.shardContributionCount,
+      distinctPylonCount: stats.distinctPylonCount,
       error: text,
     }
   }

@@ -16,6 +16,7 @@ import type {
   NodeStateMessage,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
+  TrainingEvidenceAdmissionResponse,
   TrainingOperatorReadinessResponse,
   TrainingPlanResponse,
   TrainingPromiseGatesResponse,
@@ -158,6 +159,9 @@ export const Model = ts("AutopilotDesktop", {
   trainingBootstrap: S.NullOr(S.Unknown),
   trainingBootstrapStatus: TrainingWindowActionStatus,
   trainingBootstrapPending: S.Boolean,
+  trainingEvidenceAdmission: S.NullOr(S.Unknown),
+  trainingEvidenceAdmissionStatus: TrainingWindowActionStatus,
+  trainingEvidenceAdmissionPending: S.Boolean,
   trainingLaunchStatus: TrainingLaunchStatus,
   trainingLaunchPending: S.Boolean,
   trainingCloseoutStatus: TrainingLaunchStatus,
@@ -222,6 +226,11 @@ export const modelTrainingBootstrap = (
 ): TrainingBootstrapGrantResponse | null =>
   model.trainingBootstrap as TrainingBootstrapGrantResponse | null
 
+export const modelTrainingEvidenceAdmission = (
+  model: Model,
+): TrainingEvidenceAdmissionResponse | null =>
+  model.trainingEvidenceAdmission as TrainingEvidenceAdmissionResponse | null
+
 export const initialModel: Model = Model.make({
   node: null,
   notifications: null,
@@ -266,6 +275,9 @@ export const initialModel: Model = Model.make({
   trainingBootstrap: null,
   trainingBootstrapStatus: { text: "", tone: "idle" },
   trainingBootstrapPending: false,
+  trainingEvidenceAdmission: null,
+  trainingEvidenceAdmissionStatus: { text: "", tone: "idle" },
+  trainingEvidenceAdmissionPending: false,
   trainingLaunchStatus: { text: "", tone: "idle" },
   trainingLaunchPending: false,
   trainingCloseoutStatus: { text: "", tone: "idle" },

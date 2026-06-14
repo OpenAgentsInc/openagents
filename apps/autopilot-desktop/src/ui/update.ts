@@ -11,6 +11,7 @@ import { Command } from "foldkit"
 
 import {
   ActivateTrainingWindow,
+  AdmitTrainingRealGradientEvidence,
   CancelSession,
   ClaimTrainingWindowLease,
   DeployCloud,
@@ -34,6 +35,7 @@ import { Model } from "./model"
 import type {
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
+  TrainingEvidenceAdmissionResponse,
   TrainingOperatorReadinessResponse,
   TrainingPlanResponse,
   TrainingPromiseGatesResponse,
@@ -528,6 +530,53 @@ export const update = (model: Model, message: Message): Result => {
         trainingBootstrapShouldRefresh(projection)
           ? loadTrainingProjectionCommands()
           : noCommands,
+      ]
+    }
+    case "ClickedAdmitTrainingEvidence":
+      if (message.trainingRunRef.trim() === "") {
+        return [
+          Model.make({
+            ...model,
+            trainingEvidenceAdmissionStatus: {
+              text: "no training run selected",
+              tone: "error",
+            },
+          }),
+          noCommands,
+        ]
+      }
+      return [
+        Model.make({
+          ...model,
+          trainingEvidenceAdmissionPending: true,
+          trainingEvidenceAdmissionStatus: {
+            text: `admitting evidence for ${message.trainingRunRef}...`,
+            tone: "info",
+          },
+        }),
+        [
+          AdmitTrainingRealGradientEvidence({
+            trainingRunRef: message.trainingRunRef,
+          }),
+        ],
+      ]
+    case "SettledAdmitTrainingEvidence": {
+      const projection = message.projection as TrainingEvidenceAdmissionResponse
+      const inactiveReason =
+        projection.reason === "disabled" ||
+        projection.reason === "admin_token_missing" ||
+        projection.reason === "packet_path_missing"
+      return [
+        Model.make({
+          ...model,
+          trainingEvidenceAdmission: projection,
+          trainingEvidenceAdmissionPending: false,
+          trainingEvidenceAdmissionStatus: {
+            text: projection.message,
+            tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
+          },
+        }),
+        projection.ok ? loadTrainingProjectionCommands() : noCommands,
       ]
     }
     case "ClickedQueueTrainingLaunch":

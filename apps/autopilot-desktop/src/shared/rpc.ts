@@ -261,6 +261,9 @@ export type TrainingOperatorReadinessResponse = {
   readonly pylonHomePresent: boolean
   readonly controlTokenPresent: boolean
   readonly localPylonReady: boolean
+  readonly evidenceEnabled: boolean
+  readonly evidencePacketPathPresent: boolean
+  readonly evidenceReady: boolean
   readonly blockerRefs: readonly string[]
   readonly error?: string
 }
@@ -392,6 +395,35 @@ export type TrainingBootstrapGrantResponse = {
   readonly error?: string
 }
 
+export type TrainingEvidenceAdmissionReason =
+  | "disabled"
+  | "admin_token_missing"
+  | "invalid_run_ref"
+  | "packet_path_missing"
+  | "packet_read_failed"
+  | "packet_invalid"
+  | "admission_failed"
+  | "request_failed"
+  | "admitted"
+
+export type TrainingEvidenceAdmissionResponse = {
+  readonly ok: boolean
+  readonly enabled: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: string
+  readonly trainingRunRef: string | null
+  readonly packetSource: string | null
+  readonly run: TrainingRunProjectionRow | null
+  readonly realGradient: TrainingRunRealGradientRow | null
+  readonly reason: TrainingEvidenceAdmissionReason
+  readonly message: string
+  readonly evidenceRefCount: number
+  readonly receiptRefCount: number
+  readonly shardContributionCount: number
+  readonly distinctPylonCount: number
+  readonly error?: string
+}
+
 // CL-47: an "ask" the owner submitted, with its ship-status round-trip state.
 export type IntentRow = {
   readonly intentId: string
@@ -504,6 +536,10 @@ export type DesktopRPCSchema = {
       readonly requestTrainingBootstrapGrant: {
         readonly params: { trainingRunRef: string }
         readonly response: TrainingBootstrapGrantResponse
+      }
+      readonly admitTrainingRealGradientEvidence: {
+        readonly params: { trainingRunRef: string }
+        readonly response: TrainingEvidenceAdmissionResponse
       }
       // CL-48: resolve a pending approval (approve/deny). Node enforces
       // exactly-once; a duplicate resolve returns duplicate:true.

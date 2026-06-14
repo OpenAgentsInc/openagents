@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   activateTrainingWindow,
+  admitTrainingRealGradientEvidence,
   claimTrainingWindowLease,
   fetchTrainingDashboard,
   fetchTrainingPromiseGates,
@@ -93,6 +94,44 @@ const sampleSummary = {
       windowRef: "window.1",
     },
   ],
+}
+
+const sampleEvidencePacket = {
+  budgetLabel: "desktop tiny loss budget",
+  budgetRef: "budget.desktop.training.a1",
+  evalRef: "eval.desktop.training.a1",
+  freivaldsCommitmentRefs: ["freivalds.desktop.training.a1"],
+  gradientCloseoutRefs: ["closeout.desktop.training.a1"],
+  lossCurve: [
+    { step: 0, validationLoss: 4.2 },
+    { step: 1, validationLoss: 3.1 },
+  ],
+  maxValidationLoss: 4,
+  mergeRef: "merge.desktop.training.a1",
+  receiptRefs: ["receipt.desktop.training.a1"],
+  shardContributions: [
+    {
+      dataUnitCount: 128,
+      gradientCommitmentRef: "gradient.desktop.training.a1.0",
+      pylonRef: "pylon.training.1",
+      receiptRefs: ["receipt.desktop.training.shard.1"],
+      shardIndex: 0,
+      shardLoss: 3.2,
+      stepIndex: 1,
+      verificationRefs: ["verification.desktop.training.shard.1"],
+    },
+    {
+      dataUnitCount: 128,
+      gradientCommitmentRef: "gradient.desktop.training.a1.1",
+      pylonRef: "pylon.training.2",
+      receiptRefs: ["receipt.desktop.training.shard.2"],
+      shardIndex: 1,
+      shardLoss: 3.0,
+      stepIndex: 1,
+      verificationRefs: ["verification.desktop.training.shard.2"],
+    },
+  ],
+  sourceRefs: ["source.desktop.training.a1"],
 }
 
 describe("fetchTrainingRuns", () => {
@@ -835,5 +874,106 @@ describe("requestTrainingBootstrapGrant", () => {
     expect(result.ok).toBe(false)
     expect(result.reason).toBe("pylon_ref_missing")
     expect(calls).toHaveLength(0)
+  })
+})
+
+describe("admitTrainingRealGradientEvidence", () => {
+  test("does not read or call the Worker when evidence admission is disabled", async () => {
+    const calls: string[] = []
+    const result = await admitTrainingRealGradientEvidence({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test",
+      enabled: false,
+      evidencePacketPath: "/Users/chris/private/evidence.json",
+      fetchFn: async (url) => {
+        calls.push(String(url))
+        return new Response("{}")
+      },
+      readPacket: () => {
+        throw new Error("should not read packet")
+      },
+      trainingRunRef: "training.run.4855",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("disabled")
+    expect(calls).toHaveLength(0)
+  })
+
+  test("requires an explicit evidence packet path", async () => {
+    const calls: string[] = []
+    const result = await admitTrainingRealGradientEvidence({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test",
+      enabled: true,
+      evidencePacketPath: null,
+      fetchFn: async (url) => {
+        calls.push(String(url))
+        return new Response("{}")
+      },
+      trainingRunRef: "training.run.4855",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("packet_path_missing")
+    expect(calls).toHaveLength(0)
+  })
+
+  test("reports packet read failures without leaking the local path", async () => {
+    const result = await admitTrainingRealGradientEvidence({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test",
+      enabled: true,
+      evidencePacketPath: "/Users/chris/private/evidence.json",
+      readPacket: () => {
+        throw new Error("/Users/chris/private/evidence.json: denied")
+      },
+      trainingRunRef: "training.run.4855",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("packet_read_failed")
+    expect(result.message).toBe("training evidence packet read failed")
+    expect(JSON.stringify(result)).not.toContain("/Users/chris/private")
+  })
+
+  test("admits a packet through the admin real-gradient evidence route", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await admitTrainingRealGradientEvidence({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test/",
+      enabled: true,
+      evidencePacketPath: "/tmp/training-evidence.json",
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response(
+          JSON.stringify({
+            realGradient: sampleSummary.realGradient,
+            run: sampleRun,
+          }),
+        )
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      readPacket: () => sampleEvidencePacket,
+      trainingRunRef: sampleRun.trainingRunRef,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.reason).toBe("admitted")
+    expect(result.trainingRunRef).toBe(sampleRun.trainingRunRef)
+    expect(result.receiptRefCount).toBe(3)
+    expect(result.shardContributionCount).toBe(2)
+    expect(result.distinctPylonCount).toBe(2)
+    expect(result.realGradient?.closeoutRequirement.satisfied).toBe(true)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toBe(
+      "https://openagents.test/api/training/runs/run.cs336.a1.real_gradient.demo/real-gradient-evidence",
+    )
+    expect((calls[0]?.init?.headers as Record<string, string>).authorization).toBe(
+      "Bearer admin-token",
+    )
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual(sampleEvidencePacket)
+    expect(JSON.stringify(result)).not.toContain("admin-token")
+    expect(JSON.stringify(result)).not.toContain("/tmp/training-evidence.json")
   })
 })

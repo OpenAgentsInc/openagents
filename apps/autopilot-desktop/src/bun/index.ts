@@ -17,6 +17,7 @@ import {
 } from "./pylon-control"
 import {
   activateTrainingWindow,
+  admitTrainingRealGradientEvidence,
   claimTrainingWindowLease,
   fetchTrainingDashboard,
   fetchTrainingPromiseGates,
@@ -45,6 +46,10 @@ const trainingAdminEnabled =
   Bun.env.OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE === "1"
 const trainingLeaseEnabled =
   Bun.env.OPENAGENTS_DESKTOP_TRAINING_LEASE_ENABLE === "1"
+const trainingEvidenceEnabled =
+  Bun.env.OPENAGENTS_DESKTOP_TRAINING_EVIDENCE_ENABLE === "1"
+const trainingEvidencePacketPath =
+  Bun.env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH ?? null
 const configuredTrainingPylonRef =
   Bun.env.OPENAGENTS_TRAINING_PYLON_REF ??
   Bun.env.PYLON_REF ??
@@ -106,6 +111,10 @@ function trainingOperatorReadinessProjection(): TrainingOperatorReadinessRespons
   const adminTokenPresent = (trainingAdminToken?.trim() ?? "").length > 0
   const adminReady = trainingAdminEnabled && adminTokenPresent
   const leaseReady = trainingLeaseEnabled && pylon.pylonRef !== null
+  const evidencePacketPathPresent =
+    (trainingEvidencePacketPath?.trim() ?? "").length > 0
+  const evidenceReady =
+    trainingEvidenceEnabled && adminTokenPresent && evidencePacketPathPresent
   const localPylonReady = home !== null && controlToken !== null
   const blockerRefs: string[] = []
 
@@ -127,6 +136,12 @@ function trainingOperatorReadinessProjection(): TrainingOperatorReadinessRespons
   if (controlToken === null) {
     blockerRefs.push("pylon.control_token")
   }
+  if (!trainingEvidenceEnabled) {
+    blockerRefs.push("env.OPENAGENTS_DESKTOP_TRAINING_EVIDENCE_ENABLE")
+  }
+  if (!evidencePacketPathPresent) {
+    blockerRefs.push("env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH")
+  }
 
   return {
     ok: blockerRefs.length === 0,
@@ -144,6 +159,9 @@ function trainingOperatorReadinessProjection(): TrainingOperatorReadinessRespons
     pylonHomePresent: home !== null,
     controlTokenPresent: controlToken !== null,
     localPylonReady,
+    evidenceEnabled: trainingEvidenceEnabled,
+    evidencePacketPathPresent,
+    evidenceReady,
     blockerRefs,
   }
 }
@@ -220,6 +238,15 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
         return requestTrainingBootstrapGrant({
           baseUrl: trainingBaseUrl,
           pylonRef: trainingPylonRefForCommand(),
+          trainingRunRef: params.trainingRunRef,
+        })
+      },
+      async admitTrainingRealGradientEvidence(params) {
+        return admitTrainingRealGradientEvidence({
+          adminToken: trainingAdminToken,
+          baseUrl: trainingBaseUrl,
+          enabled: trainingEvidenceEnabled,
+          evidencePacketPath: trainingEvidencePacketPath,
           trainingRunRef: params.trainingRunRef,
         })
       },
