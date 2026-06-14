@@ -20,7 +20,10 @@ import {
   SessionList,
   type AccountSummary,
 } from "@openagentsinc/autopilot-ui"
-import { spinningCubeView } from "@openagentsinc/three-effect/foldkit"
+import {
+  bezierNodesView,
+  spinningCubeView,
+} from "@openagentsinc/three-effect/foldkit"
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 
@@ -86,7 +89,7 @@ const emptyLine = (text: string): Html => h.p([cls("empty-state")], [text])
 
 const paneTitle = (text: string): Html => h.h1([cls("pane-title")], [text])
 
-const liveScenePreview = (): Html =>
+const liveScenePanel = (): Html =>
   h.section(
     [cls("three-effect-panel")],
     [
@@ -100,6 +103,24 @@ const liveScenePreview = (): Html =>
       spinningCubeView<Message>([cls("three-effect-cube")]),
     ],
   )
+
+const bezierNodesPanel = (): Html =>
+  h.section(
+    [cls("three-effect-panel")],
+    [
+      h.header(
+        [cls("three-effect-header")],
+        [
+          h.h2([cls("three-effect-title")], ["Bezier Nodes"]),
+          h.p([cls("three-effect-caption")], ["drag graph"]),
+        ],
+      ),
+      bezierNodesView<Message>([cls("three-effect-bezier")]),
+    ],
+  )
+
+const threeEffectPreview = (): Html =>
+  h.div([cls("three-effect-grid")], [liveScenePanel(), bezierNodesPanel()])
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -417,7 +438,7 @@ const nodesPane = (model: Model): Html => {
         [cls("node-status")],
         [node ? nodeStatusLine({ ok: node.ok, sessions: node.sessions }) : "connecting…"],
       ),
-      liveScenePreview(),
+      threeEffectPreview(),
       deployCard(model),
       askCard(model),
       approvalsCard(model),

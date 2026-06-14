@@ -44,11 +44,13 @@
       p { color:#8b93a7; margin:.3rem 0; line-height:1.5; }
 
       /* three-effect preview */
-      .three-effect-panel { margin-top:1rem; overflow:hidden; border:1px solid #1c2230; border-radius:.4rem; background:#0b0d12; }
+      .three-effect-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; margin-top:1rem; }
+      .three-effect-panel { overflow:hidden; border:1px solid #1c2230; border-radius:.4rem; background:#0b0d12; min-width:0; }
       .three-effect-header { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; padding:.8rem 1rem .65rem; border-bottom:1px solid #1c2230; }
       .three-effect-title { margin:0; color:#7dd3fc; font-size:1rem; }
       .three-effect-caption { margin:0; color:#8b93a7; font-family:ui-monospace,monospace; font-size:.78rem; white-space:nowrap; }
-      .three-effect-cube { display:block; height:240px; min-height:220px; }
+      .three-effect-cube, .three-effect-bezier { display:block; height:260px; min-height:240px; }
+      @media (max-width: 720px) { .three-effect-grid { grid-template-columns:1fr; } }
 
       /* Forms (Ask / Spawn) */
       .text-input, .text-area, .select-input { width:100%; box-sizing:border-box; background:#151515; border:1px solid #525458; border-radius:6px; color:#d7d8e5; font-family:inherit; font-size:13px; padding:10px 12px; margin-bottom:8px; }

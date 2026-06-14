@@ -47,8 +47,9 @@ describe("CL-53 sanitizeTree", () => {
     expect(sanitizeTree({ sel: "br" })).toEqual({ sel: "br" })
   })
 
-  test("nodes home includes the three-effect cube", () => {
+  test("nodes home includes the three-effect scenes", () => {
     const document = view(initialModel)
     expect(treeContainsSelector(document.body, "oa-spinning-cube")).toBe(true)
+    expect(treeContainsSelector(document.body, "oa-bezier-nodes")).toBe(true)
   })
 })
