@@ -12,6 +12,7 @@ import { Command } from "foldkit"
 import {
   CancelSession,
   DeployCloud,
+  LoadTrainingRuns,
   QueueTrainingLaunch,
   ResolveApproval,
   SetCoordinatorPaused,
@@ -21,6 +22,7 @@ import {
 import { parseVerifyLines } from "./helpers"
 import type { Message } from "./message"
 import { Model } from "./model"
+import type { TrainingRunsResponse } from "../shared/rpc"
 
 type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
@@ -37,8 +39,21 @@ export const update = (model: Model, message: Message): Result => {
     // ── Navigation ─────────────────────────────────────────────────────────
     case "NavigatedTo":
       return [
-        Model.make({ ...model, pane: message.pane, expandedEvents: [] }),
-        noCommands,
+        Model.make({
+          ...model,
+          pane: message.pane,
+          expandedEvents: [],
+          ...(message.pane === "training"
+            ? {
+                trainingRunsPending: true,
+                trainingRunsStatus: {
+                  text: "loading Worker projection...",
+                  tone: "info" as const,
+                },
+              }
+            : {}),
+        }),
+        message.pane === "training" ? [LoadTrainingRuns()] : noCommands,
       ]
     case "SelectedSession":
       return [
@@ -158,6 +173,39 @@ export const update = (model: Model, message: Message): Result => {
       ]
 
     // ── Training launch/readiness feedback ───────────────────────────────────
+    case "ClickedRefreshTrainingRuns":
+      return [
+        Model.make({
+          ...model,
+          trainingRunsPending: true,
+          trainingRunsStatus: {
+            text: "refreshing Worker projection...",
+            tone: "info",
+          },
+        }),
+        [LoadTrainingRuns()],
+      ]
+    case "GotTrainingRuns": {
+      const projection = message.projection as TrainingRunsResponse
+      const runCount = projection.runs?.length ?? 0
+      return [
+        Model.make({
+          ...model,
+          trainingRuns: projection,
+          trainingRunsPending: false,
+          trainingRunsStatus: projection.ok
+            ? {
+                text: `${runCount} runs from ${projection.sourceUrl}`,
+                tone: "success",
+              }
+            : {
+                text: projection.error ?? "training projection unavailable",
+                tone: "error",
+              },
+        }),
+        noCommands,
+      ]
+    }
     case "ClickedQueueTrainingLaunch":
       return [
         Model.make({
@@ -180,7 +228,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: message.ok ? "success" : "error",
           },
         }),
-        noCommands,
+        message.ok ? [LoadTrainingRuns()] : noCommands,
       ]
 
     // ── Spawn ──────────────────────────────────────────────────────────────────

@@ -22,6 +22,110 @@ const treeContainsSelector = (node: unknown, selector: string): boolean => {
     : false
 }
 
+const treeContainsClass = (node: unknown, className: string): boolean => {
+  if (node === null || typeof node !== "object") return false
+  const vnode = node as {
+    children?: unknown[]
+    data?: { class?: Record<string, boolean> }
+  }
+  if (vnode.data?.class?.[className]) return true
+  return Array.isArray(vnode.children)
+    ? vnode.children.some((child) => treeContainsClass(child, className))
+    : false
+}
+
+const metric = (value: number) => ({
+  provenanceLabel: "",
+  sourceRefs: [],
+  value,
+})
+
+const liveTrainingProjection = {
+  ok: true,
+  fetchedAt: "2026-06-14T00:00:00.000Z",
+  sourceUrl: "https://openagents.test/api/training/runs",
+  runs: [
+    {
+      createdAtDisplay: "today",
+      maxAllowedStale: 5,
+      promiseRef: "pylon.first_real_model_training_run.v1",
+      receiptRefs: ["receipt.1"],
+      sealInFlight: false,
+      sealPublicationCadenceWindows: 1,
+      sourceRefs: [],
+      state: "planned",
+      trainingRunRef: "run.demo",
+      updatedAtDisplay: "today",
+    },
+  ],
+  summaries: [
+    {
+      copyBoundaryRefs: [],
+      emptyState: { idle: false, reason: "" },
+      metrics: {
+        activeWindowCount: metric(0),
+        assignedContributorCount: metric(2),
+        pendingPayoutCount: metric(0),
+        plannedWindowCount: metric(1),
+        providerConfirmedSettledPayoutSats: metric(0),
+        receiptRefCount: metric(1),
+        reconciledWindowCount: metric(0),
+        rejectedWorkCount: metric(0),
+        sealedWindowCount: metric(0),
+        verifiedWorkCount: metric(3),
+      },
+      realGradient: {
+        closeoutRequirement: {
+          evalRef: null,
+          freivaldsCommitmentRefs: ["freivalds.1"],
+          gradientCloseoutRefs: ["closeout.1"],
+          mergeRef: null,
+          provenanceLabel: "",
+          satisfied: false,
+        },
+        deviceRequirement: {
+          observedDistinctContributorDevices: 2,
+          provenanceLabel: "",
+          requiredDistinctContributorDevices: 2,
+          satisfied: true,
+          sourceRefs: [],
+        },
+        externalAsk: {
+          blockerRefs: [],
+          psionicLaneRef: "psionic.lane.demo",
+          requirementRefs: [],
+          status: "observed",
+        },
+        lossUnderBudget: {
+          budgetLabel: "tiny",
+          budgetRef: null,
+          finalValidationLoss: null,
+          maxValidationLoss: null,
+          provenanceLabel: "",
+          satisfied: false,
+          sourceRefs: [],
+        },
+        scopeBoundaryRefs: [],
+      },
+      receiptRefs: ["receipt.1"],
+      run: {
+        createdAtDisplay: "today",
+        maxAllowedStale: 5,
+        promiseRef: "pylon.first_real_model_training_run.v1",
+        receiptRefs: ["receipt.1"],
+        sealInFlight: false,
+        sealPublicationCadenceWindows: 1,
+        sourceRefs: [],
+        state: "planned",
+        trainingRunRef: "run.demo",
+        updatedAtDisplay: "today",
+      },
+      sourceRefs: [],
+      windows: [],
+    },
+  ],
+}
+
 describe("CL-53 sanitizeTree", () => {
   test("drops undefined / null / false children", () => {
     const out = sanitizeTree(
@@ -56,5 +160,15 @@ describe("CL-53 sanitizeTree", () => {
   test("training pane includes the training scene", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)
+  })
+
+  test("training pane renders live run projection rows", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      trainingRuns: liveTrainingProjection,
+      trainingRunsStatus: { text: "1 run", tone: "success" },
+    })
+    expect(treeContainsClass(document.body, "training-run-row")).toBe(true)
   })
 })

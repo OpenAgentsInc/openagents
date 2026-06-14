@@ -12,6 +12,7 @@ import { getRequest } from "./bridge"
 import {
   FailedCoordinatorToggle,
   FailedSpawn,
+  GotTrainingRuns,
   SettledCancelSession,
   SettledCoordinatorToggle,
   SettledQueueTrainingLaunch,
@@ -104,6 +105,30 @@ export const SubmitIntent = Command.define(
     Effect.catch((error) =>
       Effect.succeed(
         SettledSubmitIntent({ ok: false, text: `error: ${errorText(error)}` }),
+      ),
+    ),
+  ),
+)
+
+export const LoadTrainingRuns = Command.define(
+  "LoadTrainingRuns",
+  {},
+  GotTrainingRuns,
+)(() =>
+  Effect.tryPromise(() => getRequest().listTrainingRuns({})).pipe(
+    Effect.map((projection) => GotTrainingRuns({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotTrainingRuns({
+          projection: {
+            ok: false,
+            fetchedAt: new Date().toISOString(),
+            sourceUrl: "desktop:training-runs",
+            runs: [],
+            summaries: [],
+            error: errorText(error),
+          },
+        }),
       ),
     ),
   ),

@@ -36,6 +36,8 @@ import type {
   IntentRow,
   NodeStateMessage,
   SessionEventRow,
+  TrainingRunSummaryRow,
+  TrainingRunsResponse,
 } from "../shared/rpc"
 import {
   ChangedAskBody,
@@ -47,6 +49,7 @@ import {
   ClickedCancelSession,
   ClickedCoordinatorToggle,
   ClickedDeploy,
+  ClickedRefreshTrainingRuns,
   ClickedQueueTrainingLaunch,
   ClickedResolveApproval,
   ClickedSpawn,
@@ -77,6 +80,7 @@ import {
   type SessionFilter,
   modelNode,
   modelNotifications,
+  modelTrainingRuns,
 } from "./model"
 
 const h = html<Message>()
@@ -474,6 +478,160 @@ const trainingGate = (
     h.span([cls("training-gate-value")], [value]),
   ])
 
+const trainingProjectionMeta = (
+  projection: TrainingRunsResponse | null,
+): string => {
+  if (projection === null) return "not loaded"
+  const when =
+    projection.fetchedAt.length > 0
+      ? new Date(projection.fetchedAt).toLocaleTimeString()
+      : "unknown time"
+  return projection.ok
+    ? `${projection.runs.length} runs · fetched ${when}`
+    : `unavailable · ${projection.error ?? "fetch failed"}`
+}
+
+const selectedTrainingSummary = (
+  projection: TrainingRunsResponse | null,
+): TrainingRunSummaryRow | null => {
+  const summaries = projection?.summaries ?? []
+  return (
+    summaries.find(summary =>
+      summary.run.promiseRef.includes("first_real_model_training_run"),
+    ) ??
+    summaries[0] ??
+    null
+  )
+}
+
+const stateCounts = (
+  projection: TrainingRunsResponse | null,
+): Record<string, number> => {
+  const counts: Record<string, number> = {
+    active: 0,
+    planned: 0,
+    reconciled: 0,
+    sealed: 0,
+  }
+  for (const run of projection?.runs ?? []) {
+    counts[run.state] = (counts[run.state] ?? 0) + 1
+  }
+  return counts
+}
+
+const trainingRunRow = (summary: TrainingRunSummaryRow): Html =>
+  h.li([cls(`training-run-row training-run-${summary.run.state}`)], [
+    h.div([cls("training-run-main")], [
+      h.span([cls("training-run-ref")], [summary.run.trainingRunRef]),
+      h.span([cls("training-run-promise")], [summary.run.promiseRef]),
+    ]),
+    h.div([cls("training-run-facts")], [
+      h.span([], [summary.run.state]),
+      h.span([], [`${summary.metrics.verifiedWorkCount.value} verified`]),
+      h.span([], [`${summary.metrics.assignedContributorCount.value} pylons`]),
+    ]),
+  ])
+
+const liveTrainingProjectionPanel = (model: Model): Html => {
+  const projection = modelTrainingRuns(model)
+  const summary = selectedTrainingSummary(projection)
+  const counts = stateCounts(projection)
+  const activeSummary =
+    summary === null
+      ? "no selected run"
+      : `${summary.run.state} · ${summary.windows.length} windows · ${summary.metrics.verifiedWorkCount.value} verified`
+
+  return h.section([cls("training-panel training-live-panel")], [
+    h.div([cls("training-panel-heading")], [
+      h.h2([cls("training-panel-title")], ["Worker Projection"]),
+      h.button(
+        [
+          cls("training-refresh-button"),
+          h.Type("button"),
+          h.Disabled(model.trainingRunsPending),
+          h.OnClick(ClickedRefreshTrainingRuns()),
+        ],
+        [model.trainingRunsPending ? "Refreshing..." : "Refresh"],
+      ),
+    ]),
+    h.p(
+      [cls(`training-panel-copy training-${model.trainingRunsStatus.tone}`)],
+      [model.trainingRunsStatus.text],
+    ),
+    h.div([cls("training-metrics")], [
+      trainingMetric("runs", String(projection?.runs.length ?? 0)),
+      trainingMetric("active", String(counts.active)),
+      trainingMetric("planned", String(counts.planned), "watch"),
+      trainingMetric("selected", activeSummary, summary === null ? "blocked" : "ready"),
+    ]),
+    projection === null || projection.summaries.length === 0
+      ? emptyLine("Open the pane or refresh to load public training runs.")
+      : h.ul(
+          [cls("training-run-list")],
+          projection.summaries.slice(0, 5).map(trainingRunRow),
+        ),
+  ])
+}
+
+const selectedTrainingEvidencePanel = (
+  projection: TrainingRunsResponse | null,
+): Html => {
+  const summary = selectedTrainingSummary(projection)
+  if (summary === null) {
+    return h.section([cls("training-panel")], [
+      h.h2([cls("training-panel-title")], ["Evidence"]),
+      emptyLine("No Worker summary loaded yet."),
+    ])
+  }
+
+  const device = summary.realGradient.deviceRequirement
+  const closeout = summary.realGradient.closeoutRequirement
+  const loss = summary.realGradient.lossUnderBudget
+  const externalAsk = summary.realGradient.externalAsk
+
+  return h.section([cls("training-panel")], [
+    h.h2([cls("training-panel-title")], ["Evidence"]),
+    h.ul([cls("training-gates")], [
+      trainingGate(
+        "devices",
+        `${device.observedDistinctContributorDevices}/${device.requiredDistinctContributorDevices}`,
+        device.satisfied ? "ready" : "watch",
+      ),
+      trainingGate(
+        "Freivalds refs",
+        String(closeout.freivaldsCommitmentRefs.length),
+        closeout.freivaldsCommitmentRefs.length > 0 ? "ready" : "watch",
+      ),
+      trainingGate(
+        "gradient closeouts",
+        String(closeout.gradientCloseoutRefs.length),
+        closeout.gradientCloseoutRefs.length > 0 ? "ready" : "watch",
+      ),
+      trainingGate(
+        "loss budget",
+        loss.finalValidationLoss === null
+          ? loss.budgetLabel || "not observed"
+          : `${loss.finalValidationLoss}/${loss.maxValidationLoss ?? "?"}`,
+        loss.satisfied ? "ready" : "blocked",
+      ),
+      trainingGate(
+        "external ask",
+        externalAsk.status,
+        externalAsk.status === "ready" || externalAsk.status === "observed"
+          ? "ready"
+          : "blocked",
+      ),
+      trainingGate(
+        "settled sats",
+        String(summary.metrics.providerConfirmedSettledPayoutSats.value),
+        summary.metrics.providerConfirmedSettledPayoutSats.value > 0
+          ? "ready"
+          : "watch",
+      ),
+    ]),
+  ])
+}
+
 const trainingLaunchPanel = (model: Model): Html => {
   const statusVisible = model.trainingLaunchStatus.tone !== "idle"
   return h.section([cls("training-panel training-action-panel")], [
@@ -506,8 +664,9 @@ const trainingLaunchPanel = (model: Model): Html => {
   ])
 }
 
-const trainingPane = (model: Model): Html =>
-  h.div(
+const trainingPane = (model: Model): Html => {
+  const projection = modelTrainingRuns(model)
+  return h.div(
     [cls("training-page")],
     [
       h.header([cls("training-topline")], [
@@ -520,7 +679,7 @@ const trainingPane = (model: Model): Html =>
             ],
           ),
         ]),
-        h.div([cls("training-ref")], ["source: /api/training/runs"]),
+        h.div([cls("training-ref")], [trainingProjectionMeta(projection)]),
       ]),
       h.section([cls("training-visual")], [
         h.div([cls("training-visual-copy")], [
@@ -535,15 +694,8 @@ const trainingPane = (model: Model): Html =>
         trainingRunView<Message>([cls("three-effect-training")]),
       ]),
       h.div([cls("training-grid")], [
-        h.section([cls("training-panel")], [
-          h.h2([cls("training-panel-title")], ["Run Authority"]),
-          h.div([cls("training-metrics")], [
-            trainingMetric("run state", "planned"),
-            trainingMetric("window", "seal cadence 1"),
-            trainingMetric("stale bound", "5 steps", "watch"),
-            trainingMetric("claim", "no broad gradient", "blocked"),
-          ]),
-        ]),
+        liveTrainingProjectionPanel(model),
+        selectedTrainingEvidencePanel(projection),
         h.section([cls("training-panel")], [
           h.h2([cls("training-panel-title")], ["Issue 4855 Gates"]),
           h.ul([cls("training-gates")], [
@@ -573,6 +725,7 @@ const trainingPane = (model: Model): Html =>
       ]),
     ],
   )
+}
 
 // ── Sessions pane ─────────────────────────────────────────────────────────────
 

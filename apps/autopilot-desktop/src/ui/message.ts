@@ -56,6 +56,8 @@ export const SettledSubmitIntent = m("SettledSubmitIntent", {
 })
 
 // ── Training launch/readiness feedback ──────────────────────────────────────
+export const ClickedRefreshTrainingRuns = m("ClickedRefreshTrainingRuns")
+export const GotTrainingRuns = m("GotTrainingRuns", { projection: S.Unknown })
 export const ClickedQueueTrainingLaunch = m("ClickedQueueTrainingLaunch")
 export const SettledQueueTrainingLaunch = m("SettledQueueTrainingLaunch", {
   ok: S.Boolean,
@@ -98,6 +100,8 @@ export const Message = S.Union([
   ChangedAskBody,
   ClickedSubmitIntent,
   SettledSubmitIntent,
+  ClickedRefreshTrainingRuns,
+  GotTrainingRuns,
   ClickedQueueTrainingLaunch,
   SettledQueueTrainingLaunch,
   ChangedSpawnAdapter,

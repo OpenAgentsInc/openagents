@@ -12,7 +12,7 @@ import { Schema as S } from "effect"
 import { ts } from "foldkit/schema"
 
 import type { NotificationCenterView } from "@openagentsinc/autopilot-control-protocol"
-import type { NodeStateMessage } from "../shared/rpc"
+import type { NodeStateMessage, TrainingRunsResponse } from "../shared/rpc"
 
 // Which content pane is showing. The desktop equivalent of mobile's tab set
 // plus the focused session-detail leaf.
@@ -62,6 +62,12 @@ export const TrainingLaunchStatus = S.Struct({
 })
 export type TrainingLaunchStatus = typeof TrainingLaunchStatus.Type
 
+export const TrainingRunsStatus = S.Struct({
+  text: S.String,
+  tone: S.Literals(["error", "info", "success", "idle"]),
+})
+export type TrainingRunsStatus = typeof TrainingRunsStatus.Type
+
 // Transient status for the Deploy card.
 export const DeployFeedback = S.Struct({
   state: S.Literals(["queued", "building", "deployed", "failed", "unknown"]),
@@ -103,6 +109,9 @@ export const Model = ts("AutopilotDesktop", {
   askPending: S.Boolean,
 
   // Training pane launch/readiness feedback.
+  trainingRuns: S.NullOr(S.Unknown),
+  trainingRunsStatus: TrainingRunsStatus,
+  trainingRunsPending: S.Boolean,
   trainingLaunchStatus: TrainingLaunchStatus,
   trainingLaunchPending: S.Boolean,
 
@@ -124,6 +133,9 @@ export const modelNode = (model: Model): NodeStateMessage | null =>
 export const modelNotifications = (model: Model): NotificationCenterView | null =>
   model.notifications as NotificationCenterView | null
 
+export const modelTrainingRuns = (model: Model): TrainingRunsResponse | null =>
+  model.trainingRuns as TrainingRunsResponse | null
+
 export const initialModel: Model = Model.make({
   node: null,
   notifications: null,
@@ -141,6 +153,9 @@ export const initialModel: Model = Model.make({
   askBody: "",
   askStatus: { text: "", tone: "idle" },
   askPending: false,
+  trainingRuns: null,
+  trainingRunsStatus: { text: "not loaded", tone: "idle" },
+  trainingRunsPending: false,
   trainingLaunchStatus: { text: "", tone: "idle" },
   trainingLaunchPending: false,
   deployFeedback: null,

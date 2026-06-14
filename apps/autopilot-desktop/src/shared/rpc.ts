@@ -42,6 +42,113 @@ export type DeployResultRow = {
   readonly errors: string[]
 }
 
+export type TrainingRunState = "planned" | "active" | "sealed" | "reconciled"
+
+export type TrainingWindowState = "planned" | "active" | "sealed" | "reconciled"
+
+export type TrainingPublicMetric = {
+  readonly provenanceLabel: string
+  readonly sourceRefs: readonly string[]
+  readonly value: number
+}
+
+export type TrainingRunProjectionRow = {
+  readonly createdAtDisplay: string
+  readonly maxAllowedStale: number
+  readonly promiseRef: string
+  readonly receiptRefs: readonly string[]
+  readonly sealInFlight: boolean
+  readonly sealPublicationCadenceWindows: number
+  readonly sourceRefs: readonly string[]
+  readonly state: TrainingRunState
+  readonly trainingRunRef: string
+  readonly updatedAtDisplay: string
+}
+
+export type TrainingWindowProjectionRow = {
+  readonly datasetRefs: readonly string[]
+  readonly homeworkKind: string
+  readonly plannedAtDisplay: string
+  readonly priority: number
+  readonly receiptRefs: readonly string[]
+  readonly sealMetadata: unknown | null
+  readonly sourceRefs: readonly string[]
+  readonly state: TrainingWindowState
+  readonly trainingRunRef: string
+  readonly updatedAtDisplay: string
+  readonly windowRef: string
+}
+
+export type TrainingRunMetricsRow = {
+  readonly activeWindowCount: TrainingPublicMetric
+  readonly assignedContributorCount: TrainingPublicMetric
+  readonly pendingPayoutCount: TrainingPublicMetric
+  readonly plannedWindowCount: TrainingPublicMetric
+  readonly providerConfirmedSettledPayoutSats: TrainingPublicMetric
+  readonly receiptRefCount: TrainingPublicMetric
+  readonly reconciledWindowCount: TrainingPublicMetric
+  readonly rejectedWorkCount: TrainingPublicMetric
+  readonly sealedWindowCount: TrainingPublicMetric
+  readonly verifiedWorkCount: TrainingPublicMetric
+}
+
+export type TrainingRunRealGradientRow = {
+  readonly closeoutRequirement: {
+    readonly evalRef: string | null
+    readonly freivaldsCommitmentRefs: readonly string[]
+    readonly gradientCloseoutRefs: readonly string[]
+    readonly mergeRef: string | null
+    readonly provenanceLabel: string
+    readonly satisfied: boolean
+  }
+  readonly deviceRequirement: {
+    readonly observedDistinctContributorDevices: number
+    readonly provenanceLabel: string
+    readonly requiredDistinctContributorDevices: number
+    readonly satisfied: boolean
+    readonly sourceRefs: readonly string[]
+  }
+  readonly externalAsk: {
+    readonly blockerRefs: readonly string[]
+    readonly psionicLaneRef: string
+    readonly requirementRefs: readonly string[]
+    readonly status: string
+  }
+  readonly lossUnderBudget: {
+    readonly budgetLabel: string
+    readonly budgetRef: string | null
+    readonly finalValidationLoss: number | null
+    readonly maxValidationLoss: number | null
+    readonly provenanceLabel: string
+    readonly satisfied: boolean
+    readonly sourceRefs: readonly string[]
+  }
+  readonly scopeBoundaryRefs: readonly string[]
+}
+
+export type TrainingRunSummaryRow = {
+  readonly copyBoundaryRefs: readonly string[]
+  readonly emptyState: {
+    readonly idle: boolean
+    readonly reason: string
+  }
+  readonly metrics: TrainingRunMetricsRow
+  readonly realGradient: TrainingRunRealGradientRow
+  readonly receiptRefs: readonly string[]
+  readonly run: TrainingRunProjectionRow
+  readonly sourceRefs: readonly string[]
+  readonly windows: readonly TrainingWindowProjectionRow[]
+}
+
+export type TrainingRunsResponse = {
+  readonly ok: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: string
+  readonly runs: readonly TrainingRunProjectionRow[]
+  readonly summaries: readonly TrainingRunSummaryRow[]
+  readonly error?: string
+}
+
 // CL-47: an "ask" the owner submitted, with its ship-status round-trip state.
 export type IntentRow = {
   readonly intentId: string
@@ -114,6 +221,12 @@ export type DesktopRPCSchema = {
       readonly submitIntent: {
         readonly params: { title: string; body: string }
         readonly response: { ok: boolean; status: string; error?: string }
+      }
+      // Read public Worker-authoritative training run projections. This is a
+      // read-only desktop projection; admin mutations stay out of the webview.
+      readonly listTrainingRuns: {
+        readonly params: Record<string, never>
+        readonly response: TrainingRunsResponse
       }
       // CL-48: resolve a pending approval (approve/deny). Node enforces
       // exactly-once; a duplicate resolve returns duplicate:true.
