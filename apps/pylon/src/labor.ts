@@ -44,6 +44,12 @@ export type LaborRunInput = {
   request: LaborJobRequest
   requestEventId: string
   workspace: LaborWorkspace
+  // Resolved, public-safe task detail for the opaque `objectiveRef`. The
+  // NIP-LBR kind-5934 request is strictly ref-only (content must be empty), so
+  // the provider resolves the public objective text out-of-band (e.g. the
+  // openagents.com work-request API) and passes it here. When present it gives
+  // the local agent an actionable, self-contained task instead of opaque refs.
+  objectiveDetail?: string
 }
 
 export type LaborRunCompletion = {
@@ -143,17 +149,23 @@ export function requestedLaborWorkspacePath(request: LaborJobRequest): string | 
   return request.request.params.find((param) => param.key === "workspace")?.value
 }
 
-export function laborPrompt(request: LaborJobRequest): string {
+export function laborPrompt(request: LaborJobRequest, objectiveDetail?: string): string {
   const lines = [
     `OpenAgents labor job: ${request.jobType}`,
     `Policy: ${request.policyRef}`,
+  ]
+  const detail = objectiveDetail?.trim()
+  if (detail) {
+    lines.push("", "Objective:", detail)
+  }
+  lines.push(
     "",
     "Inputs:",
     ...request.inputRefs.map((ref) => `- ${ref}`),
     "",
     "Acceptance criteria:",
     ...request.acceptanceCriteria.map((criterion) => `- ${criterion}`),
-  ]
+  )
   if (request.expectedArtifacts.length > 0) {
     lines.push("", "Expected artifacts:")
     for (const artifact of request.expectedArtifacts) {
@@ -227,7 +239,7 @@ export function makeConfiguredLaborRuntime(input: {
   return {
     async runLabor(run) {
       const agentKind = run.agentKind
-      const prompt = laborPrompt(run.request)
+      const prompt = laborPrompt(run.request, run.objectiveDetail)
       const command = laborCommand(agentKind, prompt, env, input.which)
       if (command === null) {
         throw new Error("no configured local labor agent found")
@@ -277,7 +289,12 @@ function laborCommand(
   const find = which ?? ((name: string) => Bun.which(name))
   if (agentKind === "codex") {
     const path = find("codex")
-    return path ? [path, "exec", prompt] : null
+    // `codex exec` in the bounded labor workspace is a fresh non-git temp dir,
+    // so bare `codex exec` blocks on the interactive git-repo-check and never
+    // returns under the provider loop. `--skip-git-repo-check` clears that;
+    // `-s workspace-write` keeps codex sandboxed to the workspace (it must NOT
+    // run untrusted requester work with `--dangerously-bypass-...`).
+    return path ? [path, "exec", "--skip-git-repo-check", "-s", "workspace-write", prompt] : null
   }
   if (agentKind === "opencode") {
     const path = find("opencode")

@@ -233,6 +233,16 @@ export type LaborMarketOptions = {
   // CL-16: invoked when a job is deferred for first-run operator approval, so
   // the node can enqueue a pending approval for the clients to resolve.
   onDeferredForApproval?: (input: { approvalRef: string; jobType: string; policyRef: string }) => void
+  // Resolves the opaque, content-addressed objectiveRef to public-safe,
+  // actionable task detail for the local agent. The kind-5934 request is
+  // strictly ref-only, so the provider fetches the public objective out-of-band
+  // (e.g. the openagents.com work-request API) right before execution. Returns
+  // null when no detail is available (the agent then sees refs only).
+  resolveObjectiveDetail?: (input: {
+    objectiveRef: string
+    requestEventId: string
+    requesterPubkey: string
+  }) => Promise<string | null>
 }
 
 function decodeLbrRequest(event: NostrEvent): LbrAgenticCodingRequest | null {
@@ -441,6 +451,19 @@ async function executeAcceptedLbrJob(input: {
         })
       : makeConfiguredLaborRuntime())
 
+  let objectiveDetail: string | null = null
+  if (input.options.resolveObjectiveDetail !== undefined) {
+    try {
+      objectiveDetail = await input.options.resolveObjectiveDetail({
+        objectiveRef: request.labor.inputRefs[0] ?? "",
+        requestEventId: input.record.requestEventId,
+        requesterPubkey: input.record.requesterPubkey,
+      })
+    } catch {
+      objectiveDetail = null
+    }
+  }
+
   let completion
   try {
     completion = await runtime.runLabor({
@@ -448,6 +471,9 @@ async function executeAcceptedLbrJob(input: {
       request: request.labor,
       requestEventId: input.record.requestEventId,
       workspace,
+      ...(objectiveDetail !== null && objectiveDetail.trim() !== ""
+        ? { objectiveDetail }
+        : {}),
     })
     assertLaborPublicSafe(completion)
   } catch {
