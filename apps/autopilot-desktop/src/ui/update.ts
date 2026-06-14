@@ -10,6 +10,7 @@ import { validateIntentDraft, validateSpawnRequest } from "@openagentsinc/autopi
 import { Command } from "foldkit"
 
 import {
+  ActivateTrainingWindow,
   CancelSession,
   DeployCloud,
   LoadTrainingRuns,
@@ -23,7 +24,11 @@ import {
 import { parseVerifyLines } from "./helpers"
 import type { Message } from "./message"
 import { Model } from "./model"
-import type { TrainingPlanResponse, TrainingRunsResponse } from "../shared/rpc"
+import type {
+  TrainingPlanResponse,
+  TrainingRunsResponse,
+  TrainingWindowActionResponse,
+} from "../shared/rpc"
 
 type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
@@ -230,6 +235,48 @@ export const update = (model: Model, message: Message): Result => {
           trainingPlan: projection,
           trainingPlanPending: false,
           trainingPlanStatus: {
+            text: projection.message,
+            tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
+          },
+        }),
+        projection.ok ? [LoadTrainingRuns()] : noCommands,
+      ]
+    }
+    case "ClickedActivateTrainingWindow":
+      if (message.windowRef.trim() === "") {
+        return [
+          Model.make({
+            ...model,
+            trainingActivationStatus: {
+              text: "no planned window selected",
+              tone: "error",
+            },
+          }),
+          noCommands,
+        ]
+      }
+      return [
+        Model.make({
+          ...model,
+          trainingActivationPending: true,
+          trainingActivationStatus: {
+            text: `activating ${message.windowRef}...`,
+            tone: "info",
+          },
+        }),
+        [ActivateTrainingWindow({ windowRef: message.windowRef })],
+      ]
+    case "SettledActivateTrainingWindow": {
+      const projection = message.projection as TrainingWindowActionResponse
+      const inactiveReason =
+        projection.reason === "disabled" ||
+        projection.reason === "admin_token_missing"
+      return [
+        Model.make({
+          ...model,
+          trainingActivation: projection,
+          trainingActivationPending: false,
+          trainingActivationStatus: {
             text: projection.message,
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },

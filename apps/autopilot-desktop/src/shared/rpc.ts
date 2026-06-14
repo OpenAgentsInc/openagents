@@ -173,6 +173,26 @@ export type TrainingPlanResponse = {
   readonly error?: string
 }
 
+export type TrainingWindowActionReason =
+  | "disabled"
+  | "admin_token_missing"
+  | "invalid_window_ref"
+  | "transition_failed"
+  | "request_failed"
+  | "activated"
+
+export type TrainingWindowActionResponse = {
+  readonly ok: boolean
+  readonly enabled: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: string
+  readonly windowRef: string | null
+  readonly window: TrainingWindowProjectionRow | null
+  readonly reason: TrainingWindowActionReason
+  readonly message: string
+  readonly error?: string
+}
+
 // CL-47: an "ask" the owner submitted, with its ship-status round-trip state.
 export type IntentRow = {
   readonly intentId: string
@@ -257,6 +277,10 @@ export type DesktopRPCSchema = {
       readonly planTrainingRunWindow: {
         readonly params: Record<string, never>
         readonly response: TrainingPlanResponse
+      }
+      readonly activateTrainingWindow: {
+        readonly params: { windowRef: string }
+        readonly response: TrainingWindowActionResponse
       }
       // CL-48: resolve a pending approval (approve/deny). Node enforces
       // exactly-once; a duplicate resolve returns duplicate:true.

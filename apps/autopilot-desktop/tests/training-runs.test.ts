@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  activateTrainingWindow,
   fetchTrainingRuns,
   planTrainingRunWindow,
 } from "../src/bun/training-runs"
@@ -245,5 +246,120 @@ describe("planTrainingRunWindow", () => {
     expect(result.windowPlanned).toBe(false)
     expect(result.error).toBe("window duplicate")
     expect(calls).toHaveLength(2)
+  })
+})
+
+describe("activateTrainingWindow", () => {
+  test("does not call admin routes when disabled", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await activateTrainingWindow({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test",
+      enabled: false,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response("{}")
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      windowRef: "training.window.desktop.r1.test",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("disabled")
+    expect(calls).toHaveLength(0)
+  })
+
+  test("does not call admin routes without a token", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await activateTrainingWindow({
+      adminToken: "",
+      baseUrl: "https://openagents.test",
+      enabled: true,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response("{}")
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      windowRef: "training.window.desktop.r1.test",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("admin_token_missing")
+    expect(calls).toHaveLength(0)
+  })
+
+  test("rejects invalid window refs before calling the Worker", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await activateTrainingWindow({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test",
+      enabled: true,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response("{}")
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      windowRef: "../private",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("invalid_window_ref")
+    expect(calls).toHaveLength(0)
+  })
+
+  test("activates a planned training window through the admin route", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const result = await activateTrainingWindow({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test/",
+      enabled: true,
+      fetchFn: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response(
+          JSON.stringify({
+            window: {
+              ...sampleSummary.windows[0],
+              state: "active",
+              windowRef: "training.window.desktop.r1.test",
+            },
+          }),
+        )
+      },
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      windowRef: "training.window.desktop.r1.test",
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.reason).toBe("activated")
+    expect(result.window?.state).toBe("active")
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toBe(
+      "https://openagents.test/api/training/windows/training.window.desktop.r1.test/activate",
+    )
+    expect((calls[0]?.init?.headers as Record<string, string>).authorization).toBe(
+      "Bearer admin-token",
+    )
+    expect(JSON.parse(String(calls[0]?.init?.body)).receiptRef).toBe(
+      "receipt.desktop.training.window.activate.2026.06.14t00.00.00.000z",
+    )
+  })
+
+  test("reports activation failures without leaking credentials", async () => {
+    const result = await activateTrainingWindow({
+      adminToken: "admin-token",
+      baseUrl: "https://openagents.test",
+      enabled: true,
+      fetchFn: async () =>
+        new Response(JSON.stringify({ reason: "Training window not found." }), {
+          status: 404,
+        }),
+      nowIso: () => "2026-06-14T00:00:00.000Z",
+      windowRef: "training.window.missing",
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("transition_failed")
+    expect(result.error).toBe("Training window not found.")
+    expect(result.message).not.toContain("admin-token")
   })
 })

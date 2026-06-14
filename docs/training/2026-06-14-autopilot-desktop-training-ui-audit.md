@@ -15,8 +15,8 @@ The first implemented slice follows that boundary:
 - The pane fetches public Worker-authoritative training projections from `/api/training/runs` through the Bun main process.
 - The selected public run summary is converted into a `three-effect` snapshot so the scene reflects live run state, windows, devices, Freivalds refs, closeouts, verified work, external blockers, and settlement.
 - The pane exposes a launch/readiness feedback button that queues a local Pylon intent through the existing `intent.submit` path.
-- The pane also exposes a Bun-main-process, env-gated admin planning action for an R1 rehearsal run/window. The webview receives only public-safe run/window refs and projections.
-- Evidence admission, activation, lease claims, settlement, and real worker launch remain outside the webview.
+- The pane also exposes Bun-main-process, env-gated admin actions for planning an R1 rehearsal run/window and activating a planned window. The webview receives only public-safe run/window refs and projections.
+- Evidence admission, lease claims, settlement, and real worker launch remain outside the webview.
 
 That is the right initial shape. The next high-value step is not more static dashboard decoration; it is wiring the plan result to the actual run admission and evidence pipeline while preserving the same authority boundary.
 
@@ -88,7 +88,7 @@ Third, evidence and verification. The public claim boundary requires distinct co
 
 Fourth, receipts and settlement. Issue 4854 splits presence receipts from compute receipts. The UI needs to show presence floor, verified compute closeout, class rate, payout state, and settlement blocker reasons separately. Paying for verified compute cannot be conflated with merely showing up in the cluster.
 
-Fifth, operator action feedback. The user's requirement is immediate feedback when an admin triggers a run. The desktop now has two honest feedback paths: a local Pylon readiness intent for gate inspection, and an authenticated Bun-main-process Worker plan call when `OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE=1` and an admin token are present. The plan call returns the planned run ref, planned window ref, and public-safe projections. It does not activate a window, admit evidence, claim a lease, spend funds, publish an artifact, or launch workers.
+Fifth, operator action feedback. The user's requirement is immediate feedback when an admin triggers a run. The desktop now has three honest feedback paths: a local Pylon readiness intent for gate inspection, an authenticated Bun-main-process Worker plan call, and an authenticated Bun-main-process Worker activation call. The admin calls run only when `OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE=1` and an admin token are present. The plan call returns the planned run ref, planned window ref, and public-safe projections; the activation call advances a planned window to `active` and refreshes the public projection. These calls do not admit evidence, claim a lease, spend funds, publish an artifact, or launch workers.
 
 ## Current Implementation Slice
 
@@ -113,7 +113,9 @@ The Foldkit pane adds operator panels for:
 - Launch feedback.
 - Public and admin API boundary.
 
-The operations panel has two buttons. `Plan R1 window` calls a typed desktop RPC handled only by the Bun main process. The Bun side refuses to call admin routes unless `OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE=1` and either `OPENAGENTS_TRAINING_ADMIN_API_TOKEN` or `OPENAGENTS_ADMIN_API_TOKEN` is available. When enabled, it calls `POST /api/training/runs` and then `POST /api/training/windows/plan`, using public-safe refs derived from the local timestamp and the issue 4855 / Tassadar source docs. The webview stores the returned `TrainingPlanResponse` as an opaque projection and displays only refs/status.
+The operations panel has three buttons. `Plan R1 window` calls a typed desktop RPC handled only by the Bun main process. The Bun side refuses to call admin routes unless `OPENAGENTS_DESKTOP_TRAINING_ADMIN_ENABLE=1` and either `OPENAGENTS_TRAINING_ADMIN_API_TOKEN` or `OPENAGENTS_ADMIN_API_TOKEN` is available. When enabled, it calls `POST /api/training/runs` and then `POST /api/training/windows/plan`, using public-safe refs derived from the local timestamp and the issue 4855 / Tassadar source docs. The webview stores the returned `TrainingPlanResponse` as an opaque projection and displays only refs/status.
+
+`Activate window` uses the same Bun-only admin gate and calls `POST /api/training/windows/{windowRef}/activate` for either the just-planned window or the first planned window in the selected public run summary. It returns a `TrainingWindowActionResponse`, refreshes `/api/training/runs` on success, and still exposes only the public-safe window projection to the webview.
 
 The `Queue launch check` button still queues a local Pylon intent titled `Training run launch check`. Its body asks the node to inspect the issue 4855 gates, `/api/training/runs`, R1 readiness, seal/staleness state, distinct contributors, Freivalds refs, gradient closeout refs, receipts, and settlement blockers. This gives the operator immediate visible feedback when admin planning is disabled or when the local node should inspect readiness before the operator plans another window.
 
@@ -133,7 +135,7 @@ The desktop webview must remain a Foldkit UI over typed projections and commands
 The right boundary is:
 
 - Webview: render projections, collect user intent, display command results.
-- Bun main process: hold local control token, talk to local Pylon, and proxy the env-gated training admin plan command.
+- Bun main process: hold local control token, talk to local Pylon, and proxy the env-gated training admin plan/activate commands.
 - Pylon/local node: decide how to schedule or escalate operator intent.
 - OpenAgents Worker: own run/window authority, public projections, admin planning, evidence admission, and claim boundaries.
 
@@ -153,7 +155,7 @@ The same pattern can be reused in the web app and mobile app if Foldkit remains 
 
 ## Risks
 
-The current pane is now partly live: it reads public projections and can plan an R1 run/window through Bun when explicitly enabled. It is still not a full run dashboard. The most likely failure mode is visual polish outrunning authority integration. That would create a good-looking control room that does not answer the operator's actual question after planning: which worker accepted a lease, which evidence landed, and which receipts settled?
+The current pane is now partly live: it reads public projections and can plan and activate an R1 run/window through Bun when explicitly enabled. It is still not a full run dashboard. The most likely failure mode is visual polish outrunning authority integration. That would create a good-looking control room that does not answer the operator's actual question after activation: which worker accepted a lease, which evidence landed, and which receipts settled?
 
 The second risk is authority leakage. The implemented planning bridge keeps admin tokens in Bun, but future evidence admission and launch controls must follow the same pattern. Do not add admin tokens, private evidence, wallet material, or raw payout details to the Foldkit webview model.
 
@@ -161,7 +163,7 @@ The third risk is claim confusion. Public real-gradient claims have explicit blo
 
 ## Next Steps
 
-1. Add an activation/admission bridge that remains Bun-side and only exposes public-safe results to Foldkit.
+1. Add lease claim and evidence-admission bridges that remain Bun-side and only expose public-safe results to Foldkit.
 2. Add command result state for admission queue count, lease claim state, evidence refs, and first observed projection timestamp after planning.
 3. Add tests proving the webview cannot access admin credentials and only dispatches typed training messages.
 4. Add a lower-detail responsive scene mode before sharing the same visualization with mobile.

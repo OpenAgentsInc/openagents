@@ -62,6 +62,12 @@ export const ClickedPlanTrainingWindow = m("ClickedPlanTrainingWindow")
 export const SettledPlanTrainingWindow = m("SettledPlanTrainingWindow", {
   projection: S.Unknown,
 })
+export const ClickedActivateTrainingWindow = m("ClickedActivateTrainingWindow", {
+  windowRef: S.String,
+})
+export const SettledActivateTrainingWindow = m("SettledActivateTrainingWindow", {
+  projection: S.Unknown,
+})
 export const ClickedQueueTrainingLaunch = m("ClickedQueueTrainingLaunch")
 export const SettledQueueTrainingLaunch = m("SettledQueueTrainingLaunch", {
   ok: S.Boolean,
@@ -108,6 +114,8 @@ export const Message = S.Union([
   GotTrainingRuns,
   ClickedPlanTrainingWindow,
   SettledPlanTrainingWindow,
+  ClickedActivateTrainingWindow,
+  SettledActivateTrainingWindow,
   ClickedQueueTrainingLaunch,
   SettledQueueTrainingLaunch,
   ChangedSpawnAdapter,

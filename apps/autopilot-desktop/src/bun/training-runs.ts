@@ -7,6 +7,7 @@ import type {
   TrainingRunState,
   TrainingRunSummaryRow,
   TrainingRunsResponse,
+  TrainingWindowActionResponse,
   TrainingWindowProjectionRow,
   TrainingWindowState,
 } from "../shared/rpc"
@@ -23,6 +24,15 @@ type PlanTrainingRunWindowInput = Readonly<{
   enabled: boolean
   fetchFn?: typeof fetch
   nowIso?: () => string
+}>
+
+type ActivateTrainingWindowInput = Readonly<{
+  adminToken: string | null
+  baseUrl: string
+  enabled: boolean
+  fetchFn?: typeof fetch
+  nowIso?: () => string
+  windowRef: string
 }>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -45,6 +55,8 @@ const asArray = (value: unknown): readonly unknown[] =>
 
 const stringArray = (value: unknown): readonly string[] =>
   asArray(value).filter((item): item is string => typeof item === "string")
+
+const publicSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/
 
 const normalizeBaseUrl = (baseUrl: string): string => baseUrl.replace(/\/+$/, "")
 
@@ -132,6 +144,24 @@ const disabledPlanResponse = (input: {
   window: null,
   runPlanned: false,
   windowPlanned: false,
+  reason: input.reason,
+  message: input.message,
+})
+
+const disabledWindowActionResponse = (input: {
+  enabled: boolean
+  fetchedAt: string
+  message: string
+  reason: TrainingWindowActionResponse["reason"]
+  sourceUrl: string
+  windowRef: string | null
+}): TrainingWindowActionResponse => ({
+  ok: false,
+  enabled: input.enabled,
+  fetchedAt: input.fetchedAt,
+  sourceUrl: input.sourceUrl,
+  windowRef: input.windowRef,
+  window: null,
   reason: input.reason,
   message: input.message,
 })
@@ -498,6 +528,107 @@ export async function planTrainingRunWindow(
       windowPlanned: false,
       reason: "request_failed",
       message: `training admin request failed: ${text}`,
+      error: text,
+    }
+  }
+}
+
+export async function activateTrainingWindow(
+  input: ActivateTrainingWindowInput,
+): Promise<TrainingWindowActionResponse> {
+  const fetchFn = input.fetchFn ?? fetch
+  const fetchedAt = input.nowIso?.() ?? new Date().toISOString()
+  const baseUrl = normalizeBaseUrl(input.baseUrl)
+  const trimmedWindowRef = input.windowRef.trim()
+  const sourceUrl =
+    trimmedWindowRef === ""
+      ? `${baseUrl}/api/training/windows/activate`
+      : `${baseUrl}/api/training/windows/${encodeURIComponent(trimmedWindowRef)}/activate`
+
+  if (!input.enabled) {
+    return disabledWindowActionResponse({
+      enabled: false,
+      fetchedAt,
+      message: "training admin activation disabled",
+      reason: "disabled",
+      sourceUrl,
+      windowRef: trimmedWindowRef === "" ? null : trimmedWindowRef,
+    })
+  }
+
+  const token = input.adminToken?.trim() ?? ""
+  if (token === "") {
+    return disabledWindowActionResponse({
+      enabled: true,
+      fetchedAt,
+      message: "training admin token unavailable",
+      reason: "admin_token_missing",
+      sourceUrl,
+      windowRef: trimmedWindowRef === "" ? null : trimmedWindowRef,
+    })
+  }
+
+  if (
+    trimmedWindowRef.length < 3 ||
+    trimmedWindowRef.length > 260 ||
+    !publicSafeRefPattern.test(trimmedWindowRef)
+  ) {
+    return disabledWindowActionResponse({
+      enabled: true,
+      fetchedAt,
+      message: "invalid training window ref",
+      reason: "invalid_window_ref",
+      sourceUrl,
+      windowRef: trimmedWindowRef === "" ? null : trimmedWindowRef,
+    })
+  }
+
+  const stamp = safeRefStamp(fetchedAt)
+
+  try {
+    const result = await postJson(fetchFn, sourceUrl, token, {
+      actorRef: "operator.openagents.autopilot_desktop",
+      receiptRef: `receipt.desktop.training.window.activate.${stamp}`,
+    })
+
+    if (!result.ok) {
+      return {
+        ok: false,
+        enabled: true,
+        fetchedAt,
+        sourceUrl,
+        windowRef: trimmedWindowRef,
+        window: null,
+        reason: "transition_failed",
+        message: `window activation failed: ${result.error}`,
+        error: result.error,
+      }
+    }
+
+    const record = isRecord(result.json) ? result.json : {}
+    const window = windowProjection(record.window)
+    const activatedWindowRef = window?.windowRef ?? trimmedWindowRef
+    return {
+      ok: true,
+      enabled: true,
+      fetchedAt,
+      sourceUrl,
+      windowRef: activatedWindowRef,
+      window,
+      reason: "activated",
+      message: `activated ${activatedWindowRef}`,
+    }
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error)
+    return {
+      ok: false,
+      enabled: true,
+      fetchedAt,
+      sourceUrl,
+      windowRef: trimmedWindowRef,
+      window: null,
+      reason: "request_failed",
+      message: `training admin activation failed: ${text}`,
       error: text,
     }
   }

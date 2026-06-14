@@ -13,7 +13,11 @@ import {
   spawnSession,
   submitIntent,
 } from "./pylon-control"
-import { fetchTrainingRuns, planTrainingRunWindow } from "./training-runs"
+import {
+  activateTrainingWindow,
+  fetchTrainingRuns,
+  planTrainingRunWindow,
+} from "./training-runs"
 import type { DesktopRPCSchema } from "../shared/rpc"
 
 const controlBaseUrl = Bun.env.PYLON_CONTROL_BASE_URL ?? "http://127.0.0.1:4716"
@@ -76,6 +80,14 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           adminToken: trainingAdminToken,
           baseUrl: trainingBaseUrl,
           enabled: trainingAdminEnabled,
+        })
+      },
+      async activateTrainingWindow(params) {
+        return activateTrainingWindow({
+          adminToken: trainingAdminToken,
+          baseUrl: trainingBaseUrl,
+          enabled: trainingAdminEnabled,
+          windowRef: params.windowRef,
         })
       },
       // CL-48: resolve a pending approval (approve/deny).

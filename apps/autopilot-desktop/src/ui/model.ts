@@ -16,6 +16,7 @@ import type {
   NodeStateMessage,
   TrainingPlanResponse,
   TrainingRunsResponse,
+  TrainingWindowActionResponse,
 } from "../shared/rpc"
 
 // Which content pane is showing. The desktop equivalent of mobile's tab set
@@ -78,6 +79,12 @@ export const TrainingPlanStatus = S.Struct({
 })
 export type TrainingPlanStatus = typeof TrainingPlanStatus.Type
 
+export const TrainingWindowActionStatus = S.Struct({
+  text: S.String,
+  tone: S.Literals(["error", "info", "success", "idle"]),
+})
+export type TrainingWindowActionStatus = typeof TrainingWindowActionStatus.Type
+
 // Transient status for the Deploy card.
 export const DeployFeedback = S.Struct({
   state: S.Literals(["queued", "building", "deployed", "failed", "unknown"]),
@@ -125,6 +132,9 @@ export const Model = ts("AutopilotDesktop", {
   trainingPlan: S.NullOr(S.Unknown),
   trainingPlanStatus: TrainingPlanStatus,
   trainingPlanPending: S.Boolean,
+  trainingActivation: S.NullOr(S.Unknown),
+  trainingActivationStatus: TrainingWindowActionStatus,
+  trainingActivationPending: S.Boolean,
   trainingLaunchStatus: TrainingLaunchStatus,
   trainingLaunchPending: S.Boolean,
 
@@ -152,6 +162,11 @@ export const modelTrainingRuns = (model: Model): TrainingRunsResponse | null =>
 export const modelTrainingPlan = (model: Model): TrainingPlanResponse | null =>
   model.trainingPlan as TrainingPlanResponse | null
 
+export const modelTrainingActivation = (
+  model: Model,
+): TrainingWindowActionResponse | null =>
+  model.trainingActivation as TrainingWindowActionResponse | null
+
 export const initialModel: Model = Model.make({
   node: null,
   notifications: null,
@@ -175,6 +190,9 @@ export const initialModel: Model = Model.make({
   trainingPlan: null,
   trainingPlanStatus: { text: "", tone: "idle" },
   trainingPlanPending: false,
+  trainingActivation: null,
+  trainingActivationStatus: { text: "", tone: "idle" },
+  trainingActivationPending: false,
   trainingLaunchStatus: { text: "", tone: "idle" },
   trainingLaunchPending: false,
   deployFeedback: null,

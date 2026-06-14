@@ -51,6 +51,7 @@ import {
   ChangedSpawnObjective,
   ChangedSpawnVerify,
   ClickedCancelSession,
+  ClickedActivateTrainingWindow,
   ClickedCoordinatorToggle,
   ClickedDeploy,
   ClickedPlanTrainingWindow,
@@ -83,6 +84,7 @@ import {
   type Model,
   type PaneId,
   type SessionFilter,
+  modelTrainingActivation,
   modelNode,
   modelNotifications,
   modelTrainingPlan,
@@ -510,6 +512,25 @@ const selectedTrainingSummary = (
   )
 }
 
+const activationWindowRef = (model: Model): string | null => {
+  const summary = selectedTrainingSummary(modelTrainingRuns(model))
+  const projectedPlannedWindow =
+    summary?.windows.find(window => window.state === "planned")?.windowRef ??
+    null
+  if (projectedPlannedWindow !== null) return projectedPlannedWindow
+
+  const planWindowRef = modelTrainingPlan(model)?.windowRef ?? null
+  const activation = modelTrainingActivation(model)
+  if (
+    planWindowRef !== null &&
+    !(activation?.ok === true && activation.windowRef === planWindowRef)
+  ) {
+    return planWindowRef
+  }
+
+  return null
+}
+
 const trainingSceneOptions = (
   projection: TrainingRunsResponse | null,
 ): TrainingRunVisualizationOptions | undefined => {
@@ -675,8 +696,23 @@ const selectedTrainingEvidencePanel = (
 
 const trainingLaunchPanel = (model: Model): Html => {
   const plan = modelTrainingPlan(model)
+  const activatableWindowRef = activationWindowRef(model)
   const planStatusVisible = model.trainingPlanStatus.tone !== "idle"
+  const activationStatusVisible =
+    model.trainingActivationStatus.tone !== "idle"
   const launchStatusVisible = model.trainingLaunchStatus.tone !== "idle"
+  const activateAttrs: Attribute<Message>[] = [
+    cls("training-action-button training-activate-button secondary"),
+    h.Type("button"),
+    h.Disabled(model.trainingActivationPending || activatableWindowRef === null),
+  ]
+  if (activatableWindowRef !== null) {
+    activateAttrs.push(
+      h.OnClick(
+        ClickedActivateTrainingWindow({ windowRef: activatableWindowRef }),
+      ),
+    )
+  }
   const refRows: Html[] = []
   if (plan?.trainingRunRef !== null && plan?.trainingRunRef !== undefined) {
     refRows.push(
@@ -694,7 +730,7 @@ const trainingLaunchPanel = (model: Model): Html => {
     h.p(
       [cls("training-panel-copy")],
       [
-        "Plan the Worker-authoritative run/window from Bun, or queue a local Pylon readiness check.",
+        "Plan and activate the Worker-authoritative run/window from Bun, or queue a local Pylon readiness check.",
       ],
     ),
     h.div(
@@ -718,6 +754,16 @@ const trainingLaunchPanel = (model: Model): Html => {
           ],
           [model.trainingLaunchPending ? "Queueing..." : "Queue launch check"],
         ),
+        h.button(
+          activateAttrs,
+          [
+            model.trainingActivationPending
+              ? "Activating..."
+              : activatableWindowRef === null
+                ? "No planned window"
+                : "Activate window",
+          ],
+        ),
       ],
     ),
     planStatusVisible
@@ -732,6 +778,16 @@ const trainingLaunchPanel = (model: Model): Html => {
       : h.p([cls("training-action-status")], [" "]),
     refRows.length > 0
       ? h.ul([cls("training-api-list training-plan-refs")], refRows)
+      : h.p([cls("training-action-status")], [" "]),
+    activationStatusVisible
+      ? h.p(
+          [
+            cls(
+              `training-action-status training-${model.trainingActivationStatus.tone}`,
+            ),
+          ],
+          [model.trainingActivationStatus.text],
+        )
       : h.p([cls("training-action-status")], [" "]),
     launchStatusVisible
       ? h.p(

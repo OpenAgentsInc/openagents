@@ -27,12 +27,14 @@ import {
 import { initialModel, Model, modelNode } from "../src/ui/model"
 import {
   ChangedAskTitle,
+  ClickedActivateTrainingWindow,
   ClickedPlanTrainingWindow,
   ClickedResolveApproval,
   ClickedSubmitIntent,
   GotNodeState,
   NavigatedTo,
   SelectedSession,
+  SettledActivateTrainingWindow,
   SettledPlanTrainingWindow,
   SettledResolveApproval,
   SettledSubmitIntent,
@@ -243,6 +245,41 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingPlanStatus.tone).toBe("success")
     expect(settled.trainingPlan).toMatchObject({
       trainingRunRef: "training.run.desktop.r1.test",
+      windowRef: "training.window.desktop.r1.test",
+    })
+    expect(followups).toHaveLength(1)
+  })
+
+  test("training activation action dispatches and stores the public-safe result", () => {
+    const [pending, commands] = update(
+      initialModel,
+      ClickedActivateTrainingWindow({
+        windowRef: "training.window.desktop.r1.test",
+      }),
+    )
+    expect(pending.trainingActivationPending).toBe(true)
+    expect(pending.trainingActivationStatus.tone).toBe("info")
+    expect(commands).toHaveLength(1)
+
+    const [settled, followups] = update(
+      pending,
+      SettledActivateTrainingWindow({
+        projection: {
+          ok: true,
+          enabled: true,
+          fetchedAt: "2026-06-14T00:00:00.000Z",
+          sourceUrl:
+            "https://openagents.test/api/training/windows/training.window.desktop.r1.test/activate",
+          windowRef: "training.window.desktop.r1.test",
+          window: null,
+          reason: "activated",
+          message: "activated training.window.desktop.r1.test",
+        },
+      }),
+    )
+    expect(settled.trainingActivationPending).toBe(false)
+    expect(settled.trainingActivationStatus.tone).toBe("success")
+    expect(settled.trainingActivation).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
     expect(followups).toHaveLength(1)

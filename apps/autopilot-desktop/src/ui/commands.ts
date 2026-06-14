@@ -14,6 +14,7 @@ import {
   FailedSpawn,
   GotTrainingRuns,
   SettledCancelSession,
+  SettledActivateTrainingWindow,
   SettledCoordinatorToggle,
   SettledPlanTrainingWindow,
   SettledQueueTrainingLaunch,
@@ -158,6 +159,33 @@ export const PlanTrainingRunWindow = Command.define(
             windowPlanned: false,
             reason: "request_failed",
             message: `training admin request failed: ${errorText(error)}`,
+            error: errorText(error),
+          },
+        }),
+      ),
+    ),
+  ),
+)
+
+export const ActivateTrainingWindow = Command.define(
+  "ActivateTrainingWindow",
+  { windowRef: S.String },
+  SettledActivateTrainingWindow,
+)(({ windowRef }) =>
+  Effect.tryPromise(() => getRequest().activateTrainingWindow({ windowRef })).pipe(
+    Effect.map((projection) => SettledActivateTrainingWindow({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledActivateTrainingWindow({
+          projection: {
+            ok: false,
+            enabled: false,
+            fetchedAt: new Date().toISOString(),
+            sourceUrl: "desktop:training-activation",
+            windowRef,
+            window: null,
+            reason: "request_failed",
+            message: `training admin activation failed: ${errorText(error)}`,
             error: errorText(error),
           },
         }),
