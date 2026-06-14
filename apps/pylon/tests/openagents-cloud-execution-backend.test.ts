@@ -303,6 +303,163 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
     })
   })
 
+  test("cloud-gcp maps the four cloud.gce.* lease-lifecycle kinds: receipt round-trips, VM provenance surfaced", async () => {
+    await withFixture(async ({ proofDir, summary, worktree }) => {
+      // A scripted cloud stream that carries the four GCE lease-lifecycle
+      // discriminators on the `type` field exactly the way the cloud control
+      // plane emits them (cloud commit fbd62cf, JobEvent.type = cloud.gce.*).
+      // The broad workroom `kind` reuses the existing kinds, so without the
+      // #5005 mapping these would round-trip as plain started/receipt/log and
+      // the cleanup event would be dropped entirely.
+      const scriptedEvents: CloudWorkroomEvent[] = [
+        // cloud.gce.provisioned -> VM lease acquired (provision receipt ref).
+        {
+          kind: "started",
+          type: "cloud.gce.provisioned",
+          summary: "GCE capacity lease ready on the fake provisioner.",
+          receiptRefs: ["sha256:provision-receipt-0"],
+        },
+        // cloud.gce.degraded -> a failed acquire / fallback (must stay visible).
+        {
+          kind: "log",
+          type: "cloud.gce.degraded",
+          summary: "GCE provisioning unavailable; run continues on local control host.",
+        },
+        // cloud.gce.resource_usage_receipt -> the refs-only
+        // resource_usage_receipt.v1 digest (MOST IMPORTANT: must round-trip).
+        {
+          kind: "receipt",
+          type: "cloud.gce.resource_usage_receipt",
+          summary: "openagents.resource_usage_receipt.v1 emitted for GCE session.",
+          receiptRefs: ["sha256:resource-usage-receipt-1"],
+        },
+        // cloud.gce.cleanup -> VM released (cleanup receipt ref). Non-terminal.
+        {
+          kind: "cleanup",
+          type: "cloud.gce.cleanup",
+          summary: "GCE capacity lease released; cleanup receipt minted.",
+          receiptRefs: ["sha256:cleanup-receipt-2"],
+        },
+        // The run itself terminates AFTER the GCE lifecycle events.
+        { kind: "completed", summary: "run completed" },
+      ] as CloudWorkroomEvent[]
+
+      const { fakeFetch } = makeFakeCloudControlPlane({ scriptedEvents })
+      const env = {
+        OA_CLOUD_CONTROL_URL: "https://cloud.example",
+        OA_CLOUD_CONTROL_TOKEN: "control-token",
+      }
+      const resolved = resolveCloudControlConfig(env)
+      if (!resolved.configured) throw new Error("unreachable")
+
+      const cloudExecutor = makeCloudControlSessionExecutor({
+        config: resolved.config,
+        env,
+        fetchImpl: fakeFetch,
+        pollIntervalMs: 1,
+        grantBindingForSession: () => ({}),
+      })
+      const actions = createControlSessionActions({
+        env,
+        cloudExecutor,
+        proofsDir: proofDir,
+        summary,
+      })
+      const spawned = await actions.spawn({
+        type: "session.spawn",
+        adapter: "codex",
+        worktreePath: worktree,
+        objective: "run on a cloud GCE VM",
+        verify: ["bun", "--version"],
+        lane: "cloud-gcp",
+      })
+
+      let row: Awaited<ReturnType<typeof actions.list>>[number] | undefined
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const list = await actions.list()
+        row = list.find((s) => s.sessionRef === spawned.sessionRef)
+        if (row && (row.state === "completed" || row.state === "failed")) break
+        await Bun.sleep(5)
+      }
+
+      // The GCE lifecycle events are NON-terminal: the run still completes.
+      expect(row?.state).toBe("completed")
+      expect(row?.lane).toBe("cloud-gcp")
+
+      // MOST IMPORTANT: the resource_usage_receipt.v1 ref round-trips to the
+      // session exactly like SHC/local (first receipt ref captured — the
+      // provision receipt arrives first on the cloud.gce.provisioned event).
+      expect(row?.resourceUsageReceiptRef).toBe("sha256:provision-receipt-0")
+
+      // VM lifecycle provenance lines appear in the lane-transparent stream.
+      const detail = await actions.events(spawned.sessionRef)
+      const texts = detail.recentEvents
+        .map((e) => e.messageText ?? "")
+        .filter((t) => t.length > 0)
+      expect(texts.some((t) => t.includes("GCE capacity lease ready"))).toBe(true)
+      // degraded is visible (failed acquire / fallback signal).
+      expect(texts.some((t) => t.includes("GCE provisioning unavailable"))).toBe(true)
+      expect(texts.some((t) => t.includes("resource_usage_receipt.v1 emitted"))).toBe(true)
+      // cleanup (VM released) is surfaced rather than silently dropped.
+      expect(texts.some((t) => t.includes("GCE capacity lease released"))).toBe(true)
+    })
+  })
+
+  test("cloud.gce.resource alias surfaces the resource_usage_receipt ref", async () => {
+    await withFixture(async ({ proofDir, summary, worktree }) => {
+      // The issue refers to the resource event as `cloud.gce.resource`; the
+      // cloud emits it as `cloud.gce.resource_usage_receipt`. Pylon accepts the
+      // issue's alias and normalizes it so the receipt ref still round-trips.
+      const scriptedEvents = [
+        {
+          kind: "receipt",
+          type: "cloud.gce.resource",
+          summary: "resource usage receipt (alias spelling)",
+          receiptRefs: ["sha256:aliased-resource-receipt"],
+        },
+        { kind: "completed", summary: "run completed" },
+      ] as unknown as CloudWorkroomEvent[]
+
+      const { fakeFetch } = makeFakeCloudControlPlane({ scriptedEvents })
+      const env = {
+        OA_CLOUD_CONTROL_URL: "https://cloud.example",
+        OA_CLOUD_CONTROL_TOKEN: "control-token",
+      }
+      const resolved = resolveCloudControlConfig(env)
+      if (!resolved.configured) throw new Error("unreachable")
+      const cloudExecutor = makeCloudControlSessionExecutor({
+        config: resolved.config,
+        env,
+        fetchImpl: fakeFetch,
+        pollIntervalMs: 1,
+        grantBindingForSession: () => ({}),
+      })
+      const actions = createControlSessionActions({
+        env,
+        cloudExecutor,
+        proofsDir: proofDir,
+        summary,
+      })
+      const spawned = await actions.spawn({
+        type: "session.spawn",
+        adapter: "codex",
+        worktreePath: worktree,
+        objective: "resource alias",
+        verify: ["bun", "--version"],
+        lane: "cloud-gcp",
+      })
+      let row: Awaited<ReturnType<typeof actions.list>>[number] | undefined
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const list = await actions.list()
+        row = list.find((s) => s.sessionRef === spawned.sessionRef)
+        if (row && (row.state === "completed" || row.state === "failed")) break
+        await Bun.sleep(5)
+      }
+      expect(row?.state).toBe("completed")
+      expect(row?.resourceUsageReceiptRef).toBe("sha256:aliased-resource-receipt")
+    })
+  })
+
   test("cloud lane falls back to local executor when no cloud executor is configured", async () => {
     await withFixture(async ({ proofDir, summary, worktree }) => {
       let localExecutorCalled = false

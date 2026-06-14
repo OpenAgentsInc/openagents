@@ -137,6 +137,22 @@ function activityForCloudEvent(event: CloudWorkroomEvent, binding: CloudRunnerBi
       return event.summary ?? "cloud run produced an artifact"
     case "receipt":
       return event.summary ?? "cloud run recorded a usage receipt"
+    // #5005 — cloud GCE per-session VM lease lifecycle provenance. These are
+    // bounded "lane/runner/VM lifecycle" lines, redaction-scanned like other
+    // log events, and are NON-terminal (the session terminal kinds stay
+    // completed/failed/timeout/cancelled).
+    case "cloud.gce.provisioned":
+      return event.summary ?? `cloud GCE VM provisioned${where}`
+    case "cloud.gce.cleanup":
+      return event.summary ?? `cloud GCE VM released${where}`
+    case "cloud.gce.degraded":
+      // Visible by design: signals a failed VM acquire / fallback to the local
+      // control host.
+      return event.summary ?? `cloud GCE VM degraded (acquire failed; falling back)${where}`
+    case "cloud.gce.resource_usage_receipt":
+      // The refs-only resource_usage_receipt.v1 ref is surfaced through the same
+      // receiptRefs path the `receipt` kind uses (see processEvent).
+      return event.summary ?? `cloud GCE recorded a usage receipt${where}`
     case "completed":
       return "cloud run completed"
     case "failed":

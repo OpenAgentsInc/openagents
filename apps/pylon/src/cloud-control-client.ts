@@ -118,6 +118,26 @@ export type CloudWorkroomEventKind =
   | "cancelled"
   // `placement.bound` is emitted by the placement endpoint ack.
   | "placement.bound"
+  // ---------------------------------------------------------------------------
+  // #5005 — cloud GCE per-session lease lifecycle
+  // (`openagents.gce_capacity_class.v1`, cloud commit fbd62cf).
+  //
+  // The `cloud-gcp` lane drives a live ephemeral-per-session VM lease and emits
+  // four additional discriminators. On the cloud side these are carried by the
+  // `JobEvent.type` field (`cloud.gce.*`) while the broad workroom `kind` is one
+  // of the existing kinds (`started`/`receipt`/`cleanup`/`log`). Pylon reads the
+  // `cloud.gce.*` discriminator from `type` when present (and tolerates `kind`
+  // carrying it directly), so VM provenance and the resource_usage_receipt ref
+  // round-trip to the desktop/phone instead of being silently dropped.
+  | "cloud.gce.provisioned"
+  | "cloud.gce.cleanup"
+  | "cloud.gce.degraded"
+  // The resource event carries the refs-only
+  // `openagents.resource_usage_receipt.v1` digest. The cloud `JobEvent.type` is
+  // `cloud.gce.resource_usage_receipt`; the issue refers to it as
+  // `cloud.gce.resource`. Pylon accepts either spelling and normalizes to this
+  // canonical kind.
+  | "cloud.gce.resource_usage_receipt"
 
 export type CloudWorkroomEvent = {
   kind: CloudWorkroomEventKind
@@ -156,6 +176,45 @@ export function isCloudTerminalEventKind(
   kind: CloudWorkroomEventKind,
 ): kind is CloudTerminalKind {
   return (CLOUD_TERMINAL_EVENT_KINDS as readonly string[]).includes(kind)
+}
+
+// #5005 — the four cloud GCE lease-lifecycle discriminators. These are
+// NON-terminal: a VM provisioned/released/degraded or a usage receipt does not
+// end the session. The session terminal kinds stay
+// completed/failed/timeout/cancelled.
+export const CLOUD_GCE_EVENT_KINDS: readonly CloudWorkroomEventKind[] = [
+  "cloud.gce.provisioned",
+  "cloud.gce.cleanup",
+  "cloud.gce.degraded",
+  "cloud.gce.resource_usage_receipt",
+]
+
+export function isCloudGceEventKind(kind: string): kind is CloudWorkroomEventKind {
+  return (CLOUD_GCE_EVENT_KINDS as readonly string[]).includes(kind)
+}
+
+// Normalize a raw cloud event discriminator (which may arrive on either the
+// `type` field — the cloud `JobEvent.type` — or the broad workroom `kind`
+// field) into a single canonical `CloudWorkroomEventKind`. The `cloud.gce.*`
+// discriminator wins when present so VM lifecycle/receipt provenance is mapped
+// even though the broad workroom `kind` reuses existing kinds
+// (`started`/`receipt`/`cleanup`/`log`). The `cloud.gce.resource` spelling used
+// by the issue is accepted as an alias for the canonical
+// `cloud.gce.resource_usage_receipt`.
+export function resolveCloudEventKind(
+  kindField: unknown,
+  typeField: unknown,
+): CloudWorkroomEventKind | null {
+  const candidates = [typeField, kindField]
+  for (const raw of candidates) {
+    if (typeof raw !== "string") continue
+    if (raw === "cloud.gce.resource" || raw === "cloud.gce.resource_usage_receipt") {
+      return "cloud.gce.resource_usage_receipt"
+    }
+    if (isCloudGceEventKind(raw)) return raw
+  }
+  // Fall back to the broad workroom kind when no GCE discriminator is present.
+  return typeof kindField === "string" ? (kindField as CloudWorkroomEventKind) : null
 }
 
 // Map a Pylon control-session lane to the cloud compute lane. `local` never
@@ -230,8 +289,10 @@ function normalizeBinding(raw: unknown, fallbackRunId: string): CloudRunnerBindi
 function normalizeEvent(raw: unknown): CloudWorkroomEvent | null {
   if (raw === null || typeof raw !== "object") return null
   const record = raw as Record<string, unknown>
-  const kind = record.kind
-  if (typeof kind !== "string") return null
+  // #5005 — resolve the canonical kind from the `cloud.gce.*` `type`
+  // discriminator when present, otherwise from the broad workroom `kind`.
+  const kind = resolveCloudEventKind(record.kind, record.type)
+  if (kind === null) return null
   const summary =
     typeof record.summary === "string" ? record.summary : undefined
   const artifactRefs = Array.isArray(record.artifactRefs)
@@ -241,7 +302,7 @@ function normalizeEvent(raw: unknown): CloudWorkroomEvent | null {
     ? record.receiptRefs.filter((entry): entry is string => typeof entry === "string")
     : undefined
   return {
-    kind: kind as CloudWorkroomEventKind,
+    kind,
     ...(summary === undefined ? {} : { summary }),
     ...(artifactRefs === undefined ? {} : { artifactRefs }),
     ...(receiptRefs === undefined ? {} : { receiptRefs }),
