@@ -5,16 +5,13 @@ import { useNavigation } from "@react-navigation/native"
 
 import {
   type ConnectInfo,
-  type ControlSessionEventRow,
   type ControlSessionRow,
   type AccountRow,
-  type SessionArtifact,
   type WalletStatus,
   type ApprovalRow,
   type AssignmentRow,
   type IntentRow,
   type DeployStatus,
-  cancelSession,
   decodeConnectCode,
   deployToCloud,
   fetchAccounts,
@@ -27,8 +24,6 @@ import {
   fetchWalletStatus,
   resolveApproval,
   setCoordinatorPaused,
-  fetchSessionArtifact,
-  fetchSessionEvents,
   fetchSessions,
   submitIntent,
 } from "../src/control/control-client"
@@ -90,9 +85,6 @@ export default function NodesScreen() {
   const [sessions, setSessions] = useState<ControlSessionRow[]>([])
   const [status, setStatus] = useState<Status>("discovering")
   const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
-  const [events, setEvents] = useState<ControlSessionEventRow[]>([])
-  const [expanded, setExpanded] = useState<number | null>(null)
   const [askTitle, setAskTitle] = useState("")
   const [askBody, setAskBody] = useState("")
   const [askStatus, setAskStatus] = useState<string | null>(null)
@@ -109,13 +101,11 @@ export default function NodesScreen() {
   const [deployStatus, setDeployStatus] = useState<DeployStatus | null>(null)
   const [deployLine, setDeployLine] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const navigation = useNavigation<{ navigate: (route: string) => void }>()
+  const navigation = useNavigation<{ navigate: (route: string, params?: object) => void }>()
   // CL-30 notifications: permission + the set of session states already notified.
   const notifPermitted = useRef(false)
   const seenNotifRefs = useRef<string[]>([])
-  const [artifact, setArtifact] = useState<SessionArtifact | null>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
-  const eventsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const poll = useCallback(async (c: ConnectInfo) => {
     try {
@@ -163,17 +153,6 @@ export default function NodesScreen() {
     }
   }, [conn, poll])
 
-  // Live session-detail timeline: poll the selected session's recent events.
-  const pollEvents = useCallback(
-    async (c: ConnectInfo, sessionRef: string) => {
-      try {
-        setEvents(await fetchSessionEvents(c, sessionRef))
-      } catch {
-        // transient; keep the last good timeline
-      }
-    },
-    [],
-  )
   // Accounts change rarely — fetch once per connection (CL-18).
   useEffect(() => {
     if (conn === null) return
@@ -243,20 +222,6 @@ export default function NodesScreen() {
       cancelled = true
     }
   }, [sessions])
-
-  useEffect(() => {
-    if (conn === null || selected === null) return
-    setEvents([])
-    setArtifact(null)
-    void pollEvents(conn, selected)
-    void fetchSessionArtifact(conn, selected)
-      .then((a) => setArtifact(a.kind === "none" ? null : a))
-      .catch(() => {})
-    eventsTimer.current = setInterval(() => void pollEvents(conn, selected), POLL_MS)
-    return () => {
-      if (eventsTimer.current) clearInterval(eventsTimer.current)
-    }
-  }, [conn, selected, pollEvents])
 
   const submitAsk = useCallback(() => {
     if (conn === null) return
@@ -348,80 +313,7 @@ export default function NodesScreen() {
           <Text style={styles.h1}>Autopilot</Text>
           <Text style={styles.subtitle}>Nodes</Text>
 
-        {selected !== null ? (
-          <>
-            <Pressable style={styles.back} onPress={() => setSelected(null)}>
-              <Text style={styles.backText}>‹ sessions</Text>
-            </Pressable>
-            <Text style={styles.detailRef}>{selected}</Text>
-            {(() => {
-              const s = sessions.find((x) => x.sessionRef === selected)
-              if (!s) return null
-              const verify =
-                s.state === "completed"
-                  ? `✓ verify passed${s.artifactRef ? ` · artifact ${s.artifactRef.slice(-12)}` : ""}`
-                  : s.state === "failed"
-                    ? `✗ verify failed${s.errorClass ? ` · ${s.errorClass}` : ""}`
-                    : s.state === "cancelled"
-                      ? "cancelled"
-                      : `${s.state}…`
-              const tone =
-                s.state === "completed" ? C.success : s.state === "failed" ? C.danger : C.textSecondary
-              return <Text style={[styles.verifyLine, { color: tone }]}>{verify}</Text>
-            })()}
-            {artifact ? (
-              <Text style={styles.artifactLine}>
-                artifact: {artifact.outcome ?? artifact.kind}
-                {artifact.editedFileCount !== null ? ` · ${artifact.editedFileCount} files` : ""}
-                {artifact.commandCount !== null ? ` · ${artifact.commandCount} cmds` : ""}
-                {artifact.totalTokens !== null ? ` · ${artifact.totalTokens} tok` : ""}
-              </Text>
-            ) : null}
-            {(() => {
-              const s = sessions.find((x) => x.sessionRef === selected)
-              const cancellable = s && (s.state === "running" || s.state === "queued" || s.state === "started")
-              if (!cancellable || conn === null) return null
-              return (
-                <Pressable
-                  style={styles.cancelBtn}
-                  onPress={() => {
-                    void cancelSession(conn, selected).then(() => poll(conn))
-                  }}
-                >
-                  <Text style={styles.cancelText}>Cancel session</Text>
-                </Pressable>
-              )
-            })()}
-            {events.length === 0 ? (
-              <View style={styles.card}>
-                <Text style={styles.cardBody}>No events yet.</Text>
-              </View>
-            ) : (
-              events.map((e) => {
-                const isOpen = expanded === e.eventIndex
-                const expandable = e.full.length > 0 || e.detail.length > 30
-                return (
-                  <Pressable
-                    key={e.eventIndex}
-                    style={styles.eventRow}
-                    onPress={() => expandable && setExpanded(isOpen ? null : e.eventIndex)}
-                  >
-                    <View style={[styles.dot, { backgroundColor: stateTone(e.state) }]} />
-                    <View style={styles.rowText}>
-                      <Text style={[styles.rowLabel, isOpen ? styles.expandedRowLabel : null]} numberOfLines={isOpen ? undefined : 2}>
-                        {isOpen ? e.full || e.detail || e.phase : e.detail || e.phase}
-                      </Text>
-                      <Text style={styles.rowStatus}>
-                        {e.detail ? `${e.phase} · ` : ""}#{e.eventIndex} · {e.observedAt.slice(11, 19) || e.state}
-                        {expandable ? (isOpen ? " · tap to collapse" : " · tap to expand") : ""}
-                      </Text>
-                    </View>
-                  </Pressable>
-                )
-              })
-            )}
-          </>
-        ) : status === "discovering" ? (
+        {status === "discovering" ? (
           <View style={styles.statusRow}>
             <ActivityIndicator color={C.info} />
             <Text style={styles.statusText}>finding your node…</Text>
@@ -666,7 +558,7 @@ export default function NodesScreen() {
                   <Pressable
                     key={s.sessionRef}
                     style={[styles.row, child ? styles.childRow : null]}
-                    onPress={() => setSelected(s.sessionRef)}
+                    onPress={() => navigation.navigate("SessionDetail", { sessionRef: s.sessionRef })}
                   >
                     <View style={[styles.dot, { backgroundColor: stateTone(s.state) }]} />
                     <View style={styles.rowText}>
