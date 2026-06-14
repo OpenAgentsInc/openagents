@@ -11,11 +11,14 @@ export type BuildDecisionResolveEnvelopeInput = {
   requestId: string
   verb: DecisionVerb
   clientRequestId: string
+  // Free-text answer, required only when verb === "answer".
+  answer?: string
 }
 
 export type DecisionResolveEnvelope = BridgeRequestEnvelope & {
   requestId: string
   decisionVerb: DecisionVerb
+  answer?: string
 }
 
 export function buildDecisionResolveEnvelope(
@@ -29,6 +32,7 @@ export function buildDecisionResolveEnvelope(
     capabilityRef: input.capabilityRef,
     requestId: input.requestId,
     decisionVerb: input.verb,
+    ...(input.answer === undefined ? {} : { answer: input.answer }),
   }
 }
 

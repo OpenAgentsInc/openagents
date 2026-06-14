@@ -4,8 +4,10 @@
 // (POST /bridge with `Authorization: Bridge <pairingRef>:<jti>`). Pure +
 // transport-agnostic (inject fetch) so web / desktop / mobile share it.
 
-import { buildHistoryRequest, buildListRequest } from "./bridge-client"
+import { buildCancelRequest, buildHistoryRequest, buildListRequest } from "./bridge-client"
+import { buildDecisionResolveEnvelope } from "./bridge-decision-client"
 import type { Capability, PairingCredentialClaims, ProjectionLevel } from "./bridge"
+import type { DecisionVerb } from "./decision"
 import { decodeSessionSummary, type SessionSummary } from "./control"
 
 export type BridgePairInput = {
@@ -56,6 +58,11 @@ export type BridgeTransport = {
   // session.history). Returns the node's session-events projection (e.g.
   // { recentEvents }); the caller dedups/resumes via the shared cursor model.
   history: (sessionRef: string) => Promise<unknown>
+  // #5002 write actions (capability-gated by the node's stored claims):
+  // decision.resolve (answer_decision) and session.cancel (cancel). Throw on a
+  // non-ok response; callers classify the error via classifyActionOutcome.
+  resolveDecision: (input: { requestId: string; verb: DecisionVerb; answer?: string }) => Promise<unknown>
+  cancel: (sessionRef: string) => Promise<unknown>
 }
 
 // A transport bound to a pairing credential. Sends capability-scoped read
@@ -104,6 +111,29 @@ export function createBridgeTransport(input: {
         capabilityRef: input.credential.capabilityRef ?? "observe_public",
         clientRequestId: requestId,
         idempotencyKey: requestId,
+      })
+      return send(envelope)
+    },
+    async resolveDecision({ requestId, verb, answer }) {
+      const clientRequestId = nextId()
+      const envelope = buildDecisionResolveEnvelope({
+        requestId,
+        verb,
+        pairingRef: input.credential.pairingRef,
+        capabilityRef: "answer_decision",
+        clientRequestId,
+        ...(answer === undefined ? {} : { answer }),
+      })
+      return send(envelope)
+    },
+    async cancel(sessionRef) {
+      const clientRequestId = nextId()
+      const envelope = buildCancelRequest({
+        sessionRef,
+        pairingRef: input.credential.pairingRef,
+        capabilityRef: "cancel",
+        clientRequestId,
+        idempotencyKey: clientRequestId,
       })
       return send(envelope)
     },

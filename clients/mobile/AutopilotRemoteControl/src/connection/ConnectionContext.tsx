@@ -8,6 +8,7 @@
 
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react"
 
+import { createActionQueue } from "@openagentsinc/autopilot-control-protocol"
 import {
   type AccountRow,
   type ApprovalRow,
@@ -24,6 +25,7 @@ import {
   type SessionArtifact,
   type WalletStatus,
   cancelSession as cancelSessionCall,
+  cancelSessionViaBridge,
   connectBridge,
   decodeConnectCode,
   deployToCloud as deployToCloudCall,
@@ -40,6 +42,7 @@ import {
   fetchSessions,
   fetchWalletStatus,
   resolveApproval as resolveApprovalCall,
+  resolveDecisionViaBridge,
   setCoordinatorPaused as setCoordinatorPausedCall,
   spawnSession as spawnSessionCall,
   submitIntent as submitIntentCall,
@@ -78,7 +81,12 @@ export type ConnectionValue = {
   resolveApproval(input: { approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }): Promise<void>
   setCoordinatorPaused(paused: boolean): Promise<boolean | null>
   cancelSession(sessionRef: string): Promise<void>
-  spawnSession(draft: { adapter: "codex" | "claude_agent"; objective: string; verify?: string[] }): Promise<string>
+  spawnSession(draft: {
+    adapter: "codex" | "claude_agent"
+    objective: string
+    verify?: string[]
+    lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
+  }): Promise<string>
   deploy(input: { target: DeployTarget; ref: string; env?: DeployEnv }): Promise<DeployResult>
   fetchSessionEvents(sessionRef: string): Promise<ControlSessionEventRow[]>
   fetchSessionArtifact(sessionRef: string): Promise<SessionArtifact>
@@ -106,6 +114,13 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   // additively after connect; the session event stream reads over it (no
   // long-lived dev token on the wire), falling back to the dev-token path.
   const bridge = useRef<BridgeSession | null>(null)
+  // #5002: offline queue for write actions taken while disconnected. Drained +
+  // replayed on reconnect; entries past TTL are dropped rather than replayed stale.
+  const actionQueue = useRef(
+    createActionQueue<{ approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }>({
+      ttlMs: 600_000,
+    }),
+  )
 
   const poll = useCallback(async (c: ConnectInfo) => {
     try {
@@ -164,7 +179,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       return
     }
     let cancelled = false
-    void connectBridge(conn, { capabilities: ["observe_public"] })
+    // #5002: request write capabilities so the scoped credential can resolve
+    // decisions and cancel sessions over the bridge (owner's own phone).
+    void connectBridge(conn, { capabilities: ["observe_public", "answer_decision", "cancel"] })
       .then((session) => {
         if (!cancelled) bridge.current = session
       })
@@ -235,15 +252,49 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [conn],
   )
 
+  // #5002: resolve a decision over the capability-scoped bridge when paired,
+  // falling back to the dev-token path. Throws on a network failure so the
+  // caller can queue for replay.
+  const dispatchResolve = useCallback(
+    async (input: { approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }) => {
+      const c = conn
+      if (c === null) return
+      const session = bridge.current
+      if (session !== null) {
+        await resolveDecisionViaBridge(session, input)
+        return
+      }
+      await resolveApprovalCall(c, input)
+    },
+    [conn],
+  )
+
   const resolveApproval = useCallback(
     async (input: { approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }) => {
       if (conn === null) return
       // Optimistically drop the resolved approval from the shared list.
       setApprovals((prev) => prev.filter((a) => a.approvalRef !== input.approvalRef))
-      await resolveApprovalCall(conn, input).catch(() => {})
+      try {
+        await dispatchResolve(input)
+      } catch {
+        // Offline/unreachable: queue for replay on reconnect (TTL-bounded).
+        actionQueue.current.enqueue({ id: input.approvalRef, action: input, nowMs: Date.now() })
+      }
     },
-    [conn],
+    [conn, dispatchResolve],
   )
+
+  // #5002: on reconnect, replay queued write actions (oldest-first); expired
+  // entries are dropped rather than replayed stale.
+  useEffect(() => {
+    if (status !== "connected" || conn === null) return
+    const { ready } = actionQueue.current.drain(Date.now())
+    for (const entry of ready) {
+      void dispatchResolve(entry.action).catch(() => {
+        actionQueue.current.enqueue({ id: entry.id, action: entry.action, nowMs: Date.now() })
+      })
+    }
+  }, [status, conn, dispatchResolve])
 
   const setCoordinatorPaused = useCallback(
     async (paused: boolean) => {
@@ -259,6 +310,18 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const cancelSession = useCallback(
     async (sessionRef: string) => {
       if (conn === null) return
+      // Prefer the capability-scoped bridge (cancel capability); fall back to
+      // the dev-token path if no bridge credential or the bridge call fails.
+      const session = bridge.current
+      if (session !== null) {
+        try {
+          await cancelSessionViaBridge(session, sessionRef)
+          await poll(conn)
+          return
+        } catch {
+          // fall through to dev-token path
+        }
+      }
       await cancelSessionCall(conn, sessionRef)
       await poll(conn)
     },
@@ -266,7 +329,12 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   )
 
   const spawnSession = useCallback(
-    async (draft: { adapter: "codex" | "claude_agent"; objective: string; verify?: string[] }) => {
+    async (draft: {
+      adapter: "codex" | "claude_agent"
+      objective: string
+      verify?: string[]
+      lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
+    }) => {
       if (conn === null) throw new Error("not connected")
       const ref = await spawnSessionCall(conn, draft)
       await poll(conn)

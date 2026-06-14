@@ -390,6 +390,9 @@ export const startControlServer = (
                   approvalRef?: unknown
                   decision?: unknown
                   answer?: unknown
+                  // Canonical protocol decision shape (buildDecisionResolveEnvelope).
+                  requestId?: unknown
+                  decisionVerb?: unknown
                 }
                 const verb = typeof envelope.verb === "string" ? envelope.verb : ""
                 if (!verbAllowedByCapabilities(verb as BridgeRequestVerb, claims.capabilities)) {
@@ -416,14 +419,20 @@ export const startControlServer = (
                   if (!options.actions.approvals) {
                     return Response.json({ error: "approvals unavailable on this node" }, { status: 404 })
                   }
-                  const approvalRef = envelope.approvalRef
-                  const decision = envelope.decision
+                  // Accept the canonical protocol envelope (requestId/decisionVerb,
+                  // from buildDecisionResolveEnvelope) and the node-shape compat
+                  // form (approvalRef/decision). The node's approvalRef IS the
+                  // decision requestId.
+                  const approvalRef =
+                    typeof envelope.requestId === "string" ? envelope.requestId : envelope.approvalRef
+                  const decision =
+                    typeof envelope.decisionVerb === "string" ? envelope.decisionVerb : envelope.decision
                   if (
                     typeof approvalRef !== "string" ||
                     (decision !== "approve" && decision !== "deny" && decision !== "answer")
                   ) {
                     return Response.json(
-                      { error: "approvalRef and decision (approve|deny|answer) required" },
+                      { error: "requestId/decisionVerb (or approvalRef/decision: approve|deny|answer) required" },
                       { status: 400 },
                     )
                   }

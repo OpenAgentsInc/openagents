@@ -449,18 +449,46 @@ export async function submitIntent(
 // primary UX; this is the explicit single-session spawn for advanced control.
 // Returns the new session ref. Validation is the caller's responsibility
 // (see validateSpawnRequest in the shared protocol).
+export type SessionLane = "auto" | "local" | "cloud-gcp" | "cloud-shc"
+
 export async function spawnSession(
   conn: ConnectInfo,
-  draft: { adapter: "codex" | "claude_agent"; objective: string; verify?: string[] },
+  draft: { adapter: "codex" | "claude_agent"; objective: string; verify?: string[]; lane?: SessionLane },
 ): Promise<string> {
   const json = (await command(conn, {
     type: "session.spawn",
     adapter: draft.adapter,
     objective: draft.objective,
     verify: draft.verify ?? [],
+    // #4998 lane selector: `auto` = own-Pylon-first-and-free then Google GCE.
+    lane: draft.lane ?? "auto",
   })) as { ok?: boolean; result?: { sessionRef?: unknown } }
   if (json.ok !== true) throw new Error("spawn failed")
   return String(json.result?.sessionRef ?? "spawned")
+}
+
+// #5002 bridge write actions. Resolve a decision / cancel a session over the
+// capability-scoped bridge credential (answer_decision / cancel) instead of the
+// dev token. Returns the classified outcome so the UI can render a typed receipt.
+export async function resolveDecisionViaBridge(
+  bridge: BridgeSession,
+  input: { approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string },
+): Promise<{ applied: boolean; duplicate: boolean; decision: string }> {
+  const result = (await bridge.transport.resolveDecision({
+    requestId: input.approvalRef,
+    verb: input.decision,
+    ...(input.answer === undefined ? {} : { answer: input.answer }),
+  })) as { applied?: unknown; duplicate?: unknown; decision?: unknown }
+  return {
+    applied: result?.applied === true,
+    duplicate: result?.duplicate === true,
+    decision: typeof result?.decision === "string" ? result.decision : input.decision,
+  }
+}
+
+export async function cancelSessionViaBridge(bridge: BridgeSession, sessionRef: string): Promise<string> {
+  const result = (await bridge.transport.cancel(sessionRef)) as { state?: unknown }
+  return String(result?.state ?? "cancelled")
 }
 
 // Cancel a running/queued session (CL-15). Best-effort: returns the new state.

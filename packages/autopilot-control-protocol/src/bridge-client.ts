@@ -49,6 +49,12 @@ export function buildHistoryRequest(input: SessionReadRequestInput): BridgeReque
   return buildReadRequest("session.history", input)
 }
 
+// session.cancel is a session-scoped write verb (cancel capability). Same
+// envelope shape as the reads; the node gates it on the stored credential.
+export function buildCancelRequest(input: SessionReadRequestInput): BridgeRequestEnvelope {
+  return buildReadRequest("session.cancel", input)
+}
+
 export function parseListResponse(raw: unknown): SessionSummary[] {
   if (!Array.isArray(raw)) throw new TypeError("Expected session list response to be an array")
   return raw.map((row) => decodeSessionSummary(row))
