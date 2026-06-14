@@ -53,15 +53,19 @@ describe("labor codex execution", () => {
       workspace,
       objectiveDetail: "Create sum.ts and sum.test.ts so bun test passes.",
     })
-    expect(captured.slice(0, 5)).toEqual([
+    expect(captured.slice(0, 7)).toEqual([
       "/usr/bin/codex",
       "exec",
       "--skip-git-repo-check",
       "-s",
       "workspace-write",
+      "-c",
+      "sandbox_workspace_write.network_access=false",
     ])
     // It must NOT use the unsandboxed bypass for untrusted requester work.
     expect(captured).not.toContain("--dangerously-bypass-approvals-and-sandbox")
+    // Network is denied so an untrusted job cannot clone/fetch into the sandbox.
+    expect(captured).toContain("sandbox_workspace_write.network_access=false")
     // The injected objective reaches the agent prompt (last arg).
     expect(captured[captured.length - 1]).toContain("Create sum.ts and sum.test.ts so bun test passes.")
   })

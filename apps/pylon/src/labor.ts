@@ -293,8 +293,23 @@ function laborCommand(
     // so bare `codex exec` blocks on the interactive git-repo-check and never
     // returns under the provider loop. `--skip-git-repo-check` clears that;
     // `-s workspace-write` keeps codex sandboxed to the workspace (it must NOT
-    // run untrusted requester work with `--dangerously-bypass-...`).
-    return path ? [path, "exec", "--skip-git-repo-check", "-s", "workspace-write", prompt] : null
+    // run untrusted requester work with `--dangerously-bypass-...`); and
+    // `network_access=false` denies the sandbox network so an untrusted job
+    // cannot clone/fetch a repo into the workspace (observed: codex otherwise
+    // cloned the target repo, polluting the sandbox so `bun test` ran the whole
+    // suite). Output-only labor stays self-contained in the workspace.
+    return path
+      ? [
+          path,
+          "exec",
+          "--skip-git-repo-check",
+          "-s",
+          "workspace-write",
+          "-c",
+          "sandbox_workspace_write.network_access=false",
+          prompt,
+        ]
+      : null
   }
   if (agentKind === "opencode") {
     const path = find("opencode")
