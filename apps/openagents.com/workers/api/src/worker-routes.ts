@@ -90,6 +90,7 @@ const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/moksha$/,
   /^\/moksha2$/,
   /^\/mullet$/,
+  /^\/pylon$/,
   /^\/onboarding$/,
   /^\/order$/,
   /^\/orders\/[^/]+$/,
