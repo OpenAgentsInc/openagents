@@ -587,6 +587,79 @@ describe('training run window routes', () => {
     expect(illegal.status).toBe(409)
   })
 
+  it('admits / excludes an executor-trace contributor through the run admit route (#5007)', async () => {
+    const store = makeMemoryStore()
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => 'admit',
+      makeStore: () => store,
+      nowIso: () => '2026-06-14T10:00:00.000Z',
+      requireAdminApiToken: async () => true,
+    })
+
+    await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/runs', {
+          promiseRef: 'training.monday_decentralized_training_launch.v1',
+          trainingRunRef: 'run.tassadar.executor.20260615',
+        }),
+        {},
+      ),
+    )
+
+    const admitted = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/runs/run.tassadar.executor.20260615/admit', {
+          capabilityRefs: [
+            'capability.tassadar_poc.numeric_model_executor',
+            'receipt.tassadar_executor.self_test.v1.0123456789abcdef',
+          ],
+          hostRamHeadroomGb: 8,
+          pylonRef: 'pylon.contributor.5007',
+        }),
+        {},
+      ),
+    )
+    const admittedBody = (await admitted.json()) as {
+      admission: { decision: string; reasonRefs: ReadonlyArray<string> }
+    }
+
+    expect(admitted.status).toBe(200)
+    expect(admittedBody.admission.decision).toBe('admitted')
+
+    const excluded = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/runs/run.tassadar.executor.20260615/admit', {
+          capabilityRefs: [
+            'capability.tassadar_poc.numeric_model_executor',
+            'receipt.tassadar_executor.self_test.v1.0123456789abcdef',
+          ],
+          hostRamHeadroomGb: 1,
+          pylonRef: 'pylon.contributor.5007',
+        }),
+        {},
+      ),
+    )
+    const excludedBody = (await excluded.json()) as {
+      admission: { decision: string }
+    }
+
+    expect(excluded.status).toBe(200)
+    expect(excludedBody.admission.decision).toBe('excluded')
+
+    const notFound = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/runs/run.unknown/admit', {
+          capabilityRefs: [],
+          hostRamHeadroomGb: 8,
+          pylonRef: 'pylon.x',
+        }),
+        {},
+      ),
+    )
+
+    expect(notFound.status).toBe(404)
+  })
+
   it('returns an honest idle empty state for runs with no windows or verification data', async () => {
     const store = makeMemoryStore()
     const routes = makeTrainingRunWindowRoutes({

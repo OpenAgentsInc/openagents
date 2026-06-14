@@ -62,6 +62,10 @@ import {
   Cs336A5AlignmentEvidenceRequest,
   admitCs336A5AlignmentEvidence,
 } from './training-alignment-evals'
+import {
+  TrainingRunAdmissionRequest,
+  decideTassadarRunAdmission,
+} from './tassadar-run-admission'
 
 type HttpResponse = globalThis.Response
 
@@ -334,6 +338,40 @@ const routeTransitionRun = <Bindings extends TrainingRunWindowRouteEnv>(
     return noStoreJsonResponse({
       run: publicTrainingRunProjection(stored, nowIso),
     })
+  })
+
+const routeAdmitRunContributor = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* decodeBody(request, TrainingRunAdmissionRequest)
+    const store = dependencies.makeStore(env)
+    const run = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(trainingRunRef),
+    })
+
+    if (run === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const admission = yield* Effect.try({
+      catch: error =>
+        new TrainingAuthorityStoreError({
+          kind: 'validation_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () => decideTassadarRunAdmission(body),
+    })
+
+    return noStoreJsonResponse({ admission, trainingRunRef: run.trainingRunRef })
   })
 
 const routeBootstrapGrant = <Bindings extends TrainingRunWindowRouteEnv>(
@@ -1571,6 +1609,22 @@ export const makeTrainingRunWindowRoutes = <
         env,
         decodeURIComponent(runTransitionMatch[1]!),
         nextState,
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const runAdmitMatch =
+      /^\/api\/training\/runs\/([^/]+)\/admit$/.exec(url.pathname)
+
+    if (runAdmitMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeAdmitRunContributor(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(runAdmitMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 

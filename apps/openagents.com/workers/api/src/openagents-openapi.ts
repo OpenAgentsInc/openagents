@@ -1730,6 +1730,12 @@ const requestSchemas = (): JsonSchema => ({
   TrainingRunTransitionRequest: objectSummary(
     'Admin-only request to activate, seal, or reconcile a training run with a public-safe receiptRef and optional actorRef.',
   ),
+  TrainingRunAdmissionRequest: objectSummary(
+    'Admin-only executor-trace contributor admission request for a training run: pylonRef, declared capabilityRefs (must include the receipted Tassadar executor capability), hostRamHeadroomGb measurement, and an optional ownerOperated flag. Returns a fully-reasoned admit/exclude decision (receipted capability + owner-operated check + the #4852 host-RAM device gate, each with a stated measured reason).',
+  ),
+  TrainingRunAdmissionEnvelope: objectSummary(
+    'Typed executor-trace run admission decision: overall admitted/excluded, the receipted-capability state, the #4852 device-admission decision record (with stated measured reason), the owner-operated flag, and public-safe reason refs.',
+  ),
   TrainingWindowPlanRequest: objectSummary(
     'Admin-only request to plan a training window for a trainingRunRef, including homeworkKind, priority, datasetRefs, sourceRefs, and receiptRefs as public-safe refs only.',
   ),
@@ -3357,6 +3363,27 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Training run projection.',
           '#/components/schemas/TrainingRunEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/admit': {
+    post: operation({
+      operationId: 'admitTrainingRunExecutorContributor',
+      summary: 'Admit an executor-trace contributor to a training run',
+      description:
+        'Admin-only run admission decision for executor-trace contributors (#5007). Composes three reasoned gates — the receipted Tassadar executor capability claim, an independent-contributor (not owner-operated) check, and the #4852 host-RAM device-admission gate — into one typed admit/exclude decision where every branch carries a stated measured reason and a funnel reason ref. Grants no payout, settlement, dispatch, or serving authority.',
+      tags: ['Training', 'Operator', 'Pylon'],
+      security: adminBearer,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingRunAdmissionRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Typed executor-trace admission decision: admitted or excluded with stated measured reasons.',
+          '#/components/schemas/TrainingRunAdmissionEnvelope',
         ),
         ...errorResponses(),
       },
