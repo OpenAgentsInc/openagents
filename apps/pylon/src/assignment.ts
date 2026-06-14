@@ -136,6 +136,36 @@ type AssignmentStore = {
   leases: Record<string, { assignmentRef: string; status: AssignmentStatus; acceptedAt?: string; closedAt?: string }>
 }
 
+export type TrainingWorkerReceipt = {
+  schema: "openagents.psionic.training_worker_receipt.v0.3"
+  receiptRef: string
+  assignmentRef: string
+  workerRef: string
+  runRef: string
+  artifactRefs: string[]
+  checkpointRefs: string[]
+  metricRefs: string[]
+  proofRefs: string[]
+  signature: {
+    signatureRef: string
+    signerRef: string
+    verificationRef: string
+  }
+}
+
+export type TrainingWorkerReceiptsBundle = {
+  schema: "openagents.pylon.training_worker_receipts_bundle.v0.3"
+  generatedAt: string
+  sourceRefs: string[]
+  workerReceipts: TrainingWorkerReceipt[]
+  budgetLabel?: string
+  budgetRef?: string
+  evalRef?: string
+  lossCurve?: Array<{ step: number; validationLoss: number }>
+  maxValidationLoss?: number
+  mergeRef?: string
+}
+
 type JsonRecord = Record<string, unknown>
 type AutopilotCodingAssignmentPayload = Readonly<Record<string, unknown>>
 type RuntimeGatePayload = Readonly<{
@@ -158,6 +188,239 @@ function stableRef(prefix: string, value: string) {
 
 function safeStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+}
+
+const publicSafeTrainingRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/
+const trainingWorkerReceiptsFilename = "training-worker-receipts.json"
+
+const uniqueRefs = (refs: ReadonlyArray<string | null | undefined>): string[] => {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const ref of refs) {
+    const trimmed = ref?.trim() ?? ""
+    if (trimmed === "" || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    result.push(trimmed)
+  }
+  return result
+}
+
+const publicTrainingRef = (value: unknown): string | null => {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  if (trimmed === "" || !publicSafeTrainingRefPattern.test(trimmed)) return null
+  try {
+    assertPublicProjectionSafe(trimmed)
+  } catch {
+    return null
+  }
+  return trimmed
+}
+
+const publicTrainingRefs = (value: unknown): string[] =>
+  uniqueRefs(safeStringArray(value).map(publicTrainingRef))
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null
+
+export function trainingWorkerReceiptsPathForHome(home: string): string {
+  return join(home, trainingWorkerReceiptsFilename)
+}
+
+const trainingWorkerReceiptFromUnknown = (
+  value: unknown,
+): TrainingWorkerReceipt | null => {
+  if (!isRecord(value)) return null
+  const receiptRef = publicTrainingRef(value.receiptRef)
+  const assignmentRef = publicTrainingRef(value.assignmentRef)
+  const workerRef = publicTrainingRef(value.workerRef)
+  const runRef = publicTrainingRef(value.runRef)
+  const signature = isRecord(value.signature) ? value.signature : {}
+  const signatureRef = publicTrainingRef(signature.signatureRef)
+  const signerRef = publicTrainingRef(signature.signerRef)
+  const verificationRef = publicTrainingRef(signature.verificationRef)
+  if (
+    receiptRef === null ||
+    assignmentRef === null ||
+    workerRef === null ||
+    runRef === null ||
+    signatureRef === null ||
+    signerRef === null ||
+    verificationRef === null
+  ) {
+    return null
+  }
+
+  return {
+    schema: "openagents.psionic.training_worker_receipt.v0.3",
+    receiptRef,
+    assignmentRef,
+    workerRef,
+    runRef,
+    artifactRefs: publicTrainingRefs(value.artifactRefs),
+    checkpointRefs: publicTrainingRefs(value.checkpointRefs),
+    metricRefs: publicTrainingRefs(value.metricRefs),
+    proofRefs: publicTrainingRefs(value.proofRefs),
+    signature: {
+      signatureRef,
+      signerRef,
+      verificationRef,
+    },
+  }
+}
+
+const optionalBundleRef = (
+  bundle: Record<string, unknown>,
+  key: keyof TrainingWorkerReceiptsBundle,
+): string | undefined => publicTrainingRef(bundle[key]) ?? undefined
+
+const optionalLossCurve = (
+  value: unknown,
+): Array<{ step: number; validationLoss: number }> | undefined => {
+  const points = Array.isArray(value)
+    ? value.flatMap(point => {
+        if (!isRecord(point)) return []
+        const { step, validationLoss } = point
+        return typeof step === "number" &&
+          Number.isFinite(step) &&
+          typeof validationLoss === "number" &&
+          Number.isFinite(validationLoss)
+          ? [{ step, validationLoss }]
+          : []
+      })
+    : []
+  return points.length === 0 ? undefined : points
+}
+
+const readTrainingWorkerReceiptsBundle = async (
+  path: string,
+): Promise<TrainingWorkerReceiptsBundle | null> => {
+  if (!existsSync(path)) return null
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8")) as unknown
+    if (!isRecord(parsed)) return null
+    const workerReceipts = Array.isArray(parsed.workerReceipts)
+      ? parsed.workerReceipts
+          .map(trainingWorkerReceiptFromUnknown)
+          .filter((receipt): receipt is TrainingWorkerReceipt => receipt !== null)
+      : []
+    const generatedAt =
+      typeof parsed.generatedAt === "string" ? parsed.generatedAt : new Date().toISOString()
+    const budgetLabel =
+      typeof parsed.budgetLabel === "string" && parsed.budgetLabel.trim() !== ""
+        ? parsed.budgetLabel.trim()
+        : undefined
+    const maxValidationLoss =
+      typeof parsed.maxValidationLoss === "number" &&
+      Number.isFinite(parsed.maxValidationLoss)
+        ? parsed.maxValidationLoss
+        : undefined
+    const budgetRef = optionalBundleRef(parsed, "budgetRef")
+    const evalRef = optionalBundleRef(parsed, "evalRef")
+    const mergeRef = optionalBundleRef(parsed, "mergeRef")
+    const lossCurve = optionalLossCurve(parsed.lossCurve)
+    return {
+      schema: "openagents.pylon.training_worker_receipts_bundle.v0.3",
+      generatedAt,
+      sourceRefs: publicTrainingRefs(parsed.sourceRefs),
+      workerReceipts,
+      ...(budgetLabel === undefined ? {} : { budgetLabel }),
+      ...(budgetRef === undefined ? {} : { budgetRef }),
+      ...(evalRef === undefined ? {} : { evalRef }),
+      ...(mergeRef === undefined ? {} : { mergeRef }),
+      ...(lossCurve === undefined ? {} : { lossCurve }),
+      ...(maxValidationLoss === undefined ? {} : { maxValidationLoss }),
+    }
+  } catch {
+    return null
+  }
+}
+
+const trainingRunRefForCloseout = (closeout: AssignmentCloseout): string =>
+  publicTrainingRef(
+    [
+      ...closeout.receiptRefs,
+      ...closeout.resultRefs,
+      ...closeout.summaryRefs,
+      ...closeout.buildRefs,
+    ].find(ref => ref.startsWith("run.") || ref.includes(".training.")),
+  ) ?? stableRef("run.pylon.assignment", closeout.assignmentRef)
+
+const trainingWorkerReceiptFromCloseout = (
+  state: PylonLocalState,
+  closeout: AssignmentCloseout,
+  closeoutRef: string,
+): TrainingWorkerReceipt => {
+  const receiptRef = stableRef(
+    "receipt.pylon.training_worker",
+    `${state.identity.pylonRef}:${closeoutRef}`,
+  )
+  return {
+    schema: "openagents.psionic.training_worker_receipt.v0.3",
+    receiptRef,
+    assignmentRef:
+      publicTrainingRef(closeout.assignmentRef) ??
+      stableRef("assignment.pylon", closeout.leaseRef),
+    workerRef:
+      publicTrainingRef(state.identity.pylonRef) ??
+      stableRef("pylon.identity", state.identity.nodeId),
+    runRef: trainingRunRefForCloseout(closeout),
+    artifactRefs: publicTrainingRefs(closeout.artifactRefs),
+    checkpointRefs: publicTrainingRefs([
+      closeoutRef,
+      ...closeout.closeoutRefs,
+      ...closeout.buildRefs,
+    ]),
+    metricRefs: publicTrainingRefs([...closeout.resultRefs, ...closeout.summaryRefs]),
+    proofRefs: publicTrainingRefs([...closeout.proofRefs, ...closeout.testRefs]),
+    signature: {
+      signatureRef: stableRef("signature.pylon.training_worker", receiptRef),
+      signerRef: state.identity.pylonRef,
+      verificationRef: stableRef(
+        "verification.pylon.training_worker",
+        `${receiptRef}:${closeout.completedAt}`,
+      ),
+    },
+  }
+}
+
+async function writeTrainingWorkerReceiptsBundle(
+  state: PylonLocalState,
+  closeout: AssignmentCloseout,
+  closeoutRef: string,
+): Promise<void> {
+  const path = trainingWorkerReceiptsPathForHome(state.paths.home)
+  const existing = await readTrainingWorkerReceiptsBundle(path)
+  const nextReceipt = trainingWorkerReceiptFromCloseout(state, closeout, closeoutRef)
+  const receiptsByAssignment = new Map<string, TrainingWorkerReceipt>()
+  for (const receipt of existing?.workerReceipts ?? []) {
+    receiptsByAssignment.set(`${receipt.assignmentRef}:${receipt.workerRef}`, receipt)
+  }
+  receiptsByAssignment.set(
+    `${nextReceipt.assignmentRef}:${nextReceipt.workerRef}`,
+    nextReceipt,
+  )
+
+  const bundle: TrainingWorkerReceiptsBundle = {
+    schema: "openagents.pylon.training_worker_receipts_bundle.v0.3",
+    generatedAt: closeout.completedAt,
+    sourceRefs: uniqueRefs([
+      ...(existing?.sourceRefs ?? []),
+      "source.pylon.assignment_closeout",
+      closeoutRef,
+      ...closeout.closeoutRefs,
+      ...closeout.summaryRefs,
+    ]),
+    workerReceipts: [...receiptsByAssignment.values()],
+    ...(existing?.budgetLabel === undefined ? {} : { budgetLabel: existing.budgetLabel }),
+    ...(existing?.budgetRef === undefined ? {} : { budgetRef: existing.budgetRef }),
+    ...(existing?.evalRef === undefined ? {} : { evalRef: existing.evalRef }),
+    ...(existing?.lossCurve === undefined ? {} : { lossCurve: existing.lossCurve }),
+    ...(existing?.maxValidationLoss === undefined ? {} : { maxValidationLoss: existing.maxValidationLoss }),
+    ...(existing?.mergeRef === undefined ? {} : { mergeRef: existing.mergeRef }),
+  }
+  assertPublicProjectionSafe(bundle)
+  await writeFile(path, `${JSON.stringify(bundle, null, 2)}\n`)
 }
 
 function runtimeGatePayloadFrom(codingAssignment: unknown): RuntimeGatePayload | null {
@@ -811,7 +1074,9 @@ export async function submitAssignmentCloseout(
     closedAt: closeout.completedAt,
   }
   await writeAssignmentStore(state, store)
-  return { closeoutRef: String(response.closeoutRef ?? stableRef("assignment.closeout", closeout.leaseRef)) }
+  const closeoutRef = String(response.closeoutRef ?? stableRef("assignment.closeout", closeout.leaseRef))
+  await writeTrainingWorkerReceiptsBundle(state, closeout, closeoutRef)
+  return { closeoutRef }
 }
 
 export async function runNoSpendAssignment(summary: BootstrapSummary, options: AssignmentClientOptions) {

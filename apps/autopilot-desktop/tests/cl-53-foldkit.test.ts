@@ -676,7 +676,7 @@ describe("update reducer (CL-53)", () => {
           fetchedAt: "2026-06-14T00:00:00.000Z",
           sourceUrl: "desktop:training-evidence-packet-build",
           trainingRunRef: "training.run.4855",
-          inputSource: "env.OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH",
+          inputSource: "local.training_worker_receipts",
           packetSource: "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
           reason: "packet_blocked",
           message: "wrote evidence packet candidate · 1 blockers",

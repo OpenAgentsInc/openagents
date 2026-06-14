@@ -961,9 +961,7 @@ describe("admitTrainingRealGradientEvidence", () => {
 
     expect(result.ok).toBe(true)
     expect(result.reason).toBe("written")
-    expect(result.inputSource).toBe(
-      "env.OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH",
-    )
+    expect(result.inputSource).toBe("local.training_worker_receipts")
     expect(result.packetSource).toBe(
       "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
     )

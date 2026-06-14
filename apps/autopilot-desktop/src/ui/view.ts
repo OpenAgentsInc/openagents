@@ -916,7 +916,7 @@ const trainingControlSurfaceRows: readonly TrainingControlSurfaceRow[] = [
     authority: "Bun env gate + local worker receipts",
     dispatch: "ClickedBuildTrainingEvidencePacket",
     route:
-      "OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH -> OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
+      "OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH or Pylon home training-worker-receipts.json -> OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
     rpc: "buildTrainingEvidencePacket",
     source: "apps/autopilot-desktop/src/bun/training-runs.ts",
     statusField: "trainingEvidencePacketBuildStatus",

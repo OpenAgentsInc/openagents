@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { afterEach, describe, expect, test } from "bun:test"
@@ -9,6 +9,7 @@ import {
   pollAssignments,
   runNoSpendAssignment,
   submitAssignmentCloseout,
+  trainingWorkerReceiptsPathForHome,
   type PylonAssignmentLease,
 } from "../src/assignment"
 import { sendHeartbeat } from "../src/presence"
@@ -181,6 +182,32 @@ describe("Pylon assignment lease flow", () => {
       expect(fake.requests.map((request) => request.path).filter((path) => path.endsWith("/assignments"))).toEqual([
         `/api/pylons/${encodeURIComponent(pylonRef)}/assignments`,
       ])
+
+      const bundle = JSON.parse(
+        await readFile(trainingWorkerReceiptsPathForHome(home), "utf8"),
+      )
+      expect(bundle.schema).toBe(
+        "openagents.pylon.training_worker_receipts_bundle.v0.3",
+      )
+      expect(bundle.sourceRefs).toContain("source.pylon.assignment_closeout")
+      expect(bundle.workerReceipts).toHaveLength(1)
+      expect(bundle.workerReceipts[0]).toMatchObject({
+        schema: "openagents.psionic.training_worker_receipt.v0.3",
+        assignmentRef: result.lease.assignmentRef,
+        workerRef: pylonRef,
+      })
+      expect(bundle.workerReceipts[0].receiptRef).toStartWith(
+        "receipt.pylon.training_worker.",
+      )
+      expect(bundle.workerReceipts[0].checkpointRefs).toContain(
+        result.closeoutReceipt.closeoutRef,
+      )
+      expect(bundle.workerReceipts[0].proofRefs).toEqual(
+        expect.arrayContaining(result.closeout.proofRefs),
+      )
+      expect(JSON.stringify(bundle)).not.toContain(home)
+      expect(JSON.stringify(bundle)).not.toContain("/Users/")
+      assertPublicProjectionSafe(bundle)
     })
   })
 

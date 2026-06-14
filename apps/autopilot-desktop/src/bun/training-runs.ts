@@ -167,7 +167,7 @@ const trainingPromiseIds = new Set([
 ])
 
 const evidencePacketSource = "env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH"
-const workerReceiptsSource = "env.OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH"
+const workerReceiptsSource = "local.training_worker_receipts"
 const evidencePacketWriteSource =
   "env.OPENAGENTS_DESKTOP_TRAINING_EVIDENCE_WRITE_ENABLE"
 

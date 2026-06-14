@@ -54,12 +54,13 @@ const trainingEvidenceWriteEnabled =
   Bun.env.OPENAGENTS_DESKTOP_TRAINING_EVIDENCE_WRITE_ENABLE === "1"
 const trainingEvidencePacketPath =
   Bun.env.OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH ?? null
-const trainingWorkerReceiptsPath =
+const configuredTrainingWorkerReceiptsPath =
   Bun.env.OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH ?? null
 const configuredTrainingPylonRef =
   Bun.env.OPENAGENTS_TRAINING_PYLON_REF ??
   Bun.env.PYLON_REF ??
   null
+const trainingWorkerReceiptsFilename = "training-worker-receipts.json"
 
 // CL-45: resolve the node home once per call so a node that starts after the app
 // (or rotates its home) is picked up without a restart. Falls back to the env
@@ -108,6 +109,12 @@ function trainingPylonRefStatus(home = resolveHome()): {
 
 function trainingPylonRefForCommand(): string | null {
   return trainingPylonRefStatus().pylonRef
+}
+
+function trainingWorkerReceiptsPathForCommand(home = resolveHome()): string | null {
+  const configured = configuredTrainingWorkerReceiptsPath?.trim() ?? ""
+  if (configured.length > 0) return configured
+  return home === null ? null : join(home, trainingWorkerReceiptsFilename)
 }
 
 function trainingOperatorReadinessProjection(): TrainingOperatorReadinessResponse {
@@ -220,7 +227,7 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           enabled: trainingEvidenceWriteEnabled,
           evidencePacketPath: trainingEvidencePacketPath,
           trainingRunRef: params.trainingRunRef,
-          workerReceiptsPath: trainingWorkerReceiptsPath,
+          workerReceiptsPath: trainingWorkerReceiptsPathForCommand(),
         })
       },
       async planTrainingRunWindow() {
