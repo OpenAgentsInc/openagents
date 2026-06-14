@@ -202,6 +202,37 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)
   })
 
+  test("fullscreen training pane keeps sidebar and overlays stats on the scene", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training-fullscreen",
+      trainingRuns: liveTrainingProjection,
+    })
+    expect(treeContainsClass(document.body, "sidebar")).toBe(true)
+    expect(treeContainsClass(document.body, "training-fullscreen-pane")).toBe(true)
+    expect(treeContainsClass(document.body, "training-fullscreen-page")).toBe(true)
+    expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)
+    expect(treeContainsClass(document.body, "training-fullscreen-overlay")).toBe(true)
+    expect(treeContainsClass(document.body, "training-fullscreen-stats")).toBe(true)
+    expect(treeContainsText(document.body, "active windows")).toBe(true)
+    expect(treeContainsText(document.body, "verified work")).toBe(true)
+  })
+
+  test("fullscreen training pane shows selected node-specific overlay data", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training-fullscreen",
+      trainingRuns: liveTrainingProjection,
+      selectedTrainingSceneNodeId: "freivalds",
+    })
+    expect(treeContainsClass(document.body, "training-fullscreen-node-panel")).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, "Freivalds")).toBe(true)
+    expect(treeContainsText(document.body, "freivalds refs")).toBe(true)
+    expect(treeContainsText(document.body, "gradient refs")).toBe(true)
+  })
+
   test("training scene receives operator command signals", () => {
     const document = view({
       ...initialModel,

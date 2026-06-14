@@ -15,7 +15,7 @@
   "dependencies": {
     "@openagentsinc/autopilot-control-protocol": "workspace:*",
     "@openagentsinc/autopilot-ui": "workspace:*",
-    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#2d3979ad6461fc56178068596ec97b281b08d923",
+    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#bf87f60f1edbcf2d122cc56209372104c512055e",
     "effect": "catalog:",
     "electrobun": "1.18.1",
     "foldkit": "^0.102.1"

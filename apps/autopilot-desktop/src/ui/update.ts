@@ -33,7 +33,7 @@ import {
 } from "./commands"
 import { parseVerifyLines } from "./helpers"
 import type { Message } from "./message"
-import { Model } from "./model"
+import { Model, type PaneId } from "./model"
 import type {
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
@@ -66,6 +66,9 @@ const trainingBootstrapShouldRefresh = (
   projection.reason === "granted" ||
   projection.reason === "queued" ||
   projection.reason === "refused"
+
+const isTrainingPane = (pane: PaneId): boolean =>
+  pane === "training" || pane === "training-fullscreen"
 
 const plannedRunFirstObservedAt = (
   model: Model,
@@ -102,7 +105,7 @@ export const update = (model: Model, message: Message): Result => {
           ...model,
           pane: message.pane,
           expandedEvents: [],
-          ...(message.pane === "training"
+          ...(isTrainingPane(message.pane)
             ? {
                 trainingRunsPending: true,
                 trainingRunsStatus: {
@@ -132,9 +135,7 @@ export const update = (model: Model, message: Message): Result => {
               }
             : {}),
         }),
-        message.pane === "training"
-          ? loadTrainingProjectionCommands()
-          : noCommands,
+        isTrainingPane(message.pane) ? loadTrainingProjectionCommands() : noCommands,
       ]
     case "SelectedSession":
       return [
@@ -285,6 +286,14 @@ export const update = (model: Model, message: Message): Result => {
           },
         }),
         loadTrainingProjectionCommands(),
+      ]
+    case "SelectedTrainingSceneNode":
+      return [
+        Model.make({
+          ...model,
+          selectedTrainingSceneNodeId: message.nodeId,
+        }),
+        noCommands,
       ]
     case "GotTrainingRuns": {
       const projection = message.projection as TrainingRunsResponse

@@ -32,6 +32,7 @@ import type {
 export const PaneId = S.Literals([
   "nodes",
   "training",
+  "training-fullscreen",
   "sessions",
   "decisions",
   "spawn",
@@ -109,6 +110,7 @@ export const Model = ts("AutopilotDesktop", {
   // Navigation.
   pane: PaneId,
   selectedSessionRef: S.NullOr(S.String),
+  selectedTrainingSceneNodeId: S.NullOr(S.String),
 
   // Sessions-pane filter.
   sessionFilter: SessionFilter,
@@ -255,6 +257,7 @@ export const initialModel: Model = Model.make({
   notifications: null,
   pane: "nodes",
   selectedSessionRef: null,
+  selectedTrainingSceneNodeId: null,
   sessionFilter: "all",
   expandedEvents: [],
   resolvedApprovals: [],

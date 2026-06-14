@@ -63,6 +63,31 @@
       .training-visual-title { margin:0; color:#f2f4f8; font-size:1rem; }
       .training-visual-caption { margin:0; color:#8b93a7; font-size:.78rem; text-align:right; max-width:380px; }
       .three-effect-training { display:block; height:430px; min-height:360px; }
+      .content.training-fullscreen-content { overflow:hidden; background:#050505; }
+      .pane.training-fullscreen-pane { max-width:none; width:100%; height:100vh; margin:0; padding:0; }
+      .training-fullscreen-page { position:relative; height:100vh; min-height:560px; overflow:hidden; background:#050505; }
+      .training-fullscreen-scene { position:absolute; inset:0; }
+      .three-effect-training-fullscreen { display:block; width:100%; height:100%; min-height:100%; }
+      .training-fullscreen-overlay { position:absolute; z-index:2; top:18px; left:18px; right:18px; display:grid; grid-template-columns:minmax(240px,.72fr) minmax(360px,1fr); gap:14px; align-items:start; pointer-events:none; }
+      .training-fullscreen-title, .training-fullscreen-stats, .training-fullscreen-node-panel { pointer-events:auto; border:1px solid rgba(226,232,240,.18); border-radius:.45rem; background:rgba(8,11,17,.78); box-shadow:0 18px 40px rgba(0,0,0,.28); backdrop-filter:blur(14px); }
+      .training-fullscreen-title { padding:.85rem 1rem; min-width:0; }
+      .training-fullscreen-eyebrow { display:block; color:#7dd3fc; font-family:ui-monospace,monospace; font-size:.7rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .training-fullscreen-title h1 { margin:.22rem 0 .1rem; color:#f8fafc; font-size:1.22rem; line-height:1.15; }
+      .training-fullscreen-title p { margin:0; color:#9ba3b3; font-family:ui-monospace,monospace; font-size:.75rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .training-fullscreen-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; overflow:hidden; }
+      .training-fullscreen-stat { min-width:0; padding:.72rem .78rem; background:rgba(255,255,255,.025); }
+      .training-fullscreen-stat-label { display:block; color:#9ba3b3; font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .training-fullscreen-stat-value { display:block; margin-top:.22rem; color:#f8fafc; font-size:.88rem; font-variant-numeric:tabular-nums; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .training-fullscreen-stat.training-watch .training-fullscreen-stat-value { color:#ffcc66; }
+      .training-fullscreen-stat.training-blocked .training-fullscreen-stat-value { color:#ff7b72; }
+      .training-fullscreen-node-panel { position:absolute; z-index:2; right:18px; bottom:18px; width:min(390px,calc(100% - 36px)); padding:.95rem; box-sizing:border-box; }
+      .training-fullscreen-node-panel.training-watch { border-color:rgba(255,204,102,.34); }
+      .training-fullscreen-node-panel.training-blocked { border-color:rgba(255,123,114,.38); }
+      .training-fullscreen-node-kicker { display:flex; align-items:center; justify-content:space-between; gap:1rem; color:#9ba3b3; font-family:ui-monospace,monospace; font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; }
+      .training-fullscreen-node-title { margin:.42rem 0 .25rem; color:#f8fafc; font-size:1.02rem; line-height:1.2; overflow-wrap:anywhere; }
+      .training-fullscreen-node-detail { margin:0 0 .7rem; color:#cdd3e0; font-size:.82rem; }
+      .training-fullscreen-node-facts { display:grid; grid-template-columns:1fr; gap:1px; border:1px solid rgba(226,232,240,.1); border-radius:.35rem; overflow:hidden; }
+      .training-fullscreen-node-facts .training-fullscreen-stat { padding:.62rem .68rem; background:rgba(255,255,255,.032); }
       .training-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
       .training-panel { border:1px solid #252a32; border-radius:.45rem; padding:.85rem 1rem; background:#0b0d12; min-width:0; }
       .training-panel-heading { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-bottom:.55rem; }
@@ -134,6 +159,9 @@
         .training-control-surface-head { display:block; }
         .training-control-surface-head span { display:block; margin-top:.16rem; text-align:left; }
         .three-effect-training { height:380px; }
+        .training-fullscreen-overlay { left:12px; right:12px; top:12px; grid-template-columns:1fr; }
+        .training-fullscreen-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .training-fullscreen-node-panel { left:12px; right:12px; bottom:12px; width:auto; }
       }
 
       /* Forms (Ask / Spawn) */

@@ -26,7 +26,9 @@ import {
   trainingRunView,
 } from "@openagentsinc/three-effect/foldkit"
 import {
+  defaultTrainingRunNodes,
   trainingRunVisualizationOptionsFromSnapshot,
+  type TrainingRunNodeDefinition,
   type TrainingRunOperatorSignalDefinition,
   type TrainingRunOperatorSignalState,
   type TrainingRunPromiseSignalDefinition,
@@ -74,6 +76,7 @@ import {
   ClickedRequestTrainingBootstrap,
   ClickedSpawn,
   ClickedSubmitIntent,
+  SelectedTrainingSceneNode,
   type Message,
   NavigatedTo,
   SelectedSession,
@@ -190,6 +193,7 @@ const threeEffectSourceCard = (): Html =>
 const NAV: ReadonlyArray<{ id: PaneId; label: string }> = [
   { id: "nodes", label: "Nodes" },
   { id: "training", label: "Training" },
+  { id: "training-fullscreen", label: "Training Live" },
   { id: "sessions", label: "Sessions" },
   { id: "decisions", label: "Decisions" },
   { id: "spawn", label: "Spawn" },
@@ -1685,6 +1689,335 @@ const trainingSceneOptions = (model: Model): TrainingRunVisualizationOptions | u
   })
 }
 
+const trainingNodeTone = (
+  status: TrainingRunNodeDefinition["status"],
+): TrainingGateTone =>
+  status === "blocked"
+    ? "blocked"
+    : status === "planned" || status === "queued" || status === "sync"
+      ? "watch"
+      : "ready"
+
+const trainingStatNumber = (value: number | null | undefined): string =>
+  String(Math.max(0, value ?? 0))
+
+const selectedTrainingSceneNode = (
+  nodes: readonly TrainingRunNodeDefinition[],
+  selectedNodeId: string | null,
+): TrainingRunNodeDefinition | null =>
+  nodes.find(node => node.id === selectedNodeId) ??
+  nodes.find(node => node.id === "run") ??
+  nodes[0] ??
+  null
+
+type TrainingFullscreenFact = Readonly<{
+  label: string
+  value: string
+  tone: TrainingGateTone
+}>
+
+const trainingFullscreenFact = (
+  label: string,
+  value: string,
+  tone: TrainingGateTone = "ready",
+): TrainingFullscreenFact => ({ label, value, tone })
+
+const trainingFullscreenStatView = (stat: TrainingFullscreenFact): Html =>
+  h.div([cls(`training-fullscreen-stat training-${stat.tone}`)], [
+    h.span([cls("training-fullscreen-stat-label")], [stat.label]),
+    h.strong([cls("training-fullscreen-stat-value")], [stat.value]),
+  ])
+
+const trainingFullscreenStats = (model: Model): readonly TrainingFullscreenFact[] => {
+  const summary = selectedTrainingSummary(modelTrainingRuns(model))
+  const dashboard = modelTrainingDashboard(model)
+  const packet = modelTrainingEvidencePacketSummary(model)
+  const metrics = summary?.metrics
+  const lanes = dashboard?.leaderboards.lanes ?? []
+  const rankedLanes = lanes.filter(lane => lane.rowCount > 0).length
+  const finalLoss = summary?.realGradient.lossUnderBudget.finalValidationLoss
+  const lossLabel =
+    finalLoss === null || finalLoss === undefined ? "pending" : String(finalLoss)
+
+  return [
+    trainingFullscreenFact(
+      "active windows",
+      trainingStatNumber(metrics?.activeWindowCount.value),
+      (metrics?.activeWindowCount.value ?? 0) > 0 ? "ready" : "watch",
+    ),
+    trainingFullscreenFact(
+      "verified work",
+      trainingStatNumber(metrics?.verifiedWorkCount.value),
+      (metrics?.verifiedWorkCount.value ?? 0) > 0 ? "ready" : "watch",
+    ),
+    trainingFullscreenFact(
+      "receipts",
+      trainingStatNumber(metrics?.receiptRefCount.value),
+      (metrics?.receiptRefCount.value ?? 0) > 0 ? "ready" : "watch",
+    ),
+    trainingFullscreenFact(
+      "loss",
+      lossLabel,
+      summary?.realGradient.lossUnderBudget.satisfied ? "ready" : "watch",
+    ),
+    trainingFullscreenFact(
+      "packet pylons",
+      trainingStatNumber(packet?.distinctPylonCount),
+      (packet?.distinctPylonCount ?? 0) >= 2 ? "ready" : "watch",
+    ),
+    trainingFullscreenFact(
+      "ranked lanes",
+      `${rankedLanes}/${lanes.length}`,
+      rankedLanes > 0 ? "ready" : "watch",
+    ),
+  ]
+}
+
+const trainingNodeFacts = (
+  node: TrainingRunNodeDefinition,
+  model: Model,
+): readonly TrainingFullscreenFact[] => {
+  const summary = selectedTrainingSummary(modelTrainingRuns(model))
+  const metrics = summary?.metrics
+  const realGradient = summary?.realGradient
+  const gates = modelTrainingPromiseGates(model)
+  const packet = modelTrainingEvidencePacketSummary(model)
+
+  switch (node.id) {
+    case "registered":
+      return [
+        trainingFullscreenFact(
+          "assigned pylons",
+          trainingStatNumber(metrics?.assignedContributorCount.value),
+          (metrics?.assignedContributorCount.value ?? 0) > 0 ? "ready" : "watch",
+        ),
+        trainingFullscreenFact(
+          "observed devices",
+          trainingStatNumber(
+            realGradient?.deviceRequirement.observedDistinctContributorDevices,
+          ),
+          realGradient?.deviceRequirement.satisfied ? "ready" : "watch",
+        ),
+        trainingFullscreenFact(
+          "run ref",
+          summary?.run.trainingRunRef ?? "not loaded",
+          summary === null ? "watch" : "ready",
+        ),
+      ]
+    case "qualified":
+      return [
+        trainingFullscreenFact(
+          "device gate",
+          `${realGradient?.deviceRequirement.observedDistinctContributorDevices ?? 0}/${realGradient?.deviceRequirement.requiredDistinctContributorDevices ?? 0}`,
+          realGradient?.deviceRequirement.satisfied ? "ready" : "watch",
+        ),
+        trainingFullscreenFact(
+          "packet pylons",
+          trainingStatNumber(packet?.distinctPylonCount),
+          (packet?.distinctPylonCount ?? 0) >= 2 ? "ready" : "watch",
+        ),
+        trainingFullscreenFact(
+          "readiness",
+          trainingStatusText(model.trainingOperatorReadinessStatus, "not loaded"),
+          trainingStatusTone(
+            model.trainingOperatorReadinessStatus,
+            model.trainingOperatorReadinessPending,
+          ),
+        ),
+      ]
+    case "state_synced":
+    case "sealed_window":
+      return [
+        trainingFullscreenFact(
+          "sealed windows",
+          trainingStatNumber(metrics?.sealedWindowCount.value),
+          (metrics?.sealedWindowCount.value ?? 0) > 0 ? "ready" : "watch",
+        ),
+        trainingFullscreenFact(
+          "reconciled",
+          trainingStatNumber(metrics?.reconciledWindowCount.value),
+          (metrics?.reconciledWindowCount.value ?? 0) > 0 ? "ready" : "watch",
+        ),
+        trainingFullscreenFact(
+          "seal barrier",
+          summary?.run.sealInFlight ? "in flight" : "open",
+          summary?.run.sealInFlight ? "watch" : "ready",
+        ),
+      ]
+    case "warmup":
+    case "active":
+    case "training_window":
+      return [
+        trainingFullscreenFact(
+          "planned",
+          trainingStatNumber(metrics?.plannedWindowCount.value),
+          (metrics?.plannedWindowCount.value ?? 0) > 0 ? "watch" : "ready",
+        ),
+        trainingFullscreenFact(
+          "active",
+          trainingStatNumber(metrics?.activeWindowCount.value),
+          (metrics?.activeWindowCount.value ?? 0) > 0 ? "ready" : "watch",
+        ),
+        trainingFullscreenFact(
+          "max stale",
+          trainingStatNumber(summary?.run.maxAllowedStale),
+          "watch",
+        ),
+      ]
+    case "sync_reentry":
+      return [
+        trainingFullscreenFact(
+          "rejected work",
+          trainingStatNumber(metrics?.rejectedWorkCount.value),
+          (metrics?.rejectedWorkCount.value ?? 0) > 0 ? "blocked" : "ready",
+        ),
+        trainingFullscreenFact(
+          "blockers",
+          trainingStatNumber(realGradient?.externalAsk.blockerRefs.length),
+          (realGradient?.externalAsk.blockerRefs.length ?? 0) > 0
+            ? "blocked"
+            : "ready",
+        ),
+        trainingFullscreenFact(
+          "external ask",
+          realGradient?.externalAsk.status ?? "not loaded",
+          realGradient?.externalAsk.status === "blocked_external"
+            ? "blocked"
+            : "watch",
+        ),
+      ]
+    case "freivalds":
+      return [
+        trainingFullscreenFact(
+          "freivalds refs",
+          trainingStatNumber(
+            realGradient?.closeoutRequirement.freivaldsCommitmentRefs.length,
+          ),
+          (realGradient?.closeoutRequirement.freivaldsCommitmentRefs.length ?? 0) >
+            0
+            ? "ready"
+            : "watch",
+        ),
+        trainingFullscreenFact(
+          "gradient refs",
+          trainingStatNumber(
+            realGradient?.closeoutRequirement.gradientCloseoutRefs.length,
+          ),
+          (realGradient?.closeoutRequirement.gradientCloseoutRefs.length ?? 0) > 0
+            ? "ready"
+            : "watch",
+        ),
+        trainingFullscreenFact(
+          "loss budget",
+          realGradient?.lossUnderBudget.finalValidationLoss === null ||
+            realGradient?.lossUnderBudget.finalValidationLoss === undefined
+            ? realGradient?.lossUnderBudget.budgetLabel ?? "pending"
+            : `${realGradient.lossUnderBudget.finalValidationLoss}/${realGradient.lossUnderBudget.maxValidationLoss ?? "?"}`,
+          realGradient?.lossUnderBudget.satisfied ? "ready" : "watch",
+        ),
+      ]
+    case "receipt":
+      return [
+        trainingFullscreenFact(
+          "receipts",
+          trainingStatNumber(metrics?.receiptRefCount.value),
+          (metrics?.receiptRefCount.value ?? 0) > 0 ? "ready" : "watch",
+        ),
+        trainingFullscreenFact(
+          "verified work",
+          trainingStatNumber(metrics?.verifiedWorkCount.value),
+          (metrics?.verifiedWorkCount.value ?? 0) > 0 ? "ready" : "watch",
+        ),
+        trainingFullscreenFact(
+          "closeout",
+          realGradient?.closeoutRequirement.satisfied ? "satisfied" : "open",
+          realGradient?.closeoutRequirement.satisfied ? "ready" : "watch",
+        ),
+      ]
+    case "settlement":
+      return [
+        trainingFullscreenFact(
+          "pending payouts",
+          trainingStatNumber(metrics?.pendingPayoutCount.value),
+          (metrics?.pendingPayoutCount.value ?? 0) > 0 ? "watch" : "ready",
+        ),
+        trainingFullscreenFact(
+          "settled sats",
+          trainingStatNumber(metrics?.providerConfirmedSettledPayoutSats.value),
+          (metrics?.providerConfirmedSettledPayoutSats.value ?? 0) > 0
+            ? "ready"
+            : "watch",
+        ),
+        trainingFullscreenFact(
+          "promise blockers",
+          trainingStatNumber(gates?.blockerRefs.length),
+          (gates?.blockerRefs.length ?? 0) > 0 ? "blocked" : "ready",
+        ),
+      ]
+    case "r1":
+    case "r2":
+      return [
+        trainingFullscreenFact(
+          "leader lanes",
+          trainingStatNumber(modelTrainingDashboard(model)?.leaderboards.lanes.length),
+          modelTrainingDashboard(model) === null ? "watch" : "ready",
+        ),
+        trainingFullscreenFact(
+          "evidence refs",
+          trainingStatNumber(packet?.evidenceRefCount),
+          (packet?.evidenceRefCount ?? 0) > 0 ? "ready" : "watch",
+        ),
+        trainingFullscreenFact(
+          "packet status",
+          trainingStatusText(model.trainingEvidencePacketSummaryStatus, "not loaded"),
+          trainingStatusTone(
+            model.trainingEvidencePacketSummaryStatus,
+            model.trainingEvidencePacketSummaryPending,
+          ),
+        ),
+      ]
+    case "run":
+    default:
+      return [
+        trainingFullscreenFact(
+          "run state",
+          summary?.run.state ?? "not loaded",
+          summary === null ? "watch" : "ready",
+        ),
+        trainingFullscreenFact(
+          "promise",
+          summary?.run.promiseRef ?? "not loaded",
+          summary === null ? "watch" : "ready",
+        ),
+        trainingFullscreenFact(
+          "windows",
+          trainingStatNumber(summary?.windows.length),
+          (summary?.windows.length ?? 0) > 0 ? "ready" : "watch",
+        ),
+      ]
+  }
+}
+
+const trainingFullscreenNodePanel = (
+  node: TrainingRunNodeDefinition,
+  model: Model,
+): Html =>
+  h.aside(
+    [cls(`training-fullscreen-node-panel training-${trainingNodeTone(node.status)}`)],
+    [
+      h.div([cls("training-fullscreen-node-kicker")], [
+        h.span([], [node.role]),
+        h.span([], [node.status]),
+      ]),
+      h.h2([cls("training-fullscreen-node-title")], [node.label]),
+      h.p([cls("training-fullscreen-node-detail")], [node.detail]),
+      h.div(
+        [cls("training-fullscreen-node-facts")],
+        trainingNodeFacts(node, model).map(trainingFullscreenStatView),
+      ),
+    ],
+  )
+
 const stateCounts = (
   projection: TrainingRunsResponse | null,
 ): Record<string, number> => {
@@ -3040,6 +3373,44 @@ const trainingPane = (model: Model): Html => {
   )
 }
 
+const trainingFullscreenPane = (model: Model): Html => {
+  const visualization = trainingSceneOptions(model)
+  const nodes = visualization?.nodes ?? defaultTrainingRunNodes
+  const selectedNode = selectedTrainingSceneNode(
+    nodes,
+    model.selectedTrainingSceneNodeId,
+  )
+
+  return h.div([cls("training-fullscreen-page")], [
+    h.div([cls("training-fullscreen-scene")], [
+      trainingRunView<Message>(
+        [cls("three-effect-training-fullscreen")],
+        visualization,
+        node => SelectedTrainingSceneNode({ nodeId: node.id }),
+      ),
+    ]),
+    h.div([cls("training-fullscreen-overlay")], [
+      h.section([cls("training-fullscreen-title")], [
+        h.span([cls("training-fullscreen-eyebrow")], [
+          trainingProjectionMeta(modelTrainingRuns(model)),
+        ]),
+        h.h1([], ["Training Live"]),
+        h.p([], [
+          selectedTrainingSummary(modelTrainingRuns(model))?.run.trainingRunRef ??
+            "waiting for Worker projection",
+        ]),
+      ]),
+      h.section(
+        [cls("training-fullscreen-stats")],
+        trainingFullscreenStats(model).map(trainingFullscreenStatView),
+      ),
+    ]),
+    selectedNode === null
+      ? h.empty
+      : trainingFullscreenNodePanel(selectedNode, model),
+  ])
+}
+
 // ── Sessions pane ─────────────────────────────────────────────────────────────
 
 const FILTERS: ReadonlyArray<SessionFilter> = [
@@ -3311,6 +3682,8 @@ const paneView = (model: Model): Html => {
       return nodesPane(model)
     case "training":
       return trainingPane(model)
+    case "training-fullscreen":
+      return trainingFullscreenPane(model)
     case "sessions":
       return sessionsPane(model)
     case "decisions":
@@ -3324,11 +3697,36 @@ const paneView = (model: Model): Html => {
   }
 }
 
-const rootView = (model: Model): Html =>
-  h.div(
+const rootView = (model: Model): Html => {
+  const fullscreenTraining = model.pane === "training-fullscreen"
+  return h.div(
     [cls("app-shell")],
-    [sidebar(model), h.main([cls("content")], [h.div([cls("pane")], [paneView(model)])])],
+    [
+      sidebar(model),
+      h.main(
+        [
+          cls(
+            fullscreenTraining
+              ? "content training-fullscreen-content"
+              : "content",
+          ),
+        ],
+        [
+          h.div(
+            [
+              cls(
+                fullscreenTraining
+                  ? "pane training-fullscreen-pane"
+                  : "pane",
+              ),
+            ],
+            [paneView(model)],
+          ),
+        ],
+      ),
+    ],
   )
+}
 
 // Foldkit's element constructors strip `null` children (`Predicate.isNotNull`)
 // but NOT `undefined` or `false`. An `undefined`/`false` child reaches

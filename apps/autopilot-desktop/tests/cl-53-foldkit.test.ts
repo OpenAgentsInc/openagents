@@ -57,6 +57,7 @@ import {
   GotNodeState,
   NavigatedTo,
   SelectedSession,
+  SelectedTrainingSceneNode,
   SettledActivateTrainingWindow,
   SettledAdmitTrainingEvidence,
   SettledBuildTrainingEvidencePacket,
@@ -193,6 +194,31 @@ describe("update reducer (CL-53)", () => {
     const [model] = update(start, NavigatedTo({ pane: "settings" }))
     expect(model.pane).toBe("settings")
     expect(model.expandedEvents).toEqual([])
+  })
+
+  test("NavigatedTo fullscreen training pane refreshes training projections", () => {
+    const start = Model.make({ ...initialModel, expandedEvents: [1, 2] })
+    const [model, commands] = update(
+      start,
+      NavigatedTo({ pane: "training-fullscreen" }),
+    )
+    expect(model.pane).toBe("training-fullscreen")
+    expect(model.expandedEvents).toEqual([])
+    expect(model.trainingRunsPending).toBe(true)
+    expect(model.trainingDashboardPending).toBe(true)
+    expect(model.trainingPromiseGatesPending).toBe(true)
+    expect(model.trainingOperatorReadinessPending).toBe(true)
+    expect(model.trainingEvidencePacketSummaryPending).toBe(true)
+    expect(commands).toHaveLength(5)
+  })
+
+  test("SelectedTrainingSceneNode stores the selected scene node id", () => {
+    const [model, commands] = update(
+      initialModel,
+      SelectedTrainingSceneNode({ nodeId: "freivalds" }),
+    )
+    expect(model.selectedTrainingSceneNodeId).toBe("freivalds")
+    expect(commands).toHaveLength(0)
   })
 
   test("SelectedSession focuses the detail pane", () => {

@@ -57,6 +57,9 @@ export const SettledSubmitIntent = m("SettledSubmitIntent", {
 
 // ── Training launch/readiness feedback ──────────────────────────────────────
 export const ClickedRefreshTrainingRuns = m("ClickedRefreshTrainingRuns")
+export const SelectedTrainingSceneNode = m("SelectedTrainingSceneNode", {
+  nodeId: S.String,
+})
 export const GotTrainingRuns = m("GotTrainingRuns", { projection: S.Unknown })
 export const GotTrainingDashboard = m("GotTrainingDashboard", {
   projection: S.Unknown,
@@ -167,6 +170,7 @@ export const Message = S.Union([
   ClickedSubmitIntent,
   SettledSubmitIntent,
   ClickedRefreshTrainingRuns,
+  SelectedTrainingSceneNode,
   GotTrainingRuns,
   GotTrainingDashboard,
   GotTrainingPromiseGates,
