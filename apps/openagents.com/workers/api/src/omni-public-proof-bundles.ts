@@ -288,6 +288,23 @@ const readWorkroom = (
       .first<WorkroomRefRow>(),
   )
 
+export const readOmniPublicProofBundleById = async (
+  db: D1Database,
+  id: string,
+): Promise<OmniPublicProofBundleRecord | null> => {
+  const row = await db
+    .prepare(
+      `SELECT *
+         FROM omni_public_proof_bundles
+        WHERE id = ?
+          AND archived_at IS NULL
+        LIMIT 1`,
+    )
+    .bind(id)
+    .first<ProofBundleRow>()
+  return row === null ? null : rowToRecord(row)
+}
+
 export const createOmniPublicProofBundle = (
   db: D1Database,
   input: CreateOmniPublicProofBundleInput,

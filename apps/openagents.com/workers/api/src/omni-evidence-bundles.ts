@@ -370,6 +370,23 @@ const readWorkroom = (
       .first<WorkroomRefRow>(),
   )
 
+export const readOmniEvidenceBundleById = async (
+  db: D1Database,
+  id: string,
+): Promise<OmniEvidenceBundleRecord | null> => {
+  const row = await db
+    .prepare(
+      `SELECT *
+         FROM omni_evidence_bundles
+        WHERE id = ?
+          AND archived_at IS NULL
+        LIMIT 1`,
+    )
+    .bind(id)
+    .first<EvidenceBundleRow>()
+  return row === null ? null : bundleFromRow(row)
+}
+
 export const createOmniEvidenceBundle = (
   db: D1Database,
   input: CreateOmniEvidenceBundleInput,

@@ -92,6 +92,11 @@ import {
   makeBrowserSessionBoundary,
 } from './auth/session'
 import { makeAutopilotDecisionRoutes } from './autopilot-decision-routes'
+import { makeOmniWorkroomRoutes } from './omni-workroom-routes'
+import { makeOmniWorkroomLifecycleRoutes } from './omni-workroom-lifecycle-routes'
+import { makeOmniBundleRoutes } from './omni-bundle-routes'
+import { readOmniEvidenceBundleById } from './omni-evidence-bundles'
+import { readOmniPublicProofBundleById } from './omni-public-proof-bundles'
 import {
   listAutopilotContinuationRunCandidates,
   makeD1AutopilotContinuationStore,
@@ -5835,6 +5840,25 @@ const autopilotDecisionRoutes = makeAutopilotDecisionRoutes<WorkerBindings>({
   requireBrowserSession,
 })
 
+const omniWorkroomRoutes = makeOmniWorkroomRoutes<WorkerBindings>({
+  db: env => openAgentsDatabase(env),
+  requireBrowserSession,
+})
+
+const omniWorkroomLifecycleRoutes =
+  makeOmniWorkroomLifecycleRoutes<WorkerBindings>({
+    makeDb: env => openAgentsDatabase(env),
+    requireBrowserSession,
+    requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+  })
+
+const omniBundleRoutes = makeOmniBundleRoutes<WorkerBindings>({
+  db: env => openAgentsDatabase(env),
+  requireOperator: (request, env) => requireAdminApiToken(request, env),
+  readEvidenceBundle: (db, id) => readOmniEvidenceBundleById(db, id),
+  readProofBundle: (db, id) => readOmniPublicProofBundleById(db, id),
+})
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
@@ -7044,7 +7068,15 @@ const routeRequest = makeWorkerRouteRequest({
   routeImageGenerationRequest:
     imageGenerationRoutes.routeImageGenerationRequest,
   routeMulletRequest: mulletRoutes.routeMulletRequest,
-  routeOmniRequest: omniRoutes.routeOmniRequest,
+  routeOmniRequest: (request, env, ctx) =>
+    omniRoutes.routeOmniRequest(request, env, ctx) ??
+    omniWorkroomRoutes.routeOmniWorkroomRequest(request, env, ctx) ??
+    omniWorkroomLifecycleRoutes.routeOmniWorkroomLifecycleRequest(
+      request,
+      env,
+      ctx,
+    ) ??
+    omniBundleRoutes.routeOmniBundleRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,

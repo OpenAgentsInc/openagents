@@ -51,7 +51,6 @@ import {
   createOmniEvidenceBundle,
   customerOmniEvidenceBundleProjection,
   operatorOmniEvidenceBundleProjection,
-  publicOmniEvidenceBundleProjection,
 } from './omni-evidence-bundles'
 import {
   type CreateOmniPublicProofBundleInput,
@@ -253,14 +252,14 @@ const createBundleDefectResponse = (defect: unknown): HttpResponse => {
   )
 }
 
-const decodeBody = <A, I>(
-  schema: S.Schema<A, I>,
+const decodeBody = <A>(
+  decode: (raw: unknown) => A,
   request: Request,
 ): Effect.Effect<A, OmniBundleRequestError> =>
   Effect.tryPromise({
     catch: error =>
       requestError(400, error instanceof Error ? error.message : String(error)),
-    try: async () => S.decodeUnknownSync(schema)(await readJsonObject(request)),
+    try: async () => decode(await readJsonObject(request)),
   })
 
 const requireOperatorAuth = <Bindings extends OmniBundleRouteEnv>(
@@ -322,7 +321,10 @@ const createEvidenceBundle = <Bindings extends OmniBundleRouteEnv>(
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
     yield* requireOperatorAuth(dependencies, request, env)
-    const body = yield* decodeBody(CreateEvidenceBundleRequest, request)
+    const body = yield* decodeBody(
+      S.decodeUnknownSync(CreateEvidenceBundleRequest),
+      request,
+    )
     const record = yield* createOmniEvidenceBundle(
       dependencies.db(env),
       evidenceBundleCreateInput(body),
@@ -349,7 +351,10 @@ const createProofBundle = <Bindings extends OmniBundleRouteEnv>(
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
     yield* requireOperatorAuth(dependencies, request, env)
-    const body = yield* decodeBody(CreateProofBundleRequest, request)
+    const body = yield* decodeBody(
+      S.decodeUnknownSync(CreateProofBundleRequest),
+      request,
+    )
     const record = yield* createOmniPublicProofBundle(
       dependencies.db(env),
       proofBundleCreateInput(body),
