@@ -39,10 +39,15 @@ const DEFAULTS = {
 // host aspect ratio so the scene never distorts on resize.
 const WORLD_HEIGHT = 6
 // Vertical world height each diamond is normalized to.
-const DIAMOND_HEIGHT = 2.6
-// Half the distance between the two diamond centers. Chosen so the flat faces
-// overlap slightly in the middle ("kinda stacked on top of each other").
-const STACK_GAP = 1.0
+const DIAMOND_HEIGHT = 2.2
+// Half the distance between the two diamond centers. The diamonds sit a bit
+// apart with a clear gap between their flat faces, bridged by a golden band
+// (Starcraft-Pylon flavored).
+const STACK_GAP = 1.5
+// Golden connecting band sitting in the gap between the two diamonds.
+const BAND_COLOR = 0xe4b24a
+const BAND_RADIUS = 0.46
+const BAND_HEIGHT = 0.5
 
 const backfaceVertexShader = `
   varying vec3 worldNormal;
@@ -220,6 +225,37 @@ export const mountPylonDiamonds = (
   textMesh.layers.set(0)
   scene.add(textMesh)
 
+  // Golden band bridging the gap between the two diamonds. Lives on layer 0 so
+  // it sits in the environment and refracts through the diamonds like the
+  // wordmark. Lit with a couple of lights for a metallic sheen (the diamond
+  // and text materials are unlit shaders, so the lights only touch the band).
+  const bandGeometry = new Three.CylinderGeometry(
+    BAND_RADIUS,
+    BAND_RADIUS,
+    BAND_HEIGHT,
+    48,
+    1,
+    true,
+  )
+  const bandMaterial = new Three.MeshStandardMaterial({
+    color: BAND_COLOR,
+    emissive: new Three.Color(BAND_COLOR).multiplyScalar(0.18),
+    metalness: 0.95,
+    roughness: 0.28,
+    side: Three.DoubleSide,
+  })
+  const bandMesh = new Three.Mesh(bandGeometry, bandMaterial)
+  bandMesh.position.set(0, 0, 0)
+  bandMesh.layers.set(0)
+  scene.add(bandMesh)
+
+  const ambientLight = new Three.AmbientLight(0xffffff, 1.1)
+  const keyLight = new Three.DirectionalLight(0xfff0d0, 2.4)
+  keyLight.position.set(2, 3, 4)
+  const rimLight = new Three.DirectionalLight(0xffd27a, 1.6)
+  rimLight.position.set(-3, -1, 2)
+  scene.add(ambientLight, keyLight, rimLight)
+
   // Two diamonds on layer 1, rendered with the refraction material.
   const fallbackGeometry = new Three.OctahedronGeometry(1, 0)
   let modelScale = normalizeDiamondGeometry(fallbackGeometry)
@@ -394,6 +430,8 @@ export const mountPylonDiamonds = (
     textMesh.geometry.dispose()
     textMaterial.dispose()
     textTexture.dispose()
+    bandGeometry.dispose()
+    bandMaterial.dispose()
     envFbo.dispose()
     backfaceFbo.dispose()
     renderer.dispose()
