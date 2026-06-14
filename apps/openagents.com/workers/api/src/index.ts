@@ -98,6 +98,10 @@ import { makeOmniBundleRoutes } from './omni-bundle-routes'
 import { makeOmniHandoffRoutes } from './omni-handoff-routes'
 import { makeNativeListsRoutes } from './native-lists-routes'
 import { makeNativeListsService } from './native-lists'
+import { makeTenantClientRoutes } from './tenant-client-routes'
+import { makeEmailSequenceAuthoringRoutes } from './email-sequence-authoring-routes'
+import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
+import { makeTenantCustomHostnames } from './tenant-custom-hostnames'
 import { readOmniEvidenceBundleById } from './omni-evidence-bundles'
 import { readOmniPublicProofBundleById } from './omni-public-proof-bundles'
 import {
@@ -5872,6 +5876,34 @@ const nativeListsRoutes = makeNativeListsRoutes<WorkerBindings>({
   requireOperator: (request, env) => requireAdminApiToken(request, env),
 })
 
+const tenantClientRoutes = makeTenantClientRoutes({
+  database: (env: WorkerBindings) => openAgentsDatabase(env),
+  requireBrowserSession,
+  resolveTenant: async (request: Request, env: WorkerBindings) => {
+    const host = request.headers.get('Host') ?? ''
+    const tenant = await Effect.runPromise(
+      makeTenantCustomHostnames(openAgentsDatabase(env)).resolveTenantByHostname(
+        host,
+      ),
+    )
+    return tenant ?? undefined
+  },
+})
+
+const emailSequenceAuthoringRoutes = makeEmailSequenceAuthoringRoutes({
+  appendRefreshedSessionCookies,
+  isOpenAgentsAdminEmail,
+  requireAdminApiToken: (request: Request, env: WorkerBindings) =>
+    requireAdminApiToken(request, env),
+  requireBrowserSession,
+})
+
+const sitesOrchestrationRoutes = makeSitesOrchestrationRoutes({
+  appendRefreshedSessionCookies,
+  isOpenAgentsAdminEmail,
+  requireBrowserSession,
+})
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
@@ -7091,7 +7123,14 @@ const routeRequest = makeWorkerRouteRequest({
     ) ??
     omniBundleRoutes.routeOmniBundleRequest(request, env, ctx) ??
     omniHandoffRoutes.routeOmniHandoffRequest(request, env, ctx) ??
-    nativeListsRoutes.routeNativeListsRequest(request, env, ctx),
+    nativeListsRoutes.routeNativeListsRequest(request, env, ctx) ??
+    tenantClientRoutes.routeTenantClientRequest(request, env, ctx) ??
+    emailSequenceAuthoringRoutes.routeEmailSequenceAuthoringRequest(
+      request,
+      env,
+      ctx,
+    ) ??
+    sitesOrchestrationRoutes.routeSitesOrchestrationRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,
