@@ -13,6 +13,53 @@ This is not CS336. CS336 is shared plumbing (training-run routes, the settlement
 ladder, the verification-class registry). The **run we are launching is
 Tassadar** — the Percepta Executor Class model direction from Episode 236.
 
+---
+
+## Current status (updated 2026-06-15)
+
+**We are ready to flip live.** Everything build/dev-testable is done; the only
+remaining work is the live launch event itself and owner-gated signing. Live
+registry: **`2026-06-14.9`**.
+
+**Done + merged + (where applicable) deployed:**
+- **Worker run lane A–E** — run authority/manifest, executor-trace admission +
+  claimable work, closeout→exact-replay verification, settlement-receipt ledger +
+  projection, verified-trace corpus surface (#5006–#5010).
+- **The install seam is closed.** Autopilot Desktop now **launches/adopts the
+  local Pylon node** itself (no separate setup) — dev build (#5011) and the
+  **packaged mac `.app` bundles the headless Pylon node** (#5027, unsigned), with
+  restart-on-crash supervision + honest launching/online/failed status badge
+  (#5025).
+- **Registry reconciled** to "Autopilot is the install" (#5013) + participant
+  **count rule** `qualifiedContributorCount` (#5016) + the labor/fanout
+  **transition receipts** recorded (#5017). New planned promises:
+  `marketplace.wasm_plugins.v1`, `training.public_gradient_windows.v1` (W5).
+  **`pylon.agent_steerable_cli.v1` flipped GREEN** (live `2026-06-14.9`),
+  receipt-first, after a live round-trip (`pylon sessions/approvals list --json`
+  returned real data from a running node).
+- **Desktop UI is launch-ready** — dev scaffolding stripped (#5020–#5024); the
+  full test suite runs via a per-file runner (#5026).
+- **Pylon is headless / CLI-only / agent-steerable** (epic #5033): TUI deleted,
+  CLI parity + `pylon help --json` catalog, live AGENTS.md "three paths"
+  (download app / build from source / install Pylon to steer), runtime
+  bundle-able headless.
+
+**Remaining = the live flip + owner action (intentionally not done here):**
+- **#5014** live non-owner Go/No-Go run-through → flips
+  `training.monday_decentralized_training_launch.v1` green (the launch event).
+- **#5018** the announcement (post Go/No-Go).
+- **#5015** self-serve install→earn green flip (a launch event).
+- **#5027 remainder** — codesign + notarization (NEEDS-OWNER), OTA pinning, Linux.
+- Artanis evolution-loop epic **#5028** (separately delegated).
+- The `apps/web/src/scene/pylonCountdown.ts` deploy-gate (`check:architecture`)
+  fix (owner's `/pylon` work; blocks the canonical `bun run deploy` until routed
+  through an approved time primitive).
+
+The dependency-ordered detail and the launch-copy boundary follow; the full issue
+tracker is **§12**.
+
+---
+
 ## 0. The node software is Autopilot (Electrobun desktop), not a standalone Pylon CLI
 
 **Clarification (2026-06-14):** the contributor-facing install is now **Autopilot
@@ -35,20 +82,23 @@ a standalone "Pylon v0.3" CLI/TUI. Audited state of `apps/autopilot-desktop`:
 - It ships as a **signed + notarized macOS `.app`** with an OTA update feed
   (`updates.openagents.com/desktop/stable/feed.json`, BSDIFF deltas). Pricing TBD.
 
-**The honest seam for the launch:** today Autopilot Desktop **discovers an
-existing running local node** (it reads the control token from a `.pylon-*` home);
-it does **not yet bundle/launch the node itself**. So "install Autopilot and
-contribute" is only one-step once the app bundles + launches the node runtime.
-Making that one-step is on the install-path critical path (§4.F). Where this plan
-says "the node" it means the local Pylon runtime Autopilot controls; where it says
-"install," it means installing **Autopilot Desktop**.
+**The seam is now closed (2026-06-15).** Autopilot Desktop **launches/adopts the
+local Pylon node itself**: it adopts an already-running node or spawns the local
+Pylon runtime into a managed `.pylon-local` home, with restart-on-crash
+supervision and honest launching/online/failed status (#5011 dev build, #5025
+status badge). The **packaged mac `.app` bundles the headless Pylon node**
+(`Contents/Resources/app/pylon-node/index.js`) and launches it the same way
+(#5027, unsigned). So "install Autopilot and contribute" is one step. Where this
+plan says "the node" it means the local Pylon runtime Autopilot controls; "install"
+means installing **Autopilot Desktop**.
 
-> Follow-up: the product-promise registry still frames the install as Pylon v0.3
-> (`pylon.v03_release_candidate.v1`, `pylon.release_tomorrow.v1`,
-> `pylon.install_without_wallet_knowledge.v1`) alongside
-> `autopilot.desktop_gui_client.v1`. Reconcile that copy to the Autopilot-is-the-
-> install positioning in a registry pass (separate from this doc; it needs a
-> Worker deploy).
+> Follow-up DONE (#5013, deployed): the registry was reconciled to the
+> Autopilot-is-the-install positioning (`pylon.v03_release_candidate.v1`,
+> `pylon.release_tomorrow.v1`, `pylon.install_without_wallet_knowledge.v1`
+> safeCopy now name Autopilot Desktop as the install surface with Pylon as the
+> node it drives). Separately, Pylon itself is now headless/CLI-only and
+> fully agent-steerable (`pylon.agent_steerable_cli.v1` green, registry
+> `2026-06-14.9`) — an agent can install Pylon directly and steer it.
 
 > From Episode 236 (`docs/transcripts/236.md`): "Monday we're launching the
 > largest decentralized training run… you're just going to install our node
@@ -64,7 +114,7 @@ says "the node" it means the local Pylon runtime Autopilot controls; where it sa
 > (`docs/tassadar/README.md`, `compute.tassadar_executor_poc.v1` green,
 > `artanis.tassadar_evolution_loop.v1` yellow), the Episode 236 gap audit
 > (`docs/2026-06-12-episode-236-training-launch-gap-audit.md`), the live surfaces
-> below, and the promise registry (`/api/public/product-promises`, `2026-06-14.6`).
+> below, and the promise registry (`/api/public/product-promises`, `2026-06-14.9`).
 
 ---
 
@@ -178,26 +228,31 @@ Shipped since this plan was written:
   The live closeout→replay run-through is the launch event (§6);
   `verifiedWorkCount` stays 0 until then. No-spend only; no promise flipped green.
 
-Red / the gap (the rest of the critical path):
+Resolved since (2026-06-15):
 
-- **No self-serve contributor path** — the PoC and loop were owner-driven; the
-  fleet is thin (~4 nodes online / 51 registered, mostly rc1) and the loop is
-  currently dispatch-failing for lack of eligible online devices. Autopilot
-  Desktop is the new install but does not yet bundle/launch the node (§0 seam).
-- **Payout leg — programmatic via the treasury wallet.** Correction (2026-06-14,
-  owner): payouts are **not** blocked. The OpenAgents **treasury wallet** (the
-  `/treasury` MDK-backed wallet) can make payouts, and **Artanis is already wired
-  to pay out from it** under bounded spend authority (the nexus-treasury payout
-  ledger). So the earn leg is **programmatic treasury payout under the run's spend
-  cap** — the "hosted-MDK checkout payout adapter is off" note is about one
-  specific adapter and does **not** mean payouts are operator-manual-only. The
-  spend cap + receipt discipline still bind.
-- **Settlement projection:** `settledPayoutSats` reads `0` even where receipts
-  exist — settlement isn't joined into the public projection.
-- **`models.tassadar_percepta_executor.v1` stays red** — we are launching the
-  **run that trains it / earns contributors sats for contributing**, not claiming
-  a trained model. "Help train Tassadar" = contribute verified work. Do not claim
-  Tassadar is trained or CPU-equivalent.
+- ✅ **Install seam closed** — Autopilot Desktop launches/adopts the node itself
+  (dev #5011 + packaged mac `.app` bundles the headless node #5027); status badge
+  #5025. The install is now one step.
+- ✅ **Settlement projection joined** (#5009) — `settledPayoutSats` /
+  `providerConfirmedSettledPayoutSats` read real run-linked settled receipts (no
+  longer hardcoded `0`); it goes non-zero on the first real settlement.
+- ✅ **Pylon is headless/CLI-only/agent-steerable** (#5033 epic) — an agent can
+  install Pylon and steer it from the CLI (`pylon.agent_steerable_cli.v1` green).
+
+Red / the gap (what genuinely remains = the live launch event):
+
+- **No self-serve contributor *run-through yet*** — the machinery is all live
+  (admit→claim→verify→settle), but the fleet is thin and the loop dispatch-fails
+  without eligible online devices; the launch's job is to bring devices online.
+  The **first non-owner stranger carried end to end is the launch event** (#5014,
+  §6) — not a code gap.
+- **Payout leg — programmatic via the treasury wallet** (not blocked): the
+  `/treasury` MDK wallet makes payouts and Artanis dispatches under bounded spend
+  authority + the run spend cap; the #5009 settlement-receipt route records them.
+- **`models.tassadar_percepta_executor.v1` stays red** — we launch the **run that
+  trains it / earns contributors sats for contributing**, not a trained model.
+  "Help train Tassadar" = contribute verified work. Do not claim Tassadar is
+  trained or CPU-equivalent.
 
 ---
 
@@ -292,19 +347,19 @@ spine; E makes it honest; F→G make it usable and public.
   read-paths are now wired (#5009 settled, #5010 corpus); they populate as real
   accepted work lands at launch.
 
-### F. Autopilot Desktop install path contributors can use · pylon + desktop
-- **The install is Autopilot Desktop** (signed + notarized macOS `.app`, OTA feed
-  at `updates.openagents.com/desktop`; Linux path documented). Resolve the §0
-  seam: a fresh install must **bundle and launch the node runtime** (or ship a
-  one-command node bring-up) so a contributor does not have to separately stand up
-  a Pylon node — today the app only *discovers* an existing one.
-- Carry the **executor-trace lane** through the desktop's training cockpit, with
-  install → node online → register → heartbeat → wallet-ready → assignment-ready
-  smokes on macOS + Linux, plus failure modes (gap audit §5). Make sure the build
-  the announcement links is the one the run admits and pays.
-- **Done when:** a clean machine goes from "install Autopilot Desktop" to
-  "admitted + wallet-ready + dispatched executor work" following only public
-  instructions, with no separate Pylon-node setup step.
+### F. Autopilot Desktop install path contributors can use · ✅ code DONE (#5011, #5025, #5027)
+- ✅ **The §0 seam is closed:** Autopilot Desktop adopts a running node or
+  **launches the local Pylon runtime itself** into a managed `.pylon-local` home
+  (dev #5011), with restart-on-crash supervision + honest launching/online/failed
+  status badge (#5025). The **packaged mac `.app` bundles the headless Pylon node**
+  (`Contents/Resources/app/pylon-node/index.js`) and launches it the same way
+  (#5027, `bun run build:canary`, unsigned). No separate Pylon-node setup step.
+- The executor-trace lane runs through the desktop's training cockpit; unit-level
+  lifecycle covered (adopt/spawn/restart/stop, packaged-entry resolution).
+- **Remaining (owner/live):** codesign + notarization so a *downloaded* build
+  passes Gatekeeper (NEEDS-OWNER), OTA pinning (announced==admitted), the Linux
+  path, and a clean-machine first-run→node-online→admitted smoke — all under
+  #5027. The build the announcement links must be the one the run admits and pays.
 
 ### G. Announce · product/forum
 - After the Go/No-Go gate (§6), with the manifest/status URL, the live registry
@@ -340,8 +395,11 @@ Run before announcing that contributors are earning:
       (E). _Both read-paths wired: `settledPayoutSats` (#5009) and the
       verified-trace `corpus` count (#5010, W2). Each goes non-zero on the first
       real settlement / Verified `exact_trace_replay` trace; box flips at launch._
-- [ ] The linked install path is reproducible on a clean machine (F).
-- [ ] Copy passes §7, cites live registry version + promise IDs.
+- [ ] The linked install path is reproducible on a clean machine (F). _Code done
+      (#5011/#5025/#5027): the app launches/adopts the node and the packaged
+      `.app` bundles it; box flips after a clean-machine first-run smoke on the
+      signed build (signing NEEDS-OWNER)._
+- [ ] Copy passes §7, cites live registry version + promise IDs (live `2026-06-14.9`).
 
 When all of A–E are real for a stranger, flip
 `training.monday_decentralized_training_launch.v1` green **receipt-first** per
@@ -442,7 +500,7 @@ announcement (`docs/transcripts/237.md`) and its essays
 `docs/autopilot-coder/2026-06-14-the-load-bearing-wall-verification-accepted-work-essay.md`)
 make a wider set of claims. Each must map to a promise ID whose **current
 registry state already supports the wording** (`/api/public/product-promises`,
-`2026-06-14.6`). This section is the launch-copy boundary for everything the
+`2026-06-14.9`). This section is the launch-copy boundary for everything the
 video says that is **not** the Tassadar run. It does not flip any state; the
 registry stays the authority and every flip stays receipt-first
 (`proof.claim_upgrade_receipts.v1`).
@@ -504,7 +562,7 @@ cannot dereference is not a payment; it is a bug wearing money.*
 
 ## 12. Issue tracker — the launch epics
 
-**Status as of 2026-06-15.** Live registry is `2026-06-14.7`
+**Status as of 2026-06-15.** Live registry is `2026-06-14.9`
 (`/api/public/product-promises`). Closed so far: worker lane A–E
 (#5006–#5010), registry reconcile #5013, count rule #5016, receipts cleanup
 #5017, the entire desktop-UI cleanup (#5020–#5024), the install seam #5011, and
@@ -570,7 +628,7 @@ event + announcement (not code); #5015 builds on the now-merged #5011.
 
 ### Decentralized-training lane (research → registry)
 - 📋 `training.public_gradient_windows.v1` (`planned`, live in registry
-  `2026-06-14.6`) — the W5 public-gradient / decentralized-optimizer lane is
+  `2026-06-14.9`) — the W5 public-gradient / decentralized-optimizer lane is
   specified in [`docs/tassadar/RESEARCH_PLAN.md`](docs/tassadar/RESEARCH_PLAN.md)
   §5 (accepted training window, quarantine optimizer, gradient verification
   ladder, canary-gated promotion). Not a launch-day item; the next master
@@ -612,9 +670,9 @@ event + announcement (not code); #5015 builds on the now-merged #5011.
   deployed), and 🔄 #5037 (make `packages/runtime` bundle-able headless: it still
   pulls `@opentui` in `opentui-renderer.ts`/`cli.ts` — **the remaining blocker
   for bundling a headless Pylon into the packaged mac `.app` #5027**; in
-  progress). New promise `pylon.agent_steerable_cli.v1` (planned → flips toward
-  green once #5037 lands and receipts exist). Agents at openagents.com/AGENTS.md
-  now learn the three ways to run a node.
+  progress). Promise `pylon.agent_steerable_cli.v1` is now **GREEN** (live
+  `2026-06-14.9`, receipt-first, verified via a live CLI round-trip). Agents at
+  openagents.com/AGENTS.md now learn the three ways to run a node.
 
 ### Post-launch program: Artanis evolution loop → green
 - 📋 Epic **[#5028](https://github.com/OpenAgentsInc/openagents/issues/5028)** —
@@ -680,7 +738,7 @@ global all-reduce); **device tiers**; **staged payout** (pending → provisional
 accepted → settled → clawback); and **canary-eval promotion** judged on
 first-divergence metrics, not loss.
 
-### The training promise family (registry states, live `2026-06-14.6`)
+### The training promise family (registry states, live `2026-06-14.9`)
 
 These are the promises the full track will move; all stay **red/yellow/planned**
 for the launch and flip only on receipts:
