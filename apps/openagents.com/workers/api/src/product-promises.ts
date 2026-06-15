@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-15.2'
+export const PublicProductPromisesVersion = '2026-06-15.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -2266,6 +2266,32 @@ export const publicProductPromisesDocument = () => {
           'Green requires: a frozen AO/kWh definition (done), an accepted-outcome counter tied to verified-work receipts, measured or explicitly-modeled energy (kWh) per device/window, and at least one published AO/kWh datapoint carrying evidence-state labels and caveats.',
         authorityBoundary:
           'A defined metric is not a measured result. AO/kWh figures are operational estimates, not investment, grid, utility, or financial advice.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot.builtin_compute_agent.v1',
+        productArea: 'autopilot',
+        audience: ['user', 'public'],
+        state: 'planned',
+        claim:
+          'Autopilot Desktop ships a built-in, out-of-the-box agent that runs on OpenAgents-provided compute, so a user with no agent and no API key can install one desktop installer, go online, and have a working agent.',
+        safeCopy:
+          'This is the planned answer to "I do not have an agent" (launch-day Discord feedback): a built-in agent on OpenAgents compute, no user-supplied API key. As of 2026-06-15 it is NOT shipped — install today still expects you to bring an agent (Claude Code / Codex). Describe the built-in-compute agent as the near-term stability priority we are building, not a shipped feature. Compute is metered/bounded.',
+        unsafeCopy:
+          'Do not claim Autopilot already includes a working built-in agent on our compute, that it needs no setup, or that it is free/unmetered, until it ships with public evidence of a from-install go-online session.',
+        evidenceRefs: [
+          'docs/transcripts/237.md',
+          'JUNE15_LAUNCH_PLAN.md',
+          'promise:autopilot.desktop_gui_client.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.builtin_compute_agent_not_shipped',
+          'blocker.product_promises.openagents_compute_metering_for_builtin_agent_missing',
+        ],
+        verification:
+          'Green requires a shipped Autopilot Desktop build whose built-in agent runs on OpenAgents compute with no user API key, a metered/bounded compute path, and public evidence of a from-install go-online session doing useful work.',
+        authorityBoundary:
+          'A built-in agent is a capability on bounded OpenAgents compute, not unlimited free inference or authority to spend or settle on the user behalf.',
       },
     ],
     notes: [
