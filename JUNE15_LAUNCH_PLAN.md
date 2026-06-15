@@ -1,8 +1,8 @@
 # JUNE 15 LAUNCH PLAN — The Tassadar Run
 
-Date authored: 2026-06-14 (Sunday). Target: **Monday 2026-06-15**.
+Date authored: 2026-06-14 (Sunday). Updated: **Monday 2026-06-15**.
 
-We are launching the **Tassadar run** tomorrow. This is the plan to make the core
+We are at the **Tassadar run** launch gate. This is the plan to make the core
 experience real: a public Tassadar training run goes live, real (non-owner)
 people install **Autopilot** (our Electrobun desktop app), get dispatched
 **executor-trace work**, it's verified by **exact replay**, and they **earn real
@@ -17,9 +17,10 @@ Tassadar** — the Percepta Executor Class model direction from Episode 236.
 
 ## Current status (updated 2026-06-15)
 
-**We are ready to flip live.** Everything build/dev-testable is done; the only
-remaining work is the live launch event itself and owner-gated signing. Live
-registry: **`2026-06-14.9`**.
+**We are ready for the paid public Go/No-Go.** Everything build/dev-testable in
+the rails is done, and the Artanis no-spend executor loop is now receipt-green.
+The remaining work is the live non-owner launch event itself and owner-gated
+signing. Registry version from this update: **`2026-06-14.12`**.
 
 **Done + merged + (where applicable) deployed:**
 - **Worker run lane A–E** — run authority/manifest, executor-trace admission +
@@ -34,7 +35,7 @@ registry: **`2026-06-14.9`**.
   **count rule** `qualifiedContributorCount` (#5016) + the labor/fanout
   **transition receipts** recorded (#5017). New planned promises:
   `marketplace.wasm_plugins.v1`, `training.public_gradient_windows.v1` (W5).
-  **`pylon.agent_steerable_cli.v1` flipped GREEN** (live `2026-06-14.9`),
+  **`pylon.agent_steerable_cli.v1` flipped GREEN** (live `2026-06-14.12`),
   receipt-first, after a live round-trip (`pylon sessions/approvals list --json`
   returned real data from a running node).
 - **Desktop UI is launch-ready** — dev scaffolding stripped (#5020–#5024); the
@@ -43,6 +44,14 @@ registry: **`2026-06-14.9`**.
   CLI parity + `pylon help --json` catalog, live AGENTS.md "three paths"
   (download app / build from source / install Pylon to steer), runtime
   bundle-able headless.
+- **Artanis evolution-loop is GREEN** (#5028–#5032). Production cron dispatched
+  ten no-spend executor-trace assignments to a registered Pylon, each closed with
+  accepted exact replay, yielding unattended streak receipt
+  `receipt.public.artanis.unattended_tick_streak.71929a5d-fa68-41f1-bb9f-51f67abd3456.x10`
+  and dataset_curation receipt
+  `receipt.public.artanis.dataset_curation.31b381bf0f19448d`. The product
+  promise flipped green receipt-first via
+  `promise_transition_f4cb0a3e-0c41-41ef-b8fe-e8a9985fdae2`.
 
 **Remaining = the live flip + owner action (intentionally not done here):**
 - **#5014** live non-owner Go/No-Go run-through → flips
@@ -50,7 +59,6 @@ registry: **`2026-06-14.9`**.
 - **#5018** the announcement (post Go/No-Go).
 - **#5015** self-serve install→earn green flip (a launch event).
 - **#5027 remainder** — codesign + notarization (NEEDS-OWNER), OTA pinning, Linux.
-- Artanis evolution-loop epic **#5028** (separately delegated).
 - The `apps/web/src/scene/pylonCountdown.ts` deploy-gate (`check:architecture`)
   fix (owner's `/pylon` work; blocks the canonical `bun run deploy` until routed
   through an approved time primitive).
@@ -98,7 +106,7 @@ means installing **Autopilot Desktop**.
 > safeCopy now name Autopilot Desktop as the install surface with Pylon as the
 > node it drives). Separately, Pylon itself is now headless/CLI-only and
 > fully agent-steerable (`pylon.agent_steerable_cli.v1` green, registry
-> `2026-06-14.9`) — an agent can install Pylon directly and steer it.
+> `2026-06-14.12`) — an agent can install Pylon directly and steer it.
 
 > From Episode 236 (`docs/transcripts/236.md`): "Monday we're launching the
 > largest decentralized training run… you're just going to install our node
@@ -112,9 +120,10 @@ means installing **Autopilot Desktop**.
 
 > Grounding: built from `docs/transcripts/236.md`, the Tassadar lane
 > (`docs/tassadar/README.md`, `compute.tassadar_executor_poc.v1` green,
-> `artanis.tassadar_evolution_loop.v1` yellow), the Episode 236 gap audit
+> `artanis.tassadar_evolution_loop.v1` green for the no-spend
+> dispatch/verify/dataset-curation loop), the Episode 236 gap audit
 > (`docs/2026-06-12-episode-236-training-launch-gap-audit.md`), the live surfaces
-> below, and the promise registry (`/api/public/product-promises`, `2026-06-14.9`).
+> below, and the promise registry (`/api/public/product-promises`, `2026-06-14.12`).
 
 ---
 
@@ -139,12 +148,13 @@ event — these are advantages, not hedges:
   paid closeout settled over real Lightning.
 - **The dispatch/verify loop is already live.** The Artanis evolution loop
   (`/api/public/artanis/admin-ticks`) is in production, dispatching executor-trace
-  workloads and publishing per-tick receipts. Today it's mostly no-spend and
-  dispatch-fails for lack of eligible online devices — which is exactly what a
-  public launch fixes by bringing the fleet online.
+  workloads and publishing per-tick receipts. On 2026-06-15 it produced the
+  required no-spend ten-tick unattended streak and first dataset_curation
+  receipt; the paid public launch still needs a non-owner contributor with a
+  dereferenceable settlement receipt.
 
-The job for tomorrow is to turn that bounded, owner-driven loop into a **public
-Tassadar run a stranger can join self-serve and earn from.**
+The job for the 2026-06-15 launch event is to turn that bounded, owner-driven
+loop into a **public Tassadar run a stranger can join self-serve and earn from.**
 
 ---
 
@@ -183,16 +193,19 @@ Tassadar, get paid Bitcoin" becomes a fact instead of a promise.
 
 ---
 
-## 3. Current reality (honest snapshot, 2026-06-14)
+## 3. Current reality (honest snapshot, 2026-06-15)
 
 Green / proven:
 
 - **`compute.tassadar_executor_poc.v1` (green):** one bounded executor-trace
   workload, dispatched to a real Pylon, replay-verified on a separate device,
   one paid Lightning closeout with balance receipts on both sides.
-- **`artanis.tassadar_evolution_loop.v1` (yellow):** the automated
+- **`artanis.tassadar_evolution_loop.v1` (green):** the automated
   dispatch → replay-verify → accumulate loop is deployed; the public tick monitor
-  is live; it dispatched and closed out no-spend executor work autonomously once.
+  is live; on 2026-06-15 the production cron produced ten consecutive no-spend
+  executor-trace dispatches with accepted Pylon closeouts and accepted exact
+  replay, plus the first compact-binary dataset_curation manifest. Green receipt:
+  `promise_transition_f4cb0a3e-0c41-41ef-b8fe-e8a9985fdae2`.
 - **Verification:** `exact_trace_replay` is a live, exercised verification class;
   the **reliable-tips ladder** settles real sats and never drops them (green).
 - The **node runtime** (Pylon v0.3-rc2) runs the agent surface from the device
@@ -238,14 +251,18 @@ Resolved since (2026-06-15):
   longer hardcoded `0`); it goes non-zero on the first real settlement.
 - ✅ **Pylon is headless/CLI-only/agent-steerable** (#5033 epic) — an agent can
   install Pylon and steer it from the CLI (`pylon.agent_steerable_cli.v1` green).
+- ✅ **Artanis receipt blockers cleared** (#5028–#5032) — closed tick receipts,
+  ten-tick unattended streak, public monitor hardening, and first dataset_curation
+  receipt are live. This upgrades the no-spend evolution-loop promise, not the
+  paid stranger launch.
 
 Red / the gap (what genuinely remains = the live launch event):
 
 - **No self-serve contributor *run-through yet*** — the machinery is all live
-  (admit→claim→verify→settle), but the fleet is thin and the loop dispatch-fails
-  without eligible online devices; the launch's job is to bring devices online.
-  The **first non-owner stranger carried end to end is the launch event** (#5014,
-  §6) — not a code gap.
+  (admit→claim→verify→settle), and Artanis has proven the no-spend executor loop.
+  The launch's job is to bring a non-owner contributor through the paid path. The
+  **first non-owner stranger carried end to end is the launch event** (#5014, §6)
+  — not a code gap.
 - **Payout leg — programmatic via the treasury wallet** (not blocked): the
   `/treasury` MDK wallet makes payouts and Artanis dispatches under bounded spend
   authority + the run spend cap; the #5009 settlement-receipt route records them.
@@ -337,11 +354,11 @@ spine; E makes it honest; F→G make it usable and public.
   training records"), with public-safe trace/verdict refs and a live-at-read
   staleness contract that **rebuilds on validation transitions, not registration**
   (RESEARCH_PLAN §6.3 + Standing Order 5; case law #4744–#4747). It stays bounded
-  evidence — no Tassadar exactness / model-capability claim — and is **evidence
-  toward** `artanis.tassadar_evolution_loop.v1`'s
-  `tassadar_distillation_dataset_receipt_missing` blocker, not the dataset
-  receipt itself. Count goes non-zero on the first Verified `exact_trace_replay`
-  trace (today `0`).
+  evidence — no Tassadar exactness / model-capability claim. The separate
+  Artanis dataset_curation blocker is now cleared by #5032:
+  `receipt.public.artanis.dataset_curation.31b381bf0f19448d`. The run corpus
+  count still goes non-zero on the first paid launch `Verified`
+  `exact_trace_replay` trace.
 - **Done when:** the public run shows a non-zero settled total equal to reality
   **and** a growing accepted verified-`exact_trace_replay` corpus count — both
   read-paths are now wired (#5009 settled, #5010 corpus); they populate as real
@@ -399,7 +416,7 @@ Run before announcing that contributors are earning:
       (#5011/#5025/#5027): the app launches/adopts the node and the packaged
       `.app` bundles it; box flips after a clean-machine first-run smoke on the
       signed build (signing NEEDS-OWNER)._
-- [ ] Copy passes §7, cites live registry version + promise IDs (live `2026-06-14.9`).
+- [ ] Copy passes §7, cites live registry version + promise IDs (live `2026-06-14.12`).
 
 When all of A–E are real for a stranger, flip
 `training.monday_decentralized_training_launch.v1` green **receipt-first** per
@@ -481,7 +498,7 @@ it + corpus count grows.
 
 ---
 
-## 10. One-line status to repeat tomorrow
+## 10. One-line status for launch copy
 
 > The Tassadar run is live at `<status URL>`. Install Autopilot, contribute
 > executor-trace work, it's verified by exact replay, and you get paid sats —
@@ -500,7 +517,7 @@ announcement (`docs/transcripts/237.md`) and its essays
 `docs/autopilot-coder/2026-06-14-the-load-bearing-wall-verification-accepted-work-essay.md`)
 make a wider set of claims. Each must map to a promise ID whose **current
 registry state already supports the wording** (`/api/public/product-promises`,
-`2026-06-14.9`). This section is the launch-copy boundary for everything the
+`2026-06-14.12`). This section is the launch-copy boundary for everything the
 video says that is **not** the Tassadar run. It does not flip any state; the
 registry stays the authority and every flip stays receipt-first
 (`proof.claim_upgrade_receipts.v1`).
@@ -510,7 +527,7 @@ registry stays the authority and every flip stays receipt-first
 | Episode 237 claim | Promise ID | State | Launch copy boundary |
 | --- | --- | --- | --- |
 | "Today we launch Autopilot, our core product" / desktop app for Mac/Linux | `autopilot.desktop_gui_client.v1` | yellow | Say "download the first Autopilot desktop release candidate (Mac/Linux)"; it is the cockpit over a local node. Do **not** say "stable/GA," and honor the §0 bundle-the-node seam (#5011). |
-| "First and final version launched by humans; future releases shaped by Autopilot itself" | `artanis.tassadar_evolution_loop.v1` | yellow | Aspirational/direction; the self-improvement loop is yellow. Frame as the goal, not a shipped fact. |
+| "First and final version launched by humans; future releases shaped by Autopilot itself" | `artanis.tassadar_evolution_loop.v1` | green | Scoped green for the receipt-backed no-spend Artanis executor loop: ten unattended dispatch/verify ticks and first `dataset_curation` receipt. Do **not** claim autonomous product releases, trained-model output, ungated publication/spend, or self-improving releases. |
 | "At the core of every Autopilot is Pylon" / install the node | `pylon.v03_release_candidate.v1`, `pylon.release_tomorrow.v1` | yellow | Pylon is `@openagentsinc/pylon@0.3.0-rc2`, rc not stable. Reconcile to "Autopilot is the install, Pylon is the node it drives" (§0 follow-up). |
 | "Autopilot can spawn new Pylons on machines you give it access to" | `autopilot.control_center_fanout_marketplace.v1` | yellow | Fan-out is yellow; describe as available/operator-gated, not a one-click swarm. |
 | "Pylon packages Psionic for inference, embeddings, distributed training" | `pylon.cli_tui_probe_background.v1` (green), `pylon.compute_revenue_modes.v1` (planned) | mixed | The runtime exists (green); **paid** inference/embeddings revenue is planned and per owner directive (2026-06-10) there are **no inference products** at this time. Don't claim inference earning. |
@@ -562,13 +579,15 @@ cannot dereference is not a payment; it is a bug wearing money.*
 
 ## 12. Issue tracker — the launch epics
 
-**Status as of 2026-06-15.** Live registry is `2026-06-14.9`
+**Status as of 2026-06-15.** Registry version from this update is `2026-06-14.12`
 (`/api/public/product-promises`). Closed so far: worker lane A–E
 (#5006–#5010), registry reconcile #5013, count rule #5016, receipts cleanup
-#5017, the entire desktop-UI cleanup (#5020–#5024), the install seam #5011, and
-the desktop epic #5019. **Still open: the launch event #5014, the self-serve
-earn #5015, and the announcement #5018** — #5014/#5018 are the live launch
-event + announcement (not code); #5015 builds on the now-merged #5011.
+#5017, the entire desktop-UI cleanup (#5020–#5024), the install seam #5011, the
+desktop epic #5019, the Pylon CLI/headless epic #5033–#5037, and the Artanis
+evolution-loop epic #5028–#5032. **Still open: the launch master #5012, the
+launch event #5014, the self-serve earn #5015, the announcement #5018, and the
+owner-gated #5027 remainder** — #5014/#5018 are the live launch event +
+announcement (not code); #5015 builds on the now-merged #5011.
 
 ### Master launch epic: flip the crucial promises green
 - **[#5012](https://github.com/OpenAgentsInc/openagents/issues/5012)** — Epic:
@@ -628,7 +647,7 @@ event + announcement (not code); #5015 builds on the now-merged #5011.
 
 ### Decentralized-training lane (research → registry)
 - 📋 `training.public_gradient_windows.v1` (`planned`, live in registry
-  `2026-06-14.9`) — the W5 public-gradient / decentralized-optimizer lane is
+  `2026-06-14.12`) — the W5 public-gradient / decentralized-optimizer lane is
   specified in [`docs/tassadar/RESEARCH_PLAN.md`](docs/tassadar/RESEARCH_PLAN.md)
   §5 (accepted training window, quarantine optimizer, gradient verification
   ladder, canary-gated promotion). Not a launch-day item; the next master
@@ -660,27 +679,31 @@ event + announcement (not code); #5015 builds on the now-merged #5011.
   merged: #5034 (TUI deleted), #5035 (CLI parity + `pylon help --json` catalog),
   #5036 (live AGENTS.md three paths, deployed), #5037 (runtime bundle-able
   headless — also unblocks #5027). The `pylon.agent_steerable_cli.v1` promise's
-  blockers are cleared; ready for a receipt-first green/yellow flip pending
-  live-node verification of the session/training verbs. Audit:
+  blockers are cleared and the promise is green receipt-first. Audit:
   [`apps/pylon/docs/2026-06-15-pylon-cli-only-agent-steerable-audit.md`](apps/pylon/docs/2026-06-15-pylon-cli-only-agent-steerable-audit.md).
   Children: ✅ #5034 (delete the TUI — `src/tui` + `@opentui/*` + `dashboard`;
   bare `pylon` now boots headless; `bun test` 1046 pass), ✅ #5035 (CLI parity:
   `sessions`/`approvals`/`deploy`/`training` verbs + `pylon help --json` catalog
   of 28 commands; 1066 tests pass), ✅ #5036 (live AGENTS.md three paths —
-  deployed), and 🔄 #5037 (make `packages/runtime` bundle-able headless: it still
-  pulls `@opentui` in `opentui-renderer.ts`/`cli.ts` — **the remaining blocker
-  for bundling a headless Pylon into the packaged mac `.app` #5027**; in
-  progress). Promise `pylon.agent_steerable_cli.v1` is now **GREEN** (live
-  `2026-06-14.9`, receipt-first, verified via a live CLI round-trip). Agents at
+  deployed), and ✅ #5037 (make `packages/runtime` bundle-able headless; the
+  runtime can now be bundled into the packaged mac `.app` #5027). Promise
+  `pylon.agent_steerable_cli.v1` is now **GREEN** (live `2026-06-14.12`,
+  receipt-first, verified via a live CLI round-trip). Agents at
   openagents.com/AGENTS.md now learn the three ways to run a node.
 
-### Post-launch program: Artanis evolution loop → green
-- 📋 Epic **[#5028](https://github.com/OpenAgentsInc/openagents/issues/5028)** —
-  flip `artanis.tassadar_evolution_loop.v1` green via its four owed receipts:
-  #5029 (sustained real tetrahedron-closed ticks), #5030 (unattended ≥10-tick
-  streak — live blocker), #5031 (verify/harden public monitor), #5032 (first
-  `dataset_curation` distillation-dataset receipt — live blocker). Program work,
-  not launch-day critical path.
+### Artanis evolution loop — June 15 — ✅ EPIC DONE
+- ✅ Epic **[#5028](https://github.com/OpenAgentsInc/openagents/issues/5028)** —
+  **CLOSED.** `artanis.tassadar_evolution_loop.v1` is green receipt-first for the
+  scoped no-spend dispatch/verify/dataset-curation loop. Children closed: #5029
+  (sustained real tetrahedron-closed ticks), #5030 (unattended ten-tick streak),
+  #5031 (public monitor verified/hardened), and #5032 (first `dataset_curation`
+  distillation-dataset receipt). Evidence: unattended streak receipt
+  `receipt.public.artanis.unattended_tick_streak.71929a5d-fa68-41f1-bb9f-51f67abd3456.x10`,
+  dataset receipt `receipt.public.artanis.dataset_curation.31b381bf0f19448d`,
+  and transition receipt
+  `promise_transition_f4cb0a3e-0c41-41ef-b8fe-e8a9985fdae2`. Boundary:
+  no trained-model, autonomous publication, ungated spend, or paid public launch
+  claim follows from this green.
 
 ### Done — worker lane A–E (closed)
 - **[#5006](https://github.com/OpenAgentsInc/openagents/issues/5006)** — Step A:
@@ -738,15 +761,16 @@ global all-reduce); **device tiers**; **staged payout** (pending → provisional
 accepted → settled → clawback); and **canary-eval promotion** judged on
 first-divergence metrics, not loss.
 
-### The training promise family (registry states, live `2026-06-14.9`)
+### The training promise family (registry states, live `2026-06-14.12`)
 
-These are the promises the full track will move; all stay **red/yellow/planned**
-for the launch and flip only on receipts:
+These are the promises the full track will move. Only the scoped executor PoC
+and no-spend Artanis loop are green; the public training/gradient/model claims
+stay **red/yellow/planned** for the launch and flip only on receipts:
 
 | Promise | State | Rung |
 | --- | --- | --- |
 | `compute.tassadar_executor_poc.v1` | **green** | bounded executor PoC (replay only) |
-| `artanis.tassadar_evolution_loop.v1` | yellow | dispatch→verify→accumulate loop |
+| `artanis.tassadar_evolution_loop.v1` | **green** | no-spend dispatch→verify→accumulate loop with ten-tick streak + dataset receipt |
 | `training.verification_classes.v1` | yellow | exact-replay + verifier classes |
 | `training.device_capability_dataset.v1` | yellow | device tiers for roles |
 | `pylon.first_real_model_training_run.v1` | yellow | bounded two-device real-gradient demo |
