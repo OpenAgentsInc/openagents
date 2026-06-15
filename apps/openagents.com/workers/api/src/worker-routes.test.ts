@@ -48,6 +48,18 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('keeps public stats document routes in the app shell', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/stats'), '/stats'),
+    ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/stats-old'),
+        '/stats-old',
+      ),
+    ).toBe(false)
+  })
+
   test('redirects unknown direct browser document paths to the homepage', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(

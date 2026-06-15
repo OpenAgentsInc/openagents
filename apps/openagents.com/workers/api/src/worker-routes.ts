@@ -99,6 +99,7 @@ const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/share\/[^/]+$/,
   /^\/sites\/demo-checkout(?:\/[^/]+)?$/,
   /^\/stats$/,
+  /^\/stats-old$/,
   /^\/teams\/[^/]+(?:\/chat|\/files(?:\/[^/]+)?|\/projects\/[^/]+\/chat)$/,
   /^\/t\/[^/]+$/,
   /^\/training\/runs(?:\/[^/]+)?$/,
