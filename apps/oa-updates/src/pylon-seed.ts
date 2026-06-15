@@ -22,6 +22,10 @@ export type PylonReleaseSeed = {
   readonly artifactPath: string
   readonly signature: string
   readonly kid: string
+  // Precomputed hex sha256 of the artifact (from the build manifest). When
+  // present, the seed builds the feed WITHOUT reading the binary — so the
+  // service boots fast and the binaries need not ship in the container.
+  readonly sha256?: string
   readonly createdAt?: string
   readonly rolloutPercent?: number
   readonly minVersion?: string
@@ -56,7 +60,29 @@ export async function seedPylonReleases(
   const seeds = normalizePylonReleaseList(raw)
   const manifests: PylonReleaseManifest[] = []
 
+  const artifactBase = input.assetBaseUrl ?? input.baseUrl
   for (const seed of seeds) {
+    // Fast path: sha256 precomputed in the seed → build the manifest with NO
+    // binary read. The asset hash is the artifactPath filename; downloads go to
+    // assetBaseUrl (GCS). The binary need not exist in the container.
+    if (seed.sha256) {
+      const hash = seed.artifactPath.split("/").pop() ?? seed.artifactPath
+      const manifest: PylonReleaseManifest = {
+        version: seed.version,
+        channel: seed.channel,
+        platform: seed.platform,
+        artifactUrl: assetUrl(artifactBase, hash),
+        sha256: seed.sha256,
+        signature: seed.signature,
+        kid: seed.kid,
+        ...(seed.createdAt ? { createdAt: seed.createdAt } : {}),
+        ...(seed.rolloutPercent !== undefined ? { rolloutPercent: seed.rolloutPercent } : {}),
+        ...(seed.minVersion ? { minVersion: seed.minVersion } : {}),
+      }
+      input.server.registerPylonUpdate(manifest)
+      manifests.push(manifest)
+      continue
+    }
     const artifactPath = join(input.distDir, seed.artifactPath)
     const artifactBytes = await readFile(artifactPath)
     const result = await buildPylonReleaseManifest({
@@ -104,6 +130,7 @@ export function normalizePylonReleaseSeed(value: unknown): PylonReleaseSeed {
     artifactPath: requiredString(value, "artifactPath"),
     signature: requiredString(value, "signature"),
     kid: requiredString(value, "kid"),
+    ...(optionalString(value, "sha256") ? { sha256: optionalString(value, "sha256") } : {}),
     ...(optionalString(value, "createdAt") ? { createdAt: optionalString(value, "createdAt") } : {}),
     ...(typeof value.rolloutPercent === "number" ? { rolloutPercent: value.rolloutPercent } : {}),
     ...(optionalString(value, "minVersion") ? { minVersion: optionalString(value, "minVersion") } : {}),

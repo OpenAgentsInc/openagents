@@ -63,6 +63,7 @@ async function main(): Promise<void> {
       version,
       platform,
       artifactPath,
+      sha256: entry.sha256,
       signature: entry.signature,
       kid: entry.kid,
       createdAt,
