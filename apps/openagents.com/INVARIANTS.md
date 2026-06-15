@@ -1215,6 +1215,10 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     lease, and failover state — compliant (`generatedAt`, contract, typed
     eligibility reasons and reconnect nudges; lease refs and typed state only,
     no provider secret material) (#4766).
+  - `GET /api/public/metrics/accepted-outcomes-per-kwh` — live at read over
+    the receipt-backed accepted-outcome seed, metric definition, and product
+    promise registry — compliant (`generatedAt`, contract, evidence-state
+    labels, caveats, and modeled-vs-measured gate).
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no

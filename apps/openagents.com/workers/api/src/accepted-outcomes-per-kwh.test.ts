@@ -29,6 +29,11 @@ describe('Accepted Outcomes per kWh metric', () => {
     expect(projection.gate.greenGateSatisfied).toBe(false)
     expect(projection.gate.modeledFigurePublicationAllowed).toBe(true)
     expect(projection.gate.measuredFigurePublicationAllowed).toBe(false)
+    expect(projection.staleness).toMatchObject({
+      composition: 'live_at_read',
+      contractVersion: 'projection_staleness.v1',
+      maxStalenessSeconds: 0,
+    })
     expect(projection.acceptedOutcomeCounter.count).toBe(1)
     expect(projection.energyAccounting.measuredDatapointCount).toBe(0)
     expect(projection.energyAccounting.modeledDatapointCount).toBe(1)

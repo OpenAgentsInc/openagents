@@ -455,6 +455,11 @@ const publicProjectionSurfaces = [
     route: '/api/public/relay-health',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/accepted-outcomes-per-kwh.ts',
+    route: '/api/public/metrics/accepted-outcomes-per-kwh',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',

@@ -1,11 +1,21 @@
 import { Schema as S } from 'effect'
 
+import {
+  PublicProjectionStalenessContract,
+  liveAtReadStaleness,
+} from './public-projection-staleness'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 export const AcceptedOutcomesPerKwhEndpoint =
   '/api/public/metrics/accepted-outcomes-per-kwh'
 export const AcceptedOutcomesPerKwhSchemaVersion =
   'openagents.metrics.accepted_outcomes_per_kwh.v1'
+export const AcceptedOutcomesPerKwhStaleness = liveAtReadStaleness([
+  'accepted_outcome_receipt_published',
+  'labor_escrow_release_receipt_published',
+  'energy_telemetry_ingested',
+  'product_promise_registry_updated',
+])
 
 export class AcceptedOutcomesPerKwhEnergyModel extends S.Class<AcceptedOutcomesPerKwhEnergyModel>(
   'AcceptedOutcomesPerKwhEnergyModel',
@@ -56,6 +66,7 @@ export class AcceptedOutcomesPerKwhProjection extends S.Class<AcceptedOutcomesPe
   metricId: S.Literal('metrics.accepted_outcomes_per_kwh.v1'),
   definitionRef: S.String,
   promiseRef: S.String,
+  staleness: PublicProjectionStalenessContract,
   status: S.Literal('instrumented_modeled_seed'),
   statusLabel: S.String,
   acceptedOutcomeCounter: S.Struct({
@@ -201,6 +212,7 @@ export const projectAcceptedOutcomesPerKwh = (
       'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
       'apps/openagents.com/workers/api/src/accepted-outcomes-per-kwh.ts',
     ],
+    staleness: AcceptedOutcomesPerKwhStaleness,
     status: 'instrumented_modeled_seed',
     statusLabel:
       'AO/kWh has one receipt-backed modeled seed datapoint; measured energy telemetry remains missing.',
