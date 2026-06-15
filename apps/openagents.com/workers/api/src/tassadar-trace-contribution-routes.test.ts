@@ -131,6 +131,15 @@ const makeContributionStore = (): MemoryContributionStore => {
 
   return {
     _records: records,
+    listPendingContributions: async ({ limit, trainingRunRef }) =>
+      [...records.values()]
+        .filter(
+          record =>
+            record.state === 'pending' &&
+            (trainingRunRef === undefined ||
+              record.trainingRunRef === trainingRunRef),
+        )
+        .slice(0, Math.max(1, limit)),
     readWorkerContribution: async (leaseRef, workloadFamily) =>
       records.get(key(leaseRef, workloadFamily)),
     recordWorkerContribution: async record => {

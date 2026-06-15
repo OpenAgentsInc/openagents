@@ -132,6 +132,17 @@ export type TrainingTraceContributionStore = Readonly<{
     leaseRef: string,
     workloadFamily: TassadarExecutorTraceWorkloadFamily,
   ) => Promise<TrainingTraceContributionRecord | undefined>
+  // The read the pairing orchestration (#5053) and any "next contribution to
+  // validate" surface needs: the oldest still-`pending` worker contributions
+  // awaiting a distinct-device validator, optionally scoped to a training run.
+  // Returns evidence only; pairing/device-distinctness is enforced by the
+  // caller and the verdict route. Limit is bounded by the store.
+  listPendingContributions: (
+    input: Readonly<{
+      limit: number
+      trainingRunRef?: string
+    }>,
+  ) => Promise<ReadonlyArray<TrainingTraceContributionRecord>>
   // Pairs the pending worker contribution with a validator's replay digest and
   // the resulting verification-challenge ref. Conditional on the row still
   // being `pending` so a second validator cannot re-pair an already-paired
@@ -351,7 +362,41 @@ export const makeD1TrainingTraceContributionStore = (
     return row === null ? undefined : rowToTrainingTraceContribution(row)
   }
 
+  const listPending = async (
+    input: Readonly<{ limit: number; trainingRunRef?: string }>,
+  ): Promise<ReadonlyArray<TrainingTraceContributionRecord>> => {
+    const boundedLimit = Math.max(1, Math.min(50, Math.trunc(input.limit)))
+    const statement =
+      input.trainingRunRef === undefined
+        ? db
+            .prepare(
+              `SELECT *
+                 FROM training_trace_contributions
+                WHERE state = 'pending'
+                  AND archived_at IS NULL
+                ORDER BY submitted_at ASC
+                LIMIT ?`,
+            )
+            .bind(boundedLimit)
+        : db
+            .prepare(
+              `SELECT *
+                 FROM training_trace_contributions
+                WHERE state = 'pending'
+                  AND archived_at IS NULL
+                  AND training_run_ref = ?
+                ORDER BY submitted_at ASC
+                LIMIT ?`,
+            )
+            .bind(input.trainingRunRef, boundedLimit)
+
+    const result = await statement.all<TrainingTraceContributionRow>()
+
+    return (result.results ?? []).map(rowToTrainingTraceContribution)
+  }
+
   return {
+    listPendingContributions: listPending,
     readWorkerContribution: readByLeaseWorkload,
     recordWorkerContribution: async record => {
       // Idempotent by (lease_ref, workload_family): an INSERT OR IGNORE keeps

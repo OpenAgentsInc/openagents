@@ -356,6 +356,7 @@ import {
 } from './tassadar-replay-validator'
 import { makeD1TrainingTraceContributionStore } from './tassadar-trace-contribution-authority'
 import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
+import { runTassadarTracePairingScheduled } from './tassadar-trace-pairing'
 import {
   type TeamChatMessage,
   type TeamChatRunSummary,
@@ -7710,6 +7711,35 @@ export default {
               pylonDeviceRef: input.pylonDeviceRef,
               workload: input.workload,
             } as never),
+        }),
+      ),
+      observedEffect(
+        // #5053 (epic #5051): worker -> validator pairing orchestration
+        // (Artanis-first, design §4.3 option B). INERT BY DEFAULT: enabled only
+        // when TASSADAR_TRACE_PAIRING === '1', so this changes no live tick
+        // behavior until the #5061 dry-run deliberately enables it. The candidate
+        // resolver yields no validator devices yet (the #5061 dry-run supplies the
+        // distinct-device replay evidence); device-distinctness + no-double-pair
+        // are enforced by the orchestration and the conditional store update.
+        'TassadarTracePairing.tick',
+        runTassadarTracePairingScheduled({
+          createVerificationChallenge: request => {
+            const built = buildTrainingVerificationChallengeRecord({
+              makeId: randomUuid,
+              nowIso: currentIsoTimestamp(),
+              request,
+            })
+
+            return makeD1TrainingVerificationStore(
+              openAgentsDatabase(env),
+            ).createChallenge(built.challenge, built.event)
+          },
+          enabled:
+            (env as { TASSADAR_TRACE_PAIRING?: string })
+              .TASSADAR_TRACE_PAIRING === '1',
+          nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+          resolveValidatorCandidates: async () => [],
+          store: makeD1TrainingTraceContributionStore(openAgentsDatabase(env)),
         }),
       ),
       observedEffect(
