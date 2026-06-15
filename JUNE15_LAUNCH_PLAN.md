@@ -203,10 +203,46 @@ The RCs are live and announced; the launch transcript (Episode 237,
 `docs/transcripts/237.md`) is committed. A launch-accuracy audit of every concrete
 claim in 237 found **most are already true** (Tassadar `RESEARCH_PLAN.md`, the
 Percepta audit, all three `docs/autopilot-coder` essays, the AGI reading group,
-the AGENTS.md Tassadar section, the product-promise registry + §11 copy map). The
-remaining work, in priority order:
+the AGENTS.md Tassadar section, the product-promise registry + §11 copy map).
 
-### Primary next lane — executor-trace contributor completion (next RC)
+### ⭐ PRIORITY PIVOT (2026-06-15 evening, owner directive)
+
+Real Discord feedback at launch reordered the plan: **basic stability and a
+normal-person install path now outrank the training run.** Two users:
+- *OrwellWas*: "i don't understand how to download autopilot … pretty confusing"
+  — and crucially **"i don't have an agent."** The whole "let your agent install
+  it" story assumes you already have an agent; most normal users don't.
+- *Trigger*: worried about agent **slop** and an architecture that "constantly
+  evolves" — wants stability and to understand the stack before contributing.
+
+**New top priorities (in order), training is DEPRIORITIZED below these:**
+
+1. **One standard desktop installer + real "Download" links.** Treat RC → **full
+   release**: a prominent download on `openagents.com` AND a GitHub Release with a
+   plain "Download here" for the notarized Autopilot Desktop build (Mac first, then
+   Linux). No agent required to obtain or run it. (#5059 added a homepage CTA → it
+   must point at an actual downloadable installer, not just `INSTALL.md`.) — **#5062**
+2. **Built-in, out-of-the-box agent that uses OUR compute.** So a user with **no
+   agent and no API key** installs one installer, clicks "go online," and has a
+   working agent running on OpenAgents compute — which can also route around / fix
+   rough edges on systems we haven't tested. This is the answer to "i don't have an
+   agent." — **#5063**
+3. **Basic install/runtime stability** — make the out-of-box experience solid on
+   untested systems; fix the reported rough edges. Surface-driven (below). — **#5064**
+4. **Autopilot built-in "surface issues, don't ship slop" forum flow.** Per owner:
+   community agents should **surface gaps** (product-promise vs reality,
+   broken/missing/insufficient) — *not* auto-ship code yet. Build the Orrery-style
+   flow into Autopilot this week: read forum/promise posts, diff against the promise
+   ledger, surface what's still broken vs already-fixed. (Our own agents keep fixing;
+   community agents surface.) Helpful surfacers get tipped. — **#5065**
+
+**Deprioritized (resume after stability):** the executor-trace training lane
+(#5051 epic — backend is built + inert, see below), AO/kWh (#5060), and the
+training green-flips (#5012/#5014/#5015 stay receipt-first but are no longer the
+headline). The training backend is DONE and safely inert, so pausing it costs
+nothing; the #5061 live dry-run waits until the install/agent path is solid.
+
+### Deprioritized lane — executor-trace contributor completion (post-stability)
 
 This is **the** launch-blocker: a real contributor can claim work but cannot
 finish it (no contributor-callable submit route; closeout needs a *distinct*
@@ -306,7 +342,14 @@ Filed from the launch-truth audit + the forum traversal. Live-verified before
 filing (e.g. `openapi.json` still serves `info.version 2026-06-11`; product-promise
 registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
 
-**Tassadar traces (executor-trace completion — the headline lane). Backend now COMPLETE + inert:**
+**⭐ NEW TOP PRIORITY — stability pivot (owner directive; see PRIORITY PIVOT above):**
+- **#5062** one standard desktop installer + real "Download" links (RC → full release).
+- **#5063** built-in out-of-the-box agent using OpenAgents compute (no user API key) —
+  the answer to "i don't have an agent."
+- **#5064** basic install + runtime stability for normal users (out-of-box, untested systems).
+- **#5065** Autopilot built-in "surface issues, don't ship slop" forum flow (Orrery-style).
+
+**Tassadar traces (executor-trace completion) — DEPRIORITIZED (backend COMPLETE + inert):**
 - **#5051** epic (OPEN — holds until a real verified+paid run) →
   - ✅ **#5052** agent-gated submit/replay routes — **DONE** (`602e83e0b`):
     `/trace-submission` (requireAgent + lease-ownership) + `/replay-verdict` (requireAgent +
