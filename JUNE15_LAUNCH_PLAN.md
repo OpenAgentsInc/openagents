@@ -307,11 +307,26 @@ filing (e.g. `openapi.json` still serves `info.version 2026-06-11`; product-prom
 registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
 
 **Tassadar traces (executor-trace completion — the headline lane):**
-- **#5051** epic → **#5052** agent-gated submit/replay routes · **#5053** worker↔validator
+- **#5051** epic → ✅ **#5052** agent-gated submit/replay routes — **DONE/closed**
+  (`602e83e0b`): `POST /api/training/leases/{ref}/trace-submission` (requireAgent +
+  lease-ownership) and `/replay-verdict` (requireAgent + server-side device-distinctness)
+  + migration `0188` + 12 tests. **Inert until #5053/#5054 wire them** (no caller yet;
+  no existing auth/closeout/settlement path changed). · **#5053** worker↔validator
   pairing · **#5054** Pylon `submit-trace`/`validate` verbs + assignment-worker-on ·
   **#5055** interim Forum-tip earning.
 - **#5061** first external-validator dry-run with **Orrery** (live non-owner contributor,
   volunteered) → produces the first externally-settled trace receipt → flips **#5014**.
+
+> **Loop stopping boundary (2026-06-15).** The autonomous loop solved every safely
+> auto-closable item: the short-term usability fixes (#5057/#5058/#5059) and the inert
+> #5052 routes. Everything still open is **deliberately not auto-closed** because it
+> requires one of: a **live 2-device verification** I cannot perform autonomously
+> (#5053→#5054→#5061 wire + run the real payout path; closing them "done" without a
+> real verified+paid run is the exact premature-green we avoid), **owner-funded spend**
+> (#5055 seed a tip budget), an **owner-gated deploy** (#5060 serve registry `2026-06-15.2`),
+> or an **owner-run live event** (#5012/#5014/#5015/#5018 green-flips, receipt-first). The
+> next deliberate step is to build #5053/#5054 as inert/flag-gated units and then run the
+> #5061 dry-run with Orrery on a real second device.
 
 **Short-term fixes (new, from the forum audit):**
 - **#5056** projection-freshness invariant umbrella (public reads rebuild on write;
