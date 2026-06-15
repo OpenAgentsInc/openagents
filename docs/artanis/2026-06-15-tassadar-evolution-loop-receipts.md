@@ -4,9 +4,8 @@ Date: 2026-06-15
 
 This note tracks the receipt-bearing surfaces for the
 `artanis.tassadar_evolution_loop.v1` green path. The promise stays yellow until
-the live blockers are cleared receipt-first:
+the remaining live blocker is cleared receipt-first:
 
-- `blocker.product_promises.artanis_unattended_tick_streak_missing`
 - `blocker.product_promises.tassadar_distillation_dataset_receipt_missing`
 
 ## #5029: Tetrahedron-Closed Executor Ticks
@@ -24,9 +23,10 @@ The receipt kind is `artanis_tetrahedron_closed_tick`. It is operational
 evidence only: it does not claim payout settlement, trained-model capability, or
 ungated Artanis authority. Spend and publication remain approval-gated.
 
-This machinery makes repeated closed ticks visible without fabricating the
-sustained evidence. #5029 can close only when multiple real closed ticks appear
-in the monitor from live assignment and replay rows.
+Live status: #5029 closed on 2026-06-15 after ten Artanis admin assignments
+(`assignment.artanis_admin.20260615080510` through
+`assignment.artanis_admin.20260615081910`) projected as `closed_verified` from
+live dispatch, Pylon closeout, accepted-work, and exact-replay verdict rows.
 
 ## #5030: Unattended Ten-Tick Streak Gate
 
@@ -56,11 +56,30 @@ unattended cron span can satisfy the streak gate. The budget still applies only
 to `unpaid_smoke` executor-trace assignments; spend, publication, training
 launch, payout, and settlement remain separately approval-gated.
 
-## Remaining Gates
+Live status: #5030 closed on 2026-06-15 after the public monitor projected
+`currentConsecutiveClosedTicks: 10`, `longestConsecutiveClosedTicks: 10`,
+`blockerRefs: []`, and
+`receiptRef: receipt.public.artanis.unattended_tick_streak.71929a5d-fa68-41f1-bb9f-51f67abd3456.x10`.
+D1 verification showed all ten 2026-06-15 Artanis admin assignments in the run
+as `accepted_work` with `outcome=verified`, `accept_state=accepted`, and trace
+digest prefix `f2995c4e3c959b42`.
 
-#5030 remains gated on live evidence: the public monitor must show at least ten
-consecutive real closed ticks from a healthy online Pylon fleet. Fixture data
-or source edits must not replace that live receipt trail.
+## #5031: Public Tick Monitor Hardening
+
+`GET /api/public/artanis/admin-ticks` is a read-only monitor. It rebuilds
+`live_at_read` from persisted transition rows and declares the transition set:
+
+- `artanis_admin_tick_decision_recorded`;
+- `pylon_assignment_closeout_submitted`;
+- `artanis_closeout_verdict_recorded`.
+
+The monitor projects only bounded public-safe fields: reason strings are
+truncated and redaction-scanned, raw mind output is not exposed, and closed tick
+receipts run all refs through the public scanner. Tests cover state counts,
+bounded limits, redaction of secret-shaped reasons, `live_at_read` staleness,
+closed tick receipts, interrupted streaks, and the satisfied ten-tick receipt.
+
+## Remaining Gates
 
 #5032 requires the first `dataset_curation` receipt converting accepted,
 replay-verified traces into a curated distillation dataset artifact. The
