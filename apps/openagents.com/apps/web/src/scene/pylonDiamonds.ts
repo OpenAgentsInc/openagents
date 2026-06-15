@@ -8,17 +8,15 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 // that package rather than being copied into this repo.
 //
 // The look mirrors the Moksha diamonds: each diamond is rendered with a
-// two-pass backface + refraction shader so the background "Pylon" wordmark
-// refracts through the glass. The scene is isolated and ambient: two diamonds
-// stacked flat-face-to-flat-face in the middle, rotating slowly in a single
-// direction, over white text on a dark field.
+// two-pass backface + refraction shader so the environment refracts through
+// the glass. The scene is isolated and ambient: two small diamonds spaced
+// apart, bridged by a translucent white band, rotating slowly in a single
+// direction on a dark field.
 
 export type PylonDiamondsOptions = Readonly<{
   backgroundColor?: number
   pixelRatio?: number
   rotationSpeed?: number
-  text?: string
-  textColor?: string
 }>
 
 export type PylonDiamondsHandle = Readonly<{
@@ -31,21 +29,20 @@ const DEFAULTS = {
   pixelRatio: 2,
   // radians per millisecond; deliberately slow and ambient
   rotationSpeed: 0.00018,
-  text: 'Pylon',
-  textColor: '#ffffff',
 } as const
 
 // Fixed world height the orthographic camera frames; world width follows the
 // host aspect ratio so the scene never distorts on resize.
 const WORLD_HEIGHT = 6
 // Vertical world height each diamond is normalized to.
-const DIAMOND_HEIGHT = 2.2
-// Half the distance between the two diamond centers. The diamonds sit a bit
-// apart with a clear gap between their flat faces, bridged by a golden band
+const DIAMOND_HEIGHT = 1.1
+// Half the distance between the two diamond centers. The diamonds sit apart
+// with a clear gap between their flat faces, bridged by a translucent band
 // (Starcraft-Pylon flavored).
 const STACK_GAP = 1.5
-// Golden connecting band sitting in the gap between the two diamonds.
-const BAND_COLOR = 0xe4b24a
+// Translucent white connecting band sitting in the gap between the diamonds.
+const BAND_COLOR = 0xffffff
+const BAND_OPACITY = 0.35
 const BAND_RADIUS = 0.46
 const BAND_HEIGHT = 0.5
 
@@ -113,49 +110,14 @@ const hostSize = (element: HTMLElement): { height: number; width: number } => {
   return { height, width }
 }
 
-const makeTextTexture = (input: {
-  color: string
-  text: string
-}): { aspect: number; texture: Three.CanvasTexture } => {
-  const canvas = document.createElement('canvas')
-  const context = canvas.getContext('2d')
-  const fontSize = 320
-  const padding = fontSize * 0.4
-  const font = `600 ${fontSize}px Inter, ui-sans-serif, system-ui, sans-serif`
-
-  let width = 1024
-  if (context !== null) {
-    context.font = font
-    width = Math.ceil(context.measureText(input.text).width) + padding * 2
-  }
-  const height = Math.ceil(fontSize * 1.4)
-  canvas.width = Math.max(2, width)
-  canvas.height = Math.max(2, height)
-
-  if (context !== null) {
-    context.clearRect(0, 0, canvas.width, canvas.height)
-    context.font = font
-    context.fillStyle = input.color
-    context.textAlign = 'center'
-    context.textBaseline = 'middle'
-    context.fillText(input.text, canvas.width / 2, canvas.height / 2)
-  }
-
-  const texture = new Three.CanvasTexture(canvas)
-  texture.colorSpace = Three.SRGBColorSpace
-  texture.minFilter = Three.LinearFilter
-  return { aspect: canvas.width / canvas.height, texture }
-}
-
 const firstMeshGeometry = (
   root: Three.Object3D,
 ): Three.BufferGeometry | null => {
   let found: Three.BufferGeometry | null = null
   root.traverse(child => {
     if (found !== null) return
-    const mesh = child as Three.Object3D & { geometry?: Three.BufferGeometry }
-    if (mesh.geometry !== undefined) {
-      found = mesh.geometry.clone()
+    if (child instanceof Three.Mesh) {
+      found = child.geometry.clone()
     }
   })
   if (found === null) return null
@@ -210,25 +172,10 @@ export const mountPylonDiamonds = (
   camera.position.set(0, 0, 50)
   camera.lookAt(0, 0, 0)
 
-  // Background "Pylon" wordmark on layer 0 (the refracted environment).
-  const { aspect: textAspect, texture: textTexture } = makeTextTexture({
-    color: resolved.textColor,
-    text: resolved.text,
-  })
-  const textMaterial = new Three.MeshBasicMaterial({
-    depthWrite: false,
-    map: textTexture,
-    transparent: true,
-  })
-  const textMesh = new Three.Mesh(new Three.PlaneGeometry(1, 1), textMaterial)
-  textMesh.position.set(0, 0, -2)
-  textMesh.layers.set(0)
-  scene.add(textMesh)
-
-  // Golden band bridging the gap between the two diamonds. Lives on layer 0 so
-  // it sits in the environment and refracts through the diamonds like the
-  // wordmark. Lit with a couple of lights for a metallic sheen (the diamond
-  // and text materials are unlit shaders, so the lights only touch the band).
+  // Translucent white band bridging the gap between the two diamonds. Lives on
+  // layer 0 so it sits in the environment and refracts through the diamonds.
+  // Lit with a couple of lights for a soft sheen (the diamond materials are
+  // unlit shaders, so the lights only touch the band).
   const bandGeometry = new Three.CylinderGeometry(
     BAND_RADIUS,
     BAND_RADIUS,
@@ -239,10 +186,11 @@ export const mountPylonDiamonds = (
   )
   const bandMaterial = new Three.MeshStandardMaterial({
     color: BAND_COLOR,
-    emissive: new Three.Color(BAND_COLOR).multiplyScalar(0.18),
-    metalness: 0.95,
-    roughness: 0.28,
+    metalness: 0.0,
+    opacity: BAND_OPACITY,
+    roughness: 0.5,
     side: Three.DoubleSide,
+    transparent: true,
   })
   const bandMesh = new Three.Mesh(bandGeometry, bandMaterial)
   bandMesh.position.set(0, 0, 0)
@@ -351,10 +299,6 @@ export const mountPylonDiamonds = (
     if (resolution instanceof Three.Vector2) {
       resolution.set(fbo.width, fbo.height)
     }
-
-    // Size the wordmark relative to the framed world.
-    const textWidth = Math.min(worldWidth * 0.62, WORLD_HEIGHT * 1.6)
-    textMesh.scale.set(textWidth, textWidth / textAspect, 1)
   }
 
   let disposed = false
@@ -427,9 +371,6 @@ export const mountPylonDiamonds = (
     fallbackGeometry.dispose()
     backfaceMaterial.dispose()
     refractionMaterial.dispose()
-    textMesh.geometry.dispose()
-    textMaterial.dispose()
-    textTexture.dispose()
     bandGeometry.dispose()
     bandMaterial.dispose()
     envFbo.dispose()
