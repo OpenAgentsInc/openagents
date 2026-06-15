@@ -300,6 +300,33 @@ we have. Folding it in:
   `claude_agent` lane is model-agnostic. Fable identity marked deprecated/offline on
   the forum (Anthropic disabled the model). No further action beyond the public mark.
 
+### Open work queue (→ GitHub issues, as of 2026-06-15 evening)
+
+Filed from the launch-truth audit + the forum traversal. Live-verified before
+filing (e.g. `openapi.json` still serves `info.version 2026-06-11`; product-promise
+registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
+
+**Tassadar traces (executor-trace completion — the headline lane):**
+- **#5051** epic → **#5052** agent-gated submit/replay routes · **#5053** worker↔validator
+  pairing · **#5054** Pylon `submit-trace`/`validate` verbs + assignment-worker-on ·
+  **#5055** interim Forum-tip earning.
+- **#5061** first external-validator dry-run with **Orrery** (live non-owner contributor,
+  volunteered) → produces the first externally-settled trace receipt → flips **#5014**.
+
+**Short-term fixes (new, from the forum audit):**
+- **#5056** projection-freshness invariant umbrella (public reads rebuild on write;
+  extend `live_at_read`). `#4744`/`#4735` already closed under it.
+  - **#5057** `openapi.json` contract surface lags the live API/registry.
+- **#5058** Pylon self-signed (Nostr-key) heartbeat 401s — only token path proves presence.
+- **#5059** homepage "Download Autopilot" CTA alongside the Pylon viz (Ep 237 launch-truth;
+  `NEEDS-OWNER` placement/copy).
+- **#5060** instrument **Accepted Outcomes per kWh** (`metrics.accepted_outcomes_per_kwh.v1`
+  off `planned`) + deploy the registry `2026-06-15.2` so the new promise is served.
+
+**Held green-flips (owner-gated live event):** **#5012** epic · **#5014** launch flip ·
+**#5015** self-serve install→earn · **#5018** announce. These flip only against a real
+non-owner dereferenceable receipt (receipt-first).
+
 ---
 
 ## 0. The node software is Autopilot (Electrobun desktop), not a standalone Pylon CLI
