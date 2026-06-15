@@ -158,16 +158,6 @@ describe('auth bootstrap flags', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  test('does not request the auth session on the live Pylon preview route', async () => {
-    window.history.replaceState({}, '', '/live')
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
-
-    const loadedFlags = await Effect.runPromise(flags)
-
-    expect(loadedFlags.maybeAuth).toEqual(Option.none())
-    expect(fetchSpy).not.toHaveBeenCalled()
-  })
-
   test('requests the auth session on application routes', async () => {
     window.history.replaceState({}, '', '/teams/openagents-core-team/chat')
     const fetchSpy = vi
@@ -317,33 +307,7 @@ describe('authenticated startup routing', () => {
       Scene.expect(Scene.selector('[data-route="pylon"]')).toExist(),
       Scene.expect(Scene.selector('oa-pylon')).toExist(),
       Scene.expect(Scene.selector('oa-pylon-launch-gate')).toExist(),
-      Scene.expect(
-        Scene.selector('[data-cta="download-autopilot"]'),
-      ).toExist(),
-    )
-  })
-
-  test('renders the live Pylon preview route through the top-level view', () => {
-    const [model, commands] = init(
-      Flags.make({ maybeAuth: Option.none() }),
-      appUrl('/live'),
-    )
-
-    expect(model).toMatchObject({
-      _tag: 'LoggedOut',
-      route: { _tag: 'Live' },
-    })
-    expect(commands).toHaveLength(0)
-
-    Scene.scene(
-      { update, view },
-      Scene.with(model),
-      Scene.expect(Scene.selector('[data-route="live"]')).toExist(),
-      Scene.expect(Scene.selector('oa-pylon')).toExist(),
-      Scene.expect(Scene.selector('oa-pylon-bezier-network')).toExist(),
-      Scene.expect(Scene.selector('oa-pylon-stats')).toExist(),
-      Scene.expect(Scene.selector('oa-live-copy-instructions')).toExist(),
-      Scene.expect(Scene.selector('oa-pylon-countdown')).not.toExist(),
+      Scene.expect(Scene.selector('[data-cta="download-autopilot"]')).toExist(),
     )
   })
 

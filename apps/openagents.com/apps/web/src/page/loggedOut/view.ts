@@ -14,7 +14,6 @@ import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import { Message } from './message'
 import { Model } from './model'
 import * as Home from './page/home'
-import * as Live from './page/live'
 import * as Moksha from './page/moksha'
 import * as Moksha2 from './page/moksha2'
 import * as Onboarding from './page/onboarding'
@@ -49,12 +48,6 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
   if (model.route._tag === 'Pylon') {
     return Ui.pageShell<Message>([
       h.keyed('div')(model.route._tag, [], [Pylon.view()]),
-    ])
-  }
-
-  if (model.route._tag === 'Live') {
-    return Ui.pageShell<Message>([
-      h.keyed('div')(model.route._tag, [], [Live.view()]),
     ])
   }
 

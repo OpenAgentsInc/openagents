@@ -354,7 +354,6 @@ const title = (model: Model): string =>
         M.tag('BlogPost', ({ slug }) => `${blogTitle(slug)} - OpenAgents`),
         M.tag('PublicAgent', ({ agentRef }) => `${agentRef} - OpenAgents`),
         M.tag('Share', () => 'Shared Workroom - OpenAgents'),
-        M.tag('Live', () => 'OpenAgents Live'),
         M.orElse(() => 'OpenAgents'),
       )
 
@@ -412,17 +411,6 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
     return h.submodel({
       slotId: 'logged-out-pylon',
-      model,
-      view: LoggedOut.view,
-      toParentMessage: message => GotLoggedOutMessage({ message }),
-    })
-  }
-
-  if (model._tag === 'LoggedOut' && model.route._tag === 'Live') {
-    const h = html<Message>()
-
-    return h.submodel({
-      slotId: 'logged-out-live',
       model,
       view: LoggedOut.view,
       toParentMessage: message => GotLoggedOutMessage({ message }),

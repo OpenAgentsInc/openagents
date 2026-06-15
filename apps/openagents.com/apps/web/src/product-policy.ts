@@ -161,7 +161,6 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'Moksha' &&
   route._tag !== 'Moksha2' &&
   route._tag !== 'Pylon' &&
-  route._tag !== 'Live' &&
   route._tag !== 'Demo' &&
   route._tag !== 'DemoOrder' &&
   route._tag !== 'DemoThread' &&
@@ -215,7 +214,6 @@ export const browserRouteProductIntents = {
   ForumTopic: 'public.forum.topic',
   Home: 'public.home',
   Invite: 'access.invite',
-  Live: 'public.live',
   NotFound: 'navigation.not-found',
   Onboarding: 'onboarding.flow',
   Order: 'customer.order.active',

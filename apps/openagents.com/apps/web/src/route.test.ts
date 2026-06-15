@@ -23,7 +23,6 @@ import {
   ForumRoute,
   ForumTopicRoute,
   ImagesRoute,
-  LiveRoute,
   Moksha2Route,
   MulletRoute,
   NotFoundRoute,
@@ -126,8 +125,10 @@ describe('app route parser', () => {
     expect(urlToAppRoute(appUrl('/pylon'))).toEqual(PylonRoute())
   })
 
-  test('accepts the live Pylon launch preview route', () => {
-    expect(urlToAppRoute(appUrl('/live'))).toEqual(LiveRoute())
+  test('does not keep the retired live Pylon launch preview route', () => {
+    expect(urlToAppRoute(appUrl('/live'))).toEqual(
+      NotFoundRoute({ path: '/live' }),
+    )
   })
 
   test('accepts public stats routes', () => {
