@@ -22,6 +22,7 @@ import {
 } from "@openagentsinc/autopilot-ui"
 import { trainingRunView } from "@openagentsinc/three-effect/foldkit"
 import { projectPylonNetworkScene } from "../shared/pylon-network-scene"
+import { pylonDiamondsView } from "./pylon-diamonds-element"
 import { pylonNetworkVisualizationOptions } from "./pylon-network-visualization"
 import {
   defaultTrainingRunNodes,
@@ -3533,11 +3534,21 @@ const networkStatNumber = (value: number): string => {
   return safe.toLocaleString("en-US")
 }
 
-// A single overlaid stat. The value carries `stat-roll` so the homepage
-// slot-text digit-roll can animate it between polls (§5).
+const networkRollText = (value: string): Html =>
+  h.span([cls("stat-roll slot-text"), h.Key(value)], [
+    ...Array.from(value).map((char, index) =>
+      h.span([cls("char-slot"), h.Key(`${index}-${char}`)], [
+        h.span([cls("char-sizer")], [char]),
+        h.span([cls("char-face")], [char]),
+      ]),
+    ),
+  ])
+
+// A single overlaid stat. Values carry the homepage slot-text structure so
+// updating numbers animate with the same digit-roll visual language (§5).
 const networkStat = (label: string, value: string, hero = false): Html =>
   h.div([cls(hero ? "network-stat network-stat-hero" : "network-stat")], [
-    h.span([cls("network-stat-value stat-roll")], [value]),
+    h.span([cls("network-stat-value")], [networkRollText(value)]),
     h.span([cls("network-stat-label")], [label]),
   ])
 
@@ -3556,12 +3567,19 @@ const networkPane = (model: Model): Html => {
   return h.div([cls("network-page")], [
     h.div([cls("network-scene")], [
       trainingRunView<Message>([cls("three-effect-network")], options),
+      pylonDiamondsView<Message>(
+        [
+          cls("network-pylon-diamonds"),
+          h.Style(`--network-activity:${scene.activityIntensity.toFixed(3)}`),
+        ],
+        scene.activityIntensity,
+      ),
     ]),
     h.div([cls("network-overlay")], [
       h.section([cls("network-title")], [
         h.span([cls("network-eyebrow")], [activityLabel]),
         h.h1([cls("network-headline")], [
-          h.span([cls("stat-roll")], [networkStatNumber(scene.onlineNow)]),
+          networkRollText(networkStatNumber(scene.onlineNow)),
           " pylons online",
         ]),
         h.p([cls("network-subhead")], [
@@ -3584,9 +3602,25 @@ const networkPane = (model: Model): Html => {
       ]),
       h.section([cls("network-stats")], [
         networkStat("working now", networkStatNumber(scene.sessionsOnlineNow), true),
+        networkStat("sellable online", networkStatNumber(scene.sellableOnlineNow)),
+        networkStat("wallet ready", networkStatNumber(scene.walletReadyNow)),
+        networkStat("assignment ready", networkStatNumber(scene.assignmentReadyNow)),
+        networkStat("seen · 24h", networkStatNumber(scene.seen24h)),
+        networkStat("registered", networkStatNumber(scene.registeredTotal)),
         networkStat("sats settled · 24h", networkStatNumber(scene.satsSettled24h)),
         networkStat("sats settled · total", networkStatNumber(scene.satsSettledTotal)),
-        networkStat("training contributors", networkStatNumber(scene.trainingProgressContributors)),
+        networkStat(
+          "training assigned",
+          networkStatNumber(scene.trainingAssignedContributors),
+        ),
+        networkStat(
+          "training accepted",
+          networkStatNumber(scene.trainingAcceptedContributors),
+        ),
+        networkStat(
+          "training progress",
+          networkStatNumber(scene.trainingProgressContributors),
+        ),
       ]),
     ]),
   ])

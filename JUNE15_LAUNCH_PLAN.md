@@ -155,8 +155,10 @@ flip green only against a real independent contributor's dereferenceable receipt
 
 ### Open issues
 - **Held (owner-gated live event):** #5012, #5014, #5015, #5018.
-- **Fidelity follow-up:** #5049 (Autopilot home — composite the exact pylonDiamonds
-  shader as the center; core already shipped in the notarized RC).
+- **Closed fidelity follow-up:** #5049 (Autopilot home — desktop now composites
+  the exact homepage `pylonDiamonds` shader as the center element, forwards
+  `activityIntensity` into `setActivity`, and renders the full public-stat
+  overlay with scoped slot-text digit-roll).
 - **Server fix in progress:** the oa-updates feed deploy (see autoupdate above).
 
 **Done + merged + (where applicable) deployed:**
@@ -423,6 +425,11 @@ registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
   oldest-first as the default, add `sortDir=asc|desc` plus phpBB-compatible
   `sd=a|d`, and the browser topic view exposes **Oldest first / Newest first**
   links without changing the topic-list recency contract.
+- ✅ **#5049** Autopilot fullscreen pylon-network home fidelity — **DONE/closed**:
+  desktop composites the shared homepage `pylonDiamonds` shader over the
+  three-effect network graph, activity drives `lightPulse` through the existing
+  scene projection, every listed public stat is shown, and overlay numbers use
+  the scoped slot-text digit-roll structure.
 - **#5060** instrument **Accepted Outcomes per kWh** (`metrics.accepted_outcomes_per_kwh.v1`
   off `planned`) + deploy the registry `2026-06-15.2` so the new promise is served.
   *(Larger feature + owner-gated deploy — not a same-turn usability fix.)*

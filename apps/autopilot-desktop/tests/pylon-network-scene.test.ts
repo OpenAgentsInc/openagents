@@ -106,7 +106,15 @@ describe("projectPylonNetworkScene", () => {
     const scene = projectPylonNetworkScene(
       live({
         pylonsOnlineNow: 3,
+        sellablePylonsOnlineNow: 2,
+        pylonsWalletReadyNow: 4,
+        pylonsAssignmentReadyNow: 1,
+        pylonsSeen24h: 9,
+        pylonsRegisteredTotal: 12,
         pylonSessionsOnlineNow: 2,
+        trainingAssignedContributors: 5,
+        trainingAcceptedContributors: 4,
+        trainingModelProgressContributors: 3,
         nip90MarketSettlementStats: {
           compute: { satsSettled24h: 100, satsSettledTotal: 1000 },
           labor: { satsSettled24h: 50, satsSettledTotal: 500 },
@@ -117,5 +125,13 @@ describe("projectPylonNetworkScene", () => {
     expect(scene.activityIntensity).toBeGreaterThan(0)
     expect(scene.satsSettled24h).toBe(150)
     expect(scene.satsSettledTotal).toBe(1500)
+    expect(scene.sellableOnlineNow).toBe(2)
+    expect(scene.walletReadyNow).toBe(4)
+    expect(scene.assignmentReadyNow).toBe(1)
+    expect(scene.seen24h).toBe(9)
+    expect(scene.registeredTotal).toBe(12)
+    expect(scene.trainingAssignedContributors).toBe(5)
+    expect(scene.trainingAcceptedContributors).toBe(4)
+    expect(scene.trainingProgressContributors).toBe(3)
   })
 })

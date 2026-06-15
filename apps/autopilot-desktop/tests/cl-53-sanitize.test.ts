@@ -216,7 +216,11 @@ describe("CL-53 sanitizeTree", () => {
   test("network home is immersive: the scene canvas, no sidebar (#5049)", () => {
     const document = view(initialModel) // default pane is "network"
     expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)
+    expect(treeContainsSelector(document.body, "oa-desktop-pylon-diamonds")).toBe(true)
     expect(treeContainsClass(document.body, "network-overlay")).toBe(true)
+    expect(treeContainsClass(document.body, "slot-text")).toBe(true)
+    expect(treeContainsText(document.body, "sellable online")).toBe(true)
+    expect(treeContainsText(document.body, "training accepted")).toBe(true)
     expect(treeContainsClass(document.body, "app-shell-network")).toBe(true)
     // immersive: no sidebar chrome on the home
     expect(treeContainsClass(document.body, "sidebar")).toBe(false)

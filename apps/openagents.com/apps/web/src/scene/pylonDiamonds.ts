@@ -21,6 +21,9 @@ export type PylonDiamondsOptions = Readonly<{
   backgroundColor?: number
   pixelRatio?: number
   rotationSpeed?: number
+  // Used by the Autopilot Desktop network home to composite the exact homepage
+  // pylon shader over the existing three-effect network graph.
+  transparentBackground?: boolean
 }>
 
 export type PylonDiamondsHandle = Readonly<{
@@ -198,6 +201,7 @@ export const mountPylonDiamonds = (
   options: PylonDiamondsOptions = {},
 ): PylonDiamondsHandle => {
   const resolved = { ...DEFAULTS, ...options }
+  const transparentBackground = resolved.transparentBackground === true
 
   // #5050: live activity level [0,1] driving the glow; updated via setActivity.
   let activityIntensity = 0
@@ -205,9 +209,9 @@ export const mountPylonDiamonds = (
   element.replaceChildren()
   element.style.position = 'relative'
   element.style.overflow = 'hidden'
-  element.style.background = `#${resolved.backgroundColor
-    .toString(16)
-    .padStart(6, '0')}`
+  element.style.background = transparentBackground
+    ? 'transparent'
+    : `#${resolved.backgroundColor.toString(16).padStart(6, '0')}`
 
   const canvas = document.createElement('canvas')
   canvas.style.display = 'block'
@@ -218,12 +222,12 @@ export const mountPylonDiamonds = (
   element.append(canvas)
 
   const renderer = new Three.WebGLRenderer({
-    alpha: false,
+    alpha: transparentBackground,
     antialias: true,
     canvas,
   })
   renderer.outputColorSpace = Three.SRGBColorSpace
-  renderer.setClearColor(resolved.backgroundColor, 1)
+  renderer.setClearColor(resolved.backgroundColor, transparentBackground ? 0 : 1)
   renderer.autoClear = false
 
   const scene = new Three.Scene()

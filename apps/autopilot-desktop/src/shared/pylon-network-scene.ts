@@ -65,8 +65,15 @@ export type PylonNetworkScene = {
   readonly dormant: boolean
   readonly onlineNow: number
   readonly sessionsOnlineNow: number
+  readonly sellableOnlineNow: number
+  readonly walletReadyNow: number
+  readonly assignmentReadyNow: number
+  readonly seen24h: number
+  readonly registeredTotal: number
   readonly satsSettled24h: number
   readonly satsSettledTotal: number
+  readonly trainingAssignedContributors: number
+  readonly trainingAcceptedContributors: number
   readonly trainingProgressContributors: number
   readonly nodes: ReadonlyArray<PylonNetworkNode>
   readonly asOfLabel: string | null
@@ -107,9 +114,9 @@ const sumNip90Sats = (
 }
 
 export function computeActivityIntensity(snapshot: PylonStatsSnapshot): number {
-  const sessions = saturate(snapshot.pylonSessionsOnlineNow, ACTIVITY.sessions.k)
+  const sessions = saturate(n(snapshot.pylonSessionsOnlineNow), ACTIVITY.sessions.k)
   const nip90 = saturate(sumNip90Jobs24h(snapshot), ACTIVITY.nip90.k)
-  const training = saturate(snapshot.trainingModelProgressContributors, ACTIVITY.training.k)
+  const training = saturate(n(snapshot.trainingModelProgressContributors), ACTIVITY.training.k)
   return clamp01(
     sessions * ACTIVITY.sessions.weight +
       nip90 * ACTIVITY.nip90.weight +
@@ -118,12 +125,7 @@ export function computeActivityIntensity(snapshot: PylonStatsSnapshot): number {
 }
 
 const recentNodeTone = (pylon: RecentPylon): PylonNodeTone => {
-  const working =
-    pylon.assignmentReadyNow === true ||
-    (typeof pylon.runtimeState === "string" &&
-      ["assignment-ready", "online", "degraded"].includes(pylon.runtimeState) &&
-      pylon.assignmentReadyNow === true)
-  if (working || pylon.assignmentReadyNow === true) return "working"
+  if (pylon.assignmentReadyNow === true) return "working"
   if (pylon.onlineNow === true) return "online"
   return "offline"
 }
@@ -181,8 +183,15 @@ export function projectPylonNetworkScene(
       dormant: true,
       onlineNow: 0,
       sessionsOnlineNow: 0,
+      sellableOnlineNow: 0,
+      walletReadyNow: 0,
+      assignmentReadyNow: 0,
+      seen24h: 0,
+      registeredTotal: 0,
       satsSettled24h: 0,
       satsSettledTotal: 0,
+      trainingAssignedContributors: 0,
+      trainingAcceptedContributors: 0,
       trainingProgressContributors: 0,
       nodes: [],
       asOfLabel: snapshot?.asOfLabel ?? null,
@@ -194,8 +203,15 @@ export function projectPylonNetworkScene(
     dormant: onlineNow === 0,
     onlineNow,
     sessionsOnlineNow: n(snapshot.pylonSessionsOnlineNow),
+    sellableOnlineNow: n(snapshot.sellablePylonsOnlineNow),
+    walletReadyNow: n(snapshot.pylonsWalletReadyNow),
+    assignmentReadyNow: n(snapshot.pylonsAssignmentReadyNow),
+    seen24h: n(snapshot.pylonsSeen24h),
+    registeredTotal: n(snapshot.pylonsRegisteredTotal),
     satsSettled24h: sumNip90Sats(snapshot, "satsSettled24h"),
     satsSettledTotal: sumNip90Sats(snapshot, "satsSettledTotal"),
+    trainingAssignedContributors: n(snapshot.trainingAssignedContributors),
+    trainingAcceptedContributors: n(snapshot.trainingAcceptedContributors),
     trainingProgressContributors: n(snapshot.trainingModelProgressContributors),
     nodes: buildNetworkNodes(snapshot),
     asOfLabel: snapshot.asOfLabel ?? null,

@@ -117,8 +117,10 @@ center pylon stays clear:
 digit-roll CSS from `pylonCountdownElement.ts` (scoped `.slot-text` / `.char-slot`
 / `.char-face` with a transform-based roll). When a counter changes between polls
 the digits roll to the new value; this is the shared "numbers updating" language
-across the homepage and Autopilot. Port the slot-text CSS into the overlay's
-scope (shadow root or scoped class) so it doesn't leak.
+across the homepage and Autopilot. Autopilot Desktop now scopes that structure in
+`apps/autopilot-desktop/src/ui/styles.css` and renders slot characters from
+`apps/autopilot-desktop/src/ui/view.ts`, so the home overlay no longer uses a
+plain tabular-number placeholder.
 
 ## 6. Empty / unavailable states
 
@@ -148,8 +150,11 @@ shows what the gate permits, and update §5 here.
 
 - **Glow ramp / activity weights:** §2 mapping → the scene module's
   `activityIntensity` computation + the `pylonDiamonds` `lightPulse` drive
-  (extend `PylonDiamondsHandle` with a `setActivity(intensity)` setter rather
-  than hardcoding the oscillation).
+  (`PylonDiamondsHandle.setActivity(intensity)`). Autopilot Desktop composites
+  the same homepage renderer through
+  `apps/autopilot-desktop/src/ui/pylon-diamonds-element.ts`; the web renderer's
+  transparent-background option exists only so the shader can sit over the
+  three-effect network graph without hiding it.
 - **Node tones / edge flow:** §3 → the pylon-network options builder (analogous
   to `trainingRunVisualizationOptionsFromSnapshot`).
 - **Stat selection / layout:** §5 → the overlay component.

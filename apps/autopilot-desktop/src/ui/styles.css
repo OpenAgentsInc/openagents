@@ -60,6 +60,24 @@ body {
   width: 100%;
   height: 100%;
 }
+.three-effect-network {
+  z-index: 0;
+}
+.network-pylon-diamonds {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: clamp(17rem, 38vmin, 32rem);
+  height: clamp(22rem, 52vmin, 42rem);
+  min-height: 18rem;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  pointer-events: none;
+  opacity: calc(0.72 + (var(--network-activity, 0) * 0.2));
+  filter:
+    drop-shadow(0 0 calc(18px + (var(--network-activity, 0) * 28px)) rgb(41 121 255 / 0.45))
+    drop-shadow(0 0 52px rgb(214 246 255 / 0.12));
+}
 .network-overlay {
   position: absolute;
   inset: 0;
@@ -101,8 +119,9 @@ body {
 .network-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: clamp(1rem, 3vw, 2.5rem);
+  gap: clamp(0.9rem, 2.4vw, 2rem);
   align-items: flex-end;
+  max-width: min(100%, 76rem);
 }
 .network-stat {
   display: flex;
@@ -110,9 +129,12 @@ body {
   gap: 0.15rem;
 }
 .network-stat-value {
-  font-size: clamp(1.25rem, 2.5vw, 2rem);
+  font-size: clamp(1.05rem, 2.1vw, 1.75rem);
   font-weight: 600;
   color: var(--text, #d7d8e5);
+}
+.network-stat-hero .network-stat-value {
+  font-size: clamp(1.25rem, 2.6vw, 2rem);
 }
 .network-stat-hero .network-stat-value {
   color: var(--info, #2979ff);
@@ -123,14 +145,59 @@ body {
   text-transform: uppercase;
   color: var(--text-secondary, #8a8c93);
 }
-/*
- * stat-roll: the "numbers updating" treatment. Tabular figures keep digits from
- * reflowing as values change; a subtle transition softens the swap. The full
- * homepage slot-text digit-roll (pylonCountdownElement) is the fidelity upgrade
- * tracked as a follow-up; this is the structural hook + monospaced numerals.
- */
+/* Homepage slot-text structural CSS, scoped to the desktop overlay. */
 .stat-roll {
+  display: inline-flex;
+  white-space: pre;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
-  transition: color 180ms ease;
+}
+.char-slot {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  justify-content: center;
+  overflow: hidden;
+  overflow-x: visible;
+  overflow-y: clip;
+  line-height: 1.3;
+  vertical-align: bottom;
+}
+.char-slot.is-resizing {
+  overflow-x: clip;
+}
+.char-sizer {
+  visibility: hidden;
+  white-space: pre;
+}
+.char-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: pre;
+  will-change: transform;
+  animation: stat-roll-in 340ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes stat-roll-in {
+  from {
+    opacity: 0.35;
+    transform: translateY(0.72em);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 720px) {
+  .network-pylon-diamonds {
+    width: min(80vw, 24rem);
+    height: min(62vh, 34rem);
+  }
+  .network-stats {
+    max-height: 44vh;
+    overflow: hidden;
+  }
 }
