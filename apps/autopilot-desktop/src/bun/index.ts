@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { BrowserView, BrowserWindow } from "electrobun/bun"
 import { discoverPylonHome } from "./node-home"
+import { type ManagedNode, ensureManagedNode } from "./node-launcher"
 import { createNodeStatePoller } from "./node-state-poll"
 import { createSessionNotifier } from "./notifier"
 import { raiseOsNotification } from "./os-notification"
@@ -327,6 +328,29 @@ const window = new BrowserWindow({
 // raises a native OS notification and updates the in-app notification center.
 const notifier = createSessionNotifier({ raise: raiseOsNotification })
 
+// #5011 (the §0 install seam): adopt an already-running local node, or launch
+// the local Pylon runtime when none is discovered, so a fresh install reaches
+// node-online without a separate setup step. The launched node lands in a
+// `.pylon-local` home that `discoverPylonHome` already scans, so `resolveHome`
+// and the poller below pick it up unchanged. Fire-and-forget: a discover-only
+// (unavailable) result just leaves the app honest-offline until a node appears.
+let managedNode: ManagedNode | null = null
+ensureManagedNode({
+  cwd: process.cwd(),
+  env: Bun.env,
+  controlBaseUrl,
+})
+  .then(node => {
+    managedNode = node
+    console.log(
+      `[autopilot-desktop] local node ${node.mode}` +
+        (node.home ? ` (home: ${node.home})` : ""),
+    )
+  })
+  .catch(error => {
+    console.error("[autopilot-desktop] node launch failed:", error)
+  })
+
 const poller = createNodeStatePoller({
   intervalMs: Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 2000,
   onState(message) {
@@ -349,4 +373,7 @@ window.webview.on("dom-ready", () => {
 
 window.on("close", () => {
   poller.stop()
+  // Stop only a node we launched ourselves; an adopted node we did not start is
+  // left running.
+  managedNode?.stop()
 })
