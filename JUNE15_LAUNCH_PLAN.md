@@ -696,6 +696,62 @@ event + announcement (not code); #5015 builds on the now-merged #5011.
 
 ---
 
+## 12b. Path to v1.0-rc builds (dependency-ordered)
+
+**Goal:** signed, auto-updating **Autopilot v1.0-rc** and **Pylon v1.0-rc**,
+published only to our GCP (`updates.openagents.com`, Cloud Run, project
+`openagentsgemini`), signed by the OpenAgents release key (kid
+`2dbe811d19f67528`, provisioned + GCP-Secret-Manager-backed) and verified
+fail-closed by clients. **RC / canary channel ONLY — no stable/GA until the owner
+says ready.** Epic **[#5045](https://github.com/OpenAgentsInc/openagents/issues/5045)**;
+plans: `docs/ota/2026-06-15-ota-autoupdate-plan.md`,
+`apps/oa-updates/docs/release-signing-runbook.md`.
+
+Complete **in this order** (each phase gates the next):
+
+1. **Signing & feed infra**
+   - ✅ release-signing key provisioned + GCP-SM backup + signer/verifier
+     (part of **[#5044](https://github.com/OpenAgentsInc/openagents/issues/5044)**;
+     done this session).
+   - ⬜ **[#5044](https://github.com/OpenAgentsInc/openagents/issues/5044)** —
+     remainder: sign-on-publish + **pin pubkey + fail-closed verify in clients**;
+     KMS migration.
+   - ⬜ **[#5043](https://github.com/OpenAgentsInc/openagents/issues/5043)** —
+     `oa-updates` serves **signed** `pylon/<channel>/<platform>` + rc-channel
+     feeds (rollout/yank/minVersion).
+2. **Build the artifacts**
+   - ⬜ **[#5041](https://github.com/OpenAgentsInc/openagents/issues/5041)** —
+     Pylon `bun --compile` binary per platform + pipeline.
+   - ⬜ **[#5027](https://github.com/OpenAgentsInc/openagents/issues/5027)** —
+     Autopilot signed+notarized `.app` bundling the node (**signing creds
+     NEEDS-OWNER**).
+3. **Wire default-on auto-update**
+   - ⬜ **[#5042](https://github.com/OpenAgentsInc/openagents/issues/5042)** —
+     Pylon self-updater (verify→atomic-replace→drain/relaunch).
+   - ⬜ **[#5040](https://github.com/OpenAgentsInc/openagents/issues/5040)** —
+     Autopilot Electrobun updater default-on.
+4. **Quality fold-in**
+   - ⬜ **[#5038](https://github.com/OpenAgentsInc/openagents/issues/5038)** —
+     `--json` parser fix into the Pylon rc.
+5. **Produce the RC builds (rc channel)**
+   - ⬜ **[#5046](https://github.com/OpenAgentsInc/openagents/issues/5046)** —
+     Autopilot v1.0-rc (`1.0.0-rc.N`).
+   - ⬜ **[#5047](https://github.com/OpenAgentsInc/openagents/issues/5047)** —
+     Pylon v1.0-rc (`1.0.0-rc.N`).
+
+**Explicitly NOT on the RC-build path** (these are GA / the live launch, owner-gated
+— "until I say we're ready"): **[#5014](https://github.com/OpenAgentsInc/openagents/issues/5014)**
+(live training Go/No-Go flip), **[#5015](https://github.com/OpenAgentsInc/openagents/issues/5015)**
+(self-serve earn green), **[#5018](https://github.com/OpenAgentsInc/openagents/issues/5018)**
+(announcement), **[#5012](https://github.com/OpenAgentsInc/openagents/issues/5012)**
+(crucial-promise green-flip epic). RC builds can ship without flipping the
+training promise green or announcing.
+
+### OTA / provenance epics (cross-cutting, feed the above)
+- **[#5039](https://github.com/OpenAgentsInc/openagents/issues/5039)** — OTA epic
+  (default-on auto-update, one signed feed): children #5040, #5041, #5042, #5043,
+  #5044 + the Psionic-auto-update + native-addon items.
+
 ## 13. Bonus stretch goal — the full distributed-training track
 
 The launch loop (§1–§10) is deliberately the **proof-and-data layer**: public
