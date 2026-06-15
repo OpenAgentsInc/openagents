@@ -591,10 +591,14 @@ event + announcement (not code); #5015 builds on the now-merged #5011.
   launch the node too, smokes, announced==admitted build. **This is the "try a
   release build on mac" endpoint.**
 
-### Pylon: headless, CLI-only, agent-steerable (delete the TUI) — June 15
-- 📋 Epic **[#5033](https://github.com/OpenAgentsInc/openagents/issues/5033)** —
-  strip the OpenTUI dashboard out of Pylon and make it CLI-only and fully
-  agent-steerable (parity with the Autopilot GUI). Audit:
+### Pylon: headless, CLI-only, agent-steerable (delete the TUI) — June 15 — ✅ EPIC DONE
+- ✅ Epic **[#5033](https://github.com/OpenAgentsInc/openagents/issues/5033)** —
+  **CLOSED.** Pylon is now headless/CLI-only and agent-steerable. All children
+  merged: #5034 (TUI deleted), #5035 (CLI parity + `pylon help --json` catalog),
+  #5036 (live AGENTS.md three paths, deployed), #5037 (runtime bundle-able
+  headless — also unblocks #5027). The `pylon.agent_steerable_cli.v1` promise's
+  blockers are cleared; ready for a receipt-first green/yellow flip pending
+  live-node verification of the session/training verbs. Audit:
   [`apps/pylon/docs/2026-06-15-pylon-cli-only-agent-steerable-audit.md`](apps/pylon/docs/2026-06-15-pylon-cli-only-agent-steerable-audit.md).
   Children: ✅ #5034 (delete the TUI — `src/tui` + `@opentui/*` + `dashboard`;
   bare `pylon` now boots headless; `bun test` 1046 pass), ✅ #5035 (CLI parity:
