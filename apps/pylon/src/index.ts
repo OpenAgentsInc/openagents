@@ -9,15 +9,12 @@ import {
 } from "./tassadar-capability"
 import {
   loadClaudeAgentConfig,
-  loadClaudeDevConfig,
   probeClaudeAgentReadiness,
   withClaudeAgentCapability,
 } from "./claude-agent"
 import {
-  loadCodexDevConfig,
   loadCodexAgentConfig,
   probeCodexAgentReadiness,
-  type PylonComposerAdapter,
   withCodexAgentCapability,
 } from "./codex-agent"
 import { withWorkspaceMaterializerCapability } from "./workspace-materializer"
@@ -32,22 +29,17 @@ import {
   readMemories,
   resolveModelAdapter,
 } from "./agent-surface"
-import { Console, Deferred, Effect, PubSub, SubscriptionRef } from "effect"
+import { Console, Deferred, Effect, PubSub } from "effect"
 import { classifyServiceLogLevel, formatLogTimestamp, type PylonLogLevel } from "./node/state"
 import {
-  applyRemoteEvent,
-  applyRemotePanes,
   forkLogPersistence,
   forkNodeServices,
   logMessage,
   makePylonNodeRuntime,
-  publishLogEntries,
   seedLogFeed,
   superviseLoop,
   type PylonNodeRuntime,
 } from "./node/runtime"
-import { runOpencodeStream } from "./opencode-run"
-import { loadKeybindOverrides } from "./node/keybinds"
 import { createFeedLogWriter, readPersistedLogTail } from "./node/log-persist"
 import {
   buildBrokerRegistrationBody,
@@ -56,7 +48,6 @@ import {
 } from "./node/discovery-register"
 import { createIntentQueue } from "./node/intent-intake"
 import { createApprovalQueue } from "./node/approval-queue"
-import { createDeployCloudActions } from "./node/deploy-cloud"
 import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime"
 import { evaluateShipSpendGate } from "./coordinator/ship-spend-gate"
 import {
@@ -77,8 +68,6 @@ import {
 import { createControlSessionActions } from "./node/control-sessions"
 import { resolveCloudControlConfig } from "./cloud-control-client"
 import { makeCloudControlSessionExecutor } from "./openagents-cloud-provider"
-import { runControlClient, sendControlCommand } from "./node/control-client"
-import { loadComposerState, saveComposerState } from "./node/composer-store"
 import { collectPylonContextProjection } from "./context-projection"
 import { collectPylonDevDoctor } from "./dev-doctor"
 import {
@@ -98,15 +87,10 @@ import {
 import {
   rejectCodexLocalDangerForPublicPath,
   runCodexComposerStream,
-  sandboxModeForCodexComposerExecutionMode,
-  type CodexComposerExecutionMode,
 } from "./codex-composer"
 import {
-  claudeComposerLabel,
-  permissionModeForClaudeComposerExecutionMode,
   rejectClaudeLocalDangerForPublicPath,
   runClaudeComposerStream,
-  type ClaudeComposerExecutionMode,
 } from "./claude-composer"
 import { runProbeCli } from "../packages/runtime/src/index"
 import {
@@ -169,33 +153,12 @@ import {
 } from "./work-requester"
 import { hostname } from "node:os"
 
-// Bridge for legacy call sites (OpenCode helpers) that log from plain
-// async code. Set once at dashboard boot, before any service starts.
+// Routes node lifecycle log lines from plain async call sites into the
+// runtime feed once the headless node has booted.
 let nodeRuntime: PylonNodeRuntime | null = null
 // Quiet by default: verbose service chatter is hidden unless --verbose or
 // PYLON_VERBOSE=1 (issue #4743).
 let verboseMode = false
-
-// The dynamically-loaded Solid view module (src/tui/app.tsx). index.ts must
-// never import it statically: the Solid transform plugin has to be active
-// before any .tsx (or solid-js) module loads — see ensureSolidRuntime().
-type DashboardUiModule = typeof import("./tui/app")
-type ComposerBackend = DashboardUiModule["startDashboard"] extends (options: infer Options) => unknown
-  ? Options extends { composerBackend?: infer Backend }
-    ? NonNullable<Backend>
-    : never
-  : never
-type DevActions = DashboardUiModule["startDashboard"] extends (options: infer Options) => unknown
-  ? Options extends { devActions?: infer Actions }
-    ? NonNullable<Actions>
-    : never
-  : never
-type ContextActions = DashboardUiModule["startDashboard"] extends (options: infer Options) => unknown
-  ? Options extends { contextActions?: infer Actions }
-    ? NonNullable<Actions>
-    : never
-  : never
-let dashboardUi: DashboardUiModule | null = null
 
 // Discovery heartbeat: opt-in (OA_DISCOVERY_BROKER), the node POSTs its
 // reachable control address(es) + token to the discovery broker so the mobile
@@ -255,46 +218,9 @@ function logToUi(message: string, level: PylonLogLevel = "verbose") {
 const log = (message: string, level: PylonLogLevel = "verbose") =>
   Effect.sync(() => logToUi(message, level))
 
-// The Solid JSX transform must be registered before src/tui/*.tsx loads.
-// The dashboard path re-execs itself once with --preload pointing at the
-// plugin inside our own dependency tree. This is deliberately NOT a bunfig
-// preload: subcommands (bootstrap/status/wallet/...) must keep working even
-// when the transform cannot load, and bunfig preload failures abort before
-// any of our code runs. Tests still preload via bunfig's [test] section.
-async function ensureSolidRuntime(): Promise<void> {
-  const transformState = (globalThis as Record<symbol, { installed?: boolean } | undefined>)[
-    Symbol.for("opentui.solid.transform")
-  ]
-  if (transformState?.installed) return
-  if (Bun.env.PYLON_SOLID_REEXEC === "1") {
-    throw new Error("Solid transform plugin failed to install after --preload re-exec")
-  }
-  const preloadPath = Bun.fileURLToPath(import.meta.resolve("@opentui/solid/preload"))
-  const entry = Bun.argv[1] ?? Bun.fileURLToPath(import.meta.url)
-  const child = Bun.spawn({
-    cmd: [process.execPath, "--preload", preloadPath, entry, ...Bun.argv.slice(2)],
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-    env: { ...Bun.env, PYLON_SOLID_REEXEC: "1" },
-  })
-  // Forward termination to the child so it is never orphaned holding the
-  // terminal (Ctrl+C reaches it via the tty; these cover kill/timeouts).
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGALRM"] as const) {
-    process.on(signal, () => {
-      try {
-        child.kill(signal)
-      } catch {
-        // child already gone
-      }
-    })
-  }
-  process.exit(await child.exited)
-}
-
 // Node-side wallet actions: the single execution path for money commands,
-// used by the local dashboard, the control server (attach mode), and the
-// headless node (issue #4740).
+// used by the control server (attach mode) and the headless node
+// (issue #4740).
 const nodeWalletActions: ControlCommandActions = {
   walletSend: (destinationRef, amountSats) => sendWithMdk(destinationRef, amountSats),
   walletReceive: (amountSats) => receiveWithMdk(amountSats),
@@ -587,28 +513,6 @@ function makeAssignmentActions() {
   }
 }
 
-function makeDevActions(summary: ReturnType<typeof createBootstrapSummary>): DevActions {
-  const cwd = codexComposerWorkingDirectory()
-  return {
-    check: () => runPylonDevCheck({ allowDirty: true, cwd, env: Bun.env, summary }),
-    apply: () => runPylonDevApply({ allowDirty: true, cwd, env: Bun.env, summary }),
-    reload: () => runPylonDevReload({ cwd, env: Bun.env, summary }),
-  }
-}
-
-function makeContextActions(summary: ReturnType<typeof createBootstrapSummary>): ContextActions {
-  const cwd = codexComposerWorkingDirectory()
-  return {
-    refresh: () =>
-      collectPylonContextProjection({
-        cwd,
-        dangerFlag: Bun.argv.includes("--codex-danger"),
-        env: Bun.env,
-        summary,
-      }),
-  }
-}
-
 function makeSessionActions(summary: ReturnType<typeof createBootstrapSummary>) {
   return createControlSessionActions({
     summary,
@@ -627,195 +531,6 @@ function makeSessionActions(summary: ReturnType<typeof createBootstrapSummary>) 
 function codexComposerWorkingDirectory() {
   const configured = Bun.env.PYLON_CODEX_CWD ?? Bun.env.PYLON_ACTIVE_REPO
   return configured && configured.trim().length > 0 ? configured : process.cwd()
-}
-
-function parseComposerAdapterOverride(args: ReadonlyArray<string>): PylonComposerAdapter | null {
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] !== "--adapter") continue
-    const value = args[index + 1]
-    if (!value || value.startsWith("--")) {
-      throw new Error("--adapter requires codex or claude")
-    }
-    if (value === "codex") return "codex"
-    if (value === "claude" || value === "claude_agent") return "claude_agent"
-    throw new Error("--adapter must be codex or claude")
-  }
-  return null
-}
-
-async function makeCodexComposerBackend(
-  summary: ReturnType<typeof createBootstrapSummary>,
-  options: {
-    allowDangerousLocal?: boolean
-    dangerFlag?: boolean
-    readDevConfig?: boolean
-  } = {},
-): Promise<ComposerBackend> {
-  const config = await loadCodexAgentConfig(summary)
-  const devConfig = options.readDevConfig === false ? {} : await loadCodexDevConfig(summary)
-  const dangerRequested =
-    options.dangerFlag === true || devConfig.codexExecutionMode === "local_supervised_danger"
-  const executionMode: CodexComposerExecutionMode =
-    dangerRequested && options.allowDangerousLocal === true
-      ? "local_supervised_danger"
-      : "local_bounded"
-  const sandboxMode = sandboxModeForCodexComposerExecutionMode(executionMode, config.sandboxMode)
-  const timeoutMs =
-    typeof config.timeoutSeconds === "number" && Number.isFinite(config.timeoutSeconds) && config.timeoutSeconds > 0
-      ? Math.round(config.timeoutSeconds * 1000)
-      : undefined
-  const cwd = codexComposerWorkingDirectory()
-  const statusLine = `mode: ${executionMode} | sandbox: ${sandboxMode}`
-  return {
-    label: executionMode === "local_supervised_danger" ? "Codex DANGER" : "Codex",
-    statusLine,
-    submit: async (prompt, callbacks) => {
-      const result = await runCodexComposerStream(
-        prompt,
-        {
-          config,
-          cwd,
-          executionMode,
-          model: config.model,
-          sandboxMode,
-          approvalPolicy: "never",
-          networkAccessEnabled: false,
-          timeoutMs,
-          usageStateSummary: summary,
-        },
-        {
-          onText: callbacks.onText,
-          onEvent: callbacks.onEvent,
-          onUsage: (usage) => callbacks.onUsage?.({ label: "tokens", value: String(usage.totalTokens) }),
-        },
-      )
-      await recordPylonDevCodexRun(
-        {
-          commandCount: result.commandCount,
-          cwd,
-          editedFileCount: result.editedFileCount,
-          eventCount: result.eventCount,
-          executionMode,
-          sandboxMode,
-          totalTokens: result.totalTokens,
-        },
-        {
-          cwd,
-          env: Bun.env,
-          summary,
-        },
-      ).catch((error) => {
-        callbacks.onEvent?.(
-          `dev run record failed: ${error instanceof Error ? error.message : String(error)}`,
-          result.eventCount,
-        )
-      })
-      const footerParts = [
-        `mode: ${executionMode}`,
-        `cwd: ${cwd}`,
-        `sandbox: ${sandboxMode}`,
-        `events: ${result.eventCount}`,
-        `tokens: ${result.totalTokens}`,
-        `commands: ${result.commandCount}`,
-        `files: ${result.editedFileCount}`,
-      ]
-      return {
-        text: result.text || "(Codex completed without an assistant message.)",
-        footer: footerParts.join(" | "),
-      }
-    },
-  }
-}
-
-async function makeClaudeComposerBackend(
-  summary: ReturnType<typeof createBootstrapSummary>,
-  options: {
-    allowDangerousLocal?: boolean
-    dangerFlag?: boolean
-    readDevConfig?: boolean
-  } = {},
-): Promise<ComposerBackend> {
-  const config = await loadClaudeAgentConfig(summary)
-  const devConfig = options.readDevConfig === false ? {} : await loadClaudeDevConfig(summary)
-  const dangerRequested =
-    options.dangerFlag === true || devConfig.claudeExecutionMode === "local_supervised_danger"
-  const executionMode: ClaudeComposerExecutionMode =
-    dangerRequested && options.allowDangerousLocal === true
-      ? "local_supervised_danger"
-      : "local_bounded"
-  const permissionMode = permissionModeForClaudeComposerExecutionMode(executionMode)
-  const timeoutMs =
-    typeof config.timeoutSeconds === "number" && Number.isFinite(config.timeoutSeconds) && config.timeoutSeconds > 0
-      ? Math.round(config.timeoutSeconds * 1000)
-      : undefined
-  const cwd = codexComposerWorkingDirectory()
-  const label = claudeComposerLabel(config.model, executionMode)
-  const statusLine = `mode: ${executionMode} | permissions: ${permissionMode}${config.model ? ` | model: ${config.model}` : ""}`
-  let sessionId: string | null = null
-  return {
-    label,
-    statusLine,
-    submit: async (prompt, callbacks) => {
-      const result = await runClaudeComposerStream(
-        prompt,
-        {
-          config,
-          cwd,
-          executionMode,
-          permissionMode,
-          model: config.model,
-          resumeSessionId: sessionId,
-          timeoutMs,
-          usageStateSummary: summary,
-        },
-        {
-          onText: callbacks.onText,
-          onEvent: callbacks.onEvent,
-          onUsage: (usage) => callbacks.onUsage?.({ label: "tokens", value: String(usage.totalTokens) }),
-        },
-      )
-      sessionId = result.sessionId ?? sessionId
-      const footerParts = [
-        "adapter: claude_agent",
-        `mode: ${executionMode}`,
-        `permissions: ${permissionMode}`,
-        `cwd: ${cwd}`,
-        `events: ${result.eventCount}`,
-        `tokens: ${result.totalTokens}`,
-        `commands: ${result.commandCount}`,
-        `files: ${result.editedFileCount}`,
-        ...(result.sessionRef ? [`session: ${result.sessionRef}`] : []),
-      ]
-      return {
-        text: result.text || "(Claude completed without an assistant message.)",
-        footer: footerParts.join(" | "),
-      }
-    },
-  }
-}
-
-async function makeComposerBackend(
-  summary: ReturnType<typeof createBootstrapSummary>,
-  options: {
-    allowDangerousLocal?: boolean
-    dangerFlag?: boolean
-    readDevConfig?: boolean
-  } = {},
-): Promise<ComposerBackend> {
-  const devConfig = options.readDevConfig === false ? {} : await loadCodexDevConfig(summary)
-  const adapter = parseComposerAdapterOverride(Bun.argv.slice(2)) ?? devConfig.defaultAdapter ?? "codex"
-  if (adapter === "claude_agent") {
-    // Danger flags are per-lane: --codex-danger never leaks into a Claude
-    // session or vice versa.
-    return makeClaudeComposerBackend(summary, {
-      ...(options.allowDangerousLocal === undefined
-        ? {}
-        : { allowDangerousLocal: options.allowDangerousLocal }),
-      dangerFlag: Bun.argv.includes("--claude-danger"),
-      ...(options.readDevConfig === undefined ? {} : { readDevConfig: options.readDevConfig }),
-    })
-  }
-  return makeCodexComposerBackend(summary, options)
 }
 
 async function runAccountsUsageRefresh(
@@ -918,377 +633,6 @@ function operatorTextFromInventory(inventory: Awaited<ReturnType<typeof discover
   )
 }
 
-type OpenCodeInferenceOptions = {
-  label: string
-  streamToUi?: boolean
-  statusIntervalMs?: number
-}
-
-// OpenCode Programmatic Integration Helper. Streaming UI goes through the
-// Solid feed store via the dynamically loaded view module (verbose mode
-// only); all progress logging goes through the runtime log seam.
-async function executeOpencodeInference(
-  opencodePath: string,
-  prompt: string,
-  options: OpenCodeInferenceOptions,
-) {
-  const chatItem =
-    options.streamToUi && verboseMode && dashboardUi
-      ? dashboardUi.appendChatFeedItem(`**OpenCode ${options.label}**: starting...`, { streaming: true })
-      : null
-
-  const startTime = Date.now()
-  const statusIntervalMs = options.statusIntervalMs ?? 5000
-  let lastText = ""
-  let lastUsage = { cost: 0, tokens: 0 }
-  let eventCount = 0
-  let lastEventSummary = "waiting for first event"
-
-  const renderStreamingLine = () => {
-    if (!chatItem) return
-    const elapsedSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000))
-    const visibleText = lastText.trim() || `_${lastEventSummary}_`
-    const footer = `\n\n*[${options.label}: ${elapsedSeconds}s | events: ${eventCount} | tokens: ${lastUsage.tokens || "-"}]*`
-    chatItem.update(`**OpenCode ${options.label}**: ${visibleText}${footer}`)
-  }
-
-  const statusTimer = setInterval(() => {
-    const elapsedSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000))
-    logToUi(
-      `[OpenCode] ${options.label} still running (${elapsedSeconds}s, events=${eventCount}, last=${lastEventSummary}).`,
-    )
-    renderStreamingLine()
-  }, statusIntervalMs)
-
-  try {
-    const result = await runOpencodeStream(opencodePath, prompt, {
-      onText: (text) => {
-        lastText = text
-        renderStreamingLine()
-      },
-      onEvent: (summary, count) => {
-        eventCount = count
-        lastEventSummary = summary
-        logToUi(`[OpenCode] ${options.label} event ${count}: ${summary}`)
-      },
-      onRaw: (line) => {
-        lastEventSummary = `raw output: ${line.slice(0, 120)}`
-        logToUi(`[OpenCode] ${options.label} raw output: ${line.slice(0, 240)}`)
-        renderStreamingLine()
-      },
-      onStderr: (line) => {
-        logToUi(`[OpenCode] ${options.label} stderr: ${line}`)
-      },
-      onUsage: (usage) => {
-        lastUsage = usage
-        renderStreamingLine()
-      },
-    })
-    return result
-  } finally {
-    clearInterval(statusTimer)
-    chatItem?.finish()
-  }
-}
-
-// OpenCode Programmatic Integration Service (Diagnostics on boot)
-const runOpencodeStartupInference = Effect.gen(function* () {
-  yield* log("[OpenCode] Checking for local OpenCode CLI installation...")
-  const opencodePath = Bun.which("opencode")
-  if (opencodePath) {
-    yield* log(`[OpenCode] Found OpenCode CLI at ${opencodePath}. Initiating bootup diagnostics...`)
-
-    // 1. Get neutral log summary (<10 words)
-    const bootLogs = nodeRuntime
-      ? (yield* SubscriptionRef.get(nodeRuntime.logFeed))
-          .map((entry) => `[${formatLogTimestamp(entry.at)}] ${entry.message}`)
-          .join("\n")
-      : ""
-    const logSummaryResult = yield* Effect.tryPromise({
-      try: () => {
-        const prompt = `Here are the bootup sequence logs:\n\n${bootLogs}\n\nProvide a one line, <10 word, neutral, terminal-sounding summary of these bootup sequence logs.`
-        return executeOpencodeInference(opencodePath, prompt, {
-          label: "boot-summary",
-          streamToUi: true,
-        })
-      },
-      catch: (error) => new Error(`Failed to execute bootup summary: ${String(error)}`),
-    })
-
-    yield* log(`[OpenCode] Bootup Summary: "${logSummaryResult.text}"`)
-    yield* log(`[OpenCode] Cost: $${logSummaryResult.cost.toFixed(4)} | Tokens: ${logSummaryResult.tokens}`)
-
-    // 2. Read AGENTS.md and contribute a useful post somewhere on the site.
-    yield* log("[OpenCode] Reading https://openagents.com/AGENTS.md and creating a useful site post...")
-    const contributionResult = yield* Effect.tryPromise({
-      try: () => {
-        const prompt = [
-          "Read https://openagents.com/AGENTS.md and follow its current agent instructions.",
-          "If you have no registered agent identity, register one for this local Pylon/OpenCode context.",
-          "Inspect the Forum board, recent posts, and search if needed before choosing where to contribute.",
-          "Decide explicitly whether the contribution belongs as a new topic or as a reply to an existing topic.",
-          "Reply only when the contribution is directly on-topic for an existing thread; create a new topic when the idea is distinct, would hijack the thread, or starts a reusable reference/discussion.",
-          "Then add value on openagents.com with a concise public Forum post.",
-          "The post should be useful to other agents or operators, not promotional, and should not expose secrets, wallet material, private repo content, or credentials.",
-          "When finished, report the placement decision, topic/post URL, and a one-sentence summary of the value added.",
-        ].join(" ")
-        return executeOpencodeInference(opencodePath, prompt, {
-          label: "site-post",
-          streamToUi: true,
-        })
-      },
-      catch: (error) => new Error(`Failed to execute site contribution: ${String(error)}`),
-    })
-
-    yield* log(`[OpenCode] Site Contribution:\n${contributionResult.text}`)
-    yield* log(`[OpenCode] Cost: $${contributionResult.cost.toFixed(4)} | Tokens: ${contributionResult.tokens}`)
-  } else {
-    yield* log("[OpenCode] OpenCode CLI is not installed on this system.")
-  }
-})
-
-// Main Pylon v0.3 Application Loop. Runs inside a Scope (Effect.scoped at
-// the call site): every service fiber is forked into that Scope, and the
-// renderer/terminal are restored by finalizers, so Ctrl+C is a deliberate
-// interruption instead of process death (issue #4736).
-const runPylonNode = Effect.gen(function* () {
-  const smokeDashboard = Bun.argv.includes("--smoke-dashboard") || Bun.env.PYLON_SMOKE_DASHBOARD === "1"
-  verboseMode = Bun.argv.includes("--verbose") || Bun.env.PYLON_VERBOSE === "1"
-
-  const runtime = yield* makePylonNodeRuntime
-  nodeRuntime = runtime
-
-  const shutdown = yield* Deferred.make<void>()
-  const requestShutdown = () => {
-    Effect.runFork(Deferred.succeed(shutdown, void 0))
-    // GPU/native teardown (3D scene, WebGPU buffers) can wedge; never hold
-    // the terminal hostage on exit.
-    setTimeout(() => process.exit(0), 2000)
-  }
-  process.once("SIGINT", requestShutdown)
-  process.once("SIGTERM", requestShutdown)
-  yield* logMessage(runtime, "verbose", "Initializing Pylon v0.3 observational earning node...")
-
-  // Load and mount the Solid view (src/tui/app.tsx). Imported dynamically:
-  // the Solid transform plugin must be active before any .tsx module loads —
-  // ensureSolidRuntime() in main() guarantees that.
-  const ui = yield* Effect.tryPromise({
-    try: () => import("./tui/app"),
-    catch: (error) => new Error(`Failed to load dashboard view: ${String(error)}`),
-  })
-  dashboardUi = ui
-
-  const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-
-  // Durable feed log (issue #4739): restore the tail of the previous
-  // session's scrollback, then persist every live log entry. The persister
-  // subscribes before services fork, so nothing is missed.
-  const persistedTail = yield* Effect.promise(() =>
-    readPersistedLogTail(bootstrapSummary.paths.home, 300).catch(() => []),
-  )
-  if (persistedTail.length > 0) {
-    yield* seedLogFeed(runtime, persistedTail)
-  }
-  const feedWriter = createFeedLogWriter(bootstrapSummary.paths.home, {
-    onError: (message) => logToUi(`[FeedLog] Persistence disabled: ${message}`, "info"),
-  })
-  yield* forkLogPersistence(runtime, feedWriter)
-
-  const nodeAssignmentActions = makeAssignmentActions()
-  const nodeSessionActions = makeSessionActions(bootstrapSummary)
-  const externalTailer = startExternalSessionTailer()
-  const sessionsWithExternal = wrapSessionsWithExternal(nodeSessionActions, externalTailer)
-  const intentQueue = createIntentQueue({ persistPath: `${bootstrapSummary.paths.home}/intents.json` })
-  // CL-26 "Deploy to Cloud": defaults read OA_DEPLOY_ENABLE and use Bun.spawn.
-  const deployCloudActions = createDeployCloudActions()
-
-  // Control server (issue #4740): a second terminal can attach to this
-  // running node. Port conflicts (another node already serving) are reported
-  // and non-fatal.
-  const controlToken = yield* Effect.promise(() => ensureControlToken(bootstrapSummary.paths.home))
-  const controlPort = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
-  const coordinatorHolder: CoordinatorHolder = { rt: null }
-  const controlServer = yield* startControlServer(runtime, {
-    token: controlToken,
-    actions: {
-      ...nodeWalletActions,
-      ...(nodeAssignmentActions
-        ? {
-            assignmentsPoll: () => nodeAssignmentActions.poll(),
-            assignmentsAccept: (leaseRef: string) => nodeAssignmentActions.accept(leaseRef),
-          }
-        : {}),
-      sessions: sessionsWithExternal,
-      intents: makeIntentActions(intentQueue),
-      accountsList: () => collectPylonAccountsList(bootstrapSummary),
-      approvals: makeApprovalActions(bootstrapSummary.paths),
-      coordinator: makeCoordinatorActions(coordinatorHolder),
-      // CL-26 "Deploy to Cloud": gated behind OA_DEPLOY_ENABLE=1 (fail-safe).
-      // Uses the real Bun.spawn fire-and-forget path; deploy.status projects
-      // the node's last deploy.
-      deploy: deployCloudActions,
-    },
-    port: controlPort,
-    hostname: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
-  }).pipe(
-    Effect.catch((error) =>
-      Effect.gen(function* () {
-        yield* logMessage(runtime, "info", `[Control] Attach API unavailable: ${error.message}`, { transient: true })
-        return null
-      }),
-    ),
-  )
-  if (controlServer) {
-    yield* logMessage(
-      runtime,
-      "verbose",
-      `[Control] Attach API on ${controlServer.url} (token: ${controlTokenPath(bootstrapSummary.paths.home)})`,
-    )
-    startDiscoveryHeartbeat({
-      controlPort,
-      controlToken,
-      boundHost: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
-    })
-  }
-  // CL-36: close the self-driving loop — submitted asks auto-plan + fan out.
-  coordinatorHolder.rt = startCoordinator(intentQueue, nodeSessionActions)
-
-  // User keybind overrides (apps/pylon home keybinds.json, Effect-Schema
-  // validated). Invalid files are reported and ignored.
-  const keybinds = yield* Effect.promise(() => loadKeybindOverrides(bootstrapSummary.paths.home))
-  if (keybinds.state === "invalid") {
-    yield* logMessage(runtime, "info", `[Keybinds] Ignoring invalid ${keybinds.path}: ${keybinds.error}`)
-  }
-
-  const composerState = yield* Effect.promise(() =>
-    loadComposerState(bootstrapSummary.paths.home).catch(() => ({ history: [], stash: "" })),
-  )
-  const persistComposerState = (state: { history: string[]; stash: string }) => {
-    void saveComposerState(bootstrapSummary.paths.home, state).catch(() => {})
-  }
-  const composerBackend = yield* Effect.promise(() =>
-    makeComposerBackend(bootstrapSummary, {
-      allowDangerousLocal: true,
-      dangerFlag: Bun.argv.includes("--codex-danger"),
-      readDevConfig: true,
-    }),
-  )
-  const devActions = makeDevActions(bootstrapSummary)
-  const contextActions = makeContextActions(bootstrapSummary)
-  const initialContextProjection = yield* Effect.promise(() =>
-    contextActions.refresh().catch((error) => {
-      logToUi(`[Context] Initial refresh failed: ${error instanceof Error ? error.message : String(error)}`, "info")
-      return null
-    }),
-  )
-
-  const dashboard = yield* Effect.tryPromise({
-    try: () =>
-      ui.startDashboard({
-        onRequestShutdown: requestShutdown,
-        verbose: verboseMode,
-        enable3d: !smokeDashboard && Bun.env.PYLON_DISABLE_3D !== "1",
-        keybindOverrides: keybinds.overrides,
-        assignmentActions: nodeAssignmentActions,
-        composerState,
-        composerBackend,
-        contextActions,
-        devActions,
-        initialContextProjection,
-        onComposerPersist: persistComposerState,
-        onVerboseChange: (verbose) => {
-          verboseMode = verbose
-        },
-        // Money flows stay node-side; the view invokes these only after an
-        // explicit confirm dialog (issue #4738 exit criterion).
-        walletActions: {
-          send: (destinationRef, amountSats) => sendWithMdk(destinationRef, amountSats),
-          receive: (amountSats) => receiveWithMdk(amountSats),
-          admitPayoutTarget: (kind, ref) =>
-            Promise.resolve(admitPayoutTarget({ kind: kind as Parameters<typeof admitPayoutTarget>[0]["kind"], ref })),
-        },
-      }),
-    catch: (error) => new Error(`Failed to initialize OpenTUI renderer: ${String(error)}`),
-  })
-  yield* Effect.addFinalizer(() =>
-    Effect.sync(() => {
-      dashboard.destroy()
-      dashboardUi = null
-    }),
-  )
-
-  // Attach the view to the runtime seam through the bridge: replay current
-  // state, then follow ref changes and batched log events. Services are
-  // forked only after this, so the feed replay misses nothing.
-  yield* ui.attachRuntimeToView(runtime, { verbose: verboseMode })
-  yield* logMessage(runtime, "info", `[Codex] Composer ${composerBackend.statusLine ?? "mode: unavailable"}.`, {
-    transient: true,
-  })
-
-  yield* logMessage(
-    runtime,
-    "info",
-    verboseMode
-      ? "Pylon v0.3 dashboard active (verbose logging)."
-      : "Pylon v0.3 ready. Logs are quiet by default - relaunch with --verbose for service detail.",
-    { transient: true },
-  )
-
-  const localState = yield* Effect.tryPromise({
-    try: () => ensurePylonLocalState(bootstrapSummary),
-    catch: (error) => new Error(`failed to load Pylon Nostr identity: ${String(error)}`),
-  })
-  yield* logMessage(runtime, "info", `[Identity] Pylon Nostr npub: ${localState.identity.npub}`, { transient: true })
-
-  // Fork node services into this Scope - interrupted on shutdown.
-  const presenceBaseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
-  yield* forkNodeServices(runtime, {
-    wallet: {
-      classify: () => classifyMdkWallet(),
-    },
-    telemetry: {
-      discoverInventory: () => discoverHostInventory(),
-      inspectPsionic: async () => {
-        const connector = await inspectPsionicConnector({ env: Bun.env })
-        return { phase: connector.phase }
-      },
-      makeOperatorText: operatorTextFromInventory,
-    },
-    heartbeat: {
-      baseUrl: presenceBaseUrl,
-      register: () => registerPylon(bootstrapSummary, { baseUrl: presenceBaseUrl ?? "" }),
-      heartbeat: () => sendHeartbeat(bootstrapSummary, { baseUrl: presenceBaseUrl ?? "" }),
-    },
-  })
-
-  yield* superviseLoop(
-    runtime,
-    "NIP-90",
-    Effect.tryPromise({
-      try: () =>
-        startNip90ProviderLoop(bootstrapSummary, {
-          log: (message) => logToUi(message, classifyServiceLogLevel(message)),
-        }).then(() => undefined),
-      catch: (error) => new Error(`NIP-90 provider loop failed: ${String(error)}`),
-    }),
-  )
-
-  if (!smokeDashboard && Bun.env.PYLON_DISABLE_OPENCODE_STARTUP !== "1") {
-    yield* superviseLoop(runtime, "OpenCode", runOpencodeStartupInference)
-  }
-
-  if (smokeDashboard) {
-    yield* logMessage(runtime, "info", "Pylon v0.3 dashboard smoke complete.", { transient: true })
-    yield* Effect.sync(() => setTimeout(() => process.exit(0), 2000))
-    return
-  }
-
-  // Stay alive until Ctrl+C / SIGINT / SIGTERM requests shutdown; closing
-  // the surrounding Scope then interrupts every service fiber and runs the
-  // renderer/terminal finalizers.
-  yield* Deferred.await(shutdown)
-})
-
 // Headless node-core (issue #4740): services + event stream + control API,
 // no TUI, no Solid. Logs print to stdout with the same verbosity rules.
 const runHeadlessNode = Effect.gen(function* () {
@@ -1362,7 +706,7 @@ const runHeadlessNode = Effect.gen(function* () {
   yield* logMessage(
     runtime,
     "info",
-    `Pylon node-core running headless. Attach with: pylon attach ${controlServer.url} (token: ${controlTokenPath(bootstrapSummary.paths.home)})`,
+    `Pylon node-core running headless. Steer via the loopback control API at ${controlServer.url} (token: ${controlTokenPath(bootstrapSummary.paths.home)})`,
     { transient: true },
   )
   startDiscoveryHeartbeat({
@@ -1428,110 +772,6 @@ const runHeadlessNode = Effect.gen(function* () {
 
   yield* Deferred.await(shutdown)
 })
-
-// Attached TUI (issue #4740): full dashboard, but the local runtime mirrors
-// a remote node over SSE and money commands round-trip the control API.
-const runPylonAttach = (baseUrl: string, token: string) =>
-  Effect.gen(function* () {
-    verboseMode = Bun.argv.includes("--verbose") || Bun.env.PYLON_VERBOSE === "1"
-    const runtime = yield* makePylonNodeRuntime
-    nodeRuntime = runtime
-
-    const shutdown = yield* Deferred.make<void>()
-    const requestShutdown = () => {
-      Effect.runFork(Deferred.succeed(shutdown, void 0))
-      setTimeout(() => process.exit(0), 2000)
-    }
-    process.once("SIGINT", requestShutdown)
-    process.once("SIGTERM", requestShutdown)
-
-    const ui = yield* Effect.tryPromise({
-      try: () => import("./tui/app"),
-      catch: (error) => new Error(`Failed to load dashboard view: ${String(error)}`),
-    })
-    dashboardUi = ui
-    const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-    const composerBackend = yield* Effect.promise(() =>
-      makeComposerBackend(bootstrapSummary, {
-        allowDangerousLocal: false,
-        dangerFlag: false,
-        readDevConfig: false,
-      }),
-    )
-
-    const dashboard = yield* Effect.tryPromise({
-      try: () =>
-        ui.startDashboard({
-          onRequestShutdown: requestShutdown,
-          verbose: verboseMode,
-          enable3d: Bun.env.PYLON_DISABLE_3D !== "1",
-          composerBackend,
-          contextActions: null,
-          devActions: null,
-          onVerboseChange: (verbose) => {
-            verboseMode = verbose
-          },
-          walletActions: {
-            send: (destinationRef, amountSats) =>
-              sendControlCommand(baseUrl, token, { type: "wallet.send", destinationRef, amountSats }),
-            receive: (amountSats) =>
-              sendControlCommand(baseUrl, token, { type: "wallet.receive", amountSats }),
-            admitPayoutTarget: (kind, ref) =>
-              sendControlCommand(baseUrl, token, { type: "wallet.admit-payout-target", kind, ref }),
-          },
-          assignmentActions: {
-            poll: async () =>
-              (await sendControlCommand(baseUrl, token, { type: "assignments.poll" })) as Array<{
-                assignmentRef: string
-                leaseRef: string
-                goal: string
-                paymentMode: string
-                expiresAt: string
-              }>,
-            accept: (leaseRef) => sendControlCommand(baseUrl, token, { type: "assignments.accept", leaseRef }),
-          },
-        }),
-      catch: (error) => new Error(`Failed to initialize OpenTUI renderer: ${String(error)}`),
-    })
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        dashboard.destroy()
-        dashboardUi = null
-      }),
-    )
-
-    yield* ui.attachRuntimeToView(runtime, { verbose: verboseMode })
-    yield* logMessage(runtime, "info", `[Codex] Attach composer ${composerBackend.statusLine ?? "mode: unavailable"}.`, {
-      transient: true,
-    })
-    yield* logMessage(runtime, "info", `Attaching to Pylon node at ${baseUrl}...`, { transient: true })
-
-    let snapshotSeen = false
-    yield* runControlClient(baseUrl, token, {
-      onSnapshot: (snapshot) => {
-        Effect.runFork(
-          Effect.gen(function* () {
-            yield* applyRemotePanes(runtime, snapshot)
-            if (!snapshotSeen) {
-              snapshotSeen = true
-              yield* publishLogEntries(runtime, snapshot.logFeed)
-              yield* logMessage(runtime, "info", `Attached. Restored ${snapshot.logFeed.length} log lines from the node.`, { transient: true })
-            } else {
-              yield* logMessage(runtime, "info", "Reconnected to node.", { transient: true })
-            }
-          }),
-        )
-      },
-      onEvent: (event) => {
-        Effect.runFork(applyRemoteEvent(runtime, event))
-      },
-      onStatus: (status, detail) => {
-        if (status === "reconnecting") logToUi(`[Attach] ${detail ?? "reconnecting"}`, "info")
-      },
-    })
-
-    yield* Deferred.await(shutdown)
-  })
 
 const runtimeCommandNamespaces = new Set([
   "apple-fm",
@@ -2590,41 +1830,6 @@ async function main() {
     process.exit(0)
   }
 
-  if (args[0] === "attach") {
-    try {
-      rejectCodexLocalDangerForPublicPath(args.slice(1), "pylon attach")
-      rejectClaudeLocalDangerForPublicPath(args.slice(1), "pylon attach")
-    } catch (error) {
-      process.stderr.write(`Pylon attach failed: ${error instanceof Error ? error.message : String(error)}\n`)
-      process.exitCode = 1
-      return
-    }
-    const attachArgs = args.slice(1).filter((arg) => !arg.startsWith("--"))
-    const options = parseKeyValueOptions(args.slice(1).filter((arg, index, list) => {
-      if (arg.startsWith("--")) return true
-      return index > 0 && (list[index - 1] ?? "").startsWith("--")
-    }))
-    const baseUrl = (attachArgs[0] ?? `http://127.0.0.1:${Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort}`).replace(/\/$/, "")
-    let token = options.token ?? Bun.env.PYLON_CONTROL_TOKEN
-    if (!token) {
-      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-      const tokenFile = Bun.file(controlTokenPath(summary.paths.home))
-      token = (await tokenFile.exists()) ? (await tokenFile.text()).trim() : undefined
-    }
-    if (!token) {
-      process.stderr.write("pylon attach requires --token, PYLON_CONTROL_TOKEN, or a local control-token file\n")
-      process.exitCode = 1
-      return
-    }
-    await ensureSolidRuntime()
-    await Effect.runPromise(
-      Effect.scoped(runPylonAttach(baseUrl, token)).pipe(
-        Effect.catch((error) => Console.error(`Pylon attach failed: ${error.message}`)),
-      ),
-    )
-    process.exit(0)
-  }
-
   if (args[0] === "runtime" || runtimeCommandNamespaces.has(args[0] ?? "")) {
     const runtimeArgs = args[0] === "runtime" ? args.slice(1) : args
     const result = await Effect.runPromise(runProbeCli(runtimeArgs, { env: Bun.env }))
@@ -2634,21 +1839,27 @@ async function main() {
     return
   }
 
-  // Dashboard path needs the Solid JSX transform before src/tui/*.tsx can
-  // load; re-execs once with --preload when launched without the bunfig
-  // preload (e.g. the packaged bin from an arbitrary cwd).
-  await ensureSolidRuntime()
-
+  // Default (no subcommand): Pylon is a headless, CLI-only node. Booting with
+  // no arguments runs the same node-core as `pylon node` — services + event
+  // stream + loopback control API, logging to stdout, no interactive UI.
+  try {
+    rejectCodexLocalDangerForPublicPath(args, "pylon")
+    rejectClaudeLocalDangerForPublicPath(args, "pylon")
+  } catch (error) {
+    process.stderr.write(`Pylon node-core failed: ${error instanceof Error ? error.message : String(error)}\n`)
+    process.exitCode = 1
+    return
+  }
   await Effect.runPromise(
-    Effect.scoped(runPylonNode).pipe(
+    Effect.scoped(runHeadlessNode).pipe(
       Effect.catch((error) =>
         Console.error(`Pylon v0.3 crashed on startup: ${error.message}`)
       )
     )
   )
-  // Scope is closed: services interrupted, renderer stopped, terminal
-  // restored. Exit explicitly so lingering library handles cannot hold the
-  // process open after a deliberate shutdown.
+  // Scope is closed: services interrupted, process can exit cleanly. Exit
+  // explicitly so lingering library handles cannot hold the process open
+  // after a deliberate shutdown.
   process.exit(0)
 }
 

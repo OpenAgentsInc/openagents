@@ -19,7 +19,7 @@ export const launchClaimGates: LaunchClaimGate[] = [
     requiredEvidenceRefs: [
       "evidence.package.dry_run",
       "evidence.install.local",
-      "evidence.dashboard.startup_smoke",
+      "evidence.node.startup_smoke",
     ],
     blockerRefs: [],
   },

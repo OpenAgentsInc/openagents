@@ -236,7 +236,7 @@ describe("Claude composer SDK stream", () => {
   })
 
   test("public command paths reject the local dangerous flag", () => {
-    for (const route of ["pylon work", "pylon assignment", "pylon provider", "pylon node", "pylon attach"]) {
+    for (const route of ["pylon work", "pylon assignment", "pylon provider", "pylon node"]) {
       expect(() => rejectClaudeLocalDangerForPublicPath(["submit", "--claude-danger"], route)).toThrow(
         CLAUDE_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF,
       )

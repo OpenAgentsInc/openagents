@@ -10,9 +10,7 @@
     "forceConsistentCasingInFileNames": true,
     "types": [
       "bun-types"
-    ],
-    "jsx": "preserve",
-    "jsxImportSource": "@opentui/solid"
+    ]
   },
   "include": [
     "src/**/*"

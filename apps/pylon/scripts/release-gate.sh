@@ -15,7 +15,7 @@ PYLON_HOME="${TMPDIR:-/tmp}/pylon-release-gate-status" bun src/index.ts status -
 bun src/index.ts inventory --json >/tmp/pylon-release-inventory.json
 PYLON_HOME="${TMPDIR:-/tmp}/pylon-release-gate-operator" bun src/index.ts operator snapshot --json >/tmp/pylon-release-operator.json
 
-echo "== dashboard smoke =="
+echo "== headless node startup smoke =="
 bun run smoke:default-start
 
 echo "== package dry-run =="

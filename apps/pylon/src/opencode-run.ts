@@ -1,7 +1,7 @@
 // Shared OpenCode CLI streaming helper. Spawns `opencode run` with JSON
-// event output and surfaces progress through plain callbacks, so both the
-// boot diagnostics (index.ts) and the composer (src/tui/app.tsx) reuse one
-// parser without touching renderables, Effect, or Solid (issue #4737).
+// event output and surfaces progress through plain callbacks, so callers
+// (e.g. the agent-runtime adapter) reuse one parser without touching
+// renderables or Effect (issue #4737).
 
 export const OPENCODE_DEFAULT_MODEL = "opencode/deepseek-v4-flash-free"
 

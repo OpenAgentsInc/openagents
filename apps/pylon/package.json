@@ -1,7 +1,7 @@
 {
   "name": "@openagentsinc/pylon",
   "version": "0.3.0-rc2",
-  "description": "Modern Pylon contributor node built on Bun, Effect, and OpenTUI",
+  "description": "Headless, CLI-only Pylon contributor node built on Bun and Effect",
   "private": false,
   "main": "src/index.ts",
   "type": "module",
@@ -45,7 +45,6 @@
     "runtime": "bun --cwd packages/runtime src/cli.ts",
     "runtime:test": "bun run --cwd packages/runtime test",
     "smoke:default-start": "rm -f /tmp/pylon-default-start.log; perl -e 'alarm 3; $ENV{PYLON_DISABLE_OPENCODE_STARTUP}=1; exec @ARGV' bun src/index.ts > /tmp/pylon-default-start.log 2>&1; code=$?; if [ \"$code\" -ne 142 ] && [ \"$code\" -ne 0 ]; then cat /tmp/pylon-default-start.log; exit \"$code\"; fi; if rg -n 'TypeError|Effect\\.(fork|catchAll)|is not a function|\\[ERROR\\]' /tmp/pylon-default-start.log; then exit 1; fi; printf 'default startup reached persistent mode without startup API errors\\n'",
-    "smoke:dashboard": "bun src/index.ts --smoke-dashboard",
     "smoke:live-worker-loop": "bun scripts/live-worker-loop-smoke.ts",
     "smoke:nip90-provider": "bun scripts/nip90-provider-loop-smoke.ts",
     "provider:serve": "bun scripts/nip90-provider-serve.ts",
@@ -67,18 +66,12 @@
     "@openagentsinc/autopilot-control-protocol": "workspace:*",
     "@openagentsinc/nip90": "workspace:*",
     "@openagentsinc/tassadar-executor": "workspace:*",
-    "@opentui/core": "^0.3.4",
-    "@opentui/keymap": "0.3.4",
-    "@opentui/solid": "0.3.4",
-    "@opentui/three": "0.3.4",
     "@scure/base": "1.2.4",
     "@scure/bip32": "1.6.2",
     "@scure/bip39": "1.5.4",
     "diff": "^9.0.0",
     "effect": "catalog:",
-    "marked": "^18.0.5",
-    "solid-js": "1.9.12",
-    "three": "0.177.0"
+    "marked": "^18.0.5"
   },
   "optionalDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.172",

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 
 import {
   agentRuntimeSurfaceStatusHasUnsafeMaterial,
+  projectAgentRuntimeSurfaceStatus,
   type AgentRuntimeEvent,
 } from "@openagentsinc/agent-runtime-schema"
 import { Effect, Layer, Stream } from "effect"
@@ -30,11 +31,6 @@ import {
   createOpenAgentsNativeAgentRuntimeAdapter,
 } from "../src/openagents-native-runtime"
 import { ensurePylonLocalState } from "../src/state"
-import {
-  agentRuntimeStatusRows,
-  resetViewState,
-  setAgentRuntimeSurfaceProjections,
-} from "../src/tui/store"
 
 const now = new Date("2026-06-11T15:30:00.000Z")
 
@@ -82,11 +78,12 @@ async function projectBothSurfaces(
   const projection = await projectPublicAgentRuntimeRun(repository, request.runId, now.toISOString())
   const workroomRow = projectAgentRuntimeWorkroomStatus(projection)
 
-  resetViewState()
-  setAgentRuntimeSurfaceProjections([projection])
-  const tuiRow = agentRuntimeStatusRows()[0]
+  // The surface-status projection (shared schema package) must agree with the
+  // workroom row, and stay public-safe. This used to be cross-checked against
+  // the now-deleted TUI store; the projection function is the real authority.
+  const surfaceRow = projectAgentRuntimeSurfaceStatus(projection)
 
-  expect(tuiRow).toEqual(workroomRow)
+  expect(surfaceRow).toEqual(workroomRow)
   expect(agentRuntimeSurfaceStatusHasUnsafeMaterial(workroomRow)).toBe(false)
   return { events, projection, row: workroomRow }
 }

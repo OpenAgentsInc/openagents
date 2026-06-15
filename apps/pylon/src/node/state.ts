@@ -1,10 +1,10 @@
-// Pure, serializable domain state for the Pylon dashboard (issue #4736).
+// Pure, serializable domain state for the Pylon node (issue #4736).
 //
-// Nothing in this module may import OpenTUI, Effect, or any service module.
-// These types and transitions are the seam between node services and the
-// view layer: services compute next states here, the runtime publishes them,
-// and the TUI renders them. Every event type must stay JSON-serializable so
-// the same union can become the attach-mode wire format later (issue #4740).
+// Nothing in this module may import Effect or any service module. These types
+// and transitions are the seam between node services and external consumers:
+// services compute next states here and the runtime publishes them. Every
+// event type stays JSON-serializable so the same union is the control-server
+// snapshot / SSE wire format (issue #4740).
 
 export type PylonLogLevel = "error" | "info" | "verbose"
 
