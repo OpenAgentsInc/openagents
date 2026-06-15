@@ -111,6 +111,12 @@ import {
   reconcileTrainingWindow,
   readTrainingStatus,
 } from "./training-cockpit"
+import {
+  assertWorkloadFamily,
+  parseTassadarWorkload,
+  submitReplayVerdict,
+  submitTraceContribution,
+} from "./tassadar-trace-client"
 import { readFile as readFileForPacket } from "node:fs/promises"
 import {
   createBootstrapSummary,
@@ -1280,8 +1286,53 @@ async function main() {
         result = await admitTrainingEvidence(net, { trainingRunRef: runRef, packet })
       } else if (command === "status") {
         result = await readTrainingStatus(net)
+      } else if (command === "submit-trace" || command === "validate") {
+        // #5054 (epic #5051), design §4.5: contributor-callable worker/validator
+        // verbs. These hit the agent-gated trace-submission / replay-verdict
+        // routes (#5052) — agent token, NOT admin. They run the dispatched
+        // workload locally (reuse executeTassadarNumericModel) and submit the
+        // worker trace commitment / validator replay digest. Client-only: no
+        // wallet, settlement, or payout authority, and running them does not
+        // change default node behavior (participating is opt-in by invoking
+        // the verb; the background assignment worker stays PYLON_ASSIGNMENT_WORKER
+        // gated and OFF by default until #5061).
+        const agentToken = optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN
+        const leaseRef = optionString(options, "lease-ref")
+        if (!leaseRef) throw new Error(`training ${command} requires --lease-ref`)
+        const workloadFamily = assertWorkloadFamily(optionString(options, "workload-family"))
+        const workloadPath = optionString(options, "workload")
+        if (!workloadPath) {
+          // TODO(#5053): auto-discover the workload from the assignment dispatch
+          // ("next contribution to validate" / the claimed lease's dispatch
+          // payload). Until that server-side selection lands on main, the
+          // workload is supplied explicitly via --workload <dispatch.json>.
+          throw new Error(`training ${command} requires --workload <dispatch.json> (auto-discovery pending #5053)`)
+        }
+        const workload = parseTassadarWorkload(
+          JSON.parse(await readFileForPacket(workloadPath, "utf8")) as unknown,
+        )
+        const deviceRef =
+          optionString(options, "device-ref") ??
+          (await ensurePylonLocalState(createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env))).identity.nodeId
+        const traceNet = { baseUrl, ...(agentToken ? { agentToken } : {}) }
+        if (command === "submit-trace") {
+          result = await submitTraceContribution(traceNet, {
+            leaseRef,
+            pylonDeviceRef: deviceRef,
+            workload,
+            workloadFamily,
+            ...(optionString(options, "assignment-ref") ? { assignmentRef: optionString(options, "assignment-ref")! } : {}),
+          })
+        } else {
+          result = await submitReplayVerdict(traceNet, {
+            leaseRef,
+            validatorDeviceRef: deviceRef,
+            workload,
+            workloadFamily,
+          })
+        }
       } else {
-        throw new Error("usage: pylon training plan|activate|claim|admit|reconcile|closeout|status ...")
+        throw new Error("usage: pylon training plan|activate|claim|admit|reconcile|closeout|status|submit-trace|validate ...")
       }
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
       const okFlag = (result as { ok?: boolean } | null)?.ok

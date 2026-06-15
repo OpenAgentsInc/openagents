@@ -157,19 +157,41 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
   },
   {
     command: "training",
-    summary: "Drive the training cockpit lane (plan/activate/claim/admit/reconcile/closeout/status).",
+    summary:
+      "Drive the training cockpit lane (plan/activate/claim/admit/reconcile/closeout/status/submit-trace/validate).",
     mutates: true,
     spends: false,
     needsNetwork: true,
     json: true,
     args: [
-      pos("plan|activate|claim|admit|reconcile|closeout|status", "Subcommand."),
+      pos(
+        "plan|activate|claim|admit|reconcile|closeout|status|submit-trace|validate",
+        "Subcommand.",
+      ),
       opt("--base-url", "OpenAgents base URL."),
       opt("--admin-token", "Admin token (or OA_TRAINING_ADMIN_TOKEN) for admin verbs."),
+      opt(
+        "--agent-token",
+        "Agent token (or OPENAGENTS_AGENT_TOKEN) for submit-trace/validate.",
+      ),
       opt("--window-ref", "activate/reconcile/closeout: window ref."),
       opt("--run-ref", "admit: training run ref."),
       opt("--pylon-ref", "claim: pylon ref."),
       opt("--packet", "admit: evidence packet JSON path."),
+      opt("--lease-ref", "submit-trace/validate: claimed training window lease ref."),
+      opt(
+        "--workload",
+        "submit-trace/validate: dispatch workload JSON path (auto-discovery pending #5053).",
+      ),
+      opt(
+        "--workload-family",
+        "submit-trace/validate: article_closeout|sudoku_trace|hungarian_trace|kernel_trace.",
+      ),
+      opt(
+        "--device-ref",
+        "submit-trace/validate: device ref (defaults to the local node id).",
+      ),
+      opt("--assignment-ref", "submit-trace: optional assignment ref."),
     ],
   },
   {
