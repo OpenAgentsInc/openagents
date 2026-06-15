@@ -21,6 +21,8 @@ import {
   type AccountSummary,
 } from "@openagentsinc/autopilot-ui"
 import { trainingRunView } from "@openagentsinc/three-effect/foldkit"
+import { projectPylonNetworkScene } from "../shared/pylon-network-scene"
+import { pylonNetworkVisualizationOptions } from "./pylon-network-visualization"
 import {
   defaultTrainingRunNodes,
   trainingRunVisualizationOptionsFromSnapshot,
@@ -106,6 +108,7 @@ import {
   modelTrainingEvidencePacketSummary,
   modelTrainingLease,
   modelNode,
+  modelPylonStats,
   modelNotifications,
   modelTrainingOperatorReadiness,
   modelTrainingPlan,
@@ -129,6 +132,7 @@ const paneTitle = (text: string): Html => h.h1([cls("pane-title")], [text])
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
 const NAV: ReadonlyArray<{ id: PaneId; label: string }> = [
+  { id: "network", label: "Network" },
   { id: "nodes", label: "Nodes" },
   { id: "training", label: "Training" },
   { id: "training-fullscreen", label: "Training Live" },
@@ -3134,8 +3138,63 @@ const sessionDetailPane = (model: Model): Html => {
 
 // ── Pane router + top-level view ────────────────────────────────────────────────
 
+// ── Network home (#5049) ──────────────────────────────────────────────────
+// The fullscreen pylon-network visualization: the bezier graph (adapted to the
+// live network) with stats overlaid. The center pylon's pulse / node tones are
+// driven by live activity. Visual language:
+// docs/autopilot-coder/2026-06-15-autopilot-home-network-visual-language.md
+const networkStatNumber = (value: number): string => {
+  const safe = Math.max(0, Math.floor(value))
+  return safe.toLocaleString("en-US")
+}
+
+// A single overlaid stat. The value carries `stat-roll` so the homepage
+// slot-text digit-roll can animate it between polls (§5).
+const networkStat = (label: string, value: string, hero = false): Html =>
+  h.div([cls(hero ? "network-stat network-stat-hero" : "network-stat")], [
+    h.span([cls("network-stat-value stat-roll")], [value]),
+    h.span([cls("network-stat-label")], [label]),
+  ])
+
+const networkPane = (model: Model): Html => {
+  const scene = projectPylonNetworkScene(modelPylonStats(model))
+  const options = pylonNetworkVisualizationOptions(scene)
+
+  const activityLabel = scene.dormant
+    ? "network dormant"
+    : scene.activityIntensity > 0.05
+      ? "work in flight"
+      : "online · idle"
+
+  return h.div([cls("network-page")], [
+    h.div([cls("network-scene")], [
+      trainingRunView<Message>([cls("three-effect-network")], options),
+    ]),
+    h.div([cls("network-overlay")], [
+      h.section([cls("network-title")], [
+        h.span([cls("network-eyebrow")], [activityLabel]),
+        h.h1([cls("network-headline")], [
+          h.span([cls("stat-roll")], [networkStatNumber(scene.onlineNow)]),
+          " pylons online",
+        ]),
+        h.p([cls("network-subhead")], [
+          scene.asOfLabel ? `as of ${scene.asOfLabel}` : "live network",
+        ]),
+      ]),
+      h.section([cls("network-stats")], [
+        networkStat("working now", networkStatNumber(scene.sessionsOnlineNow), true),
+        networkStat("sats settled · 24h", networkStatNumber(scene.satsSettled24h)),
+        networkStat("sats settled · total", networkStatNumber(scene.satsSettledTotal)),
+        networkStat("training contributors", networkStatNumber(scene.trainingProgressContributors)),
+      ]),
+    ]),
+  ])
+}
+
 const paneView = (model: Model): Html => {
   switch (model.pane) {
+    case "network":
+      return networkPane(model)
     case "nodes":
       return nodesPane(model)
     case "training":
@@ -3156,6 +3215,11 @@ const paneView = (model: Model): Html => {
 }
 
 const rootView = (model: Model): Html => {
+  // #5049: the network home is immersive — one fullscreen three-effect canvas
+  // with the stat overlay and NOTHING else (no sidebar, no shell chrome).
+  if (model.pane === "network") {
+    return h.div([cls("app-shell app-shell-network")], [networkPane(model)])
+  }
   const fullscreenTraining = model.pane === "training-fullscreen"
   return h.div(
     [cls("app-shell")],

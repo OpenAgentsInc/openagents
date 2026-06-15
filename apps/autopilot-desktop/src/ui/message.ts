@@ -12,6 +12,8 @@ import { PaneId, SessionFilter } from "./model"
 
 // ── Inbound (Electrobun → runtime), pushed by the subscription stream ──────
 export const GotNodeState = m("GotNodeState", { node: S.Unknown })
+// #5049: public pylon-network stats push (drives the home network scene).
+export const GotPylonStats = m("GotPylonStats", { stats: S.Unknown })
 export const GotNotifications = m("GotNotifications", { view: S.Unknown })
 // #5025: honest node-launch lifecycle status from the Bun supervisor.
 export const GotNodeLaunchStatus = m("GotNodeLaunchStatus", { status: S.String })
@@ -159,6 +161,7 @@ export const SettledCancelSession = m("SettledCancelSession")
 
 export const Message = S.Union([
   GotNodeState,
+  GotPylonStats,
   GotNotifications,
   GotNodeLaunchStatus,
   NavigatedTo,

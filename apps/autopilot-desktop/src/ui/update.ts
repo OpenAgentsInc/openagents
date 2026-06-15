@@ -95,6 +95,8 @@ export const update = (model: Model, message: Message): Result => {
     // ── Inbound projections ────────────────────────────────────────────────
     case "GotNodeState":
       return [Model.make({ ...model, node: message.node }), noCommands]
+    case "GotPylonStats":
+      return [Model.make({ ...model, pylonStats: message.stats }), noCommands]
     case "GotNotifications":
       return [Model.make({ ...model, notifications: message.view }), noCommands]
     case "GotNodeLaunchStatus":

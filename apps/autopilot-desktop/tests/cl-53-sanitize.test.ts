@@ -198,17 +198,28 @@ describe("CL-53 sanitizeTree", () => {
   })
 
   test("nodes home shows the node-launch status badge when set, hides it when null (#5025)", () => {
-    const hidden = view({ ...initialModel, nodeLaunchStatus: null })
+    // #5049: the default landing pane is now "network"; the node-launch badge is
+    // a Nodes-pane concern, so target that pane explicitly.
+    const hidden = view({ ...initialModel, pane: "nodes", nodeLaunchStatus: null })
     expect(treeContainsClass(hidden.body, "node-launch-badge")).toBe(false)
 
-    const launching = view({ ...initialModel, nodeLaunchStatus: "launching" })
+    const launching = view({ ...initialModel, pane: "nodes", nodeLaunchStatus: "launching" })
     expect(treeContainsClass(launching.body, "node-launch-badge")).toBe(true)
     expect(treeContainsClass(launching.body, "node-launch-launching")).toBe(true)
     expect(treeContainsText(launching.body, "Launching local node…")).toBe(true)
 
-    const failed = view({ ...initialModel, nodeLaunchStatus: "failed" })
+    const failed = view({ ...initialModel, pane: "nodes", nodeLaunchStatus: "failed" })
     expect(treeContainsClass(failed.body, "node-launch-failed")).toBe(true)
     expect(treeContainsText(failed.body, "Local node failed to start")).toBe(true)
+  })
+
+  test("network home is immersive: the scene canvas, no sidebar (#5049)", () => {
+    const document = view(initialModel) // default pane is "network"
+    expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)
+    expect(treeContainsClass(document.body, "network-overlay")).toBe(true)
+    expect(treeContainsClass(document.body, "app-shell-network")).toBe(true)
+    // immersive: no sidebar chrome on the home
+    expect(treeContainsClass(document.body, "sidebar")).toBe(false)
   })
 
   test("training pane includes the training scene", () => {

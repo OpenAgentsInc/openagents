@@ -12,6 +12,7 @@ import { Schema as S } from "effect"
 import { ts } from "foldkit/schema"
 
 import type { NotificationCenterView } from "@openagentsinc/autopilot-control-protocol"
+import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
 import type {
   NodeStateMessage,
   TrainingBootstrapGrantResponse,
@@ -30,6 +31,7 @@ import type {
 // Which content pane is showing. The desktop equivalent of mobile's tab set
 // plus the focused session-detail leaf.
 export const PaneId = S.Literals([
+  "network",
   "nodes",
   "training",
   "training-fullscreen",
@@ -106,6 +108,11 @@ export const Model = ts("AutopilotDesktop", {
   // through the typed accessors below.
   node: S.NullOr(S.Unknown),
   notifications: S.NullOr(S.Unknown),
+
+  // #5049: latest public pylon-network stats (GET /api/public/pylon-stats),
+  // pushed from the Bun poller. Opaque PylonStatsSnapshot; projected to the
+  // home scene via projectPylonNetworkScene. Null until the first poll lands.
+  pylonStats: S.NullOr(S.Unknown),
 
   // #5025: honest node-launch lifecycle status from the Bun supervisor
   // (launching/online/adopted/failed/unavailable). Null until the first status
@@ -201,6 +208,9 @@ export type Model = typeof Model.Type
 export const modelNode = (model: Model): NodeStateMessage | null =>
   model.node as NodeStateMessage | null
 
+export const modelPylonStats = (model: Model): PylonStatsSnapshot | null =>
+  model.pylonStats as PylonStatsSnapshot | null
+
 export const modelNotifications = (model: Model): NotificationCenterView | null =>
   model.notifications as NotificationCenterView | null
 
@@ -263,8 +273,9 @@ export const modelTrainingEvidenceAdmission = (
 export const initialModel: Model = Model.make({
   node: null,
   notifications: null,
+  pylonStats: null,
   nodeLaunchStatus: null,
-  pane: "nodes",
+  pane: "network",
   selectedSessionRef: null,
   selectedTrainingSceneNodeId: null,
   sessionFilter: "all",
