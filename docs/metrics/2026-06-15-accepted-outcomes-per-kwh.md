@@ -1,7 +1,8 @@
 # Accepted Outcomes Per Kilowatt-Hour (AO/kWh)
 
-Date: 2026-06-15. Status: **definition frozen, not yet instrumented end to end.**
-Promise: `metrics.accepted_outcomes_per_kwh.v1` (state `planned`). This is the
+Date: 2026-06-15. Status: **definition frozen; yellow modeled seed instrumentation live in source.**
+Promise: `metrics.accepted_outcomes_per_kwh.v1` (state `yellow` in source registry
+`2026-06-15.5`). This is the
 canonical definition of the metric Episode 232 introduced and Episode 237 names
 as "the metric we're going to be defining and measuring primarily."
 
@@ -63,19 +64,21 @@ a measured kWh and must never be presented as one.
 
 ## 5. Current measurement status (honest)
 
-**Not yet instrumented end to end.** As of 2026-06-15:
+**Yellow, modeled seed only.** As of 2026-06-15:
 
-- Numerator: the verification + acceptance + receipt ladder exists (Tassadar
-  exact-replay verification, settlement receipts) but the live accepted-outcome
-  **count** is still near zero for the launch run (the worker→validator
-  contributor-completion path — `docs/tassadar/2026-06-15-executor-trace-contributor-completion-design.md`,
-  epic #5051 — is what produces real accepted outcomes at volume).
-- Denominator: device/operator **energy accounting is not wired**. Pylon does not
-  yet report kWh, and there is no operator energy-ingestion path.
+- Numerator: `/api/public/metrics/accepted-outcomes-per-kwh` now publishes a
+  receipt-backed accepted-outcome counter with one seed accepted outcome: the
+  first settled labor job (#4777), backed by
+  `docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md` and the
+  public work-request status route.
+- Denominator: the seed datapoint is **modeled**, not measured: 100 W provider
+  power assumption × acceptance→result wall-clock window. Pylon still does not
+  report measured kWh, and there is no operator energy-ingestion path.
 
-So today AO/kWh is a **defined, named target** with no published figure. That is
-the correct state, and the `planned` promise + this doc are what make Episode
-237's "the metric we're defining and measuring" true: it is now *defined*.
+So today AO/kWh has a **caveated modeled seed datapoint**, not measured production
+telemetry. That is enough to move the promise out of `planned` and into `yellow`,
+but not enough to call AO/kWh measured, comparable, green, or production-routing
+evidence.
 
 ## 6. Path to a real number (green gate)
 
@@ -87,8 +90,9 @@ the correct state, and the `planned` promise + this doc are what make Episode
 4. at least one **published AO/kWh datapoint** with evidence-state labels and
    caveats.
 
-Until all four exist, no specific AO/kWh figure, ranking, or efficiency
-comparison may be published or cited (see the promise's `unsafeCopy`).
+Until all four exist with measured or repeatable per-device telemetry, no AO/kWh
+figure may be presented as measured, broadly representative, ranked, or
+production-routing evidence (see the promise's `unsafeCopy`).
 
 ## 7. References
 

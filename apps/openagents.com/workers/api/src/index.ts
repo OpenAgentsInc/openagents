@@ -45,6 +45,7 @@ import {
   makeD1AgentRegistrationStore,
   timingSafeEqual,
 } from './agent-registration'
+import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
 import {
   makeAgentScopedGrantRoutes,
   makeD1AgentScopedGrantStore,
@@ -6410,6 +6411,10 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       handlePublicPromiseTransitionsApi(request, {
         store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
       }),
+  },
+  {
+    path: '/api/public/metrics/accepted-outcomes-per-kwh',
+    handler: request => handleAcceptedOutcomesPerKwhApi(request),
   },
   {
     path: '/api/operator/product-promises/transitions',

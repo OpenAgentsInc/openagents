@@ -272,12 +272,12 @@ flips `training.monday_decentralized_training_launch.v1` (#5014) +
 ### Episode 237 launch-truth follow-ups (from this pass)
 
 - ✅ **Accepted Outcomes Per Kilowatt-Hour (AO/kWh)** — 237 names it "the metric
-  we're defining and measuring primarily," but it was documented nowhere. Now
-  **defined**: `docs/metrics/2026-06-15-accepted-outcomes-per-kwh.md` + promise
-  `metrics.accepted_outcomes_per_kwh.v1` (state `planned`; registry bumped to
-  **`2026-06-15.2`**, test updated). It stays `planned` — no published figure
-  until the numerator (accepted-outcome counter) and denominator (kWh energy
-  accounting) are instrumented.
+  we're defining and measuring primarily," but it was documented nowhere in the
+  initial audit pass. It is now **defined and yellow-instrumented**:
+  `docs/metrics/2026-06-15-accepted-outcomes-per-kwh.md` + promise
+  `metrics.accepted_outcomes_per_kwh.v1` (source registry **`2026-06-15.5`**)
+  publish one receipt-backed, explicitly modeled seed datapoint. It stays below
+  green until measured/repeatable kWh telemetry and repeat datapoints exist.
 - ⚠️ **Homepage download CTA** — 237 says *"you'll go to openagents.com and you'll
   see Autopilot: Download to get started."* The root `/` currently renders the
   Pylon network viz/stats (per owner's explicit earlier direction) with **no
@@ -405,8 +405,9 @@ registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
 > deliberately **not autonomously closable**: (1) the **#5061 live 2-device dry-run**
 > (enable `TASSADAR_TRACE_PAIRING`, run a real worker+validator with Orrery) — the only
 > thing that proves the loop and flips #5014/#5015 green, receipt-first; (2) **owner-funded
-> spend** for #5055 tips (BOLT12 offer delivered); (3) the **owner-gated deploy** of registry
-> `2026-06-15.2` (#5060); (4) the **owner-run green-flips** (#5012/#5014/#5015/#5018).
+> spend** for #5055 tips (BOLT12 offer delivered); (3) **AO/kWh measured telemetry +
+> repeat datapoints** after the modeled seed (#5060); (4) the **owner-run green-flips**
+> (#5012/#5014/#5015/#5018).
 
 **Short-term fixes (new, from the forum audit) — all DONE/closed:**
 - **#5056** projection-freshness invariant umbrella (public reads rebuild on write;
@@ -430,9 +431,12 @@ registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
   three-effect network graph, activity drives `lightPulse` through the existing
   scene projection, every listed public stat is shown, and overlay numbers use
   the scoped slot-text digit-roll structure.
-- **#5060** instrument **Accepted Outcomes per kWh** (`metrics.accepted_outcomes_per_kwh.v1`
-  off `planned`) + deploy the registry `2026-06-15.2` so the new promise is served.
-  *(Larger feature + owner-gated deploy — not a same-turn usability fix.)*
+- ✅ **#5060** Accepted Outcomes per kWh instrumentation — **DONE/closed**:
+  `/api/public/metrics/accepted-outcomes-per-kwh` publishes the frozen AO/kWh
+  definition, a receipt-backed accepted-outcome counter, and one clearly
+  labeled **modeled** seed datapoint from the first settled labor job (#4777).
+  Registry source `2026-06-15.5` moves the promise to `yellow`; measured energy
+  telemetry and repeat datapoints remain blockers before green.
 
 **Held green-flips (owner-gated live event):** **#5012** epic · **#5014** launch flip ·
 **#5015** self-serve install→earn · **#5018** announce. These flip only against a real

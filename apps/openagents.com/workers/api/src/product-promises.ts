@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-15.4'
+export const PublicProductPromisesVersion = '2026-06-15.5'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -2244,26 +2244,29 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'metrics.accepted_outcomes_per_kwh.v1',
         productArea: 'metrics',
         audience: ['operator', 'public', 'contributor'],
-        state: 'planned',
+        state: 'yellow',
         claim:
           'OpenAgents defines and will measure Accepted Outcomes Per Kilowatt-Hour (AO/kWh) — verified, accepted outcomes produced per kilowatt-hour of energy — as the primary efficiency metric for converting electricity into accepted agent work.',
         safeCopy:
-          'AO/kWh is a defined, named target metric (Episode 232 introduced it, Episode 237 names it the primary measure) with a written definition in docs/metrics/2026-06-15-accepted-outcomes-per-kwh.md. It is NOT yet instrumented end to end: the numerator (accepted outcomes) depends on the verification + acceptance ladder, and the denominator (kWh) depends on device/operator energy accounting that is not yet wired. Describe it as the metric we are building toward and measuring, not as a published live number.',
+          'AO/kWh is now instrumented as a yellow, caveated metric: /api/public/metrics/accepted-outcomes-per-kwh publishes the frozen definition plus one receipt-backed modeled seed datapoint from the first settled labor job (#4777). The seed is explicitly modeled, not measured: it uses acceptance-to-result wall-clock timing and a documented 100 W provider-power assumption. Describe it only as a modeled seed datapoint while measured energy telemetry is still missing.',
         unsafeCopy:
-          'Do not publish or cite a specific AO/kWh figure, ranking, or efficiency comparison, and do not imply the metric is live-instrumented, until measured (or explicitly modeled) energy accounting and accepted-outcome receipts both exist.',
+          'Do not describe the AO/kWh seed as measured, broadly representative, a provider ranking, a production routing policy, investment advice, grid advice, or proof that live energy dispatch is running. Do not cite any figure without the modeled/measurement evidence label and caveats.',
         evidenceRefs: [
           'docs/transcripts/232.md',
           'docs/transcripts/237.md',
           'docs/metrics/2026-06-15-accepted-outcomes-per-kwh.md',
+          'https://openagents.com/api/public/metrics/accepted-outcomes-per-kwh',
+          'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
+          'https://openagents.com/api/forum/work-requests/b74bb55c-849c-43a3-b8d9-9a741316b528',
           'promise:payments.accepted_outcome_economics.v1',
           'promise:energy.flexible_load_proof.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.accepted_outcome_per_kwh_not_instrumented',
-          'blocker.product_promises.energy_accounting_missing',
+          'blocker.product_promises.energy_accounting_measured_telemetry_missing',
+          'blocker.product_promises.ao_kwh_only_single_modeled_seed_datapoint',
         ],
         verification:
-          'Green requires: a frozen AO/kWh definition (done), an accepted-outcome counter tied to verified-work receipts, measured or explicitly-modeled energy (kWh) per device/window, and at least one published AO/kWh datapoint carrying evidence-state labels and caveats.',
+          'GET /api/public/metrics/accepted-outcomes-per-kwh. Yellow is satisfied when the response decodes, carries schemaVersion openagents.metrics.accepted_outcomes_per_kwh.v1, includes one receipt-backed accepted outcome, labels energyEvidenceState as modeled, and keeps measuredFigurePublicationAllowed false. Green requires measured or repeatable per-device energy telemetry, more than a single modeled seed datapoint, and transition receipts.',
         authorityBoundary:
           'A defined metric is not a measured result. AO/kWh figures are operational estimates, not investment, grid, utility, or financial advice.',
       },

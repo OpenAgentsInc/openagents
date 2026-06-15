@@ -2,6 +2,7 @@ import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-
 import { Effect, Schema as S } from 'effect'
 
 import { PublicAgentProposalRecoveryRoute } from './agent-rate-limit-recovery'
+import { AcceptedOutcomesPerKwhEndpoint } from './accepted-outcomes-per-kwh'
 import {
   AGENT_SEARCH_BASIC_RECOVERY_PRODUCT_ID,
   AGENT_SEARCH_BASIC_RECOVERY_SCOPE_REF,
@@ -252,6 +253,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   ProductPromiseTransitions: objectSummary(
     'Public-safe promise transition receipt feed: receiptId, promiseId, from/to state, registry version, typed checks, result (passed/failed/exception), evidence refs, and timestamps. Receipts are transition evidence, not transitions.',
+  ),
+  AcceptedOutcomesPerKwhProjection: objectSummary(
+    'Public-safe Accepted Outcomes per Kilowatt-Hour projection. Includes the frozen metric definition ref, receipt-backed accepted-outcome counter, modeled/measured energy evidence labels, gate state, blocker refs, caveats, and published datapoints. Modeled seed datapoints are clearly labeled and do not grant payout, settlement, dispatch, energy-market, investment, or grid-operation authority.',
   ),
   ProductPromiseTransitionRequest: objectSummary(
     'Operator request to evaluate and record a promise transition: promiseId, toState, optional evidenceRefs, optional explicit exception (reasonRef, approvedByRef, expiresAt).',
@@ -2310,6 +2314,23 @@ const paths = (): JsonSchema => ({
       security: publicRead,
       responses: {
         '200': okJson('Pylon stats.', '#/components/schemas/PublicPylonStats'),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [AcceptedOutcomesPerKwhEndpoint]: {
+    get: operation({
+      operationId: 'getAcceptedOutcomesPerKwhMetric',
+      summary: 'Read Accepted Outcomes per kWh metric',
+      description:
+        'Returns the public AO/kWh metric projection. The current response contains one receipt-backed, explicitly modeled seed datapoint from the first settled labor job and keeps measured energy telemetry as a blocker. Modeled figures must be labeled as modeled, single-datapoint seeds and must not be used as rankings, broad efficiency claims, investment advice, grid advice, or proof of live production energy routing.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Accepted Outcomes per kWh metric.',
+          '#/components/schemas/AcceptedOutcomesPerKwhProjection',
+        ),
         ...errorResponses(),
       },
     }),
