@@ -716,23 +716,25 @@ Complete **in this order** (each phase gates the next):
    - ⬜ **[#5044](https://github.com/OpenAgentsInc/openagents/issues/5044)** —
      remainder: sign-on-publish + **pin pubkey + fail-closed verify in clients**;
      KMS migration.
-   - ⬜ **[#5043](https://github.com/OpenAgentsInc/openagents/issues/5043)** —
-     `oa-updates` serves **signed** `pylon/<channel>/<platform>` + rc-channel
-     feeds (rollout/yank/minVersion).
+   - ✅ **[#5043](https://github.com/OpenAgentsInc/openagents/issues/5043)** —
+     `oa-updates` serves **signed** `pylon/<channel>/<platform>` rc feeds
+     (rollout/yank/minVersion); verified end-to-end with the real 1.0.0-rc.1
+     build (served artifact verifies against the pinned key). **DONE.**
 2. **Build the artifacts**
-   - ⬜ **[#5041](https://github.com/OpenAgentsInc/openagents/issues/5041)** —
-     Pylon `bun --compile` binary per platform + pipeline.
+   - ✅ **[#5041](https://github.com/OpenAgentsInc/openagents/issues/5041)** —
+     Pylon `bun --compile` binary per platform + signed pipeline
+     (`build-rc-binaries.sh`); all 4 platforms build/sign/verify. **DONE.**
    - ⬜ **[#5027](https://github.com/OpenAgentsInc/openagents/issues/5027)** —
-     Autopilot signed+notarized `.app` bundling the node (**signing creds
-     NEEDS-OWNER**).
+     Autopilot signed+notarized `.app` bundling the node (signing creds ✅ done
+     via #5048; Developer ID identity in keychain + GCP-SM backup).
 3. **Wire default-on auto-update**
    - ⬜ **[#5042](https://github.com/OpenAgentsInc/openagents/issues/5042)** —
-     Pylon self-updater (verify→atomic-replace→drain/relaunch).
+     Pylon self-updater (verify→atomic-replace→drain/relaunch). **In progress.**
    - ⬜ **[#5040](https://github.com/OpenAgentsInc/openagents/issues/5040)** —
      Autopilot Electrobun updater default-on.
 4. **Quality fold-in**
-   - ⬜ **[#5038](https://github.com/OpenAgentsInc/openagents/issues/5038)** —
-     `--json` parser fix into the Pylon rc.
+   - ✅ **[#5038](https://github.com/OpenAgentsInc/openagents/issues/5038)** —
+     `--json` parser fix landed; folds into the Pylon rc. **DONE.**
 5. **Produce the RC builds (rc channel)**
    - ⬜ **[#5046](https://github.com/OpenAgentsInc/openagents/issues/5046)** —
      Autopilot v1.0-rc (`1.0.0-rc.N`).
