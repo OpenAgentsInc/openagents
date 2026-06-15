@@ -84,6 +84,16 @@ if (import.meta.main) {
     })
   }
 
+  // Electrobun desktop OTA artifacts: register each file in OA_DESKTOP_OTA_DIR so
+  // the updater can fetch /desktop/<prefix>-update.json + the tarball/patches.
+  if (process.env.OA_DESKTOP_OTA_DIR) {
+    const { readdir } = await import("node:fs/promises")
+    const dir = process.env.OA_DESKTOP_OTA_DIR
+    for (const name of await readdir(dir)) {
+      server.registerDesktopOtaFile(name, `${dir}/${name}`)
+    }
+  }
+
   Bun.serve({ port, fetch: server.fetch })
   console.log(`oa-updates listening on http://localhost:${port}`)
 }

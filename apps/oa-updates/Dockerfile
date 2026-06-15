@@ -15,6 +15,7 @@ COPY desktop-dist ./desktop-dist
 # scripts/publish-pylon-release.ts. Served at /pylon/<channel>/<platform>/feed.json
 # when OA_PYLON_RELEASES_DIST=/app/pylon-dist is set (powers Pylon default-on OTA).
 COPY pylon-dist ./pylon-dist
+COPY desktop-ota ./desktop-ota
 
 EXPOSE 8080
 

@@ -37,6 +37,9 @@ export type UpdatesServer = {
   // Serve a large asset (e.g. a Pylon binary) straight from disk by hash,
   // streamed — so the seed never loads hundreds of MB into memory at boot.
   registerDiskAsset: (hash: string, path: string, contentType?: string) => void
+  // Serve an Electrobun desktop OTA artifact (<prefix>-update.json / .tar.zst /
+  // .dmg / .patch) at /desktop/<filename>, streamed from disk.
+  registerDesktopOtaFile: (filename: string, path: string, contentType?: string) => void
   putAsset: (
     bytes: Uint8Array,
     contentType?: string,
@@ -120,6 +123,8 @@ export function createUpdatesServer(
   const pylonFeeds = new Map<string, PylonReleaseManifest[]>()
   // hash -> on-disk file served by streaming (large binaries never held in memory)
   const diskAssets = new Map<string, { path: string; contentType: string }>()
+  // filename -> on-disk Electrobun desktop OTA artifact, served at /desktop/<filename>
+  const desktopOtaFiles = new Map<string, { path: string; contentType: string }>()
   const assetContentTypes = new Map<string, string>()
   const assetStore: AssetStore = createInMemoryAssetStore(
     `http://localhost:${port}`,
@@ -219,6 +224,27 @@ export function createUpdatesServer(
           })
         }
 
+        // Electrobun desktop OTA artifact: /desktop/<filename> (the updater fetches
+        // <prefix>-update.json and <prefix>-…tar.zst / .patch from release.baseUrl).
+        const desktopOtaMatch = url.pathname.match(/^\/desktop\/([^/]+)$/)
+        if (desktopOtaMatch !== null) {
+          const file = desktopOtaFiles.get(desktopOtaMatch[1])
+          if (file !== undefined) {
+            // update.json must not be cached (it's the freshness signal); the
+            // immutable artifacts can cache hard.
+            const noCache = desktopOtaMatch[1].endsWith("update.json")
+            return new Response(Bun.file(file.path), {
+              headers: {
+                "cache-control": noCache
+                  ? "no-store"
+                  : "public, max-age=31536000, immutable",
+                "content-type": file.contentType,
+              },
+            })
+          }
+          return new Response("Not found", { status: 404 })
+        }
+
         // Pylon OTA feed: /pylon/<channel>/<platform>/feed.json — per-platform,
         // signed releases (yanked dropped, latest first). The self-updater
         // verifies each release's signature against the pinned key + sha256.
@@ -281,6 +307,17 @@ export function createUpdatesServer(
 
     registerDiskAsset(hash, path, contentType) {
       diskAssets.set(hash, { path, contentType: contentType ?? "application/octet-stream" })
+    },
+
+    registerDesktopOtaFile(filename, path, contentType) {
+      desktopOtaFiles.set(filename, {
+        path,
+        contentType:
+          contentType ??
+          (filename.endsWith(".json")
+            ? "application/json"
+            : "application/octet-stream"),
+      })
     },
 
     registerPylonUpdate(manifest) {
