@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-15.5')
+    expect(decoded.version).toBe('2026-06-15.6')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -305,6 +305,20 @@ describe('public product promises document', () => {
           promiseId: 'pylon.agent_steerable_cli.v1',
           state: 'green',
         }),
+        expect.objectContaining({
+          audience: expect.arrayContaining(['user', 'agent', 'operator']),
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.local_apple_fm_bridge_helper_missing',
+            'blocker.product_promises.local_apple_fm_chat_tool_session_missing',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'docs/apple-fm/2026-06-15-current-apple-fm-electrobun-desktop-audit.md',
+            'apps/pylon/packages/runtime/src/backends/apple-fm/client.ts',
+            'apps/autopilot-desktop/src/shared/install-readiness.ts',
+          ]),
+          promiseId: 'autopilot.local_apple_fm_tool_chat.v1',
+          state: 'planned',
+        }),
       ]),
     )
   })
@@ -313,12 +327,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-15.5', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-15.6', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-15.5',
+      expectedVersion: '2026-06-15.6',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-15.5',
+      servedVersion: '2026-06-15.6',
       status: 'ready',
     })
     expect(
@@ -328,7 +342,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-15.5',
+      servedVersion: '2026-06-15.6',
       status: 'blocked',
     })
   })

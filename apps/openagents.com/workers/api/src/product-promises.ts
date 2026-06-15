@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-15.5'
+export const PublicProductPromisesVersion = '2026-06-15.6'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -32,6 +32,7 @@ const sourceRefs = [
   'docs/labor/2026-06-14-p5-backlog-faucet-closeout.md',
   'docs/labor/2026-06-14-p7-lane-c-fanout-closeout.md',
   'docs/autopilot-coder/2026-06-13-autopilot-clients-roadmap.md',
+  'docs/apple-fm/2026-06-15-current-apple-fm-electrobun-desktop-audit.md',
   'apps/pylon/docs/proofs/m10-live-2026-06-14/README.md',
   'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
 ]
@@ -140,14 +141,14 @@ export const publicProductPromisesDocument = () => {
         'Pylon v0.3 is a release candidate, not stable 0.3.0.',
         'macOS and Linux are the first supported operator platforms for the v0.3 launch path.',
         'Pylon v0.3 local release gates and a no-spend live worker-loop smoke exist, but broad earning, paid assignment, settlement, and stable-release claims still need fresh public evidence before they go green.',
-        'Training, data revenue, provider-capacity resale, referral payouts, and signature revenue remain gated or planned. Local-inference and Qwen products are out of scope by owner decision (2026-06-10): no inference products at this time; model-training focus is Tassadar.',
+        'Training, data revenue, provider-capacity resale, referral payouts, and signature revenue remain gated or planned. Broad local-inference resale and Qwen fine-tune products remain out of scope by owner decision (2026-06-10), but registry 2026-06-15.6 adds an explicit planned exception for a basic, entirely local Apple FM Autopilot tool/chat path for Apple users.',
         'Episode 199 Claude Code-first mech-suit language is historical source material, not current public positioning. Current coding-agent runtime work is Codex-oriented where applicable, with useful ideas folded into Probe/Pylon.',
         'Open-source availability covers public product code and docs in the OpenAgentsInc/openagents repository; it does not publish secrets, production data, Cloudflare account bindings, wallet material, provider credentials, customer-private workroom content, or third-party service internals.',
         'The full training-pipeline program (the training.* promises) is planned scope from docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md; no Psion model rung above the retained tri-host rehearsal exists, and no pipeline stage is live as a broadly paid network workload.',
         'Episode 236 is launch-direction source material only: the Monday decentralized training run, Pylon v0.3 multi-earning node, largest-run comparison, and Tassadar executor-model language stay red until run, participant, work, validation, payment, settlement, and projection receipts exist. The former models.tasadar_percepta_executor.v1 typo record is withdrawn in favor of models.tassadar_percepta_executor.v1.',
         'The Monday 2026-06-15 decentralized-training launch is imminent but has NOT happened as of this registry version (2026-06-14). Contributor join-lifecycle and device-admission contracts landed on main (#4848-#4854) and the SHC+Pylon fallback closeout route is deployed (m10-live 2026-06-14), so the rails are ready, but every training launch promise stays red/yellow until the run produces a public run identifier, participant admission, accepted-work, validation, and settlement receipts. Rails-ready is not launched.',
         'Owner-authorized state flips 2026-06-14 (registry 2026-06-14.1): labor.forum_work_requests.v1 and labor.nostr_negotiation_market.v1 to green and provider.compliant_usage_labor.v1 / autopilot.control_center_fanout_marketplace.v1 to yellow were applied in source ahead of the receipt-first operator-route transition receipts, on the strength of the #4777/#4781/#4783 settlement evidence. The matching promise_transition receipts were recorded against the deployed registry on 2026-06-15 via the operator route (#5017): labor.forum_work_requests.v1 promise_transition_a38a3472-a5f2-4307-9de6-18afffa22627, labor.nostr_negotiation_market.v1 promise_transition_2bf98afa-ddb8-4a1e-863e-25178572620f, provider.compliant_usage_labor.v1 promise_transition_a862e366-efde-4655-96df-cd09a57d47fe, autopilot.control_center_fanout_marketplace.v1 promise_transition_9fd8f04b-ac6b-4b54-a4bf-9fa85d1e2948 — each an exception receipt (the flip was already applied, so from-state equals to-state), dereferenceable at /api/public/product-promises/transitions. The reconciliation record is docs/promises/2026-06-14-registry-reality-reconciliation-audit.md.',
-        'Wave-3 Autopilot Sites / Agency Pack surfaces (#4977-#4995) enter as conservative new records: autopilot.desktop_gui_client.v1 (yellow, local-only), mobile.autopilot_remote_control.v1 (planned), workrooms.omni_client_delivery_workrooms.v1 (red), autopilot_sites.native_email_sequences.v1 (yellow, no send service), autopilot_sites.custom_tenant_hostnames.v1 (yellow, no self-serve/SSL), autopilot_sites.partner_payout_ledger.v1 (red), autopilot.cloud_credits_ui.v1 (yellow, presentational), mobile.voice_session_evidence_transcript_ingest.v1 (red, contracts only). All are operator-gated or pre-customer; none claims green.',
+        'Wave-3 Autopilot Sites / Agency Pack surfaces (#4977-#4995) enter as conservative new records: autopilot.desktop_gui_client.v1 (yellow, local-only), mobile.autopilot_remote_control.v1 (planned), workrooms.omni_client_delivery_workrooms.v1 (red), autopilot_sites.native_email_sequences.v1 (yellow, no send service), autopilot_sites.custom_tenant_hostnames.v1 (yellow, no self-serve/SSL), autopilot_sites.partner_payout_ledger.v1 (red), autopilot.cloud_credits_ui.v1 (yellow, presentational), mobile.voice_session_evidence_transcript_ingest.v1 (red, contracts only). Registry 2026-06-15.6 adds autopilot.local_apple_fm_tool_chat.v1 (planned) for basic fully local Apple FM Autopilot chat/tool use. All are operator-gated, pre-customer, or planned; none claims green.',
         'Autopilot-is-the-install reconciliation for the 2026-06-15 launch: contributor-facing install copy should name Autopilot Desktop as the install surface and Pylon as the local node it drives; the affected Pylon promises remain yellow.',
         'Decentralized-training lane (RESEARCH_PLAN W5): the new training.public_gradient_windows.v1 record is planned, not live. Public devices do generation/validation/evaluation only; the Pluralis lifecycle substrate (#4855, P0-P3) is in place, but no public gradient enters the canonical optimizer until a quarantine→verify→canary→promotion regime ships. Do not claim public decentralized gradient training for the launch.',
       ],
@@ -618,9 +619,9 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Compute revenue comes from GEPA optimization slices and Tassadar executor-trace work on people’s devices.',
         safeCopy:
-          'Pylon v0.3 has GEPA-first local capability contracts and live no-spend Tassadar executor-trace dispatch with one operator-funded settled closeout, but paid full-network GEPA is not green. Local-inference and Qwen fine-tune revenue are out of scope by owner decision (2026-06-10): no inference products at this time.',
+          'Pylon v0.3 has GEPA-first local capability contracts and live no-spend Tassadar executor-trace dispatch with one operator-funded settled closeout, but paid full-network GEPA is not green. Local-inference resale and Qwen fine-tune revenue remain out of scope; the separate autopilot.local_apple_fm_tool_chat.v1 promise is only a planned user-owned local Autopilot tool/chat path, not a compute-revenue product.',
         unsafeCopy:
-          'Do not claim full-network GEPA revenue, and do not describe local-inference or Qwen fine-tune products as existing or planned.',
+          'Do not claim full-network GEPA revenue, and do not describe local-inference resale or Qwen fine-tune products as existing or planned.',
         evidenceRefs: [
           'transition:promise_transition_774d0db0-1a2c-4f72-861e-6996a6684f0b',
           'directive.owner.20260611.focus_tassadar_psion_cs336',
@@ -2301,6 +2302,47 @@ export const publicProductPromisesDocument = () => {
           'Green requires a signed/notarized Autopilot Desktop build containing the built-in-agent source, packaged OpenAgents compute credentials/entitlement, a metered/bounded compute path, and public evidence of a from-install Go online session doing useful work with no user API key.',
         authorityBoundary:
           'A built-in agent is a capability on bounded OpenAgents compute, not unlimited free inference or authority to spend or settle on the user behalf.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot.local_apple_fm_tool_chat.v1',
+        productArea: 'autopilot',
+        audience: ['user', 'agent', 'operator'],
+        state: 'planned',
+        claim:
+          'An Apple Silicon user can run a basic Autopilot chat and tool loop entirely locally through Apple Foundation Models, without OpenAgents hosted compute or user-supplied cloud model keys.',
+        safeCopy:
+          'Planned: a basic local Apple FM mode for Autopilot Desktop. The intended first version is modest: on supported macOS Apple Silicon machines, Autopilot Desktop will launch or discover the local Foundation Models bridge through Pylon, show honest readiness, and run a bounded local chat/tool loop for workspace-aware tasks without sending model prompts to OpenAgents hosted compute.',
+        unsafeCopy:
+          'Do not claim this works in the current installer, do not claim every Apple device is supported, do not claim offline internet-free coding beyond the local tool scope, do not claim Codex parity, and do not imply Bitcoin earning, paid compute resale, cloud fallback, or settlement authority from this local mode.',
+        evidenceRefs: [
+          'docs/apple-fm/2026-06-15-current-apple-fm-electrobun-desktop-audit.md',
+          'docs/apple-fm/2026-06-15-apple-fm-integration-audit.md',
+          'apps/pylon/packages/runtime/src/backends/apple-fm/contract.ts',
+          'apps/pylon/packages/runtime/src/backends/apple-fm/client.ts',
+          'apps/pylon/packages/runtime/src/backends/apple-fm/tools.ts',
+          'apps/pylon/packages/runtime/src/fleet/backend-capability.ts',
+          'apps/autopilot-desktop/src/bun/index.ts',
+          'apps/autopilot-desktop/src/bun/node-launcher.ts',
+          'apps/autopilot-desktop/src/shared/install-readiness.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/5068',
+          'https://github.com/OpenAgentsInc/openagents/issues/5069',
+          'https://github.com/OpenAgentsInc/openagents/issues/5070',
+          'https://github.com/OpenAgentsInc/openagents/issues/5071',
+          'https://github.com/OpenAgentsInc/openagents/issues/5072',
+          'https://github.com/OpenAgentsInc/openagents/issues/5073',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.local_apple_fm_bridge_helper_missing',
+          'blocker.product_promises.local_apple_fm_pylon_control_projection_missing',
+          'blocker.product_promises.local_apple_fm_desktop_readiness_ui_missing',
+          'blocker.product_promises.local_apple_fm_chat_tool_session_missing',
+          'blocker.product_promises.local_apple_fm_admitted_mac_smoke_missing',
+        ],
+        verification:
+          'Green requires a supported macOS Apple Silicon machine with Apple Intelligence available, a packaged or discovered Foundation Models bridge, Pylon apple_fm.status readiness exposed over the control API, Autopilot Desktop readiness and local-mode UI, a bounded local chat/tool session using safe workspace tools, and public-safe fake-bridge plus admitted-Mac smoke evidence showing no hosted model prompt path.',
+        authorityBoundary:
+          'This promise is a local user-owned model path only. It grants no cloud compute, paid assignment, payout, settlement, provider-account, deploy, spend, or public-claim authority, and local tools remain bounded by explicit workspace/tool policy.',
       },
     ],
     notes: [
