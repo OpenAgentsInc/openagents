@@ -728,8 +728,9 @@ Complete **in this order** (each phase gates the next):
      Autopilot signed+notarized `.app` bundling the node (signing creds ✅ done
      via #5048; Developer ID identity in keychain + GCP-SM backup).
 3. **Wire default-on auto-update**
-   - ⬜ **[#5042](https://github.com/OpenAgentsInc/openagents/issues/5042)** —
-     Pylon self-updater (verify→atomic-replace→drain/relaunch). **In progress.**
+   - ✅ **[#5042](https://github.com/OpenAgentsInc/openagents/issues/5042)** —
+     Pylon self-updater (verify→atomic-replace→relaunch), default-on; verified a
+     compiled binary self-updates against the signed feed. **DONE.**
    - ⬜ **[#5040](https://github.com/OpenAgentsInc/openagents/issues/5040)** —
      Autopilot Electrobun updater default-on.
 4. **Quality fold-in**
@@ -738,8 +739,9 @@ Complete **in this order** (each phase gates the next):
 5. **Produce the RC builds (rc channel)**
    - ⬜ **[#5046](https://github.com/OpenAgentsInc/openagents/issues/5046)** —
      Autopilot v1.0-rc (`1.0.0-rc.N`).
-   - ⬜ **[#5047](https://github.com/OpenAgentsInc/openagents/issues/5047)** —
-     Pylon v1.0-rc (`1.0.0-rc.N`).
+   - ✅ **[#5047](https://github.com/OpenAgentsInc/openagents/issues/5047)** —
+     Pylon v1.0-rc (`1.0.0-rc.1`) — built/signed/verified all 4 platforms,
+     binary reports 1.0.0-rc.1, runs headless. **DONE.**
 
 **Explicitly NOT on the RC-build path** (these are GA / the live launch, owner-gated
 — "until I say we're ready"): **[#5014](https://github.com/OpenAgentsInc/openagents/issues/5014)**
