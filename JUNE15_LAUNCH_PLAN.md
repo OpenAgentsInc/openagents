@@ -591,6 +591,19 @@ event + announcement (not code); #5015 builds on the now-merged #5011.
   launch the node too, smokes, announced==admitted build. **This is the "try a
   release build on mac" endpoint.**
 
+### Pylon: headless, CLI-only, agent-steerable (delete the TUI) — June 15
+- 📋 Epic **[#5033](https://github.com/OpenAgentsInc/openagents/issues/5033)** —
+  strip the OpenTUI dashboard out of Pylon and make it CLI-only and fully
+  agent-steerable (parity with the Autopilot GUI). Audit:
+  [`apps/pylon/docs/2026-06-15-pylon-cli-only-agent-steerable-audit.md`](apps/pylon/docs/2026-06-15-pylon-cli-only-agent-steerable-audit.md).
+  Children: #5034 (delete the TUI — `src/tui` + `@opentui/*` + `dashboard`),
+  #5035 (CLI parity: sessions/approvals/training/deploy verbs + `pylon help
+  --json` catalog), #5036 (live AGENTS.md three paths — download app / build from
+  source / install Pylon to steer). New promise
+  `pylon.agent_steerable_cli.v1` (planned). #5034 then #5035 (both edit
+  `src/index.ts`, so sequenced); #5036 done. Agents arriving at
+  openagents.com/AGENTS.md now learn the three ways to run a node.
+
 ### Post-launch program: Artanis evolution loop → green
 - 📋 Epic **[#5028](https://github.com/OpenAgentsInc/openagents/issues/5028)** —
   flip `artanis.tassadar_evolution_loop.v1` green via its four owed receipts:

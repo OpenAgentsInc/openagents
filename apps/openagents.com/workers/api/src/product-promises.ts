@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-14.7'
+export const PublicProductPromisesVersion = '2026-06-14.8'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -878,6 +878,35 @@ export const publicProductPromisesDocument = () => {
           'apps/pylon local tests cover the CLI/runtime smoke, and the 2026-06-09 production smoke registered, heartbeated, reported wallet readiness, created/read an unpaid assignment, accepted it, submitted progress/artifact refs, and closed it through the operator route.',
         authorityBoundary:
           'This green claim is limited to the CLI/TUI/Probe runtime and no-spend live worker-loop event path; it does not authorize paid assignments, settlement, wallet send readiness, Windows/WSL, or provider mutation.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'pylon.agent_steerable_cli.v1',
+        productArea: 'Pylon',
+        audience: ['agent', 'contributor', 'operator'],
+        state: 'planned',
+        claim:
+          'Pylon is a headless, CLI-only node an agent can fully steer — every capability the Autopilot desktop GUI exposes is reachable from the command line (plus the loopback control API), with a machine-readable command catalog and no interactive TUI.',
+        safeCopy:
+          'Pylon already has a broad headless CLI (status, balance, wallet, accounts, assignment, work, tip, presence, node, context, and more, most with --json) and a loopback control API the Autopilot desktop drives. The owner direction (2026-06-15) is to remove the OpenTUI dashboard and make Pylon CLI-only and fully agent-steerable: first-class commands for sessions/approvals/training/deploy plus a `pylon help --json` catalog, so an agent can do headlessly everything the GUI shows. The TUI removal and CLI-parity work are in progress (Pylon CLI epic); this stays planned until they land.',
+        unsafeCopy:
+          'Do not claim the TUI is already removed, that full GUI-parity CLI coverage exists today, or that steering Pylon automatically earns Bitcoin — agent-steerability is a capability claim, not an earning or settlement claim.',
+        evidenceRefs: [
+          'apps/pylon/docs/2026-06-15-pylon-cli-only-agent-steerable-audit.md',
+          'apps/pylon/docs/pylon-multi-session-agent-runbook.md',
+          'apps/pylon/src/index.ts',
+          'apps/pylon/src/node/control-server.ts',
+          'promise:pylon.cli_tui_probe_background.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.pylon_tui_not_yet_removed',
+          'blocker.product_promises.pylon_cli_gui_parity_incomplete',
+          'blocker.product_promises.pylon_cli_command_catalog_missing',
+        ],
+        verification:
+          'Green requires: the OpenTUI/dashboard surface removed from apps/pylon; first-class CLI verbs for every Autopilot-GUI capability (sessions, approvals/decisions, training lane, deploy) with consistent --json + exit codes; a `pylon help --json` command catalog; and a documented agent steering contract (CLI + control API). Supersedes the TUI dimension of pylon.cli_tui_probe_background.v1.',
+        authorityBoundary:
+          'A steerable CLI is a control surface only. It grants no paid-assignment, settlement, wallet-send, or provider-mutation authority, and steering Pylon does not by itself earn or move money.',
       },
       {
         ...basePromiseFields,
