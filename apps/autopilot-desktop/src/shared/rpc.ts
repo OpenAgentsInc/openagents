@@ -634,6 +634,10 @@ export type DesktopRPCSchema = {
     readonly requests: Record<string, never>
     readonly messages: {
       readonly nodeState: NodeStateMessage
+      // #5049: public pylon-network stats snapshot (GET /api/public/pylon-stats),
+      // polled on the Bun side and pushed to drive the home network scene.
+      // `unknown` (opaque) — the webview projects it via projectPylonNetworkScene.
+      readonly pylonStats: unknown
       // CL-30: in-app notification center (unread count + recent items),
       // derived from newly notify-worthy sessions on the Bun side.
       readonly notifications: NotificationCenterView

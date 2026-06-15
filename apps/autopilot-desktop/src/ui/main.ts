@@ -23,6 +23,7 @@ import {
   GotNodeLaunchStatus,
   GotNodeState,
   GotNotifications,
+  GotPylonStats,
 } from "./message"
 import { initialModel, Model } from "./model"
 import { subscriptions } from "./subscriptions"
@@ -79,6 +80,9 @@ const rpc = Electroview.defineRPC<DesktopRPCSchema>({
     messages: {
       nodeState(message) {
         pushInbound(GotNodeState({ node: message }))
+      },
+      pylonStats(message) {
+        pushInbound(GotPylonStats({ stats: message }))
       },
       notifications(view) {
         pushInbound(GotNotifications({ view }))

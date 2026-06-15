@@ -8,6 +8,7 @@ import {
   superviseManagedNode,
 } from "./node-launcher"
 import { createNodeStatePoller } from "./node-state-poll"
+import { fetchPublicPylonStats } from "./pylon-network-stats"
 import { createSessionNotifier } from "./notifier"
 import { raiseOsNotification } from "./os-notification"
 import {
@@ -387,12 +388,37 @@ const poller = createNodeStatePoller({
   },
 })
 
+// #5049: poll the public pylon-network stats and push them to the home scene.
+// Separate, slower cadence than the local node poll (network counters move on
+// the order of seconds, not frames). Fail-soft: a failed fetch pushes the
+// dormant snapshot (null) so the scene never shows fake counts.
+const pylonStatsBaseUrl =
+  Bun.env.OPENAGENTS_PYLON_STATS_BASE_URL ??
+  Bun.env.OPENAGENTS_COM_BASE_URL ??
+  "https://openagents.com"
+const pylonStatsIntervalMs = Number(
+  Bun.env.AUTOPILOT_DESKTOP_PYLON_STATS_POLL_MS ?? "15000",
+)
+let pylonStatsTimer: ReturnType<typeof setInterval> | undefined
+const pollPylonStatsOnce = async (): Promise<void> => {
+  const result = await fetchPublicPylonStats({ baseUrl: pylonStatsBaseUrl })
+  rpc.send.pylonStats(result.snapshot)
+}
+
 window.webview.on("dom-ready", () => {
   poller.start()
+  void pollPylonStatsOnce()
+  pylonStatsTimer = setInterval(
+    () => void pollPylonStatsOnce(),
+    Number.isFinite(pylonStatsIntervalMs) && pylonStatsIntervalMs > 0
+      ? pylonStatsIntervalMs
+      : 15000,
+  )
 })
 
 window.on("close", () => {
   poller.stop()
+  if (pylonStatsTimer !== undefined) clearInterval(pylonStatsTimer)
   // Stop supervising and kill only a node we launched ourselves; an adopted
   // node we did not start is left running, and a deliberate stop never triggers
   // a restart.
