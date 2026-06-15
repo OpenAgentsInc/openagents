@@ -74,6 +74,23 @@ Live registry: **`2026-06-15.1`**.
 **Autoupdate is now fully set up for both binaries** (Pylon verified self-updating
 end-to-end; Autopilot desktop feed live).
 
+### v1.0-rc.2 cut (2026-06-15) — published + OTA-verified
+Both binaries bumped to **1.0.0-rc.2** and published; auto-update confirmed:
+- **Pylon rc.2:** signed 4-platform feed live (`updates.openagents.com/pylon/rc/<platform>/feed.json`,
+  binaries on GCS). **Real rc.1 → rc.2 self-update verified on prod** (behind binary
+  downloaded + signature-verified + atomically self-replaced → 1.0.0-rc.2).
+- **Autopilot rc.2:** signed + **Apple-notarized** `.app`; desktop OTA feed serves
+  the rc.2 `update.json` + tarball + a **3KB rc.1→rc.2 BSDIFF delta patch** (all 200);
+  notarized `.dmg` (staple-validated) on GCS for fresh downloads.
+- Feed deploys are now small/fast (binaries on GCS, only `pylon-releases.json`
+  ships to Cloud Build).
+
+**Community download links:**
+- Canonical install/test (rc.2): <https://openagents.com/INSTALL.md>
+- Autopilot macOS (arm64, notarized): <https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/AutopilotDesktop-1.0.0-rc.2-macos-arm64.dmg>
+- Pylon: per-platform feed `https://updates.openagents.com/pylon/rc/<platform>/feed.json`
+  (`releases[0].artifactUrl` is the direct GCS binary). Existing rc.1 nodes auto-update.
+
 ### Held on purpose — the headline green flips
 The Tassadar run **manifest itself** says *"owner-operated nodes do not count as
 independent contributor proof,"* and the real-gradient closeout requires **2
