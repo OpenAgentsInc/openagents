@@ -315,13 +315,20 @@ registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
 
 **Short-term fixes (new, from the forum audit):**
 - **#5056** projection-freshness invariant umbrella (public reads rebuild on write;
-  extend `live_at_read`). `#4744`/`#4735` already closed under it.
-  - **#5057** `openapi.json` contract surface lags the live API/registry.
-- **#5058** Pylon self-signed (Nostr-key) heartbeat 401s — only token path proves presence.
-- **#5059** homepage "Download Autopilot" CTA alongside the Pylon viz (Ep 237 launch-truth;
-  `NEEDS-OWNER` placement/copy).
+  extend `live_at_read`). `#4744`/`#4735` already closed under it; `#5057` now done.
+  Remaining instances to sweep: credited-rung tip visibility, artanis-report tick.
+  - ✅ **#5057** `openapi.json` lag — **DONE/closed** (`9a16b7bc9`): `info.version` now
+    derived from `PublicProductPromisesVersion` + a guard test prevents future drift.
+- ✅ **#5058** Pylon self-signed heartbeat 401 — **DONE/closed** (`9edbd9b0a`): typed
+  `pylon_api_presence_requires_agent_token` 401 + `WWW-Authenticate: Bearer` + reason;
+  token-only presence contract documented in AGENTS.md (real NIP-98 self-signed presence
+  left as a deliberate future enhancement). No authority broadened.
+- ✅ **#5059** homepage "Download Autopilot" CTA — **DONE/closed** (`6de4140fe`): functional
+  CTA → `INSTALL.md` on the real `/` route (`pylon.ts`, not `home.ts`), viz preserved,
+  minimal copy; 410/410 web tests pass.
 - **#5060** instrument **Accepted Outcomes per kWh** (`metrics.accepted_outcomes_per_kwh.v1`
   off `planned`) + deploy the registry `2026-06-15.2` so the new promise is served.
+  *(Larger feature + owner-gated deploy — not a same-turn usability fix.)*
 
 **Held green-flips (owner-gated live event):** **#5012** epic · **#5014** launch flip ·
 **#5015** self-serve install→earn · **#5018** announce. These flip only against a real
