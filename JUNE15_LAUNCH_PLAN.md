@@ -15,31 +15,70 @@ Tassadar** — the Percepta Executor Class model direction from Episode 236.
 
 ---
 
-## Current status (updated 2026-06-15)
+## Current status (updated 2026-06-15, evening)
 
-**We are ready to flip live.** Everything build/dev-testable is done; the only
-remaining work is the live launch event itself. Live registry: **`2026-06-14.9`**.
+**rc1 is built, announced, and live; the headline green flips are HELD pending
+real independent contributors; one OTA-feed deploy is blocked and being fixed.**
+Live registry: **`2026-06-15.1`**.
 
-**RC builds + OTA + signing — DONE this pass:**
+### Shipped + verified this pass
 - **Pylon v1.0-rc.1** — signed `bun --compile` binaries (4 platforms), default-on
-  self-updater (verify→atomic-replace→relaunch), runs headless (#5041/#5042/#5043/
-  #5047/#5038).
+  self-updater (verify→atomic-replace→relaunch), runs headless; `--json` fix
+  (#5041/#5042/#5043/#5047/#5038). **CLOSED.**
 - **Autopilot v1.0-rc.1** — signed + **Apple-notarized** `.app` (Gatekeeper-accepted),
   bundles the headless node, default-on Electrobun OTA, immersive **pylon-network
-  home screen** (sidebar removed, activity-driven) (#5046/#5027/#5040/#5049 core).
+  home screen** (sidebar removed, activity-driven) (#5046/#5027/#5040). **CLOSED.**
 - **Provenance** — ed25519 release key + GCP-SM backup + fail-closed pinned verify;
-  Apple Developer ID in keychain + GCP-backed (#5044/#5048). One signed feed on our
-  GCP (#5039).
-- **Tester install guide:** `docs/autopilot-coder/2026-06-15-rc-tester-install-guide.md`.
-- **Homepage:** the pylon's blue glow now tracks live activity + a live stats
-  overlay sits behind the countdown (#5050 core).
-- Visual language: `docs/autopilot-coder/2026-06-15-autopilot-home-network-visual-language.md`.
+  Apple Developer ID in keychain + GCP-backed (#5044/#5048). OTA epic #5039. **CLOSED.**
+- **rc1 announced** — forum post as **Raynor** on the Release Candidates forum
+  (`/forum/f/release-candidates`, seeded by migration 0187) + blog post
+  (`/blog/pylon-autopilot-v1-rc1`). Both honest + RC-scoped (not claiming the run
+  is live or that you earn now).
+- **Homepage (live, deployed):** central pylon glow tied to live activity + the
+  **bezier network graph** of online pylons + a **live stats overlay** (online /
+  working / sats 24h / training contributors) with the slot-text number-roll and a
+  "…" loading state. Behind the countdown; becomes the homepage at launch (#5050
+  **CLOSED**).
+- **Recruitment funnel:** fetchable **`/INSTALL.md`** (install/test), shrunk
+  **`/AGENTS.md`** (128KB→74KB) + extracted **`/SURFACES.md`**, and a community
+  **delegation guide** on GitHub (`docs/2026-06-15-help-flip-the-green-gates.md`).
+- **Product promises** refreshed to `2026-06-15.1`: the RC promises now reflect the
+  real 1.0.0-rc.1 signed/notarized builds (state stays **yellow** — still gated).
+- Tester guides: `docs/autopilot-coder/2026-06-15-rc-tester-install-guide.md` (human),
+  `2026-06-15-rc-agent-test-guide.md` (agent; SDK-free core, verified by a fresh
+  no-SDK Codex run), and the visual-language runbook
+  `2026-06-15-autopilot-home-network-visual-language.md`.
 
-**Remaining = owner-gated live launch event only:** #5014 (live non-owner Go/No-Go
-→ real install→earn→receipt), #5015 (self-serve earn green), #5018 (announcement),
-#5012 (crucial-promise green flips). RC builds ship without these; promises stay
-receipt-first (no green without live receipts). Fidelity follow-ups: #5049 center
-shader, #5050 homepage network graph.
+### ⚠️ Autoupdate — clients done, FEED NOT LIVE YET (being fixed)
+- **Clients:** Pylon + Autopilot auto-update is **on by default**, fetching from
+  `updates.openagents.com` and verifying against the pinned ed25519 key (fail
+  closed). Verified end-to-end locally.
+- **Feed:** `updates.openagents.com` is domain-mapped to the `oa-updates` Cloud Run
+  service, but the feed returns **404** — the Dockerfile didn't `COPY pylon-dist`.
+  Fixed the Dockerfile, but the redeploy **failed to start**: seeding 318M of
+  signed binaries into the **in-memory** asset store at boot exceeds Cloud Run's
+  startup memory/timeout. **Fix needed:** serve the binaries from disk/GCS instead
+  of loading them all into memory at startup (or bump memory + lazy-load). Until
+  then, a running rc1 binary's update check 404s (no update delivered). **No rc2
+  needed** — rc1 already targets the right URL; this is purely a server fix.
+
+### Held on purpose — the headline green flips
+The Tassadar run **manifest itself** says *"owner-operated nodes do not count as
+independent contributor proof,"* and the real-gradient closeout requires **2
+distinct contributor devices**. So we cannot honestly flip
+`training.monday_decentralized_training_launch.v1` (#5014) or
+`pylon.install_without_wallet_knowledge.v1` (#5015) green via Raynor/Artanis (both
+org-operated). **Current run state (autonomously watched):** `active`, devices
+**1/2**, `closeoutSatisfied: false`, `verified 0`, `settledSats 0` — one CLI claim
+exists (lease `1e278589…`, claimed 16:06 UTC) but no closeout was submitted. We
+flip green only against a real independent contributor's dereferenceable receipt
+(#5012/#5018 follow). A background watch reports the moment verified+paid fires.
+
+### Open issues
+- **Held (owner-gated live event):** #5012, #5014, #5015, #5018.
+- **Fidelity follow-up:** #5049 (Autopilot home — composite the exact pylonDiamonds
+  shader as the center; core already shipped in the notarized RC).
+- **Server fix in progress:** the oa-updates feed deploy (see autoupdate above).
 
 **Done + merged + (where applicable) deployed:**
 - **Worker run lane A–E** — run authority/manifest, executor-trace admission +
