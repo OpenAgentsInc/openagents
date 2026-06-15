@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-14.4'
+export const PublicProductPromisesVersion = '2026-06-14.5'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -89,7 +89,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-06-14',
+    lastUpdated: '2026-06-15',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -148,6 +148,7 @@ export const publicProductPromisesDocument = () => {
         'The Monday 2026-06-15 decentralized-training launch is imminent but has NOT happened as of this registry version (2026-06-14). Contributor join-lifecycle and device-admission contracts landed on main (#4848-#4854) and the SHC+Pylon fallback closeout route is deployed (m10-live 2026-06-14), so the rails are ready, but every training launch promise stays red/yellow until the run produces a public run identifier, participant admission, accepted-work, validation, and settlement receipts. Rails-ready is not launched.',
         'Owner-authorized state flips 2026-06-14 (registry 2026-06-14.1): labor.forum_work_requests.v1 and labor.nostr_negotiation_market.v1 to green and provider.compliant_usage_labor.v1 / autopilot.control_center_fanout_marketplace.v1 to yellow were applied in source ahead of the receipt-first operator-route transition receipts, on the strength of the #4777/#4781/#4783 settlement evidence. The matching promise_transition receipts must still be recorded by the operator against the deployed 2026-06-14.1 version; they are not fabricated in source. The reconciliation record is docs/promises/2026-06-14-registry-reality-reconciliation-audit.md.',
         'Wave-3 Autopilot Sites / Agency Pack surfaces (#4977-#4995) enter as conservative new records: autopilot.desktop_gui_client.v1 (yellow, local-only), mobile.autopilot_remote_control.v1 (planned), workrooms.omni_client_delivery_workrooms.v1 (red), autopilot_sites.native_email_sequences.v1 (yellow, no send service), autopilot_sites.custom_tenant_hostnames.v1 (yellow, no self-serve/SSL), autopilot_sites.partner_payout_ledger.v1 (red), autopilot.cloud_credits_ui.v1 (yellow, presentational), mobile.voice_session_evidence_transcript_ingest.v1 (red, contracts only). All are operator-gated or pre-customer; none claims green.',
+        'Autopilot-is-the-install reconciliation for the 2026-06-15 launch: contributor-facing install copy should name Autopilot Desktop as the install surface and Pylon as the local node it drives; the affected Pylon promises remain yellow.',
       ],
     },
     promises: [
@@ -292,7 +293,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Pylon v0.3 has been pulled into the monorepo as the release-candidate contributor node and includes the former Probe runtime surface.',
         safeCopy:
-          'Pylon v0.3 is present under apps/pylon as @openagentsinc/pylon@0.3.0-rc2 for macOS and Linux rc work; stable v0.3.0 and network-wide earning remain gated.',
+          'For the 2026-06-15 launch path, contributors install Autopilot Desktop; Pylon v0.3 is the local node Autopilot drives under apps/pylon as @openagentsinc/pylon@0.3.0-rc2 for macOS and Linux rc work. Stable v0.3.0 and network-wide earning remain gated.',
         unsafeCopy:
           'Do not claim Pylon v0.3.0 is stable or broadly live for anyone to earn Bitcoin automatically.',
         evidenceRefs: [
@@ -318,7 +319,7 @@ export const publicProductPromisesDocument = () => {
         state: 'yellow',
         claim: 'A new version of Pylon releases.',
         safeCopy:
-          'Pylon v0.3 is a release candidate in the monorepo targeting macOS and Linux; it is not stable 0.3.0. Windows/WSL is deliberately out of scope by owner decision (2026-06-10), not a pending gap.',
+          'The contributor-facing release path is Autopilot Desktop as the install surface, with Pylon v0.3 as the local node it drives. Pylon remains a release candidate in the monorepo targeting macOS and Linux; it is not stable 0.3.0. Windows/WSL is deliberately out of scope by owner decision (2026-06-10), not a pending gap.',
         unsafeCopy:
           'Do not claim a stable universal Pylon release works on every computer.',
         evidenceRefs: [
@@ -667,7 +668,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Anyone can install Pylon without Bitcoin wallet knowledge, without loading bitcoin, and start turning a computer into bitcoin.',
         safeCopy:
-          'A live operator-approved small-sats install-to-bitcoin smoke passed end to end on a real machine on 2026-06-11: fresh packaged install, fresh registration, heartbeat, MDK wallet readiness in original funded wallet-home mode, payout-target admission, paid assignment lease, accepted-work closeout, a real 21-sat Lightning payment, and a public settled receipt. The run was operator-staged; self-serve no-wallet-knowledge earning is not yet live.',
+          'The conservative install claim is now Autopilot Desktop first: contributors install Autopilot Desktop, and Autopilot drives the local Pylon node that can register, heartbeat, receive work, and participate in the operator-approved install-to-bitcoin path. A live operator-approved small-sats smoke passed end to end on a real machine on 2026-06-11 with fresh packaged install, registration, heartbeat, MDK wallet readiness in original funded wallet-home mode, payout-target admission, paid assignment lease, accepted-work closeout, a real 21-sat Lightning payment, and a public settled receipt. The run was operator-staged; self-serve no-wallet-knowledge earning is not yet live.',
         unsafeCopy:
           'Do not claim no-wallet-knowledge installs immediately earn spendable Bitcoin without operator staging.',
         evidenceRefs: [
@@ -901,6 +902,32 @@ export const publicProductPromisesDocument = () => {
           'Requires package validation, runtime activation, metering, attribution, pricing, rev-share, dispute/refund policy, and settlement receipts.',
         authorityBoundary:
           'Discovery or contribution validation does not install, promote, bill, or settle package usage.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'marketplace.wasm_plugins.v1',
+        productArea: 'marketplace',
+        audience: ['agent', 'contributor', 'public'],
+        state: 'planned',
+        claim:
+          'The marketplace can support WASM-plugin packages for agent and contributor workflows.',
+        safeCopy:
+          'WASM-plugin marketplace support is experimental roadmap work. Treat it as design and early implementation direction only; no public self-serve WASM-plugin marketplace, installation flow, billing, settlement, or broad execution authority is live.',
+        unsafeCopy:
+          'Do not claim a live WASM-plugin marketplace, paid WASM-plugin installs, settled WASM-plugin revenue, or public-safe third-party WASM execution.',
+        evidenceRefs: [
+          'apps/openagents.com/docs/2026-06-08-signature-marketplace-revenue-gate.md',
+          'apps/pylon/packages/runtime/src/blueprint',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.wasm_plugin_marketplace_not_live',
+          'blocker.product_promises.wasm_plugin_execution_sandbox_missing',
+          'blocker.product_promises.wasm_plugin_billing_settlement_missing',
+        ],
+        verification:
+          'Keep this planned until there is public evidence for package policy, sandboxed WASM execution, install/uninstall lifecycle, metering, billing, attribution, rev-share, abuse handling, and settlement receipts.',
+        authorityBoundary:
+          'Experimental marketplace planning does not grant public plugin installation, execution, billing, settlement, code-loading, or contributor earning authority.',
       },
       {
         ...basePromiseFields,
