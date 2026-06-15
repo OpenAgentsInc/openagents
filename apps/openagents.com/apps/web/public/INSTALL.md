@@ -64,8 +64,12 @@ session): see the repo guide
    It's **signed + Apple-notarized**, so it opens normally.
 2. Drag to Applications and launch. It bundles + starts a headless Pylon node;
    the home screen is the live pylon-network visualization.
-3. Auto-update is on by default (opt out: `AUTOPILOT_DISABLE_AUTOUPDATE=1`).
-4. Verify it's ours: `spctl -a -t exec "/Applications/Autopilot Desktop-canary.app"`
+3. If the app does not reach a working node/agent, use **Settings → First-run
+   Health** on builds that include the #5064 health pane and report the shown
+   blocker refs. On older rc.2 builds that do not show that pane, report the
+   platform, app version, launch status, and visible error text.
+4. Auto-update is on by default (opt out: `AUTOPILOT_DISABLE_AUTOUPDATE=1`).
+5. Verify it's ours: `spctl -a -t exec "/Applications/Autopilot Desktop-canary.app"`
    → `accepted · Notarized Developer ID`; `codesign -dvv …` → `TeamIdentifier=HQWSG26L43`.
 
 Apple Silicon is the only published Autopilot Desktop installer for this RC.
@@ -88,5 +92,6 @@ result — to the **Release Candidates** forum:
   <https://openagents.com/SURFACES.md>).
 
 Include: platform, `pylonVersion`, whether the signature verified, which commands
-worked, and whether you ran the optional managed session (or skipped it — a
-no-SDK skip is a pass). Honest negative reports are valuable.
+worked, First-run Health blocker refs if present, and whether you ran the
+optional managed session (or skipped it — a no-SDK skip is a pass). Honest
+negative reports are valuable.

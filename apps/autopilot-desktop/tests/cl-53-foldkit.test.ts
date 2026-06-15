@@ -31,6 +31,7 @@ import {
   initialModel,
   Model,
   modelBuiltInAgentReadiness,
+  modelInstallReadiness,
   modelNode,
   modelTrainingBootstrap,
   modelTrainingDashboard,
@@ -49,6 +50,7 @@ import {
   ClickedPlanTrainingWindow,
   ClickedQueueTrainingCloseout,
   ClickedRefreshBuiltInAgent,
+  ClickedRefreshInstallReadiness,
   ClickedRefreshTrainingRuns,
   ClickedReconcileTrainingWindow,
   ClickedResolveApproval,
@@ -56,6 +58,7 @@ import {
   ClickedStartBuiltInAgent,
   ClickedSubmitIntent,
   GotBuiltInAgentReadiness,
+  GotInstallReadiness,
   GotTrainingDashboard,
   GotTrainingEvidencePacketSummary,
   GotTrainingOperatorReadiness,
@@ -222,23 +225,27 @@ describe("update reducer (CL-53)", () => {
 
   test("GotNodeLaunchStatus stores the launch lifecycle status (#5025)", () => {
     expect(initialModel.nodeLaunchStatus).toBe(null)
-    const [launching] = update(
+    const [launching, launchCommands] = update(
       initialModel,
       GotNodeLaunchStatus({ status: "launching" }),
     )
     expect(launching.nodeLaunchStatus).toBe("launching")
-    const [failed] = update(
+    expect(launchCommands).toHaveLength(1)
+    const [failed, failedCommands] = update(
       launching,
       GotNodeLaunchStatus({ status: "failed" }),
     )
     expect(failed.nodeLaunchStatus).toBe("failed")
+    expect(failedCommands).toHaveLength(1)
   })
 
   test("NavigatedTo switches pane and resets expanded events", () => {
     const start = Model.make({ ...initialModel, expandedEvents: [1, 2] })
-    const [model] = update(start, NavigatedTo({ pane: "settings" }))
+    const [model, commands] = update(start, NavigatedTo({ pane: "settings" }))
     expect(model.pane).toBe("settings")
     expect(model.expandedEvents).toEqual([])
+    expect(model.installReadinessPending).toBe(true)
+    expect(commands).toHaveLength(1)
   })
 
   test("NavigatedTo fullscreen training pane refreshes training projections", () => {
@@ -372,6 +379,53 @@ describe("update reducer (CL-53)", () => {
   test("built-in agent refresh dispatches readiness check", () => {
     const [model, commands] = update(initialModel, ClickedRefreshBuiltInAgent())
     expect(model.builtInAgentStatus.tone).toBe("info")
+    expect(commands).toHaveLength(1)
+  })
+
+  test("install readiness stores first-run health projection", () => {
+    const [model] = update(
+      initialModel,
+      GotInstallReadiness({
+        projection: {
+          ok: false,
+          fetchedAt: "2026-06-15T00:00:00.000Z",
+          sourceUrl: "desktop:install-readiness",
+          platform: "darwin",
+          arch: "arm64",
+          runtime: "packaged",
+          nodeLaunchStatus: "failed",
+          pylonHomePresent: false,
+          controlTokenPresent: false,
+          localPylonReady: false,
+          builtInAgentReady: false,
+          userApiKeyRequired: false,
+          autoUpdateEnabled: true,
+          highestRoiAction: "Restart Autopilot or install a newer build",
+          blockerRefs: ["blocker.autopilot.install.local_pylon_failed"],
+          items: [
+            {
+              id: "local-pylon",
+              label: "Local node",
+              status: "blocked",
+              detail: "The local Pylon node did not become reachable.",
+              blockerRef: "blocker.autopilot.install.local_pylon_failed",
+            },
+          ],
+        },
+      }),
+    )
+    expect(modelInstallReadiness(model)?.ok).toBe(false)
+    expect(model.installReadinessStatus.text).toContain("Restart Autopilot")
+    expect(model.installReadinessStatus.tone).toBe("info")
+  })
+
+  test("install readiness refresh dispatches a check", () => {
+    const [model, commands] = update(
+      initialModel,
+      ClickedRefreshInstallReadiness(),
+    )
+    expect(model.installReadinessPending).toBe(true)
+    expect(model.installReadinessStatus.tone).toBe("info")
     expect(commands).toHaveLength(1)
   })
 

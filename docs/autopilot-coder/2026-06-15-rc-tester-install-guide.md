@@ -24,7 +24,11 @@ so Gatekeeper opens it normally (no right-click-open workaround needed).
 3. Launch it. It bundles and starts a **headless Pylon node** for you — no
    separate install. The home screen is the live **pylon-network visualization**
    (the network's activity, online pylons, sats settled, training contributors).
-4. Auto-update is **on by default** (checks at launch + every 6h). To opt out,
+4. If the app does not reach a working node/agent, use **Settings → First-run
+   Health** on builds that include the #5064 health pane and report the shown
+   blocker refs. On older rc.2 builds that do not show that pane, report the
+   platform, app version, launch status, and visible error text.
+5. Auto-update is **on by default** (checks at launch + every 6h). To opt out,
    set `AUTOPILOT_DISABLE_AUTOUPDATE=1` in the launch environment.
 
 **Verify it's genuinely ours** (optional, recommended):

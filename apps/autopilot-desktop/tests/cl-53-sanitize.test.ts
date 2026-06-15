@@ -222,6 +222,52 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "sidebar")).toBe(false)
   })
 
+  test("settings pane includes first-run health blockers (#5064)", () => {
+    const document = view({
+      ...initialModel,
+      pane: "settings",
+      installReadiness: {
+        ok: false,
+        fetchedAt: "2026-06-15T00:00:00.000Z",
+        sourceUrl: "desktop:install-readiness",
+        platform: "darwin",
+        arch: "arm64",
+        runtime: "packaged",
+        nodeLaunchStatus: "failed",
+        pylonHomePresent: false,
+        controlTokenPresent: false,
+        localPylonReady: false,
+        builtInAgentReady: false,
+        userApiKeyRequired: false,
+        autoUpdateEnabled: true,
+        highestRoiAction: "Restart Autopilot or install a newer build",
+        blockerRefs: ["blocker.autopilot.install.local_pylon_failed"],
+        items: [
+          {
+            id: "local-pylon",
+            label: "Local node",
+            status: "blocked",
+            detail: "The local Pylon node did not become reachable.",
+            blockerRef: "blocker.autopilot.install.local_pylon_failed",
+          },
+        ],
+      },
+    })
+    expect(treeContainsText(document.body, "First-run Health")).toBe(true)
+    expect(
+      treeContainsText(
+        document.body,
+        "Restart Autopilot or install a newer build",
+      ),
+    ).toBe(true)
+    expect(
+      treeContainsText(
+        document.body,
+        "blocker.autopilot.install.local_pylon_failed",
+      ),
+    ).toBe(true)
+  })
+
   test("training pane includes the training scene", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)

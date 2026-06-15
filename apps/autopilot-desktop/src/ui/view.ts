@@ -41,6 +41,7 @@ import type {
   AssignmentRow,
   IntentRow,
   BuiltInAgentReadinessResponse,
+  InstallReadinessResponse,
   NodeStateMessage,
   SessionEventRow,
   TrainingEvidencePacketSummaryResponse,
@@ -69,6 +70,7 @@ import {
   ClickedPlanTrainingWindow,
   ClickedQueueTrainingCloseout,
   ClickedReconcileTrainingWindow,
+  ClickedRefreshInstallReadiness,
   ClickedRefreshBuiltInAgent,
   ClickedRefreshTrainingRuns,
   ClickedQueueTrainingLaunch,
@@ -111,6 +113,7 @@ import {
   modelTrainingEvidencePacketSummary,
   modelTrainingLease,
   modelBuiltInAgentReadiness,
+  modelInstallReadiness,
   modelNode,
   modelPylonStats,
   modelNotifications,
@@ -3111,13 +3114,93 @@ const spawnPane = (model: Model): Html => {
 
 // ── Settings pane ─────────────────────────────────────────────────────────────
 
+const installReadinessTone = (
+  status: InstallReadinessResponse["items"][number]["status"],
+): string => {
+  switch (status) {
+    case "ready":
+      return "ready"
+    case "waiting":
+      return "watch"
+    case "attention":
+      return "watch"
+    case "blocked":
+      return "blocked"
+  }
+}
+
+const installReadinessSummary = (
+  readiness: InstallReadinessResponse | null,
+): string =>
+  readiness === null
+    ? "checking first-run health..."
+    : readiness.ok
+      ? "ready"
+      : `${readiness.highestRoiAction} · ${readiness.blockerRefs.length} blocker${readiness.blockerRefs.length === 1 ? "" : "s"}`
+
+const installReadinessRows = (
+  readiness: InstallReadinessResponse | null,
+): ReadonlyArray<Html> => {
+  if (readiness === null) {
+    return [
+      h.li([cls("readiness-row")], [
+        h.span([cls("readiness-name")], ["First-run health"]),
+        h.span([cls("readiness-detail")], ["not checked"]),
+      ]),
+    ]
+  }
+  return readiness.items.map(item =>
+    h.li([cls(`readiness-row readiness-${installReadinessTone(item.status)}`)], [
+      h.span([cls("readiness-name")], [item.label]),
+      h.span([cls("readiness-detail")], [item.detail]),
+      h.code([cls("readiness-status")], [item.status]),
+    ]),
+  )
+}
+
 const settingsPane = (model: Model): Html => {
   const node = modelNode(model)
+  const installReadiness = modelInstallReadiness(model)
   const schema = node?.schema ?? "—"
   return h.div(
     [],
     [
       paneTitle("Settings"),
+      card("First-run Health", [
+        h.p([cls("card-body")], [
+          "Status: ",
+          h.strong([], [installReadinessSummary(installReadiness)]),
+        ]),
+        h.p([cls("card-body")], [
+          "System: ",
+          h.strong([], [
+            installReadiness
+              ? `${installReadiness.platform}-${installReadiness.arch} · ${installReadiness.runtime}`
+              : "not checked",
+          ]),
+        ]),
+        h.ul(
+          [cls("training-gates install-readiness-list")],
+          installReadinessRows(installReadiness),
+        ),
+        installReadiness?.blockerRefs.length
+          ? h.ul(
+              [cls("empty-state mono install-readiness-blockers")],
+              installReadiness.blockerRefs.map(blocker => h.li([], [blocker])),
+            )
+          : h.empty,
+        h.div([cls("adapter-toggle")], [
+          h.button(
+            [
+              cls("adapter-btn"),
+              h.Type("button"),
+              h.Disabled(model.installReadinessPending),
+              h.OnClick(ClickedRefreshInstallReadiness()),
+            ],
+            [model.installReadinessPending ? "Checking..." : "Refresh"],
+          ),
+        ]),
+      ]),
       card("Connection", [
         h.p([cls("card-body")], ["Status: ", h.strong([], [connectionSummary(node)])]),
         h.p([cls("card-body")], ["Protocol schema: ", h.code([], [schema])]),
@@ -3255,6 +3338,8 @@ const networkStat = (label: string, value: string, hero = false): Html =>
 const networkPane = (model: Model): Html => {
   const scene = projectPylonNetworkScene(modelPylonStats(model))
   const options = pylonNetworkVisualizationOptions(scene)
+  const installReadiness = modelInstallReadiness(model)
+  const canGoOnline = installReadiness?.builtInAgentReady ?? true
 
   const activityLabel = scene.dormant
     ? "network dormant"
@@ -3276,13 +3361,16 @@ const networkPane = (model: Model): Html => {
         h.p([cls("network-subhead")], [
           scene.asOfLabel ? `as of ${scene.asOfLabel}` : "live network",
         ]),
+        h.p([cls("network-health")], [
+          installReadinessSummary(installReadiness),
+        ]),
         h.button(
           [
             cls(
               "pointer-events-auto mt-4 w-fit border border-[var(--outline)] bg-black px-4 py-2 font-mono text-xs font-semibold uppercase tracking-[0.08em] text-[var(--primary)] hover:border-[var(--primary)] disabled:cursor-wait disabled:opacity-60",
             ),
             h.Type("button"),
-            h.Disabled(model.builtInAgentPending),
+            h.Disabled(model.builtInAgentPending || !canGoOnline),
             h.OnClick(ClickedStartBuiltInAgent()),
           ],
           [model.builtInAgentPending ? "Going online..." : "Go online"],

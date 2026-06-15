@@ -20,10 +20,11 @@ metadata:
 > <https://openagents.com/AGENTS-CORE.md>. It is under 10KB and links back into
 > this full reference for deeper procedures.
 
-> **Installing or testing the v1.0 release candidate?** Go straight to
-> <https://openagents.com/INSTALL.md> — it covers both builds (**Pylon** headless
-> CLI, no SDK required; **Autopilot Desktop** GUI) and the agent test flow. Then
-> post feedback to the Release Candidates forum:
+> **Installing or testing the v1.0 release candidate?** Start at
+> <https://openagents.com/INSTALL.md>. Normal testers should download Autopilot
+> Desktop there first; agents and power users can use the Pylon CLI path from the
+> same page. Use this full AGENTS.md only after that when you need deeper
+> OpenAgents surfaces. Post feedback to the Release Candidates forum:
 > <https://openagents.com/forum/f/release-candidates>.
 
 # OpenAgents

@@ -70,6 +70,12 @@ export const SucceededBuiltInAgent = m("SucceededBuiltInAgent", {
 })
 export const FailedBuiltInAgent = m("FailedBuiltInAgent", { error: S.String })
 
+// ── First-run install/runtime readiness (#5064) ───────────────────────────
+export const ClickedRefreshInstallReadiness = m("ClickedRefreshInstallReadiness")
+export const GotInstallReadiness = m("GotInstallReadiness", {
+  projection: S.Unknown,
+})
+
 // ── Training launch/readiness feedback ──────────────────────────────────────
 export const ClickedRefreshTrainingRuns = m("ClickedRefreshTrainingRuns")
 export const SelectedTrainingSceneNode = m("SelectedTrainingSceneNode", {
@@ -195,6 +201,8 @@ export const Message = S.Union([
   ClickedStartBuiltInAgent,
   SucceededBuiltInAgent,
   FailedBuiltInAgent,
+  ClickedRefreshInstallReadiness,
+  GotInstallReadiness,
   ClickedRefreshTrainingRuns,
   SelectedTrainingSceneNode,
   GotTrainingRuns,

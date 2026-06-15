@@ -92,6 +92,12 @@ body {
   color: var(--text-secondary, #8a8c93);
   margin: 0;
 }
+.network-health {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  color: var(--text, #d7d8e5);
+  margin: 0.25rem 0 0;
+}
 .network-stats {
   display: flex;
   flex-wrap: wrap;

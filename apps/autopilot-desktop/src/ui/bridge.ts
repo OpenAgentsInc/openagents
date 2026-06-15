@@ -18,6 +18,7 @@ import type { Message } from "./message"
 import type {
   BuiltInAgentReadinessResponse,
   BuiltInAgentStartResponse,
+  InstallReadinessResponse,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
@@ -48,6 +49,9 @@ export type DesktopRequests = {
   startBuiltInAgent(
     p: Record<string, never>,
   ): Promise<BuiltInAgentStartResponse>
+  installReadiness(
+    p: Record<string, never>,
+  ): Promise<InstallReadinessResponse>
   listTrainingRuns(p: Record<string, never>): Promise<TrainingRunsResponse>
   listTrainingDashboard(
     p: Record<string, never>,

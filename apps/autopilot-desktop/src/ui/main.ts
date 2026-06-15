@@ -19,6 +19,7 @@ import { html } from "foldkit/html"
 
 import type { DesktopRPCSchema } from "../shared/rpc"
 import { type DesktopRequests, pushInbound, setRequest } from "./bridge"
+import { LoadInstallReadiness } from "./commands"
 import {
   GotNodeLaunchStatus,
   GotNodeState,
@@ -103,7 +104,7 @@ function start(): void {
   Runtime.run(
     Runtime.makeProgram({
       Model,
-      init: () => [initialModel, []],
+      init: () => [initialModel, [LoadInstallReadiness()]],
       update,
       view,
       subscriptions,

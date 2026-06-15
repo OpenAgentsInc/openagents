@@ -8,7 +8,11 @@ import {
   superviseManagedNode,
 } from "./node-launcher"
 import { createNodeStatePoller } from "./node-state-poll"
-import { autoUpdateIntervalMs, runAutoUpdateOnce } from "./auto-update"
+import {
+  autoUpdateDisabledReason,
+  autoUpdateIntervalMs,
+  runAutoUpdateOnce,
+} from "./auto-update"
 import { fetchPublicPylonStats } from "./pylon-network-stats"
 import { createSessionNotifier } from "./notifier"
 import { raiseOsNotification } from "./os-notification"
@@ -16,6 +20,7 @@ import {
   builtInAgentObjective,
   resolveBuiltInAgentSettings,
 } from "../shared/builtin-agent"
+import { projectInstallReadiness } from "../shared/install-readiness"
 import {
   cancelSession,
   deployToCloud,
@@ -43,6 +48,7 @@ import type {
   BuiltInAgentReadinessResponse,
   BuiltInAgentStartResponse,
   DesktopRPCSchema,
+  InstallReadinessResponse,
   TrainingOperatorReadinessPylonRefSource,
   TrainingOperatorReadinessResponse,
 } from "../shared/rpc"
@@ -76,6 +82,8 @@ const configuredTrainingPylonRef =
 const trainingWorkerReceiptsFilename = "training-worker-receipts.json"
 const builtInAgentWorktreeDirname = "builtin-agent-workspace"
 const builtInAgentUsageFilename = "builtin-agent-usage.json"
+
+let managedNode: SupervisedNode | null = null
 
 // CL-45: resolve the node home once per call so a node that starts after the app
 // (or rotates its home) is picked up without a restart. Falls back to the env
@@ -289,6 +297,28 @@ function builtInAgentReadinessProjection(): BuiltInAgentReadinessResponse {
   }
 }
 
+function runtimeKind(): "source" | "packaged" {
+  return PATHS.RESOURCES_FOLDER.includes(".app/Contents/Resources")
+    ? "packaged"
+    : "source"
+}
+
+function installReadinessProjection(): InstallReadinessResponse {
+  const home = resolveHome()
+  const controlToken = home === null ? null : readControlToken(home)
+  return projectInstallReadiness({
+    fetchedAt: new Date().toISOString(),
+    platform: process.platform,
+    arch: process.arch,
+    runtime: runtimeKind(),
+    nodeLaunchStatus: managedNode?.status() ?? null,
+    pylonHomePresent: home !== null,
+    controlTokenPresent: controlToken !== null,
+    builtInAgentReadiness: builtInAgentReadinessProjection(),
+    autoUpdateDisabledReason: autoUpdateDisabledReason(Bun.env),
+  })
+}
+
 async function startBuiltInAgentSession(): Promise<BuiltInAgentStartResponse> {
   const readiness = builtInAgentReadinessProjection()
   const home = resolveHome()
@@ -355,6 +385,9 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       async startBuiltInAgent() {
         return startBuiltInAgentSession()
+      },
+      async installReadiness() {
+        return installReadinessProjection()
       },
       async listTrainingRuns() {
         return fetchTrainingRuns({ baseUrl: trainingBaseUrl })
@@ -494,13 +527,9 @@ const notifier = createSessionNotifier({ raise: raiseOsNotification })
 // `unavailable` result (no repo entry and no shipped bundle) leaves the app
 // honest-offline.
 //
-// NOTE (UI follow-up): the launch status is logged Bun-side here; surfacing the
-// launching/online/failed badge in the webview needs a new Bun→webview message
-// (e.g. `nodeLaunchStatus`) wired into the Foldkit node-status projection. That
-// touches src/shared/rpc.ts + src/ui/* (owned by another worker right now), so
-// it is intentionally deferred — the live node-state poll still drives the
-// honest online/offline projection in the meantime.
-let managedNode: SupervisedNode | null = null
+// #5064: launch status also refreshes the public-safe installReadiness
+// projection, so normal first-run failures become visible in Settings instead
+// of requiring log spelunking.
 managedNode = superviseManagedNode({
   cwd: process.cwd(),
   env: Bun.env,

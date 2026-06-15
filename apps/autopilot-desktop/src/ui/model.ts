@@ -15,6 +15,7 @@ import type { NotificationCenterView } from "@openagentsinc/autopilot-control-pr
 import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
 import type {
   BuiltInAgentReadinessResponse,
+  InstallReadinessResponse,
   NodeStateMessage,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
@@ -77,6 +78,12 @@ export const BuiltInAgentStatus = S.Struct({
 })
 export type BuiltInAgentStatus = typeof BuiltInAgentStatus.Type
 
+export const InstallReadinessStatus = S.Struct({
+  text: S.String,
+  tone: S.Literals(["error", "info", "success", "idle"]),
+})
+export type InstallReadinessStatus = typeof InstallReadinessStatus.Type
+
 // Transient status for queueing a training launch/readiness check through the
 // existing local Pylon intent bridge. The desktop webview never receives admin
 // training authority or secrets.
@@ -127,6 +134,12 @@ export const Model = ts("AutopilotDesktop", {
   builtInAgentReadiness: S.NullOr(S.Unknown),
   builtInAgentStatus: BuiltInAgentStatus,
   builtInAgentPending: S.Boolean,
+
+  // #5064: first-run/install health projection. Bun composes local node
+  // status, hosted-agent readiness, platform/runtime, and auto-update state.
+  installReadiness: S.NullOr(S.Unknown),
+  installReadinessStatus: InstallReadinessStatus,
+  installReadinessPending: S.Boolean,
 
   // #5025: honest node-launch lifecycle status from the Bun supervisor
   // (launching/online/adopted/failed/unavailable). Null until the first status
@@ -230,6 +243,11 @@ export const modelBuiltInAgentReadiness = (
 ): BuiltInAgentReadinessResponse | null =>
   model.builtInAgentReadiness as BuiltInAgentReadinessResponse | null
 
+export const modelInstallReadiness = (
+  model: Model,
+): InstallReadinessResponse | null =>
+  model.installReadiness as InstallReadinessResponse | null
+
 export const modelNotifications = (model: Model): NotificationCenterView | null =>
   model.notifications as NotificationCenterView | null
 
@@ -296,6 +314,9 @@ export const initialModel: Model = Model.make({
   builtInAgentReadiness: null,
   builtInAgentStatus: { text: "not checked", tone: "idle" },
   builtInAgentPending: false,
+  installReadiness: null,
+  installReadinessStatus: { text: "not checked", tone: "idle" },
+  installReadinessPending: false,
   nodeLaunchStatus: null,
   pane: "network",
   selectedSessionRef: null,

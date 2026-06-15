@@ -17,6 +17,7 @@ import {
   ClaimTrainingWindowLease,
   DeployCloud,
   LoadBuiltInAgentReadiness,
+  LoadInstallReadiness,
   LoadTrainingDashboard,
   LoadTrainingEvidencePacketSummary,
   LoadTrainingOperatorReadiness,
@@ -38,6 +39,7 @@ import type { Message } from "./message"
 import { Model, type PaneId } from "./model"
 import type {
   BuiltInAgentReadinessResponse,
+  InstallReadinessResponse,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
@@ -74,6 +76,7 @@ const isTrainingPane = (pane: PaneId): boolean =>
   pane === "training" || pane === "training-fullscreen"
 
 const isBuiltInAgentPane = (pane: PaneId): boolean => pane === "builtin-agent"
+const isSettingsPane = (pane: PaneId): boolean => pane === "settings"
 
 const plannedRunFirstObservedAt = (
   model: Model,
@@ -107,7 +110,7 @@ export const update = (model: Model, message: Message): Result => {
     case "GotNodeLaunchStatus":
       return [
         Model.make({ ...model, nodeLaunchStatus: message.status }),
-        noCommands,
+        [LoadInstallReadiness()],
       ]
 
     // ── Navigation ─────────────────────────────────────────────────────────
@@ -121,6 +124,15 @@ export const update = (model: Model, message: Message): Result => {
             ? {
                 builtInAgentStatus: {
                   text: "checking OpenAgents compute...",
+                  tone: "info" as const,
+                },
+              }
+            : {}),
+          ...(isSettingsPane(message.pane)
+            ? {
+                installReadinessPending: true,
+                installReadinessStatus: {
+                  text: "checking first-run health...",
                   tone: "info" as const,
                 },
               }
@@ -159,6 +171,8 @@ export const update = (model: Model, message: Message): Result => {
           ? loadTrainingProjectionCommands()
           : isBuiltInAgentPane(message.pane)
             ? [LoadBuiltInAgentReadiness()]
+            : isSettingsPane(message.pane)
+              ? [LoadInstallReadiness()]
             : noCommands,
       ]
     case "SelectedSession":
@@ -350,6 +364,41 @@ export const update = (model: Model, message: Message): Result => {
         }),
         noCommands,
       ]
+
+    // ── First-run install/runtime readiness (#5064) ─────────────────────────
+    case "ClickedRefreshInstallReadiness":
+      return [
+        Model.make({
+          ...model,
+          installReadinessPending: true,
+          installReadinessStatus: {
+            text: "checking first-run health...",
+            tone: "info",
+          },
+        }),
+        [LoadInstallReadiness()],
+      ]
+    case "GotInstallReadiness": {
+      const projection = message.projection as InstallReadinessResponse
+      const blockerCount = projection.blockerRefs.length
+      return [
+        Model.make({
+          ...model,
+          installReadiness: projection,
+          installReadinessPending: false,
+          installReadinessStatus: projection.ok
+            ? {
+                text: `${projection.highestRoiAction} · ready`,
+                tone: "success",
+              }
+            : {
+                text: `${projection.highestRoiAction} · ${blockerCount} blocker${blockerCount === 1 ? "" : "s"}`,
+                tone: "info",
+              },
+        }),
+        noCommands,
+      ]
+    }
 
     // ── Training launch/readiness feedback ───────────────────────────────────
     case "ClickedRefreshTrainingRuns":

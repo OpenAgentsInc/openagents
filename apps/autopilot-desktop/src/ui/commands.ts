@@ -15,6 +15,7 @@ import {
   FailedBuiltInAgent,
   FailedSpawn,
   GotBuiltInAgentReadiness,
+  GotInstallReadiness,
   GotTrainingDashboard,
   GotTrainingEvidencePacketSummary,
   GotTrainingOperatorReadiness,
@@ -159,6 +160,34 @@ const emptyBuiltInAgentReadinessProjection = (error: string) => ({
   meteringLabel: "unavailable",
   worktreePathPresent: false,
   blockerRefs: ["desktop.builtin_agent.readiness_request_failed"],
+  error,
+})
+
+const emptyInstallReadinessProjection = (error: string) => ({
+  ok: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:install-readiness" as const,
+  platform: "unknown",
+  arch: "unknown",
+  runtime: "source" as const,
+  nodeLaunchStatus: null,
+  pylonHomePresent: false,
+  controlTokenPresent: false,
+  localPylonReady: false,
+  builtInAgentReady: false,
+  userApiKeyRequired: false as const,
+  autoUpdateEnabled: false,
+  highestRoiAction: "Open Settings",
+  blockerRefs: ["desktop.install_readiness.request_failed"],
+  items: [
+    {
+      id: "install-readiness",
+      label: "First-run health",
+      status: "blocked" as const,
+      detail: error,
+      blockerRef: "desktop.install_readiness.request_failed",
+    },
+  ],
   error,
 })
 
@@ -337,6 +366,23 @@ export const StartBuiltInAgent = Command.define(
     ),
     Effect.catch((error) =>
       Effect.succeed(FailedBuiltInAgent({ error: errorText(error) })),
+    ),
+  ),
+)
+
+export const LoadInstallReadiness = Command.define(
+  "LoadInstallReadiness",
+  {},
+  GotInstallReadiness,
+)(() =>
+  Effect.tryPromise(() => getRequest().installReadiness({})).pipe(
+    Effect.map((projection) => GotInstallReadiness({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotInstallReadiness({
+          projection: emptyInstallReadinessProjection(errorText(error)),
+        }),
+      ),
     ),
   ),
 )

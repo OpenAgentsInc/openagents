@@ -2,6 +2,7 @@ import type {
   NotificationCenterView,
   SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
+import type { InstallReadinessResponse } from "./install-readiness"
 
 export type SessionEventRow = {
   readonly eventIndex: number
@@ -499,6 +500,8 @@ export type BuiltInAgentStartResponse = {
   readonly error?: string
 }
 
+export type { InstallReadinessResponse } from "./install-readiness"
+
 // CL-47: an "ask" the owner submitted, with its ship-status round-trip state.
 export type IntentRow = {
   readonly intentId: string
@@ -584,6 +587,11 @@ export type DesktopRPCSchema = {
       readonly startBuiltInAgent: {
         readonly params: Record<string, never>
         readonly response: BuiltInAgentStartResponse
+      }
+      // #5064: one public-safe first-run health projection for normal installs.
+      readonly installReadiness: {
+        readonly params: Record<string, never>
+        readonly response: InstallReadinessResponse
       }
       // Read public Worker-authoritative training run projections. This is a
       // read-only desktop projection; admin mutations stay out of the webview.

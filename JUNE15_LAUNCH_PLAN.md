@@ -359,7 +359,14 @@ registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
   `autopilot.builtin_compute_agent.v1` moved to yellow in `2026-06-15.4`.
   Remaining green proof: signed/notarized desktop recut with packaged hosted
   compute credentials/entitlement + public from-install smoke.
-- **#5064** basic install + runtime stability for normal users (out-of-box, untested systems).
+- ✅ **#5064** basic install + runtime stability for normal users (out-of-box,
+  untested systems) — SOURCE DONE/yellow: Desktop now has a Bun-owned
+  `installReadiness` projection, a first-screen health line, **Settings →
+  First-run Health** rows, explicit blocker refs, startup/status-change refresh,
+  public install-doc guidance, and an AGENTS.md entry-path trim so normal testers
+  start at `INSTALL.md`. Remaining public proof: signed/notarized desktop recut
+  containing the pane, then a clean-machine from-install smoke on a non-owner
+  consumer setup.
 - **#5065** Autopilot built-in "surface issues, don't ship slop" forum flow (Orrery-style).
 
 **Tassadar traces (executor-trace completion) — DEPRIORITIZED (backend COMPLETE + inert):**

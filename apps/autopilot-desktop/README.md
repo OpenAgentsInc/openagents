@@ -118,6 +118,29 @@ The source path is yellow, not a green public promise, until a signed/notarized
 desktop recut ships with the hosted-compute runtime configuration and a public
 from-install **Go online** smoke shows a session running without a user API key.
 
+## First-run Health (#5064)
+
+The desktop source includes a public-safe first-run health projection for normal
+installs. Bun owns the private checks and exposes `installReadiness` to the
+webview; the webview shows a compact line on the home screen and the full
+breakdown under **Settings → First-run Health**.
+
+The projection composes:
+
+- local Pylon lifecycle (`launching`, `online`, `adopted`, `failed`,
+  `unavailable`) plus readable home/control-token discovery,
+- built-in-agent readiness from #5063,
+- platform + runtime (`source` or `packaged`),
+- default-on auto-update status.
+
+The webview receives only booleans, labels, and blocker refs such as
+`blocker.autopilot.install.local_pylon_failed` or
+`blocker.autopilot.builtin_agent.hosted_compute_unconfigured`; it never receives
+control tokens or hosted-compute credentials. The highest-ROI action is explicit
+(`Go online`, `Wait for local node`, `Restart Autopilot or install a newer
+build`, or `Install the hosted-compute desktop recut`) so the normal path does
+not require reading the full public `AGENTS.md`.
+
 ## macOS Signing And Notarization
 
 Sign and notarize a built (`build:stable`) `.app` with Apple Developer ID:
