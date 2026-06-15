@@ -577,6 +577,27 @@ event + announcement (not code); #5015 builds on the now-merged #5011.
   tracker to file once a W3 student checkpoint exists. No public gradients into
   the canonical optimizer for the launch.
 
+### Launch-readiness follow-ups (filed from the gap analysis)
+- ✅ **[#5026](https://github.com/OpenAgentsInc/openagents/issues/5026)** —
+  **DONE.** Desktop `bun run test` now runs the full suite (16 files / 185 tests)
+  via a per-file runner (`scripts/run-tests.sh`), avoiding the bun load-hang —
+  so we can "test as much as we can in dev mode."
+- ⬜ **[#5025](https://github.com/OpenAgentsInc/openagents/issues/5025)** —
+  Webview node-launch **status badge** (deferred from #5011): surface
+  launching/online/failed from the supervisor in the Foldkit UI.
+- ⬜ **[#5027](https://github.com/OpenAgentsInc/openagents/issues/5027)** —
+  **#5011 Phase 2 packaging:** the *downloaded* signed `.app` (+Linux) must
+  launch the node too, smokes, announced==admitted build. **This is the "try a
+  release build on mac" endpoint.**
+
+### Post-launch program: Artanis evolution loop → green
+- 📋 Epic **[#5028](https://github.com/OpenAgentsInc/openagents/issues/5028)** —
+  flip `artanis.tassadar_evolution_loop.v1` green via its four owed receipts:
+  #5029 (sustained real tetrahedron-closed ticks), #5030 (unattended ≥10-tick
+  streak — live blocker), #5031 (verify/harden public monitor), #5032 (first
+  `dataset_curation` distillation-dataset receipt — live blocker). Program work,
+  not launch-day critical path.
+
 ### Done — worker lane A–E (closed)
 - **[#5006](https://github.com/OpenAgentsInc/openagents/issues/5006)** — Step A:
   run authority + manifest.
