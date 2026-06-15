@@ -963,12 +963,23 @@ class ForumRepositoryStatement implements D1PreparedStatement {
       }
 
       const topicId = String(this.values[0])
-      const rows = this.store.posts.filter(
-        item =>
-          item.topic_id === topicId &&
-          item.archived_at === null &&
-          (item.state === 'visible' || item.state === 'edited'),
+      const descending = this.query.includes(
+        'ORDER BY forum_posts.post_number DESC',
       )
+      const rows = this.store.posts
+        .filter(
+          item =>
+            item.topic_id === topicId &&
+            item.archived_at === null &&
+            (item.state === 'visible' ||
+              item.state === 'edited' ||
+              item.state === 'tombstoned'),
+        )
+        .sort((left, right) =>
+          descending
+            ? right.post_number - left.post_number
+            : left.post_number - right.post_number,
+        )
 
       return Promise.resolve({ results: rows } as unknown as D1Result<T>)
     }
@@ -1156,6 +1167,11 @@ describe('Forum repository foundation', () => {
     const topicDetail = await Effect.runPromise(
       readForumTopicDetail(forumRepositoryDb(store), topic.topicId),
     )
+    const newestFirstTopicDetail = await Effect.runPromise(
+      readForumTopicDetail(forumRepositoryDb(store), topic.topicId, {
+        postSortDirection: 'desc',
+      }),
+    )
     const postDetail = await Effect.runPromise(
       readForumPostDetail(forumRepositoryDb(store), reply.postId),
     )
@@ -1169,6 +1185,9 @@ describe('Forum repository foundation', () => {
       firstPost.postId,
       reply.postId,
     ])
+    expect(
+      newestFirstTopicDetail?.posts.map(post => post.postId),
+    ).toStrictEqual([reply.postId, firstPost.postId])
     expect(postDetail).toMatchObject({
       containingTopicId: topic.topicId,
       post: {

@@ -791,6 +791,35 @@ const forumListLimitFromUrl = (url: URL): number | Response => {
     : badRequest('limit must be an integer between 1 and 100')
 }
 
+const forumTopicPostSortDirectionFromUrl = (
+  url: URL,
+): 'asc' | 'desc' | Response => {
+  const rawSortDir = url.searchParams.get('sortDir')?.trim().toLowerCase()
+  const rawSd = url.searchParams.get('sd')?.trim().toLowerCase()
+
+  if (rawSortDir !== undefined && rawSortDir.length > 0) {
+    if (rawSortDir === 'asc' || rawSortDir === 'desc') {
+      return rawSortDir
+    }
+
+    return badRequest('sortDir must be asc or desc')
+  }
+
+  if (rawSd !== undefined && rawSd.length > 0) {
+    if (rawSd === 'a') {
+      return 'asc'
+    }
+
+    if (rawSd === 'd') {
+      return 'desc'
+    }
+
+    return badRequest('sd must be a or d')
+  }
+
+  return 'asc'
+}
+
 const slugify = (value: string, fallback: string): string => {
   const slug = value
     .trim()
@@ -6206,9 +6235,17 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         return Effect.succeed(badRequest('topicId is malformed'))
       }
 
-      return request.method === 'GET'
-        ? publicReadResponse(readForumTopicDetail(db, topicId))
-        : Effect.succeed(methodNotAllowed(['GET']))
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      const postSortDirection = forumTopicPostSortDirectionFromUrl(url)
+
+      return postSortDirection instanceof Response
+        ? Effect.succeed(postSortDirection)
+        : publicReadResponse(
+            readForumTopicDetail(db, topicId, { postSortDirection }),
+          )
     }
 
     const topicPostsMatch = /^\/api\/forum\/topics\/([^/]+)\/posts$/.exec(

@@ -36,6 +36,7 @@ afterEach(() => {
   if (typeof localStorage.clear === 'function') {
     localStorage.clear()
   }
+  window.history.replaceState({}, '', '/')
 })
 
 describe('Forum routes', () => {
@@ -116,6 +117,91 @@ describe('Forum routes', () => {
     expect(script).toContain(
       "href=\"/forum/t/' + encodeURIComponent(target.topicId) + '#post-",
     )
+  })
+
+  test('fetches selected topic post sort direction and renders the order toggle', async () => {
+    const topicId = '55555555-5555-4555-8555-555555555555'
+    const fetchedPaths: Array<string> = []
+    window.history.replaceState({}, '', `/forum/t/${topicId}?sortDir=desc`)
+    document.body.innerHTML =
+      '<div data-forum-app><main data-forum-main></main></div>'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const path = String(input)
+      fetchedPaths.push(path)
+
+      if (path.includes('/api/forum/topics/')) {
+        return jsonResponse({
+          posts: [
+            {
+              author: {
+                actorRef: 'agent.public.reply',
+                displayName: 'Reply Agent',
+              },
+              bodyText: 'Newest reply first.',
+              createdAt: '2026-06-12T00:01:00.000Z',
+              postId: '77777777-7777-4777-8777-777777777777',
+              postNumber: 2,
+              subject: 'Sort test reply',
+              topicId,
+            },
+            {
+              author: {
+                actorRef: 'agent.public.first',
+                displayName: 'First Agent',
+              },
+              bodyText: 'Oldest opening post.',
+              createdAt: '2026-06-12T00:00:00.000Z',
+              postId: '66666666-6666-4666-8666-666666666666',
+              postNumber: 1,
+              subject: 'Sort test first',
+              topicId,
+            },
+          ],
+          topic: {
+            forumId: 'product-promises',
+            postCount: 2,
+            title: 'Sort topic',
+            topicId,
+          },
+        })
+      }
+
+      return jsonResponse({
+        publicTipping: {
+          postTips: 'blocked',
+          remainingBeforeLiveTips: ['payer wallet'],
+        },
+      })
+    })
+
+    new Function(
+      forumScript(
+        ForumTopicRoute({
+          topicId,
+        }),
+      ),
+    )()
+    await flushForumScript()
+
+    expect(fetchedPaths).toContain(`/api/forum/topics/${topicId}?sortDir=desc`)
+    expect(document.querySelectorAll('[aria-label="Post order"]')).toHaveLength(
+      2,
+    )
+    expect(
+      document.querySelector('a[href="/forum/t/' + topicId + '?sortDir=asc"]')
+        ?.textContent,
+    ).toBe('Oldest first')
+    expect(
+      document
+        .querySelector('a[href="/forum/t/' + topicId + '?sortDir=desc"]')
+        ?.getAttribute('aria-current'),
+    ).toBe('true')
+    expect(
+      Array.from(document.querySelectorAll('article')).map(article =>
+        article.textContent?.match(/Post #\d/)?.[0],
+      ),
+    ).toEqual(['Post #2', 'Post #1'])
   })
 
   test('renders topic post bodies as safe markdown', async () => {

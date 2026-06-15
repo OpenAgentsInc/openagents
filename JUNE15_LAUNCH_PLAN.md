@@ -419,6 +419,10 @@ registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
 - ✅ **#5059** homepage "Download Autopilot" CTA — **DONE/closed** (`6de4140fe`): functional
   CTA → `INSTALL.md` on the real `/` route (`pylon.ts`, not `home.ts`), viz preserved,
   minimal copy; 410/410 web tests pass.
+- ✅ **#5067** Forum topic post order toggle — **DONE/closed**: topic reads keep
+  oldest-first as the default, add `sortDir=asc|desc` plus phpBB-compatible
+  `sd=a|d`, and the browser topic view exposes **Oldest first / Newest first**
+  links without changing the topic-list recency contract.
 - **#5060** instrument **Accepted Outcomes per kWh** (`metrics.accepted_outcomes_per_kwh.v1`
   off `planned`) + deploy the registry `2026-06-15.2` so the new promise is served.
   *(Larger feature + owner-gated deploy — not a same-turn usability fix.)*

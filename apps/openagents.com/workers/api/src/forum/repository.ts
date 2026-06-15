@@ -630,6 +630,8 @@ type ForumPostListCursor = Readonly<{
   postId: string
 }>
 
+type ForumTopicPostSortDirection = 'asc' | 'desc'
+
 type ForumPostListRow = PostRow &
   Readonly<{
     forum_archived_at: string | null
@@ -2567,7 +2569,10 @@ export const readForumTopicList = (
 export const readForumTopicDetail = (
   db: D1Database,
   topicId: string,
-  options: Readonly<{ limit?: number }> = {},
+  options: Readonly<{
+    limit?: number
+    postSortDirection?: ForumTopicPostSortDirection
+  }> = {},
 ): Effect.Effect<
   ForumTopicDetailResponse | null,
   ForumStorageError | ForumReadAccessDenied | ForumValidationError
@@ -2589,6 +2594,8 @@ export const readForumTopicDetail = (
     }
 
     const limit = options.limit ?? 50
+    const postOrderDirection =
+      options.postSortDirection === 'desc' ? 'DESC' : 'ASC'
     const posts = yield* d1Effect('forum.readTopicDetail.posts', () =>
       db
         .prepare(
@@ -2600,7 +2607,7 @@ export const readForumTopicDetail = (
             WHERE forum_posts.topic_id = ?
               AND forum_posts.archived_at IS NULL
               AND forum_posts.state IN ('visible', 'edited', 'tombstoned')
-            ORDER BY forum_posts.post_number ASC
+            ORDER BY forum_posts.post_number ${postOrderDirection}
             LIMIT ?`,
         )
         .bind(topic.topicId, limit)

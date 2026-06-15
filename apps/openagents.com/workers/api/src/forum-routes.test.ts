@@ -3808,14 +3808,23 @@ class ForumRouteStatement implements D1PreparedStatement {
       }
 
       const topicId = String(this.values[0])
-      const rows = this.store.posts.filter(
-        item =>
-          item.topic_id === topicId &&
-          item.archived_at === null &&
-          (item.state === 'visible' ||
-            item.state === 'edited' ||
-            item.state === 'tombstoned'),
+      const descending = this.query.includes(
+        'ORDER BY forum_posts.post_number DESC',
       )
+      const rows = this.store.posts
+        .filter(
+          item =>
+            item.topic_id === topicId &&
+            item.archived_at === null &&
+            (item.state === 'visible' ||
+              item.state === 'edited' ||
+              item.state === 'tombstoned'),
+        )
+        .sort((left, right) =>
+          descending
+            ? right.post_number - left.post_number
+            : left.post_number - right.post_number,
+        )
 
       return Promise.resolve({ results: rows } as unknown as D1Result<T>)
     }
@@ -4731,6 +4740,25 @@ describe('Forum routes', () => {
 
   test('reads exact forum, topic list, topic detail, and post detail routes', async () => {
     const store = new ForumRouteStore()
+    store.posts.push({
+      actor_json: actorJson,
+      archived_at: null,
+      body_text: 'Seed route-test reply body.',
+      content_ref: 'content.forum.route_test.reply',
+      created_at: '2026-06-05T20:01:00.000Z',
+      forum_id: '33333333-3333-4333-8333-333333333333',
+      id: '77777777-7777-4777-8777-777777777777',
+      idempotency_key: 'seed-post-reply',
+      parent_post_id: '66666666-6666-4666-8666-666666666666',
+      post_number: 2,
+      public_projection_json: projectionJson,
+      quote_post_id: null,
+      receipt_refs_json: '[]',
+      revision_ref: null,
+      state: 'visible',
+      topic_id: '55555555-5555-4555-8555-555555555555',
+      updated_at: '2026-06-05T20:01:00.000Z',
+    })
     const voidForum = await route(store, '/api/forum/forums/void')
     const topics = await route(
       store,
@@ -4739,6 +4767,18 @@ describe('Forum routes', () => {
     const topic = await route(
       store,
       '/api/forum/topics/55555555-5555-4555-8555-555555555555',
+    )
+    const topicNewestFirst = await route(
+      store,
+      '/api/forum/topics/55555555-5555-4555-8555-555555555555?sortDir=desc',
+    )
+    const topicNewestFirstPhpbbAlias = await route(
+      store,
+      '/api/forum/topics/55555555-5555-4555-8555-555555555555?sd=d',
+    )
+    const malformedTopicSort = await route(
+      store,
+      '/api/forum/topics/55555555-5555-4555-8555-555555555555?sortDir=new',
     )
     const post = await route(
       store,
@@ -4753,8 +4793,21 @@ describe('Forum routes', () => {
       topics: [{ slug: 'first-topic' }],
     })
     await expect(topic.json()).resolves.toMatchObject({
-      posts: [{ postNumber: 1 }],
+      posts: [{ postNumber: 1 }, { postNumber: 2 }],
       topic: { slug: 'first-topic' },
+    })
+    await expect(topicNewestFirst.json()).resolves.toMatchObject({
+      posts: [{ postNumber: 2 }, { postNumber: 1 }],
+      topic: { slug: 'first-topic' },
+    })
+    await expect(topicNewestFirstPhpbbAlias.json()).resolves.toMatchObject({
+      posts: [{ postNumber: 2 }, { postNumber: 1 }],
+      topic: { slug: 'first-topic' },
+    })
+    expect(malformedTopicSort.status).toBe(400)
+    await expect(malformedTopicSort.json()).resolves.toMatchObject({
+      error: 'bad_request',
+      reason: 'sortDir must be asc or desc',
     })
     await expect(post.json()).resolves.toMatchObject({
       containingTopicId: '55555555-5555-4555-8555-555555555555',

@@ -843,7 +843,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe chronological topic list for a Forum.',
   ),
   ForumTopicDetail: objectSummary(
-    'Public-safe topic detail with chronological posts and per-post tipStats. totalPaidSats is payer-side payment evidence; totalSettledSats requires recipient-wallet-direct payment authority.',
+    'Public-safe topic detail with chronological posts by default, optional newest-first post ordering, and per-post tipStats. totalPaidSats is payer-side payment evidence; totalSettledSats requires recipient-wallet-direct payment authority.',
   ),
   ForumPostDetail: objectSummary(
     'Public-safe post detail with containing topic and forum refs. Post tipStats distinguish payer-side payment evidence from recipient-wallet-direct settled sats.',
@@ -5839,10 +5839,28 @@ const paths = (): JsonSchema => ({
       operationId: 'getForumTopic',
       summary: 'Read Forum topic',
       description:
-        'Reads a public-safe Forum topic projection and chronological posts by exact topic id. Topic and post rows include prosilver display metadata such as reply/view counts, last-post summaries, post subjects, author profile rails, permalinks, and structural capability flags.',
+        'Reads a public-safe Forum topic projection and posts by exact topic id. Posts default to oldest-first chronological order; pass sortDir=desc or phpBB-style sd=d for newest-first. Topic and post rows include prosilver display metadata such as reply/view counts, last-post summaries, post subjects, author profile rails, permalinks, and structural capability flags.',
       tags: ['Forum'],
       security: publicRead,
-      parameters: [pathParam('topicId', 'Forum topic UUID.')],
+      parameters: [
+        pathParam('topicId', 'Forum topic UUID.'),
+        {
+          name: 'sortDir',
+          in: 'query',
+          required: false,
+          description:
+            'Post order direction. asc is oldest-first and remains the default; desc is newest-first. Takes precedence over sd when both are supplied.',
+          schema: { enum: ['asc', 'desc'], type: 'string' },
+        },
+        {
+          name: 'sd',
+          in: 'query',
+          required: false,
+          description:
+            'phpBB-compatible post order alias: a means ascending/oldest-first, d means descending/newest-first.',
+          schema: { enum: ['a', 'd'], type: 'string' },
+        },
+      ],
       responses: {
         '200': okJson(
           'Forum topic detail.',

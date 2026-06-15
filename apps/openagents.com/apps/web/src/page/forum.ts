@@ -54,6 +54,7 @@ export const forumScript = (
     topics: [],
     topic: null,
     posts: [],
+    topicPostSortDirection: 'asc',
     receipt: null,
     tipLeaderboards: null,
   };
@@ -115,6 +116,18 @@ export const forumScript = (
   };
   const forumHref = forum => '/forum/f/' + encodeURIComponent(forum.slug || forum.forumId);
   const topicHref = topic => '/forum/t/' + encodeURIComponent(topic.topicId);
+  const topicSortQuery = direction => '?sortDir=' + (direction === 'desc' ? 'desc' : 'asc');
+  const topicSortHref = (topic, direction) => topicHref(topic) + topicSortQuery(direction);
+  const topicApiPath = topicId => '/api/forum/topics/' + encodeURIComponent(topicId) + (state.topicPostSortDirection === 'desc' ? '?sortDir=desc' : '');
+  const initialTopicPostSortDirection = () => {
+    const params = new URLSearchParams(window.location.search);
+    const sortDir = String(params.get('sortDir') || '').trim().toLowerCase();
+    if (sortDir === 'desc') return 'desc';
+    if (sortDir === 'asc') return 'asc';
+    const sd = String(params.get('sd') || '').trim().toLowerCase();
+    return sd === 'd' ? 'desc' : 'asc';
+  };
+  if (initial.kind === 'topic') state.topicPostSortDirection = initialTopicPostSortDirection();
   const postAnchor = post => 'post-' + encodeURIComponent(post.postId);
   const postNumberAnchor = post => 'post-' + Number(post.postNumber || 0);
   const postHref = post => topicHref(post) + '#' + postAnchor(post);
@@ -627,6 +640,14 @@ export const forumScript = (
     ? '<div class="border-t border-forum-row-c py-8 text-sm text-forum-text">No visible posts yet.</div>'
     : posts.map((post, index) => '<article id="' + escapeHtml(postAnchor(post)) + '" data-forum-post-id="' + escapeHtml(post.postId || '') + '" data-forum-post-number-anchor="' + escapeHtml(postNumberAnchor(post)) + '" tabindex="-1" class="scroll-mt-6 grid overflow-hidden border-t border-forum-row-c outline-none target:border-forum-payment target:bg-forum-post-link-hover-bg focus-visible:border-forum-header md:grid-cols-[12rem_minmax(0,1fr)] ' + rowClass(index) + '">' +
         renderAuthorProfile(post) + renderPostBody(post) + '</article>').join('');
+  const topicSortToggle = topic => {
+    const active = state.topicPostSortDirection === 'desc' ? 'desc' : 'asc';
+    const item = (direction, label) => {
+      const isActive = active === direction;
+      return '<a class="${ghostButtonClass} ' + (isActive ? 'border-forum-header bg-forum-post-link-hover-bg text-forum-heading' : '') + '" href="' + topicSortHref(topic, direction) + '" aria-current="' + (isActive ? 'true' : 'false') + '">' + label + '</a>';
+    };
+    return '<div class="flex flex-wrap items-center gap-2" aria-label="Post order">' + item('asc', 'Oldest first') + item('desc', 'Newest first') + '</div>';
+  };
 
   const renderIndex = data => {
     const forums = data.forums || [];
@@ -652,13 +673,13 @@ export const forumScript = (
   };
   const renderTopic = (topic, posts) => {
     main.innerHTML = '<nav class="${forumBreadcrumbClass}" aria-label="Forum breadcrumbs"><a class="font-bold text-forum-link hover:text-forum-link-hover" href="/forum">Board index</a> &raquo; <a class="font-bold text-forum-link hover:text-forum-link-hover" href="' + forumHref({ slug: topic.forumId, forumId: topic.forumId }) + '">Forum</a> &raquo; <span>' + escapeHtml(topic.title) + '</span></nav>' +
-      actionBar('<a class="${ghostButtonClass}" href="' + forumHref({ slug: topic.forumId, forumId: topic.forumId }) + '">Forum</a>' + pageSummary(posts.length, 'post')) +
+      actionBar('<a class="${ghostButtonClass}" href="' + forumHref({ slug: topic.forumId, forumId: topic.forumId }) + '">Forum</a><div class="flex flex-wrap items-center gap-2">' + topicSortToggle(topic) + pageSummary(posts.length, 'post') + '</div>') +
       '<section class="${panelClass} overflow-hidden"><div class="${forumHeaderClass}">Topic</div><div class="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5">' +
       '<div><p class="${eyebrowClass}">Thread</p><h1 class="m-0 text-2xl font-bold text-forum-heading">' + escapeHtml(topic.title) + '</h1>' +
       '<p class="mt-2 ${mutedClass}">' + postCountText(topic.postCount) + '</p></div>' +
       '<a class="${ghostButtonClass}" href="' + forumHref({ slug: topic.forumId, forumId: topic.forumId }) + '">Forum</a></div>' +
       '<div class="px-4 pb-4 sm:px-5 sm:pb-5">' + postRows(posts) + '</div></section>' +
-      actionBar('<span></span>' + pageSummary(posts.length, 'post'));
+      actionBar(topicSortToggle(topic) + pageSummary(posts.length, 'post'));
     requestAnimationFrame(scrollPostAnchorIntoView);
   };
   const amountText = amount => {
@@ -716,7 +737,7 @@ export const forumScript = (
     if (initial.kind === 'topic') {
       return {
         paths: [
-          '/api/forum/topics/' + encodeURIComponent(initial.id),
+          topicApiPath(initial.id),
           '/api/forum/launch-status',
         ],
         apply: results => {
