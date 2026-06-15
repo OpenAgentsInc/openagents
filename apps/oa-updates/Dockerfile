@@ -11,6 +11,10 @@ COPY dist ./dist
 # scripts/publish-desktop-release.ts. Served when
 # OA_DESKTOP_RELEASES_DIST=/app/desktop-dist is set.
 COPY desktop-dist ./desktop-dist
+# Pylon release seed: signed bun --compile binaries + manifest staged by
+# scripts/publish-pylon-release.ts. Served at /pylon/<channel>/<platform>/feed.json
+# when OA_PYLON_RELEASES_DIST=/app/pylon-dist is set (powers Pylon default-on OTA).
+COPY pylon-dist ./pylon-dist
 
 EXPOSE 8080
 
