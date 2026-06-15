@@ -613,6 +613,8 @@ const routeRunSettlementReceipt = <Bindings extends TrainingRunWindowRouteEnv>(
         nowIso,
         run: storedRun,
         settledSatsByReceiptRef: resolved.settledSatsByReceiptRef,
+        settlementReceiptRefsByContributor:
+          resolved.settlementReceiptRefsByContributor,
         windows,
       }),
     })
@@ -739,6 +741,8 @@ const routeReadRun = <Bindings extends TrainingRunWindowRouteEnv>(
         nowIso,
         run: record,
         settledSatsByReceiptRef: settlement.settledSatsByReceiptRef,
+        settlementReceiptRefsByContributor:
+          settlement.settlementReceiptRefsByContributor,
         windows,
       }),
     })
@@ -783,6 +787,8 @@ const routeListRuns = <Bindings extends TrainingRunWindowRouteEnv>(
           nowIso,
           run,
           settledSatsByReceiptRef: settlement.settledSatsByReceiptRef,
+          settlementReceiptRefsByContributor:
+            settlement.settlementReceiptRefsByContributor,
           windows,
         })
       }),
@@ -833,6 +839,8 @@ const routeA1Leaderboard = <Bindings extends TrainingRunWindowRouteEnv>(
           nowIso,
           run,
           settledSatsByReceiptRef: settlement.settledSatsByReceiptRef,
+          settlementReceiptRefsByContributor:
+            settlement.settlementReceiptRefsByContributor,
           windows,
         })
       }),
@@ -1047,6 +1055,8 @@ const routeTrainingLeaderboards = <Bindings extends TrainingRunWindowRouteEnv>(
           ...input,
           nowIso,
           settledSatsByReceiptRef: settlement.settledSatsByReceiptRef,
+          settlementReceiptRefsByContributor:
+            settlement.settlementReceiptRefsByContributor,
         }),
       ),
     })

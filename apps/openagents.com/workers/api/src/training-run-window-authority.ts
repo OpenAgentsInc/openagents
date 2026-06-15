@@ -195,6 +195,7 @@ export const TrainingRunManifest = S.Struct({
   ),
   objective: S.optionalKey(ManifestText),
   paymentMode: S.optionalKey(PublicSafeRef),
+  participantCountRule: S.optionalKey(ManifestText),
   settlementState: S.optionalKey(PublicSafeRef),
   spendCapSats: S.optionalKey(
     S.Number.check(
@@ -451,6 +452,7 @@ export type TrainingRunPublicSummary = Readonly<{
     pendingPayoutCount: TrainingRunPublicMetric
     plannedWindowCount: TrainingRunPublicMetric
     providerConfirmedSettledPayoutSats: TrainingRunPublicMetric
+    qualifiedContributorCount: TrainingRunPublicMetric
     receiptRefCount: TrainingRunPublicMetric
     reconciledWindowCount: TrainingRunPublicMetric
     rejectedWorkCount: TrainingRunPublicMetric
@@ -822,6 +824,36 @@ const distinctPylonRefs = (
   leases: ReadonlyArray<TrainingWindowLeaseRecord>,
 ): ReadonlyArray<string> => uniqueRefs(leases.map(lease => lease.pylonRef))
 
+const qualifiedContributorRefs = (
+  input: Readonly<{
+    challenges: ReadonlyArray<TrainingVerificationChallengeRecord>
+    leases: ReadonlyArray<TrainingWindowLeaseRecord>
+    settlementReceiptRefsByContributor: ReadonlyMap<
+      string,
+      ReadonlyArray<string>
+    >
+  }>,
+): ReadonlyArray<string> => {
+  const verifiedExactReplayWindowRefs = new Set(
+    input.challenges.flatMap(challenge =>
+      challenge.state === 'Verified' &&
+      challenge.verificationClass === 'exact_trace_replay' &&
+      challenge.windowRef !== null
+        ? [challenge.windowRef]
+        : [],
+    ),
+  )
+
+  return distinctPylonRefs(
+    input.leases.filter(lease =>
+      verifiedExactReplayWindowRefs.has(lease.windowRef),
+    ),
+  ).filter(
+    pylonRef =>
+      (input.settlementReceiptRefsByContributor.get(pylonRef) ?? []).length > 0,
+  )
+}
+
 const optionalNumber = (value: unknown): number | undefined => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value
@@ -1028,6 +1060,10 @@ export const publicTrainingRunSummary = (
     // Only refs already linked to this run/windows/leases/challenges are summed,
     // so a settlement that is not dereferenceable from this run contributes 0.
     settledSatsByReceiptRef?: ReadonlyMap<string, number>
+    settlementReceiptRefsByContributor?: ReadonlyMap<
+      string,
+      ReadonlyArray<string>
+    >
     windows: ReadonlyArray<TrainingWindowRecord>
   }>,
 ): TrainingRunPublicSummary => {
@@ -1059,6 +1095,14 @@ export const publicTrainingRunSummary = (
     (total, ref) => total + (settledSatsByReceiptRef?.get(ref) ?? 0),
     0,
   )
+  const settlementReceiptRefsByContributor =
+    input.settlementReceiptRefsByContributor ??
+    new Map<string, ReadonlyArray<string>>()
+  const qualifiedContributors = qualifiedContributorRefs({
+    challenges: input.challenges,
+    leases: input.leases,
+    settlementReceiptRefsByContributor,
+  })
   const payoutMetricRefs = [
     `training.run.${input.run.trainingRunRef}.provider_confirmed_settlements`,
   ]
@@ -1105,6 +1149,16 @@ export const publicTrainingRunSummary = (
         providerConfirmedSettledPayoutSats,
         'Sum of provider-confirmed settlement receipts (receiptKind settlement_recorded, state settled) linked to this run only; pending, offered, claimed, or wallet-side records are excluded.',
         payoutMetricRefs,
+      ),
+      qualifiedContributorCount: metric(
+        qualifiedContributors.length,
+        'Qualified contributor count equals admitted contributors with accepted, replay-verified useful work and public-safe provider-confirmed settlement receipt refs linked to this run. It is derived from Worker D1 verified exact_trace_replay challenges joined to run leases plus provider-confirmed settled receipt projections; raw registrations and stale heartbeats never count.',
+        uniqueRefs([
+          ...qualifiedContributors,
+          ...qualifiedContributors.flatMap(
+            pylonRef => settlementReceiptRefsByContributor.get(pylonRef) ?? [],
+          ),
+        ]),
       ),
       receiptRefCount: metric(
         receiptRefs.length,

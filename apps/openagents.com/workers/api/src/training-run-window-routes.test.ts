@@ -5,6 +5,7 @@ import {
   buildTrainingRunRecord,
   type TrainingAuthorityStore,
   type TrainingRunPublicSummary,
+  type TrainingRunProjection,
   type TrainingRunRecord,
   type TrainingWindowEventRecord,
   type TrainingWindowLeaseRecord,
@@ -127,6 +128,7 @@ type TrainingRunListJson = Readonly<{
 }>
 
 type TrainingRunDetailJson = Readonly<{
+  run: TrainingRunProjection
   summary: TrainingRunPublicSummary
 }>
 
@@ -846,7 +848,13 @@ describe('training run window routes', () => {
       makeId: () => 'run5009',
       nowIso: '2026-06-14T10:00:00.000Z',
       request: {
-        manifest: { artifactDigestRefs: [], blockerRefs: [], spendCapSats: 100 },
+        manifest: {
+          artifactDigestRefs: [],
+          blockerRefs: [],
+          participantCountRule:
+            'Qualified contributor count = admitted contributors with accepted, replay-verified useful work and public-safe receipt refs; never raw registrations or stale heartbeats.',
+          spendCapSats: 100,
+        },
         promiseRef: 'training.monday_decentralized_training_launch.v1',
         trainingRunRef: 'run.tassadar.executor.20260615',
       },
@@ -947,6 +955,10 @@ describe('training run window routes', () => {
     expect(
       settledBody.summary.metrics.providerConfirmedSettledPayoutSats.value,
     ).toBe(21)
+    expect(settledBody.summary.metrics.qualifiedContributorCount.value).toBe(1)
+    expect(
+      settledBody.summary.metrics.qualifiedContributorCount.provenanceLabel,
+    ).toContain('raw registrations and stale heartbeats never count')
 
     // The settlement receipt is provider-confirmed (settlement_recorded, settled)
     // and linked onto the run, so a fresh GET reflects it from the ledger.
@@ -964,6 +976,10 @@ describe('training run window routes', () => {
     expect(
       detailBody.summary.metrics.providerConfirmedSettledPayoutSats.value,
     ).toBe(21)
+    expect(detailBody.run.manifest?.participantCountRule).toContain(
+      'never raw registrations or stale heartbeats',
+    )
+    expect(detailBody.summary.metrics.qualifiedContributorCount.value).toBe(1)
 
     // Over the run spend cap -> rejected, no money-shaped projection leaks.
     const overCap = await runRoute(
@@ -1068,6 +1084,7 @@ describe('training run window routes', () => {
 
     expect(detail.status).toBe(200)
     expect(body.summary.corpus.acceptedTraceCount).toBe(1)
+    expect(body.summary.metrics.qualifiedContributorCount.value).toBe(0)
     expect(body.summary.corpus.laneRef).toBe('tassadar.verified_trace_corpus')
     expect(body.summary.corpus.traceRefs).toContain(
       'training.verification.challenge.5010a',
