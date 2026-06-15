@@ -137,6 +137,7 @@ Both binaries bumped to **1.0.0-rc.2** and published; auto-update confirmed:
 **Community download links:**
 - Canonical install/test (rc.2): <https://openagents.com/INSTALL.md>
 - Autopilot macOS (arm64, notarized): <https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/AutopilotDesktop-1.0.0-rc.2-macos-arm64.dmg>
+- Autopilot GitHub release: <https://github.com/OpenAgentsInc/openagents/releases/tag/autopilot-desktop-v1.0.0-rc.2>
 - Pylon: per-platform feed `https://updates.openagents.com/pylon/rc/<platform>/feed.json`
   (`releases[0].artifactUrl` is the direct GCS binary). Existing rc.1 nodes auto-update.
 
@@ -343,7 +344,11 @@ filing (e.g. `openapi.json` still serves `info.version 2026-06-11`; product-prom
 registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
 
 **⭐ NEW TOP PRIORITY — stability pivot (owner directive; see PRIORITY PIVOT above):**
-- **#5062** one standard desktop installer + real "Download" links (RC → full release).
+- ✅ **#5062** one standard desktop installer + real "Download" links (RC → full release) —
+  DONE: `/` Download Autopilot CTA points at the notarized macOS arm64 DMG,
+  README + install docs carry the same "Download here" URL, and the GitHub
+  release tag is the canonical repo-side download target. Intel macOS/Linux
+  desktop installers remain owner-gated until signed/notarized or packaged.
 - **#5063** built-in out-of-the-box agent using OpenAgents compute (no user API key) —
   the answer to "i don't have an agent."
 - **#5064** basic install + runtime stability for normal users (out-of-box, untested systems).

@@ -16,8 +16,10 @@ headless.
 The macOS build is **signed with our Apple Developer ID and notarized by Apple**,
 so Gatekeeper opens it normally (no right-click-open workaround needed).
 
-1. Download `Autopilot Desktop-canary.dmg` (arm64) from the RC link we send you
-   (served from our infra at `updates.openagents.com`).
+1. **Download here:** `AutopilotDesktop-1.0.0-rc.2-macos-arm64.dmg` from
+   <https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/AutopilotDesktop-1.0.0-rc.2-macos-arm64.dmg>.
+   The matching GitHub release is
+   <https://github.com/OpenAgentsInc/openagents/releases/tag/autopilot-desktop-v1.0.0-rc.2>.
 2. Open the `.dmg`, drag **Autopilot Desktop** to Applications.
 3. Launch it. It bundles and starts a **headless Pylon node** for you — no
    separate install. The home screen is the live **pylon-network visualization**
@@ -33,8 +35,8 @@ codesign -dvv "/Applications/Autopilot Desktop-canary.app" 2>&1 | grep TeamIdent
 # expect: TeamIdentifier=HQWSG26L43
 ```
 
-Apple Silicon only for this RC. Intel (x64) and Linux desktop builds ride the
-same `bun run build:canary` and will be linked when published.
+Apple Silicon only for this RC. Intel (x64) and Linux desktop installers are
+owner-gated until those builds are signed, notarized or packaged, and published.
 
 ---
 
@@ -46,8 +48,9 @@ verifies its own updates against that pinned key and **fails closed**.
 
 Platforms: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`.
 
-1. Download `pylon-<platform>` from the RC link we send you (served from
-   `updates.openagents.com/pylon/rc/<platform>/`).
+1. Download `pylon-<platform>` from
+   `https://updates.openagents.com/pylon/rc/<platform>/feed.json` →
+   `releases[0].artifactUrl`.
 2. Make it executable and run it:
    ```sh
    chmod +x pylon-darwin-arm64

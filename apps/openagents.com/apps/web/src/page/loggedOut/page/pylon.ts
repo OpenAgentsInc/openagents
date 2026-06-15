@@ -1,14 +1,13 @@
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
+import { AUTOPILOT_DESKTOP_MACOS_ARM64_DMG_URL } from '../../../constant'
 import { pylonBezierNetworkView } from '../../../scene/pylonBezierNetworkElement'
 import { pylonView } from '../../../scene/pylonElement'
 import { pylonLaunchGateView } from '../../../scene/pylonLaunchGateElement'
 import { pylonStatsView } from '../../../scene/pylonStatsElement'
 import * as Ui from '../../../ui'
 import type { Message } from '../message'
-
-const downloadAutopilotHref = '/INSTALL.md'
 
 // #5059: a real server-rendered Download Autopilot link overlaid on the pylon
 // scene. The scene layers are pointer-events-none, so this anchor sits above
@@ -25,7 +24,7 @@ const downloadAutopilotCta = (): Html => {
     [
       h.a(
         [
-          h.Href(downloadAutopilotHref),
+          h.Href(AUTOPILOT_DESKTOP_MACOS_ARM64_DMG_URL),
           h.DataAttribute('cta', 'download-autopilot'),
           Ui.className<Message>(
             'pointer-events-auto inline-flex flex-col items-center gap-0.5 border border-[#d6f6ff] bg-[rgba(1,1,2,0.86)] px-4 py-2 text-center font-mono text-[#f1efe8] shadow-[0_0_28px_rgba(41,121,255,0.22)] hover:border-white hover:bg-[rgba(12,15,19,0.94)]',
@@ -46,7 +45,7 @@ const downloadAutopilotCta = (): Html => {
                 'text-[0.6rem] uppercase leading-none tracking-[0.08em] text-white/55',
               ),
             ],
-            ['Install guide'],
+            ['macOS arm64 DMG'],
           ),
         ],
       ),

@@ -56,13 +56,21 @@ session): see the repo guide
 
 ## B. Autopilot Desktop (GUI, macOS)
 
-1. Download `Autopilot Desktop-canary.dmg` (Apple Silicon) from the RC link.
+1. **Download here:** `AutopilotDesktop-1.0.0-rc.2-macos-arm64.dmg`
+   (Apple Silicon) from
+   <https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/AutopilotDesktop-1.0.0-rc.2-macos-arm64.dmg>.
+   The GitHub release is
+   <https://github.com/OpenAgentsInc/openagents/releases/tag/autopilot-desktop-v1.0.0-rc.2>.
    It's **signed + Apple-notarized**, so it opens normally.
 2. Drag to Applications and launch. It bundles + starts a headless Pylon node;
    the home screen is the live pylon-network visualization.
 3. Auto-update is on by default (opt out: `AUTOPILOT_DISABLE_AUTOUPDATE=1`).
 4. Verify it's ours: `spctl -a -t exec "/Applications/Autopilot Desktop-canary.app"`
    → `accepted · Notarized Developer ID`; `codesign -dvv …` → `TeamIdentifier=HQWSG26L43`.
+
+Apple Silicon is the only published Autopilot Desktop installer for this RC.
+Intel macOS and Linux desktop installers are owner-gated until those builds are
+signed, notarized or packaged, and published.
 
 Human install steps:
 <https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot-coder/2026-06-15-rc-tester-install-guide.md>.

@@ -7,6 +7,17 @@ recorded — source refs, artifacts, receipts, tests, screenshots, deployments,
 decisions, costs, caveats, acceptance state — and public claims stay tied to
 what the records actually prove.
 
+## Download Autopilot Desktop
+
+**Download here:** [Autopilot Desktop v1.0.0-rc.2 for macOS Apple Silicon](https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/AutopilotDesktop-1.0.0-rc.2-macos-arm64.dmg).
+
+The macOS build is signed with the OpenAgents Apple Developer ID and notarized by
+Apple. The matching GitHub release is
+[autopilot-desktop-v1.0.0-rc.2](https://github.com/OpenAgentsInc/openagents/releases/tag/autopilot-desktop-v1.0.0-rc.2).
+Intel macOS and Linux desktop installers are not published yet; Pylon headless
+builds are available through the per-platform feeds in
+[INSTALL.md](apps/openagents.com/apps/web/public/INSTALL.md).
+
 That last clause is the heart of the project. Most AI products are demos
 wrapped in marketing: the gap between what is claimed and what is verifiable
 is where user trust goes to die. We are trying to build the opposite — a
