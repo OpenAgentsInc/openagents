@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-14.9'
+export const PublicProductPromisesVersion = '2026-06-15.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -292,16 +292,19 @@ export const publicProductPromisesDocument = () => {
         audience: ['contributor', 'agent', 'operator'],
         state: 'yellow',
         claim:
-          'Pylon v0.3 has been pulled into the monorepo as the release-candidate contributor node and includes the former Probe runtime surface.',
+          'Pylon is in the monorepo as the release-candidate contributor node and includes the former Probe runtime surface.',
         safeCopy:
-          'For the 2026-06-15 launch path, contributors install Autopilot Desktop; Pylon v0.3 is the local node Autopilot drives under apps/pylon as @openagentsinc/pylon@0.3.0-rc2 for macOS and Linux rc work. Stable v0.3.0 and network-wide earning remain gated.',
+          'The v1.0 release candidate (1.0.0-rc.1) is built and available for testing: signed Pylon binaries for macOS + Linux (four platforms, ed25519 release-signed, default-on verified OTA) and a signed + Apple-notarized Autopilot Desktop app that bundles the node. Install/test guide at https://openagents.com/INSTALL.md; report on the Release Candidates forum. RC channel only — stable v1.0.0 and network-wide earning remain gated.',
         unsafeCopy:
-          'Do not claim Pylon v0.3.0 is stable or broadly live for anyone to earn Bitcoin automatically.',
+          'Do not claim Pylon v1.0.0 is the stable release or that anyone can install and automatically earn Bitcoin; this is a release candidate for testing.',
         evidenceRefs: [
           'apps/pylon/package.json',
-          'apps/pylon/README.md',
+          'apps/pylon/scripts/build-rc-binaries.sh',
+          'apps/oa-updates/keys/release-pubkey.json',
+          'apps/openagents.com/apps/web/public/INSTALL.md',
+          'forum:release-candidates',
           'apps/pylon/docs/launch-gates-no-overclaim.md',
-          'apps/pylon/docs/2026-06-11-v030-release-preparation-record.md',
+          'docs/autopilot-coder/2026-06-15-rc-tester-install-guide.md',
         ],
         blockerRefs: [
           'blocker.product_promises.pylon_v03_stable_release_not_green',
@@ -320,12 +323,13 @@ export const publicProductPromisesDocument = () => {
         state: 'yellow',
         claim: 'A new version of Pylon releases.',
         safeCopy:
-          'The contributor-facing release path is Autopilot Desktop as the install surface, with Pylon v0.3 as the local node it drives. Pylon remains a release candidate in the monorepo targeting macOS and Linux; it is not stable 0.3.0. Windows/WSL is deliberately out of scope by owner decision (2026-06-10), not a pending gap.',
+          'The v1.0 release candidate (1.0.0-rc.1) is out for testing on macOS and Linux: a signed standalone Pylon binary and a signed + notarized Autopilot Desktop app, both with default-on verified auto-update. It is a release candidate, not stable 1.0.0. Windows/WSL is deliberately out of scope by owner decision (2026-06-10), not a pending gap.',
         unsafeCopy:
-          'Do not claim a stable universal Pylon release works on every computer.',
+          'Do not claim a stable universal Pylon release works on every computer; this is an rc for testing.',
         evidenceRefs: [
           'apps/pylon/package.json',
-          'apps/pylon/docs/release-install-smokes.md',
+          'apps/pylon/scripts/build-rc-binaries.sh',
+          'apps/openagents.com/apps/web/public/INSTALL.md',
           'apps/pylon/docs/launch-gates-no-overclaim.md',
         ],
         blockerRefs: [
