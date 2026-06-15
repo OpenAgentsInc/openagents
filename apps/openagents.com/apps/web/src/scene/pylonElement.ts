@@ -2,6 +2,7 @@ import { define as defineCustomElement } from 'foldkit/customElement'
 import type { Attribute, Html } from 'foldkit/html'
 
 import { mountPylonDiamonds, type PylonDiamondsHandle } from './pylonDiamonds'
+import { computeActivityIntensity, fetchPylonStats } from './pylonNetworkStats'
 
 // Foldkit binding for the isolated Pylon diamond scene. Mirrors the pattern
 // the shared three-effect package uses for its scene elements, but the scene
@@ -18,6 +19,18 @@ const pylonElement = defineCustomElement({
 const makePylonElement = (): CustomElementConstructor =>
   class PylonElement extends HTMLElement {
     #handle: PylonDiamondsHandle | null = null
+    #statsTimer: ReturnType<typeof setInterval> | null = null
+
+    // #5050: poll live network stats and drive the pylon's blue glow from
+    // activity (sessions / NIP-90 / training). Fail-soft -> 0 (dormant glow).
+    #pollActivity(): void {
+      const apply = async (): Promise<void> => {
+        const snapshot = await fetchPylonStats()
+        this.#handle?.setActivity(computeActivityIntensity(snapshot))
+      }
+      void apply()
+      this.#statsTimer = setInterval(() => void apply(), 15_000)
+    }
 
     connectedCallback(): void {
       if (this.#handle !== null) return
@@ -45,9 +58,14 @@ const makePylonElement = (): CustomElementConstructor =>
       shadow.append(style, mount)
 
       this.#handle = mountPylonDiamonds(mount)
+      this.#pollActivity()
     }
 
     disconnectedCallback(): void {
+      if (this.#statsTimer !== null) {
+        clearInterval(this.#statsTimer)
+        this.#statsTimer = null
+      }
       if (this.#handle === null) return
       this.#handle.dispose()
       this.#handle = null

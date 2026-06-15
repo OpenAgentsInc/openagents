@@ -26,6 +26,8 @@ export type PylonDiamondsOptions = Readonly<{
 export type PylonDiamondsHandle = Readonly<{
   canvas: HTMLCanvasElement
   dispose: () => void
+  // #5050: set the live activity level [0,1] that drives the blue glow.
+  setActivity: (intensity: number) => void
 }>
 
 type DiamondEdgeView = Readonly<{
@@ -197,6 +199,9 @@ export const mountPylonDiamonds = (
 ): PylonDiamondsHandle => {
   const resolved = { ...DEFAULTS, ...options }
 
+  // #5050: live activity level [0,1] driving the glow; updated via setActivity.
+  let activityIntensity = 0
+
   element.replaceChildren()
   element.style.position = 'relative'
   element.style.overflow = 'hidden'
@@ -363,8 +368,13 @@ export const mountPylonDiamonds = (
     }
     const pulseUniform = refractionMaterial.uniforms.lightPulse
     if (pulseUniform !== undefined) {
-      pulseUniform.value =
-        0.42 + (Math.sin(seconds * 1.3) * 0.5 + 0.5) * 0.42
+      // #5050: the blue glow tracks live network activity. Idle breathes slow +
+      // dim; an active network (work/compute flowing) pulses brighter + faster.
+      // `activityIntensity` in [0,1] is driven by setActivity() from live stats.
+      const base = 0.30 + activityIntensity * 0.30
+      const span = 0.18 + activityIntensity * 0.40
+      const rate = 1.0 + activityIntensity * 1.6
+      pulseUniform.value = base + (Math.sin(seconds * rate) * 0.5 + 0.5) * span
     }
 
     lightBeams.forEach(beam => {
@@ -531,5 +541,11 @@ export const mountPylonDiamonds = (
     element.replaceChildren()
   }
 
-  return { canvas, dispose }
+  const setActivity = (intensity: number): void => {
+    activityIntensity = Number.isFinite(intensity)
+      ? Math.max(0, Math.min(1, intensity))
+      : 0
+  }
+
+  return { canvas, dispose, setActivity }
 }
