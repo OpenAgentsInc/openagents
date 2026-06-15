@@ -49,18 +49,23 @@ Live registry: **`2026-06-15.1`**.
   no-SDK Codex run), and the visual-language runbook
   `2026-06-15-autopilot-home-network-visual-language.md`.
 
-### ⚠️ Autoupdate — clients done, FEED NOT LIVE YET (being fixed)
-- **Clients:** Pylon + Autopilot auto-update is **on by default**, fetching from
-  `updates.openagents.com` and verifying against the pinned ed25519 key (fail
-  closed). Verified end-to-end locally.
-- **Feed:** `updates.openagents.com` is domain-mapped to the `oa-updates` Cloud Run
-  service, but the feed returns **404** — the Dockerfile didn't `COPY pylon-dist`.
-  Fixed the Dockerfile, but the redeploy **failed to start**: seeding 318M of
-  signed binaries into the **in-memory** asset store at boot exceeds Cloud Run's
-  startup memory/timeout. **Fix needed:** serve the binaries from disk/GCS instead
-  of loading them all into memory at startup (or bump memory + lazy-load). Until
-  then, a running rc1 binary's update check 404s (no update delivered). **No rc2
-  needed** — rc1 already targets the right URL; this is purely a server fix.
+### Autoupdate — Pylon LIVE + verified end-to-end ✅ (Autopilot desktop OTA pending)
+- **Pylon auto-update is genuinely working in production.** Verified end-to-end:
+  a behind-version binary (1.0.0-rc.0) ran `pylon update` against the live
+  `updates.openagents.com` feed → downloaded the artifact from GCS → verified the
+  ed25519 signature against the pinned key (fail closed) → atomically self-replaced
+  → reported 1.0.0-rc.1. On by default; opt-out `PYLON_DISABLE_AUTOUPDATE=1`.
+- **Feed serving (fixed):** `updates.openagents.com` → `oa-updates` Cloud Run
+  (domain-mapped). Three fixes were needed: (1) Dockerfile `COPY pylon-dist`;
+  (2) serve assets streamed from disk, not loaded into the in-memory store at boot
+  (was OOMing); (3) **Cloud Run caps responses at 32 MiB**, so the 60–97 MB
+  binaries are served from a **public GCS bucket** (`gs://openagentsgemini-oa-updates`)
+  via `OA_ASSET_BASE_URL` — the feed JSON stays on Cloud Run, downloads go to GCS.
+  All 4 platform feeds return 200 with GCS artifactUrls. **No rc2 needed.**
+- **Autopilot desktop OTA — still to wire:** the Electrobun updater expects its own
+  `<platform>-update.json` feed format + hosted `.app.tar.zst`/BSDIFF artifacts at
+  `updates.openagents.com/desktop`; that feed isn't published yet (separate from
+  the Pylon feed). Follow-up.
 
 ### Held on purpose — the headline green flips
 The Tassadar run **manifest itself** says *"owner-operated nodes do not count as
