@@ -55,7 +55,9 @@ import { PROBE_APPLE_FM_BACKEND_CAPABILITY } from "./runner/identity";
 import { makeOmegaAccountClient, type OmegaAccountClient } from "./omega/account-client";
 import { resolveCodexGrantResolveEndpoint } from "./omega/grant-client";
 import { sanitizeProbePublicProjection } from "./contracts/provider-account";
-import { createProbeRenderer, createAssistantText, createCodeWithLineNumbers, detectFiletype, createDefaultSyntaxStyle, parseColor, TextRenderable, BoxRenderable, ScrollBoxRenderable } from "./opentui-renderer";
+import { detectFiletype } from "./opentui-filetype";
+import type { CliRenderer, ScrollBoxRenderable } from "@opentui/core";
+import type { ProbeOpentuiRendererModule } from "./opentui-renderer";
 import { type ProbeRunnerIdentity } from "./runner/identity";
 import {
   bestEffortRecordProbeTokenUsageEvent,
@@ -2093,6 +2095,12 @@ async function runGeminiTuiChat(input: {
   readonly options: Record<string, string | true>;
 }): Promise<number> {
   const { clientResult, model, maxTokens, tools } = input;
+  // Lazily load the opentui-backed rendering surface. Keeping this import
+  // dynamic (rather than a top-level static import) keeps `@opentui/core` out
+  // of the runtime's static module graph so the headless Pylon node stays
+  // bundle-able (#5037). Only this interactive `--tui` path ever loads it.
+  const opentui = await (await import("./opentui-renderer")).loadProbeOpentuiRenderer();
+  const { createProbeRenderer, createAssistantText, parseColor, TextRenderable, BoxRenderable, ScrollBoxRenderable } = opentui;
   const renderer = await createProbeRenderer();
   const session = new ScrollBoxRenderable(renderer, {
     scrollY: true,
@@ -2147,7 +2155,7 @@ async function runGeminiTuiChat(input: {
         }
 
         if (event.type === "tool-result") {
-          renderToolResultInSession(session, renderer, event.name, event.result);
+          renderToolResultInSession(opentui, session, renderer, event.name, event.result);
         }
 
         if (event.type === "tool-error") {
@@ -2217,11 +2225,13 @@ async function runGeminiTuiChat(input: {
 }
 
 function renderToolResultInSession(
+  opentui: ProbeOpentuiRendererModule,
   session: ScrollBoxRenderable,
   renderer: CliRenderer,
   name: string,
   result: { readonly type: string; readonly value: unknown },
 ): void {
+  const { parseColor, TextRenderable, createCodeWithLineNumbers } = opentui;
   if (result.type === "error") {
     const errorText = new TextRenderable(renderer, {
       content: `[${name}]: ${String(result.value)}`,
