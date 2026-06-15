@@ -36,10 +36,10 @@ evidence are green.
 The current truth is therefore yellow, not green:
 
 - the backend/runtime material is real;
-- the old Swift bridge source is recoverable in git history but no longer
-  present at root after the rebuilds;
-- the current monorepo has a Probe/Pylon Apple FM client and tests, not a
-  retained in-tree Swift bridge implementation;
+- the current monorepo now retains a buildable Swift Foundation Models bridge
+  helper under `apps/pylon/swift/foundation-bridge`;
+- the current monorepo has Probe/Pylon Apple FM client, capability, control,
+  helper-discovery, and fake-bridge tests;
 - live Pylon market claims still require current receipts, wallet readiness,
   assignment or NIP-90 evidence, and settlement proof.
 
@@ -583,7 +583,7 @@ Apple FM is one of the better-proven local backend ideas in the OpenAgents
 history. It has:
 
 - direct native Swift usage history;
-- a recoverable Swift bridge implementation;
+- a restored buildable Swift bridge helper;
 - a mature Psionic contract/client plan;
 - current Probe/Pylon Bun/Effect runtime support;
 - current fake-bridge CI coverage;

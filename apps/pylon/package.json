@@ -16,7 +16,8 @@
     }
   },
   "bin": {
-    "pylon": "src/index.ts"
+    "pylon": "src/index.ts",
+    "pylon-foundation-bridge": "bin/foundation-bridge"
   },
   "os": [
     "darwin",
@@ -24,6 +25,11 @@
   ],
   "files": [
     "src",
+    "bin/foundation-bridge",
+    "swift/foundation-bridge/Package.swift",
+    "swift/foundation-bridge/README.md",
+    "swift/foundation-bridge/build.sh",
+    "swift/foundation-bridge/Sources",
     "packages/runtime/src",
     "packages/runtime/package.json",
     "docs/images/pylon.png",
@@ -56,6 +62,7 @@
     "smoke:packaged-runtime-task": "bun scripts/packaged-runtime-task-smoke.ts",
     "smoke:claude-agent-task": "bun scripts/claude-agent-task-smoke.ts",
     "smoke:codex-agent-task": "bun scripts/codex-agent-task-smoke.ts",
+    "build:apple-fm-bridge": "bash swift/foundation-bridge/build.sh",
     "test": "bun test --max-concurrency=1",
     "release:gate": "bash scripts/release-gate.sh",
     "build:rc-binaries": "bash scripts/build-rc-binaries.sh"

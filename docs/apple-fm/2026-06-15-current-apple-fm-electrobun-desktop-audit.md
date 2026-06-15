@@ -11,9 +11,11 @@ Electrobun app in `apps/autopilot-desktop`.
 The current codebase already has the Apple FM backend contract in Pylon runtime.
 It now also has a token-authenticated Pylon control projection,
 `apple_fm.status`, that reports live Apple FM readiness from the existing
-runtime health/capability code. It does not yet have an in-tree Swift
-Foundation bridge binary, a packaged bridge helper, or a desktop UI/RPC path
-that lets Autopilot Desktop truthfully say "local Apple FM is ready."
+runtime health/capability code, plus a buildable in-tree Swift Foundation
+Models bridge helper at `apps/pylon/swift/foundation-bridge`. It does not yet
+have Autopilot Desktop launch/supervision, desktop UI/RPC projection, or a
+full local chat/tool runner that lets the installer truthfully say "local Apple
+FM is ready."
 
 The integration path should be:
 
@@ -78,7 +80,7 @@ The current app does these things well:
 
 The current app does not yet do these Apple FM-specific things:
 
-- It does not bundle, launch, or supervise a Foundation Models bridge helper.
+- It does not bundle, launch, or supervise the Foundation Models bridge helper.
 - It does not call Pylon control `apple_fm.status`.
 - It does not expose `appleFmReadiness` or `localBackendReadiness` in
   `DesktopRPCSchema`.
@@ -120,6 +122,26 @@ The profile resolver accepts:
 3. `OPENAGENTS_APPLE_FM_BASE_URL`
 4. the default loopback URL
 
+The local Swift bridge helper is now retained under:
+
+- `apps/pylon/swift/foundation-bridge/Package.swift`
+- `apps/pylon/swift/foundation-bridge/Sources/foundation-bridge/main.swift`
+- `apps/pylon/swift/foundation-bridge/build.sh`
+- `apps/pylon/bin/foundation-bridge`
+
+It exposes `/health`, `/v1/models`, `/v1/chat/completions`, `/v1/sessions`,
+and `/v1/sessions/{id}/responses/stream` on loopback. The first restored
+version is intentionally modest: it creates fresh Foundation Models sessions,
+returns typed unavailable reasons for disabled or unsupported Apple FM states,
+and emits single-turn snapshot/completed SSE events for Pylon's local
+tool/chat MVP. It logs startup/listener state only, not prompts, message
+bodies, local files, or secrets.
+
+Pylon source/package discovery for the helper now lives in:
+
+- `apps/pylon/src/node/apple-fm-bridge-helper.ts`
+- `apps/pylon/tests/apple-fm-bridge-helper.test.ts`
+
 The runtime client supports:
 
 - `health()`
@@ -129,18 +151,11 @@ The runtime client supports:
 - `streamSessionWithTools(input)`
 - `smoke(prompt)`
 
-The CLI exposes direct Pylon aliases through `apps/pylon/src/index.ts`:
-
-- `pylon apple-fm status [--base-url URL] [--profile apple-fm-local]`
-- `pylon apple-fm smoke [--base-url URL] [--profile apple-fm-local]
-  [--prompt TEXT]`
-- `pylon apple-fm tool-stream-demo [--base-url URL] [--path FILE]
-  [--prompt TEXT]`
-
-Those commands are routed into the runtime CLI through `runProbeCli`. The
-current CLI is useful for development and acceptance, but the desktop should not
-shell out for its normal live projection if Pylon can expose the same status
-through the control API.
+The current Pylon app exposes Apple FM readiness through the token-authenticated
+control command rather than a user-facing `pylon apple-fm status` shell alias.
+Development smokes can call the bridge directly or use the runtime capability
+reporter, but the desktop should not shell out for its normal live projection
+when Pylon can expose the same status through the control API.
 
 ## Current Runtime Semantics
 
@@ -261,30 +276,35 @@ Use inventory for coarse platform context:
 Do not use inventory alone to say Apple FM is ready. The green state must come
 from live bridge health through the runtime client or capability report.
 
-## Current Missing Swift Bridge
+## Current Swift Bridge Helper
 
-The current tree retains the runtime client and tests, but not the old in-tree
-Swift bridge implementation. The expected bridge contract still exists in the
-TypeScript runtime:
+The current tree retains the runtime client and tests, and now also has a
+restored, buildable in-tree Swift bridge helper:
+
+- `apps/pylon/swift/foundation-bridge/Package.swift`
+- `apps/pylon/swift/foundation-bridge/Sources/foundation-bridge/main.swift`
+- `apps/pylon/swift/foundation-bridge/build.sh`
+- `apps/pylon/bin/foundation-bridge`
+- `apps/pylon/src/node/apple-fm-bridge-helper.ts`
+- `apps/pylon/tests/apple-fm-bridge-helper.test.ts`
+
+The helper implements the expected TypeScript runtime contract:
 
 - `GET /health`
+- `GET /v1/models`
 - `POST /v1/chat/completions`
-- snapshot streaming for `streamMode: "snapshot"`
 - `POST /v1/sessions`
 - `POST /v1/sessions/{id}/responses/stream`
-- loopback tool callback support
 
-To ship desktop Apple FM, one of these must become true:
+The remaining desktop packaging choices are:
 
-1. A Foundation Models bridge helper is restored into the repo and packaged
-   with the app.
-2. A signed external helper is installed separately and the desktop only
-   discovers it.
-3. Pylon owns bridge launch/discovery as part of its node runtime, and desktop
+1. Package the restored helper with the app and let desktop/Pylon launch it.
+2. Support a signed external helper that desktop/Pylon only discovers.
+3. Let Pylon own bridge launch/discovery as part of its node runtime, and desktop
    merely displays Pylon's projection.
 
-The recommended route is 1 plus 3: restore/package the helper, but let Pylon
-own the backend health and capability truth.
+The recommended route remains 1 plus 3: package the helper, but let Pylon own
+the backend health and capability truth.
 
 ## Electrobun Packaging Work Needed
 
@@ -322,10 +342,10 @@ The bridge launch policy should be explicit:
 
 ## Pylon Control API Now Available
 
-Autopilot Desktop should not need to run `pylon apple-fm status` as a subprocess
-on every refresh. #5070 added a Pylon control command that returns the same
-public-safe readiness shape through the existing token-authenticated
-`POST /command` loopback path.
+Autopilot Desktop should not run a Pylon Apple FM status subprocess on every
+refresh. #5070 added a Pylon control command that returns the same public-safe
+readiness shape through the existing token-authenticated `POST /command`
+loopback path.
 
 Command:
 
@@ -535,9 +555,9 @@ CI-safe tests:
 Live admitted-Mac tests:
 
 - Start or install the Foundation Models bridge.
-- Run `pylon apple-fm status`.
-- Run `pylon apple-fm smoke`.
-- Run `pylon apple-fm tool-stream-demo --path README.md`.
+- Run Pylon `apple_fm.status` over the loopback control API.
+- Run a direct bridge `/v1/chat/completions` smoke.
+- Run the Pylon runtime local chat/tool session runner once #5072 lands.
 - Start Autopilot Desktop with the same base URL.
 - Verify Settings shows Apple FM ready.
 - Verify the Agent pane can select local Apple FM only when ready.
@@ -556,11 +576,11 @@ Packaging tests:
 
 1. Done: add Pylon `apple_fm.status` control command backed by current runtime
    capability/health code.
-2. Add desktop Bun fetch/RPC support for Apple FM readiness.
-3. Extend desktop install readiness and Agent pane with Apple FM as an optional
+2. Done: restore a buildable Swift Foundation Models bridge helper and Pylon
+   helper discovery rules.
+3. Add desktop Bun fetch/RPC support for Apple FM readiness.
+4. Extend desktop install readiness and Agent pane with Apple FM as an optional
    local backend.
-4. Restore or package the Swift Foundation bridge helper and add desktop/Pylon
-   discovery.
 5. Add provider go-online capability declaration for
    `probe.backend.apple_fm_bridge`, gated by live health.
 6. Add admitted-Mac acceptance docs and live smoke evidence.
@@ -593,11 +613,11 @@ What is real:
 - Program Run evidence.
 - Capability report gated on live health.
 - Pylon `apple_fm.status` loopback control command with fake-bridge tests.
-- Pylon CLI aliases.
+- Buildable Swift Foundation Models bridge helper.
+- Pylon source/package bridge-helper discovery tests.
 
 What is not connected yet:
 
-- In-tree Swift bridge helper.
 - Packaged helper resource.
 - Desktop Apple FM RPC.
 - Desktop first-run health item.

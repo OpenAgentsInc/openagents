@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-15.7'
+export const PublicProductPromisesVersion = '2026-06-15.8'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -141,14 +141,14 @@ export const publicProductPromisesDocument = () => {
         'Pylon v0.3 is a release candidate, not stable 0.3.0.',
         'macOS and Linux are the first supported operator platforms for the v0.3 launch path.',
         'Pylon v0.3 local release gates and a no-spend live worker-loop smoke exist, but broad earning, paid assignment, settlement, and stable-release claims still need fresh public evidence before they go green.',
-        'Training, data revenue, provider-capacity resale, referral payouts, and signature revenue remain gated or planned. Broad local-inference resale and Qwen fine-tune products remain out of scope by owner decision (2026-06-10), but registry 2026-06-15.7 retains the explicit planned exception for a basic, entirely local Apple FM Autopilot tool/chat path for Apple users and records the Pylon loopback readiness command as implemented.',
+        'Training, data revenue, provider-capacity resale, referral payouts, and signature revenue remain gated or planned. Broad local-inference resale and Qwen fine-tune products remain out of scope by owner decision (2026-06-10), but registry 2026-06-15.8 retains the explicit planned exception for a basic, entirely local Apple FM Autopilot tool/chat path for Apple users and records the Pylon loopback readiness command plus buildable Foundation Models bridge helper as implemented.',
         'Episode 199 Claude Code-first mech-suit language is historical source material, not current public positioning. Current coding-agent runtime work is Codex-oriented where applicable, with useful ideas folded into Probe/Pylon.',
         'Open-source availability covers public product code and docs in the OpenAgentsInc/openagents repository; it does not publish secrets, production data, Cloudflare account bindings, wallet material, provider credentials, customer-private workroom content, or third-party service internals.',
         'The full training-pipeline program (the training.* promises) is planned scope from docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md; no Psion model rung above the retained tri-host rehearsal exists, and no pipeline stage is live as a broadly paid network workload.',
         'Episode 236 is launch-direction source material only: the Monday decentralized training run, Pylon v0.3 multi-earning node, largest-run comparison, and Tassadar executor-model language stay red until run, participant, work, validation, payment, settlement, and projection receipts exist. The former models.tasadar_percepta_executor.v1 typo record is withdrawn in favor of models.tassadar_percepta_executor.v1.',
         'The Monday 2026-06-15 decentralized-training launch is imminent but has NOT happened as of this registry version (2026-06-14). Contributor join-lifecycle and device-admission contracts landed on main (#4848-#4854) and the SHC+Pylon fallback closeout route is deployed (m10-live 2026-06-14), so the rails are ready, but every training launch promise stays red/yellow until the run produces a public run identifier, participant admission, accepted-work, validation, and settlement receipts. Rails-ready is not launched.',
         'Owner-authorized state flips 2026-06-14 (registry 2026-06-14.1): labor.forum_work_requests.v1 and labor.nostr_negotiation_market.v1 to green and provider.compliant_usage_labor.v1 / autopilot.control_center_fanout_marketplace.v1 to yellow were applied in source ahead of the receipt-first operator-route transition receipts, on the strength of the #4777/#4781/#4783 settlement evidence. The matching promise_transition receipts were recorded against the deployed registry on 2026-06-15 via the operator route (#5017): labor.forum_work_requests.v1 promise_transition_a38a3472-a5f2-4307-9de6-18afffa22627, labor.nostr_negotiation_market.v1 promise_transition_2bf98afa-ddb8-4a1e-863e-25178572620f, provider.compliant_usage_labor.v1 promise_transition_a862e366-efde-4655-96df-cd09a57d47fe, autopilot.control_center_fanout_marketplace.v1 promise_transition_9fd8f04b-ac6b-4b54-a4bf-9fa85d1e2948 — each an exception receipt (the flip was already applied, so from-state equals to-state), dereferenceable at /api/public/product-promises/transitions. The reconciliation record is docs/promises/2026-06-14-registry-reality-reconciliation-audit.md.',
-        'Wave-3 Autopilot Sites / Agency Pack surfaces (#4977-#4995) enter as conservative new records: autopilot.desktop_gui_client.v1 (yellow, local-only), mobile.autopilot_remote_control.v1 (planned), workrooms.omni_client_delivery_workrooms.v1 (red), autopilot_sites.native_email_sequences.v1 (yellow, no send service), autopilot_sites.custom_tenant_hostnames.v1 (yellow, no self-serve/SSL), autopilot_sites.partner_payout_ledger.v1 (red), autopilot.cloud_credits_ui.v1 (yellow, presentational), mobile.voice_session_evidence_transcript_ingest.v1 (red, contracts only). Registry 2026-06-15.7 keeps autopilot.local_apple_fm_tool_chat.v1 planned for basic fully local Apple FM Autopilot chat/tool use and notes that Pylon now exposes the token-authenticated apple_fm.status projection. All are operator-gated, pre-customer, or planned; none claims green.',
+        'Wave-3 Autopilot Sites / Agency Pack surfaces (#4977-#4995) enter as conservative new records: autopilot.desktop_gui_client.v1 (yellow, local-only), mobile.autopilot_remote_control.v1 (planned), workrooms.omni_client_delivery_workrooms.v1 (red), autopilot_sites.native_email_sequences.v1 (yellow, no send service), autopilot_sites.custom_tenant_hostnames.v1 (yellow, no self-serve/SSL), autopilot_sites.partner_payout_ledger.v1 (red), autopilot.cloud_credits_ui.v1 (yellow, presentational), mobile.voice_session_evidence_transcript_ingest.v1 (red, contracts only). Registry 2026-06-15.8 keeps autopilot.local_apple_fm_tool_chat.v1 planned for basic fully local Apple FM Autopilot chat/tool use and notes that Pylon now exposes the token-authenticated apple_fm.status projection and retains a buildable local Foundation Models bridge helper. All are operator-gated, pre-customer, or planned; none claims green.',
         'Autopilot-is-the-install reconciliation for the 2026-06-15 launch: contributor-facing install copy should name Autopilot Desktop as the install surface and Pylon as the local node it drives; the affected Pylon promises remain yellow.',
         'Decentralized-training lane (RESEARCH_PLAN W5): the new training.public_gradient_windows.v1 record is planned, not live. Public devices do generation/validation/evaluation only; the Pluralis lifecycle substrate (#4855, P0-P3) is in place, but no public gradient enters the canonical optimizer until a quarantine→verify→canary→promotion regime ships. Do not claim public decentralized gradient training for the launch.',
       ],
@@ -2322,8 +2322,13 @@ export const publicProductPromisesDocument = () => {
           'apps/pylon/packages/runtime/src/backends/apple-fm/client.ts',
           'apps/pylon/packages/runtime/src/backends/apple-fm/tools.ts',
           'apps/pylon/packages/runtime/src/fleet/backend-capability.ts',
+          'apps/pylon/swift/foundation-bridge/Package.swift',
+          'apps/pylon/swift/foundation-bridge/Sources/foundation-bridge/main.swift',
+          'apps/pylon/swift/foundation-bridge/README.md',
+          'apps/pylon/src/node/apple-fm-bridge-helper.ts',
           'apps/pylon/src/node/apple-fm-status.ts',
           'apps/pylon/src/node/control-server.ts',
+          'apps/pylon/tests/apple-fm-bridge-helper.test.ts',
           'apps/pylon/tests/control-protocol.test.ts',
           'apps/autopilot-desktop/src/bun/index.ts',
           'apps/autopilot-desktop/src/bun/node-launcher.ts',
@@ -2336,7 +2341,6 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/5073',
         ],
         blockerRefs: [
-          'blocker.product_promises.local_apple_fm_bridge_helper_missing',
           'blocker.product_promises.local_apple_fm_desktop_readiness_ui_missing',
           'blocker.product_promises.local_apple_fm_chat_tool_session_missing',
           'blocker.product_promises.local_apple_fm_admitted_mac_smoke_missing',
