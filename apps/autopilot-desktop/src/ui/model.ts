@@ -17,6 +17,8 @@ import type {
   BuiltInAgentReadinessResponse,
   InstallReadinessResponse,
   NodeStateMessage,
+  PromiseSurfacingReadinessResponse,
+  PromiseSurfacingResponse,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
@@ -84,6 +86,12 @@ export const InstallReadinessStatus = S.Struct({
 })
 export type InstallReadinessStatus = typeof InstallReadinessStatus.Type
 
+export const PromiseSurfacingStatus = S.Struct({
+  text: S.String,
+  tone: S.Literals(["error", "info", "success", "idle"]),
+})
+export type PromiseSurfacingStatus = typeof PromiseSurfacingStatus.Type
+
 // Transient status for queueing a training launch/readiness check through the
 // existing local Pylon intent bridge. The desktop webview never receives admin
 // training authority or secrets.
@@ -140,6 +148,30 @@ export const Model = ts("AutopilotDesktop", {
   installReadiness: S.NullOr(S.Unknown),
   installReadinessStatus: InstallReadinessStatus,
   installReadinessPending: S.Boolean,
+
+  // #5065: Product Promises Forum surfacing flow. The webview carries only
+  // public-safe report fields; Bun owns the registered-agent token and posting.
+  promiseSurfacingReadiness: S.NullOr(S.Unknown),
+  promiseSurfacingResult: S.NullOr(S.Unknown),
+  promiseSurfacingStatus: PromiseSurfacingStatus,
+  promiseSurfacingReadinessPending: S.Boolean,
+  promiseSurfacingSubmitPending: S.Boolean,
+  promiseSurfacingPromiseId: S.String,
+  promiseSurfacingSurface: S.String,
+  promiseSurfacingClaimText: S.String,
+  promiseSurfacingExpectedBehavior: S.String,
+  promiseSurfacingObservedBehavior: S.String,
+  promiseSurfacingEvidenceOrSteps: S.String,
+  promiseSurfacingEnvironment: S.String,
+  promiseSurfacingImpact: S.String,
+  promiseSurfacingSuggestedState: S.Literals([
+    "green",
+    "yellow",
+    "red",
+    "degraded",
+    "planned",
+    "unknown",
+  ]),
 
   // #5025: honest node-launch lifecycle status from the Bun supervisor
   // (launching/online/adopted/failed/unavailable). Null until the first status
@@ -248,6 +280,16 @@ export const modelInstallReadiness = (
 ): InstallReadinessResponse | null =>
   model.installReadiness as InstallReadinessResponse | null
 
+export const modelPromiseSurfacingReadiness = (
+  model: Model,
+): PromiseSurfacingReadinessResponse | null =>
+  model.promiseSurfacingReadiness as PromiseSurfacingReadinessResponse | null
+
+export const modelPromiseSurfacingResult = (
+  model: Model,
+): PromiseSurfacingResponse | null =>
+  model.promiseSurfacingResult as PromiseSurfacingResponse | null
+
 export const modelNotifications = (model: Model): NotificationCenterView | null =>
   model.notifications as NotificationCenterView | null
 
@@ -317,6 +359,20 @@ export const initialModel: Model = Model.make({
   installReadiness: null,
   installReadinessStatus: { text: "not checked", tone: "idle" },
   installReadinessPending: false,
+  promiseSurfacingReadiness: null,
+  promiseSurfacingResult: null,
+  promiseSurfacingStatus: { text: "not checked", tone: "idle" },
+  promiseSurfacingReadinessPending: false,
+  promiseSurfacingSubmitPending: false,
+  promiseSurfacingPromiseId: "",
+  promiseSurfacingSurface: "Autopilot Desktop",
+  promiseSurfacingClaimText: "",
+  promiseSurfacingExpectedBehavior: "",
+  promiseSurfacingObservedBehavior: "",
+  promiseSurfacingEvidenceOrSteps: "",
+  promiseSurfacingEnvironment: "Autopilot Desktop",
+  promiseSurfacingImpact: "",
+  promiseSurfacingSuggestedState: "yellow",
   nodeLaunchStatus: null,
   pane: "network",
   selectedSessionRef: null,

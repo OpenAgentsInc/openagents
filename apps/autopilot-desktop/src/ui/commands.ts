@@ -16,6 +16,8 @@ import {
   FailedSpawn,
   GotBuiltInAgentReadiness,
   GotInstallReadiness,
+  GotPromiseSurfacingReadiness,
+  GotPromiseSurfacingResult,
   GotTrainingDashboard,
   GotTrainingEvidencePacketSummary,
   GotTrainingOperatorReadiness,
@@ -188,6 +190,19 @@ const emptyInstallReadinessProjection = (error: string) => ({
       blockerRef: "desktop.install_readiness.request_failed",
     },
   ],
+  error,
+})
+
+const emptyPromiseSurfacingReadinessProjection = (error: string) => ({
+  ok: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:promise-surfacing-readiness" as const,
+  forumSlug: "product-promises" as const,
+  baseUrl: "unknown",
+  productPromisesUrl: "unknown",
+  forumTopicsUrl: "unknown",
+  agentTokenPresent: false,
+  blockerRefs: ["desktop.promise_surfacing.readiness_request_failed"],
   error,
 })
 
@@ -381,6 +396,65 @@ export const LoadInstallReadiness = Command.define(
       Effect.succeed(
         GotInstallReadiness({
           projection: emptyInstallReadinessProjection(errorText(error)),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadPromiseSurfacingReadiness = Command.define(
+  "LoadPromiseSurfacingReadiness",
+  {},
+  GotPromiseSurfacingReadiness,
+)(() =>
+  Effect.tryPromise(() => getRequest().promiseSurfacingReadiness({})).pipe(
+    Effect.map((projection) => GotPromiseSurfacingReadiness({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotPromiseSurfacingReadiness({
+          projection: emptyPromiseSurfacingReadinessProjection(errorText(error)),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const SurfacePromiseGap = Command.define(
+  "SurfacePromiseGap",
+  {
+    promiseId: S.String,
+    surface: S.String,
+    claimText: S.String,
+    expectedBehavior: S.String,
+    observedBehavior: S.String,
+    evidenceOrSteps: S.String,
+    environment: S.String,
+    impact: S.String,
+    suggestedState: S.Literals([
+      "green",
+      "yellow",
+      "red",
+      "degraded",
+      "planned",
+      "unknown",
+    ]),
+  },
+  GotPromiseSurfacingResult,
+)((input) =>
+  Effect.tryPromise(() => getRequest().surfacePromiseGap(input)).pipe(
+    Effect.map((projection) => GotPromiseSurfacingResult({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotPromiseSurfacingResult({
+          projection: {
+            ok: false,
+            mode: "blocked" as const,
+            draft: null,
+            blockerRefs: [
+              "desktop.promise_surfacing.submit_request_failed",
+            ],
+            error: errorText(error),
+          },
         }),
       ),
     ),

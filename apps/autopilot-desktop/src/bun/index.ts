@@ -14,6 +14,11 @@ import {
   runAutoUpdateOnce,
 } from "./auto-update"
 import { fetchPublicPylonStats } from "./pylon-network-stats"
+import {
+  promiseSurfacingReadiness as buildPromiseSurfacingReadiness,
+  resolvePromiseSurfacingSettings,
+  surfacePromiseGapReport,
+} from "./promise-surfacing"
 import { createSessionNotifier } from "./notifier"
 import { raiseOsNotification } from "./os-notification"
 import {
@@ -388,6 +393,17 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       async installReadiness() {
         return installReadinessProjection()
+      },
+      async promiseSurfacingReadiness() {
+        return buildPromiseSurfacingReadiness(
+          resolvePromiseSurfacingSettings(Bun.env),
+        )
+      },
+      async surfacePromiseGap(params) {
+        return surfacePromiseGapReport({
+          settings: resolvePromiseSurfacingSettings(Bun.env),
+          report: params,
+        })
       },
       async listTrainingRuns() {
         return fetchTrainingRuns({ baseUrl: trainingBaseUrl })

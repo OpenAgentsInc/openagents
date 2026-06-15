@@ -268,6 +268,48 @@ describe("CL-53 sanitizeTree", () => {
     ).toBe(true)
   })
 
+  test("agent pane includes Product Promises surfacing flow (#5065)", () => {
+    const document = view({
+      ...initialModel,
+      pane: "builtin-agent",
+      promiseSurfacingReadiness: {
+        ok: false,
+        fetchedAt: "2026-06-15T00:00:00.000Z",
+        sourceUrl: "desktop:promise-surfacing-readiness",
+        forumSlug: "product-promises",
+        baseUrl: "https://openagents.test",
+        productPromisesUrl: "https://openagents.test/api/public/product-promises",
+        forumTopicsUrl:
+          "https://openagents.test/api/forum/forums/product-promises/topics",
+        agentTokenPresent: false,
+        blockerRefs: ["env.OPENAGENTS_AGENT_TOKEN"],
+      },
+      promiseSurfacingResult: {
+        ok: false,
+        mode: "drafted",
+        draft: {
+          title: "[Promise Report] autopilot.builtin_compute_agent.v1",
+          requestedSlug: "promise-report-autopilot-builtin-compute-agent-v1",
+          bodyText: "Surface only. Do not ship code.",
+          ledgerVerdict: "ledger_claims_fixed_report_new_mismatch",
+          registryVersion: "2026-06-15.4",
+          promiseState: "green",
+          relatedTopicRefs: [],
+        },
+        blockerRefs: ["env.OPENAGENTS_AGENT_TOKEN"],
+      },
+    })
+    expect(treeContainsText(document.body, "Surface Promise Gap")).toBe(true)
+    expect(treeContainsText(document.body, "env.OPENAGENTS_AGENT_TOKEN")).toBe(true)
+    expect(
+      treeContainsText(
+        document.body,
+        "[Promise Report] autopilot.builtin_compute_agent.v1",
+      ),
+    ).toBe(true)
+    expect(treeContainsText(document.body, "Draft report")).toBe(true)
+  })
+
   test("training pane includes the training scene", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)

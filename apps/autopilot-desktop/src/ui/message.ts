@@ -76,6 +76,64 @@ export const GotInstallReadiness = m("GotInstallReadiness", {
   projection: S.Unknown,
 })
 
+// ── Product Promises Forum surfacing (#5065) ──────────────────────────────
+export const ChangedPromiseSurfacingPromiseId = m(
+  "ChangedPromiseSurfacingPromiseId",
+  { value: S.String },
+)
+export const ChangedPromiseSurfacingSurface = m(
+  "ChangedPromiseSurfacingSurface",
+  { value: S.String },
+)
+export const ChangedPromiseSurfacingClaimText = m(
+  "ChangedPromiseSurfacingClaimText",
+  { value: S.String },
+)
+export const ChangedPromiseSurfacingExpectedBehavior = m(
+  "ChangedPromiseSurfacingExpectedBehavior",
+  { value: S.String },
+)
+export const ChangedPromiseSurfacingObservedBehavior = m(
+  "ChangedPromiseSurfacingObservedBehavior",
+  { value: S.String },
+)
+export const ChangedPromiseSurfacingEvidenceOrSteps = m(
+  "ChangedPromiseSurfacingEvidenceOrSteps",
+  { value: S.String },
+)
+export const ChangedPromiseSurfacingEnvironment = m(
+  "ChangedPromiseSurfacingEnvironment",
+  { value: S.String },
+)
+export const ChangedPromiseSurfacingImpact = m(
+  "ChangedPromiseSurfacingImpact",
+  { value: S.String },
+)
+export const ChangedPromiseSurfacingSuggestedState = m(
+  "ChangedPromiseSurfacingSuggestedState",
+  {
+    value: S.Literals([
+      "green",
+      "yellow",
+      "red",
+      "degraded",
+      "planned",
+      "unknown",
+    ]),
+  },
+)
+export const ClickedRefreshPromiseSurfacing = m(
+  "ClickedRefreshPromiseSurfacing",
+)
+export const GotPromiseSurfacingReadiness = m(
+  "GotPromiseSurfacingReadiness",
+  { projection: S.Unknown },
+)
+export const ClickedSurfacePromiseGap = m("ClickedSurfacePromiseGap")
+export const GotPromiseSurfacingResult = m("GotPromiseSurfacingResult", {
+  projection: S.Unknown,
+})
+
 // ── Training launch/readiness feedback ──────────────────────────────────────
 export const ClickedRefreshTrainingRuns = m("ClickedRefreshTrainingRuns")
 export const SelectedTrainingSceneNode = m("SelectedTrainingSceneNode", {
@@ -203,6 +261,19 @@ export const Message = S.Union([
   FailedBuiltInAgent,
   ClickedRefreshInstallReadiness,
   GotInstallReadiness,
+  ChangedPromiseSurfacingPromiseId,
+  ChangedPromiseSurfacingSurface,
+  ChangedPromiseSurfacingClaimText,
+  ChangedPromiseSurfacingExpectedBehavior,
+  ChangedPromiseSurfacingObservedBehavior,
+  ChangedPromiseSurfacingEvidenceOrSteps,
+  ChangedPromiseSurfacingEnvironment,
+  ChangedPromiseSurfacingImpact,
+  ChangedPromiseSurfacingSuggestedState,
+  ClickedRefreshPromiseSurfacing,
+  GotPromiseSurfacingReadiness,
+  ClickedSurfacePromiseGap,
+  GotPromiseSurfacingResult,
   ClickedRefreshTrainingRuns,
   SelectedTrainingSceneNode,
   GotTrainingRuns,

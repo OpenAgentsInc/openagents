@@ -33,6 +33,8 @@ import {
   modelBuiltInAgentReadiness,
   modelInstallReadiness,
   modelNode,
+  modelPromiseSurfacingReadiness,
+  modelPromiseSurfacingResult,
   modelTrainingBootstrap,
   modelTrainingDashboard,
   modelTrainingEvidenceAdmission,
@@ -51,7 +53,15 @@ import {
   ClickedQueueTrainingCloseout,
   ClickedRefreshBuiltInAgent,
   ClickedRefreshInstallReadiness,
+  ClickedRefreshPromiseSurfacing,
   ClickedRefreshTrainingRuns,
+  ClickedSurfacePromiseGap,
+  ChangedPromiseSurfacingPromiseId,
+  ChangedPromiseSurfacingClaimText,
+  ChangedPromiseSurfacingExpectedBehavior,
+  ChangedPromiseSurfacingObservedBehavior,
+  ChangedPromiseSurfacingEvidenceOrSteps,
+  ChangedPromiseSurfacingImpact,
   ClickedReconcileTrainingWindow,
   ClickedResolveApproval,
   ClickedRequestTrainingBootstrap,
@@ -59,6 +69,8 @@ import {
   ClickedSubmitIntent,
   GotBuiltInAgentReadiness,
   GotInstallReadiness,
+  GotPromiseSurfacingReadiness,
+  GotPromiseSurfacingResult,
   GotTrainingDashboard,
   GotTrainingEvidencePacketSummary,
   GotTrainingOperatorReadiness,
@@ -330,7 +342,7 @@ describe("update reducer (CL-53)", () => {
     )
     expect(model.pane).toBe("builtin-agent")
     expect(model.builtInAgentStatus.tone).toBe("info")
-    expect(commands).toHaveLength(1)
+    expect(commands).toHaveLength(2)
   })
 
   test("built-in agent readiness stores bounded hosted-compute status", () => {
@@ -426,6 +438,97 @@ describe("update reducer (CL-53)", () => {
     )
     expect(model.installReadinessPending).toBe(true)
     expect(model.installReadinessStatus.tone).toBe("info")
+    expect(commands).toHaveLength(1)
+  })
+
+  test("promise surfacing readiness stores Forum token state", () => {
+    const [model] = update(
+      initialModel,
+      GotPromiseSurfacingReadiness({
+        projection: {
+          ok: true,
+          fetchedAt: "2026-06-15T00:00:00.000Z",
+          sourceUrl: "desktop:promise-surfacing-readiness",
+          forumSlug: "product-promises",
+          baseUrl: "https://openagents.test",
+          productPromisesUrl: "https://openagents.test/api/public/product-promises",
+          forumTopicsUrl:
+            "https://openagents.test/api/forum/forums/product-promises/topics",
+          agentTokenPresent: true,
+          blockerRefs: [],
+        },
+      }),
+    )
+    expect(modelPromiseSurfacingReadiness(model)?.agentTokenPresent).toBe(true)
+    expect(model.promiseSurfacingStatus.tone).toBe("success")
+  })
+
+  test("promise surfacing submit validates and dispatches report command", () => {
+    const [invalid, invalidCommands] = update(
+      initialModel,
+      ClickedSurfacePromiseGap(),
+    )
+    expect(invalid.promiseSurfacingStatus.tone).toBe("error")
+    expect(invalidCommands).toHaveLength(0)
+
+    const filled = [
+      ChangedPromiseSurfacingPromiseId({
+        value: "autopilot.builtin_compute_agent.v1",
+      }),
+      ChangedPromiseSurfacingClaimText({
+        value: "Click Go online without a user API key.",
+      }),
+      ChangedPromiseSurfacingExpectedBehavior({
+        value: "A hosted agent starts.",
+      }),
+      ChangedPromiseSurfacingObservedBehavior({
+        value: "Hosted compute is unavailable.",
+      }),
+      ChangedPromiseSurfacingEvidenceOrSteps({
+        value: "Open Agent pane, click Go online, copy blocker ref.",
+      }),
+      ChangedPromiseSurfacingImpact({
+        value: "Normal user cannot get an agent.",
+      }),
+    ].reduce((model, message) => update(model, message)[0], initialModel)
+    const [pending, commands] = update(filled, ClickedSurfacePromiseGap())
+    expect(pending.promiseSurfacingSubmitPending).toBe(true)
+    expect(commands).toHaveLength(1)
+  })
+
+  test("promise surfacing result stores posted or drafted outcome", () => {
+    const [model] = update(
+      initialModel,
+      GotPromiseSurfacingResult({
+        projection: {
+          ok: true,
+          mode: "posted",
+          draft: {
+            title: "[Promise Report] autopilot.builtin_compute_agent.v1",
+            requestedSlug:
+              "promise-report-autopilot-builtin-compute-agent-v1",
+            bodyText: "Surface only. Do not ship code.",
+            ledgerVerdict: "ledger_claims_fixed_report_new_mismatch",
+            registryVersion: "2026-06-15.4",
+            promiseState: "green",
+            relatedTopicRefs: [],
+          },
+          topicId: "topic.promise.created",
+          topicUrl: "https://openagents.test/forum/t/topic.promise.created",
+          blockerRefs: [],
+        },
+      }),
+    )
+    expect(modelPromiseSurfacingResult(model)?.mode).toBe("posted")
+    expect(model.promiseSurfacingStatus.tone).toBe("success")
+  })
+
+  test("promise surfacing refresh dispatches readiness check", () => {
+    const [model, commands] = update(
+      initialModel,
+      ClickedRefreshPromiseSurfacing(),
+    )
+    expect(model.promiseSurfacingReadinessPending).toBe(true)
     expect(commands).toHaveLength(1)
   })
 

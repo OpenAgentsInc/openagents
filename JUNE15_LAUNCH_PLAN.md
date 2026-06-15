@@ -367,7 +367,13 @@ registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
   start at `INSTALL.md`. Remaining public proof: signed/notarized desktop recut
   containing the pane, then a clean-machine from-install smoke on a non-owner
   consumer setup.
-- **#5065** Autopilot built-in "surface issues, don't ship slop" forum flow (Orrery-style).
+- ✅ **#5065** Autopilot built-in "surface issues, don't ship slop" forum flow
+  (Orrery-style) — SOURCE DONE/yellow: Agent pane now has **Surface Promise
+  Gap**, Bun-owned live ledger + Product Promises Forum topic lookup, exact
+  promise-id report drafting, optional registered-agent Forum posting, and docs
+  that keep the posture "surface only; do not ship code." Remaining public
+  proof: signed/notarized desktop recut with a configured registered-agent token
+  plus a public Product Promises Forum post created from the app.
 
 **Tassadar traces (executor-trace completion) — DEPRIORITIZED (backend COMPLETE + inert):**
 - **#5051** epic (OPEN — holds until a real verified+paid run) →

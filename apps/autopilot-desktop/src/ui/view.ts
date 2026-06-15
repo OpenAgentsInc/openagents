@@ -43,6 +43,8 @@ import type {
   BuiltInAgentReadinessResponse,
   InstallReadinessResponse,
   NodeStateMessage,
+  PromiseSurfacingReadinessResponse,
+  PromiseSurfacingResponse,
   SessionEventRow,
   TrainingEvidencePacketSummaryResponse,
   TrainingLeaderboardLaneSummary,
@@ -53,6 +55,15 @@ import type {
   TrainingRunsResponse,
 } from "../shared/rpc"
 import {
+  ChangedPromiseSurfacingClaimText,
+  ChangedPromiseSurfacingEnvironment,
+  ChangedPromiseSurfacingEvidenceOrSteps,
+  ChangedPromiseSurfacingExpectedBehavior,
+  ChangedPromiseSurfacingImpact,
+  ChangedPromiseSurfacingObservedBehavior,
+  ChangedPromiseSurfacingPromiseId,
+  ChangedPromiseSurfacingSuggestedState,
+  ChangedPromiseSurfacingSurface,
   ChangedAskBody,
   ChangedAskTitle,
   ChangedSessionFilter,
@@ -71,6 +82,7 @@ import {
   ClickedQueueTrainingCloseout,
   ClickedReconcileTrainingWindow,
   ClickedRefreshInstallReadiness,
+  ClickedRefreshPromiseSurfacing,
   ClickedRefreshBuiltInAgent,
   ClickedRefreshTrainingRuns,
   ClickedQueueTrainingLaunch,
@@ -79,6 +91,7 @@ import {
   ClickedStartBuiltInAgent,
   ClickedSpawn,
   ClickedSubmitIntent,
+  ClickedSurfacePromiseGap,
   SelectedTrainingSceneNode,
   type Message,
   NavigatedTo,
@@ -114,6 +127,8 @@ import {
   modelTrainingLease,
   modelBuiltInAgentReadiness,
   modelInstallReadiness,
+  modelPromiseSurfacingReadiness,
+  modelPromiseSurfacingResult,
   modelNode,
   modelPylonStats,
   modelNotifications,
@@ -2920,6 +2935,196 @@ const builtInAgentStatusText = (
   return "blocked"
 }
 
+const promiseSurfacingReadinessText = (
+  readiness: PromiseSurfacingReadinessResponse | null,
+): string => {
+  if (readiness === null) return "not checked"
+  return readiness.agentTokenPresent ? "Forum posting ready" : "draft only"
+}
+
+const promiseSurfacingResultLine = (
+  result: PromiseSurfacingResponse | null,
+): string | null => {
+  if (result === null) return null
+  if (result.mode === "posted") {
+    return `posted · ${result.topicUrl ?? result.topicId ?? "Product Promises Forum"}`
+  }
+  if (result.mode === "drafted") {
+    return `drafted · ${result.blockerRefs[0] ?? "agent token missing"}`
+  }
+  return result.error ?? result.blockerRefs[0] ?? "blocked"
+}
+
+const promiseSurfacingCard = (model: Model): Html => {
+  const readiness = modelPromiseSurfacingReadiness(model)
+  const result = modelPromiseSurfacingResult(model)
+  const resultLine = promiseSurfacingResultLine(result)
+  const stateOptions = [
+    "green",
+    "yellow",
+    "red",
+    "degraded",
+    "planned",
+    "unknown",
+  ] as const
+
+  return card("Surface Promise Gap", [
+    h.p([cls("card-body")], [
+      "Forum: ",
+      h.strong([], [promiseSurfacingReadinessText(readiness)]),
+    ]),
+    readiness?.blockerRefs.length
+      ? h.ul(
+          [cls("empty-state mono")],
+          readiness.blockerRefs.map(blocker => h.li([], [blocker])),
+        )
+      : h.empty,
+    h.label([cls("field-label")], ["Promise ID"]),
+    h.input([
+      cls("text-input mono"),
+      h.Placeholder("autopilot.builtin_compute_agent.v1"),
+      h.Value(model.promiseSurfacingPromiseId),
+      h.OnInput((value: string) =>
+        ChangedPromiseSurfacingPromiseId({ value }),
+      ),
+    ]),
+    h.label([cls("field-label")], ["Surface"]),
+    h.input([
+      cls("text-input"),
+      h.Value(model.promiseSurfacingSurface),
+      h.OnInput((value: string) =>
+        ChangedPromiseSurfacingSurface({ value }),
+      ),
+    ]),
+    h.label([cls("field-label")], ["Claim text"]),
+    h.textarea(
+      [
+        cls("text-area"),
+        h.Rows(2),
+        h.Value(model.promiseSurfacingClaimText),
+        h.OnInput((value: string) =>
+          ChangedPromiseSurfacingClaimText({ value }),
+        ),
+      ],
+      [],
+    ),
+    h.label([cls("field-label")], ["Expected"]),
+    h.textarea(
+      [
+        cls("text-area"),
+        h.Rows(2),
+        h.Value(model.promiseSurfacingExpectedBehavior),
+        h.OnInput((value: string) =>
+          ChangedPromiseSurfacingExpectedBehavior({ value }),
+        ),
+      ],
+      [],
+    ),
+    h.label([cls("field-label")], ["Observed"]),
+    h.textarea(
+      [
+        cls("text-area"),
+        h.Rows(3),
+        h.Value(model.promiseSurfacingObservedBehavior),
+        h.OnInput((value: string) =>
+          ChangedPromiseSurfacingObservedBehavior({ value }),
+        ),
+      ],
+      [],
+    ),
+    h.label([cls("field-label")], ["Evidence or steps"]),
+    h.textarea(
+      [
+        cls("text-area"),
+        h.Rows(3),
+        h.Value(model.promiseSurfacingEvidenceOrSteps),
+        h.OnInput((value: string) =>
+          ChangedPromiseSurfacingEvidenceOrSteps({ value }),
+        ),
+      ],
+      [],
+    ),
+    h.label([cls("field-label")], ["Environment"]),
+    h.input([
+      cls("text-input"),
+      h.Value(model.promiseSurfacingEnvironment),
+      h.OnInput((value: string) =>
+        ChangedPromiseSurfacingEnvironment({ value }),
+      ),
+    ]),
+    h.label([cls("field-label")], ["Impact"]),
+    h.textarea(
+      [
+        cls("text-area"),
+        h.Rows(2),
+        h.Value(model.promiseSurfacingImpact),
+        h.OnInput((value: string) =>
+          ChangedPromiseSurfacingImpact({ value }),
+        ),
+      ],
+      [],
+    ),
+    h.label([cls("field-label")], ["Suggested state"]),
+    h.div(
+      [cls("adapter-toggle")],
+      stateOptions.map(state =>
+        h.button(
+          [
+            cls(
+              `adapter-btn${model.promiseSurfacingSuggestedState === state ? " active" : ""}`,
+            ),
+            h.Type("button"),
+            h.OnClick(ChangedPromiseSurfacingSuggestedState({ value: state })),
+          ],
+          [state],
+        ),
+      ),
+    ),
+    result?.draft
+      ? h.div([cls("empty-state mono")], [
+          h.p([], [`title: ${result.draft.title}`]),
+          h.p([], [`ledger: ${result.draft.ledgerVerdict}`]),
+          h.p([], [`registry: ${result.draft.registryVersion}`]),
+        ])
+      : h.empty,
+    resultLine
+      ? h.p([cls(`spawn-status spawn-${model.promiseSurfacingStatus.tone}`)], [
+          resultLine,
+        ])
+      : model.promiseSurfacingStatus.tone !== "idle"
+        ? h.p([cls(`spawn-status spawn-${model.promiseSurfacingStatus.tone}`)], [
+            model.promiseSurfacingStatus.text,
+          ])
+        : h.p([cls("spawn-status")], [" "]),
+    h.div([cls("adapter-toggle")], [
+      h.button(
+        [
+          cls("primary-button"),
+          h.Type("button"),
+          h.Disabled(model.promiseSurfacingSubmitPending),
+          h.OnClick(ClickedSurfacePromiseGap()),
+        ],
+        [
+          model.promiseSurfacingSubmitPending
+            ? "Surfacing..."
+            : readiness?.agentTokenPresent
+              ? "Surface to Forum"
+              : "Draft report",
+        ],
+      ),
+      h.button(
+        [
+          cls("adapter-btn"),
+          h.Type("button"),
+          h.Disabled(model.promiseSurfacingReadinessPending),
+          h.OnClick(ClickedRefreshPromiseSurfacing()),
+        ],
+        [model.promiseSurfacingReadinessPending ? "Checking..." : "Refresh"],
+      ),
+    ]),
+  ])
+}
+
 const builtInAgentPane = (model: Model): Html => {
   const readiness = modelBuiltInAgentReadiness(model)
   const blockers = readiness?.blockerRefs ?? []
@@ -2994,6 +3199,7 @@ const builtInAgentPane = (model: Model): Html => {
           ],
         ),
       ]),
+      promiseSurfacingCard(model),
     ],
   )
 }

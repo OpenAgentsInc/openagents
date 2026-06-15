@@ -19,6 +19,9 @@ import type {
   BuiltInAgentReadinessResponse,
   BuiltInAgentStartResponse,
   InstallReadinessResponse,
+  PromiseSurfacingInput,
+  PromiseSurfacingReadinessResponse,
+  PromiseSurfacingResponse,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
@@ -52,6 +55,12 @@ export type DesktopRequests = {
   installReadiness(
     p: Record<string, never>,
   ): Promise<InstallReadinessResponse>
+  promiseSurfacingReadiness(
+    p: Record<string, never>,
+  ): Promise<PromiseSurfacingReadinessResponse>
+  surfacePromiseGap(
+    p: PromiseSurfacingInput,
+  ): Promise<PromiseSurfacingResponse>
   listTrainingRuns(p: Record<string, never>): Promise<TrainingRunsResponse>
   listTrainingDashboard(
     p: Record<string, never>,

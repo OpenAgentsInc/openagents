@@ -3,6 +3,10 @@ import type {
   SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
 import type { InstallReadinessResponse } from "./install-readiness"
+import type {
+  PromiseSurfacingDraft,
+  PromiseSurfacingInput,
+} from "./promise-surfacing"
 
 export type SessionEventRow = {
   readonly eventIndex: number
@@ -501,6 +505,32 @@ export type BuiltInAgentStartResponse = {
 }
 
 export type { InstallReadinessResponse } from "./install-readiness"
+export type {
+  PromiseSurfacingDraft,
+  PromiseSurfacingInput,
+} from "./promise-surfacing"
+
+export type PromiseSurfacingReadinessResponse = {
+  readonly ok: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: "desktop:promise-surfacing-readiness"
+  readonly forumSlug: "product-promises"
+  readonly baseUrl: string
+  readonly productPromisesUrl: string
+  readonly forumTopicsUrl: string
+  readonly agentTokenPresent: boolean
+  readonly blockerRefs: readonly string[]
+}
+
+export type PromiseSurfacingResponse = {
+  readonly ok: boolean
+  readonly mode: "posted" | "drafted" | "blocked"
+  readonly draft: PromiseSurfacingDraft | null
+  readonly topicId?: string | null
+  readonly topicUrl?: string | null
+  readonly blockerRefs: readonly string[]
+  readonly error?: string
+}
 
 // CL-47: an "ask" the owner submitted, with its ship-status round-trip state.
 export type IntentRow = {
@@ -592,6 +622,17 @@ export type DesktopRPCSchema = {
       readonly installReadiness: {
         readonly params: Record<string, never>
         readonly response: InstallReadinessResponse
+      }
+      // #5065: build and optionally post an Orrery-style Product Promises Forum
+      // report. Bun owns the registered-agent token; the webview sends only
+      // public-safe report fields and receives the generated draft/result.
+      readonly promiseSurfacingReadiness: {
+        readonly params: Record<string, never>
+        readonly response: PromiseSurfacingReadinessResponse
+      }
+      readonly surfacePromiseGap: {
+        readonly params: PromiseSurfacingInput
+        readonly response: PromiseSurfacingResponse
       }
       // Read public Worker-authoritative training run projections. This is a
       // read-only desktop projection; admin mutations stay out of the webview.

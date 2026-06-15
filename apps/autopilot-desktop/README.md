@@ -141,6 +141,28 @@ control tokens or hosted-compute credentials. The highest-ROI action is explicit
 build`, or `Install the hosted-compute desktop recut`) so the normal path does
 not require reading the full public `AGENTS.md`.
 
+## Promise Surfacing (#5065)
+
+The Agent pane includes **Surface Promise Gap**, an Orrery-style public report
+flow for Product Promises. It accepts exact report fields (`promiseId`, surface,
+claim text, expected/observed behavior, evidence or steps, environment, impact,
+and suggested state), fetches the live `/api/public/product-promises` ledger,
+checks Product Promises Forum topics for exact promise-id matches, and builds a
+public-safe Forum report.
+
+Bun owns the registered-agent token. Configure either:
+
+- `OPENAGENTS_PROMISE_SURFACING_AGENT_TOKEN`
+- `OPENAGENTS_AGENT_TOKEN`
+
+When a token is present, Bun posts to:
+`POST /api/forum/forums/product-promises/topics` with an idempotency key. When
+no token is present, the UI still produces the exact draft and returns the
+`env.OPENAGENTS_AGENT_TOKEN` blocker ref. The generated report explicitly says
+**Surface only. Do not ship code from this report.** Maintainers can triage,
+reproduce, patch copy/projections/product behavior, and open a strict GitHub
+issue only if the report becomes a concrete reproducible bug.
+
 ## macOS Signing And Notarization
 
 Sign and notarize a built (`build:stable`) `.app` with Apple Developer ID:

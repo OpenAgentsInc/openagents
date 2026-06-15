@@ -18,6 +18,7 @@ import {
   DeployCloud,
   LoadBuiltInAgentReadiness,
   LoadInstallReadiness,
+  LoadPromiseSurfacingReadiness,
   LoadTrainingDashboard,
   LoadTrainingEvidencePacketSummary,
   LoadTrainingOperatorReadiness,
@@ -31,15 +32,19 @@ import {
   ResolveApproval,
   SetCoordinatorPaused,
   StartBuiltInAgent,
+  SurfacePromiseGap,
   SpawnSession,
   SubmitIntent,
 } from "./commands"
 import { parseVerifyLines } from "./helpers"
 import type { Message } from "./message"
 import { Model, type PaneId } from "./model"
+import { validatePromiseSurfacingInput } from "../shared/promise-surfacing"
 import type {
   BuiltInAgentReadinessResponse,
   InstallReadinessResponse,
+  PromiseSurfacingReadinessResponse,
+  PromiseSurfacingResponse,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
@@ -170,7 +175,7 @@ export const update = (model: Model, message: Message): Result => {
         isTrainingPane(message.pane)
           ? loadTrainingProjectionCommands()
           : isBuiltInAgentPane(message.pane)
-            ? [LoadBuiltInAgentReadiness()]
+            ? [LoadBuiltInAgentReadiness(), LoadPromiseSurfacingReadiness()]
             : isSettingsPane(message.pane)
               ? [LoadInstallReadiness()]
             : noCommands,
@@ -395,6 +400,159 @@ export const update = (model: Model, message: Message): Result => {
                 text: `${projection.highestRoiAction} · ${blockerCount} blocker${blockerCount === 1 ? "" : "s"}`,
                 tone: "info",
               },
+        }),
+        noCommands,
+      ]
+    }
+
+    // ── Product Promises Forum surfacing (#5065) ────────────────────────────
+    case "ChangedPromiseSurfacingPromiseId":
+      return [
+        Model.make({ ...model, promiseSurfacingPromiseId: message.value }),
+        noCommands,
+      ]
+    case "ChangedPromiseSurfacingSurface":
+      return [
+        Model.make({ ...model, promiseSurfacingSurface: message.value }),
+        noCommands,
+      ]
+    case "ChangedPromiseSurfacingClaimText":
+      return [
+        Model.make({ ...model, promiseSurfacingClaimText: message.value }),
+        noCommands,
+      ]
+    case "ChangedPromiseSurfacingExpectedBehavior":
+      return [
+        Model.make({
+          ...model,
+          promiseSurfacingExpectedBehavior: message.value,
+        }),
+        noCommands,
+      ]
+    case "ChangedPromiseSurfacingObservedBehavior":
+      return [
+        Model.make({
+          ...model,
+          promiseSurfacingObservedBehavior: message.value,
+        }),
+        noCommands,
+      ]
+    case "ChangedPromiseSurfacingEvidenceOrSteps":
+      return [
+        Model.make({
+          ...model,
+          promiseSurfacingEvidenceOrSteps: message.value,
+        }),
+        noCommands,
+      ]
+    case "ChangedPromiseSurfacingEnvironment":
+      return [
+        Model.make({
+          ...model,
+          promiseSurfacingEnvironment: message.value,
+        }),
+        noCommands,
+      ]
+    case "ChangedPromiseSurfacingImpact":
+      return [
+        Model.make({ ...model, promiseSurfacingImpact: message.value }),
+        noCommands,
+      ]
+    case "ChangedPromiseSurfacingSuggestedState":
+      return [
+        Model.make({
+          ...model,
+          promiseSurfacingSuggestedState: message.value,
+        }),
+        noCommands,
+      ]
+    case "ClickedRefreshPromiseSurfacing":
+      return [
+        Model.make({
+          ...model,
+          promiseSurfacingReadinessPending: true,
+          promiseSurfacingStatus: {
+            text: "checking Product Promises Forum...",
+            tone: "info",
+          },
+        }),
+        [LoadPromiseSurfacingReadiness()],
+      ]
+    case "GotPromiseSurfacingReadiness": {
+      const projection = message.projection as PromiseSurfacingReadinessResponse
+      return [
+        Model.make({
+          ...model,
+          promiseSurfacingReadiness: projection,
+          promiseSurfacingReadinessPending: false,
+          promiseSurfacingStatus: projection.ok
+            ? { text: "Forum posting ready", tone: "success" }
+            : {
+                text: projection.blockerRefs[0] ?? "Forum posting blocked",
+                tone: "info",
+              },
+        }),
+        noCommands,
+      ]
+    }
+    case "ClickedSurfacePromiseGap": {
+      const validation = validatePromiseSurfacingInput({
+        promiseId: model.promiseSurfacingPromiseId,
+        surface: model.promiseSurfacingSurface,
+        claimText: model.promiseSurfacingClaimText,
+        expectedBehavior: model.promiseSurfacingExpectedBehavior,
+        observedBehavior: model.promiseSurfacingObservedBehavior,
+        evidenceOrSteps: model.promiseSurfacingEvidenceOrSteps,
+        environment: model.promiseSurfacingEnvironment,
+        impact: model.promiseSurfacingImpact,
+        suggestedState: model.promiseSurfacingSuggestedState,
+      })
+      if (!validation.ok) {
+        return [
+          Model.make({
+            ...model,
+            promiseSurfacingStatus: {
+              text: validation.errors[0] ?? "invalid promise report",
+              tone: "error",
+            },
+          }),
+          noCommands,
+        ]
+      }
+      return [
+        Model.make({
+          ...model,
+          promiseSurfacingSubmitPending: true,
+          promiseSurfacingResult: null,
+          promiseSurfacingStatus: {
+            text: "checking ledger and posting report...",
+            tone: "info",
+          },
+        }),
+        [SurfacePromiseGap(validation.input)],
+      ]
+    }
+    case "GotPromiseSurfacingResult": {
+      const projection = message.projection as PromiseSurfacingResponse
+      const label =
+        projection.mode === "posted"
+          ? `posted · ${projection.topicUrl ?? projection.topicId ?? "forum topic"}`
+          : projection.mode === "drafted"
+            ? `drafted · ${projection.blockerRefs[0] ?? "not posted"}`
+            : projection.error ?? projection.blockerRefs[0] ?? "blocked"
+      return [
+        Model.make({
+          ...model,
+          promiseSurfacingResult: projection,
+          promiseSurfacingSubmitPending: false,
+          promiseSurfacingStatus: {
+            text: label,
+            tone: projection.ok
+              ? "success"
+              : projection.mode === "drafted"
+                ? "info"
+                : "error",
+          },
         }),
         noCommands,
       ]

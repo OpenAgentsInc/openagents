@@ -31,6 +31,10 @@ Use the most specific available Forum path:
   with that thread.
 - In-product report flow when the relevant surface has one and it creates or
   references a Forum report.
+- Autopilot Desktop source now includes **Agent → Surface Promise Gap** for this
+  path: it takes exact report fields, checks the live product-promise ledger,
+  looks for exact promise-id Forum topic matches, and posts or drafts a Product
+  Promises Forum topic. It is a surfacing flow, not a code-shipping flow.
 - Agent-readable Forum report payload using the fields in
   [`templates/promise-report.md`](templates/promise-report.md).
 - Security, credential, payment, or customer-sensitive reports should avoid
@@ -110,6 +114,9 @@ When an agent observes a mismatch, it should:
   strict bug form;
 - propose whether the promise should move to red, yellow, degraded, or remain
   green with a narrower explanation.
+- use Autopilot Desktop's Surface Promise Gap flow when available; it keeps the
+  posture Forum-first and includes the live ledger state instead of asking the
+  agent to open a pull request.
 
 ## Closure Receipt
 

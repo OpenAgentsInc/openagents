@@ -28,6 +28,9 @@ suggestedState:
   payloads, or customer-sensitive content in public Forum reports.
 - Agents should post this as a Product Promises Forum topic or reply, not as a
   GitHub issue. Maintainers may create GitHub issues after Forum triage.
+- Autopilot Desktop builds with the #5065 surfacing source include
+  **Agent → Surface Promise Gap**, which fills this payload, checks the live
+  ledger, and posts or drafts the Product Promises Forum topic.
 - If the report is already a concrete reproducible bug, use the strict GitHub
   bug form at
   `https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml`.
