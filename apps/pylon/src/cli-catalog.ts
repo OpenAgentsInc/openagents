@@ -1,0 +1,343 @@
+// Machine-readable command catalog (issue #5035). `pylon help --json` emits
+// this so an agent can DISCOVER the full steering surface — every command, its
+// args, and whether it mutates state or spends money — the headless equivalent
+// of "seeing the GUI". `pylon <cmd> --help` projects a single entry.
+//
+// `mutates` = changes node/server/remote state. `spends` = can move money
+// (sats). A CLI verb is a control surface only; `spends` flags the wallet
+// send/payout paths so an agent can reason about authority before invoking.
+
+export type PylonCommandArg = {
+  name: string
+  required: boolean
+  description: string
+  // A repeatable option (e.g. --capability-ref) or a positional.
+  kind?: "flag" | "option" | "positional"
+}
+
+export type PylonCommandEntry = {
+  command: string
+  summary: string
+  mutates: boolean
+  spends: boolean
+  // Needs a running `pylon node` over the loopback control API.
+  needsNode?: boolean
+  // Hits the openagents.com network API (needs --base-url / PYLON_OPENAGENTS_BASE_URL).
+  needsNetwork?: boolean
+  json: boolean
+  args: PylonCommandArg[]
+}
+
+const opt = (name: string, description: string, required = false): PylonCommandArg => ({
+  name,
+  required,
+  description,
+  kind: "option",
+})
+const pos = (name: string, description: string, required = true): PylonCommandArg => ({
+  name,
+  required,
+  description,
+  kind: "positional",
+})
+const flag = (name: string, description: string): PylonCommandArg => ({
+  name,
+  required: false,
+  description,
+  kind: "flag",
+})
+
+export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
+  {
+    command: "help",
+    summary: "Print the machine-readable command catalog.",
+    mutates: false,
+    spends: false,
+    json: true,
+    args: [flag("--json", "Emit the full catalog as JSON.")],
+  },
+  {
+    command: "bootstrap",
+    summary: "Write Pylon local state + identity and project status.",
+    mutates: true,
+    spends: false,
+    json: true,
+    args: [flag("--json", "Emit JSON."), opt("--pylon-ref", "Stable Pylon ref."), opt("--display-name", "Display name.")],
+  },
+  {
+    command: "status",
+    summary: "Project public node status (identity, inventory, psionic).",
+    mutates: false,
+    spends: false,
+    json: true,
+    args: [flag("--json", "Emit JSON (required).")],
+  },
+  {
+    command: "inventory",
+    summary: "Project discovered host inventory (backends, platform).",
+    mutates: false,
+    spends: false,
+    json: true,
+    args: [flag("--json", "Emit JSON (required).")],
+  },
+  {
+    command: "accounts",
+    summary: "List provider accounts (list) or usage (usage).",
+    mutates: false,
+    spends: false,
+    json: true,
+    args: [pos("list|usage", "Subcommand."), flag("--json", "Emit JSON (required)."), flag("--refresh", "usage: refresh provider snapshots.")],
+  },
+  {
+    command: "balance",
+    summary: "Read projection-safe wallet/earnings balance (never seed/offers).",
+    mutates: false,
+    spends: false,
+    needsNetwork: true,
+    json: true,
+    args: [opt("--base-url", "OpenAgents base URL.")],
+  },
+  {
+    command: "wallet",
+    summary: "Wallet status/receive/send/payout-target (projection-safe status).",
+    mutates: true,
+    spends: true,
+    needsNetwork: false,
+    json: true,
+    args: [
+      pos("status|receive|send|admit-payout-target|request-payout-target-admission|report-readiness|migrate-spark", "Subcommand."),
+      opt("--amount", "send/receive amount in sats."),
+      opt("--destination-ref", "send destination."),
+      opt("--kind", "payout-target kind."),
+      opt("--ref", "payout-target ref."),
+    ],
+  },
+  {
+    command: "sessions",
+    summary: "List/spawn/cancel coding sessions on the running node (control API).",
+    mutates: true,
+    spends: false,
+    needsNode: true,
+    json: true,
+    args: [
+      pos("list|spawn|cancel", "Subcommand."),
+      opt("--adapter", "spawn: codex|claude_agent."),
+      opt("--objective", "spawn: objective text."),
+      opt("--verify", "spawn: verification command (repeatable)."),
+      opt("--worktree", "spawn: worktree path."),
+      opt("--session-ref", "cancel: session ref."),
+    ],
+  },
+  {
+    command: "approvals",
+    summary: "List/approve/deny the node's pending operator approval queue.",
+    mutates: true,
+    spends: false,
+    needsNode: true,
+    json: true,
+    args: [
+      pos("list|approve|deny", "Subcommand."),
+      opt("--approval-ref", "approve/deny: approval ref."),
+      opt("--answer", "answer text (for answer decisions)."),
+    ],
+  },
+  {
+    command: "deploy",
+    summary: "Trigger/inspect a node cloud deploy (gated by OA_DEPLOY_ENABLE=1).",
+    mutates: true,
+    spends: false,
+    needsNode: true,
+    json: true,
+    args: [
+      pos("cloud|status", "Subcommand."),
+      opt("--target", "cloud: deploy target."),
+      opt("--ref", "cloud: ref to deploy."),
+      opt("--env", "cloud: deploy environment."),
+    ],
+  },
+  {
+    command: "training",
+    summary: "Drive the training cockpit lane (plan/activate/claim/admit/reconcile/closeout/status).",
+    mutates: true,
+    spends: false,
+    needsNetwork: true,
+    json: true,
+    args: [
+      pos("plan|activate|claim|admit|reconcile|closeout|status", "Subcommand."),
+      opt("--base-url", "OpenAgents base URL."),
+      opt("--admin-token", "Admin token (or OA_TRAINING_ADMIN_TOKEN) for admin verbs."),
+      opt("--window-ref", "activate/reconcile/closeout: window ref."),
+      opt("--run-ref", "admit: training run ref."),
+      opt("--pylon-ref", "claim: pylon ref."),
+      opt("--packet", "admit: evidence packet JSON path."),
+    ],
+  },
+  {
+    command: "assignment",
+    summary: "Poll/accept/progress/closeout OpenAgents assignments.",
+    mutates: true,
+    spends: false,
+    needsNetwork: true,
+    json: true,
+    args: [pos("poll|accept|progress|closeout|run-no-spend", "Subcommand."), opt("--base-url", "OpenAgents base URL.")],
+  },
+  {
+    command: "work",
+    summary: "Submit/review/request/accept Autopilot work + read status.",
+    mutates: true,
+    spends: true,
+    needsNetwork: true,
+    json: true,
+    args: [pos("submit|status|review|request|offers|accept", "Subcommand."), opt("--base-url", "OpenAgents base URL.")],
+  },
+  {
+    command: "tip",
+    summary: "Tip a forum post (spends sats).",
+    mutates: true,
+    spends: true,
+    needsNetwork: true,
+    json: true,
+    args: [pos("<post-id>", "Post id."), pos("<sats>", "Amount in sats."), opt("--base-url", "OpenAgents base URL.")],
+  },
+  {
+    command: "tip-prefs",
+    summary: "Read/update sweep + credit tip preferences.",
+    mutates: true,
+    spends: false,
+    needsNetwork: true,
+    json: true,
+    args: [opt("--sweep-enabled", "true|false."), opt("--sweep-threshold", "sats.")],
+  },
+  {
+    command: "sweep-status",
+    summary: "Read tip sweep status.",
+    mutates: false,
+    spends: false,
+    needsNetwork: true,
+    json: true,
+    args: [opt("--base-url", "OpenAgents base URL.")],
+  },
+  {
+    command: "claim-tip-readiness",
+    summary: "Claim Forum tip-recipient readiness with a fresh offer.",
+    mutates: true,
+    spends: false,
+    needsNetwork: true,
+    json: true,
+    args: [opt("--base-url", "OpenAgents base URL.")],
+  },
+  {
+    command: "presence",
+    summary: "Register/heartbeat/link the node with OpenAgents presence.",
+    mutates: true,
+    spends: false,
+    needsNetwork: true,
+    json: true,
+    args: [pos("register|heartbeat|link-complete|link-refresh", "Subcommand."), opt("--base-url", "OpenAgents base URL.")],
+  },
+  {
+    command: "provider",
+    summary: "Go online/offline, approve labor, or run one provider loop.",
+    mutates: true,
+    spends: false,
+    json: true,
+    args: [pos("go-online|go-offline|approve-labor|once", "Subcommand.")],
+  },
+  {
+    command: "context",
+    summary: "Project the Pylon context (cwd, agent config).",
+    mutates: false,
+    spends: false,
+    json: true,
+    args: [flag("--json", "Emit JSON (required)."), flag("--codex-danger", "Include codex danger context.")],
+  },
+  {
+    command: "operator",
+    summary: "Project the operator snapshot (inventory + wallet).",
+    mutates: false,
+    spends: false,
+    json: true,
+    args: [pos("snapshot", "Subcommand."), flag("--json", "Emit JSON (required).")],
+  },
+  {
+    command: "psionic",
+    summary: "Install/doctor/smoke the Psionic backend.",
+    mutates: true,
+    spends: false,
+    json: true,
+    args: [pos("install|doctor|smoke|models", "Subcommand.")],
+  },
+  {
+    command: "forum",
+    summary: "Read/post/reply on the OpenAgents Forum.",
+    mutates: true,
+    spends: false,
+    needsNetwork: true,
+    json: true,
+    args: [pos("read|post|reply", "Subcommand."), opt("--base-url", "OpenAgents base URL.")],
+  },
+  {
+    command: "ask-artanis",
+    summary: "Compose + post a device question to the Forum.",
+    mutates: true,
+    spends: false,
+    needsNetwork: true,
+    json: true,
+    args: [pos("<question>", "Question text."), opt("--base-url", "OpenAgents base URL.")],
+  },
+  {
+    command: "memories",
+    summary: "Read the local Pylon memory log.",
+    mutates: false,
+    spends: false,
+    json: true,
+    args: [],
+  },
+  {
+    command: "dev",
+    summary: "Dev loop: doctor/check/apply/reload.",
+    mutates: true,
+    spends: false,
+    json: true,
+    args: [pos("doctor|check|apply|reload", "Subcommand."), flag("--json", "Emit JSON (required).")],
+  },
+  {
+    command: "node",
+    summary: "Run the headless node: services + event stream + loopback control API.",
+    mutates: true,
+    spends: false,
+    json: false,
+    args: [flag("--verbose", "Verbose service logging.")],
+  },
+  {
+    command: "runtime",
+    summary: "Forward to the bundled Probe runtime CLI.",
+    mutates: true,
+    spends: false,
+    json: false,
+    args: [pos("<probe-args...>", "Forwarded args.")],
+  },
+]
+
+export function projectCommandCatalog(): {
+  schema: string
+  generatedAt: string
+  commandCount: number
+  commands: readonly PylonCommandEntry[]
+} {
+  return {
+    schema: "openagents.pylon.command_catalog.v1",
+    generatedAt: new Date().toISOString(),
+    commandCount: PYLON_COMMAND_CATALOG.length,
+    commands: PYLON_COMMAND_CATALOG,
+  }
+}
+
+export function findCommandEntry(command: string): PylonCommandEntry | undefined {
+  return PYLON_COMMAND_CATALOG.find((entry) => entry.command === command)
+}
+
+// Returns the help projection for a single command, or null if unknown.
+export function projectCommandHelp(command: string): PylonCommandEntry | null {
+  return findCommandEntry(command) ?? null
+}

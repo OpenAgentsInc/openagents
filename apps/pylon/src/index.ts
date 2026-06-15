@@ -94,6 +94,25 @@ import {
 } from "./claude-composer"
 import { runProbeCli } from "../packages/runtime/src/index"
 import {
+  ControlEndpointError,
+  runControlCommand,
+} from "./node/control-cli"
+import {
+  PYLON_COMMAND_CATALOG,
+  findCommandEntry,
+  projectCommandCatalog,
+} from "./cli-catalog"
+import {
+  activateTrainingWindow,
+  admitTrainingEvidence,
+  claimTrainingLease,
+  closeoutTrainingWindow,
+  planTrainingWindow,
+  reconcileTrainingWindow,
+  readTrainingStatus,
+} from "./training-cockpit"
+import { readFile as readFileForPacket } from "node:fs/promises"
+import {
   createBootstrapSummary,
   formatBootstrapText,
   parseBootstrapArgs,
@@ -980,8 +999,237 @@ function devCommandSpecFromOption(command: string | undefined, cwd: string): Pyl
   ]
 }
 
+// Helper: parse `--key value` and `--flag` options out of an arg list. Returns
+// a record where flags map to `true` and options to their string value.
+function parseCliOptions(args: string[]): Record<string, string | true> {
+  const options: Record<string, string | true> = {}
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]
+    if (!arg.startsWith("--")) continue
+    const key = arg.slice(2)
+    const value = args[index + 1]
+    if (value === undefined || value.startsWith("--")) {
+      options[key] = true
+      continue
+    }
+    options[key] = value
+    index += 1
+  }
+  return options
+}
+
+function optionString(options: Record<string, string | true>, key: string): string | undefined {
+  const value = options[key]
+  return typeof value === "string" ? value : undefined
+}
+
+// Emit a clean JSON error + nonzero exit on the steering control surfaces, so
+// an agent always gets parseable output even when no node is running.
+function emitControlError(command: string, error: unknown): void {
+  const code = error instanceof ControlEndpointError ? error.code : "error"
+  const message = error instanceof Error ? error.message : String(error)
+  process.stdout.write(`${JSON.stringify({ ok: false, command, code, error: message }, null, 2)}\n`)
+  process.exitCode = 1
+}
+
 async function main() {
   const args = Bun.argv.slice(2)
+
+  // `pylon help [--json]` and `pylon <cmd> --help` machine-readable catalog.
+  if (args[0] === "help") {
+    process.stdout.write(`${JSON.stringify(projectCommandCatalog(), null, 2)}\n`)
+    return
+  }
+  if (args.includes("--help") && args[0] !== undefined && !args[0].startsWith("--")) {
+    const entry = findCommandEntry(args[0])
+    if (entry) {
+      process.stdout.write(`${JSON.stringify(entry, null, 2)}\n`)
+      return
+    }
+    process.stdout.write(
+      `${JSON.stringify({ ok: false, error: `unknown command: ${args[0]}`, knownCommands: PYLON_COMMAND_CATALOG.map((c) => c.command) }, null, 2)}\n`,
+    )
+    process.exitCode = 1
+    return
+  }
+
+  // CL-5035 sessions: first-class headless wrappers over the control-server
+  // session verbs (session.list/spawn/cancel) the Autopilot desktop drives.
+  if (args[0] === "sessions") {
+    const command = args[1]
+    const options = parseCliOptions(args.slice(2))
+    try {
+      if (command === "list") {
+        const { result } = await runControlCommand({ type: "session.list" }, Bun.env)
+        process.stdout.write(`${JSON.stringify({ ok: true, sessions: result }, null, 2)}\n`)
+        return
+      }
+      if (command === "spawn") {
+        const adapter = optionString(options, "adapter")
+        const objective = optionString(options, "objective")
+        if (adapter !== "codex" && adapter !== "claude_agent") {
+          throw new Error("sessions spawn --adapter must be codex or claude_agent")
+        }
+        if (!objective || objective.trim().length === 0) {
+          throw new Error("sessions spawn requires --objective")
+        }
+        const verify = (() => {
+          const raw = options.verify
+          if (typeof raw !== "string" || raw.trim().length === 0) return []
+          return [raw]
+        })()
+        const worktree = optionString(options, "worktree")
+        const { result } = await runControlCommand(
+          {
+            type: "session.spawn",
+            adapter,
+            objective,
+            verify,
+            ...(worktree ? { worktreePath: worktree } : {}),
+          },
+          Bun.env,
+        )
+        process.stdout.write(`${JSON.stringify({ ok: true, session: result }, null, 2)}\n`)
+        return
+      }
+      if (command === "cancel") {
+        const sessionRef = optionString(options, "session-ref") ?? (args[2] && !args[2].startsWith("--") ? args[2] : undefined)
+        if (!sessionRef) throw new Error("sessions cancel requires --session-ref <ref>")
+        const { result } = await runControlCommand({ type: "session.cancel", sessionRef }, Bun.env)
+        process.stdout.write(`${JSON.stringify({ ok: true, session: result }, null, 2)}\n`)
+        return
+      }
+      throw new Error("usage: pylon sessions list|spawn|cancel ...")
+    } catch (error) {
+      emitControlError("sessions", error)
+      return
+    }
+  }
+
+  // CL-5035 approvals: list + resolve the node's operator approval queue.
+  if (args[0] === "approvals") {
+    const command = args[1]
+    const options = parseCliOptions(args.slice(2))
+    try {
+      if (command === "list") {
+        const { result } = await runControlCommand({ type: "approvals.list" }, Bun.env)
+        process.stdout.write(`${JSON.stringify({ ok: true, ...(result as Record<string, unknown>) }, null, 2)}\n`)
+        return
+      }
+      if (command === "approve" || command === "deny" || command === "answer") {
+        const approvalRef = optionString(options, "approval-ref") ?? (args[2] && !args[2].startsWith("--") ? args[2] : undefined)
+        if (!approvalRef) throw new Error(`approvals ${command} requires --approval-ref <ref>`)
+        const answer = optionString(options, "answer")
+        if (command === "answer" && !answer) throw new Error("approvals answer requires --answer <text>")
+        const { result } = await runControlCommand(
+          {
+            type: "approvals.resolve",
+            approvalRef,
+            decision: command,
+            ...(answer ? { answer } : {}),
+          },
+          Bun.env,
+        )
+        process.stdout.write(`${JSON.stringify({ ok: true, resolution: result }, null, 2)}\n`)
+        return
+      }
+      throw new Error("usage: pylon approvals list|approve|deny [--approval-ref <ref>]")
+    } catch (error) {
+      emitControlError("approvals", error)
+      return
+    }
+  }
+
+  // CL-5035 deploy: surface the gated node deploy-cloud action as a CLI verb.
+  // Execution stays gated on the node behind OA_DEPLOY_ENABLE=1 (fail-safe);
+  // this verb only forwards the request to the running node.
+  if (args[0] === "deploy") {
+    const command = args[1] ?? "status"
+    const options = parseCliOptions(args.slice(2))
+    try {
+      if (command === "status") {
+        const { result } = await runControlCommand({ type: "deploy.status" }, Bun.env)
+        process.stdout.write(`${JSON.stringify({ ok: true, deploy: result }, null, 2)}\n`)
+        return
+      }
+      if (command === "cloud") {
+        const target = optionString(options, "target")
+        const ref = optionString(options, "ref")
+        if (!target || !ref) throw new Error("deploy cloud requires --target and --ref")
+        const env = optionString(options, "env")
+        const { result } = await runControlCommand(
+          { type: "deploy.cloud", target, ref, ...(env ? { env } : {}) },
+          Bun.env,
+        )
+        const accepted = (result as { accepted?: boolean } | null)?.accepted === true
+        process.stdout.write(`${JSON.stringify({ ok: accepted, deploy: result }, null, 2)}\n`)
+        if (!accepted) process.exitCode = 1
+        return
+      }
+      throw new Error("usage: pylon deploy cloud --target T --ref R [--env E] | pylon deploy status")
+    } catch (error) {
+      emitControlError("deploy", error)
+      return
+    }
+  }
+
+  // CL-5035 training: mirror the desktop training cockpit verbs against the
+  // openagents.com training HTTP API (admin verbs need an admin token).
+  if (args[0] === "training") {
+    const command = args[1]
+    const options = parseCliOptions(args.slice(2))
+    try {
+      const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      if (!baseUrl) throw new Error("training commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
+      const adminToken = optionString(options, "admin-token") ?? Bun.env.OA_TRAINING_ADMIN_TOKEN
+      const net = { baseUrl, ...(adminToken ? { adminToken } : {}) }
+      let result: unknown
+      if (command === "plan") {
+        result = await planTrainingWindow(net)
+      } else if (command === "activate") {
+        const windowRef = optionString(options, "window-ref")
+        if (!windowRef) throw new Error("training activate requires --window-ref")
+        result = await activateTrainingWindow(net, windowRef)
+      } else if (command === "reconcile") {
+        const windowRef = optionString(options, "window-ref")
+        if (!windowRef) throw new Error("training reconcile requires --window-ref")
+        result = await reconcileTrainingWindow(net, windowRef)
+      } else if (command === "closeout") {
+        const windowRef = optionString(options, "window-ref")
+        if (!windowRef) throw new Error("training closeout requires --window-ref")
+        result = await closeoutTrainingWindow(net, windowRef)
+      } else if (command === "claim") {
+        const pylonRef =
+          optionString(options, "pylon-ref") ??
+          (await ensurePylonLocalState(createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env))).identity.pylonRef
+        const leaseSecondsRaw = optionString(options, "lease-seconds")
+        const leaseSeconds = leaseSecondsRaw === undefined ? undefined : Number(leaseSecondsRaw)
+        result = await claimTrainingLease(net, {
+          pylonRef,
+          ...(leaseSeconds !== undefined && Number.isFinite(leaseSeconds) ? { leaseSeconds } : {}),
+        })
+      } else if (command === "admit") {
+        const runRef = optionString(options, "run-ref")
+        if (!runRef) throw new Error("training admit requires --run-ref")
+        const packetPath = optionString(options, "packet")
+        if (!packetPath) throw new Error("training admit requires --packet <evidence-packet.json>")
+        const packet = JSON.parse(await readFileForPacket(packetPath, "utf8")) as unknown
+        result = await admitTrainingEvidence(net, { trainingRunRef: runRef, packet })
+      } else if (command === "status") {
+        result = await readTrainingStatus(net)
+      } else {
+        throw new Error("usage: pylon training plan|activate|claim|admit|reconcile|closeout|status ...")
+      }
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+      const okFlag = (result as { ok?: boolean } | null)?.ok
+      if (okFlag === false) process.exitCode = 1
+      return
+    } catch (error) {
+      process.stdout.write(`${JSON.stringify({ ok: false, command: "training", error: error instanceof Error ? error.message : String(error) }, null, 2)}\n`)
+      process.exitCode = 1
+      return
+    }
+  }
 
   if (args[0] === "bootstrap") {
     try {
