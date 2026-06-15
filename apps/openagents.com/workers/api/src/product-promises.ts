@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-15.1'
+export const PublicProductPromisesVersion = '2026-06-15.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -2238,6 +2238,34 @@ export const publicProductPromisesDocument = () => {
           'AGENTS.md carries the firm falldown instruction (keep retrying OpenAgents; coordinate over Nostr meanwhile; reconcile on recovery) and the owned relay plus NIP-90 negotiation are live (first labor job settled over the relay, #4777). Green requires a demonstrated drill: with OpenAgents HTTP unreachable, agents publish status (NIP-38), discover peers (NIP-02/65), exchange private coordination (NIP-17/44/59) and/or group messages (NIP-29), keep a NIP-90 job moving, and then reconcile cleanly on OpenAgents when it returns — with public-safe evidence and zero secret leakage.',
         authorityBoundary:
           'Nostr is a communication and coordination substrate and an outage fallback, not OpenAgents authority. Identity, posting authority, payment, and settlement remain OpenAgents systems; Nostr coordination during an outage is intent and messaging only, reconciled to OpenAgents receipts on recovery.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'metrics.accepted_outcomes_per_kwh.v1',
+        productArea: 'metrics',
+        audience: ['operator', 'public', 'contributor'],
+        state: 'planned',
+        claim:
+          'OpenAgents defines and will measure Accepted Outcomes Per Kilowatt-Hour (AO/kWh) — verified, accepted outcomes produced per kilowatt-hour of energy — as the primary efficiency metric for converting electricity into accepted agent work.',
+        safeCopy:
+          'AO/kWh is a defined, named target metric (Episode 232 introduced it, Episode 237 names it the primary measure) with a written definition in docs/metrics/2026-06-15-accepted-outcomes-per-kwh.md. It is NOT yet instrumented end to end: the numerator (accepted outcomes) depends on the verification + acceptance ladder, and the denominator (kWh) depends on device/operator energy accounting that is not yet wired. Describe it as the metric we are building toward and measuring, not as a published live number.',
+        unsafeCopy:
+          'Do not publish or cite a specific AO/kWh figure, ranking, or efficiency comparison, and do not imply the metric is live-instrumented, until measured (or explicitly modeled) energy accounting and accepted-outcome receipts both exist.',
+        evidenceRefs: [
+          'docs/transcripts/232.md',
+          'docs/transcripts/237.md',
+          'docs/metrics/2026-06-15-accepted-outcomes-per-kwh.md',
+          'promise:payments.accepted_outcome_economics.v1',
+          'promise:energy.flexible_load_proof.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.accepted_outcome_per_kwh_not_instrumented',
+          'blocker.product_promises.energy_accounting_missing',
+        ],
+        verification:
+          'Green requires: a frozen AO/kWh definition (done), an accepted-outcome counter tied to verified-work receipts, measured or explicitly-modeled energy (kWh) per device/window, and at least one published AO/kWh datapoint carrying evidence-state labels and caveats.',
+        authorityBoundary:
+          'A defined metric is not a measured result. AO/kWh figures are operational estimates, not investment, grid, utility, or financial advice.',
       },
     ],
     notes: [

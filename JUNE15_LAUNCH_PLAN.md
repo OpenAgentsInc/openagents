@@ -197,6 +197,64 @@ tracker is **§12**.
 
 ---
 
+## Day-of forward worklist (2026-06-15, evening — the day is not over)
+
+The RCs are live and announced; the launch transcript (Episode 237,
+`docs/transcripts/237.md`) is committed. A launch-accuracy audit of every concrete
+claim in 237 found **most are already true** (Tassadar `RESEARCH_PLAN.md`, the
+Percepta audit, all three `docs/autopilot-coder` essays, the AGI reading group,
+the AGENTS.md Tassadar section, the product-promise registry + §11 copy map). The
+remaining work, in priority order:
+
+### Primary next lane — executor-trace contributor completion (next RC)
+
+This is **the** launch-blocker: a real contributor can claim work but cannot
+finish it (no contributor-callable submit route; closeout needs a *distinct*
+validator device for `exact_trace_replay`). The full design is
+**`docs/tassadar/2026-06-15-executor-trace-contributor-completion-design.md`** —
+target flow: `admit → claim → WORKER submits trace (new agent-gated route) →
+system pairs a DISTINCT validator → VALIDATOR replays + submits verdict → digests
+compared → Verified → operator-funded payout + receipt`. Build it into the next RC
+and **test it fully** (real worker + real validator → Verified → real small
+payout) **before** any green flip. Epic + children (all OPEN):
+- **#5051** epic — self-serve worker→validator executor-trace completion.
+- **#5052** — agent-gated worker-submit + validator-replay routes.
+- **#5053** — worker↔validator pairing orchestration (Artanis-first → decentralized).
+- **#5054** — Pylon client `submit-trace`/`validate` verbs + assignment worker default-on.
+- **#5055** — interim earning: Forum registration + tips for RC testers (ship now,
+  so testers get paid day one while the executor payout loop is built).
+
+When a genuine non-owner completes that loop with a dereferenceable receipt, it
+flips `training.monday_decentralized_training_launch.v1` (#5014) +
+`pylon.install_without_wallet_knowledge.v1` (#5015) — receipt-first.
+
+### Episode 237 launch-truth follow-ups (from this pass)
+
+- ✅ **Accepted Outcomes Per Kilowatt-Hour (AO/kWh)** — 237 names it "the metric
+  we're defining and measuring primarily," but it was documented nowhere. Now
+  **defined**: `docs/metrics/2026-06-15-accepted-outcomes-per-kwh.md` + promise
+  `metrics.accepted_outcomes_per_kwh.v1` (state `planned`; registry bumped to
+  **`2026-06-15.2`**, test updated). It stays `planned` — no published figure
+  until the numerator (accepted-outcome counter) and denominator (kWh energy
+  accounting) are instrumented.
+- ⚠️ **Homepage download CTA** — 237 says *"you'll go to openagents.com and you'll
+  see Autopilot: Download to get started."* The root `/` currently renders the
+  Pylon network viz/stats (per owner's explicit earlier direction) with **no
+  Autopilot download CTA**. `NEEDS-OWNER:` confirm adding a prominent "Download
+  Autopilot" CTA **alongside** the Pylon viz (homepage copy is owner-gated per
+  CLAUDE.md, so not changed unilaterally).
+- ⚠️ **Fable analysis doc** — 237 says *"you can read Fable's analysis"* of the
+  two AGI papers, but no such doc exists under `docs/agi/`
+  (`docs/agi/openagents-analysis.md` makes the "same paper at two altitudes"
+  argument but is not attributed to Fable). Either write the attributed Fable
+  analysis or soften the transcript reference. (Minor.)
+- §11.2 registry follow-ups status: WASM-plugin promise `marketplace.wasm_plugins.v1`
+  ✅ exists (`planned`); install-positioning reconciled to "Autopilot is the
+  install" (#5013); the wallet+Nostr-per-node claim is already covered by the
+  green `agents.cursor_forum_wallet.v1` + `agents.nostr_fallback_coordination.v1`.
+
+---
+
 ## 0. The node software is Autopilot (Electrobun desktop), not a standalone Pylon CLI
 
 **Clarification (2026-06-14):** the contributor-facing install is now **Autopilot
