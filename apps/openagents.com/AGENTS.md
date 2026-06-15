@@ -66,9 +66,16 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
 - When the user asks to deploy this repo, always build the latest web assets
   before deploying the Worker. Use `bun run --cwd workers/api deploy` as the
   canonical production deploy command because it runs deploy checks, rebuilds
-  `apps/web/dist`, and then runs Wrangler. Do not run bare `wrangler deploy`
-  after UI/web changes unless `bun run build:web` has already succeeded in the
-  same checkout after those changes.
+  `apps/web/dist`, and then runs Wrangler with an explicit
+  `--assets ../../apps/web/dist` argument. Do not run bare `wrangler deploy`
+  after UI/web changes. If you must bypass the package deploy command, the
+  manual command from `apps/openagents.com/workers/api` is
+  `npx wrangler deploy --containers-rollout=none --assets ../../apps/web/dist`
+  after `bun run --cwd apps/openagents.com build:web` has succeeded. Never
+  report deployment success until live smoke checks prove both the document and
+  JS asset are reachable:
+  `curl -fsSI https://openagents.com/` and the concrete
+  `/assets/index-*.js` URL referenced by the served HTML must both return 200.
 - Before changing Worker route/service boundaries, sync/runtime/config code,
   provider-account or GitHub-write error handling, logged-in update routing,
   login/root route behavior, UI family modules, or other zero-tech-debt
