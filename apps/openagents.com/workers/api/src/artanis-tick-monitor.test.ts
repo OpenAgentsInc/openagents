@@ -7,16 +7,38 @@ import {
 } from './artanis-tick-monitor'
 
 const nowIso = '2026-06-11T01:20:00.000Z'
+const traceDigest = 'f2995c4e3c959b42bb1e4afbefffbcf7ba6104099621ccc0ac912862dc932a5b'
 
 const rows = [
   {
+    accepted_work_refs_json: JSON.stringify([
+      'accepted_work.artanis_admin.20260611011429',
+    ]),
     action_json: JSON.stringify({
       rationale: 'Idle eligible device; dispatch keeps the capability proven.',
     }),
     assignment_ref: 'assignment.artanis_admin.20260611011429',
+    assignment_created_at: '2026-06-11T01:14:29.000Z',
+    assignment_state: 'accepted_work',
+    assignment_updated_at: '2026-06-11T01:16:00.000Z',
+    artifact_refs_json: JSON.stringify([
+      `artifact.tassadar_poc.trace_digest.${traceDigest}`,
+    ]),
+    closeout_refs_json: JSON.stringify([
+      'closeout.artanis_admin.assignment.20260611011429',
+    ]),
     created_at: '2026-06-11T01:14:29.000Z',
     id: 'decision-1',
+    job_kind: 'tassadar_executor_trace',
+    proof_refs_json: JSON.stringify([
+      `proof.tassadar_poc.trace_digest.${traceDigest.slice(0, 16)}`,
+    ]),
+    pylon_ref: 'pylon.public.alpha',
     state: 'dispatched',
+    verdict_accept_state: 'accepted',
+    verdict_created_at: '2026-06-11T01:17:00.000Z',
+    verdict_outcome: 'verified',
+    verdict_trace_digest_prefix: traceDigest.slice(0, 16),
   },
   {
     action_json: JSON.stringify({ reason: 'no useful dispatch this tick' }),
@@ -66,8 +88,44 @@ describe('artanis tick monitor projection', () => {
     expect(monitor.decisions).toHaveLength(4)
     expect(monitor.decisions[0]).toMatchObject({
       assignmentRef: 'assignment.artanis_admin.20260611011429',
+      closedTickReceiptRef:
+        'receipt.public.artanis.tetrahedron_closed_tick.assignment.artanis_admin.20260611011429',
+      closeoutReceiptRef:
+        'receipt.nexus_pylon.artanis_admin_closeout.assignment.artanis_admin.20260611011429',
+      closureState: 'closed_verified',
       decisionRef: 'tick_decision.decision-1',
       state: 'dispatched',
+    })
+    expect(monitor.closedTickReceiptRefs).toEqual([
+      'receipt.public.artanis.tetrahedron_closed_tick.assignment.artanis_admin.20260611011429',
+    ])
+    expect(monitor.closedTickStaleness).toMatchObject({
+      composition: 'live_at_read',
+      maxStalenessSeconds: 0,
+      rebuildsOn: [
+        'artanis_admin_tick_decision_recorded',
+        'pylon_assignment_closeout_submitted',
+        'artanis_closeout_verdict_recorded',
+      ],
+    })
+    expect(monitor.closedTickReceipts[0]).toMatchObject({
+      assignmentRef: 'assignment.artanis_admin.20260611011429',
+      closeoutReceiptRef:
+        'receipt.nexus_pylon.artanis_admin_closeout.assignment.artanis_admin.20260611011429',
+      closureContractVersion: 'tick_closure.v0.1',
+      receiptKind: 'artanis_tetrahedron_closed_tick',
+      verdictOutcome: 'verified',
+      verdictRef: 'verdict.artanis_closeout.verified',
+    })
+    expect(monitor.closedTickReceipts[0]?.faceRefs).toMatchObject({
+      evaluationRefs: [
+        'expectation.tassadar_poc.trace_digest.f2995c4e3c959b42',
+        'verdict.artanis_closeout.verified',
+      ],
+      stateDeltaRefs: [
+        'accepted_work.artanis_admin.20260611011429',
+        'receipt.nexus_pylon.artanis_admin_closeout.assignment.artanis_admin.20260611011429',
+      ],
     })
   })
 
@@ -82,6 +140,7 @@ describe('artanis tick monitor projection', () => {
     const serialized = JSON.stringify(monitor)
     expect(serialized).not.toContain('bearer abcdef')
     expect(serialized).not.toContain('haunted')
+    expect(serialized).not.toMatch(/mnemonic|preimage|secret/i)
   })
 
   test('limits are bounded and defaulted without raw parsing surprises', () => {
@@ -97,6 +156,8 @@ describe('artanis tick monitor projection', () => {
         bind: (limit: number) => ({
           all: async () => {
             expect(sql).toContain('artanis_admin_tick_decisions')
+            expect(sql).toContain('LEFT JOIN pylon_api_assignments')
+            expect(sql).toContain('LEFT JOIN artanis_closeout_verdicts')
             expect(limit).toBe(50)
             return { results: rows }
           },

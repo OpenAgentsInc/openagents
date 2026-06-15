@@ -283,7 +283,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe OTEC proof closeout projection with claim state and caveats.',
   ),
   ArtanisAdminTickMonitorResponse: objectSummary(
-    'Public-safe Artanis administrator-tick monitor: persisted tick decisions (dispatched, no_action, blocked, dispatch_failed) with redaction-scanned reasons, assignment refs, countsByState, the daily dispatch bound, dispatchedToday, generatedAt, and explanatory notes. Pre-mind skips are not persisted rows. Read-only projection; it grants no dispatch, spend, or settlement authority.',
+    'Public-safe Artanis administrator-tick monitor: persisted tick decisions (dispatched, no_action, blocked, dispatch_failed) with redaction-scanned reasons, assignment refs, countsByState, the daily dispatch bound, dispatchedToday, generatedAt, explanatory notes, and closedTickReceipts when the tetrahedron predicate closes (dispatch intent, Pylon closeout execution refs, accepted-work state delta, verified exact-replay evaluation). Pre-mind skips are not persisted rows. Read-only projection; it grants no dispatch, spend, model-capability, payout, or settlement authority.',
   ),
   PublicTreasuryResponse: objectSummary(
     'Public-safe MDK treasury projection with the treasury balance read live from the treasury node and recent public transaction rows (direction, amount, state, public refs). Raw invoices, payment hashes, preimages, mnemonics, payout targets, and provider secrets are excluded. Read-only; grants no payout authority.',
@@ -2409,7 +2409,7 @@ const paths = (): JsonSchema => ({
       operationId: 'listPublicArtanisAdminTicks',
       summary: 'List public Artanis administrator ticks',
       description:
-        'Returns the public-safe Artanis administrator-tick monitor: every persisted tick decision (dispatched, no_action, blocked, dispatch_failed) with redaction-scanned reasons and assignment refs, countsByState, the daily dispatch bound, dispatchedToday, generatedAt, and explanatory notes. Pre-mind skips (disabled, mind unconfigured, daily bound, no eligible Pylons) are not persisted rows. Read-only projection with no dispatch, spend, or settlement authority.',
+        'Returns the public-safe Artanis administrator-tick monitor: every persisted tick decision (dispatched, no_action, blocked, dispatch_failed) with redaction-scanned reasons and assignment refs, countsByState, the daily dispatch bound, dispatchedToday, generatedAt, explanatory notes, and closedTickReceipts when the tetrahedron predicate closes (dispatch intent, Pylon closeout execution refs, accepted-work state delta, verified exact-replay evaluation). Pre-mind skips (disabled, mind unconfigured, daily bound, no eligible Pylons) are not persisted rows. Read-only projection with no dispatch, spend, model-capability, payout, or settlement authority.',
       tags: ['Public Proof'],
       security: publicRead,
       parameters: [queryParam('limit', 'Maximum tick decisions to return.')],
