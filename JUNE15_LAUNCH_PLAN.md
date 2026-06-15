@@ -306,29 +306,37 @@ Filed from the launch-truth audit + the forum traversal. Live-verified before
 filing (e.g. `openapi.json` still serves `info.version 2026-06-11`; product-promise
 registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
 
-**Tassadar traces (executor-trace completion — the headline lane):**
-- **#5051** epic → ✅ **#5052** agent-gated submit/replay routes — **DONE/closed**
-  (`602e83e0b`): `POST /api/training/leases/{ref}/trace-submission` (requireAgent +
-  lease-ownership) and `/replay-verdict` (requireAgent + server-side device-distinctness)
-  + migration `0188` + 12 tests. **Inert until #5053/#5054 wire them** (no caller yet;
-  no existing auth/closeout/settlement path changed). · **#5053** worker↔validator
-  pairing · **#5054** Pylon `submit-trace`/`validate` verbs + assignment-worker-on ·
-  **#5055** interim Forum-tip earning.
+**Tassadar traces (executor-trace completion — the headline lane). Backend now COMPLETE + inert:**
+- **#5051** epic (OPEN — holds until a real verified+paid run) →
+  - ✅ **#5052** agent-gated submit/replay routes — **DONE** (`602e83e0b`):
+    `/trace-submission` (requireAgent + lease-ownership) + `/replay-verdict` (requireAgent +
+    device-distinctness) + migration `0188` + 12 tests.
+  - ✅ **#5053** worker↔validator pairing orchestration (Artanis-first) — **DONE**
+    (`ab80ca1dd`): oldest-pending → distinct validator → builds the `exact_trace_replay`
+    challenge; 25 tests. **OFF by default** behind `TASSADAR_TRACE_PAIRING`; no validator
+    candidate resolver yet, so nothing pairs until the dry-run supplies a distinct device.
+  - ✅ **#5054** Pylon `submit-trace` + `validate` client verbs — **DONE** (`20a354b32`):
+    agent-token (not admin), `--json`, 14 tests. **Assignment worker stays opt-in**
+    (`PYLON_ASSIGNMENT_WORKER`), NOT default-on — no node behavior change.
+  - **#5055** interim Forum-tip earning — path documented (community guide); **live tips
+    blocked on owner funding** (payer wallet empty; treasury is production-container-only;
+    a BOLT12 receive offer for the payer wallet was handed to the owner to fund).
 - **#5061** first external-validator dry-run with **Orrery** (live non-owner contributor,
-  volunteered) → produces the first externally-settled trace receipt → flips **#5014**.
+  volunteered) → flip `TASSADAR_TRACE_PAIRING` on, run a real 2-device replay → first
+  externally-settled trace receipt → flips **#5014**.
 
-> **Loop stopping boundary (2026-06-15).** The autonomous loop solved every safely
-> auto-closable item: the short-term usability fixes (#5057/#5058/#5059) and the inert
-> #5052 routes. Everything still open is **deliberately not auto-closed** because it
-> requires one of: a **live 2-device verification** I cannot perform autonomously
-> (#5053→#5054→#5061 wire + run the real payout path; closing them "done" without a
-> real verified+paid run is the exact premature-green we avoid), **owner-funded spend**
-> (#5055 seed a tip budget), an **owner-gated deploy** (#5060 serve registry `2026-06-15.2`),
-> or an **owner-run live event** (#5012/#5014/#5015/#5018 green-flips, receipt-first). The
-> next deliberate step is to build #5053/#5054 as inert/flag-gated units and then run the
-> #5061 dry-run with Orrery on a real second device.
+> **Where the headline lane stands (2026-06-15).** The entire executor-trace
+> contributor-completion **backend is built, tested, merged, and inert**: a contributor
+> can now submit a trace, a distinct validator can replay + submit a verdict, the server
+> pairs them and builds the exact-replay challenge, and the Pylon client has the verbs —
+> all behind flags/opt-in so **nothing in production behavior changed**. What remains is
+> deliberately **not autonomously closable**: (1) the **#5061 live 2-device dry-run**
+> (enable `TASSADAR_TRACE_PAIRING`, run a real worker+validator with Orrery) — the only
+> thing that proves the loop and flips #5014/#5015 green, receipt-first; (2) **owner-funded
+> spend** for #5055 tips (BOLT12 offer delivered); (3) the **owner-gated deploy** of registry
+> `2026-06-15.2` (#5060); (4) the **owner-run green-flips** (#5012/#5014/#5015/#5018).
 
-**Short-term fixes (new, from the forum audit):**
+**Short-term fixes (new, from the forum audit) — all DONE/closed:**
 - **#5056** projection-freshness invariant umbrella (public reads rebuild on write;
   extend `live_at_read`). `#4744`/`#4735` already closed under it; `#5057` now done.
   Remaining instances to sweep: credited-rung tip visibility, artanis-report tick.
