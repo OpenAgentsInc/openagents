@@ -28,7 +28,7 @@ import {
 // wallet spend, and training launch keep their gates (#4703 holds the
 // spend envelope). Every decision is a row; nothing is silent.
 
-export const ARTANIS_ADMIN_DISPATCH_PER_DAY = 4
+export const ARTANIS_ADMIN_DISPATCH_PER_DAY = 10
 
 const MindAdminAction = S.Union([
   S.Struct({

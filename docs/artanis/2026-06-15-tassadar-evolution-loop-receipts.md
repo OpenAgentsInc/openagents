@@ -51,6 +51,11 @@ publication, promise-transition, model-capability, payout, or settlement
 authority, and it does not by itself flip
 `artanis.tassadar_evolution_loop.v1` green.
 
+The no-spend Artanis admin dispatch budget is 10 per UTC day so one fully
+unattended cron span can satisfy the streak gate. The budget still applies only
+to `unpaid_smoke` executor-trace assignments; spend, publication, training
+launch, payout, and settlement remain separately approval-gated.
+
 ## Remaining Gates
 
 #5030 remains gated on live evidence: the public monitor must show at least ten
