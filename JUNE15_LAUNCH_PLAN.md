@@ -499,3 +499,65 @@ trained Tassadar, WASM plugins, mobile app, self-improving releases) as the
 direction we are **opening**, and never describe a payout nobody can
 dereference. The load-bearing essay's line is the gate: *a payment a recipient
 cannot dereference is not a payment; it is a bug wearing money.*
+
+---
+
+## 12. Issue tracker — the launch epics
+
+### Master launch epic: flip the crucial promises green
+- **[#5012](https://github.com/OpenAgentsInc/openagents/issues/5012)** — Epic:
+  flip the crucial launch promises green for 2026-06-15.
+  - **[#5013](https://github.com/OpenAgentsInc/openagents/issues/5013)** —
+    Registry: reconcile copy to Autopilot-is-the-install + add missing records
+    (WASM plugins, per-node wallet/Nostr identity) + version bump + deploy (the
+    §0 follow-up).
+  - **[#5014](https://github.com/OpenAgentsInc/openagents/issues/5014)** —
+    Step 6: live non-owner Go/No-Go run-through → flip
+    `training.monday_decentralized_training_launch.v1` green (the headline; §6).
+  - **[#5015](https://github.com/OpenAgentsInc/openagents/issues/5015)** —
+    Earn: self-serve install→earn with no operator staging → flip
+    `pylon.install_without_wallet_knowledge.v1` green.
+  - **[#5016](https://github.com/OpenAgentsInc/openagents/issues/5016)** —
+    Count: participant-count methodology rule in the run manifest (gate any
+    "largest" claim; §5).
+  - **[#5017](https://github.com/OpenAgentsInc/openagents/issues/5017)** —
+    Receipts: record the outstanding `promise_transition` receipts for the
+    already-applied labor/fanout flips.
+  - **[#5018](https://github.com/OpenAgentsInc/openagents/issues/5018)** —
+    Announce: copy-gated launch announcement, post Go/No-Go (§7, §G).
+
+### Install seam (§0, §4.F)
+- **[#5011](https://github.com/OpenAgentsInc/openagents/issues/5011)** —
+  Autopilot Desktop launches/adopts the local Pylon node so "install →
+  contribute" is one step (the §0 seam, top §9 risk, gate on DoD #2/#3).
+
+### Desktop UI launch-readiness epic
+- **[#5019](https://github.com/OpenAgentsInc/openagents/issues/5019)** — Epic:
+  make Autopilot Desktop UI launch-ready — strip dev scaffolding. Audit found
+  the data flow is genuinely live; the work is removing developer scaffolding
+  from the shipped UI.
+  - **[#5020](https://github.com/OpenAgentsInc/openagents/issues/5020)** —
+    Remove three-effect demo panels + sources card from the Nodes home pane
+    (launch-blocker).
+  - **[#5021](https://github.com/OpenAgentsInc/openagents/issues/5021)** —
+    Strip internal dev-doc panels from the Training pane (API boundary / source
+    map / authority / control surface) (launch-blocker).
+  - **[#5022](https://github.com/OpenAgentsInc/openagents/issues/5022)** —
+    Remove/gate the static "Issue 4855 Ledger" roadmap panel (should-fix).
+  - **[#5023](https://github.com/OpenAgentsInc/openagents/issues/5023)** —
+    Fix the fake Settings "Updates" status line (always "none") (should-fix).
+  - **[#5024](https://github.com/OpenAgentsInc/openagents/issues/5024)** —
+    Scrub internal jargon / issue numbers / env-var names from user-facing copy
+    (nice-to-have, owner-confirm).
+
+### Done — worker lane A–E (closed)
+- **[#5006](https://github.com/OpenAgentsInc/openagents/issues/5006)** — Step A:
+  run authority + manifest.
+- **[#5007](https://github.com/OpenAgentsInc/openagents/issues/5007)** — Step B:
+  executor-trace admission + claimable work.
+- **[#5008](https://github.com/OpenAgentsInc/openagents/issues/5008)** — Step C:
+  closeout → run-tied exact-replay verification.
+- **[#5009](https://github.com/OpenAgentsInc/openagents/issues/5009)** — Step D:
+  settlement-receipt ledger + projection seam.
+- **[#5010](https://github.com/OpenAgentsInc/openagents/issues/5010)** — Step E:
+  verified-trace corpus surface.
