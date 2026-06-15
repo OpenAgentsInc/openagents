@@ -2,7 +2,11 @@ import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { BrowserView, BrowserWindow } from "electrobun/bun"
 import { discoverPylonHome } from "./node-home"
-import { type ManagedNode, ensureManagedNode } from "./node-launcher"
+import {
+  type NodeLaunchStatus,
+  type SupervisedNode,
+  superviseManagedNode,
+} from "./node-launcher"
 import { createNodeStatePoller } from "./node-state-poll"
 import { createSessionNotifier } from "./notifier"
 import { raiseOsNotification } from "./os-notification"
@@ -332,24 +336,30 @@ const notifier = createSessionNotifier({ raise: raiseOsNotification })
 // the local Pylon runtime when none is discovered, so a fresh install reaches
 // node-online without a separate setup step. The launched node lands in a
 // `.pylon-local` home that `discoverPylonHome` already scans, so `resolveHome`
-// and the poller below pick it up unchanged. Fire-and-forget: a discover-only
-// (unavailable) result just leaves the app honest-offline until a node appears.
-let managedNode: ManagedNode | null = null
-ensureManagedNode({
+// and the poller below pick it up unchanged. The supervisor keeps a *launched*
+// child alive (restart-on-crash with backoff), surfaces honest
+// launching/online/failed status, and stops the child on app close. An adopted
+// (already-running) node is never double-spawned and never killed by us; an
+// unavailable result (packaged build, Phase 2) leaves the app honest-offline.
+//
+// NOTE (UI follow-up): the launch status is logged Bun-side here; surfacing the
+// launching/online/failed badge in the webview needs a new Bun→webview message
+// (e.g. `nodeLaunchStatus`) wired into the Foldkit node-status projection. That
+// touches src/shared/rpc.ts + src/ui/* (owned by another worker right now), so
+// it is intentionally deferred — the live node-state poll still drives the
+// honest online/offline projection in the meantime.
+let managedNode: SupervisedNode | null = null
+managedNode = superviseManagedNode({
   cwd: process.cwd(),
   env: Bun.env,
   controlBaseUrl,
-})
-  .then(node => {
-    managedNode = node
+  onStatus(status: NodeLaunchStatus) {
     console.log(
-      `[autopilot-desktop] local node ${node.mode}` +
-        (node.home ? ` (home: ${node.home})` : ""),
+      `[autopilot-desktop] local node status: ${status}` +
+        (managedNode?.home() ? ` (home: ${managedNode.home()})` : ""),
     )
-  })
-  .catch(error => {
-    console.error("[autopilot-desktop] node launch failed:", error)
-  })
+  },
+})
 
 const poller = createNodeStatePoller({
   intervalMs: Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 2000,
@@ -373,7 +383,8 @@ window.webview.on("dom-ready", () => {
 
 window.on("close", () => {
   poller.stop()
-  // Stop only a node we launched ourselves; an adopted node we did not start is
-  // left running.
+  // Stop supervising and kill only a node we launched ourselves; an adopted
+  // node we did not start is left running, and a deliberate stop never triggers
+  // a restart.
   managedNode?.stop()
 })

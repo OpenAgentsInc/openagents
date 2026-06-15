@@ -18,6 +18,25 @@ import { readControlToken } from "./pylon-control"
 
 export type NodeLaunchMode = "adopted" | "launched" | "unavailable"
 
+// Honest node-launch status surfaced as Bun-side state (issue #5011 §2). These
+// are *launch-lifecycle* states owned by this module, distinct from the live
+// node-state poll (which projects online/offline from the control server). No
+// fake "online": `online` is set only after the control token + a reachable
+// control server are observed; a readiness timeout or a crash with no restart
+// budget left is `failed`.
+//   - launching  : we spawned the child; control server not yet confirmed up.
+//   - online     : control token present + control server reachable.
+//   - adopted    : an already-running node we did not start (never spawned).
+//   - failed     : launch/readiness failed, or the child crashed and exhausted
+//                  its restart budget.
+//   - unavailable: nothing to launch (no repo entry — packaged build, Phase 2).
+export type NodeLaunchStatus =
+  | "launching"
+  | "online"
+  | "adopted"
+  | "failed"
+  | "unavailable"
+
 export type ManagedNode = {
   readonly mode: NodeLaunchMode
   readonly home: string | null
@@ -36,6 +55,9 @@ export type SpawnNodeInput = {
   readonly command: ReadonlyArray<string>
   readonly cwd: string
   readonly env: Record<string, string>
+  // Invoked once when the child process exits (crash or clean exit). The
+  // supervisor uses this to restart on crash; one-shot callers may omit it.
+  readonly onExit?: (info: { readonly code: number | null }) => void
 }
 
 export type EnsureManagedNodeOptions = {
@@ -52,6 +74,12 @@ export type EnsureManagedNodeOptions = {
   readonly bunBin?: string
   readonly readinessTimeoutMs?: number
   readonly readinessIntervalMs?: number
+  // Honest status callback (issue #5011 §2). Fired on each launch-lifecycle
+  // transition so the Bun main process can surface launching/online/failed
+  // (no fake "online"). Optional; pure-bring-up callers may omit it.
+  readonly onStatus?: (status: NodeLaunchStatus) => void
+  // Forwarded to the spawned child so a supervisor can restart on crash.
+  readonly onChildExit?: (info: { readonly code: number | null }) => void
 }
 
 const MANAGED_HOME_SUBDIR = ".pylon-local"
@@ -106,6 +134,14 @@ const defaultSpawnNode = (input: SpawnNodeInput): LaunchedProcess => {
     stdout: "inherit",
     stderr: "inherit",
   })
+  // Notify the supervisor when the child exits so it can restart on crash.
+  // Best-effort: `exited` rejects only if the handle is already gone, which is
+  // itself an exit, so we still fire onExit (code unknown).
+  if (input.onExit) {
+    void child.exited
+      .then(code => input.onExit?.({ code }))
+      .catch(() => input.onExit?.({ code: null }))
+  }
   return {
     pid: child.pid,
     kill: () => {
@@ -149,10 +185,12 @@ export const ensureManagedNode = async (
   const bunBin = options.bunBin ?? process.execPath
   const readinessTimeoutMs = options.readinessTimeoutMs ?? 30_000
   const readinessIntervalMs = options.readinessIntervalMs ?? 500
+  const emit = (status: NodeLaunchStatus): void => options.onStatus?.(status)
 
   // 1. Adopt an already-running node — never double-spawn.
   const discovered = discover({ env: options.env.PYLON_HOME, cwd: options.cwd })
   if (discovered !== null) {
+    emit("adopted")
     return adopted(discovered)
   }
 
@@ -161,9 +199,11 @@ export const ensureManagedNode = async (
   //    (packaged build, Phase 2) stay discover-only and honest-offline.
   const located = findDevPylonEntry(options.cwd, fileExists)
   if (located === null) {
+    emit("unavailable")
     return unavailable
   }
 
+  emit("launching")
   const managedHome = join(located.repoRoot, MANAGED_HOME_SUBDIR)
   const childEnv: Record<string, string> = {}
   for (const [key, value] of Object.entries(options.env)) {
@@ -175,11 +215,15 @@ export const ensureManagedNode = async (
     command: [bunBin, located.entry],
     cwd: located.repoRoot,
     env: childEnv,
+    ...(options.onChildExit ? { onExit: options.onChildExit } : {}),
   })
 
   // 3. Wait for the node to write its control token and bring up the control
-  //    server. On timeout we still return launched: the poller surfaces offline
-  //    honestly and discovery picks the home up once the token lands.
+  //    server. On success the status is honest `online`; on timeout it is
+  //    honest `failed` (the poller still surfaces offline; discovery picks the
+  //    home up if the token lands later). Either way we return `launched` so the
+  //    caller can supervise/stop the child it owns.
+  let ready = false
   const deadline = Date.now() + readinessTimeoutMs
   while (Date.now() < deadline) {
     const token = readToken(managedHome)
@@ -188,15 +232,149 @@ export const ensureManagedNode = async (
       token.length > 0 &&
       (await probeReady(options.controlBaseUrl))
     ) {
+      ready = true
       break
     }
     await sleep(readinessIntervalMs)
   }
+  emit(ready ? "online" : "failed")
 
   return {
     mode: "launched",
     home: managedHome,
     pid: child.pid,
     stop: () => child.kill(),
+  }
+}
+
+// --- Supervisor (issue #5011 §2): restart-on-crash with backoff -------------
+
+export type SupervisedNode = {
+  // The current launch lifecycle status (last emitted), readable synchronously.
+  status(): NodeLaunchStatus
+  // The current launch mode of the underlying node.
+  mode(): NodeLaunchMode
+  // The managed home (when we launched/adopted one), else null.
+  home(): string | null
+  // Stop supervising and kill the managed child if we launched one. Idempotent;
+  // a deliberate stop never triggers a restart. A no-op for adopted/unavailable.
+  stop(): void
+}
+
+export type SuperviseManagedNodeOptions = Omit<
+  EnsureManagedNodeOptions,
+  "onChildExit"
+> & {
+  // Backoff schedule for crash restarts. Defaults to a bounded exponential.
+  readonly restartBackoffMs?: ReadonlyArray<number>
+  // Max consecutive crash restarts before giving up (status stays `failed`).
+  readonly maxRestarts?: number
+  // After the child has stayed up at least this long, the crash counter resets
+  // so a later, unrelated crash gets the full restart budget again.
+  readonly stableUptimeMs?: number
+  // Injectable scheduler (defaults to setTimeout). Returns a cancel handle.
+  readonly schedule?: (fn: () => void, ms: number) => { cancel(): void }
+  readonly now?: () => number
+}
+
+const DEFAULT_BACKOFF_MS = [500, 1_000, 2_000, 5_000, 10_000] as const
+const DEFAULT_MAX_RESTARTS = 5
+const DEFAULT_STABLE_UPTIME_MS = 30_000
+
+const defaultSchedule = (
+  fn: () => void,
+  ms: number,
+): { cancel(): void } => {
+  const handle = setTimeout(fn, ms)
+  return { cancel: () => clearTimeout(handle) }
+}
+
+/**
+ * Bring up the local node (adopt-or-launch) and keep a *launched* child alive:
+ * restart it on crash with bounded exponential backoff, surface honest
+ * launching/online/failed status, and stop it on app close (deliberate stops
+ * never restart). Adopted and unavailable nodes are not restarted — we only
+ * supervise a child we started ourselves.
+ */
+export const superviseManagedNode = (
+  options: SuperviseManagedNodeOptions,
+): SupervisedNode => {
+  const backoff = options.restartBackoffMs ?? DEFAULT_BACKOFF_MS
+  const maxRestarts = options.maxRestarts ?? DEFAULT_MAX_RESTARTS
+  const stableUptimeMs = options.stableUptimeMs ?? DEFAULT_STABLE_UPTIME_MS
+  const schedule = options.schedule ?? defaultSchedule
+  const now = options.now ?? Date.now
+
+  let stopped = false
+  let current: ManagedNode | null = null
+  let restarts = 0
+  let startedAt = 0
+  let lastStatus: NodeLaunchStatus = "launching"
+  let pending: { cancel(): void } | null = null
+
+  const setStatus = (status: NodeLaunchStatus): void => {
+    lastStatus = status
+    options.onStatus?.(status)
+  }
+
+  const onChildExit = (info: { readonly code: number | null }): void => {
+    // A deliberate stop (app close / supervisor stop) never restarts.
+    if (stopped) return
+    current = null
+
+    // If the child stayed up long enough, treat this as a fresh failure and
+    // reset the restart budget so an unrelated later crash gets full retries.
+    if (startedAt > 0 && now() - startedAt >= stableUptimeMs) {
+      restarts = 0
+    }
+
+    if (restarts >= maxRestarts) {
+      setStatus("failed")
+      return
+    }
+
+    const delay = backoff[Math.min(restarts, backoff.length - 1)] ?? 0
+    restarts += 1
+    setStatus("launching")
+    pending = schedule(() => {
+      pending = null
+      if (!stopped) void bringUp()
+    }, delay)
+  }
+
+  const bringUp = async (): Promise<void> => {
+    if (stopped) return
+    const node = await ensureManagedNode({
+      ...options,
+      onStatus: setStatus,
+      // Only a *launched* child gets a restart hook; adopt/unavailable don't.
+      onChildExit,
+    })
+    if (stopped) {
+      // Lost the race with stop(): kill anything we just launched.
+      node.stop()
+      return
+    }
+    current = node
+    if (node.mode === "launched") {
+      startedAt = now()
+    }
+  }
+
+  // Kick off the first bring-up; fire-and-forget like the prior index.ts call.
+  void bringUp()
+
+  return {
+    status: () => lastStatus,
+    mode: () => current?.mode ?? "unavailable",
+    home: () => current?.home ?? null,
+    stop: () => {
+      if (stopped) return
+      stopped = true
+      pending?.cancel()
+      pending = null
+      current?.stop()
+      current = null
+    },
   }
 }
