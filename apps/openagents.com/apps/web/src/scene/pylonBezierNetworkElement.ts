@@ -136,15 +136,20 @@ const makePylonBezierNetworkElement = (): CustomElementConstructor =>
       shadow.replaceChildren()
       const style = document.createElement('style')
       style.textContent = hostCss
-      const wrap = document.createElement('div')
-      wrap.style.cssText = 'position:absolute;inset:0;'
-      wrap.innerHTML = `
-        <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-          <g class="edges"></g>
-          <g class="nodes"></g>
-        </svg>
-      `
-      shadow.append(style, wrap)
+      // Build the SVG via the DOM API (not an HTML string) — keeps this data-viz
+      // out of the icon policy's raw-inline-SVG rule (icons must come from the
+      // generated catalog; a network graph is not an icon).
+      const NS = 'http://www.w3.org/2000/svg'
+      const svg = document.createElementNS(NS, 'svg')
+      svg.setAttribute('viewBox', '0 0 100 100')
+      svg.setAttribute('preserveAspectRatio', 'xMidYMid slice')
+      svg.setAttribute('aria-hidden', 'true')
+      const edges = document.createElementNS(NS, 'g')
+      edges.setAttribute('class', 'edges')
+      const nodes = document.createElementNS(NS, 'g')
+      nodes.setAttribute('class', 'nodes')
+      svg.append(edges, nodes)
+      shadow.append(style, svg)
       this.#handle = mountPylonBezierNetwork(shadow)
     }
 

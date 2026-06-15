@@ -140,16 +140,13 @@ describe('app link routing', () => {
       ChangedUrl({ url: appUrl('/f324f23f') }),
     )
 
+    // The homepage route is the pylon scene (root -> Pylon, the launch routing),
+    // so an unknown logged-out URL redirects to Pylon.
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
-      route: { _tag: 'Home' },
+      route: { _tag: 'Pylon' },
     })
-    expect(commands.map(command => command.name)).toEqual([
-      'LoadPublicPylonStats',
-      'LoadPublicForumLaunchStatus',
-      'LoadPublicForumTipLeaderboards',
-      'RedirectToHome',
-    ])
+    expect(commands.map(command => command.name)).toEqual(['RedirectToHome'])
   })
 
   test('keeps team room routes as internal navigation', () => {
