@@ -1,6 +1,7 @@
 import { readFile as nodeReadFile } from "node:fs/promises"
 import { join } from "node:path"
 
+import { assetKeyFromBytes } from "./asset-store.ts"
 import {
   buildPylonReleaseManifest,
   normalizePylonPlatform,
@@ -8,6 +9,9 @@ import {
   type PylonReleaseManifest,
 } from "./pylon-release.ts"
 import type { UpdatesServer } from "./server.ts"
+
+const assetUrl = (baseUrl: string, hash: string): string =>
+  `${baseUrl.replace(/\/+$/, "")}/assets/${hash}`
 
 // A Pylon release as recorded on disk by publish-pylon-release.ts. The signature
 // is precomputed by sign-release.ts (the build pipeline), not minted here.
@@ -48,7 +52,8 @@ export async function seedPylonReleases(
   const manifests: PylonReleaseManifest[] = []
 
   for (const seed of seeds) {
-    const artifactBytes = await readFile(join(input.distDir, seed.artifactPath))
+    const artifactPath = join(input.distDir, seed.artifactPath)
+    const artifactBytes = await readFile(artifactPath)
     const result = await buildPylonReleaseManifest({
       version: seed.version,
       channel: seed.channel,
@@ -57,11 +62,18 @@ export async function seedPylonReleases(
       signature: seed.signature,
       kid: seed.kid,
       baseUrl: input.baseUrl,
-      store: { put: (bytes) => input.server.putAsset(bytes, "application/octet-stream"), get: async () => null },
+      // Non-retaining store: compute the content hash but DO NOT hold the bytes
+      // in memory. The binary is served by streaming from disk (registerDiskAsset),
+      // so seeding 100s of MB never blows the boot memory/timeout.
+      store: {
+        put: async (bytes) => ({ hash: assetKeyFromBytes(bytes), url: assetUrl(input.baseUrl, assetKeyFromBytes(bytes)) }),
+        get: async () => null,
+      },
       createdAt: seed.createdAt,
       rolloutPercent: seed.rolloutPercent,
       minVersion: seed.minVersion,
     })
+    input.server.registerDiskAsset(result.artifactHash, artifactPath, "application/octet-stream")
     input.server.registerPylonUpdate(result.manifest)
     manifests.push(result.manifest)
   }

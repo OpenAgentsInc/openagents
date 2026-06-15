@@ -34,6 +34,9 @@ export type UpdatesServer = {
     manifest: DesktopUpdateManifest,
   ) => void
   registerPylonUpdate: (manifest: PylonReleaseManifest) => void
+  // Serve a large asset (e.g. a Pylon binary) straight from disk by hash,
+  // streamed — so the seed never loads hundreds of MB into memory at boot.
+  registerDiskAsset: (hash: string, path: string, contentType?: string) => void
   putAsset: (
     bytes: Uint8Array,
     contentType?: string,
@@ -115,6 +118,8 @@ export function createUpdatesServer(
   const desktopFeeds = new Map<string, DesktopUpdateManifest[]>()
   // key: `${channel}/${platform}` -> releases (latest first)
   const pylonFeeds = new Map<string, PylonReleaseManifest[]>()
+  // hash -> on-disk file served by streaming (large binaries never held in memory)
+  const diskAssets = new Map<string, { path: string; contentType: string }>()
   const assetContentTypes = new Map<string, string>()
   const assetStore: AssetStore = createInMemoryAssetStore(
     `http://localhost:${port}`,
@@ -174,6 +179,19 @@ export function createUpdatesServer(
 
         if (assetMatch !== null) {
           const hash = assetMatch[1]
+
+          // Disk-backed assets (Pylon binaries) stream straight from the file —
+          // bounded memory regardless of size.
+          const disk = diskAssets.get(hash)
+          if (disk !== undefined) {
+            return new Response(Bun.file(disk.path), {
+              headers: {
+                "cache-control": "public, max-age=31536000, immutable",
+                "content-type": disk.contentType,
+              },
+            })
+          }
+
           const bytes = await assetStore.get(hash)
 
           if (bytes === null) {
@@ -259,6 +277,10 @@ export function createUpdatesServer(
         manifest,
         ...current.filter((candidate) => candidate.version !== manifest.version),
       ])
+    },
+
+    registerDiskAsset(hash, path, contentType) {
+      diskAssets.set(hash, { path, contentType: contentType ?? "application/octet-stream" })
     },
 
     registerPylonUpdate(manifest) {
