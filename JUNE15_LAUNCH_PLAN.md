@@ -582,9 +582,10 @@ event + announcement (not code); #5015 builds on the now-merged #5011.
   **DONE.** Desktop `bun run test` now runs the full suite (16 files / 185 tests)
   via a per-file runner (`scripts/run-tests.sh`), avoiding the bun load-hang —
   so we can "test as much as we can in dev mode."
-- ⬜ **[#5025](https://github.com/OpenAgentsInc/openagents/issues/5025)** —
-  Webview node-launch **status badge** (deferred from #5011): surface
-  launching/online/failed from the supervisor in the Foldkit UI.
+- ✅ **[#5025](https://github.com/OpenAgentsInc/openagents/issues/5025)** —
+  **DONE.** Webview node-launch **status badge**: the supervisor's
+  launching/online/adopted/failed/unavailable status flows Bun→webview and
+  renders on the Nodes pane (no fake online). Tests + `verify:training` green.
 - ⬜ **[#5027](https://github.com/OpenAgentsInc/openagents/issues/5027)** —
   **#5011 Phase 2 packaging:** the *downloaded* signed `.app` (+Linux) must
   launch the node too, smokes, announced==admitted build. **This is the "try a
