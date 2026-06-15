@@ -57,7 +57,8 @@
     "smoke:claude-agent-task": "bun scripts/claude-agent-task-smoke.ts",
     "smoke:codex-agent-task": "bun scripts/codex-agent-task-smoke.ts",
     "test": "bun test --max-concurrency=1",
-    "release:gate": "bash scripts/release-gate.sh"
+    "release:gate": "bash scripts/release-gate.sh",
+    "build:rc-binaries": "bash scripts/build-rc-binaries.sh"
   },
   "dependencies": {
     "@noble/curves": "1.8.1",
