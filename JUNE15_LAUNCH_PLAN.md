@@ -62,10 +62,17 @@ Live registry: **`2026-06-15.1`**.
   binaries are served from a **public GCS bucket** (`gs://openagentsgemini-oa-updates`)
   via `OA_ASSET_BASE_URL` — the feed JSON stays on Cloud Run, downloads go to GCS.
   All 4 platform feeds return 200 with GCS artifactUrls. **No rc2 needed.**
-- **Autopilot desktop OTA — still to wire:** the Electrobun updater expects its own
-  `<platform>-update.json` feed format + hosted `.app.tar.zst`/BSDIFF artifacts at
-  `updates.openagents.com/desktop`; that feed isn't published yet (separate from
-  the Pylon feed). Follow-up.
+- **Autopilot desktop OTA — LIVE ✅.** `oa-updates` now serves the Electrobun feed
+  at `/desktop/<prefix>-update.json` + the `.app.tar.zst` (19MB, under the 32 MiB
+  cap, streamed from `OA_DESKTOP_OTA_DIR`). Confirmed: `update.json` → 200
+  (`1.0.0-rc.1`, hash `1g5hvbicxvr9r`), tarball → 200. The rc1 `.app` already has
+  `release.baseUrl=updates.openagents.com/desktop` baked in (no re-notarize). A
+  real desktop self-update *delta* can only be exercised once an rc2 desktop build
+  is published (rc1↔rc1 reports up-to-date), but the feed is wired + serving the
+  exact format Electrobun fetches.
+
+**Autoupdate is now fully set up for both binaries** (Pylon verified self-updating
+end-to-end; Autopilot desktop feed live).
 
 ### Held on purpose — the headline green flips
 The Tassadar run **manifest itself** says *"owner-operated nodes do not count as
