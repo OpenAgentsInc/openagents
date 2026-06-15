@@ -1,0 +1,10 @@
+{
+  "alg": "ed25519",
+  "kid": "2dbe811d19f67528",
+  "kty": "OKP",
+  "crv": "Ed25519",
+  "x": "P9steasTKRx6gr9QQlbah4kXm17aAh2wLHLAL-Txwak",
+  "created": "2026-06-15",
+  "use": "release-provenance",
+  "note": "Pinned by clients to verify OpenAgents artifacts/manifests; fail-closed."
+}

@@ -261,6 +261,68 @@ one signing trust root across Electrobun, Bun-compiled, and Rust.
 - **No secrets in artifacts/manifests** (the standing rule): no tokens, wallet
   material, or private paths in any published bundle or feed.
 
+## 6b. Provenance — everything is signed by our infra, verified fail-closed
+
+> **Status 2026-06-15 — signing key provisioned + backed up.** The OpenAgents
+> ed25519 release/provenance key exists: private in `~/work/.secrets/openagents-
+> release-signing.env` (600, gitignored), **backed up to GCP Secret Manager**
+> (`openagents-release-signing-key`, project `openagentsgemini`, hash-verified),
+> public pinned at `apps/oa-updates/keys/release-pubkey.json` (kid
+> `2dbe811d19f67528`). Signer + fail-closed verifier shipped
+> (`apps/oa-updates/scripts/sign-release.ts` / `verify-release.ts`) and tested
+> (sign→verify pass, tamper→reject, GCP-Secret-Manager key path works with no
+> local file). Runbook: `apps/oa-updates/docs/release-signing-runbook.md`. Remaining
+> = wire signatures into the published feeds + client pinning + KMS migration
+> (OTA epic #5039).
+
+Owner requirement: **users and Pylons must be able to auto-verify that artifacts
+and authoritative responses come only from OpenAgents infra, and fail otherwise.**
+The correct way to guarantee "from our infra" is **cryptographic signing, not
+hosting/IP/DNS.** Where a service runs (Cloudflare vs GCP) is an availability
+choice; *who signed it* is the trust boundary. Tying trust to a host/CDN is
+brittle (DNS hijack, MITM, mirror); a pinned signature is checkable and
+hosting-independent. So:
+
+- **One signing root, the private key never leaves our infra.** Hold the
+  OpenAgents **ed25519 release/provenance key in a cloud KMS / HSM** (GCP Cloud
+  KMS, or Cloudflare's key store for the Worker) so only our deployed services
+  (with KMS sign permission) can produce a valid signature — *that* is the literal
+  "comes only from our infra" guarantee. Nothing outside our infra can mint a
+  valid signature even if it spoofs the host. The **public** key(s) are committed
+  and pinned in clients.
+- **Sign every authoritative output, not just updates:** OTA manifests + binaries
+  (§6), the **product-promise registry**, **training-run manifests**,
+  **dispatched-work payloads**, **settlement / promise-transition receipts**, the
+  **capability manifest / `AGENTS.md`**, and (ideally) generic API responses via a
+  detached signature header. Each signs a canonicalized body + version +
+  timestamp (anti-replay/anti-rollback).
+- **Clients pin the public key and FAIL CLOSED.** Pylon and Autopilot embed the
+  OpenAgents public verify key(s) at build time, verify the signature on
+  everything authoritative, and **refuse/error on a missing or invalid
+  signature** — never "trust because it came over TLS from a familiar URL." This
+  is the same posture as auto-update being default-on: **verification is mandatory
+  by default; there is no shipped build that skips it.**
+- **Key set, rotation, transparency.** Publish a rotatable key set (JWKS-style):
+  clients pin a long-lived **root** that signs short-lived subkeys, so we rotate
+  without reflashing clients. Add a **transparency log** of signed releases
+  (sigstore/rekor-style) so anyone can independently audit that an artifact was
+  signed by our root — open + checkable, per the OpenAgents thesis.
+- **Reuse what exists, unify under the root.** Pylon already carries a Nostr
+  keypair; the worker has L402 credential signing and some ed25519/nacl;
+  `oa-updates` already does desktop code-signing. Keep those, but make the
+  **KMS-backed provenance root** the single trust anchor for "is this from
+  OpenAgents," and pin it everywhere.
+
+### GCP / hosting note
+The backend can run on our GCP — `oa-updates` is already Cloud Run and compute is
+on GCE. The product API currently runs on **Cloudflare Workers**; consolidating it
+onto GCP (Cloud Run) is a possible migration but is an **ops/availability**
+decision, **not** what provides verifiability. Verifiability comes from the
+KMS-rooted signing + pinned fail-closed verification above, which holds regardless
+of whether a given service sits on Cloudflare or GCP. Recommendation: decide
+hosting consolidation separately; ship the signing-provenance layer now, because
+that — not the datacenter — is what lets a Pylon prove a payload is ours.
+
 ## 7. Work breakdown (issues to file)
 
 - **Epic — OTA auto-update, default-on, for Autopilot + Pylon.**
@@ -274,6 +336,11 @@ one signing trust root across Electrobun, Bun-compiled, and Rust.
     (and a generic `<binary>/...`) feeds + signed manifests + rollout/yank.
   - Release-signing key: provision the OpenAgents ed25519 key (NEEDS-OWNER), wire
     signing into `oa-updates` publish + key pinning into clients.
+  - **Provenance root + fail-closed verification (§6b):** hold the signing key in
+    KMS/HSM (never exported); sign authoritative outputs beyond OTA (registry,
+    run manifests, dispatched work, receipts, capability manifest); make Pylon +
+    Autopilot pin the public key and **refuse unsigned/invalid** by default;
+    publish a rotatable JWKS key set + a transparency log.
   - **Psionic (Rust) auto-update:** promote `psionic-install` into a default-on
     auto-updater (channel/signed/rollout feed at `updates.openagents.com/psionic/`,
     Pylon checks + upgrades the Psionic binary+models, drain-first); build/sign
