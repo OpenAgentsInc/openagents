@@ -30,6 +30,7 @@ import {
 import {
   initialModel,
   Model,
+  modelAppleFmReadiness,
   modelBuiltInAgentReadiness,
   modelInstallReadiness,
   modelNode,
@@ -51,6 +52,7 @@ import {
   ClickedClaimTrainingLease,
   ClickedPlanTrainingWindow,
   ClickedQueueTrainingCloseout,
+  ClickedRefreshAppleFm,
   ClickedRefreshBuiltInAgent,
   ClickedRefreshInstallReadiness,
   ClickedRefreshPromiseSurfacing,
@@ -67,6 +69,7 @@ import {
   ClickedRequestTrainingBootstrap,
   ClickedStartBuiltInAgent,
   ClickedSubmitIntent,
+  GotAppleFmReadiness,
   GotBuiltInAgentReadiness,
   GotInstallReadiness,
   GotPromiseSurfacingReadiness,
@@ -79,6 +82,7 @@ import {
   GotNodeState,
   GotNodeLaunchStatus,
   NavigatedTo,
+  SelectedAgentMode,
   SelectedSession,
   SelectedTrainingSceneNode,
   SettledActivateTrainingWindow,
@@ -342,7 +346,8 @@ describe("update reducer (CL-53)", () => {
     )
     expect(model.pane).toBe("builtin-agent")
     expect(model.builtInAgentStatus.tone).toBe("info")
-    expect(commands).toHaveLength(2)
+    expect(model.appleFmStatus.tone).toBe("info")
+    expect(commands).toHaveLength(3)
   })
 
   test("built-in agent readiness stores bounded hosted-compute status", () => {
@@ -394,6 +399,50 @@ describe("update reducer (CL-53)", () => {
     expect(commands).toHaveLength(1)
   })
 
+  test("local Apple FM mode stores blockers and can be selected", () => {
+    const [selected] = update(
+      initialModel,
+      SelectedAgentMode({ mode: "local-apple-fm" }),
+    )
+    expect(selected.agentMode).toBe("local-apple-fm")
+
+    const [model] = update(
+      selected,
+      GotAppleFmReadiness({
+        projection: {
+          ok: false,
+          fetchedAt: "2026-06-15T00:00:00.000Z",
+          sourceUrl: "desktop:apple-fm-readiness",
+          localPylonReady: true,
+          available: false,
+          status: "unavailable",
+          backendKind: "apple_fm_bridge",
+          profileId: "apple-fm-local",
+          model: "apple-foundation-model",
+          capability: "probe.backend.apple_fm_bridge",
+          advertisedCapabilities: [],
+          baseUrl: "http://127.0.0.1:11435",
+          platform: "darwin-arm64",
+          version: "fake-bridge",
+          unavailableReason: "apple_intelligence_disabled",
+          message: "Apple Intelligence is disabled.",
+          blockerRefs: ["blocker.pylon.apple_fm.apple_intelligence_disabled"],
+        },
+      }),
+    )
+
+    expect(modelAppleFmReadiness(model)?.ok).toBe(false)
+    expect(model.appleFmStatus.tone).toBe("info")
+    expect(model.appleFmStatus.text).toContain("Apple Intelligence is disabled")
+  })
+
+  test("local Apple FM refresh dispatches readiness check", () => {
+    const [model, commands] = update(initialModel, ClickedRefreshAppleFm())
+    expect(model.appleFmPending).toBe(true)
+    expect(model.appleFmStatus.tone).toBe("info")
+    expect(commands).toHaveLength(1)
+  })
+
   test("install readiness stores first-run health projection", () => {
     const [model] = update(
       initialModel,
@@ -410,6 +459,7 @@ describe("update reducer (CL-53)", () => {
           controlTokenPresent: false,
           localPylonReady: false,
           builtInAgentReady: false,
+          appleFmReady: false,
           userApiKeyRequired: false,
           autoUpdateEnabled: true,
           highestRoiAction: "Restart Autopilot or install a newer build",

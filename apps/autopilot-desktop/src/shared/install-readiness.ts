@@ -1,4 +1,5 @@
 import type {
+  AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
   NodeLaunchStatus,
 } from "./rpc"
@@ -26,6 +27,7 @@ export type InstallReadinessInput = {
   readonly pylonHomePresent: boolean
   readonly controlTokenPresent: boolean
   readonly builtInAgentReadiness: BuiltInAgentReadinessResponse
+  readonly appleFmReadiness: AppleFmReadinessResponse | null
   readonly autoUpdateDisabledReason: string | null
 }
 
@@ -41,6 +43,7 @@ export type InstallReadinessResponse = {
   readonly controlTokenPresent: boolean
   readonly localPylonReady: boolean
   readonly builtInAgentReady: boolean
+  readonly appleFmReady: boolean
   readonly userApiKeyRequired: false
   readonly autoUpdateEnabled: boolean
   readonly highestRoiAction: string
@@ -162,6 +165,61 @@ const builtInAgentReadinessItem = (
   }
 }
 
+const appleFmReadinessItem = (
+  readiness: AppleFmReadinessResponse | null,
+): InstallReadinessItem => {
+  if (readiness === null) {
+    return {
+      id: "local-apple-fm",
+      label: "Local Apple FM",
+      status: "attention",
+      detail: "Apple FM readiness has not been checked yet.",
+      blockerRef: "blocker.autopilot.apple_fm.not_checked",
+    }
+  }
+
+  if (readiness.ok) {
+    return {
+      id: "local-apple-fm",
+      label: "Local Apple FM",
+      status: "ready",
+      detail: `Foundation Models ready through ${readiness.model}.`,
+      blockerRef: null,
+    }
+  }
+
+  if (!readiness.localPylonReady) {
+    return {
+      id: "local-apple-fm",
+      label: "Local Apple FM",
+      status: "attention",
+      detail: "Waiting for local Pylon control before checking Apple FM.",
+      blockerRef: "blocker.autopilot.apple_fm.local_pylon_offline",
+    }
+  }
+
+  const blockerRef =
+    readiness.blockerRefs[0] ??
+    readiness.unavailableReason ??
+    "blocker.autopilot.apple_fm.not_ready"
+  const detail =
+    readiness.unavailableReason === "unsupported_hardware"
+      ? "This Mac does not support local Apple Foundation Models."
+      : readiness.unavailableReason === "apple_intelligence_disabled"
+        ? "Apple Intelligence is disabled or unavailable for this user."
+        : readiness.unavailableReason === "bridge_unreachable"
+          ? "The local Foundation Models bridge is not reachable."
+          : readiness.message ?? `Apple FM is ${readiness.status}.`
+
+  return {
+    id: "local-apple-fm",
+    label: "Local Apple FM",
+    status: "attention",
+    detail,
+    blockerRef,
+  }
+}
+
 const autoUpdateReadinessItem = (
   disabledReason: string | null,
 ): InstallReadinessItem => {
@@ -206,6 +264,7 @@ export const projectInstallReadiness = (
   const items = [
     nodeReadinessItem(input),
     builtInAgentReadinessItem(input.builtInAgentReadiness),
+    appleFmReadinessItem(input.appleFmReadiness),
     autoUpdateReadinessItem(input.autoUpdateDisabledReason),
   ] as const
   const blockingItems = items.filter(
@@ -215,6 +274,7 @@ export const projectInstallReadiness = (
     item.blockerRef === null ? [] : [item.blockerRef],
   )
   const builtInAgentReady = input.builtInAgentReadiness.ok
+  const appleFmReady = input.appleFmReadiness?.ok ?? false
   const localPylonReady = input.pylonHomePresent && input.controlTokenPresent
 
   return {
@@ -229,6 +289,7 @@ export const projectInstallReadiness = (
     controlTokenPresent: input.controlTokenPresent,
     localPylonReady,
     builtInAgentReady,
+    appleFmReady,
     userApiKeyRequired: false,
     autoUpdateEnabled: input.autoUpdateDisabledReason === null,
     highestRoiAction: highestRoiAction(items, builtInAgentReady),

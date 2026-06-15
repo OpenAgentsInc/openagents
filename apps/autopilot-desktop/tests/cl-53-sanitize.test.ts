@@ -242,6 +242,7 @@ describe("CL-53 sanitizeTree", () => {
         controlTokenPresent: false,
         localPylonReady: false,
         builtInAgentReady: false,
+        appleFmReady: false,
         userApiKeyRequired: false,
         autoUpdateEnabled: true,
         highestRoiAction: "Restart Autopilot or install a newer build",
@@ -268,6 +269,48 @@ describe("CL-53 sanitizeTree", () => {
       treeContainsText(
         document.body,
         "blocker.autopilot.install.local_pylon_failed",
+      ),
+    ).toBe(true)
+  })
+
+  test("agent pane distinguishes hosted compute from local Apple FM (#5071)", () => {
+    const document = view({
+      ...initialModel,
+      pane: "builtin-agent",
+      agentMode: "local-apple-fm",
+      appleFmReadiness: {
+        ok: false,
+        fetchedAt: "2026-06-15T00:00:00.000Z",
+        sourceUrl: "desktop:apple-fm-readiness",
+        localPylonReady: true,
+        available: false,
+        status: "unavailable",
+        backendKind: "apple_fm_bridge",
+        profileId: "apple-fm-local",
+        model: "apple-foundation-model",
+        capability: "probe.backend.apple_fm_bridge",
+        advertisedCapabilities: [],
+        baseUrl: "http://127.0.0.1:11435",
+        platform: "darwin-arm64",
+        version: "fake-bridge",
+        unavailableReason: "apple_intelligence_disabled",
+        message: "Apple Intelligence is disabled.",
+        blockerRefs: ["blocker.pylon.apple_fm.apple_intelligence_disabled"],
+      },
+      appleFmStatus: {
+        text: "Apple Intelligence is disabled.",
+        tone: "info",
+      },
+    })
+
+    expect(treeContainsText(document.body, "Hosted OpenAgents Compute")).toBe(true)
+    expect(treeContainsText(document.body, "Local Apple FM")).toBe(true)
+    expect(treeContainsText(document.body, "on-device Apple Foundation Models")).toBe(true)
+    expect(treeContainsText(document.body, "Local selected")).toBe(true)
+    expect(
+      treeContainsText(
+        document.body,
+        "blocker.pylon.apple_fm.apple_intelligence_disabled",
       ),
     ).toBe(true)
   })

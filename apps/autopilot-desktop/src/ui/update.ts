@@ -16,6 +16,7 @@ import {
   CancelSession,
   ClaimTrainingWindowLease,
   DeployCloud,
+  LoadAppleFmReadiness,
   LoadBuiltInAgentReadiness,
   LoadInstallReadiness,
   LoadPromiseSurfacingReadiness,
@@ -41,6 +42,7 @@ import type { Message } from "./message"
 import { Model, type PaneId } from "./model"
 import { validatePromiseSurfacingInput } from "../shared/promise-surfacing"
 import type {
+  AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
   InstallReadinessResponse,
   PromiseSurfacingReadinessResponse,
@@ -131,6 +133,11 @@ export const update = (model: Model, message: Message): Result => {
                   text: "checking OpenAgents compute...",
                   tone: "info" as const,
                 },
+                appleFmPending: true,
+                appleFmStatus: {
+                  text: "checking local Apple FM...",
+                  tone: "info" as const,
+                },
               }
             : {}),
           ...(isSettingsPane(message.pane)
@@ -175,7 +182,7 @@ export const update = (model: Model, message: Message): Result => {
         isTrainingPane(message.pane)
           ? loadTrainingProjectionCommands()
           : isBuiltInAgentPane(message.pane)
-            ? [LoadBuiltInAgentReadiness(), LoadPromiseSurfacingReadiness()]
+            ? [LoadBuiltInAgentReadiness(), LoadAppleFmReadiness(), LoadPromiseSurfacingReadiness()]
             : isSettingsPane(message.pane)
               ? [LoadInstallReadiness()]
             : noCommands,
@@ -324,6 +331,50 @@ export const update = (model: Model, message: Message): Result => {
             : {
                 text:
                   projection.error ??
+                  `${blockerCount} blocker${blockerCount === 1 ? "" : "s"}`,
+                tone: projection.error ? "error" : "info",
+              },
+        }),
+        noCommands,
+      ]
+    }
+    case "SelectedAgentMode":
+      return [
+        Model.make({
+          ...model,
+          agentMode: message.mode,
+        }),
+        noCommands,
+      ]
+    case "ClickedRefreshAppleFm":
+      return [
+        Model.make({
+          ...model,
+          appleFmPending: true,
+          appleFmStatus: {
+            text: "checking local Apple FM...",
+            tone: "info",
+          },
+        }),
+        [LoadAppleFmReadiness()],
+      ]
+    case "GotAppleFmReadiness": {
+      const projection = message.projection as AppleFmReadinessResponse
+      const blockerCount = projection.blockerRefs.length
+      return [
+        Model.make({
+          ...model,
+          appleFmReadiness: projection,
+          appleFmPending: false,
+          appleFmStatus: projection.ok
+            ? {
+                text: `ready · ${projection.model}`,
+                tone: "success",
+              }
+            : {
+                text:
+                  projection.error ??
+                  projection.message ??
                   `${blockerCount} blocker${blockerCount === 1 ? "" : "s"}`,
                 tone: projection.error ? "error" : "info",
               },

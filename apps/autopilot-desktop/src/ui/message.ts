@@ -64,6 +64,13 @@ export const ClickedRefreshBuiltInAgent = m("ClickedRefreshBuiltInAgent")
 export const GotBuiltInAgentReadiness = m("GotBuiltInAgentReadiness", {
   projection: S.Unknown,
 })
+export const SelectedAgentMode = m("SelectedAgentMode", {
+  mode: S.Literals(["hosted", "local-apple-fm"]),
+})
+export const ClickedRefreshAppleFm = m("ClickedRefreshAppleFm")
+export const GotAppleFmReadiness = m("GotAppleFmReadiness", {
+  projection: S.Unknown,
+})
 export const ClickedStartBuiltInAgent = m("ClickedStartBuiltInAgent")
 export const SucceededBuiltInAgent = m("SucceededBuiltInAgent", {
   sessionRef: S.String,
@@ -256,6 +263,9 @@ export const Message = S.Union([
   SettledSubmitIntent,
   ClickedRefreshBuiltInAgent,
   GotBuiltInAgentReadiness,
+  SelectedAgentMode,
+  ClickedRefreshAppleFm,
+  GotAppleFmReadiness,
   ClickedStartBuiltInAgent,
   SucceededBuiltInAgent,
   FailedBuiltInAgent,

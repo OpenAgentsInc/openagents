@@ -504,6 +504,27 @@ export type BuiltInAgentStartResponse = {
   readonly error?: string
 }
 
+export type AppleFmReadinessResponse = {
+  readonly ok: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: "desktop:apple-fm-readiness"
+  readonly localPylonReady: boolean
+  readonly available: boolean
+  readonly status: string
+  readonly backendKind: string
+  readonly profileId: string
+  readonly model: string
+  readonly capability: string
+  readonly advertisedCapabilities: readonly string[]
+  readonly baseUrl: string
+  readonly platform: string | null
+  readonly version: string | null
+  readonly unavailableReason: string | null
+  readonly message: string | null
+  readonly blockerRefs: readonly string[]
+  readonly error?: string
+}
+
 export type { InstallReadinessResponse } from "./install-readiness"
 export type {
   PromiseSurfacingDraft,
@@ -617,6 +638,13 @@ export type DesktopRPCSchema = {
       readonly startBuiltInAgent: {
         readonly params: Record<string, never>
         readonly response: BuiltInAgentStartResponse
+      }
+      // #5071: public-safe local Apple FM readiness. Bun/Pylon own the control
+      // token and bridge details; the webview receives status, labels, and
+      // blocker refs only.
+      readonly appleFmReadiness: {
+        readonly params: Record<string, never>
+        readonly response: AppleFmReadinessResponse
       }
       // #5064: one public-safe first-run health projection for normal installs.
       readonly installReadiness: {

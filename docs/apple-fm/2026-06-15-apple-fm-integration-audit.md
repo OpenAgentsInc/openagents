@@ -588,6 +588,7 @@ history. It has:
 - current Probe/Pylon Bun/Effect runtime support;
 - current fake-bridge CI coverage;
 - Pylon loopback `apple_fm.status` readiness projection;
+- Autopilot Desktop public-safe Apple FM readiness/mode UI;
 - admitted-Mac runbooks;
 - one owner-operated NIP-90 Apple FM provider proof.
 

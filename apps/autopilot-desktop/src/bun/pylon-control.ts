@@ -9,6 +9,7 @@ import {
 } from "@openagentsinc/autopilot-control-protocol"
 import type {
   AccountRow,
+  AppleFmReadinessResponse,
   ApprovalRow,
   AssignmentRow,
   IntentRow,
@@ -71,6 +72,43 @@ type CommandResponse = {
   ok?: unknown
   result?: unknown
 }
+
+const appleFmUnavailableProjection = (
+  input: {
+    fetchedAt?: string
+    localPylonReady: boolean
+    blockerRef: string
+    error?: string
+  },
+): AppleFmReadinessResponse => ({
+  ok: false,
+  fetchedAt: input.fetchedAt ?? new Date().toISOString(),
+  sourceUrl: "desktop:apple-fm-readiness",
+  localPylonReady: input.localPylonReady,
+  available: false,
+  status: input.localPylonReady ? "unavailable" : "unreachable",
+  backendKind: "apple_fm_bridge",
+  profileId: "apple-fm-local",
+  model: "apple-foundation-model",
+  capability: "probe.backend.apple_fm_bridge",
+  advertisedCapabilities: [],
+  baseUrl: "http://127.0.0.1:11435",
+  platform: null,
+  version: null,
+  unavailableReason: input.localPylonReady ? "unknown" : "bridge_unreachable",
+  message: input.error ?? input.blockerRef,
+  blockerRefs: [input.blockerRef],
+  ...(input.error ? { error: input.error } : {}),
+})
+
+const stringArray = (value: unknown): readonly string[] =>
+  Array.isArray(value) ? value.map(item => String(item)) : []
+
+const optionalString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() !== "" ? value : null
+
+const requiredString = (value: unknown, fallback: string): string =>
+  typeof value === "string" && value.trim() !== "" ? value : fallback
 
 export function readControlToken(pylonHome: string): string | null {
   const tokenPath = join(pylonHome, "control-token")
@@ -361,6 +399,79 @@ async function fetchCoordinatorPausedFlag(input: { baseUrl: string; token: strin
     return typeof r?.paused === "boolean" ? r.paused : null
   } catch {
     return null
+  }
+}
+
+export async function fetchAppleFmReadiness(input: {
+  baseUrl: string
+  token: string
+  fetchFn?: typeof fetch
+}): Promise<AppleFmReadinessResponse> {
+  const fetchFn = input.fetchFn ?? fetch
+  const fetchedAt = new Date().toISOString()
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "apple_fm.status" }),
+    })
+    if (!res.ok) {
+      return appleFmUnavailableProjection({
+        fetchedAt,
+        localPylonReady: true,
+        blockerRef: "blocker.autopilot.apple_fm.control_request_failed",
+        error: `control ${res.status}`,
+      })
+    }
+
+    const json = (await res.json()) as { ok?: unknown; result?: Record<string, unknown> }
+    const result = json.ok === true && json.result && typeof json.result === "object"
+      ? json.result
+      : null
+    if (result === null) {
+      return appleFmUnavailableProjection({
+        fetchedAt,
+        localPylonReady: true,
+        blockerRef: "blocker.autopilot.apple_fm.control_response_malformed",
+      })
+    }
+
+    const blockerRefs = stringArray(result.blockerRefs)
+    const advertisedCapabilities = stringArray(result.advertisedCapabilities)
+    const capability = requiredString(result.capability, "probe.backend.apple_fm_bridge")
+    const available = result.available === true
+    const status = requiredString(result.status, available ? "ready" : "unavailable")
+    const ok = available &&
+      status === "ready" &&
+      advertisedCapabilities.includes(capability) &&
+      blockerRefs.length === 0
+
+    return {
+      ok,
+      fetchedAt,
+      sourceUrl: "desktop:apple-fm-readiness",
+      localPylonReady: true,
+      available,
+      status,
+      backendKind: requiredString(result.backendKind, "apple_fm_bridge"),
+      profileId: requiredString(result.profileId, "apple-fm-local"),
+      model: requiredString(result.model, "apple-foundation-model"),
+      capability,
+      advertisedCapabilities,
+      baseUrl: requiredString(result.baseUrl, "http://127.0.0.1:11435"),
+      platform: optionalString(result.platform),
+      version: optionalString(result.version),
+      unavailableReason: optionalString(result.unavailableReason),
+      message: optionalString(result.message),
+      blockerRefs,
+    }
+  } catch (e) {
+    return appleFmUnavailableProjection({
+      fetchedAt,
+      localPylonReady: true,
+      blockerRef: "blocker.autopilot.apple_fm.control_unreachable",
+      error: e instanceof Error ? e.message : "unavailable",
+    })
   }
 }
 

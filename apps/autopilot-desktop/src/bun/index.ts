@@ -29,6 +29,7 @@ import { projectInstallReadiness } from "../shared/install-readiness"
 import {
   cancelSession,
   deployToCloud,
+  fetchAppleFmReadiness,
   fetchNodeState,
   readControlToken,
   resolveApproval,
@@ -50,6 +51,7 @@ import {
   requestTrainingBootstrapGrant,
 } from "./training-runs"
 import type {
+  AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
   BuiltInAgentStartResponse,
   DesktopRPCSchema,
@@ -302,13 +304,44 @@ function builtInAgentReadinessProjection(): BuiltInAgentReadinessResponse {
   }
 }
 
+async function appleFmReadinessProjection(): Promise<AppleFmReadinessResponse> {
+  const home = resolveHome()
+  const controlToken = home === null ? null : readControlToken(home)
+  if (home === null || controlToken === null) {
+    return {
+      ok: false,
+      fetchedAt: new Date().toISOString(),
+      sourceUrl: "desktop:apple-fm-readiness",
+      localPylonReady: false,
+      available: false,
+      status: "unreachable",
+      backendKind: "apple_fm_bridge",
+      profileId: "apple-fm-local",
+      model: "apple-foundation-model",
+      capability: "probe.backend.apple_fm_bridge",
+      advertisedCapabilities: [],
+      baseUrl: "http://127.0.0.1:11435",
+      platform: null,
+      version: null,
+      unavailableReason: "bridge_unreachable",
+      message: "Waiting for local Pylon control before checking Apple FM.",
+      blockerRefs: ["blocker.autopilot.apple_fm.local_pylon_offline"],
+    }
+  }
+
+  return fetchAppleFmReadiness({
+    baseUrl: controlBaseUrl,
+    token: controlToken,
+  })
+}
+
 function runtimeKind(): "source" | "packaged" {
   return PATHS.RESOURCES_FOLDER.includes(".app/Contents/Resources")
     ? "packaged"
     : "source"
 }
 
-function installReadinessProjection(): InstallReadinessResponse {
+async function installReadinessProjection(): Promise<InstallReadinessResponse> {
   const home = resolveHome()
   const controlToken = home === null ? null : readControlToken(home)
   return projectInstallReadiness({
@@ -320,6 +353,7 @@ function installReadinessProjection(): InstallReadinessResponse {
     pylonHomePresent: home !== null,
     controlTokenPresent: controlToken !== null,
     builtInAgentReadiness: builtInAgentReadinessProjection(),
+    appleFmReadiness: await appleFmReadinessProjection(),
     autoUpdateDisabledReason: autoUpdateDisabledReason(Bun.env),
   })
 }
@@ -390,6 +424,9 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       async startBuiltInAgent() {
         return startBuiltInAgentSession()
+      },
+      async appleFmReadiness() {
+        return appleFmReadinessProjection()
       },
       async installReadiness() {
         return installReadinessProjection()

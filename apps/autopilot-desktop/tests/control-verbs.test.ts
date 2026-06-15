@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   cancelSession,
+  fetchAppleFmReadiness,
   fetchNodeState,
   resolveApproval,
   setCoordinatorPaused,
@@ -148,5 +149,63 @@ describe("CL-46 control verbs", () => {
     expect(state.wallet?.balanceSats).toBe(1234)
     expect(state.assignments[0]?.paymentMode).toBe("credits")
     expect(state.coordinatorPaused).toBe(true)
+  })
+
+  test("fetchAppleFmReadiness normalizes ready Pylon status", async () => {
+    let captured: Record<string, unknown> | null = null
+    const readiness = await fetchAppleFmReadiness({
+      ...base,
+      fetchFn: (async (url: string, init?: RequestInit) => {
+        captured = init?.body ? JSON.parse(String(init.body)) : null
+        return new Response(JSON.stringify({
+          ok: true,
+          result: {
+            backendKind: "apple_fm_bridge",
+            profileId: "apple-fm-local",
+            model: "apple-foundation-model",
+            capability: "probe.backend.apple_fm_bridge",
+            advertisedCapabilities: ["probe.backend.apple_fm_bridge"],
+            available: true,
+            status: "ready",
+            baseUrl: "http://127.0.0.1:11435",
+            platform: "darwin-arm64",
+            version: "fake-bridge",
+            blockerRefs: [],
+          },
+        }), { status: 200 })
+      }) as unknown as typeof fetch,
+    })
+
+    expect(captured).toMatchObject({ type: "apple_fm.status" })
+    expect(readiness.ok).toBe(true)
+    expect(readiness.available).toBe(true)
+    expect(readiness.advertisedCapabilities).toContain("probe.backend.apple_fm_bridge")
+    expect(readiness.blockerRefs).toEqual([])
+  })
+
+  test("fetchAppleFmReadiness preserves unsupported blocker refs", async () => {
+    const readiness = await fetchAppleFmReadiness({
+      ...base,
+      fetchFn: stubFetch({
+        "apple_fm.status": {
+          ok: true,
+          result: {
+            available: false,
+            status: "unsupported",
+            unavailableReason: "unsupported_hardware",
+            message: "device not eligible",
+            blockerRefs: [
+              "blocker.pylon.apple_fm.unsupported_hardware",
+              "blocker.pylon.apple_fm.live_health_not_ready",
+            ],
+          },
+        },
+      }),
+    })
+
+    expect(readiness.ok).toBe(false)
+    expect(readiness.status).toBe("unsupported")
+    expect(readiness.unavailableReason).toBe("unsupported_hardware")
+    expect(readiness.blockerRefs).toContain("blocker.pylon.apple_fm.unsupported_hardware")
   })
 })

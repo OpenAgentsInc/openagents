@@ -38,6 +38,7 @@ import { html } from "foldkit/html"
 
 import type {
   AccountRow,
+  AppleFmReadinessResponse,
   ApprovalRow,
   AssignmentRow,
   IntentRow,
@@ -85,6 +86,7 @@ import {
   ClickedRefreshInstallReadiness,
   ClickedRefreshPromiseSurfacing,
   ClickedRefreshBuiltInAgent,
+  ClickedRefreshAppleFm,
   ClickedRefreshTrainingRuns,
   ClickedQueueTrainingLaunch,
   ClickedResolveApproval,
@@ -93,6 +95,7 @@ import {
   ClickedSpawn,
   ClickedSubmitIntent,
   ClickedSurfacePromiseGap,
+  SelectedAgentMode,
   SelectedTrainingSceneNode,
   type Message,
   NavigatedTo,
@@ -126,6 +129,7 @@ import {
   modelTrainingEvidencePacketBuild,
   modelTrainingEvidencePacketSummary,
   modelTrainingLease,
+  modelAppleFmReadiness,
   modelBuiltInAgentReadiness,
   modelInstallReadiness,
   modelPromiseSurfacingReadiness,
@@ -2936,6 +2940,28 @@ const builtInAgentStatusText = (
   return "blocked"
 }
 
+const appleFmStatusText = (
+  readiness: AppleFmReadinessResponse | null,
+): string => {
+  if (readiness === null) return "not checked"
+  if (readiness.ok) return "ready"
+  if (!readiness.localPylonReady) return "local node offline"
+  if (readiness.unavailableReason === "unsupported_hardware") return "unsupported"
+  if (readiness.unavailableReason === "apple_intelligence_disabled") return "Apple Intelligence disabled"
+  if (readiness.unavailableReason === "bridge_unreachable") return "bridge missing"
+  if (readiness.status === "malformed") return "malformed health"
+  return readiness.status === "unreachable" ? "unavailable" : "blocked"
+}
+
+const appleFmDetailText = (
+  readiness: AppleFmReadinessResponse | null,
+): string =>
+  readiness === null
+    ? "Local Foundation Models through Pylon."
+    : readiness.ok
+      ? `${readiness.model} · ${readiness.platform ?? "macOS"}`
+      : readiness.message ?? readiness.unavailableReason ?? "Local Apple FM is not ready."
+
 const promiseSurfacingReadinessText = (
   readiness: PromiseSurfacingReadinessResponse | null,
 ): string => {
@@ -3128,15 +3154,20 @@ const promiseSurfacingCard = (model: Model): Html => {
 
 const builtInAgentPane = (model: Model): Html => {
   const readiness = modelBuiltInAgentReadiness(model)
+  const appleFmReadiness = modelAppleFmReadiness(model)
   const blockers = readiness?.blockerRefs ?? []
-  const canStart = readiness === null || readiness.ok
+  const appleFmBlockers = appleFmReadiness?.blockerRefs ?? []
+  const hostedSelected = model.agentMode === "hosted"
+  const localSelected = model.agentMode === "local-apple-fm"
+  const canStart = (readiness === null || readiness.ok) && hostedSelected
   const statusVisible = model.builtInAgentStatus.tone !== "idle"
+  const appleStatusVisible = model.appleFmStatus.tone !== "idle"
 
   return h.div(
     [],
     [
       paneTitle("Agent"),
-      card("Built-in Agent", [
+      card("Hosted OpenAgents Compute", [
         h.p([cls("card-body")], [
           "Status: ",
           h.strong([], [builtInAgentStatusText(readiness)]),
@@ -3165,6 +3196,10 @@ const builtInAgentPane = (model: Model): Html => {
           "Lane: ",
           h.strong([], [readiness ? spawnLaneLabel(readiness.lane) : "Google GCE"]),
         ]),
+        h.p([cls("card-body")], [
+          "Mode: ",
+          h.strong([], [hostedSelected ? "selected" : "available"]),
+        ]),
         blockers.length > 0
           ? h.ul(
               [cls("empty-state mono")],
@@ -3181,12 +3216,26 @@ const builtInAgentPane = (model: Model): Html => {
           [
             h.button(
               [
+                cls(`adapter-btn${hostedSelected ? " active" : ""}`),
+                h.Type("button"),
+                h.OnClick(SelectedAgentMode({ mode: "hosted" })),
+              ],
+              [hostedSelected ? "Hosted selected" : "Use hosted"],
+            ),
+            h.button(
+              [
                 cls("primary-button"),
                 h.Type("button"),
                 h.Disabled(model.builtInAgentPending || !canStart),
                 h.OnClick(ClickedStartBuiltInAgent()),
               ],
-              [model.builtInAgentPending ? "Going online..." : "Go online"],
+              [
+                model.builtInAgentPending
+                  ? "Going online..."
+                  : hostedSelected
+                    ? "Go online"
+                    : "Select hosted first",
+              ],
             ),
             h.button(
               [
@@ -3199,6 +3248,59 @@ const builtInAgentPane = (model: Model): Html => {
             ),
           ],
         ),
+      ]),
+      card("Local Apple FM", [
+        h.p([cls("card-body")], [
+          "Status: ",
+          h.strong([], [appleFmStatusText(appleFmReadiness)]),
+        ]),
+        h.p([cls("card-body")], [
+          "Compute: ",
+          h.strong([], ["on-device Apple Foundation Models"]),
+        ]),
+        h.p([cls("card-body")], [
+          "Bridge: ",
+          h.strong([], [appleFmReadiness?.baseUrl ?? "Pylon loopback"]),
+        ]),
+        h.p([cls("card-body")], [
+          "Mode: ",
+          h.strong([], [localSelected ? "selected" : "optional"]),
+        ]),
+        h.p([cls("card-body")], [appleFmDetailText(appleFmReadiness)]),
+        appleFmBlockers.length > 0
+          ? h.ul(
+              [cls("empty-state mono")],
+              appleFmBlockers.map((blocker) => h.li([], [blocker])),
+            )
+          : h.empty,
+        localSelected && appleFmBlockers.length > 0
+          ? h.p([cls("spawn-status spawn-info")], [
+              appleFmBlockers[0] ?? "local Apple FM blocked",
+            ])
+          : appleStatusVisible
+            ? h.p([cls(`spawn-status spawn-${model.appleFmStatus.tone}`)], [
+                model.appleFmStatus.text,
+              ])
+            : h.p([cls("spawn-status")], [" "]),
+        h.div([cls("adapter-toggle")], [
+          h.button(
+            [
+              cls(`adapter-btn${localSelected ? " active" : ""}`),
+              h.Type("button"),
+              h.OnClick(SelectedAgentMode({ mode: "local-apple-fm" })),
+            ],
+            [localSelected ? "Local selected" : "Use local Apple FM"],
+          ),
+          h.button(
+            [
+              cls("adapter-btn"),
+              h.Type("button"),
+              h.Disabled(model.appleFmPending),
+              h.OnClick(ClickedRefreshAppleFm()),
+            ],
+            [model.appleFmPending ? "Checking..." : "Refresh local"],
+          ),
+        ]),
       ]),
       promiseSurfacingCard(model),
     ],

@@ -14,6 +14,7 @@ import { ts } from "foldkit/schema"
 import type { NotificationCenterView } from "@openagentsinc/autopilot-control-protocol"
 import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
 import type {
+  AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
   InstallReadinessResponse,
   NodeStateMessage,
@@ -80,6 +81,15 @@ export const BuiltInAgentStatus = S.Struct({
 })
 export type BuiltInAgentStatus = typeof BuiltInAgentStatus.Type
 
+export const AgentMode = S.Literals(["hosted", "local-apple-fm"])
+export type AgentMode = typeof AgentMode.Type
+
+export const AppleFmStatus = S.Struct({
+  text: S.String,
+  tone: S.Literals(["error", "info", "success", "idle"]),
+})
+export type AppleFmStatus = typeof AppleFmStatus.Type
+
 export const InstallReadinessStatus = S.Struct({
   text: S.String,
   tone: S.Literals(["error", "info", "success", "idle"]),
@@ -142,6 +152,10 @@ export const Model = ts("AutopilotDesktop", {
   builtInAgentReadiness: S.NullOr(S.Unknown),
   builtInAgentStatus: BuiltInAgentStatus,
   builtInAgentPending: S.Boolean,
+  appleFmReadiness: S.NullOr(S.Unknown),
+  appleFmStatus: AppleFmStatus,
+  appleFmPending: S.Boolean,
+  agentMode: AgentMode,
 
   // #5064: first-run/install health projection. Bun composes local node
   // status, hosted-agent readiness, platform/runtime, and auto-update state.
@@ -275,6 +289,11 @@ export const modelBuiltInAgentReadiness = (
 ): BuiltInAgentReadinessResponse | null =>
   model.builtInAgentReadiness as BuiltInAgentReadinessResponse | null
 
+export const modelAppleFmReadiness = (
+  model: Model,
+): AppleFmReadinessResponse | null =>
+  model.appleFmReadiness as AppleFmReadinessResponse | null
+
 export const modelInstallReadiness = (
   model: Model,
 ): InstallReadinessResponse | null =>
@@ -356,6 +375,10 @@ export const initialModel: Model = Model.make({
   builtInAgentReadiness: null,
   builtInAgentStatus: { text: "not checked", tone: "idle" },
   builtInAgentPending: false,
+  appleFmReadiness: null,
+  appleFmStatus: { text: "not checked", tone: "idle" },
+  appleFmPending: false,
+  agentMode: "hosted",
   installReadiness: null,
   installReadinessStatus: { text: "not checked", tone: "idle" },
   installReadinessPending: false,

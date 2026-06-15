@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-15.8')
+    expect(decoded.version).toBe('2026-06-15.9')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -318,7 +318,11 @@ describe('public product promises document', () => {
             'apps/pylon/src/node/apple-fm-status.ts',
             'apps/pylon/tests/apple-fm-bridge-helper.test.ts',
             'apps/pylon/tests/control-protocol.test.ts',
+            'apps/autopilot-desktop/src/bun/pylon-control.ts',
+            'apps/autopilot-desktop/src/shared/rpc.ts',
             'apps/autopilot-desktop/src/shared/install-readiness.ts',
+            'apps/autopilot-desktop/src/ui/view.ts',
+            'apps/autopilot-desktop/tests/cl-53-sanitize.test.ts',
           ]),
           promiseId: 'autopilot.local_apple_fm_tool_chat.v1',
           state: 'planned',
@@ -334,18 +338,21 @@ describe('public product promises document', () => {
     expect(localAppleFmPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.local_apple_fm_bridge_helper_missing',
     )
+    expect(localAppleFmPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.local_apple_fm_desktop_readiness_ui_missing',
+    )
   })
 
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-15.8', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-15.9', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-15.8',
+      expectedVersion: '2026-06-15.9',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-15.8',
+      servedVersion: '2026-06-15.9',
       status: 'ready',
     })
     expect(
@@ -355,7 +362,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-15.8',
+      servedVersion: '2026-06-15.9',
       status: 'blocked',
     })
   })

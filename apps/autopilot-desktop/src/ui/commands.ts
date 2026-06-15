@@ -14,6 +14,7 @@ import {
   FailedCoordinatorToggle,
   FailedBuiltInAgent,
   FailedSpawn,
+  GotAppleFmReadiness,
   GotBuiltInAgentReadiness,
   GotInstallReadiness,
   GotPromiseSurfacingReadiness,
@@ -165,6 +166,27 @@ const emptyBuiltInAgentReadinessProjection = (error: string) => ({
   error,
 })
 
+const emptyAppleFmReadinessProjection = (error: string) => ({
+  ok: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:apple-fm-readiness" as const,
+  localPylonReady: false,
+  available: false,
+  status: "unreachable",
+  backendKind: "apple_fm_bridge",
+  profileId: "apple-fm-local",
+  model: "apple-foundation-model",
+  capability: "probe.backend.apple_fm_bridge",
+  advertisedCapabilities: [],
+  baseUrl: "http://127.0.0.1:11435",
+  platform: null,
+  version: null,
+  unavailableReason: "bridge_unreachable",
+  message: error,
+  blockerRefs: ["desktop.apple_fm.readiness_request_failed"],
+  error,
+})
+
 const emptyInstallReadinessProjection = (error: string) => ({
   ok: false,
   fetchedAt: new Date().toISOString(),
@@ -177,6 +199,7 @@ const emptyInstallReadinessProjection = (error: string) => ({
   controlTokenPresent: false,
   localPylonReady: false,
   builtInAgentReady: false,
+  appleFmReady: false,
   userApiKeyRequired: false as const,
   autoUpdateEnabled: false,
   highestRoiAction: "Open Settings",
@@ -381,6 +404,23 @@ export const StartBuiltInAgent = Command.define(
     ),
     Effect.catch((error) =>
       Effect.succeed(FailedBuiltInAgent({ error: errorText(error) })),
+    ),
+  ),
+)
+
+export const LoadAppleFmReadiness = Command.define(
+  "LoadAppleFmReadiness",
+  {},
+  GotAppleFmReadiness,
+)(() =>
+  Effect.tryPromise(() => getRequest().appleFmReadiness({})).pipe(
+    Effect.map((projection) => GotAppleFmReadiness({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotAppleFmReadiness({
+          projection: emptyAppleFmReadinessProjection(errorText(error)),
+        }),
+      ),
     ),
   ),
 )

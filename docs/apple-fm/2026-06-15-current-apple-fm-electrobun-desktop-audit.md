@@ -12,10 +12,12 @@ The current codebase already has the Apple FM backend contract in Pylon runtime.
 It now also has a token-authenticated Pylon control projection,
 `apple_fm.status`, that reports live Apple FM readiness from the existing
 runtime health/capability code, plus a buildable in-tree Swift Foundation
-Models bridge helper at `apps/pylon/swift/foundation-bridge`. It does not yet
-have Autopilot Desktop launch/supervision, desktop UI/RPC projection, or a
-full local chat/tool runner that lets the installer truthfully say "local Apple
-FM is ready."
+Models bridge helper at `apps/pylon/swift/foundation-bridge`. Autopilot
+Desktop now consumes the Pylon readiness projection through Bun-owned RPC and
+renders hosted OpenAgents compute separately from local Apple FM mode. It does
+not yet have bridge-helper launch/supervision, a local chat/tool session runner,
+or admitted-Mac desktop smoke evidence that lets the installer truthfully say
+"local Apple FM chat/tool mode works."
 
 The integration path should be:
 
@@ -57,10 +59,10 @@ Autopilot Desktop lives at `apps/autopilot-desktop`. Its local contract is:
   `apps/autopilot-desktop/src/ui/view.ts` connect the Foldkit webview to the
   typed RPC surface.
 
-The desktop already has a good seam for Apple FM because the Bun host owns all
-privileged local work. The missing part is adding Apple FM as another
-public-safe readiness/capability projection beside the existing local-node and
-built-in hosted-agent projections.
+The desktop has the right seam for Apple FM because the Bun host owns all
+privileged local work. #5071 now adds Apple FM as another public-safe
+readiness/capability projection beside the existing local-node and built-in
+hosted-agent projections.
 
 ## Current Desktop Behavior
 
@@ -75,20 +77,20 @@ The current app does these things well:
   Settings.
 - It exposes a no-user-key built-in agent path through hosted OpenAgents
   compute.
+- It calls Pylon control `apple_fm.status` through Bun-owned RPC and exposes
+  `appleFmReadiness` to the webview.
+- It includes local Apple FM as an optional first-run readiness item without
+  making optional local mode block hosted compute.
+- It shows hosted OpenAgents compute and local Apple FM as distinct Agent pane
+  modes, with local blocker refs visible.
 - It keeps hosted compute credentials and Pylon control tokens out of the
   webview.
 
 The current app does not yet do these Apple FM-specific things:
 
 - It does not bundle, launch, or supervise the Foundation Models bridge helper.
-- It does not call Pylon control `apple_fm.status`.
-- It does not expose `appleFmReadiness` or `localBackendReadiness` in
-  `DesktopRPCSchema`.
-- It does not include Apple FM in `InstallReadinessResponse.items`.
-- It does not show Apple FM health in the Agent pane.
-- It does not advertise local Apple FM as the backend for "Go online."
-- It does not distinguish "Apple Silicon present" from "Foundation Models
-  bridge live and Apple Intelligence enabled."
+- It does not run local Apple FM chat/tool sessions from the Agent pane.
+- It does not advertise local Apple FM as the backend for "Go online" yet.
 
 ## Current Pylon Runtime Apple FM Implementation
 
@@ -578,9 +580,9 @@ Packaging tests:
    capability/health code.
 2. Done: restore a buildable Swift Foundation Models bridge helper and Pylon
    helper discovery rules.
-3. Add desktop Bun fetch/RPC support for Apple FM readiness.
-4. Extend desktop install readiness and Agent pane with Apple FM as an optional
-   local backend.
+3. Done: add desktop Bun fetch/RPC support for Apple FM readiness.
+4. Done: extend desktop install readiness and Agent pane with Apple FM as an
+   optional local backend.
 5. Add provider go-online capability declaration for
    `probe.backend.apple_fm_bridge`, gated by live health.
 6. Add admitted-Mac acceptance docs and live smoke evidence.
@@ -615,18 +617,20 @@ What is real:
 - Pylon `apple_fm.status` loopback control command with fake-bridge tests.
 - Buildable Swift Foundation Models bridge helper.
 - Pylon source/package bridge-helper discovery tests.
+- Desktop `appleFmReadiness` RPC through Bun-owned Pylon control.
+- Desktop first-run health item for optional local Apple FM.
+- Desktop Agent pane hosted/local mode cards with blocker refs.
 
 What is not connected yet:
 
 - Packaged helper resource.
-- Desktop Apple FM RPC.
-- Desktop first-run health item.
-- Desktop Agent pane local Apple FM route.
+- Desktop local Apple FM chat/tool session runner.
 - Provider go-online capability declaration.
 - Current admitted-Mac desktop smoke evidence.
 
 The next honest milestone is not "Apple FM works in desktop." It is:
 
-desktop `appleFmReadiness` consumes Pylon `apple_fm.status`, shows that same
-public-safe readiness state for a local bridge, and does so without exposing
-tokens or making Apple Silicon detection look like live model availability.
+a bounded local Apple FM chat/tool session runner that uses the ready
+projection, keeps callback/tool authority inside Bun/Pylon, and records
+public-safe smoke evidence without exposing prompts, files, tokens, or helper
+paths.
