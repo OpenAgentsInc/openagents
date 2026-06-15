@@ -65,10 +65,12 @@ export const mountPylonStats = (
   options: { fetchFn?: typeof fetch; intervalMs?: number } = {},
 ): PylonStatsHandle => {
   const controllers: Record<string, ReturnType<typeof slotText>> = {}
-  const initial = statValues(null)
+  // Show a loading placeholder ("…") until the first fetch lands, so the page
+  // never flashes "0" (which reads as "no pylons") before stats load.
+  const LOADING = '…'
   for (const stat of STATS) {
     const valueEl = root.querySelector<HTMLElement>(`[data-stat-value="${stat.key}"]`)
-    if (valueEl) controllers[stat.key] = slotText(valueEl, initial[stat.key] ?? '0', {})
+    if (valueEl) controllers[stat.key] = slotText(valueEl, LOADING, {})
   }
 
   let disposed = false
