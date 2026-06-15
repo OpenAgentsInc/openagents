@@ -1,4 +1,7 @@
-import { describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { execFileSync } from "node:child_process"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   ensureManagedNode,
@@ -49,6 +52,103 @@ describe("findPackagedPylonEntry", () => {
     expect(findPackagedPylonEntry(null, () => true)).toBeNull()
     expect(findPackagedPylonEntry("", () => true)).toBeNull()
   })
+})
+
+// #5027 (Phase 2): the empirical packaged layout. electrobun copies each
+// `build.copy` dest under `<RESOURCES_FOLDER>/app/`, and at runtime
+// `PATHS.RESOURCES_FOLDER` resolves to `<App>.app/Contents/Resources`. A `copy`
+// dest of `"pylon-node/index.js"` therefore lands at
+// `Contents/Resources/app/pylon-node/index.js`, which is exactly
+// `join(RESOURCES_FOLDER, PACKAGED_PYLON_DIR, "index.js")` — the path
+// `findPackagedPylonEntry` resolves. These tests prove that end to end against
+// the REAL filesystem (default `existsSync`), not a mocked predicate:
+//   1. a built-by-hand fixture mirroring the packaged tree, and
+//   2. when present, the actual `electrobun build` artifact (its `.tar.zst`
+//      extracted), so a layout/path drift in either electrobun or the launcher
+//      is caught.
+describe("findPackagedPylonEntry against a real packaged layout", () => {
+  let tmpRoot: string
+
+  beforeAll(() => {
+    tmpRoot = mkdtempSync(join(tmpdir(), "autopilot-desktop-pkg-"))
+  })
+
+  afterAll(() => {
+    rmSync(tmpRoot, { recursive: true, force: true })
+  })
+
+  it("resolves the bundled entry in a fixture mirroring Resources/app/pylon-node", () => {
+    // Mirror what electrobun produces: <Resources>/app/pylon-node/index.js.
+    const resourcesDir = join(tmpRoot, "Contents", "Resources")
+    const bundleDir = join(resourcesDir, "app", "pylon-node")
+    mkdirSync(bundleDir, { recursive: true })
+    const entry = join(bundleDir, "index.js")
+    writeFileSync(entry, "// bundled headless pylon node\n")
+
+    // Default fileExists (real existsSync) — proves the on-disk layout matches
+    // what PACKAGED_PYLON_DIR expects relative to RESOURCES_FOLDER.
+    const found = findPackagedPylonEntry(resourcesDir)
+    expect(found).toEqual({ entry, bundleDir })
+  })
+
+  // The actual `bun run build:canary` artifact, when it has been built. The
+  // launcher must resolve the entry inside the real `.app` payload. We extract
+  // the self-extracting `.tar.zst` (the runtime-installed tree) into a temp dir
+  // and point findPackagedPylonEntry at its Resources, with default existsSync.
+  const builtAppDir = join(
+    import.meta.dir,
+    "..",
+    "build",
+    "canary-macos-arm64",
+    "Autopilot Desktop-canary.app",
+    "Contents",
+    "Resources",
+  )
+  const builtTarball = existsSync(builtAppDir)
+    ? // find the single *.tar.zst payload next to metadata.json
+      (() => {
+        try {
+          const out = execFileSync("/bin/sh", [
+            "-c",
+            `ls "${builtAppDir}"/*.tar.zst 2>/dev/null | head -1`,
+          ])
+            .toString()
+            .trim()
+          return out.length > 0 ? out : null
+        } catch {
+          return null
+        }
+      })()
+    : null
+
+  const itIfBuilt = builtTarball ? it : it.skip
+  itIfBuilt(
+    "resolves the bundled entry inside the real electrobun build artifact",
+    () => {
+      const extractDir = join(tmpRoot, "extracted")
+      mkdirSync(extractDir, { recursive: true })
+      // Extract the self-extracting payload to the on-disk tree the runtime sees.
+      execFileSync("/usr/bin/tar", [
+        "--zstd",
+        "-xf",
+        builtTarball as string,
+        "-C",
+        extractDir,
+      ])
+      const resourcesDir = join(
+        extractDir,
+        "Autopilot Desktop-canary.app",
+        "Contents",
+        "Resources",
+      )
+      const found = findPackagedPylonEntry(resourcesDir)
+      expect(found).not.toBeNull()
+      expect(found?.entry).toBe(
+        join(resourcesDir, "app", "pylon-node", "index.js"),
+      )
+      expect(existsSync(found?.entry as string)).toBe(true)
+    },
+  )
 })
 
 describe("ensureManagedNode", () => {
