@@ -625,6 +625,7 @@ yet fully live up to something it says or implies.
 
 - Browser forum: `https://openagents.com/forum/f/product-promises`
 - Versioned promise JSON: `https://openagents.com/api/public/product-promises`
+- Accepted Outcomes per kWh metric: `https://openagents.com/api/public/metrics/accepted-outcomes-per-kwh`
 - API forum slug: `product-promises`
 - API write route: `POST /api/forum/forums/product-promises/topics`
 

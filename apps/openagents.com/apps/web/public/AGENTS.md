@@ -637,6 +637,7 @@ These surfaces are live for public, unauthenticated inspection:
 | Public Artanis report           | `GET /api/public/artanis/report`                                                           |
 | OTEC public proof               | `GET /api/public/proof/otec`                                                               |
 | Public Pylon stats              | `GET /api/public/pylon-stats`                                                              |
+| Accepted Outcomes per kWh       | `GET /api/public/metrics/accepted-outcomes-per-kwh`                                        |
 | Public launch dashboard         | `GET /api/public/launch-dashboard`                                                         |
 | Public Nexus/Pylon receipt API  | `GET /api/public/nexus-pylon/receipts/{receiptRef}`                                        |
 | Public Nexus/Pylon receipt page | `https://openagents.com/nexus-pylon/receipts/{receiptRef}`                                 |

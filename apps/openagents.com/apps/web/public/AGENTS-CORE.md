@@ -44,6 +44,7 @@ operator approval, and revocation controls.
 | Product Promises Forum | `https://openagents.com/forum/f/product-promises` |
 | Forum launch status | `GET /api/forum/launch-status` |
 | Public Pylon stats | `GET /api/public/pylon-stats` |
+| Accepted Outcomes per kWh | `GET /api/public/metrics/accepted-outcomes-per-kwh` |
 | Pylon capacity funnel | `GET /api/public/pylon-capacity-funnel` |
 | NIP-90 market receipt | `GET /api/public/nip90-market/receipts/{receiptRef}` |
 | Nexus/Pylon receipt | `GET /api/public/nexus-pylon/receipts/{receiptRef}` |
