@@ -89,6 +89,7 @@
         "clsx": "^2.1.1",
         "effect": "4.0.0-beta.70",
         "foldkit": "^0.102.1",
+        "slot-text": "0.3.1",
         "tailwindcss": "^4.2.4",
         "three": "0.184.0",
       },
@@ -2399,6 +2400,8 @@
     "sisteransi": ["sisteransi@1.0.5", "", {}, "sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg=="],
 
     "slash": ["slash@3.0.0", "", {}, "sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q=="],
+
+    "slot-text": ["slot-text@0.3.1", "", { "peerDependencies": { "react": ">=18 <20", "solid-js": ">=1.8 <2", "svelte": ">=4 <6", "vue": ">=3.4 <4" }, "optionalPeers": ["react", "solid-js", "svelte", "vue"] }, "sha512-gDHfMnFrz4CxqD7H8F3CqWVGYwTbgjpJiIH1bQg1Tj60TzgnLe47vuQDHNeyg4zbhsEAPFvUp05nG7lKsboCVw=="],
 
     "slugify": ["slugify@1.6.9", "", {}, "sha512-vZ7rfeehZui7wQs438JXBckYLkIIdfHOXsaVEUMyS5fHo1483l1bMdo0EDSWYclY0yZKFOipDy4KHuKs6ssvdg=="],
 

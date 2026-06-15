@@ -314,6 +314,7 @@ describe('authenticated startup routing', () => {
       Scene.with(model),
       Scene.expect(Scene.selector('[data-route="pylon"]')).toExist(),
       Scene.expect(Scene.selector('oa-pylon')).toExist(),
+      Scene.expect(Scene.selector('oa-pylon-countdown')).toExist(),
     )
   })
 
