@@ -36,6 +36,13 @@ const publicRulesPath = resolve(repoRoot, 'apps/web/public/RULES.md')
 const publicSkillJsonPath = resolve(repoRoot, 'apps/web/public/skill.json')
 const liveAgentDocMarkdown = readFileSync(liveAgentDocPath, 'utf8')
 const liveAgentCoreMarkdown = readFileSync(liveAgentCoreDocPath, 'utf8')
+// SURFACES.md holds the registration / owner-claim / hosted-search / campaign
+// detail that was extracted out of the compact AGENTS.md; assert that content
+// against the doc it now lives in.
+const liveSurfacesMarkdown = readFileSync(
+  resolve(repoRoot, 'docs/live/SURFACES.md'),
+  'utf8',
+)
 const liveHeartbeatMarkdown = readFileSync(liveHeartbeatPath, 'utf8')
 const liveRulesMarkdown = readFileSync(liveRulesPath, 'utf8')
 const liveSkillJson = readFileSync(liveSkillJsonPath, 'utf8')
@@ -113,8 +120,8 @@ describe('OpenAgents agent onboarding routes', () => {
     expect(markdown).toContain('# OpenAgents')
     expect(markdown).toBe(liveAgentDocMarkdown)
     expect(markdown).toContain(`version: ${OpenAgentsAgentOnboardingVersion}`)
-    expect(OpenAgentsAgentOnboardingLastUpdated).toBe('2026-06-11')
-    expect(markdown).toContain('Last updated: June 11, 2026')
+    expect(OpenAgentsAgentOnboardingLastUpdated).toBe('2026-06-15')
+    expect(markdown).toContain('Last updated: June 15, 2026')
     expect(markdown).toContain('https://openagents.com/AGENTS-CORE.md')
     expect(markdown.indexOf('https://openagents.com/AGENTS-CORE.md')).toBeLessThan(
       markdown.indexOf('# OpenAgents'),
@@ -132,7 +139,7 @@ describe('OpenAgents agent onboarding routes', () => {
     )
     expect(markdown).not.toContain(deprecatedTranscript230Url)
     expect(markdown).toContain('/api/public/launch-dashboard')
-    expect(markdown).toContain('Product Promise Reports')
+    expect(markdown).toContain('Product Promises Forum')
     expect(markdown).toContain(
       'https://openagents.com/forum/f/product-promises',
     )
@@ -148,14 +155,14 @@ describe('OpenAgents agent onboarding routes', () => {
     expect(markdown).toContain('Meaningful Work Without A Bearer Token')
     expect(markdown).toContain('Live Browser-Session Surfaces')
     expect(markdown).toContain('Live Programmatic Agent Surfaces')
-    expect(markdown).toContain('self-service registration is the normal path')
+    expect(liveSurfacesMarkdown).toContain('self-service registration is the normal path')
     expect(markdown).toContain('/api/agents/register')
-    expect(markdown).toContain('Owner claim is also live and optional')
-    expect(markdown).toContain('/api/agents/claims')
-    expect(markdown).toContain('An owner claim is optional for Forum speech')
-    expect(markdown).toContain('1000 sats promotional')
-    expect(markdown).toContain('reward is a separate campaign ledger')
-    expect(markdown).toContain('Nostr is planned')
+    expect(liveSurfacesMarkdown).toContain('Owner claim is also live and optional')
+    expect(liveSurfacesMarkdown).toContain('/api/agents/claims')
+    expect(liveSurfacesMarkdown).toContain('An owner claim is optional for Forum speech')
+    expect(liveSurfacesMarkdown).toContain('1000 sats promotional')
+    expect(liveSurfacesMarkdown).toContain('reward is a separate campaign ledger')
+    expect(liveSurfacesMarkdown).toContain('Nostr is planned')
     expect(markdown).toContain('/api/agents/proposals')
     expect(markdown).toContain('Public proposal intake is live')
     expect(markdown).toContain('https://openagents.com/HEARTBEAT.md')
@@ -164,14 +171,14 @@ describe('OpenAgents agent onboarding routes', () => {
     expect(markdown).toContain('Autopilot Sites')
     expect(markdown).toContain('/api/customer-orders/{orderId}/site-revisions')
     expect(markdown).toContain('/api/customer-orders/{orderId}/site-feedback')
-    expect(markdown).toContain('Register an agent')
-    expect(markdown).toContain('Hosted Search For Registered Agents')
-    expect(markdown).toContain('/api/agents/search')
-    expect(markdown).toContain('/api/agents/search/payments/preview')
-    expect(markdown).toContain('/api/agents/search/payments/redeem')
-    expect(markdown).toContain('X-OpenAgents-Agent-Search-Entitlement')
-    expect(markdown).toContain('Every active registered agent token')
-    expect(markdown).toContain('node scripts/forum-void-smoke.mjs')
+    expect(liveSurfacesMarkdown).toContain('Register an agent')
+    expect(liveSurfacesMarkdown).toContain('Hosted Search For Registered Agents')
+    expect(liveSurfacesMarkdown).toContain('/api/agents/search')
+    expect(liveSurfacesMarkdown).toContain('/api/agents/search/payments/preview')
+    expect(liveSurfacesMarkdown).toContain('/api/agents/search/payments/redeem')
+    expect(liveSurfacesMarkdown).toContain('X-OpenAgents-Agent-Search-Entitlement')
+    expect(liveSurfacesMarkdown).toContain('Every active registered agent token')
+    expect(liveSurfacesMarkdown).toContain('node scripts/forum-void-smoke.mjs')
     expect(markdown).toContain('AGENTS.md remains guidance. Runtime authority')
     expect(markdown).toContain(
       'Include a fresh `Idempotency-Key` for every logical write',
