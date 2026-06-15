@@ -149,14 +149,14 @@ describe('maintenance landing scene', () => {
           }),
       },
       Scene.with(LoggedOut.init(HomeRoute())),
-      // The homepage now carries the headline strip; the detailed
-      // panels live on /stats.
+      // The moved public homepage carries the headline strip; the detailed
+      // panels live on /stats-old.
       Scene.expect(Scene.text('Pylons online')).toExist(),
       Scene.expect(Scene.text('Pylons seen 24h')).toExist(),
       Scene.expect(Scene.text('Tip sats paid')).toExist(),
       Scene.expect(Scene.text('Tip sats settled')).toExist(),
       Scene.expect(Scene.text('Accepted-work sats')).toExist(),
-      Scene.expect(Scene.text('All network stats →')).toExist(),
+      Scene.expect(Scene.text('Detailed network stats →')).toExist(),
     )
   })
 

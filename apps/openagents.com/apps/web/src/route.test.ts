@@ -29,12 +29,14 @@ import {
   OrderDetailRoute,
   OrderRoute,
   PublicAgentRoute,
+  PublicStatsArchiveRoute,
   PublicTrainingRunRoute,
   PublicTrainingRunsRoute,
   PylonRoute,
   ShareRoute,
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
+  StatsRoute,
   urlToAppRoute,
 } from './route'
 
@@ -115,8 +117,19 @@ describe('app route parser', () => {
     expect(urlToAppRoute(appUrl('/moksha2'))).toEqual(Moksha2Route())
   })
 
-  test('accepts the Pylon scene route', () => {
+  test('uses the Pylon scene as the root route', () => {
+    expect(urlToAppRoute(appUrl('/'))).toEqual(PylonRoute())
+  })
+
+  test('keeps the explicit Pylon scene route alias', () => {
     expect(urlToAppRoute(appUrl('/pylon'))).toEqual(PylonRoute())
+  })
+
+  test('accepts public stats routes', () => {
+    expect(urlToAppRoute(appUrl('/stats'))).toEqual(StatsRoute())
+    expect(urlToAppRoute(appUrl('/stats-old'))).toEqual(
+      PublicStatsArchiveRoute(),
+    )
   })
 
   test('accepts the admin overview route', () => {

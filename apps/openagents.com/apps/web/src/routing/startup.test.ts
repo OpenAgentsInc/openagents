@@ -32,10 +32,12 @@ import {
   OnboardingRoute,
   OrderRoute,
   PublicAgentRoute,
+  PublicStatsArchiveRoute,
   PylonRoute,
   ShareRoute,
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
+  StatsRoute,
   TeamChatRoute,
   TeamProjectChatRoute,
 } from '../route'
@@ -91,11 +93,24 @@ const incompleteAuth = {
 }
 
 describe('startup route policy', () => {
-  test('keeps logged-out root visitors on the public homepage', () => {
-    expect(startupRouteForLoggedOut(HomeRoute())).toEqual({
+  test('keeps logged-out root visitors on the public Pylon scene', () => {
+    expect(startupRouteForLoggedOut(PylonRoute())).toEqual({
       _tag: 'LoggedOutStartupRoute',
       redirect: Option.none(),
-      route: { _tag: 'Home' },
+      route: { _tag: 'Pylon' },
+    })
+  })
+
+  test('keeps moved public stats routes available while logged out', () => {
+    expect(startupRouteForLoggedOut(StatsRoute())).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'Stats' },
+    })
+    expect(startupRouteForLoggedOut(PublicStatsArchiveRoute())).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'PublicStatsArchive' },
     })
   })
 
@@ -198,6 +213,26 @@ describe('startup route policy', () => {
       _tag: 'LoggedOutStartupRoute',
       redirect: Option.none(),
       route: pylonRoute,
+    })
+  })
+
+  test('keeps the stats archive public for every auth state', () => {
+    const archiveRoute = PublicStatsArchiveRoute()
+
+    expect(startupRouteForLoggedOut(archiveRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: archiveRoute,
+    })
+    expect(startupRouteForLoggedIn(archiveRoute, completeAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: archiveRoute,
+    })
+    expect(startupRouteForLoggedIn(archiveRoute, incompleteAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: archiveRoute,
     })
   })
 
@@ -340,7 +375,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Home' },
+      route: { _tag: 'Pylon' },
     })
   })
 
@@ -415,7 +450,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Home' },
+      route: { _tag: 'Pylon' },
     })
   })
 
@@ -428,7 +463,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Home' },
+      route: { _tag: 'Pylon' },
     })
   })
 
@@ -441,7 +476,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Home' },
+      route: { _tag: 'Pylon' },
     })
   })
 
@@ -461,6 +496,7 @@ describe('startup route policy', () => {
     expect(routeRequiresAuthBootstrap(MokshaRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(Moksha2Route())).toBe(false)
     expect(routeRequiresAuthBootstrap(PylonRoute())).toBe(false)
+    expect(routeRequiresAuthBootstrap(PublicStatsArchiveRoute())).toBe(false)
     expect(
       routeRequiresAuthBootstrap(
         SiteCheckoutDemoReturnRoute({ returnAction: 'status' }),

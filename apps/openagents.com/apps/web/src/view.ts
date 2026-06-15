@@ -419,7 +419,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (
     model._tag === 'LoggedOut' &&
-    (model.route._tag === 'Home' || model.route._tag === 'ProductPromises')
+    (model.route._tag === 'Home' ||
+      model.route._tag === 'Stats' ||
+      model.route._tag === 'PublicStatsArchive' ||
+      model.route._tag === 'ProductPromises')
   ) {
     const h = html<Message>()
 

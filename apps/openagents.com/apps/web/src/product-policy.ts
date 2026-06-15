@@ -156,6 +156,7 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'PublicAgent' &&
   route._tag !== 'PublicTrainingRuns' &&
   route._tag !== 'PublicTrainingRun' &&
+  route._tag !== 'PublicStatsArchive' &&
   route._tag !== 'Share' &&
   route._tag !== 'Moksha' &&
   route._tag !== 'Moksha2' &&
@@ -220,6 +221,7 @@ export const browserRouteProductIntents = {
   PersonalFile: 'files.personal.detail',
   ProductPromises: 'public.product-promises',
   PublicAgent: 'public.agent.profile',
+  PublicStatsArchive: 'public.stats.archive',
   PublicTrainingRun: 'public.training.run',
   PublicTrainingRuns: 'public.training.runs',
   Share: 'share.projection',

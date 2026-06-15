@@ -13,7 +13,7 @@ import {
   pylonStatsPanel,
 } from './home'
 
-// Public /stats page (split out of the homepage): the full evidence
+// Public /stats-old page (split out of the homepage): the full evidence
 // panels - pylon counters, forum tipping, accounting strip, claim
 // boundaries, endpoint manifest, and relay configuration - in one
 // place, leaving the homepage to lead with the agent instructions.

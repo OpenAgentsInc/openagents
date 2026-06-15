@@ -1098,15 +1098,22 @@ export const init = (route: LoggedOutRoute): Model =>
         ? LoadingPublicAdjutantActivity()
         : IdlePublicAdjutantActivity(),
     publicPylonStats:
-      route._tag === 'Home' || route._tag === 'PublicAgent'
+      route._tag === 'Home' ||
+      route._tag === 'Stats' ||
+      route._tag === 'PublicStatsArchive' ||
+      route._tag === 'PublicAgent'
         ? LoadingPublicPylonStats()
         : IdlePublicPylonStats(),
     publicForumLaunchStatus:
-      route._tag === 'Home'
+      route._tag === 'Home' ||
+      route._tag === 'Stats' ||
+      route._tag === 'PublicStatsArchive'
         ? LoadingPublicForumLaunchStatus()
         : IdlePublicForumLaunchStatus(),
     publicForumTipLeaderboards:
-      route._tag === 'Home'
+      route._tag === 'Home' ||
+      route._tag === 'Stats' ||
+      route._tag === 'PublicStatsArchive'
         ? LoadingPublicForumTipLeaderboards()
         : IdlePublicForumTipLeaderboards(),
     publicProductPromises:

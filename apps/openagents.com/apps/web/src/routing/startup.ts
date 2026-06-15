@@ -11,11 +11,11 @@ import {
 } from '../product-policy'
 import {
   type AppRoute,
-  HomeRoute,
   InviteRoute,
   LoggedInRoute,
   LoggedOutRoute,
   OnboardingRoute,
+  PylonRoute,
   homeRouter,
   inviteRouter,
   onboardingRouter,
@@ -81,6 +81,8 @@ export const startupRouteForLoggedOut = (
       'ProductPromises',
       'PublicTrainingRuns',
       'PublicTrainingRun',
+      'Stats',
+      'PublicStatsArchive',
       'Forum',
       'ForumForum',
       'ForumTopic',
@@ -103,13 +105,13 @@ export const startupRouteForLoggedOut = (
     ),
     M.tag('NotFound', () =>
       LoggedOutStartupRoute({
-        route: HomeRoute(),
+        route: PylonRoute(),
         redirect: Option.some(StartupRedirectToHome({ href: homeRouter() })),
       }),
     ),
     M.orElse(() =>
       LoggedOutStartupRoute({
-        route: HomeRoute(),
+        route: PylonRoute(),
         redirect: Option.some(StartupRedirectToHome({ href: homeRouter() })),
       }),
     ),
@@ -134,6 +136,7 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
     M.tag(
       'PublicAgent',
       'ProductPromises',
+      'PublicStatsArchive',
       'Share',
       'Moksha',
       'Moksha2',
@@ -210,6 +213,7 @@ const startupRouteForCompleteOnboarding = (
       'ProductPromises',
       'PublicTrainingRuns',
       'PublicTrainingRun',
+      'PublicStatsArchive',
       'Share',
       'Moksha',
       'Moksha2',

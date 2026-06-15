@@ -66,6 +66,12 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                   publicPylonStats: model.publicPylonStats,
                 }),
               Stats: () =>
+                Home.view({
+                  forumLaunchStatus: model.publicForumLaunchStatus,
+                  forumTipLeaderboards: model.publicForumTipLeaderboards,
+                  publicPylonStats: model.publicPylonStats,
+                }),
+              PublicStatsArchive: () =>
                 Stats.view({
                   forumLaunchStatus: model.publicForumLaunchStatus,
                   forumTipLeaderboards: model.publicForumTipLeaderboards,

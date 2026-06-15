@@ -58,6 +58,7 @@ export const DashboardRoute = r('Dashboard')
 export const BillingRoute = r('Billing')
 export const UsageRoute = r('Usage')
 export const StatsRoute = r('Stats')
+export const PublicStatsArchiveRoute = r('PublicStatsArchive')
 export const AdminRoute = r('Admin')
 export const MulletRoute = r('Mullet')
 export const ImagesRoute = r('Images')
@@ -130,6 +131,7 @@ export type DashboardRoute = typeof DashboardRoute.Type
 export type BillingRoute = typeof BillingRoute.Type
 export type UsageRoute = typeof UsageRoute.Type
 export type StatsRoute = typeof StatsRoute.Type
+export type PublicStatsArchiveRoute = typeof PublicStatsArchiveRoute.Type
 export type AdminRoute = typeof AdminRoute.Type
 export type MulletRoute = typeof MulletRoute.Type
 export type ImagesRoute = typeof ImagesRoute.Type
@@ -152,6 +154,7 @@ export type NotFoundRoute = typeof NotFoundRoute.Type
 export const LoggedOutRoute = S.Union([
   HomeRoute,
   StatsRoute,
+  PublicStatsArchiveRoute,
   InviteRoute,
   OnboardingRoute,
   DocsRoute,
@@ -258,6 +261,7 @@ export const AppRoute = S.Union([
   BillingRoute,
   UsageRoute,
   StatsRoute,
+  PublicStatsArchiveRoute,
   AdminRoute,
   MulletRoute,
   ImagesRoute,
@@ -282,7 +286,7 @@ export type LoggedOutRoute = typeof LoggedOutRoute.Type
 export type LoggedInRoute = typeof LoggedInRoute.Type
 export type AppRoute = typeof AppRoute.Type
 
-export const homeRouter = pipe(Route.root, Route.mapTo(HomeRoute))
+export const homeRouter = pipe(Route.root, Route.mapTo(PylonRoute))
 export const chatRouter = pipe(literal('autopilot'), Route.mapTo(ChatRoute))
 export const inviteRouter = pipe(literal('invite'), Route.mapTo(InviteRoute))
 export const onboardingRouter = pipe(
@@ -438,6 +442,10 @@ export const pylonRouter = pipe(literal('pylon'), Route.mapTo(PylonRoute))
 export const billingRouter = pipe(literal('billing'), Route.mapTo(BillingRoute))
 export const usageRouter = pipe(literal('usage'), Route.mapTo(UsageRoute))
 export const statsRouter = pipe(literal('stats'), Route.mapTo(StatsRoute))
+export const publicStatsArchiveRouter = pipe(
+  literal('stats-old'),
+  Route.mapTo(PublicStatsArchiveRoute),
+)
 export const adminRouter = pipe(literal('admin'), Route.mapTo(AdminRoute))
 export const mulletRouter = pipe(literal('mullet'), Route.mapTo(MulletRoute))
 export const imagesRouter = pipe(literal('images'), Route.mapTo(ImagesRoute))
@@ -572,6 +580,7 @@ const routeParser = Route.oneOf(
   blogRouter,
   billingRouter,
   usageRouter,
+  publicStatsArchiveRouter,
   statsRouter,
   adminRouter,
   mulletRouter,

@@ -77,22 +77,14 @@ describe('auth bootstrap flags', () => {
     window.history.replaceState({}, '', '/')
   })
 
-  test('requests the auth session on the root application route', async () => {
+  test('does not request the auth session on the root Pylon route', async () => {
     window.history.replaceState({}, '', '/')
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      Response.json({
-        authenticated: false,
-      }),
-    )
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
 
     const loadedFlags = await Effect.runPromise(flags)
 
     expect(loadedFlags.maybeAuth).toEqual(Option.none())
-    expect(fetchSpy).toHaveBeenCalledWith('/api/auth/session', {
-      cache: 'no-store',
-      credentials: 'include',
-      headers: { accept: 'application/json' },
-    })
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   test('does not request the auth session on unknown public paths', async () => {
@@ -364,37 +356,30 @@ describe('authenticated startup routing', () => {
     ])
   })
 
-  test('routes incomplete authenticated root visits to onboarding', () => {
+  test('keeps incomplete authenticated root visits on the public Pylon scene', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.some(authWithIncompleteOnboarding) }),
       appUrl('/'),
     )
 
     expect(model).toMatchObject({
-      _tag: 'LoggedIn',
-      route: { _tag: 'Onboarding' },
+      _tag: 'LoggedOut',
+      route: { _tag: 'Pylon' },
     })
-    expect(commands.map(command => command.name)).toEqual([
-      'InstallAccountMenuOutsideClick',
-      'LoadOnboardingRepositories',
-      'RedirectToOnboarding',
-    ])
+    expect(commands).toHaveLength(0)
   })
 
-  test('routes authenticated visitors without Core Team access to order status', () => {
+  test('keeps authenticated root visits on the public Pylon scene', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.some(authWithoutCoreTeam) }),
       appUrl('/'),
     )
 
     expect(model).toMatchObject({
-      _tag: 'LoggedIn',
-      route: { _tag: 'Order' },
+      _tag: 'LoggedOut',
+      route: { _tag: 'Pylon' },
     })
-    expect(commands.map(command => command.name)).toEqual([
-      'InstallAccountMenuOutsideClick',
-      'LoadCustomerOrders',
-    ])
+    expect(commands).toHaveLength(0)
   })
 
   test('redirects authenticated visitors without Core Team access away from invite', () => {
@@ -414,7 +399,7 @@ describe('authenticated startup routing', () => {
     ])
   })
 
-  test('keeps logged-out root visitors on the public homepage', () => {
+  test('keeps logged-out root visitors on the public Pylon scene', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.none() }),
       appUrl('/'),
@@ -422,7 +407,20 @@ describe('authenticated startup routing', () => {
 
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
-      route: { _tag: 'Home' },
+      route: { _tag: 'Pylon' },
+    })
+    expect(commands).toHaveLength(0)
+  })
+
+  test('serves the former public homepage from stats', () => {
+    const [model, commands] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/stats'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: { _tag: 'Stats' },
     })
     expect(commands.map(command => command.name)).toEqual([
       'LoadPublicPylonStats',
@@ -439,12 +437,9 @@ describe('authenticated startup routing', () => {
 
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
-      route: { _tag: 'Home' },
+      route: { _tag: 'Pylon' },
     })
     expect(commands.map(command => command.name)).toEqual([
-      'LoadPublicPylonStats',
-      'LoadPublicForumLaunchStatus',
-      'LoadPublicForumTipLeaderboards',
       'RedirectToHome',
     ])
   })
@@ -532,21 +527,17 @@ describe('authenticated startup routing', () => {
     ])
   })
 
-  test('defaults the root route to order status for team members', () => {
+  test('keeps authenticated root visits on the public Pylon scene', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.some(authWithTeam) }),
       appUrl('/'),
     )
 
     expect(model).toMatchObject({
-      _tag: 'LoggedIn',
-      route: { _tag: 'Order' },
-      auth: { teams: authWithTeam.teams },
+      _tag: 'LoggedOut',
+      route: { _tag: 'Pylon' },
     })
-    expect(commands.map(command => command.name)).toEqual([
-      'InstallAccountMenuOutsideClick',
-      'LoadCustomerOrders',
-    ])
+    expect(commands).toHaveLength(0)
   })
 
   test('loads the admin route for configured admins', () => {
