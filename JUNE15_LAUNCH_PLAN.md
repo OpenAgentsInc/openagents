@@ -583,3 +583,78 @@ the install seam #5011 (in progress).
   settlement-receipt ledger + projection seam.
 - **[#5010](https://github.com/OpenAgentsInc/openagents/issues/5010)** — Step E:
   verified-trace corpus surface.
+
+---
+
+## 13. Bonus stretch goal — the full distributed-training track
+
+The launch loop (§1–§10) is deliberately the **proof-and-data layer**: public
+Pylons *generate, validate, and evaluate* replay-verifiable executor-trace work,
+and accepted traces accumulate the corpus. That is the safe, shippable rung. The
+**bonus stretch goal** — if the launch loop clears and contributors want the next
+rung — is the full Psion/Tassadar **distributed model-training track**,
+culminating in *real public decentralized training*: public devices contributing
+model updates that can advance a shared checkpoint. This is upside, **not a
+launch-day claim**, and every rung is receipt-first.
+
+The one hard rule that makes the stretch safe (refined from "no public gradients,
+ever"): **no public gradient enters the _canonical_ optimizer until it passes
+quarantine, verification, canary evaluation, and promotion gates.** A trace is an
+artifact you can check before use; a gradient is an intervention that changes the
+model — so the gradient lane is a strictly higher trust tier and earns the
+checkpoint gate by gate. Full spec: [`docs/tassadar/RESEARCH_PLAN.md`](docs/tassadar/RESEARCH_PLAN.md)
+§5 (W5), the Pluralis roadmap
+([`docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md`](docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md),
+the #4855 lifecycle substrate), and the Psion buildout plan.
+
+### The ladder beyond the launch loop
+
+```
+Phase 0  public verified trace generation        ← TODAY'S LAUNCH (executor-trace)
+Phase 1  controlled student trained from traces   (W3; controlled GPUs only)
+Phase 2  public eval/validation of student ckpts
+Phase 3  public adapter / LoRA training windows   ┐ W5 — public model-update layer
+Phase 4  public small-model windows → quarantine  │   (accepted training window,
+Phase 5  promoted public updates → canonical ckpt ┘    quarantine optimizer, gates)
+```
+
+The W5 machinery each rung needs: the **accepted training window** unit
+(checkpoint + shard + config + seed + delta digest + loss stats + verification
+refs + acceptance + receipt); a **quarantine optimizer** (`canonical → quarantine
+→ promoted`); a **gradient verification ladder** (hash · recompute · replicate ·
+statistical · canary · downstream); **checkpoint lineage + rollback**;
+**dataset-shard authority**; **bandwidth-aware topology** (windowed/local-SGD, not
+global all-reduce); **device tiers**; **staged payout** (pending → provisional →
+accepted → settled → clawback); and **canary-eval promotion** judged on
+first-divergence metrics, not loss.
+
+### The training promise family (registry states, live `2026-06-14.6`)
+
+These are the promises the full track will move; all stay **red/yellow/planned**
+for the launch and flip only on receipts:
+
+| Promise | State | Rung |
+| --- | --- | --- |
+| `compute.tassadar_executor_poc.v1` | **green** | bounded executor PoC (replay only) |
+| `artanis.tassadar_evolution_loop.v1` | yellow | dispatch→verify→accumulate loop |
+| `training.verification_classes.v1` | yellow | exact-replay + verifier classes |
+| `training.device_capability_dataset.v1` | yellow | device tiers for roles |
+| `pylon.first_real_model_training_run.v1` | yellow | bounded two-device real-gradient demo |
+| `training.public_distributed_training_run.v1` | red | broad public run |
+| `training.monday_decentralized_training_launch.v1` | red | the launch headline (flips via #5014) |
+| `pylon.largest_decentralized_training_claim.v1` | red | gated on the #5016 count rule |
+| `models.tassadar_percepta_executor.v1` | red | the trained model (not claimed) |
+| `training.full_pipeline_program.v1` | planned | full pipeline program |
+| `training.model_ladder.v1` | planned | model-size ladder rungs |
+| `training.data_refinery_corpus.v1` | planned | corpus/data program |
+| `training.ablation_system.v1` | planned | ablation organ |
+| `training.marathon_operations.v1` | planned | long-run operations |
+| `training.post_training_arc.v1` | planned | post-training (SFT/RL/preference) |
+| `training.public_gradient_windows.v1` | planned | **W5 public model-update layer** |
+
+**Launch-copy boundary for the stretch goal:** the honest bridge is *"this run
+begins the decentralized-training stack — today public Pylons produce and verify
+the exact-trace corpus; the next rung is public training windows: Pylons
+contributing verified candidate updates to student models under quarantine and
+promotion gates."* Do **not** say public decentralized gradient training is live
+or paying.
