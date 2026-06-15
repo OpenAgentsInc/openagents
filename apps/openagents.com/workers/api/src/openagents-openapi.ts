@@ -255,7 +255,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe promise transition receipt feed: receiptId, promiseId, from/to state, registry version, typed checks, result (passed/failed/exception), evidence refs, and timestamps. Receipts are transition evidence, not transitions.',
   ),
   AcceptedOutcomesPerKwhProjection: objectSummary(
-    'Public-safe Accepted Outcomes per Kilowatt-Hour projection. Includes the frozen metric definition ref, receipt-backed accepted-outcome counter, modeled/measured energy evidence labels, gate state, blocker refs, caveats, and published datapoints. Modeled seed datapoints are clearly labeled and do not grant payout, settlement, dispatch, energy-market, investment, or grid-operation authority.',
+    'Public-safe Accepted Outcomes per Kilowatt-Hour projection. Includes generatedAt, the declared staleness contract, the frozen metric definition ref, receipt-backed accepted-outcome counter, modeled/measured energy evidence labels, gate state, blocker refs, caveats, and published datapoints. Modeled seed datapoints are clearly labeled and do not grant payout, settlement, dispatch, energy-market, investment, or grid-operation authority.',
   ),
   ProductPromiseTransitionRequest: objectSummary(
     'Operator request to evaluate and record a promise transition: promiseId, toState, optional evidenceRefs, optional explicit exception (reasonRef, approvedByRef, expiresAt).',
