@@ -1300,7 +1300,7 @@ async function main() {
       const summary = createBootstrapSummary(options, Bun.env)
       if (!summary.platform.supported) {
         process.stderr.write(
-          `Pylon v0.3.0-rc2 supports macOS and Linux only. Current platform: ${summary.platform.current}\n`,
+          `Pylon ${summary.version} supports macOS and Linux only. Current platform: ${summary.platform.current}\n`,
         )
         process.exitCode = 1
         return

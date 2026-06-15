@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { PYLON_CLIENT_VERSION, type PylonClientVersion } from "./version"
 import type { BootstrapSummary } from "./bootstrap"
 import {
   PYLON_NIP90_PROVIDER_CAPABILITY_REF,
@@ -38,7 +39,7 @@ export type PylonRegistrationRequest = {
   identity: PylonLocalState["identity"]
   lifecycle: PylonRuntimeState["lifecycle"]
   clientProtocolVersion: "0.3.0"
-  clientVersion: "openagents.pylon@0.3.0-rc2"
+  clientVersion: PylonClientVersion
   resourceMode: string
   capabilityRefs: string[]
   blockerRefs: string[]
@@ -53,7 +54,7 @@ export type PylonHeartbeatRequest = {
   lifecycle: PylonRuntimeState["lifecycle"]
   capacityRefs: string[]
   clientProtocolVersion: "0.3.0"
-  clientVersion: "openagents.pylon@0.3.0-rc2"
+  clientVersion: PylonClientVersion
   healthRefs: string[]
   loadRefs: string[]
   resourceMode: string
@@ -187,7 +188,7 @@ export async function registerPylon(summary: BootstrapSummary, options: Presence
     identity: state.identity,
     lifecycle: state.runtime.lifecycle,
     clientProtocolVersion: "0.3.0",
-    clientVersion: "openagents.pylon@0.3.0-rc2",
+    clientVersion: PYLON_CLIENT_VERSION,
     resourceMode: state.runtime.resourceMode,
     // W4.1 (#4750): an executor-capability claim without its self-test
     // receipt never leaves the device.
@@ -226,7 +227,7 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
     lifecycle: state.runtime.lifecycle,
     capacityRefs: ["capacity.public.pylon_cli.available"],
     clientProtocolVersion: "0.3.0",
-    clientVersion: "openagents.pylon@0.3.0-rc2",
+    clientVersion: PYLON_CLIENT_VERSION,
     healthRefs: ["health.public.pylon_cli.ok"],
     loadRefs: ["load.public.pylon_cli.low"],
     resourceMode: state.runtime.resourceMode,

@@ -1,5 +1,6 @@
 import { assertPublicProjectionSafe } from "./state"
 import type { PsionicTrainingBoundaryProjection } from "./psionic-training-boundary"
+import { PYLON_VERSION, PYLON_CLIENT_VERSION } from "./version"
 
 export type LaunchClaimState = "allowed" | "blocked" | "planned"
 
@@ -13,8 +14,8 @@ export type LaunchClaimGate = {
 
 export const launchClaimGates: LaunchClaimGate[] = [
   {
-    claimRef: "claim.pylon.v0_3.rc_package",
-    publicPhrase: "@openagentsinc/pylon@0.3.0-rc2 is the v0.3 release candidate",
+    claimRef: "claim.pylon.v1_0.rc_package",
+    publicPhrase: `${PYLON_CLIENT_VERSION} is the v1.0 release candidate`,
     state: "allowed",
     requiredEvidenceRefs: [
       "evidence.package.dry_run",
@@ -114,7 +115,7 @@ export function projectLaunchGateMatrix(input: { psionicTrainingBoundary?: Psion
   const projection = {
     schema: "openagents.pylon.launch_gate_matrix.v0.3",
     packageName: "@openagentsinc/pylon",
-    version: "0.3.0-rc2",
+    version: PYLON_VERSION,
     supportsTraining,
     psionicTrainingBoundaryRef: supportsTraining ? "boundary.pylon.psionic_training.ready.v0_3" : null,
     gates,

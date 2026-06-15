@@ -1,3 +1,5 @@
+import { PYLON_CLIENT_VERSION } from "./version"
+
 export type LiveWorkerLoopSmokeEnv = Readonly<Record<string, string | undefined>>
 
 export type LiveWorkerLoopSmokeOptions = Readonly<{
@@ -160,7 +162,7 @@ export async function runLiveWorkerLoopSmoke(
     body: {
       capabilityRefs,
       clientProtocolVersion: "0.3.0",
-      clientVersion: "openagents.pylon@0.3.0-rc2",
+      clientVersion: PYLON_CLIENT_VERSION,
       displayName: "Pylon live worker-loop smoke",
       pylonRef: options.pylonRef,
       resourceMode: "background_20",
@@ -176,7 +178,7 @@ export async function runLiveWorkerLoopSmoke(
     body: {
       capacityRefs: ["capacity.public.operator_smoke"],
       clientProtocolVersion: "0.3.0",
-      clientVersion: "openagents.pylon@0.3.0-rc2",
+      clientVersion: PYLON_CLIENT_VERSION,
       healthRefs: ["health.public.live_worker_loop_smoke.ok"],
       loadRefs: ["load.public.low"],
       resourceMode: "background_20",
