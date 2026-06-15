@@ -46,6 +46,22 @@ worker/validator self-serve completion is scoped as a proper effort, not
 same-turn. Until it ships, contributors can install + claim + run, but closeout
 completion is operator-orchestrated.
 
+**Scoped for the next RC** — full design audit:
+`docs/tassadar/2026-06-15-executor-trace-contributor-completion-design.md`. Epic
+**[#5051](https://github.com/OpenAgentsInc/openagents/issues/5051)** with children:
+- **[#5052](https://github.com/OpenAgentsInc/openagents/issues/5052)** agent-gated
+  worker-submit + validator-replay routes.
+- **[#5053](https://github.com/OpenAgentsInc/openagents/issues/5053)** worker↔validator
+  pairing orchestration (Artanis-first → decentralized).
+- **[#5054](https://github.com/OpenAgentsInc/openagents/issues/5054)** Pylon client
+  `submit-trace`/`validate` verbs + assignment worker default-on.
+- **[#5055](https://github.com/OpenAgentsInc/openagents/issues/5055)** **interim
+  earning** — Forum registration + tips so RC testers get paid day one while the
+  executor-trace payout loop is built (sporadic owner-funded tips are fine).
+
+These build into the next RC and get tested fully (real worker + real validator →
+Verified → payout) before any green-flip announcement.
+
 ---
 
 ## Current status (updated 2026-06-15, evening)
