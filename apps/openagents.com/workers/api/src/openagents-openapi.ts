@@ -11,6 +11,7 @@ import {
 } from './agent-search'
 import { ForumPostBodyTextMaxLength } from './forum-limits'
 import { OmniApiSdkSeedEndpoint } from './omni-api-sdk-seed'
+import { PublicProductPromisesVersion } from './product-promises'
 import { PublicLaunchDashboardEndpoint } from './public-launch-dashboard'
 
 export const OpenAgentsOpenApiEndpoint = '/api/openapi.json'
@@ -7858,7 +7859,10 @@ export const openAgentsOpenApiDocument = (): Effect.Effect<
     openapi: '3.1.0',
     info: {
       title: 'OpenAgents Autopilot API',
-      version: '2026-06-11',
+      // Derived from the single product-promise registry version so the
+      // contract surface can never silently lag the live registry (#5057,
+      // projection-freshness invariant #5056). Do not hand-edit this literal.
+      version: PublicProductPromisesVersion,
       summary:
         'Public-safe discovery and core browser-session APIs for software-order fulfillment, Autopilot Sites, Adjutant assignments, receipts, and proof projections.',
     },

@@ -14,6 +14,7 @@ import { describe, expect, test } from 'vitest'
 
 import { OpenAgentsOpenApiEndpoint } from './openagents-openapi'
 import { handleOpenAgentsOpenApi } from './openagents-openapi-routes'
+import { PublicProductPromisesVersion } from './product-promises'
 
 type OpenApiOperation = Readonly<{
   description?: string
@@ -29,7 +30,7 @@ type OpenApiDocument = Readonly<{
     schemas: Record<string, unknown>
     securitySchemes: Record<string, unknown>
   }>
-  info: Readonly<{ title: string }>
+  info: Readonly<{ title: string; version: string }>
   openapi: string
   paths: Record<string, Record<string, OpenApiOperation>>
 }>
@@ -90,6 +91,10 @@ describe('OpenAgents OpenAPI route', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(body.openapi).toBe('3.1.0')
     expect(body.info.title).toBe('OpenAgents Autopilot API')
+    // #5057: the OpenAPI info.version must track the product-promise registry
+    // version exactly so the contract surface can never silently lag the live
+    // registry (projection-freshness invariant #5056).
+    expect(body.info.version).toBe(PublicProductPromisesVersion)
     expect(
       operationAt(body, '/.well-known/openagents.json', 'get').operationId,
     ).toBe('getOpenAgentsCapabilityManifest')
