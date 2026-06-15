@@ -117,6 +117,34 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
 - Push back on any direction that violates Elm Architecture principles: unidirectional data flow, messages as facts (not commands), model as single source of truth, side effects confined to commands. If a prompt suggests mutating state, imperative event handlers, or two-way bindings, flag the issue and propose the idiomatic Foldkit approach.
 - Never use `NoOp`. Every message must describe what happened. Fire-and-forget commands use `Completed*` messages mirroring the Command name verb-first: `LockScroll` → `CompletedLockScroll`.
 
+## Pylon Presence Auth Contract (token-only)
+
+Pylon presence and lifecycle writes (`POST /api/pylons/:ref/heartbeat`,
+`/wallet-readiness`, `/payout-target-admission`, `/assignments/*`, and
+`/register`) are authenticated with an OpenAgents agent **bearer token**
+(`Authorization: Bearer <agent token>`) in `workers/api/src/pylon-api-routes.ts`
+(`requireAgent`). This is intentional and is the documented contract.
+
+A node's self-held Nostr key (NIP-98) is **not** accepted as presence
+authority. Registrations are bound to `ownerAgentUserId` derived from the
+bearer-token session; the registry does not bind a verified Nostr pubkey to
+that owner (`providerNostrPubkey` is optional discovery metadata, only set for
+NIP-90 provider Pylons, and is never verified server-side). Accepting a
+self-signed heartbeat would require server-side NIP-98 schnorr verification
+plus a mandatory pubkey→owner binding — a broader auth change that must not be
+made implicitly.
+
+When a presence request arrives with a `Nostr`/NIP-98 `Authorization` scheme
+and no usable bearer token, the route returns a typed, explanatory `401`
+(`error: pylon_api_presence_requires_agent_token`, `WWW-Authenticate: Bearer`)
+naming the token-only contract and pointing the node at the bearer path,
+rather than a bare `unauthorized` (#5058). Do not silently fall back to a bare
+401 for the Nostr-signed presence path. If self-signed presence is ever to be
+supported, design the NIP-98 verification + pubkey binding deliberately with a
+new dated review and tests; do not broaden any other authority (spend,
+settlement, moderation) in the process. Regression coverage lives in
+`workers/api/src/pylon-api-routes.test.ts`.
+
 ## Foldkit Patterns
 
 ### Update

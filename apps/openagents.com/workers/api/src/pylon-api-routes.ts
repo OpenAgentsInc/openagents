@@ -72,12 +72,34 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
 
 type PylonApiRouteEnv = Readonly<Record<string, unknown>>
 
+// Presence contract (#5058): Pylon presence and lifecycle writes are
+// agent-token authenticated. A node's self-held Nostr key proves Nostr
+// identity, not ownership of a Pylon registration: registrations are bound
+// to `ownerAgentUserId` from the bearer-token session, and the registry does
+// not bind a verified Nostr pubkey to that owner. The Worker therefore does
+// not accept a NIP-98 self-signed heartbeat as presence authority. When a
+// request arrives with a Nostr/NIP-98 `Authorization` scheme we return an
+// explanatory 401 that names the token-only contract and points the node at
+// the bearer-token path, instead of a bare `unauthorized`.
+const PYLON_API_PRESENCE_REQUIRES_AGENT_TOKEN =
+  'pylon_api_presence_requires_agent_token'
+
 class PylonApiUnauthorized extends S.TaggedErrorClass<PylonApiUnauthorized>()(
   'PylonApiUnauthorized',
-  {},
+  { presenceContract: S.optionalKey(S.Boolean) },
 ) {}
 
 type PylonApiRouteError = PylonApiStoreError | PylonApiUnauthorized
+
+const presenceContractUnauthorized = (): HttpResponse =>
+  noStoreJsonResponse(
+    {
+      error: PYLON_API_PRESENCE_REQUIRES_AGENT_TOKEN,
+      reason:
+        'Pylon presence and lifecycle writes are authenticated with an OpenAgents agent bearer token. A self-signed Nostr (NIP-98) signature proves Nostr identity but is not accepted as presence authority, because Pylon registrations are bound to the owning agent token, not to a Nostr pubkey. Send this request with `Authorization: Bearer <agent token>`.',
+    },
+    { headers: { 'www-authenticate': 'Bearer' }, status: 401 },
+  )
 
 const routeErrorResponse = (error: PylonApiRouteError): HttpResponse =>
   M.value(error).pipe(
@@ -98,7 +120,10 @@ const routeErrorResponse = (error: PylonApiRouteError): HttpResponse =>
                       : 400,
           },
         ),
-      PylonApiUnauthorized: () => unauthorized(),
+      PylonApiUnauthorized: unauthorizedError =>
+        unauthorizedError.presenceContract === true
+          ? presenceContractUnauthorized()
+          : unauthorized(),
     }),
     M.exhaustive,
   )
@@ -117,6 +142,22 @@ const bearerTokenFromRequest = (request: Request): string | undefined => {
     token.startsWith(AGENT_TOKEN_PREFIX)
     ? token
     : undefined
+}
+
+// A NIP-98 self-signed request uses the `Nostr` authorization scheme
+// (see apps/pylon `encodeNip98Authorization`). Detecting it lets the
+// presence routes return the documented token-only contract (#5058)
+// instead of a bare 401.
+const isNostrSignedRequest = (request: Request): boolean => {
+  const authorization = request.headers.get('authorization')
+
+  if (authorization === null) {
+    return false
+  }
+
+  const [scheme] = authorization.split(' ')
+
+  return scheme?.toLowerCase() === 'nostr'
 }
 
 const idempotencyKeyFromRequest = (request: Request): string | undefined => {
@@ -452,7 +493,11 @@ const requireAgent = <Bindings extends PylonApiRouteEnv>(
   const token = bearerTokenFromRequest(request)
 
   if (token === undefined) {
-    return Effect.fail(new PylonApiUnauthorized({}))
+    return Effect.fail(
+      new PylonApiUnauthorized(
+        isNostrSignedRequest(request) ? { presenceContract: true } : {},
+      ),
+    )
   }
 
   return Effect.flatMap(

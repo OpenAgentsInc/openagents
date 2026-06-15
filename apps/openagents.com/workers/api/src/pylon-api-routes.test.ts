@@ -53,6 +53,7 @@ type PylonRouteJson = Readonly<{
     walletSpendAllowed?: boolean
   }>
   error?: string
+  reason?: string
   events?: ReadonlyArray<unknown>
   idempotent?: boolean
   pylon?: Readonly<{
@@ -1123,6 +1124,71 @@ describe('Pylon API routes', () => {
     expect(first.status).toBe(201)
     expect(replay.status).toBe(200)
     expect((await responseJson<PylonRouteJson>(replay)).idempotent).toBe(true)
+  })
+
+  test('returns the documented token-only presence contract for a self-signed Nostr heartbeat (#5058)', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+
+    const request = new Request(
+      'https://openagents.com/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: JSON.stringify({
+          healthRefs: ['health.public.ok'],
+          status: 'online',
+        }),
+        headers: {
+          authorization:
+            'Nostr eyJpZCI6ImFiYyIsImtpbmQiOjI3MjM1LCJzaWciOiJkZWFkYmVlZiJ9',
+          'content-type': 'application/json',
+          'Idempotency-Key': 'heartbeat-nostr-self-signed',
+        },
+        method: 'POST',
+      },
+    )
+    const routes = makePylonApiRoutes({
+      agentStore: () => agentStoreFor('agent-one'),
+      makeId: () => 'test-nostr',
+      makeStore: () => store,
+      nowIso: () => '2026-06-07T00:10:00.000Z',
+      requireAdminApiToken: () => Promise.resolve(false),
+    })
+    const response = routes.routePylonApiRequest(request, {
+      OPENAGENTS_DB: {} as D1Database,
+    })
+
+    if (response === undefined) {
+      throw new Error('No route matched heartbeat')
+    }
+
+    const resolved = await Effect.runPromise(response)
+    const body = await responseJson<PylonRouteJson>(resolved)
+
+    expect(resolved.status).toBe(401)
+    expect(resolved.headers.get('www-authenticate')).toBe('Bearer')
+    expect(body.error).toBe('pylon_api_presence_requires_agent_token')
+    expect(body.reason).toContain('Bearer')
+
+    const detail = await route(store, '/api/pylons/pylon.test.one', {})
+    expect(
+      (await responseJson<PylonRouteJson>(detail)).pylon?.latestHeartbeatStatus,
+    ).not.toBe('online')
+  })
+
+  test('returns a bare unauthorized for a heartbeat with no authorization', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+
+    const response = await route(store, '/api/pylons/pylon.test.one/heartbeat', {
+      body: { healthRefs: ['health.public.ok'], status: 'online' },
+      idempotencyKey: 'heartbeat-no-auth',
+      method: 'POST',
+    })
+    const body = await responseJson<PylonRouteJson>(response)
+
+    expect(response.status).toBe(401)
+    expect(response.headers.get('www-authenticate')).toBeNull()
+    expect(body.error).toBe('unauthorized')
   })
 
   test('records payout-target admission lifecycle statuses as public-safe events', async () => {
