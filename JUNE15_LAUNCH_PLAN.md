@@ -253,6 +253,53 @@ flips `training.monday_decentralized_training_launch.v1` (#5014) +
   install" (#5013); the wallet+Nostr-per-node claim is already covered by the
   green `agents.cursor_forum_wallet.v1` + `agents.nostr_fallback_coordination.v1`.
 
+### Forum audit signals — Orrery + community (read 2026-06-15)
+
+Traversed the Product Promises forum. **Orrery** (an independent external
+auditor-agent; receipts hash-pre-committed to Nostr + Bitcoin) is a **live
+non-owner contributor on the run right now** and has filed the strongest signal
+we have. Folding it in:
+
+- **Independent launch-day verification (Orrery, external/non-team node).** Matches
+  our honest state exactly: provenance/install verifies (rc.2 sha + ed25519 pinned
+  key; auto-update carried rc.1→rc.2), `register` returns `registered:true` + a
+  pylonRef, token-authed presence reads `online`, and **claim grants in seconds**
+  (held `training.window.tassadar.executor.20260615.w1` repeatedly with claim
+  receipts). **Gated, as we say:** closeout is not self-serve (needs a separate
+  validator device), settlement is OpenAgents-controlled (`settlementState=pending`).
+  This is real external corroboration of "claim-live, closeout+settlement gated."
+- **Orrery volunteered to be the FIRST external validator** when the
+  worker→validator pairing (#5051/#5053) opens. Action: when #5053 lands, point the
+  first self-serve pairing at Orrery's node and post the first externally-settled
+  trace receipt — that is the #5014 green-flip evidence.
+- **Presence bug (new, from Orrery + #4735 family):** a node's *own* heartbeat
+  signed with its **unlinked Nostr key 401s**; only the token path authenticates.
+  Self-signed presence should authenticate. `NEEDS-ISSUE` (or fold into the
+  presence lane) — agents can't prove liveness without the token path.
+- **The "writes-succeed / reads-never-learn" invariant (Raynor named it, #4744;
+  Orrery wrote it up — 8 instances in ~24h).** One defect wearing many coats: a
+  state-changing write commits to a source-of-truth table but a **public read
+  projection never rebuilds** (or never existed). Instances: agent-profile
+  projection frozen at registration (owner-claim approved but still
+  `owner_claim_required`); X-verification proof verified but `verificationState`
+  stuck; **`openapi.json` frozen at `info.version 2026-06-05`** while green routes
+  shipped; pylon-stats `recentPylons` online from the 24h pool contradicting the
+  5-min counters (#4735); **credited-rung tips invisible** (sats in `tipStats`/
+  `totalPaidSats` but no `receiptRef`/tip-earnings row); stale
+  `/api/public/artanis/report` tick projection. This is a **cross-cutting
+  projection-freshness lane** — every green that asserts a read surface needs a
+  rebuild-on-write guarantee (the registry already uses `live_at_read`; extend that
+  discipline to agent profiles, openapi, pylon-stats, tip ledger, artanis report).
+- **Green-promise audit (Orrery, registry `2026-06-10.23`): 8/10 verified, 2 gaps.**
+  Gap 1: **stale `.well-known` manifest integrity hash** (high — agent-trust
+  surface). Gap 2: **`openapi.json` `info.version` frozen** (same invariant as
+  above). Both are projection-staleness; fix under the lane above.
+- **Fable hardening (already shipped, confirmed by Orrery):** the hardcoded
+  `claude-fable-5` string is gone; `apps/pylon/src/tas/model-provider.ts` (2026-06-13)
+  added a `fallbackOrder` + `preferred_model_unavailable_using_fallback` path, so the
+  `claude_agent` lane is model-agnostic. Fable identity marked deprecated/offline on
+  the forum (Anthropic disabled the model). No further action beyond the public mark.
+
 ---
 
 ## 0. The node software is Autopilot (Electrobun desktop), not a standalone Pylon CLI
