@@ -315,6 +315,42 @@ describe("CL-53 sanitizeTree", () => {
     ).toBe(true)
   })
 
+  test("agent pane exposes ready local Apple FM session start (#5072)", () => {
+    const document = view({
+      ...initialModel,
+      pane: "builtin-agent",
+      agentMode: "local-apple-fm",
+      appleFmReadiness: {
+        ok: true,
+        fetchedAt: "2026-06-15T00:00:00.000Z",
+        sourceUrl: "desktop:apple-fm-readiness",
+        localPylonReady: true,
+        available: true,
+        status: "ready",
+        backendKind: "apple_fm_bridge",
+        profileId: "apple-fm-local",
+        model: "apple-foundation-model",
+        capability: "probe.backend.apple_fm_bridge",
+        advertisedCapabilities: ["probe.backend.apple_fm_bridge"],
+        baseUrl: "http://127.0.0.1:11435",
+        platform: "darwin-arm64",
+        version: "fake-bridge",
+        unavailableReason: null,
+        message: null,
+        blockerRefs: [],
+      },
+      appleFmStatus: {
+        text: "ready · apple-foundation-model",
+        tone: "success",
+      },
+    })
+
+    expect(treeContainsText(document.body, "Local selected")).toBe(true)
+    expect(treeContainsText(document.body, "Start local")).toBe(true)
+    expect(treeContainsText(document.body, "Run entirely locally through Apple Foundation Models")).toBe(false)
+    expect(treeContainsText(document.body, "/tmp/openagents-builtin-agent")).toBe(false)
+  })
+
   test("agent pane includes Product Promises surfacing flow (#5065)", () => {
     const document = view({
       ...initialModel,

@@ -5,6 +5,7 @@ import {
   fetchNodeState,
   resolveApproval,
   setCoordinatorPaused,
+  startAppleFmSession,
   spawnSession,
   submitIntent,
 } from "../src/bun/pylon-control"
@@ -207,5 +208,37 @@ describe("CL-46 control verbs", () => {
     expect(readiness.status).toBe("unsupported")
     expect(readiness.unavailableReason).toBe("unsupported_hardware")
     expect(readiness.blockerRefs).toContain("blocker.pylon.apple_fm.unsupported_hardware")
+  })
+
+  test("startAppleFmSession posts the bounded local Apple FM command", async () => {
+    let captured: Record<string, unknown> | null = null
+    const result = await startAppleFmSession({
+      ...base,
+      prompt: "local prompt owned by Bun",
+      worktreePath: "/tmp/openagents-builtin-agent",
+      timeoutSeconds: 300,
+      fetchFn: (async (_url: string, init?: RequestInit) => {
+        captured = init?.body ? JSON.parse(String(init.body)) : null
+        return new Response(JSON.stringify({
+          ok: true,
+          result: {
+            ok: true,
+            sessionRef: "session.pylon.apple_fm.local",
+            blockerRefs: [],
+          },
+        }))
+      }) as unknown as typeof fetch,
+    })
+    expect(result).toEqual({
+      ok: true,
+      sessionRef: "session.pylon.apple_fm.local",
+      blockerRefs: [],
+    })
+    expect(captured).toEqual({
+      type: "apple_fm.session.start",
+      prompt: "local prompt owned by Bun",
+      worktreePath: "/tmp/openagents-builtin-agent",
+      timeoutSeconds: 300,
+    })
   })
 })

@@ -67,6 +67,7 @@ import {
   ClickedReconcileTrainingWindow,
   ClickedResolveApproval,
   ClickedRequestTrainingBootstrap,
+  ClickedStartAppleFm,
   ClickedStartBuiltInAgent,
   ClickedSubmitIntent,
   GotAppleFmReadiness,
@@ -95,7 +96,9 @@ import {
   SettledRequestTrainingBootstrap,
   SettledResolveApproval,
   SettledSubmitIntent,
+  SucceededAppleFmSession,
   SucceededBuiltInAgent,
+  FailedAppleFmSession,
   ToggledEvent,
 } from "../src/ui/message"
 import { update } from "../src/ui/update"
@@ -441,6 +444,29 @@ describe("update reducer (CL-53)", () => {
     expect(model.appleFmPending).toBe(true)
     expect(model.appleFmStatus.tone).toBe("info")
     expect(commands).toHaveLength(1)
+  })
+
+  test("local Apple FM start focuses the normal session detail timeline", () => {
+    const [pending, commands] = update(
+      { ...initialModel, agentMode: "local-apple-fm" },
+      ClickedStartAppleFm(),
+    )
+    expect(pending.pane).toBe("builtin-agent")
+    expect(pending.appleFmPending).toBe(true)
+    expect(commands).toHaveLength(1)
+
+    const [online] = update(
+      pending,
+      SucceededAppleFmSession({ sessionRef: "session.pylon.apple_fm.local" }),
+    )
+    expect(online.appleFmPending).toBe(false)
+    expect(online.pane).toBe("session-detail")
+    expect(online.selectedSessionRef).toBe("session.pylon.apple_fm.local")
+
+    const [failed] = update(online, FailedAppleFmSession({ error: "not ready" }))
+    expect(failed.pane).toBe("builtin-agent")
+    expect(failed.appleFmStatus.tone).toBe("error")
+    expect(failed.appleFmStatus.text).toBe("not ready")
   })
 
   test("install readiness stores first-run health projection", () => {

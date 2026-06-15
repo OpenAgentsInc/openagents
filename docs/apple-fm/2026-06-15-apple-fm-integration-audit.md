@@ -390,6 +390,28 @@ The projection does not run inference and does not advertise
 projection support are ready. It redacts base URLs and adds blocker refs for
 desktop and future operator surfaces.
 
+### Local Autopilot Session Path
+
+As of #5072, Pylon and Autopilot Desktop also have a bounded local
+chat/tool-session path for the user-owned Apple FM mode:
+
+- Pylon accepts `apple_fm.session.start` through the token-authenticated
+  control session API only after `apple_fm.status` is ready.
+- The session runner uses `apps/pylon/src/node/apple-fm-local-session.ts` to
+  call the local bridge through `streamSessionWithTools`.
+- The initial tool set is deliberately read-only: `read_file`, `list_files`,
+  and `code_search`, all bounded to the configured workspace.
+- Autopilot Desktop starts the session through Bun-owned RPC
+  (`startAppleFmSession`) and projects only public-safe event summaries into
+  the Foldkit webview.
+- Regression coverage lives in `apps/pylon/tests/apple-fm-control-session.test.ts`
+  and desktop focused tests for control verbs, sanitization, Pylon control,
+  and the Foldkit Agent pane.
+
+This is source and fake-bridge evidence for local user-owned tool/chat. It is
+not a market-provider claim, hosted-compute fallback, Codex-parity claim, or
+proof that the signed installer has passed admitted-Mac smoke.
+
 ### CLI Surface
 
 Current Probe CLI commands:
@@ -589,11 +611,14 @@ history. It has:
 - current fake-bridge CI coverage;
 - Pylon loopback `apple_fm.status` readiness projection;
 - Autopilot Desktop public-safe Apple FM readiness/mode UI;
+- a Pylon/Desktop bounded local Apple FM chat/tool session path with
+  fake-bridge coverage;
 - admitted-Mac runbooks;
 - one owner-operated NIP-90 Apple FM provider proof.
 
 It is not yet a green public earning promise. The green path is concrete:
-restore or package the bridge where needed, keep Pylon online, advertise
-`apple_fm_bridge` only after live health, serve a paid NIP-90 or assignment
-job with Apple FM, settle sats to an admitted payout target, and record
-public-safe receipts without leaking local runtime contents.
+restore or package the bridge where needed, keep Pylon online, pass an
+admitted-Mac local Autopilot smoke for the user-owned tool/chat path, advertise
+`apple_fm_bridge` only after live health, serve a paid NIP-90 or assignment job
+with Apple FM, settle sats to an admitted payout target, and record public-safe
+receipts without leaking local runtime contents.

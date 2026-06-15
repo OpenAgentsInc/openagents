@@ -14,10 +14,11 @@ It now also has a token-authenticated Pylon control projection,
 runtime health/capability code, plus a buildable in-tree Swift Foundation
 Models bridge helper at `apps/pylon/swift/foundation-bridge`. Autopilot
 Desktop now consumes the Pylon readiness projection through Bun-owned RPC and
-renders hosted OpenAgents compute separately from local Apple FM mode. It does
-not yet have bridge-helper launch/supervision, a local chat/tool session runner,
-or admitted-Mac desktop smoke evidence that lets the installer truthfully say
-"local Apple FM chat/tool mode works."
+renders hosted OpenAgents compute separately from local Apple FM mode. It now
+has a Desktop-originated bounded local Apple FM chat/tool session path through
+Pylon with fake-bridge tests and public-safe event summaries. It does not yet
+have bridge-helper launch/supervision or admitted-Mac desktop smoke evidence
+that lets the installer truthfully say "local Apple FM chat/tool mode works."
 
 The integration path should be:
 
@@ -83,14 +84,18 @@ The current app does these things well:
   making optional local mode block hosted compute.
 - It shows hosted OpenAgents compute and local Apple FM as distinct Agent pane
   modes, with local blocker refs visible.
+- It can start a bounded local Apple FM session through Bun-owned Pylon control
+  when live Apple FM readiness is ready.
 - It keeps hosted compute credentials and Pylon control tokens out of the
   webview.
 
 The current app does not yet do these Apple FM-specific things:
 
 - It does not bundle, launch, or supervise the Foundation Models bridge helper.
-- It does not run local Apple FM chat/tool sessions from the Agent pane.
-- It does not advertise local Apple FM as the backend for "Go online" yet.
+- It does not yet have admitted-Mac desktop smoke evidence for the local
+  chat/tool session path.
+- It does not advertise local Apple FM as the default backend for "Go online"
+  yet.
 
 ## Current Pylon Runtime Apple FM Implementation
 
@@ -548,6 +553,8 @@ CI-safe tests:
 - Pylon control command tests for `apple_fm.status`.
 - Desktop `pylon-control.ts` tests with a fake control server.
 - Desktop `DesktopRPCSchema` and bridge tests for `appleFmReadiness`.
+- Pylon/Desktop fake-bridge tests for `apple_fm.session.start`, read-only tool
+  success, not-ready refusal, unsupported-tool refusal, and event redaction.
 - `install-readiness.ts` tests for Apple FM ready, unsupported, bridge missing,
   and Apple Intelligence disabled states.
 - Foldkit view tests that the Agent pane and Settings pane show local Apple FM
@@ -559,7 +566,7 @@ Live admitted-Mac tests:
 - Start or install the Foundation Models bridge.
 - Run Pylon `apple_fm.status` over the loopback control API.
 - Run a direct bridge `/v1/chat/completions` smoke.
-- Run the Pylon runtime local chat/tool session runner once #5072 lands.
+- Run the Pylon runtime local chat/tool session runner.
 - Start Autopilot Desktop with the same base URL.
 - Verify Settings shows Apple FM ready.
 - Verify the Agent pane can select local Apple FM only when ready.
@@ -583,9 +590,11 @@ Packaging tests:
 3. Done: add desktop Bun fetch/RPC support for Apple FM readiness.
 4. Done: extend desktop install readiness and Agent pane with Apple FM as an
    optional local backend.
-5. Add provider go-online capability declaration for
+5. Done: add a Desktop-originated bounded local Apple FM chat/tool session
+   runner through Pylon control with safe read-only workspace tools.
+6. Add provider go-online capability declaration for
    `probe.backend.apple_fm_bridge`, gated by live health.
-6. Add admitted-Mac acceptance docs and live smoke evidence.
+7. Add admitted-Mac acceptance docs and live smoke evidence.
 
 This order avoids presenting a UI promise before the control and runtime truth
 sources exist.
@@ -620,17 +629,21 @@ What is real:
 - Desktop `appleFmReadiness` RPC through Bun-owned Pylon control.
 - Desktop first-run health item for optional local Apple FM.
 - Desktop Agent pane hosted/local mode cards with blocker refs.
+- Pylon `apple_fm.session.start` local session path using read-only workspace
+  tools and public-safe summaries.
+- Desktop `startAppleFmSession` RPC/control command path.
+- Fake-bridge coverage for ready session success, not-ready refusal,
+  unsupported-tool refusal, and redaction.
 
 What is not connected yet:
 
 - Packaged helper resource.
-- Desktop local Apple FM chat/tool session runner.
 - Provider go-online capability declaration.
 - Current admitted-Mac desktop smoke evidence.
 
 The next honest milestone is not "Apple FM works in desktop." It is:
 
-a bounded local Apple FM chat/tool session runner that uses the ready
-projection, keeps callback/tool authority inside Bun/Pylon, and records
-public-safe smoke evidence without exposing prompts, files, tokens, or helper
-paths.
+admitted-Mac smoke evidence that uses the ready projection, runs the bounded
+local session path on real supported hardware, keeps callback/tool authority
+inside Bun/Pylon, and records public-safe evidence without exposing prompts,
+files, tokens, or helper paths.

@@ -27,6 +27,7 @@ import {
 } from "../codex-composer"
 import type { BootstrapSummary } from "../bootstrap"
 import {
+  PYLON_DEV_CHECK_SCHEMA,
   recordPylonDevCodexRun,
   runPylonDevCheck,
   type PylonDevCheckProjection,
@@ -41,6 +42,8 @@ import {
   materializeGitCheckoutWorkspaceWithLease,
   type GitCheckoutWorkspace,
 } from "../workspace-materializer"
+import { collectPylonAppleFmStatus } from "./apple-fm-status"
+import { runAppleFmLocalControlSession } from "./apple-fm-local-session"
 
 export const CONTROL_SESSION_EVENT_SCHEMA = "openagents.pylon.control_session_event.v0.1"
 export const CONTROL_SESSION_ARTIFACT_SCHEMA = "openagents.pylon.control_session_artifact.v0.1"
@@ -65,6 +68,8 @@ const CONTROL_SESSION_LANES: readonly ControlSessionLane[] = [
   "cloud-shc",
 ]
 
+export type ControlSessionAdapter = PylonComposerAdapter | "apple_fm"
+
 export type ControlSessionSpawnCommand = {
   type: "session.spawn"
   adapter: PylonComposerAdapter
@@ -85,9 +90,25 @@ export type ControlSessionListCommand = { type: "session.list" }
 export type ControlSessionEventsCommand = { type: "session.events"; sessionRef: string }
 export type ControlSessionCancelCommand = { type: "session.cancel"; sessionRef: string }
 export type ControlSessionArtifactCommand = { type: "session.artifact"; sessionRef: string }
+export type AppleFmSessionStartCommand = {
+  type: "apple_fm.session.start"
+  prompt: string
+  worktreePath: string
+  timeoutSeconds?: number
+}
+
+export type AppleFmSessionStartResult =
+  | { ok: true; sessionRef: string; state: ControlSessionState }
+  | {
+      ok: false
+      sessionRef: ""
+      blockerRefs: string[]
+      error: string
+    }
 
 export type ControlSessionCommand =
   | ControlSessionSpawnCommand
+  | AppleFmSessionStartCommand
   | ControlSessionListCommand
   | ControlSessionEventsCommand
   | ControlSessionCancelCommand
@@ -111,7 +132,7 @@ export type ControlSessionEvent = {
   eventIndex: number
   phase: ControlSessionEventPhase
   state: ControlSessionState
-  adapter: PylonComposerAdapter
+  adapter: ControlSessionAdapter
   account: PublicPylonAccountSelection | null
   workspaceRef: string
   messageRef?: string
@@ -129,7 +150,7 @@ export type ControlSessionEvent = {
 
 export type ControlSessionProjection = {
   sessionRef: string
-  adapter: PylonComposerAdapter
+  adapter: ControlSessionAdapter
   // Requested execution lane (#4998), surfaced for "running on Google GCE / SHC
   // / local" provenance. `auto`/`local` execute locally today; cloud lanes are
   // recorded pending full cloud dispatch (#4997).
@@ -158,6 +179,7 @@ export type ControlSessionProjection = {
 
 export type ControlSessionActions = {
   spawn: (command: ControlSessionSpawnCommand) => Promise<{ sessionRef: string; state: ControlSessionState }>
+  startAppleFm: (command: AppleFmSessionStartCommand) => Promise<AppleFmSessionStartResult>
   list: () => Promise<ControlSessionProjection[]>
   cancel: (sessionRef: string) => Promise<ControlSessionProjection>
   events: (sessionRef: string) => Promise<{
@@ -180,7 +202,7 @@ export type ControlSessionActions = {
 }
 
 export type ControlSessionExecutorInput = {
-  adapter: PylonComposerAdapter
+  adapter: ControlSessionAdapter
   account: ResolvedPylonAccountSelection | null
   // Requested execution lane (#4998). Cloud executors (#4997) use this to pick
   // the cloud compute lane; the local executor ignores it.
@@ -256,7 +278,7 @@ export function codexControlSessionExecutionSettings(
 
 type SessionRecord = {
   sessionRef: string
-  adapter: PylonComposerAdapter
+  adapter: ControlSessionAdapter
   lane: ControlSessionLane
   account: ResolvedPylonAccountSelection | null
   workspace: WorkspaceSelection
@@ -382,6 +404,25 @@ function parseSpawnCommand(raw: ControlSessionSpawnCommand): ControlSessionSpawn
   }
 }
 
+function parseAppleFmStartCommand(raw: AppleFmSessionStartCommand): AppleFmSessionStartCommand {
+  const record = raw as Record<string, unknown>
+  rejectDangerFields(record)
+  if (typeof raw.prompt !== "string" || raw.prompt.trim().length === 0) {
+    throw new Error("apple_fm.session.start requires a non-empty prompt")
+  }
+  if (typeof raw.worktreePath !== "string" || raw.worktreePath.trim().length === 0) {
+    throw new Error("apple_fm.session.start requires worktreePath")
+  }
+  return {
+    type: "apple_fm.session.start",
+    prompt: raw.prompt,
+    worktreePath: raw.worktreePath,
+    ...(typeof raw.timeoutSeconds === "number" && Number.isFinite(raw.timeoutSeconds)
+      ? { timeoutSeconds: Math.max(1, Math.min(600, Math.floor(raw.timeoutSeconds))) }
+      : {}),
+  }
+}
+
 function projectionFor(record: SessionRecord): ControlSessionProjection {
   return {
     sessionRef: record.sessionRef,
@@ -425,17 +466,7 @@ async function workspaceForCommand(input: {
   summary: BootstrapSummary
 }): Promise<WorkspaceSelection> {
   if (input.command.worktreePath !== undefined) {
-    const workingDirectory = resolve(input.command.worktreePath)
-    try {
-      const info = await stat(workingDirectory)
-      if (!info.isDirectory()) throw new Error("not a directory")
-    } catch {
-      throw new Error("worktree_path_missing")
-    }
-    return {
-      workingDirectory,
-      workspaceRef: stableRef("workspace.pylon.control_session.injected", workingDirectory),
-    }
+    return workspaceForWorktreePath(input.command.worktreePath)
   }
 
   const repoRef = input.command.repoRef
@@ -462,6 +493,72 @@ async function workspaceForCommand(input: {
   }
 }
 
+async function workspaceForWorktreePath(worktreePath: string): Promise<WorkspaceSelection> {
+  const workingDirectory = resolve(worktreePath)
+  try {
+    const info = await stat(workingDirectory)
+    if (!info.isDirectory()) throw new Error("not a directory")
+  } catch {
+    throw new Error("worktree_path_missing")
+  }
+  return {
+    workingDirectory,
+    workspaceRef: stableRef("workspace.pylon.control_session.injected", workingDirectory),
+  }
+}
+
+function appleFmLocalSessionCheck(input: ControlSessionExecutorInput): PylonDevCheckProjection {
+  return {
+    schema: PYLON_DEV_CHECK_SCHEMA,
+    observedAt: nowIso(),
+    action: "check",
+    state: "passed",
+    changeSummary: {
+      repo: {
+        state: "not_git",
+        rootRef: null,
+        branch: null,
+        commit: null,
+      },
+      dirty: {
+        state: "unknown",
+        changedCount: 0,
+        stagedCount: 0,
+        unstagedCount: 0,
+        untrackedCount: 0,
+      },
+      changedFileRefs: [],
+      areaRefs: [],
+      blockerRefs: [],
+    },
+    checkPlan: {
+      state: "ready",
+      commandRefs: ["command.pylon.apple_fm.local_chat_tool_session"],
+      blockerRefs: [],
+    },
+    commandResults: [
+      {
+        commandRef: "command.pylon.apple_fm.local_chat_tool_session",
+        reasonRef: "check.pylon.apple_fm.local_chat_tool_session",
+        cwdRef: stableRef("command.cwd", input.cwd),
+        argvRef: "command.argv.pylon.apple_fm.local_chat_tool_session",
+        exitCode: 0,
+        status: "passed",
+        durationMs: 0,
+        stdoutBytes: 0,
+        stderrBytes: 0,
+        stdoutDigestRef: null,
+        stderrDigestRef: null,
+      },
+    ],
+    latestRecordRef: null,
+    branchUntouched: true,
+    commitUntouched: true,
+    pushPerformed: false,
+    blockerRefs: [],
+  }
+}
+
 async function defaultControlSessionExecutor(
   input: ControlSessionExecutorInput,
 ): Promise<ControlSessionExecutorResult> {
@@ -479,7 +576,18 @@ async function defaultControlSessionExecutor(
   let permissionMode: "acceptEdits" | "bypassPermissions" | undefined
   let sandboxMode: "read-only" | "workspace-write" | "danger-full-access" | undefined
 
-  if (input.adapter === "codex") {
+  if (input.adapter === "apple_fm") {
+    const result = await runAppleFmLocalControlSession(input)
+    input.emit({
+      phase: "composer_event",
+      message: "control session mode: local_bounded; adapter: apple_fm; sandbox: read-only; network: disabled",
+      composerEventIndex: result.eventCount + 1,
+    })
+    return {
+      ...result,
+      devCheck: appleFmLocalSessionCheck(input),
+    }
+  } else if (input.adapter === "codex") {
     const config = await loadCodexAgentConfig(input.summary)
     const devConfig = await loadCodexDevConfig(input.summary)
     const settings = codexControlSessionExecutionSettings(config, devConfig)
@@ -602,6 +710,8 @@ async function defaultControlSessionExecutor(
 }
 
 export function createControlSessionActions(options: {
+  appleFmFetch?: typeof fetch
+  appleFmNow?: Date
   env?: Record<string, string | undefined>
   executor?: ControlSessionExecutor
   // #4997: optional cloud executor used when a session's lane resolves to a
@@ -712,7 +822,9 @@ export function createControlSessionActions(options: {
         verifyRef: record.verifyRef,
       },
       executor: {
-        executionPathRef: "control_session.composer",
+        executionPathRef: record.adapter === "apple_fm"
+          ? "control_session.apple_fm_local"
+          : "control_session.composer",
         executionMode: result.executionMode ?? "local_bounded",
         ...(result.sandboxMode === undefined ? {} : { sandboxMode: result.sandboxMode }),
         ...(result.permissionMode === undefined ? {} : { permissionMode: result.permissionMode }),
@@ -921,6 +1033,69 @@ export function createControlSessionActions(options: {
       emit(record, { phase: "queued" })
       void runSession(record)
       return { sessionRef, state: record.state }
+    },
+    startAppleFm: async (raw) => {
+      const command = parseAppleFmStartCommand(raw)
+      const status = await collectPylonAppleFmStatus({
+        summary: options.summary,
+        env: baseEnv,
+        fetch: options.appleFmFetch,
+        now: options.appleFmNow,
+      })
+      const ready =
+        status.available &&
+        status.status === "ready" &&
+        status.advertisedCapabilities.includes(status.capability) &&
+        status.blockerRefs.length === 0
+      if (!ready) {
+        return {
+          ok: false,
+          sessionRef: "",
+          blockerRefs: status.blockerRefs.length > 0
+            ? [...status.blockerRefs]
+            : ["blocker.pylon.apple_fm.not_ready"],
+          error: status.message ?? status.unavailableReason ?? status.status,
+        }
+      }
+      const index = spawnIndex
+      spawnIndex += 1
+      const runRef = randomBytes(12).toString("hex")
+      const workspace = await workspaceForWorktreePath(command.worktreePath)
+      const sessionRef = stableRef(
+        "session.pylon.apple_fm",
+        `${runRef}:apple_fm:${command.prompt}:${workspace.workspaceRef}`,
+      )
+      const record: SessionRecord = {
+        sessionRef,
+        adapter: "apple_fm",
+        lane: "local",
+        account: null,
+        workspace,
+        objective: command.prompt,
+        objectiveDigestRef: stableRef("digest.pylon.apple_fm.prompt", command.prompt),
+        verify: ["bun", "--version"],
+        verifyRef: stableRef("command.pylon.control_session.verify", "bun\0--version"),
+        timeoutMs: (command.timeoutSeconds ?? 300) * 1000,
+        state: "queued",
+        abort: new AbortController(),
+        createdAt: nowIso(),
+        startedAt: null,
+        completedAt: null,
+        artifactRef: null,
+        resultRef: null,
+        errorClass: null,
+        errorDigestRef: null,
+        events: [],
+        cloudRunner: null,
+        resourceUsageReceiptRef: null,
+      }
+      records.set(sessionRef, record)
+      emit(record, {
+        phase: "queued",
+        messageText: "Apple FM local session queued",
+      })
+      void runSession(record)
+      return { ok: true, sessionRef, state: record.state }
     },
     list: async () =>
       [...records.values()]

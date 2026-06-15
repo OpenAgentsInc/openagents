@@ -71,6 +71,11 @@ export const ClickedRefreshAppleFm = m("ClickedRefreshAppleFm")
 export const GotAppleFmReadiness = m("GotAppleFmReadiness", {
   projection: S.Unknown,
 })
+export const ClickedStartAppleFm = m("ClickedStartAppleFm")
+export const SucceededAppleFmSession = m("SucceededAppleFmSession", {
+  sessionRef: S.String,
+})
+export const FailedAppleFmSession = m("FailedAppleFmSession", { error: S.String })
 export const ClickedStartBuiltInAgent = m("ClickedStartBuiltInAgent")
 export const SucceededBuiltInAgent = m("SucceededBuiltInAgent", {
   sessionRef: S.String,
@@ -266,6 +271,9 @@ export const Message = S.Union([
   SelectedAgentMode,
   ClickedRefreshAppleFm,
   GotAppleFmReadiness,
+  ClickedStartAppleFm,
+  SucceededAppleFmSession,
+  FailedAppleFmSession,
   ClickedStartBuiltInAgent,
   SucceededBuiltInAgent,
   FailedBuiltInAgent,

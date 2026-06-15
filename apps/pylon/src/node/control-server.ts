@@ -15,6 +15,7 @@ import { createBridgePairingService } from "./bridge-pairing-service"
 import { verbAllowedByCapabilities, type BridgeRequestVerb, type Capability } from "@openagentsinc/autopilot-control-protocol"
 import type {
   ControlSessionActions,
+  AppleFmSessionStartCommand,
   ControlSessionArtifactCommand,
   ControlSessionCancelCommand,
   ControlSessionEventsCommand,
@@ -55,6 +56,7 @@ export type ControlCommand =
   // (balance + readiness). No spend authority — strictly a projection.
   | { type: "wallet.status" }
   | { type: "apple_fm.status" }
+  | AppleFmSessionStartCommand
   | { type: "assignments.poll" }
   | { type: "assignments.accept"; leaseRef: string }
   | ControlSessionSpawnCommand
@@ -234,6 +236,9 @@ export const startControlServer = (
         case "apple_fm.status":
           if (!options.actions.appleFmStatus) throw new Error("Apple FM status unavailable on this node")
           return options.actions.appleFmStatus()
+        case "apple_fm.session.start":
+          if (!options.actions.sessions) throw new Error("sessions unavailable on this node")
+          return options.actions.sessions.startAppleFm(command)
         case "approvals.list":
           if (!options.actions.approvals) throw new Error("approvals unavailable on this node")
           return options.actions.approvals.list()

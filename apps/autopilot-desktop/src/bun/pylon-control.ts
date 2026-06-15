@@ -10,6 +10,7 @@ import {
 import type {
   AccountRow,
   AppleFmReadinessResponse,
+  AppleFmSessionStartResponse,
   ApprovalRow,
   AssignmentRow,
   IntentRow,
@@ -472,6 +473,72 @@ export async function fetchAppleFmReadiness(input: {
       blockerRef: "blocker.autopilot.apple_fm.control_unreachable",
       error: e instanceof Error ? e.message : "unavailable",
     })
+  }
+}
+
+export async function startAppleFmSession(input: {
+  baseUrl: string
+  token: string
+  prompt: string
+  worktreePath: string
+  timeoutSeconds?: number
+  fetchFn?: typeof fetch
+}): Promise<Omit<AppleFmSessionStartResponse, "readiness">> {
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "apple_fm.session.start",
+        prompt: input.prompt,
+        worktreePath: input.worktreePath,
+        ...(input.timeoutSeconds === undefined ? {} : { timeoutSeconds: input.timeoutSeconds }),
+      }),
+    })
+    if (!res.ok) {
+      return {
+        ok: false,
+        sessionRef: "",
+        blockerRefs: ["blocker.autopilot.apple_fm.control_request_failed"],
+        error: `control ${res.status}`,
+      }
+    }
+    const json = (await res.json()) as {
+      ok?: unknown
+      result?: {
+        ok?: unknown
+        sessionRef?: unknown
+        blockerRefs?: unknown
+        error?: unknown
+      }
+    }
+    const result = json.ok === true && json.result && typeof json.result === "object"
+      ? json.result
+      : null
+    if (result === null) {
+      return {
+        ok: false,
+        sessionRef: "",
+        blockerRefs: ["blocker.autopilot.apple_fm.control_response_malformed"],
+        error: "malformed control response",
+      }
+    }
+    const ok = result.ok === true
+    const blockerRefs = stringArray(result.blockerRefs)
+    return {
+      ok,
+      sessionRef: ok ? requiredString(result.sessionRef, "session.pylon.apple_fm") : "",
+      blockerRefs,
+      ...(typeof result.error === "string" ? { error: result.error } : {}),
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      sessionRef: "",
+      blockerRefs: ["blocker.autopilot.apple_fm.control_unreachable"],
+      error: e instanceof Error ? e.message : "unavailable",
+    }
   }
 }
 

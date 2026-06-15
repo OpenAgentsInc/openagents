@@ -13,6 +13,7 @@ import { commandErrorText } from "./helpers"
 import {
   FailedCoordinatorToggle,
   FailedBuiltInAgent,
+  FailedAppleFmSession,
   FailedSpawn,
   GotAppleFmReadiness,
   GotBuiltInAgentReadiness,
@@ -38,6 +39,7 @@ import {
   SettledResolveApproval,
   SettledSubmitIntent,
   SucceededBuiltInAgent,
+  SucceededAppleFmSession,
   SucceededDeploy,
   SucceededSpawn,
 } from "./message"
@@ -421,6 +423,30 @@ export const LoadAppleFmReadiness = Command.define(
           projection: emptyAppleFmReadinessProjection(errorText(error)),
         }),
       ),
+    ),
+  ),
+)
+
+export const StartAppleFmSession = Command.define(
+  "StartAppleFmSession",
+  {},
+  SucceededAppleFmSession,
+  FailedAppleFmSession,
+)(() =>
+  Effect.tryPromise(() => getRequest().startAppleFmSession({})).pipe(
+    Effect.map((result) =>
+      result.ok
+        ? SucceededAppleFmSession({ sessionRef: result.sessionRef })
+        : FailedAppleFmSession({
+            error:
+              result.error ??
+              result.blockerRefs[0] ??
+              result.readiness.blockerRefs[0] ??
+              "local Apple FM unavailable",
+          }),
+    ),
+    Effect.catch((error) =>
+      Effect.succeed(FailedAppleFmSession({ error: errorText(error) })),
     ),
   ),
 )

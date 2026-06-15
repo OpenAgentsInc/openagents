@@ -16,6 +16,8 @@
 
 import type { Message } from "./message"
 import type {
+  AppleFmReadinessResponse,
+  AppleFmSessionStartResponse,
   BuiltInAgentReadinessResponse,
   BuiltInAgentStartResponse,
   InstallReadinessResponse,
@@ -52,6 +54,12 @@ export type DesktopRequests = {
   startBuiltInAgent(
     p: Record<string, never>,
   ): Promise<BuiltInAgentStartResponse>
+  appleFmReadiness(
+    p: Record<string, never>,
+  ): Promise<AppleFmReadinessResponse>
+  startAppleFmSession(
+    p: Record<string, never>,
+  ): Promise<AppleFmSessionStartResponse>
   installReadiness(
     p: Record<string, never>,
   ): Promise<InstallReadinessResponse>

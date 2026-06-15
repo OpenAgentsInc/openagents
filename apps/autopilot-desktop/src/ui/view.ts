@@ -90,6 +90,7 @@ import {
   ClickedRefreshTrainingRuns,
   ClickedQueueTrainingLaunch,
   ClickedResolveApproval,
+  ClickedStartAppleFm,
   ClickedRequestTrainingBootstrap,
   ClickedStartBuiltInAgent,
   ClickedSpawn,
@@ -3160,6 +3161,7 @@ const builtInAgentPane = (model: Model): Html => {
   const hostedSelected = model.agentMode === "hosted"
   const localSelected = model.agentMode === "local-apple-fm"
   const canStart = (readiness === null || readiness.ok) && hostedSelected
+  const canStartLocalAppleFm = localSelected && (appleFmReadiness?.ok ?? false)
   const statusVisible = model.builtInAgentStatus.tone !== "idle"
   const appleStatusVisible = model.appleFmStatus.tone !== "idle"
 
@@ -3299,6 +3301,15 @@ const builtInAgentPane = (model: Model): Html => {
               h.OnClick(ClickedRefreshAppleFm()),
             ],
             [model.appleFmPending ? "Checking..." : "Refresh local"],
+          ),
+          h.button(
+            [
+              cls("adapter-btn"),
+              h.Type("button"),
+              h.Disabled(model.appleFmPending || !canStartLocalAppleFm),
+              h.OnClick(ClickedStartAppleFm()),
+            ],
+            [model.appleFmPending ? "Starting..." : "Start local"],
           ),
         ]),
       ]),

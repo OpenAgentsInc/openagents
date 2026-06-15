@@ -525,6 +525,14 @@ export type AppleFmReadinessResponse = {
   readonly error?: string
 }
 
+export type AppleFmSessionStartResponse = {
+  readonly ok: boolean
+  readonly sessionRef: string
+  readonly readiness: AppleFmReadinessResponse
+  readonly blockerRefs: readonly string[]
+  readonly error?: string
+}
+
 export type { InstallReadinessResponse } from "./install-readiness"
 export type {
   PromiseSurfacingDraft,
@@ -645,6 +653,13 @@ export type DesktopRPCSchema = {
       readonly appleFmReadiness: {
         readonly params: Record<string, never>
         readonly response: AppleFmReadinessResponse
+      }
+      // #5072: start the bounded local Apple FM chat/tool loop from Bun. The
+      // webview supplies no prompt, callback URL, token, helper path, or tool
+      // authority; Bun/Pylon own those details and return a normal sessionRef.
+      readonly startAppleFmSession: {
+        readonly params: Record<string, never>
+        readonly response: AppleFmSessionStartResponse
       }
       // #5064: one public-safe first-run health projection for normal installs.
       readonly installReadiness: {

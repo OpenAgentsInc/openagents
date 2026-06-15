@@ -32,6 +32,7 @@ import {
   RequestTrainingBootstrapGrant,
   ResolveApproval,
   SetCoordinatorPaused,
+  StartAppleFmSession,
   StartBuiltInAgent,
   SurfacePromiseGap,
   SpawnSession,
@@ -382,6 +383,44 @@ export const update = (model: Model, message: Message): Result => {
         noCommands,
       ]
     }
+    case "ClickedStartAppleFm":
+      return [
+        Model.make({
+          ...model,
+          pane: "builtin-agent",
+          appleFmPending: true,
+          appleFmStatus: {
+            text: "starting local Apple FM session...",
+            tone: "info",
+          },
+        }),
+        [StartAppleFmSession()],
+      ]
+    case "SucceededAppleFmSession":
+      return [
+        Model.make({
+          ...model,
+          appleFmPending: false,
+          appleFmStatus: {
+            text: `local session online · ${message.sessionRef}`,
+            tone: "success",
+          },
+          pane: "session-detail",
+          selectedSessionRef: message.sessionRef,
+          expandedEvents: [],
+        }),
+        noCommands,
+      ]
+    case "FailedAppleFmSession":
+      return [
+        Model.make({
+          ...model,
+          pane: "builtin-agent",
+          appleFmPending: false,
+          appleFmStatus: { text: message.error, tone: "error" },
+        }),
+        noCommands,
+      ]
     case "ClickedStartBuiltInAgent":
       return [
         Model.make({

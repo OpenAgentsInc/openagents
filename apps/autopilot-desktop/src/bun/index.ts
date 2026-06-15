@@ -34,6 +34,7 @@ import {
   readControlToken,
   resolveApproval,
   setCoordinatorPaused,
+  startAppleFmSession as startAppleFmControlSession,
   spawnSession,
   submitIntent,
 } from "./pylon-control"
@@ -52,6 +53,7 @@ import {
 } from "./training-runs"
 import type {
   AppleFmReadinessResponse,
+  AppleFmSessionStartResponse,
   BuiltInAgentReadinessResponse,
   BuiltInAgentStartResponse,
   DesktopRPCSchema,
@@ -89,6 +91,8 @@ const configuredTrainingPylonRef =
 const trainingWorkerReceiptsFilename = "training-worker-receipts.json"
 const builtInAgentWorktreeDirname = "builtin-agent-workspace"
 const builtInAgentUsageFilename = "builtin-agent-usage.json"
+const localAppleFmPrompt =
+  "Run entirely locally through Apple Foundation Models. Use list_files on '.', then read_file on README.md if it exists, and answer with a concise summary of the local workspace. Refuse shell, write, network, deployment, and out-of-workspace requests."
 
 let managedNode: SupervisedNode | null = null
 
@@ -393,6 +397,34 @@ async function startBuiltInAgentSession(): Promise<BuiltInAgentStartResponse> {
   }
 }
 
+async function startLocalAppleFmSession(): Promise<AppleFmSessionStartResponse> {
+  const readiness = await appleFmReadinessProjection()
+  const token = tokenForCommand()
+  const worktreePath = builtInAgentWorktreePath()
+  if (!readiness.ok || token === null || worktreePath === null) {
+    return {
+      ok: false,
+      sessionRef: "",
+      readiness,
+      blockerRefs: readiness.blockerRefs.length > 0
+        ? readiness.blockerRefs
+        : ["blocker.autopilot.apple_fm.worktree_unavailable"],
+      error: readiness.message ?? readiness.unavailableReason ?? "local Apple FM unavailable",
+    }
+  }
+  const result = await startAppleFmControlSession({
+    baseUrl: controlBaseUrl,
+    token,
+    prompt: localAppleFmPrompt,
+    timeoutSeconds: 300,
+    worktreePath,
+  })
+  return {
+    ...result,
+    readiness,
+  }
+}
+
 const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
   handlers: {
     requests: {
@@ -427,6 +459,9 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       async appleFmReadiness() {
         return appleFmReadinessProjection()
+      },
+      async startAppleFmSession() {
+        return startLocalAppleFmSession()
       },
       async installReadiness() {
         return installReadinessProjection()

@@ -7,7 +7,7 @@ import { Effect, Schema as S } from "effect"
 
 export const CONTROL_SCHEMA_TAG = "openagents.pylon.control.v0.3" as const
 
-export const Adapter = S.Literals(["codex", "claude_agent"])
+export const Adapter = S.Literals(["codex", "claude_agent", "apple_fm"])
 export type Adapter = typeof Adapter.Type
 
 // Execution lane for a spawned session (#4998). Owner direction:
