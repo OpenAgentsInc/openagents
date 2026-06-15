@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-14.10')
+    expect(decoded.version).toBe('2026-06-14.11')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -310,9 +310,10 @@ describe('public product promises document', () => {
           evidenceRefs: expect.arrayContaining([
             'receipt.public.artanis.unattended_tick_streak.71929a5d-fa68-41f1-bb9f-51f67abd3456.x10',
             'receipt.public.artanis.dataset_curation.31b381bf0f19448d',
+            'transition:promise_transition_f4cb0a3e-0c41-41ef-b8fe-e8a9985fdae2',
           ]),
           promiseId: 'artanis.tassadar_evolution_loop.v1',
-          state: 'yellow',
+          state: 'green',
         }),
       ]),
     )
@@ -322,12 +323,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-14.10', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-14.11', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-14.10',
+      expectedVersion: '2026-06-14.11',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-14.10',
+      servedVersion: '2026-06-14.11',
       status: 'ready',
     })
     expect(
@@ -337,7 +338,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-14.10',
+      servedVersion: '2026-06-14.11',
       status: 'blocked',
     })
   })

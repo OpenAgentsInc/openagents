@@ -4,9 +4,11 @@ Date: 2026-06-15
 
 This note tracks the receipt-bearing surfaces for the
 `artanis.tassadar_evolution_loop.v1` green path. As of this file's 2026-06-15
-update, the public monitor can project all four receipt surfaces. The product
-promise registry still needs its own receipt-first transition before public copy
-can call the promise green.
+update, the public monitor projects all four receipt surfaces and the product
+promise transition was recorded receipt-first:
+
+- `promise_transition_f4cb0a3e-0c41-41ef-b8fe-e8a9985fdae2`
+  (`yellow -> green`, registry `2026-06-14.10`, all checks passed).
 
 ## #5029: Tetrahedron-Closed Executor Ticks
 

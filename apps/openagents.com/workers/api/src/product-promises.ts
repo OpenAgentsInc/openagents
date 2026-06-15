@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-14.10'
+export const PublicProductPromisesVersion = '2026-06-14.11'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -290,7 +290,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'pylon.v03_release_candidate.v1',
         productArea: 'Pylon',
         audience: ['contributor', 'agent', 'operator'],
-        state: 'yellow',
+        state: 'green',
         claim:
           'Pylon v0.3 has been pulled into the monorepo as the release-candidate contributor node and includes the former Probe runtime surface.',
         safeCopy:
@@ -1667,7 +1667,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'artanis.tassadar_evolution_loop.v1',
         productArea: 'Pylon',
         audience: ['contributor', 'operator'],
-        state: 'yellow',
+        state: 'green',
         claim:
           'A standing automated Artanis run advances the Tassadar executor lane in production: dispatching digest-pinned executor work to Pylons, verifying it by exact replay, accumulating the verified-trace corpus toward Tassadar model training, and publishing monitorable per-tick receipts on a public surface.',
         safeCopy:
@@ -1685,6 +1685,7 @@ export const publicProductPromisesDocument = () => {
           'receipt.public.artanis.dataset_curation.31b381bf0f19448d',
           'dataset.public.tassadar_distillation.artanis_admin.v0_1.31b381bf0f19448d',
           'digest.sha256.tassadar_distillation.manifest.31b381bf0f19448d',
+          'transition:promise_transition_f4cb0a3e-0c41-41ef-b8fe-e8a9985fdae2',
           'https://github.com/OpenAgentsInc/openagents/issues/5030#issuecomment-4705952492',
           'https://github.com/OpenAgentsInc/openagents/issues/5032#issuecomment-4706021831',
           'docs/2026-06-10-tassadar-executor-pylon-v03-readiness-audit.md',
@@ -1692,7 +1693,7 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [],
         verification:
-          'Receipt-ready 2026-06-15: the public tick-ledger monitor at GET /api/public/artanis/admin-ticks shows ten consecutive production-cron executor dispatches with accepted Pylon closeouts and accepted exact-replay verdicts (unattended streak receipt receipt.public.artanis.unattended_tick_streak.71929a5d-fa68-41f1-bb9f-51f67abd3456.x10), plus the first dataset_curation receipt converting those verified closed-tick refs into a compact-binary train/validation/test distillation dataset manifest (receipt.public.artanis.dataset_curation.31b381bf0f19448d). This registry version intentionally leaves the promise yellow with blockers cleared so the operator promise_transition route can record the green flip receipt-first against the served version.',
+          'Green transition recorded receipt-first on 2026-06-15: promise_transition_f4cb0a3e-0c41-41ef-b8fe-e8a9985fdae2 passed against served registry 2026-06-14.10 from yellow to green with blockers clear. The public tick-ledger monitor at GET /api/public/artanis/admin-ticks shows ten consecutive production-cron executor dispatches with accepted Pylon closeouts and accepted exact-replay verdicts (unattended streak receipt receipt.public.artanis.unattended_tick_streak.71929a5d-fa68-41f1-bb9f-51f67abd3456.x10), plus the first dataset_curation receipt converting those verified closed-tick refs into a compact-binary train/validation/test distillation dataset manifest (receipt.public.artanis.dataset_curation.31b381bf0f19448d).',
         authorityBoundary:
           'The loop acts only through existing gates: assignments for computation, approval requirements for risky kinds, owner authority for wallet spend, copy gates for publication. A green here proves a monitorable automated run, not model capability; Tassadar disclosure boundaries extend unchanged.',
       },
