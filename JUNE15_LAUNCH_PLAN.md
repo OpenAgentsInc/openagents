@@ -18,8 +18,28 @@ Tassadar** — the Percepta Executor Class model direction from Episode 236.
 ## Current status (updated 2026-06-15)
 
 **We are ready to flip live.** Everything build/dev-testable is done; the only
-remaining work is the live launch event itself and owner-gated signing. Live
-registry: **`2026-06-14.9`**.
+remaining work is the live launch event itself. Live registry: **`2026-06-14.9`**.
+
+**RC builds + OTA + signing — DONE this pass:**
+- **Pylon v1.0-rc.1** — signed `bun --compile` binaries (4 platforms), default-on
+  self-updater (verify→atomic-replace→relaunch), runs headless (#5041/#5042/#5043/
+  #5047/#5038).
+- **Autopilot v1.0-rc.1** — signed + **Apple-notarized** `.app` (Gatekeeper-accepted),
+  bundles the headless node, default-on Electrobun OTA, immersive **pylon-network
+  home screen** (sidebar removed, activity-driven) (#5046/#5027/#5040/#5049 core).
+- **Provenance** — ed25519 release key + GCP-SM backup + fail-closed pinned verify;
+  Apple Developer ID in keychain + GCP-backed (#5044/#5048). One signed feed on our
+  GCP (#5039).
+- **Tester install guide:** `docs/autopilot-coder/2026-06-15-rc-tester-install-guide.md`.
+- **Homepage:** the pylon's blue glow now tracks live activity + a live stats
+  overlay sits behind the countdown (#5050 core).
+- Visual language: `docs/autopilot-coder/2026-06-15-autopilot-home-network-visual-language.md`.
+
+**Remaining = owner-gated live launch event only:** #5014 (live non-owner Go/No-Go
+→ real install→earn→receipt), #5015 (self-serve earn green), #5018 (announcement),
+#5012 (crucial-promise green flips). RC builds ship without these; promises stay
+receipt-first (no green without live receipts). Fidelity follow-ups: #5049 center
+shader, #5050 homepage network graph.
 
 **Done + merged + (where applicable) deployed:**
 - **Worker run lane A–E** — run authority/manifest, executor-trace admission +
