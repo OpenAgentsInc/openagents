@@ -504,12 +504,13 @@ cannot dereference is not a payment; it is a bug wearing money.*
 
 ## 12. Issue tracker — the launch epics
 
-**Status as of 2026-06-15.** Live registry is `2026-06-14.6`
+**Status as of 2026-06-15.** Live registry is `2026-06-14.7`
 (`/api/public/product-promises`). Closed so far: worker lane A–E
-(#5006–#5010), registry reconcile #5013, count rule #5016, and the entire
-desktop-UI cleanup (#5020–#5024). Still open: the launch event #5014, the
-self-serve earn #5015, the receipts cleanup #5017, the announcement #5018, and
-the install seam #5011 (in progress).
+(#5006–#5010), registry reconcile #5013, count rule #5016, receipts cleanup
+#5017, the entire desktop-UI cleanup (#5020–#5024), the install seam #5011, and
+the desktop epic #5019. **Still open: the launch event #5014, the self-serve
+earn #5015, and the announcement #5018** — #5014/#5018 are the live launch
+event + announcement (not code); #5015 builds on the now-merged #5011.
 
 ### Master launch epic: flip the crucial promises green
 - **[#5012](https://github.com/OpenAgentsInc/openagents/issues/5012)** — Epic:
@@ -530,24 +531,28 @@ the install seam #5011 (in progress).
     **DONE + deployed.** Participant-count rule published in the run manifest;
     `qualifiedContributorCount` projected from verified+settled receipts (gates
     any "largest" claim; §5).
-  - ⬜ **[#5017](https://github.com/OpenAgentsInc/openagents/issues/5017)** —
-    Receipts: record the outstanding `promise_transition` receipts for the
-    already-applied labor/fanout flips. **OPEN — operator action via
-    `POST /api/operator/product-promises/transitions`.**
+  - ✅ **[#5017](https://github.com/OpenAgentsInc/openagents/issues/5017)** —
+    **DONE.** The four labor/fanout `promise_transition` receipts recorded via
+    the operator route (exception receipts — flips already applied), registry
+    caveats resolved at `2026-06-14.7`, dereferenceable at
+    `/api/public/product-promises/transitions`.
   - ⬜ **[#5018](https://github.com/OpenAgentsInc/openagents/issues/5018)** —
     Announce: copy-gated launch announcement, post Go/No-Go (§7, §G). **OPEN.**
 
 ### Install seam (§0, §4.F)
-- 🔄 **[#5011](https://github.com/OpenAgentsInc/openagents/issues/5011)** —
-  Autopilot Desktop launches/adopts the local Pylon node so "install →
-  contribute" is one step (the §0 seam, top §9 risk, gate on DoD #2/#3).
-  **IN PROGRESS.**
+- ✅ **[#5011](https://github.com/OpenAgentsInc/openagents/issues/5011)** —
+  **DONE (Phase 1 code; cff473e01).** Autopilot Desktop adopts an already-running
+  node or launches the local Pylon runtime into a managed `.pylon-local` home,
+  supervises it (restart-on-crash with backoff, honest launching/online/failed
+  states, stop-on-close), 16 unit tests. Webview status badge deferred (UI
+  follow-up); Phase 2 packaging out of scope; the live clean-machine
+  `electrobun dev` run is the §6 Go/No-Go event (#5014).
 
-### Desktop UI launch-readiness epic — ✅ children DONE
-- **[#5019](https://github.com/OpenAgentsInc/openagents/issues/5019)** — Epic:
-  make Autopilot Desktop UI launch-ready — strip dev scaffolding. Audit found
-  the data flow is genuinely live; the work was removing developer scaffolding
-  from the shipped UI. **Children done; epic stays open until #5011 lands.**
+### Desktop UI launch-readiness epic — ✅ DONE
+- ✅ **[#5019](https://github.com/OpenAgentsInc/openagents/issues/5019)** — Epic:
+  make Autopilot Desktop UI launch-ready — strip dev scaffolding. **All children
+  resolved (#5020–#5024 + #5011).** Audit found the data flow is genuinely live;
+  the work was removing developer scaffolding from the shipped UI.
   (`view.ts` 3807→3196 lines; live data flow unchanged.)
   - ✅ **[#5020](https://github.com/OpenAgentsInc/openagents/issues/5020)** —
     **DONE.** Three-effect demo panels + sources card removed from the Nodes
