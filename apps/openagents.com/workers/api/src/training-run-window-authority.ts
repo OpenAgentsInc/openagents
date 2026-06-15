@@ -165,8 +165,7 @@ export const TrainingWindowSealMetadata = S.Struct({
   staleness: TrainingWindowSealStalenessSummary,
   verificationOverhead: TrainingWindowSealVerificationOverhead,
 })
-export type TrainingWindowSealMetadata =
-  typeof TrainingWindowSealMetadata.Type
+export type TrainingWindowSealMetadata = typeof TrainingWindowSealMetadata.Type
 
 /**
  * Typed caveat raised when a run is still `planned` while one or more of its
@@ -191,7 +190,10 @@ export const TrainingRunManifest = S.Struct({
   artifactDigestRefs: PublicSafeRefs,
   blockerRefs: PublicSafeRefs,
   maxParticipants: S.optionalKey(
-    S.Number.check(S.isInt(), S.isBetween({ minimum: 1, maximum: 100_000_000 })),
+    S.Number.check(
+      S.isInt(),
+      S.isBetween({ minimum: 1, maximum: 100_000_000 }),
+    ),
   ),
   objective: S.optionalKey(ManifestText),
   paymentMode: S.optionalKey(PublicSafeRef),
@@ -476,10 +478,7 @@ export type TrainingAuthorityStore = Readonly<{
   // half-updated state. The marker is durable on purpose: a Worker that
   // dies mid-seal leaves the barrier up rather than letting a joiner
   // bootstrap from an unverified seal.
-  beginRunSealBarrier: (
-    trainingRunRef: string,
-    nowIso: string,
-  ) => Promise<void>
+  beginRunSealBarrier: (trainingRunRef: string, nowIso: string) => Promise<void>
   claimLease: (
     lease: TrainingWindowLeaseRecord,
     nowIso: string,
@@ -505,6 +504,11 @@ export type TrainingAuthorityStore = Readonly<{
   planRun: (run: TrainingRunRecord) => Promise<TrainingRunRecord>
   planWindow: (window: TrainingWindowRecord) => Promise<TrainingWindowRecord>
   readRun: (trainingRunRef: string) => Promise<TrainingRunRecord | undefined>
+  // Read a single claimed lease by ref (#5052). Used by the agent-gated
+  // worker -> validator trace-completion routes to enforce lease ownership.
+  readWindowLease: (
+    leaseRef: string,
+  ) => Promise<TrainingWindowLeaseRecord | undefined>
   transitionRun: (run: TrainingRunRecord) => Promise<TrainingRunRecord>
   readWindow: (windowRef: string) => Promise<TrainingWindowRecord | undefined>
   transitionWindow: (
@@ -1215,7 +1219,8 @@ export const buildTrainingRunRecord = (
     createdAt: input.nowIso,
     id: `training_run_${id}`,
     manifest: input.request.manifest ?? null,
-    maxAllowedStale: input.request.maxAllowedStale ?? DefaultMaxAllowedStaleSteps,
+    maxAllowedStale:
+      input.request.maxAllowedStale ?? DefaultMaxAllowedStaleSteps,
     promiseRef: input.request.promiseRef,
     publicProjectionJson: '{}',
     receiptRefs: uniqueRefs(input.request.receiptRefs),
@@ -1382,10 +1387,11 @@ export const assertValidTrainingWindowSealMetadata = (
   }
   const sampledCountByKind = churnEvents.reduce<
     Record<TrainingWindowChurnEventKind, number>
-  >(
-    (counts, event) => ({ ...counts, [event.kind]: counts[event.kind] + 1 }),
-    { join: 0, loss: 0, standby_promotion: 0 },
-  )
+  >((counts, event) => ({ ...counts, [event.kind]: counts[event.kind] + 1 }), {
+    join: 0,
+    loss: 0,
+    standby_promotion: 0,
+  })
 
   TrainingWindowChurnEventKind.literals.forEach(kind => {
     if (sampledCountByKind[kind] > declaredCountForKind[kind]) {
@@ -1411,9 +1417,7 @@ export const assertValidTrainingWindowSealMetadata = (
       checkpointDigestRef.length > 260 ||
       !TrainingPublicSafeRefPattern.test(checkpointDigestRef))
   ) {
-    throw sealValidationError(
-      'checkpointDigestRef must be a public-safe ref.',
-    )
+    throw sealValidationError('checkpointDigestRef must be a public-safe ref.')
   }
 }
 
@@ -1559,13 +1563,10 @@ const decodeTrainingWindowSealMetadataOption = S.decodeUnknownOption(
   TrainingWindowSealMetadata,
 )
 
-const decodeTrainingRunManifestOption = S.decodeUnknownOption(
-  TrainingRunManifest,
-)
+const decodeTrainingRunManifestOption =
+  S.decodeUnknownOption(TrainingRunManifest)
 
-const manifestFromJson = (
-  value: string | null,
-): TrainingRunManifest | null => {
+const manifestFromJson = (value: string | null): TrainingRunManifest | null => {
   const record = parseJsonRecord(value)
 
   return record === undefined
@@ -1787,6 +1788,19 @@ export const makeD1TrainingAuthorityStore = (
       .all<TrainingWindowLeaseRow>()
 
     return (result.results ?? []).map(rowToTrainingWindowLease)
+  },
+  readWindowLease: async leaseRef => {
+    const row = await db
+      .prepare(
+        `SELECT *
+           FROM training_window_leases
+          WHERE lease_ref = ?
+            AND archived_at IS NULL`,
+      )
+      .bind(leaseRef)
+      .first<TrainingWindowLeaseRow>()
+
+    return row === null ? undefined : rowToTrainingWindowLease(row)
   },
   listWindowsForRun: async (trainingRunRef, limit) => {
     const result = await db

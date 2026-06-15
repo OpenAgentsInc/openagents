@@ -1,17 +1,6 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import {
-  buildTrainingRunRecord,
-  type TrainingAuthorityStore,
-  type TrainingRunPublicSummary,
-  type TrainingRunProjection,
-  type TrainingRunRecord,
-  type TrainingWindowEventRecord,
-  type TrainingWindowLeaseRecord,
-  type TrainingWindowRecord,
-} from './training-run-window-authority'
-import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
 import type {
   NexusPaymentAuthorityReceiptRecord,
   NexusTreasuryPayoutAttemptRecord,
@@ -19,6 +8,17 @@ import type {
   NexusTreasuryPayoutLedgerStore,
   NexusTreasuryPayoutReconciliationEventRecord,
 } from './nexus-treasury-payout-ledger'
+import {
+  type TrainingAuthorityStore,
+  type TrainingRunProjection,
+  type TrainingRunPublicSummary,
+  type TrainingRunRecord,
+  type TrainingWindowEventRecord,
+  type TrainingWindowLeaseRecord,
+  type TrainingWindowRecord,
+  buildTrainingRunRecord,
+} from './training-run-window-authority'
+import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
 import {
   type TrainingVerificationChallengeRecord,
   buildTrainingVerificationChallengeRecord,
@@ -60,10 +60,7 @@ const makeLedgerStoreStub = (
 
   const intents = new Map<string, NexusTreasuryPayoutIntentRecord>()
   const attempts = new Map<string, NexusTreasuryPayoutAttemptRecord>()
-  const events = new Map<
-    string,
-    NexusTreasuryPayoutReconciliationEventRecord
-  >()
+  const events = new Map<string, NexusTreasuryPayoutReconciliationEventRecord>()
   const notImplemented = async (): Promise<never> => {
     throw new Error('not implemented in ledger stub')
   }
@@ -251,6 +248,7 @@ const makeMemoryStore = (): MemoryTrainingAuthorityStore => {
     },
     readRun: async trainingRunRef => runs.get(trainingRunRef),
     readWindow: async windowRef => windows.get(windowRef),
+    readWindowLease: async leaseRef => leases.get(leaseRef),
     transitionRun: async run => {
       runs.set(run.trainingRunRef, run)
 
@@ -819,7 +817,10 @@ describe('training run window routes', () => {
         jsonRequest(
           '/api/training/runs/run.tassadar.executor.20260615/executor-trace-closeout',
           {
-            closeout: { ...closeout, validatorDeviceRef: 'pylon.device.worker' },
+            closeout: {
+              ...closeout,
+              validatorDeviceRef: 'pylon.device.worker',
+            },
             windowRef: 'training.window.tassadar.executor.20260615.w1',
           },
         ),
@@ -1016,9 +1017,7 @@ describe('training run window routes', () => {
 
     const seedChallenge = (
       id: string,
-      verificationClass:
-        | 'exact_trace_replay'
-        | 'deterministic_recompute',
+      verificationClass: 'exact_trace_replay' | 'deterministic_recompute',
       verify: boolean,
     ): void => {
       const built = buildTrainingVerificationChallengeRecord({
@@ -1279,7 +1278,9 @@ describe('training run window routes', () => {
       shardRef: 'shard.cs336_a4.pii_masking.1',
       sourceRefs: ['commitment.cs336_a4.pii_masking.sha256_abcdef0123456789'],
       stage: 'pii_masking' as const,
-      verificationRefs: ['verdict.training.deterministic_recompute.pii_masking'],
+      verificationRefs: [
+        'verdict.training.deterministic_recompute.pii_masking',
+      ],
     }
 
     store._testSeedRun(
@@ -1380,9 +1381,7 @@ describe('training run window routes', () => {
       receiptRefs: ['receipt.cs336_a5.settlement.reward_grading.split_a'],
       sampleCount: 256,
       score: 0.66,
-      sourceRefs: [
-        'workload.cs336_a5.seeded_rollout_and_reference_grading.v1',
-      ],
+      sourceRefs: ['workload.cs336_a5.seeded_rollout_and_reference_grading.v1'],
       splitRef: 'split.cs336_a5.synthetic_math.bounded_combined.v1',
       taskSetRef: 'math' as const,
       verificationRefs: [

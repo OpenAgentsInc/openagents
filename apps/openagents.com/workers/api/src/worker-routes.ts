@@ -66,6 +66,7 @@ type WorkerRouteDependencies = Readonly<{
     env: Env,
     ctx: ExecutionContext,
   ) => Effect.Effect<Response>
+  routeTassadarTraceContributionRequest: OptionalEffectRoute
   routeTeamChatRequest: OptionalEffectRoute
   routeThreadFileRequest: OptionalEffectRoute
   routeTrainingRunWindowRequest: OptionalEffectRoute
@@ -356,6 +357,13 @@ export const makeWorkerRouteRequest =
 
       if (pylonApiResponse !== undefined) {
         return yield* pylonApiResponse
+      }
+
+      const tassadarTraceContributionResponse =
+        dependencies.routeTassadarTraceContributionRequest(request, env, ctx)
+
+      if (tassadarTraceContributionResponse !== undefined) {
+        return yield* tassadarTraceContributionResponse
       }
 
       const trainingRunWindowResponse =

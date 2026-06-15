@@ -91,30 +91,17 @@ import {
   type VerifiedSession as VerifiedAuthSession,
   makeBrowserSessionBoundary,
 } from './auth/session'
-import { makeAutopilotDecisionRoutes } from './autopilot-decision-routes'
-import { makeOmniWorkroomRoutes } from './omni-workroom-routes'
-import { makeOmniWorkroomLifecycleRoutes } from './omni-workroom-lifecycle-routes'
-import { makeOmniBundleRoutes } from './omni-bundle-routes'
-import { makeOmniHandoffRoutes } from './omni-handoff-routes'
-import { makeNativeListsRoutes } from './native-lists-routes'
-import { makeNativeListsService } from './native-lists'
-import { makeTenantClientRoutes } from './tenant-client-routes'
-import { makeEmailSequenceAuthoringRoutes } from './email-sequence-authoring-routes'
-import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
-import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
-import { makeTenantCustomHostnames } from './tenant-custom-hostnames'
-import { readOmniEvidenceBundleById } from './omni-evidence-bundles'
-import { readOmniPublicProofBundleById } from './omni-public-proof-bundles'
 import {
   listAutopilotContinuationRunCandidates,
   makeD1AutopilotContinuationStore,
   runAutopilotContinuationSweep,
 } from './autopilot-continuation-policy'
 import { makeAutopilotContinuationPolicyRoutes } from './autopilot-continuation-policy-routes'
+import { makeAutopilotDecisionRoutes } from './autopilot-decision-routes'
 import { makeAutopilotMorningReportRoutes } from './autopilot-morning-report-routes'
 import {
-  dispatchDueScheduledAutopilotWork,
   type AutopilotWorkOrderRecord,
+  dispatchDueScheduledAutopilotWork,
   makeAutopilotWorkRoutes,
   makeD1AutopilotWorkStore,
   recordAutopilotWorkerCloseoutFromPylon,
@@ -167,6 +154,7 @@ import {
   dispatchDueEmailCampaignSends,
 } from './email-campaign-dispatcher'
 import type { OnboardingDripOrderState } from './email-onboarding-drip'
+import { makeEmailSequenceAuthoringRoutes } from './email-sequence-authoring-routes'
 import { makeForumRoutes } from './forum-routes'
 import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
 import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
@@ -227,6 +215,8 @@ import {
   optionalMdkContainerSecret,
 } from './mdk-container-env'
 import { makeMulletRoutes } from './mullet/routes'
+import { makeNativeListsService } from './native-lists'
+import { makeNativeListsRoutes } from './native-lists-routes'
 import { makeNexusPylonVisibilityRoutes } from './nexus-pylon-visibility-routes'
 import { makeD1NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
 import { makeD1Nip90MarketReceiptStore } from './nip90-market-receipts'
@@ -237,7 +227,11 @@ import {
   observedPromise,
 } from './observability'
 import { handleOmniApiSdkSeedApi } from './omni-api-sdk-seed-routes'
+import { makeOmniBundleRoutes } from './omni-bundle-routes'
+import { readOmniEvidenceBundleById } from './omni-evidence-bundles'
 import { makeOmniHandlers } from './omni-handlers'
+import { makeOmniHandoffRoutes } from './omni-handoff-routes'
+import { readOmniPublicProofBundleById } from './omni-public-proof-bundles'
 import { makeOmniRoutes } from './omni-routes'
 import {
   type AgentRunBundle,
@@ -248,6 +242,8 @@ import {
   listActiveAgentRunsForBilling,
   makeD1OmniRunStore,
 } from './omni-runs'
+import { makeOmniWorkroomLifecycleRoutes } from './omni-workroom-lifecycle-routes'
+import { makeOmniWorkroomRoutes } from './omni-workroom-routes'
 import { githubIdentityTokenKey } from './onboarding/github'
 import { readOnboardingStatusForUser } from './onboarding/repository'
 import { makeOnboardingRoutes } from './onboarding/routes'
@@ -272,6 +268,7 @@ import {
   type OperatorTargetUser,
   readOperatorTargetUser,
 } from './operator-targets'
+import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { publicProductPromisesDocument } from './product-promises'
 import {
   handleOperatorPromiseTransitionApi,
@@ -282,9 +279,9 @@ import {
 import { probeProviderApiKey } from './provider-account-api-key'
 import { makeProviderAccountBrowserHandlers } from './provider-account-browser-routes'
 import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
-import { makeProviderAccountUsageRoutes } from './provider-account-usage-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
+import { makeProviderAccountUsageRoutes } from './provider-account-usage-routes'
 import {
   type CodexOAuthAuth,
   type ProviderAccountBundle,
@@ -306,9 +303,9 @@ import {
 } from './pylon-capacity-funnel-live-routes'
 import { makeD1PylonMarketplaceJobStore } from './pylon-marketplace-service'
 import {
+  type RelayHealthFetch,
   canonicalMarketRelayUrl,
   makeD1RelayHealthStore,
-  type RelayHealthFetch,
   runRelayHealthProbeTick,
 } from './relay-health'
 import { handlePublicRelayHealthApi } from './relay-health-routes'
@@ -344,6 +341,7 @@ import { makeSiteReferralPayoutLedgerRoutes } from './site-referral-payout-ledge
 import { makeSiteReferralRoutes } from './site-referral-routes'
 import { PENDING_REFERRAL_COOKIE } from './site-referrals'
 import { makeSiteRuntimeRoutes } from './site-runtime-routes'
+import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
 import {
   type SyncNotificationContext,
   notifyAgentRunSyncScopes,
@@ -356,6 +354,8 @@ import {
   TassadarReplayRequest,
   runTassadarReplayValidation,
 } from './tassadar-replay-validator'
+import { makeD1TrainingTraceContributionStore } from './tassadar-trace-contribution-authority'
+import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
 import {
   type TeamChatMessage,
   type TeamChatRunSummary,
@@ -376,6 +376,8 @@ import {
   readActiveTeamProject,
   readTeamsForUser,
 } from './team-repository'
+import { makeTenantClientRoutes } from './tenant-client-routes'
+import { makeTenantCustomHostnames } from './tenant-custom-hostnames'
 import {
   type RouteAccessError,
   RouteAccessForbidden,
@@ -3733,8 +3735,7 @@ const sendAutopilotDecisionRequiredEmailOnce = async (
       new AutopilotDecisionEmailInput({
         appOrigin: getAppOrigin(env),
         displayName: contact?.display_name.trim() || 'there',
-        idempotencyKey:
-          `autopilot:decision_required:${record.workOrderRef}`,
+        idempotencyKey: `autopilot:decision_required:${record.workOrderRef}`,
         kind: 'decision_required',
         to: email,
         workOrderRef: record.workOrderRef,
@@ -4952,8 +4953,11 @@ const runRelayHealthProbeScheduled = (
         // subrequests to the relay's custom domain fail from inside this
         // worker; the binding invokes the relay worker directly (#4865).
         fetchFn: env.MARKET_RELAY_SERVICE
-          ? ((url, init) =>
-              (env.MARKET_RELAY_SERVICE as Fetcher).fetch(url, init)) as RelayHealthFetch
+          ? (((url, init) =>
+              (env.MARKET_RELAY_SERVICE as Fetcher).fetch(
+                url,
+                init,
+              )) as RelayHealthFetch)
           : undefined,
         makeId: randomUuid,
         relayUrl: canonicalMarketRelayUrl(env),
@@ -5886,9 +5890,9 @@ const tenantClientRoutes = makeTenantClientRoutes({
   resolveTenant: async (request: Request, env: WorkerBindings) => {
     const host = request.headers.get('Host') ?? ''
     const tenant = await Effect.runPromise(
-      makeTenantCustomHostnames(openAgentsDatabase(env)).resolveTenantByHostname(
-        host,
-      ),
+      makeTenantCustomHostnames(
+        openAgentsDatabase(env),
+      ).resolveTenantByHostname(host),
     )
     return tenant ?? undefined
   },
@@ -5908,10 +5912,12 @@ const sitesOrchestrationRoutes = makeSitesOrchestrationRoutes({
   requireBrowserSession,
 })
 
-const partnerPayoutLedgerRoutes = makePartnerPayoutLedgerRoutes<WorkerBindings>({
-  nowIso: currentIsoTimestamp,
-  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-})
+const partnerPayoutLedgerRoutes = makePartnerPayoutLedgerRoutes<WorkerBindings>(
+  {
+    nowIso: currentIsoTimestamp,
+    requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+  },
+)
 
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
@@ -6196,6 +6202,36 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
   makeStore: env => makeD1TrainingAuthorityStore(openAgentsDatabase(env)),
   requireAdminApiToken,
 })
+
+// #5052 (epic #5051): agent-gated worker -> validator executor-trace completion
+// routes. These add the contributor-callable submit/verify path; they are inert
+// with respect to existing admin/closeout/settlement behavior until the pairing
+// orchestration (#5053) and Pylon client (#5054) wire them.
+const tassadarTraceContributionRoutes =
+  makeTassadarTraceContributionRoutes<WorkerBindings>({
+    agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+    createVerificationChallenge: (env, request) => {
+      const built = buildTrainingVerificationChallengeRecord({
+        makeId: randomUuid,
+        nowIso: currentIsoTimestamp(),
+        request,
+      })
+
+      return makeD1TrainingVerificationStore(
+        openAgentsDatabase(env),
+      ).createChallenge(built.challenge, built.event)
+    },
+    makeContributionStore: env =>
+      makeD1TrainingTraceContributionStore(openAgentsDatabase(env)),
+    makeStore: env => makeD1TrainingAuthorityStore(openAgentsDatabase(env)),
+    resolvePylonOwnerUserId: async (env, pylonRef) => {
+      const registration = await makeD1PylonApiStore(
+        openAgentsDatabase(env),
+      ).readRegistration(pylonRef)
+
+      return registration?.ownerAgentUserId
+    },
+  })
 
 const trainingVerificationRoutes =
   makeTrainingVerificationRoutes<WorkerBindings>({
@@ -7150,8 +7186,16 @@ const routeRequest = makeWorkerRouteRequest({
       env,
       ctx,
     ) ??
-    sitesOrchestrationRoutes.routeSitesOrchestrationRequest(request, env, ctx) ??
-    partnerPayoutLedgerRoutes.routePartnerPayoutLedgerRequest(request, env, ctx),
+    sitesOrchestrationRoutes.routeSitesOrchestrationRequest(
+      request,
+      env,
+      ctx,
+    ) ??
+    partnerPayoutLedgerRoutes.routePartnerPayoutLedgerRequest(
+      request,
+      env,
+      ctx,
+    ),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,
@@ -7198,6 +7242,8 @@ const routeRequest = makeWorkerRouteRequest({
   routeSyncRequest: syncRoutes.routeSyncRequest,
   routeTeamChatRequest: teamChatRoutes.routeTeamChatRequest,
   routeThreadFileRequest: threadFileRoutes.routeThreadFileRequest,
+  routeTassadarTraceContributionRequest:
+    tassadarTraceContributionRoutes.routeTassadarTraceContributionRequest,
   routeTrainingRunWindowRequest:
     trainingRunWindowRoutes.routeTrainingRunWindowRequest,
   routeTrainingVerificationRequest:
@@ -7475,11 +7521,9 @@ export default {
       ),
       observedEffect(
         'AutopilotScheduledLaunches.dispatchDue',
-        dispatchDueScheduledAutopilotWork(
-          autopilotWorkRouteDependencies,
-          env,
-          { nowIso: epochMillisToIsoTimestamp(event.scheduledTime) },
-        ),
+        dispatchDueScheduledAutopilotWork(autopilotWorkRouteDependencies, env, {
+          nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+        }),
       ),
       observedEffect(
         'AutopilotContinuationPolicy.sweep',

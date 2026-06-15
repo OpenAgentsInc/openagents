@@ -1,0 +1,536 @@
+import { Effect } from 'effect'
+import { describe, expect, it } from 'vitest'
+
+import type {
+  AgentRegistrationStore,
+  AgentUserRecord,
+} from './agent-registration'
+import {
+  type TrainingTraceContributionRecord,
+  type TrainingTraceContributionStore,
+  TrainingTraceContributionStoreError,
+  buildTrainingTraceContributionRecord,
+  pairedContributionProjectionJson,
+} from './tassadar-trace-contribution-authority'
+import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
+import {
+  type TrainingAuthorityStore,
+  type TrainingWindowLeaseRecord,
+} from './training-run-window-authority'
+import {
+  type TrainingVerificationChallengeRecord,
+  buildTrainingVerificationChallengeRecord,
+  verifyExactTraceReplay,
+} from './training-verification'
+
+/**
+ * #5052 (epic #5051) agent-gated worker -> validator executor-trace completion
+ * routes. These exercise lease-ownership, device-distinctness, idempotency, and
+ * the digest-match -> Verified / mismatch -> Rejected verdict that the existing
+ * exact_trace_replay challenge computes.
+ */
+
+const WORKER_USER = 'agent-worker'
+const VALIDATOR_USER = 'agent-validator'
+const WORKER_PYLON = 'pylon.worker'
+const VALIDATOR_PYLON = 'pylon.validator'
+const LEASE_REF = 'lease.tassadar.executor.1'
+const RUN_REF = 'run.tassadar.executor.20260615'
+const WINDOW_REF = 'training.window.tassadar.executor.20260615.w1'
+
+const userFor = (id: string): AgentUserRecord => ({
+  avatarUrl: null,
+  createdAt: '2026-06-15T00:00:00.000Z',
+  displayName: id,
+  id,
+  kind: 'agent',
+  primaryEmail: null,
+  status: 'active',
+  updatedAt: '2026-06-15T00:00:00.000Z',
+})
+
+// Authenticates the caller as `userId`. requireAgent calls
+// authenticateProgrammaticAgent, which hashes the bearer token and looks it up
+// via findAgentByTokenHash; binding the store to the expected userId (as the
+// existing pylon-api tests do) yields a deterministic per-request session. When
+// `userId` is undefined the store resolves no agent (unauthenticated path).
+const makeAgentStore = (
+  userId: string | undefined,
+): AgentRegistrationStore => ({
+  createAgentRegistration: () => Promise.resolve(),
+  findAgentByTokenHash: () =>
+    Promise.resolve(
+      userId === undefined
+        ? undefined
+        : {
+            credentialId: `cred-${userId}`,
+            profileMetadataJson: '{}',
+            tokenPrefix: 'oa_agent_',
+            user: userFor(userId),
+          },
+    ),
+  touchAgentCredential: () => Promise.resolve(),
+})
+
+const leaseRecord = (
+  overrides: Partial<TrainingWindowLeaseRecord> = {},
+): TrainingWindowLeaseRecord => ({
+  claimedAt: '2026-06-15T00:00:00.000Z',
+  id: 'lease-1',
+  leaseExpiresAt: '2026-06-15T01:00:00.000Z',
+  leaseRef: LEASE_REF,
+  publicProjectionJson: '{}',
+  pylonRef: WORKER_PYLON,
+  receiptRefs: [],
+  state: 'active',
+  trainingRunRef: RUN_REF,
+  windowRef: WINDOW_REF,
+  ...overrides,
+})
+
+type MemoryAuthorityStore = TrainingAuthorityStore &
+  Readonly<{ _leases: Map<string, TrainingWindowLeaseRecord> }>
+
+const notImplemented = async (): Promise<never> => {
+  throw new Error('not implemented in authority stub')
+}
+
+const makeAuthorityStore = (
+  leases: ReadonlyArray<TrainingWindowLeaseRecord>,
+): MemoryAuthorityStore => {
+  const leaseMap = new Map(leases.map(lease => [lease.leaseRef, lease]))
+
+  return {
+    _leases: leaseMap,
+    attachRunEvidence: notImplemented,
+    beginRunSealBarrier: notImplemented,
+    claimLease: notImplemented,
+    clearRunSealBarrier: notImplemented,
+    listClaimableWindows: async () => [],
+    listRuns: async () => [],
+    listVerificationChallengesForRun: async () => [],
+    listWindowLeasesForRun: async () => [],
+    listWindowsForRun: async () => [],
+    planRun: notImplemented,
+    planWindow: notImplemented,
+    readRun: notImplemented,
+    readWindow: notImplemented,
+    readWindowLease: async leaseRef => leaseMap.get(leaseRef),
+    transitionRun: notImplemented,
+    transitionWindow: notImplemented,
+  }
+}
+
+type MemoryContributionStore = TrainingTraceContributionStore &
+  Readonly<{ _records: Map<string, TrainingTraceContributionRecord> }>
+
+const makeContributionStore = (): MemoryContributionStore => {
+  const records = new Map<string, TrainingTraceContributionRecord>()
+  const key = (leaseRef: string, workloadFamily: string) =>
+    `${leaseRef}::${workloadFamily}`
+
+  return {
+    _records: records,
+    readWorkerContribution: async (leaseRef, workloadFamily) =>
+      records.get(key(leaseRef, workloadFamily)),
+    recordWorkerContribution: async record => {
+      const existing = records.get(key(record.leaseRef, record.workloadFamily))
+
+      if (existing !== undefined) {
+        return existing
+      }
+
+      records.set(key(record.leaseRef, record.workloadFamily), record)
+
+      return record
+    },
+    pairValidatorVerdict: async input => {
+      const found = [...records.values()].find(
+        record => record.contributionRef === input.contributionRef,
+      )
+
+      if (found === undefined || found.state !== 'pending') {
+        throw new TrainingTraceContributionStoreError({
+          kind: 'conflict',
+          reason: 'Worker trace contribution is not pending.',
+        })
+      }
+
+      const paired: TrainingTraceContributionRecord = {
+        ...found,
+        publicProjectionJson: input.publicProjectionJson,
+        replayDigestRef: input.replayDigestRef,
+        state: 'paired',
+        updatedAt: input.updatedAt,
+        validatorDeviceRef: input.validatorDeviceRef,
+        verificationChallengeRef: input.verificationChallengeRef,
+      }
+      records.set(key(found.leaseRef, found.workloadFamily), paired)
+
+      return paired
+    },
+  }
+}
+
+type Harness = Readonly<{
+  authority: MemoryAuthorityStore
+  contributions: MemoryContributionStore
+  challenges: Array<TrainingVerificationChallengeRecord>
+  route: (
+    path: string,
+    options: Readonly<{
+      body?: Record<string, unknown>
+      tokenUserId?: string
+    }>,
+  ) => Promise<Response>
+}>
+
+// resolvePylonOwnerUserId binds each Pylon to its owning agent user so the
+// lease-ownership check can compare the lease pylon_ref to the session user.
+const PYLON_OWNERS = new Map<string, string>([
+  [WORKER_PYLON, WORKER_USER],
+  [VALIDATOR_PYLON, VALIDATOR_USER],
+])
+
+const makeHarness = (
+  leases: ReadonlyArray<TrainingWindowLeaseRecord> = [leaseRecord()],
+): Harness => {
+  const authority = makeAuthorityStore(leases)
+  const contributions = makeContributionStore()
+  const challenges: Array<TrainingVerificationChallengeRecord> = []
+  let counter = 0
+  // The agent store dependency is invoked per request; it resolves the caller
+  // bound to the token user of the in-flight request (set by `route`). An
+  // undefined token user resolves no session (unauthenticated).
+  let currentTokenUser: string | undefined
+  const routes = makeTassadarTraceContributionRoutes({
+    agentStore: () => makeAgentStore(currentTokenUser),
+    createVerificationChallenge: async (_env, request) => {
+      // Use the real builder so the Verified/Rejected verdict is genuinely
+      // computed from the worker-vs-validator digest match.
+      const built = buildTrainingVerificationChallengeRecord({
+        makeId: () => `challenge-${++counter}`,
+        nowIso: '2026-06-15T00:05:00.000Z',
+        request,
+      })
+      challenges.push(built.challenge)
+
+      return built.challenge
+    },
+    makeContributionStore: () => contributions,
+    makeId: () => `id-${++counter}`,
+    makeStore: () => authority,
+    nowIso: () => '2026-06-15T00:05:00.000Z',
+    resolvePylonOwnerUserId: async (_env, pylonRef) =>
+      PYLON_OWNERS.get(pylonRef),
+  })
+
+  return {
+    authority,
+    challenges,
+    contributions,
+    route: (path, options) => {
+      currentTokenUser = options.tokenUserId
+      const init: RequestInit = {
+        headers: {
+          ...(options.body === undefined
+            ? {}
+            : { 'content-type': 'application/json' }),
+          ...(options.tokenUserId === undefined
+            ? {}
+            : { authorization: `Bearer oa_agent_${options.tokenUserId}` }),
+        },
+        method: 'POST',
+      }
+
+      if (options.body !== undefined) {
+        init.body = JSON.stringify(options.body)
+      }
+
+      const request = new Request(`https://openagents.test${path}`, init)
+      const response = routes.routeTassadarTraceContributionRequest(request, {})
+
+      if (response === undefined) {
+        throw new Error(`No route matched ${path}`)
+      }
+
+      return Effect.runPromise(response)
+    },
+  }
+}
+
+const submissionBody = (
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> => ({
+  assignmentRef: 'assignment.tassadar.1',
+  pylonDeviceRef: 'device.worker.1',
+  sampledWindow: { endStep: 32, startStep: 0 },
+  sampledWindowRef: 'window.sampled.1',
+  traceCommitmentDigestRef: 'digest.trace.abc',
+  workerReceiptRef: 'receipt.worker.1',
+  workloadFamily: 'article_closeout',
+  ...overrides,
+})
+
+const submitPath = `/api/training/leases/${LEASE_REF}/trace-submission`
+const verdictPath = `/api/training/leases/${LEASE_REF}/replay-verdict`
+
+describe('tassadar trace contribution routes (#5052)', () => {
+  it('§4.1 records a pending worker contribution for an owned lease', async () => {
+    const harness = makeHarness()
+    const response = await harness.route(submitPath, {
+      body: submissionBody(),
+      tokenUserId: WORKER_USER,
+    })
+    const body = (await response.json()) as {
+      contribution: { state: string; pylonRef: string; workloadFamily: string }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.contribution.state).toBe('pending')
+    expect(body.contribution.pylonRef).toBe(WORKER_PYLON)
+    expect(body.contribution.workloadFamily).toBe('article_closeout')
+    expect(harness.contributions._records.size).toBe(1)
+  })
+
+  it('§4.1 requires an agent bearer token', async () => {
+    const harness = makeHarness()
+    const response = await harness.route(submitPath, {
+      body: submissionBody(),
+    })
+
+    expect(response.status).toBe(401)
+    expect(harness.contributions._records.size).toBe(0)
+  })
+
+  it('§4.1 rejects a lease owned by another Pylon', async () => {
+    const harness = makeHarness()
+    // The validator agent does not own the worker Pylon's lease.
+    const response = await harness.route(submitPath, {
+      body: submissionBody(),
+      tokenUserId: VALIDATOR_USER,
+    })
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(403)
+    expect(body.error).toBe('training_authority_forbidden')
+    expect(harness.contributions._records.size).toBe(0)
+  })
+
+  it('§4.1 404s an unknown lease', async () => {
+    const harness = makeHarness([])
+    const response = await harness.route(submitPath, {
+      body: submissionBody(),
+      tokenUserId: WORKER_USER,
+    })
+
+    expect(response.status).toBe(404)
+  })
+
+  it('§4.1 is idempotent by lease + workload', async () => {
+    const harness = makeHarness()
+    const first = await harness.route(submitPath, {
+      body: submissionBody(),
+      tokenUserId: WORKER_USER,
+    })
+    const second = await harness.route(submitPath, {
+      body: submissionBody({ workerReceiptRef: 'receipt.worker.retry' }),
+      tokenUserId: WORKER_USER,
+    })
+    const firstBody = (await first.json()) as {
+      contribution: { contributionRef: string }
+    }
+    const secondBody = (await second.json()) as {
+      contribution: { contributionRef: string }
+    }
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(harness.contributions._records.size).toBe(1)
+    expect(secondBody.contribution.contributionRef).toBe(
+      firstBody.contribution.contributionRef,
+    )
+    // The retried submission keeps the original worker receipt ref.
+    const stored = [...harness.contributions._records.values()][0]!
+    expect(stored.workerReceiptRef).toBe('receipt.worker.1')
+  })
+
+  it('§4.2 rejects self-validation (validator device == worker device)', async () => {
+    const harness = makeHarness()
+    await harness.route(submitPath, {
+      body: submissionBody({ pylonDeviceRef: 'device.shared' }),
+      tokenUserId: WORKER_USER,
+    })
+    const response = await harness.route(verdictPath, {
+      body: {
+        replayDigestRef: 'digest.trace.abc',
+        validatorDeviceRef: 'device.shared',
+        workloadFamily: 'article_closeout',
+      },
+      tokenUserId: WORKER_USER,
+    })
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(403)
+    expect(body.error).toBe('training_trace_contribution_forbidden')
+    expect(harness.challenges.length).toBe(0)
+    // The contribution stays pending; no verdict was created.
+    const stored = [...harness.contributions._records.values()][0]!
+    expect(stored.state).toBe('pending')
+  })
+
+  // The verdict route creates an exact_trace_replay challenge (Queued) whose
+  // payload carries the worker and validator digests. The downstream verifier
+  // (run by the verification orchestration #5053) computes Verified/Rejected
+  // from that payload. These tests assert both the challenge wiring and that
+  // the verifier resolves the expected verdict over the route-built payload.
+  const verdictOver = (
+    challenge: TrainingVerificationChallengeRecord,
+  ): string =>
+    verifyExactTraceReplay({
+      challenge,
+      payload: JSON.parse(challenge.payloadJson) as Record<string, unknown>,
+    }).state
+
+  it('§4.2 digest match -> exact_trace_replay challenge verifies (Verified)', async () => {
+    const harness = makeHarness()
+    await harness.route(submitPath, {
+      body: submissionBody({ traceCommitmentDigestRef: 'digest.match' }),
+      tokenUserId: WORKER_USER,
+    })
+    const response = await harness.route(verdictPath, {
+      body: {
+        replayDigestRef: 'digest.match',
+        validatorDeviceRef: 'device.validator.1',
+        workloadFamily: 'article_closeout',
+      },
+      tokenUserId: VALIDATOR_USER,
+    })
+    const body = (await response.json()) as {
+      challenge: { challengeRef: string }
+      contribution: { state: string; verificationChallengeRef: string }
+    }
+
+    expect(response.status).toBe(200)
+    expect(harness.challenges.length).toBe(1)
+    expect(harness.challenges[0]!.verificationClass).toBe('exact_trace_replay')
+    // Matching worker/validator digests -> Verified (feeds verifiedWorkCount).
+    expect(verdictOver(harness.challenges[0]!)).toBe('Verified')
+    expect(body.contribution.state).toBe('paired')
+    expect(body.contribution.verificationChallengeRef).toBe(
+      harness.challenges[0]!.challengeRef,
+    )
+  })
+
+  it('§4.2 digest mismatch -> exact_trace_replay challenge rejects (Rejected)', async () => {
+    const harness = makeHarness()
+    await harness.route(submitPath, {
+      body: submissionBody({ traceCommitmentDigestRef: 'digest.worker' }),
+      tokenUserId: WORKER_USER,
+    })
+    const response = await harness.route(verdictPath, {
+      body: {
+        replayDigestRef: 'digest.validator.different',
+        validatorDeviceRef: 'device.validator.1',
+        workloadFamily: 'article_closeout',
+      },
+      tokenUserId: VALIDATOR_USER,
+    })
+
+    expect(response.status).toBe(200)
+    expect(harness.challenges.length).toBe(1)
+    // Differing digests -> Rejected (feeds rejectedWorkCount).
+    expect(verdictOver(harness.challenges[0]!)).toBe('Rejected')
+  })
+
+  it('§4.2 404s when no pending worker contribution exists', async () => {
+    const harness = makeHarness()
+    const response = await harness.route(verdictPath, {
+      body: {
+        replayDigestRef: 'digest.any',
+        validatorDeviceRef: 'device.validator.1',
+        workloadFamily: 'article_closeout',
+      },
+      tokenUserId: WORKER_USER,
+    })
+
+    expect(response.status).toBe(404)
+    expect(harness.challenges.length).toBe(0)
+  })
+
+  it('§4.2 conflicts when the contribution is already paired', async () => {
+    const harness = makeHarness()
+    await harness.route(submitPath, {
+      body: submissionBody({ traceCommitmentDigestRef: 'digest.match' }),
+      tokenUserId: WORKER_USER,
+    })
+    await harness.route(verdictPath, {
+      body: {
+        replayDigestRef: 'digest.match',
+        validatorDeviceRef: 'device.validator.1',
+        workloadFamily: 'article_closeout',
+      },
+      tokenUserId: VALIDATOR_USER,
+    })
+    const second = await harness.route(verdictPath, {
+      body: {
+        replayDigestRef: 'digest.match',
+        validatorDeviceRef: 'device.validator.2',
+        workloadFamily: 'article_closeout',
+      },
+      tokenUserId: VALIDATOR_USER,
+    })
+
+    expect(second.status).toBe(409)
+    expect(harness.challenges.length).toBe(1)
+  })
+
+  it('§4.2 requires an agent bearer token', async () => {
+    const harness = makeHarness()
+    const response = await harness.route(verdictPath, {
+      body: {
+        replayDigestRef: 'digest.any',
+        validatorDeviceRef: 'device.validator.1',
+        workloadFamily: 'article_closeout',
+      },
+    })
+
+    expect(response.status).toBe(401)
+  })
+
+  it('authority builder + projection produce stable contribution refs', () => {
+    const record = buildTrainingTraceContributionRecord({
+      leaseRef: LEASE_REF,
+      makeId: () => 'id-1',
+      nowIso: '2026-06-15T00:05:00.000Z',
+      pylonRef: WORKER_PYLON,
+      request: {
+        assignmentRef: 'assignment.tassadar.1',
+        pylonDeviceRef: 'device.worker.1',
+        sampledWindow: { endStep: 32, startStep: 0 },
+        sampledWindowRef: 'window.sampled.1',
+        traceCommitmentDigestRef: 'digest.trace.abc',
+        workerReceiptRef: 'receipt.worker.1',
+        workloadFamily: 'article_closeout',
+      },
+      trainingRunRef: RUN_REF,
+      windowRef: WINDOW_REF,
+    })
+
+    expect(record.contributionRef).toBe(
+      `contribution.tassadar_executor_trace.${LEASE_REF}.article_closeout`,
+    )
+    expect(record.state).toBe('pending')
+
+    const projection = JSON.parse(
+      pairedContributionProjectionJson(record, {
+        replayDigestRef: 'digest.replay',
+        validatorDeviceRef: 'device.validator.1',
+        verificationChallengeRef: 'challenge-1',
+      }),
+    ) as { state: string; verificationChallengeRef: string }
+
+    expect(projection.state).toBe('paired')
+    expect(projection.verificationChallengeRef).toBe('challenge-1')
+  })
+})
