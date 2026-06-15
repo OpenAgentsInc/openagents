@@ -4,6 +4,13 @@ export default {
     identifier: "com.openagents.autopilot.desktop",
     version: "0.0.1"
   },
+  // #5040: default-on OTA. Electrobun's Updater fetches the per-platform
+  // update.json + BSDIFF/tarball artifacts from our GCP feed (the oa-updates
+  // Cloud Run service on updates.openagents.com). RC builds use the canary
+  // channel; stable is owner-gated.
+  release: {
+    baseUrl: "https://updates.openagents.com/desktop"
+  },
   build: {
     bun: {
       entrypoint: "src/bun/index.ts"

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { BrowserView, BrowserWindow, PATHS } from "electrobun/bun"
+import { BrowserView, BrowserWindow, PATHS, Updater } from "electrobun/bun"
 import { discoverPylonHome } from "./node-home"
 import {
   type NodeLaunchStatus,
@@ -8,6 +8,7 @@ import {
   superviseManagedNode,
 } from "./node-launcher"
 import { createNodeStatePoller } from "./node-state-poll"
+import { autoUpdateIntervalMs, runAutoUpdateOnce } from "./auto-update"
 import { fetchPublicPylonStats } from "./pylon-network-stats"
 import { createSessionNotifier } from "./notifier"
 import { raiseOsNotification } from "./os-notification"
@@ -405,8 +406,21 @@ const pollPylonStatsOnce = async (): Promise<void> => {
   rpc.send.pylonStats(result.snapshot)
 }
 
+// #5040: default-on auto-update. Check at launch + on an interval (6h default);
+// Electrobun's Updater applies BSDIFF/tarball updates from the GCP feed and
+// relaunches. Opt-out via AUTOPILOT_DISABLE_AUTOUPDATE. Fail-soft.
+let autoUpdateTimer: ReturnType<typeof setInterval> | undefined
+const autoUpdate = () =>
+  runAutoUpdateOnce({
+    updater: Updater as unknown as Parameters<typeof runAutoUpdateOnce>[0]["updater"],
+    env: Bun.env,
+    log: (message) => console.log(`[autopilot-desktop] ${message}`),
+  })
+
 window.webview.on("dom-ready", () => {
   poller.start()
+  void autoUpdate()
+  autoUpdateTimer = setInterval(() => void autoUpdate(), autoUpdateIntervalMs(Bun.env))
   void pollPylonStatsOnce()
   pylonStatsTimer = setInterval(
     () => void pollPylonStatsOnce(),
@@ -419,6 +433,7 @@ window.webview.on("dom-ready", () => {
 window.on("close", () => {
   poller.stop()
   if (pylonStatsTimer !== undefined) clearInterval(pylonStatsTimer)
+  if (autoUpdateTimer !== undefined) clearInterval(autoUpdateTimer)
   // Stop supervising and kill only a node we launched ourselves; an adopted
   // node we did not start is left running, and a deliberate stop never triggers
   // a restart.
