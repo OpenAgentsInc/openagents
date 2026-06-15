@@ -16,7 +16,7 @@ import {
   compactRandomId,
   currentDate,
   currentIsoTimestamp,
-  isoTimestampAfter,
+  isoTimestampAfterIso,
   utcStartOfDayIsoTimestamp,
 } from './runtime-primitives'
 
@@ -188,8 +188,8 @@ export const executeBuiltinComputeAgentGrant = async (
   const nowIso = runtime.nowIso()
   const actorUserId = input.session.user.id
   const startOfDayIso = utcStartOfDayIsoTimestamp(nowIso)
-  const resetsAt = isoTimestampAfter(
-    new Date(startOfDayIso),
+  const resetsAt = isoTimestampAfterIso(
+    startOfDayIso,
     24 * 60 * 60 * 1000,
   )
 
