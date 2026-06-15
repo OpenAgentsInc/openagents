@@ -28,15 +28,65 @@ bundle checks, and the Chrome-backed `oa-training-run` canvas-pixel smoke. The
 smoke auto-detects common Chrome, Chromium, and Edge install paths; set
 `CHROME_PATH=/path/to/chrome` if the browser binary is somewhere else.
 
-## macOS Signing And Notarization
+## Release Builds (macOS + Linux)
 
-Build the app with:
+`bun run build` runs `electrobun build` with no channel, which produces a **dev**
+`.app` under `build/dev-macos-arm64/` (no signing, no release artifacts). For a
+distributable release build use a channel:
 
 ```sh
-bun run --cwd apps/autopilot-desktop build
+# Canary channel (unsigned by default unless signing env is present):
+bun run --cwd apps/autopilot-desktop build:canary
+
+# Stable channel:
+bun run --cwd apps/autopilot-desktop build:stable
 ```
 
-Then sign and notarize the built `.app` with Apple Developer ID:
+A channel build emits, into `artifacts/` (gitignored):
+
+- the `.app` (under `build/<channel>-<os>-<arch>/`),
+- a `.dmg` installer (macOS),
+- a compressed `*.app.tar.zst` for the OTA feed,
+- `<platform>-update.json` (version + content hash) for the feed.
+
+Signing/notarization is **skipped** unless the relevant env is present (the build
+log prints `skipping codesign` / `skipping notarization`). An unsigned `.app`
+runs locally but Gatekeeper will quarantine it on a stranger's machine; ship the
+signed + notarized build for the public install path (see below).
+
+**Linux** uses the same `build:canary` / `build:stable` channels (electrobun
+produces a Linux `.app`-equivalent bundle + tarball under
+`build/<channel>-linux-<arch>/`); the launched node and the bundled-Bun path are
+platform-agnostic. The bundled launcher sets `LD_PRELOAD` for the CEF libs (see
+the generated `run.sh`). Linux has no codesign/notarization step.
+
+## Packaged-app node bring-up (#5027, Phase 2)
+
+In a packaged `.app` the dev launcher cannot walk to `apps/pylon/src/index.ts`,
+so it looks for a **bundled** Pylon node entry the build step copied into the
+app's Resources at `Resources/app/pylon-node/` (electrobun `build.copy` lands
+sources under `Resources/app/`). When present, `node-launcher.ts` launches it
+with the **bundled Bun** (`process.execPath` inside the `.app`) in headless
+`node` mode, into a per-user managed home at
+`~/.openagents/autopilot-desktop/.pylon-local` (a packaged install has no
+writable repo root). Supervision, readiness, and stop/restart are identical to
+the dev path; `PYLON_HOME` is forced to the managed home so discovery + the
+poller pick the launched node up unchanged.
+
+Until the bundle is shipped, the packaged app resolves no entry and stays honest
+`unavailable` / offline (no false "online"). **Remaining dependency (Pylon-side
+follow-up, NOT done here):** the desktop build needs a bundled, headless Pylon
+node artifact to copy. Pylon's `src/index.ts` cannot be `bun build`-bundled today
+because `@opentui/core` pulls platform-native optional deps via cross-platform
+dynamic `import()` that the bundler cannot resolve. Pylon must publish a
+headless, no-OpenTUI bundle (e.g. a `bun build`-able `node`-mode entry with the
+TUI externalized, or a `bun build --compile` single binary). Once that exists,
+add a `build.copy` entry in `electrobun.config.ts` mapping it to `"pylon-node"`
+and the packaged path activates with no further desktop changes.
+
+## macOS Signing And Notarization
+
+Sign and notarize a built (`build:stable`) `.app` with Apple Developer ID:
 
 ```sh
 OA_DESKTOP_APP_PATH="/path/to/Autopilot Desktop.app" \

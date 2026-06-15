@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs"
+import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { discoverPylonHome } from "./node-home"
 import { readControlToken } from "./pylon-control"
@@ -11,11 +12,22 @@ import type { NodeLaunchStatus } from "../shared/rpc"
 // contribute" is one step — while *adopting* an already-running node when one is
 // present (never double-spawning).
 //
-// Phase 1 is the dev build: it launches the repo's `apps/pylon/src/index.ts`
-// under Bun, into a managed `.pylon-local` home that `discoverPylonHome` already
-// scans, so the rest of the app (resolveHome/poller/commands) picks it up
-// unchanged. Packaged-binary launch is Phase 2 and is intentionally out of scope
-// here: with no repo entry resolvable we stay discover-only and honest-offline.
+// Phase 1 (#5011, dev build): launch the repo's `apps/pylon/src/index.ts` under
+// Bun, into a managed `.pylon-local` home that `discoverPylonHome` already scans,
+// so the rest of the app (resolveHome/poller/commands) picks it up unchanged.
+//
+// Phase 2 (#5027, packaged build): a shipped `.app` has no repo entry to walk to,
+// so the dev path resolves nothing. Instead we look for a *bundled* Pylon node
+// entry the build step copied into the app's Resources (electrobun `PATHS`), and
+// launch it with the *bundled* Bun (`process.execPath` inside the `.app`) into a
+// per-user managed home (a packaged install has no writable repo root). The
+// bring-up, supervision, readiness, and stop/restart semantics are identical to
+// the dev path — only entry discovery and the managed-home location differ.
+//
+// Resolution order in `ensureManagedNode`: adopt a running node → dev repo entry
+// → bundled packaged entry → honest `unavailable`. When the packaged Pylon
+// bundle has not shipped yet, the packaged entry resolves nothing and we stay
+// discover-only/honest-offline exactly as before (no regression).
 
 export type NodeLaunchMode = "adopted" | "launched" | "unavailable"
 
@@ -71,6 +83,14 @@ export type EnsureManagedNodeOptions = {
   readonly bunBin?: string
   readonly readinessTimeoutMs?: number
   readonly readinessIntervalMs?: number
+  // #5027 (Phase 2, packaged build): the app's Resources dir (electrobun
+  // `PATHS.RESOURCES_FOLDER`). When the dev repo entry is not resolvable, we look
+  // for a bundled Pylon node entry under `<resourcesDir>/app/pylon-node/` and
+  // launch it with the bundled Bun. `null`/absent => no packaged path (dev/test).
+  readonly resourcesDir?: string | null
+  // The user's home directory; the packaged build's managed `.pylon-local` home
+  // lives under it (a shipped `.app` has no writable repo root). Injectable.
+  readonly homeDir?: string
   // Honest status callback (issue #5011 §2). Fired on each launch-lifecycle
   // transition so the Bun main process can surface launching/online/failed
   // (no fake "online"). Optional; pure-bring-up callers may omit it.
@@ -81,6 +101,28 @@ export type EnsureManagedNodeOptions = {
 
 const MANAGED_HOME_SUBDIR = ".pylon-local"
 const PYLON_ENTRY_RELATIVE = join("apps", "pylon", "src", "index.ts")
+
+// Where the desktop build step places a *bundled* Pylon node entry inside the
+// packaged app's Resources. electrobun copies `build.copy` sources under
+// `<RESOURCES_FOLDER>/app/...`, so a `copy` of `"<pylon-bundle>": "pylon-node"`
+// lands the entry at `<RESOURCES_FOLDER>/app/pylon-node/<file>`. We try a
+// prebuilt single-file bundle first (`index.js`), then a TS entry as a fallback
+// for a source copy. See node-launcher's Phase 2 header and the §F2 follow-up.
+const PACKAGED_PYLON_DIR = join("app", "pylon-node")
+const PACKAGED_PYLON_ENTRIES = ["index.js", "index.ts"] as const
+
+// The launch args the bundled headless Pylon node is invoked with. `node` is the
+// headless control-server mode (Pylon issue #4740): it brings up the loopback
+// control server + coordinator without the OpenTUI dashboard renderer, which is
+// exactly what the desktop drives. (The dev path inherits Pylon's default arg
+// handling; the packaged headless bundle is launched explicitly in node mode.)
+const PACKAGED_PYLON_ARGS = ["node"] as const
+
+// Per-user managed home for a packaged install. A shipped `.app` has no writable
+// repo root, so the launched node's `.pylon-local` home lives under the user's
+// home directory, where `discoverPylonHome` also scans (PYLON_HOME is forced to
+// it so discovery + the poller pick the launched node up unchanged).
+const PACKAGED_HOME_PARENT = join(".openagents", "autopilot-desktop")
 
 const ancestors = (cwd: string): string[] => {
   const out: string[] = []
@@ -106,6 +148,27 @@ export const findDevPylonEntry = (
     if (fileExists(entry)) {
       return { entry, repoRoot: anc }
     }
+  }
+  return null
+}
+
+// Find a *bundled* Pylon node entry inside a packaged app's Resources dir. The
+// desktop build step copies a (prebuilt, headless) Pylon node bundle to
+// `<resourcesDir>/app/pylon-node/`; we return the first existing known entry.
+// Returns null when no bundle was shipped (the build is unsigned/early, or the
+// Pylon-side headless artifact does not exist yet) — the caller then stays
+// honest-`unavailable`. `resourcesDir` is electrobun's `PATHS.RESOURCES_FOLDER`
+// at runtime; passing `null` (e.g. a dev/test run with no packaged resources)
+// short-circuits to null.
+export const findPackagedPylonEntry = (
+  resourcesDir: string | null,
+  fileExists: (path: string) => boolean = existsSync,
+): { readonly entry: string; readonly bundleDir: string } | null => {
+  if (resourcesDir === null || resourcesDir.length === 0) return null
+  const bundleDir = join(resourcesDir, PACKAGED_PYLON_DIR)
+  for (const file of PACKAGED_PYLON_ENTRIES) {
+    const entry = join(bundleDir, file)
+    if (fileExists(entry)) return { entry, bundleDir }
   }
   return null
 }
@@ -180,6 +243,8 @@ export const ensureManagedNode = async (
   const probeReady = options.probeReady ?? defaultProbeReady
   const sleep = options.sleep ?? defaultSleep
   const bunBin = options.bunBin ?? process.execPath
+  const homeDir = options.homeDir ?? homedir()
+  const resourcesDir = options.resourcesDir ?? null
   const readinessTimeoutMs = options.readinessTimeoutMs ?? 30_000
   const readinessIntervalMs = options.readinessIntervalMs ?? 500
   const emit = (status: NodeLaunchStatus): void => options.onStatus?.(status)
@@ -191,17 +256,41 @@ export const ensureManagedNode = async (
     return adopted(discovered)
   }
 
-  // 2. No node found. In the dev build, launch the repo's Pylon runtime into a
-  //    managed `.pylon-local` home (which discovery scans). Without a repo entry
-  //    (packaged build, Phase 2) stay discover-only and honest-offline.
-  const located = findDevPylonEntry(options.cwd, fileExists)
-  if (located === null) {
+  // 2. No node found. Resolve a launch plan:
+  //    - dev build: launch the repo's `apps/pylon/src/index.ts` (default args)
+  //      into a managed `.pylon-local` home at the repo root (discovery scans it);
+  //    - packaged build (#5027): launch the bundled headless Pylon node entry
+  //      with the bundled Bun into a per-user managed home under the home dir.
+  //    With neither resolvable (early/unsigned build or no shipped bundle) stay
+  //    discover-only and honest-offline.
+  const dev = findDevPylonEntry(options.cwd, fileExists)
+  const plan: {
+    readonly command: ReadonlyArray<string>
+    readonly cwd: string
+    readonly managedHome: string
+  } | null = dev
+    ? {
+        command: [bunBin, dev.entry],
+        cwd: dev.repoRoot,
+        managedHome: join(dev.repoRoot, MANAGED_HOME_SUBDIR),
+      }
+    : (() => {
+        const packaged = findPackagedPylonEntry(resourcesDir, fileExists)
+        if (packaged === null) return null
+        return {
+          command: [bunBin, packaged.entry, ...PACKAGED_PYLON_ARGS],
+          cwd: packaged.bundleDir,
+          managedHome: join(homeDir, PACKAGED_HOME_PARENT, MANAGED_HOME_SUBDIR),
+        }
+      })()
+
+  if (plan === null) {
     emit("unavailable")
     return unavailable
   }
 
   emit("launching")
-  const managedHome = join(located.repoRoot, MANAGED_HOME_SUBDIR)
+  const managedHome = plan.managedHome
   const childEnv: Record<string, string> = {}
   for (const [key, value] of Object.entries(options.env)) {
     if (value !== undefined) childEnv[key] = value
@@ -209,8 +298,8 @@ export const ensureManagedNode = async (
   childEnv.PYLON_HOME = managedHome
 
   const child = spawnNode({
-    command: [bunBin, located.entry],
-    cwd: located.repoRoot,
+    command: plan.command,
+    cwd: plan.cwd,
     env: childEnv,
     ...(options.onChildExit ? { onExit: options.onChildExit } : {}),
   })

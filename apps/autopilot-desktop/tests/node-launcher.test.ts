@@ -3,6 +3,7 @@ import { join } from "node:path"
 import {
   ensureManagedNode,
   findDevPylonEntry,
+  findPackagedPylonEntry,
   superviseManagedNode,
   type LaunchedProcess,
   type NodeLaunchStatus,
@@ -21,6 +22,32 @@ describe("findDevPylonEntry", () => {
 
   it("returns null when no pylon entry is reachable (packaged build)", () => {
     expect(findDevPylonEntry("/Applications/Autopilot.app", () => false)).toBeNull()
+  })
+})
+
+describe("findPackagedPylonEntry", () => {
+  const resourcesDir = "/Applications/Autopilot Desktop.app/Contents/Resources"
+  const bundleDir = join(resourcesDir, "app", "pylon-node")
+  const jsEntry = join(bundleDir, "index.js")
+  const tsEntry = join(bundleDir, "index.ts")
+
+  it("prefers a prebuilt single-file index.js bundle", () => {
+    const found = findPackagedPylonEntry(resourcesDir, path => path === jsEntry)
+    expect(found).toEqual({ entry: jsEntry, bundleDir })
+  })
+
+  it("falls back to a TS source entry when no index.js is shipped", () => {
+    const found = findPackagedPylonEntry(resourcesDir, path => path === tsEntry)
+    expect(found).toEqual({ entry: tsEntry, bundleDir })
+  })
+
+  it("returns null when no bundle is shipped (early/unsigned build)", () => {
+    expect(findPackagedPylonEntry(resourcesDir, () => false)).toBeNull()
+  })
+
+  it("returns null when there is no resources dir (dev/test run)", () => {
+    expect(findPackagedPylonEntry(null, () => true)).toBeNull()
+    expect(findPackagedPylonEntry("", () => true)).toBeNull()
   })
 })
 
@@ -82,7 +109,7 @@ describe("ensureManagedNode", () => {
     expect(killed).toBe(1)
   })
 
-  it("stays discover-only (unavailable) with no repo entry — packaged build, Phase 2", async () => {
+  it("stays discover-only (unavailable) with no repo entry and no shipped bundle", async () => {
     let spawned = 0
     const node = await ensureManagedNode({
       ...baseOptions,
@@ -98,6 +125,78 @@ describe("ensureManagedNode", () => {
     expect(node.mode).toBe("unavailable")
     expect(node.home).toBeNull()
     expect(spawned).toBe(0)
+  })
+
+  it("#5027: launches the bundled headless node in a packaged build (no repo entry)", async () => {
+    const resourcesDir = "/Applications/Autopilot Desktop.app/Contents/Resources"
+    const bundleDir = join(resourcesDir, "app", "pylon-node")
+    const bundledEntry = join(bundleDir, "index.js")
+    const homeDir = "/Users/contributor"
+    const expectedHome = join(
+      homeDir,
+      ".openagents",
+      "autopilot-desktop",
+      ".pylon-local",
+    )
+    const spawnCalls: SpawnNodeInput[] = []
+    let killed = 0
+    const node = await ensureManagedNode({
+      ...baseOptions,
+      // The bundled-Bun path inside the .app.
+      bunBin: "/Applications/Autopilot Desktop.app/Contents/MacOS/bun",
+      cwd: "/Applications/Autopilot Desktop.app",
+      // No repo entry; only the bundled entry exists.
+      fileExists: (path: string) => path === bundledEntry,
+      resourcesDir,
+      homeDir,
+      discover: () => null,
+      readToken: () => "deadbeef",
+      spawnNode: (input: SpawnNodeInput): LaunchedProcess => {
+        spawnCalls.push(input)
+        return { pid: 5151, kill: () => (killed += 1) }
+      },
+    })
+
+    expect(node.mode).toBe("launched")
+    expect(node.home).toBe(expectedHome)
+    expect(node.pid).toBe(5151)
+    expect(spawnCalls).toHaveLength(1)
+    // Launched with the bundled Bun, the bundled entry, in headless `node` mode.
+    expect(spawnCalls[0]!.command).toEqual([
+      "/Applications/Autopilot Desktop.app/Contents/MacOS/bun",
+      bundledEntry,
+      "node",
+    ])
+    // cwd is the bundle dir; the managed home is forced under the user's home so
+    // discovery + the poller pick the launched node up unchanged.
+    expect(spawnCalls[0]!.cwd).toBe(bundleDir)
+    expect(spawnCalls[0]!.env.PYLON_HOME).toBe(expectedHome)
+
+    node.stop()
+    expect(killed).toBe(1)
+  })
+
+  it("#5027: prefers the dev repo entry over a bundled entry when both exist", async () => {
+    const resourcesDir = "/repo/app/Resources"
+    const bundledEntry = join(resourcesDir, "app", "pylon-node", "index.js")
+    const spawnCalls: SpawnNodeInput[] = []
+    const node = await ensureManagedNode({
+      ...baseOptions,
+      // Both the dev pylon entry and a bundled entry resolve.
+      fileExists: (path: string) => path === pylonEntry || path === bundledEntry,
+      resourcesDir,
+      discover: () => null,
+      readToken: () => "tok",
+      spawnNode: (input: SpawnNodeInput): LaunchedProcess => {
+        spawnCalls.push(input)
+        return { pid: 1, kill: () => {} }
+      },
+    })
+
+    expect(node.mode).toBe("launched")
+    // Dev path wins: repo entry + default args (no trailing "node"), repo home.
+    expect(node.home).toBe(join(repoRoot, ".pylon-local"))
+    expect(spawnCalls[0]!.command).toEqual(["/usr/bin/bun", pylonEntry])
   })
 
   it("waits for the control token + a reachable control server before returning launched", async () => {

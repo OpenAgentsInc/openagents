@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { BrowserView, BrowserWindow } from "electrobun/bun"
+import { BrowserView, BrowserWindow, PATHS } from "electrobun/bun"
 import { discoverPylonHome } from "./node-home"
 import {
   type NodeLaunchStatus,
@@ -332,15 +332,19 @@ const window = new BrowserWindow({
 // raises a native OS notification and updates the in-app notification center.
 const notifier = createSessionNotifier({ raise: raiseOsNotification })
 
-// #5011 (the §0 install seam): adopt an already-running local node, or launch
-// the local Pylon runtime when none is discovered, so a fresh install reaches
-// node-online without a separate setup step. The launched node lands in a
-// `.pylon-local` home that `discoverPylonHome` already scans, so `resolveHome`
-// and the poller below pick it up unchanged. The supervisor keeps a *launched*
-// child alive (restart-on-crash with backoff), surfaces honest
+// #5011/#5027 (the §0 install seam): adopt an already-running local node, or
+// launch the local Pylon runtime when none is discovered, so a fresh install
+// reaches node-online without a separate setup step. In the dev build the
+// launcher walks to the repo's `apps/pylon/src/index.ts`; in a packaged `.app`
+// (#5027 Phase 2) it launches the bundled headless Pylon node found under the
+// app's Resources (`PATHS.RESOURCES_FOLDER`) with the bundled Bun. Either way the
+// launched node lands in a `.pylon-local` home that `discoverPylonHome` scans, so
+// `resolveHome` and the poller below pick it up unchanged. The supervisor keeps a
+// *launched* child alive (restart-on-crash with backoff), surfaces honest
 // launching/online/failed status, and stops the child on app close. An adopted
 // (already-running) node is never double-spawned and never killed by us; an
-// unavailable result (packaged build, Phase 2) leaves the app honest-offline.
+// `unavailable` result (no repo entry and no shipped bundle) leaves the app
+// honest-offline.
 //
 // NOTE (UI follow-up): the launch status is logged Bun-side here; surfacing the
 // launching/online/failed badge in the webview needs a new Bun→webview message
@@ -353,6 +357,10 @@ managedNode = superviseManagedNode({
   cwd: process.cwd(),
   env: Bun.env,
   controlBaseUrl,
+  // #5027: in a packaged `.app` the dev repo entry is unreachable; the launcher
+  // falls back to the bundled Pylon node under the app's Resources. In dev this
+  // dir holds no `app/pylon-node/` bundle, so the dev path is still used.
+  resourcesDir: PATHS.RESOURCES_FOLDER,
   onStatus(status: NodeLaunchStatus) {
     console.log(
       `[autopilot-desktop] local node status: ${status}` +

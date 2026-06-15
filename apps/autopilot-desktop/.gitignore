@@ -6,5 +6,10 @@ src/ui/styles.out.css
 # Electrobun build output
 build/
 
+# Electrobun release artifacts (.dmg / .app.tar.zst / update.json) produced by
+# `electrobun build --env=canary|stable`. These are large binaries and OTA feed
+# inputs, not source — published to the OTA bucket, never committed.
+artifacts/
+
 # Temporary Chrome/CDP harness output from `bun run smoke:training-scene`.
 .training-scene-smoke-*/
