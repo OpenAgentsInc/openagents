@@ -15,6 +15,30 @@ Tassadar** — the Percepta Executor Class model direction from Episode 236.
 
 ---
 
+## ⚠️ Accountability — broken contributor instructions (2026-06-15)
+
+**What I got wrong:** the contributor docs I shipped (live `AGENTS.md`,
+`INSTALL.md`, and the community guide `docs/2026-06-15-help-flip-the-green-gates.md`)
+told contributors to run **`pylon training closeout --window-ref …`** to submit
+their work. That is the **operator/admin window-closeout** (`POST
+/api/training/windows/{ref}/closeout`, `requireAdmin`), **not** the contributor's
+executor-trace submission. Anyone who followed it got an unauthorized/no-op — so
+they could **claim work but never complete it.** That is why the run reached
+3 devices / 5 claims but **0 verified, 0 paid**: not contributor failure, my
+instructions sent them down a dead end.
+
+**Deeper cause:** there is currently **no contributor-callable route** to submit
+an executor-trace closeout — every training write except `/api/training/leases/claim`
+is `requireAdmin`. So a self-serve contributor literally cannot finish the loop
+with rc.1/rc.2. The recruitment funnel worked; the product couldn't accept the work.
+
+**The fix (rc.3):** a new **agent-gated** contributor submit route + a
+`pylon training submit-trace` verb that runs the digest-pinned workload and
+submits the executor-trace closeout for verification. Docs corrected to point at
+it and to stop telling people to run the admin `closeout`. Tracked below.
+
+---
+
 ## Current status (updated 2026-06-15, evening)
 
 **rc1 is built, announced, and live; the headline green flips are HELD pending

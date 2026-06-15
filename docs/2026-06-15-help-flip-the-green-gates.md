@@ -54,9 +54,13 @@ your own wallet. That independence is the whole point.
 4. **Get admitted + claim work.** Admission is self-serve through the reasoned
    device-admission gates (it will tell you the measured reason either way).
    Claim the active executor-trace work window with `pylon training claim`.
-5. **Run it and submit.** Your node executes the digest-pinned workload and
-   submits the closeout. It's **re-executed on a separate validator**; a match is
-   an `exact_trace_replay` **Verified** verdict.
+5. **Run it and submit.** `pylon training submit-trace` (rc.3+) runs the
+   digest-pinned workload and submits your executor-trace closeout. It's
+   **re-executed on a separate validator**; a match is an `exact_trace_replay`
+   **Verified** verdict. (Note: an earlier version of this guide wrongly told
+   contributors to run `pylon training closeout` — that's the *operator* window
+   closeout, not contributor submission. See the accountability note in
+   `JUNE15_LAUNCH_PLAN.md`.)
 6. **Get paid.** Accepted (Verified) work settles a **real Lightning payout** to
    your node (small, under the run's spend cap) with a **public, dereferenceable
    receipt**. That receipt is the proof.

@@ -199,9 +199,10 @@ involved with Tassadar / the training run," this is the path.
      (use `pylon help --json` for the exact verbs).
   3. **Get admitted + claim work:** admission is self-serve through the reasoned
      device-admission gates; claim the active window with `pylon training claim`.
-  4. **Run + submit:** `pylon training closeout --window-ref
-     training.window.tassadar.executor.20260615.w1`. Your node executes the
-     digest-pinned workload and submits the closeout.
+  4. **Run + submit your executor trace:** `pylon training submit-trace`
+     (rc.3+) — your node runs the digest-pinned workload and submits the
+     executor-trace closeout for verification. (Do **not** use `pylon training
+     closeout`; that's the operator window-closeout, not contributor submission.)
   5. **Verified → paid:** a `Verified` exact-replay verdict makes the work
      acceptable; accepted work settles a real (small, spend-capped) Lightning
      payout with a public receipt.
