@@ -1076,7 +1076,11 @@ async function main() {
         const verify = (() => {
           const raw = options.verify
           if (typeof raw !== "string" || raw.trim().length === 0) return []
-          return [raw]
+          // The control protocol's verify is an argv array (e.g. ["test","-f",
+          // "x"]); a `--verify "test -f x"` string must be tokenized, else the
+          // node tries to exec a single program literally named "test -f x" and
+          // the verify errors (spawn failure) even when the work succeeded.
+          return raw.trim().split(/\s+/)
         })()
         const worktree = optionString(options, "worktree")
         const { result } = await runControlCommand(
