@@ -1,5 +1,7 @@
 export const unixEpochIsoTimestamp = '1970-01-01T00:00:00.000Z'
 
+export const currentUnixMs = (): number => Date.now()
+
 export const formatIsoDateTime = (timestamp: string): string =>
   new Date(timestamp).toLocaleString()
 
@@ -16,7 +18,7 @@ export const friendlyRelativeTime = (
     return iso
   }
 
-  const elapsedMs = Math.max(0, Date.now() - time)
+  const elapsedMs = Math.max(0, currentUnixMs() - time)
   const minuteMs = 60_000
   const hourMs = 60 * minuteMs
   const dayMs = 24 * hourMs
