@@ -781,6 +781,17 @@ checkpoint backup target.
   replaced by our own receipts, never as our claims.
 - Tassadar/hybrid work stays behind its own disclosure flow; this plan
   touches it only at the bundle-format seam and the #4684 work class.
+- The **decentralized-optimizer / public-gradient lane** is not specified
+  here. Public devices in this plan do generation, validation, and
+  evaluation only; letting public Pylons contribute model updates that can
+  advance a shared checkpoint (accepted training windows, quarantine
+  optimizer, gradient verification ladder, canary-gated promotion, staged
+  payout) is its own workstream — **W5** in
+  [`../tassadar/RESEARCH_PLAN.md`](../tassadar/RESEARCH_PLAN.md) §5, gated
+  behind a W3 student checkpoint and the #4855 lifecycle substrate, owing
+  `training.public_gradient_windows.v1` (red/planned) when it produces
+  evidence. No public gradient enters the canonical optimizer until it
+  passes quarantine, verification, canary, and promotion gates.
 
 ## Sources
 

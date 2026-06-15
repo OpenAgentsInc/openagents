@@ -203,7 +203,7 @@ student harness and artifacts are in
   `0.0` pass@1 and `0.0` replay acceptance. The lookup helper solved its
   local target; it did not make the learned backbone replay-safe.
 
-## 5. The Directive: Four Workstreams
+## 5. The Directive: Five Workstreams
 
 This is the assignment structure. Workstreams run concurrently where
 dependencies allow; the dependency that does not bend is stated in W1.
@@ -316,9 +316,13 @@ No training run before W2's first 100M verified tokens exist. Then:
    Days 0–7 of the program require no hardware we lack. The
    SuperPOD-grade topology guidance (CP-within-node, FSDP/HSDP, NCCL
    acceptance suites) is on file in the analysis for the day it is
-   needed. No public gradients into the main optimizer, ever; robust-
-   aggregation decentralized training is a side experiment with canary
-   evals, not the run.
+   needed. **No public gradients into the _canonical_ optimizer in this
+   workstream** — W3's controlled run keeps that rule absolutely. Public
+   gradients that can advance a shared checkpoint are not forbidden
+   forever; they are the subject of their own workstream (W5) with their
+   own quarantine, verification, canary, promotion, and receipt regime.
+   Until W5 ships that regime, robust-aggregation decentralized training
+   stays a side experiment with canary evals, not the run.
 5. **Publication gate:** every checkpoint claim ships checkpoint hash,
    dataset hash, config hash, eval hash, and the divergence histogram —
    or it ships nothing. Trained-model claims live behind replay, period.
@@ -348,6 +352,127 @@ No training run before W2's first 100M verified tokens exist. Then:
    actions passing the tetrahedron predicate, an unattended streak, a
    public monitor, a curated dataset) are the next four receipts this
    program owes the registry.
+
+### W5 — Decentralized optimizer and public training windows
+
+W1–W4 build the **proof and data layer**: public devices generate,
+validate, evaluate, and benchmark replay-verifiable work, and a
+controlled run distills a student from the corpus. W5 is the **public
+model-update layer** — the lane that lets public Pylons contribute model
+updates that can _eventually_ advance a shared checkpoint. This is the
+workstream that turns "verified trace factory" into "decentralized model
+training," and it is the lane #4855 deliberately set up the runway for
+without flying (see the Pluralis roadmap and §below). It is `red`/
+`planned` and gated behind everything in W1–W3.
+
+The governing principle is the one correction this plan makes to the old
+"no public gradients, ever" standing order, stated precisely so it cannot
+be misread as a launch claim:
+
+> **No public gradient enters the canonical optimizer until it passes
+> quarantine, verification, canary evaluation, and promotion gates.**
+> Public workers contribute _candidate_ updates; the canonical checkpoint
+> is mutated only by promotion, never by submission. A trace is an
+> artifact you can quarantine before use; a gradient is an intervention
+> that changes the model — so the gradient lane carries a strictly higher
+> trust tier than the trace lane, and earns it gate by gate.
+
+Deliverables, in dependency order:
+
+1. **The training work unit: the accepted training window.** The
+   gradient-lane equivalent of an accepted outcome. A window binds:
+   `model_checkpoint_hash`, `optimizer_state_hash`, `dataset_shard_hash`,
+   `training_config_hash`, `random_seed`, `worker_device_ref`,
+   `start_step`/`end_step`, `update_or_delta_digest`, `loss_stats`,
+   `verification_refs`, `acceptance_decision`, and `settlement_receipt`.
+   A Pylon is paid for an _accepted window_, never for raw GPU time. This
+   is to W5 what `trace_record` is to W2.
+2. **The quarantine optimizer (the missing safety layer).** A
+   three-checkpoint discipline — `canonical → quarantine → promoted`.
+   Public updates apply to the quarantine checkpoint only; canary evals
+   and anomaly checks run there; a good update promotes to canonical, a
+   bad one is rejected and rolled back. Without quarantine one bad
+   gradient corrupts the model; with it, public training is experimental
+   and still safe.
+3. **The training-window verification ladder** (mirrors W2's trace ladder
+   but harder, because a gradient cannot be replayed for a digest match
+   as cheaply as an exact trace): Tier 0 schema/hash (right checkpoint,
+   shard, config, seed); Tier 1 deterministic recompute of the bounded
+   window by a validator; Tier 2 replicated training (2–3 workers agree);
+   Tier 3 statistical checks (loss delta, gradient/update norm, NaN/inf,
+   outlier layers, drift); Tier 4 canary eval on the quarantine
+   checkpoint; Tier 5 downstream acceptance (bonus paid only if the update
+   survives later checkpoints / improves evals). Ship the falsifier with
+   the lane: the validator is the same harness pointed at submitted
+   windows.
+4. **Checkpoint lineage and rollback.** Every model state records parent
+   hash, the accepted windows it includes, dataset shards used, optimizer
+   state, eval results, promotion decision, rollback state, and payout
+   refs. If a checkpoint goes bad you must know exactly which windows
+   caused it; without lineage, decentralized training is undebuggable.
+5. **Dataset shard authority.** A window binds to an assigned shard
+   (`dataset_shard_hash`, token range, split policy, decontamination
+   status, provenance/license, curriculum label). Start from the W2
+   corpus: accepted `exact_trace_replay` traces → compact binary trace
+   dataset → train/val/test split → shard hashes. Workers train only on
+   assigned shards.
+6. **Bandwidth-aware topology.** No global synchronous all-reduce across
+   public devices. Windowed/local-SGD/federated shape:
+   `download checkpoint → train a bounded window → upload delta → verify
+   → quarantine → promote`. Homogeneous pods / Pylon cells / SHC clusters
+   with LAN-NCCL _inside_ a cell come later, internet-level coordination
+   _between_ cells later still. This is exactly where the Pluralis lessons
+   land — protocol-learning communication-efficiency and the #4855
+   lifecycle substrate (join ramp, staleness pricing, failure semantics,
+   admission gates, presence/compute receipt split) are the prerequisites
+   this lane consumes.
+7. **Device capability tiers for training roles.** CPU/weak laptop →
+   trace-replay validator, eval runner, data/refinery; Apple Silicon /
+   consumer GPU → small student windows, adapter training, evals; strong
+   GPU → dense windows, replicated verifier, candidate builder; controlled
+   GPU cluster → canonical optimizer and promotion baseline. Real training
+   without pretending every node is equal.
+8. **Staged payout (no full pay for an update that might poison the
+   model).** `submitted → pending credit`; `verified/recomputed →
+   provisional`; `quarantine eval passed → accepted`; `promoted → settled`;
+   `later regression → reserve/clawback`. Pricing unit: **sats per
+   accepted training window**, with bonuses for verified correctness, eval
+   improvement, hard-shard completion, useful failure discovery, validator
+   work, and checkpoint promotion.
+9. **Evals as the final judge — first divergence, not loss.** A window is
+   judged by whether it helps the W3 metrics after quarantine (exact
+   rollout pass@1, replay acceptance rate, median/p90 first-divergence
+   step, branch/memory-read accuracy, output digest match, held-out
+   program-family performance), so the lane never pays for an update that
+   lowers loss but hurts the objective.
+
+**First target (smallest real run), B+C:** public Pylons compute bounded
+gradient windows for a _small_ Psion/Tassadar student trained on verified
+traces — adapter/LoRA or small-dense deltas only, never a large-model
+global all-reduce. The minimal viable decentralized training run is: (1)
+publish checkpoint C0 for a tiny student; (2) publish trace-shard D0; (3)
+a public Pylon claims window W0; (4) trains N steps locally; (5) submits
+delta + loss stats; (6) a validator recomputes or samples the window; (7)
+the update applies to quarantine Q1; (8) canary evals run; (9) if they
+pass, Q1 promotes to C1; (10) the contributor is paid; (11) a receipt
+shows the accepted window contributed to C1. That — not trace generation,
+not eval alone — is decentralized training: an actual model update, gated.
+
+**The promise this lane will owe the registry:**
+`training.public_gradient_windows.v1`, `red`/`planned`. Safe copy: _public
+Pylons may eventually contribute bounded, verified training windows to
+Psion/Tassadar student models; these updates enter quarantine first and do
+not mutate canonical checkpoints until verified, evaluated, and promoted._
+Unsafe copy: _public Pylons directly train the canonical model today._ No
+new promise is filed until W5 produces evidence that needs one (the §7
+disclosure rule holds).
+
+**Launch-copy boundary for this lane (2026-06-15):** do not claim public
+decentralized gradient training. The honest bridge is: _"this run begins
+the decentralized training stack — today public Pylons produce and verify
+the exact-trace corpus; the next rung is public training windows: Pylons
+contributing verified candidate updates to student models under quarantine
+and promotion gates."_
 
 ## 6. Method: How This Program Does Science
 
@@ -383,6 +508,9 @@ W1: window ladder ─ profiles v0.2/v0.3 ─ dense ckpts ─ MILP ─ softmax bo
 W2: contract freeze ─ local 1–5M ─ factory pilot ─ 100–300M ─ 1–10B
 W3:                  (blocked on W2 first corpus) ─ 4-baseline sweep ─ scale
 W4: capability envelopes ─ executor homework ─ module ABI ─ planner hybrids
+W5:                          (blocked on W3 student + #4855 substrate) ─
+        accepted-window unit ─ quarantine optimizer ─ recompute/replicate
+        verify ─ canary promotion ─ first paid decentralized window
         evolution loop blockers clear in parallel across W2/W4
 ```
 
@@ -395,11 +523,17 @@ psionic#1119; W1.2 dense materialization — psionic#1120; W1.3 MILP
 backend — psionic#1121; W1.4 softmax bounds — psionic#1122; W2 contract
 freeze and factory — openagents#4748; W3 student program —
 openagents#4749 (blocked on #4748's first corpus); W4.1 capability
-envelopes — openagents#4750. Method-section case law remains open at
-openagents#4744–#4747. Registry promises are owner-gated by the
+envelopes — openagents#4750. W5 — decentralized optimizer / public
+training windows — is the next master tracker to file (the Pluralis
+roadmap #4855 landed its lifecycle/staleness/admission/canary substrate,
+P0–P3, and explicitly left the public-update layer to a future tracker);
+it stays unfiled as a coding workstream until W3 produces a student
+checkpoint worth training in public. Method-section case law remains open
+at openagents#4744–#4747. Registry promises are owner-gated by the
 disclosure flow: the two existing promises (PoC green, evolution loop
-yellow) cover the program's current claims, and no new promise is
-warranted until a workstream produces evidence that needs one.
+yellow) cover the program's current claims; the W5 lane will owe
+`training.public_gradient_windows.v1` (red/planned) when it produces
+evidence that needs one, and no new promise is warranted before then.
 
 ## 8. Kill Conditions
 

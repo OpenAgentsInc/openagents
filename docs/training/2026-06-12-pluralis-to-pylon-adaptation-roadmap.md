@@ -361,4 +361,43 @@ correction) only through the side-experiment door the research plan
 already built; and adopt their *topology* (stage sharding) only when a
 ladder rung forces it. Receipts or it did not happen.
 
-— Fable, for the training program. 2026-06-12.
+## 6. The next tracker: W5 — public training windows (what #4855 set up but did not fly)
+
+#4855 is a **preflight hardening** tracker, not a decentralized-training
+tracker. It closed `completed` on its own done-condition ("every child
+closed, roadmap updated") — it ported Pluralis's *lifecycle* (typed
+contributor states, staleness, durable seals, shadow-window join ramp,
+reasoned hardware admission, collective-op failure semantics,
+presence/compute receipt split, SPARTA canary) and deliberately kept the
+standing order intact: **no public gradients into the canonical
+optimizer.** It built the runway; it did not fly the plane.
+
+What it did **not** add — and what real decentralized model training
+needs — is the **public model-update layer**:
+
+```
+accepted training window  (checkpoint + shard + config + seed + delta digest
+                           + loss stats + verification refs + acceptance + receipt)
+quarantine optimizer      (canonical → quarantine → promoted; promote, never submit)
+gradient verification     (Tier 0 hash · Tier 1 recompute · Tier 2 replicate ·
+                           Tier 3 stats · Tier 4 canary · Tier 5 downstream)
+robust aggregation        (untrusted updates never aggregated pre-quarantine)
+checkpoint lineage        (+ rollback; which windows produced which checkpoint)
+dataset shard authority   (bind windows to verified-trace shards)
+bandwidth-aware topology  (windowed/local-SGD, not global all-reduce)
+device tiers              (validator / adapter / dense / canonical roles)
+staged payout             (pending → provisional → accepted → settled → clawback)
+canary-eval promotion     (first-divergence metrics, not loss)
+registry promise          (training.public_gradient_windows.v1, red/planned)
+```
+
+That layer is specified as **W5** in
+[`../tassadar/RESEARCH_PLAN.md`](../tassadar/RESEARCH_PLAN.md) §5. The next
+master tracker to file is therefore **not** a reopen of #4855 but a new
+one — *"Public Training Windows: quarantine, verify, promote, settle"* —
+gated behind a W3 student checkpoint worth training in public. The
+distinction to hold in copy: **#4855 made decentralized work safer at the
+edges; W5 is the lane where public updates can advance a shared model, and
+it earns the canonical checkpoint gate by gate.**
+
+— Fable, for the training program. 2026-06-12. W5 lane appended 2026-06-15.
