@@ -10,8 +10,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 // The look mirrors the Moksha diamonds: each diamond is rendered with a
 // two-pass backface + refraction shader so the environment refracts through
 // the glass. The scene is isolated and ambient: two small diamonds spaced
-// apart, bridged by a translucent white band, rotating slowly in a single
-// direction on a dark field.
+// apart, rotating slowly in a single direction on a dark field (the centered
+// countdown overlay sits in the gap between them).
 
 export type PylonDiamondsOptions = Readonly<{
   backgroundColor?: number
@@ -36,15 +36,9 @@ const DEFAULTS = {
 const WORLD_HEIGHT = 6
 // Vertical world height each diamond is normalized to.
 const DIAMOND_HEIGHT = 1.1
-// Half the distance between the two diamond centers. The diamonds sit apart
-// with a clear gap between their flat faces, bridged by a translucent band
-// (Starcraft-Pylon flavored).
-const STACK_GAP = 1.5
-// Translucent white connecting band sitting in the gap between the diamonds.
-const BAND_COLOR = 0xffffff
-const BAND_OPACITY = 0.35
-const BAND_RADIUS = 0.46
-const BAND_HEIGHT = 0.5
+// Half the distance between the two diamond centers. The diamonds sit a short
+// gap apart, with the centered countdown overlay filling the space between.
+const STACK_GAP = 1.2
 
 const backfaceVertexShader = `
   varying vec3 worldNormal;
@@ -171,38 +165,6 @@ export const mountPylonDiamonds = (
   const camera = new Three.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000)
   camera.position.set(0, 0, 50)
   camera.lookAt(0, 0, 0)
-
-  // Translucent white band bridging the gap between the two diamonds. Lives on
-  // layer 0 so it sits in the environment and refracts through the diamonds.
-  // Lit with a couple of lights for a soft sheen (the diamond materials are
-  // unlit shaders, so the lights only touch the band).
-  const bandGeometry = new Three.CylinderGeometry(
-    BAND_RADIUS,
-    BAND_RADIUS,
-    BAND_HEIGHT,
-    48,
-    1,
-    true,
-  )
-  const bandMaterial = new Three.MeshStandardMaterial({
-    color: BAND_COLOR,
-    metalness: 0.0,
-    opacity: BAND_OPACITY,
-    roughness: 0.5,
-    side: Three.DoubleSide,
-    transparent: true,
-  })
-  const bandMesh = new Three.Mesh(bandGeometry, bandMaterial)
-  bandMesh.position.set(0, 0, 0)
-  bandMesh.layers.set(0)
-  scene.add(bandMesh)
-
-  const ambientLight = new Three.AmbientLight(0xffffff, 1.1)
-  const keyLight = new Three.DirectionalLight(0xfff0d0, 2.4)
-  keyLight.position.set(2, 3, 4)
-  const rimLight = new Three.DirectionalLight(0xffd27a, 1.6)
-  rimLight.position.set(-3, -1, 2)
-  scene.add(ambientLight, keyLight, rimLight)
 
   // Two diamonds on layer 1, rendered with the refraction material.
   const fallbackGeometry = new Three.OctahedronGeometry(1, 0)
@@ -371,8 +333,6 @@ export const mountPylonDiamonds = (
     fallbackGeometry.dispose()
     backfaceMaterial.dispose()
     refractionMaterial.dispose()
-    bandGeometry.dispose()
-    bandMaterial.dispose()
     envFbo.dispose()
     backfaceFbo.dispose()
     renderer.dispose()
