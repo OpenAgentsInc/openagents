@@ -1,6 +1,7 @@
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
+import { pylonBezierNetworkView } from '../../../scene/pylonBezierNetworkElement'
 import { pylonCountdownView } from '../../../scene/pylonCountdownElement'
 import { pylonView } from '../../../scene/pylonElement'
 import { pylonStatsView } from '../../../scene/pylonStatsElement'
@@ -21,11 +22,16 @@ export const view = (): Html => {
       pylonView<Message>([
         Ui.className<Message>('absolute inset-0 block h-full w-full'),
       ]),
-      // #5050: live network stats behind the countdown (z-0). When the countdown
-      // is removed at launch, this overlay + the activity-lit pylon stay as the
-      // homepage.
+      // #5050: the bezier network graph — online pylons on a ring with bezier
+      // curves flowing into the central pylon, lit by live activity (z-5, over
+      // the pylon, under the stats/countdown).
+      pylonBezierNetworkView<Message>([
+        Ui.className<Message>('pointer-events-none absolute inset-0 z-[5]'),
+      ]),
+      // #5050: live network stats. When the countdown is removed at launch, the
+      // bezier graph + stats + activity-lit pylon stay as the homepage.
       pylonStatsView<Message>([
-        Ui.className<Message>('pointer-events-none absolute inset-0 z-0'),
+        Ui.className<Message>('pointer-events-none absolute inset-0 z-[6]'),
       ]),
       pylonCountdownView<Message>([
         Ui.className<Message>('pointer-events-none absolute inset-0 z-10'),
