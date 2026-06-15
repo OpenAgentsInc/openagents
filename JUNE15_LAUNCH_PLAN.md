@@ -597,13 +597,14 @@ event + announcement (not code); #5015 builds on the now-merged #5011.
   agent-steerable (parity with the Autopilot GUI). Audit:
   [`apps/pylon/docs/2026-06-15-pylon-cli-only-agent-steerable-audit.md`](apps/pylon/docs/2026-06-15-pylon-cli-only-agent-steerable-audit.md).
   Children: ✅ #5034 (delete the TUI — `src/tui` + `@opentui/*` + `dashboard`;
-  bare `pylon` now boots headless; `bun test` 1046 pass), 🔄 #5035 (CLI parity:
-  sessions/approvals/training/deploy verbs + `pylon help --json` catalog — in
-  progress), ✅ #5036 (live AGENTS.md three paths — deployed), and #5037
-  (make `packages/runtime` bundle-able headless: it still pulls `@opentui` in
-  `opentui-renderer.ts` — **the remaining blocker for bundling a headless Pylon
-  into the packaged mac `.app` #5027**). New promise
-  `pylon.agent_steerable_cli.v1` (planned). Agents at openagents.com/AGENTS.md
+  bare `pylon` now boots headless; `bun test` 1046 pass), ✅ #5035 (CLI parity:
+  `sessions`/`approvals`/`deploy`/`training` verbs + `pylon help --json` catalog
+  of 28 commands; 1066 tests pass), ✅ #5036 (live AGENTS.md three paths —
+  deployed), and 🔄 #5037 (make `packages/runtime` bundle-able headless: it still
+  pulls `@opentui` in `opentui-renderer.ts`/`cli.ts` — **the remaining blocker
+  for bundling a headless Pylon into the packaged mac `.app` #5027**; in
+  progress). New promise `pylon.agent_steerable_cli.v1` (planned → flips toward
+  green once #5037 lands and receipts exist). Agents at openagents.com/AGENTS.md
   now learn the three ways to run a node.
 
 ### Post-launch program: Artanis evolution loop → green
