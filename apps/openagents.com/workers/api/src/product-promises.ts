@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-14.5'
+export const PublicProductPromisesVersion = '2026-06-14.6'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -149,6 +149,7 @@ export const publicProductPromisesDocument = () => {
         'Owner-authorized state flips 2026-06-14 (registry 2026-06-14.1): labor.forum_work_requests.v1 and labor.nostr_negotiation_market.v1 to green and provider.compliant_usage_labor.v1 / autopilot.control_center_fanout_marketplace.v1 to yellow were applied in source ahead of the receipt-first operator-route transition receipts, on the strength of the #4777/#4781/#4783 settlement evidence. The matching promise_transition receipts must still be recorded by the operator against the deployed 2026-06-14.1 version; they are not fabricated in source. The reconciliation record is docs/promises/2026-06-14-registry-reality-reconciliation-audit.md.',
         'Wave-3 Autopilot Sites / Agency Pack surfaces (#4977-#4995) enter as conservative new records: autopilot.desktop_gui_client.v1 (yellow, local-only), mobile.autopilot_remote_control.v1 (planned), workrooms.omni_client_delivery_workrooms.v1 (red), autopilot_sites.native_email_sequences.v1 (yellow, no send service), autopilot_sites.custom_tenant_hostnames.v1 (yellow, no self-serve/SSL), autopilot_sites.partner_payout_ledger.v1 (red), autopilot.cloud_credits_ui.v1 (yellow, presentational), mobile.voice_session_evidence_transcript_ingest.v1 (red, contracts only). All are operator-gated or pre-customer; none claims green.',
         'Autopilot-is-the-install reconciliation for the 2026-06-15 launch: contributor-facing install copy should name Autopilot Desktop as the install surface and Pylon as the local node it drives; the affected Pylon promises remain yellow.',
+        'Decentralized-training lane (RESEARCH_PLAN W5): the new training.public_gradient_windows.v1 record is planned, not live. Public devices do generation/validation/evaluation only; the Pluralis lifecycle substrate (#4855, P0-P3) is in place, but no public gradient enters the canonical optimizer until a quarantine→verify→canary→promotion regime ships. Do not claim public decentralized gradient training for the launch.',
       ],
     },
     promises: [
@@ -451,6 +452,37 @@ export const publicProductPromisesDocument = () => {
           'Green requires participant count methodology, run definition, training evidence, accepted-work receipts, public verification, and a comparison rule that is current and comparable.',
         authorityBoundary:
           'Marketing comparisons do not grant proof. Public copy must degrade to the receipts actually available.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'training.public_gradient_windows.v1',
+        productArea: 'training',
+        audience: ['contributor', 'operator', 'public'],
+        state: 'planned',
+        claim:
+          'Public Pylons can contribute bounded, verified training windows (model updates) that advance a shared Psion/Tassadar student checkpoint.',
+        safeCopy:
+          'This is the decentralized-optimizer lane (RESEARCH_PLAN W5). Public Pylons may eventually contribute bounded, verified training windows to Psion/Tassadar student models; those updates enter a quarantine checkpoint first and do not mutate canonical checkpoints until verified (recompute/replicate), canary-evaluated, and promoted. Today public devices do generation, validation, and evaluation only; the Pluralis-derived lifecycle/staleness/admission/canary substrate landed (#4855, P0-P3), but the public model-update layer (accepted training window, quarantine optimizer, gradient verification ladder, checkpoint lineage/rollback, staged payout) is not built.',
+        unsafeCopy:
+          'Do not claim public Pylons train the canonical model today, that public gradients are accepted into the main optimizer, or that decentralized gradient training is live or paying. No public gradient enters the canonical optimizer until it passes quarantine, verification, canary, and promotion gates.',
+        evidenceRefs: [
+          'docs/tassadar/RESEARCH_PLAN.md',
+          'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
+          'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/4855',
+          'promise:training.public_distributed_training_run.v1',
+          'promise:compute.tassadar_executor_poc.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.public_gradient_quarantine_optimizer_missing',
+          'blocker.product_promises.training_window_verification_ladder_missing',
+          'blocker.product_promises.public_gradient_canary_promotion_missing',
+          'blocker.product_promises.public_gradient_settlement_receipts_missing',
+        ],
+        verification:
+          'Green requires the accepted-training-window schema, a quarantine→promotion checkpoint discipline with lineage and rollback, a training-window verification ladder (hash/recompute/replicate/statistical/canary/downstream), robust aggregation policy, dataset-shard authority, staged payout, and public receipts for at least one promoted public window — all receipt-first per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'A candidate update is not a model mutation. Submission grants no authority to change a canonical checkpoint; only gated promotion does, and contribution does not grant settlement, aggregation, or checkpoint-promotion authority.',
       },
       {
         ...basePromiseFields,
