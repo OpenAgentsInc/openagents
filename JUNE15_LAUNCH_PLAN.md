@@ -225,9 +225,11 @@ normal-person install path now outrank the training run.** Two users:
    must point at an actual downloadable installer, not just `INSTALL.md`.) — **#5062**
 2. **Built-in, out-of-the-box agent that uses OUR compute.** So a user with **no
    agent and no API key** installs one installer, clicks "go online," and has a
-   working agent running on OpenAgents compute — which can also route around / fix
-   rough edges on systems we haven't tested. This is the answer to "i don't have an
-   agent." — **#5063**
+   working agent. "Our compute" is NOT limited to the device — it can be the
+   device's own compute **and/or our free hosted cloud model set (a Gemini set we
+   offer free to eligible users)**, so even a no-spare-compute machine (or a user
+   with no agent at all) gets a working agent. It can also route around / fix rough
+   edges on untested systems. This is the answer to "i don't have an agent." — **#5063**
 3. **Basic install/runtime stability** — make the out-of-box experience solid on
    untested systems; fix the reported rough edges. Surface-driven (below). — **#5064**
 4. **Autopilot built-in "surface issues, don't ship slop" forum flow.** Per owner:
@@ -366,9 +368,10 @@ registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
   - ✅ **#5054** Pylon `submit-trace` + `validate` client verbs — **DONE** (`20a354b32`):
     agent-token (not admin), `--json`, 14 tests. **Assignment worker stays opt-in**
     (`PYLON_ASSIGNMENT_WORKER`), NOT default-on — no node behavior change.
-  - **#5055** interim Forum-tip earning — path documented (community guide); **live tips
-    blocked on owner funding** (payer wallet empty; treasury is production-container-only;
-    a BOLT12 receive offer for the payer wallet was handed to the owner to fund).
+  - ✅ **#5055** interim Forum-tip earning — **DONE/closed**: owner funded the payer wallet
+    (BOLT11 10k paid; ~8.8k sats live), and the first real interim tip settled —
+    **1,000 sats → Orrery** (receipt `receipt.forum.direct_tip.dda29604…`). Path documented
+    in the community guide; more tips flow to good-faith audit/report posts as budget grows.
 - **#5061** first external-validator dry-run with **Orrery** (live non-owner contributor,
   volunteered) → flip `TASSADAR_TRACE_PAIRING` on, run a real 2-device replay → first
   externally-settled trace receipt → flips **#5014**.

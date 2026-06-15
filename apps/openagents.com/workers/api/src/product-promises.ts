@@ -2274,9 +2274,9 @@ export const publicProductPromisesDocument = () => {
         audience: ['user', 'public'],
         state: 'planned',
         claim:
-          'Autopilot Desktop ships a built-in, out-of-the-box agent that runs on OpenAgents-provided compute, so a user with no agent and no API key can install one desktop installer, go online, and have a working agent.',
+          'Autopilot Desktop ships a built-in, out-of-the-box agent so a user with no agent and no API key can install one desktop installer, go online, and have a working agent. It runs on OpenAgents-provided compute — the device’s own compute and/or OpenAgents’ managed cloud model set (e.g. a hosted Gemini set offered free to some users) — so no user-supplied key is required.',
         safeCopy:
-          'This is the planned answer to "I do not have an agent" (launch-day Discord feedback): a built-in agent on OpenAgents compute, no user-supplied API key. As of 2026-06-15 it is NOT shipped — install today still expects you to bring an agent (Claude Code / Codex). Describe the built-in-compute agent as the near-term stability priority we are building, not a shipped feature. Compute is metered/bounded.',
+          'This is the planned answer to "I do not have an agent" (launch-day Discord feedback): a built-in agent that needs no user-supplied API key. "OpenAgents compute" is not limited to the device — for some users it is a managed cloud model set (e.g. a hosted Gemini set we offer free) so even a low-power machine gets a working agent; for others it can use local/device compute. As of 2026-06-15 it is NOT shipped — install today still expects you to bring an agent (Claude Code / Codex). Describe it as the near-term stability priority we are building, not a shipped feature. The free hosted tier is bounded/metered (not unlimited).',
         unsafeCopy:
           'Do not claim Autopilot already includes a working built-in agent on our compute, that it needs no setup, or that it is free/unmetered, until it ships with public evidence of a from-install go-online session.',
         evidenceRefs: [
