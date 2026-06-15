@@ -29,13 +29,24 @@ type CentralTimeParts = Readonly<{
   year: number
 }>
 
+// Launch handoff for the June 15, 2026 live download/instructions switch.
+// Remove this fixed-deadline gate after the landing page no longer needs to
+// preserve pre-launch countdown behavior for already-open browser sessions.
+const PYLON_LAUNCH_DEADLINE_CT: CentralTimeParts = {
+  day: 15,
+  hour: PYLON_TARGET_HOUR_CT,
+  minute: 0,
+  month: 6,
+  second: 0,
+  year: 2026,
+}
+
 const pad = (value: number): string => value.toString().padStart(2, '0')
 
 const numberPart = (
   parts: ReadonlyArray<Intl.DateTimeFormatPart>,
   type: Intl.DateTimeFormatPartTypes,
-): number =>
-  Number(parts.find(part => part.type === type)?.value ?? '0')
+): number => Number(parts.find(part => part.type === type)?.value ?? '0')
 
 const centralTimeParts = (timestampMs: number): CentralTimeParts => {
   const parts = centralFormatter.formatToParts(timestampMs)
@@ -112,12 +123,23 @@ export const nextPylonCountdownDeadlineMs = (nowMs: number): number => {
 export const remainingToPylonCountdownDeadlineMs = (nowMs: number): number =>
   Math.max(0, nextPylonCountdownDeadlineMs(nowMs) - nowMs)
 
+export const pylonLaunchDeadlineMs = (): number =>
+  timestampForCentralWallTime(PYLON_LAUNCH_DEADLINE_CT)
+
+export const remainingToPylonLaunchDeadlineMs = (nowMs: number): number =>
+  Math.max(0, pylonLaunchDeadlineMs() - nowMs)
+
+export const isPylonLaunchDeadlinePassed = (nowMs: number): boolean =>
+  remainingToPylonLaunchDeadlineMs(nowMs) <= 0
+
 export type PylonCountdownHandle = Readonly<{
   dispose: () => void
 }>
 
 export type PylonCountdownOptions = Readonly<{
+  deadlineMs?: number
   nowMs?: () => number
+  onComplete?: () => void
 }>
 
 export const mountPylonCountdown = (
@@ -125,7 +147,7 @@ export const mountPylonCountdown = (
   options: PylonCountdownOptions = {},
 ): PylonCountdownHandle => {
   const nowMs = options.nowMs ?? currentUnixMs
-  const deadline = nextPylonCountdownDeadlineMs(nowMs())
+  const deadline = options.deadlineMs ?? nextPylonCountdownDeadlineMs(nowMs())
   const controller = slotText(target, formatRemaining(deadline - nowMs()), {
     direction: 'down',
   })
@@ -140,7 +162,10 @@ export const mountPylonCountdown = (
       if (disposed) return
       const remaining = Math.max(0, deadline - nowMs())
       controller.set(formatRemaining(remaining))
-      if (remaining <= 0) return
+      if (remaining <= 0) {
+        options.onComplete?.()
+        return
+      }
     }
   })
 

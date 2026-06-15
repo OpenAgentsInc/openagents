@@ -28,6 +28,25 @@ The `--assets ../../apps/web/dist` argument is mandatory. A deploy can otherwise
 publish a Worker version whose `ASSETS` binding returns 404 for `/` and the
 hashed web bundle, even though Wrangler reports a successful Worker upload.
 
+## JS / Web-Asset-Only Changes
+
+When the change is limited to browser JavaScript, CSS, public docs, or other web
+assets, do not run the full container deploy. Build the current web assets and
+deploy the Worker with container rollout disabled:
+
+```sh
+cd apps/openagents.com
+bun run check:deploy
+bun run build:web
+cd workers/api
+npx wrangler deploy --containers-rollout=none --assets ../../apps/web/dist
+```
+
+Wrangler's `--containers-rollout=none` flag deploys the Worker without building
+or updating any Containers. Use the full package deploy only when the change
+also needs container images, remote D1 migrations, or other full deploy
+orchestration.
+
 ## Canonical Command
 
 Prefer the package deploy command:

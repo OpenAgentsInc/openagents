@@ -2,8 +2,11 @@ import { describe, expect, test } from 'vitest'
 
 import {
   formatRemaining,
+  isPylonLaunchDeadlinePassed,
   nextPylonCountdownDeadlineMs,
+  pylonLaunchDeadlineMs,
   remainingToPylonCountdownDeadlineMs,
+  remainingToPylonLaunchDeadlineMs,
 } from './pylonCountdown'
 
 describe('formatRemaining', () => {
@@ -56,5 +59,23 @@ describe('nextPylonCountdownDeadlineMs', () => {
     expect(formatRemaining(remainingToPylonCountdownDeadlineMs(now))).toBe(
       '22:30:00',
     )
+  })
+})
+
+describe('pylon launch deadline', () => {
+  test('pins the launch handoff to June 15, 2026 at 1 PM Central', () => {
+    expect(pylonLaunchDeadlineMs()).toBe(Date.parse('2026-06-15T18:00:00.000Z'))
+  })
+
+  test('reports remaining time before launch and zero after launch', () => {
+    const beforeLaunch = Date.parse('2026-06-15T17:11:00.000Z')
+    const afterLaunch = Date.parse('2026-06-15T18:00:01.000Z')
+
+    expect(
+      formatRemaining(remainingToPylonLaunchDeadlineMs(beforeLaunch)),
+    ).toBe('00:49:00')
+    expect(remainingToPylonLaunchDeadlineMs(afterLaunch)).toBe(0)
+    expect(isPylonLaunchDeadlinePassed(beforeLaunch)).toBe(false)
+    expect(isPylonLaunchDeadlinePassed(afterLaunch)).toBe(true)
   })
 })

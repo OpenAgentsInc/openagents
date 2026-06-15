@@ -64,16 +64,18 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
   is not the production `/login` surface. When changing deployed UI, verify
   against the served bundle or rendered DOM before calling the work complete.
 - When the user asks to deploy this repo, always build the latest web assets
-  before deploying the Worker. Use `bun run --cwd workers/api deploy` as the
-  canonical production deploy command because it runs deploy checks, rebuilds
-  `apps/web/dist`, and then runs Wrangler with an explicit
-  `--assets ../../apps/web/dist` argument. Do not run bare `wrangler deploy`
-  after UI/web changes. If you must bypass the package deploy command, the
-  manual command from `apps/openagents.com/workers/api` is
+  before deploying the Worker. For JS/CSS/public-doc/web-asset-only changes,
+  prefer the no-container path in
+  `docs/2026-06-15-openagents-web-deploy-runbook.md`: run
+  `bun run check:deploy`, run `bun run build:web`, then deploy from
+  `apps/openagents.com/workers/api` with
   `npx wrangler deploy --containers-rollout=none --assets ../../apps/web/dist`
-  after `bun run --cwd apps/openagents.com build:web` has succeeded. Never
-  report deployment success until live smoke checks prove both the document and
-  JS asset are reachable:
+  so Wrangler does not build or update Containers. Use
+  `bun run --cwd workers/api deploy` for full production deploys that need its
+  orchestration, such as container image rollout or remote D1 migrations. Do
+  not run bare `wrangler deploy` after UI/web changes. Never report deployment
+  success until live smoke checks prove both the document and JS asset are
+  reachable:
   `curl -fsSI https://openagents.com/` and the concrete
   `/assets/index-*.js` URL referenced by the served HTML must both return 200.
 - Before changing Worker route/service boundaries, sync/runtime/config code,

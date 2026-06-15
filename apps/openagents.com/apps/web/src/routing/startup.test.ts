@@ -25,6 +25,7 @@ import {
   ForumReceiptRoute,
   HomeRoute,
   InviteRoute,
+  LiveRoute,
   Moksha2Route,
   MokshaRoute,
   MulletRoute,
@@ -213,6 +214,26 @@ describe('startup route policy', () => {
       _tag: 'LoggedOutStartupRoute',
       redirect: Option.none(),
       route: pylonRoute,
+    })
+  })
+
+  test('keeps the live Pylon preview public for every auth state', () => {
+    const liveRoute = LiveRoute()
+
+    expect(startupRouteForLoggedOut(liveRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: liveRoute,
+    })
+    expect(startupRouteForLoggedIn(liveRoute, completeAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: liveRoute,
+    })
+    expect(startupRouteForLoggedIn(liveRoute, incompleteAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: liveRoute,
     })
   })
 
@@ -496,6 +517,7 @@ describe('startup route policy', () => {
     expect(routeRequiresAuthBootstrap(MokshaRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(Moksha2Route())).toBe(false)
     expect(routeRequiresAuthBootstrap(PylonRoute())).toBe(false)
+    expect(routeRequiresAuthBootstrap(LiveRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(PublicStatsArchiveRoute())).toBe(false)
     expect(
       routeRequiresAuthBootstrap(

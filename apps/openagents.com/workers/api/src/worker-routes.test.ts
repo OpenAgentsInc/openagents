@@ -48,6 +48,12 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('keeps the live Pylon preview document route in the app shell', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/live'), '/live'),
+    ).toBe(false)
+  })
+
   test('keeps public stats document routes in the app shell', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/stats'), '/stats'),
