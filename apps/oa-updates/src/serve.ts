@@ -78,6 +78,9 @@ if (import.meta.main) {
       server,
       distDir: process.env.OA_PYLON_RELEASES_DIST,
       baseUrl: process.env.OA_PUBLIC_URL ?? `http://localhost:${port}`,
+      // Binaries are served from GCS (Cloud Run caps responses at 32 MiB);
+      // the feed JSON stays on this service, artifactUrls point at OA_ASSET_BASE_URL.
+      ...(process.env.OA_ASSET_BASE_URL ? { assetBaseUrl: process.env.OA_ASSET_BASE_URL } : {}),
     })
   }
 

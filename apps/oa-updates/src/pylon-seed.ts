@@ -31,6 +31,11 @@ type SeedPylonReleasesInput = {
   readonly server: UpdatesServer
   readonly distDir: string
   readonly baseUrl: string
+  // Optional CDN/object-store base for the binaries themselves (e.g. a public
+  // GCS bucket). Cloud Run caps HTTP responses at 32 MiB, so the 60–97 MB
+  // binaries are served from GCS while this service serves only the feed JSON.
+  // When set, manifest artifactUrls point here instead of at this service.
+  readonly assetBaseUrl?: string
   readonly readFile?: (path: string) => Promise<Uint8Array>
 }
 
@@ -61,7 +66,7 @@ export async function seedPylonReleases(
       artifactBytes,
       signature: seed.signature,
       kid: seed.kid,
-      baseUrl: input.baseUrl,
+      baseUrl: input.assetBaseUrl ?? input.baseUrl,
       // Non-retaining store: compute the content hash but DO NOT hold the bytes
       // in memory. The binary is served by streaming from disk (registerDiskAsset),
       // so seeding 100s of MB never blows the boot memory/timeout.
