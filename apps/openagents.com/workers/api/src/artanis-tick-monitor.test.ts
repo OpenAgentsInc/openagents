@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  attachArtanisDistillationDatasetReceipt,
   type ArtanisTickDecisionRow,
   boundedTickMonitorLimit,
   projectArtanisTickMonitor,
@@ -205,6 +206,74 @@ describe('artanis tick monitor projection', () => {
     })
     expect(monitor.unattendedTickStreak.closedTickReceiptRefs).toHaveLength(10)
     expect(monitor.unattendedTickStreak.decisionRefs).toHaveLength(10)
+  })
+
+  test('attaches a dataset_curation receipt from a satisfied verified-trace streak', async () => {
+    let digestCounter = 0
+    const monitor = await attachArtanisDistillationDatasetReceipt(
+      projectArtanisTickMonitor(
+        Array.from({ length: 10 }, (_, index) =>
+          closedDecisionRow(index + 1),
+        ),
+        nowIso,
+      ),
+      async () => {
+        digestCounter += 1
+        return String(digestCounter).repeat(64)
+      },
+    )
+
+    expect(monitor.distillationDatasetReceipt).toMatchObject({
+      authorityBoundary:
+        'Read-only dataset-curation receipt. Grants no training launch, model-capability, publication, payout, settlement, or promise-transition authority.',
+      curationKind: 'dataset_curation',
+      datasetRef:
+        'dataset.public.tassadar_distillation.artanis_admin.v0_1.4444444444444444',
+      encodingRef: 'encoding.tassadar_trace.compact_binary.v0_1',
+      includedTraceCount: 10,
+      manifestDigestRef:
+        'digest.sha256.tassadar_distillation.manifest.4444444444444444',
+      receiptKind: 'tassadar_distillation_dataset_curation',
+      receiptRef: 'receipt.public.artanis.dataset_curation.4444444444444444',
+      splitPolicyRef: 'policy.tassadar_trace.train_val_test_split.v0_1',
+    })
+    expect(monitor.distillationDatasetReceipt?.sourceReceiptRefs).toHaveLength(
+      10,
+    )
+    expect(monitor.distillationDatasetReceipt?.shardRefs).toEqual([
+      expect.objectContaining({
+        itemCount: 8,
+        shardDigestRef:
+          'digest.sha256.tassadar_distillation.train.1111111111111111',
+        split: 'train',
+      }),
+      expect.objectContaining({
+        itemCount: 1,
+        shardDigestRef:
+          'digest.sha256.tassadar_distillation.validation.2222222222222222',
+        split: 'validation',
+      }),
+      expect.objectContaining({
+        itemCount: 1,
+        shardDigestRef:
+          'digest.sha256.tassadar_distillation.test.3333333333333333',
+        split: 'test',
+      }),
+    ])
+    expect(JSON.stringify(monitor.distillationDatasetReceipt)).not.toMatch(
+      /dataset\.raw|private|mnemonic|preimage|secret/i,
+    )
+  })
+
+  test('does not attach a dataset_curation receipt before the streak is satisfied', async () => {
+    const monitor = await attachArtanisDistillationDatasetReceipt(
+      projectArtanisTickMonitor(
+        Array.from({ length: 9 }, (_, index) => closedDecisionRow(index + 1)),
+        nowIso,
+      ),
+    )
+
+    expect(monitor.distillationDatasetReceipt).toBeNull()
   })
 
   test('does not satisfy the streak gate across an interrupted run', () => {

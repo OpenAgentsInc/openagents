@@ -3,10 +3,10 @@
 Date: 2026-06-15
 
 This note tracks the receipt-bearing surfaces for the
-`artanis.tassadar_evolution_loop.v1` green path. The promise stays yellow until
-the remaining live blocker is cleared receipt-first:
-
-- `blocker.product_promises.tassadar_distillation_dataset_receipt_missing`
+`artanis.tassadar_evolution_loop.v1` green path. As of this file's 2026-06-15
+update, the public monitor can project all four receipt surfaces. The product
+promise registry still needs its own receipt-first transition before public copy
+can call the promise green.
 
 ## #5029: Tetrahedron-Closed Executor Ticks
 
@@ -79,9 +79,23 @@ receipts run all refs through the public scanner. Tests cover state counts,
 bounded limits, redaction of secret-shaped reasons, `live_at_read` staleness,
 closed tick receipts, interrupted streaks, and the satisfied ten-tick receipt.
 
-## Remaining Gates
+## #5032: First Distillation Dataset Receipt
 
-#5032 requires the first `dataset_curation` receipt converting accepted,
-replay-verified traces into a curated distillation dataset artifact. The
-existing closed-tick and run-corpus projections are inputs to that receipt, not
-the receipt itself.
+`GET /api/public/artanis/admin-ticks` now projects
+`distillationDatasetReceipt` once the verified ten-tick streak is satisfied.
+The receipt is derived from the same public closed-tick receipt refs and
+converts those accepted, replay-verified traces into a compact-binary
+train/validation/test dataset manifest:
+
+- `curationKind: dataset_curation`;
+- `receiptKind: tassadar_distillation_dataset_curation`;
+- `encodingRef: encoding.tassadar_trace.compact_binary.v0_1`;
+- `splitPolicyRef: policy.tassadar_trace.train_val_test_split.v0_1`;
+- three shard refs with SHA-256 digest refs;
+- one manifest digest ref;
+- source receipt refs for the included verified closed ticks.
+
+The receipt projects only refs and digest commitments. It does not expose raw
+traces, does not launch training, does not claim a trained model, and grants no
+promise-transition, payout, settlement, publication, or model-capability
+authority.

@@ -3,6 +3,7 @@ import {
   artanisAdminCloseoutReceiptRecordFromRow,
   artanisAdminCloseoutReceiptRef,
 } from './artanis-admin-closeout-receipts'
+import { sha256Hex } from './agent-registration'
 import { parseJsonRecord } from './json-boundary'
 import { publicScannerSafeRefs } from './public-ref-scanner-safety'
 import { liveAtReadStaleness } from './public-projection-staleness'
@@ -79,6 +80,33 @@ export type ArtanisUnattendedTickStreak = Readonly<{
   staleness: PublicProjectionStalenessContract
 }>
 
+export type ArtanisDistillationDatasetSplit = 'train' | 'validation' | 'test'
+
+export type ArtanisDistillationDatasetShard = Readonly<{
+  itemCount: number
+  shardDigestRef: string
+  shardRef: string
+  split: ArtanisDistillationDatasetSplit
+  traceReceiptRefs: ReadonlyArray<string>
+}>
+
+export type ArtanisDistillationDatasetReceipt = Readonly<{
+  authorityBoundary: string
+  caveatRefs: ReadonlyArray<string>
+  curationKind: 'dataset_curation'
+  datasetRef: string
+  encodingRef: string
+  includedTraceCount: number
+  manifestDigestRef: string
+  provenanceLabel: string
+  receiptKind: 'tassadar_distillation_dataset_curation'
+  receiptRef: string
+  shardRefs: ReadonlyArray<ArtanisDistillationDatasetShard>
+  sourceReceiptRefs: ReadonlyArray<string>
+  splitPolicyRef: string
+  staleness: PublicProjectionStalenessContract
+}>
+
 export type ArtanisTickMonitorEntry = Readonly<{
   decisionRef: string
   state: 'dispatched' | 'no_action' | 'blocked' | 'dispatch_failed'
@@ -102,6 +130,7 @@ export type ArtanisTickMonitor = Readonly<{
   closedTickReceipts: ReadonlyArray<ArtanisClosedTickReceipt>
   closedTickStaleness: PublicProjectionStalenessContract
   dailyDispatchBound: number
+  distillationDatasetReceipt: ArtanisDistillationDatasetReceipt | null
   dispatchedToday: number
   countsByState: Readonly<Record<string, number>>
   decisions: ReadonlyArray<ArtanisTickMonitorEntry>
@@ -324,6 +353,138 @@ const projectUnattendedTickStreak = (
   }
 }
 
+const DATASET_TRACE_COUNT = 10
+const DATASET_ENCODING_REF = 'encoding.tassadar_trace.compact_binary.v0_1'
+const DATASET_SPLIT_POLICY_REF =
+  'policy.tassadar_trace.train_val_test_split.v0_1'
+const DATASET_BASE_REF =
+  'dataset.public.tassadar_distillation.artanis_admin.v0_1'
+const DATASET_CORPUS_REF = 'corpus.public.tassadar.verified_trace.artanis_admin'
+
+const canonicalJson = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(',')}]`
+  }
+
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${canonicalJson(nested)}`)
+      .join(',')}}`
+  }
+
+  return JSON.stringify(value)
+}
+
+const traceRefsForSplit = (
+  traceReceiptRefs: ReadonlyArray<string>,
+  split: ArtanisDistillationDatasetSplit,
+): ReadonlyArray<string> => {
+  const trainEnd = Math.max(1, Math.floor(traceReceiptRefs.length * 0.8))
+  const validationEnd = Math.max(
+    trainEnd + 1,
+    Math.floor(traceReceiptRefs.length * 0.9),
+  )
+
+  if (split === 'train') return traceReceiptRefs.slice(0, trainEnd)
+  if (split === 'validation') {
+    return traceReceiptRefs.slice(trainEnd, validationEnd)
+  }
+  return traceReceiptRefs.slice(validationEnd)
+}
+
+export const attachArtanisDistillationDatasetReceipt = async (
+  monitor: ArtanisTickMonitor,
+  makeDigestHex: (value: string) => Promise<string> = sha256Hex,
+): Promise<ArtanisTickMonitor> => {
+  if (!monitor.unattendedTickStreak.satisfied) {
+    return { ...monitor, distillationDatasetReceipt: null }
+  }
+
+  const sourceReceiptRefs = safeRefs(
+    'receipt.public.artanis.dataset_curation.source',
+    monitor.unattendedTickStreak.closedTickReceiptRefs,
+  ).slice(0, DATASET_TRACE_COUNT)
+
+  if (sourceReceiptRefs.length < DATASET_TRACE_COUNT) {
+    return { ...monitor, distillationDatasetReceipt: null }
+  }
+
+  const splits: ReadonlyArray<ArtanisDistillationDatasetSplit> = [
+    'train',
+    'validation',
+    'test',
+  ]
+  const shardRefs = await Promise.all(
+    splits.map(async split => {
+      const traceReceiptRefs = safeRefs(
+        `receipt.public.artanis.dataset_curation.${split}`,
+        traceRefsForSplit(sourceReceiptRefs, split),
+      )
+      const shardDigest = await makeDigestHex(
+        canonicalJson({
+          encodingRef: DATASET_ENCODING_REF,
+          sourceCorpusRef: DATASET_CORPUS_REF,
+          split,
+          splitPolicyRef: DATASET_SPLIT_POLICY_REF,
+          traceReceiptRefs,
+        }),
+      )
+      const shardDigestPrefix = shardDigest.slice(0, 16)
+
+      return {
+        itemCount: traceReceiptRefs.length,
+        shardDigestRef: `digest.sha256.tassadar_distillation.${split}.${shardDigestPrefix}`,
+        shardRef: `shard.public.tassadar_distillation.${split}.${shardDigestPrefix}`,
+        split,
+        traceReceiptRefs,
+      } satisfies ArtanisDistillationDatasetShard
+    }),
+  )
+  const manifestDigest = await makeDigestHex(
+    canonicalJson({
+      datasetBaseRef: DATASET_BASE_REF,
+      encodingRef: DATASET_ENCODING_REF,
+      includedTraceCount: sourceReceiptRefs.length,
+      shardDigestRefs: shardRefs.map(shard => shard.shardDigestRef),
+      sourceCorpusRef: DATASET_CORPUS_REF,
+      sourceReceiptRefs,
+      splitPolicyRef: DATASET_SPLIT_POLICY_REF,
+    }),
+  )
+  const manifestDigestPrefix = manifestDigest.slice(0, 16)
+
+  return {
+    ...monitor,
+    distillationDatasetReceipt: {
+      authorityBoundary:
+        'Read-only dataset-curation receipt. Grants no training launch, model-capability, publication, payout, settlement, or promise-transition authority.',
+      caveatRefs: [
+        'caveat.public.tassadar_dataset.no_raw_traces_projected',
+        'caveat.public.tassadar_dataset.no_trained_model_claim',
+        'caveat.public.tassadar_dataset.training_launch_separately_gated',
+      ],
+      curationKind: 'dataset_curation',
+      datasetRef: `${DATASET_BASE_REF}.${manifestDigestPrefix}`,
+      encodingRef: DATASET_ENCODING_REF,
+      includedTraceCount: sourceReceiptRefs.length,
+      manifestDigestRef: `digest.sha256.tassadar_distillation.manifest.${manifestDigestPrefix}`,
+      provenanceLabel:
+        'First Artanis dataset_curation receipt: accepted, replay-verified exact-trace closed ticks are converted into a compact-binary train/validation/test distillation dataset manifest. The receipt references public closed-tick receipts only; it does not expose raw traces and is not a trained-model or exactness claim.',
+      receiptKind: 'tassadar_distillation_dataset_curation',
+      receiptRef: `receipt.public.artanis.dataset_curation.${manifestDigestPrefix}`,
+      shardRefs,
+      sourceReceiptRefs,
+      splitPolicyRef: DATASET_SPLIT_POLICY_REF,
+      staleness: liveAtReadStaleness([
+        'artanis_admin_tick_decision_recorded',
+        'pylon_assignment_closeout_submitted',
+        'artanis_closeout_verdict_recorded',
+      ]),
+    },
+  }
+}
+
 export const projectArtanisTickMonitor = (
   rows: ReadonlyArray<ArtanisTickDecisionRow>,
   nowIso: string,
@@ -376,6 +537,7 @@ export const projectArtanisTickMonitor = (
     ]),
     countsByState,
     dailyDispatchBound: ARTANIS_ADMIN_DISPATCH_PER_DAY,
+    distillationDatasetReceipt: null,
     decisions,
     dispatchedToday,
     generatedAt: nowIso,
@@ -439,8 +601,10 @@ export const readArtanisTickMonitor = async (
     .bind(limit)
     .all()
 
-  return projectArtanisTickMonitor(
-    (result.results ?? []) as unknown as ReadonlyArray<ArtanisTickDecisionRow>,
-    input.nowIso,
+  return attachArtanisDistillationDatasetReceipt(
+    projectArtanisTickMonitor(
+      (result.results ?? []) as unknown as ReadonlyArray<ArtanisTickDecisionRow>,
+      input.nowIso,
+    ),
   )
 }
