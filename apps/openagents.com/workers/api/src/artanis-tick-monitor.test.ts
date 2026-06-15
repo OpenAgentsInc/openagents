@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  type ArtanisTickDecisionRow,
   boundedTickMonitorLimit,
   projectArtanisTickMonitor,
   readArtanisTickMonitor,
@@ -9,7 +10,43 @@ import {
 const nowIso = '2026-06-11T01:20:00.000Z'
 const traceDigest = 'f2995c4e3c959b42bb1e4afbefffbcf7ba6104099621ccc0ac912862dc932a5b'
 
-const rows = [
+const closedDecisionRow = (index: number): ArtanisTickDecisionRow => {
+  const padded = String(index).padStart(2, '0')
+  const suffix = `2026061101${padded}`
+  const assignmentRef = `assignment.artanis_admin.closed_${padded}`
+  return {
+    accepted_work_refs_json: JSON.stringify([
+      `accepted_work.artanis_admin.${suffix}`,
+    ]),
+    action_json: JSON.stringify({
+      rationale: `Closed tick ${padded} keeps the executor loop proven.`,
+    }),
+    assignment_ref: assignmentRef,
+    assignment_created_at: `2026-06-11T01:${padded}:00.000Z`,
+    assignment_state: 'accepted_work',
+    assignment_updated_at: `2026-06-11T01:${padded}:30.000Z`,
+    artifact_refs_json: JSON.stringify([
+      `artifact.tassadar_poc.trace_digest.${traceDigest}`,
+    ]),
+    closeout_refs_json: JSON.stringify([
+      `closeout.artanis_admin.assignment.${suffix}`,
+    ]),
+    created_at: `2026-06-11T01:${padded}:00.000Z`,
+    id: `decision-closed-${padded}`,
+    job_kind: 'tassadar_executor_trace',
+    proof_refs_json: JSON.stringify([
+      `proof.tassadar_poc.trace_digest.${traceDigest.slice(0, 16)}`,
+    ]),
+    pylon_ref: `pylon.public.${padded}`,
+    state: 'dispatched',
+    verdict_accept_state: 'accepted',
+    verdict_created_at: `2026-06-11T01:${padded}:45.000Z`,
+    verdict_outcome: 'verified',
+    verdict_trace_digest_prefix: traceDigest.slice(0, 16),
+  }
+}
+
+const rows: ReadonlyArray<ArtanisTickDecisionRow> = [
   {
     accepted_work_refs_json: JSON.stringify([
       'accepted_work.artanis_admin.20260611011429',
@@ -126,6 +163,78 @@ describe('artanis tick monitor projection', () => {
         'accepted_work.artanis_admin.20260611011429',
         'receipt.nexus_pylon.artanis_admin_closeout.assignment.artanis_admin.20260611011429',
       ],
+    })
+    expect(monitor.unattendedTickStreak).toMatchObject({
+      blockerRefs: [
+        'blocker.product_promises.artanis_unattended_tick_streak_missing',
+      ],
+      currentConsecutiveClosedTicks: 1,
+      kind: 'artanis_unattended_tick_streak',
+      longestConsecutiveClosedTicks: 1,
+      receiptRef: null,
+      requiredConsecutiveClosedTicks: 10,
+      satisfied: false,
+    })
+    expect(monitor.unattendedTickStreak.closedTickReceiptRefs).toEqual([
+      'receipt.public.artanis.tetrahedron_closed_tick.assignment.artanis_admin.20260611011429',
+    ])
+    expect(monitor.unattendedTickStreak.staleness).toMatchObject({
+      composition: 'live_at_read',
+      maxStalenessSeconds: 0,
+      rebuildsOn: [
+        'artanis_admin_tick_decision_recorded',
+        'pylon_assignment_closeout_submitted',
+        'artanis_closeout_verdict_recorded',
+      ],
+    })
+  })
+
+  test('emits a streak receipt only after ten consecutive closed ticks', () => {
+    const monitor = projectArtanisTickMonitor(
+      Array.from({ length: 10 }, (_, index) => closedDecisionRow(index + 1)),
+      nowIso,
+    )
+    expect(monitor.unattendedTickStreak).toMatchObject({
+      blockerRefs: [],
+      currentConsecutiveClosedTicks: 10,
+      longestConsecutiveClosedTicks: 10,
+      receiptRef:
+        'receipt.public.artanis.unattended_tick_streak.decision-closed-01.x10',
+      requiredConsecutiveClosedTicks: 10,
+      satisfied: true,
+    })
+    expect(monitor.unattendedTickStreak.closedTickReceiptRefs).toHaveLength(10)
+    expect(monitor.unattendedTickStreak.decisionRefs).toHaveLength(10)
+  })
+
+  test('does not satisfy the streak gate across an interrupted run', () => {
+    const interruptingDecision: ArtanisTickDecisionRow = {
+      action_json: JSON.stringify({ reason: 'no eligible device this tick' }),
+      assignment_ref: null,
+      created_at: '2026-06-11T01:06:30.000Z',
+      id: 'decision-interrupting-no-action',
+      state: 'no_action',
+    }
+    const monitor = projectArtanisTickMonitor(
+      [
+        ...Array.from({ length: 5 }, (_, index) =>
+          closedDecisionRow(index + 1),
+        ),
+        interruptingDecision,
+        ...Array.from({ length: 6 }, (_, index) =>
+          closedDecisionRow(index + 6),
+        ),
+      ],
+      nowIso,
+    )
+    expect(monitor.unattendedTickStreak).toMatchObject({
+      blockerRefs: [
+        'blocker.product_promises.artanis_unattended_tick_streak_missing',
+      ],
+      currentConsecutiveClosedTicks: 5,
+      longestConsecutiveClosedTicks: 6,
+      receiptRef: null,
+      satisfied: false,
     })
   })
 

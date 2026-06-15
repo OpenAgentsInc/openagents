@@ -64,6 +64,21 @@ export type ArtanisClosedTickReceipt = Readonly<{
   verdictRef: string
 }>
 
+export type ArtanisUnattendedTickStreak = Readonly<{
+  authorityBoundary: string
+  blockerRefs: ReadonlyArray<string>
+  closedTickReceiptRefs: ReadonlyArray<string>
+  currentConsecutiveClosedTicks: number
+  decisionRefs: ReadonlyArray<string>
+  kind: 'artanis_unattended_tick_streak'
+  longestConsecutiveClosedTicks: number
+  provenanceLabel: string
+  receiptRef: string | null
+  requiredConsecutiveClosedTicks: 10
+  satisfied: boolean
+  staleness: PublicProjectionStalenessContract
+}>
+
 export type ArtanisTickMonitorEntry = Readonly<{
   decisionRef: string
   state: 'dispatched' | 'no_action' | 'blocked' | 'dispatch_failed'
@@ -92,6 +107,7 @@ export type ArtanisTickMonitor = Readonly<{
   decisions: ReadonlyArray<ArtanisTickMonitorEntry>
   generatedAt: string
   notes: ReadonlyArray<string>
+  unattendedTickStreak: ArtanisUnattendedTickStreak
 }>
 
 const VALID_STATES = new Set([
@@ -222,6 +238,92 @@ const closureStateForRow = (
   return 'open_no_verified_replay'
 }
 
+const streakStaleness = (): PublicProjectionStalenessContract =>
+  liveAtReadStaleness([
+    'artanis_admin_tick_decision_recorded',
+    'pylon_assignment_closeout_submitted',
+    'artanis_closeout_verdict_recorded',
+  ])
+
+const unattendedStreakReceiptRef = (
+  entries: ReadonlyArray<ArtanisTickMonitorEntry>,
+): string | null => {
+  const latestDecisionRef = entries[0]?.decisionRef
+  if (latestDecisionRef === undefined) return null
+  const decisionFragment =
+    safeRefs('receipt.public.artanis.unattended_tick_streak.decision', [
+      latestDecisionRef.replace(/^tick_decision\./, ''),
+    ])[0] ?? 'unknown'
+  return `receipt.public.artanis.unattended_tick_streak.${decisionFragment}.x${entries.length}`
+}
+
+const longestClosedRun = (
+  decisions: ReadonlyArray<ArtanisTickMonitorEntry>,
+): ReadonlyArray<ArtanisTickMonitorEntry> => {
+  let currentRun: ArtanisTickMonitorEntry[] = []
+  let longestRun: ArtanisTickMonitorEntry[] = []
+
+  for (const decision of decisions) {
+    if (decision.closureState === 'closed_verified') {
+      currentRun = [...currentRun, decision]
+      if (currentRun.length > longestRun.length) {
+        longestRun = currentRun
+      }
+      continue
+    }
+    currentRun = []
+  }
+
+  return longestRun
+}
+
+const currentClosedRunLength = (
+  decisions: ReadonlyArray<ArtanisTickMonitorEntry>,
+): number => {
+  let length = 0
+  for (const decision of decisions) {
+    if (decision.closureState !== 'closed_verified') break
+    length += 1
+  }
+  return length
+}
+
+const projectUnattendedTickStreak = (
+  decisions: ReadonlyArray<ArtanisTickMonitorEntry>,
+): ArtanisUnattendedTickStreak => {
+  const longestRun = longestClosedRun(decisions)
+  const satisfied = longestRun.length >= 10
+  const receiptRef = satisfied ? unattendedStreakReceiptRef(longestRun) : null
+  return {
+    authorityBoundary:
+      'Read-only consecutive closed-tick projection. Grants no dispatch, spend, assignment, publication, promise-transition, model-capability, payout, or settlement authority.',
+    blockerRefs: satisfied
+      ? []
+      : ['blocker.product_promises.artanis_unattended_tick_streak_missing'],
+    closedTickReceiptRefs: safeRefs(
+      'receipt.public.artanis.unattended_tick_streak.closed_ticks',
+      longestRun.flatMap(decision =>
+        decision.closedTickReceiptRef === null
+          ? []
+          : [decision.closedTickReceiptRef],
+      ),
+    ),
+    currentConsecutiveClosedTicks: currentClosedRunLength(decisions),
+    decisionRefs: safeRefs(
+      'receipt.public.artanis.unattended_tick_streak.decisions',
+      longestRun.map(decision => decision.decisionRef),
+    ),
+    kind: 'artanis_unattended_tick_streak',
+    longestConsecutiveClosedTicks: longestRun.length,
+    provenanceLabel:
+      'Unattended Artanis tick-streak projection derived only from persisted dispatch decisions that have accepted Pylon closeouts and accepted exact-replay verdicts. A receipt is emitted only after ten consecutive closed ticks are visible in this public-safe read model.',
+    receiptRef,
+    requiredConsecutiveClosedTicks: 10,
+    satisfied,
+    staleness: streakStaleness(),
+  }
+}
+
 export const projectArtanisTickMonitor = (
   rows: ReadonlyArray<ArtanisTickDecisionRow>,
   nowIso: string,
@@ -282,6 +384,7 @@ export const projectArtanisTickMonitor = (
       'Pre-mind skips (runner disabled, mind unconfigured, daily bound reached, no eligible online Pylons) are not persisted decisions; an empty window with online Pylons means the tick is skipping before the mind runs.',
     ],
     publicSafe: true,
+    unattendedTickStreak: projectUnattendedTickStreak(decisions),
   }
 }
 

@@ -28,11 +28,34 @@ This machinery makes repeated closed ticks visible without fabricating the
 sustained evidence. #5029 can close only when multiple real closed ticks appear
 in the monitor from live assignment and replay rows.
 
+## #5030: Unattended Ten-Tick Streak Gate
+
+`GET /api/public/artanis/admin-ticks` also projects an
+`unattendedTickStreak` gate. The gate is derived from the same persisted
+decision, accepted-work closeout, and exact-replay verdict rows as the
+closed-tick receipts.
+
+The projection reports:
+
+- the current consecutive closed-tick count from the latest decision backward;
+- the longest consecutive closed-tick run in the bounded monitor window;
+- the public-safe closed-tick receipt refs and decision refs for that longest
+  run;
+- `blocker.product_promises.artanis_unattended_tick_streak_missing` until a
+  real ten-tick run is visible.
+
+The gate emits an `artanis_unattended_tick_streak` receipt ref only when the
+bounded read model contains at least ten consecutive `closed_verified` ticks.
+That receipt is still operational evidence only. It grants no dispatch, spend,
+publication, promise-transition, model-capability, payout, or settlement
+authority, and it does not by itself flip
+`artanis.tassadar_evolution_loop.v1` green.
+
 ## Remaining Gates
 
-#5030 requires at least ten consecutive unattended ticks with executor dispatch
-and exact-replay verdict receipts. That depends on a healthy online Pylon fleet
-and must not be replaced with fixture data.
+#5030 remains gated on live evidence: the public monitor must show at least ten
+consecutive real closed ticks from a healthy online Pylon fleet. Fixture data
+or source edits must not replace that live receipt trail.
 
 #5032 requires the first `dataset_curation` receipt converting accepted,
 replay-verified traces into a curated distillation dataset artifact. The
