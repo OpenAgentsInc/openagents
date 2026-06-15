@@ -373,6 +373,23 @@ Receipts are redacted and explicit:
 Usage truth is `exact`, `estimated`, or `unknown`. The runtime intentionally
 does not label Apple FM character-derived usage as exact.
 
+### Pylon Loopback Status Projection
+
+As of #5070, Pylon also exposes the runtime Apple FM capability report through
+the token-authenticated loopback control API:
+
+- command: `POST /command` with `{ "type": "apple_fm.status" }`;
+- response schema: `openagents.pylon.apple_fm.status.v0.1`;
+- implementation: `apps/pylon/src/node/apple-fm-status.ts` and
+  `apps/pylon/src/node/control-server.ts`;
+- regression tests: ready, unsupported, unreachable, and malformed health in
+  `apps/pylon/tests/control-protocol.test.ts`.
+
+The projection does not run inference and does not advertise
+`probe.backend.apple_fm_bridge` unless live `/health` plus safe Blueprint
+projection support are ready. It redacts base URLs and adds blocker refs for
+desktop and future operator surfaces.
+
 ### CLI Surface
 
 Current Probe CLI commands:
@@ -570,6 +587,7 @@ history. It has:
 - a mature Psionic contract/client plan;
 - current Probe/Pylon Bun/Effect runtime support;
 - current fake-bridge CI coverage;
+- Pylon loopback `apple_fm.status` readiness projection;
 - admitted-Mac runbooks;
 - one owner-operated NIP-90 Apple FM provider proof.
 

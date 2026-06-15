@@ -54,6 +54,7 @@ export type ControlCommand =
   // CL-23 read-only balance/earnings: clients fetch the live MDK wallet status
   // (balance + readiness). No spend authority — strictly a projection.
   | { type: "wallet.status" }
+  | { type: "apple_fm.status" }
   | { type: "assignments.poll" }
   | { type: "assignments.accept"; leaseRef: string }
   | ControlSessionSpawnCommand
@@ -91,6 +92,7 @@ export interface ControlCommandActions {
   // CL-23: read-only live wallet status (balance + readiness). Optional so
   // nodes without a wallet runner simply report it as unavailable.
   walletStatus?: () => Promise<unknown>
+  appleFmStatus?: () => Promise<unknown>
   assignmentsPoll?: () => Promise<unknown>
   assignmentsAccept?: (leaseRef: string) => Promise<unknown>
   sessions?: ControlSessionActions
@@ -229,6 +231,9 @@ export const startControlServer = (
         case "wallet.status":
           if (!options.actions.walletStatus) throw new Error("wallet status unavailable on this node")
           return options.actions.walletStatus()
+        case "apple_fm.status":
+          if (!options.actions.appleFmStatus) throw new Error("Apple FM status unavailable on this node")
+          return options.actions.appleFmStatus()
         case "approvals.list":
           if (!options.actions.approvals) throw new Error("approvals unavailable on this node")
           return options.actions.approvals.list()

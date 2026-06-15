@@ -65,6 +65,7 @@ import {
   startControlServer,
   type ControlCommandActions,
 } from "./node/control-server"
+import { collectPylonAppleFmStatus } from "./node/apple-fm-status"
 import { createControlSessionActions } from "./node/control-sessions"
 import { resolveCloudControlConfig } from "./cloud-control-client"
 import { makeCloudControlSessionExecutor } from "./openagents-cloud-provider"
@@ -728,6 +729,7 @@ const runHeadlessNode = Effect.gen(function* () {
       sessions: headlessSessionsWithExternal,
       intents: makeIntentActions(headlessIntentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
+      appleFmStatus: () => collectPylonAppleFmStatus({ summary: bootstrapSummary, env: Bun.env }),
       approvals: makeApprovalActions(bootstrapSummary.paths),
       coordinator: makeCoordinatorActions(headlessCoordinatorHolder),
     },

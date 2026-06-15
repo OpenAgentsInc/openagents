@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Deferred } from "effect"
 import { logMessage, makePylonNodeRuntime, setWalletStatus } from "../src/node/runtime"
+import { collectPylonAppleFmStatus } from "../src/node/apple-fm-status"
 import {
   assertControlBindSafe,
   captureNodeSnapshot,
@@ -28,6 +29,11 @@ import type { PylonEvent } from "../src/node/state"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { PYLON_DEV_CHECK_SCHEMA, type PylonDevCheckProjection } from "../src/dev-loop"
 
+const appleFmControlEnv = {
+  PYLON_HOME: "/tmp/pylon-apple-fm-control-test",
+  PROBE_APPLE_FM_BASE_URL: "http://user:secret@127.0.0.1:11435/?token=hidden",
+}
+
 const stubActions = (calls: Array<Record<string, unknown>>) => ({
   walletSend: async (destinationRef: string, amountSats?: number) => {
     calls.push({ type: "send", destinationRef, amountSats })
@@ -42,6 +48,23 @@ const stubActions = (calls: Array<Record<string, unknown>>) => ({
     return { admitted: true }
   },
 })
+
+const appleFmStatusAction = (fetchImpl: typeof fetch) => {
+  const summary = createBootstrapSummary(parseBootstrapArgs(["--json", "--pylon-ref", "pylon.test.apple-fm"]), appleFmControlEnv)
+  return () =>
+    collectPylonAppleFmStatus({
+      summary,
+      env: appleFmControlEnv,
+      fetch: fetchImpl,
+      now: new Date("2026-06-15T00:00:00.000Z"),
+    })
+}
+
+const appleFmFetch = (handler: (url: URL) => Response | Promise<Response>): typeof fetch =>
+  (async (input: RequestInfo | URL) => {
+    const url = new URL(input instanceof Request ? input.url : input.toString())
+    return handler(url)
+  }) as typeof fetch
 
 function fakeDevCheck(state: PylonDevCheckProjection["state"] = "passed"): PylonDevCheckProjection {
   return {
@@ -246,6 +269,156 @@ describe("control protocol", () => {
             ),
           )
           expect(failure).toMatch(/unavailable/)
+        }),
+      ),
+    )
+  })
+
+  test("apple_fm.status advertises capability only after ready live health", async () => {
+    let healthCalls = 0
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: {
+              ...stubActions([]),
+              appleFmStatus: appleFmStatusAction(
+                appleFmFetch((url) => {
+                  healthCalls += 1
+                  expect(url.pathname).toBe("/health")
+                  return Response.json({
+                    ready: true,
+                    modelId: "apple-foundation-model",
+                    platform: "darwin-arm64",
+                    version: "fake-bridge",
+                  })
+                }),
+              ),
+            },
+            port: 0,
+          })
+
+          const status = (yield* Effect.promise(() =>
+            sendControlCommand(server.url, "test-token-0123456789abcdef", { type: "apple_fm.status" }),
+          )) as Record<string, unknown>
+
+          expect(status.schema).toBe("openagents.pylon.apple_fm.status.v0.1")
+          expect(status.kind).toBe("pylon_apple_fm_status")
+          expect(status.backendKind).toBe("apple_fm_bridge")
+          expect(status.status).toBe("ready")
+          expect(status.available).toBe(true)
+          expect(status.advertisedCapabilities).toContain("probe.backend.apple_fm_bridge")
+          expect(status.blockerRefs).toEqual([])
+          expect(status.baseUrl).toBe("http://127.0.0.1:11435")
+          expect(JSON.stringify(status)).not.toContain("secret")
+          expect(JSON.stringify(status)).not.toContain("hidden")
+          expect(healthCalls).toBe(1)
+        }),
+      ),
+    )
+  })
+
+  test("apple_fm.status reports unsupported hardware without advertising capability", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: {
+              ...stubActions([]),
+              appleFmStatus: appleFmStatusAction(
+                appleFmFetch(() =>
+                  Response.json({
+                    ready: false,
+                    unavailableReason: "unsupported_hardware",
+                    message: "device not eligible",
+                  }),
+                ),
+              ),
+            },
+            port: 0,
+          })
+
+          const status = (yield* Effect.promise(() =>
+            sendControlCommand(server.url, "test-token-0123456789abcdef", { type: "apple_fm.status" }),
+          )) as Record<string, unknown>
+
+          expect(status.status).toBe("unsupported")
+          expect(status.available).toBe(false)
+          expect(status.advertisedCapabilities).not.toContain("probe.backend.apple_fm_bridge")
+          expect(status.blockerRefs).toContain("blocker.pylon.apple_fm.unsupported_hardware")
+          expect(status.blockerRefs).toContain("blocker.pylon.apple_fm.live_health_not_ready")
+          expect(JSON.stringify(status)).not.toContain("secret")
+          expect(JSON.stringify(status)).not.toContain("hidden")
+        }),
+      ),
+    )
+  })
+
+  test("apple_fm.status reports unreachable bridge without advertising capability", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: {
+              ...stubActions([]),
+              appleFmStatus: appleFmStatusAction(
+                (async () => {
+                  throw new Error("bridge offline")
+                }) as typeof fetch,
+              ),
+            },
+            port: 0,
+          })
+
+          const status = (yield* Effect.promise(() =>
+            sendControlCommand(server.url, "test-token-0123456789abcdef", { type: "apple_fm.status" }),
+          )) as Record<string, unknown>
+
+          expect(status.status).toBe("unreachable")
+          expect(status.available).toBe(false)
+          expect(status.advertisedCapabilities).not.toContain("probe.backend.apple_fm_bridge")
+          expect(status.blockerRefs).toContain("blocker.pylon.apple_fm.bridge_unreachable")
+          expect(status.blockerRefs).toContain("blocker.pylon.apple_fm.live_health_not_ready")
+          expect(JSON.stringify(status)).not.toContain("secret")
+          expect(JSON.stringify(status)).not.toContain("hidden")
+        }),
+      ),
+    )
+  })
+
+  test("apple_fm.status reports malformed health without advertising capability", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: {
+              ...stubActions([]),
+              appleFmStatus: appleFmStatusAction(
+                appleFmFetch(() => new Response("{", { headers: { "content-type": "application/json" } })),
+              ),
+            },
+            port: 0,
+          })
+
+          const status = (yield* Effect.promise(() =>
+            sendControlCommand(server.url, "test-token-0123456789abcdef", { type: "apple_fm.status" }),
+          )) as Record<string, unknown>
+
+          expect(status.status).toBe("malformed")
+          expect(status.available).toBe(false)
+          expect(status.advertisedCapabilities).not.toContain("probe.backend.apple_fm_bridge")
+          expect(status.blockerRefs).toContain("blocker.pylon.apple_fm.malformed_health")
+          expect(status.blockerRefs).toContain("blocker.pylon.apple_fm.live_health_not_ready")
+          expect(JSON.stringify(status)).not.toContain("secret")
+          expect(JSON.stringify(status)).not.toContain("hidden")
         }),
       ),
     )

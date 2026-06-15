@@ -9,9 +9,11 @@ Electrobun app in `apps/autopilot-desktop`.
 ## Bottom Line
 
 The current codebase already has the Apple FM backend contract in Pylon runtime.
-It does not yet have an in-tree Swift Foundation bridge binary, a packaged
-bridge helper, or a desktop UI/control projection that lets Autopilot Desktop
-truthfully say "local Apple FM is ready."
+It now also has a token-authenticated Pylon control projection,
+`apple_fm.status`, that reports live Apple FM readiness from the existing
+runtime health/capability code. It does not yet have an in-tree Swift
+Foundation bridge binary, a packaged bridge helper, or a desktop UI/RPC path
+that lets Autopilot Desktop truthfully say "local Apple FM is ready."
 
 The integration path should be:
 
@@ -77,7 +79,7 @@ The current app does these things well:
 The current app does not yet do these Apple FM-specific things:
 
 - It does not bundle, launch, or supervise a Foundation Models bridge helper.
-- It does not call Pylon runtime `apple-fm status`.
+- It does not call Pylon control `apple_fm.status`.
 - It does not expose `appleFmReadiness` or `localBackendReadiness` in
   `DesktopRPCSchema`.
 - It does not include Apple FM in `InstallReadinessResponse.items`.
@@ -318,40 +320,54 @@ The bridge launch policy should be explicit:
 - Backend URL override through existing `OPENAGENTS_APPLE_FM_BASE_URL` or
   `PROBE_APPLE_FM_BASE_URL`.
 
-## Pylon Control API Work Needed
+## Pylon Control API Now Available
 
 Autopilot Desktop should not need to run `pylon apple-fm status` as a subprocess
-on every refresh. Add a Pylon control command that returns the same public-safe
-readiness shape.
+on every refresh. #5070 added a Pylon control command that returns the same
+public-safe readiness shape through the existing token-authenticated
+`POST /command` loopback path.
 
-Suggested command:
+Command:
 
 - `apple_fm.status`
 
-Suggested response fields:
+Current response fields:
 
-- `ok`
-- `fetchedAt`
-- `sourceUrl`
+- `schema`: `openagents.pylon.apple_fm.status.v0.1`
+- `kind`: `pylon_apple_fm_status`
+- `runnerId`
+- `runnerKind`
 - `backendKind`
 - `profileId`
 - `model`
-- `capabilityRef`
+- `capability`
+- `advertisedCapabilities`
 - `available`
 - `status`
 - `baseUrl`
-- `baseUrlRedacted`
 - `platform`
 - `version`
 - `unavailableReason`
 - `message`
-- `advertisedCapabilities`
+- `requirements`
+- `support`
+- `blueprintSupport`
+- `receipt`
 - `blockerRefs`
+- `observedAt`
 - `contentRedacted`
 
-This command should be implemented in Pylon using
-`reportAppleFmBackendCapability` or `makeAppleFmClient().health()`, not by
-duplicating bridge parsing in desktop.
+The implementation lives in:
+
+- `apps/pylon/src/node/apple-fm-status.ts`
+- `apps/pylon/src/node/control-server.ts`
+- `apps/pylon/tests/control-protocol.test.ts`
+
+It is backed by `reportAppleFmBackendCapability`, which itself calls live
+`/health`. Tests cover ready, unsupported, unreachable, and malformed health.
+The command does not run inference and does not advertise
+`probe.backend.apple_fm_bridge` unless live health and safe projection support
+are ready.
 
 If command names need to align with existing command style, use the same
 pattern as `accounts.list`, `wallet.status`, `assignments.poll`, and
@@ -538,7 +554,7 @@ Packaging tests:
 
 ## Minimal Implementation Sequence
 
-1. Add Pylon `apple_fm.status` control command backed by current runtime
+1. Done: add Pylon `apple_fm.status` control command backed by current runtime
    capability/health code.
 2. Add desktop Bun fetch/RPC support for Apple FM readiness.
 3. Extend desktop install readiness and Agent pane with Apple FM as an optional
@@ -576,13 +592,13 @@ What is real:
 - Blueprint tool projection.
 - Program Run evidence.
 - Capability report gated on live health.
+- Pylon `apple_fm.status` loopback control command with fake-bridge tests.
 - Pylon CLI aliases.
 
 What is not connected yet:
 
 - In-tree Swift bridge helper.
 - Packaged helper resource.
-- Pylon control command for Apple FM readiness.
 - Desktop Apple FM RPC.
 - Desktop first-run health item.
 - Desktop Agent pane local Apple FM route.
@@ -591,7 +607,6 @@ What is not connected yet:
 
 The next honest milestone is not "Apple FM works in desktop." It is:
 
-`pylon apple-fm status` and desktop `appleFmReadiness` agree on the same
-public-safe readiness state for a local bridge, and the desktop shows that state
-without exposing tokens or making Apple Silicon detection look like live model
-availability.
+desktop `appleFmReadiness` consumes Pylon `apple_fm.status`, shows that same
+public-safe readiness state for a local bridge, and does so without exposing
+tokens or making Apple Silicon detection look like live model availability.
