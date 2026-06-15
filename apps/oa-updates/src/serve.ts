@@ -3,6 +3,7 @@ import { readExportedUpdate } from "./export-reader.ts"
 import type { PublishExportResult } from "./publish.ts"
 import type { Platform } from "./publish-builder.ts"
 import { seedDesktopReleases } from "./desktop-seed.ts"
+import { seedPylonReleases } from "./pylon-seed.ts"
 import {
   createUpdatesServer,
   type UpdatesServer,
@@ -68,6 +69,14 @@ if (import.meta.main) {
     await seedDesktopReleases({
       server,
       distDir: process.env.OA_DESKTOP_RELEASES_DIST,
+      baseUrl: process.env.OA_PUBLIC_URL ?? `http://localhost:${port}`,
+    })
+  }
+
+  if (process.env.OA_PYLON_RELEASES_DIST) {
+    await seedPylonReleases({
+      server,
+      distDir: process.env.OA_PYLON_RELEASES_DIST,
       baseUrl: process.env.OA_PUBLIC_URL ?? `http://localhost:${port}`,
     })
   }

@@ -255,4 +255,50 @@ describe("updates server", () => {
       },
     ])
   })
+
+  test("serves signed pylon feeds by channel + platform, drops yanked", async () => {
+    const server = createUpdatesServer()
+    const release = (version: string, extra = {}) => ({
+      version,
+      channel: "rc" as const,
+      platform: "darwin-arm64" as const,
+      artifactUrl: `https://updates.openagents.test/assets/${version}`,
+      sha256: "0".repeat(64),
+      signature: "sig",
+      kid: "2dbe811d19f67528",
+      ...extra,
+    })
+    server.registerPylonUpdate(release("1.0.0-rc.1"))
+    server.registerPylonUpdate(release("1.0.0-rc.2"))
+    server.registerPylonUpdate(release("1.0.0-rc.3", { yanked: true }))
+    // off-platform entry must not leak into the darwin feed
+    server.registerPylonUpdate({ ...release("9.9.9"), platform: "linux-x64" })
+
+    const response = await server.fetch(
+      new Request(
+        "https://updates.openagents.test/pylon/rc/darwin-arm64/feed.json",
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get("cache-control")).toBe("no-store")
+    const feed = (await response.json()) as {
+      schema: string
+      platform: string
+      releases: { version: string }[]
+    }
+    expect(feed.schema).toBe("openagents.pylon.feed.v1")
+    expect(feed.platform).toBe("darwin-arm64")
+    expect(feed.releases.map((r) => r.version)).toEqual([
+      "1.0.0-rc.2",
+      "1.0.0-rc.1",
+    ])
+  })
+
+  test("rejects unknown pylon platform with 404", async () => {
+    const server = createUpdatesServer()
+    const response = await server.fetch(
+      new Request("https://updates.openagents.test/pylon/rc/windows-x64/feed.json"),
+    )
+    expect(response.status).toBe(404)
+  })
 })

@@ -13,6 +13,12 @@ import {
   sortDesktopFeed,
   type DesktopUpdateManifest,
 } from "./desktop-release.ts"
+import {
+  buildPylonFeed,
+  normalizePylonPlatform,
+  type PylonPlatform,
+  type PylonReleaseManifest,
+} from "./pylon-release.ts"
 
 type CreateUpdatesServerOptions = {
   port?: number
@@ -27,6 +33,7 @@ export type UpdatesServer = {
     channel: string,
     manifest: DesktopUpdateManifest,
   ) => void
+  registerPylonUpdate: (manifest: PylonReleaseManifest) => void
   putAsset: (
     bytes: Uint8Array,
     contentType?: string,
@@ -106,6 +113,8 @@ export function createUpdatesServer(
   const updates = new Map<string, Update>()
   const channelToBranch = new Map<string, string>()
   const desktopFeeds = new Map<string, DesktopUpdateManifest[]>()
+  // key: `${channel}/${platform}` -> releases (latest first)
+  const pylonFeeds = new Map<string, PylonReleaseManifest[]>()
   const assetContentTypes = new Map<string, string>()
   const assetStore: AssetStore = createInMemoryAssetStore(
     `http://localhost:${port}`,
@@ -192,6 +201,27 @@ export function createUpdatesServer(
           })
         }
 
+        // Pylon OTA feed: /pylon/<channel>/<platform>/feed.json — per-platform,
+        // signed releases (yanked dropped, latest first). The self-updater
+        // verifies each release's signature against the pinned key + sha256.
+        const pylonFeedMatch = url.pathname.match(
+          /^\/pylon\/([^/]+)\/([^/]+)\/feed\.json$/,
+        )
+
+        if (pylonFeedMatch !== null) {
+          const channel = pylonFeedMatch[1]
+          let platform: PylonPlatform
+          try {
+            platform = normalizePylonPlatform(pylonFeedMatch[2])
+          } catch {
+            return new Response("Unknown platform", { status: 404 })
+          }
+          const releases = pylonFeeds.get(`${channel}/${platform}`) ?? []
+          return jsonResponse(buildPylonFeed(channel, platform, releases), {
+            "cache-control": "no-store",
+          })
+        }
+
         // Discovery: list this owner's registered nodes (the app auto-connects
         // to the tailnet-first reachable one — no QR/paste).
         const nodesGet = url.pathname.match(/^\/([^/]+)\/nodes$/)
@@ -226,6 +256,15 @@ export function createUpdatesServer(
       const normalizedChannel = channel.trim()
       const current = desktopFeeds.get(normalizedChannel) ?? []
       desktopFeeds.set(normalizedChannel, [
+        manifest,
+        ...current.filter((candidate) => candidate.version !== manifest.version),
+      ])
+    },
+
+    registerPylonUpdate(manifest) {
+      const key = `${manifest.channel}/${manifest.platform}`
+      const current = pylonFeeds.get(key) ?? []
+      pylonFeeds.set(key, [
         manifest,
         ...current.filter((candidate) => candidate.version !== manifest.version),
       ])
