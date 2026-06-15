@@ -16,6 +16,44 @@ runtime (env var + persisted config), and even when off the client still *checks
 and surfaces "update available" — it just doesn't auto-apply. There is no build
 that ships with auto-update disabled by default.
 
+## 0b. The second rule: the update path is open source, in one repo
+
+**The entire OTA path — the update service, the feed/manifest format, the
+signature-verify, and both clients — is open source in the one public repo
+`OpenAgentsInc/openagents`, and stays that way.** This is a deliberate *trust*
+property, not an afterthought: the OpenAgents thesis is "don't read a blog about
+whether it's safe — point your agent at our code." An updater that can replace a
+running binary on a stranger's machine is the single most security-sensitive
+thing we ship; it must be the *most* auditable. Closed-source auto-update is a
+backdoor by reputation; open-source auto-update is a checkable contract.
+
+Verified 2026-06-15:
+- **`apps/oa-updates`** (the OTA service) is already in the **public** monorepo
+  (`github.com/OpenAgentsInc/openagents`) — not in the private `cloud/` repo. A
+  `grep` of `cloud/` finds **no** OTA/update/feed code. Good; keep it there.
+- Both clients (Autopilot `apps/autopilot-desktop`, Pylon `apps/pylon`) are in the
+  same public monorepo. So the *whole* update path is already auditable in one
+  place.
+
+Rules going forward:
+- **One repo:** the public monorepo is the single home for the OTA service + both
+  clients + the manifest/signing/verify code. Do **not** split any part of the
+  update backend into `cloud/` or any private code repo.
+- **What stays out of the repo is data, not code:** the ed25519 **private**
+  signing key and GCP/Cloud Run deploy creds live in the secrets store / CI, never
+  in any repo. The **public** verification key is committed (clients pin it). Code
+  + manifests + the public key are open; only the private key and bindings are not.
+- **Cloud-repo advice (broader than OTA):** OTA needs nothing from `cloud/`, so
+  there is nothing to move. For the wider "make the backend open source / one
+  repo" goal: the product backend (`apps/openagents.com` Worker) is *already*
+  public; the only closed code is `cloud/` (managed-node/workroom/private-fleet/
+  accounting). Recommendation — fold `cloud/`'s **infra/protocol** surfaces into
+  the public monorepo behind clear boundaries and keep only genuinely-private
+  *operational policy* + secrets out via env (not a parallel private code repo);
+  fully publishing `cloud/` is a separate owner call because it also contains
+  private fleet/accounting logic. **None of that blocks OTA** — the OTA backend is
+  already where it belongs.
+
 ## 1. Current state (what already exists)
 
 - **Autopilot (Electrobun) OTA is ~80% built.** `electrobun build --env=canary|
@@ -78,10 +116,47 @@ Uniform layout:
 
 ```
 updates.openagents.com/
-  desktop/<channel>/feed.json          # Autopilot — Electrobun-native (exists)
-  pylon/<channel>/<platform>/feed.json # Pylon binary — new
-  <rust-binary>/<channel>/<platform>/feed.json  # future Rust binaries
+  desktop/<channel>/feed.json            # Autopilot .app — Electrobun-native (exists)
+  pylon/<channel>/<platform>/feed.json   # Pylon JS/Bun binary — new
+  psionic/<channel>/<platform>/feed.json # Psionic Rust binary + models — new (Rust path)
+  <rust-binary>/<channel>/<platform>/feed.json  # other future Rust binaries
 ```
+
+### 3.5 Artifact separation — what is (and is NOT) in each binary
+
+This is the crux, and the answer is **three independently-updated artifacts**, not
+one fat binary:
+
+- **`bun build --compile` produces a JS/Bun binary only.** It embeds the **Bun
+  runtime + Pylon's TypeScript** (the node orchestrator: control server, wallet
+  client, sessions, CLI). It does **not** and cannot embed Rust. So the Pylon
+  binary is the *orchestrator*, ~2 MB-class, pure JS/Bun.
+- **Psionic (the Rust ML substrate) is NOT inside the Pylon binary.** Pylon
+  *installs and connects to* Psionic as a **separate downloaded binary +
+  model artifacts**: `src/psionic-install.ts` already fetches a release manifest
+  (`openagents.psionic.model_artifact_manifest.v0.3`, `binary:{url,sha256,…}`),
+  downloads, **verifies sha256**, and lands it in the Pylon home; `src/psionic-
+  connector.ts` talks to it as a separate process. "Pylon packages Psionic" means
+  Pylon *orchestrates* Psionic's install/connect/update — not static linking. The
+  Rust lives in the Psionic binary, shipped on its own feed.
+- **Other native bits are also separate processes, not in the bun binary.** The
+  MDK wallet runs as a daemon (`wallet status` reports `daemonOnline`), not an
+  embedded addon. Anything native (Psionic, wallet daemon, any `.node` addon)
+  ships and updates outside the `bun --compile` artifact. (Open item §8: confirm
+  no Pylon JS dep pulls a native addon that `bun --compile` can't embed; if one
+  does, it ships alongside the binary like Psionic.)
+- **Pylon is separate from Autopilot.** Autopilot is the Electrobun `.app`
+  (cockpit) that **bundles a Pylon JS node** and updates it via the app's
+  Electrobun OTA (#5027). Standalone Pylon is the `bun --compile` binary with its
+  own self-updater. **In both cases Psionic is installed/connected at runtime
+  separately** (the `.app` does not bundle the multi-GB Psionic Rust + models).
+
+So three OTA lanes, each default-on and independent:
+1. **Autopilot `.app`** → Electrobun OTA (carries the bundled Pylon JS node).
+2. **Pylon binary** (JS/Bun) → its own self-updater.
+3. **Psionic** (Rust binary + models) → its own feed, **auto-updated by Pylon**
+   via the `pylon psionic` install/update path. Pylon coordinates it because
+   Pylon owns the Psionic connector + version compatibility.
 
 Every feed entry is a signed manifest: `{ version, channel, platform, arch,
 url, sha256, signature, minVersion?, rolloutPercent?, yanked? }`. `channel ∈
@@ -112,8 +187,12 @@ public key at build time and refuse unsigned/mismatched updates.
 1. **Ship a standalone binary:** `bun build apps/pylon/src/index.ts --compile
    --target=bun-<platform> --outfile pylon` (the headless bundle already builds,
    #5037 — zero `@opentui`). Produces a single self-contained `pylon` executable
-   per platform (darwin-arm64/x64, linux-x64/arm64). Keep the npm package + the
+   per platform (darwin-arm64/x64, linux-x64/arm64). **This is the JS/Bun
+   orchestrator only** — it embeds the Bun runtime + Pylon TS, **not** Rust/
+   Psionic/native daemons (those are separate, §3.5). Keep the npm package + the
    app-bundled form; the **binary is the headline auto-updating artifact**.
+   Confirm during the build that no JS dep needs a native addon `bun --compile`
+   can't embed (§8); if one does, ship it beside the binary like Psionic.
 2. **Self-updater (default ON):** a `pylon` background routine + a `pylon update`
    command. On node start and on an interval (default ~6 h) it fetches
    `pylon/<channel>/<platform>/feed.json`, compares versions, and if newer:
@@ -132,13 +211,28 @@ public key at build time and refuse unsigned/mismatched updates.
 5. **`pylon update --json`** surfaces current/available/applied for agent
    steerability (consistent with `pylon.agent_steerable_cli.v1`).
 
-### 4.3 Rust binaries — uniform convention
-For any Rust binary we ship (psionic/executor runtime, tap-ldk/ldk-node tooling):
-embed **`axoupdater`** (if built via `cargo-dist`) or **`self_update`** (general),
-pointed at the same `updates.openagents.com/<binary>/<channel>/<platform>/feed.json`
-convention and the same ed25519 release key (zipsign-compatible). Default ON,
-same opt-out env convention (`OA_<NAME>_AUTOUPDATE=0`). This keeps one mental
-model + one signing trust root across Electrobun, Bun-compiled, and Rust.
+### 4.3 Rust binaries — Psionic is the concrete case
+The first (and most important) Rust binary is **Psionic** itself, and it already
+has the seed of an OTA path: `src/psionic-install.ts` downloads a manifest-described
+binary + models and verifies sha256. Finish it into a real auto-updater:
+1. **Feed it from `updates.openagents.com/psionic/<channel>/<platform>/feed.json`**
+   (the existing `model_artifact_manifest.v0.3` is the manifest seed — add
+   `channel`, `rolloutPercent`, `yanked`, `minVersion`, and an **ed25519
+   signature** alongside the sha256).
+2. **Pylon auto-updates Psionic, default ON.** Pylon owns the connector + version
+   compatibility, so the Pylon node checks the Psionic feed on start/interval and
+   runs the existing install/verify path to upgrade the Psionic binary + models
+   (drain any in-flight Psionic work first). Opt-out: `PYLON_PSIONIC_AUTOUPDATE=0`.
+   `pylon psionic status --json` surfaces current/available.
+3. **Build/sign Psionic releases** with `cargo-dist` + **`axoupdater`** (or
+   `self_update`/zipsign) so a *directly-run* Psionic binary can also self-update,
+   and so the same ed25519 trust root + channel/manifest convention covers it.
+
+For any other Rust binary (executor runtime, tap-ldk/ldk-node tooling): same
+recipe — `cargo-dist`/`axoupdater` (or `self_update`), the same
+`updates.openagents.com/<binary>/<channel>/<platform>/feed.json` convention, the
+same ed25519 key, default ON, `OA_<NAME>_AUTOUPDATE=0` opt-out. One mental model +
+one signing trust root across Electrobun, Bun-compiled, and Rust.
 
 ## 5. Default-on rollout & safety policy (applies to all three)
 
@@ -180,8 +274,13 @@ model + one signing trust root across Electrobun, Bun-compiled, and Rust.
     (and a generic `<binary>/...`) feeds + signed manifests + rollout/yank.
   - Release-signing key: provision the OpenAgents ed25519 key (NEEDS-OWNER), wire
     signing into `oa-updates` publish + key pinning into clients.
-  - Rust convention: document + (when a Rust binary ships) wire `axoupdater`/
-    `self_update` to the same feed.
+  - **Psionic (Rust) auto-update:** promote `psionic-install` into a default-on
+    auto-updater (channel/signed/rollout feed at `updates.openagents.com/psionic/`,
+    Pylon checks + upgrades the Psionic binary+models, drain-first); build/sign
+    Psionic releases via `cargo-dist`/`axoupdater` so a direct Psionic binary
+    self-updates too.
+  - Rust convention: document + (when another Rust binary ships) wire
+    `axoupdater`/`self_update` to the same feed.
   - Product promise: `releases.ota_autoupdate.v1` (planned) — every client
     auto-updates by default; flips green when Autopilot + Pylon both self-apply a
     signed update end to end.
@@ -196,6 +295,13 @@ model + one signing trust root across Electrobun, Bun-compiled, and Rust.
 3. **Check cadence** (launch + ~6 h proposed) and whether desktop updates apply
    silently-on-next-launch vs prompt-then-relaunch.
 4. **Telemetry** to gate canary→stable promotion (crash/health signal source).
+5. **Native deps in `bun --compile`:** confirm no Pylon JS dependency needs a
+   native `.node` addon the bun binary can't embed (the MDK wallet is a separate
+   daemon, Psionic is separate — so likely clean). Anything that does ships beside
+   the binary, like Psionic.
+6. **Psionic↔Pylon version compatibility:** since they update independently,
+   define a compatibility range (Pylon declares the Psionic versions it supports;
+   refuse/auto-bump on mismatch) so an auto-update of one doesn't break the pair.
 
 ## Sources
 - [Electrobun — Updates](https://blackboard.sh/electrobun/docs/guides/updates/)
