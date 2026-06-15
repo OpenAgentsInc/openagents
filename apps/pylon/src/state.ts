@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto"
 import { hostname } from "node:os"
 import { dirname } from "node:path"
 import { PYLON_DEFAULT_CAPABILITY_REFS, type BootstrapSummary } from "./bootstrap"
+import { PYLON_VERSION, type PylonVersion } from "./version"
 import type { PylonHostInventoryProjection } from "./inventory"
 import type { PsionicConnectorState } from "./psionic-connector"
 import { loadOrCreateNostrIdentity } from "./nostr-identity"
@@ -44,7 +45,7 @@ export type PylonRuntimeState = {
 export type PylonLocalState = {
   schema: "openagents.pylon.local_state.v0.3"
   packageName: "@openagentsinc/pylon"
-  version: "0.3.0-rc2"
+  version: PylonVersion
   paths: PylonPaths
   identity: PylonIdentity
   runtime: PylonRuntimeState
@@ -248,7 +249,7 @@ export async function ensurePylonLocalState(summary: BootstrapSummary): Promise<
   return {
     schema: "openagents.pylon.local_state.v0.3",
     packageName: "@openagentsinc/pylon",
-    version: "0.3.0-rc2",
+    version: PYLON_VERSION,
     paths,
     identity,
     runtime,

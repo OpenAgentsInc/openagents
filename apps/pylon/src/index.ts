@@ -145,6 +145,12 @@ import {
   type PylonAssignmentLease,
 } from "./assignment"
 import { discoverHostInventory } from "./inventory"
+import {
+  autoUpdateDisabledReason,
+  checkForUpdate,
+  downloadAndApply,
+  resolveSelfBinaryPath,
+} from "./self-update"
 import { createOperatorSnapshot, formatOperatorSnapshotText } from "./operator"
 import { inspectPsionicConnector } from "./psionic-connector"
 import {
@@ -1035,6 +1041,56 @@ function emitControlError(command: string, error: unknown): void {
   process.exitCode = 1
 }
 
+function describeCheck(result: Awaited<ReturnType<typeof checkForUpdate>>): string {
+  switch (result.status) {
+    case "up-to-date":
+      return `Pylon ${result.currentVersion} is up to date.`
+    case "update-available":
+      return `Update available: ${result.currentVersion} -> ${result.release.version}.`
+    case "unsupported":
+      return `Auto-update unsupported on ${result.reason}.`
+    case "disabled":
+      return `Auto-update disabled: ${result.reason}.`
+  }
+}
+
+// Default-on startup OTA check. Runs before the headless node boots: if a newer
+// signed release is available (and the operator has not opted out, and we are a
+// compiled binary), download → verify against the pinned key → atomic-replace →
+// relaunch the new binary in place. Any failure is swallowed so the node always
+// falls back to running the current version — an update never blocks startup.
+async function maybeAutoUpdate(): Promise<void> {
+  try {
+    const disabled = autoUpdateDisabledReason(Bun.env)
+    if (disabled !== null) return
+    const target = resolveSelfBinaryPath()
+    if (target === null) return // dev / interpreter run — nothing to replace
+    const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+    const state = await ensurePylonLocalState(summary)
+    const result = await checkForUpdate({ clientId: state.identity.nodeId, env: Bun.env })
+    if (result.status !== "update-available") return
+    process.stderr.write(
+      `Pylon: auto-updating ${result.currentVersion} -> ${result.release.version}...\n`,
+    )
+    const applied = await downloadAndApply({ release: result.release, targetPath: target })
+    process.stderr.write(`Pylon: updated to ${applied.version}; relaunching.\n`)
+    // Re-exec the freshly written binary with the same args, inheriting stdio so
+    // a launchd/systemd/terminal supervisor stays attached, then exit with its code.
+    const child = Bun.spawn([target, ...Bun.argv.slice(2)], {
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+      env: Bun.env,
+    })
+    const exitCode = await child.exited
+    process.exit(exitCode)
+  } catch (error) {
+    process.stderr.write(
+      `Pylon: auto-update skipped (${error instanceof Error ? error.message : String(error)}).\n`,
+    )
+  }
+}
+
 async function main() {
   const args = Bun.argv.slice(2)
 
@@ -1275,6 +1331,51 @@ async function main() {
     const inventory = await discoverHostInventory({ env: Bun.env })
     process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`)
     return
+  }
+
+  // `pylon update` — manual trigger for the same default-on OTA self-updater.
+  //   --check  report only, don't apply
+  //   --json   machine-readable result
+  //   --channel <rc|stable>  override the channel (default rc)
+  //   --feed-base <url>      override the feed origin (testing)
+  if (args[0] === "update") {
+    const options = parseKeyValueOptions(args.slice(1))
+    const json = options.json === true
+    const checkOnly = options.check === true
+    try {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const state = await ensurePylonLocalState(summary)
+      const result = await checkForUpdate({
+        clientId: state.identity.nodeId,
+        env: Bun.env,
+        ...(optionString(options, "channel") ? { channel: optionString(options, "channel") } : {}),
+        ...(optionString(options, "feed-base") ? { feedBase: optionString(options, "feed-base") } : {}),
+      })
+
+      if (result.status !== "update-available" || checkOnly) {
+        const payload = { ...result, applied: false as const }
+        process.stdout.write(json ? `${JSON.stringify(payload, null, 2)}\n` : `${describeCheck(result)}\n`)
+        return
+      }
+
+      const target = resolveSelfBinaryPath()
+      if (target === null) {
+        const payload = { status: "dev-noop" as const, currentVersion: result.currentVersion, candidate: result.release.version, applied: false as const }
+        process.stdout.write(json ? `${JSON.stringify(payload, null, 2)}\n` : `Update ${result.release.version} available; running from source (no binary to replace).\n`)
+        return
+      }
+
+      const applied = await downloadAndApply({ release: result.release, targetPath: target })
+      const payload = { status: "updated" as const, fromVersion: result.currentVersion, toVersion: applied.version, targetPath: applied.targetPath, applied: true as const }
+      process.stdout.write(json ? `${JSON.stringify(payload, null, 2)}\n` : `Updated ${result.currentVersion} -> ${applied.version}. Restart pylon to run the new version.\n`)
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (json) process.stdout.write(`${JSON.stringify({ status: "error", error: message, applied: false }, null, 2)}\n`)
+      else process.stderr.write(`Pylon update failed: ${message}\n`)
+      process.exitCode = 1
+      return
+    }
   }
 
   if (args[0] === "accounts") {
@@ -2077,6 +2178,7 @@ async function main() {
       process.exitCode = 1
       return
     }
+    await maybeAutoUpdate()
     await Effect.runPromise(
       Effect.scoped(runHeadlessNode).pipe(
         Effect.catch((error) => Console.error(`Pylon node-core crashed: ${error.message}`)),
@@ -2105,6 +2207,7 @@ async function main() {
     process.exitCode = 1
     return
   }
+  await maybeAutoUpdate()
   await Effect.runPromise(
     Effect.scoped(runHeadlessNode).pipe(
       Effect.catch((error) =>

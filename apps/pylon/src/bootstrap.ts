@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir, platform } from "node:os"
 import { TASSADAR_EXECUTOR_CAPABILITY_REF } from "@openagentsinc/tassadar-executor"
+import { PYLON_VERSION, type PylonVersion } from "./version"
 
 export type SupportedPlatform = "darwin" | "linux"
 export type BootstrapOptions = {
@@ -16,7 +17,7 @@ export type BootstrapOptions = {
 
 export type BootstrapSummary = {
   packageName: "@openagentsinc/pylon"
-  version: "0.3.0-rc2"
+  version: PylonVersion
   bin: "pylon"
   platform: {
     current: NodeJS.Platform
@@ -117,7 +118,7 @@ export function createBootstrapSummary(
 ): BootstrapSummary {
   return {
     packageName: "@openagentsinc/pylon",
-    version: "0.3.0-rc2",
+    version: PYLON_VERSION,
     bin: "pylon",
     platform: {
       current: currentPlatform,
