@@ -20,11 +20,7 @@ import {
   SessionList,
   type AccountSummary,
 } from "@openagentsinc/autopilot-ui"
-import {
-  bezierNodesView,
-  spinningCubeView,
-  trainingRunView,
-} from "@openagentsinc/three-effect/foldkit"
+import { trainingRunView } from "@openagentsinc/three-effect/foldkit"
 import {
   defaultTrainingRunNodes,
   trainingRunVisualizationOptionsFromSnapshot,
@@ -37,7 +33,6 @@ import {
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 
-import { chooseUpdate } from "../shared/update-feed"
 import type {
   AccountRow,
   ApprovalRow,
@@ -130,65 +125,6 @@ const card = (title: string, children: ReadonlyArray<Html>): Html =>
 const emptyLine = (text: string): Html => h.p([cls("empty-state")], [text])
 
 const paneTitle = (text: string): Html => h.h1([cls("pane-title")], [text])
-
-const liveScenePanel = (): Html =>
-  h.section(
-    [cls("three-effect-panel")],
-    [
-      h.header(
-        [cls("three-effect-header")],
-        [
-          h.h2([cls("three-effect-title")], ["Live Scene"]),
-          h.p([cls("three-effect-caption")], ["spinning cube"]),
-        ],
-      ),
-      spinningCubeView<Message>([cls("three-effect-cube")]),
-    ],
-  )
-
-const bezierNodesPanel = (): Html =>
-  h.section(
-    [cls("three-effect-panel")],
-    [
-      h.header(
-        [cls("three-effect-header")],
-        [
-          h.h2([cls("three-effect-title")], ["Bezier Nodes"]),
-          h.p([cls("three-effect-caption")], ["pmndrs/drei port"]),
-        ],
-      ),
-      bezierNodesView<Message>([cls("three-effect-bezier")]),
-    ],
-  )
-
-const threeEffectPreview = (): Html =>
-  h.div([cls("three-effect-grid")], [liveScenePanel(), bezierNodesPanel()])
-
-const threeEffectSourceCard = (): Html =>
-  card("three-effect sources", [
-    h.p([cls("card-subtitle")], [
-      "Owned Effect/Foldkit package plus the local reference files used for the Bezier port.",
-    ]),
-    h.ul([cls("three-effect-source-list")], [
-      h.li([], [
-        h.code([], ["OpenAgentsInc/three-effect:examples/bezier-nodes/"]),
-      ]),
-      h.li([], [
-        h.code([], ["OpenAgentsInc/three-effect:packages/core/src/bezierNodes.ts"]),
-      ]),
-      h.li([], [
-        h.code([], [
-          "projects/repos/examples/demos/bezier-curves-and-nodes/src/Nodes.jsx",
-        ]),
-      ]),
-      h.li([], [
-        h.code([], ["projects/repos/drei/src/core/QuadraticBezierLine.tsx"]),
-      ]),
-      h.li([], [
-        h.code([], ["projects/repos/drei/src/web/DragControls.tsx"]),
-      ]),
-    ]),
-  ])
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -508,8 +444,6 @@ const nodesPane = (model: Model): Html => {
         [cls("node-status")],
         [node ? nodeStatusLine({ ok: node.ok, sessions: node.sessions }) : "connecting…"],
       ),
-      threeEffectPreview(),
-      threeEffectSourceCard(),
       deployCard(model),
       askCard(model),
       approvalsCard(model),
@@ -571,115 +505,6 @@ const trainingStatusText = (
   return trimmed.length > 0 ? trimmed : fallback
 }
 
-const trainingRoadmapItems: ReadonlyArray<{
-  phase: string
-  issue: string
-  title: string
-  status: string
-  tone: TrainingGateTone
-}> = [
-  {
-    phase: "P0.1",
-    issue: "#4848",
-    title: "typed contributor ladder",
-    status: "closed",
-    tone: "ready",
-  },
-  {
-    phase: "P0.2",
-    issue: "#4849",
-    title: "seal staleness + maxAllowedStale",
-    status: "closed",
-    tone: "ready",
-  },
-  {
-    phase: "P0.3",
-    issue: "psionic#1124",
-    title: "Pluralis mechanism ledger",
-    status: "closed",
-    tone: "ready",
-  },
-  {
-    phase: "P1.1",
-    issue: "psionic#1125",
-    title: "shadow-window ramp",
-    status: "closed",
-    tone: "ready",
-  },
-  {
-    phase: "P1.2",
-    issue: "#4850",
-    title: "bootstrap from durable seal",
-    status: "closed",
-    tone: "ready",
-  },
-  {
-    phase: "P1.3",
-    issue: "#4851",
-    title: "join blocking during seal",
-    status: "closed",
-    tone: "ready",
-  },
-  {
-    phase: "P1.4",
-    issue: "#4852",
-    title: "hardware admission gates",
-    status: "closed",
-    tone: "ready",
-  },
-  {
-    phase: "P2.1",
-    issue: "psionic#1126",
-    title: "collective failure semantics",
-    status: "closed",
-    tone: "ready",
-  },
-  {
-    phase: "P2.2",
-    issue: "#4853",
-    title: "staleness-priced acceptance",
-    status: "closed",
-    tone: "ready",
-  },
-  {
-    phase: "P2.3",
-    issue: "#4854",
-    title: "presence/compute receipt split",
-    status: "closed",
-    tone: "ready",
-  },
-  {
-    phase: "P2.4",
-    issue: "psionic#1127",
-    title: "SPARTA side canary",
-    status: "harness closed, run pending",
-    tone: "watch",
-  },
-  {
-    phase: "P3.2",
-    issue: "psionic#1128",
-    title: "PowerSGD x Freivalds question",
-    status: "closed",
-    tone: "ready",
-  },
-  {
-    phase: "P3.1",
-    issue: "unfiled",
-    title: "pipeline-stage sharding",
-    status: "wait for R2 economics",
-    tone: "watch",
-  },
-]
-
-const trainingRoadmapRefs: readonly string[] = [
-  "GitHub OpenAgentsInc/openagents#4855",
-  "docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md",
-  "docs/promises/product-promises.json",
-  "training.model_ladder.v1",
-  "training.marathon_operations.v1",
-  "training.public_distributed_training_run.v1",
-]
-
 const uniqueTrainingRefs = (
   refs: ReadonlyArray<string | null | undefined>,
 ): string[] => {
@@ -709,388 +534,6 @@ const trainingRefList = (
             h.li([cls("training-ledger-ref")], [h.code([], [ref])]),
           ),
         ),
-  ])
-
-const trainingSourceMapSections: ReadonlyArray<{
-  title: string
-  detail: string
-  refs: readonly string[]
-}> = [
-  {
-    title: "Worker authority",
-    detail: "run/window state, transitions, public projection",
-    refs: [
-      "apps/openagents.com/workers/api/src/training-run-window-authority.ts",
-      "apps/openagents.com/workers/api/src/training-run-window-routes.ts",
-      "/api/training/runs",
-      "/api/training/windows/{windowRef}/activate",
-      "/api/training/windows/{windowRef}/reconcile",
-    ],
-  },
-  {
-    title: "Evidence and gates",
-    detail: "real-gradient claim boundary, bootstrap, receipts, dashboards",
-    refs: [
-      "apps/openagents.com/workers/api/src/training-real-gradient-evidence.ts",
-      "apps/openagents.com/workers/api/src/training-window-bootstrap.ts",
-      "apps/openagents.com/workers/api/src/training-presence-compute-receipts.ts",
-      "apps/openagents.com/workers/api/src/training-leaderboards.ts",
-      "/api/training/runs/{runRef}/bootstrap-grant",
-    ],
-  },
-  {
-    title: "Desktop bridge",
-    detail: "Bun-held authority, Foldkit messages, public-safe model",
-    refs: [
-      "apps/autopilot-desktop/src/bun/training-runs.ts",
-      "apps/autopilot-desktop/src/bun/index.ts",
-      "apps/autopilot-desktop/src/shared/rpc.ts",
-      "apps/autopilot-desktop/src/ui/commands.ts",
-      "apps/autopilot-desktop/src/ui/view.ts",
-    ],
-  },
-  {
-    title: "Three scene",
-    detail: "Effect-scoped WebGL scene and Foldkit custom element",
-    refs: [
-      "OpenAgentsInc/three-effect:packages/core/src/trainingRun.ts",
-      "OpenAgentsInc/three-effect:packages/foldkit/src/index.ts",
-      "OpenAgentsInc/three-effect:examples/training-run/",
-      "@openagentsinc/three-effect/foldkit",
-      "oa-training-run",
-    ],
-  },
-  {
-    title: "Training docs",
-    detail: "Pluralis adaptation, Psion plan, Tassadar research source",
-    refs: [
-      "docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md",
-      "docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md",
-      "docs/training/2026-06-14-autopilot-desktop-training-ui-audit.md",
-      "docs/tassadar/RESEARCH_PLAN.md",
-    ],
-  },
-]
-
-const trainingSourceMapPanel = (): Html =>
-  h.section([cls("training-panel training-source-map-panel")], [
-    h.h2([cls("training-panel-title")], ["Source Map"]),
-    h.p([cls("training-panel-copy")], [
-      "Implementation homes for the live Training pane, grouped by authority boundary.",
-    ]),
-    h.ul(
-      [cls("training-source-map-list")],
-      trainingSourceMapSections.map(section =>
-        h.li([cls("training-source-map-section")], [
-          h.div([cls("training-source-map-heading")], [
-            h.strong([], [section.title]),
-            h.span([], [section.detail]),
-          ]),
-          h.ul(
-            [cls("training-api-list training-source-map-refs")],
-            section.refs.map(ref => h.li([], [h.code([], [ref])])),
-          ),
-        ]),
-      ),
-    ),
-  ])
-
-type TrainingAuthorityBoundaryRow = Readonly<{
-  layer: string
-  owns: string
-  contract: string
-  refs: readonly string[]
-}>
-
-const trainingAuthorityBoundaryRows: readonly TrainingAuthorityBoundaryRow[] = [
-  {
-    layer: "Foldkit webview",
-    owns: "display, WebGL projection, and typed operator messages",
-    contract:
-      "May render public-safe summaries and dispatch known Training messages; never receives credential values, packet bodies, wallet material, or local path strings.",
-    refs: [
-      "ClickedPlanTrainingWindow",
-      "ClickedActivateTrainingWindow",
-      "ClickedClaimTrainingLease",
-      "ClickedBuildTrainingEvidencePacket",
-      "ClickedAdmitTrainingEvidence",
-      "ClickedReconcileTrainingWindow",
-    ],
-  },
-  {
-    layer: "Bun main process",
-    owns: "environment gates, local file reads, and Pylon-home access",
-    contract:
-      "Holds private local inputs and converts them into booleans, counts, refs, and status text before anything reaches Foldkit.",
-    refs: [
-      "apps/autopilot-desktop/src/bun/index.ts",
-      "apps/autopilot-desktop/src/bun/training-runs.ts",
-      "apps/autopilot-desktop/src/shared/rpc.ts",
-    ],
-  },
-  {
-    layer: "OpenAgents Worker",
-    owns: "run/window transitions, evidence admission, and settlement projection",
-    contract:
-      "Remains the network authority for planned, active, sealed, reconciled, and evidence-backed training state.",
-    refs: [
-      "/api/training/runs",
-      "/api/training/windows/{windowRef}/activate",
-      "/api/training/runs/{runRef}/real-gradient-evidence",
-    ],
-  },
-  {
-    layer: "Pylon",
-    owns: "assignment closeouts and worker-receipt bundle handoff",
-    contract:
-      "Writes public-safe receipt refs and closeout metadata for Desktop packet building without becoming the training authority.",
-    refs: [
-      "apps/pylon/src/assignment.ts",
-      "training-worker-receipts.json",
-      "intent.submit",
-    ],
-  },
-]
-
-const trainingAuthorityBoundaryPanel = (): Html =>
-  h.section([cls("training-panel training-authority-boundary-panel")], [
-    h.h2([cls("training-panel-title")], ["Authority Boundary"]),
-    h.p([cls("training-panel-copy")], [
-      "Where Training data may live before Foldkit renders it, and which typed commands can cross from the webview.",
-    ]),
-    h.ul(
-      [cls("training-source-map-list training-authority-boundary-list")],
-      trainingAuthorityBoundaryRows.map(row =>
-        h.li([cls("training-source-map-section training-authority-boundary-row")], [
-          h.div([cls("training-source-map-heading")], [
-            h.strong([], [row.layer]),
-            h.span([], [row.owns]),
-          ]),
-          h.p([cls("training-panel-copy")], [row.contract]),
-          h.ul(
-            [cls("training-api-list training-source-map-refs")],
-            row.refs.map(ref => h.li([], [h.code([], [ref])])),
-          ),
-        ]),
-      ),
-    ),
-  ])
-
-type TrainingControlSurfaceRow = Readonly<{
-  action: string
-  authority: string
-  dispatch: string
-  route: string
-  rpc: string
-  source: string
-  statusField: string
-  status: (model: Model) => TrainingStatusLike
-  pending: (model: Model) => boolean
-  current: (model: Model) => string
-}>
-
-const trainingControlSurfaceRows: readonly TrainingControlSurfaceRow[] = [
-  {
-    action: "Refresh projections",
-    authority: "public Worker reads through Bun",
-    dispatch: "ClickedRefreshTrainingRuns",
-    route:
-      "GET /api/training/runs + dashboards + promises + desktop readiness + packet summary",
-    rpc:
-      "listTrainingRuns + listTrainingDashboard + listTrainingPromiseGates + listTrainingOperatorReadiness + listTrainingEvidencePacketSummary",
-    source: "apps/autopilot-desktop/src/bun/index.ts + training-runs.ts",
-    statusField:
-      "trainingRunsStatus / trainingDashboardStatus / trainingPromiseGatesStatus / trainingOperatorReadinessStatus / trainingEvidencePacketSummaryStatus",
-    status: model => model.trainingRunsStatus,
-    pending: model =>
-      model.trainingRunsPending ||
-      model.trainingDashboardPending ||
-      model.trainingPromiseGatesPending ||
-      model.trainingOperatorReadinessPending ||
-      model.trainingEvidencePacketSummaryPending,
-    current: model =>
-      [
-        trainingStatusText(model.trainingRunsStatus, "runs idle"),
-        trainingStatusText(model.trainingDashboardStatus, "dashboards idle"),
-        trainingStatusText(model.trainingPromiseGatesStatus, "promises idle"),
-        trainingStatusText(model.trainingOperatorReadinessStatus, "operator idle"),
-        trainingStatusText(
-          model.trainingEvidencePacketSummaryStatus,
-          "packet idle",
-        ),
-      ].join(" / "),
-  },
-  {
-    action: "Plan R1 window",
-    authority: "Bun admin env gate",
-    dispatch: "ClickedPlanTrainingWindow",
-    route: "POST /api/training/runs -> POST /api/training/windows/plan",
-    rpc: "planTrainingRunWindow",
-    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
-    statusField: "trainingPlanStatus",
-    status: model => model.trainingPlanStatus,
-    pending: model => model.trainingPlanPending,
-    current: model => {
-      const plan = modelTrainingPlan(model)
-      return plan?.windowRef ?? plan?.trainingRunRef ?? "no planned ref"
-    },
-  },
-  {
-    action: "Activate window",
-    authority: "Bun admin env gate",
-    dispatch: "ClickedActivateTrainingWindow",
-    route: "POST /api/training/windows/{windowRef}/activate",
-    rpc: "activateTrainingWindow",
-    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
-    statusField: "trainingActivationStatus",
-    status: model => model.trainingActivationStatus,
-    pending: model => model.trainingActivationPending,
-    current: model =>
-      modelTrainingActivation(model)?.windowRef ??
-      activationWindowRef(model) ??
-      "no planned window",
-  },
-  {
-    action: "Claim lease",
-    authority: "Bun lease env gate + public Pylon ref",
-    dispatch: "ClickedClaimTrainingLease",
-    route: "POST /api/training/leases/claim",
-    rpc: "claimTrainingWindowLease",
-    source: "apps/autopilot-desktop/src/bun/index.ts",
-    statusField: "trainingLeaseStatus",
-    status: model => model.trainingLeaseStatus,
-    pending: model => model.trainingLeasePending,
-    current: model =>
-      modelTrainingLease(model)?.lease?.leaseRef ??
-      (hasClaimableTrainingWindow(model) ? "claimable window" : "no active window"),
-  },
-  {
-    action: "Request bootstrap",
-    authority: "public joiner bootstrap gate",
-    dispatch: "ClickedRequestTrainingBootstrap",
-    route: "POST /api/training/runs/{runRef}/bootstrap-grant",
-    rpc: "requestTrainingBootstrapGrant",
-    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
-    statusField: "trainingBootstrapStatus",
-    status: model => model.trainingBootstrapStatus,
-    pending: model => model.trainingBootstrapPending,
-    current: model => {
-      const bootstrap = modelTrainingBootstrap(model)
-      return bootstrap?.outcome?.kind === "granted"
-        ? bootstrap.outcome.grant.grantRef
-        : bootstrap?.outcome?.kind ??
-            selectedTrainingSummary(modelTrainingRuns(model))?.run.trainingRunRef ??
-            "no run selected"
-    },
-  },
-  {
-    action: "Queue closeout packet",
-    authority: "local Pylon intent, no evidence admission",
-    dispatch: "ClickedQueueTrainingCloseout",
-    route: "intent.submit",
-    rpc: "submitIntent",
-    source: "apps/autopilot-desktop/src/ui/commands.ts",
-    statusField: "trainingCloseoutStatus",
-    status: model => model.trainingCloseoutStatus,
-    pending: model => model.trainingCloseoutPending,
-    current: model =>
-      selectedTrainingSummary(modelTrainingRuns(model))?.run.trainingRunRef ??
-      modelTrainingPlan(model)?.trainingRunRef ??
-      "no run selected",
-  },
-  {
-    action: "Build evidence packet",
-    authority: "Bun env gate + local worker receipts",
-    dispatch: "ClickedBuildTrainingEvidencePacket",
-    route:
-      "OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH or Pylon home training-worker-receipts.json -> OPENAGENTS_TRAINING_EVIDENCE_PACKET_PATH",
-    rpc: "buildTrainingEvidencePacket",
-    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
-    statusField: "trainingEvidencePacketBuildStatus",
-    status: model => model.trainingEvidencePacketBuildStatus,
-    pending: model => model.trainingEvidencePacketBuildPending,
-    current: model =>
-      modelTrainingEvidencePacketBuild(model)?.reason ??
-      selectedTrainingSummary(modelTrainingRuns(model))?.run.trainingRunRef ??
-      modelTrainingPlan(model)?.trainingRunRef ??
-      "no run selected",
-  },
-  {
-    action: "Admit evidence packet",
-    authority: "Bun admin env gate + local evidence packet path",
-    dispatch: "ClickedAdmitTrainingEvidence",
-    route: "POST /api/training/runs/{runRef}/real-gradient-evidence",
-    rpc: "admitTrainingRealGradientEvidence",
-    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
-    statusField: "trainingEvidenceAdmissionStatus",
-    status: model => model.trainingEvidenceAdmissionStatus,
-    pending: model => model.trainingEvidenceAdmissionPending,
-    current: model =>
-      modelTrainingEvidenceAdmission(model)?.trainingRunRef ??
-      selectedTrainingSummary(modelTrainingRuns(model))?.run.trainingRunRef ??
-      modelTrainingPlan(model)?.trainingRunRef ??
-      "no run selected",
-  },
-  {
-    action: "Reconcile sealed window",
-    authority: "Bun admin env gate",
-    dispatch: "ClickedReconcileTrainingWindow",
-    route: "POST /api/training/windows/{windowRef}/reconcile",
-    rpc: "reconcileTrainingWindow",
-    source: "apps/autopilot-desktop/src/bun/training-runs.ts",
-    statusField: "trainingReconcileStatus",
-    status: model => model.trainingReconcileStatus,
-    pending: model => model.trainingReconcilePending,
-    current: model =>
-      modelTrainingReconcile(model)?.windowRef ??
-      reconcileWindowRef(model) ??
-      "no sealed window",
-  },
-  {
-    action: "Queue launch check",
-    authority: "local Pylon readiness intent",
-    dispatch: "ClickedQueueTrainingLaunch",
-    route: "intent.submit",
-    rpc: "submitIntent",
-    source: "apps/autopilot-desktop/src/ui/commands.ts",
-    statusField: "trainingLaunchStatus",
-    status: model => model.trainingLaunchStatus,
-    pending: model => model.trainingLaunchPending,
-    current: () => "issue 4855 gate inspection",
-  },
-]
-
-const trainingControlSurfacePanel = (model: Model): Html =>
-  h.section([cls("training-panel training-control-surface-panel")], [
-    h.div([cls("training-panel-heading")], [
-      h.h2([cls("training-panel-title")], ["Control Surface"]),
-      h.span([cls("training-panel-kicker")], ["button -> RPC -> authority"]),
-    ]),
-    h.p([cls("training-panel-copy")], [
-      "Each operator control mapped to its webview message, Bun RPC, authority route, current feedback field, and source file.",
-    ]),
-    h.ul(
-      [cls("training-control-surface-list")],
-      trainingControlSurfaceRows.map(row => {
-        const status = row.status(model)
-        const tone = trainingStatusTone(status, row.pending(model))
-        return h.li([cls(`training-control-surface-row training-${tone}`)], [
-          h.div([cls("training-control-surface-head")], [
-            h.strong([], [row.action]),
-            h.span([], [trainingStatusText(status, "idle")]),
-          ]),
-          h.p([cls("training-control-surface-current")], [row.current(model)]),
-          h.ul([cls("training-api-list training-control-surface-refs")], [
-            h.li([], [h.code([], [row.dispatch])]),
-            h.li([], [h.code([], [row.rpc])]),
-            h.li([], [h.code([], [row.route])]),
-            h.li([], [h.code([], [row.statusField])]),
-            h.li([], [row.authority]),
-            h.li([], [h.code([], [row.source])]),
-          ]),
-        ])
-      }),
-    ),
   ])
 
 const readinessFlag = (value: boolean): string => value ? "ready" : "missing"
@@ -1303,38 +746,6 @@ const trainingEvidencePacketPanel = (model: Model): Html => {
     ]),
   ])
 }
-
-const trainingRoadmapPanel = (): Html =>
-  h.section([cls("training-panel training-roadmap-panel")], [
-    h.div([cls("training-panel-heading")], [
-      h.h2([cls("training-panel-title")], ["Issue 4855 Ledger"]),
-      h.span([cls("training-panel-kicker")], ["closed; receipts move to registry"]),
-    ]),
-    h.p([cls("training-panel-copy")], [
-      "Pluralis-to-Pylon child work by phase, with live R1/R2 hardware and settlement evidence now owned by the training promise registry.",
-    ]),
-    h.ul(
-      [cls("training-gates training-roadmap-gates")],
-      [
-        trainingGate(
-          "acceptance owner",
-          "training.* promises own live receipts",
-          "watch",
-        ),
-        ...trainingRoadmapItems.map(item =>
-          trainingGate(
-            `${item.phase} ${item.issue}`,
-            `${item.status} · ${item.title}`,
-            item.tone,
-          ),
-        ),
-      ],
-    ),
-    h.ul(
-      [cls("training-api-list training-roadmap-refs")],
-      trainingRoadmapRefs.map(ref => h.li([], [h.code([], [ref])])),
-    ),
-  ])
 
 const selectedTrainingSummary = (
   projection: TrainingRunsResponse | null,
@@ -3303,7 +2714,7 @@ const trainingPane = (model: Model): Html => {
           h.p(
             [cls("node-status")],
             [
-              "Tassadar/Psion run projection · Pluralis lifecycle adapted by issue 4855",
+              "Tassadar/Psion run projection",
             ],
           ),
         ]),
@@ -3331,32 +2742,11 @@ const trainingPane = (model: Model): Html => {
         trainingPromiseGatesPanel(model),
         selectedTrainingEvidencePanel(projection),
         selectedTrainingLedgerPanel(projection),
-        trainingRoadmapPanel(),
         trainingLaunchPanel(model),
         trainingOperatorReadinessPanel(model),
         trainingEvidencePacketPanel(model),
         trainingOperatorFeedPanel(model),
         trainingProjectionCatchUpPanel(model),
-        trainingControlSurfacePanel(model),
-        trainingAuthorityBoundaryPanel(),
-        h.section([cls("training-panel")], [
-          h.h2([cls("training-panel-title")], ["Live API Boundary"]),
-          h.p(
-            [cls("training-panel-copy")],
-            [
-              "Read projections from public training summaries. Put authenticated plan, admit, and evidence writes in the Bun main process or Worker admin surface, never in the webview.",
-            ],
-          ),
-          h.ul([cls("training-api-list")], [
-            h.li([], [h.code([], ["/api/training/runs"])]),
-            h.li([], [h.code([], ["/api/training/leaderboards"])]),
-            h.li([], [
-              h.code([], ["/api/training/runs/{runRef}/bootstrap-grant"]),
-            ]),
-            h.li([], [h.code([], ["admin: plan window / admit evidence"])]),
-          ]),
-        ]),
-        trainingSourceMapPanel(),
       ]),
     ],
   )
@@ -3602,7 +2992,6 @@ const spawnPane = (model: Model): Html => {
 const settingsPane = (model: Model): Html => {
   const node = modelNode(model)
   const schema = node?.schema ?? "—"
-  const exampleChoice = chooseUpdate("0.0.0", [])
   return h.div(
     [],
     [
@@ -3634,7 +3023,7 @@ const settingsPane = (model: Model): Html => {
           ],
         ),
         emptyLine(
-          `Update chooser: available actions are full, bsdiff, or none (current: ${exampleChoice.action}).`,
+          "Update chooser: available actions are full, bsdiff, or none.",
         ),
       ]),
       card("About", [

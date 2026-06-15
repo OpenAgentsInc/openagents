@@ -173,28 +173,28 @@ describe("CL-53 sanitizeTree", () => {
     expect(sanitizeTree({ sel: "br" })).toEqual({ sel: "br" })
   })
 
-  test("nodes home includes the three-effect scenes", () => {
+  test("nodes home excludes the three-effect demo scenes (launch cleanup #5020)", () => {
     const document = view(initialModel)
-    expect(treeContainsSelector(document.body, "oa-spinning-cube")).toBe(true)
-    expect(treeContainsSelector(document.body, "oa-bezier-nodes")).toBe(true)
+    expect(treeContainsSelector(document.body, "oa-spinning-cube")).toBe(false)
+    expect(treeContainsSelector(document.body, "oa-bezier-nodes")).toBe(false)
   })
 
-  test("nodes home includes the pmndrs bezier source map", () => {
+  test("nodes home excludes the three-effect source-map card (launch cleanup #5020)", () => {
     const document = view(initialModel)
-    expect(treeContainsClass(document.body, "three-effect-source-list")).toBe(true)
-    expect(treeContainsText(document.body, "examples/bezier-nodes")).toBe(true)
+    expect(treeContainsClass(document.body, "three-effect-source-list")).toBe(false)
+    expect(treeContainsText(document.body, "examples/bezier-nodes")).toBe(false)
     expect(
       treeContainsText(
         document.body,
         "projects/repos/examples/demos/bezier-curves-and-nodes/src/Nodes.jsx",
       ),
-    ).toBe(true)
+    ).toBe(false)
     expect(
       treeContainsText(
         document.body,
         "projects/repos/drei/src/core/QuadraticBezierLine.tsx",
       ),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   test("training pane includes the training scene", () => {
@@ -380,14 +380,14 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-ledger-ref")).toBe(true)
   })
 
-  test("training pane includes the source map panel", () => {
+  test("training pane excludes the dev source-map panel (launch cleanup #5021)", () => {
     const document = view({ ...initialModel, pane: "training" })
-    expect(treeContainsClass(document.body, "training-source-map-panel")).toBe(true)
-    expect(treeContainsClass(document.body, "training-source-map-refs")).toBe(true)
-    expect(treeContainsText(document.body, "examples/training-run")).toBe(true)
+    expect(treeContainsClass(document.body, "training-source-map-panel")).toBe(false)
+    expect(treeContainsClass(document.body, "training-source-map-refs")).toBe(false)
+    expect(treeContainsText(document.body, "examples/training-run")).toBe(false)
   })
 
-  test("training pane includes the webview authority boundary", () => {
+  test("training pane excludes the dev authority-boundary panel (launch cleanup #5021)", () => {
     const document = view({
       ...initialModel,
       pane: "training",
@@ -395,17 +395,7 @@ describe("CL-53 sanitizeTree", () => {
     })
     expect(
       treeContainsClass(document.body, "training-authority-boundary-panel"),
-    ).toBe(true)
-    expect(treeContainsText(document.body, "Foldkit webview")).toBe(true)
-    expect(treeContainsText(document.body, "Bun main process")).toBe(true)
-    expect(treeContainsText(document.body, "OpenAgents Worker")).toBe(true)
-    expect(treeContainsText(document.body, "Pylon")).toBe(true)
-    expect(
-      treeContainsText(document.body, "ClickedBuildTrainingEvidencePacket"),
-    ).toBe(true)
-    expect(treeContainsText(document.body, "ClickedAdmitTrainingEvidence")).toBe(
-      true,
-    )
+    ).toBe(false)
   })
 
   test("training pane boundary render excludes credential values and local paths", () => {
@@ -464,12 +454,6 @@ describe("CL-53 sanitizeTree", () => {
         tone: "success",
       },
     })
-    expect(treeContainsText(document.body, "ClickedPlanTrainingWindow")).toBe(
-      true,
-    )
-    expect(
-      treeContainsText(document.body, "ClickedBuildTrainingEvidencePacket"),
-    ).toBe(true)
     expect(treeContainsText(document.body, "admin-token-value")).toBe(false)
     expect(treeContainsText(document.body, "sk-openagents-test")).toBe(false)
     expect(treeContainsText(document.body, "/Users/")).toBe(false)
@@ -718,7 +702,7 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsText(document.body, "/Users/")).toBe(false)
   })
 
-  test("training pane includes the control surface map", () => {
+  test("training pane excludes the dev control-surface panel (launch cleanup #5021)", () => {
     const document = view({
       ...initialModel,
       pane: "training",
@@ -726,31 +710,27 @@ describe("CL-53 sanitizeTree", () => {
       trainingPlanStatus: { text: "planned", tone: "success" },
     })
     expect(treeContainsClass(document.body, "training-control-surface-panel")).toBe(
-      true,
+      false,
     )
     expect(
       treeContainsClass(document.body, "training-control-surface-list"),
-    ).toBe(true)
-    expect(treeContainsText(document.body, "ClickedPlanTrainingWindow")).toBe(
-      true,
-    )
+    ).toBe(false)
     expect(
       treeContainsText(document.body, "/api/training/windows/{windowRef}/activate"),
-    ).toBe(true)
-    expect(treeContainsText(document.body, "trainingPlanStatus")).toBe(true)
+    ).toBe(false)
     expect(
       treeContainsText(
         document.body,
         "apps/autopilot-desktop/src/bun/training-runs.ts",
       ),
-    ).toBe(true)
+    ).toBe(false)
   })
 
-  test("training pane includes the issue roadmap ledger", () => {
+  test("training pane excludes the static roadmap ledger panel (launch cleanup #5022)", () => {
     const document = view({ ...initialModel, pane: "training" })
-    expect(treeContainsClass(document.body, "training-roadmap-panel")).toBe(true)
-    expect(treeContainsClass(document.body, "training-roadmap-gates")).toBe(true)
-    expect(treeContainsClass(document.body, "training-roadmap-refs")).toBe(true)
+    expect(treeContainsClass(document.body, "training-roadmap-panel")).toBe(false)
+    expect(treeContainsClass(document.body, "training-roadmap-gates")).toBe(false)
+    expect(treeContainsClass(document.body, "training-roadmap-refs")).toBe(false)
   })
 
   test("training pane includes the closeout packet action", () => {
@@ -775,15 +755,13 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "training-evidence-build-button")).toBe(
       true,
     )
-    expect(
-      treeContainsText(document.body, "ClickedBuildTrainingEvidencePacket"),
-    ).toBe(true)
+    // The internal receipts-path env name was dev-doc scaffolding; it must not leak (launch cleanup #5021).
     expect(
       treeContainsText(
         document.body,
         "OPENAGENTS_TRAINING_WORKER_RECEIPTS_PATH",
       ),
-    ).toBe(true)
+    ).toBe(false)
     expect(treeContainsText(document.body, "/Users/")).toBe(false)
   })
 
@@ -794,15 +772,13 @@ describe("CL-53 sanitizeTree", () => {
       trainingRuns: liveTrainingProjection,
     })
     expect(treeContainsClass(document.body, "training-evidence-button")).toBe(true)
-    expect(treeContainsText(document.body, "ClickedAdmitTrainingEvidence")).toBe(
-      true,
-    )
+    // The raw API route string was dev-doc scaffolding and is no longer rendered (launch cleanup #5021).
     expect(
       treeContainsText(
         document.body,
         "/api/training/runs/{runRef}/real-gradient-evidence",
       ),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   test("training pane includes the reconcile action for sealed windows", () => {
