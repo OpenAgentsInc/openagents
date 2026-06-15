@@ -6608,6 +6608,11 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: () => Effect.succeed(notFound()),
   },
   {
+    path: '/discord',
+    handler: () =>
+      Effect.succeed(redirectResponse('https://discord.gg/4RrjGCuQAZ')),
+  },
+  {
     path: '/login',
     handler: () => Effect.succeed(redirectResponse('/')),
   },
