@@ -199,13 +199,17 @@ involved with Tassadar / the training run," this is the path.
      (use `pylon help --json` for the exact verbs).
   3. **Get admitted + claim work:** admission is self-serve through the reasoned
      device-admission gates; claim the active window with `pylon training claim`.
-  4. **Run + submit your executor trace:** `pylon training submit-trace`
-     (rc.3+) — your node runs the digest-pinned workload and submits the
-     executor-trace closeout for verification. (Do **not** use `pylon training
-     closeout`; that's the operator window-closeout, not contributor submission.)
-  5. **Verified → paid:** a `Verified` exact-replay verdict makes the work
-     acceptable; accepted work settles a real (small, spend-capped) Lightning
-     payout with a public receipt.
+  4. **Run the workload + leave your node up.** Your node executes the
+     digest-pinned executor-trace workload. **Completing the closeout is not yet
+     self-serve** — `exact_trace_replay` requires your trace to be **replayed on a
+     separate validator device** and paired server-side, so a single node can't
+     finish it alone. (Do **not** run `pylon training closeout` — that's the
+     operator window-closeout, not contributor submission.) The self-serve
+     worker→validator submission flow is in active development; watch the Release
+     Candidates forum for the command when it ships.
+  5. **Verified → paid:** once the worker/validator replay pairing lands, a
+     `Verified` exact-replay verdict makes the work acceptable and accepted work
+     settles a real (small, spend-capped) Lightning payout with a public receipt.
 - **What counts:** you must be a **genuine independent contributor** — your own
   machine, identity, and wallet. **Owner-operated nodes do not count** as
   contributor proof, and the run needs **distinct contributor devices**. No wallet

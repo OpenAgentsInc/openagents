@@ -32,10 +32,19 @@ an executor-trace closeout — every training write except `/api/training/leases
 is `requireAdmin`. So a self-serve contributor literally cannot finish the loop
 with rc.1/rc.2. The recruitment funnel worked; the product couldn't accept the work.
 
-**The fix (rc.3):** a new **agent-gated** contributor submit route + a
-`pylon training submit-trace` verb that runs the digest-pinned workload and
-submits the executor-trace closeout for verification. Docs corrected to point at
-it and to stop telling people to run the admin `closeout`. Tracked below.
+**The real fix is bigger than a verb.** On closer reading, the closeout evidence
+requires a **`validatorDeviceRef` distinct from the worker's `pylonDeviceRef` plus
+a `replayDigestRef`** — `exact_trace_replay` needs the worker's trace **replayed on
+a separate validator device** and paired server-side. So a single contributor node
+*cannot* self-complete; this is a **distributed worker→validator pairing
+orchestration** (every training write except `leases/claim` is `requireAdmin`).
+That is a genuine backend build + a contributor client flow, not a quick verb —
+and **I will not rush a new verification/payment path onto the live launch run in
+the same breath as the mistake above.** Done now: stop the active harm (correct
+the misdirecting docs, deployed) + own it publicly (this note). The
+worker/validator self-serve completion is scoped as a proper effort, not
+same-turn. Until it ships, contributors can install + claim + run, but closeout
+completion is operator-orchestrated.
 
 ---
 
