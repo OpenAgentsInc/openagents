@@ -815,8 +815,11 @@ function parsePresenceOptions(args: string[]) {
   return options
 }
 
+// Key/value option parser for user commands (forum/tip/work/wallet/balance/
+// memories/ask-artanis). Boolean flags like `--json` map to `true` instead of
+// erroring "requires a value" (#5038); use `optionString` to read string values.
 function parseKeyValueOptions(args: string[]) {
-  return parsePresenceOptions(args)
+  return parseCliOptions(args)
 }
 
 const presenceBootstrapValueOptions = new Set([
@@ -1401,7 +1404,7 @@ async function main() {
       const command = args[1]
       const presenceArgs = args.slice(2)
       const options = parsePresenceOptions(presenceArgs)
-      const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) {
         throw new Error("presence commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
       }
@@ -1434,7 +1437,7 @@ async function main() {
     try {
       const surfaceArgs = args[0] === "ask-artanis" ? args.slice(2) : args.slice(args[0] === "forum" ? 2 : 1)
       const options = parseKeyValueOptions(surfaceArgs)
-      const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const state = await ensurePylonLocalState(summary)
       const networkOptions = {
@@ -1533,7 +1536,7 @@ async function main() {
     try {
       const tipArgs = args[0] === "tip" ? args.slice(3) : args.slice(1)
       const options = parseKeyValueOptions(tipArgs)
-      const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) throw new Error(`${args[0]} requires --base-url or PYLON_OPENAGENTS_BASE_URL`)
       const networkOptions = {
         agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
@@ -1653,7 +1656,7 @@ async function main() {
       const command = args[1]
       const workArgs = args.slice(2).flatMap((arg) => (arg === "--events" ? ["--events", "true"] : [arg]))
       const options = parseKeyValueOptions(workArgs)
-      const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) throw new Error("work commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const networkOptions = {
@@ -1818,7 +1821,7 @@ async function main() {
       }
       const options = parseKeyValueOptions(walletArgs)
       if (command === "report-readiness") {
-        const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+        const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
         if (!baseUrl) throw new Error("wallet report-readiness requires --base-url or PYLON_OPENAGENTS_BASE_URL")
         const status = await classifyMdkWallet()
         const result = await reportWalletReadiness({ status }, {
@@ -1871,7 +1874,7 @@ async function main() {
         return
       }
       if (command === "request-payout-target-admission") {
-        const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+        const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
         if (!baseUrl) throw new Error("wallet request-payout-target-admission requires --base-url or PYLON_OPENAGENTS_BASE_URL")
         const kind = options.kind as any
         const ref = options.ref
@@ -1898,7 +1901,7 @@ async function main() {
       rejectClaudeLocalDangerForPublicPath(args.slice(1), "pylon assignment")
       const command = args[1]
       const options = parseKeyValueOptions(args.slice(2))
-      const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) {
         throw new Error("assignment commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
       }
