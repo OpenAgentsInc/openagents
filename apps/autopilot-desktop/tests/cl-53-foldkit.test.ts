@@ -30,6 +30,7 @@ import {
 import {
   initialModel,
   Model,
+  modelBuiltInAgentReadiness,
   modelNode,
   modelTrainingBootstrap,
   modelTrainingDashboard,
@@ -47,11 +48,14 @@ import {
   ClickedClaimTrainingLease,
   ClickedPlanTrainingWindow,
   ClickedQueueTrainingCloseout,
+  ClickedRefreshBuiltInAgent,
   ClickedRefreshTrainingRuns,
   ClickedReconcileTrainingWindow,
   ClickedResolveApproval,
   ClickedRequestTrainingBootstrap,
+  ClickedStartBuiltInAgent,
   ClickedSubmitIntent,
+  GotBuiltInAgentReadiness,
   GotTrainingDashboard,
   GotTrainingEvidencePacketSummary,
   GotTrainingOperatorReadiness,
@@ -72,6 +76,7 @@ import {
   SettledRequestTrainingBootstrap,
   SettledResolveApproval,
   SettledSubmitIntent,
+  SucceededBuiltInAgent,
   ToggledEvent,
 } from "../src/ui/message"
 import { update } from "../src/ui/update"
@@ -309,6 +314,65 @@ describe("update reducer (CL-53)", () => {
     const [model] = update(withTitle, SettledSubmitIntent({ ok: true, text: "sent · received" }))
     expect(model.askTitle).toBe("")
     expect(model.askStatus.tone).toBe("success")
+  })
+
+  test("built-in agent pane loads readiness", () => {
+    const [model, commands] = update(
+      initialModel,
+      NavigatedTo({ pane: "builtin-agent" }),
+    )
+    expect(model.pane).toBe("builtin-agent")
+    expect(model.builtInAgentStatus.tone).toBe("info")
+    expect(commands).toHaveLength(1)
+  })
+
+  test("built-in agent readiness stores bounded hosted-compute status", () => {
+    const [model] = update(
+      initialModel,
+      GotBuiltInAgentReadiness({
+        projection: {
+          ok: true,
+          fetchedAt: "2026-06-15T00:00:00.000Z",
+          sourceUrl: "desktop:builtin-agent-readiness",
+          enabled: true,
+          localPylonReady: true,
+          hostedComputeConfigured: true,
+          userApiKeyRequired: false,
+          lane: "cloud-gcp",
+          modelSet: "openagents-hosted-gemini",
+          maxSessionSeconds: 600,
+          dailySessionCap: 3,
+          dailySessionsUsed: 1,
+          meteringLabel: "3 sessions/day · 600s/session · openagents-hosted-gemini",
+          worktreePathPresent: true,
+          blockerRefs: [],
+        },
+      }),
+    )
+    expect(modelBuiltInAgentReadiness(model)?.ok).toBe(true)
+    expect(model.builtInAgentStatus.tone).toBe("success")
+    expect(model.builtInAgentStatus.text).toContain("3 sessions/day")
+  })
+
+  test("built-in agent go-online starts a session and focuses detail", () => {
+    const [pending, commands] = update(initialModel, ClickedStartBuiltInAgent())
+    expect(pending.pane).toBe("builtin-agent")
+    expect(pending.builtInAgentPending).toBe(true)
+    expect(commands).toHaveLength(1)
+
+    const [online] = update(
+      pending,
+      SucceededBuiltInAgent({ sessionRef: "session.pylon.control.test" }),
+    )
+    expect(online.builtInAgentPending).toBe(false)
+    expect(online.pane).toBe("session-detail")
+    expect(online.selectedSessionRef).toBe("session.pylon.control.test")
+  })
+
+  test("built-in agent refresh dispatches readiness check", () => {
+    const [model, commands] = update(initialModel, ClickedRefreshBuiltInAgent())
+    expect(model.builtInAgentStatus.tone).toBe("info")
+    expect(commands).toHaveLength(1)
   })
 
   test("training plan action dispatches and stores the public-safe result", () => {

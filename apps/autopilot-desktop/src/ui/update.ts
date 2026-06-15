@@ -16,6 +16,7 @@ import {
   CancelSession,
   ClaimTrainingWindowLease,
   DeployCloud,
+  LoadBuiltInAgentReadiness,
   LoadTrainingDashboard,
   LoadTrainingEvidencePacketSummary,
   LoadTrainingOperatorReadiness,
@@ -28,6 +29,7 @@ import {
   RequestTrainingBootstrapGrant,
   ResolveApproval,
   SetCoordinatorPaused,
+  StartBuiltInAgent,
   SpawnSession,
   SubmitIntent,
 } from "./commands"
@@ -35,6 +37,7 @@ import { parseVerifyLines } from "./helpers"
 import type { Message } from "./message"
 import { Model, type PaneId } from "./model"
 import type {
+  BuiltInAgentReadinessResponse,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
@@ -69,6 +72,8 @@ const trainingBootstrapShouldRefresh = (
 
 const isTrainingPane = (pane: PaneId): boolean =>
   pane === "training" || pane === "training-fullscreen"
+
+const isBuiltInAgentPane = (pane: PaneId): boolean => pane === "builtin-agent"
 
 const plannedRunFirstObservedAt = (
   model: Model,
@@ -112,6 +117,14 @@ export const update = (model: Model, message: Message): Result => {
           ...model,
           pane: message.pane,
           expandedEvents: [],
+          ...(isBuiltInAgentPane(message.pane)
+            ? {
+                builtInAgentStatus: {
+                  text: "checking OpenAgents compute...",
+                  tone: "info" as const,
+                },
+              }
+            : {}),
           ...(isTrainingPane(message.pane)
             ? {
                 trainingRunsPending: true,
@@ -142,7 +155,11 @@ export const update = (model: Model, message: Message): Result => {
               }
             : {}),
         }),
-        isTrainingPane(message.pane) ? loadTrainingProjectionCommands() : noCommands,
+        isTrainingPane(message.pane)
+          ? loadTrainingProjectionCommands()
+          : isBuiltInAgentPane(message.pane)
+            ? [LoadBuiltInAgentReadiness()]
+            : noCommands,
       ]
     case "SelectedSession":
       return [
@@ -257,6 +274,79 @@ export const update = (model: Model, message: Message): Result => {
           askPending: false,
           askStatus: { text: message.text, tone: message.ok ? "success" : "error" },
           ...(message.ok ? { askTitle: "", askBody: "" } : {}),
+        }),
+        noCommands,
+      ]
+
+    // ── Built-in no-user-key agent (#5063) ───────────────────────────────────
+    case "ClickedRefreshBuiltInAgent":
+      return [
+        Model.make({
+          ...model,
+          builtInAgentStatus: {
+            text: "checking OpenAgents compute...",
+            tone: "info",
+          },
+        }),
+        [LoadBuiltInAgentReadiness()],
+      ]
+    case "GotBuiltInAgentReadiness": {
+      const projection = message.projection as BuiltInAgentReadinessResponse
+      const blockerCount = projection.blockerRefs.length
+      return [
+        Model.make({
+          ...model,
+          builtInAgentReadiness: projection,
+          builtInAgentStatus: projection.ok
+            ? {
+                text: `ready · ${projection.meteringLabel}`,
+                tone: "success",
+              }
+            : {
+                text:
+                  projection.error ??
+                  `${blockerCount} blocker${blockerCount === 1 ? "" : "s"}`,
+                tone: projection.error ? "error" : "info",
+              },
+        }),
+        noCommands,
+      ]
+    }
+    case "ClickedStartBuiltInAgent":
+      return [
+        Model.make({
+          ...model,
+          pane: "builtin-agent",
+          builtInAgentPending: true,
+          builtInAgentStatus: {
+            text: "starting hosted agent...",
+            tone: "info",
+          },
+        }),
+        [StartBuiltInAgent()],
+      ]
+    case "SucceededBuiltInAgent":
+      return [
+        Model.make({
+          ...model,
+          builtInAgentPending: false,
+          builtInAgentStatus: {
+            text: `online · ${message.sessionRef}`,
+            tone: "success",
+          },
+          pane: "session-detail",
+          selectedSessionRef: message.sessionRef,
+          expandedEvents: [],
+        }),
+        noCommands,
+      ]
+    case "FailedBuiltInAgent":
+      return [
+        Model.make({
+          ...model,
+          pane: "builtin-agent",
+          builtInAgentPending: false,
+          builtInAgentStatus: { text: message.error, tone: "error" },
         }),
         noCommands,
       ]

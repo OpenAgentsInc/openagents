@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { BrowserView, BrowserWindow, PATHS, Updater } from "electrobun/bun"
 import { discoverPylonHome } from "./node-home"
@@ -12,6 +12,10 @@ import { autoUpdateIntervalMs, runAutoUpdateOnce } from "./auto-update"
 import { fetchPublicPylonStats } from "./pylon-network-stats"
 import { createSessionNotifier } from "./notifier"
 import { raiseOsNotification } from "./os-notification"
+import {
+  builtInAgentObjective,
+  resolveBuiltInAgentSettings,
+} from "../shared/builtin-agent"
 import {
   cancelSession,
   deployToCloud,
@@ -36,6 +40,8 @@ import {
   requestTrainingBootstrapGrant,
 } from "./training-runs"
 import type {
+  BuiltInAgentReadinessResponse,
+  BuiltInAgentStartResponse,
   DesktopRPCSchema,
   TrainingOperatorReadinessPylonRefSource,
   TrainingOperatorReadinessResponse,
@@ -68,6 +74,8 @@ const configuredTrainingPylonRef =
   Bun.env.PYLON_REF ??
   null
 const trainingWorkerReceiptsFilename = "training-worker-receipts.json"
+const builtInAgentWorktreeDirname = "builtin-agent-workspace"
+const builtInAgentUsageFilename = "builtin-agent-usage.json"
 
 // CL-45: resolve the node home once per call so a node that starts after the app
 // (or rotates its home) is picked up without a restart. Falls back to the env
@@ -186,6 +194,136 @@ function trainingOperatorReadinessProjection(): TrainingOperatorReadinessRespons
   }
 }
 
+function ensureDirectory(path: string): boolean {
+  try {
+    mkdirSync(path, { recursive: true })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function builtInAgentWorktreePath(home = resolveHome()): string | null {
+  const configured = Bun.env.OPENAGENTS_BUILTIN_AGENT_WORKTREE?.trim() ?? ""
+  if (configured.length > 0) {
+    return ensureDirectory(configured) ? configured : null
+  }
+  if (home === null) return null
+  const path = join(home, "workrooms", builtInAgentWorktreeDirname)
+  return ensureDirectory(path) ? path : null
+}
+
+function builtInAgentUsagePath(home: string): string {
+  return join(home, builtInAgentUsageFilename)
+}
+
+function todayKey(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function builtInAgentDailySessionsUsed(home: string | null): number {
+  if (home === null) return 0
+  try {
+    const record = JSON.parse(readFileSync(builtInAgentUsagePath(home), "utf8")) as {
+      date?: unknown
+      count?: unknown
+    }
+    return record.date === todayKey() && typeof record.count === "number"
+      ? Math.max(0, Math.floor(record.count))
+      : 0
+  } catch {
+    return 0
+  }
+}
+
+function recordBuiltInAgentStart(home: string): void {
+  const count = builtInAgentDailySessionsUsed(home) + 1
+  writeFileSync(
+    builtInAgentUsagePath(home),
+    `${JSON.stringify({ date: todayKey(), count }, null, 2)}\n`,
+    "utf8",
+  )
+}
+
+function builtInAgentReadinessProjection(): BuiltInAgentReadinessResponse {
+  const home = resolveHome()
+  const controlToken = home === null ? null : readControlToken(home)
+  const localPylonReady = home !== null && controlToken !== null
+  const worktreePath = builtInAgentWorktreePath(home)
+  const settings = resolveBuiltInAgentSettings(Bun.env)
+  const dailySessionsUsed = builtInAgentDailySessionsUsed(home)
+  const blockerRefs: string[] = []
+
+  if (!settings.enabled) {
+    blockerRefs.push("blocker.autopilot.builtin_agent.disabled")
+  }
+  if (!localPylonReady) {
+    blockerRefs.push("blocker.autopilot.builtin_agent.local_pylon_offline")
+  }
+  if (!settings.hostedComputeConfigured) {
+    blockerRefs.push("blocker.autopilot.builtin_agent.hosted_compute_unconfigured")
+  }
+  if (worktreePath === null) {
+    blockerRefs.push("blocker.autopilot.builtin_agent.worktree_unavailable")
+  }
+  if (dailySessionsUsed >= settings.dailySessionCap) {
+    blockerRefs.push("blocker.autopilot.builtin_agent.daily_cap_reached")
+  }
+
+  return {
+    ok: blockerRefs.length === 0,
+    fetchedAt: new Date().toISOString(),
+    sourceUrl: "desktop:builtin-agent-readiness",
+    enabled: settings.enabled,
+    localPylonReady,
+    hostedComputeConfigured: settings.hostedComputeConfigured,
+    userApiKeyRequired: false,
+    lane: settings.lane,
+    modelSet: settings.modelSet,
+    maxSessionSeconds: settings.maxSessionSeconds,
+    dailySessionCap: settings.dailySessionCap,
+    dailySessionsUsed,
+    meteringLabel: settings.meteringLabel,
+    worktreePathPresent: worktreePath !== null,
+    blockerRefs,
+  }
+}
+
+async function startBuiltInAgentSession(): Promise<BuiltInAgentStartResponse> {
+  const readiness = builtInAgentReadinessProjection()
+  const home = resolveHome()
+  const token = tokenForCommand()
+  const worktreePath = builtInAgentWorktreePath()
+  if (!readiness.ok || token === null || worktreePath === null || home === null) {
+    return {
+      ok: false,
+      sessionRef: "",
+      readiness,
+      error: readiness.blockerRefs[0] ?? "built-in agent unavailable",
+    }
+  }
+  const settings = resolveBuiltInAgentSettings(Bun.env)
+  const result = await spawnSession({
+    baseUrl: controlBaseUrl,
+    token,
+    adapter: "codex",
+    objective: builtInAgentObjective(settings),
+    verify: ["true"],
+    lane: settings.lane,
+    timeoutSeconds: settings.maxSessionSeconds,
+    worktreePath,
+  })
+  if (result.ok) {
+    recordBuiltInAgentStart(home)
+  }
+  return {
+    ok: result.ok,
+    sessionRef: result.sessionRef,
+    readiness,
+    ...(result.error ? { error: result.error } : {}),
+  }
+}
+
 const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
   handlers: {
     requests: {
@@ -211,6 +349,12 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
         const token = tokenForCommand()
         if (token === null) return { ok: false, status: "error", error: "control token unavailable" }
         return submitIntent({ baseUrl: controlBaseUrl, token, title: params.title, body: params.body })
+      },
+      async builtinAgentReadiness() {
+        return builtInAgentReadinessProjection()
+      },
+      async startBuiltInAgent() {
+        return startBuiltInAgentSession()
       },
       async listTrainingRuns() {
         return fetchTrainingRuns({ baseUrl: trainingBaseUrl })
@@ -313,6 +457,8 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           ...(params.verify ? { verify: params.verify } : {}),
           // #4998: thread the requested execution lane through to the node.
           ...(params.lane ? { lane: params.lane } : {}),
+          ...(params.timeoutSeconds ? { timeoutSeconds: params.timeoutSeconds } : {}),
+          ...(params.worktreePath ? { worktreePath: params.worktreePath } : {}),
         })
       },
     },

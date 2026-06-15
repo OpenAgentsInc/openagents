@@ -473,6 +473,32 @@ export type TrainingEvidenceAdmissionResponse = {
   readonly error?: string
 }
 
+export type BuiltInAgentReadinessResponse = {
+  readonly ok: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: string
+  readonly enabled: boolean
+  readonly localPylonReady: boolean
+  readonly hostedComputeConfigured: boolean
+  readonly userApiKeyRequired: false
+  readonly lane: "cloud-gcp" | "cloud-shc"
+  readonly modelSet: string
+  readonly maxSessionSeconds: number
+  readonly dailySessionCap: number
+  readonly dailySessionsUsed: number
+  readonly meteringLabel: string
+  readonly worktreePathPresent: boolean
+  readonly blockerRefs: readonly string[]
+  readonly error?: string
+}
+
+export type BuiltInAgentStartResponse = {
+  readonly ok: boolean
+  readonly sessionRef: string
+  readonly readiness: BuiltInAgentReadinessResponse
+  readonly error?: string
+}
+
 // CL-47: an "ask" the owner submitted, with its ship-status round-trip state.
 export type IntentRow = {
   readonly intentId: string
@@ -545,6 +571,19 @@ export type DesktopRPCSchema = {
       readonly submitIntent: {
         readonly params: { title: string; body: string }
         readonly response: { ok: boolean; status: string; error?: string }
+      }
+      // #5063: read the packaged no-user-key built-in agent readiness. The Bun
+      // host keeps cloud control credentials; the webview sees only booleans,
+      // labels, bounds, and blocker refs.
+      readonly builtinAgentReadiness: {
+        readonly params: Record<string, never>
+        readonly response: BuiltInAgentReadinessResponse
+      }
+      // #5063: start the built-in hosted-compute agent from the Bun host. The
+      // webview cannot choose credentials, worktree, or bounds.
+      readonly startBuiltInAgent: {
+        readonly params: Record<string, never>
+        readonly response: BuiltInAgentStartResponse
       }
       // Read public Worker-authoritative training run projections. This is a
       // read-only desktop projection; admin mutations stay out of the webview.
@@ -624,6 +663,8 @@ export type DesktopRPCSchema = {
           objective: string
           verify?: string[]
           lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
+          timeoutSeconds?: number
+          worktreePath?: string
         }
         readonly response: { ok: boolean; sessionRef: string; error?: string }
       }

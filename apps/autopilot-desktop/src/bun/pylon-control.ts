@@ -585,6 +585,8 @@ export async function spawnSession(input: {
   // #4998: requested execution lane (auto|local|cloud-gcp|cloud-shc). Optional;
   // when omitted the node defaults to `auto`.
   lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
+  timeoutSeconds?: number
+  worktreePath?: string
   fetchFn?: typeof fetch
 }): Promise<{ ok: boolean; sessionRef: string; error?: string }> {
   const fetchFn = input.fetchFn ?? fetch
@@ -596,8 +598,11 @@ export async function spawnSession(input: {
         type: "session.spawn",
         adapter: input.adapter,
         objective: input.objective,
-        verify: input.verify ?? [],
+        verify:
+          input.verify && input.verify.length > 0 ? input.verify : ["true"],
         ...(input.lane ? { lane: input.lane } : {}),
+        ...(input.timeoutSeconds ? { timeoutSeconds: input.timeoutSeconds } : {}),
+        ...(input.worktreePath ? { worktreePath: input.worktreePath } : {}),
       }),
     })
     if (!res.ok) return { ok: false, sessionRef: "", error: `control ${res.status}` }

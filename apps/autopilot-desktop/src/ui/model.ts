@@ -14,6 +14,7 @@ import { ts } from "foldkit/schema"
 import type { NotificationCenterView } from "@openagentsinc/autopilot-control-protocol"
 import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
 import type {
+  BuiltInAgentReadinessResponse,
   NodeStateMessage,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
@@ -32,6 +33,7 @@ import type {
 // plus the focused session-detail leaf.
 export const PaneId = S.Literals([
   "network",
+  "builtin-agent",
   "nodes",
   "training",
   "training-fullscreen",
@@ -68,6 +70,12 @@ export const AskStatus = S.Struct({
   tone: S.Literals(["error", "info", "success", "idle"]),
 })
 export type AskStatus = typeof AskStatus.Type
+
+export const BuiltInAgentStatus = S.Struct({
+  text: S.String,
+  tone: S.Literals(["error", "info", "success", "idle"]),
+})
+export type BuiltInAgentStatus = typeof BuiltInAgentStatus.Type
 
 // Transient status for queueing a training launch/readiness check through the
 // existing local Pylon intent bridge. The desktop webview never receives admin
@@ -113,6 +121,12 @@ export const Model = ts("AutopilotDesktop", {
   // pushed from the Bun poller. Opaque PylonStatsSnapshot; projected to the
   // home scene via projectPylonNetworkScene. Null until the first poll lands.
   pylonStats: S.NullOr(S.Unknown),
+
+  // #5063: public-safe readiness for the no-user-key built-in agent. Bun keeps
+  // OpenAgents compute credentials; the webview sees only bounds/status refs.
+  builtInAgentReadiness: S.NullOr(S.Unknown),
+  builtInAgentStatus: BuiltInAgentStatus,
+  builtInAgentPending: S.Boolean,
 
   // #5025: honest node-launch lifecycle status from the Bun supervisor
   // (launching/online/adopted/failed/unavailable). Null until the first status
@@ -211,6 +225,11 @@ export const modelNode = (model: Model): NodeStateMessage | null =>
 export const modelPylonStats = (model: Model): PylonStatsSnapshot | null =>
   model.pylonStats as PylonStatsSnapshot | null
 
+export const modelBuiltInAgentReadiness = (
+  model: Model,
+): BuiltInAgentReadinessResponse | null =>
+  model.builtInAgentReadiness as BuiltInAgentReadinessResponse | null
+
 export const modelNotifications = (model: Model): NotificationCenterView | null =>
   model.notifications as NotificationCenterView | null
 
@@ -274,6 +293,9 @@ export const initialModel: Model = Model.make({
   node: null,
   notifications: null,
   pylonStats: null,
+  builtInAgentReadiness: null,
+  builtInAgentStatus: { text: "not checked", tone: "idle" },
+  builtInAgentPending: false,
   nodeLaunchStatus: null,
   pane: "network",
   selectedSessionRef: null,

@@ -351,8 +351,14 @@ registry source is `2026-06-15.2` but the live endpoint still serves `.1`).
   README + install docs carry the same "Download here" URL, and the GitHub
   release tag is the canonical repo-side download target. Intel macOS/Linux
   desktop installers remain owner-gated until signed/notarized or packaged.
-- **#5063** built-in out-of-the-box agent using OpenAgents compute (no user API key) —
-  the answer to "i don't have an agent."
+- ✅ **#5063** built-in out-of-the-box agent using OpenAgents compute (no user API key) —
+  SOURCE DONE/yellow: Desktop now has first-screen **Go online** + Agent pane,
+  Bun-owned built-in-agent readiness/start RPC, managed scratch workspace,
+  cloud-gcp/cloud-shc session lane, no user provider key in the webview, and
+  bounded defaults (3 sessions/day, 600s/session). Registry
+  `autopilot.builtin_compute_agent.v1` moved to yellow in `2026-06-15.4`.
+  Remaining green proof: signed/notarized desktop recut with packaged hosted
+  compute credentials/entitlement + public from-install smoke.
 - **#5064** basic install + runtime stability for normal users (out-of-box, untested systems).
 - **#5065** Autopilot built-in "surface issues, don't ship slop" forum flow (Orrery-style).
 

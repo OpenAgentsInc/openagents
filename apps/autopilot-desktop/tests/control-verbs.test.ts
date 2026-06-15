@@ -99,15 +99,22 @@ describe("CL-46 control verbs", () => {
       adapter: "codex",
       objective: "deploy to gce",
       lane: "cloud-gcp",
+      timeoutSeconds: 600,
+      worktreePath: "/tmp/openagents-builtin-agent",
       fetchFn: captureFetch,
     })
     expect(r).toEqual({ ok: true, sessionRef: "sess-gce" })
     expect(captured).not.toBeNull()
-    expect(captured).toMatchObject({ type: "session.spawn", lane: "cloud-gcp" })
+    expect(captured).toMatchObject({
+      type: "session.spawn",
+      lane: "cloud-gcp",
+      timeoutSeconds: 600,
+      worktreePath: "/tmp/openagents-builtin-agent",
+    })
   })
 
   // #4998: omitting the lane must not put a lane key on the wire (node defaults).
-  test("spawnSession omits lane when none is requested", async () => {
+  test("spawnSession omits lane when none is requested and supplies no-op verify", async () => {
     let captured: Record<string, unknown> | null = null
     const captureFetch = (async (url: string, init?: RequestInit) => {
       if (String(url).endsWith("/health")) {
@@ -119,6 +126,7 @@ describe("CL-46 control verbs", () => {
     await spawnSession({ ...base, adapter: "codex", objective: "x", fetchFn: captureFetch })
     expect(captured).not.toBeNull()
     expect(Object.prototype.hasOwnProperty.call(captured ?? {}, "lane")).toBe(false)
+    expect(captured).toMatchObject({ verify: ["true"] })
   })
 
   test("fetchNodeState aggregates the parity surfaces", async () => {

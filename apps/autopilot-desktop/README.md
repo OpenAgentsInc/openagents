@@ -84,6 +84,40 @@ TUI externalized, or a `bun build --compile` single binary). Once that exists,
 add a `build.copy` entry in `electrobun.config.ts` mapping it to `"pylon-node"`
 and the packaged path activates with no further desktop changes.
 
+## Built-in Agent (#5063)
+
+The desktop source includes the no-user-key built-in agent flow. The first
+screen has **Go online**, and the Agent pane shows the same readiness state. The
+webview only sees public-safe readiness fields; the Bun host keeps cloud control
+credentials and starts a fixed, bounded `codex` session on OpenAgents compute.
+
+Runtime/package env:
+
+- `OA_CLOUD_CONTROL_URL` and `OA_CLOUD_CONTROL_TOKEN` — required for hosted
+  OpenAgents compute. These are package/runtime secrets, not user-supplied API
+  keys and not projected into the webview.
+- `OPENAGENTS_BUILTIN_AGENT_ENABLED=0` — disables the built-in agent path.
+- `OPENAGENTS_BUILTIN_AGENT_LANE=cloud-gcp|cloud-shc` — default `cloud-gcp`.
+- `OPENAGENTS_BUILTIN_AGENT_MODEL_SET` — display label, default
+  `openagents-hosted-gemini`.
+- `OPENAGENTS_BUILTIN_AGENT_MAX_SESSION_SECONDS` — bounded to `60..1200`,
+  default `600`.
+- `OPENAGENTS_BUILTIN_AGENT_DAILY_SESSION_CAP` — bounded to `1..20`, default
+  `3`.
+- `OPENAGENTS_BUILTIN_AGENT_WORKTREE` — optional managed scratch workspace; by
+  default the app creates `workrooms/builtin-agent-workspace` under the managed
+  Pylon home.
+
+The desktop host records successful built-in-agent starts in
+`builtin-agent-usage.json` under the managed Pylon home and blocks new starts
+after the configured daily cap for that UTC day. Hosted compute should still
+enforce its own server-side entitlement and metering; the local cap is a
+client-side fail-closed bound, not billing authority.
+
+The source path is yellow, not a green public promise, until a signed/notarized
+desktop recut ships with the hosted-compute runtime configuration and a public
+from-install **Go online** smoke shows a session running without a user API key.
+
 ## macOS Signing And Notarization
 
 Sign and notarize a built (`build:stable`) `.app` with Apple Developer ID:

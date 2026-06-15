@@ -59,6 +59,17 @@ export const SettledSubmitIntent = m("SettledSubmitIntent", {
   text: S.String,
 })
 
+// ── Built-in no-user-key agent (#5063) ─────────────────────────────────────
+export const ClickedRefreshBuiltInAgent = m("ClickedRefreshBuiltInAgent")
+export const GotBuiltInAgentReadiness = m("GotBuiltInAgentReadiness", {
+  projection: S.Unknown,
+})
+export const ClickedStartBuiltInAgent = m("ClickedStartBuiltInAgent")
+export const SucceededBuiltInAgent = m("SucceededBuiltInAgent", {
+  sessionRef: S.String,
+})
+export const FailedBuiltInAgent = m("FailedBuiltInAgent", { error: S.String })
+
 // ── Training launch/readiness feedback ──────────────────────────────────────
 export const ClickedRefreshTrainingRuns = m("ClickedRefreshTrainingRuns")
 export const SelectedTrainingSceneNode = m("SelectedTrainingSceneNode", {
@@ -179,6 +190,11 @@ export const Message = S.Union([
   ChangedAskBody,
   ClickedSubmitIntent,
   SettledSubmitIntent,
+  ClickedRefreshBuiltInAgent,
+  GotBuiltInAgentReadiness,
+  ClickedStartBuiltInAgent,
+  SucceededBuiltInAgent,
+  FailedBuiltInAgent,
   ClickedRefreshTrainingRuns,
   SelectedTrainingSceneNode,
   GotTrainingRuns,

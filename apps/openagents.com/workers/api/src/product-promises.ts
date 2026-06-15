@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-15.3'
+export const PublicProductPromisesVersion = '2026-06-15.4'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -2272,24 +2272,30 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.builtin_compute_agent.v1',
         productArea: 'autopilot',
         audience: ['user', 'public'],
-        state: 'planned',
+        state: 'yellow',
         claim:
           'Autopilot Desktop ships a built-in, out-of-the-box agent so a user with no agent and no API key can install one desktop installer, go online, and have a working agent. It runs on OpenAgents-provided compute — the device’s own compute and/or OpenAgents’ managed cloud model set (e.g. a hosted Gemini set offered free to some users) — so no user-supplied key is required.',
         safeCopy:
-          'This is the planned answer to "I do not have an agent" (launch-day Discord feedback): a built-in agent that needs no user-supplied API key. "OpenAgents compute" is not limited to the device — for some users it is a managed cloud model set (e.g. a hosted Gemini set we offer free) so even a low-power machine gets a working agent; for others it can use local/device compute. As of 2026-06-15 it is NOT shipped — install today still expects you to bring an agent (Claude Code / Codex). Describe it as the near-term stability priority we are building, not a shipped feature. The free hosted tier is bounded/metered (not unlimited).',
+          'Source support is now wired in Autopilot Desktop: the first-screen Go online action and Agent pane call a Bun-owned built-in-agent RPC, check local Pylon + OpenAgents hosted compute readiness, create a managed scratch workspace, enforce a local daily-start cap, and start a bounded cloud-gcp/cloud-shc session with no user-supplied provider key. This is yellow, not green: the already-published rc.2 installer does not contain this source change, and green still needs a signed/notarized recut with packaged OpenAgents compute credentials plus public evidence of a from-install go-online session doing useful work. The free hosted tier is bounded/metered, not unlimited.',
         unsafeCopy:
-          'Do not claim Autopilot already includes a working built-in agent on our compute, that it needs no setup, or that it is free/unmetered, until it ships with public evidence of a from-install go-online session.',
+          'Do not claim the already-published rc.2 installer includes this built-in agent, do not claim green/no-setup availability before a signed recut and live smoke, and do not describe hosted compute as free/unmetered or authority to spend/settle on the user behalf.',
         evidenceRefs: [
           'docs/transcripts/237.md',
           'JUNE15_LAUNCH_PLAN.md',
           'promise:autopilot.desktop_gui_client.v1',
+          'apps/autopilot-desktop/src/shared/builtin-agent.ts',
+          'apps/autopilot-desktop/src/bun/index.ts',
+          'apps/autopilot-desktop/src/ui/view.ts',
+          'apps/autopilot-desktop/tests/builtin-agent.test.ts',
+          'apps/autopilot-desktop/tests/cl-53-foldkit.test.ts',
         ],
         blockerRefs: [
-          'blocker.product_promises.builtin_compute_agent_not_shipped',
-          'blocker.product_promises.openagents_compute_metering_for_builtin_agent_missing',
+          'blocker.product_promises.builtin_compute_agent_signed_recut_missing',
+          'blocker.product_promises.builtin_compute_agent_live_from_install_smoke_missing',
+          'blocker.product_promises.openagents_compute_metering_live_smoke_missing',
         ],
         verification:
-          'Green requires a shipped Autopilot Desktop build whose built-in agent runs on OpenAgents compute with no user API key, a metered/bounded compute path, and public evidence of a from-install go-online session doing useful work.',
+          'Green requires a signed/notarized Autopilot Desktop build containing the built-in-agent source, packaged OpenAgents compute credentials/entitlement, a metered/bounded compute path, and public evidence of a from-install Go online session doing useful work with no user API key.',
         authorityBoundary:
           'A built-in agent is a capability on bounded OpenAgents compute, not unlimited free inference or authority to spend or settle on the user behalf.',
       },

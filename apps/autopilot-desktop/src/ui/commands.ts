@@ -12,7 +12,9 @@ import { getRequest } from "./bridge"
 import { commandErrorText } from "./helpers"
 import {
   FailedCoordinatorToggle,
+  FailedBuiltInAgent,
   FailedSpawn,
+  GotBuiltInAgentReadiness,
   GotTrainingDashboard,
   GotTrainingEvidencePacketSummary,
   GotTrainingOperatorReadiness,
@@ -31,6 +33,7 @@ import {
   SettledRequestTrainingBootstrap,
   SettledResolveApproval,
   SettledSubmitIntent,
+  SucceededBuiltInAgent,
   SucceededDeploy,
   SucceededSpawn,
 } from "./message"
@@ -137,6 +140,25 @@ const emptyTrainingEvidencePacketSummaryProjection = (error: string) => ({
   shardContributionCount: 0,
   distinctPylonCount: 0,
   blockerRefs: ["desktop.training.evidence_packet_request_failed"],
+  error,
+})
+
+const emptyBuiltInAgentReadinessProjection = (error: string) => ({
+  ok: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:builtin-agent-readiness",
+  enabled: false,
+  localPylonReady: false,
+  hostedComputeConfigured: false,
+  userApiKeyRequired: false as const,
+  lane: "cloud-gcp" as const,
+  modelSet: "unknown",
+  maxSessionSeconds: 600,
+  dailySessionCap: 0,
+  dailySessionsUsed: 0,
+  meteringLabel: "unavailable",
+  worktreePathPresent: false,
+  blockerRefs: ["desktop.builtin_agent.readiness_request_failed"],
   error,
 })
 
@@ -275,6 +297,46 @@ export const SubmitIntent = Command.define(
       Effect.succeed(
         SettledSubmitIntent({ ok: false, text: `error: ${errorText(error)}` }),
       ),
+    ),
+  ),
+)
+
+export const LoadBuiltInAgentReadiness = Command.define(
+  "LoadBuiltInAgentReadiness",
+  {},
+  GotBuiltInAgentReadiness,
+)(() =>
+  Effect.tryPromise(() => getRequest().builtinAgentReadiness({})).pipe(
+    Effect.map((projection) => GotBuiltInAgentReadiness({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotBuiltInAgentReadiness({
+          projection: emptyBuiltInAgentReadinessProjection(errorText(error)),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const StartBuiltInAgent = Command.define(
+  "StartBuiltInAgent",
+  {},
+  SucceededBuiltInAgent,
+  FailedBuiltInAgent,
+)(() =>
+  Effect.tryPromise(() => getRequest().startBuiltInAgent({})).pipe(
+    Effect.map((result) =>
+      result.ok
+        ? SucceededBuiltInAgent({ sessionRef: result.sessionRef })
+        : FailedBuiltInAgent({
+            error:
+              result.error ??
+              result.readiness.blockerRefs[0] ??
+              "built-in agent unavailable",
+          }),
+    ),
+    Effect.catch((error) =>
+      Effect.succeed(FailedBuiltInAgent({ error: errorText(error) })),
     ),
   ),
 )

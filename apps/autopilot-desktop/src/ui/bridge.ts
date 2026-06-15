@@ -16,6 +16,8 @@
 
 import type { Message } from "./message"
 import type {
+  BuiltInAgentReadinessResponse,
+  BuiltInAgentStartResponse,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
@@ -40,6 +42,12 @@ export type DesktopRequests = {
     title: string
     body: string
   }): Promise<{ ok: boolean; status: string; error?: string }>
+  builtinAgentReadiness(
+    p: Record<string, never>,
+  ): Promise<BuiltInAgentReadinessResponse>
+  startBuiltInAgent(
+    p: Record<string, never>,
+  ): Promise<BuiltInAgentStartResponse>
   listTrainingRuns(p: Record<string, never>): Promise<TrainingRunsResponse>
   listTrainingDashboard(
     p: Record<string, never>,
@@ -86,6 +94,8 @@ export type DesktopRequests = {
     verify?: string[]
     // #4998: requested execution lane (auto|local|cloud-gcp|cloud-shc).
     lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
+    timeoutSeconds?: number
+    worktreePath?: string
   }): Promise<{ ok: boolean; sessionRef: string; error?: string }>
 }
 

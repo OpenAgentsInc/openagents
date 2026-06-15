@@ -40,6 +40,7 @@ import type {
   ApprovalRow,
   AssignmentRow,
   IntentRow,
+  BuiltInAgentReadinessResponse,
   NodeStateMessage,
   SessionEventRow,
   TrainingEvidencePacketSummaryResponse,
@@ -68,10 +69,12 @@ import {
   ClickedPlanTrainingWindow,
   ClickedQueueTrainingCloseout,
   ClickedReconcileTrainingWindow,
+  ClickedRefreshBuiltInAgent,
   ClickedRefreshTrainingRuns,
   ClickedQueueTrainingLaunch,
   ClickedResolveApproval,
   ClickedRequestTrainingBootstrap,
+  ClickedStartBuiltInAgent,
   ClickedSpawn,
   ClickedSubmitIntent,
   SelectedTrainingSceneNode,
@@ -107,6 +110,7 @@ import {
   modelTrainingEvidencePacketBuild,
   modelTrainingEvidencePacketSummary,
   modelTrainingLease,
+  modelBuiltInAgentReadiness,
   modelNode,
   modelPylonStats,
   modelNotifications,
@@ -133,6 +137,7 @@ const paneTitle = (text: string): Html => h.h1([cls("pane-title")], [text])
 
 const NAV: ReadonlyArray<{ id: PaneId; label: string }> = [
   { id: "network", label: "Network" },
+  { id: "builtin-agent", label: "Agent" },
   { id: "nodes", label: "Nodes" },
   { id: "training", label: "Training" },
   { id: "training-fullscreen", label: "Training Live" },
@@ -2899,6 +2904,97 @@ const decisionsPane = (model: Model): Html => {
   )
 }
 
+// ── Built-in Agent pane (#5063) ─────────────────────────────────────────────
+
+const builtInAgentStatusText = (
+  readiness: BuiltInAgentReadinessResponse | null,
+): string => {
+  if (readiness === null) return "not checked"
+  if (readiness.ok) return "ready"
+  if (!readiness.enabled) return "disabled"
+  if (!readiness.localPylonReady) return "local node offline"
+  if (!readiness.hostedComputeConfigured) return "hosted compute unconfigured"
+  return "blocked"
+}
+
+const builtInAgentPane = (model: Model): Html => {
+  const readiness = modelBuiltInAgentReadiness(model)
+  const blockers = readiness?.blockerRefs ?? []
+  const canStart = readiness === null || readiness.ok
+  const statusVisible = model.builtInAgentStatus.tone !== "idle"
+
+  return h.div(
+    [],
+    [
+      paneTitle("Agent"),
+      card("Built-in Agent", [
+        h.p([cls("card-body")], [
+          "Status: ",
+          h.strong([], [builtInAgentStatusText(readiness)]),
+        ]),
+        h.p([cls("card-body")], [
+          "Compute: ",
+          h.strong([], [
+            readiness?.hostedComputeConfigured
+              ? `OpenAgents hosted · ${readiness.modelSet}`
+              : "OpenAgents hosted",
+          ]),
+        ]),
+        h.p([cls("card-body")], [
+          "User key: ",
+          h.strong([], ["not required"]),
+        ]),
+        h.p([cls("card-body")], [
+          "Bounds: ",
+          h.strong([], [
+            readiness
+              ? `${readiness.meteringLabel} · ${readiness.dailySessionsUsed}/${readiness.dailySessionCap} used today`
+              : "3 sessions/day · 600s/session",
+          ]),
+        ]),
+        h.p([cls("card-body")], [
+          "Lane: ",
+          h.strong([], [readiness ? spawnLaneLabel(readiness.lane) : "Google GCE"]),
+        ]),
+        blockers.length > 0
+          ? h.ul(
+              [cls("empty-state mono")],
+              blockers.map((blocker) => h.li([], [blocker])),
+            )
+          : h.empty,
+        statusVisible
+          ? h.p([cls(`spawn-status spawn-${model.builtInAgentStatus.tone}`)], [
+              model.builtInAgentStatus.text,
+            ])
+          : h.p([cls("spawn-status")], [" "]),
+        h.div(
+          [cls("adapter-toggle")],
+          [
+            h.button(
+              [
+                cls("primary-button"),
+                h.Type("button"),
+                h.Disabled(model.builtInAgentPending || !canStart),
+                h.OnClick(ClickedStartBuiltInAgent()),
+              ],
+              [model.builtInAgentPending ? "Going online..." : "Go online"],
+            ),
+            h.button(
+              [
+                cls("adapter-btn"),
+                h.Type("button"),
+                h.Disabled(model.builtInAgentPending),
+                h.OnClick(ClickedRefreshBuiltInAgent()),
+              ],
+              ["Refresh"],
+            ),
+          ],
+        ),
+      ]),
+    ],
+  )
+}
+
 // ── Spawn pane ────────────────────────────────────────────────────────────────
 
 // #4998: human-readable label for an execution lane in the spawn picker.
@@ -3180,6 +3276,17 @@ const networkPane = (model: Model): Html => {
         h.p([cls("network-subhead")], [
           scene.asOfLabel ? `as of ${scene.asOfLabel}` : "live network",
         ]),
+        h.button(
+          [
+            cls(
+              "pointer-events-auto mt-4 w-fit border border-[var(--outline)] bg-black px-4 py-2 font-mono text-xs font-semibold uppercase tracking-[0.08em] text-[var(--primary)] hover:border-[var(--primary)] disabled:cursor-wait disabled:opacity-60",
+            ),
+            h.Type("button"),
+            h.Disabled(model.builtInAgentPending),
+            h.OnClick(ClickedStartBuiltInAgent()),
+          ],
+          [model.builtInAgentPending ? "Going online..." : "Go online"],
+        ),
       ]),
       h.section([cls("network-stats")], [
         networkStat("working now", networkStatNumber(scene.sessionsOnlineNow), true),
@@ -3195,6 +3302,8 @@ const paneView = (model: Model): Html => {
   switch (model.pane) {
     case "network":
       return networkPane(model)
+    case "builtin-agent":
+      return builtInAgentPane(model)
     case "nodes":
       return nodesPane(model)
     case "training":
