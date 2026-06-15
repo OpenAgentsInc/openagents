@@ -107,6 +107,11 @@ export const Model = ts("AutopilotDesktop", {
   node: S.NullOr(S.Unknown),
   notifications: S.NullOr(S.Unknown),
 
+  // #5025: honest node-launch lifecycle status from the Bun supervisor
+  // (launching/online/adopted/failed/unavailable). Null until the first status
+  // message arrives.
+  nodeLaunchStatus: S.NullOr(S.String),
+
   // Navigation.
   pane: PaneId,
   selectedSessionRef: S.NullOr(S.String),
@@ -258,6 +263,7 @@ export const modelTrainingEvidenceAdmission = (
 export const initialModel: Model = Model.make({
   node: null,
   notifications: null,
+  nodeLaunchStatus: null,
   pane: "nodes",
   selectedSessionRef: null,
   selectedTrainingSceneNodeId: null,

@@ -19,7 +19,11 @@ import { html } from "foldkit/html"
 
 import type { DesktopRPCSchema } from "../shared/rpc"
 import { type DesktopRequests, pushInbound, setRequest } from "./bridge"
-import { GotNodeState, GotNotifications } from "./message"
+import {
+  GotNodeLaunchStatus,
+  GotNodeState,
+  GotNotifications,
+} from "./message"
 import { initialModel, Model } from "./model"
 import { subscriptions } from "./subscriptions"
 import { update } from "./update"
@@ -78,6 +82,9 @@ const rpc = Electroview.defineRPC<DesktopRPCSchema>({
       },
       notifications(view) {
         pushInbound(GotNotifications({ view }))
+      },
+      nodeLaunchStatus(message) {
+        pushInbound(GotNodeLaunchStatus({ status: message.status }))
       },
     },
   },

@@ -13,6 +13,8 @@ import { PaneId, SessionFilter } from "./model"
 // ── Inbound (Electrobun → runtime), pushed by the subscription stream ──────
 export const GotNodeState = m("GotNodeState", { node: S.Unknown })
 export const GotNotifications = m("GotNotifications", { view: S.Unknown })
+// #5025: honest node-launch lifecycle status from the Bun supervisor.
+export const GotNodeLaunchStatus = m("GotNodeLaunchStatus", { status: S.String })
 
 // ── Navigation ─────────────────────────────────────────────────────────────
 export const NavigatedTo = m("NavigatedTo", { pane: PaneId })
@@ -158,6 +160,7 @@ export const SettledCancelSession = m("SettledCancelSession")
 export const Message = S.Union([
   GotNodeState,
   GotNotifications,
+  GotNodeLaunchStatus,
   NavigatedTo,
   SelectedSession,
   ChangedSessionFilter,

@@ -58,6 +58,7 @@ import {
   GotTrainingPromiseGates,
   GotTrainingRuns,
   GotNodeState,
+  GotNodeLaunchStatus,
   NavigatedTo,
   SelectedSession,
   SelectedTrainingSceneNode,
@@ -212,6 +213,20 @@ describe("update reducer (CL-53)", () => {
     const node: NodeStateMessage = { ok: true, schema: "x", sessions: [] }
     const [model] = update(initialModel, GotNodeState({ node }))
     expect(modelNode(model)?.ok).toBe(true)
+  })
+
+  test("GotNodeLaunchStatus stores the launch lifecycle status (#5025)", () => {
+    expect(initialModel.nodeLaunchStatus).toBe(null)
+    const [launching] = update(
+      initialModel,
+      GotNodeLaunchStatus({ status: "launching" }),
+    )
+    expect(launching.nodeLaunchStatus).toBe("launching")
+    const [failed] = update(
+      launching,
+      GotNodeLaunchStatus({ status: "failed" }),
+    )
+    expect(failed.nodeLaunchStatus).toBe("failed")
   })
 
   test("NavigatedTo switches pane and resets expanded events", () => {

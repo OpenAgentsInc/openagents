@@ -433,6 +433,27 @@ const sessionsPreview = (node: NodeStateMessage): Html =>
     ),
   ])
 
+// #5025: honest node-launch lifecycle badge, fed by the Bun supervisor's
+// onStatus over the `nodeLaunchStatus` message. Distinct from the live
+// node-state poll above — this says whether the app launched/adopted/failed to
+// bring up the local node. No fake "online".
+const NODE_LAUNCH_LABEL: Record<string, string> = {
+  launching: "Launching local node…",
+  online: "Local node online",
+  adopted: "Adopted running node",
+  failed: "Local node failed to start",
+  unavailable: "No bundled node (discover-only)",
+}
+
+const nodeLaunchBadge = (model: Model): Html => {
+  const status = model.nodeLaunchStatus
+  if (status === null) return h.empty
+  return h.p(
+    [cls(`node-launch-badge node-launch-${status}`)],
+    [NODE_LAUNCH_LABEL[status] ?? status],
+  )
+}
+
 const nodesPane = (model: Model): Html => {
   const node = modelNode(model)
   const notifications = modelNotifications(model)
@@ -444,6 +465,7 @@ const nodesPane = (model: Model): Html => {
         [cls("node-status")],
         [node ? nodeStatusLine({ ok: node.ok, sessions: node.sessions }) : "connecting…"],
       ),
+      nodeLaunchBadge(model),
       deployCard(model),
       askCard(model),
       approvalsCard(model),

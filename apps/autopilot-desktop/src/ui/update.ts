@@ -97,6 +97,11 @@ export const update = (model: Model, message: Message): Result => {
       return [Model.make({ ...model, node: message.node }), noCommands]
     case "GotNotifications":
       return [Model.make({ ...model, notifications: message.view }), noCommands]
+    case "GotNodeLaunchStatus":
+      return [
+        Model.make({ ...model, nodeLaunchStatus: message.status }),
+        noCommands,
+      ]
 
     // ── Navigation ─────────────────────────────────────────────────────────
     case "NavigatedTo":

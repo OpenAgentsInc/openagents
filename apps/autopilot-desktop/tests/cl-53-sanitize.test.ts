@@ -197,6 +197,20 @@ describe("CL-53 sanitizeTree", () => {
     ).toBe(false)
   })
 
+  test("nodes home shows the node-launch status badge when set, hides it when null (#5025)", () => {
+    const hidden = view({ ...initialModel, nodeLaunchStatus: null })
+    expect(treeContainsClass(hidden.body, "node-launch-badge")).toBe(false)
+
+    const launching = view({ ...initialModel, nodeLaunchStatus: "launching" })
+    expect(treeContainsClass(launching.body, "node-launch-badge")).toBe(true)
+    expect(treeContainsClass(launching.body, "node-launch-launching")).toBe(true)
+    expect(treeContainsText(launching.body, "Launching local node…")).toBe(true)
+
+    const failed = view({ ...initialModel, nodeLaunchStatus: "failed" })
+    expect(treeContainsClass(failed.body, "node-launch-failed")).toBe(true)
+    expect(treeContainsText(failed.body, "Local node failed to start")).toBe(true)
+  })
+
   test("training pane includes the training scene", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)

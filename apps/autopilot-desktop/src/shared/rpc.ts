@@ -637,6 +637,21 @@ export type DesktopRPCSchema = {
       // CL-30: in-app notification center (unread count + recent items),
       // derived from newly notify-worthy sessions on the Bun side.
       readonly notifications: NotificationCenterView
+      // #5025: honest node-launch lifecycle status from the Bun supervisor
+      // (superviseManagedNode), surfaced as a badge in the webview. Distinct
+      // from the live node-state poll: this reflects whether the app launched /
+      // adopted / failed to bring up the local node. No fake "online".
+      readonly nodeLaunchStatus: { readonly status: NodeLaunchStatus }
     }
   }
 }
+
+// #5025: launch-lifecycle status the Bun supervisor emits. Defined here (shared,
+// electrobun-free) so both the Bun launcher and the webview agree; node-launcher
+// re-exports it for its existing importers.
+export type NodeLaunchStatus =
+  | "launching"
+  | "online"
+  | "adopted"
+  | "failed"
+  | "unavailable"

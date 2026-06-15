@@ -2,6 +2,7 @@ import { existsSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { discoverPylonHome } from "./node-home"
 import { readControlToken } from "./pylon-control"
+import type { NodeLaunchStatus } from "../shared/rpc"
 
 // #5011 (JUNE15_LAUNCH_PLAN §0/§4.F): the install seam. Today the desktop only
 // *discovers* an already-running local node; a fresh install therefore reports
@@ -18,24 +19,20 @@ import { readControlToken } from "./pylon-control"
 
 export type NodeLaunchMode = "adopted" | "launched" | "unavailable"
 
-// Honest node-launch status surfaced as Bun-side state (issue #5011 §2). These
-// are *launch-lifecycle* states owned by this module, distinct from the live
-// node-state poll (which projects online/offline from the control server). No
-// fake "online": `online` is set only after the control token + a reachable
-// control server are observed; a readiness timeout or a crash with no restart
-// budget left is `failed`.
+// Honest node-launch status surfaced as Bun-side state (issue #5011 §2),
+// distinct from the live node-state poll (which projects online/offline from the
+// control server). No fake "online": `online` is set only after the control
+// token + a reachable control server are observed; a readiness timeout or a
+// crash with no restart budget left is `failed`. The type is defined in the
+// shared rpc module (#5025) so the webview agrees; re-exported here for the
+// launcher's existing importers.
 //   - launching  : we spawned the child; control server not yet confirmed up.
 //   - online     : control token present + control server reachable.
 //   - adopted    : an already-running node we did not start (never spawned).
 //   - failed     : launch/readiness failed, or the child crashed and exhausted
 //                  its restart budget.
 //   - unavailable: nothing to launch (no repo entry — packaged build, Phase 2).
-export type NodeLaunchStatus =
-  | "launching"
-  | "online"
-  | "adopted"
-  | "failed"
-  | "unavailable"
+export type { NodeLaunchStatus }
 
 export type ManagedNode = {
   readonly mode: NodeLaunchMode

@@ -358,6 +358,8 @@ managedNode = superviseManagedNode({
       `[autopilot-desktop] local node status: ${status}` +
         (managedNode?.home() ? ` (home: ${managedNode.home()})` : ""),
     )
+    // #5025: surface the honest launch-lifecycle status as a webview badge.
+    rpc.send.nodeLaunchStatus({ status })
   },
 })
 
