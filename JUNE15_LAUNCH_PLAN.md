@@ -586,10 +586,15 @@ event + announcement (not code); #5015 builds on the now-merged #5011.
   **DONE.** Webview node-launch **status badge**: the supervisor's
   launching/online/adopted/failed/unavailable status flows Bun→webview and
   renders on the Nodes pane (no fake online). Tests + `verify:training` green.
-- ⬜ **[#5027](https://github.com/OpenAgentsInc/openagents/issues/5027)** —
-  **#5011 Phase 2 packaging:** the *downloaded* signed `.app` (+Linux) must
-  launch the node too, smokes, announced==admitted build. **This is the "try a
-  release build on mac" endpoint.**
+- 🔄 **[#5027](https://github.com/OpenAgentsInc/openagents/issues/5027)** —
+  **#5011 Phase 2 packaging — the "try a release build on mac" endpoint:
+  REACHED (unsigned).** `bun run build:canary` produces a mac `.app` that bundles
+  the headless Pylon node at `Contents/Resources/app/pylon-node/index.js` (where
+  `findPackagedPylonEntry` resolves it; verified by a test that extracts the real
+  build tarball). So the packaged app builds and would launch the node like the
+  dev path. **Kept open for owner-gated remainder:** codesign + notarization
+  (Gatekeeper), OTA feed pinning (announced==admitted), the Linux path, and a
+  clean-machine first-run→node-online smoke.
 
 ### Pylon: headless, CLI-only, agent-steerable (delete the TUI) — June 15 — ✅ EPIC DONE
 - ✅ Epic **[#5033](https://github.com/OpenAgentsInc/openagents/issues/5033)** —
