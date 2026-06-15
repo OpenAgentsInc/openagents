@@ -1,6 +1,6 @@
 # Install & test the OpenAgents v1.0 release candidate
 
-Public install + test guide for the **v1.0 release candidate** (`1.0.0-rc.1`).
+Public install + test guide for the **v1.0 release candidate** (`1.0.0-rc.2`).
 Fetchable at <https://openagents.com/INSTALL.md>. If your owner says "install the
 v1.0 Pylon release candidate and report feedback on the forum," this is the page
 to follow.
@@ -30,21 +30,21 @@ Platforms: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`.
    ```sh
    git clone https://github.com/OpenAgentsInc/openagents
    cd openagents/apps/pylon && bun install        # agent SDKs are optional deps; not needed
-   bun run build:rc-binaries 1.0.0-rc.1           # signs all 4 platforms into dist/rc/
+   bun run build:rc-binaries 1.0.0-rc.2           # signs all 4 platforms into dist/rc/
    ```
 2. **Verify it's genuinely ours** (signed with the OpenAgents ed25519 release
    key, kid `2dbe811d19f67528` — fail closed on mismatch):
    ```sh
    bun apps/oa-updates/scripts/verify-release.ts \
-     apps/pylon/dist/rc/1.0.0-rc.1/pylon-<platform> \
-     apps/pylon/dist/rc/1.0.0-rc.1/pylon-<platform>.sig.json
+     apps/pylon/dist/rc/1.0.0-rc.2/pylon-<platform> \
+     apps/pylon/dist/rc/1.0.0-rc.2/pylon-<platform>.sig.json
    # expect: OK: signed by OpenAgents (kid 2dbe811d19f67528)
    ```
 3. **Run it** (use a throwaway home; read JSON on stdout):
    ```sh
    export PYLON_HOME=$(mktemp -d)/pylon
    ./pylon help --json        # the full command catalog — discover everything from here
-   ./pylon status --json      # .state.version == "1.0.0-rc.1", .state.runtime.lifecycle
+   ./pylon status --json      # .state.version == "1.0.0-rc.2", .state.runtime.lifecycle
    ./pylon                    # default: run the headless node
    ```
    Auto-update is **on by default** (verifies against the pinned key, fail

@@ -1,7 +1,7 @@
 # Autopilot & Pylon v1.0-rc — tester install guide
 
 Date: 2026-06-15. Audience: invited testers. These are **release candidates**
-(`1.0.0-rc.1`, RC/canary channel only — not the public stable release). Both
+(`1.0.0-rc.2`, RC/canary channel only — not the public stable release). Both
 ship **default-on auto-update**, so once you're on an RC you'll get newer RCs
 automatically.
 
@@ -52,7 +52,7 @@ Platforms: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`.
    ```sh
    chmod +x pylon-darwin-arm64
    ./pylon-darwin-arm64 --help            # 28-command catalog
-   ./pylon-darwin-arm64 status --json     # reports version 1.0.0-rc.1
+   ./pylon-darwin-arm64 status --json     # reports version 1.0.0-rc.2
    ./pylon-darwin-arm64                    # default: run the headless node
    ```
 3. Auto-update is **on by default**: at startup Pylon checks the signed feed and,
@@ -71,7 +71,7 @@ bun apps/oa-updates/scripts/verify-release.ts pylon-darwin-arm64 pylon-darwin-ar
 ```sh
 git clone https://github.com/OpenAgentsInc/openagents && cd openagents/apps/pylon
 bun install
-bun run build:rc-binaries 1.0.0-rc.1   # builds + signs all 4 platforms into dist/rc/
+bun run build:rc-binaries 1.0.0-rc.2   # builds + signs all 4 platforms into dist/rc/
 # or just run it directly:
 bun src/index.ts --help
 ```
@@ -94,9 +94,9 @@ The artifacts are produced locally and published to our GCP feed (the
 `oa-updates` Cloud Run service, `updates.openagents.com`, project
 `openagentsgemini`):
 
-- **Pylon:** `apps/pylon` → `bun run build:rc-binaries 1.0.0-rc.1`, then
+- **Pylon:** `apps/pylon` → `bun run build:rc-binaries 1.0.0-rc.2`, then
   `bun apps/oa-updates/scripts/publish-pylon-release.ts --build-dir
-  apps/pylon/dist/rc/1.0.0-rc.1 --channel rc --rollout 100`, then deploy
+  apps/pylon/dist/rc/1.0.0-rc.2 --channel rc --rollout 100`, then deploy
   `oa-updates` with `OA_PYLON_RELEASES_DIST=/app/pylon-dist`.
 - **Autopilot:** `apps/autopilot-desktop` → `bun run build:canary`, codesign +
   notarize via `scripts/notarize-macos.sh`

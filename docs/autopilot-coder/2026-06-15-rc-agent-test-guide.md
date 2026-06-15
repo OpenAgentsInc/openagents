@@ -4,7 +4,7 @@ Date: 2026-06-15 (rev 2). **Audience: a tester's coding/automation agent**
 (Claude Code, Codex, an Autopilot/Pylon node, etc.) — not a human. Copy-pasteable
 script to install a release candidate, exercise it headlessly, and report
 structured results. Every step emits machine-readable JSON to assert on. RC
-channel only (`1.0.0-rc.1`).
+channel only (`1.0.0-rc.2`).
 
 > **No coding agent SDK required.** The entire core test — signature
 > verification, every `--json` command, and booting the node — works on a vanilla
@@ -26,7 +26,7 @@ Return one JSON object:
 ```json
 {
   "platform": "darwin-arm64",
-  "pylonVersion": "1.0.0-rc.1",
+  "pylonVersion": "1.0.0-rc.2",
   "signatureVerified": true,
   "commandsOk": ["help","bootstrap","context","status","balance","memories","update-check"],
   "commandsFailed": [],
@@ -62,8 +62,8 @@ curl -fsS "$URL" -o pylon && chmod +x pylon
 ```sh
 git clone https://github.com/OpenAgentsInc/openagents
 cd openagents/apps/pylon && bun install
-bun run build:rc-binaries 1.0.0-rc.1          # builds + signs all 4 platforms into dist/rc/
-cp "dist/rc/1.0.0-rc.1/pylon-$PLAT" ../../pylon && chmod +x ../../pylon
+bun run build:rc-binaries 1.0.0-rc.2          # builds + signs all 4 platforms into dist/rc/
+cp "dist/rc/1.0.0-rc.2/pylon-$PLAT" ../../pylon && chmod +x ../../pylon
 ```
 
 ## 2. Verify provenance (must pass — fail closed)
@@ -72,8 +72,8 @@ Signed with the OpenAgents ed25519 release key (kid `2dbe811d19f67528`):
 ```sh
 # from a source checkout, against the pinned key:
 bun apps/oa-updates/scripts/verify-release.ts \
-  apps/pylon/dist/rc/1.0.0-rc.1/pylon-$PLAT \
-  apps/pylon/dist/rc/1.0.0-rc.1/pylon-$PLAT.sig.json
+  apps/pylon/dist/rc/1.0.0-rc.2/pylon-$PLAT \
+  apps/pylon/dist/rc/1.0.0-rc.2/pylon-$PLAT.sig.json
 # expect: OK: ... signed by OpenAgents (kid 2dbe811d19f67528)
 ```
 A mismatch is a **hard fail** — stop. Set `signatureVerified` accordingly.
@@ -91,7 +91,7 @@ export PYLON_OPENAGENTS_BASE_URL=https://openagents.com
 B=./pylon   # the binary under test
 
 $B help --json      2>/dev/null   # catalog of commands
-$B bootstrap --json 2>/dev/null   # assert .version == "1.0.0-rc.1"   (top-level)
+$B bootstrap --json 2>/dev/null   # assert .version == "1.0.0-rc.2"   (top-level)
 $B context --json   2>/dev/null   # assert .schema starts "openagents.pylon.context"
 $B status --json    2>/dev/null   # SEE SHAPE BELOW
 $B balance --json   2>/dev/null   # assert .balance.balanceMsat is a number  (the #5038 fix)
@@ -106,7 +106,7 @@ $B update --check --json 2>/dev/null   # SEE NOTE BELOW
 {
   "kind": "status",
   "state": {
-    "version": "1.0.0-rc.1",          // <-- .state.version, NOT top-level .version
+    "version": "1.0.0-rc.2",          // <-- .state.version, NOT top-level .version
     "runtime": { "lifecycle": "offline" }  // <-- .state.runtime.lifecycle
   }
 }

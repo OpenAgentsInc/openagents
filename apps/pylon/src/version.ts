@@ -6,7 +6,7 @@
 // authoritative for the running binary.
 //
 // Bump for each release cut. v1.0-rc cut: 2026-06-15 (#5047).
-export const PYLON_VERSION = "1.0.0-rc.1"
+export const PYLON_VERSION = "1.0.0-rc.2"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.

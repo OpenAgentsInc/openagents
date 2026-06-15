@@ -13,7 +13,7 @@ function devDoctorFixture(): PylonDevDoctorProjection {
     observedAt: "2026-06-12T12:00:00.000Z",
     package: {
       name: "@openagentsinc/pylon",
-      version: "1.0.0-rc.1",
+      version: "1.0.0-rc.2",
       sourceCommit: "f".repeat(40),
     },
     repo: {

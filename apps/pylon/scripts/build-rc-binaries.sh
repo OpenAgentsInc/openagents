@@ -7,7 +7,7 @@
 # Output: dist/rc/<version>/pylon-<platform> + .sig.json + manifest.json (gitignored)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="${1:-1.0.0-rc.1}"
+VERSION="${1:-1.0.0-rc.2}"
 CHANNEL="${OA_PYLON_CHANNEL:-rc}"
 OUT="dist/rc/$VERSION"
 SIGNER="../oa-updates/scripts/sign-release.ts"
