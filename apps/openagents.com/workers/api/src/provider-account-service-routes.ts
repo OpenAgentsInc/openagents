@@ -1,5 +1,10 @@
 import type { AutopilotTokenUsage } from '@openagentsinc/sync-schema'
 
+import {
+  BUILTIN_COMPUTE_AGENT_GRANT_ENDPOINT,
+  executeBuiltinComputeAgentGrant,
+  makeD1BuiltinComputeAgentStore,
+} from './builtin-compute-agent-grant'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {
   optionalBoolean,
@@ -677,6 +682,75 @@ export const makeProviderAccountServiceHandlers = <
         ...(runnerSessionId === undefined ? {} : { runnerSessionId }),
       }),
     )
+  },
+
+  // Keyless, quota-gated hosted-compute grant for a no-key user's built-in
+  // agent. Unlike handleGoogleGeminiGrantResolveApi (which resolves an existing
+  // provider-account grantRef), this route mints a free-tier grant for the
+  // authenticated agent's user WITHOUT requiring a prior grant. It is
+  // COST/SECURITY-SENSITIVE: it gates access to the shared hosted Gemini key.
+  //
+  // - Inert by default: if GEMINI_API_KEY is not configured, it grants nothing
+  //   and returns a clean hosted_compute_not_configured error (503).
+  // - Over the per-user free-tier daily budget -> builtin_agent_quota_exhausted
+  //   (429) with remaining/reset info; grants nothing.
+  // - The response carries only the redacted secret-ref materialization, never
+  //   the raw key.
+  handleGoogleGeminiBuiltinGrantApi: async (request: Request, env: Env) => {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const actor = await dependencies.requireProviderServiceActor(request, env)
+
+    if (actor === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const hostedKeyConfigured =
+      env.GEMINI_API_KEY !== undefined && env.GEMINI_API_KEY.trim() !== ''
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const providerAccountRef = optionalString(body.providerAccountRef)
+    const runnerSessionId =
+      optionalString(body.runnerSessionId) ?? optionalString(body.runId)
+
+    const result = await executeBuiltinComputeAgentGrant({
+      hostedKeyConfigured,
+      session: { user: { id: actor.user.id } },
+      store: makeD1BuiltinComputeAgentStore(openAgentsDatabase(env)),
+      ...(providerAccountRef === undefined ? {} : { providerAccountRef }),
+      ...(runnerSessionId === undefined ? {} : { runnerSessionId }),
+    })
+
+    if (result.kind === 'not_configured') {
+      return noStoreJsonResponse(
+        {
+          error: 'hosted_compute_not_configured',
+          message:
+            'Built-in hosted compute is not provisioned. No grant was issued.',
+        },
+        { status: 503 },
+      )
+    }
+
+    if (result.kind === 'quota_exhausted') {
+      return noStoreJsonResponse(
+        {
+          dailyTokenCeiling: result.dailyTokenCeiling,
+          error: 'builtin_agent_quota_exhausted',
+          message:
+            'Built-in hosted-compute free daily limit reached. No grant was issued.',
+          resetsAt: result.resetsAt,
+          sessionsRemaining: result.sessionsRemaining,
+        },
+        { status: 429 },
+      )
+    }
+
+    return noStoreJsonResponse({ grant: result.grant, status: 'issued' })
   },
 
   handleGoogleGeminiGenerateContentApi: async (

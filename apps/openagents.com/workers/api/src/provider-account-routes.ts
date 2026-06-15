@@ -32,6 +32,10 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     request: Request,
     env: Bindings,
   ) => RouteEffect
+  handleGoogleGeminiBuiltinGrantApi: (
+    request: Request,
+    env: Bindings,
+  ) => RouteEffect
   handleGoogleGeminiGenerateContentApi: (
     request: Request,
     env: Bindings,
@@ -136,6 +140,14 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     ) {
       return routeEffectOrResponse(
         dependencies.handleGoogleGeminiGrantResolveApi(request, env),
+      )
+    }
+
+    if (
+      url.pathname === '/api/provider-accounts/google-gemini/grants/builtin'
+    ) {
+      return routeEffectOrResponse(
+        dependencies.handleGoogleGeminiBuiltinGrantApi(request, env),
       )
     }
 

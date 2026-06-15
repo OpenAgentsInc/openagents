@@ -5658,6 +5658,13 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         env,
       ),
     ),
+  handleGoogleGeminiBuiltinGrantApi: (request, env) =>
+    routeEffect('handle_google_gemini_builtin_grant_api', () =>
+      providerAccountServiceHandlers.handleGoogleGeminiBuiltinGrantApi(
+        request,
+        env,
+      ),
+    ),
   handleGoogleGeminiGenerateContentApi: (request, env, ctx, model) =>
     routeEffect('handle_google_gemini_generate_content_api', () =>
       providerAccountServiceHandlers.handleGoogleGeminiGenerateContentApi(
