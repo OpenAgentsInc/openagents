@@ -1,6 +1,7 @@
 import { define as defineCustomElement } from 'foldkit/customElement'
 import type { Attribute, Html } from 'foldkit/html'
 
+import { currentUnixMs } from '../time-format'
 import {
   liveCopyInstructionsTagName,
   registerLiveCopyInstructionsElement,
@@ -138,7 +139,7 @@ const makePylonLaunchGateElement = (): CustomElementConstructor =>
         copyLayer.removeAttribute('aria-hidden')
       }
 
-      if (isPylonLaunchDeadlinePassed(Date.now())) {
+      if (isPylonLaunchDeadlinePassed(currentUnixMs())) {
         showCopyInstructions()
         return
       }
