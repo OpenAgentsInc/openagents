@@ -430,3 +430,72 @@ it + corpus count grows.
 > first receipts at `<leaderboard URL>`, corpus growing toward Tassadar. (Word it
 > to what §6 actually shows; never claim a payout without a dereferenceable
 > receipt.)
+
+---
+
+## 11. The other Episode 237 promises (beyond the training run)
+
+§1–§10 drive the **training loop** to a paid stranger. But the Episode 237
+announcement (`docs/transcripts/237.md`) and its essays
+(`jun15/essay.md` "You Must Construct Additional Pylons",
+`docs/autopilot-coder/2026-06-14-the-second-engine-network-effects-agent-time-growth-essay.md`,
+`docs/autopilot-coder/2026-06-14-the-load-bearing-wall-verification-accepted-work-essay.md`)
+make a wider set of claims. Each must map to a promise ID whose **current
+registry state already supports the wording** (`/api/public/product-promises`,
+`2026-06-14.4`). This section is the launch-copy boundary for everything the
+video says that is **not** the Tassadar run. It does not flip any state; the
+registry stays the authority and every flip stays receipt-first
+(`proof.claim_upgrade_receipts.v1`).
+
+### 11.1 Claim → promise → state → copy boundary
+
+| Episode 237 claim | Promise ID | State | Launch copy boundary |
+| --- | --- | --- | --- |
+| "Today we launch Autopilot, our core product" / desktop app for Mac/Linux | `autopilot.desktop_gui_client.v1` | yellow | Say "download the first Autopilot desktop release candidate (Mac/Linux)"; it is the cockpit over a local node. Do **not** say "stable/GA," and honor the §0 bundle-the-node seam (#5011). |
+| "First and final version launched by humans; future releases shaped by Autopilot itself" | `artanis.tassadar_evolution_loop.v1` | yellow | Aspirational/direction; the self-improvement loop is yellow. Frame as the goal, not a shipped fact. |
+| "At the core of every Autopilot is Pylon" / install the node | `pylon.v03_release_candidate.v1`, `pylon.release_tomorrow.v1` | yellow | Pylon is `@openagentsinc/pylon@0.3.0-rc2`, rc not stable. Reconcile to "Autopilot is the install, Pylon is the node it drives" (§0 follow-up). |
+| "Autopilot can spawn new Pylons on machines you give it access to" | `autopilot.control_center_fanout_marketplace.v1` | yellow | Fan-out is yellow; describe as available/operator-gated, not a one-click swarm. |
+| "Pylon packages Psionic for inference, embeddings, distributed training" | `pylon.cli_tui_probe_background.v1` (green), `pylon.compute_revenue_modes.v1` (planned) | mixed | The runtime exists (green); **paid** inference/embeddings revenue is planned and per owner directive (2026-06-10) there are **no inference products** at this time. Don't claim inference earning. |
+| "Largest decentralized training run, ever / beat ~200 contributors" | `pylon.largest_decentralized_training_claim.v1` | red | **Do not claim "largest"** until the §5 participant-count rule clears. |
+| "One piece of software that earns Bitcoin in multiple ways" | `pylon.v0_3_multi_earning_node.v1`, `pylon.five_bitcoin_revenue_streams.v1` | red / planned | Claim the **specific green subloops** (Forum tips, agent-labor, coding work), not the umbrella. |
+| "Percepta Executor Class / Tassadar model; LLMs as computers" | `models.tassadar_percepta_executor.v1` (red), `compute.tassadar_executor_poc.v1` (green) | mixed | Say we're **launching the run that trains it** and the bounded executor **PoC is green (replay only)**. Do **not** say Tassadar is trained / replaces a CPU. |
+| "Marketplace of WASM plugins" | *no promise record yet* | n/a | Explicitly **experimental, high-risk/high-reward, not live.** Needs a new conservative promise record before any copy (see 11.2). |
+| "Coding harness like Claude Code on steroids, 10× better" | `autopilot.codex_probe_pylon_successor.v1` | green (direction) | The Codex-oriented runtime direction is green; "10× / on steroids" is marketing puffery — keep it clearly aspirational, the harness is "still a work in progress" (the transcript says so). |
+| "Companion mobile app" | `mobile.autopilot_remote_control.v1` | planned | Do **not** announce a shipped mobile app; it is planned. |
+| "Every Pylon and Autopilot has a built-in Bitcoin wallet + Nostr keypair" | `payments.money_dev_kit.v1` (yellow), `agents.cursor_forum_wallet.v1` (green) | mixed | Wallet + Nostr identity per node is real for the agent surface (green); keep payout/settlement language strict (`paid ≠ settled ≠ accepted`). |
+| "Open source; feature requests / bug reports / analysis welcome; Forum, Discord" | `repo.open_source_code_map.v1`, `agents.one_instruction_sheet.v1` | green | Fully green. Route bug reports to the strict issue form, loose reports to the Product Promises Forum. |
+| "Agents arrive, earn for their owner, point at useful work" | `labor.forum_work_requests.v1`, `labor.nostr_negotiation_market.v1`, `forum.content_tipping.v1` | green | Green — this is the strongest "agent gets paid" story; lead the **agent engine** copy here. |
+
+### 11.2 Registry follow-ups this surfaces (separate Worker pass, not this doc)
+
+These are **recommendations** for the promise registry
+(`apps/openagents.com/workers/api/src/product-promises.ts`); applying them is a
+receipt-first Worker deploy, not a launch-plan edit:
+
+1. **Add a WASM-plugin-marketplace promise record** (e.g.
+   `marketplace.wasm_plugins.v1`, state `planned`/`red`) — the transcript makes
+   this claim and the registry has no record for it, so there is no copy gate
+   guarding it.
+2. **Reconcile the install positioning** — `pylon.v03_release_candidate.v1`,
+   `pylon.release_tomorrow.v1`, and `pylon.install_without_wallet_knowledge.v1`
+   still frame the install as a standalone Pylon; Episode 237 makes **Autopilot
+   Desktop** the install with Pylon as the node it drives (§0). Update safeCopy
+   to the Autopilot-is-the-install framing.
+3. **Make the wallet+Nostr-per-node claim explicit** — the "every Pylon and
+   Autopilot has a built-in Bitcoin wallet + Nostr keypair" claim is implied by
+   `agents.cursor_forum_wallet.v1` / `payments.money_dev_kit.v1` but not stated
+   as its own node-identity promise; consider a record so the launch copy has a
+   single ID to cite.
+4. **Bump `PublicProductPromisesVersion`** when any of the above land, and record
+   the matching `promise_transition` receipts.
+
+### 11.3 The one rule (restated for the wider claims)
+
+Same rule as §6/§7, applied to the whole video: **every sentence maps to a
+promise ID whose state already supports it.** Lead with the greens (Forum tips,
+agent-labor market, open-source code map, agent wallet/identity, the live
+Tassadar run), frame the reds/yellows (largest-run, multi-earning umbrella,
+trained Tassadar, WASM plugins, mobile app, self-improving releases) as the
+direction we are **opening**, and never describe a payout nobody can
+dereference. The load-bearing essay's line is the gate: *a payment a recipient
+cannot dereference is not a payment; it is a bug wearing money.*
