@@ -21,9 +21,7 @@ export const view = (): Html => {
         Ui.className<Message>('absolute inset-0 block h-full w-full'),
       ]),
       pylonCountdownView<Message>([
-        Ui.className<Message>(
-          'pointer-events-none absolute inset-0 z-10 block',
-        ),
+        Ui.className<Message>('pointer-events-none absolute inset-0 z-10'),
       ]),
     ],
   )

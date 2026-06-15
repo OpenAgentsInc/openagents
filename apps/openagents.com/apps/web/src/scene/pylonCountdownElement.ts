@@ -48,12 +48,25 @@ const slotTextCss = `
 }
 `
 
+// Centering is handled by an absolutely-positioned wrapper inside the shadow
+// rather than via `:host { display: grid }`. An outer Tailwind utility on the
+// host (e.g. `block`) outranks `:host` display in the cascade, which would
+// silently drop `place-items` and leave the text in top-left block flow. The
+// wrapper fills the overlay and centers regardless of the host's display, and
+// still works if the host's positioning class never applies (it then anchors
+// to the nearest positioned ancestor — the relative page container).
 const hostCss = `
 :host {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.countdown-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
 }
 .countdown {
@@ -86,10 +99,14 @@ const makePylonCountdownElement = (): CustomElementConstructor =>
       const style = document.createElement('style')
       style.textContent = `${hostCss}\n${slotTextCss}`
 
+      const overlay = document.createElement('div')
+      overlay.className = 'countdown-overlay'
+
       const target = document.createElement('div')
       target.className = 'countdown'
+      overlay.append(target)
 
-      shadow.append(style, target)
+      shadow.append(style, overlay)
 
       this.#handle = mountPylonCountdown(target)
     }
