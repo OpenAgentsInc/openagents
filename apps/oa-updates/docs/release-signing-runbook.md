@@ -72,6 +72,55 @@ published feed manifests is tracked in #5043 / the OTA epic #5039.)
 4. Mark the old `kid` revoked in the key set + transparency log; clients reject it.
 5. Never reuse a compromised key.
 
+## Apple Developer ID (macOS code signing / notarization)
+
+Separate from the ed25519 release key above. The **Developer ID Application**
+cert signs + notarizes the Autopilot Desktop `.app`/`.dmg` so Gatekeeper accepts
+it (#5048 / Autopilot v1.0-rc #5046). It does **not** sign Pylon CLI binaries —
+those use the ed25519 release key; headless Pylon needs no Apple signing.
+
+- **Identity:** `Developer ID Application: OpenAgents, Inc. (HQWSG26L43)`, issued
+  by Apple Developer ID CA (G2), team `HQWSG26L43`, valid 2026-06-15 → 2031.
+  Created from an `openssl`-generated CSR (not Keychain Access) so the private
+  key lives in `.secrets/` like the other release keys.
+- **Local material:** `~/work/.secrets/developer-id/` (mode 700, gitignored) —
+  `developerID_application.key` (private), `.cer`/`.pem` (issued leaf),
+  `DeveloperIDG2CA.pem` (Apple intermediate), `developerID_application.p12`
+  (key+cert+chain), `p12-password.env` (the `.p12` passphrase).
+- **Keychain:** the `.p12` is imported into the login keychain, so `codesign` /
+  `notarytool` resolve the identity. `security find-identity -v -p codesigning`
+  must list `HQWSG26L43`.
+- **Env wiring:** `.secrets/appstoreconnect.env` sets
+  `OA_DEVELOPER_ID_APPLICATION="Developer ID Application: OpenAgents, Inc. (HQWSG26L43)"`
+  (quoted — value has spaces/parens) alongside the `ASC_API_*` notary key.
+  `apps/autopilot-desktop/scripts/notarize-macos.sh` reads both.
+
+### Backup & recovery (device loss)
+
+Canonical backup is **GCP Secret Manager** (project `openagentsgemini`),
+hash-verified equal to the local `.p12`:
+- `developer-id-application-p12` — base64 of the `.p12`
+- `developer-id-application-p12-password` — the passphrase
+
+Recover on a fresh Mac:
+```sh
+mkdir -p ~/work/.secrets/developer-id && chmod 700 ~/work/.secrets/developer-id
+gcloud secrets versions access latest --secret=developer-id-application-p12 \
+  --project=openagentsgemini | base64 -d > ~/work/.secrets/developer-id/developerID_application.p12
+PASS=$(gcloud secrets versions access latest --secret=developer-id-application-p12-password \
+  --project=openagentsgemini)
+security import ~/work/.secrets/developer-id/developerID_application.p12 \
+  -k ~/Library/Keychains/login.keychain-db -P "$PASS" \
+  -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign
+security find-identity -v -p codesigning | grep HQWSG26L43   # confirm
+```
+On device **compromise**: revoke the cert in the Apple Developer portal, issue a
+new one from a fresh CSR, re-import, and rotate the GCP secret versions.
+
+> The `.p12` was built with `openssl pkcs12 -export -legacy -certpbe
+> PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1` — openssl 3 defaults produce
+> a `.p12` the macOS Security framework can't import ("MAC verification failed").
+
 ## Custody note
 
 Long-term the private key should live **only** in KMS/HSM and never touch a laptop
