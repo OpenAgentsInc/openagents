@@ -2613,7 +2613,14 @@ export const readForumTopicDetail = (
       return null
     }
 
-    const limit = options.limit ?? 50
+    // Load the full thread by default so a direct link to any post (e.g. a
+    // permalink to post #51+) resolves on the topic page — the client scrolls to
+    // the post element, which must be present in the DOM. The previous default
+    // of 50 capped the page and silently dropped later posts, so deep links to
+    // them landed on "page 1" with nothing to scroll to. 500 covers every
+    // current thread; `hasMore` below stays honest if a thread ever exceeds it
+    // (the scalable follow-up is client load-more over /topics/{id}/posts).
+    const limit = options.limit ?? 500
     const postOrderDirection =
       options.postSortDirection === 'desc' ? 'DESC' : 'ASC'
     const posts = yield* d1Effect('forum.readTopicDetail.posts', () =>
@@ -2658,8 +2665,16 @@ export const readForumTopicDetail = (
       latestTopicId: topic.topicId,
     })
 
+    // Honest pagination: hasMore only if the query actually hit the limit (a
+    // thread larger than `limit`). Never claim "no more" while truncating.
+    const cappedAtLimit = (posts.results ?? []).length >= limit
     return decodeForumTopicDetailResponse({
-      pagination: defaultPagination(limit),
+      pagination: {
+        cursor: null,
+        hasMore: cappedAtLimit,
+        limit,
+        nextCursor: null,
+      },
       posts: postsWithTipStats(topicPosts, tipStats),
       topic: topicWithLastPost(topic, lastPost),
     })
