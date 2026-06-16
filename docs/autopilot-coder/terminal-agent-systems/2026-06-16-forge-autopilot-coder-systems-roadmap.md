@@ -177,6 +177,12 @@ Implementation status, 2026-06-16: #5130 renders that projection in the
 disabled control buttons, explicit blocker refs, empty/no-session handling, and
 unsafe-ref omission coverage.
 
+Implementation status, 2026-06-16: #5131 adds
+`projectForgeSessionSummaryReceipt()`, a refs-only public-safe receipt over the
+session navigation projection with source/state counts, safe session/evidence
+refs, control blocker refs, non-authority flags, and unsafe-title/ref omission
+regressions.
+
 ### G4 - Context Assembly, Repository Memory, And Onboarding
 
 Systems: system 12 Context Assembly, system 18 Repository Memory/Onboarding,

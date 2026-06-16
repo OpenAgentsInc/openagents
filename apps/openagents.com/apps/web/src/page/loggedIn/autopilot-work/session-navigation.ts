@@ -65,11 +65,69 @@ export type ForgeSessionNavigationView = Readonly<{
   workOrderRef: string
 }>
 
+export type ForgeSessionSummaryReceiptItem = Readonly<{
+  artifactRefs: ReadonlyArray<string>
+  bridgeRefs: ReadonlyArray<string>
+  checkpointRefs: ReadonlyArray<string>
+  controlBlockerRefs: ReadonlyArray<string>
+  eventRefs: ReadonlyArray<string>
+  observedAt: string | null
+  sessionRef: string
+  source: ForgeSessionSource
+  state: ForgeSessionState
+}>
+
+export type ForgeSessionSummaryReceipt = Readonly<{
+  authority: Readonly<{
+    cancelControlAuthority: false
+    forkControlAuthority: false
+    resumeControlAuthority: false
+    rewindControlAuthority: false
+    runtimeExecutionProof: false
+  }>
+  blockerRefs: ReadonlyArray<string>
+  controlBlockerRefs: ReadonlyArray<string>
+  countsBySource: Readonly<Record<ForgeSessionSource, number>>
+  countsByState: Readonly<Record<ForgeSessionState, number>>
+  exportedAt: string
+  generatedAt: string
+  itemCount: number
+  items: ReadonlyArray<ForgeSessionSummaryReceiptItem>
+  omittedUnsafeRefCount: number
+  provenance: 'refs_only_session_summary'
+  publicSafe: true
+  receiptKind: 'forge_session_summary_export.v1'
+  receiptRef: string
+  safeEvidenceRefs: ReadonlyArray<string>
+  safeSessionRefs: ReadonlyArray<string>
+  status: ForgeSessionNavigationStatus
+  workOrderRef: string
+}>
+
+export type ForgeSessionSummaryReceiptInput = Readonly<{
+  exportedAt: string
+  view: ForgeSessionNavigationView
+}>
+
 type RefBundle = Readonly<{
   omittedUnsafeRefCount: number
   refs: ReadonlyArray<string>
 }>
 
+const SESSION_SOURCES: ReadonlyArray<ForgeSessionSource> = [
+  'bridge',
+  'claude',
+  'codex',
+  'pylon',
+]
+const SESSION_STATES: ReadonlyArray<ForgeSessionState> = [
+  'cancelled',
+  'completed',
+  'failed',
+  'queued',
+  'running',
+  'unknown',
+]
 const SAFE_SESSION_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const PRIVATE_SESSION_MARKERS: ReadonlyArray<RegExp> = [
   /diff --git/i,
@@ -96,6 +154,18 @@ const safeRef = (value: string): string | null => {
     !PRIVATE_SESSION_MARKERS.some(marker => marker.test(trimmed))
     ? trimmed
     : null
+}
+
+const safeTitle = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim()
+
+  if (trimmed === undefined || trimmed === '') {
+    return null
+  }
+
+  return PRIVATE_SESSION_MARKERS.some(marker => marker.test(trimmed))
+    ? null
+    : trimmed.slice(0, 120)
 }
 
 const safeRefs = (
@@ -198,6 +268,7 @@ const normalizeSessions = (
   }>(
     (state, session) => {
       const sessionRef = safeRef(session.sessionRef)
+      const title = safeTitle(session.title)
       const artifactRefs = safeRefs(session.artifactRefs)
       const bridgeRefs = safeRefs(session.bridgeRefs)
       const checkpointRefs = safeRefs(session.checkpointRefs)
@@ -207,7 +278,13 @@ const normalizeSessions = (
         bridgeRefs.omittedUnsafeRefCount +
         checkpointRefs.omittedUnsafeRefCount +
         eventRefs.omittedUnsafeRefCount +
-        (sessionRef === null ? 1 : 0)
+        (sessionRef === null ? 1 : 0) +
+        (session.title !== undefined &&
+        session.title !== null &&
+        session.title.trim() !== '' &&
+        title === null
+          ? 1
+          : 0)
 
       if (sessionRef === null) {
         return {
@@ -229,7 +306,7 @@ const normalizeSessions = (
             sessionRef,
             source,
             state: session.state ?? 'unknown',
-            title: session.title?.trim() || sourceTitle(source),
+            title: title ?? sourceTitle(source),
           },
         ],
         omitted: state.omitted + omitted,
@@ -274,5 +351,112 @@ export const projectForgeSessionNavigation = (
     omittedUnsafeRefCount,
     status: statusForItems(items),
     workOrderRef: input.workOrderRef,
+  }
+}
+
+const actionBlockerRefs = (
+  item: ForgeSessionNavigationItem,
+): ReadonlyArray<string> =>
+  Array.from(
+    new Set(
+      Object.values(item.actions).flatMap(actionState => actionState.blockerRefs),
+    ),
+  )
+
+const evidenceRefs = (item: {
+  artifactRefs: ReadonlyArray<string>
+  bridgeRefs: ReadonlyArray<string>
+  checkpointRefs: ReadonlyArray<string>
+  eventRefs: ReadonlyArray<string>
+}): ReadonlyArray<string> => [
+  ...item.artifactRefs,
+  ...item.bridgeRefs,
+  ...item.checkpointRefs,
+  ...item.eventRefs,
+]
+
+const slugRefPart = (value: string): string =>
+  value.replace(/[^A-Za-z0-9_.-]+/g, '_').replace(/^_+|_+$/g, '') || 'unknown'
+
+const emptySourceCounts = (): Record<ForgeSessionSource, number> => ({
+  bridge: 0,
+  claude: 0,
+  codex: 0,
+  pylon: 0,
+})
+
+const emptyStateCounts = (): Record<ForgeSessionState, number> => ({
+  cancelled: 0,
+  completed: 0,
+  failed: 0,
+  queued: 0,
+  running: 0,
+  unknown: 0,
+})
+
+export const projectForgeSessionSummaryReceipt = ({
+  exportedAt,
+  view,
+}: ForgeSessionSummaryReceiptInput): ForgeSessionSummaryReceipt => {
+  const safeWorkOrderRef = safeRef(view.workOrderRef) ?? 'unsafe-work-order-ref-omitted'
+  const countsBySource = emptySourceCounts()
+  const countsByState = emptyStateCounts()
+  const items = view.items.map(item => {
+    countsBySource[item.source] += 1
+    countsByState[item.state] += 1
+
+    return {
+      artifactRefs: item.artifactRefs,
+      bridgeRefs: item.bridgeRefs,
+      checkpointRefs: item.checkpointRefs,
+      controlBlockerRefs: actionBlockerRefs(item),
+      eventRefs: item.eventRefs,
+      observedAt: item.observedAt,
+      sessionRef: item.sessionRef,
+      source: item.source,
+      state: item.state,
+    }
+  })
+  const safeSessionRefs = Array.from(new Set(items.map(item => item.sessionRef)))
+  const safeEvidenceRefs = Array.from(new Set(items.flatMap(evidenceRefs)))
+  const controlBlockerRefs = Array.from(
+    new Set(items.flatMap(item => item.controlBlockerRefs)),
+  )
+  const blockerRefs = Array.from(new Set([...view.blockerRefs, ...controlBlockerRefs]))
+  const omittedUnsafeRefCount =
+    view.omittedUnsafeRefCount + (safeWorkOrderRef === view.workOrderRef ? 0 : 1)
+
+  SESSION_SOURCES.forEach(source => {
+    countsBySource[source] = countsBySource[source] ?? 0
+  })
+  SESSION_STATES.forEach(state => {
+    countsByState[state] = countsByState[state] ?? 0
+  })
+
+  return {
+    authority: {
+      cancelControlAuthority: false,
+      forkControlAuthority: false,
+      resumeControlAuthority: false,
+      rewindControlAuthority: false,
+      runtimeExecutionProof: false,
+    },
+    blockerRefs,
+    controlBlockerRefs,
+    countsBySource,
+    countsByState,
+    exportedAt,
+    generatedAt: view.generatedAt,
+    itemCount: items.length,
+    items,
+    omittedUnsafeRefCount,
+    provenance: 'refs_only_session_summary',
+    publicSafe: true,
+    receiptKind: 'forge_session_summary_export.v1',
+    receiptRef: `forge.session_summary_export.${slugRefPart(safeWorkOrderRef)}.${slugRefPart(exportedAt)}`,
+    safeEvidenceRefs,
+    safeSessionRefs,
+    status: view.status,
+    workOrderRef: safeWorkOrderRef,
   }
 }
