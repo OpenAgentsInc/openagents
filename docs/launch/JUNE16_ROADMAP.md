@@ -70,7 +70,25 @@ must be **online with inbound liquidity** to receive a Lightning tip/payout. The
 is the **Spark backup-receive fallback** in
 `apps/pylon/docs/2026-06-15-spark-backup-receive-fallback-audit.md`.
 
-**June 16 goal — narrow, opt-in, receive-only Spark fallback:**
+**Status (2026-06-16): tracked as #5078; slices 1-2 shipped + inert.**
+- **Slice 1 (core, `381c10966`←`4a7aa31c7`):** `SparkBackupReceiveState`/`Projection`,
+  the injectable `SparkBackupHelper` contract, MDK-offline failure classification,
+  `receiveWithFallback` (MDK-first→Spark, behind `PYLON_SPARK_BACKUP_ENABLED`, off by
+  default), and `assertPublicProjectionSafe` redaction of raw Spark material.
+- **Slice 2 (live helper + CLI, `381c10966`):** `apps/pylon/src/spark-backup-helper.ts`
+  backs the contract with the **Breez SDK Spark** package — which is **WASM-based, not
+  native bindings**, so it bundles + initializes cleanly under packaged Pylon Bun (no
+  isolated helper binary needed; added as an `optionalDependency`, lazily imported,
+  degrades to `helper-unavailable` if absent). New `pylon wallet backup-receive` /
+  `backup-status` verbs; `wallet receive` now routes through `receiveWithFallback`.
+  Mock-backed tests (full pylon suite 1135 pass). Promise
+  `payments.offline_receive_spark_fallback.v1` → **yellow** (built + inert, unproven live).
+- **Remaining:** **slice 3** = `migrate-spark` sweep + runbook. **NEEDS-OWNER:** a live
+  **Breez API key** + a real Spark wallet to run the offline-recipient integration smoke
+  (set the key + `PYLON_SPARK_BACKUP_ENABLED=1` on an owned node) — that smoke is the
+  green-flip and the moment owed offline tips can actually land.
+
+**Original goal — narrow, opt-in, receive-only Spark fallback:**
 - MDK stays the primary wallet rail. Spark is a **backup receive target** only —
   when MDK is offline or can't mint a receive request, Pylon can still hand out a
   **static Spark address / single-use Spark invoice** (Spark addresses are static, so
