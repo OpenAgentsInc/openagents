@@ -83,6 +83,16 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   entity-pool, flow-beam, payout-burst, and live-presence primitives with the
   follow-up exact-optional-property typing fix needed by the OpenAgents web
   build.
+- **Living-run entity proof layer (#5115/#5116):** the web pin now consumes
+  `OpenAgentsInc/three-effect@f1794af`, which adds the optional entity/beam/burst
+  layer to `trainingRunView`. The Worker public summary exposes
+  `realGradient.verifiedReplayPairs` from real Verified `exact_trace_replay`
+  challenges only. The web adapter maps public leaderboard rows into Pylon
+  entities, verified worker/validator replay pairs into beams, and settled rows
+  into payout bursts. `oa-tassadar-run` now listens for the emitted
+  `node-selected` event and opens the public-safe training-run proof or receipt
+  URL when a node has one; unlinked nodes show a compact no-public-proof panel
+  and do not fabricate a beam, burst, or click-through target.
 
 ## C. Owner-gated launch green-flips (receipt-first — only the owner/live event can)
 

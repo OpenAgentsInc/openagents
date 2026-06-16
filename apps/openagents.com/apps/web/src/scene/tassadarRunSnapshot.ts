@@ -11,8 +11,10 @@
 // zeros/nulls — a just-launched run with no verified work renders 0 verified / 0
 // settled, never a faked value. The web app intentionally does NOT import the
 // worker's internal types; this is a narrow structural view of the public summary.
-
 import {
+  type TrainingRunBeamDefinition,
+  type TrainingRunBurstDefinition,
+  type TrainingRunEntityDefinition,
   type TrainingRunVisualizationOptions,
   type TrainingRunVisualizationSnapshot,
   trainingRunVisualizationOptionsFromSnapshot,
@@ -20,11 +22,37 @@ import {
 
 /** One public metric value (`{ value, provenanceLabel, sourceRefs }` — we read `value`). */
 export interface PublicMetric {
+  readonly sourceRefs?: ReadonlyArray<string>
   readonly value?: number
+}
+
+export interface PublicTrainingRunLeaderboardRow {
+  readonly bestValidationLoss?: number | null
+  readonly provenanceLabel?: string
+  readonly pylonRef?: string
+  readonly rank?: number
+  readonly settledPayoutSats?: number
+  readonly sourceRefs?: ReadonlyArray<string>
+  readonly trainingRunRef?: string
+  readonly verifiedWindowCount?: number
+}
+
+export interface PublicTrainingRunVerifiedReplayPair {
+  readonly challengeRef?: string
+  readonly provenanceLabel?: string
+  readonly sourceRefs?: ReadonlyArray<string>
+  readonly validatorRef?: string
+  readonly verdictRefs?: ReadonlyArray<string>
+  readonly workerRef?: string
 }
 
 /** Narrow structural view of the worker's `TrainingRunPublicSummary` (public-safe). */
 export interface TassadarRunPublicSummary {
+  readonly corpus?: {
+    readonly acceptedTraceCount?: number
+    readonly traceRefs?: ReadonlyArray<string>
+    readonly verdictRefs?: ReadonlyArray<string>
+  }
   readonly runRef?: string
   readonly runLabel?: string
   readonly runState?: string
@@ -57,11 +85,20 @@ export interface TassadarRunPublicSummary {
       readonly gradientCloseoutRefs?: ReadonlyArray<string>
     }
     readonly externalAsk?: { readonly blockerRefs?: ReadonlyArray<string> }
+    readonly leaderboardRows?: ReadonlyArray<PublicTrainingRunLeaderboardRow>
+    readonly verifiedReplayPairs?: ReadonlyArray<PublicTrainingRunVerifiedReplayPair>
   }
+  readonly receiptRefs?: ReadonlyArray<string>
+  readonly windows?: ReadonlyArray<{
+    readonly receiptRefs?: ReadonlyArray<string>
+    readonly windowRef?: string
+  }>
 }
 
 const metricValue = (metric: PublicMetric | undefined): number =>
-  metric !== undefined && typeof metric.value === 'number' && Number.isFinite(metric.value)
+  metric !== undefined &&
+  typeof metric.value === 'number' &&
+  Number.isFinite(metric.value)
     ? metric.value
     : 0
 
@@ -71,8 +108,111 @@ const finiteOrZero = (value: number | undefined): number =>
 const refCount = (refs: ReadonlyArray<unknown> | undefined): number =>
   Array.isArray(refs) ? refs.length : 0
 
+const publicRefs = (
+  refs: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> =>
+  Array.isArray(refs)
+    ? refs.map(ref => ref.trim()).filter(ref => ref.length > 0)
+    : []
+
 const lossOrNull = (value: number | null | undefined): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
+
+const shortRef = (ref: string): string => {
+  const pieces = ref.split('.')
+  const tail = pieces[pieces.length - 1] ?? ref
+  return tail.length <= 10 ? tail : `${tail.slice(0, 4)}…${tail.slice(-4)}`
+}
+
+const leaderboardRowStatus = (row: PublicTrainingRunLeaderboardRow): string => {
+  if (finiteOrZero(row.settledPayoutSats) > 0) {
+    return 'settled'
+  }
+  if (finiteOrZero(row.verifiedWindowCount) > 0) {
+    return 'verified'
+  }
+  return publicRefs(row.sourceRefs).length > 0 ? 'active' : 'registered'
+}
+
+const leaderboardEntities = (
+  rows: ReadonlyArray<PublicTrainingRunLeaderboardRow> | undefined,
+): ReadonlyArray<TrainingRunEntityDefinition> =>
+  (rows ?? []).flatMap(row => {
+    if (row.pylonRef === undefined || row.pylonRef.trim() === '') {
+      return []
+    }
+    const rank = finiteOrZero(row.rank)
+    return [
+      {
+        id: row.pylonRef,
+        label: rank > 0 ? `P${rank}` : shortRef(row.pylonRef),
+        status: leaderboardRowStatus(row),
+      },
+    ]
+  })
+
+const verifiedReplayEntities = (
+  pairs: ReadonlyArray<PublicTrainingRunVerifiedReplayPair> | undefined,
+): ReadonlyArray<TrainingRunEntityDefinition> =>
+  (pairs ?? []).flatMap((pair, index) => {
+    if (
+      pair.workerRef === undefined ||
+      pair.workerRef.trim() === '' ||
+      pair.validatorRef === undefined ||
+      pair.validatorRef.trim() === ''
+    ) {
+      return []
+    }
+    return [
+      { id: pair.workerRef, label: `W${index + 1}`, status: 'verified' },
+      { id: pair.validatorRef, label: `V${index + 1}`, status: 'verified' },
+    ]
+  })
+
+const verifiedReplayBeams = (
+  pairs: ReadonlyArray<PublicTrainingRunVerifiedReplayPair> | undefined,
+): ReadonlyArray<TrainingRunBeamDefinition> =>
+  (pairs ?? []).flatMap(pair => {
+    if (
+      pair.workerRef === undefined ||
+      pair.workerRef.trim() === '' ||
+      pair.validatorRef === undefined ||
+      pair.validatorRef.trim() === '' ||
+      pair.challengeRef === undefined ||
+      pair.challengeRef.trim() === ''
+    ) {
+      return []
+    }
+    return [{ fromId: pair.workerRef, toId: pair.validatorRef }]
+  })
+
+const settlementBursts = (
+  rows: ReadonlyArray<PublicTrainingRunLeaderboardRow> | undefined,
+): ReadonlyArray<TrainingRunBurstDefinition> =>
+  (rows ?? []).flatMap(row =>
+    row.pylonRef !== undefined &&
+    row.pylonRef.trim() !== '' &&
+    finiteOrZero(row.settledPayoutSats) > 0
+      ? [{ atId: row.pylonRef }]
+      : [],
+  )
+
+export const trainingRunEntityLayerFromPublicSummary = (
+  summary: TassadarRunPublicSummary,
+): Pick<TrainingRunVisualizationOptions, 'beams' | 'bursts' | 'entities'> => {
+  const rows = summary.realGradient?.leaderboardRows
+  const pairs = summary.realGradient?.verifiedReplayPairs
+  const entities = [
+    ...leaderboardEntities(rows),
+    ...verifiedReplayEntities(pairs),
+  ]
+
+  return {
+    beams: verifiedReplayBeams(pairs),
+    bursts: settlementBursts(rows),
+    entities,
+  }
+}
 
 /**
  * Map a public Tassadar run summary into the visualization snapshot. Pure;
@@ -100,14 +240,24 @@ export const trainingRunSnapshotFromPublicSummary = (
     pendingPayoutCount: metricValue(metrics.pendingPayoutCount),
     receiptRefCount: metricValue(metrics.receiptRefCount),
     settledPayoutSats: metricValue(metrics.providerConfirmedSettledPayoutSats),
-    deviceObserved: finiteOrZero(gradient.deviceRequirement?.observedDistinctContributorDevices),
-    deviceRequired: finiteOrZero(gradient.deviceRequirement?.requiredDistinctContributorDevices),
-    finalValidationLoss: lossOrNull(gradient.lossUnderBudget?.finalValidationLoss),
+    deviceObserved: finiteOrZero(
+      gradient.deviceRequirement?.observedDistinctContributorDevices,
+    ),
+    deviceRequired: finiteOrZero(
+      gradient.deviceRequirement?.requiredDistinctContributorDevices,
+    ),
+    finalValidationLoss: lossOrNull(
+      gradient.lossUnderBudget?.finalValidationLoss,
+    ),
     maxValidationLoss: lossOrNull(gradient.lossUnderBudget?.maxValidationLoss),
     lossUnderBudget: gradient.lossUnderBudget?.satisfied === true,
     closeoutSatisfied: gradient.closeoutRequirement?.satisfied === true,
-    freivaldsRefCount: refCount(gradient.closeoutRequirement?.freivaldsCommitmentRefs),
-    gradientCloseoutRefCount: refCount(gradient.closeoutRequirement?.gradientCloseoutRefs),
+    freivaldsRefCount: refCount(
+      gradient.closeoutRequirement?.freivaldsCommitmentRefs,
+    ),
+    gradientCloseoutRefCount: refCount(
+      gradient.closeoutRequirement?.gradientCloseoutRefs,
+    ),
     blockerRefCount: refCount(gradient.externalAsk?.blockerRefs),
   }
 }
@@ -118,5 +268,9 @@ export const trainingRunSnapshotFromPublicSummary = (
  */
 export const tassadarRunVisualizationOptions = (
   summary: TassadarRunPublicSummary,
-): TrainingRunVisualizationOptions =>
-  trainingRunVisualizationOptionsFromSnapshot(trainingRunSnapshotFromPublicSummary(summary))
+): TrainingRunVisualizationOptions => ({
+  ...trainingRunVisualizationOptionsFromSnapshot(
+    trainingRunSnapshotFromPublicSummary(summary),
+  ),
+  ...trainingRunEntityLayerFromPublicSummary(summary),
+})

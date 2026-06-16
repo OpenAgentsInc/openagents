@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import {
+  TASSADAR_RUN_SUMMARY_ENDPOINT,
+  TASSADAR_RUN_TAG,
+  dataStateForSummary,
+  proofLinkForSelection,
+  tassadarRunView,
+} from './tassadarRunElement'
+
 // Page-wiring test for the live Tassadar run scene element (#5118). We stub
 // `fetch` to exercise the three honest states the page must handle — populated,
 // idle/empty, and a non-200 fetch error — and assert the element drives the
@@ -22,7 +30,10 @@ vi.mock('@openagentsinc/three-effect/foldkit', () => {
       recordedVisualizations.push(value)
     }
   }
-  if (typeof customElements !== 'undefined' && customElements.get(tag) === undefined) {
+  if (
+    typeof customElements !== 'undefined' &&
+    customElements.get(tag) === undefined
+  ) {
     customElements.define(tag, StubRun)
   }
   return {
@@ -30,13 +41,6 @@ vi.mock('@openagentsinc/three-effect/foldkit', () => {
     registerTrainingRunElement: () => {},
   }
 })
-
-import {
-  TASSADAR_RUN_SUMMARY_ENDPOINT,
-  TASSADAR_RUN_TAG,
-  dataStateForSummary,
-  tassadarRunView,
-} from './tassadarRunElement'
 
 const populated = {
   runRef: 'run.tassadar.executor.20260615',
@@ -48,6 +52,27 @@ const populated = {
     verifiedWorkCount: { value: 9 },
     providerConfirmedSettledPayoutSats: { value: 2100 },
   },
+  realGradient: {
+    leaderboardRows: [
+      {
+        pylonRef: 'pylon.worker.one',
+        rank: 1,
+        settledPayoutSats: 0,
+        sourceRefs: ['training.lease.worker.one'],
+        verifiedWindowCount: 1,
+      },
+    ],
+    verifiedReplayPairs: [
+      {
+        challengeRef: 'challenge.tassadar.replay.1',
+        validatorRef: 'validator.tassadar.1',
+        verdictRefs: ['verdict.tassadar.replay.1'],
+        workerRef: 'contribution.tassadar.worker.1',
+      },
+    ],
+  },
+  receiptRefs: ['receipt.pylon.settlement.1'],
+  windows: [{ windowRef: 'training.window.tassadar.executor.20260615.w1' }],
 }
 
 const idle = {
@@ -69,7 +94,11 @@ const mountAndSettle = async (): Promise<HTMLElement> => {
   tassadarRunView()
   const el = document.createElement(TASSADAR_RUN_TAG)
   document.body.append(el)
-  for (let i = 0; i < 50 && el.getAttribute('data-state') === 'loading'; i += 1) {
+  for (
+    let i = 0;
+    i < 50 && el.getAttribute('data-state') === 'loading';
+    i += 1
+  ) {
     await Promise.resolve()
     await new Promise(resolve => setTimeout(resolve, 0))
   }
@@ -133,6 +162,65 @@ describe('tassadarRunView page wiring', () => {
     expect(overlay?.textContent ?? '').toContain('503')
   })
 
+  it('resolves node-selected events to a public proof link and opens it', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(populated))
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const el = await mountAndSettle()
+    const run = el.shadowRoot?.querySelector(STUB_TAG)
+    expect(run).not.toBeNull()
+
+    run?.dispatchEvent(
+      new CustomEvent('node-selected', {
+        bubbles: true,
+        composed: true,
+        detail: {
+          detail: 'verified',
+          id: 'contribution.tassadar.worker.1',
+          label: 'W1',
+          role: 'run',
+          status: 'verified',
+        },
+      }),
+    )
+
+    expect(openSpy).toHaveBeenCalledWith(
+      '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=challenge.tassadar.replay.1',
+      '_blank',
+      'noopener,noreferrer',
+    )
+    const selection = el.shadowRoot?.querySelector('.selection')
+    expect(selection?.getAttribute('data-proof-state')).toBe('linked')
+    expect(selection?.textContent ?? '').toContain('Verified replay challenge')
+  })
+
+  it('leaves an unlinked selection panel when no public proof ref exists', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(populated))
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const el = await mountAndSettle()
+    const run = el.shadowRoot?.querySelector(STUB_TAG)
+
+    run?.dispatchEvent(
+      new CustomEvent('node-selected', {
+        bubbles: true,
+        composed: true,
+        detail: {
+          detail: 'stale <= 5',
+          id: 'state_synced',
+          label: 'state synced',
+          role: 'lifecycle',
+          status: 'sync',
+        },
+      }),
+    )
+
+    expect(openSpy).not.toHaveBeenCalled()
+    const selection = el.shadowRoot?.querySelector('.selection')
+    expect(selection?.getAttribute('data-proof-state')).toBe('unlinked')
+    expect(selection?.textContent ?? '').toContain(
+      'No public proof ref is linked yet',
+    )
+  })
+
   it('network rejection → error state, no scene', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'))
     const el = await mountAndSettle()
@@ -147,5 +235,37 @@ describe('dataStateForSummary', () => {
     expect(dataStateForSummary(idle)).toBe('empty')
     expect(dataStateForSummary(populated)).toBe('ok')
     expect(dataStateForSummary({})).toBe('ok')
+  })
+})
+
+describe('proofLinkForSelection', () => {
+  it('maps verification and receipt selections to public-safe proof URLs', () => {
+    expect(
+      proofLinkForSelection(populated, {
+        detail: 'verified',
+        id: 'validator.tassadar.1',
+        label: 'V1',
+        role: 'run',
+        status: 'verified',
+      }),
+    ).toEqual({
+      href: '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=challenge.tassadar.replay.1',
+      label: 'Verified replay challenge',
+      ref: 'challenge.tassadar.replay.1',
+    })
+
+    expect(
+      proofLinkForSelection(populated, {
+        detail: '20 receipts',
+        id: 'receipt',
+        label: 'receipt',
+        role: 'receipt',
+        status: 'verified',
+      }),
+    ).toEqual({
+      href: '/api/forum/receipts/receipt.pylon.settlement.1',
+      label: 'Receipt',
+      ref: 'receipt.pylon.settlement.1',
+    })
   })
 })

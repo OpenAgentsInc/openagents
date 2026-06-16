@@ -405,6 +405,15 @@ export type TrainingRunLeaderboardRow = Readonly<{
   verifiedWindowCount: number
 }>
 
+export type TrainingRunVerifiedReplayPair = Readonly<{
+  challengeRef: string
+  provenanceLabel: string
+  sourceRefs: ReadonlyArray<string>
+  validatorRef: string
+  verdictRefs: ReadonlyArray<string>
+  workerRef: string
+}>
+
 export type TrainingRunRealGradientStatus = Readonly<{
   closeoutRequirement: Readonly<{
     evalRef: string | null
@@ -439,6 +448,7 @@ export type TrainingRunRealGradientStatus = Readonly<{
     sourceRefs: ReadonlyArray<string>
   }>
   scopeBoundaryRefs: ReadonlyArray<string>
+  verifiedReplayPairs: ReadonlyArray<TrainingRunVerifiedReplayPair>
 }>
 
 export type TrainingRunPublicSummary = Readonly<{
@@ -924,6 +934,47 @@ const bestValidationLoss = (
     ? null
     : Math.min(...points.map(point => point.validationLoss))
 
+const verifiedReplayPairsFromChallenges = (
+  challenges: ReadonlyArray<TrainingVerificationChallengeRecord>,
+): ReadonlyArray<TrainingRunVerifiedReplayPair> =>
+  challenges
+    .filter(
+      challenge =>
+        challenge.state === 'Verified' &&
+        challenge.verificationClass === 'exact_trace_replay',
+    )
+    .flatMap(challenge => {
+      const payload = parseJsonRecord(challenge.payloadJson)
+      const workerRef =
+        optionalString(payload?.pylonDeviceRef) ?? challenge.contributionRef
+      const validatorRef =
+        optionalString(payload?.validatorDeviceRef) ?? challenge.leasedToRef
+
+      if (workerRef === null || validatorRef === null) {
+        return []
+      }
+
+      return [
+        {
+          challengeRef: challenge.challengeRef,
+          provenanceLabel:
+            'Verified exact_trace_replay pair. The worker side is the public worker/device ref and the validator side is the public validator ref recorded on the challenge payload or lease/finalization path.',
+          sourceRefs: uniqueRefs([
+            challenge.challengeRef,
+            ...(challenge.contributionRef === null
+              ? []
+              : [challenge.contributionRef]),
+            workerRef,
+            validatorRef,
+            ...challenge.verdictRefs,
+          ]),
+          validatorRef,
+          verdictRefs: uniqueRefs(challenge.verdictRefs),
+          workerRef,
+        },
+      ]
+    })
+
 const publicRealGradientStatus = (
   input: Readonly<{
     challenges: ReadonlyArray<TrainingVerificationChallengeRecord>
@@ -1051,6 +1102,7 @@ const publicRealGradientStatus = (
       'scope.cs336_a1.does_not_replace_qwen_finetune_gate_4670',
       'scope.cs336_a1.no_first_real_training_run_green_copy_from_this_issue_alone',
     ],
+    verifiedReplayPairs: verifiedReplayPairsFromChallenges(input.challenges),
   }
 }
 

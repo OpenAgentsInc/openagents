@@ -552,8 +552,45 @@ describe('training run window authority', () => {
         verdictRefs: ['verdict.cs336.a1.freivalds'],
       },
     }).challenge
+    const replayChallenge = buildTrainingVerificationChallengeRecord({
+      makeId: () => 'exact-replay',
+      nowIso: '2026-06-10T10:05:10.000Z',
+      request: {
+        commitmentRefs: ['commitment.cs336.a1.replay.window.1'],
+        contributionRef: 'contribution.cs336.a1.replay',
+        homeworkKind: 'admin_dispatched_homework',
+        payload: {
+          pylonDeviceRef: 'pylon.device.worker.cs336.a1',
+          replayDigestRef: 'digest.cs336.a1.replay',
+          traceCommitmentDigestRef: 'digest.cs336.a1.commitment',
+          validatorDeviceRef: 'pylon.device.validator.cs336.a1',
+        },
+        trainingRunRef: run.trainingRunRef,
+        verificationClass: 'exact_trace_replay',
+        windowRef: window.windowRef,
+      },
+    }).challenge
+    const leasedReplayChallenge = leaseTrainingVerificationChallengeRecord({
+      challenge: replayChallenge,
+      eventId: 'exact-replay-lease',
+      nowIso: '2026-06-10T10:05:20.000Z',
+      request: { validatorRef: 'validator.cs336.a1' },
+    }).challenge
+    const verifiedReplayChallenge = finalizeTrainingVerificationChallengeRecord(
+      {
+        challenge: leasedReplayChallenge,
+        eventId: 'exact-replay-final',
+        nowIso: '2026-06-10T10:05:30.000Z',
+        request: { receiptRefs: ['receipt.cs336.a1.replay'] },
+        verdict: {
+          failureCodes: [],
+          state: 'Verified',
+          verdictRefs: ['verdict.cs336.a1.replay'],
+        },
+      },
+    ).challenge
     const summary = publicTrainingRunSummary({
-      challenges: [verifiedChallenge],
+      challenges: [verifiedChallenge, verifiedReplayChallenge],
       leases,
       nowIso: '2026-06-10T10:06:00.000Z',
       run,
@@ -580,5 +617,22 @@ describe('training run window authority', () => {
       trainingRunRef: 'training.run.cs336.a1.real_gradient',
       verifiedWindowCount: 1,
     })
+    expect(summary.realGradient.verifiedReplayPairs).toEqual([
+      {
+        challengeRef: verifiedReplayChallenge.challengeRef,
+        provenanceLabel:
+          'Verified exact_trace_replay pair. The worker side is the public worker/device ref and the validator side is the public validator ref recorded on the challenge payload or lease/finalization path.',
+        sourceRefs: [
+          'contribution.cs336.a1.replay',
+          'pylon.device.validator.cs336.a1',
+          'pylon.device.worker.cs336.a1',
+          verifiedReplayChallenge.challengeRef,
+          'verdict.cs336.a1.replay',
+        ].sort(),
+        validatorRef: 'pylon.device.validator.cs336.a1',
+        verdictRefs: ['verdict.cs336.a1.replay'],
+        workerRef: 'pylon.device.worker.cs336.a1',
+      },
+    ])
   })
 })

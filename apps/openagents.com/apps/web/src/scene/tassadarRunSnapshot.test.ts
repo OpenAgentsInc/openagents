@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   type TassadarRunPublicSummary,
   tassadarRunVisualizationOptions,
+  trainingRunEntityLayerFromPublicSummary,
   trainingRunSnapshotFromPublicSummary,
 } from './tassadarRunSnapshot'
 
@@ -45,7 +46,40 @@ const populated: TassadarRunPublicSummary = {
       gradientCloseoutRefs: ['g1', 'g2', 'g3', 'g4'],
     },
     externalAsk: { blockerRefs: [] },
+    leaderboardRows: [
+      {
+        pylonRef: 'pylon.worker.one',
+        rank: 1,
+        settledPayoutSats: 0,
+        sourceRefs: ['training.lease.worker.one'],
+        trainingRunRef: 'run.tassadar.executor.20260615',
+        verifiedWindowCount: 1,
+      },
+      {
+        pylonRef: 'pylon.worker.two',
+        rank: 2,
+        settledPayoutSats: 2100,
+        sourceRefs: ['training.lease.worker.two'],
+        trainingRunRef: 'run.tassadar.executor.20260615',
+        verifiedWindowCount: 1,
+      },
+    ],
+    verifiedReplayPairs: [
+      {
+        challengeRef: 'challenge.tassadar.replay.1',
+        sourceRefs: [
+          'challenge.tassadar.replay.1',
+          'contribution.tassadar.worker.1',
+          'validator.tassadar.1',
+          'verdict.tassadar.replay.1',
+        ],
+        validatorRef: 'validator.tassadar.1',
+        verdictRefs: ['verdict.tassadar.replay.1'],
+        workerRef: 'contribution.tassadar.worker.1',
+      },
+    ],
   },
+  receiptRefs: ['receipt.pylon.settlement.1'],
 }
 
 describe('trainingRunSnapshotFromPublicSummary', () => {
@@ -116,5 +150,42 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     expect(options).toBeTruthy()
     // the resolver always yields a renderable option object (nodes/contributors derived)
     expect(typeof options).toBe('object')
+  })
+
+  it('adds data-bound pylon entities, verified replay beams, and settlement bursts', () => {
+    const layer = trainingRunEntityLayerFromPublicSummary(populated)
+    expect(layer.entities).toEqual([
+      { id: 'pylon.worker.one', label: 'P1', status: 'verified' },
+      { id: 'pylon.worker.two', label: 'P2', status: 'settled' },
+      { id: 'contribution.tassadar.worker.1', label: 'W1', status: 'verified' },
+      { id: 'validator.tassadar.1', label: 'V1', status: 'verified' },
+    ])
+    expect(layer.beams).toEqual([
+      {
+        fromId: 'contribution.tassadar.worker.1',
+        toId: 'validator.tassadar.1',
+      },
+    ])
+    expect(layer.bursts).toEqual([{ atId: 'pylon.worker.two' }])
+  })
+
+  it('does not fabricate proof beams or payout bursts without public verified/settled refs', () => {
+    const layer = trainingRunEntityLayerFromPublicSummary({
+      realGradient: {
+        leaderboardRows: [
+          {
+            pylonRef: 'pylon.seen.only',
+            rank: 1,
+            sourceRefs: ['training.lease.seen.only'],
+            verifiedWindowCount: 0,
+          },
+        ],
+      },
+    })
+    expect(layer.entities).toEqual([
+      { id: 'pylon.seen.only', label: 'P1', status: 'active' },
+    ])
+    expect(layer.beams).toEqual([])
+    expect(layer.bursts).toEqual([])
   })
 })

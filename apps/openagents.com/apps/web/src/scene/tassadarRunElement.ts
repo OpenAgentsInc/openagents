@@ -13,12 +13,12 @@
 //
 // State machine: loading → ok (mount scene) | empty (idle honest scene) | error.
 // The data-state attribute is exposed for tests and styling. Dark-only.
-
-import { define as defineCustomElement } from 'foldkit/customElement'
+import type { TrainingRunNodeSelection } from '@openagentsinc/three-effect/core'
 import {
   registerTrainingRunElement,
   trainingRunTagName,
 } from '@openagentsinc/three-effect/foldkit'
+import { define as defineCustomElement } from 'foldkit/customElement'
 import type { Attribute, Html } from 'foldkit/html'
 
 import {
@@ -30,6 +30,11 @@ export const TASSADAR_RUN_TAG = 'oa-tassadar-run'
 export const TASSADAR_RUN_SUMMARY_ENDPOINT = '/api/public/tassadar-run-summary'
 
 export type TassadarRunDataState = 'loading' | 'ok' | 'empty' | 'error'
+export type TassadarRunProofLink = Readonly<{
+  href: string
+  label: string
+  ref: string
+}>
 
 const HOST_STYLE =
   ':host{position:absolute;inset:0;display:block;background:#000;color:#f1efe8}' +
@@ -38,7 +43,14 @@ const HOST_STYLE =
   'padding:2rem;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}' +
   '.overlay p{margin:0;max-width:48ch;font-size:0.95rem;line-height:1.6;color:rgba(241,239,232,0.6)}' +
   '.overlay .label{display:block;margin-bottom:0.4rem;font-size:0.7rem;letter-spacing:0.08em;' +
-  'text-transform:uppercase;color:rgba(241,239,232,0.35)}'
+  'text-transform:uppercase;color:rgba(241,239,232,0.35)}' +
+  '.selection{position:absolute;right:1rem;bottom:1rem;z-index:2;max-width:min(26rem,calc(100% - 2rem));' +
+  'border:1px solid rgba(255,255,255,0.14);background:rgba(0,0,0,0.78);padding:0.75rem 0.875rem;' +
+  'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(10px)}' +
+  '.selection strong{display:block;margin-bottom:0.25rem;font-size:0.78rem;font-weight:600;color:rgba(255,255,255,0.88)}' +
+  '.selection p{margin:0;font-size:0.72rem;line-height:1.45;color:rgba(255,255,255,0.55)}' +
+  '.selection a{display:inline-flex;margin-top:0.55rem;font-size:0.72rem;color:rgba(255,255,255,0.86);text-underline-offset:0.18rem}' +
+  '.selection a:hover{color:#fff}'
 
 const isIdle = (summary: TassadarRunPublicSummary): boolean =>
   summary.emptyState?.idle === true
@@ -49,6 +61,139 @@ export const dataStateForSummary = (
   summary: TassadarRunPublicSummary,
 ): Exclude<TassadarRunDataState, 'loading' | 'error'> =>
   isIdle(summary) ? 'empty' : 'ok'
+
+const publicTrainingRunHref = (summary: TassadarRunPublicSummary): string => {
+  const runRef = summary.runRef ?? 'run.tassadar.executor.20260615'
+  return `/api/public/training/runs/${encodeURIComponent(runRef)}`
+}
+
+const focusedTrainingRunHref = (
+  summary: TassadarRunPublicSummary,
+  ref: string,
+): string =>
+  `${publicTrainingRunHref(summary)}?focusRef=${encodeURIComponent(ref)}`
+
+const receiptHref = (ref: string): string =>
+  `/api/forum/receipts/${encodeURIComponent(ref)}`
+
+const firstRef = (
+  refs: ReadonlyArray<string> | undefined,
+): string | undefined =>
+  Array.isArray(refs)
+    ? refs.map(ref => ref.trim()).find(ref => ref.length > 0)
+    : undefined
+
+const metricNumber = (
+  metric: { readonly value?: number } | undefined,
+): number =>
+  metric !== undefined &&
+  typeof metric.value === 'number' &&
+  Number.isFinite(metric.value)
+    ? metric.value
+    : 0
+
+const linkForRef = (
+  summary: TassadarRunPublicSummary,
+  label: string,
+  ref: string | undefined,
+): TassadarRunProofLink | null =>
+  ref === undefined
+    ? null
+    : {
+        href: ref.startsWith('receipt.')
+          ? receiptHref(ref)
+          : focusedTrainingRunHref(summary, ref),
+        label,
+        ref,
+      }
+
+const replayPairForSelection = (
+  summary: TassadarRunPublicSummary,
+  selection: TrainingRunNodeSelection,
+) =>
+  summary.realGradient?.verifiedReplayPairs?.find(
+    pair =>
+      pair.workerRef === selection.id || pair.validatorRef === selection.id,
+  )
+
+const leaderboardRowForSelection = (
+  summary: TassadarRunPublicSummary,
+  selection: TrainingRunNodeSelection,
+) =>
+  summary.realGradient?.leaderboardRows?.find(
+    row => row.pylonRef === selection.id,
+  )
+
+export const proofLinkForSelection = (
+  summary: TassadarRunPublicSummary,
+  selection: TrainingRunNodeSelection,
+): TassadarRunProofLink | null => {
+  const pair = replayPairForSelection(summary, selection)
+  if (pair !== undefined) {
+    return linkForRef(summary, 'Verified replay challenge', pair.challengeRef)
+  }
+
+  const row = leaderboardRowForSelection(summary, selection)
+  if (row !== undefined) {
+    return linkForRef(summary, 'Pylon evidence', firstRef(row.sourceRefs))
+  }
+
+  if (selection.id === 'run') {
+    return {
+      href: publicTrainingRunHref(summary),
+      label: 'Public run projection',
+      ref: summary.runRef ?? 'run.tassadar.executor.20260615',
+    }
+  }
+
+  if (selection.id === 'training_window' || selection.id === 'active') {
+    return linkForRef(
+      summary,
+      'Training window',
+      summary.windows?.[0]?.windowRef,
+    )
+  }
+
+  if (selection.id === 'freivalds' || selection.role === 'proof') {
+    return linkForRef(
+      summary,
+      'Verification proof',
+      firstRef(summary.corpus?.verdictRefs) ??
+        firstRef(summary.corpus?.traceRefs) ??
+        firstRef(
+          summary.realGradient?.closeoutRequirement?.freivaldsCommitmentRefs,
+        ),
+    )
+  }
+
+  if (selection.id === 'receipt' || selection.role === 'receipt') {
+    return linkForRef(summary, 'Receipt', firstRef(summary.receiptRefs))
+  }
+
+  if (selection.id === 'settlement' || selection.role === 'rung') {
+    return metricNumber(summary.metrics?.providerConfirmedSettledPayoutSats) > 0
+      ? linkForRef(summary, 'Settlement receipt', firstRef(summary.receiptRefs))
+      : null
+  }
+
+  return null
+}
+
+const isTrainingRunNodeSelection = (
+  value: unknown,
+): value is TrainingRunNodeSelection => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.detail === 'string' &&
+    typeof record.id === 'string' &&
+    typeof record.label === 'string' &&
+    typeof record.role === 'string' &&
+    typeof record.status === 'string'
+  )
+}
 
 const makeClass = (): CustomElementConstructor =>
   class extends HTMLElement {
@@ -140,7 +285,53 @@ const makeClass = (): CustomElementConstructor =>
       run.style.inset = '0'
       // The training-run element reads its `visualization` property reactively.
       run.visualization = tassadarRunVisualizationOptions(summary)
+      run.addEventListener('node-selected', event => {
+        const detail = (event as CustomEvent<unknown>).detail
+        if (!isTrainingRunNodeSelection(detail)) return
+        const proofLink = proofLinkForSelection(summary, detail)
+        this.#renderSelection(base.mount, detail, proofLink)
+        if (proofLink !== null) {
+          this.#openProofLink(proofLink)
+        }
+      })
       base.mount.append(run)
+    }
+
+    #renderSelection(
+      mount: HTMLDivElement,
+      selection: TrainingRunNodeSelection,
+      proofLink: TassadarRunProofLink | null,
+    ): void {
+      mount.querySelector('.selection')?.remove()
+      const panel = document.createElement('aside')
+      panel.className = 'selection'
+      panel.setAttribute(
+        'data-proof-state',
+        proofLink === null ? 'unlinked' : 'linked',
+      )
+      const title = document.createElement('strong')
+      title.textContent = selection.label
+      const detail = document.createElement('p')
+      detail.textContent =
+        proofLink === null
+          ? `${selection.detail}. No public proof ref is linked yet.`
+          : `${proofLink.label}: ${proofLink.ref}`
+      panel.append(title, detail)
+      if (proofLink !== null) {
+        const link = document.createElement('a')
+        link.href = proofLink.href
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        link.textContent = 'Open proof'
+        panel.append(link)
+      }
+      mount.append(panel)
+    }
+
+    #openProofLink(proofLink: TassadarRunProofLink): void {
+      if (typeof window === 'undefined') return
+      if (typeof window.open !== 'function') return
+      window.open(proofLink.href, '_blank', 'noopener,noreferrer')
     }
 
     #overlay(label: string, message: string): HTMLDivElement {
