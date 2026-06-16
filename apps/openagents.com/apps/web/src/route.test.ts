@@ -38,6 +38,7 @@ import {
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
   StatsRoute,
+  WorkspaceRoute,
   urlToAppRoute,
 } from './route'
 
@@ -76,6 +77,12 @@ describe('app route parser', () => {
 
   test('accepts the Forge factory dashboard route', () => {
     expect(urlToAppRoute(appUrl('/forge'))).toEqual(ForgeRoute())
+  })
+
+  test('accepts prefilled workspace invite routes', () => {
+    expect(urlToAppRoute(appUrl('/workspaces/workspace_seed'))).toEqual(
+      WorkspaceRoute({ workspaceId: 'workspace_seed' }),
+    )
   })
 
   test('does not accept the deleted login page route', () => {

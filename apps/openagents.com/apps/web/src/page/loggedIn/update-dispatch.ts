@@ -22,6 +22,7 @@ import { updateTeamChat } from './team-chat/transitions'
 import { updateThreadFiles } from './thread-files/transitions'
 import { type UpdateReturn } from './transition'
 import { updateWorkroom } from './workroom/transitions'
+import { updatePrefilledWorkspace } from './workspace/transitions'
 
 export {
   FocusChatComposer,
@@ -54,6 +55,7 @@ export {
 export { LoadTeamChatMessages, PostTeamChatMessage } from './team-chat/commands'
 export { LoadMulletBootstrap } from './mullet/transitions'
 export { LoadTokenUsageStats } from './stats/transitions'
+export { LoadPrefilledWorkspace } from './workspace/transitions'
 export {
   personalChatThreadId,
   teamChatRoomKey,
@@ -226,6 +228,12 @@ export const update = (model: Model, message: Message): UpdateReturn => {
       SucceededLoadTokenUsageStats: () => updateStats(model, message),
       FailedLoadTokenUsageStats: () => updateStats(model, message),
       UpdatedTokenUsageStatsFilter: () => updateStats(model, message),
+      RequestedLoadPrefilledWorkspace: () =>
+        updatePrefilledWorkspace(model, message),
+      SucceededLoadPrefilledWorkspace: () =>
+        updatePrefilledWorkspace(model, message),
+      FailedLoadPrefilledWorkspace: () =>
+        updatePrefilledWorkspace(model, message),
       RequestedGenerateAdminSite: () => updateAdmin(model, message),
       SucceededGenerateAdminSite: () => updateAdmin(model, message),
       FailedGenerateAdminSite: () => updateAdmin(model, message),
@@ -274,8 +282,7 @@ export const update = (model: Model, message: Message): UpdateReturn => {
 
       RequestedNotificationPermission: () =>
         updateNotifications(model, message),
-      ResolvedNotificationPermission: () =>
-        updateNotifications(model, message),
+      ResolvedNotificationPermission: () => updateNotifications(model, message),
       RaisedBrowserNotifications: () => updateNotifications(model, message),
       DismissedNotifications: () => updateNotifications(model, message),
 

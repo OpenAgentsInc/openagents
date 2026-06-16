@@ -14,14 +14,10 @@ import * as PublicHeader from './publicHeader'
 //
 // The signup form is a plain server-posted HTML form (no Foldkit message
 // wiring) so the page stays static and public. It posts to a placeholder
-// intake endpoint; the real intake/handoff is owned by other issues (see the
-// clearly-marked TODOs below).
+// intake endpoint; seeded workspace creation remains operator-owned through
+// the workspace API and invite URL.
 //
 // SCOPE / STUBS (do NOT implement here -- these are separate issues):
-//   - C1 (#5092): "create a prefilled workspace on submit" handoff. On submit
-//     we should seed a prefilled Autopilot workspace from the signup fields and
-//     hand the user into it. NOT built here; the form posts to a no-op/intake
-//     placeholder for now.
 //   - C2 (#5093): lead-enrichment hook via our own API (operator seeding,
 //     invite link, engagement tracking). NOT built here.
 //   - C4 (#5095): the actual shared-Slack-channel Slack Connect invite. This
@@ -31,17 +27,18 @@ import * as PublicHeader from './publicHeader'
 // Naming note: keep all copy/code generic product language. Do NOT reference
 // any partner/company/person names anywhere.
 
-// Placeholder intake endpoint. TODO(#5092/C1, #5093/C2): replace this no-op
-// target with the real intake + prefilled-workspace handoff plus the
-// lead-enrichment hook. For now the form posts here so the page is functional
-// without implementing other issues.
+// Placeholder intake endpoint. TODO(#5093/C2): replace this no-op target with
+// the real intake, operator seeding, invite-link, and engagement-tracking hook.
+// For now the form posts here so the page is functional without implementing
+// other issues.
 const intakeAction = '/api/public/business-signup'
 
 const pageShellClass = 'h-dvh overflow-auto bg-[#000] text-[#f1efe8]'
 
 const sectionLabelClass = 'm-0 font-mono text-base text-white/35 sm:text-sm'
 
-const fieldLabelClass = 'font-mono text-xs uppercase tracking-wide text-white/45'
+const fieldLabelClass =
+  'font-mono text-xs uppercase tracking-wide text-white/45'
 
 const fieldInputClass =
   'mt-1.5 w-full min-w-0 border border-[#222] bg-[#030303] px-3 py-2.5 font-mono text-[0.8125rem] leading-[1.35] text-[#f1efe8] outline-none focus:border-[#ffb400] focus:ring-1 focus:ring-[#ffb400]'
@@ -136,6 +133,34 @@ const pricingNoteView = <Message>(): Html => {
     [
       // Exact pricing framing required by the issue. Do not paraphrase.
       'Usage is billed as clear token-based credits — buy credits and spend them as you go. No monthly AI subscription, and your credits never expire.',
+    ],
+  )
+}
+
+const workspaceInviteView = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [Ui.className<Message>('grid gap-3 border border-[#222] bg-[#010102] p-4')],
+    [
+      h.p(
+        [
+          Ui.className<Message>(
+            'm-0 font-mono text-[0.6875rem] uppercase text-white/35',
+          ),
+        ],
+        ['Project invite'],
+      ),
+      h.h2(
+        [Ui.className<Message>('m-0 text-lg font-medium text-[#f1efe8]')],
+        ['We prepare the workspace before you open it'],
+      ),
+      h.p(
+        [Ui.className<Message>('m-0 text-base/7 text-white/60')],
+        [
+          'Your invite opens a named project with seeded notes, starter workflows, and an intro receipt.',
+        ],
+      ),
     ],
   )
 }
@@ -256,9 +281,7 @@ const signupFormView = <Message>(): Html => {
       ),
       h.p(
         [Ui.className<Message>('m-0 font-mono text-xs text-white/35')],
-        [
-          'We only use your details to set up your workspace and get in touch.',
-        ],
+        ['We only use your details to set up your workspace and get in touch.'],
       ),
     ],
   )
@@ -283,7 +306,7 @@ export const view = <Message>(
         [
           h.div(
             [Ui.className<Message>('grid content-start gap-6')],
-            [heroView<Message>()],
+            [heroView<Message>(), workspaceInviteView<Message>()],
           ),
           signupFormView<Message>(),
         ],

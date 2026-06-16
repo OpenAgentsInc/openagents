@@ -165,13 +165,14 @@ epics below; not all lands today — the aim is the main spine.
 - **Epic C — prefilled workspaces + `/business` funnel (#5103):** **C3** (#5094
   `5e82b6a1d`) shipped the public **`/business`** landing + signup form (first-class
   phone field, opt-in Slack request, usage-based token-credit pricing copy). **C1**
-  (#5092 `ba02c9d6b`) landed the **workspace-primitive backend** (schema + D1 + API);
-  frontend wiring is the open follow-up.
+  (#5092 `ba02c9d6b` plus follow-up) landed the **workspace primitive** end to end:
+  schema + D1 + API, authenticated `/workspaces/:workspaceId` page, logged-out
+  invite shell, and `/business` workspace-invite copy.
 
 **Targeted next (this session / soon — won't all land today):**
 - **B3** (#5089) Forge **Automations** surface · **B4** (#5090) metric definitions.
-- **C1 frontend** (workspace page + invite UI) · **C2** (#5093) operator seeding +
-  invite-link + engagement tracking · **C4** (#5095) Slack Connect invite.
+- **C2** (#5093) operator seeding + invite-link + engagement tracking · **C4**
+  (#5095) Slack Connect invite.
 - **Epic D — customer-#1 dogfood (#5104):** **D1** (#5096) route our own AI/coding
   spend through the pool/nodes (ship now) · **D4** (#5106) fixed: Pylon now has
   lane-scoped change capture/commit guards, shared-file conflict refs, and dirty

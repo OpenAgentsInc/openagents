@@ -245,6 +245,7 @@ export const browserRouteProductIntents = {
   TeamProjectChat: 'workroom.chat.project',
   Thread: 'workroom.thread',
   Usage: 'billing.usage',
+  Workspace: 'workspace.prefilled.detail',
   Workroom: 'workroom.delivery.overview',
   WorkroomTab: 'workroom.delivery.tab',
 } as const satisfies Record<AppRoute['_tag'], string>
@@ -295,6 +296,7 @@ export const browserCommandProductIntents = {
   LoadExternal: 'navigation.external.load',
   LoadOnboardingRepositories: 'onboarding.repositories.load',
   LoadProviderAccountPool: 'providers.account-pool.load',
+  LoadPrefilledWorkspace: 'workspace.prefilled.load',
   LoadPublicAdjutantActivity: 'public.adjutant.activity.load',
   LoadPublicAgentGoal: 'public.agent.goal.load',
   LoadPublicArtanisReport: 'public.artanis.report.load',

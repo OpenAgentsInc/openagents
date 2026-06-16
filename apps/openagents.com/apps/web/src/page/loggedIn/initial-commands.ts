@@ -5,8 +5,8 @@ import { LoadAdminOverview } from './admin/transitions'
 import { artanisOperatorInitialCommands } from './artanis-console/transitions'
 import {
   LoadAutopilotMorningReport,
-  LoadAutopilotWorkDetail,
   LoadAutopilotWorkBriefing,
+  LoadAutopilotWorkDetail,
   LoadAutopilotWorkEvents,
   LoadAutopilotWorkList,
 } from './autopilot-work/transitions'
@@ -41,6 +41,7 @@ import {
   LoadWorkroomLifecycle,
   LoadWorkroomSurface,
 } from './workroom/transitions'
+import { LoadPrefilledWorkspace } from './workspace/transitions'
 
 export const initialCommands = (
   model: Model,
@@ -91,6 +92,13 @@ export const initialCommands = (
 
   if (model.route._tag === 'Decisions') {
     return [InstallAccountMenuOutsideClick(), LoadAutopilotDecisions({})]
+  }
+
+  if (model.route._tag === 'Workspace') {
+    return [
+      InstallAccountMenuOutsideClick(),
+      LoadPrefilledWorkspace({ workspaceId: model.route.workspaceId }),
+    ]
   }
 
   if (model.route._tag === 'Workroom' || model.route._tag === 'WorkroomTab') {

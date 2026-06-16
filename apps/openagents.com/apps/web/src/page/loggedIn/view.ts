@@ -48,6 +48,7 @@ import {
   usageRouter,
   workroomRouter,
   workroomTabRouter,
+  workspaceRouter,
 } from '../../route'
 import * as Ui from '../../ui'
 import * as ClientsPreview from '../clientsPreview'
@@ -73,6 +74,7 @@ import * as Settings from './page/settings'
 import * as Stats from './page/stats'
 import * as Usage from './page/usage'
 import * as Workroom from './page/workroom'
+import * as Workspace from './page/workspace'
 
 const currentHref = (model: Model): string =>
   M.value(model.route).pipe(
@@ -85,6 +87,7 @@ const currentHref = (model: Model): string =>
         autopilotWorkDetailRouter({ workOrderRef }),
       Forge: () => forgeRouter(),
       Decisions: () => decisionsRouter(),
+      Workspace: ({ workspaceId }) => workspaceRouter({ workspaceId }),
       Workroom: ({ workroomId }) => workroomRouter({ workroomId }),
       WorkroomTab: ({ tab, workroomId }) =>
         workroomTabRouter({ tab, workroomId }),
@@ -141,9 +144,9 @@ const routeKey = (model: Model): string =>
         `AutopilotWorkDetail:${workOrderRef}`,
       Forge: () => 'Forge',
       Decisions: () => 'Decisions',
+      Workspace: ({ workspaceId }) => `Workspace:${workspaceId}`,
       Workroom: ({ workroomId }) => `Workroom:${workroomId}`,
-      WorkroomTab: ({ tab, workroomId }) =>
-        `WorkroomTab:${workroomId}:${tab}`,
+      WorkroomTab: ({ tab, workroomId }) => `WorkroomTab:${workroomId}:${tab}`,
       Invite: () => 'Invite',
       Chat: () => 'Chat',
       TeamChat: ({ teamRef }) => `TeamChat:${teamRef}`,
@@ -407,10 +410,11 @@ const routeView = (model: Model): Html => {
             Ui.workroomScrollableRoute<Message>([
               AutopilotWork.detailView(model),
             ]),
-          Forge: () =>
-            Ui.workroomScrollableRoute<Message>([Forge.view(model)]),
+          Forge: () => Ui.workroomScrollableRoute<Message>([Forge.view(model)]),
           Decisions: () =>
             Ui.workroomScrollableRoute<Message>([Decisions.view(model)]),
+          Workspace: () =>
+            Ui.workroomScrollableRoute<Message>([Workspace.view(model)]),
           Workroom: () =>
             Ui.workroomScrollableRoute<Message>([
               Workroom.view(model.workroom),

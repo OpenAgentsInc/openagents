@@ -101,6 +101,7 @@ export const startupRouteForLoggedOut = (
       'Moksha',
       'Moksha2',
       'Pylon',
+      'Workspace',
       route =>
         LoggedOutStartupRoute({
           route,
@@ -145,11 +146,17 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
       'Moksha',
       'Moksha2',
       'Pylon',
+      'Workspace',
       route =>
-        LoggedOutStartupRoute({
-          route,
-          redirect: Option.none(),
-        }),
+        route._tag === 'Workspace'
+          ? LoggedInStartupRoute({
+              route,
+              redirect: Option.none(),
+            })
+          : LoggedOutStartupRoute({
+              route,
+              redirect: Option.none(),
+            }),
     ),
     M.tag('PublicTrainingRuns', 'PublicTrainingRun', route =>
       LoggedOutStartupRoute({
@@ -263,6 +270,7 @@ const startupRouteForCompleteOnboarding = (
       'Billing',
       'Usage',
       'Images',
+      'Workspace',
       'Settings',
       'SettingsSection',
       'NotFound',

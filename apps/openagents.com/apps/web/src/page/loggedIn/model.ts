@@ -37,15 +37,12 @@ import {
   teamProjectChatRouter,
 } from '../../route'
 import { MulletModel, init as initMullet } from './mullet/model'
+import { NotificationsModel, initNotifications } from './notifications/model'
 import {
   Model as WorkroomModel,
   OverviewTab as WorkroomOverviewTab,
   init as initWorkroom,
 } from './page/workroom'
-import {
-  NotificationsModel,
-  initNotifications,
-} from './notifications/model'
 import { SiteElementContext } from './site-element-context'
 import { ThreadRouteIdle, ThreadRouteState } from './thread-route'
 
@@ -506,6 +503,88 @@ export const TokenUsageStatsState = S.Union([
   TokenUsageStatsFailed,
 ])
 export type TokenUsageStatsState = typeof TokenUsageStatsState.Type
+
+export const PrefilledWorkspaceStatus = S.Literals([
+  'draft',
+  'invited',
+  'active',
+  'archived',
+])
+export type PrefilledWorkspaceStatus = typeof PrefilledWorkspaceStatus.Type
+
+export const PrefilledWorkspaceStarterWorkflowStatus = S.Literals([
+  'queued',
+  'ready',
+  'completed',
+  'dismissed',
+])
+export type PrefilledWorkspaceStarterWorkflowStatus =
+  typeof PrefilledWorkspaceStarterWorkflowStatus.Type
+
+export const PrefilledWorkspaceSeededMemoryEntry = S.Struct({
+  label: S.String,
+  value: S.String,
+  publicSourceRef: S.String,
+})
+export type PrefilledWorkspaceSeededMemoryEntry =
+  typeof PrefilledWorkspaceSeededMemoryEntry.Type
+
+export const PrefilledWorkspaceStarterWorkflow = S.Struct({
+  title: S.String,
+  description: S.String,
+  outcomeKind: S.String,
+  status: PrefilledWorkspaceStarterWorkflowStatus,
+})
+export type PrefilledWorkspaceStarterWorkflow =
+  typeof PrefilledWorkspaceStarterWorkflow.Type
+
+export const PrefilledWorkspaceIntroReceipt = S.Struct({
+  summary: S.String,
+  publicSourceRefs: S.Array(S.String),
+})
+export type PrefilledWorkspaceIntroReceipt =
+  typeof PrefilledWorkspaceIntroReceipt.Type
+
+export const PrefilledWorkspace = S.Struct({
+  id: S.String,
+  projectName: S.String,
+  status: PrefilledWorkspaceStatus,
+  seededMemory: S.Array(PrefilledWorkspaceSeededMemoryEntry),
+  starterWorkflows: S.Array(PrefilledWorkspaceStarterWorkflow),
+  introReceipt: PrefilledWorkspaceIntroReceipt,
+})
+export type PrefilledWorkspace = typeof PrefilledWorkspace.Type
+
+export const PrefilledWorkspaceViewer = S.Literals(['holder', 'operator'])
+export type PrefilledWorkspaceViewer = typeof PrefilledWorkspaceViewer.Type
+
+export const PrefilledWorkspaceResponse = S.Struct({
+  generatedAt: S.String,
+  viewer: PrefilledWorkspaceViewer,
+  workspace: PrefilledWorkspace,
+})
+export type PrefilledWorkspaceResponse = typeof PrefilledWorkspaceResponse.Type
+
+export const PrefilledWorkspaceIdle = ts('PrefilledWorkspaceIdle', {})
+export const PrefilledWorkspaceLoading = ts('PrefilledWorkspaceLoading', {
+  workspaceId: S.String,
+})
+export const PrefilledWorkspaceLoaded = ts('PrefilledWorkspaceLoaded', {
+  generatedAt: S.String,
+  viewer: PrefilledWorkspaceViewer,
+  workspace: PrefilledWorkspace,
+})
+export const PrefilledWorkspaceFailed = ts('PrefilledWorkspaceFailed', {
+  error: S.String,
+  workspaceId: S.String,
+})
+export const PrefilledWorkspaceState = S.Union([
+  PrefilledWorkspaceIdle,
+  PrefilledWorkspaceLoading,
+  PrefilledWorkspaceLoaded,
+  PrefilledWorkspaceFailed,
+])
+export type PrefilledWorkspaceState = typeof PrefilledWorkspaceState.Type
 
 export const AgentRunApiRepository = S.Struct({
   provider: S.String,
@@ -3031,6 +3110,7 @@ export const Model = ts('LoggedIn', {
   onboarding: OnboardingFlowModel,
   providerAccountPool: ProviderAccountPoolState,
   providerConnectionAction: ProviderConnectionAction,
+  prefilledWorkspace: PrefilledWorkspaceState,
   runMetadataDialog: RunMetadataDialog,
   route: LoggedInRoute,
   session: Session,
@@ -3583,6 +3663,7 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
     mullet: initMullet(),
     notifications: initNotifications(),
     onboarding: initOnboardingFlow(auth.onboarding),
+    prefilledWorkspace: PrefilledWorkspaceIdle(),
     providerAccountPool: ProviderAccountPoolIdle(),
     providerConnectionAction: IdleProviderConnectionAction(),
     runMetadataDialog: ClosedRunMetadataDialog(),

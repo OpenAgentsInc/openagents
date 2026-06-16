@@ -35,6 +35,7 @@ import {
   TeamFileRoute,
   TeamProjectChatRoute,
   ThreadRoute,
+  WorkspaceRoute,
 } from '../../route'
 import {
   ClickedAgentGoalAction,
@@ -51,8 +52,9 @@ import {
   FailedLaunchAutopilotRun,
   ReceivedSyncCursorGap,
   ReceivedSyncPatch,
-  RequestedPollAutopilotRun,
+  RequestedLoadPrefilledWorkspace,
   RequestedLoadTokenUsageStats,
+  RequestedPollAutopilotRun,
   SelectedOnboardingRepository,
   SubmittedAgentGoal,
   SubmittedChatComposer,
@@ -63,10 +65,11 @@ import {
   SucceededLaunchAutopilotRun,
   SucceededLoadAgentGoal,
   SucceededLoadOnboardingRepositories,
-  SucceededLoadTokenUsageStats,
+  SucceededLoadPrefilledWorkspace,
   SucceededLoadSyncSnapshot,
   SucceededLoadTeamChatMessages,
   SucceededLoadThreadFileDetail,
+  SucceededLoadTokenUsageStats,
   SucceededPostTeamChatMessage,
   SucceededSelectOnboardingRepository,
   SucceededSkipOnboardingBilling,
@@ -1173,9 +1176,7 @@ describe('logged-in Autopilot chat runs', () => {
       'InstallAccountMenuOutsideClick',
       'LoadTokenUsageStats',
     ])
-    expect(filteredModel.tokenUsageStats.filters.provider).toBe(
-      'google_gemini',
-    )
+    expect(filteredModel.tokenUsageStats.filters.provider).toBe('google_gemini')
     expect(loadCommands.map(command => command.name)).toEqual([
       'LoadTokenUsageStats',
     ])
@@ -1185,6 +1186,67 @@ describe('logged-in Autopilot chat runs', () => {
     expect(loadedModel.tokenUsageStats).toMatchObject({
       _tag: 'TokenUsageStatsLoaded',
       response: { usageEvents: 1 },
+    })
+  })
+
+  test('loads prefilled workspace invites for signed-in holders', () => {
+    const model = init(
+      WorkspaceRoute({ workspaceId: 'workspace_seed' }),
+      authWithTeam,
+    )
+    const commands = initialCommands(model)
+    const [loadingModel, loadCommands] = update(
+      model,
+      RequestedLoadPrefilledWorkspace({ workspaceId: 'workspace_seed' }),
+    )
+    const [loadedModel] = update(
+      loadingModel,
+      SucceededLoadPrefilledWorkspace({
+        response: {
+          generatedAt: '2026-06-16T12:00:00.000Z',
+          viewer: 'holder',
+          workspace: {
+            id: 'workspace_seed',
+            projectName: 'Seeded Storefront Sprint',
+            status: 'invited',
+            seededMemory: [
+              {
+                label: 'Website',
+                value: 'Public catalog is live.',
+                publicSourceRef: 'https://example.com',
+              },
+            ],
+            starterWorkflows: [
+              {
+                title: 'Draft product page update',
+                description: 'Create the first accepted-outcome draft.',
+                outcomeKind: 'draft',
+                status: 'ready',
+              },
+            ],
+            introReceipt: {
+              summary: 'Workspace prepared from public sources.',
+              publicSourceRefs: ['https://example.com'],
+            },
+          },
+        },
+      }),
+    )
+
+    expect(commands.map(command => command.name)).toEqual([
+      'InstallAccountMenuOutsideClick',
+      'LoadPrefilledWorkspace',
+    ])
+    expect(commands[1]?.args).toEqual({ workspaceId: 'workspace_seed' })
+    expect(loadCommands.map(command => command.name)).toEqual([
+      'LoadPrefilledWorkspace',
+    ])
+    expect(loadedModel.prefilledWorkspace).toMatchObject({
+      _tag: 'PrefilledWorkspaceLoaded',
+      workspace: {
+        id: 'workspace_seed',
+        projectName: 'Seeded Storefront Sprint',
+      },
     })
   })
 

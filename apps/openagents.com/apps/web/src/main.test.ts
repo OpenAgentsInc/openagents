@@ -174,6 +174,22 @@ describe('auth bootstrap flags', () => {
       headers: { accept: 'application/json' },
     })
   })
+
+  test('requests the auth session on workspace invite routes', async () => {
+    window.history.replaceState({}, '', '/workspaces/workspace_seed')
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('', { status: 401 }))
+
+    const loadedFlags = await Effect.runPromise(flags)
+
+    expect(loadedFlags.maybeAuth).toEqual(Option.none())
+    expect(fetchSpy).toHaveBeenCalledWith('/api/auth/session', {
+      cache: 'no-store',
+      credentials: 'include',
+      headers: { accept: 'application/json' },
+    })
+  })
 })
 
 describe('authenticated startup routing', () => {
@@ -308,10 +324,9 @@ describe('authenticated startup routing', () => {
       Scene.expect(Scene.selector('[data-route="pylon"]')).toExist(),
       Scene.expect(Scene.selector('oa-pylon')).toExist(),
       Scene.expect(Scene.selector('oa-pylon-launch-gate')).toExist(),
-      Scene.expect(Scene.selector('[data-cta="download-autopilot"]')).toHaveAttr(
-        'href',
-        AUTOPILOT_DESKTOP_MACOS_ARM64_DMG_URL,
-      ),
+      Scene.expect(
+        Scene.selector('[data-cta="download-autopilot"]'),
+      ).toHaveAttr('href', AUTOPILOT_DESKTOP_MACOS_ARM64_DMG_URL),
     )
   })
 
@@ -415,6 +430,55 @@ describe('authenticated startup routing', () => {
       route: { _tag: 'Pylon' },
     })
     expect(commands).toHaveLength(0)
+  })
+
+  test('keeps logged-out workspace invite visitors on the invite URL', () => {
+    const [model, commands] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/workspaces/workspace_seed'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: { _tag: 'Workspace', workspaceId: 'workspace_seed' },
+    })
+    expect(commands).toHaveLength(0)
+  })
+
+  test('renders logged-out workspace invites with GitHub login', () => {
+    const [model] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/workspaces/workspace_seed'),
+    )
+
+    Scene.scene(
+      { update, view },
+      Scene.with(model),
+      Scene.expect(Scene.selector('[data-route="workspace-invite"]')).toExist(),
+      Scene.expect(
+        Scene.role('heading', { name: 'Open your project workspace' }),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('link', { name: 'Log in with GitHub' }),
+      ).toHaveAttr('href', '/login/github'),
+    )
+  })
+
+  test('opens authenticated workspace invites in the product shell', () => {
+    const [model, commands] = init(
+      Flags.make({ maybeAuth: Option.some(authWithTeam) }),
+      appUrl('/workspaces/workspace_seed'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedIn',
+      route: { _tag: 'Workspace', workspaceId: 'workspace_seed' },
+    })
+    expect(commands.map(command => command.name)).toEqual([
+      'InstallAccountMenuOutsideClick',
+      'LoadPrefilledWorkspace',
+    ])
+    expect(commands[1]?.args).toEqual({ workspaceId: 'workspace_seed' })
   })
 
   test('serves the former public homepage from stats', () => {

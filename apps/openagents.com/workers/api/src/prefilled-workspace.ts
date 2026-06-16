@@ -1,5 +1,6 @@
 import { Schema as S } from 'effect'
 
+import { parseJsonWithSchema } from './json-boundary'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 // Prefilled project workspace primitive (Epic C / C1).
@@ -189,8 +190,7 @@ export const makePrefilledWorkspaceRecord = (
 
 const parseIntroReceipt = (json: string): IntroReceipt => {
   try {
-    const parsed: unknown = JSON.parse(json)
-    return S.decodeUnknownSync(IntroReceipt)(parsed)
+    return parseJsonWithSchema(IntroReceipt, json)
   } catch {
     return { summary: '', publicSourceRefs: [] }
   }
@@ -389,7 +389,8 @@ export const makePrefilledWorkspaceService = (
 
     return record
   },
-  readWorkspace: async workspaceId => loadWorkspace(db, 'id = ?', [workspaceId]),
+  readWorkspace: async workspaceId =>
+    loadWorkspace(db, 'id = ?', [workspaceId]),
   readWorkspaceForHolder: async (workspaceId, holderUserId) =>
     loadWorkspace(db, 'id = ? AND holder_user_id = ?', [
       workspaceId,

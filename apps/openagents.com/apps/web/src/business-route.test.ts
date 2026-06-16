@@ -91,7 +91,7 @@ describe('business route', () => {
     expect(commands).toHaveLength(0)
   })
 
-  test('renders the signup form fields, pricing copy, and Slack opt-in', () => {
+  test('renders the signup form, workspace invite copy, pricing copy, and Slack opt-in', () => {
     const rendered = renderHtml(Business.view({ _tag: 'LoggedOut' }))
 
     // Required signup fields, including a first-class phone field.
@@ -104,6 +104,12 @@ describe('business route', () => {
     // Opt-in shared Slack channel (UI only).
     expect(rendered).toContain('name="requestSlackChannel"')
     expect(rendered).toContain('Request a shared Slack channel')
+
+    // Prefilled workspace invite copy.
+    expect(rendered).toContain('Project invite')
+    expect(rendered).toContain(
+      'Your invite opens a named project with seeded notes, starter workflows, and an intro receipt.',
+    )
 
     // Exact pricing framing required by the issue.
     expect(rendered).toContain(

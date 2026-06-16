@@ -26,6 +26,7 @@ import * as Pylon from './page/pylon'
 import * as Share from './page/share'
 import * as Stats from './page/stats'
 import * as TrainingRuns from './page/trainingRuns'
+import * as WorkspaceInvite from './page/workspaceInvite'
 
 export const view = Submodel.defineView<Model, Message>((model): Html => {
   const h = html<Message>()
@@ -51,6 +52,16 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
   if (model.route._tag === 'Pylon') {
     return Ui.pageShell<Message>([
       h.keyed('div')(model.route._tag, [], [Pylon.view()]),
+    ])
+  }
+
+  if (model.route._tag === 'Workspace') {
+    return Ui.pageShell<Message>([
+      h.keyed('div')(
+        `Workspace:${model.route.workspaceId}`,
+        [],
+        [WorkspaceInvite.view(model.route.workspaceId)],
+      ),
     ])
   }
 

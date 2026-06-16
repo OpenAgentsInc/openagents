@@ -22,13 +22,13 @@
 // Also add the imports near the other route imports:
 //   import { makePrefilledWorkspaceService } from './prefilled-workspace'
 //   import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
-
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import {
   forbidden,
   methodNotAllowed,
   noStoreJsonResponse,
+  serverError,
 } from './http/responses'
 import { readJsonObject } from './json-boundary'
 import {
@@ -105,6 +105,14 @@ const notFound = (): HttpResponse =>
     { status: 404 },
   )
 
+const dependencyPromise = <A>(
+  tryPromise: () => Promise<A>,
+): Effect.Effect<A, HttpResponse> =>
+  Effect.tryPromise({
+    catch: () => serverError(),
+    try: tryPromise,
+  })
+
 const workspaceIdFromPath = (pathname: string): string | undefined => {
   const match = /^\/api\/workspaces\/([^/]+)$/.exec(pathname)
 
@@ -171,7 +179,7 @@ const createWorkspace = <Bindings extends PrefilledWorkspaceRouteEnv>(
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
     const nowIso = routeNowIso(dependencies)
-    const authorized = yield* Effect.promise(() =>
+    const authorized = yield* dependencyPromise(() =>
       dependencies.requireOperator(request, env),
     )
 
@@ -214,7 +222,7 @@ const getWorkspace = <Bindings extends PrefilledWorkspaceRouteEnv>(
     const nowIso = routeNowIso(dependencies)
     const store = dependencies.makeStore(env)
 
-    const isOperator = yield* Effect.promise(() =>
+    const isOperator = yield* dependencyPromise(() =>
       dependencies.requireOperator(request, env),
     )
 
@@ -234,15 +242,12 @@ const getWorkspace = <Bindings extends PrefilledWorkspaceRouteEnv>(
       })
     }
 
-    const holderUserId = yield* Effect.promise(() =>
+    const holderUserId = yield* dependencyPromise(() =>
       dependencies.requireHolderUserId(request, env, ctx),
     )
 
     if (holderUserId === undefined) {
-      return noStoreJsonResponse(
-        { error: 'unauthorized' },
-        { status: 401 },
-      )
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
     }
 
     const record = yield* Effect.promise(() =>
@@ -258,7 +263,7 @@ const getWorkspace = <Bindings extends PrefilledWorkspaceRouteEnv>(
       viewer: 'holder',
       workspace: toPublicProjection(record),
     })
-  })
+  }).pipe(Effect.catch(error => Effect.succeed(error)))
 
 export const makePrefilledWorkspaceRoutes = <
   Bindings extends PrefilledWorkspaceRouteEnv,

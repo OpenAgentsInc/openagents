@@ -27,8 +27,8 @@ import {
   AdminRoute,
   ChatRoute,
   ImagesRoute,
-  MulletRoute,
   type LoggedInRoute,
+  MulletRoute,
   OnboardingRoute,
   OrderDetailRoute,
   OrderRoute,
@@ -40,11 +40,13 @@ import {
   TeamFilesRoute,
   TeamProjectChatRoute,
   ThreadRoute,
+  WorkspaceRoute,
   teamChatRouter,
   threadRouter,
 } from '../../route'
 import { update } from '../../update'
 import { view } from '../../view'
+import { SubmitCustomerOrder } from './customer-order/transitions'
 import {
   CompletedFocusChatComposer,
   CompletedScrollChatTimelineToEnd,
@@ -58,8 +60,9 @@ import {
   SucceededLoadArtanisOperatorGoal,
   SucceededLoadMulletBootstrap,
   SucceededLoadOnboardingRepositories,
-  SucceededLoadTokenUsageStats,
+  SucceededLoadPrefilledWorkspace,
   SucceededLoadSyncSnapshot,
+  SucceededLoadTokenUsageStats,
   SucceededSubmitCustomerOrder,
   SucceededUploadThreadFile,
 } from './message'
@@ -94,6 +97,7 @@ import {
   threadFileDetailFromDto,
   threadFileRecordFromDto,
 } from './model'
+import { InstallSitePreviewElementTargetBridge } from './site-preview-bridge'
 import {
   FocusChatComposer,
   LaunchAutopilotRun,
@@ -102,8 +106,6 @@ import {
   SetAutopilotThreadUrl,
   UploadThreadFile,
 } from './update'
-import { SubmitCustomerOrder } from './customer-order/transitions'
-import { InstallSitePreviewElementTargetBridge } from './site-preview-bridge'
 
 const auth: AuthBootstrap = {
   session: {
@@ -449,10 +451,7 @@ const artanisConsoleResponse = {
     goalCommands: [],
     privateEvidencePackRefs: ['evidence.private.artanis.scene'],
     rawWorkroomStateRefs: ['workroom.private.artanis.scene'],
-    supportedApprovalActions: [
-      'approve_risky_action',
-      'reject_risky_action',
-    ],
+    supportedApprovalActions: ['approve_risky_action', 'reject_risky_action'],
     supportedGoalActions: [
       'create_goal',
       'pause_goal',
@@ -995,9 +994,7 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(
         Scene.text('Please rebuild the hero so it looks credible.'),
       ).toExist(),
-      Scene.expect(
-        Scene.text('Initial typed repo Site request.'),
-      ).toExist(),
+      Scene.expect(Scene.text('Initial typed repo Site request.')).toExist(),
       Scene.expect(
         Scene.selector(
           'a[href="https://sites.openagents.com/typed-repo/versions/site_version_typed_repo_previous"]',
@@ -1237,9 +1234,7 @@ describe('logged-in workroom sidebar', () => {
         }),
       }),
       Scene.expect(Scene.text('review ready')).toExist(),
-      Scene.expect(
-        Scene.text('A review-ready result is available.'),
-      ).toExist(),
+      Scene.expect(Scene.text('A review-ready result is available.')).toExist(),
       Scene.expect(
         Scene.text('https://sites.openagents.com/previews/otec'),
       ).toExist(),
@@ -1373,9 +1368,13 @@ describe('logged-in workroom sidebar', () => {
           orders: [siteOrder, codeOrder],
         }),
       }),
-      Scene.expect(Scene.role('heading', { name: 'Software requests' })).toExist(),
+      Scene.expect(
+        Scene.role('heading', { name: 'Software requests' }),
+      ).toExist(),
       Scene.expect(Scene.text('Build an OTEC public Site.')).toExist(),
-      Scene.expect(Scene.text('Open a pull request for README cleanup.')).toExist(),
+      Scene.expect(
+        Scene.text('Open a pull request for README cleanup.'),
+      ).toExist(),
       Scene.expect(Scene.text('Site request')).toExist(),
       Scene.expect(Scene.text('Software request')).toExist(),
       Scene.expect(
@@ -1774,7 +1773,9 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(Scene.text('google_gemini / gemini-2.5-flash')).toExist(),
       Scene.expect(Scene.text('omega / omega_provider_broker')).toExist(),
       Scene.expect(Scene.text('run / probe-run:scene')).toExist(),
-      Scene.expect(Scene.text('repository / OpenAgentsInc/autopilot-omega')).toExist(),
+      Scene.expect(
+        Scene.text('repository / OpenAgentsInc/autopilot-omega'),
+      ).toExist(),
       Scene.expect(Scene.text('Anonymous/anonymized source')).toExist(),
       Scene.expect(Scene.text('Privacy opt-out')).toExist(),
       Scene.expect(
@@ -1785,6 +1786,62 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(Scene.text('should never render')).not.toExist(),
       Scene.expect(Scene.text('/Users/chris/private/repo')).not.toExist(),
       Scene.expect(Scene.text('rawPrompt')).not.toExist(),
+    )
+  })
+
+  test('renders prefilled workspace memory, starters, and intro receipt', () => {
+    const [model] = LoggedIn.update(
+      LoggedIn.init(WorkspaceRoute({ workspaceId: 'workspace_seed' }), auth),
+      SucceededLoadPrefilledWorkspace({
+        response: {
+          generatedAt: '2026-06-16T12:00:00.000Z',
+          viewer: 'holder',
+          workspace: {
+            id: 'workspace_seed',
+            projectName: 'Seeded Storefront Sprint',
+            status: 'invited',
+            seededMemory: [
+              {
+                label: 'Website',
+                value: 'Public catalog is live.',
+                publicSourceRef: 'https://example.com',
+              },
+            ],
+            starterWorkflows: [
+              {
+                title: 'Draft product page update',
+                description: 'Create the first accepted-outcome draft.',
+                outcomeKind: 'draft',
+                status: 'ready',
+              },
+            ],
+            introReceipt: {
+              summary: 'Workspace prepared from public sources.',
+              publicSourceRefs: ['https://example.com'],
+            },
+          },
+        },
+      }),
+    )
+
+    Scene.scene(
+      { update, view },
+      Scene.with(model),
+      Scene.expect(
+        Scene.selector('[data-route="prefilled-workspace"]'),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('heading', { name: 'Seeded Storefront Sprint' }),
+      ).toExist(),
+      Scene.expect(
+        Scene.text('Workspace prepared from public sources.'),
+      ).toExist(),
+      Scene.expect(Scene.text('1. Draft product page update')).toExist(),
+      Scene.expect(Scene.text('Public catalog is live.')).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Open Work' })).toHaveAttr(
+        'href',
+        '/autopilot/work',
+      ),
     )
   })
 
@@ -2624,7 +2681,9 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(Scene.role('button', { name: 'Approve' })).toExist(),
       Scene.expect(Scene.role('button', { name: 'Reject' })).toExist(),
       Scene.expect(Scene.text('Work routing')).toExist(),
-      Scene.expect(Scene.text('pylon marketplace / pylon job intake')).toExist(),
+      Scene.expect(
+        Scene.text('pylon marketplace / pylon job intake'),
+      ).toExist(),
       Scene.expect(Scene.text('Publication queue')).toExist(),
       Scene.expect(Scene.text('1 ready / 1 total')).toExist(),
       Scene.expect(Scene.text('2026-06-07T05:20:00.000Z')).not.toExist(),

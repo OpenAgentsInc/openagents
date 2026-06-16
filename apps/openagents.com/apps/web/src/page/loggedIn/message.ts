@@ -57,6 +57,7 @@ import {
   ImageGenerationImageSize,
   ImageGenerationModelId,
   ImageGenerationProvider,
+  PrefilledWorkspaceResponse,
   ProviderAccountPoolResponse,
   SubmitCustomerSiteFeedbackResponse,
   TeamChatMessagesResponse,
@@ -667,6 +668,22 @@ export const FailedLoadTokenUsageStats = m('FailedLoadTokenUsageStats', {
 export const UpdatedTokenUsageStatsFilter = m('UpdatedTokenUsageStatsFilter', {
   field: TokenUsageStatsFilterKey,
   value: S.String,
+})
+export const RequestedLoadPrefilledWorkspace = m(
+  'RequestedLoadPrefilledWorkspace',
+  {
+    workspaceId: S.String,
+  },
+)
+export const SucceededLoadPrefilledWorkspace = m(
+  'SucceededLoadPrefilledWorkspace',
+  {
+    response: PrefilledWorkspaceResponse,
+  },
+)
+export const FailedLoadPrefilledWorkspace = m('FailedLoadPrefilledWorkspace', {
+  error: S.String,
+  workspaceId: S.String,
 })
 export const RequestedGenerateAdminSite = m('RequestedGenerateAdminSite', {
   siteId: S.String,
@@ -1312,6 +1329,9 @@ export const Message = S.Union([
   SucceededLoadTokenUsageStats,
   FailedLoadTokenUsageStats,
   UpdatedTokenUsageStatsFilter,
+  RequestedLoadPrefilledWorkspace,
+  SucceededLoadPrefilledWorkspace,
+  FailedLoadPrefilledWorkspace,
   RequestedGenerateAdminSite,
   SucceededGenerateAdminSite,
   FailedGenerateAdminSite,
