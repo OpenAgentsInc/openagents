@@ -210,6 +210,12 @@ Implementation status, 2026-06-16: #5133 renders that projection in the
 dirty state, repo/instruction/adapter/dev-doctor/current-job refs, missing
 evidence blockers, and unsafe-ref omission coverage.
 
+Implementation status, 2026-06-16: #5134 adds
+`projectForgeRepositoryProfileRefreshReceipt()`, a refs-only public-safe receipt
+for repository command/test/instruction/invariant profile refreshes with
+freshness, changed profile kinds, non-authority flags, blockers, and unsafe-ref
+omission regressions.
+
 ### G5 - Retrieval And Search Planner
 
 Systems: system 19 Semantic Retrieval/Search, system 20 LSP/Diagnostics,
