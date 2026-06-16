@@ -77,18 +77,27 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   promise flip are shipped. So a **manual two-device** proof needs no new code —
   only a real distinct validator device. Posted the code-grounded breakdown to the
   RC3 gates thread (`/forum/t/34bebe36-…`).
-- **#5121 (TOP PRIORITY, automate the pairing) — no separate `validate` command.**
-  Closes the only true infra gap surfaced by the audit: implement
-  `resolveValidatorCandidates()` (stub at `workers/api/src/index.ts:8015`,
-  `async () => []`) over live online Pylon registrations filtered for a device
-  distinct from the worker; add validator auto-discovery (the #5053 leftover TODO,
-  `…/contributions/next-unpaired?validatorDeviceRef=…`); add an **opt-in validator
-  auto-run** on Pylon (mirrors worker assignment-default-on) so a node is
-  auto-paired and replays on its own. Guardrails: device-distinctness stays
-  enforced, routes stay `requireAgent`, settlement stays `requireAdmin` +
-  bounded-spend (pairing/discovery only — no payout-authority change). This is what
-  makes #5061 self-serve instead of hand-coordinated. Contributors can follow along
-  on the issue + the forum thread.
+- **#5121 (automate the pairing) — IMPLEMENTED + worker endpoint DEPLOYED
+  (`afcf1e13`).** Removes the manual `validate` coordination. As built:
+  - **Worker:** new agent-gated `GET /api/training/contributions/next-unpaired?validatorDeviceRef=…`
+    returns the oldest pending worker contribution from a **distinct** device
+    (public-safe refs; skips same-device; GET-only). Live-verified: returns
+    Trigger's pending `kernel_trace` lease from a distinct device.
+  - **Pylon:** `discoverNextUnpaired()` + `runValidatorAuto()` + opt-in CLI
+    **`pylon training validate --auto [--watch …]`** (loads the committed pinned
+    fixture, discovers → replays → submits via `/replay-verdict`; no manual
+    `--lease-ref`/`--workload`). Ships in the **next Pylon RC**.
+  - **`resolveValidatorCandidates()` stays intentionally empty by design** — the
+    trust anchor is a separate-device replay, so the server must never fabricate a
+    validator digest. Verdicts are produced by the validator **push** path
+    (auto-discover → replay → `/replay-verdict`), not a server-assigned candidate.
+  - Guardrails unchanged: device-distinctness enforced server-side, routes stay
+    `requireAgent`, settlement stays `requireAdmin` + bounded-spend (pairing/
+    discovery only — no payout-authority change). 6 new worker route tests + 6 new
+    Pylon client tests; full deploy gate green.
+  - Remaining to fully close: next Pylon RC carrying `validate --auto`, then a live
+    auto-validation that pairs a real distinct device → `Verified` (unblocks #5061
+    self-serve). Contributors follow along on the issue + forum thread.
 - **#5051** epic → **#5061** first external-validator dry-run with **Orrery**
   (volunteered, live non-owner node). This is the one thing that proves the loop:
   pair a real worker + a **distinct** validator device, produce the first
