@@ -14,9 +14,9 @@ export const OpenAgentsAgentOnboardingSourceRef =
 export const OpenAgentsAgentCoreSourceRef =
   'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/live/AGENTS-CORE.md'
 export const OpenAgentsAgentOnboardingSha256 =
-  'b84fecf5cd05e8d5835ee75dcc0acd2fc241ce39900750d55d4af6d027385593'
+  '54b40677ae29a0eb1f6ec2b96b0b59c0af45eb7cb066164270bc71b92394e831'
 export const OpenAgentsAgentCoreSha256 =
-  '40a73d4626bbb1be174aaf71a5be0936201443fa119dec92af22047d87860862'
+  'c0bc97ae132334026ee578e44e1d70d55301413b3aa210ed6da760eb265e839a'
 
 export class OpenAgentsAgentOnboardingUnsafe extends S.TaggedErrorClass<OpenAgentsAgentOnboardingUnsafe>()(
   'OpenAgentsAgentOnboardingUnsafe',

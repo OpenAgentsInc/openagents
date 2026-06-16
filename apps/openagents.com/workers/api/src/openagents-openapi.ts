@@ -251,6 +251,9 @@ const schemaComponents = (): JsonSchema => ({
   ProviderAccountPoolResponse: objectSummary(
     'Account-pool dashboard projection over the connected provider accounts owned by the signed-in user or the agent grant owner: provider-tagged per-account status/health, lease eligibility with typed reasons, active lease count vs lease limit, cooldown-until plus remaining seconds, low-credit flags, recent failure class, last-selected/sanity-check/probe/launch timestamps, and reconnect nudges for expired or reauth-required accounts; plus the active lease list, the next-selection explain row, summary counts, generatedAt, and the declared staleness contract (live_at_read, rebuilds on provider-account connect/disconnect/health/lease/failover transitions). Read-only projection: lease refs and typed state only. Provider tokens, secrets, grants, and raw provider payloads are never returned, and the projection grants no lease, spend, or provider-mutation authority.',
   ),
+  BuiltinComputeAgentGrantEnvelope: objectSummary(
+    'Built-in hosted-Gemini grant result for the no-key built-in agent path. A granted response returns a short-lived redacted grant with provider secret refs, free-tier budget refs, expiry, and materialization instructions only; it never returns the hosted key, provider payloads, prompts, completions, or broad provider-account mutation authority. Not-configured and quota-exhausted states are explicit.',
+  ),
   ProductPromiseTransitions: objectSummary(
     'Public-safe promise transition receipt feed: receiptId, promiseId, from/to state, registry version, typed checks, result (passed/failed/exception), evidence refs, and timestamps. Receipts are transition evidence, not transitions.',
   ),
@@ -1758,6 +1761,15 @@ const requestSchemas = (): JsonSchema => ({
   ),
   TrainingWindowLeaseClaimRequest: objectSummary(
     'Pylon request to claim the highest-priority active training window. Admin-dispatched homework is selected before auto-starter windows; request fields are pylonRef, optional leaseSeconds, and public-safe receiptRefs.',
+  ),
+  TrainingTraceSubmissionRequest: objectSummary(
+    'Registered-agent worker trace submission for a claimed Tassadar training lease: assignmentRef, worker pylonDeviceRef, traceCommitmentDigestRef, sampledWindow/sampleWindowRef, workerReceiptRef, and workloadFamily. Records pending worker contribution evidence only; it grants no payout, settlement, acceptance, or validator authority.',
+  ),
+  TrainingReplayVerdictRequest: objectSummary(
+    'Registered-agent validator replay verdict for a claimed Tassadar training lease: validatorDeviceRef, replayDigestRef, workloadFamily, and optional validatorReceiptRef. The validator device must differ from the worker device. The resulting exact_trace_replay challenge computes Verified or Rejected; the route grants no payout or settlement authority.',
+  ),
+  TrainingTraceContributionEnvelope: objectSummary(
+    'Public-safe worker/validator trace contribution envelope with contribution refs, lease/run/window refs, workload family, contribution state, and optional verification challenge projection. It contains refs and verdict metadata only, never raw traces, prompts, private paths, wallet material, or payout targets.',
   ),
   TrainingWindowBootstrapGrantRequest: objectSummary(
     'Joiner request for a bootstrap grant pinned to the last durable seal of a training run. Request fields are joinerRef and optional public-safe receiptRefs.',
@@ -3824,6 +3836,48 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Training window lease projection.',
           '#/components/schemas/TrainingWindowLeaseEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/leases/{leaseRef}/trace-submission': {
+    post: operation({
+      operationId: 'submitTrainingLeaseTraceContribution',
+      summary: 'Submit worker trace contribution for a training lease',
+      description:
+        'Registered-agent worker route for the Tassadar executor-trace completion path (#5052). The caller must own the claimed lease through its registered Pylon. The request records a pending public-safe worker trace contribution awaiting a distinct validator device. It grants no accepted-work, payout, settlement, model-publication, or validator authority.',
+      tags: ['Training', 'Pylon'],
+      security: agentBearer,
+      parameters: [pathParam('leaseRef', 'Training window lease ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingTraceSubmissionRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Recorded worker trace contribution.',
+          '#/components/schemas/TrainingTraceContributionEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/leases/{leaseRef}/replay-verdict': {
+    post: operation({
+      operationId: 'submitTrainingLeaseReplayVerdict',
+      summary: 'Submit validator replay verdict for a training lease',
+      description:
+        'Registered-agent validator route for the Tassadar executor-trace completion path (#5052). The validator submits a replay digest for the pending worker contribution on the lease; the server enforces validator-device distinctness and creates the existing exact_trace_replay challenge. Digest match or mismatch becomes verification evidence only and grants no payout, settlement, or model-publication authority.',
+      tags: ['Training', 'Pylon'],
+      security: agentBearer,
+      parameters: [pathParam('leaseRef', 'Training window lease ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingReplayVerdictRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Paired contribution and verification challenge projection.',
+          '#/components/schemas/TrainingTraceContributionEnvelope',
         ),
         ...errorResponses(),
       },
@@ -6685,6 +6739,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Account-pool dashboard projection.',
           '#/components/schemas/ProviderAccountPoolResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/provider-accounts/google-gemini/grants/builtin': {
+    post: operation({
+      operationId: 'issueBuiltinGoogleGeminiGrant',
+      summary: 'Issue built-in agent hosted Gemini grant',
+      description:
+        'Signed-in built-in-agent route that issues a bounded hosted-Gemini grant when the hosted key is configured and the free-tier quota allows it. The response returns only redacted grant refs, expiry, budget bounds, and secret-ref materialization metadata; it never exposes the shared hosted key, provider payloads, prompts, completions, or broad provider-account mutation authority. Not-configured and quota-exhausted states are explicit.',
+      tags: ['Provider Accounts', 'Autopilot'],
+      security: browserSessionOrAgentBearer,
+      responses: {
+        '200': okJson(
+          'Built-in hosted-compute grant result.',
+          '#/components/schemas/BuiltinComputeAgentGrantEnvelope',
         ),
         ...errorResponses(),
       },
