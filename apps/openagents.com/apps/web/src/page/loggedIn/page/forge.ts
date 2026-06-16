@@ -81,6 +81,13 @@ interface DetailPanel {
   readonly note: string
 }
 
+interface DogfoodMetric {
+  readonly key: string
+  readonly label: string
+  readonly value: string
+  readonly provenance: Provenance
+}
+
 // ---------------------------------------------------------------------------
 // Real-data derivation from the loaded Runs projection.
 // ---------------------------------------------------------------------------
@@ -494,6 +501,42 @@ const buildPanels = (digest: RunDigest): ReadonlyArray<DetailPanel> => {
       band: realBand.length > 0 ? realBand : seededBand,
       provenance: hasRuns ? 'live' : 'seeded',
       note: 'Blocked + rejected/invalid Runs (Monitor signal).',
+    },
+  ]
+}
+
+const buildDogfoodMetrics = (data: FactoryData): ReadonlyArray<DogfoodMetric> => {
+  const openWork = Math.max(
+    0,
+    data.digest.total - data.digest.accepted - data.digest.rejectedOrInvalid,
+  )
+
+  return [
+    {
+      key: 'open-work',
+      label: 'Open work',
+      value: data.runsLoaded ? formatInt(openWork) : '—',
+      provenance: data.runsLoaded ? 'live' : 'seeded',
+    },
+    {
+      key: 'eligible-nodes',
+      label: 'Eligible nodes',
+      value: data.pool === null ? '—' : formatInt(data.pool.eligible),
+      provenance: data.pool === null ? 'seeded' : 'live',
+    },
+    {
+      key: 'accepted',
+      label: 'Accepted',
+      value: data.runsLoaded ? formatInt(data.digest.accepted) : '—',
+      provenance: data.runsLoaded ? 'live' : 'seeded',
+    },
+    {
+      key: 'incidents',
+      label: 'Incidents',
+      value: data.runsLoaded
+        ? formatInt(data.digest.blocked + data.digest.rejectedOrInvalid)
+        : '—',
+      provenance: data.runsLoaded ? 'live' : 'seeded',
     },
   ]
 }
@@ -1383,6 +1426,102 @@ const panelSection = (panels: ReadonlyArray<DetailPanel>): Html => {
   )
 }
 
+const dogfoodMetricView = (metric: DogfoodMetric): Html => {
+  const h = html<Message>()
+  const valueClass =
+    metric.provenance === 'live' ? 'text-white/85' : 'text-white/35'
+
+  return h.div(
+    [
+      Ui.className<Message>('grid min-w-0 gap-1'),
+      h.DataAttribute('forge-dogfood-metric', metric.key),
+      h.DataAttribute('forge-dogfood-value', metric.value),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'truncate text-[0.5625rem] uppercase tracking-wide text-white/35',
+          ),
+        ],
+        [metric.label],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            `text-lg font-semibold tabular-nums ${valueClass}`,
+          ),
+        ],
+        [metric.value],
+      ),
+      h.div([Ui.className<Message>('justify-self-start')], [
+        provenanceTag(metric.provenance),
+      ]),
+    ],
+  )
+}
+
+const dogfoodFactorySection = (data: FactoryData): Html => {
+  const h = html<Message>()
+  const ready = data.runsLoaded && data.poolLoaded
+  const status = ready ? 'live' : 'awaiting'
+  const statusClass = ready
+    ? 'border-[#1b5e20] text-[#7ccf8a]'
+    : 'border-[#5a3b00] text-[#ffb400]'
+
+  return h.section(
+    [
+      Ui.className<Message>(
+        'grid gap-3 border border-[#222] bg-[#050505] p-4',
+      ),
+      h.DataAttribute('forge-dogfood-panel', 'true'),
+      h.DataAttribute('forge-dogfood-status', status),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-1')],
+            [
+              h.h2(
+                [
+                  Ui.className<Message>(
+                    'm-0 text-base font-medium text-white/80',
+                  ),
+                ],
+                ['Customer #1 factory'],
+              ),
+              h.p(
+                [Ui.className<Message>('m-0 text-sm/6 text-white/45')],
+                [
+                  'Our own OpenAgents development pipeline, projected from Runs and provider-pool capacity.',
+                ],
+              ),
+            ],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                `inline-flex min-h-7 items-center border px-2 text-[0.6875rem] uppercase tracking-wide ${statusClass}`,
+              ),
+            ],
+            [ready ? 'Live dogfood loop' : 'Awaiting live dogfood data'],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-3 @2xl:grid-cols-4 sm:grid-cols-2',
+          ),
+        ],
+        buildDogfoodMetrics(data).map(dogfoodMetricView),
+      ),
+    ],
+  )
+}
+
 const statusNote = (data: FactoryData): Html | null => {
   const h = html<Message>()
 
@@ -1433,6 +1572,7 @@ export const view = (model: Model): Html => {
       header(data),
       provenanceLegend(),
       ...(note === null ? [] : [note]),
+      dogfoodFactorySection(data),
       pipelineSection(stages),
       automationCatalogSection(data.workOrders),
       automationTuningSection(model),

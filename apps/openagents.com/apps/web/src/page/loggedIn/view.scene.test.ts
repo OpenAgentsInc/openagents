@@ -93,6 +93,7 @@ import {
   CustomerSiteFeedbackLoaded,
   CustomerSiteRevisionsLoaded,
   PollingProviderDeviceLogin,
+  ProviderAccountPoolLoaded,
   type ThreadFileApiRecord,
   type ThreadFileDetailApiRecord,
   agentRunExternalRefFromNullable,
@@ -242,6 +243,35 @@ const forgeWorkOrderFixture = (
   workOrderRef: 'wo_forge_metrics_1',
   ...overrides,
 })
+
+const providerPoolLoadedFixture = () =>
+  ProviderAccountPoolLoaded({
+    response: {
+      accounts: [],
+      activeLeases: [],
+      generatedAt: '2026-06-16T12:00:00.000Z',
+      nextSelection: {
+        accountLabel: null,
+        activeLeaseCount: null,
+        leaseLimit: null,
+        provider: null,
+        providerAccountRef: null,
+        selectionReason: 'No live selection needed for scene fixture.',
+        status: 'none',
+      },
+      policyVersion: 'provider-pool.policy.test',
+      provider: 'google-gemini',
+      summary: {
+        activeLeaseCount: 0,
+        cooldown: 0,
+        eligible: 3,
+        lowCredit: 0,
+        requiresReauth: 0,
+        total: 3,
+        unhealthy: 0,
+      },
+    },
+  })
 
 const workspaceScope = 'workspace:github:14167547'
 const syncedMissionModel = (route: LoggedInRoute = ChatRoute()) => {
@@ -804,6 +834,7 @@ describe('logged-in workroom sidebar', () => {
             workOrders: [forgeWorkOrderFixture()],
           },
         }),
+        providerAccountPool: providerPoolLoadedFixture(),
       }),
       Scene.expect(
         Scene.selector('[data-component="forge-factory-dashboard"]'),
@@ -818,6 +849,15 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(
         Scene.selector('[data-forge-stage-key="triage"]'),
       ).toHaveAttr('data-forge-stage-automation-count', '1'),
+      Scene.expect(
+        Scene.selector('[data-forge-dogfood-panel="true"]'),
+      ).toHaveAttr('data-forge-dogfood-status', 'live'),
+      Scene.expect(
+        Scene.selector('[data-forge-dogfood-metric="open-work"]'),
+      ).toHaveAttr('data-forge-dogfood-value', '1'),
+      Scene.expect(
+        Scene.selector('[data-forge-dogfood-metric="eligible-nodes"]'),
+      ).toHaveAttr('data-forge-dogfood-value', '3'),
       Scene.expect(
         Scene.role('button', { name: 'Run Scope triage' }),
       ).toExist(),
