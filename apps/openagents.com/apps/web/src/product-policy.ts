@@ -152,6 +152,7 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'SiteCheckoutDemoReturn' &&
   route._tag !== 'ClientsPreview' &&
   route._tag !== 'Components' &&
+  route._tag !== 'Business' &&
   route._tag !== 'Blog' &&
   route._tag !== 'BlogPost' &&
   route._tag !== 'PublicAgent' &&
@@ -184,6 +185,7 @@ export const browserRouteProductIntents = {
   AutopilotWork: 'autopilot.work.index',
   AutopilotWorkDetail: 'autopilot.work.detail',
   Billing: 'billing.credits',
+  Business: 'public.business.landing',
   Blog: 'public.blog.index',
   BlogPost: 'public.blog.post',
   Chat: 'workroom.chat.personal',

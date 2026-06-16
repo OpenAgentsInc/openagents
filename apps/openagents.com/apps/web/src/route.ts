@@ -48,6 +48,7 @@ export const SiteCheckoutDemoReturnRoute = r('SiteCheckoutDemoReturn', {
 })
 export const ClientsPreviewRoute = r('ClientsPreview')
 export const ComponentsRoute = r('Components')
+export const BusinessRoute = r('Business')
 export const BlogRoute = r('Blog')
 export const BlogPostRoute = r('BlogPost', { slug: S.String })
 export const PublicAgentRoute = r('PublicAgent', { agentRef: S.String })
@@ -122,6 +123,7 @@ export type SiteCheckoutDemoReturnRoute =
   typeof SiteCheckoutDemoReturnRoute.Type
 export type ClientsPreviewRoute = typeof ClientsPreviewRoute.Type
 export type ComponentsRoute = typeof ComponentsRoute.Type
+export type BusinessRoute = typeof BusinessRoute.Type
 export type BlogRoute = typeof BlogRoute.Type
 export type BlogPostRoute = typeof BlogPostRoute.Type
 export type PublicAgentRoute = typeof PublicAgentRoute.Type
@@ -172,6 +174,7 @@ export const LoggedOutRoute = S.Union([
   SiteCheckoutDemoReturnRoute,
   ClientsPreviewRoute,
   ComponentsRoute,
+  BusinessRoute,
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
@@ -210,6 +213,7 @@ export const LoggedInRoute = S.Union([
   SiteCheckoutDemoReturnRoute,
   ClientsPreviewRoute,
   ComponentsRoute,
+  BusinessRoute,
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
@@ -255,6 +259,7 @@ export const AppRoute = S.Union([
   SiteCheckoutDemoReturnRoute,
   ClientsPreviewRoute,
   ComponentsRoute,
+  BusinessRoute,
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
@@ -426,6 +431,10 @@ export const componentsRouter = pipe(
   literal('components'),
   Route.mapTo(ComponentsRoute),
 )
+export const businessRouter = pipe(
+  literal('business'),
+  Route.mapTo(BusinessRoute),
+)
 export const blogRouter = pipe(literal('blog'), Route.mapTo(BlogRoute))
 export const blogPostRouter = pipe(
   literal('blog'),
@@ -558,6 +567,7 @@ const routeParser = Route.oneOf(
   siteCheckoutDemoRouter,
   clientsPreviewRouter,
   componentsRouter,
+  businessRouter,
   forumReceiptRouter,
   forumTopicRouter,
   forumForumRouter,

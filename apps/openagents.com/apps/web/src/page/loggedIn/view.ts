@@ -12,6 +12,7 @@ import {
   billingRouter,
   blogPostRouter,
   blogRouter,
+  businessRouter,
   chatRouter,
   clientsPreviewRouter,
   componentsRouter,
@@ -102,6 +103,7 @@ const currentHref = (model: Model): string =>
         siteCheckoutDemoReturnRouter({ returnAction }),
       ClientsPreview: () => clientsPreviewRouter(),
       Components: () => componentsRouter(),
+      Business: () => businessRouter(),
       Blog: () => blogRouter(),
       BlogPost: ({ slug }) => blogPostRouter({ slug }),
       PublicAgent: ({ agentRef }) => publicAgentRouter({ agentRef }),
@@ -154,6 +156,7 @@ const routeKey = (model: Model): string =>
         `SiteCheckoutDemoReturn:${returnAction}`,
       ClientsPreview: () => 'ClientsPreview',
       Components: () => 'Components',
+      Business: () => 'Business',
       Blog: () => 'Blog',
       BlogPost: ({ slug }) => `BlogPost:${slug}`,
       PublicAgent: ({ agentRef }) => `PublicAgent:${agentRef}`,
@@ -491,6 +494,10 @@ const routeView = (model: Model): Html => {
           Components: () =>
             Ui.workroomScrollableRoute<Message>([
               notFoundView('/components', chatRouter(), 'Go to Chat'),
+            ]),
+          Business: () =>
+            Ui.workroomScrollableRoute<Message>([
+              notFoundView('/business', chatRouter(), 'Go to Chat'),
             ]),
           Blog: () =>
             Ui.workroomScrollableRoute<Message>([

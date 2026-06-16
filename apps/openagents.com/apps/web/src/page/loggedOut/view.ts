@@ -7,6 +7,7 @@ import { notFoundView } from '../../notFoundView'
 import { homeRouter } from '../../route'
 import * as Ui from '../../ui'
 import * as Blog from '../blog'
+import * as Business from '../business'
 import * as ClientsPreview from '../clientsPreview'
 import * as Components from '../components'
 import * as Docs from '../docs'
@@ -97,6 +98,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                 SiteCheckoutDemo.view(route, { _tag: 'LoggedOut' }),
               ClientsPreview: () => ClientsPreview.view(),
               Components: () => Components.view({ _tag: 'LoggedOut' }),
+              Business: () => Business.view({ _tag: 'LoggedOut' }),
               Blog: route => Blog.view(route, { _tag: 'LoggedOut' }),
               BlogPost: route => Blog.view(route, { _tag: 'LoggedOut' }),
               PublicAgent: route => PublicAgent.view(model, route.agentRef),
