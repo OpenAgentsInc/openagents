@@ -200,6 +200,11 @@ Candidate child issues:
 - G4.3 - Add repository-profile refresh receipts for command/test/invariant
   changes.
 
+Implementation status, 2026-06-16: #5132 adds the first
+`ForgeContextSnapshot` projection for refs-only context readiness across repo
+identity, instructions, adapter readiness, dev-doctor evidence, current-job
+refs, dirty state, freshness, blockers, and unsafe-material omission.
+
 ### G5 - Retrieval And Search Planner
 
 Systems: system 19 Semantic Retrieval/Search, system 20 LSP/Diagnostics,
