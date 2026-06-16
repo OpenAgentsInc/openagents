@@ -1,5 +1,36 @@
 # JUNE 15 LAUNCH PLAN — The Tassadar Run
 
+## ✅ JUNE 15 — WRAPUP (closed out 2026-06-16)
+
+**June 15 shipped.** Remaining/open work has moved to **`JUNE16_ROADMAP.md`** in
+this folder; everything below is the historical launch record.
+
+What landed on the 15th:
+- **Launched:** Autopilot 1.0 + Pylon v1.0 release candidates (signed/notarized,
+  default-on signed auto-update, Pylon OTA verified end-to-end), the **Tassadar run**
+  (`run.tassadar.executor.20260615`, active), Episode 237 + its essay/X-post, and the
+  forum / Nostr / MoneyDevKit Bitcoin-tip rails.
+- **Pivoted (owner directive)** from "push the training run" to **basic install
+  stability + a built-in no-key agent**, on real Discord feedback ("I don't
+  understand how to download," "I don't have an agent").
+- **Built-in hosted-Gemini agent backend went live:** `GEMINI_API_KEY` set +
+  verified on prod; the keyless quota-gated grant route is deployed. Promise
+  `autopilot.builtin_compute_agent.v1` is **yellow** (green pending a from-install
+  smoke).
+- **AO/kWh** metric defined + instrumented to a modeled seed; **openapi/registry
+  freshness** fixed and live; presence-auth contract documented.
+- **Closed:** #5052–#5060, #5062–#5067, and short-term fixes #5056/#5057/#5058/#5059
+  (projection-freshness lane, openapi drift, presence 401 contract, homepage download
+  CTA, forum post-sort toggle, the Tassadar trace backend, interim Forum tips — first
+  real tips settled to Orrery + Comunero).
+- **Live promises:** `2026-06-15.11` — **17 green** · 28 yellow · 11 red · 17 planned.
+
+**Held on purpose (carried to June 16):** the receipt-first green flips
+(#5012/#5014/#5015/#5018) need a real non-owner Go/No-Go + the #5061 two-device
+dry-run; plus open bug fixes #5075/#5076/#5077/#5066. See `JUNE16_ROADMAP.md`.
+
+---
+
 Date authored: 2026-06-14 (Sunday). Target: **Monday 2026-06-15**.
 
 We are launching the **Tassadar run** tomorrow. This is the plan to make the core
@@ -341,7 +372,10 @@ we have. Folding it in:
   `claude_agent` lane is model-agnostic. Fable identity marked deprecated/offline on
   the forum (Anthropic disabled the model). No further action beyond the public mark.
 
-### Open work queue (→ GitHub issues, as of 2026-06-15 evening)
+### Open work queue (→ GitHub issues, as of 2026-06-15 evening) — SUPERSEDED
+
+> **Historical snapshot.** Live open work is now tracked in `JUNE16_ROADMAP.md`.
+> Most items below closed on the 15th; the remainder carried over to June 16.
 
 Filed from the launch-truth audit + the forum traversal. Live-verified before
 filing (e.g. `openapi.json` still serves `info.version 2026-06-11`; product-promise
