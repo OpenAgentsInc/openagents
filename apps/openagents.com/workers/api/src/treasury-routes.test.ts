@@ -423,11 +423,15 @@ describe('operator treasury payout', () => {
           fallbackDestination: 'oab38ad12345abcd9@spark.money',
         }),
         {
+          // The Lightning Address fallback is resolved to a BOLT11 via LNURL
+          // before the MDK send (#5078); the resolver is stubbed here.
           fetchTreasury: payDestinationsFetch(
             paid,
-            d => d === 'oab38ad12345abcd9@spark.money',
+            d => d === 'lnbc-resolved-fallback',
           ),
           requireAdminApiToken: () => Promise.resolve(true),
+          resolveLightningAddress: () =>
+            Promise.resolve({ ok: true, bolt11: 'lnbc-resolved-fallback' }),
         },
       ),
     )
@@ -435,10 +439,8 @@ describe('operator treasury payout', () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as { paidVia: string }
     expect(body.paidVia).toBe('fallback')
-    expect(paid).toEqual([
-      'lno1recipient',
-      'oab38ad12345abcd9@spark.money',
-    ])
+    // The MDK send receives the resolved BOLT11, not the raw address.
+    expect(paid).toEqual(['lno1recipient', 'lnbc-resolved-fallback'])
   })
 
   test('primary fail with no fallback still fails cleanly (#5078)', async () => {
@@ -465,9 +467,11 @@ describe('operator treasury payout', () => {
       {
         fetchTreasury: payDestinationsFetch(
           paid,
-          d => d === 'oab38ad12345abcd9@spark.money',
+          d => d === 'lnbc-resolved-fallback',
         ),
         requireAdminApiToken: () => Promise.resolve(true),
+        resolveLightningAddress: () =>
+          Promise.resolve({ ok: true, bolt11: 'lnbc-resolved-fallback' }),
       },
       {
         amountSat: 1000,

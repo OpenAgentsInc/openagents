@@ -2,6 +2,10 @@ import { Effect } from 'effect'
 
 import type { ContainerPathFetch } from './http/container-fetch'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import {
+  isLightningAddress,
+  resolveLightningAddressInvoice,
+} from './lnurl-pay'
 import type { XClaimRewardTreasuryDispatchStats } from './x-claim-reward-treasury-dispatcher'
 
 export const TREASURY_SERVICE_TOKEN_HEADER = 'x-treasury-service-token'
@@ -18,6 +22,12 @@ export type TreasuryRouteDependencies = Readonly<{
     | undefined
   readRewardDispatchStats?: () => Promise<XClaimRewardTreasuryDispatchStats>
   requireAdminApiToken: (request: Request) => Promise<boolean>
+  // LNURL-pay resolver used to turn a Lightning Address destination into a
+  // payable BOLT11 (#5078). Defaults to the real resolver; injectable for tests.
+  resolveLightningAddress?: (
+    address: string,
+    amountSat: number,
+  ) => Promise<{ ok: true; bolt11: string } | { ok: false; reason: string }>
 }>
 
 type TreasuryHealth = Readonly<{
@@ -395,10 +405,22 @@ export const executeTreasuryPayout = async (
   const attemptPay = async (
     destination: string,
   ): Promise<Record<string, unknown> | null> => {
+    // A Lightning Address can't be paid by MDK directly; resolve it to a BOLT11
+    // via LNURL-pay first (#5078).
+    let sendDestination = destination
+    if (isLightningAddress(destination)) {
+      const resolve =
+        dependencies.resolveLightningAddress ?? resolveLightningAddressInvoice
+      const resolved = await resolve(destination, plan.paidAmountSat)
+      if (!resolved.ok) {
+        return null
+      }
+      sendDestination = resolved.bolt11
+    }
     const payResponse = await fetchTreasury('/pay', {
       body: JSON.stringify({
         amountSat: plan.paidAmountSat,
-        destination,
+        destination: sendDestination,
       }),
       method: 'POST',
     })
@@ -558,10 +580,29 @@ export const handleOperatorTreasuryPayoutApi = (
             ok: boolean
             payResult: Record<string, unknown>
           }> => {
+            // MDK pays BOLT11/BOLT12, not a Lightning Address. If the destination
+            // is a lud16 address (e.g. a Spark-hosted offline-receive address),
+            // resolve it to a BOLT11 for this amount via LNURL-pay first (#5078).
+            let sendDestination = payDestination
+            if (isLightningAddress(payDestination)) {
+              const resolve =
+                dependencies.resolveLightningAddress ??
+                resolveLightningAddressInvoice
+              const resolved = await resolve(payDestination, plan.paidAmountSat)
+              if (!resolved.ok) {
+                return {
+                  ok: false,
+                  payResult: {
+                    error: `lightning_address_resolution_failed:${resolved.reason}`,
+                  },
+                }
+              }
+              sendDestination = resolved.bolt11
+            }
             const payResponse = await fetchTreasury('/pay', {
               body: JSON.stringify({
                 amountSat: plan.paidAmountSat,
-                destination: payDestination,
+                destination: sendDestination,
               }),
               method: 'POST',
             })
