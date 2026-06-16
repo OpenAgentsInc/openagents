@@ -42,6 +42,7 @@ export type PublicHeaderVariant = 'dark' | 'forum'
 export const view = <Message>(
   authState: PublicHeaderAuthState<Message>,
   variant: PublicHeaderVariant = 'dark',
+  loginHref = '/login/github',
 ): Html => {
   const h = html<Message>()
   const isForum = variant === 'forum'
@@ -104,7 +105,7 @@ export const view = <Message>(
                 ]
               : [
                   h.a(
-                    [h.Href('/login/github'), Ui.className<Message>(linkClass)],
+                    [h.Href(loginHref), Ui.className<Message>(linkClass)],
                     ['Log in'],
                   ),
                 ],

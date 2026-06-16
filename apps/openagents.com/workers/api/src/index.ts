@@ -16,6 +16,7 @@ import { Cause, Effect, Layer, Option, Schema as S } from 'effect'
 import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
+import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
@@ -45,7 +46,6 @@ import {
   makeD1AgentRegistrationStore,
   timingSafeEqual,
 } from './agent-registration'
-import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
 import {
   makeAgentScopedGrantRoutes,
   makeD1AgentScopedGrantStore,
@@ -904,6 +904,8 @@ const GitHubOAuthToken = S.Struct({
 const GITHUB_LOGIN_SCOPES = ['read:user', 'user:email', 'repo'] as const
 const LOGIN_ORIGIN_COOKIE = 'oa_login_origin'
 const LOGIN_RETURN_TO_COOKIE = 'oa_login_return_to'
+const LOGIN_ERROR_COOKIE = 'oa_login_error'
+const LOGIN_ERROR_MAX_AGE_SECONDS = 60
 
 type GitHubUser = typeof GitHubUser.Type
 type GitHubEmail = typeof GitHubEmail.Type
@@ -2595,6 +2597,35 @@ const handleThreadPage = async (
 const isAgentClaimReturnPath = (pathname: string): boolean =>
   /^\/agents\/claims\/[^/]+$/.test(pathname)
 
+const isForumReturnPath = (pathname: string): boolean =>
+  pathname === '/forum' ||
+  /^\/forum\/(?:f|t)\/[^/]+$/.test(pathname) ||
+  /^\/forum\/receipts\/[^/]+$/.test(pathname)
+
+const serializeBrowserReadableCookie = (
+  name: string,
+  value: string,
+  maxAgeSeconds: number,
+  path = '/',
+): string =>
+  [
+    `${name}=${encodeURIComponent(value)}`,
+    `Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`,
+    `Path=${path}`,
+    'Secure',
+    'SameSite=Lax',
+  ].join('; ')
+
+const expiredBrowserReadableCookie = (name: string, path = '/'): string =>
+  serializeBrowserReadableCookie(name, '', 0, path)
+
+const loginFailedCookie = (): string =>
+  serializeBrowserReadableCookie(
+    LOGIN_ERROR_COOKIE,
+    'github_login_failed',
+    LOGIN_ERROR_MAX_AGE_SECONDS,
+  )
+
 const cleanLoginReturnPath = (value: string | null): string | undefined => {
   const raw = value?.trim()
 
@@ -2627,6 +2658,7 @@ const cleanLoginReturnPath = (value: string | null): string | undefined => {
       url.pathname === '/billing' ||
       url.pathname === '/onboarding' ||
       url.pathname === '/order' ||
+      isForumReturnPath(url.pathname) ||
       isAgentClaimReturn ||
       url.pathname.startsWith('/orders/') ||
       url.pathname.startsWith('/share/')
@@ -2651,7 +2683,8 @@ const handleGitHubStart = async (request: Request, env: Env) => {
   })
   const requestUrl = new URL(request.url)
   const maybeReturnTo = cleanLoginReturnPath(
-    requestUrl.searchParams.get('returnTo'),
+    requestUrl.searchParams.get('returnTo') ??
+      requestUrl.searchParams.get('return_to'),
   )
   const cookies = [
     serializeCookie(
@@ -3048,18 +3081,22 @@ const handleAuthCallback = async (
     expiredCookie(AUTH_STATE_COOKIE, '/auth'),
     expiredCookie(LOGIN_ORIGIN_COOKIE, '/auth'),
     expiredCookie(LOGIN_RETURN_TO_COOKIE, '/auth'),
+    expiredBrowserReadableCookie(LOGIN_ERROR_COOKIE),
   ]
+  const maybeReturnTo = cleanLoginReturnPath(
+    cookies.get(LOGIN_RETURN_TO_COOKIE) ?? null,
+  )
 
   if (error !== null) {
-    return redirectResponse('/', cleanupCookies)
+    return redirectResponse(maybeReturnTo ?? '/', [
+      ...cleanupCookies,
+      loginFailedCookie(),
+    ])
   }
 
   const code = url.searchParams.get('code')
   const state = url.searchParams.get('state')
   const expectedState = cookies.get(AUTH_STATE_COOKIE)
-  const maybeReturnTo = cleanLoginReturnPath(
-    cookies.get(LOGIN_RETURN_TO_COOKIE) ?? null,
-  )
 
   if (
     code === null ||

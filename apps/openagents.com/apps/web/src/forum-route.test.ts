@@ -69,9 +69,12 @@ describe('Forum routes', () => {
           'Browser login uses GitHub. Registered agents post from Pylon or the Forum API for now.',
         ),
       ).toExist(),
-      Scene.expect(Scene.role('link', { name: 'Log in with GitHub' })).toHaveAttr(
+      Scene.expect(
+        Scene.role('link', { name: 'Log in with GitHub' }),
+      ).toHaveAttr('href', '/login/github?returnTo=%2Fforum'),
+      Scene.expect(Scene.role('link', { name: 'Log in' })).toHaveAttr(
         'href',
-        '/login/github',
+        '/login/github?returnTo=%2Fforum',
       ),
       Scene.expect(
         Scene.role('link', { name: 'Agent instructions' }),
@@ -80,6 +83,7 @@ describe('Forum routes', () => {
         'href',
         '/api/openapi.json',
       ),
+      Scene.expect(Scene.selector('[data-forum-login-error]')).toExist(),
       Scene.expect(Scene.label('Loading')).toExist(),
       Scene.expect(Scene.text('No listed forums yet.')).not.toExist(),
     )
@@ -109,18 +113,24 @@ describe('Forum routes', () => {
   })
 
   test('renders the Forum topic route shell without duplicate topic chrome', () => {
+    const topicId = '55555555-5555-4555-8555-555555555555'
+
     Scene.scene(
       { update, view },
       Scene.with(
         LoggedOut.init(
           ForumTopicRoute({
-            topicId: '55555555-5555-4555-8555-555555555555',
+            topicId,
           }),
         ),
       ),
       Scene.expect(Scene.role('heading', { name: 'Forum' })).not.toExist(),
       Scene.expect(Scene.text('Topic 55555555')).not.toExist(),
       Scene.expect(Scene.role('link', { name: 'Void' })).not.toExist(),
+      Scene.expect(Scene.role('link', { name: 'Log in' })).toHaveAttr(
+        'href',
+        `/login/github?returnTo=${encodeURIComponent(`/forum/t/${topicId}`)}`,
+      ),
     )
   })
 
@@ -227,8 +237,8 @@ describe('Forum routes', () => {
         ?.getAttribute('aria-current'),
     ).toBe('true')
     expect(
-      Array.from(document.querySelectorAll('article')).map(article =>
-        article.textContent?.match(/Post #\d/)?.[0],
+      Array.from(document.querySelectorAll('article')).map(
+        article => article.textContent?.match(/Post #\d/)?.[0],
       ),
     ).toEqual(['Post #2', 'Post #1'])
   })
@@ -478,8 +488,11 @@ describe('Forum routes', () => {
 
     expect(script).toContain("const authMode = initial.authMode || 'LoggedOut'")
     expect(script).toContain("authMode !== 'LoggedIn'")
+    expect(script).toContain(
+      `const loginHref = "/login/github?returnTo=${encodeURIComponent('/forum/t/55555555-5555-4555-8555-555555555555')}";`,
+    )
     expect(script).toContain('Log in with GitHub')
-    expect(script).toContain('href="/login/github"')
+    expect(script).toContain('href="\' + escapeHtml(loginHref) + \'"')
     expect(script).toContain(
       'Registered agents use Pylon or the Forum API for now.',
     )
@@ -497,6 +510,30 @@ describe('Forum routes', () => {
     expect(script).not.toContain('mnemonic')
     expect(script).not.toContain('wallet_secret')
     expect(script).not.toContain('private_key')
+  })
+
+  test('renders Forum login errors from the callback cookie', async () => {
+    document.cookie =
+      'oa_login_error=github_login_failed; Max-Age=60; Path=/; Secure; SameSite=Lax'
+    document.body.innerHTML =
+      '<div data-forum-app><div data-forum-login-error></div><main data-forum-main></main></div>'
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        forums: [],
+        publicTipping: {
+          postTips: 'blocked',
+          remainingBeforeLiveTips: ['payer wallet'],
+        },
+      }),
+    )
+
+    new Function(forumScript(ForumRoute()))()
+    await flushForumScript()
+
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+      'GitHub login did not complete. Try again.',
+    )
+    expect(document.cookie).not.toContain('oa_login_error=')
   })
 
   test('renders receipt state without overclaiming creator settlement', () => {

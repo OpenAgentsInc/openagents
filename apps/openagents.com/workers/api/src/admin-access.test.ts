@@ -207,6 +207,50 @@ describe('OpenAgents admin access policy', () => {
     ).toBe(true)
   })
 
+  test('stores clean Forum return targets when starting GitHub login', async () => {
+    const forumResponse = await worker.fetch(
+      new Request(
+        'https://openagents.com/login/github?returnTo=%2Fforum',
+      ) as never,
+      {
+        ASSETS: {
+          fetch: () => Response.json({ unused: true }),
+        },
+        ...requiredWorkerConfig,
+      } as never,
+      executionContext,
+    )
+    const topicResponse = await worker.fetch(
+      new Request(
+        'https://openagents.com/login/github?return_to=%2Fforum%2Ft%2F55555555-5555-4555-8555-555555555555%3FsortDir%3Ddesc',
+      ) as never,
+      {
+        ASSETS: {
+          fetch: () => Response.json({ unused: true }),
+        },
+        ...requiredWorkerConfig,
+      } as never,
+      executionContext,
+    )
+
+    expect(forumResponse.status).toBe(302)
+    expect(
+      forumResponse.headers
+        .getSetCookie()
+        .some(cookie => cookie.includes('oa_login_return_to=%2Fforum')),
+    ).toBe(true)
+    expect(topicResponse.status).toBe(302)
+    expect(
+      topicResponse.headers
+        .getSetCookie()
+        .some(cookie =>
+          cookie.includes(
+            'oa_login_return_to=%2Fforum%2Ft%2F55555555-5555-4555-8555-555555555555%3FsortDir%3Ddesc',
+          ),
+        ),
+    ).toBe(true)
+  })
+
   test('stores a clean agent claim return target when starting GitHub login', async () => {
     const response = await worker.fetch(
       new Request(
@@ -256,6 +300,57 @@ describe('OpenAgents admin access policy', () => {
     expect(cookies).toContain(
       'oa_login_return_to=; Max-Age=0; Path=/auth; HttpOnly; Secure; SameSite=Lax',
     )
+  })
+
+  test('does not store nested Forum paths as login return targets', async () => {
+    const response = await worker.fetch(
+      new Request(
+        'https://openagents.com/login/github?returnTo=%2Fforum%2Ft%2F55555555-5555-4555-8555-555555555555%2Fextra',
+      ) as never,
+      {
+        ASSETS: {
+          fetch: () => Response.json({ unused: true }),
+        },
+        ...requiredWorkerConfig,
+      } as never,
+      executionContext,
+    )
+    const cookies = response.headers.getSetCookie()
+
+    expect(response.status).toBe(302)
+    expect(
+      cookies.some(cookie => /^oa_login_return_to=[^;]/.test(cookie)),
+    ).toBe(false)
+    expect(cookies).toContain(
+      'oa_login_return_to=; Max-Age=0; Path=/auth; HttpOnly; Secure; SameSite=Lax',
+    )
+  })
+
+  test('returns failed GitHub login attempts to the clean Forum target', async () => {
+    const response = await worker.fetch(
+      new Request('https://openagents.com/auth/callback?error=access_denied', {
+        headers: {
+          cookie: 'oa_login_return_to=%2Fforum',
+        },
+      }) as never,
+      {
+        ASSETS: {
+          fetch: () => Response.json({ unused: true }),
+        },
+        ...requiredWorkerConfig,
+      } as never,
+      executionContext,
+    )
+    const cookies = response.headers.getSetCookie()
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get('location')).toBe('/forum')
+    expect(cookies).toContain(
+      'oa_login_error=github_login_failed; Max-Age=60; Path=/; Secure; SameSite=Lax',
+    )
+    expect(
+      cookies.find(cookie => cookie.startsWith('oa_login_error=')),
+    ).not.toContain('HttpOnly')
   })
 
   test('does not redirect the deleted personal chat alias', async () => {

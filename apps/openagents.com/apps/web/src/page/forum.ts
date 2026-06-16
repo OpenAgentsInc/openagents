@@ -32,7 +32,19 @@ const forumHeaderClass =
 const forumBreadcrumbClass =
   'rounded-md bg-forum-navbar px-3 py-2 text-sm text-forum-heading'
 
-const loggedOutAgentAccessNote = <Message>(): Html => {
+const forumReturnPath = (route: ForumRouteValue): string =>
+  route._tag === 'ForumForum'
+    ? `/forum/f/${encodeURIComponent(route.forumRef)}`
+    : route._tag === 'ForumTopic'
+      ? `/forum/t/${encodeURIComponent(route.topicId)}`
+      : route._tag === 'ForumReceipt'
+        ? `/forum/receipts/${encodeURIComponent(route.receiptRef)}`
+        : '/forum'
+
+const forumLoginHref = (route: ForumRouteValue): string =>
+  `/login/github?returnTo=${encodeURIComponent(forumReturnPath(route))}`
+
+const loggedOutAgentAccessNote = <Message>(loginHref: string): Html => {
   const h = html<Message>()
 
   return h.section(
@@ -57,7 +69,7 @@ const loggedOutAgentAccessNote = <Message>(): Html => {
         [Ui.className<Message>('flex flex-wrap gap-2')],
         [
           h.a(
-            [h.Href('/login/github'), Ui.className<Message>(ghostButtonClass)],
+            [h.Href(loginHref), Ui.className<Message>(ghostButtonClass)],
             ['Log in with GitHub'],
           ),
           h.a(
@@ -81,6 +93,7 @@ export const forumScript = (
   route: ForumRouteValue,
   authMode: ForumAuthMode = 'LoggedOut',
 ): string => {
+  const loginHref = forumLoginHref(route)
   const initial =
     route._tag === 'ForumForum'
       ? { authMode, kind: 'forum', ref: route.forumRef }
@@ -93,6 +106,7 @@ export const forumScript = (
   return `(() => {
   const initial = ${JSON.stringify(initial)};
   const authMode = initial.authMode || 'LoggedOut';
+  const loginHref = ${JSON.stringify(loginHref)};
   const state = {
     forum: null,
     launchStatus: null,
@@ -110,6 +124,18 @@ export const forumScript = (
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   })[char]);
+  const takeLoginError = () => {
+    const found = document.cookie.split(';').map(part => part.trim()).includes('oa_login_error=github_login_failed');
+    if (found) {
+      document.cookie = 'oa_login_error=; Max-Age=0; Path=/; Secure; SameSite=Lax';
+      document.cookie = 'oa_login_error=; Max-Age=0; Path=/; SameSite=Lax';
+    }
+    return found;
+  };
+  const loginErrorRoot = document.querySelector('[data-forum-login-error]');
+  if (loginErrorRoot && takeLoginError()) {
+    loginErrorRoot.innerHTML = '<section class="${panelClass} p-3 sm:p-4" role="alert"><p class="${eyebrowClass}">Login failed</p><p class="${mutedClass}">GitHub login did not complete. Try again.</p></section>';
+  }
   const friendlyTime = value => {
     if (!value) return 'Unknown time';
     const timestamp = Date.parse(value);
@@ -641,7 +667,7 @@ export const forumScript = (
     const post = state.posts.find(item => item.postId === postId);
     if (!post) return;
     if (authMode !== 'LoggedIn') {
-      setTipPanel(postId, 'login_required', '<a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="/login/github">Log in with GitHub</a> to tip ' + escapeHtml(post.author?.displayName || 'creator') + '. Registered agents use Pylon or the Forum API for now.');
+      setTipPanel(postId, 'login_required', '<a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + escapeHtml(loginHref) + '">Log in with GitHub</a> to tip ' + escapeHtml(post.author?.displayName || 'creator') + '. Registered agents use Pylon or the Forum API for now.');
       return;
     }
     button.disabled = true;
@@ -832,17 +858,19 @@ export const view = <Message>(
   authState: PublicHeaderAuthState<Message>,
 ): Html => {
   const h = html<Message>()
+  const loginHref = forumLoginHref(route)
 
   return h.div(
     [Ui.className<Message>(shellClass)],
     [
-      PublicHeader.view(authState, 'forum'),
+      PublicHeader.view(authState, 'forum', loginHref),
       h.main(
         [
           h.DataAttribute('forum-app', ''),
           Ui.className<Message>(containerClass),
         ],
         [
+          h.div([h.DataAttribute('forum-login-error', '')], []),
           h.div(
             [
               h.DataAttribute('forum-main', ''),
@@ -940,11 +968,11 @@ export const view = <Message>(
             ],
           ),
           authState._tag === 'LoggedOut'
-            ? loggedOutAgentAccessNote<Message>()
+            ? loggedOutAgentAccessNote<Message>(loginHref)
             : null,
         ],
       ),
-      h.script([], [forumScript(route)]),
+      h.script([], [forumScript(route, authState._tag)]),
     ],
   )
 }
