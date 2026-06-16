@@ -1953,6 +1953,38 @@ export const AutopilotWorkExecutionCloseout = S.Struct({
 export type AutopilotWorkExecutionCloseout =
   typeof AutopilotWorkExecutionCloseout.Type
 
+export const AutopilotWorkSessionState = S.Literals([
+  'cancelled',
+  'completed',
+  'failed',
+  'queued',
+  'running',
+  'unknown',
+])
+export type AutopilotWorkSessionState = typeof AutopilotWorkSessionState.Type
+
+export const AutopilotWorkSessionSummary = S.Struct({
+  artifactRefs: S.optionalKey(S.Array(S.String)),
+  bridgeRefs: S.optionalKey(S.Array(S.String)),
+  checkpointRefs: S.optionalKey(S.Array(S.String)),
+  eventRefs: S.optionalKey(S.Array(S.String)),
+  observedAt: S.optionalKey(S.NullOr(S.String)),
+  sessionRef: S.String,
+  state: S.optionalKey(AutopilotWorkSessionState),
+  title: S.optionalKey(S.NullOr(S.String)),
+})
+export type AutopilotWorkSessionSummary =
+  typeof AutopilotWorkSessionSummary.Type
+
+export const AutopilotWorkSessionNavigation = S.Struct({
+  bridgeSessions: S.optionalKey(S.Array(AutopilotWorkSessionSummary)),
+  claudeSessions: S.optionalKey(S.Array(AutopilotWorkSessionSummary)),
+  codexSessions: S.optionalKey(S.Array(AutopilotWorkSessionSummary)),
+  localPylonSessions: S.optionalKey(S.Array(AutopilotWorkSessionSummary)),
+})
+export type AutopilotWorkSessionNavigation =
+  typeof AutopilotWorkSessionNavigation.Type
+
 export const AutopilotWorkReviewDecision = S.Struct({
   acceptedWorkAuthority: S.Boolean,
   action: AutopilotWorkReviewAction,
@@ -2000,6 +2032,7 @@ export const AutopilotWorkProjection = S.Struct({
   quote: S.Unknown,
   repositoryAuthorities: S.Array(S.Unknown),
   reviewDecision: S.NullOr(AutopilotWorkReviewDecision),
+  sessionNavigation: S.optionalKey(AutopilotWorkSessionNavigation),
   state: AutopilotWorkState,
   statusUrlRef: S.String,
   taskRefs: S.Array(S.String),

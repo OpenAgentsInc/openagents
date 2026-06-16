@@ -240,6 +240,91 @@ describe('autopilot work detail view', () => {
     expect(rendered).toContain('closeout.public.work_1.summary')
   })
 
+  test('renders Session navigation lane with unavailable controls', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            executionCloseout: null,
+            sessionNavigation: {
+              localPylonSessions: [
+                {
+                  artifactRefs: ['artifact.public.pylon.session_summary'],
+                  bridgeRefs: ['bridge.public.pylon.loopback'],
+                  checkpointRefs: ['checkpoint.public.pylon.before_edit'],
+                  eventRefs: ['event.public.pylon.running'],
+                  observedAt: '2026-06-16T15:45:00.000Z',
+                  sessionRef: 'pylon.session.work_1',
+                  state: 'running',
+                  title: 'Pylon local session',
+                },
+              ],
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Session navigation')
+    expect(rendered).toContain('Pylon local session')
+    expect(rendered).toContain('pylon.session.work_1')
+    expect(rendered).toContain('artifact.public.pylon.session_summary')
+    expect(rendered).toContain('event.public.pylon.running')
+    expect(rendered).toContain('checkpoint.public.pylon.before_edit')
+    expect(rendered).toContain('bridge.public.pylon.loopback')
+    expect(rendered).toContain('Resume')
+    expect(rendered).toContain('Fork')
+    expect(rendered).toContain('Rewind')
+    expect(rendered).toContain('Cancel')
+    expect(rendered).toContain('resume-control-verb-unavailable')
+  })
+
+  test('renders Session navigation empty state when summaries are absent', () => {
+    const rendered = renderHtml(detailView(modelForWork(workForState('delivered', null))))
+
+    expect(rendered).toContain('Session navigation')
+    expect(rendered).toContain('No session summaries available yet.')
+    expect(rendered).toContain('no-session-summaries')
+  })
+
+  test('omits unsafe session navigation refs before rendering', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            executionCloseout: null,
+            sessionNavigation: {
+              codexSessions: [
+                {
+                  artifactRefs: [
+                    'artifact.public.codex.safe',
+                    'raw transcript /Users/christopher/private.jsonl',
+                  ],
+                  eventRefs: ['diff --git a/private.ts b/private.ts'],
+                  sessionRef: '/Users/christopher/.codex/session.jsonl',
+                  state: 'running',
+                },
+                {
+                  artifactRefs: ['artifact.public.codex.safe'],
+                  sessionRef: 'codex.session.safe',
+                  state: 'running',
+                },
+              ],
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Session navigation')
+    expect(rendered).toContain('codex.session.safe')
+    expect(rendered).toContain('unsafe-session-material-omitted')
+    expect(rendered).toContain('unsafe session ref(s) were omitted')
+    expect(rendered).not.toContain('/Users/christopher')
+    expect(rendered).not.toContain('diff --git')
+    expect(rendered).not.toContain('raw transcript')
+  })
+
   test('renders active progress for running Runs', () => {
     const rendered = renderHtml(
       detailView(

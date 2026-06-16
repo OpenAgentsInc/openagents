@@ -32,6 +32,12 @@ import {
   projectForgeRunProgress,
 } from '../autopilot-work/progress-view'
 import {
+  type ForgeSessionNavigationAction,
+  type ForgeSessionNavigationItem,
+  type ForgeSessionNavigationStatus,
+  projectForgeSessionNavigation,
+} from '../autopilot-work/session-navigation'
+import {
   Message,
   RequestedLoadAutopilotWorkDetail,
   RequestedLoadAutopilotWorkList,
@@ -734,6 +740,163 @@ const progressPanel = (
   ])
 }
 
+const sessionNavigationTone = (
+  status: ForgeSessionNavigationStatus,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  status === 'complete'
+    ? 'positive'
+    : status === 'attention'
+      ? 'warning'
+      : status === 'active'
+        ? 'info'
+        : 'accent'
+
+const sessionItemTone = (
+  state: ForgeSessionNavigationItem['state'],
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  state === 'completed'
+    ? 'positive'
+    : state === 'failed' || state === 'cancelled'
+      ? 'warning'
+      : state === 'running'
+        ? 'info'
+        : 'accent'
+
+const sessionActionLabel = (action: ForgeSessionNavigationAction): string =>
+  action.charAt(0).toUpperCase() + action.slice(1)
+
+const sessionActionBlockerRefs = (
+  item: ForgeSessionNavigationItem,
+): ReadonlyArray<string> =>
+  Array.from(
+    new Set(
+      Object.values(item.actions).flatMap(actionState => actionState.blockerRefs),
+    ),
+  )
+
+const unavailableSessionAction = (
+  item: ForgeSessionNavigationItem,
+  action: ForgeSessionNavigationAction,
+): Html => {
+  const h = html<Message>()
+  const actionState = item.actions[action]
+
+  return Ui.button<Message>({
+    attrs: [
+      h.Type('button'),
+      h.Disabled(true),
+      h.DataAttribute('forge-session-action', action),
+      h.DataAttribute('forge-session-action-availability', actionState.availability),
+    ],
+    label: sessionActionLabel(action),
+    size: 'sm',
+    variant: 'secondary',
+  })
+}
+
+const sessionItemPanel = (item: ForgeSessionNavigationItem): Html => {
+  const h = html<Message>()
+
+  return h.article(
+    [
+      Ui.className<Message>('grid gap-4 border border-[#222] p-4'),
+      h.DataAttribute('forge-session-navigation-item', item.sessionRef),
+      h.DataAttribute('forge-session-navigation-source', item.source),
+      h.DataAttribute('forge-session-navigation-state', item.state),
+    ],
+    [
+      h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+        h.div([Ui.className<Message>('min-w-0 grid gap-1')], [
+          h.h3(
+            [
+              Ui.className<Message>(
+                'm-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-white/80',
+              ),
+            ],
+            [item.title],
+          ),
+          h.p([Ui.className<Message>('m-0 text-xs text-white/40')], [
+            item.observedAt === null
+              ? `Source ${item.source} - no observation time`
+              : `Source ${item.source} - observed ${formatIsoDateTime(item.observedAt)}`,
+          ]),
+        ]),
+        h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+          badge(item.state, sessionItemTone(item.state)),
+          badge(item.source, 'accent'),
+        ]),
+      ]),
+      h.div([Ui.className<Message>('grid gap-4 md:grid-cols-2')], [
+        refSection('Session ref', [item.sessionRef]),
+        refSection('Artifacts', item.artifactRefs),
+        refSection('Events', item.eventRefs),
+        refSection('Checkpoints', item.checkpointRefs),
+        refSection('Bridge refs', item.bridgeRefs),
+        refSection('Control blockers', sessionActionBlockerRefs(item)),
+      ]),
+      h.div([Ui.className<Message>('flex flex-wrap gap-2')], [
+        unavailableSessionAction(item, 'resume'),
+        unavailableSessionAction(item, 'fork'),
+        unavailableSessionAction(item, 'rewind'),
+        unavailableSessionAction(item, 'cancel'),
+      ]),
+    ],
+  )
+}
+
+const sessionNavigationPanel = (work: AutopilotWorkProjection): Html => {
+  const h = html<Message>()
+  const source = work.sessionNavigation
+  const sessionNavigation = projectForgeSessionNavigation({
+    generatedAt: work.generatedAt,
+    workOrderRef: work.workOrderRef,
+    ...(source?.bridgeSessions === undefined
+      ? {}
+      : { bridgeSessions: source.bridgeSessions }),
+    ...(source?.claudeSessions === undefined
+      ? {}
+      : { claudeSessions: source.claudeSessions }),
+    ...(source?.codexSessions === undefined
+      ? {}
+      : { codexSessions: source.codexSessions }),
+    ...(source?.localPylonSessions === undefined
+      ? {}
+      : { localPylonSessions: source.localPylonSessions }),
+  })
+
+  return h.section([Ui.className<Message>('grid gap-4 border-t border-[#222] pt-5')], [
+    h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+      h.div([Ui.className<Message>('grid gap-1')], [
+        h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
+          'Session navigation',
+        ]),
+        h.p([Ui.className<Message>('m-0 max-w-3xl text-sm text-white/45')], [
+          'Read-only session summaries for Pylon, Codex, Claude, and bridge runs. Control verbs stay disabled until runtime authority exists.',
+        ]),
+      ]),
+      badge(
+        sessionNavigation.status.replaceAll('_', ' '),
+        sessionNavigationTone(sessionNavigation.status),
+      ),
+    ]),
+    sessionNavigation.items.length === 0
+      ? h.div([Ui.className<Message>('border border-[#222] p-4')], [
+          h.p([Ui.className<Message>('m-0 text-sm text-white/45')], [
+            'No session summaries available yet.',
+          ]),
+        ])
+      : h.div([Ui.className<Message>('grid gap-3')], [
+          ...sessionNavigation.items.map(sessionItemPanel),
+        ]),
+    refSection('Session blockers', sessionNavigation.blockerRefs),
+    sessionNavigation.omittedUnsafeRefCount === 0
+      ? h.span([Ui.className<Message>('hidden')], [])
+      : h.p([Ui.className<Message>('m-0 text-sm text-[#ffb400]')], [
+          `${sessionNavigation.omittedUnsafeRefCount} unsafe session ref(s) were omitted before rendering.`,
+        ]),
+  ])
+}
+
 const briefingPanel = (briefing: AutopilotMissionBriefing): Html => {
   const closeoutRefs = briefing.drilldown.flatMap(group =>
     group.kind === 'closeout' ? group.refs : [],
@@ -1030,6 +1193,7 @@ const workSummaryPanel = (model: Model, work: AutopilotWorkProjection): Html => 
           ],
         ),
     progressPanel(model, work),
+    sessionNavigationPanel(work),
     diffReviewPanel(model, work),
     receiptPanel(model, work),
     eventsPanel(model),

@@ -172,6 +172,11 @@ Implementation status, 2026-06-16: #5129 adds the first
 session summaries. All resume/fork/rewind/cancel controls are explicit
 unavailable states until authoritative verbs exist.
 
+Implementation status, 2026-06-16: #5130 renders that projection in the
+`/autopilot` Run detail surface as a read-only Session navigation lane with
+disabled control buttons, explicit blocker refs, empty/no-session handling, and
+unsafe-ref omission coverage.
+
 ### G4 - Context Assembly, Repository Memory, And Onboarding
 
 Systems: system 12 Context Assembly, system 18 Repository Memory/Onboarding,
