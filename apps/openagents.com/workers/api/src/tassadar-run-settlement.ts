@@ -2,6 +2,7 @@ import { Schema as S } from 'effect'
 
 import {
   type NexusPaymentAuthorityReceiptRecord,
+  type NexusPayoutTargetApprovalRecord,
   NexusTreasuryPayoutAdapterKind,
   type NexusTreasuryPayoutAmount,
   type NexusTreasuryPayoutAttemptRecord,
@@ -71,6 +72,9 @@ export class TassadarRunSettlementUnsafe extends S.TaggedErrorClass<TassadarRunS
   },
 ) {}
 
+export const TassadarRunSettlementPayoutTargetApprovalPolicyRef =
+  'policy.public.tassadar.run_settlement_payout'
+
 export type TassadarRunSettlementRecords = Readonly<{
   amountSats: number
   attempt: NexusTreasuryPayoutAttemptRecord
@@ -79,6 +83,7 @@ export type TassadarRunSettlementRecords = Readonly<{
   reconciliationEvent: NexusTreasuryPayoutReconciliationEventRecord
   settlementReceipt: NexusPaymentAuthorityReceiptRecord
   settlementReceiptRef: string
+  targetApproval: NexusPayoutTargetApprovalRecord
 }>
 
 const stableSuffix = (value: string): string =>
@@ -191,6 +196,41 @@ export const buildTassadarRunSettlement = (
     request.operatorApprovalRef,
     'metadata.tassadar.run_settlement.accepted_work',
   ])
+  const redactedDestinationRef = `destination.redacted.tassadar_run_settlement.${suffix}`
+
+  // The payout intent's payout_target_approval_ref is a foreign key into
+  // nexus_payout_target_approvals. The training-run settlement path is
+  // self-contained (no marketplace assignment), so it must materialize the
+  // operator-approved payout-target approval row itself before the intent,
+  // exactly as the accepted-work marketplace payout route does. Without this
+  // the intent insert fails the foreign-key constraint.
+  const targetApproval: NexusPayoutTargetApprovalRecord = {
+    agentRef: 'agent.artanis',
+    approvalPolicyRef: TassadarRunSettlementPayoutTargetApprovalPolicyRef,
+    approvalRef: request.payoutTargetApprovalRef,
+    approvedByRef: 'operator.openagents.tassadar_run_settlement',
+    archivedAt: null,
+    createdAt: nowIso,
+    expiresAt: null,
+    id: `nexus_payout_target_approval_tassadar_settlement_${suffix}`,
+    idempotencyKeyHash: `hash.tassadar_run_settlement.approval.${suffix}`,
+    ownerUserId: 'user_openagents_operator',
+    payoutTargetRef: request.payoutTargetRef,
+    publicProjectionJson: JSON.stringify({
+      pylonRef: contributorRef,
+      state: 'active',
+      trainingRunRef: run.trainingRunRef,
+    }),
+    pylonRef: contributorRef,
+    redactedDestinationRef,
+    scopeRefs: uniqueRefs([
+      run.trainingRunRef,
+      challenge.challengeRef,
+      lease.leaseRef,
+    ]),
+    status: 'active',
+    updatedAt: nowIso,
+  }
 
   const intent: NexusTreasuryPayoutIntentRecord = {
     acceptedWorkRefs,
@@ -243,7 +283,7 @@ export const buildTassadarRunSettlement = (
       moneyMovement,
       trainingRunRef: run.trainingRunRef,
     }),
-    redactedDestinationRef: `destination.redacted.tassadar_run_settlement.${suffix}`,
+    redactedDestinationRef,
     redactedPaymentRef: null,
     status: 'confirmed',
     updatedAt: nowIso,
@@ -304,5 +344,6 @@ export const buildTassadarRunSettlement = (
     reconciliationEvent,
     settlementReceipt,
     settlementReceiptRef,
+    targetApproval,
   }
 }

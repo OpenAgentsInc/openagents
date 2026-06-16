@@ -1603,13 +1603,32 @@ export const buildTrainingWindowLeaseRecord = (
 
 export const trainingAuthorityStoreErrorFromUnknown = (
   error: unknown,
-): TrainingAuthorityStoreError =>
-  error instanceof TrainingAuthorityStoreError
-    ? error
-    : new TrainingAuthorityStoreError({
-        kind: 'storage_error',
-        reason: error instanceof Error ? error.message : String(error),
-      })
+): TrainingAuthorityStoreError => {
+  if (error instanceof TrainingAuthorityStoreError) {
+    return error
+  }
+  // Tagged errors (e.g. NexusTreasuryPayoutLedgerStorageError) carry their
+  // detail in `reason`/`operation` fields rather than `Error.message`, which is
+  // empty. Prefer those so storage failures are not surfaced blank.
+  const detail =
+    typeof error === 'object' && error !== null
+      ? [
+          (error as { operation?: unknown }).operation,
+          (error as { reason?: unknown }).reason,
+        ]
+          .filter(
+            (part): part is string => typeof part === 'string' && part !== '',
+          )
+          .join(': ')
+      : ''
+  const reason =
+    detail !== ''
+      ? detail
+      : error instanceof Error && error.message !== ''
+        ? error.message
+        : String(error)
+  return new TrainingAuthorityStoreError({ kind: 'storage_error', reason })
+}
 
 const decodeTrainingWindowSealMetadataOption = S.decodeUnknownOption(
   TrainingWindowSealMetadata,

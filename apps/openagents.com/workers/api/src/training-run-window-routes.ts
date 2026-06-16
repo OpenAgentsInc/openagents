@@ -593,6 +593,9 @@ const routeRunSettlementReceipt = <Bindings extends TrainingRunWindowRouteEnv>(
     yield* Effect.tryPromise({
       catch: trainingAuthorityStoreErrorFromUnknown,
       try: async () => {
+        // The payout intent foreign-keys the payout-target approval, so the
+        // approval row must be written first (see tassadar-run-settlement.ts).
+        await ledger.createPayoutTargetApproval(settlement.targetApproval)
         await ledger.createPayoutIntent(settlement.intent)
         await ledger.createPayoutAttempt(settlement.attempt)
         await ledger.createReconciliationEvent(settlement.reconciliationEvent)

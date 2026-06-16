@@ -102,6 +102,15 @@ describe('buildTassadarRunSettlement', () => {
 
     expect(result.amountSats).toBe(21)
     expect(result.contributorRef).toBe('pylon.contributor.stranger')
+    // The payout intent foreign-keys the payout-target approval, so the build
+    // must produce an approval row whose approvalRef matches the intent's
+    // payoutTargetApprovalRef (otherwise the ledger insert fails the FK).
+    expect(result.targetApproval.approvalRef).toBe(
+      result.intent.payoutTargetApprovalRef,
+    )
+    expect(result.targetApproval.payoutTargetRef).toBe(result.intent.payoutTargetRef)
+    expect(result.targetApproval.pylonRef).toBe('pylon.contributor.stranger')
+    expect(result.targetApproval.status).toBe('active')
     expect(result.settlementReceipt.receiptKind).toBe('settlement_recorded')
     // The read contract: settledSatsFromPaymentAuthorityReceipt must see this
     // receipt as 21 settled sats (state settled + positive integer amountSats).
