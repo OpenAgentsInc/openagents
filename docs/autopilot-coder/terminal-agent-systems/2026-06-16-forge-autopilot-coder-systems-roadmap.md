@@ -272,6 +272,13 @@ Candidate child issues:
 - G6.4 - Unified settings/effective-config projection for MCP, skills, hooks,
   and plugins.
 
+Implementation status, 2026-06-16: #5138 adds the first refs-only MCP
+capability catalog projection with configured, pending, disabled, failed, and
+needs-auth states, stable ordering, state counts, public-safe server/capability/
+policy/auth/blocker refs, explicit non-authority flags, and unsafe-material
+omission coverage. It does not add MCP runtime clients, network calls, tool
+calls, settings edits, auth flows, or UI.
+
 ### G7 - Verification, Ops, And Product-Gate Evidence
 
 Systems: system 51 Testing/Smoke, system 52 Evaluation/Regression, system 53
