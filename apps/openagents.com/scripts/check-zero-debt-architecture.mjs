@@ -252,12 +252,12 @@ const budgetChecks = [
   {
     budget: 0,
     description:
-      'The deleted local login page and simulated auth flow must not return; root owns the public login surface and /login/github owns auth.',
+      'The deleted SIMULATED auth flow must not return. The real /login page (LoginRoute/loginRouter) is allowed — it is a branded launcher into the real OpenAuth flow (/login/github + /login/email one-time code), never a fake/in-app session. These symbols belonged to the removed simulated flow and must stay gone.',
     details: countByFile(
       sourceFiles,
-      /\b(LoginRoute|loginRouter|StartupRedirectToLogin|RedirectToLogin|SimulateAuthRequest|SaveSession|SucceededSaveSession|FailedSaveSession)\b/g,
+      /\b(StartupRedirectToLogin|RedirectToLogin|SimulateAuthRequest|SaveSession|SucceededSaveSession|FailedSaveSession)\b/g,
     ),
-    name: 'deleted local login route symbols',
+    name: 'deleted simulated login auth symbols',
   },
   {
     budget: 0,

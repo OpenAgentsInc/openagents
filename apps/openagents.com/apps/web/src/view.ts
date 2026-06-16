@@ -359,6 +359,7 @@ const title = (model: Model): string =>
         M.tag('ComponentsFamily', () => 'Components - OpenAgents'),
         M.tag('Business', () => 'For your business - OpenAgents'),
         M.tag('Animations', () => 'Animations - OpenAgents'),
+        M.tag('Login', () => 'Log in - OpenAgents'),
         M.tag('PublicAgent', ({ agentRef }) => `${agentRef} - OpenAgents`),
         M.tag('Share', () => 'Shared Workroom - OpenAgents'),
         M.orElse(() => 'OpenAgents'),

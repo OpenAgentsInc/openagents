@@ -2,6 +2,21 @@
 
 This is the invariant ledger for `openagents`.
 
+## Login Surface
+
+- The `/login` SPA page (`LoginRoute` / `loginRouter`, `apps/web/src/page/login.ts`)
+  is a **branded launcher into the real OpenAuth flow only**: it links to
+  `/login/github` (GitHub OAuth) and `/login/email` (OpenAuth `CodeProvider`
+  one-time email code). It must never reintroduce a **simulated / in-app** auth
+  flow (no client-side `SaveSession` / `SimulateAuthRequest` / fake session
+  issuance). Those removed simulated-auth symbols remain banned by
+  `scripts/check-zero-debt-architecture.mjs` ("deleted simulated login auth
+  symbols").
+- Login only authenticates. Authorization stays gated downstream
+  (`authHasCoreTeamAccess` / `isAdmin` / onboarding in
+  `apps/web/src/product-policy.ts`); email sign-in does not widen product access.
+- Background context: `docs/auth/2026-06-16-login-and-auth-audit.md`.
+
 ## Clean Public URLs
 
 - First-party product routes must not carry auth, connection, payment,

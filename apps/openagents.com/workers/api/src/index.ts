@@ -9,10 +9,12 @@ import {
 } from '@openagentsinc/sync-worker'
 import { issuer } from '@openauthjs/openauth'
 import { type Tokens, createClient } from '@openauthjs/openauth/client'
+import { CodeProvider } from '@openauthjs/openauth/provider/code'
 import { GithubProvider } from '@openauthjs/openauth/provider/github'
 import { createSubjects } from '@openauthjs/openauth/subject'
+import { CodeUI } from '@openauthjs/openauth/ui/code'
 import { THEME_OPENAUTH } from '@openauthjs/openauth/ui/theme'
-import { Cause, Effect, Layer, Option, Schema as S } from 'effect'
+import { Cause, Effect, Layer, Option, Redacted, Schema as S } from 'effect'
 import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
@@ -480,6 +482,13 @@ class UnsupportedAuthProvider extends S.TaggedErrorClass<UnsupportedAuthProvider
   },
 ) {}
 
+class AuthSignInError extends S.TaggedErrorClass<AuthSignInError>()(
+  'AuthSignInError',
+  {
+    reason: S.String,
+  },
+) {}
+
 export class MdkSidecarContainer extends Container<Env> {
   override defaultPort = 8080
   override sleepAfter = '30m'
@@ -862,9 +871,10 @@ const EmailString = NonEmptyTrimmedString.check(
 
 const UserSubject = S.Struct({
   userId: NonEmptyTrimmedString,
-  provider: S.Literal('github'),
-  githubId: NonEmptyTrimmedString,
-  login: NonEmptyTrimmedString,
+  // 'github' carries githubId/login; 'email' (one-time code) has neither.
+  provider: S.Literals(['github', 'email']),
+  githubId: S.optionalKey(NonEmptyTrimmedString),
+  login: S.optionalKey(NonEmptyTrimmedString),
   email: EmailString,
   name: NonEmptyTrimmedString,
   avatarUrl: S.String,
@@ -1283,6 +1293,11 @@ const upsertGitHubUser = async (
   db: D1Database,
   user: UserSubject,
 ): Promise<void> => {
+  if (user.githubId === undefined || user.login === undefined) {
+    throw new AuthSignInError({ reason: 'upsertGitHubUser requires a GitHub identity' })
+  }
+  const githubId = user.githubId
+  const login = user.login
   const now = workerRuntime.nowIso()
 
   await db.batch([
@@ -1313,16 +1328,138 @@ const upsertGitHubUser = async (
           deleted_at = NULL`,
       )
       .bind(
-        `auth_identity_github_${user.githubId}`,
+        `auth_identity_github_${githubId}`,
         user.userId,
-        user.githubId,
-        user.login,
+        githubId,
+        login,
         user.email,
         now,
         now,
       ),
   ])
 }
+
+const normalizeEmail = (email: string): string => email.trim().toLowerCase()
+
+// Build a session subject for an email (one-time-code) login. No GitHub identity;
+// the userId namespaces email accounts so they never collide with `github:` ids.
+const emailToSubject = (rawEmail: string): UserSubject => {
+  const email = normalizeEmail(rawEmail)
+  const localPart = email.split('@')[0] ?? email
+
+  return {
+    userId: `email:${email}`,
+    provider: 'email',
+    email,
+    name: localPart,
+    avatarUrl: '',
+  }
+}
+
+const upsertEmailUser = async (
+  db: D1Database,
+  user: UserSubject,
+): Promise<void> => {
+  const now = workerRuntime.nowIso()
+
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO users
+          (id, kind, display_name, primary_email, avatar_url, status, created_at, updated_at)
+         VALUES (?, 'human', ?, ?, ?, 'active', ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+          display_name = excluded.display_name,
+          primary_email = excluded.primary_email,
+          status = 'active',
+          updated_at = excluded.updated_at,
+          deleted_at = NULL`,
+      )
+      .bind(user.userId, user.name, user.email, user.avatarUrl, now, now),
+    db
+      .prepare(
+        `INSERT INTO auth_identities
+          (id, user_id, provider, provider_subject, provider_username, email, created_at, updated_at)
+         VALUES (?, ?, 'email', ?, ?, ?, ?, ?)
+         ON CONFLICT(provider, provider_subject) DO UPDATE SET
+          user_id = excluded.user_id,
+          email = excluded.email,
+          updated_at = excluded.updated_at,
+          deleted_at = NULL`,
+      )
+      .bind(
+        `auth_identity_email_${user.email}`,
+        user.userId,
+        user.email,
+        user.name,
+        user.email,
+        now,
+        now,
+      ),
+  ])
+}
+
+// Persist a session subject regardless of provider (session refresh paths can
+// carry either a GitHub or an email user).
+const upsertUser = async (db: D1Database, user: UserSubject): Promise<void> =>
+  user.provider === 'email'
+    ? upsertEmailUser(db, user)
+    : upsertGitHubUser(db, user)
+
+// Send the one-time sign-in code via Resend directly (auth email stays decoupled
+// from the CRM/marketing email-intent machinery — it must be reliable and is not
+// rate-limited alongside bulk sends; see docs/auth audit §7).
+const sendSignInCodeEmail = async (
+  env: Env,
+  rawEmail: string,
+  code: string,
+): Promise<void> => {
+  const config = getOpenAgentsWorkerConfig(env)
+  const resend = config.email.resend
+
+  if (resend === undefined) {
+    throw new AuthSignInError({ reason: 'Resend is not configured; cannot send sign-in code' })
+  }
+
+  const email = normalizeEmail(rawEmail)
+  const apiKey = String(Redacted.value(resend.apiKey))
+  const from = String(resend.fromEmail)
+  const replyTo = resend.replyToEmail === undefined ? undefined : String(resend.replyToEmail)
+
+  const response = await fetch('https://api.resend.com/emails', {
+    body: JSON.stringify({
+      from,
+      html: signInCodeEmailHtml(code),
+      ...(replyTo === undefined ? {} : { reply_to: replyTo }),
+      subject: `Your OpenAgents sign-in code: ${code}`,
+      text: `Your OpenAgents sign-in code is ${code}.\n\nEnter it on the sign-in screen to continue. It expires shortly. If you didn't request this, you can ignore this email.`,
+      to: email,
+    }),
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      'content-type': 'application/json',
+    },
+    method: 'POST',
+  })
+
+  if (!response.ok) {
+    throw new AuthSignInError({
+      reason: `Resend sign-in code send failed: ${response.status}`,
+    })
+  }
+}
+
+const signInCodeEmailHtml = (code: string): string =>
+  `<!doctype html><html><body style="margin:0;background:#000;color:#f1efe8;font-family:ui-sans-serif,system-ui,sans-serif;padding:40px 0">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+      <table role="presentation" width="420" cellpadding="0" cellspacing="0" style="max-width:420px;width:100%">
+        <tr><td style="font-size:18px;font-weight:600;padding-bottom:20px">OpenAgents</td></tr>
+        <tr><td style="font-size:15px;line-height:1.6;color:#c9c6bd;padding-bottom:24px">Use this one-time code to finish signing in:</td></tr>
+        <tr><td style="font-size:34px;font-weight:700;letter-spacing:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#d6f6ff;padding-bottom:24px">${code}</td></tr>
+        <tr><td style="font-size:13px;line-height:1.6;color:#8b8880">This code expires shortly. If you didn't request it, you can safely ignore this email.</td></tr>
+      </table>
+    </td></tr></table>
+  </body></html>`
 
 const readUserKindTotals = async (db: D1Database): Promise<UserKindTotals> => {
   const rows = await db
@@ -2125,6 +2262,23 @@ const makeAuthIssuer = (env: Env) => {
         clientSecret: redactedValue(config.github.clientSecret) ?? '',
         scopes: [...GITHUB_LOGIN_SCOPES],
       }),
+      code: CodeProvider(
+        CodeUI({
+          copy: {
+            code_info: 'We sent a one-time sign-in code to your email.',
+            email_placeholder: 'you@example.com',
+          },
+          sendCode: async (claims, code) => {
+            const email = typeof claims.email === 'string' ? claims.email : ''
+            if (email === '') {
+              throw new AuthSignInError({
+                reason: 'Email claim missing for sign-in code',
+              })
+            }
+            await sendSignInCodeEmail(env, email, code)
+          },
+        }),
+      ),
     },
     storage: makeD1Storage(openAgentsDatabase(env)),
     subjects,
@@ -2139,10 +2293,25 @@ const makeAuthIssuer = (env: Env) => {
       )
     },
     success: async (ctx, response) => {
-      if (response.provider !== 'github') {
-        throw new UnsupportedAuthProvider({ provider: response.provider })
+      if (response.provider === 'code') {
+        const claimedEmail =
+          typeof response.claims.email === 'string' ? response.claims.email : ''
+        if (claimedEmail === '') {
+          throw new UnsupportedAuthProvider({ provider: 'code' })
+        }
+        const subject = emailToSubject(claimedEmail)
+        await upsertEmailUser(openAgentsDatabase(env), subject)
+
+        return ctx.subject('user', subject, {
+          subject: subject.userId,
+          ttl: {
+            access: SESSION_MAX_AGE_SECONDS,
+            refresh: SESSION_MAX_AGE_SECONDS,
+          },
+        })
       }
 
+      // Only the github + code providers are registered; code handled above.
       const [user, emails] = await Promise.all([
         fetchGitHubJson(
           GitHubUser,
@@ -2277,7 +2446,7 @@ const scheduleSiteReferralOnboardingEmail = (
 
 const { appendRefreshedSessionCookies, requireBrowserSession } =
   makeBrowserSessionBoundary<UserSubject, Env>({
-    persistUser: (env, user) => upsertGitHubUser(openAgentsDatabase(env), user),
+    persistUser: (env, user) => upsertUser(openAgentsDatabase(env), user),
     verifySession,
   })
 
@@ -2305,7 +2474,7 @@ const authenticateRequestActor = async (
     return undefined
   }
 
-  await upsertGitHubUser(openAgentsDatabase(env), session.user)
+  await upsertUser(openAgentsDatabase(env), session.user)
 
   if (session.tokens === undefined) {
     return {
@@ -2396,7 +2565,7 @@ const readAuthenticatedPageContext = async (
     onboarding: Awaited<ReturnType<typeof readOnboardingStatusForUser>>
   }>
 > => {
-  await upsertGitHubUser(openAgentsDatabase(env), session.user)
+  await upsertUser(openAgentsDatabase(env), session.user)
 
   const providerAccountRepository = makeD1ProviderAccountRepository(
     openAgentsDatabase(env),
@@ -2673,14 +2842,18 @@ const cleanLoginReturnPath = (value: string | null): string | undefined => {
   }
 }
 
-const handleGitHubStart = async (request: Request, env: Env) => {
+const handleLoginStart = async (
+  request: Request,
+  env: Env,
+  provider: 'github' | 'code',
+) => {
   const config = getOpenAgentsWorkerConfig(env)
   const redirectUri = `${getAppOrigin(env)}/auth/callback`
   const { challenge, url } = await createClient({
     clientID: config.openauth.clientId,
     issuer: getIssuerOrigin(env),
   }).authorize(redirectUri, 'code', {
-    provider: 'github',
+    provider,
   })
   const requestUrl = new URL(request.url)
   const maybeReturnTo = cleanLoginReturnPath(
@@ -2713,6 +2886,12 @@ const handleGitHubStart = async (request: Request, env: Env) => {
   return redirectResponse(url, cookies)
 }
 
+const handleGitHubStart = (request: Request, env: Env) =>
+  handleLoginStart(request, env, 'github')
+
+const handleEmailStart = (request: Request, env: Env) =>
+  handleLoginStart(request, env, 'code')
+
 export const githubWriteResultRedirectLocation = (appOrigin: string): string =>
   appOrigin
 
@@ -2724,10 +2903,6 @@ export const cleanProductRouteRedirectLocation = (
 ): string | undefined => {
   if (url.search === '') {
     return undefined
-  }
-
-  if (url.pathname === '/login') {
-    return `${url.origin}/`
   }
 
   if (
@@ -2756,6 +2931,15 @@ const handleGitHubWriteStart = async (
   const session = await requireBrowserSession(request, env, ctx)
 
   if (session === undefined) {
+    return redirectResponse(getAppOrigin(env))
+  }
+
+  // The GitHub-write connection binds to the signed-in GitHub identity. Email
+  // (one-time-code) accounts have none, so there is nothing to connect here.
+  if (
+    session.user.githubId === undefined ||
+    session.user.login === undefined
+  ) {
     return redirectResponse(getAppOrigin(env))
   }
 
@@ -2918,6 +3102,10 @@ const handleGitHubWriteDisconnectApi = async (
 
   if (session === undefined) {
     return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+  }
+
+  if (session.user.login === undefined) {
+    return noStoreJsonResponse({ error: 'no_github_identity' }, { status: 400 })
   }
 
   const now = workerRuntime.nowIso()
@@ -3166,7 +3354,7 @@ const handleSessionApi = async (
     return response
   }
 
-  await upsertGitHubUser(openAgentsDatabase(env), session.user)
+  await upsertUser(openAgentsDatabase(env), session.user)
   const referralResult = await consumePendingReferralForUser(
     openAgentsDatabase(env),
     workerRuntime,
@@ -6668,8 +6856,9 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       Effect.succeed(redirectResponse('https://discord.gg/4RrjGCuQAZ')),
   },
   {
-    path: '/login',
-    handler: () => Effect.succeed(redirectResponse('/')),
+    path: '/login/email',
+    handler: (request, env) =>
+      Effect.promise(() => handleEmailStart(request, env)),
   },
   {
     path: '/login/github',
@@ -7234,7 +7423,7 @@ const routeRequest = makeWorkerRouteRequest({
           actor: {
             displayName: session.user.name,
             operatorId: session.user.userId,
-            slug: session.user.login,
+            slug: session.user.login ?? session.user.userId,
           },
         }
       },

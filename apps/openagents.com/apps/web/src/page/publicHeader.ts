@@ -85,6 +85,10 @@ const loggedOutLoginPopover = <Message>(
                 ['Browser session'],
               ),
               h.a(
+                [h.Href('/login'), Ui.className<Message>(loginPanelLinkClass)],
+                ['Log in with email'],
+              ),
+              h.a(
                 [h.Href(loginHref), Ui.className<Message>(loginPanelLinkClass)],
                 ['Log in with GitHub'],
               ),

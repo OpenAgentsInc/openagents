@@ -195,7 +195,7 @@ type AgentOwnerClaimRow = Readonly<{
 type AgentOwnerClaimSession = Readonly<{
   user: Readonly<{
     email: string
-    login: string
+    login?: string
     name: string
     userId: string
   }>
