@@ -212,6 +212,10 @@ map. The audits below are the currently imported subsystem records.
   repo/delivery, intake/market, and extension/polish packs. Pack A is tracked
   by GitHub issue #4813 and child issues #4814-#4823; Pack B is tracked by
   #4824 and child issues #4825-#4830.
+- `2026-06-16-forge-autopilot-coder-systems-roadmap.md`: Audits #5107 against
+  the current Forge cockpit, Pack A/B/C, Pylon, and control-protocol surfaces,
+  splits the long arc into G1-G7 epics, and selects G1.1 as the first child
+  issue.
 - `2026-06-11-open-issue-delegation-plan.md`: Splits the open Autopilot MVP,
   Pack A, market, and W3 evaluation issue set across eight named delegated
   agents, including worktree/branch rules, issue status comment templates,
