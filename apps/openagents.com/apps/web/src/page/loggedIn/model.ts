@@ -1881,11 +1881,26 @@ export const AutopilotWorkPromiseRef = S.Struct({
 })
 export type AutopilotWorkPromiseRef = typeof AutopilotWorkPromiseRef.Type
 
+export const AutopilotWorkRoutingSummary = S.Struct({
+  availabilityState: S.Literals(['needs_input', 'retry_later', 'selected']),
+  buyerDebitRequired: S.Boolean,
+  fallbackLeaseIntentCount: S.Number,
+  fallbackRunnerKind: S.NullOr(S.String),
+  laneRef: S.NullOr(S.String),
+  meterKind: S.NullOr(S.String),
+  pylonAssignmentIntentCount: S.Number,
+  selectedRunnerKind: S.NullOr(S.String),
+  source: S.Literals(['fallback', 'none_available', 'requester_pylon']),
+})
+export type AutopilotWorkRoutingSummary =
+  typeof AutopilotWorkRoutingSummary.Type
+
 export const AutopilotWorkSummary = S.Struct({
   createdAt: S.String,
   generatedAt: S.optionalKey(S.String),
   issueRefs: S.optionalKey(S.Array(S.String)),
   promiseRef: AutopilotWorkPromiseRef,
+  routing: S.optionalKey(AutopilotWorkRoutingSummary),
   state: AutopilotWorkState,
   taskRefs: S.optionalKey(S.Array(S.String)),
   updatedAt: S.String,

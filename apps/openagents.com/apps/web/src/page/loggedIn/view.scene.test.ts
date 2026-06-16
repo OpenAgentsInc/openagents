@@ -238,6 +238,17 @@ const forgeWorkOrderFixture = (
     promiseId: 'forge.metrics.test',
     registryVersion: '2026-06-16.5',
   },
+  routing: {
+    availabilityState: 'selected',
+    buyerDebitRequired: false,
+    fallbackLeaseIntentCount: 0,
+    fallbackRunnerKind: 'openagents_shc',
+    laneRef: 'lane.autopilot_work.requester_pylon_own_job',
+    meterKind: 'none',
+    pylonAssignmentIntentCount: 0,
+    selectedRunnerKind: 'requester_pylon',
+    source: 'requester_pylon',
+  },
   state: 'scheduled',
   updatedAt: '2026-06-10T01:00:00.000Z',
   workOrderRef: 'wo_forge_metrics_1',
@@ -858,6 +869,12 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(
         Scene.selector('[data-forge-dogfood-metric="eligible-nodes"]'),
       ).toHaveAttr('data-forge-dogfood-value', '3'),
+      Scene.expect(
+        Scene.selector('[data-forge-routing-metric="requester-pylon"]'),
+      ).toHaveAttr('data-forge-routing-value', '1'),
+      Scene.expect(
+        Scene.selector('[data-forge-routing-metric="fallback-lanes"]'),
+      ).toHaveAttr('data-forge-routing-value', '0'),
       Scene.expect(
         Scene.role('button', { name: 'Run Scope triage' }),
       ).toExist(),

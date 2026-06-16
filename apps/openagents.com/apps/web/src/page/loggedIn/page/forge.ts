@@ -88,6 +88,13 @@ interface DogfoodMetric {
   readonly provenance: Provenance
 }
 
+interface RoutingDigest {
+  readonly blocked: number
+  readonly fallback: number
+  readonly metered: number
+  readonly requesterPylon: number
+}
+
 // ---------------------------------------------------------------------------
 // Real-data derivation from the loaded Runs projection.
 // ---------------------------------------------------------------------------
@@ -537,6 +544,74 @@ const buildDogfoodMetrics = (data: FactoryData): ReadonlyArray<DogfoodMetric> =>
         ? formatInt(data.digest.blocked + data.digest.rejectedOrInvalid)
         : '—',
       provenance: data.runsLoaded ? 'live' : 'seeded',
+    },
+  ]
+}
+
+const digestRouting = (
+  workOrders: ReadonlyArray<AutopilotWorkSummary>,
+): RoutingDigest =>
+  workOrders.reduce(
+    (digest, order) => {
+      const routing = order.routing
+
+      if (routing === undefined) {
+        return digest
+      }
+
+      return {
+        blocked:
+          digest.blocked +
+          (routing.source === 'none_available' ||
+          routing.availabilityState !== 'selected'
+            ? 1
+            : 0),
+        fallback: digest.fallback + (routing.source === 'fallback' ? 1 : 0),
+        metered:
+          digest.metered + (routing.buyerDebitRequired === true ? 1 : 0),
+        requesterPylon:
+          digest.requesterPylon +
+          (routing.source === 'requester_pylon' ? 1 : 0),
+      }
+    },
+    {
+      blocked: 0,
+      fallback: 0,
+      metered: 0,
+      requesterPylon: 0,
+    } satisfies RoutingDigest,
+  )
+
+const buildRoutingMetrics = (
+  data: FactoryData,
+): ReadonlyArray<DogfoodMetric> => {
+  const digest = digestRouting(data.workOrders)
+  const provenance = data.runsLoaded ? 'live' : 'seeded'
+
+  return [
+    {
+      key: 'requester-pylon',
+      label: 'Owned nodes',
+      provenance,
+      value: data.runsLoaded ? formatInt(digest.requesterPylon) : '—',
+    },
+    {
+      key: 'fallback-lanes',
+      label: 'Fallback lanes',
+      provenance,
+      value: data.runsLoaded ? formatInt(digest.fallback) : '—',
+    },
+    {
+      key: 'metered-work',
+      label: 'Metered work',
+      provenance,
+      value: data.runsLoaded ? formatInt(digest.metered) : '—',
+    },
+    {
+      key: 'blocked-routing',
+      label: 'Blocked routing',
+      provenance,
+      value: data.runsLoaded ? formatInt(digest.blocked) : '—',
     },
   ]
 }
@@ -1461,6 +1536,40 @@ const dogfoodMetricView = (metric: DogfoodMetric): Html => {
   )
 }
 
+const routingMetricView = (metric: DogfoodMetric): Html => {
+  const h = html<Message>()
+  const valueClass =
+    metric.provenance === 'live' ? 'text-white/80' : 'text-white/35'
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border border-[#1b1b1b] bg-black/30 px-3 py-2',
+      ),
+      h.DataAttribute('forge-routing-metric', metric.key),
+      h.DataAttribute('forge-routing-value', metric.value),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'truncate text-[0.625rem] uppercase tracking-wide text-white/35',
+          ),
+        ],
+        [metric.label],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            `text-sm font-semibold tabular-nums ${valueClass}`,
+          ),
+        ],
+        [metric.value],
+      ),
+    ],
+  )
+}
+
 const dogfoodFactorySection = (data: FactoryData): Html => {
   const h = html<Message>()
   const ready = data.runsLoaded && data.poolLoaded
@@ -1472,7 +1581,7 @@ const dogfoodFactorySection = (data: FactoryData): Html => {
   return h.section(
     [
       Ui.className<Message>(
-        'grid gap-3 border border-[#222] bg-[#050505] p-4',
+        'grid gap-3 border border-[#222] bg-[#050505] p-4 @container',
       ),
       h.DataAttribute('forge-dogfood-panel', 'true'),
       h.DataAttribute('forge-dogfood-status', status),
@@ -1517,6 +1626,27 @@ const dogfoodFactorySection = (data: FactoryData): Html => {
           ),
         ],
         buildDogfoodMetrics(data).map(dogfoodMetricView),
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-2 border-t border-[#1b1b1b] pt-3')],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'truncate text-[0.625rem] uppercase tracking-wide text-white/35',
+              ),
+            ],
+            ['Spend routing'],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid gap-2 @2xl:grid-cols-4 sm:grid-cols-2',
+              ),
+            ],
+            buildRoutingMetrics(data).map(routingMetricView),
+          ),
+        ],
       ),
     ],
   )

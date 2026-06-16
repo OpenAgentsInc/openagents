@@ -1220,16 +1220,26 @@ describe('Autopilot work routes', () => {
       sessionUserId: browserUserId,
       token: '',
     })
+    const ownPylonListResponse = await route(
+      store,
+      '/api/autopilot/work?promiseId=autopilot.mission_briefing.v1',
+      {
+        pylonApiStore: ownPylon,
+        sessionUserId: browserUserId,
+        token: '',
+      },
+    )
     const fallbackResponse = await route(store, '/api/autopilot/work', {
       body: fallbackRequest,
       idempotencyKey: 'browser-shc-metered',
       sessionUserId: browserUserId,
       token: '',
     })
-    const listResponse = await route(
+    const fallbackListResponse = await route(
       store,
       '/api/autopilot/work?promiseId=autopilot.mission_briefing.v1',
       {
+        pylonApiStore: ownPylon,
         sessionUserId: browserUserId,
         token: '',
       },
@@ -1240,9 +1250,32 @@ describe('Autopilot work routes', () => {
       ownPylonJson.work as AutopilotWorkOrderProjection | undefined
     const fallbackWork =
       fallbackJson.work as AutopilotWorkOrderProjection | undefined
-    const listJson = (await listResponse.json()) as Readonly<{
-      workOrders: ReadonlyArray<Readonly<{ workOrderRef: string }>>
+    type ListedAutopilotWorkOrder = Readonly<{
+      routing: Readonly<{
+        availabilityState: string
+        buyerDebitRequired: boolean
+        fallbackLeaseIntentCount: number
+        fallbackRunnerKind: string | null
+        laneRef: string | null
+        meterKind: string | null
+        pylonAssignmentIntentCount: number
+        selectedRunnerKind: string | null
+        source: string
+      }>
+      workOrderRef: string
     }>
+    const ownPylonListJson = (await ownPylonListResponse.json()) as Readonly<{
+      workOrders: ReadonlyArray<ListedAutopilotWorkOrder>
+    }>
+    const fallbackListJson = (await fallbackListResponse.json()) as Readonly<{
+      workOrders: ReadonlyArray<ListedAutopilotWorkOrder>
+    }>
+    const listedOwnPylon = ownPylonListJson.workOrders.find(
+      order => order.workOrderRef === ownPylonWork?.workOrderRef,
+    )
+    const listedFallback = fallbackListJson.workOrders.find(
+      order => order.workOrderRef === fallbackWork?.workOrderRef,
+    )
 
     expect(ownPylonResponse.status).toBe(202)
     expect(ownPylonWork?.state).toBe('queued_or_running')
@@ -1281,12 +1314,32 @@ describe('Autopilot work routes', () => {
       meterKind: 'usd_credits',
       runnerKind: 'openagents_shc',
     })
-    expect(listJson.workOrders.map(order => order.workOrderRef)).toEqual(
-      expect.arrayContaining([
-        ownPylonJson.work?.workOrderRef,
-        fallbackJson.work?.workOrderRef,
-      ]),
-    )
+    expect(
+      ownPylonListJson.workOrders.map(order => order.workOrderRef),
+    ).toContain(ownPylonJson.work?.workOrderRef)
+    expect(
+      fallbackListJson.workOrders.map(order => order.workOrderRef),
+    ).toContain(fallbackJson.work?.workOrderRef)
+    expect(listedOwnPylon?.routing).toMatchObject({
+      availabilityState: 'selected',
+      buyerDebitRequired: false,
+      fallbackLeaseIntentCount: 0,
+      fallbackRunnerKind: 'openagents_shc',
+      laneRef: 'lane.autopilot_work.requester_pylon_own_job',
+      meterKind: 'none',
+      pylonAssignmentIntentCount: 0,
+      selectedRunnerKind: 'requester_pylon',
+      source: 'requester_pylon',
+    })
+    expect(listedFallback?.routing).toMatchObject({
+      availabilityState: 'selected',
+      buyerDebitRequired: true,
+      fallbackRunnerKind: 'openagents_shc',
+      laneRef: 'lane.autopilot_work.openagents_shc_fallback',
+      meterKind: 'usd_credits',
+      selectedRunnerKind: 'openagents_shc',
+      source: 'fallback',
+    })
   })
 
   test('carries promiseRef through projections, briefing, and the list filter', async () => {

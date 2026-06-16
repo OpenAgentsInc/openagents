@@ -3430,6 +3430,24 @@ const workOrderReviewRefFromPath = (pathname: string): string | undefined => {
 
 const promiseIdQueryPattern = /^[a-z0-9_]+(\.[a-z0-9_]+)*\.v\d+$/
 
+const routingSummaryForProjection = (
+  projection: AutopilotWorkOrderProjection,
+) => {
+  const activeLane = projection.pricingPolicy.activeLane
+
+  return {
+    availabilityState: projection.placementDecision.availabilityState,
+    buyerDebitRequired: activeLane?.buyerDebitRequired ?? false,
+    fallbackLeaseIntentCount: projection.fallbackLeaseIntents.length,
+    fallbackRunnerKind: projection.placementDecision.fallbackRunnerKind,
+    laneRef: activeLane?.laneRef ?? null,
+    meterKind: activeLane?.meterKind ?? null,
+    pylonAssignmentIntentCount: projection.pylonAssignmentIntents.length,
+    selectedRunnerKind: projection.placementDecision.selectedRunnerKind,
+    source: projection.placementDecision.source,
+  }
+}
+
 const listWorkOrders = <Bindings extends AutopilotWorkRouteEnv>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
   request: Request,
@@ -3477,26 +3495,37 @@ const listWorkOrders = <Bindings extends AutopilotWorkRouteEnv>(
     const matching = records.filter(
       record => record.request.promiseRef?.promiseId === promiseId,
     )
+    const pylonRegistrations = yield* routePylonRegistrations(dependencies, env)
 
     return noStoreJsonResponse({
       generatedAt: nowIso,
       promiseId,
-      workOrders: matching.map(record => ({
-        createdAt: record.createdAt,
-        generatedAt: nowIso,
-        issueRefs: record.taskRefs
-          .flatMap(ref => /^task\.github_issue\.issue_(\d+)\./.exec(ref)?.[1] ?? [])
-          .map(issueNumber => `github.issue.${issueNumber}`),
-        promiseRef: {
-          blockerRefs: record.request.promiseRef?.blockerRefs ?? [],
-          promiseId: record.request.promiseRef?.promiseId ?? promiseId,
-          registryVersion: record.request.promiseRef?.registryVersion ?? null,
-        },
-        state: record.state,
-        taskRefs: record.taskRefs,
-        updatedAt: record.updatedAt,
-        workOrderRef: record.workOrderRef,
-      })),
+      workOrders: matching.map(record => {
+        const projection = projectionForRecord(
+          record,
+          false,
+          nowIso,
+          pylonRegistrations,
+        )
+
+        return {
+          createdAt: record.createdAt,
+          generatedAt: nowIso,
+          issueRefs: record.taskRefs
+            .flatMap(ref => /^task\.github_issue\.issue_(\d+)\./.exec(ref)?.[1] ?? [])
+            .map(issueNumber => `github.issue.${issueNumber}`),
+          promiseRef: {
+            blockerRefs: record.request.promiseRef?.blockerRefs ?? [],
+            promiseId: record.request.promiseRef?.promiseId ?? promiseId,
+            registryVersion: record.request.promiseRef?.registryVersion ?? null,
+          },
+          routing: routingSummaryForProjection(projection),
+          state: record.state,
+          taskRefs: record.taskRefs,
+          updatedAt: record.updatedAt,
+          workOrderRef: record.workOrderRef,
+        }
+      }),
     })
   }).pipe(
     Effect.catchTag('CustomerOrderAgentAuthFailure', () =>

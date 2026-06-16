@@ -294,8 +294,12 @@ epics below; not all lands today — the aim is the main spine.
   capacity are loaded, with open work / eligible nodes / accepted outcomes /
   incident counters derived from existing operator-safe projections. Contract:
   `docs/blitz/forge/2026-06-16-customer-one-dogfood-factory.md`. **D1** (#5096)
-  remains the runtime-routing slice for internal AI/coding spend through the
-  pool/nodes. **D4** (#5106) fixed: Pylon now has lane-scoped change
+  shipped the runtime-routing slice for internal AI/coding spend through the
+  pool/nodes: the work-order list exposes placement-derived routing summaries
+  and `/forge` renders owned-node, fallback-lane, metered, and blocked-routing
+  counters. Contract:
+  `docs/blitz/forge/2026-06-16-customer-one-spend-routing.md`. **D4** (#5106) fixed:
+  Pylon now has lane-scoped change
   capture/commit guards, shared-file conflict refs, and dirty workspace
   retention for Autopilot Coder worktrees.
 - **Epic E — first design-partner deliverables (#5105):** prefilled workspaces per
@@ -336,8 +340,7 @@ Section **A** is fully closed; the apps/web wave (Epic A live-render #5108,
 `/login` #5111 + OTP hardening #5120, `/animations`) has landed and deployed.
 With B3 (#5089 Forge Automations), C2 (#5093 operator
 seeding/invite/engagement), and D2 (#5097 customer-#1 dogfood strip) now landed,
-the clean non-overlapping assistant-lane work is D1 (#5096 route our own
-AI/coding spend through the pool), the **email strategy "NEXT" slice**
+the clean non-overlapping assistant-lane work is the **email strategy "NEXT" slice**
 (Cloudflare verified-destination smoke + `cloudflare_email` provider behind
 `EmailService`; see the unified strategy doc), and Epic G Forge Autopilot Coder
 surfaces. The owner-gated green-flips (**B/C** §C, built-in agent §D) still need
