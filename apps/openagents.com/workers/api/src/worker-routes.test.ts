@@ -39,6 +39,15 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('keeps Forge and business funnel document routes in the app shell', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/business'), '/business'),
+    ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/forge'), '/forge'),
+    ).toBe(false)
+  })
+
   test('keeps the Moksha document route in the app shell', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/moksha'), '/moksha'),
