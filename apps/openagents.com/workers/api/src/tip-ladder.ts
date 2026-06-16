@@ -223,6 +223,9 @@ export const executeTipLadder = (
     recipientRef: string
     recipientHasRegisteredOffer: boolean
     recipientBolt12Offer: string | null
+    // Optional payout fallback: the recipient's static Lightning Address held
+    // on file, used only if the primary BOLT 12 buffer send fails (#5078).
+    recipientLightningAddress?: string | null
     payFromBuffer: BufferPayFn | null
     tipsBufferConfigured: boolean
     postId: string
@@ -335,6 +338,7 @@ export const executeTipLadder = (
         input.payFromBuffer!({
           amountSat: input.amountSat,
           bolt12Offer: input.recipientBolt12Offer!,
+          fallbackDestination: input.recipientLightningAddress ?? null,
         }),
       )
 

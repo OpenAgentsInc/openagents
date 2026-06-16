@@ -816,10 +816,10 @@ const tipsBufferPayFnForEnv = (environment: Env): BufferPayFn | null => {
     return null
   }
 
-  return async ({ amountSat, bolt12Offer }) => {
-    try {
+  return async ({ amountSat, bolt12Offer, fallbackDestination }) => {
+    const attempt = async (destination: string) => {
       const response = await fetchBuffer('/pay', {
-        body: JSON.stringify({ amountSat, destination: bolt12Offer }),
+        body: JSON.stringify({ amountSat, destination }),
         method: 'POST',
       })
       const result = (await response.json()) as {
@@ -847,6 +847,23 @@ const tipsBufferPayFnForEnv = (environment: Env): BufferPayFn | null => {
         ok: true as const,
         paymentRef: `payment.tips_buffer.${String(result.paymentId ?? '').slice(0, 12)}`,
       }
+    }
+
+    try {
+      const primary = await attempt(bolt12Offer)
+      // Retry once against the recipient's payout fallback (e.g. their static
+      // Lightning Address) only on a hard failure — never on a pending hold,
+      // which the reconciliation pass owns. Still a normal Lightning send.
+      if (
+        !primary.ok &&
+        primary.pending !== true &&
+        typeof fallbackDestination === 'string' &&
+        fallbackDestination.trim() !== '' &&
+        fallbackDestination.trim() !== bolt12Offer.trim()
+      ) {
+        return await attempt(fallbackDestination.trim())
+      }
+      return primary
     } catch (error) {
       return {
         ok: false as const,
@@ -7299,12 +7316,16 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           async () =>
             (await openAgentsDatabase(env)
               .prepare(
-                `SELECT wallet_ref, bolt12_offer FROM forum_tip_recipient_wallets
+                `SELECT wallet_ref, bolt12_offer, lightning_address FROM forum_tip_recipient_wallets
                WHERE actor_ref = ? AND state = 'ready' AND archived_at IS NULL
                  AND bolt12_offer IS NOT NULL`,
               )
               .bind(body.recipientActorRef)
-              .first()) as { wallet_ref: string; bolt12_offer: string } | null,
+              .first()) as {
+              wallet_ref: string
+              bolt12_offer: string
+              lightning_address: string | null
+            } | null,
         )
         if (wallet === null) {
           return noStoreJsonResponse(
@@ -7316,6 +7337,7 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           runArtanisSpendDecision(openAgentsDatabase(env), {
             candidate: {
               bolt12Offer: wallet.bolt12_offer,
+              lightningAddress: wallet.lightning_address ?? null,
               context: body.context!,
               destinationSourceRef: wallet.wallet_ref,
               recipientRef: body.recipientActorRef!,

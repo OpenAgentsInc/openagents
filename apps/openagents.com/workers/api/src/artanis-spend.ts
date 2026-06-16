@@ -73,6 +73,10 @@ export type SpendCandidate = Readonly<{
   recipientRef: string
   destinationSourceRef: string
   bolt12Offer: string
+  // Optional payout fallback: the recipient's static Lightning Address held on
+  // file (e.g. hosted by their offline Spark backup wallet's LSP). Used only if
+  // the primary BOLT 12 / online MDK send fails (#5078).
+  lightningAddress?: string | null
   context: string
   suggestedMaxSat: number
 }>
@@ -209,7 +213,11 @@ export const runArtanisSpendDecision = async (
 
   const execution: TreasuryPayoutExecution = await executeTreasuryPayout(
     deps.treasury,
-    { amountSat, destination: deps.candidate.bolt12Offer },
+    {
+      amountSat,
+      destination: deps.candidate.bolt12Offer,
+      fallbackDestination: deps.candidate.lightningAddress ?? null,
+    },
   )
 
   const paid = execution.kind === 'paid'

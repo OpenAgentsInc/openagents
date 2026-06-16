@@ -98,7 +98,14 @@ export type BufferPayResult =
   | Readonly<{ ok: false; pending?: false; reason: string }>
 
 export type BufferPayFn = (
-  input: Readonly<{ bolt12Offer: string; amountSat: number }>,
+  input: Readonly<{
+    bolt12Offer: string
+    amountSat: number
+    // Optional payout fallback (e.g. the recipient's static Lightning Address).
+    // When the primary BOLT 12 send fails, the buffer retries once against this
+    // destination before reporting failure (#5078).
+    fallbackDestination?: string | null
+  }>,
 ) => Promise<BufferPayResult>
 
 export type SweepTickOutcome = Readonly<{

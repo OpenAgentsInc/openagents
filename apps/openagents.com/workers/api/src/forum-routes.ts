@@ -4510,6 +4510,7 @@ const tipLadderResponse = (
       postId: postDetail.post.postId,
       publicReceiptRef,
       recipientBolt12Offer: directPayment?.bolt12Offer ?? null,
+      recipientLightningAddress: directPayment?.lightningAddress ?? null,
       recipientHasRegisteredOffer,
       recipientRef: postDetail.post.author.actorRef,
       senderRef: actorRefForForumActor(actor),

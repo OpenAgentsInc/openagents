@@ -1,7 +1,10 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import type { ContainerPathFetch } from './http/container-fetch'
+
 import {
+  executeTreasuryPayout,
   handleOperatorTreasuryFundingDestinationApi,
   handleOperatorTreasuryPayoutApi,
   handleOperatorTreasuryStatusApi,
@@ -361,5 +364,132 @@ describe('operator treasury payout', () => {
     expect(response.status).toBe(409)
     const body = (await response.json()) as { error: string }
     expect(body.error).toBe('treasury_depleted')
+  })
+
+  // #5078: pay an offline recipient via a static Lightning Address fallback.
+  const payDestinationsFetch = (
+    paid: Array<string>,
+    succeedFor: (destination: string) => boolean,
+  ): ContainerPathFetch =>
+    (path, init) => {
+      if (path === '/balance') {
+        return Promise.resolve(
+          jsonResponse(200, { balanceSat: 100000, maxSendableSat: 100000 }),
+        )
+      }
+      if (path === '/pay' && init?.method === 'POST') {
+        const destination = String(
+          JSON.parse(init.body ?? '{}').destination ?? '',
+        )
+        paid.push(destination)
+        return succeedFor(destination)
+          ? Promise.resolve(
+              jsonResponse(200, { paymentId: 'pay_x', status: 'succeeded' }),
+            )
+          : Promise.resolve(jsonResponse(502, { error: 'pay_failed' }))
+      }
+      return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
+    }
+
+  test('primary success does not use the fallback destination (#5078)', async () => {
+    const paid: Array<string> = []
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({
+          amountSat: 1000,
+          destination: 'lno1recipient',
+          fallbackDestination: 'oab38ad12345abcd9@spark.money',
+        }),
+        {
+          fetchTreasury: payDestinationsFetch(paid, d => d === 'lno1recipient'),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { paidVia: string }
+    expect(body.paidVia).toBe('primary')
+    expect(paid).toEqual(['lno1recipient'])
+  })
+
+  test('primary fail retries the Lightning Address fallback (#5078)', async () => {
+    const paid: Array<string> = []
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({
+          amountSat: 1000,
+          destination: 'lno1recipient',
+          fallbackDestination: 'oab38ad12345abcd9@spark.money',
+        }),
+        {
+          fetchTreasury: payDestinationsFetch(
+            paid,
+            d => d === 'oab38ad12345abcd9@spark.money',
+          ),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { paidVia: string }
+    expect(body.paidVia).toBe('fallback')
+    expect(paid).toEqual([
+      'lno1recipient',
+      'oab38ad12345abcd9@spark.money',
+    ])
+  })
+
+  test('primary fail with no fallback still fails cleanly (#5078)', async () => {
+    const paid: Array<string> = []
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({ amountSat: 1000, destination: 'lno1recipient' }),
+        {
+          fetchTreasury: payDestinationsFetch(paid, () => false),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(502)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('treasury_pay_failed')
+    expect(paid).toEqual(['lno1recipient'])
+  })
+
+  test('executeTreasuryPayout core falls back then reports paidVia (#5078)', async () => {
+    const paid: Array<string> = []
+    const fallback = await executeTreasuryPayout(
+      {
+        fetchTreasury: payDestinationsFetch(
+          paid,
+          d => d === 'oab38ad12345abcd9@spark.money',
+        ),
+        requireAdminApiToken: () => Promise.resolve(true),
+      },
+      {
+        amountSat: 1000,
+        destination: 'lno1recipient',
+        fallbackDestination: 'oab38ad12345abcd9@spark.money',
+      },
+    )
+    expect(fallback.kind).toBe('paid')
+    if (fallback.kind === 'paid') {
+      expect(fallback.paidVia).toBe('fallback')
+    }
+
+    const noFallback = await executeTreasuryPayout(
+      {
+        fetchTreasury: payDestinationsFetch([], () => false),
+        requireAdminApiToken: () => Promise.resolve(true),
+      },
+      { amountSat: 1000, destination: 'lno1recipient' },
+    )
+    expect(noFallback.kind).toBe('refused')
+    if (noFallback.kind === 'refused') {
+      expect(noFallback.reason).toBe('treasury_pay_failed')
+    }
   })
 })

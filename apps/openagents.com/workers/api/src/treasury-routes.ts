@@ -314,6 +314,10 @@ export type TreasuryPayoutExecution =
       policyApplied: string
       paymentRef: string
       status: string
+      // Which destination rail actually settled: the primary `destination`
+      // (online BOLT 12 / MDK) or the `fallbackDestination` (e.g. the
+      // recipient's static Lightning Address held on file) (#5078).
+      paidVia: 'primary' | 'fallback'
     }>
   | Readonly<{
       kind: 'refused'
@@ -328,10 +332,24 @@ export type TreasuryPayoutExecution =
 
 export const executeTreasuryPayout = async (
   dependencies: TreasuryRouteDependencies,
-  input: Readonly<{ destination: string; amountSat: number }>,
+  input: Readonly<{
+    destination: string
+    amountSat: number
+    // Optional payout fallback (e.g. the recipient's static Lightning Address
+    // hosted by their offline Spark backup wallet's LSP). When the primary
+    // destination fails, we retry once against this address. Both are normal
+    // Lightning sends on the treasury's pay path — no Spark SDK on our side.
+    fallbackDestination?: string | null
+  }>,
 ): Promise<TreasuryPayoutExecution> => {
   const fetchTreasury = dependencies.fetchTreasury
   const intendedAmountSat = Math.floor(input.amountSat)
+  const fallbackDestination =
+    typeof input.fallbackDestination === 'string' &&
+    input.fallbackDestination.trim() !== '' &&
+    input.fallbackDestination.trim() !== input.destination.trim()
+      ? input.fallbackDestination.trim()
+      : null
 
   if (fetchTreasury === undefined) {
     return {
@@ -374,16 +392,33 @@ export const executeTreasuryPayout = async (
     }
   }
 
-  const payResponse = await fetchTreasury('/pay', {
-    body: JSON.stringify({
-      amountSat: plan.paidAmountSat,
-      destination: input.destination,
-    }),
-    method: 'POST',
-  })
-  const payResult = (await payResponse.json()) as Record<string, unknown>
+  const attemptPay = async (
+    destination: string,
+  ): Promise<Record<string, unknown> | null> => {
+    const payResponse = await fetchTreasury('/pay', {
+      body: JSON.stringify({
+        amountSat: plan.paidAmountSat,
+        destination,
+      }),
+      method: 'POST',
+    })
+    const payResult = (await payResponse.json()) as Record<string, unknown>
+    if (!payResponse.ok || payResult.status !== 'succeeded') {
+      return null
+    }
+    return payResult
+  }
 
-  if (!payResponse.ok || payResult.status !== 'succeeded') {
+  let paidVia: 'primary' | 'fallback' = 'primary'
+  let payResult = await attemptPay(input.destination)
+  if (payResult === null && fallbackDestination !== null) {
+    // Retry once against the fallback destination (e.g. the recipient's static
+    // Lightning Address). Still a normal Lightning send on the pay path.
+    paidVia = 'fallback'
+    payResult = await attemptPay(fallbackDestination)
+  }
+
+  if (payResult === null) {
     return {
       intendedAmountSat,
       kind: 'refused',
@@ -406,6 +441,7 @@ export const executeTreasuryPayout = async (
     paymentRef,
     policyApplied: plan.kind,
     status: 'succeeded',
+    paidVia,
   }
 }
 
@@ -443,7 +479,11 @@ export const handleOperatorTreasuryPayoutApi = (
       return Effect.tryPromise({
         catch: () => null,
         try: async () => {
-          let body: { amountSat?: unknown; destination?: unknown } = {}
+          let body: {
+            amountSat?: unknown
+            destination?: unknown
+            fallbackDestination?: unknown
+          } = {}
 
           try {
             body = (await request.json()) as typeof body
@@ -456,6 +496,12 @@ export const handleOperatorTreasuryPayoutApi = (
 
           const destination =
             typeof body.destination === 'string' ? body.destination.trim() : ''
+          const fallbackDestination =
+            typeof body.fallbackDestination === 'string' &&
+            body.fallbackDestination.trim() !== '' &&
+            body.fallbackDestination.trim() !== destination
+              ? body.fallbackDestination.trim()
+              : null
           const intendedAmountSat = Number(body.amountSat)
 
           if (destination === '') {
@@ -506,19 +552,38 @@ export const handleOperatorTreasuryPayoutApi = (
             )
           }
 
-          const payResponse = await fetchTreasury('/pay', {
-            body: JSON.stringify({
-              amountSat: plan.paidAmountSat,
-              destination,
-            }),
-            method: 'POST',
-          })
-          const payResult = (await payResponse.json()) as Record<
-            string,
-            unknown
-          >
+          const attemptPay = async (
+            payDestination: string,
+          ): Promise<{
+            ok: boolean
+            payResult: Record<string, unknown>
+          }> => {
+            const payResponse = await fetchTreasury('/pay', {
+              body: JSON.stringify({
+                amountSat: plan.paidAmountSat,
+                destination: payDestination,
+              }),
+              method: 'POST',
+            })
+            const payResult = (await payResponse.json()) as Record<
+              string,
+              unknown
+            >
+            return { ok: payResponse.ok, payResult }
+          }
 
-          if (!payResponse.ok) {
+          let paidVia: 'primary' | 'fallback' = 'primary'
+          let attempt = await attemptPay(destination)
+          if (!attempt.ok && fallbackDestination !== null) {
+            // Retry once against the recipient's payout fallback (e.g. their
+            // static Lightning Address). Still a normal Lightning send.
+            paidVia = 'fallback'
+            attempt = await attemptPay(fallbackDestination)
+          }
+
+          const payResult = attempt.payResult
+
+          if (!attempt.ok) {
             return noStoreJsonResponse(
               {
                 error: 'treasury_pay_failed',
@@ -551,6 +616,7 @@ export const handleOperatorTreasuryPayoutApi = (
             paymentId: payResult.paymentId ?? null,
             policyApplied: plan.kind,
             status: payResult.status ?? null,
+            paidVia,
           })
         },
       }).pipe(
