@@ -31,7 +31,7 @@ describe("Pylon bootstrap release surface", () => {
     const summary = createBootstrapSummary(options, { PYLON_HOME: "/tmp/pylon-test" }, "darwin")
 
     expect(summary.packageName).toBe("@openagentsinc/pylon")
-    expect(summary.version).toBe("1.0.0-rc.5")
+    expect(summary.version).toBe("1.0.0-rc.6")
     expect(summary.bin).toBe("pylon")
     expect(summary.platform.supportedTargets).toEqual(["darwin", "linux"])
     expect(summary.bootstrap.registerOpenAgents).toBe(true)
