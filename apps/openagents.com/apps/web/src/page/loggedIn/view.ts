@@ -7,6 +7,7 @@ import { notFoundView } from '../../notFoundView'
 import { browserRouteIsEnabled } from '../../product-policy'
 import {
   adminRouter,
+  animationsRouter,
   autopilotWorkDetailRouter,
   autopilotWorkRouter,
   billingRouter,
@@ -15,12 +16,10 @@ import {
   businessRouter,
   chatRouter,
   clientsPreviewRouter,
-  animationsRouter,
-  runRouter,
-  loginRouter,
   componentsFamilyRouter,
   componentsRouter,
   decisionsRouter,
+  demoLegalRouter,
   docsPageRouter,
   docsRouter,
   forgeRouter,
@@ -30,6 +29,7 @@ import {
   forumTopicRouter,
   imagesRouter,
   inviteRouter,
+  loginRouter,
   mulletRouter,
   onboardingRouter,
   orderDetailRouter,
@@ -38,6 +38,7 @@ import {
   publicAgentRouter,
   publicTrainingRunRouter,
   publicTrainingRunsRouter,
+  runRouter,
   settingsRouter,
   siteCheckoutDemoReturnRouter,
   siteCheckoutDemoRouter,
@@ -116,6 +117,7 @@ const currentHref = (model: Model): string =>
       ComponentsFamily: ({ family }) => componentsFamilyRouter({ family }),
       Business: () => businessRouter(),
       Animations: () => animationsRouter(),
+      DemoLegal: () => demoLegalRouter(),
       Run: () => runRouter(),
       Login: () => loginRouter(),
       Blog: () => blogRouter(),
@@ -174,6 +176,7 @@ const routeKey = (model: Model): string =>
       ComponentsFamily: () => 'Components',
       Business: () => 'Business',
       Animations: () => 'Animations',
+      DemoLegal: () => 'DemoLegal',
       Run: () => 'Run',
       Login: () => 'Login',
       Blog: () => 'Blog',
@@ -528,6 +531,10 @@ const routeView = (model: Model): Html => {
           Animations: () =>
             Ui.workroomScrollableRoute<Message>([
               notFoundView('/animations', chatRouter(), 'Go to Chat'),
+            ]),
+          DemoLegal: () =>
+            Ui.workroomScrollableRoute<Message>([
+              notFoundView('/demo/legal', chatRouter(), 'Go to Chat'),
             ]),
           Run: () =>
             Ui.workroomScrollableRoute<Message>([

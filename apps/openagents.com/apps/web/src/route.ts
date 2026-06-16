@@ -75,6 +75,7 @@ export const ImagesRoute = r('Images')
 export const SettingsRoute = r('Settings')
 export const SettingsSectionRoute = r('SettingsSection', { section: S.String })
 export const DemoRoute = r('Demo')
+export const DemoLegalRoute = r('DemoLegal')
 export const DemoOrderRoute = r('DemoOrder')
 export const DemoThreadRoute = r('DemoThread', { threadId: S.String })
 export const DemoTeamProjectChatRoute = r('DemoTeamProjectChat', {
@@ -156,6 +157,7 @@ export type ImagesRoute = typeof ImagesRoute.Type
 export type SettingsRoute = typeof SettingsRoute.Type
 export type SettingsSectionRoute = typeof SettingsSectionRoute.Type
 export type DemoRoute = typeof DemoRoute.Type
+export type DemoLegalRoute = typeof DemoLegalRoute.Type
 export type DemoOrderRoute = typeof DemoOrderRoute.Type
 export type DemoThreadRoute = typeof DemoThreadRoute.Type
 export type DemoTeamProjectChatRoute = typeof DemoTeamProjectChatRoute.Type
@@ -201,6 +203,7 @@ export const LoggedOutRoute = S.Union([
   Moksha2Route,
   PylonRoute,
   WorkspaceRoute,
+  DemoLegalRoute,
   NotFoundRoute,
 ])
 export const LoggedInRoute = S.Union([
@@ -251,6 +254,7 @@ export const LoggedInRoute = S.Union([
   ImagesRoute,
   SettingsRoute,
   SettingsSectionRoute,
+  DemoLegalRoute,
   NotFoundRoute,
 ])
 export const AppRoute = S.Union([
@@ -309,6 +313,7 @@ export const AppRoute = S.Union([
   SettingsRoute,
   SettingsSectionRoute,
   DemoRoute,
+  DemoLegalRoute,
   DemoOrderRoute,
   DemoThreadRoute,
   DemoTeamProjectChatRoute,
@@ -522,6 +527,11 @@ export const settingsSectionRouter = pipe(
   Route.mapTo(SettingsSectionRoute),
 )
 export const demoRouter = pipe(literal('demo'), Route.mapTo(DemoRoute))
+export const demoLegalRouter = pipe(
+  literal('demo'),
+  slash(literal('legal')),
+  Route.mapTo(DemoLegalRoute),
+)
 export const demoOrderRouter = pipe(
   literal('demo'),
   slash(literal('order')),
@@ -606,6 +616,7 @@ const routeParser = Route.oneOf(
   demoTeamFilesRouter,
   demoThreadRouter,
   demoOrderRouter,
+  demoLegalRouter,
   demoRouter,
   productPromisesRouter,
   publicTrainingRunRouter,

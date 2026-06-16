@@ -9,17 +9,18 @@ import {
 } from './message'
 import type { Model } from './model'
 import { Demo, LoggedIn, LoggedOut } from './model'
-import * as Blog from './page/blog'
 import * as Animations from './page/animations'
+import * as Blog from './page/blog'
 import * as Business from './page/business'
 import * as Components from './page/components'
+import * as DemoLegal from './page/demoLegal'
 import * as Docs from './page/docs'
 import * as Forum from './page/forum'
-import * as Run from './page/run'
 import type {
   PublicPylonStats,
   PublicPylonStatsModel,
 } from './page/loggedOut/model'
+import * as Run from './page/run'
 import * as SiteCheckoutDemo from './page/siteCheckoutDemo'
 import * as Ui from './ui'
 
@@ -360,6 +361,7 @@ const title = (model: Model): string =>
         M.tag('ComponentsFamily', () => 'Components - OpenAgents'),
         M.tag('Business', () => 'For your business - OpenAgents'),
         M.tag('Animations', () => 'Animations - OpenAgents'),
+        M.tag('DemoLegal', () => 'Legal demo - OpenAgents'),
         M.tag('Run', () => 'Live Tassadar run - OpenAgents'),
         M.tag('Login', () => 'Log in - OpenAgents'),
         M.tag('PublicAgent', ({ agentRef }) => `${agentRef} - OpenAgents`),
@@ -472,6 +474,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'ComponentsFamily' &&
       model.route._tag !== 'Business' &&
       model.route._tag !== 'Animations' &&
+      model.route._tag !== 'DemoLegal' &&
       model.route._tag !== 'Run'
     ) {
       return undefined
@@ -496,6 +499,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Animations') {
     return Animations.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'DemoLegal') {
+    return DemoLegal.view<Message>(authState)
   }
 
   if (model.route._tag === 'Run') {

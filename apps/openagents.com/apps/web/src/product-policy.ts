@@ -155,6 +155,7 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'ComponentsFamily' &&
   route._tag !== 'Business' &&
   route._tag !== 'Animations' &&
+  route._tag !== 'DemoLegal' &&
   route._tag !== 'Run' &&
   route._tag !== 'Login' &&
   route._tag !== 'Blog' &&
@@ -202,6 +203,7 @@ export const browserRouteProductIntents = {
   Decisions: 'autopilot.decisions.index',
   Forge: 'forge.factory.index',
   Demo: 'demo.training.fullscreen',
+  DemoLegal: 'public.demo.legal.landing',
   DemoOrder: 'demo.customer.order',
   DemoTeamFile: 'demo.files.team.detail',
   DemoTeamFiles: 'demo.files.team.index',
