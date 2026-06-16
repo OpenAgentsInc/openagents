@@ -8,6 +8,7 @@ import { homeRouter } from '../../route'
 import * as Ui from '../../ui'
 import * as Blog from '../blog'
 import * as ClientsPreview from '../clientsPreview'
+import * as Components from '../components'
 import * as Docs from '../docs'
 import * as Forum from '../forum'
 import * as SiteCheckoutDemo from '../siteCheckoutDemo'
@@ -95,6 +96,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               SiteCheckoutDemoReturn: route =>
                 SiteCheckoutDemo.view(route, { _tag: 'LoggedOut' }),
               ClientsPreview: () => ClientsPreview.view(),
+              Components: () => Components.view({ _tag: 'LoggedOut' }),
               Blog: route => Blog.view(route, { _tag: 'LoggedOut' }),
               BlogPost: route => Blog.view(route, { _tag: 'LoggedOut' }),
               PublicAgent: route => PublicAgent.view(model, route.agentRef),

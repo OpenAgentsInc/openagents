@@ -10,6 +10,7 @@ import {
 import type { Model } from './model'
 import { Demo, LoggedIn, LoggedOut } from './model'
 import * as Blog from './page/blog'
+import * as Components from './page/components'
 import * as Docs from './page/docs'
 import * as Forum from './page/forum'
 import type {
@@ -352,6 +353,7 @@ const title = (model: Model): string =>
         M.tag('SiteCheckoutDemoReturn', route => SiteCheckoutDemo.title(route)),
         M.tag('Blog', () => 'Blog - OpenAgents'),
         M.tag('BlogPost', ({ slug }) => `${blogTitle(slug)} - OpenAgents`),
+        M.tag('Components', () => 'Components - OpenAgents'),
         M.tag('PublicAgent', ({ agentRef }) => `${agentRef} - OpenAgents`),
         M.tag('Share', () => 'Shared Workroom - OpenAgents'),
         M.orElse(() => 'OpenAgents'),
@@ -446,7 +448,8 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'SiteCheckoutDemo' &&
       model.route._tag !== 'SiteCheckoutDemoReturn' &&
       model.route._tag !== 'Blog' &&
-      model.route._tag !== 'BlogPost'
+      model.route._tag !== 'BlogPost' &&
+      model.route._tag !== 'Components'
     ) {
       return undefined
     }
@@ -462,6 +465,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Docs' || model.route._tag === 'DocsPage') {
     return Docs.view<Message>(model.route, authState)
+  }
+
+  if (model.route._tag === 'Components') {
+    return Components.view<Message>(authState)
   }
 
   if (
