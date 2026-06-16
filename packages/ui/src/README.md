@@ -1,5 +1,25 @@
 # OpenAgents Foldkit UI
 
+`@openagentsinc/ui` is the shared Foldkit component library. It is consumed as
+source (no build step), mirroring `@openagentsinc/autopilot-ui` conventions.
+
+Notes for future consolidation work:
+
+- `icon.ts` is co-located here because `workroom.ts` depends on it and it is
+  used app-wide. It is a generated file
+  (`apps/openagents.com/scripts/sync-fireball-icons.mjs`). TODO: that generator
+  still hardcodes its output path; if regenerating, point it at
+  `packages/ui/src/icon.ts` instead of the old app path
+  (`apps/openagents.com/apps/web/src/icon.ts`, now a thin re-export shim).
+- The moved kit families do not reference a design-tokens module; they compose
+  Tailwind utilities directly. No `./tokens` export is needed for this package
+  yet. `@openagentsinc/autopilot-ui` keeps its own Autopilot-specific
+  `./tokens` and is unaffected. TODO: revisit token consolidation in a later
+  phase if/when a shared token source emerges.
+- `tenant-theme.ts` and `credits-panel.ts` remain app-local in
+  `apps/openagents.com/apps/web/src/ui/` and import shared bits from
+  `@openagentsinc/ui`.
+
 This folder is the Foldkit component-library port boundary for the downloaded
 Tailwind UI reference kits:
 

@@ -17,6 +17,7 @@
     "@openagentsinc/mullet-schema": "workspace:*",
     "@openagentsinc/mullet-sim": "workspace:*",
     "@openagentsinc/provider-account-schema": "workspace:*",
+    "@openagentsinc/ui": "workspace:*",
     "@openagentsinc/sync-client": "workspace:*",
     "@openagentsinc/sync-schema": "workspace:*",
     "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#faba5cc957ff5211fbd27c55f6e4a7d7c4dd6dbb",

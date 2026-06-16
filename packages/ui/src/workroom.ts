@@ -2,7 +2,7 @@ import { clsx } from 'clsx'
 import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
-import { type IconName, iconView } from '../icon'
+import { type IconName, iconView } from './icon'
 import { codeBlock, keyValueRows, mediaObject } from './data-display'
 import { tabBar } from './navigation'
 import {

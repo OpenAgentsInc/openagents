@@ -2,8 +2,8 @@ import { clsx } from 'clsx'
 import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
-import { button } from './shared'
 import {
+  button,
   eyebrowClass,
   kitFamily,
   metaClass,
@@ -11,8 +11,8 @@ import {
   surfaceClass,
   titleClass,
   toneTextClass,
-} from './primitives'
-import type { Tone } from './primitives'
+} from '@openagentsinc/ui'
+import type { Tone } from '@openagentsinc/ui'
 
 // COORDINATOR WIRING: add `export * from './credits-panel'` to
 // apps/web/src/ui/index.ts. Not added here to avoid colliding with the

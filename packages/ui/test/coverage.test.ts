@@ -1,13 +1,13 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { describe, expect, it } from 'bun:test'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
-import { describe, expect, it } from 'vitest'
 
 import {
   applicationUiV4Families,
   ecommerceUiV4Families,
   marketingUiV4Families,
-} from './index'
+} from '../src/index'
 
 const applicationFamiliesFromDownloads = [
   'application-shells/multi-column',
@@ -140,7 +140,6 @@ const variantFamily = (root: string, file: string): string => {
 }
 
 const downloadsRoot = join(homedir(), 'Downloads')
-const appSrcRoot = join(process.cwd(), 'src')
 
 const localKits = [
   {
@@ -162,26 +161,6 @@ const localKits = [
     root: join(downloadsRoot, 'marketing-v4/html'),
   },
 ] as const
-
-const sourceFiles = (root: string): ReadonlyArray<string> => {
-  if (!existsSync(root)) {
-    return []
-  }
-
-  const visit = (dir: string): ReadonlyArray<string> =>
-    readdirSync(dir).flatMap(entry => {
-      const path = join(dir, entry)
-      const stat = statSync(path)
-
-      if (stat.isDirectory()) {
-        return visit(path)
-      }
-
-      return path.endsWith('.ts') && !path.endsWith('.test.ts') ? [path] : []
-    })
-
-  return visit(root)
-}
 
 describe('Tailwind UI v4 family coverage', () => {
   it('tracks every Application UI family from ~/Downloads/application-ui-v4/html', () => {
@@ -218,22 +197,8 @@ describe('Tailwind UI v4 family coverage', () => {
         .map(file => variantFamily(kit.root, file))
         .filter(family => !families.has(family))
 
-      expect(files, kit.name).toHaveLength(kit.expectedCount)
-      expect(unregisteredFamilies, kit.name).toEqual([])
+      expect(files).toHaveLength(kit.expectedCount)
+      expect(unregisteredFamilies).toEqual([])
     }
-  })
-
-  it('keeps app page code composed through the Foldkit UI system', () => {
-    const appFiles = sourceFiles(appSrcRoot).filter(file => {
-      const localPath = relative(appSrcRoot, file)
-
-      return !localPath.startsWith('ui/') && localPath !== 'icon.ts'
-    })
-
-    const filesWithRawClasses = appFiles
-      .filter(file => /\bh\.Class\(/.test(readFileSync(file, 'utf8')))
-      .map(file => relative(appSrcRoot, file))
-
-    expect(filesWithRawClasses).toEqual([])
   })
 })

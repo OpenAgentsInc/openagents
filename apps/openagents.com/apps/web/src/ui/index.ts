@@ -1,13 +1,6 @@
-export * from './primitives'
-export * from './shared'
-export * from './forms'
-export * from './layout'
-export * from './workroom'
-export * from './navigation'
-export * from './data-display'
-export * from './feedback'
-export * from './page-examples'
-export * from './public'
-export * from './v4'
+// Re-export shim. The shared Foldkit UI kit now lives in `@openagentsinc/ui`.
+// App call sites keep importing from `./ui` / `../ui` / `../../../ui`
+// unchanged. App-local modules (tenant-theme, credits-panel) stay here.
+export * from '@openagentsinc/ui'
 export * from './tenant-theme'
 export * from './credits-panel'

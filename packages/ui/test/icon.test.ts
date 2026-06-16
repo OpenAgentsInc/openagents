@@ -1,5 +1,5 @@
+import { describe, expect, test } from 'bun:test'
 import { Array, Effect, Option, Schema as S } from 'effect'
-import { describe, expect, test } from 'vitest'
 
 import {
   IconCount,
@@ -8,7 +8,7 @@ import {
   IconService,
   Icons,
   iconSvg,
-} from './icon'
+} from '../src/icon'
 
 const requiredChromeIcons: ReadonlyArray<IconNameType> = [
   'ArrowLeft',
@@ -25,7 +25,7 @@ describe('icon catalog', () => {
     const rejectedIconName: IconNameType = 'NotARealIcon'
 
     expect(acceptedIconName).toBe('Folder')
-    expect(rejectedIconName).toBe('NotARealIcon')
+    expect(rejectedIconName as string).toBe('NotARealIcon')
   })
 
   test('contains the full Fireball Apps SDK icon set', () => {
