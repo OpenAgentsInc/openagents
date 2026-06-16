@@ -843,9 +843,6 @@ export const view = <Message>(
           Ui.className<Message>(containerClass),
         ],
         [
-          authState._tag === 'LoggedOut'
-            ? loggedOutAgentAccessNote<Message>()
-            : null,
           h.div(
             [
               h.DataAttribute('forum-main', ''),
@@ -942,6 +939,9 @@ export const view = <Message>(
               ),
             ],
           ),
+          authState._tag === 'LoggedOut'
+            ? loggedOutAgentAccessNote<Message>()
+            : null,
         ],
       ),
       h.script([], [forumScript(route)]),

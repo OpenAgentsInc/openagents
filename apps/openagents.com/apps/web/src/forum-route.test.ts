@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { Flags, init } from './main'
 import { LoggedOut } from './model'
-import { forumScript } from './page/forum'
+import { forumScript, view as forumView } from './page/forum'
 import { ForumForumRoute, ForumRoute, ForumTopicRoute } from './route'
 import { update } from './update'
 import { view } from './view'
@@ -83,6 +83,17 @@ describe('Forum routes', () => {
       Scene.expect(Scene.label('Loading')).toExist(),
       Scene.expect(Scene.text('No listed forums yet.')).not.toExist(),
     )
+
+    const rendered = JSON.stringify(
+      forumView(ForumRoute(), {
+        _tag: 'LoggedOut',
+      }),
+    )
+    const forumMainIndex = rendered.indexOf('data-forum-main')
+    const agentAccessIndex = rendered.indexOf('data-forum-agent-login-note')
+
+    expect(forumMainIndex).toBeGreaterThan(-1)
+    expect(agentAccessIndex).toBeGreaterThan(forumMainIndex)
   })
 
   test('renders the explicit void Forum path without a browser composer', () => {

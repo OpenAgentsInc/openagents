@@ -25,6 +25,7 @@ import {
 import { ClickedOnboardingStep } from './page/loggedOut/message'
 import {
   ChatRoute,
+  DocsRoute,
   HomeRoute,
   InviteRoute,
   OnboardingRoute,
@@ -131,6 +132,17 @@ describe('app link routing', () => {
       Scene.expect(
         Scene.role('link', { name: 'Log in with GitHub' }),
       ).toHaveAttr('href', '/login/github'),
+    )
+  })
+
+  test('renders the public header login link as GitHub OAuth', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(DocsRoute())),
+      Scene.expect(Scene.role('link', { name: 'Log in' })).toHaveAttr(
+        'href',
+        '/login/github',
+      ),
     )
   })
 

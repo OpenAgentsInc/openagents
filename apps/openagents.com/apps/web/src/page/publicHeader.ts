@@ -104,7 +104,7 @@ export const view = <Message>(
                 ]
               : [
                   h.a(
-                    [h.Href(homeRouter()), Ui.className<Message>(linkClass)],
+                    [h.Href('/login/github'), Ui.className<Message>(linkClass)],
                     ['Log in'],
                   ),
                 ],
