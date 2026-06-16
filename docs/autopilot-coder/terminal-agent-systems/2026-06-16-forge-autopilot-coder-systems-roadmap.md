@@ -131,6 +131,12 @@ Candidate child issues:
 - G2.3 - Add closeout consistency tests so UI cannot show pending or blocked
   work as completed.
 
+Implementation status, 2026-06-16: #5125 adds the first
+`ForgeRunProgressView` projection over Run state, lifecycle events,
+next-action refs, and closeout evidence. It is intentionally view-model only;
+G2.2 should render this projection rather than re-deriving progress status in
+the page layer.
+
 ### G3 - Resume, Rewind, Session Navigation
 
 Systems: system 26 Resume/Rewind/Session Navigation, system 39 Remote
