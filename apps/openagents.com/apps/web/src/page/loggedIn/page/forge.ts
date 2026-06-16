@@ -19,10 +19,23 @@
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
-import { forgeRouter } from '../../../route'
+import { autopilotWorkDetailRouter, forgeRouter } from '../../../route'
 import { formatIsoDateTime } from '../../../time-format'
 import * as Ui from '../../../ui'
-import type { Message } from '../message'
+import {
+  type ForgeAutomation,
+  type ForgeStageKey,
+  configuredAutomationCountForStage,
+  forgeAutomations,
+  workOrderRefsForAutomation,
+} from '../forge-automations'
+import {
+  type Message,
+  SelectedForgeAutomationTemplate,
+  SubmittedAutopilotWorkComposer,
+  SubmittedForgeAutomationRun,
+  UpdatedAutopilotWorkComposerField,
+} from '../message'
 import type {
   AutopilotWorkState,
   AutopilotWorkSummary,
@@ -32,11 +45,12 @@ import type {
 
 // ---------------------------------------------------------------------------
 // Provenance: every surfaced number is either backed by a real projection
-// (`live`) or is an honest placeholder (`seeded`). Seeded values are dimmed and
-// carry a visible tag so an operator never mistakes a demo number for a fact.
+// (`live`), a configured local automation catalog entry (`configured`), or an
+// honest placeholder (`seeded`). Seeded values are dimmed and carry a visible tag
+// so an operator never mistakes a demo number for a fact.
 // ---------------------------------------------------------------------------
 
-type Provenance = 'live' | 'seeded'
+type Provenance = 'configured' | 'live' | 'seeded'
 
 interface Metric {
   readonly label: string
@@ -48,6 +62,7 @@ interface PipelineStage {
   readonly index: number | null
   readonly name: string
   readonly source: string
+  readonly stageKey: ForgeStageKey
   readonly automations: number
   readonly automationsProvenance: Provenance
   readonly metrics: ReadonlyArray<Metric>
@@ -262,8 +277,9 @@ const buildStages = (
       index: null,
       name: 'Signal',
       source: 'Inbound intent feeding Run intake',
-      automations: 0,
-      automationsProvenance: 'seeded',
+      stageKey: 'signal',
+      automations: configuredAutomationCountForStage('signal'),
+      automationsProvenance: 'configured',
       metrics: [
         {
           label: 'Runs in / window',
@@ -279,8 +295,9 @@ const buildStages = (
       index: 1,
       name: 'Triage',
       source: 'Run intake / scoping; backlog = scheduled Runs',
-      automations: 0,
-      automationsProvenance: 'seeded',
+      stageKey: 'triage',
+      automations: configuredAutomationCountForStage('triage'),
+      automationsProvenance: 'configured',
       metrics: [
         {
           label: 'In triage',
@@ -305,8 +322,9 @@ const buildStages = (
       index: 2,
       name: 'Code Gen',
       source: 'Runs on materialized Workspaces; capacity = account pool',
-      automations: pool?.activeLeaseCount ?? 0,
-      automationsProvenance: pool === null ? 'seeded' : 'live',
+      stageKey: 'codegen',
+      automations: configuredAutomationCountForStage('codegen'),
+      automationsProvenance: 'configured',
       metrics: [
         {
           label: 'Running',
@@ -331,8 +349,9 @@ const buildStages = (
       index: 3,
       name: 'Validate',
       source: 'Verification reports + checks; merge gate',
-      automations: 0,
-      automationsProvenance: 'seeded',
+      stageKey: 'validate',
+      automations: configuredAutomationCountForStage('validate'),
+      automationsProvenance: 'configured',
       metrics: [
         {
           label: 'In review',
@@ -352,8 +371,9 @@ const buildStages = (
       index: 4,
       name: 'Release',
       source: 'Delivery gating -> accepted-outcome receipts',
-      automations: 0,
-      automationsProvenance: 'seeded',
+      stageKey: 'release',
+      automations: configuredAutomationCountForStage('release'),
+      automationsProvenance: 'configured',
       metrics: [
         {
           label: 'Accepted',
@@ -373,8 +393,9 @@ const buildStages = (
       index: 5,
       name: 'Document',
       source: 'Documentation Runs (no dedicated projection yet)',
-      automations: 0,
-      automationsProvenance: 'seeded',
+      stageKey: 'document',
+      automations: configuredAutomationCountForStage('document'),
+      automationsProvenance: 'configured',
       metrics: [
         { label: 'Docs / wk', value: '—', provenance: 'seeded' },
         { label: 'Pages / wk', value: '—', provenance: 'seeded' },
@@ -386,8 +407,9 @@ const buildStages = (
       index: 6,
       name: 'Monitor',
       source: 'Post-delivery signals: blocked / rejected Runs',
-      automations: 0,
-      automationsProvenance: 'seeded',
+      stageKey: 'monitor',
+      automations: configuredAutomationCountForStage('monitor'),
+      automationsProvenance: 'configured',
       metrics: [
         {
           label: 'Incidents',
@@ -404,8 +426,9 @@ const buildStages = (
       index: null,
       name: 'Deploy',
       source: 'Completed delivery receipts (accepted outcomes)',
-      automations: 0,
-      automationsProvenance: 'seeded',
+      stageKey: 'deploy',
+      automations: configuredAutomationCountForStage('deploy'),
+      automationsProvenance: 'configured',
       metrics: [
         {
           label: 'Accepted / window',
@@ -481,10 +504,15 @@ const buildPanels = (digest: RunDigest): ReadonlyArray<DetailPanel> => {
 
 const provenanceTag = (provenance: Provenance): Html => {
   const h = html<Message>()
-  const cls =
-    provenance === 'live'
-      ? 'border-[#1b5e20] text-[#7ccf8a]'
-      : 'border-[#5a3b00] text-[#ffb400]'
+  const cls = (() => {
+    if (provenance === 'live') {
+      return 'border-[#1b5e20] text-[#7ccf8a]'
+    }
+    if (provenance === 'configured') {
+      return 'border-[#24415f] text-[#8fc8ff]'
+    }
+    return 'border-[#5a3b00] text-[#ffb400]'
+  })()
 
   return h.span(
     [
@@ -492,7 +520,7 @@ const provenanceTag = (provenance: Provenance): Html => {
         `inline-flex min-h-5 items-center border px-1.5 text-[0.5625rem] uppercase tracking-wide ${cls}`,
       ),
     ],
-    [provenance === 'live' ? 'live' : 'seeded'],
+    [provenance],
   )
 }
 
@@ -645,6 +673,11 @@ const stageCard = (stage: PipelineStage): Html => {
     [
       Ui.className<Message>(
         'grid min-w-[10rem] flex-1 content-start gap-3 border border-[#222] bg-[#050505] p-3',
+      ),
+      h.DataAttribute('forge-stage-key', stage.stageKey),
+      h.DataAttribute(
+        'forge-stage-automation-count',
+        String(stage.automations),
       ),
     ],
     [
@@ -802,6 +835,373 @@ const detailPanelCard = (panel: DetailPanel): Html => {
   )
 }
 
+const automationModeLabel = (automation: ForgeAutomation): string =>
+  automation.mode === 'deterministic' ? 'deterministic' : 'AI assisted'
+
+const automationRunLinks = (
+  automation: ForgeAutomation,
+  workOrders: ReadonlyArray<AutopilotWorkSummary>,
+): ReadonlyArray<Html> => {
+  const h = html<Message>()
+  const refs = workOrderRefsForAutomation(automation, workOrders).slice(0, 2)
+
+  return refs.map(ref =>
+    h.a(
+      [
+        h.Href(autopilotWorkDetailRouter({ workOrderRef: ref })),
+        Ui.className<Message>(
+          'text-[0.6875rem] text-white/60 underline decoration-white/20 underline-offset-3 hover:text-white',
+        ),
+      ],
+      [ref],
+    ),
+  )
+}
+
+const automationRow = (
+  automation: ForgeAutomation,
+  workOrders: ReadonlyArray<AutopilotWorkSummary>,
+): Html => {
+  const h = html<Message>()
+  const runLinks = automationRunLinks(automation, workOrders)
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        'grid gap-3 border border-[#222] bg-[#050505] p-3 @2xl:grid-cols-[7rem_minmax(0,1fr)_8rem_10rem]',
+      ),
+      h.DataAttribute('forge-automation-id', automation.id),
+      h.DataAttribute('forge-automation-stage', automation.stageKey),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('grid content-start gap-1')],
+        [
+          h.div(
+            [Ui.className<Message>(Ui.eyebrowClass)],
+            [automation.stageName],
+          ),
+          provenanceTag('configured'),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid min-w-0 gap-1')],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'truncate text-sm font-medium text-white/85',
+              ),
+            ],
+            [automation.label],
+          ),
+          h.div(
+            [Ui.className<Message>('text-sm/6 text-white/45 sm:text-xs/5')],
+            [automation.description],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'flex flex-wrap gap-2 text-[0.6875rem] text-white/35',
+              ),
+            ],
+            [
+              h.span([], [automation.repositoryFullName]),
+              h.span([], [`branch ${automation.branch}`]),
+              h.span([], [automation.verificationCommand]),
+            ],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid content-start gap-1 text-[0.6875rem] text-white/45',
+          ),
+        ],
+        [
+          h.span([Ui.className<Message>('uppercase text-white/30')], ['Mode']),
+          h.span([], [automationModeLabel(automation)]),
+          h.span([Ui.className<Message>('uppercase text-white/30')], ['Runs']),
+          ...(runLinks.length === 0 ? [h.span([], ['none yet'])] : runLinks),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap content-start gap-2 @2xl:justify-end',
+          ),
+        ],
+        [
+          Ui.button<Message>({
+            attrs: [
+              h.Type('button'),
+              h.OnClick(
+                SelectedForgeAutomationTemplate({
+                  automationId: automation.id,
+                }),
+              ),
+            ],
+            label: `Load ${automation.label}`,
+            size: 'sm',
+            variant: 'secondary',
+          }),
+          Ui.button<Message>({
+            attrs: [
+              h.Type('button'),
+              h.OnClick(
+                SubmittedForgeAutomationRun({ automationId: automation.id }),
+              ),
+            ],
+            label: `Run ${automation.label}`,
+            size: 'sm',
+            variant: 'secondary',
+          }),
+        ],
+      ),
+    ],
+  )
+}
+
+const automationCatalogSection = (
+  workOrders: ReadonlyArray<AutopilotWorkSummary>,
+): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [Ui.className<Message>('grid gap-3 @container')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-end justify-between gap-3',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-1')],
+            [
+              h.h2(
+                [
+                  Ui.className<Message>(
+                    'm-0 text-base font-medium text-white/80',
+                  ),
+                ],
+                ['Automations'],
+              ),
+              h.p(
+                [Ui.className<Message>('m-0 text-sm/6 text-white/45')],
+                [
+                  'Configured units that staff each stage. Running one creates a real Autopilot work order.',
+                ],
+              ),
+            ],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'text-[0.6875rem] uppercase tracking-wide text-white/35 tabular-nums',
+              ),
+              h.DataAttribute(
+                'forge-automation-total',
+                String(forgeAutomations.length),
+              ),
+            ],
+            [`${formatInt(forgeAutomations.length)} configured`],
+          ),
+        ],
+      ),
+      h.ul(
+        [Ui.className<Message>('grid gap-2'), h.Attribute('role', 'list')],
+        forgeAutomations.map(automation =>
+          automationRow(automation, workOrders),
+        ),
+      ),
+    ],
+  )
+}
+
+const automationRunStatus = (model: Model): Html | null => {
+  const h = html<Message>()
+  const state = model.autopilotWorkComposer
+
+  if (state._tag === 'AutopilotWorkComposerSubmitting') {
+    return h.p(
+      [Ui.className<Message>('m-0 text-sm/6 text-white/45')],
+      ['Submitting automation run...'],
+    )
+  }
+
+  if (state._tag === 'AutopilotWorkComposerFailed') {
+    return h.p(
+      [Ui.className<Message>('m-0 text-sm/6 text-[#ff8a80]')],
+      [state.error],
+    )
+  }
+
+  if (state._tag === 'AutopilotWorkComposerSucceeded') {
+    const ref = state.response.work.workOrderRef
+
+    return h.p(
+      [Ui.className<Message>('m-0 text-sm/6 text-[#7ccf8a]')],
+      [
+        'Created ',
+        h.a(
+          [
+            h.Href(autopilotWorkDetailRouter({ workOrderRef: ref })),
+            Ui.className<Message>(
+              'underline decoration-[#7ccf8a]/30 underline-offset-3 hover:text-white',
+            ),
+          ],
+          [ref],
+        ),
+        '. Evidence and delivery receipts now belong to that work-order lifecycle.',
+      ],
+    )
+  }
+
+  return null
+}
+
+const automationTuningSection = (model: Model): Html => {
+  const h = html<Message>()
+  const draft = model.autopilotWorkComposerDraft
+  const submitting =
+    model.autopilotWorkComposer._tag === 'AutopilotWorkComposerSubmitting'
+  const status = automationRunStatus(model)
+
+  return h.form(
+    [
+      Ui.className<Message>('grid gap-3 border border-[#222] bg-black p-4'),
+      h.OnSubmit(SubmittedAutopilotWorkComposer()),
+      h.DataAttribute('forge-automation-tuning', 'true'),
+    ],
+    [
+      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Add / tune']),
+      h.label(
+        [Ui.className<Message>('grid gap-2')],
+        [
+          h.span(
+            [Ui.className<Message>('text-sm font-medium text-white/80')],
+            ['Automation objective'],
+          ),
+          h.textarea(
+            [
+              h.Name('forge-automation-objective'),
+              h.Value(draft.objective),
+              h.Rows(3),
+              h.OnInput(value =>
+                UpdatedAutopilotWorkComposerField({
+                  field: 'objective',
+                  value,
+                }),
+              ),
+              Ui.className<Message>(
+                'min-h-24 resize-y border border-[#333] bg-[#050505] p-3 text-base/7 text-white/85 outline-none focus:border-white/45 sm:text-sm/6',
+              ),
+            ],
+            [],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-3 md:grid-cols-[minmax(0,1.2fr)_8rem_10rem]',
+          ),
+        ],
+        [
+          h.label(
+            [Ui.className<Message>('grid gap-2')],
+            [
+              h.span(
+                [Ui.className<Message>('text-xs uppercase text-white/40')],
+                ['Repository'],
+              ),
+              h.input([
+                h.Name('forge-automation-repository'),
+                h.Value(draft.repositoryFullName),
+                h.OnInput(value =>
+                  UpdatedAutopilotWorkComposerField({
+                    field: 'repositoryFullName',
+                    value,
+                  }),
+                ),
+                Ui.className<Message>(`${Ui.inputClass} max-sm:text-base`),
+              ]),
+            ],
+          ),
+          h.label(
+            [Ui.className<Message>('grid gap-2')],
+            [
+              h.span(
+                [Ui.className<Message>('text-xs uppercase text-white/40')],
+                ['Branch'],
+              ),
+              h.input([
+                h.Name('forge-automation-branch'),
+                h.Value(draft.branch),
+                h.OnInput(value =>
+                  UpdatedAutopilotWorkComposerField({ field: 'branch', value }),
+                ),
+                Ui.className<Message>(`${Ui.inputClass} max-sm:text-base`),
+              ]),
+            ],
+          ),
+          h.label(
+            [Ui.className<Message>('grid gap-2')],
+            [
+              h.span(
+                [Ui.className<Message>('text-xs uppercase text-white/40')],
+                ['Budget cents'],
+              ),
+              h.input([
+                h.Name('forge-automation-budget'),
+                h.Type('number'),
+                h.Value(draft.maxSpendCents),
+                h.OnInput(value =>
+                  UpdatedAutopilotWorkComposerField({
+                    field: 'maxSpendCents',
+                    value,
+                  }),
+                ),
+                Ui.className<Message>(`${Ui.inputClass} max-sm:text-base`),
+              ]),
+            ],
+          ),
+        ],
+      ),
+      h.label(
+        [Ui.className<Message>('grid gap-2')],
+        [
+          h.span(
+            [Ui.className<Message>('text-xs uppercase text-white/40')],
+            ['Verification command'],
+          ),
+          h.input([
+            h.Name('forge-automation-verification'),
+            h.Value(draft.verificationCommand),
+            h.OnInput(value =>
+              UpdatedAutopilotWorkComposerField({
+                field: 'verificationCommand',
+                value,
+              }),
+            ),
+            Ui.className<Message>(`${Ui.inputClass} max-sm:text-base`),
+          ]),
+        ],
+      ),
+      ...(status === null ? [] : [status]),
+      Ui.button<Message>({
+        attrs: [h.Type('submit'), ...(submitting ? [h.Disabled(true)] : [])],
+        label: submitting ? 'Submitting...' : 'Run tuned automation',
+        size: 'sm',
+        variant: 'primary',
+      }),
+    ],
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Page-level state handling. The factory reads the cockpit's projections; when
 // none have loaded we say so honestly rather than render seeded numbers as live.
@@ -814,6 +1214,7 @@ interface FactoryData {
   readonly runsLoaded: boolean
   readonly poolLoaded: boolean
   readonly error: string | null
+  readonly workOrders: ReadonlyArray<AutopilotWorkSummary>
 }
 
 const readFactoryData = (model: Model): FactoryData => {
@@ -834,6 +1235,7 @@ const readFactoryData = (model: Model): FactoryData => {
       runsLoaded: true,
       poolLoaded: poolState._tag === 'ProviderAccountPoolLoaded',
       error: null,
+      workOrders: list.response.workOrders,
     }
   }
 
@@ -844,6 +1246,7 @@ const readFactoryData = (model: Model): FactoryData => {
     runsLoaded: false,
     poolLoaded: poolState._tag === 'ProviderAccountPoolLoaded',
     error: list._tag === 'AutopilotWorkListFailed' ? list.error : null,
+    workOrders: [],
   }
 }
 
@@ -921,6 +1324,13 @@ const provenanceLegend = (): Html => {
       h.div(
         [Ui.className<Message>('flex items-center gap-1.5')],
         [provenanceTag('live'), h.span([], ['backed by a real projection'])],
+      ),
+      h.div(
+        [Ui.className<Message>('flex items-center gap-1.5')],
+        [
+          provenanceTag('configured'),
+          h.span([], ['configured automation catalog']),
+        ],
       ),
       h.div(
         [Ui.className<Message>('flex items-center gap-1.5')],
@@ -1024,6 +1434,8 @@ export const view = (model: Model): Html => {
       provenanceLegend(),
       ...(note === null ? [] : [note]),
       pipelineSection(stages),
+      automationCatalogSection(data.workOrders),
+      automationTuningSection(model),
       panelSection(panels),
     ],
   )

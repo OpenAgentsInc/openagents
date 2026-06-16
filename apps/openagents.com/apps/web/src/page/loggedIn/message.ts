@@ -374,6 +374,15 @@ export const SucceededAutopilotWorkComposer = m(
 export const FailedAutopilotWorkComposer = m('FailedAutopilotWorkComposer', {
   error: S.String,
 })
+export const SelectedForgeAutomationTemplate = m(
+  'SelectedForgeAutomationTemplate',
+  {
+    automationId: S.String,
+  },
+)
+export const SubmittedForgeAutomationRun = m('SubmittedForgeAutomationRun', {
+  automationId: S.String,
+})
 export const RequestedLoadAutopilotWorkDetail = m(
   'RequestedLoadAutopilotWorkDetail',
   {
@@ -1263,6 +1272,8 @@ export const Message = S.Union([
   SubmittedAutopilotWorkComposer,
   SucceededAutopilotWorkComposer,
   FailedAutopilotWorkComposer,
+  SelectedForgeAutomationTemplate,
+  SubmittedForgeAutomationRun,
   RequestedLoadAutopilotWorkDetail,
   SucceededLoadAutopilotWorkDetail,
   FailedLoadAutopilotWorkDetail,

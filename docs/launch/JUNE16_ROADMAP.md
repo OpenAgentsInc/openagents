@@ -200,7 +200,12 @@ epics below; not all lands today — the aim is the main spine.
   (signal→deploy pipeline over real Run+pool data, honest real-vs-seeded labeling).
   **B4** (#5090) locked the auditable metric definitions in
   `docs/blitz/forge/2026-06-16-forge-factory-metric-definitions.md` and fixed
-  the scheduled-backlog triage double-count guard.
+  the scheduled-backlog triage double-count guard. **B3** (#5089) shipped the
+  first **Forge Automations** surface: a configured stage-staffing catalog,
+  per-stage configured automation counts, load/run controls, and an Add / tune
+  form that creates real Autopilot work orders through the existing work-order
+  API. Scope and authority limits are documented in
+  `docs/blitz/forge/2026-06-16-forge-automations-surface.md`.
 - **Epic C — prefilled workspaces + `/business` funnel (#5103):** **C3** (#5094
   `5e82b6a1d`) shipped the public **`/business`** landing + signup form (first-class
   phone field, opt-in Slack request, usage-based token-credit pricing copy). **C1**
@@ -244,7 +249,6 @@ epics below; not all lands today — the aim is the main spine.
 
 **Targeted next (this session / soon — won't all land today):**
 
-- **B3** (#5089) Forge **Automations** surface.
 - **C2** (#5093) operator seeding + invite-link + engagement tracking.
 - **Epic D — customer-#1 dogfood (#5104):** **D1** (#5096) route our own AI/coding
   spend through the pool/nodes (ship now) · **D4** (#5106) fixed: Pylon now has

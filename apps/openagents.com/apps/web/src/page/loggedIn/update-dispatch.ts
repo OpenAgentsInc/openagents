@@ -162,6 +162,8 @@ export const update = (model: Model, message: Message): UpdateReturn => {
       SubmittedAutopilotWorkComposer: autopilotWork,
       SucceededAutopilotWorkComposer: autopilotWork,
       FailedAutopilotWorkComposer: autopilotWork,
+      SelectedForgeAutomationTemplate: autopilotWork,
+      SubmittedForgeAutomationRun: autopilotWork,
       RequestedLoadAutopilotWorkDetail: autopilotWork,
       SucceededLoadAutopilotWorkDetail: autopilotWork,
       FailedLoadAutopilotWorkDetail: autopilotWork,

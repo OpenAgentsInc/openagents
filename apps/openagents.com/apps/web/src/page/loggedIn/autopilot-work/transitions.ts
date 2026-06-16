@@ -2,13 +2,11 @@ import { Effect, Match as M, Option, Schema as S } from 'effect'
 import { Command } from 'foldkit'
 import { evo } from 'foldkit/struct'
 
+import { errorMessageFromUnknown, requestJson } from '../commands/api'
+import { automationDraftForId } from '../forge-automations'
 import {
-  errorMessageFromUnknown,
-  requestJson,
-} from '../commands/api'
-import {
-  FailedAutopilotWorkReview,
   FailedAutopilotWorkComposer,
+  FailedAutopilotWorkReview,
   FailedLoadAutopilotMorningReport,
   FailedLoadAutopilotWorkBriefing,
   FailedLoadAutopilotWorkDetail,
@@ -73,8 +71,7 @@ const autopilotWorkEventsPath = (workOrderRef: string): string =>
 const autopilotWorkBriefingPath = (workOrderRef: string): string =>
   `${autopilotWorkPath(workOrderRef)}/briefing`
 
-const autopilotMorningReportPath = (): string =>
-  '/api/autopilot/morning-report'
+const autopilotMorningReportPath = (): string => '/api/autopilot/morning-report'
 
 const reviewRefs = (
   action: AutopilotWorkReviewAction,
@@ -86,11 +83,14 @@ const reviewRefs = (
     ? { decisionRefs: [ref] }
     : action === 'reject'
       ? { rejectionRefs: [ref] }
-    : { revisionRequestRefs: [ref] }
+      : { revisionRequestRefs: [ref] }
 }
 
 const cleanRefSegment = (value: string): string =>
-  value.trim().replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 80) || 'request'
+  value
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, '_')
+    .slice(0, 80) || 'request'
 
 const argvFromCommand = (value: string): ReadonlyArray<string> =>
   value.trim().split(/\s+/).filter(Boolean)
@@ -107,8 +107,7 @@ const workRequestFromDraft = (draft: AutopilotWorkComposerDraft) => {
   const branch = draft.branch.trim() || 'main'
   const args = argvFromCommand(draft.verificationCommand)
   const maxSpendCents = spendCentsFromDraft(draft)
-  const taskRef =
-    `task.autopilot_coder.browser.${cleanRefSegment(repositoryFullName)}.${cleanRefSegment(objective)}`
+  const taskRef = `task.autopilot_coder.browser.${cleanRefSegment(repositoryFullName)}.${cleanRefSegment(objective)}`
   const repository =
     repositoryFullName === ''
       ? undefined
@@ -123,24 +122,30 @@ const workRequestFromDraft = (draft: AutopilotWorkComposerDraft) => {
     caller: { kind: 'browser_session' as const, ownerRef: 'owner_ref.browser' },
     clientRequestRef: `client.browser.${taskRef}`,
     intent: 'delegate_to_autopilot' as const,
-    mode: maxSpendCents === 0
-      ? 'free_slice_or_paid_quote' as const
-      : 'free_slice_or_paid_quote_or_l402' as const,
+    mode:
+      maxSpendCents === 0
+        ? ('free_slice_or_paid_quote' as const)
+        : ('free_slice_or_paid_quote_or_l402' as const),
     paymentPolicy: {
-      buyerPaymentMode: maxSpendCents === 0 ? 'free_slice' as const : 'l402' as const,
+      buyerPaymentMode:
+        maxSpendCents === 0 ? ('free_slice' as const) : ('l402' as const),
       maxSpendCents,
       quoteRef: maxSpendCents === 0 ? null : `quote.${taskRef}`,
       quotedAmountCents: maxSpendCents === 0 ? null : maxSpendCents,
-      settlementMode: maxSpendCents === 0
-        ? 'no_worker_payout' as const
-        : 'no_worker_payout_until_accepted_work' as const,
+      settlementMode:
+        maxSpendCents === 0
+          ? ('no_worker_payout' as const)
+          : ('no_worker_payout_until_accepted_work' as const),
     },
     placementPolicy: {
       allowedRunnerKinds: ['requester_pylon', 'openagents_shc'] as const,
       disallowedRunnerKinds: [] as const,
       localOnlyAllowed: false,
       preferredRunnerKinds: ['requester_pylon', 'openagents_shc'] as const,
-      privacyTier: maxSpendCents === 0 ? 'public_beta' as const : 'openagents_shc' as const,
+      privacyTier:
+        maxSpendCents === 0
+          ? ('public_beta' as const)
+          : ('openagents_shc' as const),
       publicTraceAllowed: maxSpendCents === 0,
       requiresSecretBroker: false,
     },
@@ -153,9 +158,20 @@ const workRequestFromDraft = (draft: AutopilotWorkComposerDraft) => {
     tasks: [
       {
         acceptanceCriteriaRefs: ['acceptance.web_request.customer_review'],
-        accessRequests: repository === undefined
-          ? [{ kind: 'repository_selection' as const, reasonRef: 'access.repository.selection_required' }]
-          : [{ kind: 'github_repo_read' as const, reasonRef: 'access.github.public_read' }],
+        accessRequests:
+          repository === undefined
+            ? [
+                {
+                  kind: 'repository_selection' as const,
+                  reasonRef: 'access.repository.selection_required',
+                },
+              ]
+            : [
+                {
+                  kind: 'github_repo_read' as const,
+                  reasonRef: 'access.github.public_read',
+                },
+              ],
         ...(repository === undefined
           ? {}
           : {
@@ -352,8 +368,7 @@ export const SubmitAutopilotWorkComposer = Command.define(
           headers: {
             accept: 'application/json',
             'content-type': 'application/json',
-            'idempotency-key':
-              `browser-composer:${cleanRefSegment(draft.repositoryFullName)}:${cleanRefSegment(draft.objective)}`,
+            'idempotency-key': `browser-composer:${cleanRefSegment(draft.repositoryFullName)}:${cleanRefSegment(draft.objective)}`,
           },
           method: 'POST',
         }),
@@ -478,8 +493,7 @@ export const updateAutopilotWork = (
       ],
       FailedLoadAutopilotMorningReport: ({ error }) => [
         evo(model, {
-          autopilotMorningReport: () =>
-            AutopilotMorningReportFailed({ error }),
+          autopilotMorningReport: () => AutopilotMorningReportFailed({ error }),
         }),
         [],
         Option.none(),
@@ -496,7 +510,11 @@ export const updateAutopilotWork = (
         evo(model, {
           autopilotWorkComposer: () => AutopilotWorkComposerSubmitting(),
         }),
-        [SubmitAutopilotWorkComposer({ draft: model.autopilotWorkComposerDraft })],
+        [
+          SubmitAutopilotWorkComposer({
+            draft: model.autopilotWorkComposerDraft,
+          }),
+        ],
         Option.none(),
       ],
       SucceededAutopilotWorkComposer: ({ response }) => [
@@ -518,6 +536,52 @@ export const updateAutopilotWork = (
         [],
         Option.none(),
       ],
+      SelectedForgeAutomationTemplate: ({ automationId }) => {
+        const draft = automationDraftForId(automationId)
+
+        return draft === null
+          ? [
+              evo(model, {
+                autopilotWorkComposer: () =>
+                  AutopilotWorkComposerFailed({
+                    error: `Unknown Forge automation: ${automationId}`,
+                  }),
+              }),
+              [],
+              Option.none(),
+            ]
+          : [
+              evo(model, {
+                autopilotWorkComposer: () => AutopilotWorkComposerIdle(),
+                autopilotWorkComposerDraft: () => draft,
+              }),
+              [],
+              Option.none(),
+            ]
+      },
+      SubmittedForgeAutomationRun: ({ automationId }) => {
+        const draft = automationDraftForId(automationId)
+
+        return draft === null
+          ? [
+              evo(model, {
+                autopilotWorkComposer: () =>
+                  AutopilotWorkComposerFailed({
+                    error: `Unknown Forge automation: ${automationId}`,
+                  }),
+              }),
+              [],
+              Option.none(),
+            ]
+          : [
+              evo(model, {
+                autopilotWorkComposer: () => AutopilotWorkComposerSubmitting(),
+                autopilotWorkComposerDraft: () => draft,
+              }),
+              [SubmitAutopilotWorkComposer({ draft })],
+              Option.none(),
+            ]
+      },
       RequestedLoadAutopilotWorkDetail: ({ workOrderRef }) => [
         evo(model, {
           autopilotWorkBriefing: () => AutopilotWorkBriefingLoading(),
@@ -573,8 +637,7 @@ export const updateAutopilotWork = (
       ],
       SubmittedAutopilotWorkReview: ({ action, workOrderRef }) => [
         evo(model, {
-          autopilotWorkReview: () =>
-            AutopilotWorkReviewSubmitting({ action }),
+          autopilotWorkReview: () => AutopilotWorkReviewSubmitting({ action }),
         }),
         [SubmitAutopilotWorkReview({ action, workOrderRef })],
         Option.none(),
@@ -582,8 +645,7 @@ export const updateAutopilotWork = (
       SucceededAutopilotWorkReview: ({ response }) => [
         evo(model, {
           autopilotWorkDetail: () => AutopilotWorkDetailLoaded({ response }),
-          autopilotWorkReview: () =>
-            AutopilotWorkReviewSucceeded({ response }),
+          autopilotWorkReview: () => AutopilotWorkReviewSucceeded({ response }),
         }),
         [
           LoadAutopilotWorkEvents({

@@ -811,6 +811,19 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(
         Scene.selector('[data-forge-detail-panel-value-key="runs-triaged"]'),
       ).toHaveAttr('data-forge-detail-panel-value-text', '1'),
+      Scene.expect(Scene.selector('[data-forge-automation-total]')).toHaveAttr(
+        'data-forge-automation-total',
+        '8',
+      ),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-key="triage"]'),
+      ).toHaveAttr('data-forge-stage-automation-count', '1'),
+      Scene.expect(
+        Scene.role('button', { name: 'Run Scope triage' }),
+      ).toExist(),
+      Scene.expect(
+        Scene.selector('[data-forge-automation-tuning="true"]'),
+      ).toExist(),
     )
   })
 

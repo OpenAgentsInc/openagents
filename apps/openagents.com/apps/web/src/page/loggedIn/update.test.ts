@@ -27,6 +27,7 @@ import {
 import {
   ChatRoute,
   DocsPageRoute,
+  ForgeRoute,
   OnboardingRoute,
   SettingsRoute,
   SettingsSectionRoute,
@@ -55,9 +56,11 @@ import {
   RequestedLoadPrefilledWorkspace,
   RequestedLoadTokenUsageStats,
   RequestedPollAutopilotRun,
+  SelectedForgeAutomationTemplate,
   SelectedOnboardingRepository,
   SubmittedAgentGoal,
   SubmittedChatComposer,
+  SubmittedForgeAutomationRun,
   SubmittedOnboardingGoal,
   SubmittedOnboardingRepository,
   SubmittedThreadFileUpload,
@@ -640,6 +643,58 @@ describe('logged-in Autopilot chat runs', () => {
       'InstallAccountMenuOutsideClick',
       'LoadOnboardingRepositories',
     ])
+  })
+
+  test('loads Forge automation templates into the tuned work-order draft', () => {
+    const model = init(ForgeRoute(), authWithTeam)
+    const [loadedModel, commands] = update(
+      model,
+      SelectedForgeAutomationTemplate({
+        automationId: 'forge.automation.triage_scope',
+      }),
+    )
+
+    expect(commands).toEqual([])
+    expect(loadedModel.autopilotWorkComposer._tag).toBe(
+      'AutopilotWorkComposerIdle',
+    )
+    expect(loadedModel.autopilotWorkComposerDraft).toMatchObject({
+      branch: 'main',
+      maxSpendCents: '0',
+      repositoryFullName: 'OpenAgentsInc/openagents',
+      verificationCommand: 'bun run check:deploy',
+    })
+    expect(loadedModel.autopilotWorkComposerDraft.objective).toContain(
+      'forge.automation.triage_scope',
+    )
+  })
+
+  test('submits Forge automation runs through the Autopilot work-order command', () => {
+    const model = init(ForgeRoute(), authWithTeam)
+    const [submittingModel, commands] = update(
+      model,
+      SubmittedForgeAutomationRun({
+        automationId: 'forge.automation.validate_gate',
+      }),
+    )
+
+    expect(submittingModel.autopilotWorkComposer._tag).toBe(
+      'AutopilotWorkComposerSubmitting',
+    )
+    expect(submittingModel.autopilotWorkComposerDraft.objective).toContain(
+      'forge.automation.validate_gate',
+    )
+    expect(commands.map(command => command.name)).toEqual([
+      'SubmitAutopilotWorkComposer',
+    ])
+    expect(commands[0]?.args).toMatchObject({
+      draft: {
+        branch: 'main',
+        maxSpendCents: '0',
+        repositoryFullName: 'OpenAgentsInc/openagents',
+        verificationCommand: 'bun run check:deploy',
+      },
+    })
   })
 
   test('walks repository selection, goal submission, and billing skip', () => {
