@@ -44,6 +44,9 @@ import type {
   WalletCommandResult,
 } from "./wallet"
 import { SparkBunStorage } from "./spark-bun-storage"
+import { toSatNumber } from "./sat-number"
+// Re-export so existing importers (and tests) can keep importing it from here.
+export { toSatNumber } from "./sat-number"
 
 // Embedded default OpenAgents Breez/Spark API key. This key was committed to the
 // repo historically (commit 783f33d5f, as the Rust EmbeddedDefault) and is
@@ -194,27 +197,6 @@ export async function sparkModuleSelftest(
   } catch (error) {
     return { moduleLoaded: false, reason: error instanceof Error ? error.message : String(error) }
   }
-}
-
-/**
- * Coerce a satoshi amount that the SDK may hand back as a JS number, a bigint
- * (wasm-bindgen u64), or a decimal string into a plain number. Returns null when
- * the value is absent or not a non-negative integer amount. This is what keeps a
- * real received balance from being misreported as `null` (#5166).
- */
-export function toSatNumber(value: unknown): number | null {
-  if (typeof value === "number") return Number.isFinite(value) ? value : null
-  if (typeof value === "bigint") {
-    return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : Number.MAX_SAFE_INTEGER
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim()
-    if (/^\d+$/.test(trimmed)) {
-      const n = Number(trimmed)
-      return Number.isFinite(n) ? n : null
-    }
-  }
-  return null
 }
 
 /**

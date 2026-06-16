@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import { createHash, randomUUID } from "node:crypto"
 import type { PylonPaths } from "./state"
 import { assertPublicProjectionSafe, ensureStateDirectories } from "./state"
+import { toSatNumber } from "./sat-number"
 
 export type WalletReadiness =
   | "daemon-offline"
@@ -447,19 +448,16 @@ export async function classifyMdkWallet(
   }
 
   const data = parseJson(result.stdout)
+  // #5166: amounts may arrive as number | bigint | decimal string; normalize.
   const balance =
-    typeof data?.balance_sats === "number"
-      ? data.balance_sats
-      : typeof data?.balance === "number"
-        ? data.balance
-        : typeof data?.confirmed === "number"
-          ? data.confirmed
-          : null
+    toSatNumber(data?.balance_sats) ??
+    toSatNumber(data?.balance) ??
+    toSatNumber(data?.confirmed)
   if (balance === null) {
     const sendReadinessPreflight = buildSendReadinessPreflight({
       balanceKnown: false,
       env,
-      outboundCapacitySats: typeof data?.outbound_capacity_sats === "number" ? data.outbound_capacity_sats : null,
+      outboundCapacitySats: toSatNumber(data?.outbound_capacity_sats),
       restoredMnemonicOnly: data?.restored_mnemonic_only === true,
       sendReadyClaimed: data?.send_ready === true,
     })
@@ -537,15 +535,8 @@ export async function preflightLegacySparkMigration(
 
   const helperData = helperResult.exitCode === 0 ? parseMaybeJson(helperResult.stdout) : null
   const helperBalance =
-    typeof helperData?.balance_sats === "number"
-      ? helperData.balance_sats
-      : typeof helperData?.spendable_balance_sats === "number"
-        ? helperData.spendable_balance_sats
-        : null
-  const helperDeposits =
-    typeof helperData?.unclaimed_deposit_count === "number"
-      ? helperData.unclaimed_deposit_count
-      : null
+    toSatNumber(helperData?.balance_sats) ?? toSatNumber(helperData?.spendable_balance_sats)
+  const helperDeposits = toSatNumber(helperData?.unclaimed_deposit_count)
   const legacySpendableBalanceSats = helperBalance ?? hintedBalance
   const unclaimedDepositCount = helperDeposits ?? hintedDeposits
   const legacyBalanceDetected = legacySpendableBalanceSats !== null && legacySpendableBalanceSats > 0
@@ -1218,13 +1209,8 @@ async function detectSparkBackupBalance(helper: SparkBackupHelper): Promise<{
   }
   const statusData = parseMaybeJson(statusResult.stdout)
   const detectedBalanceSats =
-    typeof statusData?.balance_sats === "number"
-      ? statusData.balance_sats
-      : typeof statusData?.spendable_balance_sats === "number"
-        ? statusData.spendable_balance_sats
-        : null
-  let unclaimedDepositCount =
-    typeof statusData?.unclaimed_deposit_count === "number" ? statusData.unclaimed_deposit_count : null
+    toSatNumber(statusData?.balance_sats) ?? toSatNumber(statusData?.spendable_balance_sats)
+  let unclaimedDepositCount = toSatNumber(statusData?.unclaimed_deposit_count)
 
   if (unclaimedDepositCount === null) {
     let depositsResult: WalletCommandResult
@@ -1235,8 +1221,7 @@ async function detectSparkBackupBalance(helper: SparkBackupHelper): Promise<{
     }
     if (depositsResult.exitCode === 0) {
       const depositsData = parseMaybeJson(depositsResult.stdout)
-      unclaimedDepositCount =
-        typeof depositsData?.unclaimed_deposit_count === "number" ? depositsData.unclaimed_deposit_count : null
+      unclaimedDepositCount = toSatNumber(depositsData?.unclaimed_deposit_count)
     }
   }
 
