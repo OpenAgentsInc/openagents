@@ -10,25 +10,28 @@
 
 ## Launch Package And Version Truth
 
+**The source release line is now v1.0.** `apps/pylon/package.json` is
+`1.0.0-rc.2`, and the next published release candidate is **rc3
+(`1.0.0-rc.3`)**.
+
 **The default published Pylon is `@openagentsinc/pylon@0.2.5`** — the
 `latest` dist-tag — and that launcher remains the supported operator path
-AGENTS.md tells agents about. The v0.3 release candidate is additionally
-installable via the opt-in `rc` dist-tag (see below).
+AGENTS.md tells agents about.
 
-**v0.3 is published as a release candidate under the `rc` dist-tag.**
-As of 2026-06-12, `@openagentsinc/pylon@0.3.0-rc2` is on npm under the
-`rc` dist-tag (`npm view @openagentsinc/pylon dist-tags` →
-`latest: 0.2.5, rc: 0.3.0-rc2`), published after the full
-`release:gate` passed end to end, including the local package install
-smoke against the published `@openagentsinc/agent-runtime-schema`,
-`@openagentsinc/nip90`, and `@openagentsinc/tassadar-executor` 0.1.0
-deps (#4858). Install with `npm install -g @openagentsinc/pylon@rc`.
-**Stable 0.3.0 is deliberately not tagged** (owner decision 2026-06-12);
-`latest` remains 0.2.5, and public copy must not describe v0.3 as the
-default install until a stable tag exists. The publish flow is
-documented in `docs/npm-publishing-runbook.md`.
+**The v1.0 release candidate is not published to npm yet.** As of this
+writing the live dist-tags are still `latest: 0.2.5, rc: 0.3.0-rc2`
+(`npm view @openagentsinc/pylon dist-tags`) — `0.3.0-rc2` was the prior RC,
+published 2026-06-12 after the full `release:gate` passed end to end,
+including the local package install smoke against the published
+`@openagentsinc/agent-runtime-schema`, `@openagentsinc/nip90`, and
+`@openagentsinc/tassadar-executor` `0.1.0` deps (#4858). Publishing
+`1.0.0-rc.3` to the `rc` dist-tag makes the v1.0 RC installable via
+`npm install -g @openagentsinc/pylon@rc`. **Stable v1.0 is not tagged
+`latest`**; `latest` remains 0.2.5, and public copy must not describe the
+v1.0 RC as the default install until a stable tag exists. The publish flow
+is documented in `docs/npm-publishing-runbook.md`.
 
-### Running the v0.3 RC from source (testing only)
+### Running the v1.0 RC from source (testing only)
 
 ```sh
 git clone https://github.com/OpenAgentsInc/openagents
@@ -54,7 +57,7 @@ the published stable binary (#4859).
   unannounced behavior changes, and TUI/runtime surfaces that are mid-build.
 - Nothing about running the RC creates earning expectations: paid work
   classes, settlement, and marketplace routing are gated by the
-  product-promise registry exactly as for v0.2, and no v0.3-only feature
+  product-promise registry exactly as for v0.2, and no v1.0-only feature
   (TUI dashboard, runtime backends, Nostr credentials) may be described
   publicly as released until the registry says so.
 - Run it only with explicit owner approval, on a machine whose owner
@@ -66,7 +69,7 @@ the published stable binary (#4859).
   valuable than the testing itself - file it or post it on the Forum.
 
 Initial supported operator platforms are macOS and Linux. No other operator
-platforms are in scope for the first v0.3 launch path.
+platforms are in scope for the first v1.0 launch path.
 
 ## Runtime Backends
 
@@ -225,7 +228,7 @@ pylon accounts usage --provider codex --refresh --json
 pylon accounts usage --all --refresh --json
 ```
 
-`bootstrap` creates the local v0.3 home/cache/release layout and writes a
+`bootstrap` creates the local v1.0 home/cache/release layout and writes a
 minimal public-safe config summary. Live registration and MDK mutation are
 tracked by later launch gates.
 

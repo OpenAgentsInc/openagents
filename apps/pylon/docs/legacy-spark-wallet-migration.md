@@ -13,8 +13,8 @@ old Spark/Breez wallet balances. Some users can still have old spendable
 balance secured by their 12-word identity mnemonic, but the old helper can fail
 during initialization with `Missing Breez API key`.
 
-The current v0.3 behavior must not recommend a spend command after only seeing
-old balance history. It first projects a public-safe preflight.
+The current v1.0 release-candidate behavior must not recommend a spend command
+after only seeing old balance history. It first projects a public-safe preflight.
 
 This release exposes the migration as a CLI JSON flow. It does not yet ship a
 graphical wallet migration screen. The CLI projection includes a
