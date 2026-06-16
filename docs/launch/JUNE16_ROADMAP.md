@@ -78,6 +78,11 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   Worker-authoritative training-run summary builder and return `generatedAt`, a
   top-level `live_at_read` staleness contract, public run projection/summary
   data, and provenance-labeled metrics for the spatial `oa-training-run` view.
+- **Living-run Three-effect primitives (#5117):** the web pin now consumes
+  `OpenAgentsInc/three-effect@238760e`, which carries the reusable text-label,
+  entity-pool, flow-beam, payout-burst, and live-presence primitives with the
+  follow-up exact-optional-property typing fix needed by the OpenAgents web
+  build.
 
 ## C. Owner-gated launch green-flips (receipt-first — only the owner/live event can)
 
