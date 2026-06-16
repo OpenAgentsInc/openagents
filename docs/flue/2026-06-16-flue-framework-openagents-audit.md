@@ -35,13 +35,14 @@ Recommended posture:
    authority.
 2. Start a small `apps/flue-connectors` pilot as a separate Cloudflare Worker
    after the current private-workspace and Stripe work is stable.
-3. First pilot: Slack app-mention and slash-command ingress for private
+3. First pilot: GitHub issue/comment/PR webhook ingress for support,
+   Autopilot work-order writeback, work-order triage, and project workspace
+   GitHub events. Bind Octokit tools only to the repository and issue/PR selected
+   by trusted code.
+4. Second pilot: Slack app-mention and slash-command ingress for private
    project/team workspaces, plus a bound `replyInThread` tool. Dispatch into
    a project-scoped Flue agent, but keep project membership, invite state, and
    billing checks in OpenAgents.
-4. Second pilot: GitHub issue/comment/PR webhook ingress for support,
-   Autopilot work-order writeback, and runbook/task triage. Bind Octokit tools
-   only to the repository and issue/PR selected by trusted code.
 5. Treat Stripe and Resend Flue channels as optional workflow triggers only.
    Payment crediting, checkout, webhook verification, email ledgers, auth OTP,
    and product lifecycle send authority should stay in the current Worker.
@@ -257,8 +258,10 @@ Risks and boundaries:
 - Do not use Flue to bypass strict issue intake policy. Loose reports remain
   Forum-first unless they satisfy the strict bug form.
 
-Verdict: strong pilot candidate after Slack or in parallel if one person owns
-the webhook route and D1 dedupe table.
+Verdict: immediate first pilot candidate. GitHub has the clearest near-term
+OpenAgents value because it directly connects issues, PRs, work orders,
+writeback commentary, strict bug follow-up, and project evidence without waiting
+on Slack workspace install/acceptance flow.
 
 ## Resend And Email Assessment
 
@@ -343,7 +346,8 @@ OpenAgents should apply the same boundary:
   private project state, never public projections.
 
 This could be useful for internal operator workflows, but should not be the
-first production pilot. Slack and GitHub channels exercise clearer product value.
+first production pilot. GitHub exercises the clearest immediate product value;
+Slack follows once the connector boundary is proven.
 
 ## Cloudflare Deployment Fit
 
@@ -409,33 +413,30 @@ This architecture gives us:
 
 ## Specific Pilot Plan
 
-### Pilot 1: Slack Private Workspace Companion
+### Pilot 0: Isolated Connector Worker Skeleton
 
-Goal: prove Flue can connect a provider event to a private project workspace
-without leaking private data or broadening authority.
+Goal: create the Flue sidecar without touching `openagents.com` authority or
+deployment topology.
 
 Build:
 
 - `apps/flue-connectors` Cloudflare target.
-- Slack channel with events only: `app_mention` and, optionally, one slash
-  command.
-- D1 table or internal OpenAgents API for delivery-id claim.
-- Workspace lookup by Slack installation/channel/thread mapping.
-- Agent instance id derived from project/workspace plus Slack thread.
-- Bound `reply_in_thread({ text })` tool.
-- Bound read-only `get_workspace_brief()` tool returning a redacted private
-  workspace projection authorized by OpenAgents.
+- Flue source layout, generated Wrangler config, and Durable Object migration
+  history documented.
+- No provider credentials committed.
+- A no-op health route and one internal-only smoke route.
+- Shared redaction/idempotency helpers before provider channels land.
 
 Acceptance:
 
-- Valid Slack signature accepted; invalid rejected.
-- Duplicate Slack `event_id` does not double-dispatch or double-post.
-- Model cannot choose channel, workspace, team, user, token, or provider method.
-- Private workspace data is never logged, stored in public docs, or returned to
-  unauthorized channels.
-- Operator can disable the integration for a workspace.
+- Builds and dry-runs with Flue's Cloudflare target.
+- Does not import or modify `apps/openagents.com` runtime authority.
+- No login, workspace, payment, email, settlement, or public-promise authority
+  is present.
+- The next change can add GitHub without changing the skeleton's authority
+  boundary.
 
-### Pilot 2: GitHub Issue/PR Agent
+### Pilot 1: GitHub Issue/PR Agent
 
 Goal: prove Flue can connect GitHub webhook events to bounded agent sessions
 and post back only with trusted repo/issue authority.
@@ -456,9 +457,35 @@ Acceptance:
 - Agent cannot select arbitrary owner/repo/issue.
 - Existing GitHub write grant policy is not weakened.
 
+### Pilot 2: Slack Private Workspace Companion
+
+Goal: prove Flue can connect a provider event to a private project workspace
+without leaking private data or broadening authority, after GitHub has proven
+the sidecar, dedupe, bound-tool, and redaction pattern.
+
+Build:
+
+- Slack channel with events only: `app_mention` and, optionally, one slash
+  command.
+- D1 table or internal OpenAgents API for delivery-id claim.
+- Workspace lookup by Slack installation/channel/thread mapping.
+- Agent instance id derived from project/workspace plus Slack thread.
+- Bound `reply_in_thread({ text })` tool.
+- Bound read-only `get_workspace_brief()` tool returning a redacted private
+  workspace projection authorized by OpenAgents.
+
+Acceptance:
+
+- Valid Slack signature accepted; invalid rejected.
+- Duplicate Slack `event_id` does not double-dispatch or double-post.
+- Model cannot choose channel, workspace, team, user, token, or provider method.
+- Private workspace data is never logged, stored in public docs, or returned to
+  unauthorized channels.
+- Operator can disable the integration for a workspace.
+
 ### Pilot 3: Connector-Triggered Project Updates
 
-Goal: after Slack/GitHub work, evaluate non-authoritative Resend/Stripe events
+Goal: after GitHub/Slack work, evaluate non-authoritative Resend/Stripe events
 as triggers.
 
 Build:
@@ -570,15 +597,17 @@ Adopt Flue experimentally, not foundationally, with this decision record:
 - **Do not use Flue for:** login, invite authority, private workspace membership,
   payment checkout/crediting, Stripe ledger authority, Resend auth OTP, public
   promise authority, settlement, payout, provider token storage, or product UI.
-- **First production-shaped target:** Slack private workspace companion in a
+- **First production-shaped target:** GitHub issue/PR work-order bridge in a
   separate Cloudflare Worker.
-- **Second target:** GitHub issue/PR work-order bridge.
+- **Second target:** Slack private workspace companion after GitHub proves the
+  sidecar's signature, dedupe, authorization, and bound-tool boundary.
 - **Defer:** Stripe/Resend channel usage until after the current Worker has
   accepted the authoritative event.
 
 The immediate private-workspace and payment launch work should continue in the
-current OpenAgents Worker. Flue becomes a follow-on connector layer that can make
-those workspaces feel live inside Slack, GitHub, and other partner systems.
+current OpenAgents Worker. Flue becomes a follow-on connector layer that makes
+GitHub work orders and private workspaces feel live inside the systems where
+teams already operate, with GitHub first and Slack second.
 
 ## Suggested Issues
 
@@ -587,12 +616,12 @@ If we decide to proceed, open these as implementation issues:
 1. **Create isolated Flue connector Worker skeleton**
    - Add `apps/flue-connectors` with Cloudflare target, no provider credentials
      committed, generated migrations documented, and a no-op health route.
-2. **Add Slack private-workspace companion pilot**
-   - Verified Slack events, D1 delivery dedupe, workspace mapping, sanitized
-     dispatch, and bound thread reply tool.
-3. **Add GitHub issue/PR connector pilot**
+2. **Add GitHub issue/PR connector pilot**
    - Verified GitHub webhook, delivery dedupe, issue/PR-scoped agent, and bound
      issue-comment tool.
+3. **Add Slack private-workspace companion pilot**
+   - Verified Slack events, D1 delivery dedupe, workspace mapping, sanitized
+     dispatch, and bound thread reply tool.
 4. **Define OpenAgents internal connector API**
    - Minimal signed service API for workspace lookup, private projection reads,
      and append-only connector event recording.
@@ -600,9 +629,9 @@ If we decide to proceed, open these as implementation issues:
    - Add invariant notes and tests before any private data or outbound provider
      mutation is exposed.
 
-Do not schedule Stripe/Resend Flue work until the connector skeleton and at least
-one chat/code-provider pilot has passed signature, dedupe, authorization, and
-redaction tests.
+Do not schedule Stripe/Resend Flue work until the connector skeleton plus the
+GitHub pilot, and preferably the Slack pilot, have passed signature, dedupe,
+authorization, and redaction tests.
 
 ## Bottom Line
 
@@ -612,7 +641,7 @@ Worker with Flue"; it is "let Flue handle connector ingress and agent harness
 mechanics while OpenAgents remains the authority for auth, teams, workspaces,
 payments, ledgers, and public claims."
 
-That is a strong fit for Slack and GitHub. It is a later, more cautious fit for
-Resend and Stripe. It should be piloted as an isolated Cloudflare Worker before
-it is allowed anywhere near launch-critical private workspace or billing
-authority.
+That is a strong fit for GitHub first and Slack second. It is a later, more
+cautious fit for Resend and Stripe. It should be piloted as an isolated
+Cloudflare Worker before it is allowed anywhere near launch-critical private
+workspace or billing authority.
