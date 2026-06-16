@@ -61,11 +61,32 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   Foundation Models path; concurrent-session-owned; this Mac can host the
   admitted-Mac smoke once the Swift bridge (#5069) lands.
 
-## E. Owed interim tips (retry when wallets are online)
+## E. Offline-wallet receive resilience — bring back Spark as a backup receive (+ owed tips)
 
-- **Whitefang Hermes** + **Trigger** are tip-ready (BOLT12 offers) but their wallets
-  weren't routable (`agent_wallet_send_failed`); 250 sats each owed. Retry when they
-  ping back online. (Comunero + Orrery tips settled.)
+**Root cause, not just a retry.** The owed tips (Whitefang Hermes + Trigger — both
+tip-*ready* with BOLT12 offers, but `agent_wallet_send_failed` because their wallets
+weren't online/routable; 250 sats each owed) are a symptom of a real gap: a recipient
+must be **online with inbound liquidity** to receive a Lightning tip/payout. The fix
+is the **Spark backup-receive fallback** in
+`apps/pylon/docs/2026-06-15-spark-backup-receive-fallback-audit.md`.
+
+**June 16 goal — narrow, opt-in, receive-only Spark fallback:**
+- MDK stays the primary wallet rail. Spark is a **backup receive target** only —
+  when MDK is offline or can't mint a receive request, Pylon can still hand out a
+  **static Spark address / single-use Spark invoice** (Spark addresses are static, so
+  no liveness needed to receive), then **sync → detect → claim → sweep → reconcile**
+  later under the existing legacy-Spark migration consent model.
+- **Strictly receive-only:** Spark does **not** regain send/payout, accepted-work
+  settlement, or public payout-target authority without a separate gate. No raw
+  historical Spark credential material reused.
+- Revive only the receive surface (derive signer from the Pylon identity mnemonic;
+  `wallet address`/`invoice` receive + deposit-claim lifecycle), per the audit's
+  "External SDK Reality Check" (Breez SDK Spark `receivePayment` modes).
+- Once shipped, the offline-recipient case is solved: a tip/payout to an offline node
+  lands on its Spark fallback and reconciles on next sync — and I complete the owed
+  Whitefang + Trigger tips (no waiting on them to come online).
+
+(Comunero + Orrery tips already settled.) Files an issue when scoped into work.
 
 ## Recommended next (assistant lane)
 
