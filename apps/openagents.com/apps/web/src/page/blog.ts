@@ -9,6 +9,7 @@ import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
 
 export const BlogSlug = S.Literals([
+  'tassadar-run-is-live',
   'pylon-autopilot-v1-rc1',
   'free-autopilot',
   'get-paid-to-code',
@@ -148,6 +149,78 @@ Yeah, like I want to not have to carry my laptop around like an idiot. Like you 
 Okay, we'll leave it there. Thanks so much.`
 
 const blogPosts: ReadonlyArray<BlogPost> = [
+  {
+    slug: 'tassadar-run-is-live',
+    title: 'The Tassadar run is live',
+    excerpt:
+      'Independent contributors are installing Pylon, doing verified executor-trace work, and earning Bitcoin — with a public, dereferenceable settlement receipt.',
+    date: 'June 16, 2026',
+    readTime: '3 min read',
+    sections: [
+      {
+        id: 'live',
+        title: 'The run is live',
+        blocks: [
+          paragraph(
+            'The Tassadar run is live. It is a public decentralized training run where you install node software, do useful executor-trace work, and the work is verified by exact replay on a separate machine before anyone is paid. Two launch promises just flipped green on the live product-promises registry (version 2026-06-16.7): training.monday_decentralized_training_launch.v1 and pylon.install_without_wallet_knowledge.v1.',
+          ),
+          paragraph(
+            'Everything here is receipt-first: each claim degrades to the receipts actually recorded, and you can dereference every one of them. The run, its state, and its settlement metrics are public.',
+          ),
+          link(
+            'Run status',
+            'https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615',
+            'Live run.tassadar.executor.20260615 — state, verified pairs, and provider-confirmed settled sats.',
+          ),
+          link(
+            'Product promises',
+            'https://openagents.com/api/public/product-promises',
+            'The live registry. Check the two promise IDs above at version 2026-06-16.7.',
+          ),
+        ],
+      },
+      {
+        id: 'contribute',
+        title: 'Install and contribute',
+        blocks: [
+          paragraph(
+            'You can contribute without Bitcoin wallet knowledge and without loading any bitcoin. A fresh Pylon install provisions its own wallet and identity on first run; you then claim a window lease and submit an executor trace. An independent validator on a distinct device auto-discovers your contribution and replays it — agreement is the proof.',
+          ),
+          list([
+            'Install Pylon (the headless node) or Autopilot Desktop, which bundles and runs a node for you.',
+            'Claim work and submit a trace; a separate validator device replays it.',
+            'Verified by exact replay: equal worker and validator digests finalize the pairing.',
+          ]),
+          link(
+            'Install & test',
+            '/INSTALL.md',
+            'Pylon (CLI) or Autopilot Desktop, plus the agent test flow.',
+          ),
+        ],
+      },
+      {
+        id: 'earned',
+        title: 'First contributors earned Bitcoin',
+        blocks: [
+          paragraph(
+            'This is not a plan — it already happened, between independent operators, in the open. The first fully independent worker↔validator pairing finalized Verified by exact replay and earned an operator-approved, provider-confirmed Bitcoin settlement, recorded as a public receipt linked to the run.',
+          ),
+          list([
+            'Verified pairing: challenge 59ba1f30 — an independent worker, validated by a separate independent operator on a distinct device.',
+            'Settlement receipt: receipt.nexus.tassadar_run_settlement.idem.tassadar.settlement.59ba1f30.orrery.v2 (settlement_recorded, state settled), reflected on the run as providerConfirmedSettledPayoutSats.',
+          ]),
+          paragraph(
+            'This is the first such pairing and settlement — a real turn of the loop, not a scale claim. We are not claiming Tassadar is trained or beats a CPU, not claiming the largest decentralized run or a contributor count, and not quoting any payout that is not a settled, dereferenceable receipt. Payouts stay operator-approved under bounded spend authority. The run is open; more contributors are welcome.',
+          ),
+          link(
+            'Follow along',
+            '/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9',
+            'The full launch thread — every pairing and receipt, in the open.',
+          ),
+        ],
+      },
+    ],
+  },
   {
     slug: 'pylon-autopilot-v1-rc1',
     title: 'Pylon & Autopilot v1.0 — Release Candidate 1',
