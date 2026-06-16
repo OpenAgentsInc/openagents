@@ -328,6 +328,10 @@ export type PrefilledWorkspaceServiceShape = Readonly<{
     workspaceId: string,
     userId: string,
   ) => Promise<PrefilledWorkspaceRecord | undefined>
+  readPrivateWorkspaceByTarget: (
+    privateTeamId: string,
+    privateProjectId: string | null,
+  ) => Promise<PrefilledWorkspaceRecord | undefined>
   recordFirstRunForHolder: (
     workspaceId: string,
     holderUserId: string,
@@ -629,6 +633,14 @@ export const makePrefilledWorkspaceService = (
       userId,
     ])
   },
+  readPrivateWorkspaceByTarget: async (privateTeamId, privateProjectId) =>
+    loadWorkspace(
+      db,
+      `access_mode = 'private_team'
+       AND private_team_id = ?
+       AND COALESCE(private_project_id, '') = COALESCE(?, '')`,
+      [privateTeamId, privateProjectId],
+    ),
   recordFirstRunForHolder: async (workspaceId, holderUserId) => {
     const nowIso = runtime.nowIso()
     await recordFirstRun(db, workspaceId, nowIso, holderUserId)

@@ -289,6 +289,10 @@ import {
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
 import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
+import {
+  makeD1PrivateProjectWorkspaceStore,
+  makePrivateProjectWorkspaceRoutes,
+} from './private-project-workspace-routes'
 import { makeTeamWorkspaceInviteRoutes } from './team-workspace-invite-routes'
 import { makeD1TeamWorkspaceInviteStore } from './team-workspace-invites'
 import { publicProductPromisesDocument } from './product-promises'
@@ -6341,6 +6345,25 @@ const teamWorkspaceInviteRoutes =
       ),
   })
 
+const privateProjectWorkspaceRoutes =
+  makePrivateProjectWorkspaceRoutes<WorkerBindings>({
+    appOrigin: getAppOrigin,
+    getResendEmailConfig,
+    makeInviteStore: env =>
+      makeD1TeamWorkspaceInviteStore(openAgentsDatabase(env)),
+    makePrivateProjectStore: env =>
+      makeD1PrivateProjectWorkspaceStore(openAgentsDatabase(env)),
+    makeWorkspaceStore: env =>
+      makePrefilledWorkspaceService(openAgentsDatabase(env)),
+    requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+    sendInviteEmailWithLedger: (env, config, input) =>
+      sendPrivateWorkspaceInviteEmailWithLedger(
+        openAgentsDatabase(env),
+        config,
+        input,
+      ),
+  })
+
 const tenantClientRoutes = makeTenantClientRoutes({
   database: (env: WorkerBindings) => openAgentsDatabase(env),
   requireBrowserSession,
@@ -7715,6 +7738,11 @@ const routeRequest = makeWorkerRouteRequest({
     omniHandoffRoutes.routeOmniHandoffRequest(request, env, ctx) ??
     nativeListsRoutes.routeNativeListsRequest(request, env, ctx) ??
     prefilledWorkspaceRoutes.routePrefilledWorkspaceRequest(
+      request,
+      env,
+      ctx,
+    ) ??
+    privateProjectWorkspaceRoutes.routePrivateProjectWorkspaceRequest(
       request,
       env,
       ctx,

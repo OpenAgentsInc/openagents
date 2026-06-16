@@ -128,6 +128,17 @@ class MemoryWorkspaceStore implements PrefilledWorkspaceServiceShape {
     return nextRecord
   }
 
+  readPrivateWorkspaceByTarget = async (
+    privateTeamId: string,
+    privateProjectId: string | null,
+  ) =>
+    [...this.workspaces.values()].find(
+      record =>
+        record.accessMode === 'private_team' &&
+        record.privateTeamId === privateTeamId &&
+        record.privateProjectId === privateProjectId,
+    )
+
   recordFirstRunForHolder = async (
     workspaceId: string,
     holderUserId: string,
