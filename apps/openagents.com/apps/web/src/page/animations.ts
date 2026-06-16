@@ -2,14 +2,28 @@ import { Array } from 'effect'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
-import { lightBeamsView } from '../scene/lightBeamsElement'
+import {
+  bezierRingView,
+  bezierSpiralView,
+  bezierWebView,
+} from '../scene/animations/bezierGraph'
+import { constellationView } from '../scene/animations/constellation'
+import { flowFieldView } from '../scene/animations/flowField'
+import { glowKnotView } from '../scene/animations/glowKnot'
+import { gridFloorView } from '../scene/animations/gridFloor'
+import { instancedFieldView } from '../scene/animations/instancedField'
 import { particlesView } from '../scene/animations/particles'
+import { shaderGradientView } from '../scene/animations/shaderGradient'
+import { tubeFlowView } from '../scene/animations/tubeFlow'
 import { wireframeView } from '../scene/animations/wireframe'
+import { wobbleSphereView } from '../scene/animations/wobbleSphere'
+import { lightBeamsView } from '../scene/lightBeamsElement'
+import { pylonBezierNetworkView } from '../scene/pylonBezierNetworkElement'
 import * as Ui from '../ui'
 import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
 
-const pageShellClass = 'min-h-dvh bg-[#000] text-[#f1efe8]'
+const pageShellClass = 'h-dvh overflow-auto bg-[#000] text-[#f1efe8]'
 
 // A three.js animation playground: a grid of self-contained WebGL experiments,
 // each a custom element rendered in a framed tile. Add an experiment by writing
@@ -72,6 +86,66 @@ export const view = <Message>(
       node: lightBeamsView<Message>(),
       source: 'oa-light-beams',
       title: 'Light beams',
+    },
+    {
+      node: pylonBezierNetworkView<Message>(),
+      source: 'oa-pylon-bezier-network',
+      title: 'Bezier network (live pylons)',
+    },
+    {
+      node: bezierRingView<Message>(),
+      source: 'oa-anim-bezier-ring',
+      title: 'Bezier graph - ring',
+    },
+    {
+      node: bezierSpiralView<Message>(),
+      source: 'oa-anim-bezier-spiral',
+      title: 'Bezier graph - spiral',
+    },
+    {
+      node: bezierWebView<Message>(),
+      source: 'oa-anim-bezier-web',
+      title: 'Bezier graph - web',
+    },
+    {
+      node: constellationView<Message>(),
+      source: 'oa-anim-constellation',
+      title: 'Constellation network',
+    },
+    {
+      node: instancedFieldView<Message>(),
+      source: 'oa-anim-instanced-field',
+      title: 'Instanced field',
+    },
+    {
+      node: flowFieldView<Message>(),
+      source: 'oa-anim-flow-field',
+      title: 'Flow field',
+    },
+    {
+      node: tubeFlowView<Message>(),
+      source: 'oa-anim-tube-flow',
+      title: 'Tube flow',
+    },
+    {
+      node: glowKnotView<Message>(),
+      source: 'oa-anim-glow-knot',
+      title: 'Glow knot',
+    },
+    {
+      node: wobbleSphereView<Message>(),
+      source: 'oa-anim-wobble-sphere',
+      title: 'Wobble sphere',
+    },
+    {
+      node: shaderGradientView<Message>(),
+      source: 'oa-anim-shader-gradient',
+      title: 'Shader gradient',
+    },
+    {
+      node: gridFloorView<Message>(),
+      source: 'oa-anim-grid-floor',
+      title: 'Grid floor',
     },
     {
       node: wireframeView<Message>(),

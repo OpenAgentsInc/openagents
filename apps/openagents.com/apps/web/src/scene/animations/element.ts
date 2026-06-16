@@ -9,6 +9,14 @@ import type { Attribute, Html } from 'foldkit/html'
 export type AnimationHandle = Readonly<{ dispose: () => void }>
 export type AnimationMount = (element: HTMLElement) => AnimationHandle
 
+// Deterministic [0,1) value from two integer seeds. Scenes use this instead of
+// nondeterministic seeding so layouts are reproducible and the determinism
+// architecture rule (no raw time/id/randomness primitives) stays satisfied.
+export const seededUnit = (a: number, b: number): number => {
+  const value = Math.sin((a + 1) * (b * 101 + 997)) * 10000
+  return value - Math.floor(value)
+}
+
 export const makeAnimationView = (
   tag: string,
   mount: AnimationMount,
