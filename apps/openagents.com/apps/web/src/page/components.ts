@@ -621,17 +621,34 @@ const loginShowcaseView = <Message>(): Html => {
         [Ui.className<Message>('mt-8 grid gap-4')],
         [
           previewBox<Message>(
+            'Light rays (background)',
+            'lightRays',
+            h.div(
+              [
+                Ui.className<Message>(
+                  'relative h-[260px] overflow-hidden bg-[#000]',
+                ),
+              ],
+              [Ui.lightRays<Message>()],
+            ),
+          ),
+          previewBox<Message>(
             'Login screen',
             'loginScreen',
             h.div(
               [
                 Ui.className<Message>(
-                  'grid h-[460px] place-items-center overflow-hidden px-4',
+                  'relative grid h-[460px] place-items-center overflow-hidden px-4',
                 ),
               ],
               [
+                Ui.lightRays<Message>(),
                 h.div(
-                  [Ui.className<Message>('grid w-full max-w-[360px] gap-10')],
+                  [
+                    Ui.className<Message>(
+                      'relative z-10 grid w-full max-w-[360px] gap-10',
+                    ),
+                  ],
                   [
                     h.div(
                       [

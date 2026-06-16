@@ -1,6 +1,7 @@
 import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
+import { lightRays } from './background'
 import { inputGroup } from './forms'
 import { button, linkButton } from './shared'
 
@@ -67,12 +68,13 @@ export const loginScreen = <Message>(
   return h.div(
     [
       h.Class(
-        'grid min-h-dvh place-items-center bg-[#000] px-4 py-16 text-[#f1efe8]',
+        'relative grid min-h-dvh place-items-center overflow-hidden bg-[#000] px-4 py-16 text-[#f1efe8]',
       ),
     ],
     [
+      lightRays<Message>(),
       h.div(
-        [h.Class('grid w-full max-w-[400px] gap-10')],
+        [h.Class('relative z-10 grid w-full max-w-[400px] gap-10')],
         [
           h.div(
             [
