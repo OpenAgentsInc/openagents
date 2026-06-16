@@ -357,7 +357,31 @@ epics below; not all lands today — the aim is the main spine.
 - **Epic G — fold the terminal-agent-systems into the Forge Autopilot Coder
   (#5107, long arc):** runtime spine already built (Agent Runtime Kernel + tools,
   Pack A/B/C, worktree materialization); next, surface diff-review, plan/todo,
-  resume, context+repo-memory, retrieval in the cockpit.
+  resume, context+repo-memory, retrieval in the cockpit. **First Forge Coder
+  systems wave is complete:** #5123-#5144 opened, implemented, documented,
+  commented, and closed the projection/readiness foundation across diff review,
+  plan/progress, session navigation, context/repo profile, retrieval/search,
+  MCP/skills/hooks/plugins/settings, private-material regressions, and the
+  product-promise evidence gate. Focused verification on current main:
+  `bun run --cwd apps/openagents.com/apps/web test -- src/page/loggedIn/autopilot-work`
+  (14 files / 68 tests) + `bun run --cwd apps/openagents.com/apps/web typecheck`.
+  **Second wave opened one-by-one:** #5145 public-safe diff artifact drilldown,
+  #5146 plan/todo mutation receipts, #5147 session control verbs, #5148
+  repository-memory persistence, #5149 bounded live retrieval adapters, and
+  #5150 guarded extensibility execution-request receipts.
+
+  **Completion assessment:** this moved #5107 from planning into a real
+  operator-facing foundation, but it is not the whole "~all terminal-agent
+  systems" parent epic. Roughly, the first wave touches the key starting
+  systems named in #5107 and gives them safe projections, tests, and readiness
+  gates; that is about a quarter of the long-arc product incorporation, not a
+  final green. The new H-wave is the action/integration layer. If coding keeps
+  moving at the same sustained pace, H1-H6 can plausibly get Forge from
+  read-only evidence toward a usable P0/P1 coder surface in the next wave; one
+  to two more waves after that could put the Forge Autopilot Coder around
+  50-60% of the full #5107 product arc. The rest remains live-device/product
+  proof, deeper runtime authority, collaboration, IDE/browser/voice, release,
+  enterprise, and polish work across the 62-system map.
 
 ## Recommended next (assistant lane)
 

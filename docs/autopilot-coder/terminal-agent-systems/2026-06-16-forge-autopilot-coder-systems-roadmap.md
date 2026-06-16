@@ -351,6 +351,24 @@ This does not mean OpenAgents can publish broader product claims by default:
 any public product-promise update still needs exact signed deploy and live-smoke
 evidence through the G7.3 gate.
 
+## Next Wave Filed
+
+The next #5107 wave moves from read-only projections toward operational
+integration while preserving the same authority boundaries:
+
+- #5145 / H1: public-safe diff artifact drilldown for the Forge review lane.
+- #5146 / H2: runtime plan/todo mutation receipts behind authority gates.
+- #5147 / H3: session resume/fork/rewind control verbs through the authoritative
+  bridge.
+- #5148 / H4: repository memory profile persistence and onboarding refresh
+  events.
+- #5149 / H5: bounded live retrieval adapters for files, docs, and diagnostics.
+- #5150 / H6: guarded extensibility execution-request receipts.
+
+This wave should turn the first-wave evidence surfaces into constrained
+operator workflows. It still does not close the #5107 parent epic, because the
+full parent covers the wider 62-system terminal-agent map.
+
 ## Recommended Sequencing
 
 1. G1.1 diff-review lane, because Pack C already provides safe refs and the
