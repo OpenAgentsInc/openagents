@@ -411,6 +411,7 @@ import {
 } from './token-usage'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
 import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
+import { handlePublicTassadarRunSummary } from './public-tassadar-run-summary-routes'
 import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
 import {
   buildTrainingVerificationChallengeRecord,
@@ -6649,6 +6650,10 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/api/public/business-signup',
     handler: (request, env) =>
       handleBusinessSignupApi(request, openAgentsDatabase(env)),
+  },
+  {
+    path: '/api/public/tassadar-run-summary',
+    handler: (request, env) => handlePublicTassadarRunSummary(request, env),
   },
   {
     path: '/api/public/product-promises',
