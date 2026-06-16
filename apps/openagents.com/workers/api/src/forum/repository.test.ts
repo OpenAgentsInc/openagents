@@ -319,6 +319,41 @@ class ForumRepositoryStore {
   contextLinks: Array<ContextLinkRow> = []
 }
 
+const forumTopicPinRank = (pinState: TopicRow['pin_state']): number =>
+  pinState === 'announcement' ? 0 : pinState === 'sticky' ? 1 : 2
+
+const forumTopicActivityIso = (
+  store: ForumRepositoryStore,
+  topic: TopicRow,
+): string => {
+  const latestPost = store.posts.find(
+    post =>
+      post.id === topic.latest_post_id &&
+      post.topic_id === topic.id &&
+      post.archived_at === null &&
+      (post.state === 'visible' ||
+        post.state === 'edited' ||
+        post.state === 'tombstoned'),
+  )
+
+  return latestPost?.created_at ?? latestPost?.updated_at ?? topic.updated_at
+}
+
+const sortForumTopicListRows = (
+  store: ForumRepositoryStore,
+  rows: ReadonlyArray<TopicRow>,
+): Array<TopicRow> =>
+  [...rows].sort(
+    (left, right) =>
+      forumTopicActivityIso(store, right).localeCompare(
+        forumTopicActivityIso(store, left),
+      ) ||
+      forumTopicPinRank(left.pin_state) - forumTopicPinRank(right.pin_state) ||
+      right.updated_at.localeCompare(left.updated_at) ||
+      right.created_at.localeCompare(left.created_at) ||
+      left.id.localeCompare(right.id),
+  )
+
 class ForumRepositoryStatement implements D1PreparedStatement {
   private values: ReadonlyArray<unknown> = []
 
@@ -884,12 +919,16 @@ class ForumRepositoryStatement implements D1PreparedStatement {
       }
 
       const forumId = String(this.values[0])
-      const rows = this.store.topics.filter(
-        item =>
-          item.forum_id === forumId &&
-          item.archived_at === null &&
-          (item.state === 'open' || item.state === 'locked'),
-      )
+      const limit = Number(this.values[1] ?? 50)
+      const rows = sortForumTopicListRows(
+        this.store,
+        this.store.topics.filter(
+          item =>
+            item.forum_id === forumId &&
+            item.archived_at === null &&
+            (item.state === 'open' || item.state === 'locked'),
+        ),
+      ).slice(0, limit)
 
       return Promise.resolve({ results: rows } as unknown as D1Result<T>)
     }
@@ -1198,6 +1237,76 @@ describe('Forum repository foundation', () => {
           tippingAvailable: false,
         },
       },
+    })
+  })
+
+  test('orders forum topic lists by newest visible post activity before pin state', async () => {
+    const store = new ForumRepositoryStore()
+    const announcement = await createTopic(store, {
+      firstPostId: 'aaaaaaaa-1000-4000-8000-aaaaaaaa1000',
+      idempotencyKey: 'forum:topic:activity-order:announcement',
+      slug: 'older-announcement',
+      title: 'Older announcement',
+      topicId: 'aaaaaaaa-2000-4000-8000-aaaaaaaa2000',
+    })
+    const sticky = await createTopic(store, {
+      firstPostId: 'bbbbbbbb-1000-4000-8000-bbbbbbbb1000',
+      idempotencyKey: 'forum:topic:activity-order:sticky',
+      slug: 'newer-sticky',
+      title: 'Newer sticky',
+      topicId: 'bbbbbbbb-2000-4000-8000-bbbbbbbb2000',
+    })
+    const announcementIndex = store.topics.findIndex(
+      item => item.id === announcement.topic.topicId,
+    )
+    const stickyIndex = store.topics.findIndex(
+      item => item.id === sticky.topic.topicId,
+    )
+
+    store.topics[announcementIndex] = {
+      ...store.topics[announcementIndex]!,
+      pin_state: 'announcement',
+      updated_at: '2026-06-15T12:00:00.000Z',
+    }
+    store.posts.push({
+      actor_json: JSON.stringify(actor),
+      actor_ref: actor.actorRef,
+      archived_at: null,
+      body_text: 'Reply that should control recency.',
+      content_ref: 'content.forum.topic.activity_order.reply',
+      created_at: '2026-06-16T12:00:00.000Z',
+      forum_id: sticky.topic.forumId,
+      id: 'bbbbbbbb-3000-4000-8000-bbbbbbbb3000',
+      idempotency_key: 'forum:post:activity-order:sticky-reply',
+      parent_post_id: sticky.firstPost.postId,
+      post_number: 2,
+      public_projection_json: publicProjectionJson,
+      quote_post_id: null,
+      receipt_refs_json: '[]',
+      revision_ref: null,
+      state: 'visible',
+      topic_id: sticky.topic.topicId,
+      updated_at: '2026-06-16T12:00:00.000Z',
+    })
+    store.topics[stickyIndex] = {
+      ...store.topics[stickyIndex]!,
+      latest_post_id: 'bbbbbbbb-3000-4000-8000-bbbbbbbb3000',
+      pin_state: 'sticky',
+      post_count: 2,
+      updated_at: '2026-06-10T12:00:00.000Z',
+    }
+
+    const topicList = await Effect.runPromise(
+      readForumTopicList(forumRepositoryDb(store), sticky.topic.forumId),
+    )
+
+    expect(topicList?.topics.map(topic => topic.title)).toStrictEqual([
+      'Newer sticky',
+      'Older announcement',
+    ])
+    expect(topicList?.topics[0]?.lastPost).toMatchObject({
+      createdAt: '2026-06-16T12:00:00.000Z',
+      postId: 'bbbbbbbb-3000-4000-8000-bbbbbbbb3000',
     })
   })
 

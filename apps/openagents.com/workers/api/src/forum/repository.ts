@@ -2530,18 +2530,31 @@ export const readForumTopicList = (
     const topics = yield* d1Effect('forum.readTopicList.topics', () =>
       db
         .prepare(
-          `SELECT *
+          `SELECT forum_topics.*
              FROM forum_topics
-            WHERE forum_id = ?
-              AND archived_at IS NULL
-              AND state IN ('open', 'locked')
+             LEFT JOIN forum_posts AS latest_visible_post
+               ON latest_visible_post.id = forum_topics.latest_post_id
+              AND latest_visible_post.topic_id = forum_topics.id
+              AND latest_visible_post.archived_at IS NULL
+              AND latest_visible_post.state IN ('visible', 'edited', 'tombstoned')
+            WHERE forum_topics.forum_id = ?
+              AND forum_topics.archived_at IS NULL
+              AND forum_topics.state IN ('open', 'locked')
             ORDER BY
-              CASE pin_state
+              COALESCE(
+                latest_visible_post.created_at,
+                latest_visible_post.updated_at,
+                forum_topics.updated_at,
+                forum_topics.created_at
+              ) DESC,
+              CASE forum_topics.pin_state
                 WHEN 'announcement' THEN 0
                 WHEN 'sticky' THEN 1
                 ELSE 2
               END ASC,
-              updated_at DESC
+              forum_topics.updated_at DESC,
+              forum_topics.created_at DESC,
+              forum_topics.id ASC
             LIMIT ?`,
         )
         .bind(forum.forumId, limit)

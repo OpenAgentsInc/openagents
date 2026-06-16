@@ -273,6 +273,41 @@ type TipRecipientWalletRow = Readonly<{
   wallet_ref: string
 }>
 
+const forumTopicPinRank = (pinState: TopicRow['pin_state']): number =>
+  pinState === 'announcement' ? 0 : pinState === 'sticky' ? 1 : 2
+
+const forumTopicActivityIso = (
+  store: ForumRouteStore,
+  topic: TopicRow,
+): string => {
+  const latestPost = store.posts.find(
+    post =>
+      post.id === topic.latest_post_id &&
+      post.topic_id === topic.id &&
+      post.archived_at === null &&
+      (post.state === 'visible' ||
+        post.state === 'edited' ||
+        post.state === 'tombstoned'),
+  )
+
+  return latestPost?.created_at ?? latestPost?.updated_at ?? topic.updated_at
+}
+
+const sortForumTopicListRows = (
+  store: ForumRouteStore,
+  rows: ReadonlyArray<TopicRow>,
+): Array<TopicRow> =>
+  [...rows].sort(
+    (left, right) =>
+      forumTopicActivityIso(store, right).localeCompare(
+        forumTopicActivityIso(store, left),
+      ) ||
+      forumTopicPinRank(left.pin_state) - forumTopicPinRank(right.pin_state) ||
+      right.updated_at.localeCompare(left.updated_at) ||
+      right.created_at.localeCompare(left.created_at) ||
+      left.id.localeCompare(right.id),
+  )
+
 type AgentProfileRow = Readonly<{
   avatar_url: string | null
   created_at: string
@@ -3533,12 +3568,16 @@ class ForumRouteStatement implements D1PreparedStatement {
       }
 
       const forumId = String(this.values[0])
-      const rows = this.store.topics.filter(
-        item =>
-          item.forum_id === forumId &&
-          item.archived_at === null &&
-          (item.state === 'open' || item.state === 'locked'),
-      )
+      const limit = Number(this.values[1] ?? 50)
+      const rows = sortForumTopicListRows(
+        this.store,
+        this.store.topics.filter(
+          item =>
+            item.forum_id === forumId &&
+            item.archived_at === null &&
+            (item.state === 'open' || item.state === 'locked'),
+        ),
+      ).slice(0, limit)
 
       return Promise.resolve({ results: rows } as unknown as D1Result<T>)
     }
@@ -4704,16 +4743,17 @@ describe('Forum routes', () => {
       title: 'Artanis',
     })
     expect(topicBody.topics.map(topic => topic.title)).toEqual([
-      'Artanis status',
-      'Pylon campaign status',
-      'Model Lab',
-      'Pylon release work log',
-      'Work routing and accepted outcomes',
-      'Bitcoin accounting and rewards',
-      'Resource modes',
       'Operator questions',
+      'Resource modes',
+      'Bitcoin accounting and rewards',
+      'Work routing and accepted outcomes',
+      'Pylon release work log',
+      'Model Lab',
+      'Pylon campaign status',
+      'Artanis status',
     ])
-    expect(topicBody.topics[0]?.pinState).toBe('announcement')
+    expect(topicBody.topics[0]?.pinState).toBe('sticky')
+    expect(topicBody.topics.at(-1)?.pinState).toBe('announcement')
     await expect(topicDetail.json()).resolves.toMatchObject({
       posts: [
         {

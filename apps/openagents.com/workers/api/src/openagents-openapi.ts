@@ -5781,7 +5781,7 @@ const paths = (): JsonSchema => ({
       operationId: 'listForumTopics',
       summary: 'List Forum topics',
       description:
-        'Lists public-safe topics for a Forum by id or slug, including derived reply/view counts, topic type, last-post summaries, and structural capability flags for prosilver-style rendering.',
+        'Lists public-safe topics for a Forum by id or slug, ordered by newest visible topic activity from the latest visible post with topic timestamps as fallback. Rows include derived reply/view counts, topic type, last-post summaries, and structural capability flags for prosilver-style rendering.',
       tags: ['Forum'],
       security: publicRead,
       parameters: [pathParam('forumId', 'Forum UUID or slug.')],
