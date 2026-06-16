@@ -429,7 +429,10 @@ import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
 import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
 import {
   buildTrainingVerificationChallengeRecord,
+  finalizeTrainingVerificationChallengeRecord,
+  leaseTrainingVerificationChallengeRecord,
   makeD1TrainingVerificationStore,
+  runTrainingVerificationClass,
 } from './training-verification'
 import { makeTrainingVerificationRoutes } from './training-verification-routes'
 import {
@@ -6627,16 +6630,40 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
 const tassadarTraceContributionRoutes =
   makeTassadarTraceContributionRoutes<WorkerBindings>({
     agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
-    createVerificationChallenge: (env, request) => {
+    createVerificationChallenge: async (env, input) => {
+      const store = makeD1TrainingVerificationStore(openAgentsDatabase(env))
       const built = buildTrainingVerificationChallengeRecord({
         makeId: randomUuid,
         nowIso: currentIsoTimestamp(),
-        request,
+        request: input.request,
+      })
+      const created = await store.createChallenge(built.challenge, built.event)
+      const leased = leaseTrainingVerificationChallengeRecord({
+        challenge: created,
+        eventId: randomUuid(),
+        nowIso: currentIsoTimestamp(),
+        request: {
+          leaseSeconds: 60,
+          validatorRef: input.validatorDeviceRef,
+        },
+      })
+      const storedLeased = await store.leaseChallenge(
+        leased.challenge,
+        leased.event,
+      )
+      const verdict = await runTrainingVerificationClass({
+        challenge: storedLeased,
+      })
+      const finalized = finalizeTrainingVerificationChallengeRecord({
+        challenge: storedLeased,
+        eventId: randomUuid(),
+        nowIso: currentIsoTimestamp(),
+        request: { receiptRefs: [] },
+        validatorRef: input.validatorDeviceRef,
+        verdict,
       })
 
-      return makeD1TrainingVerificationStore(
-        openAgentsDatabase(env),
-      ).createChallenge(built.challenge, built.event)
+      return store.transitionChallenge(finalized.challenge, finalized.event)
     },
     makeContributionStore: env =>
       makeD1TrainingTraceContributionStore(openAgentsDatabase(env)),

@@ -20,7 +20,9 @@ import {
 import {
   type TrainingVerificationChallengeRecord,
   buildTrainingVerificationChallengeRecord,
-  verifyExactTraceReplay,
+  finalizeTrainingVerificationChallengeRecord,
+  leaseTrainingVerificationChallengeRecord,
+  runTrainingVerificationClass,
 } from './training-verification'
 
 /**
@@ -215,17 +217,37 @@ const makeHarness = (
   let currentTokenUser: string | undefined
   const routes = makeTassadarTraceContributionRoutes({
     agentStore: () => makeAgentStore(currentTokenUser),
-    createVerificationChallenge: async (_env, request) => {
-      // Use the real builder so the Verified/Rejected verdict is genuinely
-      // computed from the worker-vs-validator digest match.
+    createVerificationChallenge: async (_env, input) => {
+      // Use the real builder + lease + finalize path so the route returns the
+      // same Verified/Rejected outcome production records for validate --auto.
       const built = buildTrainingVerificationChallengeRecord({
         makeId: () => `challenge-${++counter}`,
         nowIso: '2026-06-15T00:05:00.000Z',
-        request,
+        request: input.request,
       })
-      challenges.push(built.challenge)
+      const leased = leaseTrainingVerificationChallengeRecord({
+        challenge: built.challenge,
+        eventId: `lease-${++counter}`,
+        nowIso: '2026-06-15T00:05:01.000Z',
+        request: {
+          leaseSeconds: 60,
+          validatorRef: input.validatorDeviceRef,
+        },
+      })
+      const verdict = await runTrainingVerificationClass({
+        challenge: leased.challenge,
+      })
+      const finalized = finalizeTrainingVerificationChallengeRecord({
+        challenge: leased.challenge,
+        eventId: `finalize-${++counter}`,
+        nowIso: '2026-06-15T00:05:02.000Z',
+        request: { receiptRefs: [] },
+        validatorRef: input.validatorDeviceRef,
+        verdict,
+      })
+      challenges.push(finalized.challenge)
 
-      return built.challenge
+      return finalized.challenge
     },
     makeContributionStore: () => contributions,
     makeId: () => `id-${++counter}`,
@@ -389,20 +411,7 @@ describe('tassadar trace contribution routes (#5052)', () => {
     expect(stored.state).toBe('pending')
   })
 
-  // The verdict route creates an exact_trace_replay challenge (Queued) whose
-  // payload carries the worker and validator digests. The downstream verifier
-  // (run by the verification orchestration #5053) computes Verified/Rejected
-  // from that payload. These tests assert both the challenge wiring and that
-  // the verifier resolves the expected verdict over the route-built payload.
-  const verdictOver = (
-    challenge: TrainingVerificationChallengeRecord,
-  ): string =>
-    verifyExactTraceReplay({
-      challenge,
-      payload: JSON.parse(challenge.payloadJson) as Record<string, unknown>,
-    }).state
-
-  it('§4.2 digest match -> exact_trace_replay challenge verifies (Verified)', async () => {
+  it('§4.2 digest match -> exact_trace_replay challenge finalizes Verified', async () => {
     const harness = makeHarness()
     await harness.route(submitPath, {
       body: submissionBody({ traceCommitmentDigestRef: 'digest.match' }),
@@ -417,7 +426,7 @@ describe('tassadar trace contribution routes (#5052)', () => {
       tokenUserId: VALIDATOR_USER,
     })
     const body = (await response.json()) as {
-      challenge: { challengeRef: string }
+      challenge: { challengeRef: string; state: string }
       contribution: { state: string; verificationChallengeRef: string }
     }
 
@@ -425,14 +434,15 @@ describe('tassadar trace contribution routes (#5052)', () => {
     expect(harness.challenges.length).toBe(1)
     expect(harness.challenges[0]!.verificationClass).toBe('exact_trace_replay')
     // Matching worker/validator digests -> Verified (feeds verifiedWorkCount).
-    expect(verdictOver(harness.challenges[0]!)).toBe('Verified')
+    expect(harness.challenges[0]!.state).toBe('Verified')
+    expect(body.challenge.state).toBe('Verified')
     expect(body.contribution.state).toBe('paired')
     expect(body.contribution.verificationChallengeRef).toBe(
       harness.challenges[0]!.challengeRef,
     )
   })
 
-  it('§4.2 digest mismatch -> exact_trace_replay challenge rejects (Rejected)', async () => {
+  it('§4.2 digest mismatch -> exact_trace_replay challenge finalizes Rejected', async () => {
     const harness = makeHarness()
     await harness.route(submitPath, {
       body: submissionBody({ traceCommitmentDigestRef: 'digest.worker' }),
@@ -450,7 +460,7 @@ describe('tassadar trace contribution routes (#5052)', () => {
     expect(response.status).toBe(200)
     expect(harness.challenges.length).toBe(1)
     // Differing digests -> Rejected (feeds rejectedWorkCount).
-    expect(verdictOver(harness.challenges[0]!)).toBe('Rejected')
+    expect(harness.challenges[0]!.state).toBe('Rejected')
   })
 
   it('§4.2 404s when no pending worker contribution exists', async () => {

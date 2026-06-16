@@ -105,6 +105,11 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
     distinct device → `Verified` (this is also the #5061 self-serve proof).
     Contributors can run it now: `npm i -g @openagentsinc/pylon@rc` →
     `pylon training validate --auto --watch`. Follow along on the issue + forum.
+  - **2026-06-16 follow-up:** live rc.4 proved discovery/replay/pairing but the
+    replay-verdict route still returned the newly created challenge in `Queued`.
+    The Worker route now creates, leases, verifies, and finalizes the
+    exact-replay challenge in the validator push path, so the auto loop can
+    honestly reach `Verified`/`Rejected` without a manual finalize call.
 - **#5051** epic → **#5061** first external-validator dry-run with **Orrery**
   (volunteered, live non-owner node). This is the one thing that proves the loop:
   pair a real worker + a **distinct** validator device, produce the first

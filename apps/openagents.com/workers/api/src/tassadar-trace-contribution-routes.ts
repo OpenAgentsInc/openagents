@@ -49,9 +49,9 @@ type HttpResponse = globalThis.Response
  *   contribution; idempotent by lease + workload.
  * - §4.2 POST /api/training/leases/{leaseRef}/replay-verdict (requireAgent):
  *   the validator device must be DISTINCT from the worker Pylon device. Pairs
- *   with the pending contribution and builds the existing exact_trace_replay
- *   verification challenge (digest match -> Verified -> verifiedWorkCount;
- *   mismatch -> Rejected -> rejectedWorkCount).
+ *   with the pending contribution and records the existing exact_trace_replay
+ *   verification challenge outcome (digest match -> Verified ->
+ *   verifiedWorkCount; mismatch -> Rejected -> rejectedWorkCount).
  *
  * These routes are INERT with respect to existing behavior until the pairing
  * orchestration (#5053) and Pylon client (#5054) wire them: they add no admin
@@ -63,7 +63,10 @@ type TassadarTraceContributionRouteDependencies<Bindings> = Readonly<{
   agentStore: (env: Bindings) => AgentRegistrationStore
   createVerificationChallenge?: (
     env: Bindings,
-    request: TrainingVerificationChallengeCreateRequest,
+    input: Readonly<{
+      request: TrainingVerificationChallengeCreateRequest
+      validatorDeviceRef: string
+    }>,
   ) => Promise<TrainingVerificationChallengeRecord>
   makeContributionStore: (env: Bindings) => TrainingTraceContributionStore
   makeId?: () => string
@@ -363,8 +366,9 @@ const routeReplayVerdict = <Bindings extends TassadarTraceContributionRouteEnv>(
       validatorDeviceRef: body.validatorDeviceRef,
     })
     // The builder re-enforces worker != validator device (a violation surfaces
-    // as a validation error); the resulting exact_trace_replay challenge
-    // computes Verified (digest match) or Rejected (mismatch).
+    // as a validation error); the dependency records and finalizes the
+    // exact_trace_replay challenge so the auto-validation path returns the
+    // actual Verified/Rejected outcome instead of leaving a queued placeholder.
     const challengeRequest = yield* Effect.try({
       catch: error =>
         new TrainingTraceContributionStoreError({
@@ -380,7 +384,11 @@ const routeReplayVerdict = <Bindings extends TassadarTraceContributionRouteEnv>(
     })
     const challenge = yield* Effect.tryPromise({
       catch: trainingTraceContributionStoreErrorFromUnknown,
-      try: () => createVerificationChallenge(env, challengeRequest),
+      try: () =>
+        createVerificationChallenge(env, {
+          request: challengeRequest,
+          validatorDeviceRef: body.validatorDeviceRef,
+        }),
     })
     const paired = yield* Effect.tryPromise({
       catch: trainingTraceContributionStoreErrorFromUnknown,
