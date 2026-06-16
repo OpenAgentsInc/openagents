@@ -8,7 +8,15 @@ const defaultSource = resolve(repoRoot, '..', 'fireball', 'src', 'icon.ts')
 const sourcePath = resolve(
   process.env.OMEGA_FIREBALL_ICON_SOURCE ?? defaultSource,
 )
-const targetPath = resolve(repoRoot, 'apps', 'web', 'src', 'icon.ts')
+const targetPath = resolve(
+  repoRoot,
+  '..',
+  '..',
+  'packages',
+  'ui',
+  'src',
+  'icon.ts',
+)
 const source = readFileSync(sourcePath, 'utf8')
 const iconPattern =
   /\{\n\s*name: ('(?:\\.|[^'])*'),\n\s*svg: ('(?:\\.|[^'])*'),\n\s*\}/g
