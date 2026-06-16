@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-16.2'
+export const PublicProductPromisesVersion = '2026-06-16.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -2391,10 +2391,9 @@ export const publicProductPromisesDocument = () => {
         blockerRefs: [
           'blocker.product_promises.spark_backup_receive_live_smoke_missing',
           'blocker.product_promises.spark_receive_sync_reconcile_missing',
-          'blocker.product_promises.spark_helper_bun_storage_unsupported',
         ],
         verification:
-          'Yellow is satisfied by the shipped opt-in receive-only core plus the Breez SDK Spark adapter (slices 1-2 of #5078) with mock-backed unit tests, inert by default (off without a Breez API key and `PYLON_SPARK_BACKUP_ENABLED`), receive-only (no send/payout/settlement, `PayoutTargetKind` unchanged), and public projections emitting only redacted refs. The receive path is live-proven under Node (the embedded key is accepted and a real mainnet static Spark address is returned), but it does NOT yet run under Pylon’s Bun runtime: the SDK storage backend needs better-sqlite3, unsupported in Bun (issue #5080). Green requires (a) the Bun storage fix from #5080, then (b) the live offline-recipient smoke in real Pylon: a static Spark address handed out while MDK is offline, a sync → detect → claim → sweep → reconcile path with public-safe receipts, and public evidence of an offline-recipient receive that reconciled on next sync — with send, payout, and settlement authority still gated off.',
+          'Yellow is satisfied by the shipped opt-in receive-only core plus the Breez SDK Spark adapter (slices 1-2 of #5078) with mock-backed unit tests, inert by default (off without a Breez API key and `PYLON_SPARK_BACKUP_ENABLED`), receive-only (no send/payout/settlement, `PayoutTargetKind` unchanged), and public projections emitting only redacted refs. The receive path is live-proven under both Node and Pylon’s Bun runtime: with the embedded key it returns a real mainnet static Spark address. Bun support is via a `bun:sqlite` port of the SDK storage injected through `SdkBuilder.withStorage()` (issue #5080, resolved). Green now requires only the live offline-recipient smoke in real Pylon: a static Spark address handed out while MDK is offline, a sync → detect → claim → sweep → reconcile path with public-safe receipts, and public evidence of an offline-recipient receive that reconciled on next sync — with send, payout, and settlement authority still gated off.',
         authorityBoundary:
           'The Spark fallback is RECEIVE-ONLY. It grants no send, payout, accepted-work settlement, or public payout-target authority; activating any of those requires a separate explicit gate.',
       },
