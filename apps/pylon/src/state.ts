@@ -90,8 +90,25 @@ const forbiddenKeyPattern =
 const forbiddenExactKeyPattern =
   /^(walletSeed|seed|mnemonic|privateKey|private_key|preimage|bearer|accessToken|apiKey|providerToken|providerAuth|rawPrompt|rawPrompts|privateRepo|repoContent|privateTopology|cachePath|envDump|environmentDump|capacityPoolSecret|internalAccountingCredential|invoice|offer|paymentHash|paymentPreimage|sparkAddress|sparkInvoice|sparkRequest|secret|password|xprv)$/i
 
-const forbiddenStringPattern =
-  /\b(wallet seed|mnemonic|private key|payment preimage|bearer\s+[a-z0-9._-]+|sk-[a-z0-9_-]+|lnbc[a-z0-9]+|lntb[a-z0-9]+|lno[a-z0-9]+|spark1[a-z0-9]{20,}|sprt1[a-z0-9]{20,}|spt1[a-z0-9]{20,}|sp1[a-z0-9]{20,}|private-repo:\/\/|private_repo|raw prompt|capacity pool secret|internal accounting credential|xprv|\/Users\/[^\s]+\/\.cache|\/home\/[^\s]+\/\.cache)\b/i
+const forbiddenStringPatterns = [
+  /\b(?:wallet seed|mnemonic|private key|capacity pool secret|internal accounting credential)\s*[:=]\s*\S+/i,
+  /\bpayment preimage\s+\S+/i,
+  /\bbearer\s+(?!token\b)[a-z0-9._-]{6,}\b/i,
+  /\bsk-[a-z0-9_-]+\b/i,
+  /\blnbc[a-z0-9]+\b/i,
+  /\blntb[a-z0-9]+\b/i,
+  /\blno[a-z0-9]+\b/i,
+  /\bspark1[a-z0-9]{20,}\b/i,
+  /\bsprt1[a-z0-9]{20,}\b/i,
+  /\bspt1[a-z0-9]{20,}\b/i,
+  /\bsp1[a-z0-9]{20,}\b/i,
+  /\bprivate-repo:\/\/\S*/i,
+  /\bprivate_repo\b/i,
+  /\braw prompt\b/i,
+  /\bxprv[a-z0-9]+\b/i,
+  /\/Users\/[^\s]+\/\.cache\b/i,
+  /\/home\/[^\s]+\/\.cache\b/i,
+]
 
 function stableHash(input: string, length = 24) {
   return createHash("sha256").update(input).digest("hex").slice(0, length)
@@ -260,7 +277,7 @@ export async function ensurePylonLocalState(summary: BootstrapSummary): Promise<
 export function assertPublicProjectionSafe(value: unknown, path = "projection"): asserts value is PublicProjection {
   if (value === null || value === undefined) return
   if (typeof value === "string") {
-    if (forbiddenStringPattern.test(value)) {
+    if (forbiddenStringPatterns.some(pattern => pattern.test(value))) {
       throw new Error(`${path} contains private-data-shaped text`)
     }
     return

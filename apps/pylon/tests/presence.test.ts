@@ -267,5 +267,22 @@ describe("Pylon presence registration and heartbeat", () => {
     expect(() => assertPublicProjectionSafe({ heartbeat: { note: "raw prompt should not be public" } })).toThrow(
       "private-data-shaped",
     )
+    expect(() => assertPublicProjectionSafe({ heartbeat: { reason: "Use bearer abc123 to inspect status" } })).toThrow(
+      "private-data-shaped",
+    )
+  })
+
+  test("accepts post-start heartbeat diagnostics that name absent private material", () => {
+    expect(() =>
+      assertPublicProjectionSafe({
+        heartbeat: {
+          phase: "node-heartbeat-after-start",
+          reason: "node heartbeat after startup was blocked with: projection.reason contains private-data-shaped text",
+          notes:
+            "No mnemonic, bearer token, raw wallet material, raw offer, invoice, preimage, private local config, or private logs are included here.",
+          resultRefs: ["receipt.pylon.cli.training.lease.claim.20260616T0738333"],
+        },
+      }),
+    ).not.toThrow()
   })
 })

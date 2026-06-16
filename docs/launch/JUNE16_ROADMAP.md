@@ -42,10 +42,10 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
 
 ## A. Short-term bug fixes (cleanest closeable work — projection/freshness family)
 
-- **#5077** — Pylon post-start heartbeat blocked by a private-data **false positive**
-  on `projection.reason` (`assertPublicProjectionSafe`, `apps/pylon/src/state.ts`).
-  Repro: Whitefang Hermes rc2 test. Fix: narrow the pattern OR make `reason` a safe
-  ref + regression test.
+- **#5077** — fixed: Pylon post-start heartbeat diagnostics can now name absent
+  private-material classes without tripping `projection.reason`, while actual
+  bearer/invoice/Spark/key-shaped payloads still fail. Regression covered in
+  `apps/pylon/tests/presence.test.ts`; full `apps/pylon` suite passed.
 - **#5076** — Forum **recent-posts API** shows **stale tip-recipient readiness** vs
   the topic API (a read projection that didn't rebuild on write — same invariant as
   the closed #5056 lane; file under that discipline).
@@ -178,7 +178,7 @@ epics below; not all lands today — the aim is the main spine.
 ## Recommended next (assistant lane)
 
 Section **A** is the cleanest non-overlapping closeable work I own (worker/pylon
-projection fixes: #5077, #5076, #5075). **B/C** need the owner + a real second
+projection fixes: #5076, #5075). **B/C** need the owner + a real second
 device. **D** needs the concurrent desktop session. Coordinate to avoid the
 duplicate-work collisions seen on #5067.
 
