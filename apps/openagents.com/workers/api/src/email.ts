@@ -4,9 +4,11 @@ import {
   DripTemplateProps,
   ORDER_SITES_LIFECYCLE_EMAIL_KINDS,
   OrderSitesLifecycleTemplateProps,
+  PrivateWorkspaceInviteTemplateProps,
   renderAutopilotDecisionEmail,
   renderDripEmail,
   renderOrderSitesLifecycleEmail,
+  renderPrivateWorkspaceInviteEmail,
 } from '@openagentsinc/email-templates'
 import {
   containsProviderSecretMaterial,
@@ -201,6 +203,20 @@ export class TargetedRemakeOutreachEmailInput extends S.Class<TargetedRemakeOutr
   valueProposition: S.String,
 }) {}
 
+export class PrivateWorkspaceInviteEmailInput extends S.Class<PrivateWorkspaceInviteEmailInput>(
+  'PrivateWorkspaceInviteEmailInput',
+)({
+  acceptUrl: S.String,
+  displayName: S.String,
+  expiresAt: S.String,
+  idempotencyKey: S.String,
+  inviteId: S.String,
+  projectId: S.NullOr(S.String),
+  teamId: S.String,
+  to: S.String,
+  workspaceLabel: S.String,
+}) {}
+
 export const OrderSitesTransactionalEmailKind = S.Literals([
   'order_received',
   'scoping_started',
@@ -382,6 +398,10 @@ export type EmailServiceShape = Readonly<{
     config: ResendEmailConfig,
     input: TargetedRemakeOutreachEmailInput,
   ) => Effect.Effect<RenderedEmail, EmailServiceError>
+  renderPrivateWorkspaceInviteEmail: (
+    config: ResendEmailConfig,
+    input: PrivateWorkspaceInviteEmailInput,
+  ) => Effect.Effect<RenderedEmail, EmailServiceError>
   buildOrderSitesTransactionalEmailIdempotencyKey: (
     input: OrderSitesTransactionalEmailInput,
   ) => string
@@ -433,6 +453,14 @@ export type EmailServiceShape = Readonly<{
     db: D1Database,
     config: ResendEmailConfig,
     input: TargetedRemakeOutreachEmailInput,
+    context?: EmailIntentContext | undefined,
+    fetcher?: typeof fetch,
+    runtime?: EmailRuntime,
+  ) => Effect.Effect<EmailLedgerSendResult, EmailServiceError>
+  sendPrivateWorkspaceInviteEmailWithLedger: (
+    db: D1Database,
+    config: ResendEmailConfig,
+    input: PrivateWorkspaceInviteEmailInput,
     context?: EmailIntentContext | undefined,
     fetcher?: typeof fetch,
     runtime?: EmailRuntime,
@@ -1219,6 +1247,46 @@ const renderedTargetedRemakeOutreachEmail = (
     to: input.to,
   })
 
+const renderedPrivateWorkspaceInviteEmail = (
+  config: ResendEmailConfig,
+  input: PrivateWorkspaceInviteEmailInput,
+): RenderedEmail => {
+  const renderedTemplate = renderPrivateWorkspaceInviteEmail(
+    new PrivateWorkspaceInviteTemplateProps({
+      acceptUrl: input.acceptUrl,
+      displayName: input.displayName,
+      expiresAt: input.expiresAt,
+      workspaceLabel: input.workspaceLabel,
+    }),
+  )
+
+  return new RenderedEmail({
+    from: config.fromEmail,
+    html: renderedTemplate.html,
+    idempotencyKey: input.idempotencyKey,
+    kind: 'operator_notification',
+    metadataJson: jsonValue({
+      emailSubtype: 'private_workspace_invite',
+      inviteId: input.inviteId,
+      policy: 'system.private_workspace_invite_email.v1',
+      projectId: input.projectId,
+      teamId: input.teamId,
+    }),
+    ...(config.replyToEmail === undefined
+      ? {}
+      : { replyTo: config.replyToEmail }),
+    subject: renderedTemplate.subject,
+    tags: [
+      new EmailTag({ name: 'category', value: 'workspace' }),
+      new EmailTag({ name: 'event', value: 'private_invite' }),
+    ],
+    templateContextJson: jsonValue(renderedTemplate.templateContext),
+    templateSlug: renderedTemplate.templateSlug,
+    text: renderedTemplate.text,
+    to: input.to,
+  })
+}
+
 const renderedOrderSitesTransactionalEmail = (
   config: ResendEmailConfig,
   input: OrderSitesTransactionalEmailInput,
@@ -1882,6 +1950,12 @@ export const makeEmailService = (): EmailServiceShape => {
     }),
   )
 
+  const renderPrivateWorkspaceInviteEmail = Effect.fn(
+    'EmailService.renderPrivateWorkspaceInviteEmail',
+  )((config: ResendEmailConfig, input: PrivateWorkspaceInviteEmailInput) =>
+    Effect.succeed(renderedPrivateWorkspaceInviteEmail(config, input)),
+  )
+
   const sendRenderedEmail = Effect.fn('EmailService.sendRenderedEmail')(
     sendRenderedEmailToResend,
   )
@@ -2396,6 +2470,82 @@ export const makeEmailService = (): EmailServiceShape => {
       }),
   )
 
+  const sendPrivateWorkspaceInviteEmailWithLedger = Effect.fn(
+    'EmailService.sendPrivateWorkspaceInviteEmailWithLedger',
+  )(
+    (
+      db: D1Database,
+      config: ResendEmailConfig,
+      input: PrivateWorkspaceInviteEmailInput,
+      context: EmailIntentContext | undefined = undefined,
+      fetcher: typeof fetch = fetch,
+      runtime: EmailRuntime = systemEmailRuntime,
+    ) =>
+      Effect.gen(function* () {
+        const rendered = yield* renderPrivateWorkspaceInviteEmail(config, input)
+        const message = yield* reserveEmailMessage(
+          db,
+          rendered,
+          {
+            ...context,
+            metadata: {
+              ...(context?.metadata ?? {}),
+              emailSubtype: 'private_workspace_invite',
+              inviteId: input.inviteId,
+              projectId: input.projectId,
+              teamId: input.teamId,
+            },
+            sourceAuthorityRef:
+              context?.sourceAuthorityRef ??
+              'system.private_workspace_invite_email.v1',
+          },
+          runtime,
+        )
+
+        if (message.status === 'accepted') {
+          return {
+            emailMessageId: message.id,
+            ok: true as const,
+            providerMessageId: message.providerMessageId,
+          }
+        }
+
+        const result = yield* sendRenderedEmail(config, rendered, fetcher)
+
+        yield* result._tag === 'EmailProviderAccepted'
+          ? markEmailMessageAccepted(
+              db,
+              message.id,
+              result.provider,
+              result.providerMessageId,
+              runtime,
+            )
+          : markEmailMessageFailed(
+              db,
+              message.id,
+              result.provider,
+              result,
+              runtime,
+            )
+        yield* recordEmailDelivery(db, message.id, rendered, result, runtime)
+
+        if (result._tag === 'EmailProviderAccepted') {
+          return {
+            emailMessageId: message.id,
+            ok: true as const,
+            providerMessageId: result.providerMessageId,
+          }
+        }
+
+        return {
+          emailMessageId: message.id,
+          errorMessage: result.errorMessage,
+          errorName: result.errorName,
+          ok: false as const,
+        }
+      }),
+  )
+
   return {
     buildOrderSitesTransactionalEmailIdempotencyKey:
       buildOrderSitesTransactionalEmailIdempotencyKey,
@@ -2405,6 +2555,7 @@ export const makeEmailService = (): EmailServiceShape => {
     renderDripCampaignEmail,
     renderOrderSitesTransactionalEmail,
     renderOutOfCreditsEmail,
+    renderPrivateWorkspaceInviteEmail,
     renderSiteReferralOnboardingEmail,
     renderTargetedRemakeOutreachEmail,
     reserveMessage: reserveEmailMessage,
@@ -2414,6 +2565,7 @@ export const makeEmailService = (): EmailServiceShape => {
     sendOrderSitesTransactionalEmailWithLedger,
     sendOutOfCreditsEmail: sendOutOfCreditsEmailEffect,
     sendOutOfCreditsEmailWithLedger,
+    sendPrivateWorkspaceInviteEmailWithLedger,
     sendRenderedEmail,
     sendRenderedEmailViaCloudflareBinding:
       sendRenderedEmailViaCloudflareBindingEffect,
@@ -2695,6 +2847,23 @@ export const sendSiteReferralOnboardingEmailWithLedger = (
   runtime: EmailRuntime = systemEmailRuntime,
 ): Effect.Effect<EmailLedgerSendResult, EmailServiceError> =>
   defaultEmailService.sendSiteReferralOnboardingEmailWithLedger(
+    db,
+    config,
+    input,
+    context,
+    fetcher,
+    runtime,
+  )
+
+export const sendPrivateWorkspaceInviteEmailWithLedger = (
+  db: D1Database,
+  config: ResendEmailConfig,
+  input: PrivateWorkspaceInviteEmailInput,
+  context?: EmailIntentContext | undefined,
+  fetcher: typeof fetch = fetch,
+  runtime: EmailRuntime = systemEmailRuntime,
+): Effect.Effect<EmailLedgerSendResult, EmailServiceError> =>
+  defaultEmailService.sendPrivateWorkspaceInviteEmailWithLedger(
     db,
     config,
     input,

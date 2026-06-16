@@ -116,6 +116,13 @@ export type TeamWorkspaceInviteStore = Readonly<{
   createOrRefreshInvite: (
     input: TeamWorkspaceInviteCreateInput,
   ) => Promise<TeamWorkspaceInviteCreateResult>
+  recordEmailAttempt: (
+    input: Readonly<{
+      attemptedAt: string
+      emailMessageId: string
+      inviteId: string
+    }>,
+  ) => Promise<TeamWorkspaceInviteRecord | undefined>
 }>
 
 type TeamWorkspaceInviteRow = Readonly<{
@@ -527,5 +534,39 @@ export const makeD1TeamWorkspaceInviteStore = (
       invite: await readInviteById(db, invite.id),
       membershipId,
     }
+  },
+
+  recordEmailAttempt: async input => {
+    await db
+      .prepare(
+        `UPDATE team_workspace_invites
+            SET email_message_id = ?,
+                last_sent_at = ?,
+                send_count = send_count + 1,
+                updated_at = ?
+          WHERE id = ?`,
+      )
+      .bind(
+        input.emailMessageId,
+        input.attemptedAt,
+        input.attemptedAt,
+        input.inviteId,
+      )
+      .run()
+
+    const row = await db
+      .prepare(
+        `SELECT id, team_id, project_id, invitee_email, invitee_email_normalized,
+                role, status, token_hash, invited_by_actor_ref, accepted_by_user_id,
+                email_message_id, created_at, updated_at, expires_at, accepted_at,
+                revoked_at, last_sent_at, send_count, metadata_json
+           FROM team_workspace_invites
+          WHERE id = ?
+          LIMIT 1`,
+      )
+      .bind(input.inviteId)
+      .first<TeamWorkspaceInviteRow>()
+
+    return row === null ? undefined : recordFromRow(row)
   },
 })

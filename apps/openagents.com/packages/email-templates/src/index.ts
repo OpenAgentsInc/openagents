@@ -95,6 +95,15 @@ export class AutopilotDecisionTemplateProps extends S.Class<AutopilotDecisionTem
   workOrderRef: S.String,
 }) {}
 
+export class PrivateWorkspaceInviteTemplateProps extends S.Class<PrivateWorkspaceInviteTemplateProps>(
+  'PrivateWorkspaceInviteTemplateProps',
+)({
+  acceptUrl: S.String,
+  displayName: S.String,
+  expiresAt: S.String,
+  workspaceLabel: S.String,
+}) {}
+
 export type RenderedEmailTemplate = Readonly<{
   html: string
   subject: string
@@ -454,6 +463,53 @@ export const renderAutopilotDecisionEmail = (
   }
 }
 
+export const renderPrivateWorkspaceInviteEmail = (
+  input: PrivateWorkspaceInviteTemplateProps,
+): RenderedEmailTemplate => {
+  const subject = 'Your private OpenAgents workspace invite'
+  const escapedAcceptUrl = escapeHtml(input.acceptUrl)
+  const text = [
+    `Hi ${input.displayName},`,
+    '',
+    `You have been invited to ${input.workspaceLabel} in OpenAgents.`,
+    '',
+    `Accept invite: ${input.acceptUrl}`,
+    `Expires: ${input.expiresAt}`,
+    '',
+    'Next action: sign in with the invited email address, accept the invite, and open the workspace before the call.',
+    '',
+    'OpenAgents',
+  ].join('\n')
+  const html = `<!doctype html>
+<html>
+  <body style="margin:0;background:#ffffff;color:#111318;font-family:Inter,Arial,sans-serif;">
+    <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
+      <p style="margin:0 0 24px;color:#6a6f78;font-size:14px;">OpenAgents</p>
+      <h1 style="margin:0;color:#111318;font-size:26px;font-weight:600;line-height:1.2;">${escapeHtml(subject)}</h1>
+      <p style="margin:18px 0 0;color:#252a31;font-size:15px;line-height:1.6;">Hi ${escapeHtml(input.displayName)}, you have been invited to ${escapeHtml(input.workspaceLabel)} in OpenAgents.</p>
+      <p style="margin:18px 0 0;color:#252a31;font-size:15px;line-height:1.6;"><strong>Expires:</strong> ${escapeHtml(input.expiresAt)}</p>
+      <p style="margin:28px 0 0;">
+        <a href="${escapedAcceptUrl}" style="display:inline-block;border-radius:999px;background:#11384c;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:11px 18px;">Accept invite</a>
+      </p>
+      <p style="margin:24px 0 0;color:#6a6f78;font-size:13px;line-height:1.5;">Sign in with the invited email address before accepting the workspace invite.</p>
+    </div>
+  </body>
+</html>`
+
+  return {
+    html,
+    subject,
+    templateContext: {
+      acceptUrl: input.acceptUrl,
+      displayName: input.displayName,
+      expiresAt: input.expiresAt,
+      workspaceLabel: input.workspaceLabel,
+    },
+    templateSlug: 'team_workspace_invite.v1',
+    text,
+  }
+}
+
 export const renderEmailTemplatePreviewCatalog = (
   appOrigin: string,
 ): ReadonlyArray<RenderedEmailTemplate> => [
@@ -494,5 +550,13 @@ export const renderEmailTemplatePreviewCatalog = (
         workOrderRef: 'autopilot_work_order.preview',
       }),
     ),
+  ),
+  renderPrivateWorkspaceInviteEmail(
+    new PrivateWorkspaceInviteTemplateProps({
+      acceptUrl: `${appOrigin.replace(/\/+$/, '')}/api/team-workspace-invites/accept?token=preview`,
+      displayName: 'Alex Customer',
+      expiresAt: '2026-06-19T12:00:00.000Z',
+      workspaceLabel: 'a private OpenAgents workspace',
+    }),
   ),
 ]

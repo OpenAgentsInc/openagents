@@ -7,6 +7,7 @@ import {
   type CloudflareEmailBinding,
   ORDER_SITES_TRANSACTIONAL_EMAIL_KINDS,
   OrderSitesTransactionalEmailInput,
+  PrivateWorkspaceInviteEmailInput,
   SiteReferralOnboardingEmailInput,
   TargetedRemakeOutreachEmailInput,
   adjutantCustomerNotificationEmailHtml,
@@ -109,6 +110,19 @@ const targetedRemakeOutreachInput = new TargetedRemakeOutreachEmailInput({
   unsubscribeUrl: 'https://openagents.com/email/unsubscribe/targeted',
   valueProposition:
     'The preview focuses on clearer positioning, stronger calls to action, and a cleaner technical story.',
+})
+
+const privateWorkspaceInviteInput = new PrivateWorkspaceInviteEmailInput({
+  acceptUrl:
+    'https://openagents.com/api/team-workspace-invites/accept?token=invite_token',
+  displayName: 'Alex <Customer>',
+  expiresAt: '2026-06-19T12:00:00.000Z',
+  idempotencyKey: 'team_workspace_invite:invite_1:1',
+  inviteId: 'team_workspace_invite_1',
+  projectId: 'team_project_1',
+  teamId: 'team_1',
+  to: 'alex.customer@example.com',
+  workspaceLabel: 'Private <Workspace>',
 })
 
 const resendConfig = () => ({
@@ -1188,6 +1202,145 @@ describe('emails', () => {
       }),
     )
     expect(deliveries).toHaveLength(1)
+  })
+
+  test('renders private workspace invite email with escaped labels', async () => {
+    const service = makeEmailService()
+    const rendered = await Effect.runPromise(
+      service.renderPrivateWorkspaceInviteEmail(
+        resendConfig(),
+        privateWorkspaceInviteInput,
+      ),
+    )
+
+    expect(rendered.kind).toBe('operator_notification')
+    expect(rendered.templateSlug).toBe('team_workspace_invite.v1')
+    expect(rendered.text).toContain(privateWorkspaceInviteInput.acceptUrl)
+    expect(rendered.html).toContain('Alex &lt;Customer&gt;')
+    expect(rendered.html).toContain('Private &lt;Workspace&gt;')
+    expect(rendered.html).not.toContain('Alex <Customer>')
+    expect(rendered.html).not.toContain('Private <Workspace>')
+  })
+
+  test('sends private workspace invite email idempotently through the ledger', async () => {
+    const { db, deliveries, messagesByIdempotencyKey } = makeEmailLedgerD1()
+    const runtime = {
+      nowIso: () => '2026-06-16T12:00:00.000Z',
+      randomId: (prefix: string) => `${prefix}_workspace_invite`,
+    }
+    let fetchCount = 0
+    const fetcher: typeof fetch = async () => {
+      fetchCount += 1
+
+      return new Response(JSON.stringify({ id: 'email_workspace_invite' }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      })
+    }
+    const service = makeEmailService()
+
+    const first = await Effect.runPromise(
+      service.sendPrivateWorkspaceInviteEmailWithLedger(
+        db,
+        resendConfig(),
+        privateWorkspaceInviteInput,
+        {
+          sourceAuthorityRef: 'system.private_workspace_invite_email.test',
+        },
+        fetcher,
+        runtime,
+      ),
+    )
+    const second = await Effect.runPromise(
+      service.sendPrivateWorkspaceInviteEmailWithLedger(
+        db,
+        resendConfig(),
+        privateWorkspaceInviteInput,
+        {
+          sourceAuthorityRef: 'system.private_workspace_invite_email.test',
+        },
+        fetcher,
+        runtime,
+      ),
+    )
+
+    expect(first).toEqual({
+      emailMessageId: 'email_msg_workspace_invite',
+      ok: true,
+      providerMessageId: 'email_workspace_invite',
+    })
+    expect(second).toEqual(first)
+    expect(fetchCount).toBe(1)
+    expect(
+      messagesByIdempotencyKey.get(privateWorkspaceInviteInput.idempotencyKey),
+    ).toMatchObject({
+      kind: 'operator_notification',
+      provider: 'resend',
+      provider_message_id: 'email_workspace_invite',
+      source_authority_ref: 'system.private_workspace_invite_email.test',
+      status: 'accepted',
+    })
+    expect(deliveries).toHaveLength(1)
+  })
+
+  test('records private workspace invite provider rejection without raw provider payloads', async () => {
+    const { db, deliveries, messagesByIdempotencyKey } = makeEmailLedgerD1()
+    const runtime = {
+      nowIso: () => '2026-06-16T12:00:00.000Z',
+      randomId: (prefix: string) => `${prefix}_workspace_invite_failed`,
+    }
+    const service = makeEmailService()
+
+    const result = await Effect.runPromise(
+      service.sendPrivateWorkspaceInviteEmailWithLedger(
+        db,
+        resendConfig(),
+        new PrivateWorkspaceInviteEmailInput({
+          ...privateWorkspaceInviteInput,
+          idempotencyKey: 'team_workspace_invite:invite_1:failed',
+        }),
+        undefined,
+        async () =>
+          new Response(
+            JSON.stringify({
+              message:
+                'Domain is not verified. Bearer secret-token-value-123456 should not appear.',
+              name: 'validation_error',
+            }),
+            {
+              headers: { 'content-type': 'application/json' },
+              status: 422,
+            },
+          ),
+        runtime,
+      ),
+    )
+
+    expect(result).toMatchObject({
+      errorMessage:
+        'Domain is not verified. Bearer [REDACTED] should not appear.',
+      errorName: 'validation_error',
+      ok: false,
+    })
+    expect(messagesByIdempotencyKey.get(result.emailMessageId)).toBeUndefined()
+    expect(
+      messagesByIdempotencyKey.get('team_workspace_invite:invite_1:failed'),
+    ).toMatchObject({
+      error_message:
+        'Domain is not verified. Bearer [REDACTED] should not appear.',
+      error_name: 'validation_error',
+      status: 'failed',
+    })
+    expect(deliveries).toEqual([
+      expect.objectContaining({
+        error_message:
+          'Domain is not verified. Bearer [REDACTED] should not appear.',
+        error_name: 'validation_error',
+        status: 'failed',
+      }),
+    ])
+    expect(JSON.stringify(result)).not.toContain('secret-token-value')
+    expect(JSON.stringify(deliveries)).not.toContain('secret-token-value')
   })
 
   test('operator smoke records an email_config_missing skip as a ledger failure', async () => {

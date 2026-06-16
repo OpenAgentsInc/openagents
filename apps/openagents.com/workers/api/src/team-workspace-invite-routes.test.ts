@@ -1,6 +1,16 @@
-import { Effect } from 'effect'
+import { Effect, Redacted } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import {
+  EmailAddress,
+  ResendEmailSender,
+  WorkerSecret,
+  type ResendEmailConfig,
+} from './config'
+import type {
+  EmailLedgerSendResult,
+  PrivateWorkspaceInviteEmailInput,
+} from './email'
 import { makeTeamWorkspaceInviteRoutes } from './team-workspace-invite-routes'
 import {
   type TeamWorkspaceInviteAcceptInput,
@@ -18,6 +28,7 @@ const futureIso = '2026-06-19T12:00:00.000Z'
 const pastIso = '2026-06-15T12:00:00.000Z'
 
 type Bindings = Readonly<{
+  resend?: ResendEmailConfig | undefined
   operatorToken?: string
   session?: Readonly<{
     user: Readonly<{
@@ -184,25 +195,73 @@ class MemoryInviteStore implements TeamWorkspaceInviteStore {
 
     return { _tag: 'Accepted', invite: accepted, membershipId }
   }
+
+  recordEmailAttempt = async (input: {
+    attemptedAt: string
+    emailMessageId: string
+    inviteId: string
+  }): Promise<TeamWorkspaceInviteRecord | undefined> => {
+    const invite = this.invites.get(input.inviteId)
+
+    if (invite === undefined) {
+      return undefined
+    }
+
+    const updated = {
+      ...invite,
+      emailMessageId: input.emailMessageId,
+      lastSentAt: input.attemptedAt,
+      sendCount: invite.sendCount + 1,
+      updatedAt: input.attemptedAt,
+    }
+    this.invites.set(updated.id, updated)
+
+    return updated
+  }
 }
 
-const makeRoutes = (store: MemoryInviteStore) =>
+const testResendConfig = (): ResendEmailConfig => ({
+  apiKey: Redacted.make(WorkerSecret.make('re_test')),
+  fromEmail: ResendEmailSender.make('OpenAgents <ops@openagents.com>'),
+  replyToEmail: EmailAddress.make('ops@openagents.com'),
+})
+
+const makeRoutes = (
+  store: MemoryInviteStore,
+  options: Readonly<{
+    emailResult?: EmailLedgerSendResult | undefined
+    emailCalls?: Array<PrivateWorkspaceInviteEmailInput> | undefined
+  }> = {},
+) =>
   makeTeamWorkspaceInviteRoutes<Bindings>({
     appendRefreshedSessionCookies: response => response,
     appOrigin: () => 'https://openagents.com',
+    getResendEmailConfig: env => env.resend,
     makeStore: () => store,
     nowIso: () => nowIso,
     requireAdminApiToken: async request =>
       request.headers.get('authorization') === 'Bearer admin-token',
     requireBrowserSession: async (_request, env) => env.session,
+    sendInviteEmailWithLedger: (_env, _config, input) => {
+      options.emailCalls?.push(input)
+
+      return Effect.succeed(
+        options.emailResult ?? {
+          emailMessageId: 'email_msg_invite',
+          ok: true,
+          providerMessageId: 'resend_invite',
+        },
+      )
+    },
   })
 
 const routeRequest = async (
   store: MemoryInviteStore,
   request: Request,
   env: Bindings = {},
+  options: Parameters<typeof makeRoutes>[1] = {},
 ): Promise<Response> => {
-  const effect = makeRoutes(store).routeTeamWorkspaceInviteRequest(
+  const effect = makeRoutes(store, options).routeTeamWorkspaceInviteRequest(
     request,
     env,
     ctx,
@@ -248,6 +307,7 @@ describe('team workspace invite routes', () => {
         role: 'member',
         teamId: 'team_1',
       }),
+      { resend: testResendConfig() },
     )
     const body = await response.json<Record<string, unknown>>()
     const text = JSON.stringify(body)
@@ -259,11 +319,88 @@ describe('team workspace invite routes', () => {
     expect(text).not.toContain('Teammate@Example.COM')
     expect(text).not.toContain('teammate@example.com')
     expect(body.invite).toMatchObject({
+      emailMessageId: null,
       id: 'invite-0',
       projectId: 'project_1',
       role: 'member',
       status: 'pending',
       teamId: 'team_1',
+    })
+    expect(body.email).toMatchObject({
+      emailMessageId: 'email_msg_invite',
+      providerMessageId: 'resend_invite',
+      status: 'accepted',
+    })
+    expect(store.invites.get('invite-0')).toMatchObject({
+      emailMessageId: 'email_msg_invite',
+      lastSentAt: nowIso,
+      sendCount: 1,
+    })
+  })
+
+  test('creates an invite with a safe missing-email-config fallback', async () => {
+    const store = new MemoryInviteStore()
+    const response = await routeRequest(
+      store,
+      operatorCreateRequest({
+        email: 'teammate@example.com',
+        teamId: 'team_1',
+      }),
+    )
+    const body = await response.json<Record<string, unknown>>()
+
+    expect(response.status).toBe(201)
+    expect(body.email).toMatchObject({
+      errorName: 'email_config_missing',
+      status: 'missing_config',
+    })
+    expect(JSON.stringify(body)).not.toContain('teammate@example.com')
+    expect(store.invites.get('invite-0')).toMatchObject({
+      emailMessageId: null,
+      sendCount: 0,
+    })
+  })
+
+  test('reports provider invite-email failures without failing invite creation', async () => {
+    const store = new MemoryInviteStore()
+    const emailCalls: Array<PrivateWorkspaceInviteEmailInput> = []
+    const response = await routeRequest(
+      store,
+      operatorCreateRequest({
+        email: 'teammate@example.com',
+        recipientDisplayName: 'Teammate <One>',
+        teamId: 'team_1',
+        workspaceLabel: 'Private <Workspace>',
+      }),
+      { resend: testResendConfig() },
+      {
+        emailCalls,
+        emailResult: {
+          emailMessageId: 'email_msg_failed',
+          errorMessage: 'Domain is not verified.',
+          errorName: 'validation_error',
+          ok: false,
+        },
+      },
+    )
+    const body = await response.json<Record<string, unknown>>()
+
+    expect(response.status).toBe(201)
+    expect(body.email).toMatchObject({
+      emailMessageId: 'email_msg_failed',
+      errorName: 'validation_error',
+      status: 'failed',
+    })
+    expect(emailCalls).toHaveLength(1)
+    expect(emailCalls[0]).toMatchObject({
+      displayName: 'Teammate <One>',
+      idempotencyKey: 'team_workspace_invite:invite-0:1',
+      workspaceLabel: 'Private <Workspace>',
+    })
+    expect(JSON.stringify(body)).not.toContain('teammate@example.com')
+    expect(store.invites.get('invite-0')).toMatchObject({
+      emailMessageId: 'email_msg_failed',
+      sendCount: 1,
     })
   })
 
@@ -272,10 +409,12 @@ describe('team workspace invite routes', () => {
     const first = await routeRequest(
       store,
       operatorCreateRequest({ email: 'teammate@example.com', teamId: 'team_1' }),
+      { resend: testResendConfig() },
     )
     const second = await routeRequest(
       store,
       operatorCreateRequest({ email: 'teammate@example.com', teamId: 'team_1' }),
+      { resend: testResendConfig() },
     )
     const firstBody = await first.json<Record<string, unknown>>()
     const secondBody = await second.json<Record<string, unknown>>()
@@ -284,6 +423,11 @@ describe('team workspace invite routes', () => {
     expect(second.status).toBe(200)
     expect(firstBody.acceptUrl).not.toBe(secondBody.acceptUrl)
     expect(secondBody.invite).toMatchObject({ id: 'invite-0' })
+    expect(secondBody.email).toMatchObject({
+      emailMessageId: 'email_msg_invite',
+      status: 'accepted',
+    })
+    expect(store.invites.get('invite-0')).toMatchObject({ sendCount: 2 })
   })
 
   test('accepts an invite for the matching signed-in email and activates membership', async () => {

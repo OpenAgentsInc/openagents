@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 
 const usage = `
 Usage:
   node scripts/operator-email-smoke.mjs [--idempotencyKey key]
 
 Checks:
-  - Wrangler production secret names include RESEND_API_KEY and RESEND_FROM_EMAIL.
+  - Wrangler production secret names include RESEND_API_KEY.
+  - Sender/reply-to are configured as production secrets or Worker vars.
   - Remote D1 can inspect email_messages / email_deliveries for the idempotency key.
 
 This script never prints secret values or provider request bodies.
@@ -53,9 +55,22 @@ const secretNames = new Set(
         .filter(name => typeof name === 'string')
     : [],
 )
+const wranglerConfig = readFileSync(
+  new URL('../workers/api/wrangler.jsonc', import.meta.url),
+  'utf8',
+)
+const workerVarNames = new Set(
+  [...wranglerConfig.matchAll(/"([A-Z0-9_]+)"\s*:/g)].map(match => match[1]),
+)
+const configuredName = name => secretNames.has(name) || workerVarNames.has(name)
+const configuredLocation = name =>
+  secretNames.has(name)
+    ? 'secret'
+    : workerVarNames.has(name)
+      ? 'worker-var'
+      : 'missing'
 const hasApiKey = secretNames.has('RESEND_API_KEY')
-const hasFromEmail = secretNames.has('RESEND_FROM_EMAIL')
-const hasReplyTo = secretNames.has('RESEND_REPLY_TO_EMAIL')
+const hasFromEmail = configuredName('RESEND_FROM_EMAIL')
 const configStatus = hasApiKey && hasFromEmail ? 'present' : 'missing'
 const safeSqlKey = idempotencyKey.replaceAll("'", "''")
 const ledgerJson = run('bunx', [
@@ -85,9 +100,9 @@ const ledger = JSON.parse(ledgerJson)
 const rows = ledger?.[0]?.results ?? []
 
 console.log(`Email config: ${configStatus}`)
-console.log(`RESEND_API_KEY: ${hasApiKey ? 'present' : 'missing'}`)
-console.log(`RESEND_FROM_EMAIL: ${hasFromEmail ? 'present' : 'missing'}`)
-console.log(`RESEND_REPLY_TO_EMAIL: ${hasReplyTo ? 'present' : 'missing'}`)
+console.log(`RESEND_API_KEY: ${hasApiKey ? 'present' : 'missing'} (secret)`)
+console.log(`RESEND_FROM_EMAIL: ${configuredLocation('RESEND_FROM_EMAIL')}`)
+console.log(`RESEND_REPLY_TO_EMAIL: ${configuredLocation('RESEND_REPLY_TO_EMAIL')}`)
 console.log(`Idempotency: ${idempotencyKey}`)
 
 if (rows.length === 0) {

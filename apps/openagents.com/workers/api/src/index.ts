@@ -165,6 +165,7 @@ import {
   sendAutopilotDecisionEmailWithLedger,
   sendOrderSitesTransactionalEmailWithLedger,
   sendOutOfCreditsEmailWithLedger,
+  sendPrivateWorkspaceInviteEmailWithLedger,
 } from './email'
 import {
   type EmailCampaignDispatcherResult,
@@ -6310,9 +6311,16 @@ const teamWorkspaceInviteRoutes =
   makeTeamWorkspaceInviteRoutes<WorkerBindings, VerifiedSession>({
     appendRefreshedSessionCookies,
     appOrigin: getAppOrigin,
+    getResendEmailConfig,
     makeStore: env => makeD1TeamWorkspaceInviteStore(openAgentsDatabase(env)),
     requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
     requireBrowserSession,
+    sendInviteEmailWithLedger: (env, config, input) =>
+      sendPrivateWorkspaceInviteEmailWithLedger(
+        openAgentsDatabase(env),
+        config,
+        input,
+      ),
   })
 
 const tenantClientRoutes = makeTenantClientRoutes({
