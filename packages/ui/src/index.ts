@@ -1,6 +1,5 @@
 export * from './primitives'
 export * from './shared'
-export * from './background'
 export * from './forms'
 export * from './login'
 export * from './layout'

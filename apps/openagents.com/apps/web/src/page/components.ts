@@ -3,6 +3,7 @@ import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 import { docsRouter } from '../route'
+import { lightBeamsView } from '../scene/lightBeamsElement'
 import * as Ui from '../ui'
 import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
@@ -621,28 +622,28 @@ const loginShowcaseView = <Message>(): Html => {
         [Ui.className<Message>('mt-8 grid gap-4')],
         [
           previewBox<Message>(
-            'Light rays (background)',
-            'lightRays',
+            'Light beams (background)',
+            'lightBeamsView / oa-light-beams',
             h.div(
               [
                 Ui.className<Message>(
                   'relative h-[260px] overflow-hidden bg-[#000]',
                 ),
               ],
-              [Ui.lightRays<Message>()],
+              [lightBeamsView<Message>()],
             ),
           ),
           previewBox<Message>(
             'Login screen',
-            'loginScreen',
+            'loginForm + light beams',
             h.div(
               [
                 Ui.className<Message>(
-                  'relative grid h-[460px] place-items-center overflow-hidden px-4',
+                  'relative grid h-[460px] place-items-center overflow-hidden bg-[#000] px-4',
                 ),
               ],
               [
-                Ui.lightRays<Message>(),
+                lightBeamsView<Message>(),
                 h.div(
                   [
                     Ui.className<Message>(
