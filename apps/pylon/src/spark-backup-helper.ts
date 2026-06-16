@@ -6,11 +6,18 @@
 //
 // Feasibility (verified 2026-06-15): the package is WASM-based, not native
 // bindings. Its nodejs entry imports and initializes cleanly under the Pylon
-// Bun runtime (Bun 1.3.x). The only native pieces (`better-sqlite3`, `pg`,
-// `mysql2`) are OPTIONAL storage backends; the SDK falls back to filesystem
-// storage via `storageDir`, so no native module is required for our
-// receive-only fallback. We therefore use the SDK directly in-process rather
-// than an isolated helper binary.
+// Bun runtime (Bun 1.3.x). We use the SDK directly in-process rather than an
+// isolated helper binary.
+//
+// Storage under Bun (#5080): the SDK's DEFAULT `connect()` path uses a
+// better-sqlite3-backed storage backend, and better-sqlite3 is NOT supported by
+// Bun (oven-sh/bun#4290). The only other shipped backends are MySQL/Postgres.
+// So `connect()` fails at "initialize database" under Pylon's Bun runtime. We
+// fix this by building the SDK via `SdkBuilder.new(config, seed)` and injecting
+// a Bun-native `bun:sqlite` storage backend through `.withStorage()` (see
+// `spark-bun-storage.ts`, a faithful port of the SDK's reference storage). The
+// legacy `connect()` path is kept only as a fallback for injected test modules
+// that do not expose `SdkBuilder`.
 //
 // Inert by default: this module performs NO work and imports NO SDK code until
 // the backup is opt-in enabled AND a Breez/Spark credential + a wallet seed are
@@ -27,7 +34,10 @@
 // locally only under `--show-local-target`).
 // ---------------------------------------------------------------------------
 
+import { mkdirSync } from "node:fs"
+import * as nodePath from "node:path"
 import type { SparkBackupCommand, SparkBackupHelper, WalletCommandResult } from "./wallet"
+import { SparkBunStorage } from "./spark-bun-storage"
 
 // Embedded default OpenAgents Breez/Spark API key. This key was committed to the
 // repo historically (commit 783f33d5f, as the Rust EmbeddedDefault) and is
@@ -54,9 +64,36 @@ type BreezSparkSdk = {
   disconnect?(): Promise<void> | void
 }
 
+/**
+ * Minimal structural view of the SDK's `Storage` interface — only what
+ * `withStorage()` needs to accept our `bun:sqlite` backend. The real SDK type
+ * has 28 methods; `SparkBunStorage` implements all of them faithfully.
+ */
+type BreezSparkStorage = unknown
+
+/**
+ * Minimal structural view of `SdkBuilder` (d.ts line ~1658). We inject a
+ * `bun:sqlite`-backed storage here to bypass the better-sqlite3 default that
+ * fails under Bun (#5080).
+ */
+type BreezSparkSdkBuilder = {
+  withStorage(storage: BreezSparkStorage): BreezSparkSdkBuilder
+  build(): Promise<BreezSparkSdk>
+}
+
 type BreezSparkModule = {
   defaultConfig(network: string): { apiKey?: string } & Record<string, unknown>
-  connect(request: {
+  // Builder path (real SDK + Bun storage). Preferred under Pylon's Bun runtime.
+  // `SdkBuilder.new` is a STATIC factory method on the class (not a constructor).
+  SdkBuilder?: {
+    new: (
+      config: Record<string, unknown>,
+      seed: { type: "mnemonic"; mnemonic: string; passphrase?: string },
+    ) => BreezSparkSdkBuilder
+  }
+  // Legacy default path (better-sqlite3 storage). Fails under Bun; kept only for
+  // injected test modules that do not expose SdkBuilder.
+  connect?(request: {
     config: Record<string, unknown>
     seed: { type: "mnemonic"; mnemonic: string; passphrase?: string }
     storageDir?: string
@@ -109,10 +146,53 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
 async function loadBreezSparkModule(): Promise<BreezSparkModule> {
   // Dynamic import so packaging stays clean and the dependency is optional.
   const mod = (await import(/* @vite-ignore */ "@breeztech/breez-sdk-spark")) as unknown as BreezSparkModule
-  if (typeof mod?.connect !== "function" || typeof mod?.defaultConfig !== "function") {
-    throw new Error("breez sdk spark module missing connect/defaultConfig")
+  if (typeof mod?.defaultConfig !== "function") {
+    throw new Error("breez sdk spark module missing defaultConfig")
+  }
+  // We need at least one way to construct an SDK: the Bun-friendly SdkBuilder
+  // (preferred) or the legacy connect() default.
+  if (typeof mod?.SdkBuilder?.new !== "function" && typeof mod?.connect !== "function") {
+    throw new Error("breez sdk spark module missing SdkBuilder.new/connect")
   }
   return mod
+}
+
+/**
+ * Build a short-lived SDK session. Prefers `SdkBuilder.new(...).withStorage(...)`
+ * with a `bun:sqlite` backend so storage initializes under Pylon's Bun runtime
+ * (#5080). Falls back to the legacy `connect()` default only when the module
+ * does not expose `SdkBuilder` (e.g. injected test fakes).
+ */
+async function buildSparkSdk(
+  mod: BreezSparkModule,
+  sdkConfig: Record<string, unknown>,
+  seed: { type: "mnemonic"; mnemonic: string; passphrase?: string },
+  storageDir: string | undefined,
+  timeoutMs: number,
+): Promise<BreezSparkSdk> {
+  if (typeof mod.SdkBuilder?.new === "function") {
+    // Match the SDK's default storage location: a `storage.sql` file inside the
+    // configured storage directory. With no storageDir we use an in-process,
+    // ephemeral DB (":memory:") so a session still works without on-disk state.
+    let dbPath = ":memory:"
+    if (storageDir) {
+      // Match createDefaultStorage: ensure the data dir exists, db file is
+      // `storage.sql` inside it. Private local wallet state only.
+      mkdirSync(storageDir, { recursive: true })
+      dbPath = nodePath.join(storageDir, "storage.sql")
+    }
+    const storage = new SparkBunStorage(dbPath)
+    const builder = mod.SdkBuilder.new(sdkConfig, seed).withStorage(storage)
+    return await withTimeout(builder.build(), timeoutMs, "spark sdk build")
+  }
+  if (typeof mod.connect === "function") {
+    return await withTimeout(
+      mod.connect({ config: sdkConfig, seed, storageDir }),
+      timeoutMs,
+      "spark sdk connect",
+    )
+  }
+  throw new Error("breez sdk spark module exposes neither SdkBuilder nor connect")
 }
 
 /**
@@ -142,14 +222,12 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
       const mod = await withTimeout(loadModule(), timeoutMs, "spark sdk load")
       const sdkConfig = mod.defaultConfig(network)
       sdkConfig.apiKey = config.apiKey
-      sdk = await withTimeout(
-        mod.connect({
-          config: sdkConfig,
-          seed: { type: "mnemonic", mnemonic: config.mnemonic, passphrase: undefined },
-          storageDir: config.storageDir,
-        }),
+      sdk = await buildSparkSdk(
+        mod,
+        sdkConfig,
+        { type: "mnemonic", mnemonic: config.mnemonic, passphrase: undefined },
+        config.storageDir,
         timeoutMs,
-        "spark sdk connect",
       )
 
       switch (command) {
