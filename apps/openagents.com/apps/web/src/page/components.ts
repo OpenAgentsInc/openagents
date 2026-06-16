@@ -442,6 +442,13 @@ const sidebarView = <Message>(selectedFamily?: string): Html => {
             ],
             ['All families'],
           ),
+          h.a(
+            [
+              h.Href('/components/login'),
+              Ui.className<Message>(navLinkClass(selectedFamily === 'login')),
+            ],
+            ['Login (rendered)'],
+          ),
           ...Array.map(families, family =>
             h.a(
               [
@@ -470,6 +477,10 @@ const sidebarView = <Message>(selectedFamily?: string): Html => {
 
 const articleView = <Message>(selectedFamily?: string): Html => {
   const h = html<Message>()
+
+  if (selectedFamily === 'login') {
+    return loginShowcaseView<Message>()
+  }
 
   const knownFamily = families.find(family => family.id === selectedFamily)
   const isIndex =
@@ -522,6 +533,157 @@ const articleView = <Message>(selectedFamily?: string): Html => {
       ),
       ...(isIndex ? [liveSamplesView<Message>()] : []),
       h.div([Ui.className<Message>('mt-8 grid gap-4')], familySections),
+    ],
+  )
+}
+
+// A labeled preview frame: caption + export name above the live component on a
+// pure-black surface (so the gallery shows the real rendered thing, not prose).
+const previewBox = <Message>(
+  caption: string,
+  exportName: string,
+  child: Html,
+): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [Ui.className<Message>('border border-[#222] bg-white/[0.02] p-4 sm:p-5')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'mb-3 flex flex-wrap items-baseline justify-between gap-2',
+          ),
+        ],
+        [
+          h.p(
+            [
+              Ui.className<Message>(
+                'm-0 font-mono text-[0.75rem] uppercase tracking-[0.08em] text-white/40',
+              ),
+            ],
+            [caption],
+          ),
+          h.code(
+            [Ui.className<Message>('font-mono text-[0.75rem] text-white/40')],
+            [exportName],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'rounded border border-[#1a1a1a] bg-[#000] p-5',
+          ),
+        ],
+        [child],
+      ),
+    ],
+  )
+}
+
+// The Login showcase: the real loginScreen/loginForm from @openagentsinc/ui,
+// rendered live, plus the smaller components it is composed from.
+const loginShowcaseView = <Message>(): Html => {
+  const h = html<Message>()
+  const githubHref = '/login/github'
+
+  return h.article(
+    [
+      Ui.className<Message>(
+        'min-w-0 border border-[#222] bg-[#010102] p-5 sm:p-6',
+      ),
+    ],
+    [
+      h.p(
+        [
+          Ui.className<Message>(
+            'mb-3 font-mono text-base text-white/35 sm:text-sm',
+          ),
+        ],
+        ['Internal - design-system workbench'],
+      ),
+      h.h1(
+        [
+          Ui.className<Message>(
+            'm-0 text-balance text-3xl font-medium tracking-normal text-[#f1efe8] sm:text-4xl',
+          ),
+        ],
+        ['Login'],
+      ),
+      h.p(
+        [Ui.className<Message>('mt-3 max-w-[76ch] text-base/7 text-white/60')],
+        [
+          'The login screen and form rendered live from @openagentsinc/ui (loginScreen / loginForm), composed from the input-group and button primitives shown below. This is the real component, before it ships on the /login page.',
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('mt-8 grid gap-4')],
+        [
+          previewBox<Message>(
+            'Login screen',
+            'loginScreen',
+            h.div(
+              [
+                Ui.className<Message>(
+                  'grid h-[460px] place-items-center overflow-hidden px-4',
+                ),
+              ],
+              [
+                h.div(
+                  [Ui.className<Message>('grid w-full max-w-[360px] gap-10')],
+                  [
+                    h.div(
+                      [
+                        Ui.className<Message>(
+                          'text-center text-2xl font-medium tracking-tight text-[#f1efe8]',
+                        ),
+                      ],
+                      ['OpenAgents'],
+                    ),
+                    Ui.loginForm<Message>({ githubHref }),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          previewBox<Message>(
+            'Login form',
+            'loginForm',
+            Ui.loginForm<Message>({ githubHref }),
+          ),
+          previewBox<Message>(
+            'Email field',
+            'inputGroup',
+            Ui.inputGroup<Message>({
+              id: 'showcase-login-email',
+              name: 'email',
+              label: 'Email address',
+              type: 'email',
+              placeholder: 'you@example.com',
+            }),
+          ),
+          previewBox<Message>(
+            'Submit button',
+            'button (primary, block)',
+            Ui.button<Message>({
+              label: 'Send sign-in link',
+              variant: 'primary',
+              block: true,
+            }),
+          ),
+          previewBox<Message>(
+            'GitHub button',
+            'linkButton (secondary, block)',
+            Ui.linkButton<Message>({
+              href: githubHref,
+              label: 'Continue with GitHub',
+              variant: 'secondary',
+              block: true,
+            }),
+          ),
+        ],
+      ),
     ],
   )
 }
