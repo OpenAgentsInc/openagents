@@ -137,6 +137,7 @@ import {
 } from "./presence"
 import {
   admitPayoutTarget,
+  appendLedgerEvent,
   classifyMdkWallet,
   classifySparkBackupReceive,
   prepareSparkBackupReceive,
@@ -2243,7 +2244,10 @@ async function main() {
           }
         }
         process.stdout.write(`${JSON.stringify({ status, result, tipReadinessClaim: tipReadinessClaim === null ? null : "tipRecipientReadiness" in (tipReadinessClaim as Record<string, unknown>) ? "claimed" : tipReadinessClaim }, null, 2)}\n`)
-        return
+        // Exit explicitly: resolving the Lightning Address opens the opt-in Spark
+        // backup SDK, which keeps a background connection alive and would
+        // otherwise hang this one-shot command after printing (#5162).
+        process.exit(0)
       }
       if (command === "receive") {
         const amount = Number(options.amount)
@@ -2317,8 +2321,10 @@ async function main() {
           body.localTargetNote = "LOCAL/PRIVATE: do not share, log, or post this raw target."
         }
         process.stdout.write(`${JSON.stringify(body, null, 2)}\n`)
-        process.exitCode = result.ok ? 0 : 1
-        return
+        // Exit explicitly: the opt-in Spark backup SDK keeps a background
+        // connection alive, so a one-shot command would otherwise hang after
+        // printing (openagents #5162). Bun flushes stdout on exit.
+        process.exit(result.ok ? 0 : 1)
       }
       if (command === "backup-status") {
         const sparkOptions = parsePsionicOptions(walletArgs)
@@ -2342,7 +2348,9 @@ async function main() {
           }
         }
         process.stdout.write(`${JSON.stringify(body, null, 2)}\n`)
-        return
+        // Exit explicitly: backup-status opens the opt-in Spark backup SDK,
+        // which keeps a background connection alive (#5162).
+        process.exit(body.ok ? 0 : 1)
       }
       if (command === "send") {
         const destinationRef = options["destination-ref"]

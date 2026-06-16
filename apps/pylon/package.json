@@ -1,6 +1,6 @@
 {
   "name": "@openagentsinc/pylon",
-  "version": "1.0.0-rc.7",
+  "version": "1.0.0-rc.8",
   "description": "Headless, CLI-only Pylon contributor node built on Bun and Effect",
   "private": false,
   "main": "src/index.ts",
@@ -84,7 +84,8 @@
   "optionalDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.172",
     "@breeztech/breez-sdk-spark": "^0.15.1",
-    "@openai/codex-sdk": "^0.139.0"
+    "@openai/codex-sdk": "^0.139.0",
+    "mysql2": "^3.11.0"
   },
   "devDependencies": {
     "bun-types": "^1.0.0"
