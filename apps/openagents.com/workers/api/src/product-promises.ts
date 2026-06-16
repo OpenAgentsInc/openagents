@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-16.8'
+export const PublicProductPromisesVersion = '2026-06-16.9'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -297,7 +297,7 @@ export const publicProductPromisesDocument = () => {
         safeCopy:
           'The v1.0 release candidate (1.0.0-rc.1) is built and available for testing: signed Pylon binaries for macOS + Linux (four platforms, ed25519 release-signed, default-on verified OTA) and a signed + Apple-notarized Autopilot Desktop app that bundles the node. Install/test guide at https://openagents.com/INSTALL.md; report on the Release Candidates forum. RC channel only — stable v1.0.0 and network-wide earning remain gated.',
         unsafeCopy:
-          'Do not claim Pylon v1.0.0 is the stable release or that anyone can install and automatically earn Bitcoin; this is a release candidate for testing. Auto-update is default-on and signature-verified in the build, but a live production auto-update (an installed RC pulling and applying a newer signed RC end-to-end) has not yet been verified in prod — that is pending the next RC; do not claim it is proven.',
+          'Do not claim Pylon v1.0.0 is the stable release or that anyone can install and automatically earn Bitcoin; this is a release candidate for testing. Auto-update is default-on, signature-verified, and now PROVEN live in production (2026-06-16): an installed standalone binary fetched the signed feed at updates.openagents.com, verified the artifact sha256 + ed25519 against the pinned key (fail-closed), and atomically applied it. The signed-binary OTA feed and the npm CLI RC are separate surfaces; the feed advances only when the signed-binary publish flow runs.',
         evidenceRefs: [
           'apps/pylon/package.json',
           'apps/pylon/scripts/build-rc-binaries.sh',
@@ -326,7 +326,7 @@ export const publicProductPromisesDocument = () => {
         safeCopy:
           'The v1.0 release candidate (1.0.0-rc.1) is out for testing on macOS and Linux: a signed standalone Pylon binary and a signed + notarized Autopilot Desktop app, both with default-on verified auto-update. It is a release candidate, not stable 1.0.0. Windows/WSL is deliberately out of scope by owner decision (2026-06-10), not a pending gap.',
         unsafeCopy:
-          'Do not claim a stable universal Pylon release works on every computer; this is an rc for testing. Auto-update is default-on and signature-verified in the build, but a live production auto-update (an installed RC fetching and applying a newer signed RC end-to-end) has not yet been verified in prod — pending the next RC; do not claim it is proven.',
+          'Do not claim a stable universal Pylon release works on every computer; this is an rc for testing. Auto-update is default-on, signature-verified, and now PROVEN live in production (2026-06-16): an installed standalone binary fetched the signed feed, verified sha256 + ed25519 against the pinned key (fail-closed), and atomically applied the update. The signed-binary OTA feed and the npm CLI RC are separate surfaces.',
         evidenceRefs: [
           'apps/pylon/package.json',
           'apps/pylon/scripts/build-rc-binaries.sh',

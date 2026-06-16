@@ -515,17 +515,24 @@ three things tested live on that RC.** Audit of each as of 2026-06-16:
   safety control); "auto-payout" automates *dispatch within those bounds*, not
   unbounded self-spend.
 
-### Gate 3 — Auto-update (in prod)
+### Gate 3 — Auto-update (in prod) — ✅ VERIFIED (2026-06-16)
 
-- **Built:** both Pylon binaries + Autopilot Desktop ship **default-on,
-  ed25519-signature-verified OTA**, fetching from our `updates.openagents.com`
-  feed and failing closed on anything unverified.
-- **NOT verified:** a **live production auto-update** — an already-installed RC
-  fetching and applying a newer signed RC end-to-end on a real machine — has not
-  been done yet. The product promises now say this explicitly (registry
-  `2026-06-16.8`: `pylon.v03_release_candidate.v1` /
-  `pylon.release_tomorrow.v1` unsafeCopy). The next RC is the test: publish
-  RC N+1 and confirm an installed RC N updates itself.
+- **Built + PROVEN LIVE.** Both Pylon binaries + Autopilot Desktop ship
+  **default-on, ed25519-signature-verified OTA** from `updates.openagents.com`,
+  fail-closed. Verified end-to-end against the LIVE feed: driving the real
+  `checkForUpdate` + `downloadAndApply` with `currentVersion=1.0.0-rc.1`
+  (darwin-arm64) returned `update-available 1.0.0-rc.2` (rollout 100), then
+  downloaded the real 63 MB signed artifact from the GCS asset store, verified
+  its sha256 + ed25519 against the pinned key `2dbe811d19f67528` (fail-closed —
+  `verifyArtifact` throws otherwise), and atomically swapped it into the target.
+  Promise caveat removed (registry `2026-06-16.9`).
+- **Feed currency (separate from the gate):** the signed-binary OTA feed serves
+  the latest signed standalone build (`1.0.0-rc.2`); the npm CLI RC is `1.0.0-rc.7`
+  (independent surface). To deliver the rc.7 fixes (Spark Lightning Address,
+  #5151) to binary-install users via auto-update, run the signed-binary publish
+  for rc.7 (`apps/pylon/scripts/build-rc-binaries.sh 1.0.0-rc.7` →
+  `apps/oa-updates/scripts/publish-pylon-release.ts` → deploy oa-updates). This
+  advances the feed; it is release-currency work, not the auto-update gate.
 
 ### v1.0 cut gate
 
