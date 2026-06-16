@@ -195,7 +195,13 @@ epics below; not all lands today — the aim is the main spine.
   `forge.template.ecommerce.inventory_campaign.v1` now creates the public-safe
   inventory-aware ad-campaign workspace input, with stock/imagery/spend-cap,
   Commerce QA, authority blocker, and stats/receipt gates documented in
-  `docs/blitz/forge/2026-06-16-ecommerce-prefilled-workspace.md`.
+  `docs/blitz/forge/2026-06-16-ecommerce-prefilled-workspace.md`. **E2 legal
+  (#5100) landed:** typed seed template
+  `forge.template.legal.forms_intake_copilot.v1` now creates the public-safe
+  forms/intake copilot workspace input, with NDA-style packet, review checklist,
+  source-link, suggested time-entry, no-legal-advice, human-review, and
+  authority-blocker gates documented in
+  `docs/blitz/forge/2026-06-16-legal-prefilled-workspace.md`.
 - **Epic G — fold the terminal-agent-systems into the Forge Autopilot Coder
   (#5107, long arc):** runtime spine already built (Agent Runtime Kernel + tools,
   Pack A/B/C, worktree materialization); next, surface diff-review, plan/todo,

@@ -100,6 +100,11 @@ preparation. It does not turn Forge into legal counsel, does not issue legal
 advice, and must route jurisdiction-sensitive or rights-impacting decisions to
 a qualified human reviewer.
 
+Implementation note: #5100 now has a typed seed template at
+`apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.ts`
+and the operator/audit note at
+`docs/blitz/forge/2026-06-16-legal-prefilled-workspace.md`.
+
 | Forge stage | Legal stage name    | Input                                                                         | Output                                                                                  | Validation and evidence                                                                   |
 | ----------- | ------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | Signal      | Matter Signal       | Intake form, document upload, client question, deadline, or workflow request. | Matter/workflow candidate.                                                              | Source refs, requester identity state, jurisdiction caveat, confidentiality class.        |
