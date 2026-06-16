@@ -13,24 +13,19 @@ import * as PublicHeader from './publicHeader'
 // contract documented in `packages/ui/src/README.md`.
 //
 // The signup form is a plain server-posted HTML form (no Foldkit message
-// wiring) so the page stays static and public. It posts to a placeholder
-// intake endpoint; seeded workspace creation remains operator-owned through
-// the workspace API and invite URL.
+// wiring) so the page stays static and public. It posts to a bounded intake
+// endpoint; seeded workspace creation remains operator-owned through the
+// workspace API and invite URL.
 //
 // SCOPE / STUBS (do NOT implement here -- these are separate issues):
 //   - C2 (#5093): lead-enrichment hook via our own API (operator seeding,
 //     invite link, engagement tracking). NOT built here.
-//   - C4 (#5095): the actual shared-Slack-channel Slack Connect invite. This
-//     page only renders the OPT-IN checkbox; sending the Slack Connect invite
-//     is a separate issue and is NOT built here.
+//   - C4 (#5095): Slack Connect is an opt-in intake + manual invite handoff.
+//     The other workspace must still accept the Slack Connect invitation.
 //
 // Naming note: keep all copy/code generic product language. Do NOT reference
 // any partner/company/person names anywhere.
 
-// Placeholder intake endpoint. TODO(#5093/C2): replace this no-op target with
-// the real intake, operator seeding, invite-link, and engagement-tracking hook.
-// For now the form posts here so the page is functional without implementing
-// other issues.
 const intakeAction = '/api/public/business-signup'
 
 const pageShellClass = 'h-dvh overflow-auto bg-[#000] text-[#f1efe8]'
@@ -168,8 +163,6 @@ const workspaceInviteView = <Message>(): Html => {
 const slackOptInView = <Message>(): Html => {
   const h = html<Message>()
 
-  // Opt-in shared Slack channel. This is ONLY the opt-in UI. The actual Slack
-  // Connect invite is a separate issue (#5095 / C4) and is NOT built here.
   return h.label(
     [
       h.For('business-slack-optin'),
@@ -224,6 +217,16 @@ const signupFormView = <Message>(): Html => {
         required: true,
         placeholder: 'Acme Co.',
         autocomplete: 'organization',
+      }),
+      labelledField<Message>({
+        id: 'business-email',
+        name: 'contactEmail',
+        label: 'Work email',
+        type: 'email',
+        required: true,
+        placeholder: 'you@example.com',
+        autocomplete: 'email',
+        inputmode: 'email',
       }),
       labelledField<Message>({
         id: 'business-website',

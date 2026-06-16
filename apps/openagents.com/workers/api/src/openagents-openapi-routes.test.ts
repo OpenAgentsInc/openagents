@@ -267,12 +267,18 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(body, '/api/autopilot/decisions', 'get').operationId,
     ).toBe('listAutopilotDecisions')
     expect(
-      operationAt(body, '/api/autopilot/decisions/{decisionRef}/actions', 'post')
-        .operationId,
+      operationAt(
+        body,
+        '/api/autopilot/decisions/{decisionRef}/actions',
+        'post',
+      ).operationId,
     ).toBe('actOnAutopilotDecision')
     expect(
-      operationAt(body, '/api/autopilot/decisions/{decisionRef}/actions', 'post')
-        .parameters,
+      operationAt(
+        body,
+        '/api/autopilot/decisions/{decisionRef}/actions',
+        'post',
+      ).parameters,
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -823,6 +829,8 @@ const srcRoot = import.meta.dirname
 const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // Agency / services-business vertical pack (internal omni + operator surfaces;
   // session/operator-gated, not part of the public OpenAPI surface yet):
+  '/api/workspaces',
+  '/api/workspaces/{param}',
   '/api/autopilot/work/{param}/lane-c-fanout',
   '/api/lists/{param}',
   '/api/lists/{param}/subscribers',

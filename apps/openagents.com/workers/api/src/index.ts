@@ -134,6 +134,7 @@ import {
   listBlueprintProgramRuns,
   recordBlueprintProgramRun,
 } from './blueprint/repositories/program-runs'
+import { handleBusinessSignupApi } from './business-signup-routes'
 import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
 import { makeD1BuyerPaymentLedgerStore } from './buyer-payment-ledger'
 import { makeCheckoutPageRoutes } from './checkout-page-routes'
@@ -6455,6 +6456,11 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: '/api/public/home',
     handler: request => handlePublicHomeApi(request),
+  },
+  {
+    path: '/api/public/business-signup',
+    handler: (request, env) =>
+      handleBusinessSignupApi(request, openAgentsDatabase(env)),
   },
   {
     path: '/api/public/product-promises',

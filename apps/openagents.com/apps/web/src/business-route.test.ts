@@ -96,6 +96,8 @@ describe('business route', () => {
 
     // Required signup fields, including a first-class phone field.
     expect(rendered).toContain('name="businessName"')
+    expect(rendered).toContain('name="contactEmail"')
+    expect(rendered).toContain('type="email"')
     expect(rendered).toContain('name="website"')
     expect(rendered).toContain('name="phone"')
     expect(rendered).toContain('type="tel"')

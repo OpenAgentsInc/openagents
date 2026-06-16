@@ -460,6 +460,11 @@ const publicProjectionSurfaces = [
     route: '/api/public/metrics/accepted-outcomes-per-kwh',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/business-signup-routes.ts',
+    route: '/api/public/business-signup',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',
@@ -570,9 +575,7 @@ const discoveredPublicRoutes = [
   ...new Set(
     routeFiles.flatMap(path =>
       Array.from(
-        read(path).matchAll(
-          /\/api\\?\/public(?:\\?\/[A-Za-z0-9_.$-]+)*/g,
-        ),
+        read(path).matchAll(/\/api\\?\/public(?:\\?\/[A-Za-z0-9_.$-]+)*/g),
       ).map(match => normalizedPublicRoute(match[0])),
     ),
   ),

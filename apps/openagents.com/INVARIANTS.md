@@ -1219,6 +1219,10 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     the receipt-backed accepted-outcome seed, metric definition, and product
     promise registry — compliant (`generatedAt`, contract, evidence-state
     labels, caveats, and modeled-vs-measured gate).
+  - `POST /api/public/business-signup` — live-at-write intake receipt over the
+    inserted business signup row — compliant (`generatedAt`, contract,
+    public-safe request id/status only; no email, phone, website, or freeform
+    request text echoed).
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no

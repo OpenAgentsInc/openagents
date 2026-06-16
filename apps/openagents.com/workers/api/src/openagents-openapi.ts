@@ -1,8 +1,8 @@
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect, Schema as S } from 'effect'
 
-import { PublicAgentProposalRecoveryRoute } from './agent-rate-limit-recovery'
 import { AcceptedOutcomesPerKwhEndpoint } from './accepted-outcomes-per-kwh'
+import { PublicAgentProposalRecoveryRoute } from './agent-rate-limit-recovery'
 import {
   AGENT_SEARCH_BASIC_RECOVERY_PRODUCT_ID,
   AGENT_SEARCH_BASIC_RECOVERY_SCOPE_REF,
@@ -202,6 +202,51 @@ const schemaComponents = (): JsonSchema => ({
   ),
   PublicHome: objectSummary(
     'Public-safe homepage JSON discovery document with canonical docs and live data endpoint refs for the public homepage.',
+  ),
+  BusinessSignupRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['businessName', 'contactEmail', 'phone'],
+    properties: {
+      businessName: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 200,
+        description: 'Business or organization name for the intake request.',
+      },
+      contactEmail: {
+        type: 'string',
+        format: 'email',
+        maxLength: 320,
+        description:
+          'Work email for follow-up and, when opted in, the Slack Connect invite handoff.',
+      },
+      website: {
+        type: 'string',
+        format: 'uri',
+        maxLength: 500,
+        description: 'Optional public website used to prepare the workspace.',
+      },
+      phone: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 80,
+        description: 'Phone number for operator follow-up.',
+      },
+      helpWith: {
+        type: 'string',
+        maxLength: 2000,
+        description: 'Optional description of the work requested.',
+      },
+      requestSlackChannel: {
+        type: 'boolean',
+        description:
+          'When true, queues an operator Slack Connect invite handoff. Slack Connect still requires the other workspace to accept the invite.',
+      },
+    },
+  },
+  BusinessSignupResponse: objectSummary(
+    'Public-safe business signup receipt with request id, source route, requestedSlackChannel, slackConnectStatus (not_requested or manual_invite_pending at intake), nextAction, generatedAt, staleness contract, and the explicit authority boundary. It does not echo contact email, phone, website, or private request text.',
   ),
   AutopilotWorkRequest: objectSummary(
     'Typed openagents.autopilot_work_request.v1 delegated coding-work request. It carries public-safe task, repository, placement, payment, and forum policy refs only, plus an optional launchPolicy ({kind: scheduled, launchAt UTC ISO, launchWindowMinutes 5-1440}) that queues the order for a later launch with placement decided at launch time. Do not include secrets, raw prompts, private repo archives, raw logs, wallet material, invoices, preimages, or provider credentials.',
@@ -2361,6 +2406,34 @@ const paths = (): JsonSchema => ({
           '#/components/schemas/PublicHome',
         ),
         ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/business-signup': {
+    post: operation({
+      operationId: 'createBusinessSignupRequest',
+      summary: 'Capture business signup and Slack Connect opt-in',
+      description:
+        'Captures the public /business signup request. If requestSlackChannel is true, the request is stored with slackConnectStatus=manual_invite_pending for operator follow-up; Slack Connect invite creation and the other workspace acceptance remain external/manual steps. The public response is an intake receipt only and grants no Slack, workspace, spend, payout, or agent authority.',
+      tags: ['Business'],
+      security: publicRead,
+      responses: {
+        '201': okJson(
+          'Public-safe business signup receipt.',
+          '#/components/schemas/BusinessSignupResponse',
+        ),
+        ...errorResponses(),
+      },
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/BusinessSignupRequest' },
+          },
+          'application/x-www-form-urlencoded': {
+            schema: { $ref: '#/components/schemas/BusinessSignupRequest' },
+          },
+        },
       },
     }),
   },
@@ -7980,6 +8053,7 @@ export const openAgentsOpenApiDocument = (): Effect.Effect<
     tags: [
       { name: 'Discovery' },
       { name: 'Public Proof' },
+      { name: 'Business' },
       { name: 'Agents' },
       { name: 'Search' },
       { name: 'Payments' },

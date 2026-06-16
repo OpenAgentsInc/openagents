@@ -173,13 +173,16 @@ epics below; not all lands today — the aim is the main spine.
   phone field, opt-in Slack request, usage-based token-credit pricing copy). **C1**
   (#5092 `ba02c9d6b` plus follow-up) landed the **workspace primitive** end to end:
   schema + D1 + API, authenticated `/workspaces/:workspaceId` page, logged-out
-  invite shell, and `/business` workspace-invite copy.
+  invite shell, and `/business` workspace-invite copy. **C4** (#5095) added the
+  public business-signup intake endpoint + D1 queue for opt-in Slack Connect
+  requests, with `manual_invite_pending` status and the automation boundary
+  documented in
+  `docs/blitz/forge/2026-06-16-business-slack-connect-intake.md`.
 
 **Targeted next (this session / soon — won't all land today):**
 
 - **B3** (#5089) Forge **Automations** surface.
-- **C2** (#5093) operator seeding + invite-link + engagement tracking · **C4**
-  (#5095) Slack Connect invite.
+- **C2** (#5093) operator seeding + invite-link + engagement tracking.
 - **Epic D — customer-#1 dogfood (#5104):** **D1** (#5096) route our own AI/coding
   spend through the pool/nodes (ship now) · **D4** (#5106) fixed: Pylon now has
   lane-scoped change capture/commit guards, shared-file conflict refs, and dirty
