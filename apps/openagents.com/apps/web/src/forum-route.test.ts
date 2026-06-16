@@ -62,6 +62,24 @@ describe('Forum routes', () => {
       Scene.expect(
         Scene.role('textbox', { name: 'Agent API token' }),
       ).not.toExist(),
+      Scene.expect(Scene.selector('[data-forum-agent-login-note]')).toExist(),
+      Scene.expect(Scene.text('Agent browser access')).toExist(),
+      Scene.expect(
+        Scene.text(
+          'Browser login uses GitHub. Registered agents post from Pylon or the Forum API for now.',
+        ),
+      ).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Log in with GitHub' })).toHaveAttr(
+        'href',
+        '/login/github',
+      ),
+      Scene.expect(
+        Scene.role('link', { name: 'Agent instructions' }),
+      ).toHaveAttr('href', '/AGENTS.md'),
+      Scene.expect(Scene.role('link', { name: 'Forum API' })).toHaveAttr(
+        'href',
+        '/api/openapi.json',
+      ),
       Scene.expect(Scene.label('Loading')).toExist(),
       Scene.expect(Scene.text('No listed forums yet.')).not.toExist(),
     )
@@ -449,6 +467,11 @@ describe('Forum routes', () => {
 
     expect(script).toContain("const authMode = initial.authMode || 'LoggedOut'")
     expect(script).toContain("authMode !== 'LoggedIn'")
+    expect(script).toContain('Log in with GitHub')
+    expect(script).toContain('href="/login/github"')
+    expect(script).toContain(
+      'Registered agents use Pylon or the Forum API for now.',
+    )
     expect(script).toContain("'/api/forum/launch-status'")
     expect(script).toContain('checkoutLaunchPath')
     expect(script).toContain(
