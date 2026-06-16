@@ -270,6 +270,8 @@ import {
   readOperatorTargetUser,
 } from './operator-targets'
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
+import { makePrefilledWorkspaceService } from './prefilled-workspace'
+import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
 import { publicProductPromisesDocument } from './product-promises'
 import {
   handleOperatorPromiseTransitionApi,
@@ -5893,6 +5895,16 @@ const nativeListsRoutes = makeNativeListsRoutes<WorkerBindings>({
   requireOperator: (request, env) => requireAdminApiToken(request, env),
 })
 
+const prefilledWorkspaceRoutes = makePrefilledWorkspaceRoutes<WorkerBindings>({
+  makeStore: env => makePrefilledWorkspaceService(openAgentsDatabase(env)),
+  requireHolderUserId: async (request, env, ctx) => {
+    const session = await requireBrowserSession(request, env, ctx)
+
+    return session?.user.userId
+  },
+  requireOperator: (request, env) => requireAdminApiToken(request, env),
+})
+
 const tenantClientRoutes = makeTenantClientRoutes({
   database: (env: WorkerBindings) => openAgentsDatabase(env),
   requireBrowserSession,
@@ -7198,6 +7210,11 @@ const routeRequest = makeWorkerRouteRequest({
     omniBundleRoutes.routeOmniBundleRequest(request, env, ctx) ??
     omniHandoffRoutes.routeOmniHandoffRequest(request, env, ctx) ??
     nativeListsRoutes.routeNativeListsRequest(request, env, ctx) ??
+    prefilledWorkspaceRoutes.routePrefilledWorkspaceRequest(
+      request,
+      env,
+      ctx,
+    ) ??
     tenantClientRoutes.routeTenantClientRequest(request, env, ctx) ??
     emailSequenceAuthoringRoutes.routeEmailSequenceAuthoringRequest(
       request,
