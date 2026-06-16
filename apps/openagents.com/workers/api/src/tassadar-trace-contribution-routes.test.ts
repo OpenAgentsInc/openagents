@@ -190,6 +190,7 @@ type Harness = Readonly<{
     options: Readonly<{
       body?: Record<string, unknown>
       tokenUserId?: string
+      method?: string
     }>,
   ) => Promise<Response>
 }>
@@ -249,7 +250,7 @@ const makeHarness = (
             ? {}
             : { authorization: `Bearer oa_agent_${options.tokenUserId}` }),
         },
-        method: 'POST',
+        method: options.method ?? 'POST',
       }
 
       if (options.body !== undefined) {
@@ -541,5 +542,96 @@ describe('tassadar trace contribution routes (#5052)', () => {
 
     expect(projection.state).toBe('paired')
     expect(projection.verificationChallengeRef).toBe('challenge-1')
+  })
+})
+
+const discoverPath = (query: string): string =>
+  `/api/training/contributions/next-unpaired${query}`
+
+describe('tassadar validator auto-discovery (#5121)', () => {
+  it('returns the oldest pending contribution from a distinct worker device', async () => {
+    const harness = makeHarness()
+    await harness.route(submitPath, {
+      body: submissionBody(),
+      tokenUserId: WORKER_USER,
+    })
+
+    const response = await harness.route(
+      discoverPath('?validatorDeviceRef=device.validator.1'),
+      { method: 'GET', tokenUserId: VALIDATOR_USER },
+    )
+    const body = (await response.json()) as {
+      contribution: {
+        leaseRef: string
+        workloadFamily: string
+        workerPylonDeviceRef: string
+      } | null
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.contribution?.leaseRef).toBe(LEASE_REF)
+    expect(body.contribution?.workloadFamily).toBe('article_closeout')
+    expect(body.contribution?.workerPylonDeviceRef).toBe('device.worker.1')
+  })
+
+  it('skips a contribution whose worker device is the asking validator (no self-validate)', async () => {
+    const harness = makeHarness()
+    await harness.route(submitPath, {
+      body: submissionBody(),
+      tokenUserId: WORKER_USER,
+    })
+
+    // The only pending contribution is from device.worker.1; asking as that same
+    // device must not hand it back to itself.
+    const response = await harness.route(
+      discoverPath('?validatorDeviceRef=device.worker.1'),
+      { method: 'GET', tokenUserId: WORKER_USER },
+    )
+    const body = (await response.json()) as { contribution: unknown }
+
+    expect(response.status).toBe(200)
+    expect(body.contribution).toBeNull()
+  })
+
+  it('returns null when nothing is pending', async () => {
+    const harness = makeHarness()
+    const response = await harness.route(
+      discoverPath('?validatorDeviceRef=device.validator.1'),
+      { method: 'GET', tokenUserId: VALIDATOR_USER },
+    )
+    const body = (await response.json()) as { contribution: unknown }
+
+    expect(response.status).toBe(200)
+    expect(body.contribution).toBeNull()
+  })
+
+  it('requires the validatorDeviceRef query parameter', async () => {
+    const harness = makeHarness()
+    const response = await harness.route(discoverPath(''), {
+      method: 'GET',
+      tokenUserId: VALIDATOR_USER,
+    })
+
+    expect(response.status).toBe(400)
+  })
+
+  it('requires an agent bearer token', async () => {
+    const harness = makeHarness()
+    const response = await harness.route(
+      discoverPath('?validatorDeviceRef=device.validator.1'),
+      { method: 'GET' },
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  it('rejects a non-GET method', async () => {
+    const harness = makeHarness()
+    const response = await harness.route(
+      discoverPath('?validatorDeviceRef=device.validator.1'),
+      { method: 'POST', tokenUserId: VALIDATOR_USER },
+    )
+
+    expect(response.status).toBe(405)
   })
 })

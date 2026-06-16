@@ -8181,6 +8181,16 @@ export default {
             (env as { TASSADAR_TRACE_PAIRING?: string })
               .TASSADAR_TRACE_PAIRING === '1',
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+          // Intentionally empty (#5121). The trust anchor is a separate-device
+          // replay, so the server must NEVER fabricate a validator's replay
+          // digest — a server-assigned candidate would have to carry a digest it
+          // did not compute. Verdicts are produced by the validator PUSH path
+          // instead: a validator node auto-discovers the next unpaired
+          // contribution (GET /api/training/contributions/next-unpaired), replays
+          // the committed fixture on its own distinct device, and POSTs the
+          // digest to /replay-verdict (which pairs + builds the exact_trace_replay
+          // challenge). This scheduled tick stays a no-op pairer by design; do not
+          // wire it to a digest source.
           resolveValidatorCandidates: async () => [],
           store: makeD1TrainingTraceContributionStore(openAgentsDatabase(env)),
         }),

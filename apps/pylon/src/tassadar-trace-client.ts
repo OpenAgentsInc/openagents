@@ -152,6 +152,31 @@ export function parseTassadarWorkload(input: unknown): TassadarTraceWorkload {
   }
 }
 
+async function getAgentJson(
+  fetchFn: typeof fetch,
+  url: string,
+  token: string,
+): Promise<
+  { ok: true; json: unknown } | { ok: false; status: number; error: string }
+> {
+  const response = await fetchFn(url, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${token}`,
+    },
+  })
+  const json = (await response.json().catch(() => null)) as unknown
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: errorFromJson(json, `trace discovery ${response.status}`),
+    }
+  }
+  return { ok: true, json }
+}
+
 async function postAgentJson(
   fetchFn: typeof fetch,
   url: string,
@@ -335,5 +360,109 @@ export async function submitReplayVerdict(
     reason: "verdict_submitted",
     replayDigest: trace.traceDigest,
     replayDigestRef,
+  }
+}
+
+// #5121: the next pending worker contribution this validator should replay,
+// returned by GET /api/training/contributions/next-unpaired. Public-safe refs
+// only; the workload itself is the committed fixture both sides run.
+export type DiscoveredContribution = {
+  contributionRef: string
+  leaseRef: string
+  trainingRunRef: string
+  windowRef: string
+  workloadFamily: TassadarTraceWorkloadFamily
+  sampledWindow: { startStep: number; endStep: number }
+  workerPylonDeviceRef: string
+}
+
+export type DiscoverNextInput = {
+  validatorDeviceRef: string
+  trainingRunRef?: string
+}
+
+// VALIDATOR auto-discovery: ask the server for the oldest pending worker
+// contribution from a DISTINCT device. Returns `contribution: null` when nothing
+// is pending (the node is idle, not in error).
+export async function discoverNextUnpaired(
+  options: TraceClientOptions,
+  input: DiscoverNextInput,
+): Promise<{
+  ok: boolean
+  contribution: DiscoveredContribution | null
+  error?: string
+}> {
+  const fetchFn = options.fetchFn ?? fetch
+  const token = requireAgentToken(options)
+  const baseUrl = normalizeBaseUrl(options.baseUrl)
+  const validatorDeviceRef = assertRef(input.validatorDeviceRef, "--device-ref")
+  const params = new URLSearchParams({ validatorDeviceRef })
+  if (input.trainingRunRef !== undefined && input.trainingRunRef !== "") {
+    params.set("trainingRunRef", assertRef(input.trainingRunRef, "--run-ref"))
+  }
+
+  const result = await getAgentJson(
+    fetchFn,
+    `${baseUrl}/api/training/contributions/next-unpaired?${params.toString()}`,
+    token,
+  )
+
+  if (!result.ok) {
+    return { contribution: null, error: result.error, ok: false }
+  }
+
+  const contribution =
+    (result.json as Record<string, unknown> | null)?.contribution ?? null
+
+  return {
+    contribution: contribution as DiscoveredContribution | null,
+    ok: true,
+  }
+}
+
+export type ValidatorAutoInput = {
+  validatorDeviceRef: string
+  // The committed fixture workload both sides run (e.g. the pinned self-test
+  // workload). Replayed against whatever contribution discovery returns.
+  workload: TassadarTraceWorkload
+  trainingRunRef?: string
+}
+
+// §4.5 VALIDATOR, automated (#5121): discover the next unpaired contribution from
+// a DISTINCT worker, then replay the fixture and submit the verdict — no manual
+// lease/workload. Opt-in (only runs when the caller invokes it). Returns an idle
+// result when nothing is pending so a watch loop can simply wait and retry.
+export async function runValidatorAuto(
+  options: TraceClientOptions,
+  input: ValidatorAutoInput,
+): Promise<Record<string, unknown>> {
+  const discovery = await discoverNextUnpaired(options, {
+    validatorDeviceRef: input.validatorDeviceRef,
+    ...(input.trainingRunRef !== undefined
+      ? { trainingRunRef: input.trainingRunRef }
+      : {}),
+  })
+
+  if (!discovery.ok) {
+    return { error: discovery.error, ok: false, reason: "discover_failed" }
+  }
+
+  if (discovery.contribution === null) {
+    return { ok: true, paired: false, reason: "idle_no_pending" }
+  }
+
+  const target = discovery.contribution
+  const verdict = await submitReplayVerdict(options, {
+    leaseRef: target.leaseRef,
+    validatorDeviceRef: input.validatorDeviceRef,
+    workload: input.workload,
+    workloadFamily: target.workloadFamily,
+  })
+
+  return {
+    ...verdict,
+    discoveredContributionRef: target.contributionRef,
+    paired: verdict.ok === true,
+    workerPylonDeviceRef: target.workerPylonDeviceRef,
   }
 }

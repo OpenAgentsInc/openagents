@@ -115,9 +115,11 @@ import {
 import {
   assertWorkloadFamily,
   parseTassadarWorkload,
+  runValidatorAuto,
   submitReplayVerdict,
   submitTraceContribution,
 } from "./tassadar-trace-client"
+import { loadPinnedTassadarSelfTestWorkload } from "@openagentsinc/tassadar-executor/self-test"
 import { readFile as readFileForPacket } from "node:fs/promises"
 import {
   createBootstrapSummary,
@@ -1356,42 +1358,77 @@ async function main() {
         // the verb; the background assignment worker stays PYLON_ASSIGNMENT_WORKER
         // gated and OFF by default until #5061).
         const agentToken = optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN
-        const leaseRef = optionString(options, "lease-ref")
-        if (!leaseRef) throw new Error(`training ${command} requires --lease-ref`)
-        const workloadFamily = assertWorkloadFamily(optionString(options, "workload-family"))
-        const workloadPath = optionString(options, "workload")
-        if (!workloadPath) {
-          // TODO(#5053): auto-discover the workload from the assignment dispatch
-          // ("next contribution to validate" / the claimed lease's dispatch
-          // payload). Until that server-side selection lands on main, the
-          // workload is supplied explicitly via --workload <dispatch.json>.
-          throw new Error(`training ${command} requires --workload <dispatch.json> (auto-discovery pending #5053)`)
-        }
-        const workload = parseTassadarWorkload(
-          JSON.parse(await readFileForPacket(workloadPath, "utf8")) as unknown,
-        )
-        const deviceRef =
+        const traceNet = { baseUrl, ...(agentToken ? { agentToken } : {}) }
+        const resolveDeviceRef = async (): Promise<string> =>
           optionString(options, "device-ref") ??
           (await ensurePylonLocalState(createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env))).identity.nodeId
-        const traceNet = { baseUrl, ...(agentToken ? { agentToken } : {}) }
-        if (command === "submit-trace") {
-          result = await submitTraceContribution(traceNet, {
-            leaseRef,
-            pylonDeviceRef: deviceRef,
-            workload,
-            workloadFamily,
-            ...(optionString(options, "assignment-ref") ? { assignmentRef: optionString(options, "assignment-ref")! } : {}),
-          })
+
+        // #5121: opt-in validator AUTO-RUN. `pylon training validate --auto`
+        // discovers the next pending worker contribution from a DISTINCT device
+        // (GET /api/training/contributions/next-unpaired), replays the committed
+        // pinned fixture, and submits the verdict — no manual --lease-ref/--workload.
+        // `--watch` loops until a pairing (or --max-iterations), sleeping
+        // --interval-ms between idle polls. Single-shot otherwise.
+        if (command === "validate" && options.auto !== undefined) {
+          const validatorDeviceRef = await resolveDeviceRef()
+          const workload = parseTassadarWorkload(loadPinnedTassadarSelfTestWorkload())
+          const runRef = optionString(options, "run-ref")
+          const watch = options.watch !== undefined
+          const intervalRaw = Number(optionString(options, "interval-ms") ?? "15000")
+          const intervalMs = Number.isFinite(intervalRaw) && intervalRaw > 0 ? intervalRaw : 15000
+          const maxRaw = Number(optionString(options, "max-iterations") ?? (watch ? "0" : "1"))
+          const maxIterations = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : watch ? 0 : 1
+          let iterations = 0
+          let last: Record<string, unknown> = { ok: true, paired: false, reason: "idle_no_pending" }
+          for (;;) {
+            iterations += 1
+            last = await runValidatorAuto(traceNet, {
+              validatorDeviceRef,
+              workload,
+              ...(runRef ? { trainingRunRef: runRef } : {}),
+            })
+            const paired = (last as { paired?: boolean }).paired === true
+            const failed = (last as { ok?: boolean }).ok === false
+            if (!watch || paired || failed) break
+            if (maxIterations > 0 && iterations >= maxIterations) break
+            await new Promise((resolve) => setTimeout(resolve, intervalMs))
+          }
+          result = { ...last, iterations, mode: "validate_auto" }
         } else {
-          result = await submitReplayVerdict(traceNet, {
-            leaseRef,
-            validatorDeviceRef: deviceRef,
-            workload,
-            workloadFamily,
-          })
+          const leaseRef = optionString(options, "lease-ref")
+          if (!leaseRef) throw new Error(`training ${command} requires --lease-ref`)
+          const workloadFamily = assertWorkloadFamily(optionString(options, "workload-family"))
+          const workloadPath = optionString(options, "workload")
+          if (!workloadPath) {
+            throw new Error(
+              command === "validate"
+                ? `training validate requires --workload <dispatch.json>, or use 'validate --auto' for auto-discovery (#5121)`
+                : `training submit-trace requires --workload <dispatch.json>`,
+            )
+          }
+          const workload = parseTassadarWorkload(
+            JSON.parse(await readFileForPacket(workloadPath, "utf8")) as unknown,
+          )
+          const deviceRef = await resolveDeviceRef()
+          if (command === "submit-trace") {
+            result = await submitTraceContribution(traceNet, {
+              leaseRef,
+              pylonDeviceRef: deviceRef,
+              workload,
+              workloadFamily,
+              ...(optionString(options, "assignment-ref") ? { assignmentRef: optionString(options, "assignment-ref")! } : {}),
+            })
+          } else {
+            result = await submitReplayVerdict(traceNet, {
+              leaseRef,
+              validatorDeviceRef: deviceRef,
+              workload,
+              workloadFamily,
+            })
+          }
         }
       } else {
-        throw new Error("usage: pylon training plan|activate|claim|admit|reconcile|closeout|status|submit-trace|validate ...")
+        throw new Error("usage: pylon training plan|activate|claim|admit|reconcile|closeout|status|submit-trace|validate [--auto [--watch]] ...")
       }
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
       const okFlag = (result as { ok?: boolean } | null)?.ok

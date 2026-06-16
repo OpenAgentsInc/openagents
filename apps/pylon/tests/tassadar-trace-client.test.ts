@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import {
   assertWorkloadFamily,
+  discoverNextUnpaired,
   parseTassadarWorkload,
+  runValidatorAuto,
   submitReplayVerdict,
   submitTraceContribution,
   TASSADAR_TRACE_WORKLOAD_FAMILIES,
@@ -196,6 +198,104 @@ describe("validate (validator)", () => {
         { leaseRef: "lease.abc", validatorDeviceRef: "pylon_v", workload: fakeWorkload, workloadFamily: "sudoku_trace" },
       ),
     ).rejects.toThrow(/agent-token/)
+  })
+})
+
+describe("validator auto-discovery + auto-run (#5121)", () => {
+  const discovered = {
+    contributionRef: "contribution.tassadar_executor_trace.lease.xyz.kernel_trace",
+    leaseRef: "lease.xyz",
+    sampledWindow: { endStep: 32, startStep: 0 },
+    trainingRunRef: "run.tassadar.executor.20260615",
+    windowRef: "training.window.w1",
+    workerPylonDeviceRef: "device.worker.9",
+    workloadFamily: "kernel_trace",
+  }
+
+  test("discoverNextUnpaired GETs the endpoint with validatorDeviceRef + bearer", async () => {
+    const rec = recordingFetch(() => ({ json: { contribution: discovered } }))
+    const result = await discoverNextUnpaired(
+      { agentToken: "validator-tok", baseUrl: base, fetchFn: rec.fetchFn },
+      { validatorDeviceRef: "device.validator.1" },
+    )
+    expect(result.ok).toBe(true)
+    expect(result.contribution?.leaseRef).toBe("lease.xyz")
+    expect(rec.calls).toHaveLength(1)
+    expect(rec.calls[0]!.method).toBe("GET")
+    expect(rec.calls[0]!.auth).toBe("Bearer validator-tok")
+    expect(rec.calls[0]!.url).toBe(
+      `${base}/api/training/contributions/next-unpaired?validatorDeviceRef=device.validator.1`,
+    )
+  })
+
+  test("discoverNextUnpaired returns null contribution when nothing is pending", async () => {
+    const rec = recordingFetch(() => ({ json: { contribution: null } }))
+    const result = await discoverNextUnpaired(
+      { agentToken: "tok", baseUrl: base, fetchFn: rec.fetchFn },
+      { validatorDeviceRef: "device.validator.1" },
+    )
+    expect(result.ok).toBe(true)
+    expect(result.contribution).toBeNull()
+  })
+
+  test("discoverNextUnpaired surfaces a server error without throwing", async () => {
+    const rec = recordingFetch(() => ({ json: { reason: "nope" }, status: 500 }))
+    const result = await discoverNextUnpaired(
+      { agentToken: "tok", baseUrl: base, fetchFn: rec.fetchFn },
+      { validatorDeviceRef: "device.validator.1" },
+    )
+    expect(result.ok).toBe(false)
+    expect(result.contribution).toBeNull()
+  })
+
+  test("runValidatorAuto discovers then replays + submits the verdict", async () => {
+    const rec = recordingFetch(url =>
+      url.includes("next-unpaired")
+        ? { json: { contribution: discovered } }
+        : { json: { challenge: { state: "Verified" }, contribution: { state: "paired" } } },
+    )
+    const result = await runValidatorAuto(
+      {
+        agentToken: "validator-tok",
+        baseUrl: base,
+        executor: fakeExecutor("digestZ"),
+        fetchFn: rec.fetchFn,
+      },
+      { validatorDeviceRef: "device.validator.1", workload: fakeWorkload },
+    )
+    expect(result.ok).toBe(true)
+    expect(result.paired).toBe(true)
+    expect(result.discoveredContributionRef).toBe(discovered.contributionRef)
+    // Two calls: GET discovery, then POST the verdict against the discovered lease.
+    expect(rec.calls).toHaveLength(2)
+    expect(rec.calls[0]!.method).toBe("GET")
+    expect(rec.calls[1]!.url).toBe(`${base}/api/training/leases/lease.xyz/replay-verdict`)
+    const body = rec.calls[1]!.body as Record<string, unknown>
+    expect(body.validatorDeviceRef).toBe("device.validator.1")
+    expect(body.workloadFamily).toBe("kernel_trace")
+  })
+
+  test("runValidatorAuto is idle (no verdict POST) when nothing is pending", async () => {
+    const rec = recordingFetch(() => ({ json: { contribution: null } }))
+    const result = await runValidatorAuto(
+      { agentToken: "tok", baseUrl: base, executor: fakeExecutor("d"), fetchFn: rec.fetchFn },
+      { validatorDeviceRef: "device.validator.1", workload: fakeWorkload },
+    )
+    expect(result.ok).toBe(true)
+    expect(result.paired).toBe(false)
+    expect(result.reason).toBe("idle_no_pending")
+    expect(rec.calls).toHaveLength(1)
+  })
+
+  test("runValidatorAuto surfaces a discovery failure", async () => {
+    const rec = recordingFetch(() => ({ json: { reason: "boom" }, status: 500 }))
+    const result = await runValidatorAuto(
+      { agentToken: "tok", baseUrl: base, executor: fakeExecutor("d"), fetchFn: rec.fetchFn },
+      { validatorDeviceRef: "device.validator.1", workload: fakeWorkload },
+    )
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("discover_failed")
+    expect(rec.calls).toHaveLength(1)
   })
 })
 

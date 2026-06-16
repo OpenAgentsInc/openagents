@@ -416,6 +416,72 @@ const routeReplayVerdict = <Bindings extends TassadarTraceContributionRouteEnv>(
     })
   })
 
+// #5121: validator auto-discovery. A validator node asks "what is the next
+// pending worker contribution I should replay?" so it never needs an out-of-band
+// lease/workload handed to it. Returns the OLDEST pending contribution whose
+// worker device is DISTINCT from the asking validator device (so the validator
+// never self-validates), as public-safe refs only — no model/steps, no payment
+// material. The workload itself is the committed public fixture both sides run,
+// so no workload payload is conveyed here. The actual verdict still goes through
+// the agent-gated /replay-verdict route, which re-enforces device-distinctness.
+const routeNextUnpairedContribution = <
+  Bindings extends TassadarTraceContributionRouteEnv,
+>(
+  dependencies: TassadarTraceContributionRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Effect.Effect<HttpResponse, TassadarTraceContributionRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAgent(dependencies, request, env)
+
+    const url = new URL(request.url)
+    const validatorDeviceRef = (
+      url.searchParams.get('validatorDeviceRef') ?? ''
+    ).trim()
+
+    if (validatorDeviceRef === '') {
+      return yield* new TrainingTraceContributionStoreError({
+        kind: 'validation_error',
+        reason: 'validatorDeviceRef query parameter is required.',
+      })
+    }
+
+    const trainingRunRef = url.searchParams.get('trainingRunRef')?.trim()
+    const contributionStore = dependencies.makeContributionStore(env)
+    const pending = yield* Effect.tryPromise({
+      catch: trainingTraceContributionStoreErrorFromUnknown,
+      try: () =>
+        contributionStore.listPendingContributions({
+          limit: 25,
+          ...(trainingRunRef === undefined || trainingRunRef === ''
+            ? {}
+            : { trainingRunRef }),
+        }),
+    })
+
+    // Oldest pending contribution from a worker device distinct from the asking
+    // validator. Same-device rows are skipped (the verdict route would 403 them).
+    const next = pending.find(
+      candidate => candidate.pylonDeviceRef !== validatorDeviceRef,
+    )
+
+    if (next === undefined) {
+      return noStoreJsonResponse({ contribution: null })
+    }
+
+    return noStoreJsonResponse({
+      contribution: {
+        contributionRef: next.contributionRef,
+        leaseRef: next.leaseRef,
+        sampledWindow: next.sampledWindow,
+        trainingRunRef: next.trainingRunRef,
+        windowRef: next.windowRef,
+        workerPylonDeviceRef: next.pylonDeviceRef,
+        workloadFamily: next.workloadFamily,
+      },
+    })
+  })
+
 export const makeTassadarTraceContributionRoutes = <
   Bindings extends TassadarTraceContributionRouteEnv,
 >(
@@ -441,6 +507,19 @@ export const makeTassadarTraceContributionRoutes = <
         env,
         decodeURIComponent(traceSubmissionMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const nextUnpairedMatch =
+      /^\/api\/training\/contributions\/next-unpaired$/.exec(url.pathname)
+
+    if (nextUnpairedMatch !== null) {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeNextUnpairedContribution(dependencies, request, env).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
     }
 
     const replayVerdictMatch =
