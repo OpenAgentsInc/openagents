@@ -33,6 +33,9 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   Developer-ID-signed + Apple-notarized + stapled (Gatekeeper-accepted), attached to
   the release and mirrored to `gs://openagentsgemini-oa-updates/desktop/`. A unified
   release hub now lives at **`docs/DEPLOYMENT.md`** (linked from `AGENTS.md`).
+  **`rc.4` followed (npm + GitHub prerelease, CLI/npm-only):**
+  `@openagentsinc/pylon@1.0.0-rc.4` on the `rc` dist-tag — ships the #5121
+  validator auto-run (`validate --auto`) + the #5077 heartbeat fix. See §B.
 - **Spark offline-tipping chain → code-complete (16th):** #5078 (receive-only backup,
   slices 1-3) + #5080 (Bun storage) + #5085 (legacy `migrate-spark` rewire) all landed.
   See §E.
@@ -86,7 +89,10 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   - **Pylon:** `discoverNextUnpaired()` + `runValidatorAuto()` + opt-in CLI
     **`pylon training validate --auto [--watch …]`** (loads the committed pinned
     fixture, discovers → replays → submits via `/replay-verdict`; no manual
-    `--lease-ref`/`--workload`). Ships in the **next Pylon RC**.
+    `--lease-ref`/`--workload`). **SHIPPED as `@openagentsinc/pylon@1.0.0-rc.4`**
+    (npm `rc` dist-tag, `latest` stays `0.2.5`; GitHub prerelease
+    `pylon-v1.0.0-rc.4`). rc.4 also carries the #5077 heartbeat fix. CLI/npm-only
+    RC (no new desktop DMG).
   - **`resolveValidatorCandidates()` stays intentionally empty by design** — the
     trust anchor is a separate-device replay, so the server must never fabricate a
     validator digest. Verdicts are produced by the validator **push** path
@@ -95,9 +101,10 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
     `requireAgent`, settlement stays `requireAdmin` + bounded-spend (pairing/
     discovery only — no payout-authority change). 6 new worker route tests + 6 new
     Pylon client tests; full deploy gate green.
-  - Remaining to fully close: next Pylon RC carrying `validate --auto`, then a live
-    auto-validation that pairs a real distinct device → `Verified` (unblocks #5061
-    self-serve). Contributors follow along on the issue + forum thread.
+  - Remaining to fully close: a live auto-validation on rc.4 that pairs a real
+    distinct device → `Verified` (this is also the #5061 self-serve proof).
+    Contributors can run it now: `npm i -g @openagentsinc/pylon@rc` →
+    `pylon training validate --auto --watch`. Follow along on the issue + forum.
 - **#5051** epic → **#5061** first external-validator dry-run with **Orrery**
   (volunteered, live non-owner node). This is the one thing that proves the loop:
   pair a real worker + a **distinct** validator device, produce the first
