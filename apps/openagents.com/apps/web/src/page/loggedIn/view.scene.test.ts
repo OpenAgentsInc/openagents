@@ -895,6 +895,10 @@ describe('logged-in workroom sidebar', () => {
             promiseId: 'forge.metrics.test',
             workOrders: [
               forgeWorkOrderFixture({
+                state: 'scheduled',
+                workOrderRef: 'wo_forge_scheduled',
+              }),
+              forgeWorkOrderFixture({
                 state: 'queued_or_running',
                 workOrderRef: 'wo_forge_running',
               }),
@@ -928,8 +932,17 @@ describe('logged-in workroom sidebar', () => {
         providerAccountPool: providerPoolLoadedFixture(),
       }),
       Scene.expect(
+        Scene.selector('[data-forge-stage-progress="triage"]'),
+      ).toHaveAttr('data-forge-stage-progress-pending', '1'),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-progress="triage"]'),
+      ).toHaveAttr('data-forge-stage-progress-completed', '0'),
+      Scene.expect(
         Scene.selector('[data-forge-stage-progress="codegen"]'),
       ).toHaveAttr('data-forge-stage-progress-active', '1'),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-progress="codegen"]'),
+      ).toHaveAttr('data-forge-stage-progress-completed', '0'),
       Scene.expect(
         Scene.selector('[data-forge-stage-progress="codegen"]'),
       ).toHaveAttr('data-forge-stage-progress-provenance', 'live'),
@@ -945,6 +958,9 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(
         Scene.selector('[data-forge-stage-progress="monitor"]'),
       ).toHaveAttr('data-forge-stage-progress-failed', '3'),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-progress="monitor"]'),
+      ).toHaveAttr('data-forge-stage-progress-completed', '0'),
       Scene.expect(Scene.text('1 unsafe Run ref(s) omitted')).toExist(),
       Scene.expect(Scene.text('/Users/christopher/private-work')).not.toExist(),
       Scene.expect(

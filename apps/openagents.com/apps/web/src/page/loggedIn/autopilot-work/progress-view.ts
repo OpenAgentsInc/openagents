@@ -299,6 +299,13 @@ const progressStatusForWork = (
   return work.state === 'scheduled' ? 'pending' : 'running'
 }
 
+const closeoutEvidenceAllowed = (state: AutopilotWorkState): boolean =>
+  state === 'accepted' ||
+  state === 'accepted_free_slice' ||
+  state === 'delivered' ||
+  state === 'rejected' ||
+  state === 'revision_required'
+
 const eventItems = (
   events: ReadonlyArray<AutopilotWorkEvent>,
 ): Readonly<{ items: ReadonlyArray<ForgeRunProgressItem>; refs: RefBundle }> => {
@@ -349,6 +356,8 @@ export const projectForgeRunProgress = (
   const hasTerminalEvidence =
     terminalItem === null ||
     lifecycle.items.some(item => item.kind === terminalItem.kind)
+  const showCloseoutEvidence =
+    work.executionCloseout !== null && closeoutEvidenceAllowed(work.state)
   const baseItems: ReadonlyArray<ForgeRunProgressItem> = [
     {
       kind: 'requested',
@@ -360,7 +369,7 @@ export const projectForgeRunProgress = (
     },
     ...lifecycle.items,
     ...(terminalItem === null || hasTerminalEvidence ? [] : [terminalItem]),
-    ...(work.executionCloseout === null
+    ...(!showCloseoutEvidence
       ? []
       : [
           {
@@ -390,7 +399,9 @@ export const projectForgeRunProgress = (
             ? 'blocked'
             : work.state === 'invalid' || work.state === 'rejected'
               ? 'failed'
-              : 'active',
+              : work.state === 'scheduled'
+                ? 'pending'
+                : 'active',
     },
   ]
   const omittedUnsafeRefCount =

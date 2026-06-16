@@ -202,6 +202,63 @@ describe('Forge Run progress projection', () => {
     expect(view.items.map(item => item.kind)).toContain('delivered')
   })
 
+  test.each([
+    ['scheduled', 'pending', 'pending'],
+    ['queued_or_running', 'running', 'active'],
+    ['blocked', 'blocked', 'blocked'],
+    ['invalid', 'failed', 'failed'],
+  ] as const)(
+    'does not treat %s Runs as complete when stale closeout refs are present',
+    (state, expectedStatus, expectedItemStatus) => {
+      const view = projectForgeRunProgress(
+        work(state, { executionCloseout: closeout() }),
+        [
+          event(
+            1,
+            state === 'scheduled'
+              ? 'scheduled'
+              : state === 'blocked' || state === 'invalid'
+                ? 'blocked'
+                : 'running',
+            state,
+          ),
+        ],
+      )
+
+      expect(view.status).toBe(expectedStatus)
+      expect(view.items.map(item => item.kind)).not.toContain('closeout')
+      expect(
+        view.items
+          .filter(item => item.kind !== 'requested')
+          .some(item => item.status === 'completed'),
+      ).toBe(false)
+      expect(view.items.at(-1)?.status).toBe(expectedItemStatus)
+    },
+  )
+
+  test.each([
+    ['revision_required', 'blocked', 'blocked'],
+    ['rejected', 'failed', 'failed'],
+  ] as const)(
+    'keeps %s Runs non-completed even when closeout evidence exists',
+    (state, expectedStatus, expectedTerminalStatus) => {
+      const eventKind = state === 'revision_required' ? 'revision_required' : 'rejected'
+      const view = projectForgeRunProgress(work(state), [
+        event(1, 'queued', 'queued_or_running'),
+        event(2, eventKind, state),
+      ])
+
+      expect(view.status).toBe(expectedStatus)
+      expect(view.items.map(item => item.kind)).toContain('closeout')
+      expect(view.items.find(item => item.kind === eventKind)?.status).toBe(
+        expectedTerminalStatus,
+      )
+      expect(view.items.find(item => item.kind === 'next_action')?.status).toBe(
+        expectedTerminalStatus,
+      )
+    },
+  )
+
   test('omits unsafe progress refs before projection', () => {
     const view = projectForgeRunProgress(
       work('delivered', {

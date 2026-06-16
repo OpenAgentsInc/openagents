@@ -147,6 +147,10 @@ summaries derived from loaded Run summaries, with live provenance, bounded
 Run-detail links, progress chips, and unsafe-ref omission handling. Full
 per-Run lifecycle evidence remains in `/autopilot`.
 
+Implementation status, 2026-06-16: #5128 adds closeout/progress consistency
+regressions and fixes the progress projection so stale closeout refs cannot
+make scheduled, running, blocked, or invalid Runs appear completed.
+
 ### G3 - Resume, Rewind, Session Navigation
 
 Systems: system 26 Resume/Rewind/Session Navigation, system 39 Remote
