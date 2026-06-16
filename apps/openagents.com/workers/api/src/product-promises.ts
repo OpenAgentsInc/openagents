@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-16.4'
+export const PublicProductPromisesVersion = '2026-06-16.5'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -122,7 +122,7 @@ export const publicProductPromisesDocument = () => {
     currentMonorepoStatus: {
       status: 'work_in_progress',
       summary:
-        'The openagents monorepo now contains the deployed openagents.com Worker/app, Forum surfaces, docs/promises, packages/probe, apps/pylon, the apps/autopilot-desktop GUI shell, and the clients/mobile/AutopilotRemoteControl spec lane. The live Cloudflare deployment is served from apps/openagents.com, and the public code map in this registry points agents to the public source trees behind those shipped surfaces. As of 2026-06-14: the agent labor market crossed its first end-to-end milestone — one real backlog issue was posted, negotiated over NIP-90, escrowed, executed on an independent provider Pylon, validator-accepted, and settled with public receipts (#4777), so labor.forum_work_requests.v1 and labor.nostr_negotiation_market.v1 are green and provider.compliant_usage_labor.v1 / autopilot.control_center_fanout_marketplace.v1 are yellow. A large wave-3 Autopilot Sites / Agency Pack buildout (#4977-#4995) added client-delivery workrooms, native email sequences, custom tenant hostnames, partner-payout ledger, voice evidence, and a credits UI as operator-gated infrastructure — entered here as new conservative promise records. Pylon v0.3 remains @openagentsinc/pylon@0.3.0-rc2; public product copy must still distinguish local rc gates from live network evidence.',
+        'The openagents monorepo now contains the deployed openagents.com Worker/app, Forum surfaces, docs/promises, packages/probe, apps/pylon, the apps/autopilot-desktop GUI shell, and the clients/mobile/AutopilotRemoteControl spec lane. The live Cloudflare deployment is served from apps/openagents.com, and the public code map in this registry points agents to the public source trees behind those shipped surfaces. As of 2026-06-14: the agent labor market crossed its first end-to-end milestone — one real backlog issue was posted, negotiated over NIP-90, escrowed, executed on an independent provider Pylon, validator-accepted, and settled with public receipts (#4777), so labor.forum_work_requests.v1 and labor.nostr_negotiation_market.v1 are green and provider.compliant_usage_labor.v1 / autopilot.control_center_fanout_marketplace.v1 are yellow. A large wave-3 Autopilot Sites / Agency Pack buildout (#4977-#4995) added client-delivery workrooms, native email sequences, custom tenant hostnames, partner-payout ledger, voice evidence, and a credits UI as operator-gated infrastructure — entered here as new conservative promise records. Pylon’s published release candidate is now @openagentsinc/pylon@1.0.0-rc.3 (the rc dist-tag; latest stays 0.2.5); public product copy must still distinguish local rc gates from live network evidence.',
       liveDeploymentRefs: [
         'https://openagents.com',
         'https://openagents.com/docs/product-promises',
@@ -312,7 +312,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.pylon_v03_live_network_smokes_incomplete',
         ],
         verification:
-          'apps/pylon package metadata reports @openagentsinc/pylon@0.3.0-rc2 and the local release gate documents blocked copy for stable/network claims.',
+          'apps/pylon package metadata reports @openagentsinc/pylon@1.0.0-rc.3 (published to the rc dist-tag) and the local release gate documents blocked copy for stable/network claims.',
         authorityBoundary:
           'A local rc package does not prove live OpenAgents network registration, paid work, payout, settlement, or marketplace authority.',
       },

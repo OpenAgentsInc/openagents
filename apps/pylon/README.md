@@ -11,25 +11,25 @@
 ## Launch Package And Version Truth
 
 **The source release line is now v1.0.** `apps/pylon/package.json` is
-`1.0.0-rc.2`, and the next published release candidate is **rc3
-(`1.0.0-rc.3`)**.
+`1.0.0-rc.3` — the current release candidate.
 
 **The default published Pylon is `@openagentsinc/pylon@0.2.5`** — the
 `latest` dist-tag — and that launcher remains the supported operator path
 AGENTS.md tells agents about.
 
-**The v1.0 release candidate is not published to npm yet.** As of this
-writing the live dist-tags are still `latest: 0.2.5, rc: 0.3.0-rc2`
-(`npm view @openagentsinc/pylon dist-tags`) — `0.3.0-rc2` was the prior RC,
-published 2026-06-12 after the full `release:gate` passed end to end,
-including the local package install smoke against the published
-`@openagentsinc/agent-runtime-schema`, `@openagentsinc/nip90`, and
-`@openagentsinc/tassadar-executor` `0.1.0` deps (#4858). Publishing
-`1.0.0-rc.3` to the `rc` dist-tag makes the v1.0 RC installable via
-`npm install -g @openagentsinc/pylon@rc`. **Stable v1.0 is not tagged
-`latest`**; `latest` remains 0.2.5, and public copy must not describe the
-v1.0 RC as the default install until a stable tag exists. The publish flow
-is documented in `docs/npm-publishing-runbook.md`.
+**The v1.0 release candidate is published under the `rc` dist-tag.** As of
+2026-06-16 the live dist-tags are `latest: 0.2.5, rc: 1.0.0-rc.3`
+(`npm view @openagentsinc/pylon dist-tags`); `1.0.0-rc.3` published after the
+full `release:gate` passed end to end, including the local package install
+smoke against the published `@openagentsinc/agent-runtime-schema`,
+`@openagentsinc/autopilot-control-protocol`, `@openagentsinc/nip90`, and
+`@openagentsinc/tassadar-executor` `0.1.0` deps (the new
+`autopilot-control-protocol` leaf was published first). Install the RC with
+`npm install -g @openagentsinc/pylon@rc`. (`0.3.0-rc2` was the prior RC,
+published 2026-06-12.) **Stable v1.0 is not tagged `latest`**; `latest`
+remains 0.2.5, and public copy must not describe the v1.0 RC as the default
+install until a stable tag exists. The publish flow is documented in
+`docs/npm-publishing-runbook.md`.
 
 ### Running the v1.0 RC from source (testing only)
 
