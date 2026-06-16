@@ -29,20 +29,33 @@ case "$(uname -sm)" in
   *) HOST_PLAT="";;
 esac
 
+# #5166: base64-embed the Spark WASM into the bundle + patch the SDK loader to
+# honor PYLON_SPARK_WASM_PATH, so the compiled binary carries its own WASM and
+# loads it on ANY machine (the SDK otherwise reads it from a build-machine path).
+echo "== embed Spark WASM (#5166) =="
+bun scripts/embed-spark-wasm.ts
+
+# Resolve the build host's SDK WASM so the guard can hide it (below).
+SDK_WASM="$(dirname "$(bun -e 'console.log(require.resolve("@breeztech/breez-sdk-spark"))' 2>/dev/null)")/breez_sdk_spark_wasm_bg.wasm"
+
 for t in "${TARGETS[@]}"; do
   plat="${t#bun-}"
   bin="$OUT/pylon-$plat"
   echo "== build $plat =="
   if bun build src/index.ts --compile --target="$t" --outfile "$bin" 2>/tmp/pylon-build-$plat.err; then
-    # #5166 guard: a standalone binary that cannot load the Spark SDK must NOT
-    # ship (the offline-receive rail would be silently dead). Run the native
-    # target's own spark-selftest (no network, no seed) and require moduleLoaded.
+    # #5166 guard: prove the binary loads the Spark WASM from its OWN embedded
+    # copy, NOT the build machine's node_modules — so a build-machine path can't
+    # make this false-pass (which is exactly how the rc.8/rc.9 binaries shipped
+    # broken). Hide the node_modules WASM for the check, then restore it.
     if [ "$plat" = "$HOST_PLAT" ]; then
+      moved=0
+      if [ -f "$SDK_WASM" ]; then mv "$SDK_WASM" "$SDK_WASM.guard-hidden"; moved=1; fi
       st="$(PYLON_SPARK_BACKUP_ENABLED=1 OPENAGENTS_PYLON_HOME="$(mktemp -d)/pylon" "$bin" wallet spark-selftest --json 2>/dev/null || true)"
+      if [ "$moved" = 1 ]; then mv "$SDK_WASM.guard-hidden" "$SDK_WASM"; fi
       if printf '%s' "$st" | grep -q '"moduleLoaded": true'; then
-        echo "  spark-selftest OK ($plat): Spark SDK loads in the compiled binary"
+        echo "  spark-selftest OK ($plat): binary loads its EMBEDDED Spark WASM (node_modules copy hidden)"
       else
-        echo "  FAIL $plat: Spark SDK did not load in the compiled binary (#5166 guard)" >&2
+        echo "  FAIL $plat: binary cannot load the Spark WASM without node_modules (#5166 guard)" >&2
         printf '%s\n' "$st" >&2
         exit 1
       fi

@@ -45,6 +45,7 @@ import type {
 } from "./wallet"
 import { SparkBunStorage } from "./spark-bun-storage"
 import { toSatNumber } from "./sat-number"
+import { ensureSparkWasmAvailable } from "./spark-wasm-runtime"
 // Re-export so existing importers (and tests) can keep importing it from here.
 export { toSatNumber } from "./sat-number"
 
@@ -161,6 +162,10 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
  * rejects, and the adapter degrades to `helper-unavailable`.
  */
 export async function loadBreezSparkModule(): Promise<BreezSparkModule> {
+  // #5166: in a compiled standalone binary, extract the embedded WASM to disk and
+  // point the SDK at it (via PYLON_SPARK_WASM_PATH) BEFORE importing the SDK,
+  // whose nodejs entry loads the WASM eagerly at import time. No-op in source/npm.
+  await ensureSparkWasmAvailable()
   // Dynamic import so packaging stays clean and the dependency is optional.
   const mod = (await import(/* @vite-ignore */ "@breeztech/breez-sdk-spark")) as unknown as BreezSparkModule
   if (typeof mod?.defaultConfig !== "function") {
