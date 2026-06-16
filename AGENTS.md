@@ -68,6 +68,20 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - Strict bug form:
   <https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml>
 
+## Deploying & Releasing
+
+- **`docs/DEPLOYMENT.md` is the single hub for every deploy / publish / release.**
+  Read it first for any of: deploying the `openagents.com` Cloudflare Worker,
+  publishing Pylon to npm, cutting a Pylon or Autopilot Desktop release (incl. the
+  signed/notarized macOS DMG), the `updates.openagents.com` OTA feed, or the mobile
+  app. It indexes the per-surface runbooks (the sources of truth), the one-line
+  recipe for each, the GitHub release-tag convention, and where the signing
+  secrets live (`~/work/.secrets/` + GCP Secret Manager, project `openagentsgemini`).
+- Signing/notarization details live in `apps/oa-updates/docs/release-signing-runbook.md`
+  (ed25519 release key + the `HQWSG26L43` Apple Developer ID) — read before any signed
+  release. Publish/deploy only from a clean `origin/main`; RCs are pre-releases and
+  never take the stable `latest` badge.
+
 ## Working Rules
 
 - Read `INVARIANTS.md` before changing authority, routing, payment,
