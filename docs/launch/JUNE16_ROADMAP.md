@@ -218,6 +218,20 @@ is the **Spark backup-receive fallback** in
 - Promise `payments.offline_receive_spark_fallback.v1`: **yellow** (receive path
   live-proven under Bun; Bun-storage blocker cleared; blockers remaining:
   `spark_backup_receive_live_smoke_missing`, `spark_receive_sync_reconcile_missing`).
+- **Out-of-box credential fix landed (#5078, this pass):** the receive-status
+  path (`classifySparkBackupReceive`) was gating on env-only credentials and
+  reporting `credential-missing` even though the helper resolver + legacy path
+  already honor the embedded owner-authorized default Breez key. Fixed: the
+  receive backup is now credential-ready out-of-box once opt-in is enabled (no
+  manual env key), matching the documented intent; runbook corrected; regression
+  test added. Verified locally: `backup-status` no longer returns
+  `credential-missing`; it proceeds to the Spark network init (which needs
+  outbound Breez connectivity — see below).
+- **Live smoke is environment-gated (needs Breez network):** the funded
+  offline-recipient receive+reconcile is the owner-activation path and requires
+  outbound connectivity to the Spark/Breez network plus real sats. It does not
+  run in the sandboxed assistant environment (no Breez egress), so flipping the
+  two remaining blockers green stays an owner-run live step on the new RC.
 - **Held payouts (now the launch-recognition sats, not the old 250):** during the
   16th green-gate run, real treasury sends hit `treasury_pay_failed` for **Trigger
   (50,000-sat recognition)** and **Whitefang (50,000-sat recognition + 5-sat

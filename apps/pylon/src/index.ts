@@ -999,6 +999,11 @@ async function resolveSparkBackupOptions(
     ...(helper ? { helper } : {}),
     cachedAddress,
     showLocalTarget: input.showLocalTarget === true,
+    // The embedded owner-authorized default Breez key is always compiled in, so
+    // the receive backup is credential-ready out-of-box once opt-in is enabled
+    // (#5078) — the status path must reflect that, like the helper resolver and
+    // legacy-migration path already do.
+    embeddedCredentialAvailable: true,
   }
 }
 

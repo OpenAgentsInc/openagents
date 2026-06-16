@@ -510,6 +510,24 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
     assertPublicProjectionSafe(projection)
   })
 
+  test("embedded default credential is credential-ready out-of-box, no env key (#5078)", async () => {
+    const projection = await classifySparkBackupReceive({
+      enabled: true,
+      env: {} as NodeJS.ProcessEnv,
+      embeddedCredentialAvailable: true,
+      helper: sparkHelper({ address: { stdout: { spark_address: RAW_SPARK_ADDRESS } } }),
+    })
+    expect(projection.state).toBe("address-ready")
+    expect(projection.credentialReady).toBe(true)
+    expect(projection.blockerRefs).not.toContain(
+      "blocker.wallet.spark_backup.credential_missing",
+    )
+    expect(projection.receiveTargetRef).toMatch(
+      /^wallet\.backup\.spark_address\.[a-f0-9]{24}$/,
+    )
+    assertPublicProjectionSafe(projection)
+  })
+
   test("cached Spark address works as cached-address-ready when helper is offline", async () => {
     const projection = await classifySparkBackupReceive({
       enabled: true,

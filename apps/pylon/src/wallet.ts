@@ -769,6 +769,12 @@ export type SparkBackupReceiveOptions = {
   helper?: SparkBackupHelper
   cachedAddress?: string | null
   showLocalTarget?: boolean
+  // The embedded owner-authorized default Breez key counts as a valid
+  // credential (#5078), matching the helper resolver and the legacy-migration
+  // path, so the receive backup works out-of-box once opt-in is enabled — no
+  // manual env key required. Inert-by-default stays enforced by the
+  // PYLON_SPARK_BACKUP_ENABLED flag, not by key presence.
+  embeddedCredentialAvailable?: boolean
 }
 
 function hasSparkBackupCredential(env: NodeJS.ProcessEnv, embeddedCredentialAvailable = false) {
@@ -836,7 +842,10 @@ export async function classifySparkBackupReceive(
     })
   }
 
-  const credentialReady = hasSparkBackupCredential(env)
+  const credentialReady = hasSparkBackupCredential(
+    env,
+    options.embeddedCredentialAvailable === true,
+  )
   if (!credentialReady) {
     return assertSparkBackupProjectionSafe({
       ...base,

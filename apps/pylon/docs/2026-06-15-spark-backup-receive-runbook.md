@@ -52,16 +52,23 @@ in order:
 2. `BREEZ_API_KEY`
 3. `PYLON_SPARK_BACKUP_API_KEY`
 
-Set it in the node's local environment only (for example the local
-`.secrets/` env file the node sources, or the shell that launches Pylon). Do
-NOT commit it, do NOT paste it into issues, logs, the Forum, or any public
-projection. A real key value is intentionally NOT recorded in this runbook.
+Setting one of these **overrides** the embedded default. Set it in the node's
+local environment only (for example the local `.secrets/` env file the node
+sources, or the shell that launches Pylon). Do NOT commit it, do NOT paste it
+into issues, logs, the Forum, or any public projection. A real key value is
+intentionally NOT recorded in this runbook.
 
 The Spark network defaults to `mainnet`; set `PYLON_SPARK_BACKUP_NETWORK=regtest`
 for a regtest test wallet.
 
-If the key is absent, the backup stays inert and `backup-status` reports
-`blocker.wallet.spark_backup.credential_missing`.
+**A manual key is NOT required (#5078):** an embedded, owner-authorized default
+Breez/Spark service key is compiled in, so once opt-in is enabled the receive
+backup is credential-ready out-of-box and `backup-status` reports
+`address-ready` (or `helper-unavailable` if the node cannot reach the Spark
+network) — not `credential-missing`. Inert-by-default is enforced by the
+`PYLON_SPARK_BACKUP_ENABLED` flag, NOT by key presence. The env vars above only
+override the embedded key. (`credential-missing` now appears only if the
+embedded key were ever stripped from the build.)
 
 ## Step 2 — opt in
 
