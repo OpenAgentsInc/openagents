@@ -225,14 +225,21 @@ is the **Spark backup-receive fallback** in
   that moment; **Orrery's** worker 5-sat + 50k recognition dispatched (BOLT12
   `pending`). These held payouts are the **live test material** for the Spark
   fallback below.
-- **#5151 (Trigger, OPEN) compounds the symptom:** `presence heartbeat` posts
-  `walletReadiness: "unknown"`, so `/api/public/pylon-stats` keeps
-  `walletReadyNow=false` for an online node until a separate
-  `pylon wallet report-readiness` — which made Trigger's node *look* unavailable
-  for the payout retry even though its local probe was receive-ready. Fix:
-  heartbeat should publish the local wallet probe (or the payout path should not
-  treat `walletReadyNow=false` as "skip" without re-probing). Belongs in the
-  next-RC payout-reliability work (§H).
+- **#5151 (Trigger) — FIX IMPLEMENTED (`0fcacbc6b`), server deployed:**
+  `presence heartbeat` used to post `walletReadiness: "unknown"` with no
+  `walletReady`, and the server's heartbeat schema carried no wallet field, so
+  `/api/public/pylon-stats` kept `walletReadyNow=false` for an online node until
+  a separate `pylon wallet report-readiness` — making Trigger's node *look*
+  unavailable for the payout retry even though its local probe was receive-ready.
+  Fixed both sides: the Pylon heartbeat now probes the local wallet
+  (`classifyMdkWallet`, best-effort, injectable) and publishes real
+  `walletReadiness` + a `walletReady` boolean (omitted on probe failure so the
+  server keeps the last value — no flap); the Worker `PylonApiHeartbeatRequest`
+  now accepts `walletReady` and the existing reducer projects it into
+  `registration.walletReady` → public `walletReadyNow`. Worker deployed
+  (`09c5a042`); regression tests on both sides. **User-facing once the Pylon
+  change ships in the next RC** — the server already accepts it, but running
+  rc5 binaries don't send it yet, so #5151 stays open until that RC publishes.
 - **Remaining (the gates, owner/live — see §H):** (a) wire the Spark fallback
   into the **payout path** (prefer MDK/BOLT12 online, Spark when offline);
   (b) one **live offline-recipient receive+reconcile in real Pylon** (real sats →
@@ -465,8 +472,10 @@ three things tested live on that RC.** Audit of each as of 2026-06-16:
   is offline); (2) a **live offline-recipient receive+reconcile** in real Pylon
   (the two open promise blockers); (3) **use it to land the held payouts**
   (Trigger 50k, Whitefang 50k + 5-sat). These held payouts are the test cases.
-- **#5151** (heartbeat `walletReadyNow=false`) must be handled so an online,
-  receive-ready node is not skipped during a payout retry.
+- **#5151** (heartbeat `walletReadyNow=false`) — **fix implemented + server
+  deployed** (`0fcacbc6b` / worker `09c5a042`): the heartbeat now publishes live
+  wallet receive-readiness so an online, receive-ready node is no longer skipped
+  during a payout retry. Lands for users when the Pylon change ships in this RC.
 
 ### Gate 2 — Auto-payout
 
