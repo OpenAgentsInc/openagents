@@ -222,6 +222,8 @@ epics below; not all lands today — the aim is the main spine.
   recorded as the "Login Surface" invariant. The architecture rule was relaxed to
   allow the real login route while still banning the deleted *simulated* auth
   symbols. Audit + posture: `docs/auth/2026-06-16-login-and-auth-audit.md`.
+  Security follow-up tracked in **#5120** (OTP rate-limit / expiry / no-enumeration
+  / no-raw-code-logging / fail-closed).
 - **`/animations` internal three.js playground (deployed `d0cf8a5e`):** a scrollable
   `/animations` page of self-contained WebGL experiments via a `makeAnimationView`
   factory — the live pylon bezier network + WebGL permutations, R3F-/three.js-ported
@@ -236,7 +238,9 @@ epics below; not all lands today — the aim is the main spine.
   matrix + DONE/NOW/NEXT/LATER sequence). Net: **no change to shipped login** —
   Resend stays the auth transport now; Cloudflare (dedicated auth subdomain) is the
   forward target, reached only after a verified-destination smoke + a provider
-  adapter behind `EmailService`. Cold/bulk/marketing stays off Cloudflare.
+  adapter behind `EmailService`. Cold/bulk/marketing stays off Cloudflare. Tracked
+  as epic **#5119** (phases: smoke → adapter → auth → lifecycle+reconciliation →
+  inbound routing).
 
 **Targeted next (this session / soon — won't all land today):**
 
