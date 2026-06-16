@@ -296,6 +296,14 @@ hooks without workspace-trust and policy refs are projected as needs-trust. It
 does not add hook execution, shell execution, filesystem watching, event
 dispatch, UI, settings edits, or runtime policy changes.
 
+Implementation status, 2026-06-16: #5141 adds the first unified refs-only
+extensibility effective-config projection across MCP, skills, hooks, and
+plugins, including per-domain counts, effective-state counts, config/catalog/
+policy/source/blocker refs, explicit non-authority flags, deterministic
+ordering, and unsafe-material omission coverage. It does not add settings UI,
+config writes, runtime policy changes, loading/execution, tool calls, hook
+execution, or network calls.
+
 ### G7 - Verification, Ops, And Product-Gate Evidence
 
 Systems: system 51 Testing/Smoke, system 52 Evaluation/Regression, system 53
