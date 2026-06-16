@@ -526,13 +526,16 @@ three things tested live on that RC.** Audit of each as of 2026-06-16:
   its sha256 + ed25519 against the pinned key `2dbe811d19f67528` (fail-closed —
   `verifyArtifact` throws otherwise), and atomically swapped it into the target.
   Promise caveat removed (registry `2026-06-16.9`).
-- **Feed currency (separate from the gate):** the signed-binary OTA feed serves
-  the latest signed standalone build (`1.0.0-rc.2`); the npm CLI RC is `1.0.0-rc.7`
-  (independent surface). To deliver the rc.7 fixes (Spark Lightning Address,
-  #5151) to binary-install users via auto-update, run the signed-binary publish
-  for rc.7 (`apps/pylon/scripts/build-rc-binaries.sh 1.0.0-rc.7` →
-  `apps/oa-updates/scripts/publish-pylon-release.ts` → deploy oa-updates). This
-  advances the feed; it is release-currency work, not the auto-update gate.
+- **Feed currency — ✅ DONE (2026-06-16): the OTA feed now serves `1.0.0-rc.7`
+  on all four platforms.** Built + ed25519-signed the rc.7 standalone binaries
+  (`build-rc-binaries.sh 1.0.0-rc.7`, kid `2dbe811d`), uploaded the 4 signed
+  assets to `gs://openagentsgemini-oa-updates/assets/…`, staged via
+  `publish-pylon-release.ts`, and deployed the `oa-updates` Cloud Run service
+  (revision `oa-updates-00014`, env preserved). **Verified end-to-end against the
+  LIVE feed:** an installed `rc.2` (darwin-arm64) auto-selected `rc.7`, downloaded
+  the real 63.8 MB signed artifact, sha256+ed25519-verified it against the pinned
+  key, and atomically applied — so binary/Desktop users now auto-update to the
+  rc.7 offline-payout build (Spark Lightning Address + #5151).
 
 ### v1.0 cut gate
 
