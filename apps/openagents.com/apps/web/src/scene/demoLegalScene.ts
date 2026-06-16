@@ -35,8 +35,10 @@ const BOUND = 3.4
 const CARD_ANCHORS: ReadonlyArray<
   Readonly<{ id: string; position: readonly [number, number, number] }>
 > = [
-  { id: 'command-bar', position: [0, 2.1, 0.4] },
-  { id: 'quick-actions', position: [0, 1.0, 0.4] },
+  // command-bar lowered (was y=2.1) so it clears the top-center intro headline
+  // band; quick-actions follows it down to keep the vertical gap.
+  { id: 'command-bar', position: [0, 1.3, 0.4] },
+  { id: 'quick-actions', position: [0, 0.2, 0.4] },
   { id: 'nda-draft', position: [-2.7, -0.2, 0.2] },
   { id: 'review-checklist', position: [2.7, -0.1, 0.2] },
   { id: 'time-entry', position: [-2.4, -2.4, 0.0] },

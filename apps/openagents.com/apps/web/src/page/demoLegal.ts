@@ -329,7 +329,11 @@ export const view = <Message>(
           h.div(
             [
               Ui.className<Message>(
-                'pointer-events-none absolute inset-x-0 top-6 z-10 mx-auto w-[min(100%,820px)] px-4 text-center',
+                // z-30 keeps the headline above the z-20 card overlay so the
+                // intro text is never obscured, even if a card's projected
+                // anchor lands under it. pointer-events-none lets clicks pass
+                // through to the cards beneath.
+                'pointer-events-none absolute inset-x-0 top-6 z-30 mx-auto w-[min(100%,820px)] px-4 text-center',
               ),
             ],
             [
