@@ -47,6 +47,82 @@ Recommended posture:
    docs. We need a polling/reconciliation plan before replacing webhook-backed
    delivery state.
 
+## Unified Email & Auth Strategy — what we do when
+
+This is the single source of truth for sequencing across **auth** and **all
+product email**. The companion `docs/auth/2026-06-16-login-and-auth-audit.md` is
+the auth/login subsystem reference; this section owns the cross-cutting roadmap.
+
+### Does the Cloudflare option change our current plans?
+
+**No reversal, no rush.** Email OTP login already shipped on **direct Resend** and
+is stable; nothing here requires changing or reverting it. Cloudflare is a
+**forward, additive** rail. The one thing it *settles* is the login audit's last
+open question (auth-email deliverability domain): the **target** is a dedicated
+first-party Cloudflare auth sender/subdomain, reached **only after** a
+verified-destination smoke and a provider adapter exist — not before. Until then,
+Resend stays the auth transport. Do **not** fast-track auth onto Cloudflare ahead
+of the smoke + reconciliation work.
+
+### Provider roles (Phase 0 decision — locked)
+
+| Lane | Provider (target) | Provider (today) |
+| --- | --- | --- |
+| Auth sign-in codes / security notices | Cloudflare (dedicated auth subdomain) | **Resend, direct** (shipped) |
+| Product lifecycle / billing transactional | Cloudflare, behind `EmailService` | Resend, behind `EmailService` |
+| Internal / operator smokes | Cloudflare (free verified-destination sends) | Resend |
+| Inbound support / order replies | Cloudflare Email Routing → Worker | none (no inbound today) |
+| Operator-authored drafts | Gmail / local `gws` | Gmail / local `gws` |
+| Cold / bulk / marketing / drip | **dedicated marketing platform — never Cloudflare yet** | Resend / Gmail drafts |
+
+### Sequence (status: DONE / NOW / NEXT / LATER / NEVER-YET)
+
+1. **DONE — Email OTP login.** `/login` page, OpenAuth `CodeProvider`, `success`
+   for `provider:'code'`, Resend transport, gating preserved (issue #5111).
+2. **NOW — hold steady on Resend.** Keep auth OTP on direct Resend and all
+   webhook-backed lifecycle mail on Resend behind `EmailService`. No code change
+   is forced by this audit. This is the stable baseline.
+3. **NEXT (next slice, lowest blast radius) — Cloudflare smoke + adapter.**
+   Onboard a sending subdomain, add a restricted `send_email` binding (staging),
+   add `cloudflare_email` to the provider enum/D1 checks + a sender adapter behind
+   `EmailService`, and send one internal `operator_notification` to a *verified
+   destination address* only. (Phases 1–2 below.)
+4. **LATER — move auth email to Cloudflare.** Once the smoke passes: a dedicated
+   auth sender on `auth.openagents.com` (or `mail.openagents.com`), separate
+   throttle, fails closed if unconfigured (no session without a sent code), Resend
+   kept as fallback. (Phase 3.)
+5. **LATER — product lifecycle cutover + reconciliation.** Dual-send / cut over
+   lifecycle mail to Cloudflare, and add the GraphQL reconciliation poller +
+   suppression sync (there is **no** Cloudflare lifecycle webhook — see
+   Observability). Keep Resend on webhook-backed flows until the poller is proven.
+   (Phases 2 + 5.)
+6. **LATER — inbound Email Routing.** `support@` / `orders@` / tokenized reply
+   aliases → Worker `email()` handler → typed parse → D1/R2 → operator
+   task/draft. Inbound is untrusted; never grants authority. (Phase 4.)
+7. **NEVER-YET — cold/bulk/marketing on Cloudflare.** Stays on a dedicated
+   marketing platform until Cloudflare ships bulk-sender tooling and the message
+   is opt-in + unsubscribe + suppression compliant.
+
+### Open questions — now decided (defaults; revisit at onboarding)
+
+- **Sender subdomains:** auth `login@auth.openagents.com`; product lifecycle
+  `notify@mail.openagents.com`; billing/security `billing@` / `security@openagents.com`;
+  inbound `support@openagents.com`.
+- **Auth first or product first on Cloudflare?** Internal smoke first, then
+  **auth** (small, already decoupled), then product lifecycle.
+- **No Cloudflare lifecycle webhook — acceptable?** Yes for auth (we don't ledger
+  auth email) and internal smokes; for product lifecycle, keep Resend until the
+  reconciliation poller is proven.
+- **Auth path stays outside `EmailService`?** Yes — keep it decoupled/reliable
+  with its own redaction, rate-limit, expiry, and no-enumeration discipline; a
+  narrow auth-email metrics lane can come later if needed.
+- **Split relationship vs marketing mail before any provider change?** Yes —
+  classify recurring mail as transactional-relationship vs marketing first;
+  marketing never moves to Cloudflare yet.
+- **Inbound replies create what?** Operator tasks / support records first; Forum
+  or workroom mapping later and only via tokenized routing, never keyword
+  matching.
+
 ## Current OpenAgents State
 
 The earlier auth audit says email login was not present yet. Current `main`
@@ -465,21 +541,16 @@ Do not route sign-in-code mail through broad marketing/campaign dispatchers.
 5. Keep our own `email_messages`/`email_deliveries` as the durable product
    source of truth.
 
-## Open Questions
+## Open Questions — resolved
 
-- Which sender subdomains should own auth, product lifecycle, support, and
-  internal smokes?
-- Do we want Cloudflare to be primary for auth first, or product lifecycle
-  first?
-- Is the lack of Cloudflare lifecycle webhooks acceptable if we build a
-  GraphQL reconciliation poller?
-- Should the auth sign-in code path stay outside `EmailService`, or should it
-  get a narrower auth-email ledger with the same redaction and idempotency
-  discipline?
-- Should campaign/drip email kinds be split into transactional relationship
-  mail and marketing mail before any provider change?
-- Do we want inbound customer replies to create Forum posts, support records,
-  workroom comments, or only operator tasks at first?
+These are now decided in **"Unified Email & Auth Strategy — what we do when" →
+Open questions — now decided** above (sender subdomains, auth-first vs
+product-first, the no-webhook/reconciliation tradeoff, keeping auth outside
+`EmailService`, splitting relationship vs marketing mail, and inbound-reply
+landing). The defaults there are revisitable at onboarding, but the strategy is
+no longer ambiguous. The remaining genuinely-deferred item is **timing**: when we
+spend the slice on the Cloudflare verified-destination smoke (strategy step 3),
+which is the gate for everything after it.
 
 ## Recommended Next Slice
 

@@ -1,34 +1,64 @@
 # Login & Auth Audit — current situation + email sign-in plan
 
-Date: 2026-06-16
+Date: 2026-06-16 (status updated 2026-06-16, post-implementation)
 Scope: `apps/openagents.com` (the live `openagents.com` Cloudflare Worker + Foldkit web app).
-Reason: `/login` "does nothing"; we want an email magic-link login page (like the
+Reason: `/login` "did nothing"; we wanted an email sign-in page (like the
 ui.sh "Send sign-in link" screenshot) while preserving access gating.
 
-## TL;DR
+> **Strategy home:** the single, ordered "what we do when" sequencing for auth +
+> all product email now lives in
+> `docs/auth/2026-06-16-cloudflare-email-automation-audit.md` → **"Unified Email &
+> Auth Strategy — what we do when."** This document is the auth/login subsystem
+> reference; that document owns the cross-cutting roadmap. Keep them consistent.
+
+## Status (SHIPPED — 2026-06-16)
+
+The email sign-in plan in this audit **has been implemented and deployed** (issue
+#5111, worker version `d9113b02`). What changed from the "current situation"
+below:
+
+- **`/login` is now a real branded SPA page** (`apps/web/src/page/login.ts`,
+  `LoginRoute`/`loginRouter`), no longer a 302 to `/`. It offers email one-time
+  code sign-in + GitHub, over the constellation-network animation. `/^\/login$/`
+  is in `knownDocumentPathPatterns`.
+- **Email sign-in is live as OTP code (not magic-link):** OpenAuth `CodeProvider`
+  + `CodeUI` is registered in `makeAuthIssuer`; `/login/email` starts the code
+  flow; `success()` accepts `provider: 'code'`, upserts the user by verified
+  email, and issues the same `user` session. `UserSubject` was widened to
+  `provider: 'github' | 'email'` with optional `githubId`/`login`.
+- **Auth email transport (interim): direct Resend.** `sendSignInCodeEmail` posts
+  the code straight to the Resend API, deliberately decoupled from the
+  `EmailService` CRM/marketing ledger. This is the **interim** transport; the
+  target state (first-party Cloudflare auth sender on a dedicated subdomain) is
+  sequenced in the unified strategy doc — see §6/§7 and that doc's Phase 3.
+- **Gating preserved:** login still only *authenticates*; authorization stays
+  downstream (`authHasCoreTeamAccess` / `isAdmin` / onboarding). Email login does
+  not widen access. Invariant recorded in `apps/openagents.com/INVARIANTS.md`
+  ("Login Surface").
+
+The sections below are retained as the original audit (the "before" state and the
+rationale) for history; read the Status block and §6/§7 for what is true now.
+
+## TL;DR (original audit — "before" state)
 
 - **Auth server:** we self-host **OpenAuth** (`@openauthjs/openauth`) — its
   `issuer()` runs **inside our own openagents.com Cloudflare Worker** (mounted at
   `OPENAUTH_ISSUER_URL`, i.e. `auth.openagents.com`). We are **not** on WorkOS in
   this monorepo (WorkOS was the *deprecated* Laravel site). It is OpenAuth.
-- **Only login method wired today: "Log in with GitHub"** (OpenAuth
-  `GithubProvider` → GitHub OAuth). There is **no email/magic-link login yet.**
-- **`/login` genuinely does nothing:** there is no served `/login` page. The
-  Worker's document allowlist (`knownDocumentPathPatterns` in
-  `workers/api/src/worker-routes.ts`) does **not** include `/login`, so
-  `shouldRedirectUnknownDocumentToHome` **302-redirects `/login` → `/`**. The real
-  login entry point is the **"Log in with GitHub" button on the home page**, which
-  links to the Worker route **`/login/github`** (the OAuth start). There is no SPA
-  `Login` route or page.
-- **"Approved users" gating — the honest situation:** **login itself is open** to
-  any GitHub account (the issuer's `allow` only restricts redirect *hostnames*, not
-  *users*; `success` upserts whatever GitHub user signs in). Access is gated
-  **downstream, in the app**, by team membership / admin flags — see §4. The
-  broad "invite-required" hard gate **exists in code but is currently a no-op
-  stub** (`loggedInPermissionGate` always returns `Allowed`).
-- **Email is ready to use:** we already have **Resend** wired (`workers/api/src/email.ts`,
-  `ResendEmailSender`, `RESEND_API_KEY/FROM/REPLY_TO` config, `@openagentsinc/email-templates`).
-  Adding email sign-in is a **wiring task, not new infrastructure.**
+- **(NOW SHIPPED) At time of writing, only "Log in with GitHub" was wired**
+  (OpenAuth `GithubProvider`). Email OTP login has since been added — see Status.
+- **(NOW SHIPPED) `/login` used to 302 to `/`.** It is now a served SPA page —
+  see Status.
+- **"Approved users" gating — the honest situation (still true):** **login itself
+  is open** to any GitHub or email account (the issuer's `allow` only restricts
+  redirect *hostnames*, not *users*; `success` upserts whoever signs in). Access
+  is gated **downstream, in the app**, by team membership / admin flags — see §4.
+  The broad "invite-required" hard gate **exists in code but is a no-op stub**
+  (`loggedInPermissionGate` always returns `Allowed`).
+- **Email infra:** **Resend** is wired (`workers/api/src/email.ts`,
+  `ResendEmailSender`, `RESEND_API_KEY/FROM/REPLY_TO` config,
+  `@openagentsinc/email-templates`). Adding email sign-in was a wiring task, not
+  new infrastructure — and it is now done.
 
 ## 1. The auth server & stack
 
@@ -105,63 +135,69 @@ Authentication (who can sign in) and authorization (what they can see) are
   X-verification and owner-claim routes (per repo AGENTS.md), **not** the human
   login flow. Don't conflate them.
 
-## 5. Email magic-link: do we have it? (No — but everything to build it is here)
+## 5. Email sign-in — SHIPPED as OTP code (not magic-link)
 
-- **Auth email login: not present.** Only GitHub is wired into the issuer.
-- **Send infrastructure: present.** `workers/api/src/email.ts` (Resend sender,
-  `ResendEmailSender`, `EmailProvider = resend|gmail`), `RESEND_*` config, webhook
-  handling (`resend-webhooks.ts`), and the `@openagentsinc/email-templates` package.
-  These are used today for prelaunch/billing/operator/CRM email — not auth.
-- **OpenAuth supports email natively:** `@openauthjs/openauth/provider/code`
-  (`CodeProvider` — email OTP) or a custom magic-link provider. The provider's
-  `sendCode` hook is where we call our Resend `email.ts`.
+**Resolved.** We shipped email sign-in as an **OTP code** via OpenAuth's native
+`CodeProvider` + `CodeUI` (more robust / less custom than a magic-link provider;
+the UX is a 6-digit code, not a clicked link). The provider's `sendCode` hook
+sends the code; `success()` accepts `provider: 'code'` and issues the session.
 
-## 6. Plan — ship the screenshot's email `/login` page, preserve gating
+- **Transport (interim):** `sendSignInCodeEmail` posts the code **directly to the
+  Resend HTTP API**, intentionally bypassing the `EmailService` ledger — auth
+  email must be reliable and not throttled alongside CRM/marketing sends. This is
+  the interim. The target transport is a **first-party Cloudflare auth sender on a
+  dedicated subdomain** (e.g. `login@auth.openagents.com`), onboarded and
+  smoke-tested first — see the unified strategy doc, Phase 3.
+- **Why not magic-link:** OTP via `CodeProvider` is battle-tested in OpenAuth and
+  avoids hand-rolling a link provider + token store. Revisit only if product wants
+  click-to-login UX.
 
-Recommended, smallest-correct path:
+## 6. Plan — DONE (this is what shipped)
 
-1. **Serve `/login`.**
-   - Add `/^\/login$/` to `knownDocumentPathPatterns` (`worker-routes.ts`) so the
-     Worker serves the SPA there (mirrors the recent `/components`, `/business` fix).
-   - Add a `Login` route in `apps/web/src/route.ts` + `routing/startup.ts`
-     (logged-out allowlist) + a `page/loggedOut/page/login.ts` view: branded dark
-     page, **email field + "Send sign-in link"** button (the screenshot), with the
-     existing GitHub button kept as a secondary option.
-2. **Wire an email provider into the OpenAuth issuer.**
-   - Add `CodeProvider` (email code) or a magic-link provider to
-     `makeAuthIssuer`'s `providers`, with `sendCode`/send wired to `email.ts`
-     (Resend) + a new `@openagentsinc/email-templates` "sign-in link/code" template.
-   - Extend the `success` callback to accept `provider === 'email'`: resolve/ upsert
-     the user by **verified email** (mirror `upsertGitHubUser`), then issue the same
-     `user` session. (Decide the userId scheme for email-only users.)
-3. **Front the page to the flow.**
-   - "Send sign-in link" → a Worker endpoint that starts the OpenAuth email flow
-     (issue code/link, send via Resend) → user clicks link / enters code →
-     `/auth/...callback` → session. Reuse `oa_login_return_to`.
-4. **Preserve gating (key requirement).**
-   - Email login only **authenticates**; **authorization is unchanged** — the
-     downstream `authHasCoreTeamAccess` / `isAdmin` / onboarding gates still apply,
-     so email sign-in does **not** widen who can access the real product.
-   - **Decision needed:** do we also want a **hard pre-app allowlist** ("only
-     approved emails can even sign in")? If yes, either (a) **re-enable
-     `loggedInPermissionGate`** (it's already stubbed to allow-all — make it deny
-     non-approved and route to Invite), or (b) **reject non-approved emails in the
-     issuer `success` callback** (cleaner: stops a session from ever issuing). (a)
-     keeps a friendly in-app "request access" page; (b) is a harder server gate.
-     Today neither denies — login is open + product gated. Pick the posture before
-     building.
+The smallest-correct path below was implemented (issue #5111). Status per step:
 
-## 7. Decisions to confirm
+1. **Serve `/login`. — DONE.** `/^\/login$/` is in `knownDocumentPathPatterns`;
+   `LoginRoute`/`loginRouter` added; the page is `apps/web/src/page/login.ts`
+   (note: at top level `page/login.ts`, not `page/loggedOut/page/login.ts`, to
+   avoid the deleted-simulated-login path the architecture check still bans). The
+   old `/login → /` worker redirect was removed. Branded dark page with the email
+   field + "Email me a code" primary and "Log in with GitHub" secondary, over the
+   constellation animation.
+2. **Wire email into the issuer. — DONE.** `CodeProvider(CodeUI({ sendCode }))`
+   registered in `makeAuthIssuer`. `success()` accepts `provider: 'code'`,
+   `emailToSubject` + `upsertEmailUser` resolve the user by verified email,
+   `userId = email:<normalized>`, then the same `user` session is issued. (We used
+   OTP, not a magic-link; transport is direct Resend for now — see §5.)
+3. **Front the page to the flow. — DONE.** `/login/email` starts the OpenAuth code
+   flow (mirrors `/login/github`); OpenAuth's themed `CodeUI` collects email then
+   code; on success → `/auth/callback` → session. The header "Log in" popover now
+   offers both email and GitHub.
+4. **Preserve gating. — DONE (and the open decision is resolved).**
+   - Email login only **authenticates**; downstream `authHasCoreTeamAccess` /
+     `isAdmin` / onboarding gates are unchanged, so email sign-in does **not**
+     widen who can access the real product. Recorded as an invariant
+     ("Login Surface") in `apps/openagents.com/INVARIANTS.md`.
+   - **Posture decision (resolved, owner-confirmed): open authentication + downstream
+     product gating (status quo).** We did **not** add a hard pre-app email
+     allowlist and did **not** un-stub `loggedInPermissionGate`. Anyone can get a
+     session; the product stays gated to core-team/admins/owner. If we later want
+     a hard gate, prefer rejecting non-approved emails in the issuer `success`
+     callback (fails closed before a session issues) over re-enabling the in-app
+     gate.
 
-- **Open login + product gating (status quo) vs hard email allowlist?** (§6.4)
-- **Email OTP code vs magic-link?** OpenAuth `CodeProvider` is OTP-code by default;
-  magic-link is a small custom provider. The screenshot implies a **link** ("Send
-  sign-in link").
-- **Custom `/login` page vs OpenAuth's built-in themed UI?** The screenshot wants
-  our branded page; OpenAuth can also render its own (themed) email UI at the
-  issuer. Custom page = more control, slightly more wiring.
-- **Resend sending domain / deliverability** for auth email (separate from
-  marketing sends; auth email must be reliable + not rate-limited with CRM email).
+## 7. Decisions — resolved
+
+- **Open login + product gating vs hard email allowlist?** → **Open auth +
+  downstream gating** (status quo). No hard pre-app email allowlist. (§6.4)
+- **Email OTP code vs magic-link?** → **OTP code** via OpenAuth `CodeProvider`
+  (robust, native). Magic-link deferred unless product asks for click-to-login.
+- **Custom `/login` page vs OpenAuth's built-in UI?** → **Both:** our branded
+  `/login` launcher page + OpenAuth's themed `CodeUI` for the email/code entry.
+- **Auth-email sender domain / deliverability (still open, owned elsewhere):**
+  interim is direct Resend with the existing `RESEND_FROM`. Target is a dedicated
+  Cloudflare auth sender/subdomain. This is now sequenced in the unified strategy
+  doc (`2026-06-16-cloudflare-email-automation-audit.md`, Phase 1→3) — track it
+  there, not here.
 
 ## 8. File map
 
