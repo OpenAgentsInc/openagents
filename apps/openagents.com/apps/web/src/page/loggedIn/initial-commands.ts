@@ -80,6 +80,15 @@ export const initialCommands = (
     ]
   }
 
+  if (model.route._tag === 'Forge') {
+    return [
+      InstallAccountMenuOutsideClick(),
+      LoadAutopilotWorkList({}),
+      LoadAutopilotMorningReport({}),
+      LoadProviderAccountPool({}),
+    ]
+  }
+
   if (model.route._tag === 'Decisions') {
     return [InstallAccountMenuOutsideClick(), LoadAutopilotDecisions({})]
   }

@@ -19,6 +19,7 @@ import {
   decisionsRouter,
   docsPageRouter,
   docsRouter,
+  forgeRouter,
   forumForumRouter,
   forumReceiptRouter,
   forumRouter,
@@ -61,6 +62,7 @@ import * as Chat from './page/chat'
 import * as Dashboard from './page/dashboard'
 import * as Decisions from './page/decisions'
 import * as Files from './page/files'
+import * as Forge from './page/forge'
 import * as Images from './page/images'
 import * as Invite from './page/invite'
 import * as Onboarding from './page/onboarding'
@@ -79,6 +81,7 @@ const currentHref = (model: Model): string =>
       AutopilotWork: () => autopilotWorkRouter(),
       AutopilotWorkDetail: ({ workOrderRef }) =>
         autopilotWorkDetailRouter({ workOrderRef }),
+      Forge: () => forgeRouter(),
       Decisions: () => decisionsRouter(),
       Workroom: ({ workroomId }) => workroomRouter({ workroomId }),
       WorkroomTab: ({ tab, workroomId }) =>
@@ -132,6 +135,7 @@ const routeKey = (model: Model): string =>
       AutopilotWork: () => 'AutopilotWork',
       AutopilotWorkDetail: ({ workOrderRef }) =>
         `AutopilotWorkDetail:${workOrderRef}`,
+      Forge: () => 'Forge',
       Decisions: () => 'Decisions',
       Workroom: ({ workroomId }) => `Workroom:${workroomId}`,
       WorkroomTab: ({ tab, workroomId }) =>
@@ -397,6 +401,8 @@ const routeView = (model: Model): Html => {
             Ui.workroomScrollableRoute<Message>([
               AutopilotWork.detailView(model),
             ]),
+          Forge: () =>
+            Ui.workroomScrollableRoute<Message>([Forge.view(model)]),
           Decisions: () =>
             Ui.workroomScrollableRoute<Message>([Decisions.view(model)]),
           Workroom: () =>

@@ -193,6 +193,7 @@ export const browserRouteProductIntents = {
   Components: 'internal.components.gallery',
   Dashboard: 'disabled.dashboard',
   Decisions: 'autopilot.decisions.index',
+  Forge: 'forge.factory.index',
   Demo: 'demo.training.fullscreen',
   DemoOrder: 'demo.customer.order',
   DemoTeamFile: 'demo.files.team.detail',

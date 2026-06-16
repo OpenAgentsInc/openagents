@@ -12,6 +12,7 @@ export const AutopilotWorkRoute = r('AutopilotWork')
 export const AutopilotWorkDetailRoute = r('AutopilotWorkDetail', {
   workOrderRef: S.String,
 })
+export const ForgeRoute = r('Forge')
 export const DecisionsRoute = r('Decisions')
 export const WorkroomRoute = r('Workroom', { workroomId: S.String })
 export const WorkroomTabRoute = r('WorkroomTab', {
@@ -99,6 +100,7 @@ export type OrderRoute = typeof OrderRoute.Type
 export type OrderDetailRoute = typeof OrderDetailRoute.Type
 export type AutopilotWorkRoute = typeof AutopilotWorkRoute.Type
 export type AutopilotWorkDetailRoute = typeof AutopilotWorkDetailRoute.Type
+export type ForgeRoute = typeof ForgeRoute.Type
 export type DecisionsRoute = typeof DecisionsRoute.Type
 export type WorkroomRoute = typeof WorkroomRoute.Type
 export type WorkroomTabRoute = typeof WorkroomTabRoute.Type
@@ -191,6 +193,7 @@ export const LoggedInRoute = S.Union([
   OrderDetailRoute,
   AutopilotWorkRoute,
   AutopilotWorkDetailRoute,
+  ForgeRoute,
   DecisionsRoute,
   WorkroomRoute,
   WorkroomTabRoute,
@@ -236,6 +239,7 @@ export const AppRoute = S.Union([
   OrderDetailRoute,
   AutopilotWorkRoute,
   AutopilotWorkDetailRoute,
+  ForgeRoute,
   DecisionsRoute,
   WorkroomRoute,
   WorkroomTabRoute,
@@ -320,6 +324,7 @@ export const autopilotWorkDetailRouter = pipe(
   slash(string('workOrderRef')),
   Route.mapTo(AutopilotWorkDetailRoute),
 )
+export const forgeRouter = pipe(literal('forge'), Route.mapTo(ForgeRoute))
 export const decisionsRouter = pipe(
   literal('decisions'),
   Route.mapTo(DecisionsRoute),
@@ -581,6 +586,7 @@ const routeParser = Route.oneOf(
   onboardingRouter,
   autopilotWorkDetailRouter,
   autopilotWorkRouter,
+  forgeRouter,
   decisionsRouter,
   workroomTabRouter,
   workroomRouter,

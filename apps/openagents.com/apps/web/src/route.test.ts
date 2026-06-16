@@ -18,6 +18,7 @@ import {
   DemoTeamFilesRoute,
   DemoTeamProjectChatRoute,
   DemoThreadRoute,
+  ForgeRoute,
   ForumForumRoute,
   ForumReceiptRoute,
   ForumRoute,
@@ -71,6 +72,10 @@ describe('app route parser', () => {
         workOrderRef: 'autopilot_work_order.visible_1',
       }),
     )
+  })
+
+  test('accepts the Forge factory dashboard route', () => {
+    expect(urlToAppRoute(appUrl('/forge'))).toEqual(ForgeRoute())
   })
 
   test('does not accept the deleted login page route', () => {

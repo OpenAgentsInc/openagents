@@ -1,0 +1,929 @@
+// Forge factory dashboard — the software-factory pipeline view.
+//
+// This view projects the Forge production line (signal -> triage -> code gen ->
+// validate -> release -> document -> monitor -> deploy) over the SAME real data
+// sources the Forge cockpit already loads:
+//
+//   - Runs (`autopilotWorkList`)      -> per-stage throughput, cycle time,
+//                                          backlog, pass rate, ship rate
+//   - the provider-account pool       -> Code Gen capacity / "where work runs"
+//   - the overnight report counts     -> awaiting-decision / blocked signal
+//
+// Every number is tagged with its provenance. A metric backed by a real
+// projection is labeled `live`; a metric with no real source yet is labeled
+// `seeded` and is visibly dimmed. We never present a seeded number as live.
+//
+// Pipeline + panels are rendered on the shared `@openagentsinc/ui` dark
+// contract (raw foldkit `html` + `Ui.className`, the same idiom as the
+// cockpit in `autopilot-work.ts`). No client, partner, or person names appear.
+
+import type { Html } from 'foldkit/html'
+import { html } from 'foldkit/html'
+
+import { formatIsoDateTime } from '../../../time-format'
+import { forgeRouter } from '../../../route'
+import * as Ui from '../../../ui'
+import type { Message } from '../message'
+import type {
+  AutopilotWorkState,
+  AutopilotWorkSummary,
+  Model,
+  ProviderAccountPoolSummary,
+} from '../model'
+
+// ---------------------------------------------------------------------------
+// Provenance: every surfaced number is either backed by a real projection
+// (`live`) or is an honest placeholder (`seeded`). Seeded values are dimmed and
+// carry a visible tag so an operator never mistakes a demo number for a fact.
+// ---------------------------------------------------------------------------
+
+type Provenance = 'live' | 'seeded'
+
+interface Metric {
+  readonly label: string
+  readonly value: string
+  readonly provenance: Provenance
+}
+
+interface PipelineStage {
+  readonly index: number | null
+  readonly name: string
+  readonly source: string
+  readonly automations: number
+  readonly automationsProvenance: Provenance
+  readonly metrics: ReadonlyArray<Metric>
+  readonly spark: ReadonlyArray<number>
+  readonly sparkProvenance: Provenance
+}
+
+interface DetailPanel {
+  readonly title: string
+  readonly value: string
+  readonly unit: string
+  readonly pill: string
+  readonly delta: number | null
+  readonly band: ReadonlyArray<number>
+  readonly provenance: Provenance
+  readonly note: string
+}
+
+// ---------------------------------------------------------------------------
+// Real-data derivation from the loaded Runs projection.
+// ---------------------------------------------------------------------------
+
+const integerFormatter = new Intl.NumberFormat('en-US')
+const formatInt = (value: number): string => integerFormatter.format(value)
+
+// Map a Run state onto the production-line stage it currently sits in. This is
+// the real bucketing that feeds throughput, backlog, and pass-rate counts.
+const stageOf = (state: AutopilotWorkState): string => {
+  switch (state) {
+    case 'scheduled':
+      return 'triage'
+    case 'queued_or_running':
+      return 'codegen'
+    case 'access_required':
+    case 'payment_required':
+    case 'paid_ready':
+      return 'codegen'
+    case 'delivered':
+    case 'revision_required':
+      return 'validate'
+    case 'accepted':
+    case 'accepted_free_slice':
+      return 'release'
+    case 'rejected':
+    case 'invalid':
+      return 'monitor'
+    case 'blocked':
+      return 'monitor'
+  }
+}
+
+interface RunDigest {
+  readonly total: number
+  readonly byStage: Readonly<Record<string, number>>
+  readonly byState: ReadonlyMap<AutopilotWorkState, number>
+  // Median entry->exit minutes, derived from createdAt -> updatedAt.
+  readonly medianCycleMinutes: number | null
+  // Daily created counts over the trailing 14 days (oldest -> newest).
+  readonly dailyCreated: ReadonlyArray<number>
+  // Accepted / (accepted + rejected + invalid) over the loaded window.
+  readonly passRate: number | null
+  readonly accepted: number
+  readonly delivered: number
+  readonly rejectedOrInvalid: number
+  readonly blocked: number
+  readonly scheduled: number
+}
+
+const emptyDigest: RunDigest = {
+  total: 0,
+  byStage: {},
+  byState: new Map(),
+  medianCycleMinutes: null,
+  dailyCreated: [],
+  passRate: null,
+  accepted: 0,
+  delivered: 0,
+  rejectedOrInvalid: 0,
+  blocked: 0,
+  scheduled: 0,
+}
+
+const median = (values: ReadonlyArray<number>): number | null => {
+  if (values.length === 0) {
+    return null
+  }
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1]! + sorted[mid]!) / 2
+    : sorted[mid]!
+}
+
+const digestRuns = (
+  workOrders: ReadonlyArray<AutopilotWorkSummary>,
+  generatedAt: string,
+): RunDigest => {
+  if (workOrders.length === 0) {
+    return emptyDigest
+  }
+
+  const byStage: Record<string, number> = {}
+  const byState = new Map<AutopilotWorkState, number>()
+  const cycleMinutes: Array<number> = []
+  const now = Date.parse(generatedAt)
+  const dayCount = 14
+  const daily = new Array<number>(dayCount).fill(0)
+
+  let accepted = 0
+  let delivered = 0
+  let rejectedOrInvalid = 0
+  let blocked = 0
+  let scheduled = 0
+
+  for (const order of workOrders) {
+    const stage = stageOf(order.state)
+    byStage[stage] = (byStage[stage] ?? 0) + 1
+    byState.set(order.state, (byState.get(order.state) ?? 0) + 1)
+
+    if (order.state === 'accepted' || order.state === 'accepted_free_slice') {
+      accepted += 1
+    }
+    if (order.state === 'delivered' || order.state === 'revision_required') {
+      delivered += 1
+    }
+    if (order.state === 'rejected' || order.state === 'invalid') {
+      rejectedOrInvalid += 1
+    }
+    if (order.state === 'blocked') {
+      blocked += 1
+    }
+    if (order.state === 'scheduled') {
+      scheduled += 1
+    }
+
+    const created = Date.parse(order.createdAt)
+    const updated = Date.parse(order.updatedAt)
+    if (Number.isFinite(created) && Number.isFinite(updated) && updated >= created) {
+      cycleMinutes.push((updated - created) / 60_000)
+    }
+
+    if (Number.isFinite(created) && Number.isFinite(now)) {
+      const ageDays = Math.floor((now - created) / 86_400_000)
+      if (ageDays >= 0 && ageDays < dayCount) {
+        // index 0 = oldest day in the window, dayCount-1 = today
+        daily[dayCount - 1 - ageDays] = (daily[dayCount - 1 - ageDays] ?? 0) + 1
+      }
+    }
+  }
+
+  const decided = accepted + rejectedOrInvalid
+  const passRate = decided === 0 ? null : accepted / decided
+
+  return {
+    total: workOrders.length,
+    byStage,
+    byState,
+    medianCycleMinutes: median(cycleMinutes),
+    dailyCreated: daily,
+    passRate,
+    accepted,
+    delivered,
+    rejectedOrInvalid,
+    blocked,
+    scheduled,
+  }
+}
+
+const formatCycle = (minutes: number | null): string => {
+  if (minutes === null) {
+    return '—'
+  }
+  if (minutes < 1) {
+    return '<1m'
+  }
+  if (minutes < 60) {
+    return `${Math.round(minutes)}m`
+  }
+  const hours = minutes / 60
+  if (hours < 48) {
+    return `${hours.toFixed(1)}h`
+  }
+  return `${Math.round(hours / 24)}d`
+}
+
+const formatPct = (rate: number | null): string =>
+  rate === null ? '—' : `${(rate * 100).toFixed(1)}%`
+
+// ---------------------------------------------------------------------------
+// Stage + panel assembly. The right-hand "Forge source" wiring is documented
+// inline so the provenance choices stay auditable.
+// ---------------------------------------------------------------------------
+
+const buildStages = (
+  digest: RunDigest,
+  pool: ProviderAccountPoolSummary | null,
+): ReadonlyArray<PipelineStage> => {
+  const stageCount = (key: string): number => digest.byStage[key] ?? 0
+  const hasRuns = digest.total > 0
+
+  // A real per-stage trailing series is only meaningful for the whole intake;
+  // we reuse the real daily-created series as the Triage/Signal sparkline and
+  // dim the rest as seeded so we never imply per-stage history we don't have.
+  const seededSpark = [3, 5, 4, 6, 5, 7, 6]
+
+  return [
+    {
+      index: null,
+      name: 'Signal',
+      source: 'Inbound intent feeding Run intake',
+      automations: 0,
+      automationsProvenance: 'seeded',
+      metrics: [
+        {
+          label: 'Runs in / window',
+          value: formatInt(digest.dailyCreated.reduce((a, b) => a + b, 0)),
+          provenance: hasRuns ? 'live' : 'seeded',
+        },
+        { label: 'Input sources', value: '—', provenance: 'seeded' },
+      ],
+      spark: hasRuns ? digest.dailyCreated.slice(-7) : seededSpark,
+      sparkProvenance: hasRuns ? 'live' : 'seeded',
+    },
+    {
+      index: 1,
+      name: 'Triage',
+      source: 'Run intake / scoping; backlog = scheduled Runs',
+      automations: 0,
+      automationsProvenance: 'seeded',
+      metrics: [
+        {
+          label: 'In triage',
+          value: formatInt(stageCount('triage')),
+          provenance: hasRuns ? 'live' : 'seeded',
+        },
+        {
+          label: 'Backlog',
+          value: formatInt(digest.scheduled),
+          provenance: hasRuns ? 'live' : 'seeded',
+        },
+        {
+          label: 'Cycle',
+          value: formatCycle(digest.medianCycleMinutes),
+          provenance: digest.medianCycleMinutes === null ? 'seeded' : 'live',
+        },
+      ],
+      spark: hasRuns ? digest.dailyCreated.slice(-7) : seededSpark,
+      sparkProvenance: hasRuns ? 'live' : 'seeded',
+    },
+    {
+      index: 2,
+      name: 'Code Gen',
+      source: 'Runs on materialized Workspaces; capacity = account pool',
+      automations: pool?.activeLeaseCount ?? 0,
+      automationsProvenance: pool === null ? 'seeded' : 'live',
+      metrics: [
+        {
+          label: 'Running',
+          value: formatInt(stageCount('codegen')),
+          provenance: hasRuns ? 'live' : 'seeded',
+        },
+        {
+          label: 'Eligible nodes',
+          value: pool === null ? '—' : formatInt(pool.eligible),
+          provenance: pool === null ? 'seeded' : 'live',
+        },
+        {
+          label: 'Cycle',
+          value: formatCycle(digest.medianCycleMinutes),
+          provenance: digest.medianCycleMinutes === null ? 'seeded' : 'live',
+        },
+      ],
+      spark: seededSpark,
+      sparkProvenance: 'seeded',
+    },
+    {
+      index: 3,
+      name: 'Validate',
+      source: 'Verification reports + checks; merge gate',
+      automations: 0,
+      automationsProvenance: 'seeded',
+      metrics: [
+        {
+          label: 'In review',
+          value: formatInt(stageCount('validate')),
+          provenance: hasRuns ? 'live' : 'seeded',
+        },
+        {
+          label: 'Pass rate',
+          value: formatPct(digest.passRate),
+          provenance: digest.passRate === null ? 'seeded' : 'live',
+        },
+      ],
+      spark: seededSpark,
+      sparkProvenance: 'seeded',
+    },
+    {
+      index: 4,
+      name: 'Release',
+      source: 'Delivery gating -> accepted-outcome receipts',
+      automations: 0,
+      automationsProvenance: 'seeded',
+      metrics: [
+        {
+          label: 'Accepted',
+          value: formatInt(digest.accepted),
+          provenance: hasRuns ? 'live' : 'seeded',
+        },
+        {
+          label: 'Pass rate',
+          value: formatPct(digest.passRate),
+          provenance: digest.passRate === null ? 'seeded' : 'live',
+        },
+      ],
+      spark: seededSpark,
+      sparkProvenance: 'seeded',
+    },
+    {
+      index: 5,
+      name: 'Document',
+      source: 'Documentation Runs (no dedicated projection yet)',
+      automations: 0,
+      automationsProvenance: 'seeded',
+      metrics: [
+        { label: 'Docs / wk', value: '—', provenance: 'seeded' },
+        { label: 'Pages / wk', value: '—', provenance: 'seeded' },
+      ],
+      spark: seededSpark,
+      sparkProvenance: 'seeded',
+    },
+    {
+      index: 6,
+      name: 'Monitor',
+      source: 'Post-delivery signals: blocked / rejected Runs',
+      automations: 0,
+      automationsProvenance: 'seeded',
+      metrics: [
+        {
+          label: 'Incidents',
+          value: formatInt(digest.blocked + digest.rejectedOrInvalid),
+          provenance: hasRuns ? 'live' : 'seeded',
+        },
+        { label: 'Token eff', value: '—', provenance: 'seeded' },
+        { label: 'MTTR', value: '—', provenance: 'seeded' },
+      ],
+      spark: seededSpark,
+      sparkProvenance: 'seeded',
+    },
+    {
+      index: null,
+      name: 'Deploy',
+      source: 'Completed delivery receipts (accepted outcomes)',
+      automations: 0,
+      automationsProvenance: 'seeded',
+      metrics: [
+        {
+          label: 'Accepted / window',
+          value: formatInt(digest.accepted),
+          provenance: hasRuns ? 'live' : 'seeded',
+        },
+        { label: 'KPIs', value: '—', provenance: 'seeded' },
+      ],
+      spark: seededSpark,
+      sparkProvenance: 'seeded',
+    },
+  ]
+}
+
+const buildPanels = (digest: RunDigest): ReadonlyArray<DetailPanel> => {
+  const hasRuns = digest.total > 0
+  const triaged = (digest.byStage.triage ?? 0) + digest.scheduled
+  // WoW delta from the real daily-created series: last 7 vs prior 7.
+  const recent = digest.dailyCreated.slice(-7).reduce((a, b) => a + b, 0)
+  const prior = digest.dailyCreated.slice(-14, -7).reduce((a, b) => a + b, 0)
+  const intakeDelta =
+    prior === 0 ? null : Math.round(((recent - prior) / prior) * 100)
+  const realBand = digest.dailyCreated.length > 0 ? digest.dailyCreated : []
+  const seededBand = [4, 6, 5, 8, 7, 9, 8, 10, 9, 11, 10, 12, 11, 13]
+
+  return [
+    {
+      title: 'Runs Triaged',
+      value: formatInt(triaged),
+      unit: 'RUNS',
+      pill: 'QUEUE BURN',
+      delta: intakeDelta,
+      band: realBand.length > 0 ? realBand : seededBand,
+      provenance: hasRuns ? 'live' : 'seeded',
+      note: 'Runs scoped + scheduled backlog (from Runs projection).',
+    },
+    {
+      title: 'Checks Validated',
+      value: '—',
+      unit: 'CHECKS',
+      pill: 'MERGE GATE',
+      delta: null,
+      band: seededBand,
+      provenance: 'seeded',
+      note: 'No verification-check projection wired yet — placeholder.',
+    },
+    {
+      title: 'Outcomes Shipped',
+      value: formatInt(digest.accepted),
+      unit: 'RECEIPTS',
+      pill: 'SHIP RATE',
+      delta: null,
+      band: realBand.length > 0 ? realBand : seededBand,
+      provenance: hasRuns ? 'live' : 'seeded',
+      note: 'Accepted-outcome receipts (accepted Runs).',
+    },
+    {
+      title: 'Incidents Processed',
+      value: formatInt(digest.blocked + digest.rejectedOrInvalid),
+      unit: 'INC',
+      pill: 'RELIABILITY',
+      delta: null,
+      band: realBand.length > 0 ? realBand : seededBand,
+      provenance: hasRuns ? 'live' : 'seeded',
+      note: 'Blocked + rejected/invalid Runs (Monitor signal).',
+    },
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// Rendering primitives (dark contract, no model-authored markup).
+// ---------------------------------------------------------------------------
+
+const provenanceTag = (provenance: Provenance): Html => {
+  const h = html<Message>()
+  const cls =
+    provenance === 'live'
+      ? 'border-[#1b5e20] text-[#7ccf8a]'
+      : 'border-[#5a3b00] text-[#ffb400]'
+
+  return h.span(
+    [
+      Ui.className<Message>(
+        `inline-flex min-h-5 items-center border px-1.5 text-[0.5625rem] uppercase tracking-wide ${cls}`,
+      ),
+    ],
+    [provenance === 'live' ? 'live' : 'seeded'],
+  )
+}
+
+// A minimal inline sparkline. Seeded series render dimmed.
+const sparkline = (
+  values: ReadonlyArray<number>,
+  provenance: Provenance,
+): Html => {
+  const h = html<Message>()
+  const points = values.length < 2 ? [0, 0, ...values] : values
+  const max = Math.max(...points, 1)
+  const min = Math.min(...points, 0)
+  const span = max - min || 1
+  const width = 96
+  const height = 24
+  const step = points.length <= 1 ? width : width / (points.length - 1)
+  const coords = points
+    .map((value, index) => {
+      const x = (index * step).toFixed(1)
+      const y = (height - ((value - min) / span) * height).toFixed(1)
+      return `${x},${y}`
+    })
+    .join(' ')
+  const stroke = provenance === 'live' ? '#7ccf8a' : '#5a5a5a'
+
+  return h.svg(
+    [
+      h.ViewBox(`0 0 ${width} ${height}`),
+      h.AriaHidden(true),
+      Ui.className<Message>('h-6 w-24'),
+      h.Attribute('preserveAspectRatio', 'none'),
+    ],
+    [
+      h.polyline(
+        [
+          h.Attribute('points', coords),
+          h.Attribute('fill', 'none'),
+          h.Attribute('stroke', stroke),
+          h.Attribute('stroke-width', '1.5'),
+        ],
+        [],
+      ),
+    ],
+  )
+}
+
+// Banded trend chart (MAX / MID / MIN guides + the live/seeded line).
+const bandedChart = (
+  values: ReadonlyArray<number>,
+  provenance: Provenance,
+): Html => {
+  const h = html<Message>()
+  const points = values.length < 2 ? [0, ...values, 0] : values
+  const max = Math.max(...points, 1)
+  const min = Math.min(...points, 0)
+  const span = max - min || 1
+  const width = 240
+  const height = 56
+  const step = points.length <= 1 ? width : width / (points.length - 1)
+  const coords = points
+    .map((value, index) => {
+      const x = (index * step).toFixed(1)
+      const y = (height - ((value - min) / span) * height).toFixed(1)
+      return `${x},${y}`
+    })
+    .join(' ')
+  const stroke = provenance === 'live' ? '#7ccf8a' : '#5a5a5a'
+
+  return h.svg(
+    [
+      h.ViewBox(`0 0 ${width} ${height}`),
+      h.AriaHidden(true),
+      Ui.className<Message>('h-14 w-full'),
+      h.Attribute('preserveAspectRatio', 'none'),
+    ],
+    [
+      h.line(
+        [
+          h.Attribute('x1', '0'),
+          h.Attribute('y1', '1'),
+          h.Attribute('x2', `${width}`),
+          h.Attribute('y2', '1'),
+          h.Attribute('stroke', '#222'),
+          h.Attribute('stroke-width', '1'),
+        ],
+        [],
+      ),
+      h.line(
+        [
+          h.Attribute('x1', '0'),
+          h.Attribute('y1', `${height / 2}`),
+          h.Attribute('x2', `${width}`),
+          h.Attribute('y2', `${height / 2}`),
+          h.Attribute('stroke', '#1a1a1a'),
+          h.Attribute('stroke-width', '1'),
+        ],
+        [],
+      ),
+      h.line(
+        [
+          h.Attribute('x1', '0'),
+          h.Attribute('y1', `${height - 1}`),
+          h.Attribute('x2', `${width}`),
+          h.Attribute('y2', `${height - 1}`),
+          h.Attribute('stroke', '#222'),
+          h.Attribute('stroke-width', '1'),
+        ],
+        [],
+      ),
+      h.polyline(
+        [
+          h.Attribute('points', coords),
+          h.Attribute('fill', 'none'),
+          h.Attribute('stroke', stroke),
+          h.Attribute('stroke-width', '1.5'),
+        ],
+        [],
+      ),
+    ],
+  )
+}
+
+const metricCell = (metric: Metric): Html => {
+  const h = html<Message>()
+  const dim = metric.provenance === 'seeded' ? 'text-white/35' : 'text-white/85'
+
+  return h.div([Ui.className<Message>('grid gap-0.5')], [
+    h.div(
+      [Ui.className<Message>('text-[0.5625rem] uppercase tracking-wide text-white/35')],
+      [metric.label],
+    ),
+    h.div(
+      [Ui.className<Message>(`text-sm font-medium tabular-nums ${dim}`)],
+      [metric.value],
+    ),
+  ])
+}
+
+const stageCard = (stage: PipelineStage): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid min-w-[10rem] flex-1 content-start gap-3 border border-[#222] bg-[#050505] p-3',
+      ),
+    ],
+    [
+      h.div([Ui.className<Message>('flex items-center justify-between gap-2')], [
+        h.div([Ui.className<Message>('flex items-center gap-2')], [
+          stage.index === null
+            ? h.span([Ui.className<Message>('hidden')], [])
+            : h.span(
+                [
+                  Ui.className<Message>(
+                    'inline-flex size-5 items-center justify-center border border-[#333] text-[0.625rem] text-white/55',
+                  ),
+                ],
+                [String(stage.index)],
+              ),
+          h.div([Ui.className<Message>('text-sm font-medium text-white/85')], [
+            stage.name,
+          ]),
+        ]),
+        sparkline(stage.spark, stage.sparkProvenance),
+      ]),
+      h.div([Ui.className<Message>('flex items-center gap-2')], [
+        h.span([Ui.className<Message>('text-[0.625rem] text-white/40')], [
+          `${formatInt(stage.automations)} automations`,
+        ]),
+        provenanceTag(stage.automationsProvenance),
+      ]),
+      h.div(
+        [Ui.className<Message>('grid grid-cols-2 gap-x-3 gap-y-2')],
+        stage.metrics.map(metricCell),
+      ),
+      h.div(
+        [Ui.className<Message>('text-[0.5625rem] leading-snug text-white/25')],
+        [stage.source],
+      ),
+    ],
+  )
+}
+
+const deltaLabel = (delta: number | null): Html => {
+  const h = html<Message>()
+  if (delta === null) {
+    return h.span([Ui.className<Message>('text-xs text-white/35')], ['— WoW'])
+  }
+  const positive = delta >= 0
+  const cls = positive ? 'text-[#7ccf8a]' : 'text-[#ff8a80]'
+  const arrow = positive ? '▲' : '▼'
+
+  return h.span(
+    [Ui.className<Message>(`text-xs ${cls}`)],
+    [`${arrow} ${Math.abs(delta)}% WoW`],
+  )
+}
+
+const detailPanelCard = (panel: DetailPanel): Html => {
+  const h = html<Message>()
+  const valueDim =
+    panel.provenance === 'seeded' ? 'text-white/35' : 'text-white'
+
+  return h.div(
+    [Ui.className<Message>('grid content-start gap-3 border border-[#222] bg-[#050505] p-4')],
+    [
+      h.div([Ui.className<Message>('flex items-start justify-between gap-2')], [
+        h.div([Ui.className<Message>('grid gap-1')], [
+          h.div([Ui.className<Message>('text-sm font-medium text-white/80')], [
+            panel.title,
+          ]),
+          h.div([Ui.className<Message>('flex items-baseline gap-1.5')], [
+            h.span(
+              [Ui.className<Message>(`text-2xl font-semibold tabular-nums ${valueDim}`)],
+              [panel.value],
+            ),
+            h.span([Ui.className<Message>('text-[0.625rem] uppercase text-white/35')], [
+              panel.unit,
+            ]),
+          ]),
+        ]),
+        h.div([Ui.className<Message>('grid justify-items-end gap-1')], [
+          provenanceTag(panel.provenance),
+          h.span(
+            [
+              Ui.className<Message>(
+                'inline-flex min-h-5 items-center border border-[#333] px-1.5 text-[0.5625rem] uppercase tracking-wide text-white/45',
+              ),
+            ],
+            [panel.pill],
+          ),
+        ]),
+      ]),
+      bandedChart(panel.band, panel.provenance),
+      h.div([Ui.className<Message>('flex items-center justify-between gap-2')], [
+        deltaLabel(panel.delta),
+        h.span([Ui.className<Message>('text-[0.625rem] text-white/30')], [
+          'MAX / MID / MIN',
+        ]),
+      ]),
+      h.div([Ui.className<Message>('text-[0.625rem] leading-snug text-white/30')], [
+        panel.note,
+      ]),
+    ],
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Page-level state handling. The factory reads the cockpit's projections; when
+// none have loaded we say so honestly rather than render seeded numbers as live.
+// ---------------------------------------------------------------------------
+
+interface FactoryData {
+  readonly digest: RunDigest
+  readonly pool: ProviderAccountPoolSummary | null
+  readonly generatedAt: string | null
+  readonly runsLoaded: boolean
+  readonly poolLoaded: boolean
+  readonly error: string | null
+}
+
+const readFactoryData = (model: Model): FactoryData => {
+  const list = model.autopilotWorkList
+  const poolState = model.providerAccountPool
+
+  const pool =
+    poolState._tag === 'ProviderAccountPoolLoaded'
+      ? poolState.response.summary
+      : null
+
+  if (list._tag === 'AutopilotWorkListLoaded') {
+    const generatedAt = list.response.generatedAt
+    return {
+      digest: digestRuns(list.response.workOrders, generatedAt),
+      pool,
+      generatedAt,
+      runsLoaded: true,
+      poolLoaded: poolState._tag === 'ProviderAccountPoolLoaded',
+      error: null,
+    }
+  }
+
+  return {
+    digest: emptyDigest,
+    pool,
+    generatedAt: null,
+    runsLoaded: false,
+    poolLoaded: poolState._tag === 'ProviderAccountPoolLoaded',
+    error: list._tag === 'AutopilotWorkListFailed' ? list.error : null,
+  }
+}
+
+const liveIndicator = (data: FactoryData): Html => {
+  const h = html<Message>()
+  const live = data.runsLoaded
+  const cls = live
+    ? 'border-[#1b5e20] text-[#7ccf8a]'
+    : 'border-[#5a3b00] text-[#ffb400]'
+
+  return h.div([Ui.className<Message>('flex items-center gap-2')], [
+    h.span(
+      [
+        Ui.className<Message>(
+          `inline-flex min-h-7 items-center gap-1.5 border px-2 text-[0.6875rem] uppercase tracking-wide ${cls}`,
+        ),
+      ],
+      [
+        h.span(
+          [
+            Ui.className<Message>(
+              `size-1.5 ${live ? 'bg-[#7ccf8a]' : 'bg-[#ffb400]'}`,
+            ),
+          ],
+          [],
+        ),
+        live ? 'Live data' : 'Awaiting data',
+      ],
+    ),
+  ])
+}
+
+const header = (data: FactoryData): Html => {
+  const h = html<Message>()
+
+  return h.div([Ui.className<Message>('flex flex-wrap items-end justify-between gap-3')], [
+    h.div([Ui.className<Message>('grid gap-1')], [
+      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Forge']),
+      h.h1([Ui.className<Message>('m-0 text-2xl font-semibold text-white')], [
+        'Factory',
+      ]),
+      h.p([Ui.className<Message>('m-0 text-sm/6 text-white/50')], [
+        data.generatedAt === null
+          ? 'Signal to deploy. Live numbers are tagged; placeholders are marked seeded.'
+          : `Signal to deploy · generated ${formatIsoDateTime(data.generatedAt)}`,
+      ]),
+    ]),
+    liveIndicator(data),
+  ])
+}
+
+const provenanceLegend = (): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'flex flex-wrap items-center gap-3 border border-[#222] bg-[#050505] px-3 py-2 text-[0.625rem] text-white/40',
+      ),
+    ],
+    [
+      h.div([Ui.className<Message>('flex items-center gap-1.5')], [
+        provenanceTag('live'),
+        h.span([], ['backed by a real projection']),
+      ]),
+      h.div([Ui.className<Message>('flex items-center gap-1.5')], [
+        provenanceTag('seeded'),
+        h.span([], ['placeholder — no live source wired yet']),
+      ]),
+    ],
+  )
+}
+
+const pipelineSection = (stages: ReadonlyArray<PipelineStage>): Html => {
+  const h = html<Message>()
+
+  return h.section([Ui.className<Message>('grid gap-3')], [
+    h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
+      'Production line',
+    ]),
+    h.div(
+      [Ui.className<Message>('flex flex-wrap gap-2 lg:flex-nowrap lg:overflow-x-auto')],
+      stages.map(stageCard),
+    ),
+  ])
+}
+
+const panelSection = (panels: ReadonlyArray<DetailPanel>): Html => {
+  const h = html<Message>()
+
+  return h.section([Ui.className<Message>('grid gap-3')], [
+    h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
+      'Detail panels',
+    ]),
+    h.div(
+      [Ui.className<Message>('grid gap-3 sm:grid-cols-2 xl:grid-cols-4')],
+      panels.map(detailPanelCard),
+    ),
+  ])
+}
+
+const statusNote = (data: FactoryData): Html | null => {
+  const h = html<Message>()
+
+  if (data.error !== null) {
+    return h.p([Ui.className<Message>('m-0 text-sm text-[#ff8a80]')], [
+      `Runs projection failed to load: ${data.error}. Showing seeded placeholders only.`,
+    ])
+  }
+
+  if (!data.runsLoaded) {
+    return h.p([Ui.className<Message>('m-0 text-sm text-white/45')], [
+      'Loading the Runs projection. Stage numbers populate once real data arrives; until then everything is marked seeded.',
+    ])
+  }
+
+  if (!data.poolLoaded) {
+    return h.p([Ui.className<Message>('m-0 text-sm text-white/35')], [
+      'Account-pool capacity not loaded — Code Gen capacity is shown as seeded.',
+    ])
+  }
+
+  return null
+}
+
+export const view = (model: Model): Html => {
+  const h = html<Message>()
+  const data = readFactoryData(model)
+  const stages = buildStages(data.digest, data.pool)
+  const panels = buildPanels(data.digest)
+  const note = statusNote(data)
+
+  return h.section(
+    [
+      Ui.className<Message>('grid gap-5'),
+      h.DataAttribute('component', 'forge-factory-dashboard'),
+      h.DataAttribute('route', forgeRouter()),
+    ],
+    [
+      header(data),
+      provenanceLegend(),
+      ...(note === null ? [] : [note]),
+      pipelineSection(stages),
+      panelSection(panels),
+    ],
+  )
+}
