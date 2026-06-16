@@ -2055,6 +2055,72 @@ export const AutopilotWorkContextSnapshot = S.Struct({
 export type AutopilotWorkContextSnapshot =
   typeof AutopilotWorkContextSnapshot.Type
 
+export const AutopilotWorkRetrievalMode = S.Literals([
+  'exact',
+  'hybrid',
+  'model_selected',
+  'semantic',
+  'structured',
+])
+export type AutopilotWorkRetrievalMode =
+  typeof AutopilotWorkRetrievalMode.Type
+
+export const AutopilotWorkRetrievalFreshness = S.Literals([
+  'fresh',
+  'stale',
+  'unknown',
+])
+export type AutopilotWorkRetrievalFreshness =
+  typeof AutopilotWorkRetrievalFreshness.Type
+
+export const AutopilotWorkRetrievalSkipReason = S.Literals([
+  'duplicate',
+  'filtered_private',
+  'low_score',
+  'missing_source',
+  'stale',
+  'unsupported_mode',
+])
+export type AutopilotWorkRetrievalSkipReason =
+  typeof AutopilotWorkRetrievalSkipReason.Type
+
+export const AutopilotWorkRetrievalCandidate = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  candidateRef: S.String,
+  freshness: S.optionalKey(AutopilotWorkRetrievalFreshness),
+  mode: S.optionalKey(AutopilotWorkRetrievalMode),
+  provenanceRefs: S.optionalKey(S.Array(S.String)),
+  rank: S.optionalKey(S.NullOr(S.Number)),
+  score: S.optionalKey(S.NullOr(S.Number)),
+  sourceRef: S.optionalKey(S.NullOr(S.String)),
+})
+export type AutopilotWorkRetrievalCandidate =
+  typeof AutopilotWorkRetrievalCandidate.Type
+
+export const AutopilotWorkRetrievalSkippedCandidate = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  candidateRef: S.String,
+  reason: AutopilotWorkRetrievalSkipReason,
+  sourceRef: S.optionalKey(S.NullOr(S.String)),
+})
+export type AutopilotWorkRetrievalSkippedCandidate =
+  typeof AutopilotWorkRetrievalSkippedCandidate.Type
+
+export const AutopilotWorkRetrievalPlan = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  candidates: S.optionalKey(S.Array(AutopilotWorkRetrievalCandidate)),
+  freshness: S.optionalKey(AutopilotWorkRetrievalFreshness),
+  generatedAt: S.optionalKey(S.String),
+  mode: S.optionalKey(AutopilotWorkRetrievalMode),
+  planRef: S.optionalKey(S.String),
+  queryRefs: S.optionalKey(S.Array(S.String)),
+  requestRef: S.optionalKey(S.String),
+  skippedCandidates: S.optionalKey(S.Array(AutopilotWorkRetrievalSkippedCandidate)),
+  sourceRefs: S.optionalKey(S.Array(S.String)),
+})
+export type AutopilotWorkRetrievalPlan =
+  typeof AutopilotWorkRetrievalPlan.Type
+
 export const AutopilotWorkReviewDecision = S.Struct({
   acceptedWorkAuthority: S.Boolean,
   action: AutopilotWorkReviewAction,
@@ -2103,6 +2169,7 @@ export const AutopilotWorkProjection = S.Struct({
   repositoryAuthorities: S.Array(S.Unknown),
   reviewDecision: S.NullOr(AutopilotWorkReviewDecision),
   contextSnapshot: S.optionalKey(AutopilotWorkContextSnapshot),
+  retrievalPlan: S.optionalKey(AutopilotWorkRetrievalPlan),
   sessionNavigation: S.optionalKey(AutopilotWorkSessionNavigation),
   state: AutopilotWorkState,
   statusUrlRef: S.String,

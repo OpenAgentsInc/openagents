@@ -246,6 +246,13 @@ the #5135 projection, and cover duplicate, private-filtered, unsupported,
 missing-source, and low-score skips without adding filesystem crawling,
 embeddings, LSP calls, routing, or UI.
 
+Implementation status, 2026-06-16: #5137 renders the first `/autopilot`
+Retrieval search lane from the #5135 projection, including plan/query/source
+refs, selected and skipped candidates, provenance, freshness, blockers, and
+unsafe-material omission warnings. It remains read-only and does not add live
+search UI, adapter execution, filesystem crawling, embeddings, LSP calls,
+model calls, or routing.
+
 ### G6 - Extensibility: MCP, Skills, Hooks, Plugins
 
 Systems: system 28 MCP Client, system 30 Plugin, system 31 Skill, system 32

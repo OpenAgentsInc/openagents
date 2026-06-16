@@ -435,6 +435,125 @@ describe('autopilot work detail view', () => {
     expect(rendered).not.toContain('raw transcript')
   })
 
+  test('renders Retrieval search lane with selected and skipped candidates', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            retrievalPlan: {
+              candidates: [
+                {
+                  candidateRef: 'candidate.public.file_progress',
+                  freshness: 'fresh',
+                  mode: 'exact',
+                  provenanceRefs: [
+                    'retrieval-source-kind.file',
+                    'provenance.public.file_index',
+                  ],
+                  rank: 1,
+                  score: 0.95,
+                  sourceRef: 'source.public.file_progress',
+                },
+              ],
+              freshness: 'fresh',
+              mode: 'exact',
+              planRef: 'retrieval-plan.public.work_1',
+              queryRefs: ['query.public.progress'],
+              requestRef: 'retrieval-request.public.work_1',
+              skippedCandidates: [
+                {
+                  blockerRefs: ['retrieval-blocker.public.low_score'],
+                  candidateRef: 'candidate.public.low_score',
+                  reason: 'low_score',
+                  sourceRef: 'source.public.low_score',
+                },
+              ],
+              sourceRefs: ['source.public.seed'],
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Retrieval search')
+    expect(rendered).toContain('candidate.public.file_progress')
+    expect(rendered).toContain('source.public.file_progress')
+    expect(rendered).toContain('retrieval-source-kind.file')
+    expect(rendered).toContain('provenance.public.file_index')
+    expect(rendered).toContain('Skipped candidates')
+    expect(rendered).toContain('candidate.public.low_score')
+    expect(rendered).toContain('retrieval-blocker.public.low_score')
+    expect(rendered).toContain('retrieval-plan.public.work_1')
+    expect(rendered).toContain('query.public.progress')
+  })
+
+  test('renders Retrieval search missing-evidence blockers when plan is absent', () => {
+    const rendered = renderHtml(detailView(modelForWork(workForState('delivered', null))))
+
+    expect(rendered).toContain('Retrieval search')
+    expect(rendered).toContain('No retrieval candidates selected yet.')
+    expect(rendered).toContain('missing-query-ref')
+  })
+
+  test('omits unsafe retrieval refs before rendering', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            retrievalPlan: {
+              candidates: [
+                {
+                  candidateRef: '/Users/christopher/private/file.ts',
+                  provenanceRefs: ['diff --git a/private.ts b/private.ts'],
+                  sourceRef: 'source.public.safe',
+                },
+                {
+                  candidateRef: 'candidate.public.safe',
+                  provenanceRefs: [
+                    'provenance.public.safe',
+                    'provider payload sk-private',
+                  ],
+                  sourceRef: 'raw file /Users/christopher/private.md',
+                },
+              ],
+              mode: 'exact',
+              planRef: 'diff --git a/plan b/plan',
+              queryRefs: [
+                'query.public.safe',
+                'raw prompt /Users/christopher/private.md',
+              ],
+              requestRef: 'retrieval-request.public.work_1',
+              skippedCandidates: [
+                {
+                  candidateRef: 'candidate.public.skipped',
+                  reason: 'filtered_private',
+                  sourceRef: 'https://private.example.test/repo',
+                },
+              ],
+              sourceRefs: [
+                'source.public.seed',
+                '/Users/christopher/private/source',
+              ],
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Retrieval search')
+    expect(rendered).toContain('candidate.public.safe')
+    expect(rendered).toContain('provenance.public.safe')
+    expect(rendered).toContain('unsafe-retrieval-material-omitted')
+    expect(rendered).toContain('unsafe retrieval ref(s) were omitted')
+    expect(rendered).not.toContain('/Users/christopher')
+    expect(rendered).not.toContain('diff --git')
+    expect(rendered).not.toContain('raw prompt')
+    expect(rendered).not.toContain('raw file')
+    expect(rendered).not.toContain('provider payload')
+    expect(rendered).not.toContain('sk-private')
+    expect(rendered).not.toContain('private.example')
+  })
+
   test('renders active progress for running Runs', () => {
     const rendered = renderHtml(
       detailView(

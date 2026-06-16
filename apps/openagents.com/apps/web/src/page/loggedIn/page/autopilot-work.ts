@@ -40,6 +40,14 @@ import {
   projectForgeRunProgress,
 } from '../autopilot-work/progress-view'
 import {
+  type ForgeRetrievalCandidate,
+  type ForgeRetrievalFreshness,
+  type ForgeRetrievalPlanInput,
+  type ForgeRetrievalPlanStatus,
+  type ForgeRetrievalSkippedCandidate,
+  projectForgeRetrievalPlan,
+} from '../autopilot-work/retrieval-plan'
+import {
   type ForgeSessionNavigationAction,
   type ForgeSessionNavigationItem,
   type ForgeSessionNavigationStatus,
@@ -1122,6 +1130,203 @@ const sessionNavigationPanel = (work: AutopilotWorkProjection): Html => {
       ? h.span([Ui.className<Message>('hidden')], [])
       : h.p([Ui.className<Message>('m-0 text-sm text-[#ffb400]')], [
           `${sessionNavigation.omittedUnsafeRefCount} unsafe session ref(s) were omitted before rendering.`,
+      ]),
+  ])
+}
+
+const retrievalStatusTone = (
+  status: ForgeRetrievalPlanStatus,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  status === 'ready'
+    ? 'positive'
+    : status === 'blocked'
+      ? 'negative'
+      : status === 'stale'
+        ? 'warning'
+        : 'accent'
+
+const retrievalFreshnessTone = (
+  freshness: ForgeRetrievalFreshness,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  freshness === 'fresh'
+    ? 'positive'
+    : freshness === 'stale'
+      ? 'warning'
+      : 'accent'
+
+const retrievalSkipTone = (
+  reason: ForgeRetrievalSkippedCandidate['reason'],
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  reason === 'filtered_private' || reason === 'missing_source'
+    ? 'warning'
+    : reason === 'unsupported_mode'
+      ? 'accent'
+      : 'info'
+
+const retrievalPlanInput = (
+  work: AutopilotWorkProjection,
+): ForgeRetrievalPlanInput => {
+  const source = work.retrievalPlan
+
+  return {
+    generatedAt: source?.generatedAt ?? work.generatedAt,
+    mode: source?.mode ?? 'exact',
+    planRef: source?.planRef ?? `forge-retrieval-plan:${work.workOrderRef}`,
+    requestRef: source?.requestRef ?? work.clientRequestRef,
+    ...(source?.blockerRefs === undefined ? {} : { blockerRefs: source.blockerRefs }),
+    ...(source?.candidates === undefined ? {} : { candidates: source.candidates }),
+    ...(source?.freshness === undefined ? {} : { freshness: source.freshness }),
+    ...(source?.queryRefs === undefined ? {} : { queryRefs: source.queryRefs }),
+    ...(source?.skippedCandidates === undefined
+      ? {}
+      : { skippedCandidates: source.skippedCandidates }),
+    ...(source?.sourceRefs === undefined ? {} : { sourceRefs: source.sourceRefs }),
+  }
+}
+
+const retrievalMetricValue = (value: number | string | null): string =>
+  value === null ? 'missing' : String(value)
+
+const retrievalCandidatePanel = (candidate: ForgeRetrievalCandidate): Html => {
+  const h = html<Message>()
+
+  return h.article(
+    [
+      Ui.className<Message>('grid gap-4 border border-[#222] p-4'),
+      h.DataAttribute('forge-retrieval-candidate', candidate.candidateRef),
+      h.DataAttribute('forge-retrieval-candidate-mode', candidate.mode),
+      h.DataAttribute('forge-retrieval-candidate-freshness', candidate.freshness),
+    ],
+    [
+      h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+        h.div([Ui.className<Message>('min-w-0 grid gap-1')], [
+          h.h3(
+            [
+              Ui.className<Message>(
+                'm-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-white/80',
+              ),
+            ],
+            [candidate.candidateRef],
+          ),
+          h.p([Ui.className<Message>('m-0 text-xs text-white/40')], [
+            `Rank ${retrievalMetricValue(candidate.rank)} - score ${retrievalMetricValue(candidate.score)}`,
+          ]),
+        ]),
+        h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+          badge(candidate.mode, 'accent'),
+          badge(candidate.freshness, retrievalFreshnessTone(candidate.freshness)),
+        ]),
+      ]),
+      h.div([Ui.className<Message>('grid gap-4 md:grid-cols-2')], [
+        refSection('Candidate ref', [candidate.candidateRef]),
+        refSection(
+          'Source ref',
+          candidate.sourceRef === null ? [] : [candidate.sourceRef],
+        ),
+        refSection('Provenance', candidate.provenanceRefs),
+        refSection('Candidate blockers', candidate.blockerRefs),
+      ]),
+    ],
+  )
+}
+
+const skippedRetrievalCandidatePanel = (
+  candidate: ForgeRetrievalSkippedCandidate,
+): Html => {
+  const h = html<Message>()
+
+  return h.article(
+    [
+      Ui.className<Message>('grid gap-4 border border-[#222] p-4'),
+      h.DataAttribute('forge-retrieval-skipped-candidate', candidate.candidateRef),
+      h.DataAttribute('forge-retrieval-skipped-reason', candidate.reason),
+    ],
+    [
+      h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+        h.div([Ui.className<Message>('min-w-0 grid gap-1')], [
+          h.h3(
+            [
+              Ui.className<Message>(
+                'm-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-white/80',
+              ),
+            ],
+            [candidate.candidateRef],
+          ),
+          h.p([Ui.className<Message>('m-0 text-xs text-white/40')], [
+            `Skipped: ${candidate.reason.replaceAll('_', ' ')}`,
+          ]),
+        ]),
+        badge(candidate.reason.replaceAll('_', ' '), retrievalSkipTone(candidate.reason)),
+      ]),
+      h.div([Ui.className<Message>('grid gap-4 md:grid-cols-2')], [
+        refSection('Skipped candidate', [candidate.candidateRef]),
+        refSection(
+          'Source ref',
+          candidate.sourceRef === null ? [] : [candidate.sourceRef],
+        ),
+        refSection('Skip blockers', candidate.blockerRefs),
+      ]),
+    ],
+  )
+}
+
+const retrievalSearchPanel = (work: AutopilotWorkProjection): Html => {
+  const h = html<Message>()
+  const retrieval = projectForgeRetrievalPlan(retrievalPlanInput(work))
+
+  return h.section([Ui.className<Message>('grid gap-4 border-t border-[#222] pt-5')], [
+    h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+      h.div([Ui.className<Message>('grid gap-1')], [
+        h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
+          'Retrieval search',
+        ]),
+        h.p([Ui.className<Message>('m-0 max-w-3xl text-sm text-white/45')], [
+          'Refs-only retrieval plan evidence. Ranking is projected upstream; the cockpit only renders selected and skipped candidates.',
+        ]),
+      ]),
+      h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+        badge(retrieval.status, retrievalStatusTone(retrieval.status)),
+        badge(retrieval.mode, 'accent'),
+        badge(retrieval.freshness, retrievalFreshnessTone(retrieval.freshness)),
+      ]),
+    ]),
+    h.div([Ui.className<Message>('grid gap-3 md:grid-cols-4')], [
+      contextMetric('Selected', String(retrieval.resultSet.totalSelected)),
+      contextMetric('Skipped', String(retrieval.resultSet.totalSkipped)),
+      contextMetric('Sources', String(retrieval.resultSet.sourceRefs.length)),
+      contextMetric('Plan ref', retrieval.planRef),
+    ]),
+    refSection('Query refs', retrieval.queryRefs),
+    retrieval.candidates.length === 0
+      ? h.div([Ui.className<Message>('border border-[#222] p-4')], [
+          h.p([Ui.className<Message>('m-0 text-sm text-white/45')], [
+            'No retrieval candidates selected yet.',
+          ]),
+        ])
+      : h.div([Ui.className<Message>('grid gap-3')], [
+          ...retrieval.candidates.map(retrievalCandidatePanel),
+        ]),
+    retrieval.skippedCandidates.length === 0
+      ? h.span([Ui.className<Message>('hidden')], [])
+      : h.div([Ui.className<Message>('grid gap-3')], [
+          h.h3([Ui.className<Message>('m-0 text-sm font-medium text-white/75')], [
+            'Skipped candidates',
+          ]),
+          ...retrieval.skippedCandidates.map(skippedRetrievalCandidatePanel),
+        ]),
+    h.div(
+      [Ui.className<Message>('grid gap-4 border border-[#222] p-4 md:grid-cols-2')],
+      [
+        refSection('Source refs', retrieval.sourceRefs),
+        refSection('Result selected refs', retrieval.resultSet.selectedCandidateRefs),
+        refSection('Result skipped refs', retrieval.resultSet.skippedCandidateRefs),
+        refSection('Retrieval blockers', retrieval.blockerRefs),
+      ],
+    ),
+    retrieval.omittedUnsafeRefCount === 0
+      ? h.span([Ui.className<Message>('hidden')], [])
+      : h.p([Ui.className<Message>('m-0 text-sm text-[#ffb400]')], [
+          `${retrieval.omittedUnsafeRefCount} unsafe retrieval ref(s) were omitted before rendering.`,
         ]),
   ])
 }
@@ -1424,6 +1629,7 @@ const workSummaryPanel = (model: Model, work: AutopilotWorkProjection): Html => 
     progressPanel(model, work),
     contextSnapshotPanel(work),
     sessionNavigationPanel(work),
+    retrievalSearchPanel(work),
     diffReviewPanel(model, work),
     receiptPanel(model, work),
     eventsPanel(model),
