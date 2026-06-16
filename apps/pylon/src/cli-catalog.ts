@@ -111,6 +111,9 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
       opt("--kind", "payout-target kind; or backup-receive kind (spark-address)."),
       opt("--ref", "payout-target ref."),
       flag("--show-local-target", "backup-receive/backup-status: print the raw local Spark target (LOCAL/PRIVATE only)."),
+      flag("--sweep", "migrate-spark: dry-run reconcile of OWN received Spark backup funds (no consent, no movement)."),
+      flag("--confirm-sweep", "migrate-spark: explicit consent to sweep OWN received Spark backup funds into OWN MDK wallet (receive-side reconcile, NOT a payout)."),
+      flag("--destination-ready", "migrate-spark --confirm-sweep: assert the MDK destination is ready to receive the swept funds."),
     ],
   },
   {

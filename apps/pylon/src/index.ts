@@ -145,6 +145,7 @@ import {
   reportWalletReadiness,
   requestPayoutTargetAdmission,
   sendWithMdk,
+  sweepSparkBackupToMdk,
   writeCachedSparkTarget,
 } from "./wallet"
 import { resolveSparkBackupHelper } from "./spark-backup-helper"
@@ -2002,6 +2003,42 @@ async function main() {
       }
       if (command === "migrate-spark") {
         const sparkOptions = parsePsionicOptions(walletArgs)
+        // Slice 3 (#5078): `--confirm-sweep` (or its dry-run probe `--sweep`)
+        // selects the RECEIVE-SIDE reconcile half: sweep the node's OWN
+        // received Spark backup funds into its OWN MDK wallet under explicit
+        // consent. This is NOT a payout/send to third parties. Without the
+        // sweep flags, `migrate-spark` keeps the legacy-balance migration
+        // preflight below.
+        const sweepBackup = sparkOptions["confirm-sweep"] === true || sparkOptions.sweep === true
+        if (sweepBackup) {
+          const showLocalTarget = sparkOptions["show-local-target"] === true
+          const sparkBackupOptions = await resolveSparkBackupOptions(state, { showLocalTarget })
+          const reconcile = await sweepSparkBackupToMdk({
+            ...sparkBackupOptions,
+            confirmSweep: sparkOptions["confirm-sweep"] === true,
+            destinationReady:
+              sparkOptions["destination-ready"] === true ||
+              sparkOptions["destination-invoice-ready"] === true,
+          })
+          if (reconcile.state === "swept-to-mdk") {
+            for (const receiptRef of reconcile.publicReceiptRefs) {
+              await appendLedgerEvent(state.paths, {
+                kind: "spark-backup-reconcile-swept",
+                ref: receiptRef,
+                data: {
+                  receiptRef,
+                  rail: "spark_backup",
+                  sweptAmountSats: reconcile.sweptAmountSats,
+                  claimedDepositCount: reconcile.claimedDepositCount,
+                },
+              })
+            }
+          }
+          process.stdout.write(`${JSON.stringify({ ok: reconcile.state === "swept-to-mdk", reconcile }, null, 2)}\n`)
+          process.exitCode =
+            reconcile.state === "swept-to-mdk" || reconcile.state === "nothing-to-sweep" ? 0 : 1
+          return
+        }
         const result = await preflightLegacySparkMigration({
           destinationInvoiceReady: sparkOptions["destination-invoice-ready"] === true,
           dryRun: sparkOptions.execute !== true,

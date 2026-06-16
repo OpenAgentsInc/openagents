@@ -20,6 +20,7 @@ import {
   requestPayoutTargetAdmission,
   sendWithMdk,
   sparkBackupTargetPath,
+  sweepSparkBackupToMdk,
   writeCachedSparkTarget,
   type SparkBackupHelper,
   type WalletCommandRunner,
@@ -648,5 +649,141 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
       expect(JSON.stringify(projection)).not.toContain(RAW_SPARK_ADDRESS)
       assertPublicProjectionSafe(projection)
     })
+  })
+})
+
+describe("Spark backup reconcile / sweep (slice 3: consented receive-side sweep, NOT payout)", () => {
+  const enabledEnv = { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv
+
+  test("inert by default: opt-in off, stub helper -> disabled, no movement", async () => {
+    const reconcile = await sweepSparkBackupToMdk({ env: {} as NodeJS.ProcessEnv })
+    expect(reconcile.enabled).toBe(false)
+    expect(reconcile.state).toBe("disabled")
+    expect(reconcile.sweptAmountSats).toBeNull()
+    expect(reconcile.publicReceiptRefs).toEqual([])
+    assertPublicProjectionSafe(reconcile)
+  })
+
+  test("missing credential -> typed blocker, no movement", async () => {
+    const reconcile = await sweepSparkBackupToMdk({
+      enabled: true,
+      env: {} as NodeJS.ProcessEnv,
+      confirmSweep: true,
+      destinationReady: true,
+      helper: sparkHelper({ status: { stdout: { balance_sats: 4242, unclaimed_deposit_count: 1 } } }),
+    })
+    expect(reconcile.state).toBe("credential-missing")
+    expect(reconcile.blockerRefs).toContain("blocker.wallet.spark_backup.credential_missing")
+    expect(reconcile.sweptAmountSats).toBeNull()
+    assertPublicProjectionSafe(reconcile)
+  })
+
+  test("helper unavailable -> typed blocker, no movement", async () => {
+    const reconcile = await sweepSparkBackupToMdk({
+      enabled: true,
+      env: enabledEnv,
+      confirmSweep: true,
+      destinationReady: true,
+      helper: sparkHelper({ status: { exitCode: 1, stderr: "helper offline" } }),
+    })
+    expect(reconcile.state).toBe("helper-unavailable")
+    expect(reconcile.blockerRefs).toContain("blocker.wallet.spark_backup.helper_unavailable")
+    assertPublicProjectionSafe(reconcile)
+  })
+
+  test("nothing detected -> nothing-to-sweep, no receipt, exit-clean", async () => {
+    const reconcile = await sweepSparkBackupToMdk({
+      enabled: true,
+      env: enabledEnv,
+      confirmSweep: true,
+      destinationReady: true,
+      helper: sparkHelper({ status: { stdout: { balance_sats: 0, unclaimed_deposit_count: 0 } } }),
+    })
+    expect(reconcile.state).toBe("nothing-to-sweep")
+    expect(reconcile.publicReceiptRefs).toEqual([])
+    assertPublicProjectionSafe(reconcile)
+  })
+
+  test("WITHOUT --confirm-sweep refuses to move detected funds (consent-required)", async () => {
+    const reconcile = await sweepSparkBackupToMdk({
+      enabled: true,
+      env: enabledEnv,
+      confirmSweep: false,
+      destinationReady: true,
+      helper: sparkHelper({ status: { stdout: { balance_sats: 4242, unclaimed_deposit_count: 1 } } }),
+    })
+    expect(reconcile.state).toBe("consent-required")
+    expect(reconcile.consentRequired).toBe(true)
+    expect(reconcile.sweptAmountSats).toBeNull()
+    expect(reconcile.detectedBalanceSats).toBe(4242)
+    expect(reconcile.blockerRefs).toContain("blocker.wallet.spark_backup.sweep_consent_required")
+    expect(reconcile.nextActionRefs).toContain("action.wallet.spark_backup.rerun_with_confirm_sweep")
+    assertPublicProjectionSafe(reconcile)
+  })
+
+  test("consent given but MDK destination not ready -> sweep-failed, funds untouched", async () => {
+    const reconcile = await sweepSparkBackupToMdk({
+      enabled: true,
+      env: enabledEnv,
+      confirmSweep: true,
+      destinationReady: false,
+      helper: sparkHelper({ status: { stdout: { balance_sats: 4242, unclaimed_deposit_count: 1 } } }),
+    })
+    expect(reconcile.state).toBe("sweep-failed")
+    expect(reconcile.sweptAmountSats).toBeNull()
+    expect(reconcile.blockerRefs).toContain("blocker.wallet.spark_backup.mdk_destination_not_ready")
+    assertPublicProjectionSafe(reconcile)
+  })
+
+  test("consent + destination ready sweeps mock-detected balance and emits a redacted reconcile receipt", async () => {
+    const reconcile = await sweepSparkBackupToMdk({
+      enabled: true,
+      env: enabledEnv,
+      confirmSweep: true,
+      destinationReady: true,
+      helper: sparkHelper({
+        status: { stdout: { balance_sats: 4242, unclaimed_deposit_count: 2 } },
+        "unclaimed-deposits": { stdout: { unclaimed_deposit_count: 2 } },
+      }),
+      now: () => new Date("2026-06-16T00:00:00.000Z"),
+    })
+    expect(reconcile.state).toBe("swept-to-mdk")
+    expect(reconcile.consentRequired).toBe(false)
+    expect(reconcile.sweptAmountSats).toBe(4242)
+    expect(reconcile.claimedDepositCount).toBe(2)
+    expect(reconcile.publicReceiptRefs).toHaveLength(1)
+    expect(reconcile.publicReceiptRefs[0]).toMatch(/^receipt\.pylon\.spark_backup_reconcile\.[a-f0-9]{24}$/)
+    assertPublicProjectionSafe(reconcile)
+  })
+
+  test("falls back to unclaimed-deposits command when status omits the deposit count", async () => {
+    const reconcile = await sweepSparkBackupToMdk({
+      enabled: true,
+      env: enabledEnv,
+      confirmSweep: true,
+      destinationReady: true,
+      helper: sparkHelper({
+        status: { stdout: { balance_sats: 1000 } },
+        "unclaimed-deposits": { stdout: { unclaimed_deposit_count: 3 } },
+      }),
+    })
+    expect(reconcile.state).toBe("swept-to-mdk")
+    expect(reconcile.claimedDepositCount).toBe(3)
+    assertPublicProjectionSafe(reconcile)
+  })
+
+  test("reconcile projection NEVER leaks raw Spark material", async () => {
+    const reconcile = await sweepSparkBackupToMdk({
+      enabled: true,
+      env: enabledEnv,
+      confirmSweep: true,
+      destinationReady: true,
+      helper: sparkHelper({
+        status: { stdout: { balance_sats: 4242, unclaimed_deposit_count: 1, spark_address: RAW_SPARK_ADDRESS } },
+      }),
+    })
+    expect(JSON.stringify(reconcile)).not.toContain(RAW_SPARK_ADDRESS)
+    expect(JSON.stringify(reconcile)).not.toContain("sp1")
+    assertPublicProjectionSafe(reconcile)
   })
 })

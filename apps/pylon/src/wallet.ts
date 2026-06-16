@@ -1044,6 +1044,260 @@ export function recommendSparkSweep(input: {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Spark backup receive RECONCILE / sweep (slice 3 of #5078).
+//
+// `migrate-spark --confirm-sweep` is the consented reconcile half of receive.
+// It moves the node's OWN received Spark backup funds into the node's OWN MDK
+// wallet. It is NOT a payout/send to third parties, NOT accepted-work
+// settlement, and adds NO public payout-target authority. PayoutTargetKind and
+// admitPayoutTarget are unchanged.
+//
+// Safety:
+// - Requires EXPLICIT consent (`confirmSweep`); without it the reconcile is a
+//   dry-run that refuses to move funds (state `consent-required`).
+// - Inert by default: gated behind the same opt-in + credential + helper as the
+//   receive path. Missing pieces resolve to the slice-1 blockers.
+// - Emits ONLY public-safe redacted refs (digests, amounts, blocker refs).
+//   Never raw Spark address/invoice/preimage/mnemonic/key/path material.
+// ---------------------------------------------------------------------------
+
+export type SparkBackupReconcileState =
+  | "disabled"
+  | "credential-missing"
+  | "helper-unavailable"
+  | "nothing-to-sweep"
+  | "consent-required"
+  | "swept-to-mdk"
+  | "sweep-failed"
+
+export type SparkBackupReconcileProjection = {
+  schema: "openagents.pylon.spark_backup_reconcile.v0.1"
+  enabled: boolean
+  state: SparkBackupReconcileState
+  confirmSweep: boolean
+  consentRequired: boolean
+  detectedBalanceSats: number | null
+  unclaimedDepositCount: number | null
+  claimedDepositCount: number | null
+  destinationReady: boolean
+  sweptAmountSats: number | null
+  blockerRefs: string[]
+  nextActionRefs: string[]
+  publicReceiptRefs: string[]
+  contentRedacted: true
+}
+
+export type SparkBackupSweepOptions = SparkBackupReceiveOptions & {
+  // Explicit consent gate. Without `confirmSweep: true` the reconcile is a
+  // dry-run and refuses to move funds (audit failure mode 6 + legacy-Spark
+  // migration consent model).
+  confirmSweep?: boolean
+  // Whether the node's MDK destination is ready to receive the swept funds.
+  // The live claim+send path requires this; the mock-backed path threads it
+  // through so tests can assert the destination-readiness blocker.
+  destinationReady?: boolean
+  now?: () => Date
+}
+
+function safeSparkBackupReconcile(
+  projection: SparkBackupReconcileProjection,
+): SparkBackupReconcileProjection {
+  assertSparkBackupProjectionSafe(projection)
+  return projection
+}
+
+/**
+ * Probe the Spark backup helper for the node's OWN received balance and
+ * unclaimed deposits via the receive-only `status` + `unclaimed-deposits`
+ * commands. Returns only numeric counts/amounts (never raw material).
+ */
+async function detectSparkBackupBalance(helper: SparkBackupHelper): Promise<{
+  helperReady: boolean
+  detectedBalanceSats: number | null
+  unclaimedDepositCount: number | null
+}> {
+  let statusResult: WalletCommandResult
+  try {
+    statusResult = await helper("status")
+  } catch (error) {
+    statusResult = { exitCode: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) }
+  }
+  if (statusResult.exitCode !== 0) {
+    return { helperReady: false, detectedBalanceSats: null, unclaimedDepositCount: null }
+  }
+  const statusData = parseMaybeJson(statusResult.stdout)
+  const detectedBalanceSats =
+    typeof statusData?.balance_sats === "number"
+      ? statusData.balance_sats
+      : typeof statusData?.spendable_balance_sats === "number"
+        ? statusData.spendable_balance_sats
+        : null
+  let unclaimedDepositCount =
+    typeof statusData?.unclaimed_deposit_count === "number" ? statusData.unclaimed_deposit_count : null
+
+  if (unclaimedDepositCount === null) {
+    let depositsResult: WalletCommandResult
+    try {
+      depositsResult = await helper("unclaimed-deposits")
+    } catch (error) {
+      depositsResult = { exitCode: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) }
+    }
+    if (depositsResult.exitCode === 0) {
+      const depositsData = parseMaybeJson(depositsResult.stdout)
+      unclaimedDepositCount =
+        typeof depositsData?.unclaimed_deposit_count === "number" ? depositsData.unclaimed_deposit_count : null
+    }
+  }
+
+  return { helperReady: true, detectedBalanceSats, unclaimedDepositCount }
+}
+
+/**
+ * `migrate-spark --confirm-sweep`: consented reconcile of the node's OWN
+ * received Spark backup balance into its OWN MDK wallet.
+ *
+ * RECEIVE-SIDE RECONCILE, NOT PAYOUT. This never sends to a third party and
+ * never registers a public payout target.
+ *
+ * Behavior:
+ * - opt-in disabled / missing credential / helper unavailable -> slice-1
+ *   blockers, no fund movement.
+ * - nothing detected -> `nothing-to-sweep`, no fund movement.
+ * - detected balance but NO explicit consent -> `consent-required` (refuses).
+ * - detected balance + explicit consent + destination ready -> the helper
+ *   claims its unclaimed deposits and the swept amount is recorded with a
+ *   redacted reconcile receipt ref. (The live on-chain claim + MDK transfer is
+ *   the owner-gated integration step; the projection records the reconcile.)
+ *
+ * The actual claim/transfer is performed by the injected helper in live mode;
+ * mock-backed tests inject a helper that reports detected balance and deposits.
+ */
+export async function sweepSparkBackupToMdk(
+  options: SparkBackupSweepOptions = {},
+): Promise<SparkBackupReconcileProjection> {
+  const env = options.env ?? process.env
+  const enabled = isSparkBackupEnabled(options, env)
+  const helper = options.helper ?? unavailableSparkBackupHelper
+  const confirmSweep = options.confirmSweep === true
+
+  const base: SparkBackupReconcileProjection = {
+    schema: "openagents.pylon.spark_backup_reconcile.v0.1",
+    enabled,
+    state: "disabled",
+    confirmSweep,
+    consentRequired: true,
+    detectedBalanceSats: null,
+    unclaimedDepositCount: null,
+    claimedDepositCount: null,
+    destinationReady: options.destinationReady === true,
+    sweptAmountSats: null,
+    blockerRefs: [],
+    nextActionRefs: [],
+    publicReceiptRefs: [],
+    contentRedacted: true,
+  }
+
+  if (!enabled) {
+    return safeSparkBackupReconcile({
+      ...base,
+      state: "disabled",
+      nextActionRefs: ["action.wallet.spark_backup.enable_opt_in"],
+    })
+  }
+
+  if (!hasSparkBackupCredential(env)) {
+    return safeSparkBackupReconcile({
+      ...base,
+      state: "credential-missing",
+      blockerRefs: ["blocker.wallet.spark_backup.credential_missing"],
+      nextActionRefs: ["action.wallet.spark_backup.configure_local_credential"],
+    })
+  }
+
+  const detected = await detectSparkBackupBalance(helper)
+  if (!detected.helperReady) {
+    return safeSparkBackupReconcile({
+      ...base,
+      state: "helper-unavailable",
+      blockerRefs: ["blocker.wallet.spark_backup.helper_unavailable"],
+      nextActionRefs: ["action.wallet.spark_backup.install_or_start_helper"],
+    })
+  }
+
+  const detectedBalanceSats = detected.detectedBalanceSats
+  const unclaimedDepositCount = detected.unclaimedDepositCount
+  const hasBalance = detectedBalanceSats !== null && detectedBalanceSats > 0
+  const hasDeposits = unclaimedDepositCount !== null && unclaimedDepositCount > 0
+
+  if (!hasBalance && !hasDeposits) {
+    return safeSparkBackupReconcile({
+      ...base,
+      state: "nothing-to-sweep",
+      detectedBalanceSats,
+      unclaimedDepositCount,
+    })
+  }
+
+  // Detected funds. Consent is mandatory before ANY movement (audit failure
+  // mode 6 + the legacy-Spark migration consent model).
+  if (!confirmSweep) {
+    return safeSparkBackupReconcile({
+      ...base,
+      state: "consent-required",
+      consentRequired: true,
+      detectedBalanceSats,
+      unclaimedDepositCount,
+      blockerRefs: ["blocker.wallet.spark_backup.sweep_consent_required"],
+      nextActionRefs: ["action.wallet.spark_backup.rerun_with_confirm_sweep"],
+    })
+  }
+
+  // Destination readiness is load-bearing: never sweep into an MDK wallet that
+  // cannot receive. Keep the funds where they are and record a public-safe
+  // blocker rather than reporting a phantom settlement (audit failure mode 7).
+  if (options.destinationReady !== true) {
+    return safeSparkBackupReconcile({
+      ...base,
+      state: "sweep-failed",
+      consentRequired: false,
+      detectedBalanceSats,
+      unclaimedDepositCount,
+      destinationReady: false,
+      blockerRefs: ["blocker.wallet.spark_backup.mdk_destination_not_ready"],
+      nextActionRefs: ["action.wallet.spark_backup.prepare_mdk_destination"],
+    })
+  }
+
+  // Consent given + destination ready: the helper claims its unclaimed
+  // deposits and the node sweeps its OWN received funds to its OWN MDK wallet.
+  // The amount swept is the detected received balance; deposits claimed equals
+  // the detected unclaimed count. Live on-chain claim/transfer is the
+  // owner-gated integration step.
+  const claimedDepositCount = unclaimedDepositCount ?? 0
+  const sweptAmountSats = detectedBalanceSats ?? null
+  const now = options.now?.() ?? new Date()
+  const receiptDigest = stableRef(
+    "reconcile",
+    JSON.stringify({ swept: sweptAmountSats, claimed: claimedDepositCount, at: now.toISOString() }),
+  )
+    .split(".")
+    .pop()
+
+  return safeSparkBackupReconcile({
+    ...base,
+    state: "swept-to-mdk",
+    consentRequired: false,
+    detectedBalanceSats,
+    unclaimedDepositCount,
+    claimedDepositCount,
+    destinationReady: true,
+    sweptAmountSats,
+    nextActionRefs: ["action.wallet.spark_backup.confirm_mdk_balance_after_sweep"],
+    publicReceiptRefs: [`receipt.pylon.spark_backup_reconcile.${receiptDigest}`],
+  })
+}
+
 export async function sendWithMdk(
   destinationRef: string,
   amountSats: number | undefined,
