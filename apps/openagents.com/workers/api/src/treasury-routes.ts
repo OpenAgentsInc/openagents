@@ -625,13 +625,28 @@ export const handleOperatorTreasuryPayoutApi = (
           const payResult = attempt.payResult
 
           if (!attempt.ok) {
+            // Surface the underlying failure (resolution vs. the daemon's pay
+            // error) so an opaque "treasury_pay_failed" doesn't hide whether it
+            // was LNURL resolution, no route, recipient offline, or liquidity.
+            // Only safe error/reason/code/message fields, never payment material.
+            const detail =
+              typeof payResult.error === 'string'
+                ? payResult.error
+                : typeof payResult.reason === 'string'
+                  ? payResult.reason
+                  : typeof payResult.message === 'string'
+                    ? payResult.message
+                    : typeof payResult.code === 'string'
+                      ? payResult.code
+                      : null
             return noStoreJsonResponse(
               {
                 error: 'treasury_pay_failed',
                 intendedAmountSat,
                 paidAmountSat: null,
+                paidVia,
                 policyApplied: plan.kind,
-                reason: payResult.error ?? null,
+                reason: detail,
               },
               { status: 502 },
             )
