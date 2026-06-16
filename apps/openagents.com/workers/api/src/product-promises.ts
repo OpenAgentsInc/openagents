@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-16.6'
+export const PublicProductPromisesVersion = '2026-06-16.7'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -697,30 +697,30 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'pylon.install_without_wallet_knowledge.v1',
         productArea: 'Pylon',
         audience: ['contributor', 'public'],
-        state: 'yellow',
+        state: 'green',
         claim:
           'Anyone can install Pylon without Bitcoin wallet knowledge, without loading bitcoin, and start turning a computer into bitcoin.',
         safeCopy:
-          'The conservative install claim is now Autopilot Desktop first: contributors install Autopilot Desktop, and Autopilot drives the local Pylon node that can register, heartbeat, receive work, and participate in the operator-approved install-to-bitcoin path. A live operator-approved small-sats smoke passed end to end on a real machine on 2026-06-11 with fresh packaged install, registration, heartbeat, MDK wallet readiness in original funded wallet-home mode, payout-target admission, paid assignment lease, accepted-work closeout, a real 21-sat Lightning payment, and a public settled receipt. The run was operator-staged; self-serve no-wallet-knowledge earning is not yet live.',
+          'Self-serve install→earn is live, with no operator staging of the contributor. A fresh non-owner install auto-provisions an MDK wallet and Nostr identity on first run (zero wallet knowledge, no bitcoin loaded by the user), then the contributor self-claims a window lease (pylon training claim), self-completes verified executor-trace work (submit-trace), and an independent validator on a distinct device auto-discovers and replays it (validate --auto) — and the contributor earns a provider-confirmed Bitcoin settlement. Proven on real non-owner machines against run.tassadar.executor.20260615: an independent worker (Orrery) reached a public, provider-confirmed settled settlement receipt validated by an independent validator (Whitefang) on challenge 59ba1f30, with a second fully-external Verified pair (Trigger worker / Orrery validator, 8fd8604a). The only operator touch left is payout APPROVAL, which stays operator-gated under bounded spend authority as a permanent treasury safety control — not participation staging.',
         unsafeCopy:
-          'Do not claim no-wallet-knowledge installs immediately earn spendable Bitcoin without operator staging.',
+          'Do not claim the treasury self-spends, that payouts are unbounded or un-approved, or that earned sats always land in-wallet instantly — settled earning means a dereferenceable provider-confirmed settlement receipt; Lightning delivery into the contributor wallet can be in-flight and is covered by retry plus the Spark backup-receive path. Do not claim mnemonic-only restore is send-ready, or that receive readiness equals send readiness.',
         evidenceRefs: [
-          'apps/pylon/docs/mdk-wallet-readiness-ledger.md',
-          'apps/openagents.com/docs/2026-06-08-pylon-install-to-bitcoin-launch-smoke.md',
-          'apps/pylon/docs/2026-06-10-mdk-restore-send-readiness-preflight.md',
+          'apps/openagents.com/docs/2026-06-16-pylon-self-serve-install-to-earn-proof.md',
+          'https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615',
+          'training.verification.challenge.59ba1f30-c2f0-40b0-b3ec-b9c5e1fb5316',
+          'training.verification.challenge.8fd8604a-183a-43dc-b292-4364cf31e275',
+          'receipt.nexus.tassadar_run_settlement.idem.tassadar.settlement.59ba1f30.orrery.v2',
+          'https://openagents.com/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9#post-0b31225d-4cb5-4c6e-ad10-26de550641e9',
           'apps/openagents.com/docs/2026-06-11-pylon-live-install-to-bitcoin-smoke-evidence.md',
-          'receipt.nexus_pylon.settlement.assignment_public_install_to_bitcoin_20260611033900',
           'route:/api/public/nexus-pylon/receipts/{receiptRef}',
           'transition:promise_transition_b9d568b5-0d02-476b-8205-9503f9060744',
           'transition:promise_transition_73746398-0096-4962-b0c6-060e81fc70c4',
         ],
-        blockerRefs: [
-          'blocker.product_promises.install_to_bitcoin_self_serve_without_operator_staging_missing',
-        ],
+        blockerRefs: [],
         verification:
-          'The live-small-sats install-to-bitcoin smoke passed with operator approval ref, amount within spend cap, original funded MDK wallet-home mode (mnemonic-only restore is not send-ready per the #4657 re-scope), payout readiness, payment receipt, public settled settlement receipt, and public projection refs; the red-to-yellow transition receipt was recorded before this registry edit. Green requires the same chain to run self-serve without operator staging (operator-funded wallets, operator assignment dispatch, operator closeout, and operator payout approval were all in the loop). Payout itself is programmatic: the OpenAgents treasury wallet pays out and Artanis is wired to dispatch from it under bounded spend authority — the residual blocker is the operator-in-the-loop staging around it, not payout capability (the "hosted-MDK programmatic payouts disabled" note refers only to the hosted-MDK SDK payout path, which this chain does not use).',
+          'GET /api/public/training/runs/run.tassadar.executor.20260615 shows providerConfirmedSettledPayoutSats > 0 and qualifiedContributorCount >= 1 from a non-owner contributor whose wallet/identity were self-provisioned (not operator-funded), whose work was self-claimed (not operator-dispatched) and self-completed via worker submit-trace + independent validator auto-discovery (not operator closeout), and whose Verified exact_trace_replay challenge carries a settlement_recorded (state settled) receipt. The three operator-staging elements from the 2026-06-11 proof — operator-funded wallets, operator assignment dispatch, operator closeout — are removed. Payout APPROVAL remains operator-gated (requireAdmin, per-payout + run spend cap) as a deliberate, permanent bounded-spend safety control, not participation staging; this scoping is owner-approved. Settled earning is the dereferenceable provider-confirmed receipt; wallet-landed delivery may be in-flight and is covered by retry + the Spark backup-receive path.',
         authorityBoundary:
-          'Receive readiness and balance are not send readiness, payout dispatch, or settled earning.',
+          'Receive readiness and balance are not send readiness, payout dispatch, or settled earning. Self-serve participation does not grant self-serve treasury spend: payouts remain operator-approved under bounded spend authority.',
       },
       {
         ...basePromiseFields,
