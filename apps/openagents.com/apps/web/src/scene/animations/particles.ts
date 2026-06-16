@@ -4,10 +4,19 @@ import { type AnimationHandle, makeAnimationView, webglCanvas } from './element'
 
 // Drifting point field (a slow rotating "starfield") — three.js Points experiment.
 const COUNT = 900
+const deterministicUnit = (index: number, axis: number): number => {
+  const seed = (index + 1) * (axis * 101 + 997)
+  const value = Math.sin(seed) * 10000
+  return value - Math.floor(value)
+}
 
 const mountParticles = (element: HTMLElement): AnimationHandle => {
   const { canvas, size } = webglCanvas(element)
-  const renderer = new Three.WebGLRenderer({ alpha: true, antialias: true, canvas })
+  const renderer = new Three.WebGLRenderer({
+    alpha: true,
+    antialias: true,
+    canvas,
+  })
   renderer.setClearColor(0x000000, 0)
 
   const scene = new Three.Scene()
@@ -16,9 +25,9 @@ const mountParticles = (element: HTMLElement): AnimationHandle => {
 
   const positions = new Float32Array(COUNT * 3)
   for (let i = 0; i < COUNT; i += 1) {
-    positions[i * 3] = (Math.random() - 0.5) * 8
-    positions[i * 3 + 1] = (Math.random() - 0.5) * 8
-    positions[i * 3 + 2] = (Math.random() - 0.5) * 8
+    positions[i * 3] = (deterministicUnit(i, 0) - 0.5) * 8
+    positions[i * 3 + 1] = (deterministicUnit(i, 1) - 0.5) * 8
+    positions[i * 3 + 2] = (deterministicUnit(i, 2) - 0.5) * 8
   }
   const geometry = new Three.BufferGeometry()
   geometry.setAttribute('position', new Three.BufferAttribute(positions, 3))
@@ -50,7 +59,9 @@ const mountParticles = (element: HTMLElement): AnimationHandle => {
   }
 
   const observer =
-    typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => resize())
+    typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(() => resize())
   resize()
   observer?.observe(element)
   frame = requestAnimationFrame(tick)
@@ -69,4 +80,7 @@ const mountParticles = (element: HTMLElement): AnimationHandle => {
   }
 }
 
-export const particlesView = makeAnimationView('oa-anim-particles', mountParticles)
+export const particlesView = makeAnimationView(
+  'oa-anim-particles',
+  mountParticles,
+)
