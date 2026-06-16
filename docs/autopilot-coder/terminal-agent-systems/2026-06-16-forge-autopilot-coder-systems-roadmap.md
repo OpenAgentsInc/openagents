@@ -137,6 +137,11 @@ next-action refs, and closeout evidence. It is intentionally view-model only;
 G2.2 should render this projection rather than re-deriving progress status in
 the page layer.
 
+Implementation status, 2026-06-16: #5126 renders the projection as the first
+`/autopilot` Run progress lane, including task statuses, blocker refs, and
+unsafe-ref omission warnings while keeping the raw lifecycle panel available as
+drilldown. `/forge` stage-panel rendering remains a follow-on G2.2 slice.
+
 ### G3 - Resume, Rewind, Session Navigation
 
 Systems: system 26 Resume/Rewind/Session Navigation, system 39 Remote

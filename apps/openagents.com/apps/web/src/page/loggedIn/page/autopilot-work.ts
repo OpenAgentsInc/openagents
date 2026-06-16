@@ -26,6 +26,12 @@ import {
   projectForgeDiffReview,
 } from '../autopilot-work/diff-review'
 import {
+  type ForgeRunProgressItem,
+  type ForgeRunProgressItemStatus,
+  type ForgeRunProgressStatus,
+  projectForgeRunProgress,
+} from '../autopilot-work/progress-view'
+import {
   Message,
   RequestedLoadAutopilotWorkDetail,
   RequestedLoadAutopilotWorkList,
@@ -652,6 +658,82 @@ const eventsPanel = (model: Model): Html => {
   ])
 }
 
+const loadedEvents = (model: Model): ReadonlyArray<AutopilotWorkEvent> | null =>
+  model.autopilotWorkEvents._tag === 'AutopilotWorkEventsLoaded'
+    ? model.autopilotWorkEvents.response.events
+    : null
+
+const progressStatusTone = (
+  status: ForgeRunProgressStatus,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  status === 'reviewed' || status === 'delivered'
+    ? 'positive'
+    : status === 'failed'
+      ? 'negative'
+      : status === 'blocked'
+        ? 'warning'
+        : status === 'running'
+          ? 'info'
+          : 'accent'
+
+const progressTaskStatus = (
+  status: ForgeRunProgressItemStatus,
+): Ui.AiElements.TaskItemStatus =>
+  status === 'completed'
+    ? 'done'
+    : status === 'failed' || status === 'blocked'
+      ? 'failed'
+      : status === 'active'
+        ? 'active'
+        : 'queued'
+
+const progressRefPreview = (refs: ReadonlyArray<string>): string =>
+  refs.length === 0
+    ? ''
+    : ` - ${refs.slice(0, 2).join(', ')}${refs.length > 2 ? ` (+${refs.length - 2})` : ''}`
+
+const progressTaskItem = (
+  item: ForgeRunProgressItem,
+): Ui.AiElements.TaskItemProps => ({
+  label: `${item.label}${progressRefPreview(item.refs)}`,
+  status: progressTaskStatus(item.status),
+})
+
+const progressPanel = (
+  model: Model,
+  work: AutopilotWorkProjection,
+): Html => {
+  const h = html<Message>()
+  const progress = projectForgeRunProgress(work, loadedEvents(model))
+
+  return h.section([Ui.className<Message>('grid gap-4 border-t border-[#222] pt-5')], [
+    h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+      h.div([Ui.className<Message>('grid gap-1')], [
+        h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
+          'Run progress',
+        ]),
+        h.p([Ui.className<Message>('m-0 max-w-3xl text-sm text-white/45')], [
+          'Typed progress projection from Run state, lifecycle events, next action, and closeout evidence.',
+        ]),
+      ]),
+      badge(progress.status.replaceAll('_', ' '), progressStatusTone(progress.status)),
+    ]),
+    Ui.AiElements.task<Message>({
+      props: {
+        title: `Progress for ${progress.workOrderRef}`,
+        open: true,
+        items: progress.items.map(progressTaskItem),
+      },
+    }),
+    refSection('Progress blockers', progress.blockerRefs),
+    progress.omittedUnsafeRefCount === 0
+      ? h.span([Ui.className<Message>('hidden')], [])
+      : h.p([Ui.className<Message>('m-0 text-sm text-[#ffb400]')], [
+          `${progress.omittedUnsafeRefCount} unsafe progress ref(s) were omitted before rendering.`,
+        ]),
+  ])
+}
+
 const briefingPanel = (briefing: AutopilotMissionBriefing): Html => {
   const closeoutRefs = briefing.drilldown.flatMap(group =>
     group.kind === 'closeout' ? group.refs : [],
@@ -947,6 +1029,7 @@ const workSummaryPanel = (model: Model, work: AutopilotWorkProjection): Html => 
             refSection('Blocker refs', work.executionCloseout.blockerRefs ?? []),
           ],
         ),
+    progressPanel(model, work),
     diffReviewPanel(model, work),
     receiptPanel(model, work),
     eventsPanel(model),

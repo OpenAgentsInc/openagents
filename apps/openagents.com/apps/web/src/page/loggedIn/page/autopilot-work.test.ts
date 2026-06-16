@@ -2,6 +2,7 @@ import type { Html } from 'foldkit/html'
 import { describe, expect, test } from 'vitest'
 
 import type {
+  AutopilotWorkEvent,
   AutopilotWorkProjection,
   AutopilotWorkReviewDecision,
   AutopilotWorkState,
@@ -89,6 +90,7 @@ const reviewDecision = (
 const workForState = (
   state: AutopilotWorkState,
   review: AutopilotWorkReviewDecision | null,
+  overrides: Partial<AutopilotWorkProjection> = {},
 ): AutopilotWorkProjection =>
   ({
     accessRequestRefs: [],
@@ -160,16 +162,49 @@ const workForState = (
     tasks: [],
     updatedAt: '2026-06-16T16:00:00.000Z',
     workOrderRef: 'work_1',
+    ...overrides,
   }) as AutopilotWorkProjection
 
-const modelForWork = (work: AutopilotWorkProjection): Model =>
+const workEvent = (
+  sequence: number,
+  eventKind: AutopilotWorkEvent['eventKind'],
+  state: AutopilotWorkState,
+  overrides: Partial<AutopilotWorkEvent> = {},
+): AutopilotWorkEvent =>
+  ({
+    eventKind,
+    eventRef: `event.public.work_1.${sequence}`,
+    occurredAt: `2026-06-16T15:0${sequence}:00.000Z`,
+    publicSafe: true,
+    sequence,
+    state,
+    taskRefs: ['task.public.work_1'],
+    workOrderRef: 'work_1',
+    ...overrides,
+  }) as AutopilotWorkEvent
+
+const modelForWork = (
+  work: AutopilotWorkProjection,
+  events?: ReadonlyArray<AutopilotWorkEvent>,
+): Model =>
   ({
     autopilotWorkBriefing: { _tag: 'AutopilotWorkBriefingIdle' },
     autopilotWorkDetail: {
       _tag: 'AutopilotWorkDetailLoaded',
       response: { work },
     },
-    autopilotWorkEvents: { _tag: 'AutopilotWorkEventsIdle' },
+    autopilotWorkEvents:
+      events === undefined
+        ? { _tag: 'AutopilotWorkEventsIdle' }
+        : {
+            _tag: 'AutopilotWorkEventsLoaded',
+            response: {
+              events,
+              generatedAt: '2026-06-16T16:00:00.000Z',
+              nextAfter: events.at(-1)?.sequence ?? 0,
+              workOrderRef: work.workOrderRef,
+            },
+          },
     autopilotWorkReview: { _tag: 'AutopilotWorkReviewIdle' },
   }) as Model
 
@@ -186,5 +221,93 @@ describe('autopilot work detail view', () => {
     expect(rendered).toContain('patch-digest.public.work_1.sha256_abc123')
     expect(rendered).toContain('verification.public.work_1.bun_test')
     expect(rendered).toContain('Accepted-outcome receipt')
+  })
+
+  test('renders Run progress lane for delivered Runs', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(workForState('delivered', null), [
+          workEvent(1, 'queued', 'queued_or_running'),
+          workEvent(2, 'delivered', 'delivered'),
+        ]),
+      ),
+    )
+
+    expect(rendered).toContain('Run progress')
+    expect(rendered).toContain('Progress for work_1')
+    expect(rendered).toContain('Delivered')
+    expect(rendered).toContain('Closeout evidence')
+    expect(rendered).toContain('closeout.public.work_1.summary')
+  })
+
+  test('renders active progress for running Runs', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            executionCloseout: null,
+            nextAction: {
+              callerActionRefs: ['next-action.public.poll.work_1'],
+              reasonRefs: [],
+              retryAfterSeconds: 15,
+              state: 'queued_or_running',
+            },
+          }),
+          [
+            workEvent(1, 'queued', 'queued_or_running'),
+            workEvent(2, 'running', 'queued_or_running'),
+          ],
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Run progress')
+    expect(rendered).toContain('Running')
+    expect(rendered).toContain('next-action.public.poll.work_1')
+  })
+
+  test('renders blocked progress and blocker refs', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('blocked', null, {
+            executionCloseout: null,
+            nextAction: {
+              callerActionRefs: [],
+              reasonRefs: ['reason.public.blocked.work_1'],
+              retryAfterSeconds: null,
+              state: 'blocked',
+            },
+          }),
+          [
+            workEvent(1, 'queued', 'queued_or_running'),
+            workEvent(2, 'blocked', 'blocked'),
+          ],
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Run progress')
+    expect(rendered).toContain('Blocked')
+    expect(rendered).toContain('reason.public.blocked.work_1')
+  })
+
+  test('omits unsafe progress refs before rendering', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(workForState('delivered', null), [
+          workEvent(1, 'queued', 'queued_or_running', {
+            eventRef: 'raw shell log /Users/christopher/private.log',
+          }),
+          workEvent(2, 'delivered', 'delivered'),
+        ]),
+      ),
+    )
+
+    expect(rendered).toContain('Run progress')
+    expect(rendered).toContain('unsafe-progress-material-omitted')
+    expect(rendered).toContain('unsafe progress ref(s) were omitted')
+    expect(rendered).not.toContain('raw shell log')
+    expect(rendered).not.toContain('/Users/christopher')
   })
 })
