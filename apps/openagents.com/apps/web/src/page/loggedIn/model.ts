@@ -2121,6 +2121,52 @@ export const AutopilotWorkRetrievalPlan = S.Struct({
 export type AutopilotWorkRetrievalPlan =
   typeof AutopilotWorkRetrievalPlan.Type
 
+export const AutopilotWorkPlanMutationAction = S.Literals([
+  'add',
+  'block',
+  'complete',
+  'unblock',
+  'update',
+])
+export type AutopilotWorkPlanMutationAction =
+  typeof AutopilotWorkPlanMutationAction.Type
+
+export const AutopilotWorkPlanMutationState = S.Literals([
+  'applied',
+  'blocked',
+  'requested',
+  'stale',
+])
+export type AutopilotWorkPlanMutationState =
+  typeof AutopilotWorkPlanMutationState.Type
+
+export const AutopilotWorkPlanMutationRequest = S.Struct({
+  action: AutopilotWorkPlanMutationAction,
+  actorRef: S.String,
+  generatedAt: S.String,
+  itemRef: S.String,
+  provenanceRefs: S.optionalKey(S.Array(S.String)),
+  publicSafe: S.Boolean,
+  requestRef: S.String,
+})
+export type AutopilotWorkPlanMutationRequest =
+  typeof AutopilotWorkPlanMutationRequest.Type
+
+export const AutopilotWorkPlanMutationReceipt = S.Struct({
+  action: AutopilotWorkPlanMutationAction,
+  actorRef: S.String,
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  generatedAt: S.String,
+  itemRef: S.String,
+  provenanceRefs: S.optionalKey(S.Array(S.String)),
+  publicSafe: S.Boolean,
+  receiptRef: S.String,
+  requestRef: S.String,
+  state: AutopilotWorkPlanMutationState,
+})
+export type AutopilotWorkPlanMutationReceipt =
+  typeof AutopilotWorkPlanMutationReceipt.Type
+
 export const AutopilotWorkReviewDecision = S.Struct({
   acceptedWorkAuthority: S.Boolean,
   action: AutopilotWorkReviewAction,
@@ -2169,6 +2215,8 @@ export const AutopilotWorkProjection = S.Struct({
   repositoryAuthorities: S.Array(S.Unknown),
   reviewDecision: S.NullOr(AutopilotWorkReviewDecision),
   contextSnapshot: S.optionalKey(AutopilotWorkContextSnapshot),
+  planMutationReceipts: S.optionalKey(S.Array(AutopilotWorkPlanMutationReceipt)),
+  planMutationRequests: S.optionalKey(S.Array(AutopilotWorkPlanMutationRequest)),
   retrievalPlan: S.optionalKey(AutopilotWorkRetrievalPlan),
   sessionNavigation: S.optionalKey(AutopilotWorkSessionNavigation),
   state: AutopilotWorkState,

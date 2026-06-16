@@ -376,6 +376,13 @@ refs, digest/provenance/caveat/blocker refs, and explicit non-authority flags,
 and keeps raw patches, private repo content, local paths, shell output, prompts,
 and provider payloads out of the Run projection.
 
+Implementation status, 2026-06-16: #5146 adds typed plan/todo mutation request
+and receipt projection for the Run progress lane. The projection renders
+requested, applied, blocked, and stale mutations with actor, generatedAt,
+provenance, request, receipt, and blocker refs; carries explicit non-authority
+flags; blocks plan-complete receipts from implying Run completion without
+closeout evidence; and omits raw/private plan material before rendering.
+
 ## Recommended Sequencing
 
 1. G1.1 diff-review lane, because Pack C already provides safe refs and the

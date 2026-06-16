@@ -372,6 +372,10 @@ epics below; not all lands today — the aim is the main spine.
   adds the public-safe diff artifact drilldown in `/autopilot`, composed from
   bounded Pack C/artifact-review refs with file/hunk summary refs, digest/
   provenance/caveat/blocker refs, explicit non-authority flags, and raw/private
+  material omission tests. **H2 landed:** #5146 adds typed plan/todo mutation
+  request and receipt projection beside Run progress, with actor/provenance/
+  generatedAt refs, applied/requested/blocked/stale states, explicit
+  non-authority flags, closeout-consistency blockers, and unsafe/private plan
   material omission tests.
 
   **Completion assessment:** this moved #5107 from planning into a real

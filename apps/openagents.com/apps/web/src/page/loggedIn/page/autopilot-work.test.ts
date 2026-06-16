@@ -363,6 +363,133 @@ describe('autopilot work detail view', () => {
     expect(rendered).toContain('Delivered')
     expect(rendered).toContain('Closeout evidence')
     expect(rendered).toContain('closeout.public.work_1.summary')
+    expect(rendered).toContain('Plan mutation receipts')
+  })
+
+  test('renders Plan mutation receipts beside Run progress', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            planMutationReceipts: [
+              {
+                action: 'update',
+                actorRef: 'actor.public.runtime',
+                blockerRefs: [],
+                generatedAt: '2026-06-16T15:35:00.000Z',
+                itemRef: 'plan-item.public.work_1.write_tests',
+                provenanceRefs: ['event.public.work_1.plan_applied'],
+                publicSafe: true,
+                receiptRef: 'plan-receipt.public.work_1.write_tests',
+                requestRef: 'plan-request.public.work_1.write_tests',
+                state: 'applied',
+              },
+            ],
+            planMutationRequests: [
+              {
+                action: 'add',
+                actorRef: 'actor.public.operator',
+                generatedAt: '2026-06-16T15:30:00.000Z',
+                itemRef: 'plan-item.public.work_1.review_docs',
+                provenanceRefs: ['event.public.work_1.plan_requested'],
+                publicSafe: true,
+                requestRef: 'plan-request.public.work_1.review_docs',
+              },
+            ],
+          }),
+          [
+            workEvent(1, 'queued', 'queued_or_running'),
+            workEvent(2, 'running', 'queued_or_running'),
+          ],
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Plan mutation receipts')
+    expect(rendered).toContain('plan-item.public.work_1.review_docs')
+    expect(rendered).toContain('plan-request.public.work_1.review_docs')
+    expect(rendered).toContain('actor.public.operator')
+    expect(rendered).toContain('plan-item.public.work_1.write_tests')
+    expect(rendered).toContain('plan-receipt.public.work_1.write_tests')
+    expect(rendered).toContain('event.public.work_1.plan_applied')
+  })
+
+  test('renders plan completion blockers when closeout evidence is missing', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('delivered', null, {
+            executionCloseout: null,
+            planMutationReceipts: [
+              {
+                action: 'complete',
+                actorRef: 'actor.public.runtime',
+                blockerRefs: [],
+                generatedAt: '2026-06-16T15:35:00.000Z',
+                itemRef: 'plan-item.public.work_1.finish',
+                provenanceRefs: ['event.public.work_1.plan_complete'],
+                publicSafe: true,
+                receiptRef: 'plan-receipt.public.work_1.finish',
+                requestRef: 'plan-request.public.work_1.finish',
+                state: 'applied',
+              },
+            ],
+          }),
+          [workEvent(1, 'delivered', 'delivered')],
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Plan mutation receipts')
+    expect(rendered).toContain('plan-complete-without-closeout-evidence')
+    expect(rendered).toContain('missing-closeout-evidence')
+  })
+
+  test('omits unsafe plan mutation receipt refs before rendering', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            planMutationReceipts: [
+              {
+                action: 'update',
+                actorRef: 'provider payload sk-private',
+                blockerRefs: ['/Users/christopher/private-plan.md'],
+                generatedAt: '2026-06-16T15:35:00.000Z',
+                itemRef: 'plan-item.public.safe',
+                provenanceRefs: ['raw prompt /Users/christopher/private.md'],
+                publicSafe: true,
+                receiptRef: 'plan-receipt.public.safe',
+                requestRef: 'plan-request.public.safe',
+                state: 'applied',
+              },
+              {
+                action: 'update',
+                actorRef: 'actor.public.runtime',
+                blockerRefs: [],
+                generatedAt: '2026-06-16T15:36:00.000Z',
+                itemRef: 'plan-item.public.safe',
+                provenanceRefs: ['event.public.safe'],
+                publicSafe: true,
+                receiptRef: 'plan-receipt.public.safe',
+                requestRef: 'plan-request.public.safe',
+                state: 'applied',
+              },
+            ],
+          }),
+          [workEvent(1, 'running', 'queued_or_running')],
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Plan mutation receipts')
+    expect(rendered).toContain('plan-receipt.public.safe')
+    expect(rendered).toContain('unsafe-plan-mutation-material-omitted')
+    expect(rendered).toContain('unsafe plan mutation ref(s) were omitted')
+    expect(rendered).not.toContain('/Users/christopher')
+    expect(rendered).not.toContain('raw prompt')
+    expect(rendered).not.toContain('provider payload')
+    expect(rendered).not.toContain('sk-private')
   })
 
   test('renders Context snapshot lane with repo, instruction, adapter, and job refs', () => {

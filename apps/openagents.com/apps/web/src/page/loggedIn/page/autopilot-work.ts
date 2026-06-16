@@ -37,6 +37,11 @@ import {
   projectForgeDiffReview,
 } from '../autopilot-work/diff-review'
 import {
+  type ForgePlanMutationReceiptItem,
+  type ForgePlanMutationReceiptsStatus,
+  projectForgePlanMutationReceipts,
+} from '../autopilot-work/plan-mutation-receipts'
+import {
   type ForgeRunProgressItem,
   type ForgeRunProgressItemStatus,
   type ForgeRunProgressStatus,
@@ -724,12 +729,57 @@ const progressTaskItem = (
   status: progressTaskStatus(item.status),
 })
 
+const planMutationStatusTone = (
+  status: ForgePlanMutationReceiptsStatus,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  status === 'applied'
+    ? 'positive'
+    : status === 'blocked'
+      ? 'negative'
+      : status === 'stale'
+        ? 'warning'
+        : status === 'requested'
+          ? 'info'
+          : 'accent'
+
+const planMutationReceiptPanel = (
+  item: ForgePlanMutationReceiptItem,
+): Html => {
+  const h = html<Message>()
+
+  return h.div([Ui.className<Message>('grid gap-3 border border-[#222] p-3')], [
+    h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+      h.div([Ui.className<Message>('grid gap-1')], [
+        h.div(
+          [Ui.className<Message>('text-sm font-medium text-white/75')],
+          [`${item.action} / ${item.state}`],
+        ),
+        h.p([Ui.className<Message>('m-0 text-xs text-white/40')], [
+          `${item.generatedAt} - ${item.actorRef}`,
+        ]),
+      ]),
+      badge(item.state, planMutationStatusTone(item.state)),
+    ]),
+    h.div([Ui.className<Message>('grid gap-3 md:grid-cols-2')], [
+      refSection('Plan item', [item.itemRef]),
+      refSection('Request', [item.requestRef]),
+      refSection(
+        'Receipt',
+        item.receiptRef === null ? [] : [item.receiptRef],
+      ),
+      refSection('Provenance', item.provenanceRefs),
+      refSection('Mutation blockers', item.blockerRefs),
+    ]),
+  ])
+}
+
 const progressPanel = (
   model: Model,
   work: AutopilotWorkProjection,
 ): Html => {
   const h = html<Message>()
   const progress = projectForgeRunProgress(work, loadedEvents(model))
+  const planReceipts = projectForgePlanMutationReceipts(work)
 
   return h.section([Ui.className<Message>('grid gap-4 border-t border-[#222] pt-5')], [
     h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
@@ -751,6 +801,37 @@ const progressPanel = (
       },
     }),
     refSection('Progress blockers', progress.blockerRefs),
+    h.div([Ui.className<Message>('grid gap-4 border border-[#222] bg-[#050505] p-4')], [
+      h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+        h.div([Ui.className<Message>('grid gap-1')], [
+          h.h3([Ui.className<Message>('m-0 text-sm font-medium text-white/80')], [
+            'Plan mutation receipts',
+          ]),
+          h.p([Ui.className<Message>('m-0 max-w-3xl text-sm text-white/45')], [
+            'Requested and runtime-applied plan/todo changes. These receipts do not mark a Run complete without closeout evidence.',
+          ]),
+        ]),
+        badge(
+          planReceipts.status,
+          planMutationStatusTone(planReceipts.status),
+        ),
+      ]),
+      planReceipts.items.length === 0
+        ? h.div([Ui.className<Message>('border border-[#222] p-3')], [
+            h.p([Ui.className<Message>('m-0 text-sm text-white/45')], [
+              'No plan mutation receipts available yet.',
+            ]),
+          ])
+        : h.div([Ui.className<Message>('grid gap-3')], [
+            ...planReceipts.items.map(planMutationReceiptPanel),
+          ]),
+      refSection('Plan mutation blockers', planReceipts.blockerRefs),
+      planReceipts.omittedUnsafeRefCount === 0
+        ? h.span([Ui.className<Message>('hidden')], [])
+        : h.p([Ui.className<Message>('m-0 text-sm text-[#ffb400]')], [
+            `${planReceipts.omittedUnsafeRefCount} unsafe plan mutation ref(s) were omitted before rendering.`,
+          ]),
+    ]),
     progress.omittedUnsafeRefCount === 0
       ? h.span([Ui.className<Message>('hidden')], [])
       : h.p([Ui.className<Message>('m-0 text-sm text-[#ffb400]')], [
