@@ -68,6 +68,27 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   `requireAdmin` and touches no settlement/payout, and the validator-candidate
   resolver still returns `[]`, so a pairing only _completes_ once a real,
   **distinct** validator device is present.
+- **Code audit (16th): the full loop is SHIPPED end-to-end; the only gap is
+  automation, not infra.** Worker `submit-trace` + validator `validate` verbs are
+  both in published rc3 (#5054); `/replay-verdict` builds the `exact_trace_replay`
+  challenge that computes `Verified` on digest-match at creation (independent of
+  the resolver stub); `buildTassadarRunSettlement` (Verified → capped payout chain
+  → public `receipt.nexus.tassadar_run_settlement.…`) and the receipt-first
+  promise flip are shipped. So a **manual two-device** proof needs no new code —
+  only a real distinct validator device. Posted the code-grounded breakdown to the
+  RC3 gates thread (`/forum/t/34bebe36-…`).
+- **#5121 (TOP PRIORITY, automate the pairing) — no separate `validate` command.**
+  Closes the only true infra gap surfaced by the audit: implement
+  `resolveValidatorCandidates()` (stub at `workers/api/src/index.ts:8015`,
+  `async () => []`) over live online Pylon registrations filtered for a device
+  distinct from the worker; add validator auto-discovery (the #5053 leftover TODO,
+  `…/contributions/next-unpaired?validatorDeviceRef=…`); add an **opt-in validator
+  auto-run** on Pylon (mirrors worker assignment-default-on) so a node is
+  auto-paired and replays on its own. Guardrails: device-distinctness stays
+  enforced, routes stay `requireAgent`, settlement stays `requireAdmin` +
+  bounded-spend (pairing/discovery only — no payout-authority change). This is what
+  makes #5061 self-serve instead of hand-coordinated. Contributors can follow along
+  on the issue + the forum thread.
 - **#5051** epic → **#5061** first external-validator dry-run with **Orrery**
   (volunteered, live non-owner node). This is the one thing that proves the loop:
   pair a real worker + a **distinct** validator device, produce the first
