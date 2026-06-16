@@ -9,7 +9,10 @@ import {
 } from '@openagentsinc/sync-worker'
 import { issuer } from '@openauthjs/openauth'
 import { type Tokens, createClient } from '@openauthjs/openauth/client'
-import { CodeProvider } from '@openauthjs/openauth/provider/code'
+import {
+  CodeProvider,
+  type CodeProviderError,
+} from '@openauthjs/openauth/provider/code'
 import { GithubProvider } from '@openauthjs/openauth/provider/github'
 import { createSubjects } from '@openauthjs/openauth/subject'
 import { CodeUI } from '@openauthjs/openauth/ui/code'
@@ -89,6 +92,16 @@ import {
   parseCookies,
   serializeCookie,
 } from './auth-cookies'
+import {
+  AUTH_EMAIL_OTP_CODE_TTL_SECONDS,
+  type AuthEmailOtpRateLimitRejected,
+  authEmailOtpClaimsAreFresh,
+  authEmailOtpClientIp,
+  authEmailOtpSendForm,
+  normalizeAuthEmailOtpEmail,
+  reserveAuthEmailOtpSend,
+  stampAuthEmailOtpClaims,
+} from './auth/email-otp-hardening'
 import { makeD1Storage } from './auth/openauth-storage'
 import {
   type VerifiedSession as VerifiedAuthSession,
@@ -326,6 +339,7 @@ import {
 import {
   compactRandomId,
   currentDate,
+  currentEpochMillis,
   currentIsoTimestamp,
   epochMillisToIsoTimestamp,
   isoTimestampAfter,
@@ -467,8 +481,16 @@ const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const workerRuntime = {
   makeUuid: randomUuid,
   now: currentDate,
+  nowMs: currentEpochMillis,
   nowIso: currentIsoTimestamp,
 } as const
+const AUTH_EMAIL_OTP_SEND_UNAVAILABLE_MESSAGE =
+  "We couldn't send a sign-in code right now. Try again in a minute."
+const invalidAuthEmailOtpClaim = (email: string): CodeProviderError => ({
+  key: 'email',
+  type: 'invalid_claim',
+  value: email,
+})
 
 class MdkSidecarUnavailable extends S.TaggedErrorClass<MdkSidecarUnavailable>()(
   'MdkSidecarUnavailable',
@@ -1408,8 +1430,8 @@ const upsertUser = async (db: D1Database, user: UserSubject): Promise<void> =>
     : upsertGitHubUser(db, user)
 
 // Send the one-time sign-in code via Resend directly (auth email stays decoupled
-// from the CRM/marketing email-intent machinery — it must be reliable and is not
-// rate-limited alongside bulk sends; see docs/auth audit §7).
+// from the CRM/marketing email-intent machinery). The auth OTP guard owns the
+// separate abuse/cost throttle for this path.
 const sendSignInCodeEmail = async (
   env: Env,
   rawEmail: string,
@@ -1419,21 +1441,24 @@ const sendSignInCodeEmail = async (
   const resend = config.email.resend
 
   if (resend === undefined) {
-    throw new AuthSignInError({ reason: 'Resend is not configured; cannot send sign-in code' })
+    throw new AuthSignInError({
+      reason: 'Resend is not configured; cannot send sign-in code',
+    })
   }
 
   const email = normalizeEmail(rawEmail)
   const apiKey = String(Redacted.value(resend.apiKey))
   const from = String(resend.fromEmail)
-  const replyTo = resend.replyToEmail === undefined ? undefined : String(resend.replyToEmail)
+  const replyTo =
+    resend.replyToEmail === undefined ? undefined : String(resend.replyToEmail)
 
   const response = await fetch('https://api.resend.com/emails', {
     body: JSON.stringify({
       from,
       html: signInCodeEmailHtml(code),
       ...(replyTo === undefined ? {} : { reply_to: replyTo }),
-      subject: `Your OpenAgents sign-in code: ${code}`,
-      text: `Your OpenAgents sign-in code is ${code}.\n\nEnter it on the sign-in screen to continue. It expires shortly. If you didn't request this, you can ignore this email.`,
+      subject: 'Your OpenAgents sign-in code',
+      text: `Your OpenAgents sign-in code is ${code}.\n\nEnter it on the sign-in screen to continue. It expires in ${AUTH_EMAIL_OTP_CODE_TTL_SECONDS / 60} minutes. If you didn't request this, you can ignore this email.`,
       to: email,
     }),
     headers: {
@@ -1457,10 +1482,127 @@ const signInCodeEmailHtml = (code: string): string =>
         <tr><td style="font-size:18px;font-weight:600;padding-bottom:20px">OpenAgents</td></tr>
         <tr><td style="font-size:15px;line-height:1.6;color:#c9c6bd;padding-bottom:24px">Use this one-time code to finish signing in:</td></tr>
         <tr><td style="font-size:34px;font-weight:700;letter-spacing:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#d6f6ff;padding-bottom:24px">${code}</td></tr>
-        <tr><td style="font-size:13px;line-height:1.6;color:#8b8880">This code expires shortly. If you didn't request it, you can safely ignore this email.</td></tr>
+        <tr><td style="font-size:13px;line-height:1.6;color:#8b8880">This code expires in ${AUTH_EMAIL_OTP_CODE_TTL_SECONDS / 60} minutes. If you didn't request it, you can safely ignore this email.</td></tr>
       </table>
     </td></tr></table>
   </body></html>`
+
+const AUTH_EMAIL_OTP_HTML_ESCAPES: Readonly<Record<string, string>> = {
+  '&': '&amp;',
+  '"': '&quot;',
+  "'": '&#39;',
+  '<': '&lt;',
+  '>': '&gt;',
+}
+
+const authEmailOtpEscapeHtml = (value: string): string =>
+  value.replace(
+    /[&<>"']/g,
+    character => AUTH_EMAIL_OTP_HTML_ESCAPES[character] ?? '&#39;',
+  )
+
+const authEmailOtpPrefersJson = (request: Request): boolean => {
+  const accept = request.headers.get('accept') ?? ''
+
+  return accept.includes('application/json') && !accept.includes('text/html')
+}
+
+const authEmailOtpProblemResponse = (
+  request: Request,
+  input: Readonly<{
+    error: string
+    message: string
+    retryAfterSeconds?: number
+    status: number
+  }>,
+) => {
+  const headers = new Headers({
+    'cache-control': 'no-store',
+  })
+
+  if (input.retryAfterSeconds !== undefined) {
+    headers.set('retry-after', String(input.retryAfterSeconds))
+  }
+
+  if (authEmailOtpPrefersJson(request)) {
+    return noStoreJsonResponse(
+      {
+        error: input.error,
+        message: input.message,
+        retryAfterSeconds: input.retryAfterSeconds,
+      },
+      { headers, status: input.status },
+    )
+  }
+
+  return new Response(
+    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OpenAgents sign-in</title></head><body style="margin:0;background:#050505;color:#f1efe8;font-family:ui-sans-serif,system-ui,sans-serif;display:grid;min-height:100vh;place-items:center"><main style="width:min(420px,calc(100vw - 48px));border:1px solid #2b2a26;padding:28px;background:#0b0b0a"><p style="margin:0 0 10px;color:#8b8880;font-size:12px;text-transform:uppercase;letter-spacing:.12em">OpenAgents</p><h1 style="margin:0 0 12px;font-size:22px">Sign-in code unavailable</h1><p style="margin:0 0 22px;color:#c9c6bd;line-height:1.55">${authEmailOtpEscapeHtml(input.message)}</p><a href="/login" style="color:#d6f6ff">Back to login</a></main></body></html>`,
+    {
+      headers: {
+        ...Object.fromEntries(headers),
+        'content-type': 'text/html; charset=utf-8',
+      },
+      status: input.status,
+    },
+  )
+}
+
+const authEmailOtpRateLimitResponse = (
+  request: Request,
+  decision: AuthEmailOtpRateLimitRejected,
+) =>
+  authEmailOtpProblemResponse(request, {
+    error: 'auth_email_otp_rate_limited',
+    message: `Too many sign-in code requests. Try again in ${decision.retryAfterSeconds} seconds.`,
+    retryAfterSeconds: decision.retryAfterSeconds,
+    status: 429,
+  })
+
+const maybeAuthEmailOtpGuardResponse = async (request: Request, env: Env) => {
+  const url = new URL(request.url)
+
+  if (request.method !== 'POST' || url.pathname !== '/code/authorize') {
+    return undefined
+  }
+
+  const formData = await request
+    .clone()
+    .formData()
+    .catch((): undefined => undefined)
+  const sendForm =
+    formData === undefined ? undefined : authEmailOtpSendForm(formData)
+
+  if (sendForm === undefined || !SIMPLE_EMAIL_PATTERN.test(sendForm.email)) {
+    return undefined
+  }
+
+  const decision = await reserveAuthEmailOtpSend(
+    openAgentsDatabase(env),
+    {
+      email: sendForm.email,
+      ipAddress: authEmailOtpClientIp(request),
+    },
+    workerRuntime,
+  ).catch(error => {
+    logWorkerRouteError('auth_email_otp_rate_limit_failed', error, {
+      errorName: errorName(error),
+    })
+
+    return undefined
+  })
+
+  if (decision === undefined) {
+    return authEmailOtpProblemResponse(request, {
+      error: 'auth_email_otp_temporarily_unavailable',
+      message: AUTH_EMAIL_OTP_SEND_UNAVAILABLE_MESSAGE,
+      status: 503,
+    })
+  }
+
+  return decision._tag === 'RateLimited'
+    ? authEmailOtpRateLimitResponse(request, decision)
+    : undefined
+}
 
 const readUserKindTotals = async (db: D1Database): Promise<UserKindTotals> => {
   const rows = await db
@@ -2251,6 +2393,14 @@ const hydrateTeamAutopilotContextFileExcerpts = async (
 
 const makeAuthIssuer = (env: Env) => {
   const config = getOpenAgentsWorkerConfig(env)
+  const emailCodeUi = CodeUI({
+    copy: {
+      code_info: 'We sent a one-time sign-in code to your email.',
+      email_invalid: AUTH_EMAIL_OTP_SEND_UNAVAILABLE_MESSAGE,
+      email_placeholder: 'you@example.com',
+    },
+    sendCode: async () => undefined,
+  })
 
   return issuer({
     theme: {
@@ -2263,23 +2413,30 @@ const makeAuthIssuer = (env: Env) => {
         clientSecret: redactedValue(config.github.clientSecret) ?? '',
         scopes: [...GITHUB_LOGIN_SCOPES],
       }),
-      code: CodeProvider(
-        CodeUI({
-          copy: {
-            code_info: 'We sent a one-time sign-in code to your email.',
-            email_placeholder: 'you@example.com',
-          },
-          sendCode: async (claims, code) => {
-            const email = typeof claims.email === 'string' ? claims.email : ''
-            if (email === '') {
-              throw new AuthSignInError({
-                reason: 'Email claim missing for sign-in code',
+      code: CodeProvider({
+        ...emailCodeUi,
+        sendCode: async (claims, code) => {
+          const email =
+            typeof claims.email === 'string'
+              ? normalizeAuthEmailOtpEmail(claims.email)
+              : ''
+          if (email === '' || !SIMPLE_EMAIL_PATTERN.test(email)) {
+            return invalidAuthEmailOtpClaim(email)
+          }
+          claims.email = email
+          stampAuthEmailOtpClaims(claims, workerRuntime)
+
+          return sendSignInCodeEmail(env, email, code)
+            .then(() => undefined)
+            .catch(error => {
+              logWorkerRouteError('auth_email_otp_send_failed', error, {
+                errorName: errorName(error),
               })
-            }
-            await sendSignInCodeEmail(env, email, code)
-          },
-        }),
-      ),
+
+              return invalidAuthEmailOtpClaim(email)
+            })
+        },
+      }),
     },
     storage: makeD1Storage(openAgentsDatabase(env)),
     subjects,
@@ -2299,6 +2456,11 @@ const makeAuthIssuer = (env: Env) => {
           typeof response.claims.email === 'string' ? response.claims.email : ''
         if (claimedEmail === '') {
           throw new UnsupportedAuthProvider({ provider: 'code' })
+        }
+        if (!authEmailOtpClaimsAreFresh(response.claims, workerRuntime)) {
+          throw new AuthSignInError({
+            reason: 'Email sign-in code expired',
+          })
         }
         const subject = emailToSubject(claimedEmail)
         await upsertEmailUser(openAgentsDatabase(env), subject)
@@ -2356,7 +2518,7 @@ const makeIssuerAwareFetch =
     const issuerHost = new URL(getIssuerOrigin(env)).hostname
 
     if (url.hostname === issuerHost) {
-      return makeAuthIssuer(env).fetch(request, env, ctx)
+      return routeAuthIssuerRequest(request, env, ctx)
     }
 
     return fetch(request)
@@ -2937,10 +3099,7 @@ const handleGitHubWriteStart = async (
 
   // The GitHub-write connection binds to the signed-in GitHub identity. Email
   // (one-time-code) accounts have none, so there is nothing to connect here.
-  if (
-    session.user.githubId === undefined ||
-    session.user.login === undefined
-  ) {
+  if (session.user.githubId === undefined || session.user.login === undefined) {
     return redirectResponse(getAppOrigin(env))
   }
 
@@ -5567,7 +5726,17 @@ const routeAuthHostRequest = async (
     }
   }
 
-  return makeAuthIssuer(env).fetch(request, env, ctx)
+  return routeAuthIssuerRequest(request, env, ctx)
+}
+
+const routeAuthIssuerRequest = async (
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+) => {
+  const maybeGuardResponse = await maybeAuthEmailOtpGuardResponse(request, env)
+
+  return maybeGuardResponse ?? makeAuthIssuer(env).fetch(request, env, ctx)
 }
 
 export { findAuthorizedAgentRunBundle } from './thread-access'

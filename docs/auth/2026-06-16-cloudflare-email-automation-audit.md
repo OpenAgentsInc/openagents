@@ -79,27 +79,34 @@ of the smoke + reconciliation work.
 
 1. **DONE — Email OTP login.** `/login` page, OpenAuth `CodeProvider`, `success`
    for `provider:'code'`, Resend transport, gating preserved (issue #5111).
-2. **NOW — hold steady on Resend.** Keep auth OTP on direct Resend and all
+2. **DONE — OTP hardening.** The direct-Resend auth baseline now has a
+   first-party D1-backed send/resend guard on `/code/authorize`: per-IP,
+   per-normalized-email, and global hourly caps; hashed bucket subjects; no-store
+   retry responses with `Retry-After`; fail-closed behavior when storage or the
+   sender is unavailable; no raw code in the subject; and a 10-minute
+   session-issuance expiry layered over OpenAuth 0.4.3's fixed 24-hour code
+   state.
+3. **NOW — hold steady on Resend.** Keep auth OTP on direct Resend and all
    webhook-backed lifecycle mail on Resend behind `EmailService`. No code change
    is forced by this audit. This is the stable baseline.
-3. **NEXT (next slice, lowest blast radius) — Cloudflare smoke + adapter.**
+4. **NEXT (next slice, lowest blast radius) — Cloudflare smoke + adapter.**
    Onboard a sending subdomain, add a restricted `send_email` binding (staging),
    add `cloudflare_email` to the provider enum/D1 checks + a sender adapter behind
    `EmailService`, and send one internal `operator_notification` to a *verified
    destination address* only. (Phases 1–2 below.)
-4. **LATER — move auth email to Cloudflare.** Once the smoke passes: a dedicated
-   auth sender on `auth.openagents.com` (or `mail.openagents.com`), separate
-   throttle, fails closed if unconfigured (no session without a sent code), Resend
+5. **LATER — move auth email to Cloudflare.** Once the smoke passes: a dedicated
+   auth sender on `auth.openagents.com` (or `mail.openagents.com`) that preserves
+   the #5120 throttle, expiry, no-enumeration, and fail-closed discipline; Resend
    kept as fallback. (Phase 3.)
-5. **LATER — product lifecycle cutover + reconciliation.** Dual-send / cut over
+6. **LATER — product lifecycle cutover + reconciliation.** Dual-send / cut over
    lifecycle mail to Cloudflare, and add the GraphQL reconciliation poller +
    suppression sync (there is **no** Cloudflare lifecycle webhook — see
    Observability). Keep Resend on webhook-backed flows until the poller is proven.
    (Phases 2 + 5.)
-6. **LATER — inbound Email Routing.** `support@` / `orders@` / tokenized reply
+7. **LATER — inbound Email Routing.** `support@` / `orders@` / tokenized reply
    aliases → Worker `email()` handler → typed parse → D1/R2 → operator
    task/draft. Inbound is untrusted; never grants authority. (Phase 4.)
-7. **NEVER-YET — cold/bulk/marketing on Cloudflare.** Stays on a dedicated
+8. **NEVER-YET — cold/bulk/marketing on Cloudflare.** Stays on a dedicated
    marketing platform until Cloudflare ships bulk-sender tooling and the message
    is opt-in + unsubscribe + suppression compliant.
 

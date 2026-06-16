@@ -227,8 +227,11 @@ epics below; not all lands today — the aim is the main spine.
   recorded as the "Login Surface" invariant. The architecture rule was relaxed to
   allow the real login route while still banning the deleted *simulated* auth
   symbols. Audit + posture: `docs/auth/2026-06-16-login-and-auth-audit.md`.
-  Security follow-up tracked in **#5120** (OTP rate-limit / expiry / no-enumeration
-  / no-raw-code-logging / fail-closed).
+  **#5120 hardening is now shipped:** `/code/authorize` send/resend is guarded by
+  D1-backed per-IP, per-normalized-email, and global hourly caps; stale code
+  sessions are rejected after 10 minutes before session issuance; sender/storage
+  failure fails closed; code subjects no longer include the raw code; and tests
+  cover the fail-closed and throttle paths.
 - **`/animations` internal three.js playground (deployed `d0cf8a5e`):** a scrollable
   `/animations` page of self-contained WebGL experiments via a `makeAnimationView`
   factory — the live pylon bezier network + WebGL permutations, R3F-/three.js-ported

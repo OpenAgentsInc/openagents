@@ -31,6 +31,18 @@ below:
   `EmailService` CRM/marketing ledger. This is the **interim** transport; the
   target state (first-party Cloudflare auth sender on a dedicated subdomain) is
   sequenced in the unified strategy doc — see §6/§7 and that doc's Phase 3.
+- **Auth OTP hardening shipped (#5120):** code send/resend requests on
+  `/code/authorize` now pass a first-party D1-backed guard before OpenAuth's
+  `CodeProvider.sendCode` hook can send mail: 8 sends per IP per 10 minutes, 4
+  sends per normalized target email per 10 minutes, and 180 total sends per hour.
+  The guard stores hashed IP/email bucket subjects only, fails closed with
+  no-store retry responses if storage is unavailable, and returns `Retry-After`
+  on throttled attempts. We verified OpenAuth 0.4.3 persists code-provider state
+  for 24 hours with no TTL option; our layer stamps signed-in claims with a
+  10-minute server-side expiry and rejects stale code sessions in `success()`
+  before issuing a user session. Sender misconfiguration/unavailability returns
+  the same retry form instead of storing a code state, and the email subject no
+  longer contains the raw code.
 - **Gating preserved:** login still only *authenticates*; authorization stays
   downstream (`authHasCoreTeamAccess` / `isAdmin` / onboarding). Email login does
   not widen access. Invariant recorded in `apps/openagents.com/INVARIANTS.md`
@@ -148,6 +160,12 @@ sends the code; `success()` accepts `provider: 'code'` and issues the session.
   the interim. The target transport is a **first-party Cloudflare auth sender on a
   dedicated subdomain** (e.g. `login@auth.openagents.com`), onboarded and
   smoke-tested first — see the unified strategy doc, Phase 3.
+- **Abuse and expiry controls:** a dedicated auth OTP guard now wraps the
+  provider send/resend route. It rate-limits by IP, normalized target email, and
+  global hourly volume before a code email can be sent; stores only hashed bucket
+  subjects; removes the code from the email subject; fails closed on missing
+  sender config; and enforces our 10-minute session-issuance expiry even though
+  the upstream OpenAuth `CodeProvider` state remains stored for 24 hours.
 - **Why not magic-link:** OTP via `CodeProvider` is battle-tested in OpenAuth and
   avoids hand-rolling a link provider + token store. Revisit only if product wants
   click-to-login UX.
@@ -195,9 +213,10 @@ The smallest-correct path below was implemented (issue #5111). Status per step:
   `/login` launcher page + OpenAuth's themed `CodeUI` for the email/code entry.
 - **Auth-email sender domain / deliverability (still open, owned elsewhere):**
   interim is direct Resend with the existing `RESEND_FROM`. Target is a dedicated
-  Cloudflare auth sender/subdomain. This is now sequenced in the unified strategy
-  doc (`2026-06-16-cloudflare-email-automation-audit.md`, Phase 1→3) — track it
-  there, not here.
+  Cloudflare auth sender/subdomain, preserving the #5120 OTP throttle, expiry,
+  no-enumeration, and fail-closed controls. This is now sequenced in the unified
+  strategy doc (`2026-06-16-cloudflare-email-automation-audit.md`, Phase 1→3) —
+  track it there, not here.
 
 ## 8. File map
 
