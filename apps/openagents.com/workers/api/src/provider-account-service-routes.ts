@@ -1,7 +1,6 @@
 import type { AutopilotTokenUsage } from '@openagentsinc/sync-schema'
 
 import {
-  BUILTIN_COMPUTE_AGENT_GRANT_ENDPOINT,
   executeBuiltinComputeAgentGrant,
   makeD1BuiltinComputeAgentStore,
 } from './builtin-compute-agent-grant'

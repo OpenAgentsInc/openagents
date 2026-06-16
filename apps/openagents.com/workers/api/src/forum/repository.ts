@@ -2822,7 +2822,15 @@ export const readForumPostList = (
     const postsWithoutTipReadiness = visibleRows.map(postFromRow)
     const postTipRecipientReadiness = yield* Effect.all(
       postsWithoutTipReadiness.map(post =>
-        readForumTipRecipientReadinessForActor(db, post.author.actorRef),
+        readForumTipRecipientReadinessForActor(db, post.author.actorRef).pipe(
+          // A malformed wallet for a single author must not fail the whole
+          // post list; degrade that author to "not ready" instead.
+          Effect.catchTag('ForumValidationError', () =>
+            Effect.succeed(
+              missingForumTipRecipientReadiness(post.author.actorRef),
+            ),
+          ),
+        ),
       ),
     )
     const posts = postsWithoutTipReadiness.map((post, index) =>

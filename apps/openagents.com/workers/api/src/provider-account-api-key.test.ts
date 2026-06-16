@@ -414,6 +414,7 @@ describe('provider api key connect route dispatch', () => {
       handleProviderAccountGrantIssueApi: stub('grantIssue', calls),
       handleProviderAccountGrantResolveApi: stub('grantResolve', calls),
       handleGoogleGeminiGrantResolveApi: stub('geminiGrantResolve', calls),
+      handleGoogleGeminiBuiltinGrantApi: stub('geminiBuiltinGrant', calls),
       handleGoogleGeminiGenerateContentApi: stub('geminiGenerate', calls),
       handleProviderAccountHealthApi: stub('health', calls),
       handleProviderApiKeyConnectApi: (
