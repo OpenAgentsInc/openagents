@@ -3,7 +3,7 @@ export default {
     name: "Autopilot Desktop",
     identifier: "com.openagents.autopilot.desktop",
     // #5046: Autopilot v1.0 release candidate (RC channel only until owner GA).
-    version: "1.0.0-rc.2"
+    version: "1.0.0-rc.3"
   },
   // #5040: default-on OTA. Electrobun's Updater fetches the per-platform
   // update.json + BSDIFF/tarball artifacts from our GCP feed (the oa-updates
