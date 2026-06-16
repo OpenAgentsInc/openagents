@@ -413,7 +413,7 @@ describe("MDK wallet readiness and ledger", () => {
 const RAW_SPARK_ADDRESS = "sp1pgssy9raw7examplespark0address0material0that0must0never0leak0publicly00"
 
 const sparkHelper =
-  (responses: Partial<Record<"status" | "address" | "history" | "unclaimed-deposits", { exitCode?: number; stdout?: unknown; stderr?: string }>>): SparkBackupHelper =>
+  (responses: Partial<Record<"status" | "address" | "history" | "unclaimed-deposits" | "lightning-address", { exitCode?: number; stdout?: unknown; stderr?: string }>>): SparkBackupHelper =>
   async (command) => {
     const response = responses[command] ?? { exitCode: 1, stderr: `unexpected spark command: ${command}` }
     return {
@@ -564,6 +564,62 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
     // Even with the local flag, the projection itself stays redacted.
     expect(JSON.stringify(withFlag.projection)).not.toContain(RAW_SPARK_ADDRESS)
     assertPublicProjectionSafe(withFlag.projection)
+  })
+
+  test("lightning-address kind yields a redacted lightningAddressRef (#5078)", async () => {
+    const RAW_LIGHTNING_ADDRESS = "oab38ad12345abcd9@spark.money"
+    const projection = await classifySparkBackupReceive({
+      enabled: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      kind: "lightning-address",
+      helper: sparkHelper({ "lightning-address": { stdout: { lightning_address: RAW_LIGHTNING_ADDRESS } } }),
+    })
+    expect(projection.state).toBe("address-ready")
+    expect(projection.lightningAddressRef).toMatch(/^wallet\.backup\.lightning_address\.[a-f0-9]{24}$/)
+    // The spark-address target ref is not used for the lightning kind.
+    expect(projection.receiveTargetRef).toBeNull()
+    // Raw address must never appear in the public projection.
+    expect(JSON.stringify(projection)).not.toContain(RAW_LIGHTNING_ADDRESS)
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("lightning-address: --show-local-target required before raw address output (#5078)", async () => {
+    const RAW_LIGHTNING_ADDRESS = "oab38ad12345abcd9@spark.money"
+    const withoutFlag = await prepareSparkBackupReceive({
+      enabled: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      kind: "lightning-address",
+      helper: sparkHelper({ "lightning-address": { stdout: { lightning_address: RAW_LIGHTNING_ADDRESS } } }),
+    })
+    expect(withoutFlag.ok).toBe(true)
+    expect(withoutFlag.localTarget).toBeUndefined()
+    expect(withoutFlag.receiptRef).toMatch(/^wallet\.backup_receive\.[a-f0-9]{24}$/)
+    expect(JSON.stringify(withoutFlag.projection)).not.toContain(RAW_LIGHTNING_ADDRESS)
+    assertPublicProjectionSafe(withoutFlag.projection)
+
+    const withFlag = await prepareSparkBackupReceive({
+      enabled: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      kind: "lightning-address",
+      showLocalTarget: true,
+      helper: sparkHelper({ "lightning-address": { stdout: { lightning_address: RAW_LIGHTNING_ADDRESS } } }),
+    })
+    expect(withFlag.localTarget).toBe(RAW_LIGHTNING_ADDRESS)
+    // Even with the local flag, the projection itself stays redacted.
+    expect(JSON.stringify(withFlag.projection)).not.toContain(RAW_LIGHTNING_ADDRESS)
+    assertPublicProjectionSafe(withFlag.projection)
+  })
+
+  test("lightning-address: unsupported helper yields helper-unavailable", async () => {
+    const projection = await classifySparkBackupReceive({
+      enabled: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      kind: "lightning-address",
+      helper: sparkHelper({ "lightning-address": { exitCode: 1, stderr: "lightning address unsupported" } }),
+    })
+    expect(projection.state).toBe("helper-unavailable")
+    expect(projection.lightningAddressRef).toBeNull()
+    assertPublicProjectionSafe(projection)
   })
 
   test("assertPublicProjectionSafe rejects projections containing raw Spark material", () => {

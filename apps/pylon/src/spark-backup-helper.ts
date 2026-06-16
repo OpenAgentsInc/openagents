@@ -34,6 +34,7 @@
 // locally only under `--show-local-target`).
 // ---------------------------------------------------------------------------
 
+import { createHash } from "node:crypto"
 import { mkdirSync } from "node:fs"
 import * as nodePath from "node:path"
 import type {
@@ -66,6 +67,14 @@ type BreezSparkSdk = {
   }): Promise<{ paymentRequest?: string }>
   listPayments(request: { limit?: number }): Promise<{ payments?: unknown[] }>
   listUnclaimedDeposits(request: Record<string, never>): Promise<{ deposits?: unknown[] }>
+  // Static Lightning Address (LNURL-pay) hosted by this Spark wallet's LSP.
+  // Optional-tolerant: not all SDK builds / injected test fakes expose these.
+  getLightningAddress?(): Promise<{ lightningAddress?: string } | undefined>
+  registerLightningAddress?(request: {
+    username: string
+    description?: string
+  }): Promise<{ lightningAddress?: string }>
+  checkLightningAddressAvailable?(request: { username: string }): Promise<boolean>
   disconnect?(): Promise<void> | void
 }
 
@@ -278,6 +287,56 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
           )
           const count = Array.isArray(res?.deposits) ? res.deposits.length : 0
           return helperOk({ unclaimed_deposit_count: count })
+        }
+        case "lightning-address": {
+          // Static Lightning Address (LNURL-pay) hosted by this wallet's Spark
+          // LSP. We pay OFFLINE recipients by paying this address from the MDK
+          // treasury; the Spark LSP holds funds if the recipient is offline.
+          // RECEIVE-SIDE registration only — no send/pay path here.
+          if (typeof sdk.getLightningAddress !== "function" || typeof sdk.registerLightningAddress !== "function") {
+            return helperError(command, "lightning address unsupported")
+          }
+          // 1) If one is already registered, return it.
+          const existing = await withTimeout(
+            sdk.getLightningAddress(),
+            timeoutMs,
+            "spark getLightningAddress",
+          )
+          if (existing && typeof existing.lightningAddress === "string" && existing.lightningAddress !== "") {
+            return helperOk({ lightning_address: existing.lightningAddress })
+          }
+          // 2) Otherwise derive a deterministic username from the wallet's
+          //    static spark address and register one. The username is a stable
+          //    function of the wallet so re-runs reuse the same identity.
+          const addr = await withTimeout(
+            sdk.receivePayment({ paymentMethod: { type: "sparkAddress" } }),
+            timeoutMs,
+            "spark receivePayment",
+          )
+          const sparkAddress = typeof addr?.paymentRequest === "string" ? addr.paymentRequest : null
+          if (!sparkAddress) return helperError(command, "no spark address to derive username")
+          const username = "oa" + createHash("sha256").update(sparkAddress).digest("hex").slice(0, 16)
+          if (typeof sdk.checkLightningAddressAvailable === "function") {
+            // Best-effort availability check; ignore failures and proceed to
+            // register (registration is the authority).
+            await withTimeout(
+              sdk.checkLightningAddressAvailable({ username }),
+              timeoutMs,
+              "spark checkLightningAddressAvailable",
+            ).catch(() => undefined)
+          }
+          const registered = await withTimeout(
+            sdk.registerLightningAddress({
+              username,
+              description: "OpenAgents Pylon Spark backup",
+            }),
+            timeoutMs,
+            "spark registerLightningAddress",
+          )
+          const raw = typeof registered?.lightningAddress === "string" ? registered.lightningAddress : null
+          if (!raw) return helperError(command, "no lightning address returned")
+          // Raw address rides in helper stdout only; slice-1 redacts it.
+          return helperOk({ lightning_address: raw })
         }
         default:
           return helperError(command, "unsupported command")

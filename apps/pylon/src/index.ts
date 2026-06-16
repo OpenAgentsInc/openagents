@@ -2258,13 +2258,15 @@ async function main() {
       if (command === "backup-receive") {
         const sparkOptions = parsePsionicOptions(walletArgs)
         const kind = stringPsionicOption(sparkOptions, "kind") ?? "spark-address"
-        if (kind !== "spark-address") {
-          throw new Error("wallet backup-receive supports --kind spark-address only")
+        if (kind !== "spark-address" && kind !== "lightning-address") {
+          throw new Error("wallet backup-receive supports --kind spark-address or lightning-address")
         }
         const showLocalTarget = sparkOptions["show-local-target"] === true
         const sparkBackupOptions = await resolveSparkBackupOptions(state, { showLocalTarget })
-        const result = await prepareSparkBackupReceive(sparkBackupOptions)
-        if (result.ok && result.localTarget) {
+        const result = await prepareSparkBackupReceive({ ...sparkBackupOptions, kind })
+        // Only the spark-address kind caches its raw target locally; the
+        // lightning address is re-derivable from the wallet on demand.
+        if (kind === "spark-address" && result.ok && result.localTarget) {
           await writeCachedSparkTarget(state.paths, result.localTarget)
         }
         if (result.ok && result.receiptRef) {

@@ -67,6 +67,11 @@ export type SparkBackupReceiveProjection = {
   state: SparkBackupReceiveState
   selectedBecauseRefs: string[]
   receiveTargetRef: string | null
+  // Public-safe redacted ref for the static Lightning Address backup target
+  // (`wallet.backup.lightning_address.<digest>`), present only when the
+  // requested receive kind is `lightning-address` and the helper returned one.
+  // The raw lightning address is local-only, never placed in any projection.
+  lightningAddressRef: string | null
   rawTargetAvailableLocally: boolean
   credentialReady: boolean
   helperReady: boolean
@@ -86,7 +91,7 @@ export type SparkBackupReceiveProjection = {
  * (`unavailableSparkBackupHelper`) reports `helper-unavailable` when none is
  * configured; tests inject a fake helper.
  */
-export type SparkBackupCommand = "status" | "address" | "history" | "unclaimed-deposits"
+export type SparkBackupCommand = "status" | "address" | "history" | "unclaimed-deposits" | "lightning-address"
 
 export type SparkBackupHelper = (command: SparkBackupCommand) => Promise<WalletCommandResult>
 
@@ -763,12 +768,18 @@ function assertSparkBackupProjectionSafe<T>(projection: T): T {
   return projection
 }
 
+export type SparkBackupReceiveKind = "spark-address" | "lightning-address"
+
 export type SparkBackupReceiveOptions = {
   enabled?: boolean
   env?: NodeJS.ProcessEnv
   helper?: SparkBackupHelper
   cachedAddress?: string | null
   showLocalTarget?: boolean
+  // Which receive target to resolve. Defaults to `spark-address`. With
+  // `lightning-address` we resolve the wallet's static Lightning Address
+  // (LNURL-pay), so an online MDK treasury can pay an offline recipient.
+  kind?: SparkBackupReceiveKind
   // The embedded owner-authorized default Breez key counts as a valid
   // credential (#5078), matching the helper resolver and the legacy-migration
   // path, so the receive backup works out-of-box once opt-in is enabled — no
@@ -817,12 +828,15 @@ export async function classifySparkBackupReceive(
   const helper = options.helper ?? unavailableSparkBackupHelper
   const cachedAddress = options.cachedAddress ?? null
 
+  const kind: SparkBackupReceiveKind = options.kind ?? "spark-address"
+
   const base: SparkBackupReceiveProjection = {
     schema: "openagents.pylon.spark_backup_receive.v0.1",
     enabled,
     state: "disabled",
     selectedBecauseRefs: [],
     receiveTargetRef: null,
+    lightningAddressRef: null,
     rawTargetAvailableLocally: false,
     credentialReady: false,
     helperReady: false,
@@ -858,22 +872,37 @@ export async function classifySparkBackupReceive(
 
   let helperResult: WalletCommandResult
   try {
-    helperResult = await helper("address")
+    helperResult = await helper(kind === "lightning-address" ? "lightning-address" : "address")
   } catch (error) {
     helperResult = { exitCode: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) }
   }
   const helperReady = helperResult.exitCode === 0
   const helperData = helperReady ? parseMaybeJson(helperResult.stdout) : null
   const rawTarget =
-    typeof helperData?.spark_address === "string"
-      ? helperData.spark_address
-      : typeof helperData?.address === "string"
-        ? helperData.address
-        : typeof helperData?.spark_invoice === "string"
-          ? helperData.spark_invoice
-          : null
+    kind === "lightning-address"
+      ? typeof helperData?.lightning_address === "string"
+        ? helperData.lightning_address
+        : null
+      : typeof helperData?.spark_address === "string"
+        ? helperData.spark_address
+        : typeof helperData?.address === "string"
+          ? helperData.address
+          : typeof helperData?.spark_invoice === "string"
+            ? helperData.spark_invoice
+            : null
 
   if (helperReady && rawTarget) {
+    if (kind === "lightning-address") {
+      return assertSparkBackupProjectionSafe({
+        ...base,
+        state: "address-ready",
+        credentialReady: true,
+        helperReady: true,
+        lightningAddressRef: stableRef("wallet.backup.lightning_address", rawTarget),
+        rawTargetAvailableLocally: true,
+        nextActionRefs: ["action.wallet.spark_backup.backup_status"],
+      })
+    }
     return assertSparkBackupProjectionSafe({
       ...base,
       state: "address-ready",
@@ -885,7 +914,7 @@ export async function classifySparkBackupReceive(
     })
   }
 
-  if (cachedAddress) {
+  if (kind !== "lightning-address" && cachedAddress) {
     return assertSparkBackupProjectionSafe({
       ...base,
       state: "cached-address-ready",
@@ -932,11 +961,16 @@ export async function prepareSparkBackupReceive(
 ): Promise<SparkBackupReceiveResult> {
   const helper = options.helper ?? unavailableSparkBackupHelper
   const cachedAddress = options.cachedAddress ?? null
+  const kind: SparkBackupReceiveKind = options.kind ?? "spark-address"
   const projection = await classifySparkBackupReceive(options)
 
   const ready = projection.state === "address-ready" || projection.state === "cached-address-ready"
-  const receiptRef = projection.receiveTargetRef
-    ? `wallet.backup_receive.${projection.receiveTargetRef.split(".").pop()}`
+  // The redacted receipt ref derives from whichever target the requested kind
+  // resolved (lightning address ref for `lightning-address`, spark address ref
+  // otherwise).
+  const targetRef = kind === "lightning-address" ? projection.lightningAddressRef : projection.receiveTargetRef
+  const receiptRef = targetRef
+    ? `wallet.backup_receive.${targetRef.split(".").pop()}`
     : null
 
   // Resolve the raw local target only when explicitly requested. For the
@@ -944,21 +978,26 @@ export async function prepareSparkBackupReceive(
   // helper (kept out of the projection).
   let localTarget: string | undefined
   if (ready && options.showLocalTarget === true) {
-    if (projection.state === "cached-address-ready" && cachedAddress) {
+    if (kind !== "lightning-address" && projection.state === "cached-address-ready" && cachedAddress) {
       localTarget = cachedAddress
     } else if (projection.state === "address-ready") {
       try {
-        const result = await helper("address")
-        const data = result.exitCode === 0 ? parseMaybeJson(result.stdout) : null
-        const raw =
-          typeof data?.spark_address === "string"
-            ? data.spark_address
-            : typeof data?.address === "string"
-              ? data.address
-              : typeof data?.spark_invoice === "string"
-                ? data.spark_invoice
-                : undefined
-        localTarget = raw
+        if (kind === "lightning-address") {
+          const result = await helper("lightning-address")
+          const data = result.exitCode === 0 ? parseMaybeJson(result.stdout) : null
+          localTarget = typeof data?.lightning_address === "string" ? data.lightning_address : undefined
+        } else {
+          const result = await helper("address")
+          const data = result.exitCode === 0 ? parseMaybeJson(result.stdout) : null
+          localTarget =
+            typeof data?.spark_address === "string"
+              ? data.spark_address
+              : typeof data?.address === "string"
+                ? data.address
+                : typeof data?.spark_invoice === "string"
+                  ? data.spark_invoice
+                  : undefined
+        }
       } catch {
         localTarget = undefined
       }
