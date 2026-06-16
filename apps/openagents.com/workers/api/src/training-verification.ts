@@ -153,6 +153,12 @@ export type TrainingVerificationChallengeProjection = Readonly<{
   verdictRefs: ReadonlyArray<string>
   verificationClass: TrainingVerificationClass
   windowRef: string | null
+  // #5124: the two digests the exact_trace_replay verifier actually compares,
+  // surfaced public-safe (sha256 hashes, no secrets) so a Rejected
+  // ExecutorTraceMismatch is diagnosable — worker-stored commitment vs
+  // validator-stored replay. Null for non-exact-trace classes / absent payloads.
+  exactTraceCommitmentDigestRef?: string | null
+  exactTraceReplayDigestRef?: string | null
 }>
 
 export type TrainingVerificationStore = Readonly<{
@@ -759,6 +765,14 @@ export const publicTrainingVerificationChallengeProjection = (
   verdictRefs: uniqueRefs(record.verdictRefs),
   verificationClass: record.verificationClass,
   windowRef: record.windowRef,
+  exactTraceCommitmentDigestRef:
+    typeof jsonPayload(record.payloadJson).traceCommitmentDigestRef === 'string'
+      ? (jsonPayload(record.payloadJson).traceCommitmentDigestRef as string)
+      : null,
+  exactTraceReplayDigestRef:
+    typeof jsonPayload(record.payloadJson).replayDigestRef === 'string'
+      ? (jsonPayload(record.payloadJson).replayDigestRef as string)
+      : null,
 })
 
 const attemptCount = (
