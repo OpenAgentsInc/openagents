@@ -190,7 +190,12 @@ epics below; not all lands today — the aim is the main spine.
 - **Epic E — first design-partner deliverables (#5105):** prefilled workspaces per
   vertical (e-commerce / legal / marketing-agency) + per-vertical stage templates
   (locked in
-  `docs/blitz/forge/2026-06-16-per-vertical-forge-stage-templates.md`).
+  `docs/blitz/forge/2026-06-16-per-vertical-forge-stage-templates.md`). **E1
+  e-commerce (#5099) landed:** typed seed template
+  `forge.template.ecommerce.inventory_campaign.v1` now creates the public-safe
+  inventory-aware ad-campaign workspace input, with stock/imagery/spend-cap,
+  Commerce QA, authority blocker, and stats/receipt gates documented in
+  `docs/blitz/forge/2026-06-16-ecommerce-prefilled-workspace.md`.
 - **Epic G — fold the terminal-agent-systems into the Forge Autopilot Coder
   (#5107, long arc):** runtime spine already built (Agent Runtime Kernel + tools,
   Pack A/B/C, worktree materialization); next, surface diff-review, plan/todo,

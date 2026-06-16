@@ -62,6 +62,11 @@ This is the existing coding template and the reference for all mapped variants.
 Use for #5099: inventory-aware campaign starters, storefront merchandising,
 promotion pages, transactional content, and conversion-loop work.
 
+Implementation note: #5099 now has a typed seed template at
+`apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.ts`
+and the operator/audit note at
+`docs/blitz/forge/2026-06-16-ecommerce-prefilled-workspace.md`.
+
 | Forge stage | E-commerce stage name | Input                                                                                       | Output                                                                             | Validation and evidence                                               |
 | ----------- | --------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | Signal      | Demand Signal         | Product catalog delta, inventory pressure, seasonal event, abandoned-cart or search signal. | Campaign/opportunity brief.                                                        | Source refs for catalog, inventory, margin, traffic, and timing.      |
