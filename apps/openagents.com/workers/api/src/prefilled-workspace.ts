@@ -5,15 +5,15 @@ import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 // Prefilled project workspace primitive (Epic C / C1).
 //
-// A reusable onboarding unit a prospect or holder is invited into instead of a
-// blank chat: a named project + seeded grounded memory (public-source refs
-// only) + 1-3 one-click starter accepted-outcome workflows + an intro receipt.
+// A reusable onboarding unit a prospect, holder, or private team member is
+// invited into instead of a blank chat: a named project + seeded grounded
+// memory + 1-3 one-click starter accepted-outcome workflows + an intro receipt.
 //
-// PUBLIC-SAFE / COMPLIANCE INVARIANT: everything modeled here is seeded from
-// public data only. No private account material, secrets, credentials, raw
-// prompts, wallet data, or individual people's names belong in any column. The
-// seeded-memory and starter-workflow projections are public-safe by
-// construction; the public projection helper strips operator-only fields.
+// ACCESS INVARIANT: public_safe rows keep the original public-source-only
+// onboarding contract. private_team rows may carry private project material,
+// but must be denied by default and projected only after active team membership
+// gating. No secrets, credentials, raw prompts, wallet data, raw invite tokens,
+// or individual people's names belong in public-safe rows or public artifacts.
 
 export const WorkspaceStatus = S.Literals([
   'draft',
@@ -22,6 +22,9 @@ export const WorkspaceStatus = S.Literals([
   'archived',
 ])
 export type WorkspaceStatus = typeof WorkspaceStatus.Type
+
+export const WorkspaceAccessMode = S.Literals(['public_safe', 'private_team'])
+export type WorkspaceAccessMode = typeof WorkspaceAccessMode.Type
 
 export const StarterWorkflowStatus = S.Literals([
   'queued',
@@ -84,6 +87,7 @@ export const systemPrefilledWorkspaceRuntime: PrefilledWorkspaceRuntime = {
 
 // The full typed workspace record (operator view).
 export type PrefilledWorkspaceRecord = Readonly<{
+  accessMode: WorkspaceAccessMode
   id: string
   // The holder once they sign in (FK to users). Null until claimed.
   holderUserId: string | null
@@ -95,17 +99,22 @@ export type PrefilledWorkspaceRecord = Readonly<{
   seededMemory: ReadonlyArray<SeededMemoryEntry>
   starterWorkflows: ReadonlyArray<StarterWorkflow>
   introReceipt: IntroReceipt
+  privateProjectId: string | null
+  privateTeamId: string | null
   engagement: PrefilledWorkspaceEngagement
   createdAt: string
   updatedAt: string
 }>
 
 type WorkspaceRow = Readonly<{
+  access_mode: WorkspaceAccessMode
   id: string
   holder_user_id: string | null
   holder_ref: string
   project_name: string
   status: WorkspaceStatus
+  private_project_id: string | null
+  private_team_id: string | null
   intro_receipt_json: string
   invited_at: string | null
   first_viewed_at: string | null
@@ -172,9 +181,12 @@ const normalizeIntroReceipt = (receipt: IntroReceipt): IntroReceipt => ({
 })
 
 export type CreatePrefilledWorkspaceInput = Readonly<{
+  accessMode?: WorkspaceAccessMode | undefined
   holderRef?: string | undefined
   holderUserId?: string | null | undefined
   introReceipt: IntroReceipt
+  privateProjectId?: string | null | undefined
+  privateTeamId?: string | null | undefined
   projectName: string
   seededMemory?: ReadonlyArray<SeededMemoryEntry> | undefined
   starterWorkflows?: ReadonlyArray<StarterWorkflow> | undefined
@@ -193,6 +205,7 @@ export const makePrefilledWorkspaceRecord = (
       : clampText(input.holderRef, 200)
 
   return {
+    accessMode: input.accessMode ?? 'public_safe',
     id: runtime.makeId('workspace'),
     holderUserId: input.holderUserId ?? null,
     holderRef,
@@ -201,6 +214,8 @@ export const makePrefilledWorkspaceRecord = (
     seededMemory: normalizeSeededMemory(input.seededMemory ?? []),
     starterWorkflows: normalizeStarterWorkflows(input.starterWorkflows ?? []),
     introReceipt: normalizeIntroReceipt(input.introReceipt),
+    privateProjectId: input.privateProjectId ?? null,
+    privateTeamId: input.privateTeamId ?? null,
     engagement: {
       invitedAt: (input.status ?? 'draft') === 'invited' ? now : null,
       firstViewedAt: null,
@@ -227,6 +242,7 @@ const recordFromRows = (
   memoryRows: ReadonlyArray<SeededMemoryRow>,
   workflowRows: ReadonlyArray<StarterWorkflowRow>,
 ): PrefilledWorkspaceRecord => ({
+  accessMode: workspace.access_mode,
   id: workspace.id,
   holderUserId: workspace.holder_user_id,
   holderRef: workspace.holder_ref,
@@ -248,6 +264,8 @@ const recordFromRows = (
       status: row.status,
     })),
   introReceipt: parseIntroReceipt(workspace.intro_receipt_json),
+  privateProjectId: workspace.private_project_id,
+  privateTeamId: workspace.private_team_id,
   engagement: {
     invitedAt: workspace.invited_at,
     firstViewedAt: workspace.first_viewed_at,
@@ -260,11 +278,13 @@ const recordFromRows = (
   updatedAt: workspace.updated_at,
 })
 
-// Public-safe projection: the holder-facing view. The whole record is
-// public-data-only by invariant, so this drops only operator-internal fields
-// such as the holderUserId/holderRef binding while keeping seeded-memory
-// provenance refs intact.
+// Holder-facing projection. For public_safe rows, the data remains
+// public-source-only. For private_team rows, callers must enforce active team
+// membership before returning this projection. It always drops operator-only
+// bindings and private team/project refs while keeping seeded-memory provenance
+// refs intact.
 export type PrefilledWorkspacePublicProjection = Readonly<{
+  accessMode: WorkspaceAccessMode
   id: string
   projectName: string
   status: WorkspaceStatus
@@ -277,6 +297,7 @@ export type PrefilledWorkspacePublicProjection = Readonly<{
 export const toPublicProjection = (
   record: PrefilledWorkspaceRecord,
 ): PrefilledWorkspacePublicProjection => ({
+  accessMode: record.accessMode,
   id: record.id,
   projectName: record.projectName,
   status: record.status,
@@ -303,12 +324,20 @@ export type PrefilledWorkspaceServiceShape = Readonly<{
     workspaceId: string,
     holderUserId: string,
   ) => Promise<PrefilledWorkspaceRecord | undefined>
+  readPrivateWorkspaceForTeamMember: (
+    workspaceId: string,
+    userId: string,
+  ) => Promise<PrefilledWorkspaceRecord | undefined>
   recordFirstRunForHolder: (
     workspaceId: string,
     holderUserId: string,
   ) => Promise<PrefilledWorkspaceRecord | undefined>
   recordFirstRunForOperator: (
     workspaceId: string,
+  ) => Promise<PrefilledWorkspaceRecord | undefined>
+  recordFirstRunForPrivateTeamMember: (
+    workspaceId: string,
+    userId: string,
   ) => Promise<PrefilledWorkspaceRecord | undefined>
 }>
 
@@ -369,6 +398,7 @@ const loadWorkspace = async (
   const workspace = await db
     .prepare(
       `SELECT id, holder_user_id, holder_ref, project_name, status,
+              access_mode, private_team_id, private_project_id,
               intro_receipt_json, invited_at, first_viewed_at,
               first_claimed_at, first_run_at, last_viewed_at,
               revisit_count, created_at, updated_at
@@ -453,6 +483,54 @@ const trackHolderWorkspaceView = async (
     .run()
 }
 
+const trackWorkspaceView = async (
+  db: D1Database,
+  workspaceId: string,
+  nowIso: string,
+): Promise<void> => {
+  await db
+    .prepare(
+      `UPDATE prefilled_workspaces
+          SET first_viewed_at = COALESCE(first_viewed_at, ?),
+              last_viewed_at = ?,
+              revisit_count = CASE
+                WHEN first_viewed_at IS NULL THEN revisit_count
+                ELSE revisit_count + 1
+              END,
+              updated_at = ?
+        WHERE id = ?
+          AND archived_at IS NULL`,
+    )
+    .bind(nowIso, nowIso, nowIso, workspaceId)
+    .run()
+}
+
+const privateTeamMemberWhereClause = `
+  id = ?
+  AND access_mode = 'private_team'
+  AND private_team_id IS NOT NULL
+  AND EXISTS (
+    SELECT 1
+      FROM team_memberships
+      INNER JOIN teams ON teams.id = team_memberships.team_id
+     WHERE team_memberships.team_id = prefilled_workspaces.private_team_id
+       AND team_memberships.user_id = ?
+       AND team_memberships.status = 'active'
+       AND teams.status = 'active'
+       AND teams.archived_at IS NULL
+  )
+  AND (
+    private_project_id IS NULL
+    OR EXISTS (
+      SELECT 1
+        FROM team_projects
+       WHERE team_projects.id = prefilled_workspaces.private_project_id
+         AND team_projects.team_id = prefilled_workspaces.private_team_id
+         AND team_projects.status = 'active'
+         AND team_projects.archived_at IS NULL
+    )
+  )`
+
 const recordFirstRun = async (
   db: D1Database,
   workspaceId: string,
@@ -487,10 +565,10 @@ export const makePrefilledWorkspaceService = (
       .prepare(
         `INSERT INTO prefilled_workspaces
           (id, holder_user_id, holder_ref, project_name, status,
-           intro_receipt_json, invited_at, first_viewed_at, first_claimed_at,
-           first_run_at, last_viewed_at, revisit_count, created_at, updated_at,
-           archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+           access_mode, private_team_id, private_project_id, intro_receipt_json,
+           invited_at, first_viewed_at, first_claimed_at, first_run_at,
+           last_viewed_at, revisit_count, created_at, updated_at, archived_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
       .bind(
         record.id,
@@ -498,6 +576,9 @@ export const makePrefilledWorkspaceService = (
         record.holderRef,
         record.projectName,
         record.status,
+        record.accessMode,
+        record.privateTeamId,
+        record.privateProjectId,
         JSON.stringify(record.introReceipt),
         record.engagement.invitedAt,
         record.engagement.firstViewedAt,
@@ -530,6 +611,24 @@ export const makePrefilledWorkspaceService = (
       holderUserId,
     ])
   },
+  readPrivateWorkspaceForTeamMember: async (workspaceId, userId) => {
+    const nowIso = runtime.nowIso()
+    const record = await loadWorkspace(db, privateTeamMemberWhereClause, [
+      workspaceId,
+      userId,
+    ])
+
+    if (record === undefined) {
+      return undefined
+    }
+
+    await trackWorkspaceView(db, workspaceId, nowIso)
+
+    return loadWorkspace(db, privateTeamMemberWhereClause, [
+      workspaceId,
+      userId,
+    ])
+  },
   recordFirstRunForHolder: async (workspaceId, holderUserId) => {
     const nowIso = runtime.nowIso()
     await recordFirstRun(db, workspaceId, nowIso, holderUserId)
@@ -544,5 +643,23 @@ export const makePrefilledWorkspaceService = (
     await recordFirstRun(db, workspaceId, nowIso)
 
     return loadWorkspace(db, 'id = ?', [workspaceId])
+  },
+  recordFirstRunForPrivateTeamMember: async (workspaceId, userId) => {
+    const nowIso = runtime.nowIso()
+    const record = await loadWorkspace(db, privateTeamMemberWhereClause, [
+      workspaceId,
+      userId,
+    ])
+
+    if (record === undefined) {
+      return undefined
+    }
+
+    await recordFirstRun(db, workspaceId, nowIso)
+
+    return loadWorkspace(db, privateTeamMemberWhereClause, [
+      workspaceId,
+      userId,
+    ])
   },
 })

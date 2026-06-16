@@ -52,10 +52,13 @@ const IntroReceiptInput = S.Struct({
 })
 
 const CreateWorkspaceRequest = S.Struct({
+  accessMode: S.optionalKey(S.Literals(['public_safe', 'private_team'])),
   projectName: S.String,
   holderRef: S.optionalKey(S.String),
   holderUserId: S.optionalKey(S.Union([S.String, S.Null])),
   status: S.optionalKey(S.Literals(['draft', 'invited', 'active', 'archived'])),
+  privateProjectId: S.optionalKey(S.Union([S.String, S.Null])),
+  privateTeamId: S.optionalKey(S.Union([S.String, S.Null])),
   introReceipt: IntroReceiptInput,
   seededMemory: S.optionalKey(S.Array(SeededMemoryInput)),
   starterWorkflows: S.optionalKey(S.Array(StarterWorkflowInput)),
@@ -121,9 +124,12 @@ const inviteUrlForWorkspace = (request: Request, workspaceId: string): string =>
 const toCreateInput = (
   body: CreateWorkspaceRequest,
 ): CreatePrefilledWorkspaceInput => ({
+  accessMode: body.accessMode,
   projectName: body.projectName,
   holderRef: body.holderRef,
   holderUserId: body.holderUserId,
+  privateProjectId: body.privateProjectId,
+  privateTeamId: body.privateTeamId,
   status: body.status,
   introReceipt: {
     summary: body.introReceipt.summary,
@@ -179,10 +185,13 @@ const operatorWorkspaceView = (
   request: Request,
   record: PrefilledWorkspaceRecord,
 ) => ({
+  accessMode: record.accessMode,
   id: record.id,
   holderUserId: record.holderUserId,
   holderRef: record.holderRef,
   inviteUrl: inviteUrlForWorkspace(request, record.id),
+  privateProjectId: record.privateProjectId,
+  privateTeamId: record.privateTeamId,
   projectName: record.projectName,
   status: record.status,
   seededMemory: record.seededMemory,
@@ -215,6 +224,13 @@ const createWorkspace = <Bindings extends PrefilledWorkspaceRouteEnv>(
       return badRequest('A project name is required.')
     }
 
+    if (
+      body.accessMode === 'private_team' &&
+      (body.privateTeamId === undefined || body.privateTeamId === null)
+    ) {
+      return badRequest('A private team workspace requires privateTeamId.')
+    }
+
     const store = dependencies.makeStore(env)
     const record = yield* Effect.promise(() =>
       store.createWorkspace(toCreateInput(body)),
@@ -231,8 +247,9 @@ const createWorkspace = <Bindings extends PrefilledWorkspaceRouteEnv>(
 
 // Get a workspace: GET /api/workspaces/:workspaceId
 //
-// Operators (admin bearer) get the full operator view. Otherwise the signed-in
-// holder bound to the workspace gets the public-safe holder projection.
+// Operators (admin bearer) get the full operator view. Otherwise public_safe
+// rows use the holder claim/bind path, while private_team rows require active
+// team membership before returning the holder-facing projection.
 const getWorkspace = <Bindings extends PrefilledWorkspaceRouteEnv>(
   dependencies: PrefilledWorkspaceRoutesDependencies<Bindings>,
   request: Request,
@@ -270,6 +287,30 @@ const getWorkspace = <Bindings extends PrefilledWorkspaceRouteEnv>(
 
     if (holderUserId === undefined) {
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const existingRecord = yield* Effect.promise(() =>
+      store.readWorkspace(workspaceId),
+    )
+
+    if (existingRecord === undefined) {
+      return notFound()
+    }
+
+    if (existingRecord.accessMode === 'private_team') {
+      const record = yield* Effect.promise(() =>
+        store.readPrivateWorkspaceForTeamMember(workspaceId, holderUserId),
+      )
+
+      if (record === undefined) {
+        return forbidden()
+      }
+
+      return noStoreJsonResponse({
+        generatedAt: nowIso,
+        viewer: 'team_member',
+        workspace: toPublicProjection(record),
+      })
     }
 
     const record = yield* Effect.promise(() =>
@@ -328,6 +369,30 @@ const recordWorkspaceEngagement = <Bindings extends PrefilledWorkspaceRouteEnv>(
 
     if (holderUserId === undefined) {
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const existingRecord = yield* Effect.promise(() =>
+      store.readWorkspace(workspaceId),
+    )
+
+    if (existingRecord === undefined) {
+      return notFound()
+    }
+
+    if (existingRecord.accessMode === 'private_team') {
+      const record = yield* Effect.promise(() =>
+        store.recordFirstRunForPrivateTeamMember(workspaceId, holderUserId),
+      )
+
+      if (record === undefined) {
+        return forbidden()
+      }
+
+      return noStoreJsonResponse({
+        generatedAt: nowIso,
+        viewer: 'team_member',
+        workspace: toPublicProjection(record),
+      })
     }
 
     const record = yield* Effect.promise(() =>

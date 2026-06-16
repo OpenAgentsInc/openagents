@@ -77,6 +77,23 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/team-autopilot.test.ts`.
 
+## Prefilled Workspace Public And Private Access
+
+- Prefilled workspace rows are explicitly labeled by `accessMode`:
+  `public_safe` rows keep the original public-source-only onboarding invariant,
+  while `private_team` rows may hold private project material and must be
+  denied by default.
+- The first-signed-in-holder claim path applies only to `public_safe` invited
+  workspaces. It must not claim, bind, or reveal `private_team` workspace
+  material.
+- `private_team` holder reads and engagement writes require an authenticated
+  user with active membership in the workspace's private team, and active
+  project validity when a private project ref is present. Operator reads may
+  inspect the operator view, but public/holder projections must not expose raw
+  invite tokens, holder refs, team-private refs, or operator-only metadata.
+- Regression coverage for this policy lives in
+  `workers/api/src/prefilled-workspace-routes.test.ts`.
+
 ## Agent Runtime Kernel Event Projection
 
 - Worker ingestion of Agent Runtime Kernel events must schema-decode

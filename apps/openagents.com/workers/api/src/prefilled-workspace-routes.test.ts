@@ -26,7 +26,12 @@ const recordRuntime = {
 // In-memory store implementing the service shape so the route test exercises
 // routing, operator create, operator-vs-holder read, holder scoping, and auth.
 class MemoryWorkspaceStore implements PrefilledWorkspaceServiceShape {
+  readonly activeTeamMemberships = new Set<string>()
   readonly workspaces = new Map<string, PrefilledWorkspaceRecord>()
+
+  addActiveTeamMembership(teamId: string, userId: string): void {
+    this.activeTeamMemberships.add(`${teamId}:${userId}`)
+  }
 
   seed(record: PrefilledWorkspaceRecord): void {
     this.workspaces.set(record.id, record)
@@ -90,6 +95,39 @@ class MemoryWorkspaceStore implements PrefilledWorkspaceServiceShape {
     return nextRecord
   }
 
+  readPrivateWorkspaceForTeamMember = async (
+    workspaceId: string,
+    userId: string,
+  ) => {
+    const record = this.workspaces.get(workspaceId)
+
+    if (
+      record === undefined ||
+      record.accessMode !== 'private_team' ||
+      record.privateTeamId === null ||
+      !this.activeTeamMemberships.has(`${record.privateTeamId}:${userId}`)
+    ) {
+      return undefined
+    }
+
+    const nextRecord: PrefilledWorkspaceRecord = {
+      ...record,
+      engagement: {
+        ...record.engagement,
+        firstViewedAt: record.engagement.firstViewedAt ?? fixtureNowIso,
+        lastViewedAt: fixtureNowIso,
+        revisitCount:
+          record.engagement.firstViewedAt === null
+            ? record.engagement.revisitCount
+            : record.engagement.revisitCount + 1,
+      },
+      updatedAt: fixtureNowIso,
+    }
+    this.workspaces.set(workspaceId, nextRecord)
+
+    return nextRecord
+  }
+
   recordFirstRunForHolder = async (
     workspaceId: string,
     holderUserId: string,
@@ -132,11 +170,38 @@ class MemoryWorkspaceStore implements PrefilledWorkspaceServiceShape {
 
     return nextRecord
   }
+
+  recordFirstRunForPrivateTeamMember = async (
+    workspaceId: string,
+    userId: string,
+  ) => {
+    const record = await this.readPrivateWorkspaceForTeamMember(
+      workspaceId,
+      userId,
+    )
+
+    if (record === undefined) {
+      return undefined
+    }
+
+    const nextRecord: PrefilledWorkspaceRecord = {
+      ...record,
+      engagement: {
+        ...record.engagement,
+        firstRunAt: record.engagement.firstRunAt ?? fixtureNowIso,
+      },
+      updatedAt: fixtureNowIso,
+    }
+    this.workspaces.set(workspaceId, nextRecord)
+
+    return nextRecord
+  }
 }
 
 const seededRecord = (
   overrides: Partial<PrefilledWorkspaceRecord> = {},
 ): PrefilledWorkspaceRecord => ({
+  accessMode: 'public_safe',
   id: 'workspace_seed',
   holderUserId: 'github:holder',
   holderRef: 'prospect-ref-001',
@@ -157,6 +222,8 @@ const seededRecord = (
     summary: 'Seeded from public sources.',
     publicSourceRefs: ['https://src'],
   },
+  privateProjectId: null,
+  privateTeamId: null,
   engagement: {
     invitedAt: fixtureNowIso,
     firstViewedAt: null,
@@ -322,6 +389,45 @@ describe('prefilled workspace routes', () => {
     expect(body.workspace.engagement.firstRunAt).toBe(null)
   })
 
+  test('operator view includes private workspace access metadata', async () => {
+    const store = new MemoryWorkspaceStore()
+    store.seed(
+      seededRecord({
+        accessMode: 'private_team',
+        holderUserId: null,
+        privateProjectId: 'team_project_private',
+        privateTeamId: 'team_private',
+      }),
+    )
+    const routes = makeRoutes(store)
+
+    const response = await run(
+      routes.routePrefilledWorkspaceRequest(
+        new Request('https://openagents.com/api/workspaces/workspace_seed', {
+          headers: { authorization: 'Bearer op-secret' },
+        }),
+        { operatorToken: 'op-secret' },
+        ctx,
+      ),
+    )
+    const body = (await response.json()) as {
+      viewer: string
+      workspace: {
+        accessMode: string
+        privateProjectId: string | null
+        privateTeamId: string | null
+      }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.viewer).toBe('operator')
+    expect(body.workspace).toMatchObject({
+      accessMode: 'private_team',
+      privateProjectId: 'team_project_private',
+      privateTeamId: 'team_private',
+    })
+  })
+
   test('bound holder gets the public-safe projection without operator fields', async () => {
     const store = new MemoryWorkspaceStore()
     store.seed(seededRecord())
@@ -379,6 +485,126 @@ describe('prefilled workspace routes', () => {
         revisitCount: 1,
       },
     })
+  })
+
+  test('private team workspace rejects signed-in users without active membership', async () => {
+    const store = new MemoryWorkspaceStore()
+    store.seed(
+      seededRecord({
+        accessMode: 'private_team',
+        holderUserId: null,
+        privateProjectId: 'team_project_private',
+        privateTeamId: 'team_private',
+      }),
+    )
+    const routes = makeRoutes(store)
+
+    const response = await run(
+      routes.routePrefilledWorkspaceRequest(
+        new Request('https://openagents.com/api/workspaces/workspace_seed'),
+        { holderUserId: 'github:not-member' },
+        ctx,
+      ),
+    )
+
+    expect(response.status).toBe(403)
+    expect(store.workspaces.get('workspace_seed')).toMatchObject({
+      holderUserId: null,
+      engagement: {
+        firstViewedAt: null,
+        lastViewedAt: null,
+      },
+    })
+  })
+
+  test('private team workspace returns seeded material only to active members', async () => {
+    const store = new MemoryWorkspaceStore()
+    store.seed(
+      seededRecord({
+        accessMode: 'private_team',
+        holderUserId: null,
+        privateProjectId: 'team_project_private',
+        privateTeamId: 'team_private',
+      }),
+    )
+    store.addActiveTeamMembership('team_private', 'github:member')
+    const routes = makeRoutes(store)
+
+    const response = await run(
+      routes.routePrefilledWorkspaceRequest(
+        new Request('https://openagents.com/api/workspaces/workspace_seed'),
+        { holderUserId: 'github:member' },
+        ctx,
+      ),
+    )
+    const body = (await response.json()) as {
+      viewer: string
+      workspace: Record<string, unknown>
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.viewer).toBe('team_member')
+    expect(body.workspace).not.toHaveProperty('holderUserId')
+    expect(body.workspace).not.toHaveProperty('holderRef')
+    expect(body.workspace).not.toHaveProperty('privateTeamId')
+    expect(body.workspace.accessMode).toBe('private_team')
+    expect(body.workspace.seededMemory).toEqual([
+      { label: 'voice', value: 'friendly', publicSourceRef: 'https://src' },
+    ])
+    expect(store.workspaces.get('workspace_seed')).toMatchObject({
+      holderUserId: null,
+      engagement: {
+        firstViewedAt: fixtureNowIso,
+        lastViewedAt: fixtureNowIso,
+      },
+    })
+  })
+
+  test('private team first-run engagement requires active membership', async () => {
+    const store = new MemoryWorkspaceStore()
+    store.seed(
+      seededRecord({
+        accessMode: 'private_team',
+        holderUserId: null,
+        privateProjectId: 'team_project_private',
+        privateTeamId: 'team_private',
+      }),
+    )
+    store.addActiveTeamMembership('team_private', 'github:member')
+    const routes = makeRoutes(store)
+
+    const rejected = await run(
+      routes.routePrefilledWorkspaceRequest(
+        new Request(
+          'https://openagents.com/api/workspaces/workspace_seed/engagement',
+          {
+            body: JSON.stringify({ event: 'first_run' }),
+            method: 'POST',
+          },
+        ),
+        { holderUserId: 'github:not-member' },
+        ctx,
+      ),
+    )
+    const accepted = await run(
+      routes.routePrefilledWorkspaceRequest(
+        new Request(
+          'https://openagents.com/api/workspaces/workspace_seed/engagement',
+          {
+            body: JSON.stringify({ event: 'first_run' }),
+            method: 'POST',
+          },
+        ),
+        { holderUserId: 'github:member' },
+        ctx,
+      ),
+    )
+
+    expect(rejected.status).toBe(403)
+    expect(accepted.status).toBe(200)
+    expect(store.workspaces.get('workspace_seed')?.engagement.firstRunAt).toBe(
+      fixtureNowIso,
+    )
   })
 
   test('holder first-run engagement is recorded without exposing operator fields', async () => {
