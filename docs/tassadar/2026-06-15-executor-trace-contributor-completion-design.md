@@ -86,6 +86,11 @@ admit (self-serve gates)            already live (POST /api/training/runs/{ref}/
   `tassadarExecutorTraceVerificationChallengeRequest({closeout, runRef, windowRef})`
   → `createVerificationChallenge`. A digest match surfaces in `verifiedWorkCount`;
   a mismatch in `rejectedWorkCount`.
+- Digest-ref contract: Pylon emits role-specific public refs
+  (`trace.tassadar.commitment.<digest>` for the worker commitment and
+  `trace.tassadar.replay.<digest>` for the validator replay). The verifier
+  compares the shared digest component, not the role namespace. Mismatched digest
+  components still reject with `ExecutorTraceMismatch`.
 
 ### 4.3 Pairing orchestration
 Decide who assigns a validator to a pending worker contribution. Two options to

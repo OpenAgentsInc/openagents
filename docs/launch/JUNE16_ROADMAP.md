@@ -110,6 +110,16 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
     The Worker route now creates, leases, verifies, and finalizes the
     exact-replay challenge in the validator push path, so the auto loop can
     honestly reach `Verified`/`Rejected` without a manual finalize call.
+  - **2026-06-16 follow-up 2:** production had two stale pre-fix paired
+    challenges still stuck in `Queued`. They were repaired through the existing
+    verification API (claim → admin finalize), reaching terminal `Rejected` with
+    `ExecutorTraceMismatch`. Root cause: Pylon submits semantically matching
+    namespaced refs (`trace.tassadar.commitment.<digest>` vs
+    `trace.tassadar.replay.<digest>`), while the verifier compared whole ref
+    strings. The verifier now compares the digest component for those two
+    Tassadar namespaces and keeps mismatched digest components rejected. Next
+    fresh auto-validation can reach the correct terminal state without manual
+    repair.
 - **#5051** epic → **#5061** first external-validator dry-run with **Orrery**
   (volunteered, live non-owner node). This is the one thing that proves the loop:
   pair a real worker + a **distinct** validator device, produce the first
@@ -345,11 +355,12 @@ epics below; not all lands today — the aim is the main spine.
 
 ## Recommended next (assistant lane)
 
-**In progress now (TOP PRIORITY): #5121** — automate the worker↔validator pairing
-(§B) so the launch loop is self-serve: implement `resolveValidatorCandidates()`,
-add validator auto-discovery, and an opt-in validator auto-run on Pylon. This is
-the one true infra gap between "manual two-device proof" and "any installer is
-auto-paired," and it unblocks #5061 / the §C green-flips.
+**In progress now (TOP PRIORITY): #5061 / #5014 live proof.** The #5121
+auto-validation spine is shipped and patched for the Pylon commitment/replay ref
+namespace mismatch. The remaining launch blocker is not more pairing
+infrastructure; it is a fresh real contribution from one device plus a distinct
+validator on rc.4+ producing a terminal exact-replay result, then the
+operator-funded settlement receipt that flips #5014/#5015 honestly.
 
 Section **A** is fully closed; the apps/web wave (Epic A live-render #5108,
 `/login` #5111 + OTP hardening #5120, `/animations`) has landed and deployed.

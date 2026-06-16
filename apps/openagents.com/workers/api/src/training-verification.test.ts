@@ -123,6 +123,42 @@ describe('training verification registry', () => {
     })
   })
 
+  it('verifies exact trace replay when Pylon submits namespaced commitment and replay refs for the same digest', async () => {
+    await expect(
+      runTrainingVerificationClass({
+        challenge: buildChallenge('exact_trace_replay', {
+          contributionRefs: ['contribution.tassadar.executor.1'],
+          replayDigestRef:
+            'trace.tassadar.replay.f2995c4e3c959b42bb1e4afbefffbcf7ba6104099621ccc0ac912862dc932a5b',
+          sampledWindow: { endStep: 80, startStep: 0 },
+          sampledWindowRef: 'trace.tassadar.window.0_80',
+          traceCommitmentDigestRef:
+            'trace.tassadar.commitment.f2995c4e3c959b42bb1e4afbefffbcf7ba6104099621ccc0ac912862dc932a5b',
+        }),
+      }),
+    ).resolves.toMatchObject({
+      failureCodes: [],
+      state: 'Verified',
+    })
+
+    await expect(
+      runTrainingVerificationClass({
+        challenge: buildChallenge('exact_trace_replay', {
+          contributionRefs: ['contribution.tassadar.executor.2'],
+          replayDigestRef:
+            'trace.tassadar.replay.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          sampledWindow: { endStep: 80, startStep: 0 },
+          sampledWindowRef: 'trace.tassadar.window.0_80',
+          traceCommitmentDigestRef:
+            'trace.tassadar.commitment.f2995c4e3c959b42bb1e4afbefffbcf7ba6104099621ccc0ac912862dc932a5b',
+        }),
+      }),
+    ).resolves.toMatchObject({
+      failureCodes: ['ExecutorTraceMismatch'],
+      state: 'Rejected',
+    })
+  })
+
   it('enforces per-kind sampling policy configuration', async () => {
     await expect(
       runTrainingVerificationClass({

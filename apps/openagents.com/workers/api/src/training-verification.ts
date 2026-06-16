@@ -564,7 +564,9 @@ export const verifyExactTraceReplay = (
     typeof window?.endStep !== 'number'
   ) {
     failureCodes.push('OutputDigestMissing')
-  } else if (expected !== actual) {
+  } else if (
+    exactTraceDigestComparable(expected) !== exactTraceDigestComparable(actual)
+  ) {
     failureCodes.push('ExecutorTraceMismatch')
   }
 
@@ -586,6 +588,16 @@ export const verifyExactTraceReplay = (
           : 'trace.window.redacted',
     },
   )
+}
+
+const exactTraceDigestComparable = (digestRef: string): string => {
+  const prefixes = [
+    'trace.tassadar.commitment.',
+    'trace.tassadar.replay.',
+  ] as const
+  const prefix = prefixes.find(candidate => digestRef.startsWith(candidate))
+
+  return prefix === undefined ? digestRef : digestRef.slice(prefix.length)
 }
 
 const verifyThreshold = (
