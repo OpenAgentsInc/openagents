@@ -489,13 +489,24 @@ three things tested live on that RC.** Audit of each as of 2026-06-16:
   embedded owner-authorized Breez key. Receive path live-proven (returns a real
   mainnet static Spark address under Node and Bun). Promise
   `payments.offline_receive_spark_fallback.v1` = **yellow**.
-- **NOT done:** (1) the RC must **prefer MDK/BOLT12 when the recipient is online
-  and fall back to the recipient's Spark address when offline**, on the *payout*
-  leg (today `/api/operator/treasury/payout` and the per-window settlement only
-  try the MDK/BOLT12 destination and return `treasury_pay_failed` when the node
-  is offline); (2) a **live offline-recipient receive+reconcile** in real Pylon
-  (the two open promise blockers); (3) **use it to land the held payouts**
-  (Trigger 50k, Whitefang 50k + 5-sat). These held payouts are the test cases.
+- **✅ DONE — offline payout to a Lightning Address works end-to-end (2026-06-16).**
+  The model landed in rc.7/rc.8 + the worker: a recipient registers a static
+  **Lightning Address** via their Spark backup wallet (`backup-receive --kind
+  lightning-address`) and publishes it on file beside their BOLT12
+  (`report-readiness`); the treasury payout path now **resolves a Lightning
+  Address via LNURL-pay → BOLT11 (`lnurl-pay.ts`) before the MDK send**, in both
+  `executeTreasuryPayout` and the operator endpoint, for primary + fallback. No
+  Spark sender on our side. **Proven live: Trigger's held 50,000-sat recognition
+  PAID** through this rail — address → LNURL → BOLT11 → `status: succeeded`,
+  treasury balance moved (~105k→55k). The earlier `treasury_pay_failed` was the
+  missing LNURL resolution, now shipped; failure reasons are also no longer
+  masked. rc.8 also fixed the `appendLedgerEvent` crash + clean exit + mysql2
+  (#5162).
+- **Remaining:** Whitefang + Orrery have no Lightning Address on file yet — they
+  update to rc.8 + run the publish flow, then their 50k pays the same way.
+  Promise `payments.offline_receive_spark_fallback.v1` stays **yellow** until a
+  recipient confirms wallet-visible receipt (receipt-first; Trigger's send
+  succeeded, pending his wallet-side confirmation).
 - **#5151** (heartbeat `walletReadyNow=false`) — **fix implemented + server
   deployed** (`0fcacbc6b` / worker `09c5a042`): the heartbeat now publishes live
   wallet receive-readiness so an online, receive-ready node is no longer skipped
