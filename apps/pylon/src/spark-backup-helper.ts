@@ -29,6 +29,15 @@
 
 import type { SparkBackupCommand, SparkBackupHelper, WalletCommandResult } from "./wallet"
 
+// Embedded default OpenAgents Breez/Spark API key. This key was committed to the
+// repo historically (commit 783f33d5f, as the Rust EmbeddedDefault) and is
+// owner-authorized for hardcoding so the receive-only Spark backup works
+// out-of-box once enabled. It is a service API key, not a wallet seed, and grants
+// no spend authority. Any of the env vars below override it. Inert-by-default is
+// enforced by the PYLON_SPARK_BACKUP_ENABLED flag, NOT by key presence.
+export const DEFAULT_OPENAGENTS_SPARK_API_KEY =
+  "MIIBfjCCATCgAwIBAgIHPYzgGw0A+zAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjQxMTI0MjIxOTMzWhcNMzQxMTIyMjIxOTMzWjA3MRkwFwYDVQQKExBPcGVuQWdlbnRzLCBJbmMuMRowGAYDVQQDExFDaHJpc3RvcGhlciBEYXZpZDAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GBMH8wDgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFNo5o+5ea0sNMlW/75VgGJCv2AcJMB8GA1UdIwQYMBaAFN6q1pJW843ndJIW/Ey2ILJrKJhrMB8GA1UdEQQYMBaBFGNocmlzQG9wZW5hZ2VudHMuY29tMAUGAytlcANBABvQIfNsop0kGIk0bgO/2kPum5B5lv6pYaSBXz73G1RV+eZj/wuW88lNQoGwVER+rA9+kWWTaR/dpdi8AFwjxw0="
+
 /**
  * Minimal structural view of the Breez SDK Spark surface this adapter uses.
  * We intentionally do NOT depend on the SDK's type package at compile time
@@ -225,7 +234,7 @@ export function resolveSparkBackupHelper(input: {
   const enabled = env.PYLON_SPARK_BACKUP_ENABLED === "1" || env.PYLON_SPARK_BACKUP_ENABLED === "true"
   if (!enabled) return null
 
-  const apiKey = [env.OPENAGENTS_SPARK_API_KEY, env.BREEZ_API_KEY, env.PYLON_SPARK_BACKUP_API_KEY].find(
+  const apiKey = [env.OPENAGENTS_SPARK_API_KEY, env.BREEZ_API_KEY, env.PYLON_SPARK_BACKUP_API_KEY, DEFAULT_OPENAGENTS_SPARK_API_KEY].find(
     (value) => value !== undefined && value.trim() !== "",
   )
   if (!apiKey) return null
