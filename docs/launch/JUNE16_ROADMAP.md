@@ -8,8 +8,10 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
 - **Launched:** Autopilot 1.0 + Pylon v1.0 release candidates (signed/notarized,
   default-on auto-update), the Tassadar run (`run.tassadar.executor.20260615`,
   active), Episode 237 + essay, the forum/Nostr/Bitcoin-tip rails.
-- **Live promises:** `/api/public/product-promises` at **`2026-06-15.11`** —
-  17 green · 28 yellow · 11 red · 17 planned · 2 withdrawn (75 total).
+- **Live promises:** source registry at **`2026-06-16.4`**; the deployed worker
+  still serves an earlier version (the `.1`–`.4` bumps from the 16th are
+  **undeployed** — deploy from a clean `origin/main` to publish them). Counts shift
+  as promises flip; see `/api/public/product-promises`.
 - **Built-in hosted agent backend is LIVE:** `GEMINI_API_KEY` set + verified on
   prod (`generateContent` returns real output); the keyless quota-gated grant
   route `POST /api/provider-accounts/google-gemini/grants/builtin` is deployed
@@ -19,6 +21,21 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
 - **Closed on the 15th** (stability pivot + launch backend): #5052–#5060, #5062–#5067,
   plus the short-term fixes #5056/#5057/#5058/#5059. Tassadar trace backend
   (#5052/#5053/#5054) is built + inert behind `TASSADAR_TRACE_PAIRING`.
+- **v1.0 release line (16th):** Pylon source is on the **v1.0** line; this RC is
+  **rc3 = `1.0.0-rc.3`**. Stale `v0.3` labels scrubbed to v1.0 across the README,
+  Pylon docs, and the promise registry (`738ea7d0f`, `c9c1059b2`), preserving the
+  true published `0.3.0-rc2` npm receipts (the v1.0 RC was not on npm yet).
+  **Publishing rc3 (in progress):** the new leaf dep
+  `@openagentsinc/autopilot-control-protocol@0.1.0` is **published** to npm; Pylon
+  `1.0.0-rc.3` is packing/publishing to the `rc` dist-tag (`release:gate` green;
+  awaiting corgi-manifest propagation). `latest` stays `0.2.5`.
+- **Spark offline-tipping chain → code-complete (16th):** #5078 (receive-only backup,
+  slices 1-3) + #5080 (Bun storage) + #5085 (legacy `migrate-spark` rewire) all landed.
+  See §E.
+- **`/business`, `/autopilot` Forge cockpit, `/components` (16th):** the
+  apps/web Epic A/B/C wave (#5081–#5094) is landing on `main` in parallel
+  (`5e1e9398f` /autopilot, `5e82b6a1d` /business, `/components`); driven by the
+  concurrent session — verified `/business` route tests pass under vitest/happy-dom.
 
 ## A. Short-term bug fixes (cleanest closeable work — projection/freshness family)
 
@@ -70,23 +87,33 @@ must be **online with inbound liquidity** to receive a Lightning tip/payout. The
 is the **Spark backup-receive fallback** in
 `apps/pylon/docs/2026-06-15-spark-backup-receive-fallback-audit.md`.
 
-**Status (2026-06-16): tracked as #5078; slices 1-2 shipped + inert.**
-- **Slice 1 (core, `381c10966`←`4a7aa31c7`):** `SparkBackupReceiveState`/`Projection`,
-  the injectable `SparkBackupHelper` contract, MDK-offline failure classification,
-  `receiveWithFallback` (MDK-first→Spark, behind `PYLON_SPARK_BACKUP_ENABLED`, off by
-  default), and `assertPublicProjectionSafe` redaction of raw Spark material.
-- **Slice 2 (live helper + CLI, `381c10966`):** `apps/pylon/src/spark-backup-helper.ts`
-  backs the contract with the **Breez SDK Spark** package — which is **WASM-based, not
-  native bindings**, so it bundles + initializes cleanly under packaged Pylon Bun (no
-  isolated helper binary needed; added as an `optionalDependency`, lazily imported,
-  degrades to `helper-unavailable` if absent). New `pylon wallet backup-receive` /
-  `backup-status` verbs; `wallet receive` now routes through `receiveWithFallback`.
-  Mock-backed tests (full pylon suite 1135 pass). Promise
-  `payments.offline_receive_spark_fallback.v1` → **yellow** (built + inert, unproven live).
-- **Remaining:** **slice 3** = `migrate-spark` sweep + runbook. **NEEDS-OWNER:** a live
-  **Breez API key** + a real Spark wallet to run the offline-recipient integration smoke
-  (set the key + `PYLON_SPARK_BACKUP_ENABLED=1` on an owned node) — that smoke is the
-  green-flip and the moment owed offline tips can actually land.
+**Status (2026-06-16): code-complete across #5078 + #5080 + #5085. One live gate left.**
+- **#5078 slices 1-3 (`381c10966`, `10ee7f9bb`):** the receive-only core
+  (`SparkBackupReceiveState`/`Projection`, injectable `SparkBackupHelper`,
+  MDK-offline classification, `receiveWithFallback` behind `PYLON_SPARK_BACKUP_ENABLED`
+  off-by-default, projection redaction) + the Breez SDK Spark adapter + the
+  `backup-receive`/`backup-status`/`migrate-spark` CLI + the consented sweep + runbook.
+- **Embedded key (`7c43deabd`):** owner-authorized default Breez/Spark API key
+  (committed historically at `783f33d5f`) wired as the **env-overridable** fallback —
+  so the backup works out-of-box, no manual key. Live-verified valid (returns a real
+  mainnet static Spark address).
+- **#5080 — Bun support (CLOSED, `ef2986eae`):** the Breez SDK's default storage needs
+  `better-sqlite3` (unsupported in Bun); fixed with a faithful **`bun:sqlite`** port of
+  the SDK storage injected via `SdkBuilder.withStorage()`. Independently smoke-verified
+  under Bun 1.3.11 — real Spark address returned, no better-sqlite3 in the path.
+- **#5085 — legacy `migrate-spark` rewire (CLOSED, `d56480f40`):** the v0.2.5 RC-tester
+  dead-end ("Missing Breez API key") is gone — `migrate-spark` now inits the user's old
+  Spark wallet from their **12-word identity mnemonic** via the embedded-key Bun helper,
+  detects balance, and sweeps to MDK on consent. Smoke-verified (no env key → no
+  `breez_api_key_missing`; `helperInitReady: true`).
+- Promise `payments.offline_receive_spark_fallback.v1`: **yellow** (receive path
+  live-proven under Bun; Bun-storage blocker cleared).
+- **Owed tips (Whitefang Hermes + Trigger, 250 each):** unblocked once a real node runs
+  the receive+reconcile — ready to complete.
+- **Remaining (the only gate, owner/live):** one **live offline-recipient
+  receive+reconcile in real Pylon** (real sats → an offline node's Spark address →
+  sync/claim/`migrate-spark`/receipt) → flips the promise green and lands the owed tips.
+  No code work left; this is a live-event proof.
 
 **Original goal — narrow, opt-in, receive-only Spark fallback:**
 - MDK stays the primary wallet rail. Spark is a **backup receive target** only —
@@ -115,7 +142,10 @@ duplicate-work collisions seen on #5067.
 
 ## Coordination note
 
-Two sessions are pushing to `main` in parallel (registry churned `.1`→`.11` on the
-15th). Keep work in isolated worktrees with rebase-before-push; deploy only from a
+Multiple sessions are pushing to `main` in parallel (registry churned `.1`→`.11` on
+the 15th, `.1`→`.4` on the 16th; many `.claude/worktrees` + `tmp/oa-*` agent worktrees
+active). Worktree isolation holds for subagents — the contention people see is a
+session's *own main-loop* editing the shared checkout while its subagents run. Keep
+work in isolated worktrees with rebase-before-push; deploy only from a
 clean `origin/main` checkout (never the shared working tree, which carries the
 other session's uncommitted WIP).
