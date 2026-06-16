@@ -232,6 +232,13 @@ Candidate child issues:
 - G5.3 - Add a Forge search panel that shows selected/skipped candidates with
   provenance and freshness.
 
+Implementation status, 2026-06-16: #5135 adds the first
+`projectForgeRetrievalPlan()` refs-only contract for exact, structured,
+semantic, model-selected, and hybrid retrieval plans, including candidate,
+skipped-candidate, and result-set shapes, deterministic ordering, blockers,
+freshness, and unsafe-material omission coverage. It does not add retrieval
+execution, adapter IO, embeddings, routing, or UI.
+
 ### G6 - Extensibility: MCP, Skills, Hooks, Plugins
 
 Systems: system 28 MCP Client, system 30 Plugin, system 31 Skill, system 32
