@@ -7,6 +7,7 @@ import {
   bezierSpiralView,
   bezierWebView,
 } from '../scene/animations/bezierGraph'
+import { blobTrackingView } from '../scene/animations/blobTracking'
 import { constellationView } from '../scene/animations/constellation'
 import { flowFieldView } from '../scene/animations/flowField'
 import { glowKnotView } from '../scene/animations/glowKnot'
@@ -82,6 +83,11 @@ export const view = <Message>(
     source: string
     node: Html
   }> = [
+    {
+      node: blobTrackingView<Message>(),
+      source: 'oa-anim-blob-tracking',
+      title: 'Blob track instancing (data aesthetics)',
+    },
     {
       node: lightBeamsView<Message>(),
       source: 'oa-light-beams',
