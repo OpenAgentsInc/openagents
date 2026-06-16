@@ -167,6 +167,11 @@ Candidate child issues:
   unavailable states until the authoritative control verbs exist.
 - G3.3 - Add safe export/public-summary receipts for session summaries.
 
+Implementation status, 2026-06-16: #5129 adds the first
+`ForgeSessionNavigationView` projection over Pylon, Codex, Claude, and bridge
+session summaries. All resume/fork/rewind/cancel controls are explicit
+unavailable states until authoritative verbs exist.
+
 ### G4 - Context Assembly, Repository Memory, And Onboarding
 
 Systems: system 12 Context Assembly, system 18 Repository Memory/Onboarding,
