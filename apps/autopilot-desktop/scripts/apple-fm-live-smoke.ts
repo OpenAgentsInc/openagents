@@ -131,6 +131,7 @@ try {
         const serialized = JSON.stringify({ eventText, retained })
         const artifact = retained.artifact as { executor?: Record<string, unknown>; schema?: string; adapter?: string } | null
         const executor = artifact?.executor
+        const energyEstimate = executor?.energyEstimate as Record<string, unknown> | undefined
 
         const disabledEnv = { PROBE_APPLE_FM_BASE_URL: String(disabledBridge.url) }
         const disabledSessions = createControlSessionActions({
@@ -189,6 +190,19 @@ try {
             adapter: artifact?.adapter,
             commandCount: executor?.commandCount,
             editedFileCount: executor?.editedFileCount,
+            energyEstimate:
+              energyEstimate === undefined
+                ? undefined
+                : {
+                    assumptionRefs: energyEstimate.assumptionRefs,
+                    caveatRefs: energyEstimate.caveatRefs,
+                    energyKwh: energyEstimate.energyKwh,
+                    evidenceState: energyEstimate.evidenceState,
+                    methodRef: energyEstimate.methodRef,
+                    modeledPowerKw: energyEstimate.modeledPowerKw,
+                    wallClockHours: energyEstimate.wallClockHours,
+                    wallClockSeconds: energyEstimate.wallClockSeconds,
+                  },
             executionMode: executor?.executionMode,
             executionPathRef: executor?.executionPathRef,
             externalSessionRefPrefix:
@@ -247,6 +261,12 @@ function assertSmokeSummary(summary: SmokeSummary) {
     '"toolSuccess":true',
     '"localMode":true',
     '"executionPathRef":"control_session.apple_fm_local"',
+    '"evidenceState":"modeled"',
+    '"methodRef":"method.apple_fm.power.modeled_default_kw_wall_clock"',
+    '"modeledPowerKw":0.02',
+    '"energyKwh":',
+    '"caveat.apple_fm.power.modeled_not_measured"',
+    '"caveat.apple_fm.power.not_ao_kwh_without_accepted_outcome"',
     '"executionMode":"local_bounded"',
     '"sandboxMode":"read-only"',
     '"networkAccessEnabled":false',

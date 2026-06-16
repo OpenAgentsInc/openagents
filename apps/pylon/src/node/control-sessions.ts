@@ -42,6 +42,7 @@ import {
   materializeGitCheckoutWorkspaceWithLease,
   type GitCheckoutWorkspace,
 } from "../workspace-materializer"
+import { estimateAppleFmLocalSessionEnergy } from "./apple-fm-energy-estimate"
 import { collectPylonAppleFmStatus } from "./apple-fm-status"
 import { runAppleFmLocalControlSession } from "./apple-fm-local-session"
 
@@ -816,6 +817,13 @@ export function createControlSessionActions(options: {
     record: SessionRecord,
     result: ControlSessionExecutorResult,
   ): Promise<string> => {
+    const energyEstimate = record.adapter === "apple_fm"
+      ? estimateAppleFmLocalSessionEnergy({
+          env: baseEnv,
+          startedAt: record.startedAt,
+          completedAt: record.completedAt,
+        })
+      : undefined
     const artifact = {
       schema: CONTROL_SESSION_ARTIFACT_SCHEMA,
       sessionRef: record.sessionRef,
@@ -845,6 +853,7 @@ export function createControlSessionActions(options: {
         totalTokens: result.totalTokens,
         externalSessionRef: result.externalSessionRef,
         responseDigestRef: result.responseDigestRef,
+        ...(energyEstimate === undefined ? {} : { energyEstimate }),
       },
       devCheck: result.devCheck,
       redactionScan: {

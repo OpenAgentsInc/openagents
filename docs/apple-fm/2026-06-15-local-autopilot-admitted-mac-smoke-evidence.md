@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 
-Issue: #5073
+Issues: #5073, #5074
 
 Promise: `autopilot.local_apple_fm_tool_chat.v1`
 
@@ -16,6 +16,7 @@ helper launch/supervision recut before a from-install user claim is green.
 - Base local session implementation commit: `380dc19942001323a2f43b087e1749bdf3655ff7`
 - Evidence update: the commit containing this document and
   `apps/autopilot-desktop/scripts/apple-fm-live-smoke.ts`
+- Energy estimate update: the commit containing issue #5074 changes
 - Product promise registry target: `2026-06-15.11`
 - Pylon package version: `1.0.0-rc.2`
 - Autopilot Desktop package version: `0.0.1`
@@ -124,6 +125,22 @@ Public-safe result:
     "adapter": "apple_fm",
     "commandCount": 1,
     "editedFileCount": 0,
+    "energyEstimate": {
+      "assumptionRefs": [
+        "assumption.apple_fm.power.default_20w_modeled_load",
+        "assumption.apple_fm.power.session_wall_clock_window"
+      ],
+      "caveatRefs": [
+        "caveat.apple_fm.power.modeled_not_measured",
+        "caveat.apple_fm.power.not_ao_kwh_without_accepted_outcome"
+      ],
+      "energyKwh": 0.000007861,
+      "evidenceState": "modeled",
+      "methodRef": "method.apple_fm.power.modeled_default_kw_wall_clock",
+      "modeledPowerKw": 0.02,
+      "wallClockHours": 0.000393056,
+      "wallClockSeconds": 1.415
+    },
     "executionMode": "local_bounded",
     "executionPathRef": "control_session.apple_fm_local",
     "externalSessionRefPrefix": "session.pylon.apple_fm_bridge.",
@@ -132,7 +149,8 @@ Public-safe result:
     "outcome": "completed",
     "resourceUsageReceiptRef": null,
     "sandboxMode": "read-only",
-    "schema": "openagents.pylon.control_session_artifact.v0.1"
+    "schema": "openagents.pylon.control_session_artifact.v0.1",
+    "totalTokens": 179
   },
   "row": {
     "adapter": "apple_fm",
@@ -150,7 +168,9 @@ Public-safe result:
 ```
 
 The exact token count and digest suffix vary run-to-run and are intentionally
-not treated as stable evidence.
+not treated as stable evidence. The energy estimate above is also run-window
+specific: it is modeled at 0.02 kW over the retained 1.415-second session
+window, not measured device telemetry.
 
 ## What This Proves
 
@@ -164,6 +184,8 @@ not treated as stable evidence.
   the local bridge path.
 - Retained proof identifies local execution with no cloud runner, no resource
   usage receipt, no workspace writes, and no network-enabled executor mode.
+- Retained proof now carries modeled Apple FM session-energy denominator
+  evidence with an explicit modeled-vs-measured label and AO/kWh caveat.
 - Disabled Apple Intelligence handling remains typed and blocked.
 - Public evidence does not expose raw prompts, local file contents, callback
   tokens, callback URLs, bearer material, or local temporary paths.
@@ -177,3 +199,6 @@ not treated as stable evidence.
 - Local Apple FM is market-provider eligible, paid-work eligible, or
   settlement eligible.
 - OpenAgents hosted compute is involved in the local session path.
+- That the modeled Apple FM session kWh is measured power telemetry.
+- That the modeled Apple FM session kWh is an accepted-outcomes-per-kWh figure
+  unless joined to a verified accepted-outcome receipt.

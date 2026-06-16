@@ -5,6 +5,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
+import {
+  DEFAULT_APPLE_FM_MODELED_POWER_KW,
+  estimateAppleFmLocalSessionEnergy,
+} from "../src/node/apple-fm-energy-estimate"
 import { makeAppleFmWorkspaceTools } from "../src/node/apple-fm-local-session"
 import { createControlSessionActions } from "../src/node/control-sessions"
 
@@ -185,11 +189,72 @@ describe("Apple FM local control sessions", () => {
       const artifact = await readFile(join(proofDir, `${started.sessionRef}-proof.json`), "utf8")
       expect(artifact).toContain('"executionPathRef": "control_session.apple_fm_local"')
       expect(artifact).toContain('"externalSessionRef": "session.pylon.apple_fm_bridge.')
+      expect(artifact).toContain('"evidenceState": "modeled"')
+      expect(artifact).toContain('"methodRef": "method.apple_fm.power.modeled_default_kw_wall_clock"')
+      expect(artifact).toContain('"caveat.apple_fm.power.modeled_not_measured"')
       expect(artifact).not.toContain(fakeBridgeSessionId)
       expect(artifact).not.toContain("Use read_file on README.md")
       expect(artifact).not.toContain("secret fixture body")
       expect(artifact).not.toContain("tool-callback")
+
+      const proof = JSON.parse(artifact) as {
+        executor?: {
+          energyEstimate?: {
+            evidenceState?: string
+            modeledPowerKw?: number
+            measuredPowerKw?: number
+            energyKwh?: number | null
+            caveatRefs?: string[]
+          }
+        }
+      }
+      expect(proof.executor?.energyEstimate).toMatchObject({
+        evidenceState: "modeled",
+        modeledPowerKw: DEFAULT_APPLE_FM_MODELED_POWER_KW,
+      })
+      expect(proof.executor?.energyEstimate?.measuredPowerKw).toBeUndefined()
+      expect(typeof proof.executor?.energyEstimate?.energyKwh).toBe("number")
+      expect(proof.executor?.energyEstimate?.caveatRefs).toContain(
+        "caveat.apple_fm.power.not_ao_kwh_without_accepted_outcome",
+      )
     })
+  })
+
+  test("energy estimate models configured kW from a bounded session window", () => {
+    const estimate = estimateAppleFmLocalSessionEnergy({
+      env: { OPENAGENTS_APPLE_FM_MODELED_POWER_KW: "0.04" },
+      startedAt: "2026-06-15T00:00:00.000Z",
+      completedAt: "2026-06-15T00:00:30.000Z",
+    })
+
+    expect(estimate).toMatchObject({
+      evidenceState: "modeled",
+      methodRef: "method.apple_fm.power.modeled_configured_kw_wall_clock",
+      modeledPowerKw: 0.04,
+      wallClockSeconds: 30,
+      wallClockHours: 0.008333333,
+      energyKwh: 0.000333333,
+    })
+    expect("measuredPowerKw" in estimate).toBe(false)
+    expect(estimate.caveatRefs).toContain("caveat.apple_fm.power.modeled_not_measured")
+  })
+
+  test("energy estimate is unavailable when the model is disabled", () => {
+    const estimate = estimateAppleFmLocalSessionEnergy({
+      env: { OPENAGENTS_APPLE_FM_POWER_ESTIMATE_MODE: "disabled" },
+      startedAt: "2026-06-15T00:00:00.000Z",
+      completedAt: "2026-06-15T00:00:30.000Z",
+    })
+
+    expect(estimate).toMatchObject({
+      evidenceState: "unavailable",
+      methodRef: "method.apple_fm.power.unavailable",
+      wallClockSeconds: 30,
+      energyKwh: null,
+      blockerRefs: ["blocker.apple_fm.energy.estimate_disabled"],
+    })
+    expect("modeledPowerKw" in estimate).toBe(false)
+    expect("measuredPowerKw" in estimate).toBe(false)
   })
 
   test("not-ready Apple FM refuses before a session is created", async () => {

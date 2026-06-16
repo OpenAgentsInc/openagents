@@ -17,8 +17,10 @@ Desktop now consumes the Pylon readiness projection through Bun-owned RPC and
 renders hosted OpenAgents compute separately from local Apple FM mode. It now
 has a Desktop-originated bounded local Apple FM chat/tool session path through
 Pylon with fake-bridge tests, public-safe event summaries, and admitted-Mac
-smoke evidence. It does not yet have bridge-helper launch/supervision in the
-signed installer path, so broad installer copy still must stay yellow.
+smoke evidence. The retained Apple FM session proof now also includes a modeled
+local-session power/kWh estimate for issue #5074. It does not yet have
+bridge-helper launch/supervision in the signed installer path, so broad
+installer copy still must stay yellow.
 
 The integration path should be:
 
@@ -90,6 +92,9 @@ The current app does these things well:
   webview.
 - It has an admitted-Mac smoke runbook and retained public-safe evidence for a
   local `read_file` chat/tool session with no hosted model prompt path.
+- It retains modeled Apple FM local-session energy evidence
+  (`energyEstimate.evidenceState: "modeled"`, default `modeledPowerKw: 0.02`)
+  in Pylon control-session proof artifacts.
 
 The current app does not yet do these Apple FM-specific things:
 
@@ -541,6 +546,8 @@ Keep these boundaries:
   release policy says otherwise.
 - Apple FM local runs remain no-spend by default unless routed through a
   separate assignment/settlement policy.
+- Apple FM local-session kWh is denominator evidence only; it is not measured
+  telemetry and not AO/kWh unless joined to a verified accepted-outcome receipt.
 
 This matches the current Apple FM receipt model and the desktop AGENTS rule that
 secrets stay in the Bun main process.
@@ -556,6 +563,8 @@ CI-safe tests:
 - Desktop `DesktopRPCSchema` and bridge tests for `appleFmReadiness`.
 - Pylon/Desktop fake-bridge tests for `apple_fm.session.start`, read-only tool
   success, not-ready refusal, unsupported-tool refusal, and event redaction.
+- Pylon tests for modeled Apple FM session kWh, unavailable energy estimate,
+  and "not measured" proof semantics.
 - `install-readiness.ts` tests for Apple FM ready, unsupported, bridge missing,
   and Apple Intelligence disabled states.
 - Foldkit view tests that the Agent pane and Settings pane show local Apple FM
@@ -595,7 +604,9 @@ Packaging tests:
    runner through Pylon control with safe read-only workspace tools.
 6. Done: add fake-bridge desktop loopback coverage and admitted-Mac local
    chat/tool smoke evidence.
-7. Add provider go-online capability declaration for
+7. Done: add modeled Apple FM local-session power/kWh estimate to retained
+   proof artifacts and admitted-Mac smoke evidence.
+8. Add provider go-online capability declaration for
    `probe.backend.apple_fm_bridge`, gated by live health.
 
 This order avoids presenting a UI promise before the control and runtime truth
@@ -640,6 +651,9 @@ What is real:
 - Admitted-Mac source smoke evidence for bridge health, Pylon/Desktop
   readiness, one local `read_file` chat/tool session, no cloud runner, no
   resource usage receipt, read-only sandbox, disabled handling, and redaction.
+- Modeled Apple FM local-session power/kWh proof metadata and admitted-Mac
+  smoke summary: 0.02 kW default model over retained wall-clock, explicitly not
+  measured telemetry and not AO/kWh by itself.
 
 What is not connected yet:
 

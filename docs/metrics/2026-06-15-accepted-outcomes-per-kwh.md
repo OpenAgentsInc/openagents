@@ -80,6 +80,12 @@ telemetry. That is enough to move the promise out of `planned` and into `yellow`
 but not enough to call AO/kWh measured, comparable, green, or production-routing
 evidence.
 
+Apple FM local-session kWh estimates (#5074) follow the same denominator rule:
+they may be retained as modeled or unavailable session-energy evidence, but they
+are not AO/kWh unless joined to a verified accepted-outcome receipt. A local
+Apple FM tool/chat smoke is raw session activity; by itself it must not be
+counted as an accepted outcome.
+
 ## 6. Path to a real number (green gate)
 
 `metrics.accepted_outcomes_per_kwh.v1` goes green only with:

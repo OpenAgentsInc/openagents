@@ -622,6 +622,8 @@ history. It has:
   fake-bridge coverage;
 - admitted-Mac runbooks and source/local smoke evidence for the Autopilot
   loopback path;
+- modeled local-session power/kWh denominator evidence retained in Apple FM
+  control-session proofs (#5074);
 - one owner-operated NIP-90 Apple FM provider proof.
 
 It is not yet a green public earning promise. The green path is concrete:
@@ -629,4 +631,6 @@ restore or package the bridge where needed, keep Pylon online, pass an
 admitted-Mac local Autopilot smoke for the user-owned tool/chat path, advertise
 `apple_fm_bridge` only after live health, serve a paid NIP-90 or assignment job
 with Apple FM, settle sats to an admitted payout target, and record public-safe
-receipts without leaking local runtime contents.
+receipts without leaking local runtime contents. The modeled local-session kWh
+estimate is not measured telemetry and is not AO/kWh unless joined to a verified
+accepted-outcome receipt.
