@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { EmailAddress, ResendEmailSender, WorkerSecret } from './config'
 import {
   AutopilotDecisionEmailInput,
+  type CloudflareEmailBinding,
   ORDER_SITES_TRANSACTIONAL_EMAIL_KINDS,
   OrderSitesTransactionalEmailInput,
   SiteReferralOnboardingEmailInput,
@@ -18,6 +19,8 @@ import {
   outOfCreditsEmailText,
   runOperatorEmailLedgerSmoke,
   sendOutOfCreditsEmail,
+  sendRenderedEmailViaCloudflareBinding,
+  sendRenderedEmailViaCloudflareBindingWithLedger,
   siteReferralOnboardingEmailHtml,
   siteReferralOnboardingEmailText,
   targetedRemakeOutreachEmailHtml,
@@ -414,6 +417,67 @@ describe('emails', () => {
     })
   })
 
+  test('sends rendered email through the Cloudflare Email binding adapter', async () => {
+    const sentMessages: Array<Parameters<CloudflareEmailBinding['send']>[0]> =
+      []
+    const binding: CloudflareEmailBinding = {
+      send: message => {
+        sentMessages.push(message)
+
+        return Promise.resolve({ messageId: 'cf_email_test' })
+      },
+    }
+    const rendered = await Effect.runPromise(
+      makeEmailService().renderOutOfCreditsEmail(resendConfig(), emailInput),
+    )
+
+    const result = await Effect.runPromise(
+      sendRenderedEmailViaCloudflareBinding(binding, rendered),
+    )
+
+    expect(result).toMatchObject({
+      _tag: 'EmailProviderAccepted',
+      provider: 'cloudflare_email',
+      providerMessageId: 'cf_email_test',
+    })
+    expect(sentMessages).toEqual([
+      expect.objectContaining({
+        from: 'OpenAgents <billing@openagents.com>',
+        html: expect.stringContaining('Autopilot credits are exhausted'),
+        replyTo: 'support@openagents.com',
+        subject: 'OpenAgents Autopilot credits exhausted',
+        text: expect.stringContaining('Your OpenAgents Autopilot credits'),
+        to: 'chris@openagents.com',
+      }),
+    ])
+    expect(sentMessages[0]!.headers).toEqual({
+      'X-OpenAgents-Idempotency-Key': emailInput.idempotencyKey,
+    })
+  })
+
+  test('maps Cloudflare Email binding errors to bounded provider failures', async () => {
+    const error = Object.assign(new Error('recipient is not allowed'), {
+      code: 'E_RECIPIENT_NOT_ALLOWED',
+    })
+    const binding: CloudflareEmailBinding = {
+      send: () => Promise.reject(error),
+    }
+    const rendered = await Effect.runPromise(
+      makeEmailService().renderOutOfCreditsEmail(resendConfig(), emailInput),
+    )
+
+    const result = await Effect.runPromise(
+      sendRenderedEmailViaCloudflareBinding(binding, rendered),
+    )
+
+    expect(result).toMatchObject({
+      _tag: 'EmailProviderRejected',
+      errorMessage: 'recipient is not allowed',
+      errorName: 'E_RECIPIENT_NOT_ALLOWED',
+      provider: 'cloudflare_email',
+    })
+  })
+
   test('renders out-of-credits email through the Effect service', async () => {
     const rendered = await Effect.runPromise(
       makeEmailService().renderOutOfCreditsEmail(resendConfig(), emailInput),
@@ -713,6 +777,65 @@ describe('emails', () => {
         provider: 'resend',
         provider_idempotency_key: targetedRemakeOutreachInput.idempotencyKey,
         provider_message_id: 'email_targeted_remake_test',
+        status: 'accepted',
+      }),
+    ])
+  })
+
+  test('records Cloudflare Email binding sends through the existing email ledger', async () => {
+    const { db, deliveries, messagesByIdempotencyKey } = makeEmailLedgerD1()
+    const sentMessages: Array<Parameters<CloudflareEmailBinding['send']>[0]> =
+      []
+    const binding: CloudflareEmailBinding = {
+      send: message => {
+        sentMessages.push(message)
+
+        return Promise.resolve({ messageId: 'cf_email_ledger_test' })
+      },
+    }
+    const runtime = {
+      nowIso: () => '2026-06-16T15:00:00.000Z',
+      randomId: (prefix: string) => `${prefix}_cloudflare_fixed`,
+    }
+    const rendered = await Effect.runPromise(
+      makeEmailService().renderOutOfCreditsEmail(resendConfig(), emailInput),
+    )
+
+    const result = await Effect.runPromise(
+      sendRenderedEmailViaCloudflareBindingWithLedger(
+        db,
+        binding,
+        rendered,
+        {
+          metadata: { smoke: 'cloudflare_email_provider_adapter' },
+          sourceAuthorityRef: 'system.cloudflare_email_provider_adapter.v1',
+        },
+        runtime,
+      ),
+    )
+
+    expect(result).toEqual({
+      emailMessageId: 'email_msg_cloudflare_fixed',
+      ok: true,
+      providerMessageId: 'cf_email_ledger_test',
+    })
+    expect(sentMessages).toHaveLength(1)
+    expect(
+      messagesByIdempotencyKey.get(emailInput.idempotencyKey),
+    ).toMatchObject({
+      idempotency_key: emailInput.idempotencyKey,
+      kind: 'billing_out_of_credits',
+      provider: 'cloudflare_email',
+      provider_message_id: 'cf_email_ledger_test',
+      source_authority_ref: 'system.cloudflare_email_provider_adapter.v1',
+      status: 'accepted',
+    })
+    expect(deliveries).toEqual([
+      expect.objectContaining({
+        message_id: 'email_msg_cloudflare_fixed',
+        provider: 'cloudflare_email',
+        provider_idempotency_key: emailInput.idempotencyKey,
+        provider_message_id: 'cf_email_ledger_test',
         status: 'accepted',
       }),
     ])

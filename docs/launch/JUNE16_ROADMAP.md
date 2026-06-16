@@ -295,9 +295,12 @@ epics below; not all lands today — the aim is the main spine.
   matrix + DONE/NOW/NEXT/LATER sequence). Net: **no change to shipped login** —
   Resend stays the auth transport now; Cloudflare (dedicated auth subdomain) is the
   forward target, reached only after a verified-destination smoke + a provider
-  adapter behind `EmailService`. Cold/bulk/marketing stays off Cloudflare. Tracked
-  as epic **#5119** (phases: smoke → adapter → auth → lifecycle+reconciliation →
-  inbound routing).
+  adapter behind `EmailService`. The provider-adapter code slice is now in source:
+  `cloudflare_email` is allowed in the typed/D1 email ledger and rendered emails
+  can flow through a Cloudflare `send_email` binding with the same idempotency key
+  boundary. Cold/bulk/marketing stays off Cloudflare. Tracked as epic **#5119**
+  (remaining phases: verified-destination smoke → auth → lifecycle+reconciliation
+  → inbound routing).
 
 **Targeted next (this session / soon — won't all land today):**
 
@@ -352,12 +355,13 @@ Section **A** is fully closed; the apps/web wave (Epic A live-render #5108,
 `/login` #5111 + OTP hardening #5120, `/animations`) has landed and deployed.
 With B3 (#5089 Forge Automations), C2 (#5093 operator
 seeding/invite/engagement), and D2 (#5097 customer-#1 dogfood strip) now landed,
-the clean non-overlapping assistant-lane work is the **email strategy "NEXT" slice**
-(Cloudflare verified-destination smoke + `cloudflare_email` provider behind
-`EmailService`; see the unified strategy doc), and Epic G Forge Autopilot Coder
-surfaces. The owner-gated green-flips (**B/C** §C, built-in agent §D) still need
-the owner + a real second device + the concurrent desktop session. Coordinate to
-avoid the duplicate-work collisions seen on #5067.
+the clean non-overlapping assistant-lane work is the remaining **email strategy
+smoke** (onboard Cloudflare Email Sending, add the restricted staging
+`send_email` binding, send one verified-destination operator notification through
+the new `cloudflare_email` adapter; see the unified strategy doc), and Epic G
+Forge Autopilot Coder surfaces. The owner-gated green-flips (**B/C** §C,
+built-in agent §D) still need the owner + a real second device + the concurrent
+desktop session. Coordinate to avoid the duplicate-work collisions seen on #5067.
 
 ## Coordination note
 

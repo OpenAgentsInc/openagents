@@ -89,11 +89,14 @@ of the smoke + reconciliation work.
 3. **NOW — hold steady on Resend.** Keep auth OTP on direct Resend and all
    webhook-backed lifecycle mail on Resend behind `EmailService`. No code change
    is forced by this audit. This is the stable baseline.
-4. **NEXT (next slice, lowest blast radius) — Cloudflare smoke + adapter.**
-   Onboard a sending subdomain, add a restricted `send_email` binding (staging),
-   add `cloudflare_email` to the provider enum/D1 checks + a sender adapter behind
-   `EmailService`, and send one internal `operator_notification` to a *verified
-   destination address* only. (Phases 1–2 below.)
+4. **NOW — Cloudflare smoke + adapter.** The code adapter slice is landed:
+   `cloudflare_email` is now a supported `EmailService` provider in Effect
+   schemas and D1 checks, and rendered messages can be sent through a
+   Cloudflare `send_email` binding while preserving the existing
+   `email_messages.idempotency_key` ledger boundary. Still remaining before any
+   live traffic: onboard a sending subdomain, add a restricted staging binding,
+   and send one internal `operator_notification` to a verified destination
+   address only. (Phases 1–2 below.)
 5. **LATER — move auth email to Cloudflare.** Once the smoke passes: a dedicated
    auth sender on `auth.openagents.com` (or `mail.openagents.com`) that preserves
    the #5120 throttle, expiry, no-enumeration, and fail-closed discipline; Resend
@@ -148,7 +151,8 @@ Relevant current facts:
   reservation, provider sends, and delivery writes through `EmailService`.
 - `workers/api/migrations/0026_email_ledger.sql` records
   `email_templates`, `email_messages`, `email_deliveries`, and `email_drafts`.
-- The provider enum and D1 checks currently allow only `resend` and `gmail`.
+- The provider enum and D1 checks allow `resend`, `gmail`, and
+  `cloudflare_email`.
 - `workers/api/wrangler.jsonc` has Resend config vars, but no Cloudflare
   `send_email` binding yet.
 - `apps/openagents.com/INVARIANTS.md` requires product email sends to pass
@@ -157,11 +161,11 @@ Relevant current facts:
 - Resend webhook ingestion exists at `POST /api/webhooks/resend` and updates
   provider events, deliveries, and suppressions.
 
-This means Cloudflare Email should be integrated as a provider under our
-existing ledger rather than bypassing it. The main schema impact is adding a
-new provider identity such as `cloudflare_email` to Effect schemas and D1
-checks, plus a provider adapter that maps Cloudflare send responses, errors,
-and analytics reconciliation into the existing ledger shape.
+This means Cloudflare Email should stay integrated as a provider under our
+existing ledger rather than bypassing it. The first provider-adapter slice now
+adds `cloudflare_email` to Effect schemas and D1 checks and maps Cloudflare
+send responses/errors into the existing ledger shape. Analytics reconciliation
+and suppression sync remain later slices.
 
 ## Cloudflare Email Service Capabilities
 
@@ -499,18 +503,18 @@ recipient sends.
 
 ### Phase 2: Add Cloudflare Provider Behind `EmailService`
 
-1. Extend Effect schemas and D1 provider checks from `resend|gmail` to include
-   a Cloudflare provider identity.
-2. Add a Cloudflare sender adapter that accepts `RenderedEmail`.
-3. Map:
-   - `to`, `from`, `replyTo`, `subject`, `html`, `text`, attachments, and
-     headers to Workers binding fields;
-   - Cloudflare success to `accepted` or `queued` delivery state;
+1. **Done:** Extend Effect schemas and D1 provider checks from `resend|gmail`
+   to include `cloudflare_email`.
+2. **Done:** Add a Cloudflare sender adapter that accepts `RenderedEmail`.
+3. **Done:** Map:
+   - the current `RenderedEmail` fields (`to`, `from`, `replyTo`, `subject`,
+     `html`, `text`, and headers) to Workers binding fields;
+   - Cloudflare binding success to `accepted` delivery state;
    - Cloudflare validation/suppression/rate-limit errors to bounded error
      names and length-limited summaries.
-4. Preserve idempotency by checking `email_messages.idempotency_key` before
+4. **Done:** Preserve idempotency by checking `email_messages.idempotency_key` before
    provider send. Do not rely on Cloudflare to dedupe product intent.
-5. Keep provider payload summaries bounded and redacted.
+5. **Done:** Keep provider payload summaries bounded and redacted.
 
 ### Phase 3: Move Auth Email Carefully
 
@@ -564,9 +568,11 @@ which is the gate for everything after it.
 Do not start with broad migration. Start with a verified-destination smoke and
 a provider adapter behind `EmailService`:
 
-1. Add `cloudflare_email` as a supported provider in schemas and migrations.
-2. Add the Wrangler `send_email` binding in staging only.
-3. Implement `sendRenderedEmailViaCloudflareBinding`.
+1. **Done:** Add `cloudflare_email` as a supported provider in schemas and
+   migrations.
+2. Add the Wrangler `send_email` binding in staging only after the sending
+   domain is onboarded.
+3. **Done:** Implement `sendRenderedEmailViaCloudflareBinding`.
 4. Add a smoke that sends one internal `operator_notification` to a verified
    destination address.
 5. Add operator inspection showing provider `cloudflare_email`, message id,
