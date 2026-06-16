@@ -16,12 +16,11 @@
 // Pipeline + panels are rendered on the shared `@openagentsinc/ui` dark
 // contract (raw foldkit `html` + `Ui.className`, the same idiom as the
 // cockpit in `autopilot-work.ts`). No client, partner, or person names appear.
-
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
-import { formatIsoDateTime } from '../../../time-format'
 import { forgeRouter } from '../../../route'
+import { formatIsoDateTime } from '../../../time-format'
 import * as Ui from '../../../ui'
 import type { Message } from '../message'
 import type {
@@ -186,7 +185,11 @@ const digestRuns = (
 
     const created = Date.parse(order.createdAt)
     const updated = Date.parse(order.updatedAt)
-    if (Number.isFinite(created) && Number.isFinite(updated) && updated >= created) {
+    if (
+      Number.isFinite(created) &&
+      Number.isFinite(updated) &&
+      updated >= created
+    ) {
       cycleMinutes.push((updated - created) / 60_000)
     }
 
@@ -419,7 +422,7 @@ const buildStages = (
 
 const buildPanels = (digest: RunDigest): ReadonlyArray<DetailPanel> => {
   const hasRuns = digest.total > 0
-  const triaged = (digest.byStage.triage ?? 0) + digest.scheduled
+  const triaged = digest.byStage.triage ?? 0
   // WoW delta from the real daily-created series: last 7 vs prior 7.
   const recent = digest.dailyCreated.slice(-7).reduce((a, b) => a + b, 0)
   const prior = digest.dailyCreated.slice(-14, -7).reduce((a, b) => a + b, 0)
@@ -437,7 +440,7 @@ const buildPanels = (digest: RunDigest): ReadonlyArray<DetailPanel> => {
       delta: intakeDelta,
       band: realBand.length > 0 ? realBand : seededBand,
       provenance: hasRuns ? 'live' : 'seeded',
-      note: 'Runs scoped + scheduled backlog (from Runs projection).',
+      note: 'Runs currently in triage, including scheduled backlog (from Runs projection).',
     },
     {
       title: 'Checks Validated',
@@ -616,16 +619,23 @@ const metricCell = (metric: Metric): Html => {
   const h = html<Message>()
   const dim = metric.provenance === 'seeded' ? 'text-white/35' : 'text-white/85'
 
-  return h.div([Ui.className<Message>('grid gap-0.5')], [
-    h.div(
-      [Ui.className<Message>('text-[0.5625rem] uppercase tracking-wide text-white/35')],
-      [metric.label],
-    ),
-    h.div(
-      [Ui.className<Message>(`text-sm font-medium tabular-nums ${dim}`)],
-      [metric.value],
-    ),
-  ])
+  return h.div(
+    [Ui.className<Message>('grid gap-0.5')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'text-[0.5625rem] uppercase tracking-wide text-white/35',
+          ),
+        ],
+        [metric.label],
+      ),
+      h.div(
+        [Ui.className<Message>(`text-sm font-medium tabular-nums ${dim}`)],
+        [metric.value],
+      ),
+    ],
+  )
 }
 
 const stageCard = (stage: PipelineStage): Html => {
@@ -638,30 +648,41 @@ const stageCard = (stage: PipelineStage): Html => {
       ),
     ],
     [
-      h.div([Ui.className<Message>('flex items-center justify-between gap-2')], [
-        h.div([Ui.className<Message>('flex items-center gap-2')], [
-          stage.index === null
-            ? h.span([Ui.className<Message>('hidden')], [])
-            : h.span(
-                [
-                  Ui.className<Message>(
-                    'inline-flex size-5 items-center justify-center border border-[#333] text-[0.625rem] text-white/55',
+      h.div(
+        [Ui.className<Message>('flex items-center justify-between gap-2')],
+        [
+          h.div(
+            [Ui.className<Message>('flex items-center gap-2')],
+            [
+              stage.index === null
+                ? h.span([Ui.className<Message>('hidden')], [])
+                : h.span(
+                    [
+                      Ui.className<Message>(
+                        'inline-flex size-5 items-center justify-center border border-[#333] text-[0.625rem] text-white/55',
+                      ),
+                    ],
+                    [String(stage.index)],
                   ),
-                ],
-                [String(stage.index)],
+              h.div(
+                [Ui.className<Message>('text-sm font-medium text-white/85')],
+                [stage.name],
               ),
-          h.div([Ui.className<Message>('text-sm font-medium text-white/85')], [
-            stage.name,
-          ]),
-        ]),
-        sparkline(stage.spark, stage.sparkProvenance),
-      ]),
-      h.div([Ui.className<Message>('flex items-center gap-2')], [
-        h.span([Ui.className<Message>('text-[0.625rem] text-white/40')], [
-          `${formatInt(stage.automations)} automations`,
-        ]),
-        provenanceTag(stage.automationsProvenance),
-      ]),
+            ],
+          ),
+          sparkline(stage.spark, stage.sparkProvenance),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('flex items-center gap-2')],
+        [
+          h.span(
+            [Ui.className<Message>('text-[0.625rem] text-white/40')],
+            [`${formatInt(stage.automations)} automations`],
+          ),
+          provenanceTag(stage.automationsProvenance),
+        ],
+      ),
       h.div(
         [Ui.className<Message>('grid grid-cols-2 gap-x-3 gap-y-2')],
         stage.metrics.map(metricCell),
@@ -689,51 +710,94 @@ const deltaLabel = (delta: number | null): Html => {
   )
 }
 
+const detailPanelKey = (title: string): string =>
+  title.toLowerCase().replaceAll(' ', '-')
+
 const detailPanelCard = (panel: DetailPanel): Html => {
   const h = html<Message>()
+  const panelKey = detailPanelKey(panel.title)
   const valueDim =
     panel.provenance === 'seeded' ? 'text-white/35' : 'text-white'
 
   return h.div(
-    [Ui.className<Message>('grid content-start gap-3 border border-[#222] bg-[#050505] p-4')],
     [
-      h.div([Ui.className<Message>('flex items-start justify-between gap-2')], [
-        h.div([Ui.className<Message>('grid gap-1')], [
-          h.div([Ui.className<Message>('text-sm font-medium text-white/80')], [
-            panel.title,
-          ]),
-          h.div([Ui.className<Message>('flex items-baseline gap-1.5')], [
-            h.span(
-              [Ui.className<Message>(`text-2xl font-semibold tabular-nums ${valueDim}`)],
-              [panel.value],
-            ),
-            h.span([Ui.className<Message>('text-[0.625rem] uppercase text-white/35')], [
-              panel.unit,
-            ]),
-          ]),
-        ]),
-        h.div([Ui.className<Message>('grid justify-items-end gap-1')], [
-          provenanceTag(panel.provenance),
-          h.span(
+      Ui.className<Message>(
+        'grid content-start gap-3 border border-[#222] bg-[#050505] p-4',
+      ),
+      h.DataAttribute('forge-detail-panel', panel.title),
+      h.DataAttribute('forge-detail-panel-key', panelKey),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('flex items-start justify-between gap-2')],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-1')],
             [
-              Ui.className<Message>(
-                'inline-flex min-h-5 items-center border border-[#333] px-1.5 text-[0.5625rem] uppercase tracking-wide text-white/45',
+              h.div(
+                [Ui.className<Message>('text-sm font-medium text-white/80')],
+                [panel.title],
+              ),
+              h.div(
+                [Ui.className<Message>('flex items-baseline gap-1.5')],
+                [
+                  h.span(
+                    [
+                      Ui.className<Message>(
+                        `text-2xl font-semibold tabular-nums ${valueDim}`,
+                      ),
+                      h.DataAttribute('forge-detail-panel-value', panel.title),
+                      h.DataAttribute('forge-detail-panel-value-key', panelKey),
+                      h.DataAttribute(
+                        'forge-detail-panel-value-text',
+                        panel.value,
+                      ),
+                    ],
+                    [panel.value],
+                  ),
+                  h.span(
+                    [
+                      Ui.className<Message>(
+                        'text-[0.625rem] uppercase text-white/35',
+                      ),
+                    ],
+                    [panel.unit],
+                  ),
+                ],
               ),
             ],
-            [panel.pill],
           ),
-        ]),
-      ]),
+          h.div(
+            [Ui.className<Message>('grid justify-items-end gap-1')],
+            [
+              provenanceTag(panel.provenance),
+              h.span(
+                [
+                  Ui.className<Message>(
+                    'inline-flex min-h-5 items-center border border-[#333] px-1.5 text-[0.5625rem] uppercase tracking-wide text-white/45',
+                  ),
+                ],
+                [panel.pill],
+              ),
+            ],
+          ),
+        ],
+      ),
       bandedChart(panel.band, panel.provenance),
-      h.div([Ui.className<Message>('flex items-center justify-between gap-2')], [
-        deltaLabel(panel.delta),
-        h.span([Ui.className<Message>('text-[0.625rem] text-white/30')], [
-          'MAX / MID / MIN',
-        ]),
-      ]),
-      h.div([Ui.className<Message>('text-[0.625rem] leading-snug text-white/30')], [
-        panel.note,
-      ]),
+      h.div(
+        [Ui.className<Message>('flex items-center justify-between gap-2')],
+        [
+          deltaLabel(panel.delta),
+          h.span(
+            [Ui.className<Message>('text-[0.625rem] text-white/30')],
+            ['MAX / MID / MIN'],
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('text-[0.625rem] leading-snug text-white/30')],
+        [panel.note],
+      ),
     ],
   )
 }
@@ -790,45 +854,58 @@ const liveIndicator = (data: FactoryData): Html => {
     ? 'border-[#1b5e20] text-[#7ccf8a]'
     : 'border-[#5a3b00] text-[#ffb400]'
 
-  return h.div([Ui.className<Message>('flex items-center gap-2')], [
-    h.span(
-      [
-        Ui.className<Message>(
-          `inline-flex min-h-7 items-center gap-1.5 border px-2 text-[0.6875rem] uppercase tracking-wide ${cls}`,
-        ),
-      ],
-      [
-        h.span(
-          [
-            Ui.className<Message>(
-              `size-1.5 ${live ? 'bg-[#7ccf8a]' : 'bg-[#ffb400]'}`,
-            ),
-          ],
-          [],
-        ),
-        live ? 'Live data' : 'Awaiting data',
-      ],
-    ),
-  ])
+  return h.div(
+    [Ui.className<Message>('flex items-center gap-2')],
+    [
+      h.span(
+        [
+          Ui.className<Message>(
+            `inline-flex min-h-7 items-center gap-1.5 border px-2 text-[0.6875rem] uppercase tracking-wide ${cls}`,
+          ),
+        ],
+        [
+          h.span(
+            [
+              Ui.className<Message>(
+                `size-1.5 ${live ? 'bg-[#7ccf8a]' : 'bg-[#ffb400]'}`,
+              ),
+            ],
+            [],
+          ),
+          live ? 'Live data' : 'Awaiting data',
+        ],
+      ),
+    ],
+  )
 }
 
 const header = (data: FactoryData): Html => {
   const h = html<Message>()
 
-  return h.div([Ui.className<Message>('flex flex-wrap items-end justify-between gap-3')], [
-    h.div([Ui.className<Message>('grid gap-1')], [
-      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Forge']),
-      h.h1([Ui.className<Message>('m-0 text-2xl font-semibold text-white')], [
-        'Factory',
-      ]),
-      h.p([Ui.className<Message>('m-0 text-sm/6 text-white/50')], [
-        data.generatedAt === null
-          ? 'Signal to deploy. Live numbers are tagged; placeholders are marked seeded.'
-          : `Signal to deploy · generated ${formatIsoDateTime(data.generatedAt)}`,
-      ]),
-    ]),
-    liveIndicator(data),
-  ])
+  return h.div(
+    [Ui.className<Message>('flex flex-wrap items-end justify-between gap-3')],
+    [
+      h.div(
+        [Ui.className<Message>('grid gap-1')],
+        [
+          h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Forge']),
+          h.h1(
+            [Ui.className<Message>('m-0 text-2xl font-semibold text-white')],
+            ['Factory'],
+          ),
+          h.p(
+            [Ui.className<Message>('m-0 text-sm/6 text-white/50')],
+            [
+              data.generatedAt === null
+                ? 'Signal to deploy. Live numbers are tagged; placeholders are marked seeded.'
+                : `Signal to deploy · generated ${formatIsoDateTime(data.generatedAt)}`,
+            ],
+          ),
+        ],
+      ),
+      liveIndicator(data),
+    ],
+  )
 }
 
 const provenanceLegend = (): Html => {
@@ -841,14 +918,17 @@ const provenanceLegend = (): Html => {
       ),
     ],
     [
-      h.div([Ui.className<Message>('flex items-center gap-1.5')], [
-        provenanceTag('live'),
-        h.span([], ['backed by a real projection']),
-      ]),
-      h.div([Ui.className<Message>('flex items-center gap-1.5')], [
-        provenanceTag('seeded'),
-        h.span([], ['placeholder — no live source wired yet']),
-      ]),
+      h.div(
+        [Ui.className<Message>('flex items-center gap-1.5')],
+        [provenanceTag('live'), h.span([], ['backed by a real projection'])],
+      ),
+      h.div(
+        [Ui.className<Message>('flex items-center gap-1.5')],
+        [
+          provenanceTag('seeded'),
+          h.span([], ['placeholder — no live source wired yet']),
+        ],
+      ),
     ],
   )
 }
@@ -856,50 +936,71 @@ const provenanceLegend = (): Html => {
 const pipelineSection = (stages: ReadonlyArray<PipelineStage>): Html => {
   const h = html<Message>()
 
-  return h.section([Ui.className<Message>('grid gap-3')], [
-    h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
-      'Production line',
-    ]),
-    h.div(
-      [Ui.className<Message>('flex flex-wrap gap-2 lg:flex-nowrap lg:overflow-x-auto')],
-      stages.map(stageCard),
-    ),
-  ])
+  return h.section(
+    [Ui.className<Message>('grid gap-3')],
+    [
+      h.h2(
+        [Ui.className<Message>('m-0 text-base font-medium text-white/80')],
+        ['Production line'],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap gap-2 lg:flex-nowrap lg:overflow-x-auto',
+          ),
+        ],
+        stages.map(stageCard),
+      ),
+    ],
+  )
 }
 
 const panelSection = (panels: ReadonlyArray<DetailPanel>): Html => {
   const h = html<Message>()
 
-  return h.section([Ui.className<Message>('grid gap-3')], [
-    h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
-      'Detail panels',
-    ]),
-    h.div(
-      [Ui.className<Message>('grid gap-3 sm:grid-cols-2 xl:grid-cols-4')],
-      panels.map(detailPanelCard),
-    ),
-  ])
+  return h.section(
+    [Ui.className<Message>('grid gap-3')],
+    [
+      h.h2(
+        [Ui.className<Message>('m-0 text-base font-medium text-white/80')],
+        ['Detail panels'],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-3 sm:grid-cols-2 xl:grid-cols-4')],
+        panels.map(detailPanelCard),
+      ),
+    ],
+  )
 }
 
 const statusNote = (data: FactoryData): Html | null => {
   const h = html<Message>()
 
   if (data.error !== null) {
-    return h.p([Ui.className<Message>('m-0 text-sm text-[#ff8a80]')], [
-      `Runs projection failed to load: ${data.error}. Showing seeded placeholders only.`,
-    ])
+    return h.p(
+      [Ui.className<Message>('m-0 text-sm text-[#ff8a80]')],
+      [
+        `Runs projection failed to load: ${data.error}. Showing seeded placeholders only.`,
+      ],
+    )
   }
 
   if (!data.runsLoaded) {
-    return h.p([Ui.className<Message>('m-0 text-sm text-white/45')], [
-      'Loading the Runs projection. Stage numbers populate once real data arrives; until then everything is marked seeded.',
-    ])
+    return h.p(
+      [Ui.className<Message>('m-0 text-sm text-white/45')],
+      [
+        'Loading the Runs projection. Stage numbers populate once real data arrives; until then everything is marked seeded.',
+      ],
+    )
   }
 
   if (!data.poolLoaded) {
-    return h.p([Ui.className<Message>('m-0 text-sm text-white/35')], [
-      'Account-pool capacity not loaded — Code Gen capacity is shown as seeded.',
-    ])
+    return h.p(
+      [Ui.className<Message>('m-0 text-sm text-white/35')],
+      [
+        'Account-pool capacity not loaded — Code Gen capacity is shown as seeded.',
+      ],
+    )
   }
 
   return null

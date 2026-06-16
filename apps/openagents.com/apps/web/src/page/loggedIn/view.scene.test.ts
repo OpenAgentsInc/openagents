@@ -26,6 +26,7 @@ import { LoggedIn } from '../../model'
 import {
   AdminRoute,
   ChatRoute,
+  ForgeRoute,
   ImagesRoute,
   type LoggedInRoute,
   MulletRoute,
@@ -72,6 +73,8 @@ import {
   AdminAdjutantReviewLoaded,
   type AgentRunLaunchResponse,
   type ArtanisOperatorConsoleResponse,
+  AutopilotWorkListLoaded,
+  type AutopilotWorkSummary,
   type CustomerOrder,
   CustomerOrderLoaded,
   CustomerOrdersLoaded,
@@ -224,6 +227,21 @@ const authWithSavedRepository: AuthBootstrap = {
     updatedAt: '2026-06-04T00:00:00.000Z',
   },
 }
+
+const forgeWorkOrderFixture = (
+  overrides: Partial<AutopilotWorkSummary> = {},
+): AutopilotWorkSummary => ({
+  createdAt: '2026-06-10T00:00:00.000Z',
+  promiseRef: {
+    blockerRefs: [],
+    promiseId: 'forge.metrics.test',
+    registryVersion: '2026-06-16.5',
+  },
+  state: 'scheduled',
+  updatedAt: '2026-06-10T01:00:00.000Z',
+  workOrderRef: 'wo_forge_metrics_1',
+  ...overrides,
+})
 
 const workspaceScope = 'workspace:github:14167547'
 const syncedMissionModel = (route: LoggedInRoute = ChatRoute()) => {
@@ -771,6 +789,28 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(
         Scene.role('heading', { name: 'Choose the repo' }),
       ).toExist(),
+    )
+  })
+
+  test('renders Forge triage counts without double-counting scheduled backlog', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with({
+        ...LoggedIn.init(ForgeRoute(), auth),
+        autopilotWorkList: AutopilotWorkListLoaded({
+          response: {
+            generatedAt: '2026-06-16T12:00:00.000Z',
+            promiseId: 'forge.metrics.test',
+            workOrders: [forgeWorkOrderFixture()],
+          },
+        }),
+      }),
+      Scene.expect(
+        Scene.selector('[data-component="forge-factory-dashboard"]'),
+      ).toExist(),
+      Scene.expect(
+        Scene.selector('[data-forge-detail-panel-value-key="runs-triaged"]'),
+      ).toHaveAttr('data-forge-detail-panel-value-text', '1'),
     )
   })
 

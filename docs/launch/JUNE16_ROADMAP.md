@@ -62,7 +62,7 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   `openagents-autopilot` Worker on the 16th — no code redeploy; secrets survive
   future deploys). The pairing orchestration is no longer inert. It relaxes no
   `requireAdmin` and touches no settlement/payout, and the validator-candidate
-  resolver still returns `[]`, so a pairing only *completes* once a real,
+  resolver still returns `[]`, so a pairing only _completes_ once a real,
   **distinct** validator device is present.
 - **#5051** epic → **#5061** first external-validator dry-run with **Orrery**
   (volunteered, live non-owner node). This is the one thing that proves the loop:
@@ -92,13 +92,14 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
 ## E. Offline-wallet receive resilience — bring back Spark as a backup receive (+ owed tips)
 
 **Root cause, not just a retry.** The owed tips (Whitefang Hermes + Trigger — both
-tip-*ready* with BOLT12 offers, but `agent_wallet_send_failed` because their wallets
+tip-_ready_ with BOLT12 offers, but `agent_wallet_send_failed` because their wallets
 weren't online/routable; 250 sats each owed) are a symptom of a real gap: a recipient
 must be **online with inbound liquidity** to receive a Lightning tip/payout. The fix
 is the **Spark backup-receive fallback** in
 `apps/pylon/docs/2026-06-15-spark-backup-receive-fallback-audit.md`.
 
 **Status (2026-06-16): code-complete across #5078 + #5080 + #5085. One live gate left.**
+
 - **#5078 slices 1-3 (`381c10966`, `10ee7f9bb`):** the receive-only core
   (`SparkBackupReceiveState`/`Projection`, injectable `SparkBackupHelper`,
   MDK-offline classification, `receiveWithFallback` behind `PYLON_SPARK_BACKUP_ENABLED`
@@ -127,6 +128,7 @@ is the **Spark backup-receive fallback** in
   No code work left; this is a live-event proof.
 
 **Original goal — narrow, opt-in, receive-only Spark fallback:**
+
 - MDK stays the primary wallet rail. Spark is a **backup receive target** only —
   when MDK is offline or can't mint a receive request, Pylon can still hand out a
   **static Spark address / single-use Spark invoice** (Spark addresses are static, so
@@ -152,6 +154,7 @@ prefilled-workspace + `/business` funnel. Sequenced backlog is tracked under the
 epics below; not all lands today — the aim is the main spine.
 
 **Landed today (merged to `main`):**
+
 - **Epic A — `@openagentsinc/ui` component library (#5084, COMPLETE):** extracted
   the shared Foldkit kit into `packages/ui` (#5081 `9658a8be1`); added the **AI
   Elements** family — prompt-input/message/code-block/task/sources/tool/confirmation/
@@ -162,6 +165,9 @@ epics below; not all lands today — the aim is the main spine.
   `/autopilot` on `@openagentsinc/ui` (Runs / compute-routing / accepted-outcome
   receipts). **B2** (#5088 `abdb6c8ce`) shipped the **`/forge` factory dashboard**
   (signal→deploy pipeline over real Run+pool data, honest real-vs-seeded labeling).
+  **B4** (#5090) locked the auditable metric definitions in
+  `docs/blitz/forge/2026-06-16-forge-factory-metric-definitions.md` and fixed
+  the scheduled-backlog triage double-count guard.
 - **Epic C — prefilled workspaces + `/business` funnel (#5103):** **C3** (#5094
   `5e82b6a1d`) shipped the public **`/business`** landing + signup form (first-class
   phone field, opt-in Slack request, usage-based token-credit pricing copy). **C1**
@@ -170,7 +176,8 @@ epics below; not all lands today — the aim is the main spine.
   invite shell, and `/business` workspace-invite copy.
 
 **Targeted next (this session / soon — won't all land today):**
-- **B3** (#5089) Forge **Automations** surface · **B4** (#5090) metric definitions.
+
+- **B3** (#5089) Forge **Automations** surface.
 - **C2** (#5093) operator seeding + invite-link + engagement tracking · **C4**
   (#5095) Slack Connect invite.
 - **Epic D — customer-#1 dogfood (#5104):** **D1** (#5096) route our own AI/coding
@@ -198,7 +205,7 @@ duplicate-work collisions seen on #5067.
 Multiple sessions are pushing to `main` in parallel (registry churned `.1`→`.11` on
 the 15th, `.1`→`.4` on the 16th; many `.claude/worktrees` + `tmp/oa-*` agent worktrees
 active). Worktree isolation holds for subagents — the contention people see is a
-session's *own main-loop* editing the shared checkout while its subagents run. Keep
+session's _own main-loop_ editing the shared checkout while its subagents run. Keep
 work in isolated worktrees with rebase-before-push; deploy only from a
 clean `origin/main` checkout (never the shared working tree, which carries the
 other session's uncommitted WIP).
