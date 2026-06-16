@@ -1,12 +1,13 @@
 # Private Workspace Same-Day Setup Runbook
 
 Date: 2026-06-16
-Scope: issue #5155, same-day private team/project workspace setup and invite
-verification for a design-partner demo call.
+Scope: same-day private team/project workspace setup, invite delivery,
+acceptance verification, and demo walkthrough.
 
-This runbook is for operator use only. It assumes the private team/project
-exists and that the invite flow, invite email, and private prefilled workspace
-hardening are already on `main`.
+This runbook is for operator use only. It covers the current production path for
+setting up a new private project: create or select the private team/project D1
+rows, send a team/project invite, verify the transactional email ledger, confirm
+acceptance, and walk the teammate through what they can access.
 
 ## Safety Rules
 
@@ -20,6 +21,38 @@ hardening are already on `main`.
   generalization pass approves broader copy.
 - The checker script is read-only and transcript-safe. It prints readiness
   statuses and counts, not private identifiers or email addresses.
+- Project-scoped invites still create an active **team** membership. `projectId`
+  scopes the invite target/redirect and private workspace gate, but there is no
+  separate per-project membership table yet. For confidential partner work, use
+  a separate private team per partner/project group.
+
+## What Gets Created
+
+The setup path creates or uses these records:
+
+- `teams`: one private team boundary. This is the main access boundary.
+- `team_projects`: one project inside the team, used for the project chat route
+  and private workspace/project refs.
+- `team_workspace_invites`: one pending invite per recipient/team/project/email.
+  Refreshed invites rotate the token and expiry.
+- `email_messages` / `email_deliveries`: transactional invite email ledger rows
+  when `sendEmail` is true and Resend config is present.
+- `team_memberships`: created or reactivated as `active` when the invitee accepts
+  with the invited email address.
+
+The invitee gets:
+
+- a transactional email with subject `Your private OpenAgents workspace invite`;
+- an `Accept invite` button/link;
+- the workspace label you provide;
+- the invite expiry;
+- instruction to sign in with the invited email address;
+- after acceptance, a redirect to the team/project chat if `projectId` was
+  provided, otherwise the team chat.
+
+The invitee does **not** get raw private source material from the invite alone.
+Private package material appears only after it is seeded into gated team/project
+surfaces or private workspace rows.
 
 ## Inputs
 
@@ -29,14 +62,105 @@ Prepare these in a private shell:
 export OPENAGENTS_BASE_URL="https://openagents.com"
 export OPENAGENTS_ADMIN_API_TOKEN="..."
 export PRIVATE_TEAM_ID="..."
+export PRIVATE_TEAM_SLUG="..."
+export PRIVATE_TEAM_NAME="..."
 export PRIVATE_PROJECT_ID="..."
+export PRIVATE_PROJECT_SLUG="..."
+export PRIVATE_PROJECT_NAME="..."
 ```
 
 Keep the teammate recipient email out of shell history when possible. Use a
 temporary private file or stdin for the invite request body, and delete it after
 the invite is created.
 
-## 1. Preflight
+Use stable ids and slugs containing only lowercase letters, numbers, `_`, and
+`-`. Keep display names safe for the app; they may be visible to invited
+members. For the copy-paste SQL path below, avoid single quotes in display names
+or escape them manually before running the file.
+
+## 1. Create Or Select The Private Team/Project
+
+If the team/project already exists, skip to preflight. If not, create both rows
+with a reviewed SQL file. This is an operator-only step.
+
+From `apps/openagents.com/workers/api`:
+
+```sh
+NOW="$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")"
+
+cat > /tmp/private-project-setup.sql <<SQL
+INSERT INTO teams
+  (id, name, slug, kind, plan, owner_user_id, status, created_at, updated_at,
+   archived_at)
+VALUES (
+  '${PRIVATE_TEAM_ID}',
+  '${PRIVATE_TEAM_NAME}',
+  '${PRIVATE_TEAM_SLUG}',
+  'organization',
+  'team',
+  NULL,
+  'active',
+  '${NOW}',
+  '${NOW}',
+  NULL
+)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  slug = excluded.slug,
+  kind = excluded.kind,
+  plan = excluded.plan,
+  status = 'active',
+  archived_at = NULL,
+  updated_at = excluded.updated_at;
+
+INSERT INTO team_projects
+  (id, team_id, slug, name, description, status, metadata_json, created_at,
+   updated_at, archived_at)
+VALUES (
+  '${PRIVATE_PROJECT_ID}',
+  '${PRIVATE_TEAM_ID}',
+  '${PRIVATE_PROJECT_SLUG}',
+  '${PRIVATE_PROJECT_NAME}',
+  'Private project workspace.',
+  'active',
+  '{"source":"operator_private_project_runbook"}',
+  '${NOW}',
+  '${NOW}',
+  NULL
+)
+ON CONFLICT(id) DO UPDATE SET
+  team_id = excluded.team_id,
+  slug = excluded.slug,
+  name = excluded.name,
+  description = excluded.description,
+  status = 'active',
+  metadata_json = excluded.metadata_json,
+  archived_at = NULL,
+  updated_at = excluded.updated_at;
+SQL
+
+bunx wrangler d1 execute openagents-autopilot \
+  --remote \
+  --file /tmp/private-project-setup.sql
+```
+
+Before running that SQL:
+
+- review `/tmp/private-project-setup.sql` locally;
+- do not paste it into public transcripts if the display names are private;
+- reuse the existing ids instead of creating new ids when the team/project
+  already exists;
+- do not set `owner_user_id` unless you are intentionally binding an existing
+  user id as owner.
+
+After running it, delete the temporary SQL file if it contains private display
+names:
+
+```sh
+rm -f /tmp/private-project-setup.sql
+```
+
+## 2. Preflight
 
 From `apps/openagents.com`:
 
@@ -62,7 +186,7 @@ Required readiness:
 If the project is not required for the call, omit `--project-id`; the invite will
 be team-scoped.
 
-## 2. Create Or Refresh The Invite
+## 3. Create Or Refresh The Invite
 
 Send one operator invite for the private team/project:
 
@@ -86,6 +210,13 @@ Request body shape:
 }
 ```
 
+Roles:
+
+- `viewer`: can join with read-oriented access where the UI/API distinguishes
+  role. Use for observers.
+- `member`: default for teammates expected to collaborate.
+- `admin`: use only when the invitee should help manage the team/project.
+
 Privately capture these response fields:
 
 - `invite.id`
@@ -96,7 +227,17 @@ Privately capture these response fields:
 
 Do not paste `acceptUrl` into chat, issues, or transcripts.
 
-## 3. Verify Invite And Email Ledger
+What the route does:
+
+- validates the active team exists;
+- validates `projectId` belongs to that active team when provided;
+- creates or refreshes the pending invite for that recipient/team/project target;
+- sends the invite email unless `sendEmail` is false;
+- records the email attempt on the invite when the email service returns a
+  message id;
+- returns a safe invite projection plus the raw `acceptUrl`.
+
+## 4. Verify Invite And Email Ledger
 
 Rerun the checker with the safe ids from the response:
 
@@ -118,11 +259,21 @@ Expected before acceptance:
 - `email_ledger: ready` with accepted delivery, or a clear blocker/fallback
 - no raw email address, accept URL, token, or provider body printed
 
-## 4. Teammate Accepts
+## 5. Teammate Accepts
 
 The teammate must sign in with the invited email address and open the invite
 from the transactional email. If using the raw `acceptUrl` fallback, paste it
 only into the teammate's browser or a private channel.
+
+Acceptance behavior:
+
+- `GET /api/team-workspace-invites/accept?token=...` redirects after success.
+- `POST /api/team-workspace-invites/accept` returns JSON for scripted checks.
+- A signed-in user with a different email gets `403`.
+- An expired invite gets `410`.
+- An already accepted invite is idempotent for the same accepted user.
+- A successful accept creates/reactivates `team_memberships` for the team with
+  the invited role.
 
 Successful acceptance redirects to:
 
@@ -136,7 +287,7 @@ For team-scoped invites, it redirects to:
 /teams/<team id>/chat
 ```
 
-## 5. Verify Acceptance
+## 6. Verify Acceptance
 
 After acceptance:
 
@@ -159,6 +310,22 @@ Expected:
 - `team_exists: ready`
 - `project_exists: ready`
 - `email_ledger: ready` or documented manual fallback
+
+At this point the teammate should be able to:
+
+- open the team chat route;
+- open the project chat route when `projectId` was included;
+- view private prefilled workspace projections only when those rows are
+  configured as `private_team` and scoped to the accepted team/project;
+- participate according to their role and whatever UI/API-specific role checks
+  exist for that surface.
+
+They should not be able to:
+
+- see raw invite tokens or invite hashes;
+- accept the invite while signed in as a different email;
+- view private material in public demos or public-safe projections;
+- access other partner teams unless they were separately invited there.
 
 ## Email Failure Fallback
 
