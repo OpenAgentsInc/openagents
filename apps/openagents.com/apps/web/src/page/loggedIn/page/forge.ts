@@ -66,8 +66,21 @@ interface PipelineStage {
   readonly automations: number
   readonly automationsProvenance: Provenance
   readonly metrics: ReadonlyArray<Metric>
+  readonly progress: StageProgressSummary
   readonly spark: ReadonlyArray<number>
   readonly sparkProvenance: Provenance
+}
+
+interface StageProgressSummary {
+  readonly active: number
+  readonly blocked: number
+  readonly completed: number
+  readonly failed: number
+  readonly omittedUnsafeRefCount: number
+  readonly pending: number
+  readonly provenance: Provenance
+  readonly refs: ReadonlyArray<string>
+  readonly total: number
 }
 
 interface DetailPanel {
@@ -249,6 +262,85 @@ const digestRuns = (
   }
 }
 
+const safeStageRunRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,160}$/
+
+const safeStageRunRef = (value: string): string | null => {
+  const trimmed = value.trim()
+
+  return safeStageRunRefPattern.test(trimmed) &&
+    !/(?:\/Users\/|\/home\/|diff --git|raw[-_ ](?:patch|log|prompt|shell)|secret|token|mnemonic|preimage|invoice)/iu.test(
+      trimmed,
+    )
+    ? trimmed
+    : null
+}
+
+const progressBucketForState = (
+  state: AutopilotWorkState,
+): 'active' | 'blocked' | 'completed' | 'failed' | 'pending' => {
+  if (state === 'scheduled') {
+    return 'pending'
+  }
+
+  if (state === 'paid_ready' || state === 'queued_or_running') {
+    return 'active'
+  }
+
+  if (
+    state === 'accepted' ||
+    state === 'accepted_free_slice' ||
+    state === 'delivered'
+  ) {
+    return 'completed'
+  }
+
+  if (
+    state === 'access_required' ||
+    state === 'blocked' ||
+    state === 'payment_required' ||
+    state === 'revision_required'
+  ) {
+    return 'blocked'
+  }
+
+  return 'failed'
+}
+
+const emptyStageProgress = (provenance: Provenance): StageProgressSummary => ({
+  active: 0,
+  blocked: 0,
+  completed: 0,
+  failed: 0,
+  omittedUnsafeRefCount: 0,
+  pending: 0,
+  provenance,
+  refs: [],
+  total: 0,
+})
+
+const stageProgressFor = (
+  stageKey: ForgeStageKey,
+  workOrders: ReadonlyArray<AutopilotWorkSummary>,
+  provenance: Provenance,
+): StageProgressSummary =>
+  workOrders.reduce((progress, order) => {
+    if (stageOf(order.state) !== stageKey) {
+      return progress
+    }
+
+    const bucket = progressBucketForState(order.state)
+    const ref = safeStageRunRef(order.workOrderRef)
+
+    return {
+      ...progress,
+      [bucket]: progress[bucket] + 1,
+      omittedUnsafeRefCount:
+        progress.omittedUnsafeRefCount + (ref === null ? 1 : 0),
+      refs: ref === null ? progress.refs : [...progress.refs, ref],
+      total: progress.total + 1,
+    }
+  }, emptyStageProgress(provenance))
+
 const formatCycle = (minutes: number | null): string => {
   if (minutes === null) {
     return '—'
@@ -277,9 +369,13 @@ const formatPct = (rate: number | null): string =>
 const buildStages = (
   digest: RunDigest,
   pool: ProviderAccountPoolSummary | null,
+  workOrders: ReadonlyArray<AutopilotWorkSummary>,
+  runsLoaded: boolean,
 ): ReadonlyArray<PipelineStage> => {
   const stageCount = (key: string): number => digest.byStage[key] ?? 0
   const hasRuns = digest.total > 0
+  const progress = (stageKey: ForgeStageKey): StageProgressSummary =>
+    stageProgressFor(stageKey, runsLoaded ? workOrders : [], runsLoaded ? 'live' : 'seeded')
 
   // A real per-stage trailing series is only meaningful for the whole intake;
   // we reuse the real daily-created series as the Triage/Signal sparkline and
@@ -302,6 +398,7 @@ const buildStages = (
         },
         { label: 'Input sources', value: '—', provenance: 'seeded' },
       ],
+      progress: progress('signal'),
       spark: hasRuns ? digest.dailyCreated.slice(-7) : seededSpark,
       sparkProvenance: hasRuns ? 'live' : 'seeded',
     },
@@ -329,6 +426,7 @@ const buildStages = (
           provenance: digest.medianCycleMinutes === null ? 'seeded' : 'live',
         },
       ],
+      progress: progress('triage'),
       spark: hasRuns ? digest.dailyCreated.slice(-7) : seededSpark,
       sparkProvenance: hasRuns ? 'live' : 'seeded',
     },
@@ -356,6 +454,7 @@ const buildStages = (
           provenance: digest.medianCycleMinutes === null ? 'seeded' : 'live',
         },
       ],
+      progress: progress('codegen'),
       spark: seededSpark,
       sparkProvenance: 'seeded',
     },
@@ -378,6 +477,7 @@ const buildStages = (
           provenance: digest.passRate === null ? 'seeded' : 'live',
         },
       ],
+      progress: progress('validate'),
       spark: seededSpark,
       sparkProvenance: 'seeded',
     },
@@ -400,6 +500,7 @@ const buildStages = (
           provenance: digest.passRate === null ? 'seeded' : 'live',
         },
       ],
+      progress: progress('release'),
       spark: seededSpark,
       sparkProvenance: 'seeded',
     },
@@ -414,6 +515,7 @@ const buildStages = (
         { label: 'Docs / wk', value: '—', provenance: 'seeded' },
         { label: 'Pages / wk', value: '—', provenance: 'seeded' },
       ],
+      progress: progress('document'),
       spark: seededSpark,
       sparkProvenance: 'seeded',
     },
@@ -433,6 +535,7 @@ const buildStages = (
         { label: 'Token eff', value: '—', provenance: 'seeded' },
         { label: 'MTTR', value: '—', provenance: 'seeded' },
       ],
+      progress: progress('monitor'),
       spark: seededSpark,
       sparkProvenance: 'seeded',
     },
@@ -451,6 +554,7 @@ const buildStages = (
         },
         { label: 'KPIs', value: '—', provenance: 'seeded' },
       ],
+      progress: progress('deploy'),
       spark: seededSpark,
       sparkProvenance: 'seeded',
     },
@@ -784,6 +888,133 @@ const metricCell = (metric: Metric): Html => {
   )
 }
 
+const stageProgressChip = (
+  stageKey: ForgeStageKey,
+  label: string,
+  value: number,
+  tone: 'active' | 'blocked' | 'completed' | 'failed' | 'pending',
+  provenance: Provenance,
+): Html => {
+  const h = html<Message>()
+  const toneClass =
+    provenance === 'seeded'
+      ? 'border-[#333] text-white/35'
+      : tone === 'completed'
+        ? 'border-[#1b5e20] text-[#7ccf8a]'
+        : tone === 'failed'
+          ? 'border-[#5c1f1f] text-[#ff8a80]'
+          : tone === 'blocked'
+            ? 'border-[#5a3b00] text-[#ffb400]'
+            : tone === 'active'
+              ? 'border-[#1d3d63] text-[#8ab4ff]'
+              : 'border-[#333] text-white/55'
+
+  return h.span(
+    [
+      Ui.className<Message>(
+        `inline-flex min-h-5 items-center gap-1 border px-1.5 text-[0.5625rem] uppercase tracking-wide tabular-nums ${toneClass}`,
+      ),
+      h.DataAttribute('forge-stage-progress-chip', tone),
+      h.DataAttribute('forge-stage-progress-stage', stageKey),
+      h.DataAttribute('forge-stage-progress-value', String(value)),
+    ],
+    [`${label} ${formatInt(value)}`],
+  )
+}
+
+const stageProgressRunLinks = (progress: StageProgressSummary): ReadonlyArray<Html> => {
+  const h = html<Message>()
+
+  return progress.refs.slice(0, 3).map(ref =>
+    h.a(
+      [
+        h.Href(autopilotWorkDetailRouter({ workOrderRef: ref })),
+        Ui.className<Message>(
+          'min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[0.625rem] text-white/55 underline decoration-white/20 underline-offset-3 hover:text-white',
+        ),
+        h.DataAttribute('forge-stage-progress-run', ref),
+      ],
+      [ref],
+    ),
+  )
+}
+
+const stageProgressView = (
+  stageKey: ForgeStageKey,
+  progress: StageProgressSummary,
+): Html => {
+  const h = html<Message>()
+  const links = stageProgressRunLinks(progress)
+
+  return h.div(
+    [
+      Ui.className<Message>('grid gap-2 border-t border-[#1b1b1b] pt-2'),
+      h.DataAttribute('forge-stage-progress', stageKey),
+      h.DataAttribute('forge-stage-progress-provenance', progress.provenance),
+      h.DataAttribute('forge-stage-progress-total', String(progress.total)),
+      h.DataAttribute('forge-stage-progress-active', String(progress.active)),
+      h.DataAttribute('forge-stage-progress-pending', String(progress.pending)),
+      h.DataAttribute('forge-stage-progress-completed', String(progress.completed)),
+      h.DataAttribute('forge-stage-progress-blocked', String(progress.blocked)),
+      h.DataAttribute('forge-stage-progress-failed', String(progress.failed)),
+    ],
+    [
+      h.div([Ui.className<Message>('flex flex-wrap items-center gap-1.5')], [
+        stageProgressChip(
+          stageKey,
+          'active',
+          progress.active,
+          'active',
+          progress.provenance,
+        ),
+        stageProgressChip(
+          stageKey,
+          'pending',
+          progress.pending,
+          'pending',
+          progress.provenance,
+        ),
+        stageProgressChip(
+          stageKey,
+          'done',
+          progress.completed,
+          'completed',
+          progress.provenance,
+        ),
+        stageProgressChip(
+          stageKey,
+          'blocked',
+          progress.blocked,
+          'blocked',
+          progress.provenance,
+        ),
+        stageProgressChip(
+          stageKey,
+          'failed',
+          progress.failed,
+          'failed',
+          progress.provenance,
+        ),
+      ]),
+      h.div(
+        [Ui.className<Message>('grid gap-1')],
+        links.length === 0
+          ? [
+              h.span([Ui.className<Message>('text-[0.625rem] text-white/30')], [
+                progress.provenance === 'live' ? 'No Runs in stage' : 'Awaiting Runs',
+              ]),
+            ]
+          : links,
+      ),
+      progress.omittedUnsafeRefCount === 0
+        ? h.span([Ui.className<Message>('hidden')], [])
+        : h.span([Ui.className<Message>('text-[0.625rem] text-[#ffb400]')], [
+            `${progress.omittedUnsafeRefCount} unsafe Run ref(s) omitted`,
+          ]),
+    ],
+  )
+}
+
 const stageCard = (stage: PipelineStage): Html => {
   const h = html<Message>()
 
@@ -838,6 +1069,7 @@ const stageCard = (stage: PipelineStage): Html => {
         [Ui.className<Message>('grid grid-cols-2 gap-x-3 gap-y-2')],
         stage.metrics.map(metricCell),
       ),
+      stageProgressView(stage.stageKey, stage.progress),
       h.div(
         [Ui.className<Message>('text-[0.5625rem] leading-snug text-white/25')],
         [stage.source],
@@ -1688,7 +1920,12 @@ const statusNote = (data: FactoryData): Html | null => {
 export const view = (model: Model): Html => {
   const h = html<Message>()
   const data = readFactoryData(model)
-  const stages = buildStages(data.digest, data.pool)
+  const stages = buildStages(
+    data.digest,
+    data.pool,
+    data.workOrders,
+    data.runsLoaded,
+  )
   const panels = buildPanels(data.digest)
   const note = statusNote(data)
 

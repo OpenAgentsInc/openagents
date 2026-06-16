@@ -884,6 +884,81 @@ describe('logged-in workroom sidebar', () => {
     )
   })
 
+  test('renders Forge stage progress summaries from loaded Runs', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with({
+        ...LoggedIn.init(ForgeRoute(), auth),
+        autopilotWorkList: AutopilotWorkListLoaded({
+          response: {
+            generatedAt: '2026-06-16T12:00:00.000Z',
+            promiseId: 'forge.metrics.test',
+            workOrders: [
+              forgeWorkOrderFixture({
+                state: 'queued_or_running',
+                workOrderRef: 'wo_forge_running',
+              }),
+              forgeWorkOrderFixture({
+                state: 'delivered',
+                workOrderRef: 'wo_forge_delivered',
+              }),
+              forgeWorkOrderFixture({
+                state: 'accepted',
+                workOrderRef: 'wo_forge_accepted',
+              }),
+              forgeWorkOrderFixture({
+                state: 'blocked',
+                workOrderRef: 'wo_forge_blocked',
+              }),
+              forgeWorkOrderFixture({
+                state: 'rejected',
+                workOrderRef: 'wo_forge_rejected',
+              }),
+              forgeWorkOrderFixture({
+                state: 'invalid',
+                workOrderRef: 'wo_forge_invalid',
+              }),
+              forgeWorkOrderFixture({
+                state: 'invalid',
+                workOrderRef: '/Users/christopher/private-work',
+              }),
+            ],
+          },
+        }),
+        providerAccountPool: providerPoolLoadedFixture(),
+      }),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-progress="codegen"]'),
+      ).toHaveAttr('data-forge-stage-progress-active', '1'),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-progress="codegen"]'),
+      ).toHaveAttr('data-forge-stage-progress-provenance', 'live'),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-progress="validate"]'),
+      ).toHaveAttr('data-forge-stage-progress-completed', '1'),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-progress="release"]'),
+      ).toHaveAttr('data-forge-stage-progress-completed', '1'),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-progress="monitor"]'),
+      ).toHaveAttr('data-forge-stage-progress-blocked', '1'),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-progress="monitor"]'),
+      ).toHaveAttr('data-forge-stage-progress-failed', '3'),
+      Scene.expect(Scene.text('1 unsafe Run ref(s) omitted')).toExist(),
+      Scene.expect(Scene.text('/Users/christopher/private-work')).not.toExist(),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-progress-run="wo_forge_running"]'),
+      ).toExist(),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-progress-run="wo_forge_delivered"]'),
+      ).toExist(),
+      Scene.expect(
+        Scene.selector('[data-forge-stage-progress-run="wo_forge_accepted"]'),
+      ).toExist(),
+    )
+  })
+
   test('shows the customer email promise on submitted orders', () => {
     const customerAuth: AuthBootstrap = {
       ...auth,

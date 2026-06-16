@@ -142,6 +142,11 @@ Implementation status, 2026-06-16: #5126 renders the projection as the first
 unsafe-ref omission warnings while keeping the raw lifecycle panel available as
 drilldown. `/forge` stage-panel rendering remains a follow-on G2.2 slice.
 
+Implementation status, 2026-06-16: #5127 adds `/forge` stage progress
+summaries derived from loaded Run summaries, with live provenance, bounded
+Run-detail links, progress chips, and unsafe-ref omission handling. Full
+per-Run lifecycle evidence remains in `/autopilot`.
+
 ### G3 - Resume, Rewind, Session Navigation
 
 Systems: system 26 Resume/Rewind/Session Navigation, system 39 Remote
