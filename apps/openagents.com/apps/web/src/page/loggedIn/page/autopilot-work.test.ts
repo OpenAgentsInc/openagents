@@ -898,6 +898,48 @@ describe('autopilot work detail view', () => {
     expect(rendered).toContain('query.public.progress')
   })
 
+  test('renders Retrieval search lane from bounded live adapters', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            retrievalPlan: {
+              liveAdapter: {
+                queryRefs: ['query.public.progress'],
+                sources: [
+                  {
+                    candidateRef: 'candidate.public.file_progress',
+                    exactRefs: ['query.public.progress'],
+                    provenanceRefs: ['file-index.public.autopilot_work'],
+                    sourceKind: 'file',
+                    sourceRef: 'source.public.file_progress',
+                  },
+                  {
+                    candidateRef: 'candidate.public.low_score',
+                    exactRefs: ['query.public.other'],
+                    sourceKind: 'diagnostic',
+                    sourceRef: 'source.public.low_score',
+                  },
+                ],
+                workspaceBoundaryRefs: ['workspace-boundary.public.openagents.work_1'],
+              },
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Retrieval search')
+    expect(rendered).toContain('candidate.public.file_progress')
+    expect(rendered).toContain('source.public.file_progress')
+    expect(rendered).toContain('retrieval-source-kind.file')
+    expect(rendered).toContain('file-index.public.autopilot_work')
+    expect(rendered).toContain('workspace-boundary.public.openagents.work_1')
+    expect(rendered).toContain('candidate.public.low_score')
+    expect(rendered).toContain('low score')
+    expect(rendered).toContain('forge-live-retrieval-plan:work_1')
+  })
+
   test('renders Retrieval search missing-evidence blockers when plan is absent', () => {
     const rendered = renderHtml(detailView(modelForWork(workForState('delivered', null))))
 

@@ -2199,11 +2199,51 @@ export const AutopilotWorkRetrievalSkippedCandidate = S.Struct({
 export type AutopilotWorkRetrievalSkippedCandidate =
   typeof AutopilotWorkRetrievalSkippedCandidate.Type
 
+export const AutopilotWorkLiveRetrievalSourceKind = S.Literals([
+  'diagnostic',
+  'documentation',
+  'file',
+  'unsupported',
+])
+export type AutopilotWorkLiveRetrievalSourceKind =
+  typeof AutopilotWorkLiveRetrievalSourceKind.Type
+
+export const AutopilotWorkLiveRetrievalSource = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  candidateRef: S.String,
+  exactRefs: S.optionalKey(S.Array(S.String)),
+  freshness: S.optionalKey(AutopilotWorkRetrievalFreshness),
+  provenanceRefs: S.optionalKey(S.Array(S.String)),
+  score: S.optionalKey(S.NullOr(S.Number)),
+  sourceKind: AutopilotWorkLiveRetrievalSourceKind,
+  sourceRef: S.optionalKey(S.NullOr(S.String)),
+})
+export type AutopilotWorkLiveRetrievalSource =
+  typeof AutopilotWorkLiveRetrievalSource.Type
+
+export const AutopilotWorkLiveRetrievalAdapter = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  freshness: S.optionalKey(AutopilotWorkRetrievalFreshness),
+  generatedAt: S.optionalKey(S.String),
+  minimumScore: S.optionalKey(S.Number),
+  mode: S.optionalKey(AutopilotWorkRetrievalMode),
+  planRef: S.optionalKey(S.String),
+  providerEvidenceRefs: S.optionalKey(S.Array(S.String)),
+  queryRefs: S.optionalKey(S.Array(S.String)),
+  requestRef: S.optionalKey(S.String),
+  sourceRefs: S.optionalKey(S.Array(S.String)),
+  sources: S.optionalKey(S.Array(AutopilotWorkLiveRetrievalSource)),
+  workspaceBoundaryRefs: S.optionalKey(S.Array(S.String)),
+})
+export type AutopilotWorkLiveRetrievalAdapter =
+  typeof AutopilotWorkLiveRetrievalAdapter.Type
+
 export const AutopilotWorkRetrievalPlan = S.Struct({
   blockerRefs: S.optionalKey(S.Array(S.String)),
   candidates: S.optionalKey(S.Array(AutopilotWorkRetrievalCandidate)),
   freshness: S.optionalKey(AutopilotWorkRetrievalFreshness),
   generatedAt: S.optionalKey(S.String),
+  liveAdapter: S.optionalKey(AutopilotWorkLiveRetrievalAdapter),
   mode: S.optionalKey(AutopilotWorkRetrievalMode),
   planRef: S.optionalKey(S.String),
   queryRefs: S.optionalKey(S.Array(S.String)),

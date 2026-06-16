@@ -273,6 +273,14 @@ unsafe-material omission warnings. It remains read-only and does not add live
 search UI, adapter execution, filesystem crawling, embeddings, LSP calls,
 model calls, or routing.
 
+Implementation status, 2026-06-16: #5149 adds bounded live retrieval adapters
+for file, documentation, and diagnostic source refs. The adapters emit the
+existing `ForgeRetrievalPlanInput` contract, require explicit workspace-boundary
+refs, block semantic/model-selected/hybrid modes without provider-evidence
+refs, preserve deterministic selected/skipped ranking, and omit unsafe/private
+source/query/provenance material before the `/autopilot` Retrieval search lane
+renders it.
+
 ### G6 - Extensibility: MCP, Skills, Hooks, Plugins
 
 Systems: system 28 MCP Client, system 30 Plugin, system 31 Skill, system 32
@@ -417,6 +425,13 @@ It reuses the existing repository-profile refresh receipt projection, exposes
 latest freshness and changed profile kinds in `/autopilot`, and invalidates
 profiles on dirty worktrees, changed instruction refs, missing dev-doctor
 evidence, missing profile evidence, or unsafe material.
+
+Implementation status, 2026-06-16: #5149 adds the live-adapter builder for
+bounded file/doc/diagnostic retrieval. It keeps the retrieval plan as the only
+UI-facing contract, requires explicit source and workspace-boundary refs,
+blocks provider-backed semantic/model modes without provider evidence, records
+low-score/duplicate/stale/missing-source/unsupported skips, and includes a
+regression proving prose-like query text does not trigger keyword-only routing.
 
 ## Recommended Sequencing
 

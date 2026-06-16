@@ -55,6 +55,7 @@ import {
   type ForgeRetrievalSkippedCandidate,
   projectForgeRetrievalPlan,
 } from '../autopilot-work/retrieval-plan'
+import { buildForgeLiveRetrievalPlanInput } from '../autopilot-work/live-retrieval-adapters'
 import {
   type ForgeRepositoryMemoryProfile,
   type ForgeRepositoryMemoryProfileInput,
@@ -1511,6 +1512,53 @@ const retrievalPlanInput = (
   work: AutopilotWorkProjection,
 ): ForgeRetrievalPlanInput => {
   const source = work.retrievalPlan
+  const liveAdapter = source?.liveAdapter
+
+  if (liveAdapter !== undefined) {
+    return buildForgeLiveRetrievalPlanInput({
+      generatedAt: liveAdapter.generatedAt ?? source?.generatedAt ?? work.generatedAt,
+      planRef:
+        liveAdapter.planRef ??
+        source?.planRef ??
+        `forge-live-retrieval-plan:${work.workOrderRef}`,
+      requestRef: liveAdapter.requestRef ?? source?.requestRef ?? work.clientRequestRef,
+      ...(liveAdapter.blockerRefs === undefined
+        ? source?.blockerRefs === undefined
+          ? {}
+          : { blockerRefs: source.blockerRefs }
+        : { blockerRefs: liveAdapter.blockerRefs }),
+      ...(liveAdapter.freshness === undefined
+        ? source?.freshness === undefined
+          ? {}
+          : { freshness: source.freshness }
+        : { freshness: liveAdapter.freshness }),
+      ...(liveAdapter.minimumScore === undefined
+        ? {}
+        : { minimumScore: liveAdapter.minimumScore }),
+      ...(liveAdapter.mode === undefined
+        ? source?.mode === undefined
+          ? {}
+          : { mode: source.mode }
+        : { mode: liveAdapter.mode }),
+      ...(liveAdapter.providerEvidenceRefs === undefined
+        ? {}
+        : { providerEvidenceRefs: liveAdapter.providerEvidenceRefs }),
+      ...(liveAdapter.queryRefs === undefined
+        ? source?.queryRefs === undefined
+          ? {}
+          : { queryRefs: source.queryRefs }
+        : { queryRefs: liveAdapter.queryRefs }),
+      ...(liveAdapter.sourceRefs === undefined
+        ? source?.sourceRefs === undefined
+          ? {}
+          : { sourceRefs: source.sourceRefs }
+        : { sourceRefs: liveAdapter.sourceRefs }),
+      ...(liveAdapter.sources === undefined ? {} : { sources: liveAdapter.sources }),
+      ...(liveAdapter.workspaceBoundaryRefs === undefined
+        ? {}
+        : { workspaceBoundaryRefs: liveAdapter.workspaceBoundaryRefs }),
+    })
+  }
 
   return {
     generatedAt: source?.generatedAt ?? work.generatedAt,
