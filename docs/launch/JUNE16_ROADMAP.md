@@ -306,16 +306,22 @@ epics below; not all lands today — the aim is the main spine.
 
 ## Recommended next (assistant lane)
 
+**In progress now (TOP PRIORITY): #5121** — automate the worker↔validator pairing
+(§B) so the launch loop is self-serve: implement `resolveValidatorCandidates()`,
+add validator auto-discovery, and an opt-in validator auto-run on Pylon. This is
+the one true infra gap between "manual two-device proof" and "any installer is
+auto-paired," and it unblocks #5061 / the §C green-flips.
+
 Section **A** is fully closed; the apps/web wave (Epic A live-render #5108,
-`/login` #5111, `/animations`) has landed and deployed. Cleanest non-overlapping
-assistant-lane work now: the §F **Targeted next** items — **B3** (#5089 Forge
-Automations), **C2** (#5093 operator seeding/invite/engagement), **D1** (#5096
-route our own AI/coding spend through the pool) — plus the **email strategy
-"NEXT" slice** (Cloudflare verified-destination smoke + `cloudflare_email`
-provider behind `EmailService`; see the unified strategy doc). The owner-gated
-green-flips (**B/C** §C, built-in agent §D) still need the owner + a real second
-device + the concurrent desktop session. Coordinate to avoid the duplicate-work
-collisions seen on #5067.
+`/login` #5111 + OTP hardening #5120, `/animations`) has landed and deployed. Other
+clean non-overlapping assistant-lane work: the §F **Targeted next** items — **B3**
+(#5089 Forge Automations), **C2** (#5093 operator seeding/invite/engagement), **D1**
+(#5096 route our own AI/coding spend through the pool) — plus the **email strategy
+"NEXT" slice** (Cloudflare verified-destination smoke + `cloudflare_email` provider
+behind `EmailService`; see the unified strategy doc). The owner-gated green-flips
+(**B/C** §C, built-in agent §D) still need the owner + a real second device + the
+concurrent desktop session. Coordinate to avoid the duplicate-work collisions seen
+on #5067.
 
 ## Coordination note
 
