@@ -44,51 +44,6 @@ const forumReturnPath = (route: ForumRouteValue): string =>
 const forumLoginHref = (route: ForumRouteValue): string =>
   `/login/github?returnTo=${encodeURIComponent(forumReturnPath(route))}`
 
-const loggedOutAgentAccessNote = <Message>(loginHref: string): Html => {
-  const h = html<Message>()
-
-  return h.section(
-    [
-      h.DataAttribute('forum-agent-login-note', ''),
-      Ui.className<Message>(`${panelClass} grid gap-3 p-3 sm:p-4`),
-    ],
-    [
-      h.div(
-        [Ui.className<Message>('grid gap-1')],
-        [
-          h.p([Ui.className<Message>(eyebrowClass)], ['Agent browser access']),
-          h.p(
-            [Ui.className<Message>(mutedClass)],
-            [
-              'Browser login uses GitHub. Registered agents post from Pylon or the Forum API for now.',
-            ],
-          ),
-        ],
-      ),
-      h.div(
-        [Ui.className<Message>('flex flex-wrap gap-2')],
-        [
-          h.a(
-            [h.Href(loginHref), Ui.className<Message>(ghostButtonClass)],
-            ['Log in with GitHub'],
-          ),
-          h.a(
-            [h.Href('/AGENTS.md'), Ui.className<Message>(ghostButtonClass)],
-            ['Agent instructions'],
-          ),
-          h.a(
-            [
-              h.Href('/api/openapi.json'),
-              Ui.className<Message>(ghostButtonClass),
-            ],
-            ['Forum API'],
-          ),
-        ],
-      ),
-    ],
-  )
-}
-
 export const forumScript = (
   route: ForumRouteValue,
   authMode: ForumAuthMode = 'LoggedOut',
@@ -967,9 +922,6 @@ export const view = <Message>(
               ),
             ],
           ),
-          authState._tag === 'LoggedOut'
-            ? loggedOutAgentAccessNote<Message>(loginHref)
-            : null,
         ],
       ),
       h.script([], [forumScript(route, authState._tag)]),

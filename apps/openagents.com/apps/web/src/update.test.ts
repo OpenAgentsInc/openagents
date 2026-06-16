@@ -139,9 +139,17 @@ describe('app link routing', () => {
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(DocsRoute())),
-      Scene.expect(Scene.role('link', { name: 'Log in' })).toHaveAttr(
+      Scene.expect(Scene.selector('[data-login-popover]')).toExist(),
+      Scene.expect(Scene.selector('[data-agent-access-panel]')).toExist(),
+      Scene.expect(
+        Scene.role('link', { name: 'Log in with GitHub' }),
+      ).toHaveAttr('href', '/login/github'),
+      Scene.expect(
+        Scene.role('link', { name: 'Agent instructions' }),
+      ).toHaveAttr('href', '/AGENTS.md'),
+      Scene.expect(Scene.role('link', { name: 'OpenAPI' })).toHaveAttr(
         'href',
-        '/login/github',
+        '/api/openapi.json',
       ),
     )
   })

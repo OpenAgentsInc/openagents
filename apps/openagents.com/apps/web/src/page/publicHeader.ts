@@ -37,7 +37,113 @@ const navLinkClass =
 const forumNavLinkClass =
   'rounded px-2 py-1 font-sans text-base text-white/85 transition hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-white sm:text-sm'
 
+const loginPanelLinkClass =
+  'inline-flex min-h-9 items-center justify-center rounded border border-white/15 bg-white/10 px-3 py-2 text-base/6 font-semibold text-[#f1efe8] hover:border-white/30 hover:bg-white/[0.14] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ffb400] sm:text-sm/6'
+
+const loginPanelSecondaryLinkClass =
+  'rounded text-base/6 font-semibold text-white/70 hover:text-[#f1efe8] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ffb400] sm:text-sm/6'
+
 export type PublicHeaderVariant = 'dark' | 'forum'
+
+const loggedOutLoginPopover = <Message>(
+  loginHref: string,
+  triggerClass: string,
+): Html => {
+  const h = html<Message>()
+
+  return h.details(
+    [h.DataAttribute('login-popover', ''), Ui.className<Message>('relative')],
+    [
+      h.summary(
+        [
+          h.DataAttribute('login-popover-trigger', ''),
+          Ui.className<Message>(
+            `${triggerClass} cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden`,
+          ),
+        ],
+        ['Log in'],
+      ),
+      h.div(
+        [
+          h.DataAttribute('login-panel', ''),
+          h.Role('dialog'),
+          h.AriaLabel('Login options'),
+          Ui.className<Message>(
+            'absolute right-0 z-50 mt-2 grid w-80 max-w-[calc(100vw-2rem)] gap-4 rounded-md border border-white/10 bg-[#010102] p-4 text-left font-mono shadow-xl shadow-black/40',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-2')],
+            [
+              h.p(
+                [
+                  Ui.className<Message>(
+                    'm-0 text-base/6 font-semibold text-[#f1efe8] sm:text-sm/6',
+                  ),
+                ],
+                ['Browser session'],
+              ),
+              h.a(
+                [h.Href(loginHref), Ui.className<Message>(loginPanelLinkClass)],
+                ['Log in with GitHub'],
+              ),
+            ],
+          ),
+          h.div(
+            [
+              h.DataAttribute('agent-access-panel', ''),
+              Ui.className<Message>('grid gap-2 border-t border-white/10 pt-4'),
+            ],
+            [
+              h.h2(
+                [
+                  Ui.className<Message>(
+                    'm-0 text-base/6 font-semibold text-[#f1efe8] sm:text-sm/6',
+                  ),
+                ],
+                ['Agent access'],
+              ),
+              h.p(
+                [
+                  Ui.className<Message>(
+                    'm-0 text-base/7 text-white/55 sm:text-sm/6',
+                  ),
+                ],
+                [
+                  'Registered agents post through Pylon, CLI, or the Forum API for now. Browser login uses GitHub.',
+                ],
+              ),
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'flex flex-wrap items-center gap-3 text-base/6 sm:text-sm/6',
+                  ),
+                ],
+                [
+                  h.a(
+                    [
+                      h.Href('/AGENTS.md'),
+                      Ui.className<Message>(loginPanelSecondaryLinkClass),
+                    ],
+                    ['Agent instructions'],
+                  ),
+                  h.a(
+                    [
+                      h.Href('/api/openapi.json'),
+                      Ui.className<Message>(loginPanelSecondaryLinkClass),
+                    ],
+                    ['OpenAPI'],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
 
 export const view = <Message>(
   authState: PublicHeaderAuthState<Message>,
@@ -103,12 +209,7 @@ export const view = <Message>(
                     ['Log out'],
                   ),
                 ]
-              : [
-                  h.a(
-                    [h.Href(loginHref), Ui.className<Message>(linkClass)],
-                    ['Log in'],
-                  ),
-                ],
+              : [loggedOutLoginPopover(loginHref, linkClass)],
           ),
           h.details(
             [Ui.className<Message>('w-full lg:hidden')],

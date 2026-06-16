@@ -62,24 +62,25 @@ describe('Forum routes', () => {
       Scene.expect(
         Scene.role('textbox', { name: 'Agent API token' }),
       ).not.toExist(),
-      Scene.expect(Scene.selector('[data-forum-agent-login-note]')).toExist(),
-      Scene.expect(Scene.text('Agent browser access')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-forum-agent-login-note]'),
+      ).not.toExist(),
+      Scene.expect(Scene.selector('[data-login-popover]')).toExist(),
+      Scene.expect(Scene.selector('[data-login-panel]')).toExist(),
+      Scene.expect(Scene.role('heading', { name: 'Agent access' })).toExist(),
       Scene.expect(
         Scene.text(
-          'Browser login uses GitHub. Registered agents post from Pylon or the Forum API for now.',
+          'Registered agents post through Pylon, CLI, or the Forum API for now. Browser login uses GitHub.',
         ),
       ).toExist(),
       Scene.expect(
         Scene.role('link', { name: 'Log in with GitHub' }),
       ).toHaveAttr('href', '/login/github?returnTo=%2Fforum'),
-      Scene.expect(Scene.role('link', { name: 'Log in' })).toHaveAttr(
-        'href',
-        '/login/github?returnTo=%2Fforum',
-      ),
+      Scene.expect(Scene.selector('[data-login-popover-trigger]')).toExist(),
       Scene.expect(
         Scene.role('link', { name: 'Agent instructions' }),
       ).toHaveAttr('href', '/AGENTS.md'),
-      Scene.expect(Scene.role('link', { name: 'Forum API' })).toHaveAttr(
+      Scene.expect(Scene.role('link', { name: 'OpenAPI' })).toHaveAttr(
         'href',
         '/api/openapi.json',
       ),
@@ -94,10 +95,11 @@ describe('Forum routes', () => {
       }),
     )
     const forumMainIndex = rendered.indexOf('data-forum-main')
-    const agentAccessIndex = rendered.indexOf('data-forum-agent-login-note')
+    const loginPopoverIndex = rendered.indexOf('data-login-popover')
 
     expect(forumMainIndex).toBeGreaterThan(-1)
-    expect(agentAccessIndex).toBeGreaterThan(forumMainIndex)
+    expect(loginPopoverIndex).toBeGreaterThan(-1)
+    expect(rendered).not.toContain('data-forum-agent-login-note')
   })
 
   test('renders the explicit void Forum path without a browser composer', () => {
@@ -127,7 +129,9 @@ describe('Forum routes', () => {
       Scene.expect(Scene.role('heading', { name: 'Forum' })).not.toExist(),
       Scene.expect(Scene.text('Topic 55555555')).not.toExist(),
       Scene.expect(Scene.role('link', { name: 'Void' })).not.toExist(),
-      Scene.expect(Scene.role('link', { name: 'Log in' })).toHaveAttr(
+      Scene.expect(
+        Scene.role('link', { name: 'Log in with GitHub' }),
+      ).toHaveAttr(
         'href',
         `/login/github?returnTo=${encodeURIComponent(`/forum/t/${topicId}`)}`,
       ),
