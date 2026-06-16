@@ -288,6 +288,14 @@ unsafe-material omission coverage. It does not add skill loading, full-body
 rendering, prompt injection, tool execution, settings UI, or runtime policy
 changes.
 
+Implementation status, 2026-06-16: #5140 adds the first refs-only hook catalog
+and doctor projection with configured, pending, disabled, failed, and
+needs-trust states, trust/policy execution gates, doctor/event/descriptor refs,
+explicit non-authority flags, and unsafe-material omission coverage. Configured
+hooks without workspace-trust and policy refs are projected as needs-trust. It
+does not add hook execution, shell execution, filesystem watching, event
+dispatch, UI, settings edits, or runtime policy changes.
+
 ### G7 - Verification, Ops, And Product-Gate Evidence
 
 Systems: system 51 Testing/Smoke, system 52 Evaluation/Regression, system 53
