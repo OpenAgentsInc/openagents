@@ -52,13 +52,41 @@ self-maintaining without a daemon. Cleanup acts only on targets that
 resolve strictly inside the recorded Pylon-owned cache root; a tampered
 record pointing elsewhere is never acted on.
 
+Cleanup deletes only workspaces it can prove are clean. A dirty or unreadable
+git worktree is retained and the lease records a retention reason such as
+`retention.workspace.dirty`; this keeps half-finished lane work available for
+operator review instead of silently deleting it during TTL cleanup or closeout
+release.
+
+## Lane-scoped change capture
+
+`captureWorkspaceChanges` and `commitWorkspaceChanges` operate from the
+materialized lane worktree only. They first verify that the requested
+working directory resolves strictly under the Pylon-owned cache root and that
+the git top-level is exactly that lane directory. Staging uses
+`git add -- <lane-relative paths>` computed from that lane's own diff and
+refuses traversal, absolute paths, git metadata paths, and paths that are not
+currently changed in the lane. It never shells out through `git add -A` and
+never stages from an ambient operator checkout.
+
+Change captures expose `workspaceRef`, `sourceRef`, base/head commits,
+counts, file refs, commit refs, and freshness. Raw changed paths stay in the
+local-only capture field for staging and are omitted from
+`publicWorkspaceChangeCaptureProjection`.
+
+`detectWorkspaceChangeConflicts` compares file refs across lane captures from
+the same source. When two concurrent lanes edit the same file, the result is
+`conflicted` with explicit conflict refs, so a merge/rebase decision can be
+surfaced instead of silently allowing last-writer-wins.
+
 ## Projection and redaction law
 
 `workingDirectory` and all cache mechanics are local-only: they never
 appear in progress events, artifact refs, closeouts, public projections,
 issue comments, Forum posts, or browser UI.
-`publicWorkspaceLeaseProjection` emits refs, state, policy, and
-`generatedAt` freshness only (#4751), and is rebuilt on every state
+`publicWorkspaceLeaseProjection` and
+`publicWorkspaceChangeCaptureProjection` emit refs, state, counts, policy,
+and `generatedAt` freshness only (#4751), and are rebuilt on every state
 transition by the write paths.
 
 ## Capability declaration

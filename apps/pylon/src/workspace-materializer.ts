@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs"
+import { existsSync, realpathSync } from "node:fs"
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { createHash } from "node:crypto"
@@ -47,8 +47,65 @@ export type MaterializedWorkspace = {
   cleanupRef: string
 }
 
+export const WORKSPACE_CHANGE_CAPTURE_SCHEMA = "openagents.pylon.workspace_change_capture.v1"
+
+export type WorkspaceChangeCaptureState = "clean" | "dirty" | "committed"
+
+export type WorkspaceChangeCapture = {
+  schema: typeof WORKSPACE_CHANGE_CAPTURE_SCHEMA
+  workspaceRef: string
+  sourceRef: string
+  baseCommit: string
+  headCommit: string
+  state: WorkspaceChangeCaptureState
+  changedCount: number
+  fileRefs: string[]
+  generatedAt: string
+  commitRef?: string
+  /**
+   * Local-only mechanics. Public surfaces use fileRefs and counts, never
+   * raw local paths from the materialized checkout.
+   */
+  local: {
+    changedPaths: string[]
+  }
+}
+
+export type WorkspaceChangeConflict = {
+  conflictRef: string
+  fileRef: string
+  sourceRef: string
+  workspaceRefs: string[]
+}
+
+export type WorkspaceChangeConflictScan = {
+  state: "clear" | "conflicted"
+  conflictRefs: string[]
+  conflicts: WorkspaceChangeConflict[]
+}
+
+export type WorkspaceCommitResult =
+  | {
+      state: "clean"
+      capture: WorkspaceChangeCapture
+    }
+  | {
+      state: "committed"
+      capture: WorkspaceChangeCapture
+      commitRef: string
+      commitSha: string
+    }
+
 function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
+}
+
+function canonicalPath(path: string): string {
+  try {
+    return realpathSync(path)
+  } catch {
+    return resolve(path)
+  }
 }
 
 const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
@@ -87,10 +144,229 @@ async function runQuietCommand(args: string[], cwd: string): Promise<number> {
   return proc.exited
 }
 
+async function runTextCommand(args: string[], cwd: string): Promise<{ exitCode: number; stdout: string }> {
+  const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
+  const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  return { exitCode, stdout }
+}
+
 async function runCheckedCommand(args: string[], cwd: string): Promise<void> {
   const exitCode = await runQuietCommand(args, cwd)
   if (exitCode !== 0) {
     throw new Error(`command failed: ${args[0] ?? "unknown"}`)
+  }
+}
+
+function assertPylonOwnedWorkspaceTarget(input: {
+  cacheRoot: string
+  workingDirectory: string
+}): { cacheRoot: string; target: string } {
+  const cacheRoot = resolve(input.cacheRoot)
+  const target = resolve(input.workingDirectory)
+  if (target === cacheRoot || !target.startsWith(`${cacheRoot}/`)) {
+    throw new Error("workspace operation refused: target is outside the Pylon-owned cache root")
+  }
+  return { cacheRoot, target }
+}
+
+function assertSafeWorkspaceRelativePath(relativePath: string): void {
+  if (relativePath.length === 0) throw new Error("workspace path refused: empty path")
+  if (relativePath.includes("\0")) throw new Error("workspace path refused: nul byte")
+  if (relativePath.startsWith("/") || /^[A-Za-z]:[\\/]/.test(relativePath)) {
+    throw new Error("workspace path refused: absolute path")
+  }
+  const parts = relativePath.split(/[\\/]+/)
+  if (parts.includes("..")) throw new Error("workspace path refused: traversal")
+  if (parts[0] === ".git") throw new Error("workspace path refused: git metadata")
+}
+
+async function assertWorkspaceGitRoot(workingDirectory: string): Promise<void> {
+  const root = await runTextCommand(["git", "rev-parse", "--show-toplevel"], workingDirectory)
+  if (root.exitCode !== 0) {
+    throw new Error("workspace change capture requires a git worktree")
+  }
+  if (canonicalPath(root.stdout.trim()) !== canonicalPath(workingDirectory)) {
+    throw new Error("workspace change capture refused: git root does not match the lane workspace")
+  }
+}
+
+function decodeNulSeparatedPaths(stdout: string): string[] {
+  return stdout.split("\0").filter((path) => path.length > 0)
+}
+
+async function listWorkspaceChangedPaths(workingDirectory: string): Promise<string[]> {
+  const tracked = await runTextCommand(["git", "diff", "--name-only", "-z", "HEAD", "--"], workingDirectory)
+  if (tracked.exitCode !== 0) throw new Error("workspace change capture failed: git diff failed")
+  const untracked = await runTextCommand(
+    ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+    workingDirectory,
+  )
+  if (untracked.exitCode !== 0) throw new Error("workspace change capture failed: git ls-files failed")
+  const paths = [...new Set([...decodeNulSeparatedPaths(tracked.stdout), ...decodeNulSeparatedPaths(untracked.stdout)])].sort()
+  for (const path of paths) assertSafeWorkspaceRelativePath(path)
+  return paths
+}
+
+async function workspaceDirtyState(workingDirectory: string): Promise<"clean" | "dirty" | "unknown"> {
+  if (!existsSync(workingDirectory) || !existsSync(join(workingDirectory, ".git"))) return "clean"
+  const inside = await runQuietCommand(["git", "rev-parse", "--is-inside-work-tree"], workingDirectory)
+  if (inside !== 0) return "clean"
+  try {
+    return (await listWorkspaceChangedPaths(workingDirectory)).length === 0 ? "clean" : "dirty"
+  } catch {
+    return "unknown"
+  }
+}
+
+function sourceBaseCommit(sourceRef: string): string {
+  const baseCommit = sourceRef.split(":").at(-1) ?? ""
+  return gitCommitShaPattern.test(baseCommit) ? baseCommit : "unknown"
+}
+
+export function workspaceChangeFileRef(sourceRef: string, relativePath: string): string {
+  assertSafeWorkspaceRelativePath(relativePath)
+  return stableRef("file.pylon.workspace", `${sourceRef}:${relativePath}`)
+}
+
+export async function captureWorkspaceChanges(input: {
+  cacheRoot: string
+  workingDirectory: string
+  workspaceRef: string
+  sourceRef: string
+  now?: Date
+}): Promise<WorkspaceChangeCapture> {
+  const { target } = assertPylonOwnedWorkspaceTarget(input)
+  await assertWorkspaceGitRoot(target)
+  const changedPaths = await listWorkspaceChangedPaths(target)
+  const head = await runTextCommand(["git", "rev-parse", "HEAD"], target)
+  if (head.exitCode !== 0) throw new Error("workspace change capture failed: unable to read HEAD")
+  const headCommit = head.stdout.trim()
+  return {
+    schema: WORKSPACE_CHANGE_CAPTURE_SCHEMA,
+    workspaceRef: input.workspaceRef,
+    sourceRef: input.sourceRef,
+    baseCommit: sourceBaseCommit(input.sourceRef),
+    headCommit,
+    state: changedPaths.length === 0 ? "clean" : "dirty",
+    changedCount: changedPaths.length,
+    fileRefs: changedPaths.map((path) => workspaceChangeFileRef(input.sourceRef, path)),
+    generatedAt: (input.now ?? new Date()).toISOString(),
+    local: { changedPaths },
+  }
+}
+
+export function publicWorkspaceChangeCaptureProjection(capture: WorkspaceChangeCapture) {
+  return {
+    schema: capture.schema,
+    workspaceRef: capture.workspaceRef,
+    sourceRef: capture.sourceRef,
+    baseCommit: capture.baseCommit,
+    headCommit: capture.headCommit,
+    state: capture.state,
+    changedCount: capture.changedCount,
+    fileRefs: capture.fileRefs,
+    generatedAt: capture.generatedAt,
+    ...(capture.commitRef === undefined ? {} : { commitRef: capture.commitRef }),
+  }
+}
+
+export async function stageWorkspacePaths(input: {
+  cacheRoot: string
+  workingDirectory: string
+  relativePaths: string[]
+}): Promise<{ stagedCount: number }> {
+  const { target } = assertPylonOwnedWorkspaceTarget(input)
+  await assertWorkspaceGitRoot(target)
+  const relativePaths = [...new Set(input.relativePaths)]
+  for (const path of relativePaths) assertSafeWorkspaceRelativePath(path)
+  if (relativePaths.length === 0) return { stagedCount: 0 }
+
+  const changedPaths = new Set(await listWorkspaceChangedPaths(target))
+  const foreignPath = relativePaths.find((path) => !changedPaths.has(path))
+  if (foreignPath !== undefined) {
+    throw new Error(`workspace staging refused: path is not in the lane change set`)
+  }
+
+  await runCheckedCommand(["git", "add", "--", ...relativePaths], target)
+  return { stagedCount: relativePaths.length }
+}
+
+export async function commitWorkspaceChanges(input: {
+  cacheRoot: string
+  workingDirectory: string
+  workspaceRef: string
+  sourceRef: string
+  message: string
+  now?: Date
+}): Promise<WorkspaceCommitResult> {
+  if (input.message.length === 0 || input.message.includes("\0")) {
+    throw new Error("workspace commit refused: invalid commit message")
+  }
+  const before = await captureWorkspaceChanges(input)
+  if (before.state === "clean") return { state: "clean", capture: before }
+  await stageWorkspacePaths({
+    cacheRoot: input.cacheRoot,
+    workingDirectory: input.workingDirectory,
+    relativePaths: before.local.changedPaths,
+  })
+  const { target } = assertPylonOwnedWorkspaceTarget(input)
+  const staged = await runQuietCommand(["git", "diff", "--cached", "--quiet"], target)
+  if (staged === 0) return { state: "clean", capture: before }
+  await runCheckedCommand(
+    [
+      "git",
+      "-c",
+      "user.email=pylon-workspace@example.invalid",
+      "-c",
+      "user.name=Pylon Workspace Materializer",
+      "commit",
+      "-m",
+      input.message,
+    ],
+    target,
+  )
+  const head = await runTextCommand(["git", "rev-parse", "HEAD"], target)
+  if (head.exitCode !== 0) throw new Error("workspace commit failed: unable to read HEAD")
+  const commitSha = head.stdout.trim()
+  const commitRef = stableRef("commit.pylon.workspace", commitSha)
+  return {
+    state: "committed",
+    commitRef,
+    commitSha,
+    capture: {
+      ...before,
+      state: "committed",
+      headCommit: commitSha,
+      commitRef,
+      generatedAt: (input.now ?? new Date()).toISOString(),
+    },
+  }
+}
+
+export function detectWorkspaceChangeConflicts(
+  captures: ReadonlyArray<WorkspaceChangeCapture>,
+): WorkspaceChangeConflictScan {
+  const byFileRef = new Map<string, { sourceRef: string; workspaceRefs: Set<string> }>()
+  for (const capture of captures) {
+    if (capture.state === "clean") continue
+    for (const fileRef of capture.fileRefs) {
+      const existing = byFileRef.get(fileRef) ?? { sourceRef: capture.sourceRef, workspaceRefs: new Set<string>() }
+      existing.workspaceRefs.add(capture.workspaceRef)
+      byFileRef.set(fileRef, existing)
+    }
+  }
+  const conflicts = [...byFileRef.entries()]
+    .map(([fileRef, value]) => ({
+      conflictRef: stableRef("conflict.pylon.workspace", `${fileRef}:${[...value.workspaceRefs].sort().join(":")}`),
+      fileRef,
+      sourceRef: value.sourceRef,
+      workspaceRefs: [...value.workspaceRefs].sort(),
+    }))
+    .filter((conflict) => conflict.workspaceRefs.length > 1)
+  return {
+    state: conflicts.length === 0 ? "clear" : "conflicted",
+    conflictRefs: conflicts.map((conflict) => conflict.conflictRef),
+    conflicts,
   }
 }
 
@@ -160,11 +436,7 @@ export async function removeMaterializedWorkspace(input: {
   cacheRoot: string
   workingDirectory: string
 }): Promise<void> {
-  const cacheRoot = resolve(input.cacheRoot)
-  const target = resolve(input.workingDirectory)
-  if (target === cacheRoot || !target.startsWith(`${cacheRoot}/`)) {
-    throw new Error("workspace cleanup refused: target is outside the Pylon-owned cache root")
-  }
+  const { target } = assertPylonOwnedWorkspaceTarget(input)
   await rm(target, { recursive: true, force: true })
 }
 
@@ -203,6 +475,8 @@ export type WorkspaceLeaseRecord = {
   generatedAt: string
   cleanupReceiptRef?: string
   cleanedAt?: string
+  retentionReasonRef?: string
+  lastCleanupAttemptAt?: string
   /**
    * Local-only mechanics. Never projected, never emitted in progress
    * events, closeouts, or any public surface.
@@ -388,13 +662,17 @@ export async function materializeGitCheckoutWorkspaceWithLease(
   return materialized
 }
 
+type CleanLeaseRecordResult =
+  | { state: "cleaned"; cleanupReceiptRef: string }
+  | { state: "retained"; retentionReasonRef: string; workspaceRef: string }
+
 async function cleanLeaseRecord(
   workspaceStateRoot: string,
   record: WorkspaceLeaseRecord,
   now: Date,
-): Promise<string | null> {
+): Promise<CleanLeaseRecordResult | null> {
   try {
-    await removeMaterializedWorkspace({
+    assertPylonOwnedWorkspaceTarget({
       cacheRoot: record.local.cacheRoot,
       workingDirectory: record.local.workingDirectory,
     })
@@ -402,6 +680,23 @@ async function cleanLeaseRecord(
     // a record pointing outside the cache root is never acted on
     return null
   }
+  const dirtyState = await workspaceDirtyState(record.local.workingDirectory)
+  if (dirtyState !== "clean") {
+    const attemptedAt = now.toISOString()
+    const retentionReasonRef =
+      dirtyState === "dirty" ? "retention.workspace.dirty" : "retention.workspace.dirty_state_unknown"
+    await writeLeaseRecord(workspaceStateRoot, {
+      ...record,
+      retentionReasonRef,
+      lastCleanupAttemptAt: attemptedAt,
+      generatedAt: attemptedAt,
+    })
+    return { state: "retained", retentionReasonRef, workspaceRef: record.workspaceRef }
+  }
+  await removeMaterializedWorkspace({
+    cacheRoot: record.local.cacheRoot,
+    workingDirectory: record.local.workingDirectory,
+  })
   if (record.local.repositoryCacheDirectory !== undefined) {
     await runQuietCommand(["git", "worktree", "prune"], record.local.repositoryCacheDirectory)
   }
@@ -415,9 +710,11 @@ async function cleanLeaseRecord(
     state: "cleaned",
     cleanedAt,
     cleanupReceiptRef,
+    retentionReasonRef: undefined,
+    lastCleanupAttemptAt: undefined,
     generatedAt: cleanedAt,
   })
-  return cleanupReceiptRef
+  return { state: "cleaned", cleanupReceiptRef }
 }
 
 /**
@@ -428,25 +725,27 @@ async function cleanLeaseRecord(
 export async function cleanupExpiredWorkspaces(input: {
   workspaceStateRoot: string
   now?: Date
-}): Promise<{ cleanupReceiptRefs: string[] }> {
+}): Promise<{ cleanupReceiptRefs: string[]; retainedWorkspaceRefs: string[] }> {
   const now = input.now ?? new Date()
   let entries: string[]
   try {
     entries = await readdir(input.workspaceStateRoot)
   } catch {
-    return { cleanupReceiptRefs: [] }
+    return { cleanupReceiptRefs: [], retainedWorkspaceRefs: [] }
   }
   const cleanupReceiptRefs: string[] = []
+  const retainedWorkspaceRefs: string[] = []
   for (const entry of entries) {
     if (!entry.endsWith(".json")) continue
     const record = await readLeaseRecord(join(input.workspaceStateRoot, entry))
     if (record === null || record.state !== "materialized") continue
     const expiresAtMs = Date.parse(record.materializedAt) + record.ttlSeconds * 1000
     if (!Number.isFinite(expiresAtMs) || now.getTime() < expiresAtMs) continue
-    const receipt = await cleanLeaseRecord(input.workspaceStateRoot, record, now)
-    if (receipt !== null) cleanupReceiptRefs.push(receipt)
+    const result = await cleanLeaseRecord(input.workspaceStateRoot, record, now)
+    if (result?.state === "cleaned") cleanupReceiptRefs.push(result.cleanupReceiptRef)
+    if (result?.state === "retained") retainedWorkspaceRefs.push(result.workspaceRef)
   }
-  return { cleanupReceiptRefs }
+  return { cleanupReceiptRefs, retainedWorkspaceRefs }
 }
 
 /**
@@ -458,13 +757,17 @@ export async function releaseWorkspace(input: {
   workspaceStateRoot: string
   workspaceRef: string
   now?: Date
-}): Promise<{ cleanupReceiptRef: string } | null> {
+}): Promise<{ cleanupReceiptRef?: string; retainedWorkspaceRef?: string; retentionReasonRef?: string } | null> {
   const record = await readLeaseRecord(
     leaseRecordPath(input.workspaceStateRoot, input.workspaceRef),
   )
   if (record === null || record.state !== "materialized") return null
-  const receipt = await cleanLeaseRecord(input.workspaceStateRoot, record, input.now ?? new Date())
-  return receipt === null ? null : { cleanupReceiptRef: receipt }
+  const result = await cleanLeaseRecord(input.workspaceStateRoot, record, input.now ?? new Date())
+  if (result?.state === "cleaned") return { cleanupReceiptRef: result.cleanupReceiptRef }
+  if (result?.state === "retained") {
+    return { retainedWorkspaceRef: result.workspaceRef, retentionReasonRef: result.retentionReasonRef }
+  }
+  return null
 }
 
 /** Reads one lease record by workspace ref (local diagnostics only). */
@@ -495,6 +798,8 @@ export function publicWorkspaceLeaseProjection(record: WorkspaceLeaseRecord) {
     generatedAt: record.generatedAt,
     ...(record.cleanupReceiptRef === undefined ? {} : { cleanupReceiptRef: record.cleanupReceiptRef }),
     ...(record.cleanedAt === undefined ? {} : { cleanedAt: record.cleanedAt }),
+    ...(record.retentionReasonRef === undefined ? {} : { retentionReasonRef: record.retentionReasonRef }),
+    ...(record.lastCleanupAttemptAt === undefined ? {} : { lastCleanupAttemptAt: record.lastCleanupAttemptAt }),
   }
 }
 

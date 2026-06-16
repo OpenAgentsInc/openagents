@@ -165,9 +165,9 @@ epics below; not all lands today — the aim is the main spine.
 - **C1 frontend** (workspace page + invite UI) · **C2** (#5093) operator seeding +
   invite-link + engagement tracking · **C4** (#5095) Slack Connect invite.
 - **Epic D — customer-#1 dogfood (#5104):** **D1** (#5096) route our own AI/coding
-  spend through the pool/nodes (ship now) · **D4** (#5106) **per-lane worktree
-  isolation hardening** for the Autopilot Coder (no shared-checkout
-  cross-contamination — see Coordination note).
+  spend through the pool/nodes (ship now) · **D4** (#5106) fixed: Pylon now has
+  lane-scoped change capture/commit guards, shared-file conflict refs, and dirty
+  workspace retention for Autopilot Coder worktrees.
 - **Epic E — first design-partner deliverables (#5105):** prefilled workspaces per
   vertical (e-commerce / legal / marketing-agency) + per-vertical stage templates.
 - **Epic G — fold the terminal-agent-systems into the Forge Autopilot Coder

@@ -4,13 +4,19 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
+  captureWorkspaceChanges,
   cleanupExpiredWorkspaces,
+  commitWorkspaceChanges,
   createGitWorktreeCheckoutRunner,
+  detectWorkspaceChangeConflicts,
   materializeGitCheckoutWorkspaceWithLease,
+  publicWorkspaceChangeCaptureProjection,
   publicWorkspaceLeaseProjection,
   releaseWorkspace,
   repositoryCacheKeyFor,
+  stageWorkspacePaths,
   withWorkspaceMaterializerCapability,
+  workspaceChangeFileRef,
   workspaceLeaseRecordFor,
   WORKSPACE_CLEANUP_RECEIPTS_CAPABILITY_REF,
   WORKSPACE_LEASE_SCHEMA,
@@ -67,6 +73,24 @@ function checkoutFor(commitSha: string, fullName = "OpenAgentsInc/worktree-fixtu
       args: ["bun", "test", "sum.test.ts"],
       commandRef: "command.public.autopilot_coder.bun_test_sum",
     },
+  }
+}
+
+const stubRunner: WorkspaceCheckoutRunner = async (workingDirectory) => {
+  await mkdir(workingDirectory, { recursive: true })
+  await writeFile(join(workingDirectory, "checked-out"), "ok\n")
+}
+
+function leaseInput(root: string, overrides: Record<string, unknown> = {}) {
+  return {
+    cacheRoot: join(root, "adapter-tasks"),
+    checkout: checkoutFor("3333333333333333333333333333333333333333"),
+    checkoutRunner: stubRunner,
+    leaseRef: "lease.public.worktree.test",
+    refPrefix: "workspace.pylon.claude_agent_task",
+    repositoryCacheRoot: join(root, "git-cache"),
+    workspaceStateRoot: join(root, "workspace-leases"),
+    ...overrides,
   }
 }
 
@@ -165,27 +189,134 @@ describe("createGitWorktreeCheckoutRunner", () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  test("lane change capture, conflict detection, and commits stay scoped to each worktree", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
+    try {
+      const originRoot = join(root, "origin")
+      const origin = await createOriginRepo(originRoot)
+      const checkout = checkoutFor(origin.commitSha)
+      const runner = createGitWorktreeCheckoutRunner({
+        repositoryCacheRoot: join(root, "git-cache"),
+        remoteUrlFor: () => origin.url,
+      })
+      const cacheRoot = join(root, "adapter-tasks")
+      const [first, second] = await Promise.all([
+        materializeGitCheckoutWorkspaceWithLease(
+          leaseInput(root, {
+            cacheRoot,
+            checkout,
+            checkoutRunner: runner,
+            leaseRef: "lease.public.worktree.capture.first",
+          }) as never,
+        ),
+        materializeGitCheckoutWorkspaceWithLease(
+          leaseInput(root, {
+            cacheRoot,
+            checkout,
+            checkoutRunner: runner,
+            leaseRef: "lease.public.worktree.capture.second",
+          }) as never,
+        ),
+      ])
+
+      await writeFile(join(first.workingDirectory, "sum.ts"), "export const sum = () => 11\n")
+      await writeFile(join(first.workingDirectory, "first-only.ts"), "export const firstOnly = true\n")
+      await writeFile(join(second.workingDirectory, "sum.ts"), "export const sum = () => 22\n")
+      await writeFile(join(second.workingDirectory, "second-only.ts"), "export const secondOnly = true\n")
+
+      const firstStatus = await run(["git", "status", "--porcelain"], first.workingDirectory)
+      const secondStatus = await run(["git", "status", "--porcelain"], second.workingDirectory)
+      expect(firstStatus).toContain("sum.ts")
+      expect(firstStatus).toContain("first-only.ts")
+      expect(firstStatus).not.toContain("second-only.ts")
+      expect(secondStatus).toContain("sum.ts")
+      expect(secondStatus).toContain("second-only.ts")
+      expect(secondStatus).not.toContain("first-only.ts")
+      expect(await run(["git", "status", "--porcelain"], originRoot)).toBe("")
+
+      const firstCapture = await captureWorkspaceChanges({
+        cacheRoot,
+        sourceRef: first.sourceRef,
+        workingDirectory: first.workingDirectory,
+        workspaceRef: first.workspaceRef,
+      })
+      const secondCapture = await captureWorkspaceChanges({
+        cacheRoot,
+        sourceRef: second.sourceRef,
+        workingDirectory: second.workingDirectory,
+        workspaceRef: second.workspaceRef,
+      })
+      expect(firstCapture.local.changedPaths).toEqual(["first-only.ts", "sum.ts"])
+      expect(secondCapture.local.changedPaths).toEqual(["second-only.ts", "sum.ts"])
+      expect(firstCapture.fileRefs).toContain(workspaceChangeFileRef(first.sourceRef, "sum.ts"))
+      expect(firstCapture.fileRefs).toContain(workspaceChangeFileRef(first.sourceRef, "first-only.ts"))
+      expect(secondCapture.fileRefs).toContain(workspaceChangeFileRef(second.sourceRef, "sum.ts"))
+      expect(secondCapture.fileRefs).toContain(workspaceChangeFileRef(second.sourceRef, "second-only.ts"))
+      const publicCapture = publicWorkspaceChangeCaptureProjection(firstCapture)
+      expect("local" in publicCapture).toBe(false)
+      assertPublicProjectionSafe(publicCapture)
+
+      await expect(
+        stageWorkspacePaths({
+          cacheRoot,
+          relativePaths: ["../second-only.ts"],
+          workingDirectory: first.workingDirectory,
+        }),
+      ).rejects.toThrow("traversal")
+      await expect(
+        stageWorkspacePaths({
+          cacheRoot,
+          relativePaths: ["second-only.ts"],
+          workingDirectory: first.workingDirectory,
+        }),
+      ).rejects.toThrow("not in the lane change set")
+
+      const conflicts = detectWorkspaceChangeConflicts([firstCapture, secondCapture])
+      expect(conflicts.state).toBe("conflicted")
+      expect(conflicts.conflicts).toEqual([
+        {
+          conflictRef: conflicts.conflictRefs[0],
+          fileRef: workspaceChangeFileRef(first.sourceRef, "sum.ts"),
+          sourceRef: first.sourceRef,
+          workspaceRefs: [first.workspaceRef, second.workspaceRef].sort(),
+        },
+      ])
+
+      const firstCommit = await commitWorkspaceChanges({
+        cacheRoot,
+        message: "lane first scoped commit",
+        sourceRef: first.sourceRef,
+        workingDirectory: first.workingDirectory,
+        workspaceRef: first.workspaceRef,
+      })
+      const secondCommit = await commitWorkspaceChanges({
+        cacheRoot,
+        message: "lane second scoped commit",
+        sourceRef: second.sourceRef,
+        workingDirectory: second.workingDirectory,
+        workspaceRef: second.workspaceRef,
+      })
+      expect(firstCommit.state).toBe("committed")
+      expect(secondCommit.state).toBe("committed")
+      if (firstCommit.state !== "committed" || secondCommit.state !== "committed") {
+        throw new Error("expected scoped commits")
+      }
+      const firstCommitFiles = await run(["git", "show", "--name-only", "--format=", firstCommit.commitSha], first.workingDirectory)
+      const secondCommitFiles = await run(["git", "show", "--name-only", "--format=", secondCommit.commitSha], second.workingDirectory)
+      expect(firstCommitFiles).toContain("sum.ts")
+      expect(firstCommitFiles).toContain("first-only.ts")
+      expect(firstCommitFiles).not.toContain("second-only.ts")
+      expect(secondCommitFiles).toContain("sum.ts")
+      expect(secondCommitFiles).toContain("second-only.ts")
+      expect(secondCommitFiles).not.toContain("first-only.ts")
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("materializeGitCheckoutWorkspaceWithLease", () => {
-  const stubRunner: WorkspaceCheckoutRunner = async (workingDirectory) => {
-    await mkdir(workingDirectory, { recursive: true })
-    await writeFile(join(workingDirectory, "checked-out"), "ok\n")
-  }
-
-  function leaseInput(root: string, overrides: Record<string, unknown> = {}) {
-    return {
-      cacheRoot: join(root, "adapter-tasks"),
-      checkout: checkoutFor("3333333333333333333333333333333333333333"),
-      checkoutRunner: stubRunner,
-      leaseRef: "lease.public.worktree.test",
-      refPrefix: "workspace.pylon.claude_agent_task",
-      repositoryCacheRoot: join(root, "git-cache"),
-      workspaceStateRoot: join(root, "workspace-leases"),
-      ...overrides,
-    }
-  }
-
   test("records a workspace lease with state, TTL, retention, and refs", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-"))
     try {
@@ -327,6 +458,54 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
         now: new Date(t0.getTime() + 120_000),
       })
       expect(again.cleanupReceiptRefs).toEqual([])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("cleanup retains dirty workspaces while deleting expired clean lanes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-"))
+    try {
+      const origin = await createOriginRepo(join(root, "origin"))
+      const workspaceStateRoot = join(root, "workspace-leases")
+      const t0 = new Date("2026-06-11T12:00:00.000Z")
+      const dirty = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout: checkoutFor(origin.commitSha),
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.dirty",
+          now: t0,
+          remoteUrlFor: () => origin.url,
+          ttlSeconds: 60,
+        }) as never,
+      )
+      const clean = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout: checkoutFor(origin.commitSha),
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.clean",
+          now: t0,
+          remoteUrlFor: () => origin.url,
+          ttlSeconds: 60,
+        }) as never,
+      )
+      await writeFile(join(dirty.workingDirectory, "dirty-only.ts"), "export const dirtyOnly = true\n")
+
+      const swept = await cleanupExpiredWorkspaces({
+        workspaceStateRoot,
+        now: new Date(t0.getTime() + 61_000),
+      })
+      expect(swept.retainedWorkspaceRefs).toEqual([dirty.workspaceRef])
+      expect(swept.cleanupReceiptRefs.length).toBe(1)
+      expect(existsSync(dirty.workingDirectory)).toBe(true)
+      expect(existsSync(clean.workingDirectory)).toBe(false)
+
+      const dirtyRecord = await workspaceLeaseRecordFor({ workspaceStateRoot, workspaceRef: dirty.workspaceRef })
+      expect(dirtyRecord?.state).toBe("materialized")
+      expect(dirtyRecord?.retentionReasonRef).toBe("retention.workspace.dirty")
+      const projection = publicWorkspaceLeaseProjection(dirtyRecord as WorkspaceLeaseRecord)
+      expect(projection.retentionReasonRef).toBe("retention.workspace.dirty")
+      assertPublicProjectionSafe(projection)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
