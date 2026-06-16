@@ -1,3 +1,18 @@
+// Forge cockpit — the operator surface for software-factory work.
+//
+// This view is a reframing of the prior operator UI onto the shared
+// `@openagentsinc/ui` library (the `AiElements` family) plus the Forge object
+// model from `products/forge.md`:
+//
+//   - work orders / sessions   -> Runs (one execution attempt against a request)
+//   - the provider-account pool -> the compute / routing layer
+//   - the review/accept action  -> the accepted-outcome receipt
+//   - node placement / runner   -> where the work runs (local / cloud node)
+//
+// The control logic (messages, model fields, routes, composer + receipt
+// actions) is unchanged. Only the rendering and the operator-facing language
+// are reframed in Forge terms and rebuilt on `Ui.AiElements`.
+
 import { Match as M } from 'effect'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
@@ -116,10 +131,10 @@ const emptyView = (): Html => {
     [Ui.className<Message>('border border-[#222] bg-[#080808] p-5')],
     [
       h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
-        'No work orders',
+        'No Runs',
       ]),
       h.p([Ui.className<Message>('m-0 mt-2 text-sm/6 text-white/50')], [
-        'No mission-briefing work orders are visible for this owner yet.',
+        'No Runs are visible for this owner yet. Submit a Run to put work into the factory.',
       ]),
     ],
   )
@@ -146,12 +161,14 @@ const accessRequirementLabels = (
     )
     .filter(label => label !== '')
 
+// The compute / routing decision: which node the Run is placed on. Reframes the
+// runner-selection projection as the "where work runs" line.
 const placementSummary = (work: AutopilotWorkProjection): string => {
   const placement = recordFromUnknown(work.placementDecision)
   const selected = stringFromUnknown(placement.selectedRunnerKind)
   const fallback = stringFromUnknown(placement.fallbackRunnerKind)
 
-  return selected ?? fallback ?? 'No runner selected'
+  return selected ?? fallback ?? 'No node selected'
 }
 
 const composerStatusView = (model: Model): Html | null => {
@@ -162,7 +179,7 @@ const composerStatusView = (model: Model): Html | null => {
       AutopilotWorkComposerIdle: () => null,
       AutopilotWorkComposerSubmitting: () =>
         h.p([Ui.className<Message>('m-0 text-sm text-white/50')], [
-          'Submitting request...',
+          'Submitting Run...',
         ]),
       AutopilotWorkComposerFailed: ({ error }) => errorView(error),
       AutopilotWorkComposerSucceeded: ({ response }) => {
@@ -175,7 +192,7 @@ const composerStatusView = (model: Model): Html | null => {
               `${response.work.workOrderRef} - ${stateLabel(response.work.state)}`,
             ]),
             h.div([], [`Next: ${response.work.nextAction.state}`]),
-            h.div([], [`Runner: ${placementSummary(response.work)}`]),
+            h.div([], [`Runs on: ${placementSummary(response.work)}`]),
             access.length === 0
               ? null
               : h.div([], [`Needs: ${access.join(', ')}`]),
@@ -199,7 +216,7 @@ const composerView = (model: Model): Html => {
       h.OnSubmit(SubmittedAutopilotWorkComposer()),
     ],
     [
-      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['New work order']),
+      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['New Run']),
       h.label([Ui.className<Message>('grid gap-2')], [
         h.span([Ui.className<Message>('text-sm font-medium text-white/80')], [
           'Objective',
@@ -286,7 +303,7 @@ const composerView = (model: Model): Html => {
       composerStatusView(model),
       Ui.button<Message>({
         attrs: [h.Type('submit'), ...(submitting ? [h.Disabled(true)] : [])],
-        label: submitting ? 'Submitting...' : 'Submit work order',
+        label: submitting ? 'Submitting...' : 'Submit Run',
         size: 'sm',
         variant: 'primary',
       }),
@@ -487,8 +504,9 @@ const listLoadedView = (
     composerView(model),
     h.div([Ui.className<Message>('flex flex-wrap items-end justify-between gap-3')], [
       h.div([Ui.className<Message>('grid gap-1')], [
+        h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Forge cockpit']),
         h.h1([Ui.className<Message>('m-0 text-2xl font-semibold text-white')], [
-          'Autopilot work',
+          'Runs',
         ]),
         h.p([Ui.className<Message>('m-0 text-sm/6 text-white/50')], [
           `Generated ${formatIsoDateTime(generatedAt)}`,
@@ -517,7 +535,7 @@ const listLoadedView = (
                 ),
               ],
               [
-                h.div([], ['Order']),
+                h.div([], ['Run']),
                 h.div([], ['Lane']),
                 h.div([], ['Issue']),
                 h.div([Ui.className<Message>('text-right')], ['Status']),
@@ -535,12 +553,12 @@ export const listView = (model: Model): Html =>
       AutopilotWorkListIdle: () =>
         html<Message>().section([Ui.className<Message>('grid gap-4')], [
           composerView(model),
-          loadingView('Work orders have not loaded.'),
+          loadingView('Runs have not loaded.'),
         ]),
       AutopilotWorkListLoading: () =>
         html<Message>().section([Ui.className<Message>('grid gap-4')], [
           composerView(model),
-          loadingView('Loading work orders...'),
+          loadingView('Loading Runs...'),
         ]),
       AutopilotWorkListFailed: ({ error }) =>
         html<Message>().section([Ui.className<Message>('grid gap-4')], [
@@ -585,53 +603,44 @@ const refSection = (title: string, refs: ReadonlyArray<string>): Html => {
   ])
 }
 
-const eventRow = (event: AutopilotWorkEvent): Html => {
-  const h = html<Message>()
+// The Run lifecycle, expressed as an `AiElements` task list: each recorded
+// runtime event is a step, toned by its Run state.
+const eventTaskItem = (
+  event: AutopilotWorkEvent,
+): Ui.AiElements.TaskItemProps => {
+  const tone = stateTone(event.state)
+  const status: Ui.AiElements.TaskItemStatus =
+    tone === 'positive'
+      ? 'done'
+      : tone === 'negative'
+        ? 'failed'
+        : tone === 'info'
+          ? 'active'
+          : 'queued'
 
-  return h.div(
-    [
-      Ui.className<Message>(
-        'grid gap-1 border-b border-[#222] py-3 last:border-b-0 sm:grid-cols-[8rem_minmax(0,1fr)]',
-      ),
-    ],
-    [
-      h.div([Ui.className<Message>('text-xs text-white/35')], [
-        formatIsoDateTime(event.occurredAt),
-      ]),
-      h.div([Ui.className<Message>('grid gap-1')], [
-        h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
-          badge(event.eventKind.replaceAll('_', ' '), stateTone(event.state)),
-          h.span([Ui.className<Message>('text-xs text-white/35')], [
-            `Sequence ${event.sequence}`,
-          ]),
-        ]),
-        h.div([Ui.className<Message>('flex flex-wrap gap-2')], [
-          ...refChips(event.taskRefs),
-        ]),
-      ]),
-    ],
-  )
+  return {
+    label: `${event.eventKind.replaceAll('_', ' ')} — ${formatIsoDateTime(event.occurredAt)} (seq ${event.sequence})`,
+    status,
+  }
 }
 
 const eventsPanel = (model: Model): Html => {
   const h = html<Message>()
 
   return h.section([Ui.className<Message>('grid gap-3 border-t border-[#222] pt-5')], [
-    h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
-      'Lifecycle',
-    ]),
     M.value(model.autopilotWorkEvents).pipe(
       M.tags({
-        AutopilotWorkEventsIdle: () => loadingView('Events have not loaded.'),
-        AutopilotWorkEventsLoading: () => loadingView('Loading events...'),
+        AutopilotWorkEventsIdle: () => loadingView('Lifecycle has not loaded.'),
+        AutopilotWorkEventsLoading: () => loadingView('Loading lifecycle...'),
         AutopilotWorkEventsFailed: ({ error }) => errorView(error),
         AutopilotWorkEventsLoaded: ({ response }) =>
-          response.events.length === 0
-            ? loadingView('No lifecycle events yet.')
-            : h.div(
-                [Ui.className<Message>('border border-[#222] px-4')],
-                response.events.map(eventRow),
-              ),
+          Ui.AiElements.task<Message>({
+            props: {
+              title: 'Run lifecycle',
+              open: true,
+              items: response.events.map(eventTaskItem),
+            },
+          }),
       }),
       M.exhaustive,
     ),
@@ -658,7 +667,7 @@ const briefingPanel = (briefing: AutopilotMissionBriefing): Html => {
       html<Message>().div([Ui.className<Message>('grid gap-1')], [
         html<Message>().h2(
           [Ui.className<Message>('m-0 text-base font-medium text-white/80')],
-          ['Briefing'],
+          ['Evidence bundle'],
         ),
         html<Message>().p([Ui.className<Message>('m-0 text-sm text-white/45')], [
           `Generated ${formatIsoDateTime(briefing.generatedAt)}`,
@@ -684,8 +693,10 @@ const briefingPanel = (briefing: AutopilotMissionBriefing): Html => {
 const briefingStatePanel = (model: Model): Html =>
   M.value(model.autopilotWorkBriefing).pipe(
     M.tags({
-      AutopilotWorkBriefingIdle: () => loadingView('Briefing has not loaded.'),
-      AutopilotWorkBriefingLoading: () => loadingView('Loading briefing...'),
+      AutopilotWorkBriefingIdle: () =>
+        loadingView('Evidence bundle has not loaded.'),
+      AutopilotWorkBriefingLoading: () =>
+        loadingView('Loading evidence bundle...'),
       AutopilotWorkBriefingFailed: ({ error }) => errorView(error),
       AutopilotWorkBriefingLoaded: ({ response }) =>
         briefingPanel(response.briefing),
@@ -693,16 +704,21 @@ const briefingStatePanel = (model: Model): Html =>
     M.exhaustive,
   )
 
-const reviewButton = (
+// The accepted-outcome receipt: an approval gate over a delivered Run. Reframes
+// the review action onto the `AiElements` confirmation primitive while keeping
+// the existing review messages and disable rules.
+const receiptAction = (
   work: AutopilotWorkProjection,
   action: AutopilotWorkReviewAction,
   label: string,
-  variant: Ui.ButtonVariant,
+  variant: 'primary' | 'secondary' | 'danger',
 ): Html => {
   const h = html<Message>()
   const disabled = work.state !== 'delivered' || work.reviewDecision !== null
 
-  return Ui.button<Message>({
+  return Ui.AiElements.confirmationAction<Message>({
+    label,
+    variant,
     attrs: [
       h.Type('button'),
       ...(disabled
@@ -716,37 +732,46 @@ const reviewButton = (
             ),
           ]),
     ],
-    label,
-    size: 'sm',
-    variant,
   })
 }
 
-const reviewPanel = (model: Model, work: AutopilotWorkProjection): Html => {
+const receiptState = (
+  work: AutopilotWorkProjection,
+): Ui.AiElements.ConfirmationState => {
+  if (work.reviewDecision === null) {
+    return 'requested'
+  }
+
+  return work.reviewDecision.action === 'accept' ? 'approved' : 'rejected'
+}
+
+const receiptDetail = (work: AutopilotWorkProjection): string =>
+  work.reviewDecision === null
+    ? work.state === 'delivered'
+      ? 'Run delivered. Accept the outcome to record a receipt, or send it back.'
+      : 'The receipt opens once the Run is delivered.'
+    : `Recorded: ${work.reviewDecision.action.replaceAll('_', ' ')}`
+
+const receiptPanel = (model: Model, work: AutopilotWorkProjection): Html => {
   const h = html<Message>()
-  const reviewStatus =
-    work.reviewDecision === null
-      ? work.state === 'delivered'
-        ? 'Waiting for human review'
-        : 'Review opens after delivery'
-      : `Reviewed: ${work.reviewDecision.action.replaceAll('_', ' ')}`
+  const state = receiptState(work)
 
   return h.section([Ui.className<Message>('grid gap-3 border-t border-[#222] pt-5')], [
-    h.div([Ui.className<Message>('flex flex-wrap items-center justify-between gap-3')], [
-      h.div([Ui.className<Message>('grid gap-1')], [
-        h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
-          'Review',
-        ]),
-        h.p([Ui.className<Message>('m-0 text-sm text-white/45')], [
-          reviewStatus,
-        ]),
-      ]),
-      h.div([Ui.className<Message>('flex flex-wrap gap-2')], [
-        reviewButton(work, 'accept', 'Accept', 'primary'),
-        reviewButton(work, 'request_changes', 'Request changes', 'secondary'),
-        reviewButton(work, 'reject', 'Reject', 'danger'),
-      ]),
+    h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
+      'Accepted-outcome receipt',
     ]),
+    Ui.AiElements.confirmation<Message>({
+      props: {
+        title: `Outcome for ${work.workOrderRef}`,
+        state,
+        detail: receiptDetail(work),
+      },
+      actions: [
+        receiptAction(work, 'accept', 'Accept', 'primary'),
+        receiptAction(work, 'request_changes', 'Request changes', 'secondary'),
+        receiptAction(work, 'reject', 'Reject', 'danger'),
+      ],
+    }),
     M.value(model.autopilotWorkReview).pipe(
       M.tags({
         AutopilotWorkReviewIdle: () => h.span([Ui.className<Message>('hidden')], []),
@@ -754,7 +779,7 @@ const reviewPanel = (model: Model, work: AutopilotWorkProjection): Html => {
           loadingView(`Submitting ${action.replaceAll('_', ' ')}...`),
         AutopilotWorkReviewSucceeded: () =>
           h.p([Ui.className<Message>('m-0 text-sm text-[#7ccf8a]')], [
-            'Review recorded.',
+            'Receipt recorded.',
           ]),
         AutopilotWorkReviewFailed: ({ error }) => errorView(error),
       }),
@@ -774,7 +799,7 @@ const workSummaryPanel = (model: Model, work: AutopilotWorkProjection): Html => 
             h.Href(autopilotWorkRouter()),
             Ui.className<Message>(Ui.textLinkClass),
           ],
-          ['Autopilot work'],
+          ['Forge cockpit'],
         ),
         h.h1(
           [
@@ -785,7 +810,7 @@ const workSummaryPanel = (model: Model, work: AutopilotWorkProjection): Html => 
           [work.workOrderRef],
         ),
         h.p([Ui.className<Message>('m-0 text-sm text-white/45')], [
-          `Generated ${formatIsoDateTime(work.generatedAt)}`,
+          `Runs on ${placementSummary(work)} - generated ${formatIsoDateTime(work.generatedAt)}`,
         ]),
       ]),
       h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
@@ -829,7 +854,7 @@ const workSummaryPanel = (model: Model, work: AutopilotWorkProjection): Html => 
             refSection('Blocker refs', work.executionCloseout.blockerRefs ?? []),
           ],
         ),
-    reviewPanel(model, work),
+    receiptPanel(model, work),
     eventsPanel(model),
     briefingStatePanel(model),
   ])
@@ -838,8 +863,8 @@ const workSummaryPanel = (model: Model, work: AutopilotWorkProjection): Html => 
 export const detailView = (model: Model): Html =>
   M.value(model.autopilotWorkDetail).pipe(
     M.tags({
-      AutopilotWorkDetailIdle: () => loadingView('Work order has not loaded.'),
-      AutopilotWorkDetailLoading: () => loadingView('Loading work order...'),
+      AutopilotWorkDetailIdle: () => loadingView('Run has not loaded.'),
+      AutopilotWorkDetailLoading: () => loadingView('Loading Run...'),
       AutopilotWorkDetailFailed: ({ error }) => errorView(error),
       AutopilotWorkDetailLoaded: ({ response }) =>
         workSummaryPanel(model, response.work),
