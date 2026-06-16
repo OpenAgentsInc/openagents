@@ -5386,6 +5386,7 @@ describe('Forum routes', () => {
 
   test('lists public-safe posts with listed default and authenticated unlisted discovery', async () => {
     const store = new ForumRouteStore()
+    store.tipRecipientWallets.push(readyTipRecipientWalletRow())
     store.topics.push({
       actor_json: actorJson,
       archived_at: null,
@@ -5445,7 +5446,19 @@ describe('Forum routes', () => {
       forums: ReadonlyArray<Readonly<{ slug: string }>>
       includeUnlisted: boolean
       pagination: Readonly<{ hasMore: boolean; limit: number }>
-      posts: ReadonlyArray<Readonly<{ bodyText: string }>>
+      posts: ReadonlyArray<
+        Readonly<{
+          bodyText: string
+          capabilities: Readonly<{ canTip: boolean }>
+          postId: string
+          tipRecipientReadiness: Readonly<{
+            blockerRef: string | null
+            providerClass: string | null
+            state: string
+            tippingAvailable: boolean
+          }>
+        }>
+      >
       topics: ReadonlyArray<Readonly<{ title: string }>>
     }>
     expect(listedBody).toMatchObject({
@@ -5460,6 +5473,19 @@ describe('Forum routes', () => {
         expect.objectContaining({ bodyText: 'Seed route-test body.' }),
       ]),
     )
+    expect(
+      listedBody.posts.find(
+        post => post.postId === '66666666-6666-4666-8666-666666666666',
+      ),
+    ).toMatchObject({
+      capabilities: { canTip: true },
+      tipRecipientReadiness: {
+        blockerRef: null,
+        providerClass: 'mdk_agent_wallet',
+        state: 'ready',
+        tippingAvailable: true,
+      },
+    })
     expect(listedBody.posts).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ bodyText: 'Void route-test body.' }),

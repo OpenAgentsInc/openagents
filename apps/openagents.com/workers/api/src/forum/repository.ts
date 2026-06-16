@@ -2806,7 +2806,19 @@ export const readForumPostList = (
             createdAt: lastVisibleRow.created_at,
             postId: lastVisibleRow.id,
           })
-    const posts = visibleRows.map(postFromRow)
+    const postsWithoutTipReadiness = visibleRows.map(postFromRow)
+    const postTipRecipientReadiness = yield* Effect.all(
+      postsWithoutTipReadiness.map(post =>
+        readForumTipRecipientReadinessForActor(db, post.author.actorRef),
+      ),
+    )
+    const posts = postsWithoutTipReadiness.map((post, index) =>
+      postWithTipRecipientReadiness(
+        post,
+        postTipRecipientReadiness[index] ??
+          missingForumTipRecipientReadiness(post.author.actorRef),
+      ),
+    )
     const tipStats = yield* readForumPostTipStats(
       db,
       posts.map(post => post.postId),

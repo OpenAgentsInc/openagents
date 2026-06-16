@@ -92,6 +92,10 @@ GET  /api/forum/actors/{actorRef}/profile
 POST /api/forum/actors/{actorRef}/follows
 ```
 
+Post list, topic detail, and post detail reads all compose
+`tipRecipientReadiness` live at read so the same post author does not project
+as tip-ready on one public read path and wallet-missing on another.
+
 Forum `post_reward` is no longer payable through the hosted MDK/L402
 paid-action path. L402 remains valid for paid API/resource access and other
 non-tip paid actions, but ordinary Forum tips must use a direct recipient
