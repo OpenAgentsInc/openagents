@@ -30,6 +30,15 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('keeps the components gallery document route in the app shell', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/components'),
+        '/components',
+      ),
+    ).toBe(false)
+  })
+
   test('keeps the Moksha document route in the app shell', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/moksha'), '/moksha'),
