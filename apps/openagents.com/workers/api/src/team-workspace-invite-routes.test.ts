@@ -476,6 +476,63 @@ describe('team workspace invite routes', () => {
     expect(JSON.stringify(body)).not.toContain('email:teammate')
   })
 
+  test('sends unauthenticated GET invite clicks through email login and back to the invite', async () => {
+    const store = new MemoryInviteStore()
+    await routeRequest(
+      store,
+      operatorCreateRequest({
+        email: 'teammate@example.com',
+        projectId: 'project_1',
+        teamId: 'team_1',
+      }),
+    )
+    const response = await routeRequest(
+      store,
+      new Request(
+        'https://openagents.com/api/team-workspace-invites/accept?token=token-0',
+      ),
+    )
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get('location')).toBe(
+      'https://openagents.com/login/email?returnTo=%2Fapi%2Fteam-workspace-invites%2Faccept%3Ftoken%3Dtoken-0',
+    )
+    expect(store.memberships.size).toBe(0)
+  })
+
+  test('sends wrong-account GET invite clicks through logout before retrying acceptance', async () => {
+    const store = new MemoryInviteStore()
+    await routeRequest(
+      store,
+      operatorCreateRequest({
+        email: 'teammate@example.com',
+        projectId: 'project_1',
+        teamId: 'team_1',
+      }),
+    )
+    const response = await routeRequest(
+      store,
+      new Request(
+        'https://openagents.com/api/team-workspace-invites/accept?token=token-0',
+      ),
+      {
+        session: {
+          user: {
+            email: 'other@example.com',
+            name: 'Other',
+            userId: 'email:other@example.com',
+          },
+        },
+      },
+    )
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get('location')).toBe(
+      'https://openagents.com/auth/logout?returnTo=%2Fapi%2Fteam-workspace-invites%2Faccept%3Ftoken%3Dtoken-0',
+    )
+    expect(store.memberships.size).toBe(0)
+  })
+
   test('rejects an invite accepted by a different signed-in email', async () => {
     const store = new MemoryInviteStore()
     await routeRequest(

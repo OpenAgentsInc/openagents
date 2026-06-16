@@ -3011,6 +3011,14 @@ const cleanLoginReturnPath = (value: string | null): string | undefined => {
       return undefined
     }
 
+    if (url.pathname === '/api/team-workspace-invites/accept') {
+      const token = url.searchParams.get('token')?.trim()
+
+      return token === undefined || token === ''
+        ? undefined
+        : `${url.pathname}?token=${encodeURIComponent(token)}`
+    }
+
     const isAgentClaimReturn = isAgentClaimReturnPath(url.pathname)
 
     if (
@@ -3509,7 +3517,12 @@ const handleAuthCallback = async (
 }
 
 const handleLogout = (request: Request): Response => {
-  const response = redirectResponse('/')
+  const requestUrl = new URL(request.url)
+  const maybeReturnTo = cleanLoginReturnPath(
+    requestUrl.searchParams.get('returnTo') ??
+      requestUrl.searchParams.get('return_to'),
+  )
+  const response = redirectResponse(maybeReturnTo ?? '/')
   appendClearSessionCookies(response.headers, new URL(request.url).hostname)
 
   return response

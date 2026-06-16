@@ -292,6 +292,40 @@ const safeAcceptInviteView = (
   },
 })
 
+const acceptReturnPath = (request: Request): string => {
+  const url = new URL(request.url)
+
+  return `${url.pathname}${url.search}`
+}
+
+const acceptLoginRedirect = <
+  Bindings,
+  Session extends TeamWorkspaceInviteSession = TeamWorkspaceInviteSession,
+>(
+  dependencies: TeamWorkspaceInviteRouteDependencies<Bindings, Session>,
+  request: Request,
+  env: Bindings,
+): HttpResponse =>
+  redirectResponse(
+    `${dependencies.appOrigin(env)}/login/email?returnTo=${encodeURIComponent(
+      acceptReturnPath(request),
+    )}`,
+  )
+
+const acceptWrongAccountRedirect = <
+  Bindings,
+  Session extends TeamWorkspaceInviteSession = TeamWorkspaceInviteSession,
+>(
+  dependencies: TeamWorkspaceInviteRouteDependencies<Bindings, Session>,
+  request: Request,
+  env: Bindings,
+): HttpResponse =>
+  redirectResponse(
+    `${dependencies.appOrigin(env)}/auth/logout?returnTo=${encodeURIComponent(
+      acceptReturnPath(request),
+    )}`,
+  )
+
 const createInvite = <
   Bindings,
   Session extends TeamWorkspaceInviteSession = TeamWorkspaceInviteSession,
@@ -433,7 +467,9 @@ const acceptInvite = <
     })
 
     if (session === undefined) {
-      return unauthorized()
+      return request.method === 'GET'
+        ? acceptLoginRedirect(dependencies, request, env)
+        : unauthorized()
     }
 
     const result = yield* dependencyPromise(() =>
@@ -481,7 +517,10 @@ const acceptInvite = <
             { error: 'team_workspace_invite_not_found' },
             { status: 404 },
           ),
-        WrongUser: () => forbidden(),
+        WrongUser: () =>
+          request.method === 'GET'
+            ? acceptWrongAccountRedirect(dependencies, request, env)
+            : forbidden(),
       }),
       M.exhaustive,
     )

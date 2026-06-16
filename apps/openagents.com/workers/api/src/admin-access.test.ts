@@ -251,6 +251,57 @@ describe('OpenAgents admin access policy', () => {
     ).toBe(true)
   })
 
+  test('stores invite accept return targets when starting email login', async () => {
+    const response = await worker.fetch(
+      new Request(
+        'https://openagents.com/login/email?returnTo=%2Fapi%2Fteam-workspace-invites%2Faccept%3Ftoken%3Dinvite_token_123%26utm%3Dignored',
+      ) as never,
+      {
+        ASSETS: {
+          fetch: () => Response.json({ unused: true }),
+        },
+        ...requiredWorkerConfig,
+      } as never,
+      executionContext,
+    )
+    const cookies = response.headers.getSetCookie()
+
+    expect(response.status).toBe(302)
+    expect(cookies.some(cookie => cookie.includes('oa_auth_state='))).toBe(true)
+    expect(
+      cookies.some(cookie =>
+        cookie.includes(
+          'oa_login_return_to=%2Fapi%2Fteam-workspace-invites%2Faccept%3Ftoken%3Dinvite_token_123',
+        ),
+      ),
+    ).toBe(true)
+    expect(cookies.join('\n')).not.toContain('utm')
+  })
+
+  test('does not store invite accept return targets without a token', async () => {
+    const response = await worker.fetch(
+      new Request(
+        'https://openagents.com/login/email?returnTo=%2Fapi%2Fteam-workspace-invites%2Faccept',
+      ) as never,
+      {
+        ASSETS: {
+          fetch: () => Response.json({ unused: true }),
+        },
+        ...requiredWorkerConfig,
+      } as never,
+      executionContext,
+    )
+    const cookies = response.headers.getSetCookie()
+
+    expect(response.status).toBe(302)
+    expect(
+      cookies.some(cookie => /^oa_login_return_to=[^;]/.test(cookie)),
+    ).toBe(false)
+    expect(cookies).toContain(
+      'oa_login_return_to=; Max-Age=0; Path=/auth; HttpOnly; Secure; SameSite=Lax',
+    )
+  })
+
   test('stores a clean agent claim return target when starting GitHub login', async () => {
     const response = await worker.fetch(
       new Request(
@@ -399,6 +450,28 @@ describe('OpenAgents admin access policy', () => {
         cookies.some(cookie => cookie.includes('Domain=.openagents.com')),
       ).toBe(true)
     }
+  })
+
+  test('logout can return directly to a team workspace invite accept link', async () => {
+    const response = await worker.fetch(
+      new Request(
+        'https://openagents.com/auth/logout?returnTo=%2Fapi%2Fteam-workspace-invites%2Faccept%3Ftoken%3Dinvite_token_123%26utm%3Dignored',
+      ) as never,
+      {
+        ASSETS: {
+          fetch: () => Response.json({ unused: true }),
+        },
+        ...requiredWorkerConfig,
+      } as never,
+      executionContext,
+    )
+    const cookies = response.headers.getSetCookie()
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get('location')).toBe(
+      '/api/team-workspace-invites/accept?token=invite_token_123',
+    )
+    expect(cookies).toHaveLength(12)
   })
 
   test('session API clears a surviving refresh cookie and returns logged out', async () => {

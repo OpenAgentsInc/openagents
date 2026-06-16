@@ -343,8 +343,13 @@ only into the teammate's browser or a private channel.
 Acceptance behavior:
 
 - `GET /api/team-workspace-invites/accept?token=...` redirects after success.
+- A logged-out `GET` click redirects to `/login/email` with the invite accept
+  path as the return target, then retries the same invite after sign-in.
+- A signed-in browser using the wrong account is sent through `/auth/logout`
+  first, then returned to the same invite link and email-login flow.
 - `POST /api/team-workspace-invites/accept` returns JSON for scripted checks.
-- A signed-in user with a different email gets `403`.
+- A signed-in user with a different email still gets `403` on the scripted
+  `POST` accept API; browser `GET` links use the recovery redirect above.
 - An expired invite gets `410`.
 - An already accepted invite is idempotent for the same accepted user.
 - A successful accept creates/reactivates `team_memberships` for the team with
