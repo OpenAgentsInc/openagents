@@ -3,14 +3,20 @@ import { describe, expect, test } from 'vitest'
 
 import {
   EmailAddress,
+  type ResendEmailConfig,
   ResendEmailSender,
   WorkerSecret,
-  type ResendEmailConfig,
 } from './config'
 import type {
   EmailLedgerSendResult,
   PrivateWorkspaceInviteEmailInput,
 } from './email'
+import {
+  type CreatePrefilledWorkspaceInput,
+  type PrefilledWorkspaceRecord,
+  type PrefilledWorkspaceServiceShape,
+  makePrefilledWorkspaceRecord,
+} from './prefilled-workspace'
 import {
   type CreateOrUpdatePrivateProjectInput,
   type PrivateProjectWorkspaceProjectRecord,
@@ -18,12 +24,6 @@ import {
   type PrivateProjectWorkspaceTeamRecord,
   makePrivateProjectWorkspaceRoutes,
 } from './private-project-workspace-routes'
-import {
-  type CreatePrefilledWorkspaceInput,
-  type PrefilledWorkspaceRecord,
-  type PrefilledWorkspaceServiceShape,
-  makePrefilledWorkspaceRecord,
-} from './prefilled-workspace'
 import {
   type TeamWorkspaceInviteAcceptInput,
   type TeamWorkspaceInviteAcceptResult,
@@ -56,9 +56,7 @@ class MemoryPrivateProjectStore implements PrivateProjectWorkspaceStore {
   readonly projects = new Map<string, PrivateProjectWorkspaceProjectRecord>()
   readonly teams = new Map<string, PrivateProjectWorkspaceTeamRecord>()
 
-  createOrUpdateProject = async (
-    input: CreateOrUpdatePrivateProjectInput,
-  ) => {
+  createOrUpdateProject = async (input: CreateOrUpdatePrivateProjectInput) => {
     const existingTeam = this.teams.get(input.teamSlug)
     const team =
       existingTeam ??
@@ -299,21 +297,26 @@ const routeRequest = async (
   ).routePrivateProjectWorkspaceRequest(request, env, ctx)
 
   if (effect === undefined) {
-    throw new Error('Expected private project workspace route to handle request.')
+    throw new Error(
+      'Expected private project workspace route to handle request.',
+    )
   }
 
   return Effect.runPromise(effect)
 }
 
 const operatorRequest = (body: unknown, token = 'admin-token'): Request =>
-  new Request('https://openagents.com/api/operator/private-project-workspaces', {
-    body: JSON.stringify(body),
-    headers: {
-      authorization: `Bearer ${token}`,
-      'content-type': 'application/json',
+  new Request(
+    'https://openagents.com/api/operator/private-project-workspaces',
+    {
+      body: JSON.stringify(body),
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
     },
-    method: 'POST',
-  })
+  )
 
 const baseRequest = () => ({
   invitations: [
@@ -390,6 +393,21 @@ describe('private project workspace routes', () => {
       'team_workspace_invite:invite_1:1',
       'team_workspace_invite:invite_1:1:operator_copy',
     ])
+    expect(emailCalls.map(call => call.acceptUrl)).toEqual([
+      'https://openagents.com/api/team-workspace-invites/accept?token=token-0',
+      '[redacted operator copy invite link]',
+      'https://openagents.com/api/team-workspace-invites/accept?token=token-1',
+      '[redacted operator copy invite link]',
+    ])
+    expect(
+      emailCalls
+        .filter(call => call.to === 'operator-copy@example.com')
+        .every(
+          call =>
+            !call.acceptUrl.includes('accept?token') &&
+            !call.acceptUrl.includes('token-'),
+        ),
+    ).toBe(true)
     expect(testStores.invites.invites.get('invite_0')).toMatchObject({
       emailMessageId: 'email_msg_1',
       lastSentAt: nowIso,
@@ -454,7 +472,9 @@ describe('private project workspace routes', () => {
       { emailCalls },
     )
     const body = await response.json<{
-      invitations: ReadonlyArray<Readonly<{ copy: Readonly<{ status: string }> }>>
+      invitations: ReadonlyArray<
+        Readonly<{ copy: Readonly<{ status: string }> }>
+      >
     }>()
 
     expect(response.status).toBe(201)
@@ -486,10 +506,9 @@ describe('private project workspace routes', () => {
 
     expect(response.status).toBe(201)
     expect(testStores.invites.invites.size).toBe(2)
-    expect(body.invitations.map(invitation => invitation.email.status)).toEqual([
-      'missing_config',
-      'missing_config',
-    ])
+    expect(body.invitations.map(invitation => invitation.email.status)).toEqual(
+      ['missing_config', 'missing_config'],
+    )
     expect(body.invitations.map(invitation => invitation.copy.status)).toEqual([
       'missing_config',
       'missing_config',

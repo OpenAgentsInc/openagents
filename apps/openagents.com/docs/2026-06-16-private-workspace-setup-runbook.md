@@ -116,7 +116,8 @@ API defaults:
   at the request or per-invite level;
 - operator copy is sent to `email.operatorCopyEmail` when present, otherwise the
   configured Resend reply-to address; the current implementation uses a
-  separate ledger-backed copy email rather than visible CC;
+  separate ledger-backed copy email rather than visible CC, and the operator
+  copy redacts the invite token / accept URL so it is audit-only;
 - no raw accept URLs or invite tokens in normal responses unless the operator
   passes `"includeAcceptUrls": true`;
 - idempotent project/team selection and invite refresh so repeating the same

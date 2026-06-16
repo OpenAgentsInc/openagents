@@ -425,6 +425,8 @@ const inviteEmailIdempotencyKey = (
   sendCount: number,
 ): string => `team_workspace_invite:${inviteId}:${sendCount + 1}`
 
+const redactedOperatorCopyAcceptUrl = '[redacted operator copy invite link]'
+
 const inviteEmailInput = (
   invitation: PrivateProjectInvitationInput,
   workspaceLabel: string,
@@ -617,7 +619,7 @@ const sendInviteAndOperatorCopy = <Bindings>(
         invitation,
         workspaceLabel,
         invite,
-        inviteAcceptUrl,
+        redactedOperatorCopyAcceptUrl,
         `${baseIdempotencyKey}:operator_copy`,
         operatorCopyEmail,
       ),

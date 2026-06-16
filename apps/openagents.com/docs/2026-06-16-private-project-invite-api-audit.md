@@ -92,7 +92,8 @@ Implemented defaults:
 - Per-invite `copyOperator` overrides the request-level default.
 - Operator copy is sent as a separate ledger-backed email to
   `email.operatorCopyEmail` when supplied, otherwise the configured Resend
-  reply-to address.
+  reply-to address. Operator copies redact the live accept URL / invite token so
+  the copy is audit-only and cannot be used to accept the invite.
 - `participantKind` is stored as operator/private metadata and must not appear
   in public or holder projections unless a future UI deliberately exposes a safe
   role label.
@@ -143,7 +144,7 @@ Use one of two safe modes:
 - **Ledger copy mode:** send the recipient's invite normally, then send a
   separate operator copy of the invite email. This is cleaner for auditing
   because the operator copy has its own `email_messages` / `email_deliveries`
-  rows.
+  rows. The operator copy must redact the invite token and accept URL.
 
 Do not visibly CC customers, teammates, partners, or multiple invitees on a
 private workspace invite.
