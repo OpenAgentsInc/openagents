@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-16.3'
+export const PublicProductPromisesVersion = '2026-06-16.4'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -138,14 +138,14 @@ export const publicProductPromisesDocument = () => {
         'apps/pylon/docs/launch-gates-no-overclaim.md',
       ],
       caveats: [
-        'Pylon v0.3 is a release candidate, not stable 0.3.0.',
-        'macOS and Linux are the first supported operator platforms for the v0.3 launch path.',
-        'Pylon v0.3 local release gates and a no-spend live worker-loop smoke exist, but broad earning, paid assignment, settlement, and stable-release claims still need fresh public evidence before they go green.',
+        'Pylon v1.0 is a release candidate, not stable 0.3.0.',
+        'macOS and Linux are the first supported operator platforms for the v1.0 launch path.',
+        'Pylon v1.0 local release gates and a no-spend live worker-loop smoke exist, but broad earning, paid assignment, settlement, and stable-release claims still need fresh public evidence before they go green.',
         'Training, data revenue, provider-capacity resale, referral payouts, and signature revenue remain gated or planned. Broad local-inference resale and Qwen fine-tune products remain out of scope by owner decision (2026-06-10), but registry 2026-06-15.11 retains the explicit yellow exception for a basic, entirely local Apple FM Autopilot tool/chat path for Apple users and records the Pylon loopback readiness command, buildable Foundation Models bridge helper, Desktop readiness/mode UI, fake-bridge-tested local chat/tool session runner, and admitted-Mac smoke evidence as implemented.',
         'Episode 199 Claude Code-first mech-suit language is historical source material, not current public positioning. Current coding-agent runtime work is Codex-oriented where applicable, with useful ideas folded into Probe/Pylon.',
         'Open-source availability covers public product code and docs in the OpenAgentsInc/openagents repository; it does not publish secrets, production data, Cloudflare account bindings, wallet material, provider credentials, customer-private workroom content, or third-party service internals.',
         'The full training-pipeline program (the training.* promises) is planned scope from docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md; no Psion model rung above the retained tri-host rehearsal exists, and no pipeline stage is live as a broadly paid network workload.',
-        'Episode 236 is launch-direction source material only: the Monday decentralized training run, Pylon v0.3 multi-earning node, largest-run comparison, and Tassadar executor-model language stay red until run, participant, work, validation, payment, settlement, and projection receipts exist. The former models.tasadar_percepta_executor.v1 typo record is withdrawn in favor of models.tassadar_percepta_executor.v1.',
+        'Episode 236 is launch-direction source material only: the Monday decentralized training run, Pylon v1.0 multi-earning node, largest-run comparison, and Tassadar executor-model language stay red until run, participant, work, validation, payment, settlement, and projection receipts exist. The former models.tasadar_percepta_executor.v1 typo record is withdrawn in favor of models.tassadar_percepta_executor.v1.',
         'The Monday 2026-06-15 decentralized-training launch is imminent but has NOT happened as of this registry version (2026-06-14). Contributor join-lifecycle and device-admission contracts landed on main (#4848-#4854) and the SHC+Pylon fallback closeout route is deployed (m10-live 2026-06-14), so the rails are ready, but every training launch promise stays red/yellow until the run produces a public run identifier, participant admission, accepted-work, validation, and settlement receipts. Rails-ready is not launched.',
         'Owner-authorized state flips 2026-06-14 (registry 2026-06-14.1): labor.forum_work_requests.v1 and labor.nostr_negotiation_market.v1 to green and provider.compliant_usage_labor.v1 / autopilot.control_center_fanout_marketplace.v1 to yellow were applied in source ahead of the receipt-first operator-route transition receipts, on the strength of the #4777/#4781/#4783 settlement evidence. The matching promise_transition receipts were recorded against the deployed registry on 2026-06-15 via the operator route (#5017): labor.forum_work_requests.v1 promise_transition_a38a3472-a5f2-4307-9de6-18afffa22627, labor.nostr_negotiation_market.v1 promise_transition_2bf98afa-ddb8-4a1e-863e-25178572620f, provider.compliant_usage_labor.v1 promise_transition_a862e366-efde-4655-96df-cd09a57d47fe, autopilot.control_center_fanout_marketplace.v1 promise_transition_9fd8f04b-ac6b-4b54-a4bf-9fa85d1e2948 — each an exception receipt (the flip was already applied, so from-state equals to-state), dereferenceable at /api/public/product-promises/transitions. The reconciliation record is docs/promises/2026-06-14-registry-reality-reconciliation-audit.md.',
         'Wave-3 Autopilot Sites / Agency Pack surfaces (#4977-#4995) enter as conservative new records: autopilot.desktop_gui_client.v1 (yellow, local-only), mobile.autopilot_remote_control.v1 (planned), workrooms.omni_client_delivery_workrooms.v1 (red), autopilot_sites.native_email_sequences.v1 (yellow, no send service), autopilot_sites.custom_tenant_hostnames.v1 (yellow, no self-serve/SSL), autopilot_sites.partner_payout_ledger.v1 (red), autopilot.cloud_credits_ui.v1 (yellow, presentational), mobile.voice_session_evidence_transcript_ingest.v1 (red, contracts only). Registry 2026-06-15.11 moves autopilot.local_apple_fm_tool_chat.v1 to yellow for basic fully local Apple FM Autopilot chat/tool use: Pylon exposes the token-authenticated apple_fm.status projection, retains a buildable local Foundation Models bridge helper, Autopilot Desktop renders hosted/local readiness modes, the desktop-originated local session path is fake-bridge tested, and admitted-Mac smoke evidence exists. It is still scoped to source/local operator builds and supported Apple Silicon; no current signed-installer, compute resale, paid-work, or green claim is made.',
@@ -261,7 +261,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The useful parts of the historical coding-agent wrapper idea are now represented by the current Codex-oriented Autopilot/Probe/Pylon runtime direction.',
         safeCopy:
-          'OpenAgents coding-agent runtime work is Codex-oriented where applicable, with Probe/Pylon carrying relevant runtime and provider-account ideas under current gates. The Codex executor lane is now built and live-proven (epic #4793, CX1-CX5 #4788-#4792): a readiness probe over owner-held credentials declares capability.pylon.local_codex, the bounded @openai/codex-sdk executor runs read-only/workspace-write only with network disabled, and the lane carries a live device receipt for a real Codex SDK task plus a live API-parity receipt for an API-submitted git_checkout task on a codex-only Pylon with independent bun test verification and accepted closeout. The local supervised Codex composer/danger/doctor surface shipped in source (#4839/#4840/#4841). Remaining gates: stable v0.3 packaged release, the dev check/apply/reload loop (#4842), and work-submit commit pinning plus adapter intent (#4843).',
+          'OpenAgents coding-agent runtime work is Codex-oriented where applicable, with Probe/Pylon carrying relevant runtime and provider-account ideas under current gates. The Codex executor lane is now built and live-proven (epic #4793, CX1-CX5 #4788-#4792): a readiness probe over owner-held credentials declares capability.pylon.local_codex, the bounded @openai/codex-sdk executor runs read-only/workspace-write only with network disabled, and the lane carries a live device receipt for a real Codex SDK task plus a live API-parity receipt for an API-submitted git_checkout task on a codex-only Pylon with independent bun test verification and accepted closeout. The local supervised Codex composer/danger/doctor surface shipped in source (#4839/#4840/#4841). Remaining gates: stable v1.0 packaged release, the dev check/apply/reload loop (#4842), and work-submit commit pinning plus adapter intent (#4843).',
         unsafeCopy:
           'Do not claim the old Claude Code-first launch framing is the current implementation, or that the current Codex/Probe/Pylon path is fully green.',
         evidenceRefs: [
@@ -282,7 +282,7 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [],
         verification:
-          'The Codex-backed task path evidence, Probe/Pylon runtime smokes, public docs, and live assignment/closeout evidence this verification names all exist: CX4 ran the live device leg (closeout assignment.closeout.f264043a9f173b20514521da, capability-gated under capability.pylon.local_codex, redaction scan clean), and the API-parity git_checkout leg closed with independent test verification. blocker.product_promises.live_probe_pylon_runtime_gates_incomplete is cleared on that evidence (the maintainer edit the CX4 transition proposal asked for). The yellow-to-green flip is the remaining maintainer action and must be recorded receipt-first per proof.claim_upgrade_receipts.v1 once this registry version serves. Daily-driver gates (stable v0.3 package, #4842, #4843) bind the Pylon release promises, not this successor-direction claim.',
+          'The Codex-backed task path evidence, Probe/Pylon runtime smokes, public docs, and live assignment/closeout evidence this verification names all exist: CX4 ran the live device leg (closeout assignment.closeout.f264043a9f173b20514521da, capability-gated under capability.pylon.local_codex, redaction scan clean), and the API-parity git_checkout leg closed with independent test verification. blocker.product_promises.live_probe_pylon_runtime_gates_incomplete is cleared on that evidence (the maintainer edit the CX4 transition proposal asked for). The yellow-to-green flip is the remaining maintainer action and must be recorded receipt-first per proof.claim_upgrade_receipts.v1 once this registry version serves. Daily-driver gates (stable v1.0 package, #4842, #4843) bind the Pylon release promises, not this successor-direction claim.',
         authorityBoundary:
           'A successor direction does not imply broad provider support, unattended writes, payment settlement, or live marketplace authority.',
       },
@@ -522,7 +522,7 @@ export const publicProductPromisesDocument = () => {
         audience: ['contributor', 'operator', 'public'],
         state: 'red',
         claim:
-          'The Tassadar model direction uses a Percepta Executor Class architecture, with CPU computation transformation support added to Pylon v0.3 for experimental training.',
+          'The Tassadar model direction uses a Percepta Executor Class architecture, with CPU computation transformation support added to Pylon v1.0 for experimental training.',
         safeCopy:
           'Episode 236 names a Tassadar/Percepta Executor Class direction. Existing code and product records use Tassadar for the executor lane; treat the model spec, Pylon integration, training plan, and public evidence as unresolved until receipts exist. The bounded executor proof of concept is green (compute.tassadar_executor_poc.v1) but proves exact replay only, not a model. The 2026-06-14 W3 student-program report validated the frozen-analytic-executor-plus-learned-interface research direction (baseline D reached exact-rollout pass@1 while purely-learned baselines failed) but is explicitly research/evaluation only: it creates no public model claim and does not move this promise.',
         unsafeCopy:
@@ -586,9 +586,9 @@ export const publicProductPromisesDocument = () => {
         audience: ['contributor', 'agent', 'public'],
         state: 'red',
         claim:
-          'Pylon v0.3 becomes one piece of node software that can earn Bitcoin in multiple ways, including training, Forum or coding-agent-adjacent work, and payment-integrated tasks.',
+          'Pylon v1.0 becomes one piece of node software that can earn Bitcoin in multiple ways, including training, Forum or coding-agent-adjacent work, and payment-integrated tasks.',
         safeCopy:
-          'Pylon v0.3 is a release candidate with scoped green/yellow subclaims; one-install multi-earning remains red until each earning mode has its own evidence.',
+          'Pylon v1.0 is a release candidate with scoped green/yellow subclaims; one-install multi-earning remains red until each earning mode has its own evidence.',
         unsafeCopy:
           'Do not claim one Pylon install currently earns Bitcoin across multiple modes automatically.',
         evidenceRefs: [
@@ -606,7 +606,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.safe_public_projection_missing',
         ],
         verification:
-          'Green requires stable v0.3 release evidence, install/platform smokes, assignment/work receipts, per-mode payment evidence, settlement evidence, and public projections that distinguish modeled, observed, pending, paid, and settled amounts.',
+          'Green requires stable v1.0 release evidence, install/platform smokes, assignment/work receipts, per-mode payment evidence, settlement evidence, and public projections that distinguish modeled, observed, pending, paid, and settled amounts.',
         authorityBoundary:
           'Separate Forum tipping, accepted-work closeout, training dispatch, labor-market, referral, data, and settlement authorities do not collapse into one broad earning claim.',
       },
@@ -619,7 +619,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Compute revenue comes from GEPA optimization slices and Tassadar executor-trace work on people’s devices.',
         safeCopy:
-          'Pylon v0.3 has GEPA-first local capability contracts and live no-spend Tassadar executor-trace dispatch with one operator-funded settled closeout, but paid full-network GEPA is not green. Local-inference resale and Qwen fine-tune revenue remain out of scope; the separate autopilot.local_apple_fm_tool_chat.v1 promise is only a planned user-owned local Autopilot tool/chat path, not a compute-revenue product.',
+          'Pylon v1.0 has GEPA-first local capability contracts and live no-spend Tassadar executor-trace dispatch with one operator-funded settled closeout, but paid full-network GEPA is not green. Local-inference resale and Qwen fine-tune revenue remain out of scope; the separate autopilot.local_apple_fm_tool_chat.v1 promise is only a planned user-owned local Autopilot tool/chat path, not a compute-revenue product.',
         unsafeCopy:
           'Do not claim full-network GEPA revenue, and do not describe local-inference resale or Qwen fine-tune products as existing or planned.',
         evidenceRefs: [
@@ -869,9 +869,9 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Pylon is a script/CLI/TUI that includes Probe and is meant to run in the background.',
         safeCopy:
-          'Pylon v0.3 has a Bun/Effect/OpenTUI CLI/TUI, includes the former Probe runtime, and has a passed no-spend live worker-loop smoke against OpenAgents.',
+          'Pylon v1.0 has a Bun/Effect/OpenTUI CLI/TUI, includes the former Probe runtime, and has a passed no-spend live worker-loop smoke against OpenAgents.',
         unsafeCopy:
-          'Do not turn the passed no-spend worker-loop smoke into a claim that every Pylon install can run paid work, settle payouts, or satisfy the whole v0.3 release gate.',
+          'Do not turn the passed no-spend worker-loop smoke into a claim that every Pylon install can run paid work, settle payouts, or satisfy the whole v1.0 release gate.',
         evidenceRefs: [
           'apps/pylon/README.md',
           'apps/pylon/packages/runtime/src/index.ts',
@@ -1335,11 +1335,11 @@ export const publicProductPromisesDocument = () => {
         audience: ['contributor', 'operator'],
         state: 'planned',
         claim:
-          'Pylon v0.3 can run GEPA-first assignment work through the in-repo runtime.',
+          'Pylon v1.0 can run GEPA-first assignment work through the in-repo runtime.',
         safeCopy:
-          'Pylon v0.3 has assignment, GEPA capability, and runtime contracts with fake-server/no-spend coverage. A 2026-06-11 live no-spend OpenAgents endpoint smoke created, accepted, progressed, artifact-submitted, and operator-closed an unpaid assignment in production. Paid GEPA settlement remains gated.',
+          'Pylon v1.0 has assignment, GEPA capability, and runtime contracts with fake-server/no-spend coverage. A 2026-06-11 live no-spend OpenAgents endpoint smoke created, accepted, progressed, artifact-submitted, and operator-closed an unpaid assignment in production. Paid GEPA settlement remains gated.',
         unsafeCopy:
-          'Do not claim Pylon v0.3 runs the full live GEPA network or settles paid GEPA work.',
+          'Do not claim Pylon v1.0 runs the full live GEPA network or settles paid GEPA work.',
         evidenceRefs: [
           'transition:promise_transition_5decf651-f137-4bd2-b3c6-df26144ac79e',
           'directive.owner.20260611.focus_tassadar_psion_cs336',
@@ -1353,7 +1353,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.paid_gepa_settlement_v03_missing',
         ],
         verification:
-          'Run v0.3 assignment fake-server/no-spend tests locally and the production no-spend assignment smoke. Green network copy still requires one settled paid GEPA assignment receipt, a paid-settlement transition receipt before registry edit, and a deployed registry bump.',
+          'Run v1.0 assignment fake-server/no-spend tests locally and the production no-spend assignment smoke. Green network copy still requires one settled paid GEPA assignment receipt, a paid-settlement transition receipt before registry edit, and a deployed registry bump.',
         authorityBoundary:
           'No-spend closeout and retained fixtures do not prove paid settlement or live campaign authority.',
       },
@@ -1764,11 +1764,11 @@ export const publicProductPromisesDocument = () => {
         state: 'green',
         lastVerifiedAt: '2026-06-10',
         claim:
-          'Pylon v0.3 is the definitive software on a contributor machine: the next release candidate ships a built-in agent surface where the Pylon registers and carries the local user identity, sends and receives Forum tips through the reliable-tips ladder with its wallet as the sweep destination, posts to the Forum (device questions, training-run status) using a local model or the user Gemini key with local memories, and needs no hand-pasted AGENTS.md instructions for any of it.',
+          'Pylon v1.0 is the definitive software on a contributor machine: the next release candidate ships a built-in agent surface where the Pylon registers and carries the local user identity, sends and receives Forum tips through the reliable-tips ladder with its wallet as the sweep destination, posts to the Forum (device questions, training-run status) using a local model or the user Gemini key with local memories, and needs no hand-pasted AGENTS.md instructions for any of it.',
         safeCopy:
           'Pylon 0.3.0-rc2 is tagged with the release gate green: the agent surface is live from the device - pylon tip/balance/sweep-status on the reliable-tips ladder with the rung rendered honestly, pylon forum post/read/reply and ask-artanis carrying the registered identity, a local inspectable memory store, model adapters (local endpoint or the user own Gemini key), and tip-recipient readiness auto-claimed at wallet report-readiness. Demonstrated live against production, including a real device question answered by Artanis in 71 seconds with a tip landing in public tipStats. Stable 0.3.0 and the npm registry publish remain separate, named work.',
         unsafeCopy:
-          'Do not claim Pylon v0.3 stable has shipped, that Pylons converse on the Forum autonomously today, that local memories or model adapters exist before their commits, or that any rc2 flow replaces the gates on risky actions.',
+          'Do not claim Pylon v1.0 stable has shipped, that Pylons converse on the Forum autonomously today, that local memories or model adapters exist before their commits, or that any rc2 flow replaces the gates on risky actions.',
         evidenceRefs: [
           'docs/payments/reliable-tips.md',
           'docs/pylon/2026-06-10-v03-sprint-agent-economy.md',
@@ -2219,7 +2219,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'If OpenAgents HTTP infrastructure falls down, agents keep retrying it and coordinate over the Nostr protocol in the meantime, so they never go idle waiting on a human or a single server.',
         safeCopy:
-          'AGENTS.md now instructs agents, on any OpenAgents infrastructure falldown, to keep retrying with backoff/idempotency AND fall back to Nostr to communicate with their owner and other agents until OpenAgents recovers (then reconcile on OpenAgents as authority of record). The rails this leans on are partially live: the owned relay (wss://relay.openagents.com and the scoped market relay) is up, the agent labor market already negotiates and settled its first job over NIP-90 on it (#4777), and Pylon v0.3 provisions Nostr credentials. A full agent-to-agent coordination-during-outage drill (status, discovery, private DMs, group coordination over NIP-01/02/17/29/65/90 with OpenAgents offline) has not been demonstrated end to end.',
+          'AGENTS.md now instructs agents, on any OpenAgents infrastructure falldown, to keep retrying with backoff/idempotency AND fall back to Nostr to communicate with their owner and other agents until OpenAgents recovers (then reconcile on OpenAgents as authority of record). The rails this leans on are partially live: the owned relay (wss://relay.openagents.com and the scoped market relay) is up, the agent labor market already negotiates and settled its first job over NIP-90 on it (#4777), and Pylon v1.0 provisions Nostr credentials. A full agent-to-agent coordination-during-outage drill (status, discovery, private DMs, group coordination over NIP-01/02/17/29/65/90 with OpenAgents offline) has not been demonstrated end to end.',
         unsafeCopy:
           'Do not claim Nostr coordination replaces OpenAgents authority during normal operation, that a Nostr message is proof of accepted work/payment/settlement, or that the outage-resilience flow has been drilled end to end. Never put secrets, raw invoices, preimages, mnemonics, wallet keys, provider credentials, or private repo contents in any Nostr event.',
         evidenceRefs: [
@@ -2402,7 +2402,7 @@ export const publicProductPromisesDocument = () => {
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
       'The Pylon launch-promise inventory is represented one-for-one in the promise records above.',
       'Episode 199 is included with a heavy historical caveat: Claude Code-first mech-suit language is withdrawn as current public framing; current coding-agent runtime claims should point to Codex-oriented Autopilot/Probe/Pylon records.',
-      'Pylon v0.3 is present in the monorepo as a release candidate, but broad Pylon earning, paid settlement, training, data revenue, referral payout, and labor-market claims remain gated.',
+      'Pylon v1.0 is present in the monorepo as a release candidate, but broad Pylon earning, paid settlement, training, data revenue, referral payout, and labor-market claims remain gated.',
       'OpenAgents does not resell, rent, proxy, or broker subscription or API provider capacity. The labor market pays contributors for accepted work output produced with their own compliant provider usage; the former subscription/prepaid capacity promises are folded into provider.compliant_usage_labor.v1 under that boundary.',
       'The five-streams implementation plan is tracked in GitHub issues #4635-#4653 (rails, compute, data, labor, referrals, stacking smoke, tips polish); the lane map and binding delegation contract live in apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md.',
       'Owner decision 2026-06-10: the Tassadar research lane previously held no registry promise by design. The owner approved one scoped exception: compute.tassadar_executor_poc.v1, a bounded proof-of-concept promise for executor-trace work on real Pylons. All other Tassadar publication gates remain closed; the research essay is docs/tassadar/README.md.',
@@ -2422,7 +2422,7 @@ export const publicProductPromisesDocument = () => {
       'The Monday 2026-06-15 decentralized-training launch is imminent but had not happened at registry 2026-06-14.1; training.* launch promises stay red/yellow until the run yields public run state, participant admission, accepted-work, validation, and settlement receipts. The W3 student-program report (docs/tassadar/2026-06-14-w3-student-program-report.md) is research/evaluation only and moves no promise.',
       'Registry 2026-06-14.2: Coder Cloud is the current top priority. New record autopilot.cloud_coding_sessions.v1 (red) tracks running coding sessions on OpenAgents Cloud (Google GCE first, SHC second) and administering them remotely so work continues while the owner travels; the 9 open issues are epic #4996 plus Phase 1-3 #4997-#5004. Foundation (C-0..C-15, #4886-#4901) is closed but the desktop->Google-GCE end-to-end loop is not demonstrable yet (Phase 1 revalidates). mobile.autopilot_remote_control.v1 is the Expo app (Phase 2-3; the iOS Swift control app is ignored per owner direction 2026-06-14) and depends on the Pylon remote bridge transport (#5000). autopilot.decision_queue.v1 cross-client exactly-once work is #5004.',
       'Registry 2026-06-14.2: the wave-3 Agency Pack initiative (epic #4973 + 21 children, including #4993/#4994/#4995) closed 2026-06-14 (~375 new tests green, typecheck:api + apps/web clean, build:web succeeds, OpenAPI gate green, migrations 0180-0182 and 0184). Reflected: workrooms.omni_client_delivery_workrooms.v1 -> yellow (client-delivery workroom page live-wired into the logged-in loop with CRUD/lifecycle/bundle/handoff routes and client-scoped views; source authority + approval-gated writes still pending). Desktop PDF/preview/ingest/browser cores are built behind seams with fakes (34 tests) but live runtimes are unwired (autopilot.desktop_gui_client.v1). The honest residue is config/credentials/product decisions, not code: custom hostnames need CLOUDFLARE_API_TOKEN+CLOUDFLARE_ZONE_ID and a mounted provision route; partner payout needs owner sign-off on percentage/caps plus settlement wiring; voice needs an STT vendor + capture path; the form-capture route needs a home for site form-specs. Per openagents/CLAUDE.md these surfaces were filed as GitHub issues by explicit owner instruction though the repo convention reserves issues for strict bugs (feature work Forum-first) - flagged for reconciliation.',
-      'Registry 2026-06-14.3: Nostr resilience. AGENTS.md now carries a firm falldown instruction — on any OpenAgents infrastructure outage, agents keep retrying with backoff/idempotency AND coordinate over Nostr (NIP-01/02/17/29/38/65/90 on the owned relay wss://relay.openagents.com and public relays) until OpenAgents recovers, then reconcile on OpenAgents as authority of record. New record agents.nostr_fallback_coordination.v1 (yellow): the relay + NIP-90 negotiation are live (first labor job settled over the relay, #4777) and Pylon v0.3 provisions Nostr credentials, but an end-to-end coordination-during-outage drill is not yet demonstrated. Nostr is a communication/coordination substrate and outage fallback, never a replacement for OpenAgents authority during normal operation.',
+      'Registry 2026-06-14.3: Nostr resilience. AGENTS.md now carries a firm falldown instruction — on any OpenAgents infrastructure outage, agents keep retrying with backoff/idempotency AND coordinate over Nostr (NIP-01/02/17/29/38/65/90 on the owned relay wss://relay.openagents.com and public relays) until OpenAgents recovers, then reconcile on OpenAgents as authority of record. New record agents.nostr_fallback_coordination.v1 (yellow): the relay + NIP-90 negotiation are live (first labor job settled over the relay, #4777) and Pylon v1.0 provisions Nostr credentials, but an end-to-end coordination-during-outage drill is not yet demonstrated. Nostr is a communication/coordination substrate and outage fallback, never a replacement for OpenAgents authority during normal operation.',
       'Registry 2026-06-14.3: Coder Cloud contract layer started landing (concurrent agent work merged): the lane selector auto|local|cloud-gcp|cloud-shc is wired end to end (#4998), the Vortex-independent Codex grant endpoint contract is in place (#4999), and the cloud placement endpoint shipped Google-first (cloud #86/#87/#88). The remaining seam to a live loop is #4997: cloud-gcp spawns still execute locally and per-session GCE provisioning is unwired. autopilot.cloud_coding_sessions.v1 stays red until the desktop->GCE dispatch loop is demonstrable.',
       'Registry 2026-06-14.4: Coder Cloud Phase 1 contract layer fully landed (#4997 Pylon cloud dispatch to the placement endpoint with local fallback, plus cloud #90 GCE lease lifecycle, on top of #4998/#4999/cloud #86-#88). autopilot.cloud_coding_sessions.v1 stays red: live GCE provisioning is a fake-default ADC-gated stub and the cloud.gce.* event kinds + resource_usage_receipt ref do not round-trip to the desktop yet (#5005, open). This registry version is the one deployed after the zero-debt architecture gate (check:architecture) was brought back to green: the wave-3 comment-only false positives were reworded, the 7 raw JSON.parse calls were routed through the parseJsonUnknown json-boundary helper, and three migration-bridge budgets (route Effect.promise adapters 8->18, Worker Response surfaces 80->83, index.ts runPromise allowlist 6->7) were raised under owner authorization with ratchet-down notes.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
