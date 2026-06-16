@@ -602,6 +602,113 @@ describe('autopilot work detail view', () => {
     expect(rendered).not.toContain('sk-private')
   })
 
+  test('renders latest repository memory profile in Context snapshot', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            contextSnapshot: {
+              devDoctor: {
+                refs: ['doctor.public.pylon.context.v0_3'],
+              },
+              instructions: {
+                refs: ['profile.instruction.public.AGENTS.sha256_abcd'],
+              },
+              observedAt: '2026-06-16T17:55:00.000Z',
+              repo: {
+                dirtyState: 'clean',
+                identityRefs: ['repo.github.OpenAgentsInc.openagents'],
+              },
+              repositoryMemoryProfile: {
+                changedProfileKinds: ['command', 'test'],
+                commandProfileRefs: [
+                  'profile.command.public.package_scripts.sha256_abcd',
+                ],
+                generatedAt: '2026-06-16T18:00:00.000Z',
+                instructionRefs: ['profile.instruction.public.AGENTS.sha256_abcd'],
+                profileRef: 'repository-profile.public.openagents.main',
+                refreshedAt: '2026-06-16T17:59:00.000Z',
+                refreshEvents: [
+                  {
+                    commandProfileRefs: [
+                      'profile.command.public.package_scripts.sha256_abcd',
+                    ],
+                    generatedAt: '2026-06-16T18:00:00.000Z',
+                    refreshedAt: '2026-06-16T17:59:00.000Z',
+                    repoIdentityRefs: ['repo.github.OpenAgentsInc.openagents'],
+                    testProfileRefs: ['profile.test.public.vitest.sha256_abcd'],
+                    workOrderRef: 'work_1',
+                  },
+                ],
+                testProfileRefs: ['profile.test.public.vitest.sha256_abcd'],
+              },
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Repository memory profile')
+    expect(rendered).toContain('repository-profile.public.openagents.main')
+    expect(rendered).toContain('Changed kinds')
+    expect(rendered).toContain('command, test')
+    expect(rendered).toContain('profile.command.public.package_scripts.sha256_abcd')
+    expect(rendered).toContain('profile.test.public.vitest.sha256_abcd')
+    expect(rendered).toContain(
+      'forge.repository_profile_refresh.work_1.2026-06-16T18_00_00.000Z',
+    )
+  })
+
+  test('omits unsafe repository memory profile material before rendering', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            contextSnapshot: {
+              devDoctor: {
+                refs: ['doctor.public.pylon.context.v0_3'],
+              },
+              instructions: {
+                refs: ['profile.instruction.public.safe'],
+              },
+              repo: {
+                dirtyState: 'clean',
+                identityRefs: ['repo.github.OpenAgentsInc.openagents'],
+              },
+              repositoryMemoryProfile: {
+                commandProfileRefs: [
+                  'profile.command.public.safe',
+                  'raw command /Users/christopher/private.sh',
+                ],
+                generatedAt: '2026-06-16T18:00:00.000Z',
+                instructionRefs: [
+                  'profile.instruction.public.safe',
+                  'raw prompt /Users/christopher/private.md',
+                ],
+                profileRef: 'repository-profile.public.openagents.main',
+                refreshedAt: '2026-06-16T17:59:00.000Z',
+                repoIdentityRefs: [
+                  'repo.github.OpenAgentsInc.openagents',
+                  '/Users/christopher/work/openagents',
+                ],
+                testProfileRefs: ['raw test /Users/christopher/private.test.ts'],
+              },
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Repository memory profile')
+    expect(rendered).toContain('profile.command.public.safe')
+    expect(rendered).toContain('unsafe-profile-material-omitted')
+    expect(rendered).toContain('unsafe repository-memory ref(s) were omitted')
+    expect(rendered).not.toContain('/Users/christopher')
+    expect(rendered).not.toContain('raw command')
+    expect(rendered).not.toContain('raw prompt')
+    expect(rendered).not.toContain('raw test')
+  })
+
   test('renders Session navigation lane with unavailable controls', () => {
     const rendered = renderHtml(
       detailView(

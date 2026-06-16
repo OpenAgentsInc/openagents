@@ -226,6 +226,16 @@ for repository command/test/instruction/invariant profile refreshes with
 freshness, changed profile kinds, non-authority flags, blockers, and unsafe-ref
 omission regressions.
 
+Implementation status, 2026-06-16: #5148 adds the durable repository memory
+profile projection and renders it inside the `/autopilot` Context snapshot
+lane. The profile carries repo identity, command/test/instruction/invariant
+profile refs, latest refresh receipt refs, changed profile kinds, freshness,
+generated/refreshed timestamps, and blockers. It marks profiles stale when the
+current worktree is dirty or current instruction refs differ from the persisted
+profile, blocks profiles without dev-doctor/profile evidence, and omits raw
+workspace content, local paths, prompts, provider payloads, and private repo
+material before rendering.
+
 ### G5 - Retrieval And Search Planner
 
 Systems: system 19 Semantic Retrieval/Search, system 20 LSP/Diagnostics,
@@ -400,6 +410,13 @@ fresh public-safe authority and policy refs; otherwise the UI preserves the
 blocked/stale/unavailable state. Receipts expose only refs, actor/provenance
 refs, outcome, generatedAt, and blockers, with private material omitted before
 rendering.
+
+Implementation status, 2026-06-16: #5148 adds `ForgeRepositoryMemoryProfile`,
+the durable refs-only repository-memory record linked from context snapshots.
+It reuses the existing repository-profile refresh receipt projection, exposes
+latest freshness and changed profile kinds in `/autopilot`, and invalidates
+profiles on dirty worktrees, changed instruction refs, missing dev-doctor
+evidence, missing profile evidence, or unsafe material.
 
 ## Recommended Sequencing
 

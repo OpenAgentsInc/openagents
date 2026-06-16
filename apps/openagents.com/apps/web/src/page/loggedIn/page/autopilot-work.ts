@@ -56,6 +56,12 @@ import {
   projectForgeRetrievalPlan,
 } from '../autopilot-work/retrieval-plan'
 import {
+  type ForgeRepositoryMemoryProfile,
+  type ForgeRepositoryMemoryProfileInput,
+  type ForgeRepositoryMemoryProfileStatus,
+  projectForgeRepositoryMemoryProfile,
+} from '../autopilot-work/repository-memory-profile'
+import {
   type ForgeSessionControlReceiptItem,
   type ForgeSessionNavigationAction,
   type ForgeSessionNavigationItem,
@@ -982,6 +988,69 @@ const contextSnapshotInput = (
   }
 }
 
+const repositoryMemoryProfileInput = (
+  work: AutopilotWorkProjection,
+): ForgeRepositoryMemoryProfileInput | undefined => {
+  const source = work.contextSnapshot
+  const profile = source?.repositoryMemoryProfile
+
+  return profile === undefined
+    ? undefined
+    : {
+        generatedAt: profile.generatedAt,
+        profileRef: profile.profileRef,
+        workOrderRef: work.workOrderRef,
+        ...(profile.blockerRefs === undefined
+          ? {}
+          : { blockerRefs: profile.blockerRefs }),
+        ...(profile.changedProfileKinds === undefined
+          ? {}
+          : { changedProfileKinds: profile.changedProfileKinds }),
+        ...(profile.commandProfileRefs === undefined
+          ? {}
+          : { commandProfileRefs: profile.commandProfileRefs }),
+        ...(profile.currentInstructionRefs !== undefined
+          ? { currentInstructionRefs: profile.currentInstructionRefs }
+          : source?.instructions?.refs === undefined
+            ? {}
+            : { currentInstructionRefs: source.instructions.refs }),
+        ...(profile.devDoctorRefs !== undefined
+          ? { devDoctorRefs: profile.devDoctorRefs }
+          : source?.devDoctor?.refs === undefined
+            ? {}
+            : { devDoctorRefs: source.devDoctor.refs }),
+        ...(profile.dirtyState !== undefined
+          ? { dirtyState: profile.dirtyState }
+          : source?.repo?.dirtyState === undefined
+            ? {}
+            : { dirtyState: source.repo.dirtyState }),
+        ...(profile.freshness === undefined ? {} : { freshness: profile.freshness }),
+        ...(profile.instructionRefs === undefined
+          ? {}
+          : { instructionRefs: profile.instructionRefs }),
+        ...(profile.invariantRefs === undefined
+          ? {}
+          : { invariantRefs: profile.invariantRefs }),
+        ...(profile.refreshedAt === undefined
+          ? {}
+          : { refreshedAt: profile.refreshedAt }),
+        ...(profile.refreshEvents === undefined
+          ? {}
+          : { refreshEvents: profile.refreshEvents }),
+        ...(profile.refreshReceiptRefs === undefined
+          ? {}
+          : { refreshReceiptRefs: profile.refreshReceiptRefs }),
+        ...(profile.repoIdentityRefs !== undefined
+          ? { repoIdentityRefs: profile.repoIdentityRefs }
+          : source?.repo?.identityRefs === undefined
+            ? {}
+            : { repoIdentityRefs: source.repo.identityRefs }),
+        ...(profile.testProfileRefs === undefined
+          ? {}
+          : { testProfileRefs: profile.testProfileRefs }),
+      }
+}
+
 const contextEvidenceCount = (
   context: ReturnType<typeof projectForgeContextSnapshot>,
 ): number =>
@@ -996,9 +1065,82 @@ const contextEvidenceCount = (
   context.currentJob.verificationRefs.length +
   context.currentJob.capabilityRefs.length
 
+const repositoryMemoryStatusTone = (
+  status: ForgeRepositoryMemoryProfileStatus,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  status === 'ready'
+    ? 'positive'
+    : status === 'blocked'
+      ? 'negative'
+      : status === 'stale'
+        ? 'warning'
+        : 'accent'
+
+const repositoryMemoryProfilePanel = (
+  profile: ForgeRepositoryMemoryProfile,
+): Html => {
+  const h = html<Message>()
+  const refreshedLabel =
+    profile.refreshedAt === null
+      ? 'No refresh time'
+      : `Refreshed ${formatIsoDateTime(profile.refreshedAt)}`
+  const changedKinds =
+    profile.changedProfileKinds.length === 0
+      ? 'none'
+      : profile.changedProfileKinds.join(', ')
+
+  return h.div([Ui.className<Message>('grid gap-4 border border-[#222] p-4')], [
+    h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+      h.div([Ui.className<Message>('grid gap-1')], [
+        h.h3([Ui.className<Message>('m-0 text-sm font-medium text-white/75')], [
+          'Repository memory profile',
+        ]),
+        h.p([Ui.className<Message>('m-0 text-xs text-white/40')], [
+          `${refreshedLabel} - changed profile kinds: ${changedKinds}`,
+        ]),
+      ]),
+      h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+        badge(profile.status, repositoryMemoryStatusTone(profile.status)),
+        badge(profile.freshness, contextFreshnessTone(profile.freshness)),
+        ...profile.changedProfileKinds.map(kind => badge(kind, 'accent')),
+      ]),
+    ]),
+    h.div([Ui.className<Message>('grid gap-3 md:grid-cols-3')], [
+      contextMetric('Profile status', profile.status),
+      contextMetric('Profile freshness', profile.freshness),
+      contextMetric('Changed kinds', changedKinds),
+    ]),
+    h.div(
+      [Ui.className<Message>('grid gap-4 md:grid-cols-2')],
+      [
+        refSection('Profile ref', [profile.profileRef]),
+        refSection('Repo profile identity', profile.repoIdentityRefs),
+        refSection('Instruction profile refs', profile.instructionRefs),
+        refSection('Current instruction refs', profile.currentInstructionRefs),
+        refSection('Command profile refs', profile.commandProfileRefs),
+        refSection('Test profile refs', profile.testProfileRefs),
+        refSection('Invariant profile refs', profile.invariantRefs),
+        refSection('Dev doctor profile refs', profile.devDoctorRefs),
+        refSection('Refresh receipt refs', profile.refreshReceiptRefs),
+        refSection('Repository memory blockers', profile.blockerRefs),
+      ],
+    ),
+    profile.omittedUnsafeRefCount === 0
+      ? h.span([Ui.className<Message>('hidden')], [])
+      : h.p([Ui.className<Message>('m-0 text-sm text-[#ffb400]')], [
+          `${profile.omittedUnsafeRefCount} unsafe repository-memory ref(s) were omitted before rendering.`,
+        ]),
+  ])
+}
+
 const contextSnapshotPanel = (work: AutopilotWorkProjection): Html => {
   const h = html<Message>()
   const context = projectForgeContextSnapshot(contextSnapshotInput(work))
+  const repositoryMemoryInput = repositoryMemoryProfileInput(work)
+  const repositoryMemory =
+    repositoryMemoryInput === undefined
+      ? undefined
+      : projectForgeRepositoryMemoryProfile(repositoryMemoryInput)
   const observedLabel =
     context.observedAt === null
       ? 'No observation time'
@@ -1054,6 +1196,9 @@ const contextSnapshotPanel = (work: AutopilotWorkProjection): Html => {
         refSection('Context blockers', context.blockerRefs),
       ],
     ),
+    repositoryMemory === undefined
+      ? h.span([Ui.className<Message>('hidden')], [])
+      : repositoryMemoryProfilePanel(repositoryMemory),
     context.omittedUnsafeRefCount === 0
       ? h.span([Ui.className<Message>('hidden')], [])
       : h.p([Ui.className<Message>('m-0 text-sm text-[#ffb400]')], [

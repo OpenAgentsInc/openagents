@@ -2088,6 +2088,52 @@ export const AutopilotWorkContextInstructions = S.Struct({
 export type AutopilotWorkContextInstructions =
   typeof AutopilotWorkContextInstructions.Type
 
+export const AutopilotWorkRepositoryProfileKind = S.Literals([
+  'command',
+  'instruction',
+  'invariant',
+  'test',
+])
+export type AutopilotWorkRepositoryProfileKind =
+  typeof AutopilotWorkRepositoryProfileKind.Type
+
+export const AutopilotWorkRepositoryProfileRefreshEvent = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  changedProfileKinds: S.optionalKey(S.Array(AutopilotWorkRepositoryProfileKind)),
+  commandProfileRefs: S.optionalKey(S.Array(S.String)),
+  freshness: S.optionalKey(AutopilotWorkContextFreshness),
+  generatedAt: S.String,
+  instructionRefs: S.optionalKey(S.Array(S.String)),
+  invariantRefs: S.optionalKey(S.Array(S.String)),
+  refreshedAt: S.optionalKey(S.NullOr(S.String)),
+  repoIdentityRefs: S.optionalKey(S.Array(S.String)),
+  testProfileRefs: S.optionalKey(S.Array(S.String)),
+  workOrderRef: S.String,
+})
+export type AutopilotWorkRepositoryProfileRefreshEvent =
+  typeof AutopilotWorkRepositoryProfileRefreshEvent.Type
+
+export const AutopilotWorkRepositoryMemoryProfile = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  changedProfileKinds: S.optionalKey(S.Array(AutopilotWorkRepositoryProfileKind)),
+  commandProfileRefs: S.optionalKey(S.Array(S.String)),
+  currentInstructionRefs: S.optionalKey(S.Array(S.String)),
+  devDoctorRefs: S.optionalKey(S.Array(S.String)),
+  dirtyState: S.optionalKey(AutopilotWorkContextDirtyState),
+  freshness: S.optionalKey(AutopilotWorkContextFreshness),
+  generatedAt: S.String,
+  instructionRefs: S.optionalKey(S.Array(S.String)),
+  invariantRefs: S.optionalKey(S.Array(S.String)),
+  profileRef: S.String,
+  refreshedAt: S.optionalKey(S.NullOr(S.String)),
+  refreshEvents: S.optionalKey(S.Array(AutopilotWorkRepositoryProfileRefreshEvent)),
+  refreshReceiptRefs: S.optionalKey(S.Array(S.String)),
+  repoIdentityRefs: S.optionalKey(S.Array(S.String)),
+  testProfileRefs: S.optionalKey(S.Array(S.String)),
+})
+export type AutopilotWorkRepositoryMemoryProfile =
+  typeof AutopilotWorkRepositoryMemoryProfile.Type
+
 export const AutopilotWorkContextSnapshot = S.Struct({
   adapters: S.optionalKey(AutopilotWorkContextAdapters),
   blockerRefs: S.optionalKey(S.Array(S.String)),
@@ -2097,6 +2143,7 @@ export const AutopilotWorkContextSnapshot = S.Struct({
   instructions: S.optionalKey(AutopilotWorkContextInstructions),
   observedAt: S.optionalKey(S.NullOr(S.String)),
   repo: S.optionalKey(AutopilotWorkContextRepo),
+  repositoryMemoryProfile: S.optionalKey(AutopilotWorkRepositoryMemoryProfile),
 })
 export type AutopilotWorkContextSnapshot =
   typeof AutopilotWorkContextSnapshot.Type
