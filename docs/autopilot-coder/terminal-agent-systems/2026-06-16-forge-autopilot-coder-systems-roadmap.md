@@ -239,6 +239,13 @@ skipped-candidate, and result-set shapes, deterministic ordering, blockers,
 freshness, and unsafe-material omission coverage. It does not add retrieval
 execution, adapter IO, embeddings, routing, or UI.
 
+Implementation status, 2026-06-16: #5136 adds bounded exact retrieval adapters
+for file, repository, and documentation fixtures. The adapters rank only
+already-indexed public-safe refs, emit selected/skipped candidate inputs for
+the #5135 projection, and cover duplicate, private-filtered, unsupported,
+missing-source, and low-score skips without adding filesystem crawling,
+embeddings, LSP calls, routing, or UI.
+
 ### G6 - Extensibility: MCP, Skills, Hooks, Plugins
 
 Systems: system 28 MCP Client, system 30 Plugin, system 31 Skill, system 32

@@ -128,6 +128,9 @@ const safeRef = (value: string): string | null => {
     : null
 }
 
+export const isSafeForgeRetrievalRef = (value: string): boolean =>
+  safeRef(value) !== null
+
 const safeRefs = (refs: ReadonlyArray<string> | undefined): RefBundle => {
   const sanitized = (refs ?? []).reduce<Readonly<{ omitted: number; refs: string[] }>>(
     (state, ref) => {
