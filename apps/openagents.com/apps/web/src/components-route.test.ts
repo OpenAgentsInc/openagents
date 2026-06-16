@@ -83,6 +83,27 @@ describe('components gallery route', () => {
         Scene.role('heading', { name: 'Component library' }),
       ).toExist(),
       Scene.expect(Scene.role('heading', { name: 'Data display' })).toExist(),
+      // Leads with live, rendered components (the export-name caption of a
+      // real previewBox instance), with the contract metadata below.
+      Scene.expect(Scene.text('tableList')).toExist(),
+      Scene.expect(Scene.text('Contract')).toExist(),
+    )
+  })
+
+  test('renders live component previews for representative families', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(ComponentsRoute())),
+      // Each of these is the export-name label of a real previewBox rendering
+      // a live instance from @openagentsinc/ui, proving the gallery shows
+      // rendered components and not just metadata prose.
+      Scene.expect(Scene.text('inputGroup')).toExist(),
+      Scene.expect(Scene.text('tableList')).toExist(),
+      Scene.expect(Scene.text('marketingHero')).toExist(),
+      Scene.expect(Scene.text('workroomTimeline')).toExist(),
+      Scene.expect(Scene.text('v4Composer')).toExist(),
+      Scene.expect(Scene.text('applicationHomeScreen')).toExist(),
+      Scene.expect(Scene.text('AiElements.promptInput')).toExist(),
     )
   })
 
