@@ -8,7 +8,7 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
 - **Launched:** Autopilot 1.0 + Pylon v1.0 release candidates (signed/notarized,
   default-on auto-update), the Tassadar run (`run.tassadar.executor.20260615`,
   active), Episode 237 + essay, the forum/Nostr/Bitcoin-tip rails.
-- **Live promises:** source registry at **`2026-06-16.4`**; the deployed worker
+- **Live promises:** source registry at **`2026-06-16.5`**; the deployed worker
   still serves an earlier version (the `.1`–`.4` bumps from the 16th are
   **undeployed** — deploy from a clean `origin/main` to publish them). Counts shift
   as promises flip; see `/api/public/product-promises`.
@@ -25,10 +25,13 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   **rc3 = `1.0.0-rc.3`**. Stale `v0.3` labels scrubbed to v1.0 across the README,
   Pylon docs, and the promise registry (`738ea7d0f`, `c9c1059b2`), preserving the
   true published `0.3.0-rc2` npm receipts (the v1.0 RC was not on npm yet).
-  **Publishing rc3 (in progress):** the new leaf dep
-  `@openagentsinc/autopilot-control-protocol@0.1.0` is **published** to npm; Pylon
-  `1.0.0-rc.3` is packing/publishing to the `rc` dist-tag (`release:gate` green;
-  awaiting corgi-manifest propagation). `latest` stays `0.2.5`.
+  **rc3 PUBLISHED (npm + GitHub):** leaf dep
+  `@openagentsinc/autopilot-control-protocol@0.1.0` + `@openagentsinc/pylon@1.0.0-rc.3`
+  on the npm `rc` dist-tag (`latest` stays `0.2.5`); GitHub prereleases
+  `pylon-v1.0.0-rc.3` and `autopilot-desktop-v1.0.0-rc.3`. The desktop DMG is
+  Developer-ID-signed + Apple-notarized + stapled (Gatekeeper-accepted), attached to
+  the release and mirrored to `gs://openagentsgemini-oa-updates/desktop/`. A unified
+  release hub now lives at **`docs/DEPLOYMENT.md`** (linked from `AGENTS.md`).
 - **Spark offline-tipping chain → code-complete (16th):** #5078 (receive-only backup,
   slices 1-3) + #5080 (Bun storage) + #5085 (legacy `migrate-spark` rewire) all landed.
   See §E.
@@ -40,20 +43,18 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   repo-wide **`typecheck:api` gate is green again** (`872cf8c47` — fixed the forum
   post-list error channel + two other pre-existing own-source errors).
 
-## A. Short-term bug fixes (cleanest closeable work — projection/freshness family)
+## A. Short-term bug fixes — ✅ all closed (16th)
 
 - **#5077** — fixed: Pylon post-start heartbeat diagnostics can now name absent
   private-material classes without tripping `projection.reason`, while actual
   bearer/invoice/Spark/key-shaped payloads still fail. Regression covered in
   `apps/pylon/tests/presence.test.ts`; full `apps/pylon` suite passed.
-- **#5076** — Forum **recent-posts API** shows **stale tip-recipient readiness** vs
-  the topic API (a read projection that didn't rebuild on write — same invariant as
-  the closed #5056 lane; file under that discipline).
-- **#5075** — Manifest/onboarding **`AGENTS-CORE.md` sha256 fields are stale**
-  (sha-drift; same family as the AGENTS.md sha fix landed on the 15th — recompute +
-  add a guard so it can't drift).
-- **#5066** — Forum category **topic lists not ordered by latest post activity**
-  (concurrent-session lane; coordinate before editing `forum/repository.ts`).
+- **#5076** — closed: Forum recent-posts API stale tip-recipient readiness fixed
+  (the read projection now rebuilds on write, same discipline as the closed #5056 lane).
+- **#5075** — closed: manifest/onboarding `AGENTS-CORE.md` sha256 drift fixed
+  (recompute + a guard so it can't drift again).
+- **#5066** — closed: Forum category topic lists now ordered by latest post activity
+  (`5f6769df6`).
 
 ## B. Tassadar executor-trace completion (deprioritized; backend built + inert)
 
