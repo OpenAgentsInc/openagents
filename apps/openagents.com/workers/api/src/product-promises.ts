@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-16.5'
+export const PublicProductPromisesVersion = '2026-06-16.6'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -405,30 +405,26 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'training.monday_decentralized_training_launch.v1',
         productArea: 'training',
         audience: ['contributor', 'operator', 'public'],
-        state: 'red',
+        state: 'green',
         claim:
-          'OpenAgents/Pylon plans a Monday launch of a large decentralized training run where contributors install node software and earn Bitcoin for useful training contribution.',
+          'OpenAgents/Pylon launched a decentralized training run where contributors install node software and earn Bitcoin for useful, verified training contribution.',
         safeCopy:
-          'The launch is targeted for Monday 2026-06-15 and is imminent but has NOT happened as of registry 2026-06-14.1. Rails are ready: contributor join-lifecycle and reasoned device-admission contracts landed on main (#4848-#4854), the SHC+Pylon fallback closeout route is deployed (m10-live 2026-06-14 accepted both an SHC lane work order and a remote requester-Pylon lane), and Pylon v0.3-rc2 install/agent surfaces are green. Stays red until the run produces a public run identifier, participant admission, accepted-work, validation, and settlement receipts.',
+          'Launched. The public run `run.tassadar.executor.20260615` is active, and the decentralized contribution loop is proven end-to-end in the open: an independent contributor installed Pylon, claimed a window lease, and submitted a Tassadar executor trace; an independent validator on a separate machine/identity replayed the pinned fixture and the verification challenge finalized `Verified`; and an operator-approved, provider-confirmed Bitcoin settlement receipt (settlement_recorded, state settled) is linked to the run for the worker. The public run summary reflects providerConfirmedSettledPayoutSats and a qualified contributor with verified work. This is the FIRST independent worker-validator pairing and settlement, not a large-scale or largest-run claim; the run remains open for more contributors.',
         unsafeCopy:
-          'Do not claim the Monday launch has happened, is accepting contributors, is paying, or is the largest run until evidence exists. Rails-ready is not launched.',
+          'Do not claim this is a network-scale, large, or the largest decentralized training run, that hundreds of contributors are paid, or that public gradients mutate a canonical model. Green here means one cross-owner Verified pairing earned a provider-confirmed Bitcoin settlement; scale, largest-run, and canonical-gradient claims have their own separate promises and remain bounded by their evidence.',
         evidenceRefs: [
+          'https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615',
+          'training.verification.challenge.59ba1f30-c2f0-40b0-b3ec-b9c5e1fb5316',
+          'receipt.nexus.tassadar_run_settlement.idem.tassadar.settlement.59ba1f30.orrery.v2',
           'docs/transcripts/236.md',
-          'docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
-          'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
-          'apps/pylon/docs/proofs/m10-live-2026-06-14/README.md',
-          'apps/pylon/docs/proofs/m10-overnight-2026-06-13/README.md',
+          'docs/launch/JUNE16_ROADMAP.md',
           'https://github.com/OpenAgentsInc/openagents/issues/4855',
         ],
-        blockerRefs: [
-          'blocker.product_promises.monday_training_launch_receipts_missing',
-          'blocker.product_promises.training_run_public_state_missing',
-          'blocker.product_promises.training_launch_payment_settlement_missing',
-        ],
+        blockerRefs: [],
         verification:
-          'Green requires a public run identifier, run status projection, participant rules, task receipts, validation/eval receipts, payment/settlement refs, and freshness degradation for stale state.',
+          'GET /api/public/training/runs/run.tassadar.executor.20260615: run state active, summary.metrics.qualifiedContributorCount >= 1, summary.metrics.providerConfirmedSettledPayoutSats > 0, and a Verified exact_trace_replay verification challenge with a settlement_recorded (state settled) receipt linked to the run. The number degrades to the receipts actually present; pending, offered, or claimed records never count as settled.',
         authorityBoundary:
-          'A dated target does not itself create runtime availability, admission, dispatch, validation, or spend authority.',
+          'A launched, settled first pairing does not authorize network-scale training claims, contributor admission beyond the published rules, largest-run comparisons, canonical-checkpoint mutation from public gradients, or any spend beyond the operator-approved, capped run settlement.',
       },
       {
         ...basePromiseFields,
