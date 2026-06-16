@@ -1,27 +1,3 @@
-// COORDINATOR WIRING:
-// In workers/api/src/index.ts, construct the routes alongside the other route
-// factories (near makeNativeListsRoutes), e.g.:
-//
-//   const prefilledWorkspaceRoutes = makePrefilledWorkspaceRoutes<WorkerBindings>({
-//     makeStore: env => makePrefilledWorkspaceService(openAgentsDatabase(env)),
-//     requireHolderUserId: async (request, env, ctx) => {
-//       const session = await requireBrowserSession(request, env, ctx)
-//       return session?.user.userId
-//     },
-//     requireOperator: (request, env) => requireAdminApiToken(request, env),
-//   })
-//
-// Then chain it into the omni dispatch chain (routeOmniRequest), e.g.:
-//
-//   routeOmniRequest: (request, env, ctx) =>
-//     omniRoutes.routeOmniRequest(request, env, ctx) ??
-//     ...
-//     nativeListsRoutes.routeNativeListsRequest(request, env, ctx) ??
-//     prefilledWorkspaceRoutes.routePrefilledWorkspaceRequest(request, env, ctx),
-//
-// Also add the imports near the other route imports:
-//   import { makePrefilledWorkspaceService } from './prefilled-workspace'
-//   import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import {
@@ -86,6 +62,12 @@ const CreateWorkspaceRequest = S.Struct({
 })
 type CreateWorkspaceRequest = typeof CreateWorkspaceRequest.Type
 
+const WorkspaceEngagementEventRequest = S.Struct({
+  event: S.Literal('first_run'),
+})
+type WorkspaceEngagementEventRequest =
+  typeof WorkspaceEngagementEventRequest.Type
+
 const routeNowIso = <Bindings>(
   dependencies: PrefilledWorkspaceRoutesDependencies<Bindings>,
 ): string => dependencies.nowIso?.() ?? currentIsoTimestamp()
@@ -119,8 +101,22 @@ const workspaceIdFromPath = (pathname: string): string | undefined => {
   return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
 }
 
+const workspaceEngagementIdFromPath = (
+  pathname: string,
+): string | undefined => {
+  const match = /^\/api\/workspaces\/([^/]+)\/engagement$/.exec(pathname)
+
+  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+}
+
 const isWorkspacesCollectionPath = (pathname: string): boolean =>
   pathname === '/api/workspaces'
+
+const inviteUrlForWorkspace = (request: Request, workspaceId: string): string => {
+  const url = new URL(request.url)
+
+  return `${url.origin}/workspaces/${encodeURIComponent(workspaceId)}`
+}
 
 const toCreateInput = (
   body: CreateWorkspaceRequest,
@@ -158,15 +154,41 @@ const decodeCreateRequest = (
       ),
   })
 
-const operatorWorkspaceView = (record: PrefilledWorkspaceRecord) => ({
+const decodeEngagementEventRequest = (
+  request: Request,
+): Effect.Effect<WorkspaceEngagementEventRequest, HttpResponse> =>
+  Effect.tryPromise({
+    catch: error =>
+      badRequest(error instanceof Error ? error.message : String(error)),
+    try: async () =>
+      S.decodeUnknownSync(WorkspaceEngagementEventRequest)(
+        await readJsonObject(request),
+      ),
+  })
+
+const workspaceEngagementView = (record: PrefilledWorkspaceRecord) => ({
+  invitedAt: record.engagement.invitedAt,
+  firstViewedAt: record.engagement.firstViewedAt,
+  firstClaimedAt: record.engagement.firstClaimedAt,
+  firstRunAt: record.engagement.firstRunAt,
+  lastViewedAt: record.engagement.lastViewedAt,
+  revisitCount: record.engagement.revisitCount,
+})
+
+const operatorWorkspaceView = (
+  request: Request,
+  record: PrefilledWorkspaceRecord,
+) => ({
   id: record.id,
   holderUserId: record.holderUserId,
   holderRef: record.holderRef,
+  inviteUrl: inviteUrlForWorkspace(request, record.id),
   projectName: record.projectName,
   status: record.status,
   seededMemory: record.seededMemory,
   starterWorkflows: record.starterWorkflows,
   introReceipt: record.introReceipt,
+  engagement: workspaceEngagementView(record),
   createdAt: record.createdAt,
   updatedAt: record.updatedAt,
 })
@@ -201,7 +223,7 @@ const createWorkspace = <Bindings extends PrefilledWorkspaceRouteEnv>(
     return noStoreJsonResponse(
       {
         generatedAt: nowIso,
-        workspace: operatorWorkspaceView(record),
+        workspace: operatorWorkspaceView(request, record),
       },
       { status: 201 },
     )
@@ -238,7 +260,7 @@ const getWorkspace = <Bindings extends PrefilledWorkspaceRouteEnv>(
       return noStoreJsonResponse({
         generatedAt: nowIso,
         viewer: 'operator',
-        workspace: operatorWorkspaceView(record),
+        workspace: operatorWorkspaceView(request, record),
       })
     }
 
@@ -251,7 +273,65 @@ const getWorkspace = <Bindings extends PrefilledWorkspaceRouteEnv>(
     }
 
     const record = yield* Effect.promise(() =>
-      store.readWorkspaceForHolder(workspaceId, holderUserId),
+      store.readOrClaimWorkspaceForHolder(workspaceId, holderUserId),
+    )
+
+    if (record === undefined) {
+      return notFound()
+    }
+
+    return noStoreJsonResponse({
+      generatedAt: nowIso,
+      viewer: 'holder',
+      workspace: toPublicProjection(record),
+    })
+  }).pipe(Effect.catch(error => Effect.succeed(error)))
+
+const recordWorkspaceEngagement = <Bindings extends PrefilledWorkspaceRouteEnv>(
+  dependencies: PrefilledWorkspaceRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  workspaceId: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const body = yield* decodeEngagementEventRequest(request)
+    const isOperator = yield* dependencyPromise(() =>
+      dependencies.requireOperator(request, env),
+    )
+
+    if (body.event !== 'first_run') {
+      return badRequest('Unsupported workspace engagement event.')
+    }
+
+    if (isOperator) {
+      const record = yield* Effect.promise(() =>
+        store.recordFirstRunForOperator(workspaceId),
+      )
+
+      if (record === undefined) {
+        return notFound()
+      }
+
+      return noStoreJsonResponse({
+        generatedAt: nowIso,
+        viewer: 'operator',
+        workspace: operatorWorkspaceView(request, record),
+      })
+    }
+
+    const holderUserId = yield* dependencyPromise(() =>
+      dependencies.requireHolderUserId(request, env, ctx),
+    )
+
+    if (holderUserId === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const record = yield* Effect.promise(() =>
+      store.recordFirstRunForHolder(workspaceId, holderUserId),
     )
 
     if (record === undefined) {
@@ -280,6 +360,23 @@ export const makePrefilledWorkspaceRoutes = <
     if (isWorkspacesCollectionPath(url.pathname)) {
       return M.value(request.method).pipe(
         M.when('POST', () => createWorkspace(dependencies, request, env)),
+        M.orElse(() => Effect.succeed(methodNotAllowed(['POST']))),
+      )
+    }
+
+    const workspaceEngagementId = workspaceEngagementIdFromPath(url.pathname)
+
+    if (workspaceEngagementId !== undefined) {
+      return M.value(request.method).pipe(
+        M.when('POST', () =>
+          recordWorkspaceEngagement(
+            dependencies,
+            request,
+            env,
+            ctx,
+            workspaceEngagementId,
+          ),
+        ),
         M.orElse(() => Effect.succeed(methodNotAllowed(['POST']))),
       )
     }

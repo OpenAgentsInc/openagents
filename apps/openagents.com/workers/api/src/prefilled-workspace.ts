@@ -61,6 +61,17 @@ export const IntroReceipt = S.Struct({
 })
 export type IntroReceipt = typeof IntroReceipt.Type
 
+export const PrefilledWorkspaceEngagement = S.Struct({
+  invitedAt: S.NullOr(S.String),
+  firstViewedAt: S.NullOr(S.String),
+  firstClaimedAt: S.NullOr(S.String),
+  firstRunAt: S.NullOr(S.String),
+  lastViewedAt: S.NullOr(S.String),
+  revisitCount: S.Number,
+})
+export type PrefilledWorkspaceEngagement =
+  typeof PrefilledWorkspaceEngagement.Type
+
 export type PrefilledWorkspaceRuntime = Readonly<{
   makeId: (prefix: string) => string
   nowIso: () => string
@@ -84,6 +95,7 @@ export type PrefilledWorkspaceRecord = Readonly<{
   seededMemory: ReadonlyArray<SeededMemoryEntry>
   starterWorkflows: ReadonlyArray<StarterWorkflow>
   introReceipt: IntroReceipt
+  engagement: PrefilledWorkspaceEngagement
   createdAt: string
   updatedAt: string
 }>
@@ -95,6 +107,12 @@ type WorkspaceRow = Readonly<{
   project_name: string
   status: WorkspaceStatus
   intro_receipt_json: string
+  invited_at: string | null
+  first_viewed_at: string | null
+  first_claimed_at: string | null
+  first_run_at: string | null
+  last_viewed_at: string | null
+  revisit_count: number
   created_at: string
   updated_at: string
 }>
@@ -183,6 +201,14 @@ export const makePrefilledWorkspaceRecord = (
     seededMemory: normalizeSeededMemory(input.seededMemory ?? []),
     starterWorkflows: normalizeStarterWorkflows(input.starterWorkflows ?? []),
     introReceipt: normalizeIntroReceipt(input.introReceipt),
+    engagement: {
+      invitedAt: (input.status ?? 'draft') === 'invited' ? now : null,
+      firstViewedAt: null,
+      firstClaimedAt: null,
+      firstRunAt: null,
+      lastViewedAt: null,
+      revisitCount: 0,
+    },
     createdAt: now,
     updatedAt: now,
   }
@@ -222,6 +248,14 @@ const recordFromRows = (
       status: row.status,
     })),
   introReceipt: parseIntroReceipt(workspace.intro_receipt_json),
+  engagement: {
+    invitedAt: workspace.invited_at,
+    firstViewedAt: workspace.first_viewed_at,
+    firstClaimedAt: workspace.first_claimed_at,
+    firstRunAt: workspace.first_run_at,
+    lastViewedAt: workspace.last_viewed_at,
+    revisitCount: workspace.revisit_count,
+  },
   createdAt: workspace.created_at,
   updatedAt: workspace.updated_at,
 })
@@ -237,6 +271,7 @@ export type PrefilledWorkspacePublicProjection = Readonly<{
   seededMemory: ReadonlyArray<SeededMemoryEntry>
   starterWorkflows: ReadonlyArray<StarterWorkflow>
   introReceipt: IntroReceipt
+  engagement: PrefilledWorkspaceEngagement
 }>
 
 export const toPublicProjection = (
@@ -248,6 +283,7 @@ export const toPublicProjection = (
   seededMemory: record.seededMemory,
   starterWorkflows: record.starterWorkflows,
   introReceipt: record.introReceipt,
+  engagement: record.engagement,
 })
 
 export type PrefilledWorkspaceServiceShape = Readonly<{
@@ -262,6 +298,17 @@ export type PrefilledWorkspaceServiceShape = Readonly<{
   readWorkspaceForHolder: (
     workspaceId: string,
     holderUserId: string,
+  ) => Promise<PrefilledWorkspaceRecord | undefined>
+  readOrClaimWorkspaceForHolder: (
+    workspaceId: string,
+    holderUserId: string,
+  ) => Promise<PrefilledWorkspaceRecord | undefined>
+  recordFirstRunForHolder: (
+    workspaceId: string,
+    holderUserId: string,
+  ) => Promise<PrefilledWorkspaceRecord | undefined>
+  recordFirstRunForOperator: (
+    workspaceId: string,
   ) => Promise<PrefilledWorkspaceRecord | undefined>
 }>
 
@@ -322,7 +369,9 @@ const loadWorkspace = async (
   const workspace = await db
     .prepare(
       `SELECT id, holder_user_id, holder_ref, project_name, status,
-              intro_receipt_json, created_at, updated_at
+              intro_receipt_json, invited_at, first_viewed_at,
+              first_claimed_at, first_run_at, last_viewed_at,
+              revisit_count, created_at, updated_at
          FROM prefilled_workspaces
         WHERE ${whereClause}
           AND archived_at IS NULL
@@ -359,6 +408,74 @@ const loadWorkspace = async (
   return recordFromRows(workspace, memory.results, workflows.results)
 }
 
+const trackHolderWorkspaceView = async (
+  db: D1Database,
+  workspaceId: string,
+  holderUserId: string,
+  nowIso: string,
+): Promise<void> => {
+  await db
+    .prepare(
+      `UPDATE prefilled_workspaces
+          SET holder_user_id = COALESCE(holder_user_id, ?),
+              status = CASE
+                WHEN holder_user_id IS NULL AND status = 'invited' THEN 'active'
+                ELSE status
+              END,
+              first_viewed_at = COALESCE(first_viewed_at, ?),
+              first_claimed_at = CASE
+                WHEN holder_user_id IS NULL AND status = 'invited'
+                THEN COALESCE(first_claimed_at, ?)
+                ELSE first_claimed_at
+              END,
+              last_viewed_at = ?,
+              revisit_count = CASE
+                WHEN first_viewed_at IS NULL THEN revisit_count
+                ELSE revisit_count + 1
+              END,
+              updated_at = ?
+        WHERE id = ?
+          AND archived_at IS NULL
+          AND (
+            holder_user_id = ?
+            OR (holder_user_id IS NULL AND status = 'invited')
+          )`,
+    )
+    .bind(
+      holderUserId,
+      nowIso,
+      nowIso,
+      nowIso,
+      nowIso,
+      workspaceId,
+      holderUserId,
+    )
+    .run()
+}
+
+const recordFirstRun = async (
+  db: D1Database,
+  workspaceId: string,
+  nowIso: string,
+  holderUserId?: string,
+): Promise<void> => {
+  const holderClause =
+    holderUserId === undefined ? '' : 'AND holder_user_id = ?'
+  const statement = db.prepare(
+    `UPDATE prefilled_workspaces
+        SET first_run_at = COALESCE(first_run_at, ?),
+            updated_at = ?
+      WHERE id = ?
+        AND archived_at IS NULL
+        ${holderClause}`,
+  )
+
+  await (holderUserId === undefined
+    ? statement.bind(nowIso, nowIso, workspaceId)
+    : statement.bind(nowIso, nowIso, workspaceId, holderUserId)
+  ).run()
+}
+
 export const makePrefilledWorkspaceService = (
   db: D1Database,
   runtime: PrefilledWorkspaceRuntime = systemPrefilledWorkspaceRuntime,
@@ -370,8 +487,10 @@ export const makePrefilledWorkspaceService = (
       .prepare(
         `INSERT INTO prefilled_workspaces
           (id, holder_user_id, holder_ref, project_name, status,
-           intro_receipt_json, created_at, updated_at, archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+           intro_receipt_json, invited_at, first_viewed_at, first_claimed_at,
+           first_run_at, last_viewed_at, revisit_count, created_at, updated_at,
+           archived_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
       .bind(
         record.id,
@@ -380,6 +499,12 @@ export const makePrefilledWorkspaceService = (
         record.projectName,
         record.status,
         JSON.stringify(record.introReceipt),
+        record.engagement.invitedAt,
+        record.engagement.firstViewedAt,
+        record.engagement.firstClaimedAt,
+        record.engagement.firstRunAt,
+        record.engagement.lastViewedAt,
+        record.engagement.revisitCount,
         record.createdAt,
         record.updatedAt,
       )
@@ -396,4 +521,28 @@ export const makePrefilledWorkspaceService = (
       workspaceId,
       holderUserId,
     ]),
+  readOrClaimWorkspaceForHolder: async (workspaceId, holderUserId) => {
+    const nowIso = runtime.nowIso()
+    await trackHolderWorkspaceView(db, workspaceId, holderUserId, nowIso)
+
+    return loadWorkspace(db, 'id = ? AND holder_user_id = ?', [
+      workspaceId,
+      holderUserId,
+    ])
+  },
+  recordFirstRunForHolder: async (workspaceId, holderUserId) => {
+    const nowIso = runtime.nowIso()
+    await recordFirstRun(db, workspaceId, nowIso, holderUserId)
+
+    return loadWorkspace(db, 'id = ? AND holder_user_id = ?', [
+      workspaceId,
+      holderUserId,
+    ])
+  },
+  recordFirstRunForOperator: async workspaceId => {
+    const nowIso = runtime.nowIso()
+    await recordFirstRun(db, workspaceId, nowIso)
+
+    return loadWorkspace(db, 'id = ?', [workspaceId])
+  },
 })

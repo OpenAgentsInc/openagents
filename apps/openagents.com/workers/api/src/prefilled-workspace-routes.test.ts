@@ -47,6 +47,91 @@ class MemoryWorkspaceStore implements PrefilledWorkspaceServiceShape {
       ? record
       : undefined
   }
+
+  readOrClaimWorkspaceForHolder = async (
+    workspaceId: string,
+    holderUserId: string,
+  ) => {
+    const record = this.workspaces.get(workspaceId)
+
+    if (record === undefined) {
+      return undefined
+    }
+
+    if (record.holderUserId !== null && record.holderUserId !== holderUserId) {
+      return undefined
+    }
+
+    if (record.holderUserId === null && record.status !== 'invited') {
+      return undefined
+    }
+
+    const nextRecord: PrefilledWorkspaceRecord = {
+      ...record,
+      holderUserId,
+      status: record.holderUserId === null ? 'active' : record.status,
+      engagement: {
+        ...record.engagement,
+        firstViewedAt: record.engagement.firstViewedAt ?? fixtureNowIso,
+        firstClaimedAt:
+          record.holderUserId === null
+            ? (record.engagement.firstClaimedAt ?? fixtureNowIso)
+            : record.engagement.firstClaimedAt,
+        lastViewedAt: fixtureNowIso,
+        revisitCount:
+          record.engagement.firstViewedAt === null
+            ? record.engagement.revisitCount
+            : record.engagement.revisitCount + 1,
+      },
+      updatedAt: fixtureNowIso,
+    }
+    this.workspaces.set(workspaceId, nextRecord)
+
+    return nextRecord
+  }
+
+  recordFirstRunForHolder = async (
+    workspaceId: string,
+    holderUserId: string,
+  ) => {
+    const record = this.workspaces.get(workspaceId)
+
+    if (record === undefined || record.holderUserId !== holderUserId) {
+      return undefined
+    }
+
+    const nextRecord: PrefilledWorkspaceRecord = {
+      ...record,
+      engagement: {
+        ...record.engagement,
+        firstRunAt: record.engagement.firstRunAt ?? fixtureNowIso,
+      },
+      updatedAt: fixtureNowIso,
+    }
+    this.workspaces.set(workspaceId, nextRecord)
+
+    return nextRecord
+  }
+
+  recordFirstRunForOperator = async (workspaceId: string) => {
+    const record = this.workspaces.get(workspaceId)
+
+    if (record === undefined) {
+      return undefined
+    }
+
+    const nextRecord: PrefilledWorkspaceRecord = {
+      ...record,
+      engagement: {
+        ...record.engagement,
+        firstRunAt: record.engagement.firstRunAt ?? fixtureNowIso,
+      },
+      updatedAt: fixtureNowIso,
+    }
+    this.workspaces.set(workspaceId, nextRecord)
+
+    return nextRecord
+  }
 }
 
 const seededRecord = (
@@ -71,6 +156,14 @@ const seededRecord = (
   introReceipt: {
     summary: 'Seeded from public sources.',
     publicSourceRefs: ['https://src'],
+  },
+  engagement: {
+    invitedAt: fixtureNowIso,
+    firstViewedAt: null,
+    firstClaimedAt: null,
+    firstRunAt: null,
+    lastViewedAt: null,
+    revisitCount: 0,
   },
   createdAt: fixtureNowIso,
   updatedAt: fixtureNowIso,
@@ -138,12 +231,18 @@ describe('prefilled workspace routes', () => {
     expect(response.status).toBe(201)
     const body = (await response.json()) as {
       workspace: {
+        engagement: { invitedAt: string | null }
         id: string
+        inviteUrl: string
         projectName: string
         starterWorkflows: ReadonlyArray<{ status: string }>
       }
     }
     expect(body.workspace.projectName).toBe('The Hardware Shop')
+    expect(body.workspace.inviteUrl).toBe(
+      'https://openagents.com/workspaces/workspace_1',
+    )
+    expect(body.workspace.engagement.invitedAt).toBe(fixtureNowIso)
     expect(body.workspace.starterWorkflows[0]?.status).toBe('queued')
     expect(store.workspaces.size).toBe(1)
   })
@@ -207,11 +306,20 @@ describe('prefilled workspace routes', () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as {
       viewer: string
-      workspace: { holderRef: string; holderUserId: string | null }
+      workspace: {
+        engagement: { firstRunAt: string | null }
+        holderRef: string
+        holderUserId: string | null
+        inviteUrl: string
+      }
     }
     expect(body.viewer).toBe('operator')
     expect(body.workspace.holderRef).toBe('prospect-ref-001')
     expect(body.workspace.holderUserId).toBe('github:holder')
+    expect(body.workspace.inviteUrl).toBe(
+      'https://openagents.com/workspaces/workspace_seed',
+    )
+    expect(body.workspace.engagement.firstRunAt).toBe(null)
   })
 
   test('bound holder gets the public-safe projection without operator fields', async () => {
@@ -235,7 +343,102 @@ describe('prefilled workspace routes', () => {
     expect(body.viewer).toBe('holder')
     expect(body.workspace).not.toHaveProperty('holderUserId')
     expect(body.workspace).not.toHaveProperty('holderRef')
+    expect(body.workspace).not.toHaveProperty('inviteUrl')
     expect(body.workspace.projectName).toBe('The Hardware Shop')
+  })
+
+  test('first signed-in holder claims an unbound invited workspace and revisits are counted', async () => {
+    const store = new MemoryWorkspaceStore()
+    store.seed(seededRecord({ holderUserId: null }))
+    const routes = makeRoutes(store)
+
+    const firstResponse = await run(
+      routes.routePrefilledWorkspaceRequest(
+        new Request('https://openagents.com/api/workspaces/workspace_seed'),
+        { holderUserId: 'github:first-holder' },
+        ctx,
+      ),
+    )
+    const secondResponse = await run(
+      routes.routePrefilledWorkspaceRequest(
+        new Request('https://openagents.com/api/workspaces/workspace_seed'),
+        { holderUserId: 'github:first-holder' },
+        ctx,
+      ),
+    )
+
+    expect(firstResponse.status).toBe(200)
+    expect(secondResponse.status).toBe(200)
+    expect(store.workspaces.get('workspace_seed')).toMatchObject({
+      holderUserId: 'github:first-holder',
+      status: 'active',
+      engagement: {
+        firstClaimedAt: fixtureNowIso,
+        firstViewedAt: fixtureNowIso,
+        lastViewedAt: fixtureNowIso,
+        revisitCount: 1,
+      },
+    })
+  })
+
+  test('holder first-run engagement is recorded without exposing operator fields', async () => {
+    const store = new MemoryWorkspaceStore()
+    store.seed(seededRecord())
+    const routes = makeRoutes(store)
+
+    const response = await run(
+      routes.routePrefilledWorkspaceRequest(
+        new Request(
+          'https://openagents.com/api/workspaces/workspace_seed/engagement',
+          {
+            body: JSON.stringify({ event: 'first_run' }),
+            method: 'POST',
+          },
+        ),
+        { holderUserId: 'github:holder' },
+        ctx,
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      viewer: string
+      workspace: Record<string, unknown>
+    }
+    expect(body.viewer).toBe('holder')
+    expect(body.workspace).not.toHaveProperty('holderUserId')
+    expect(store.workspaces.get('workspace_seed')?.engagement.firstRunAt).toBe(
+      fixtureNowIso,
+    )
+  })
+
+  test('operator can record first-run engagement for inspection', async () => {
+    const store = new MemoryWorkspaceStore()
+    store.seed(seededRecord({ holderUserId: null }))
+    const routes = makeRoutes(store)
+
+    const response = await run(
+      routes.routePrefilledWorkspaceRequest(
+        new Request(
+          'https://openagents.com/api/workspaces/workspace_seed/engagement',
+          {
+            body: JSON.stringify({ event: 'first_run' }),
+            headers: { authorization: 'Bearer op-secret' },
+            method: 'POST',
+          },
+        ),
+        { operatorToken: 'op-secret' },
+        ctx,
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      viewer: string
+      workspace: { engagement: { firstRunAt: string | null } }
+    }
+    expect(body.viewer).toBe('operator')
+    expect(body.workspace.engagement.firstRunAt).toBe(fixtureNowIso)
   })
 
   test('a different holder cannot read someone else workspace', async () => {

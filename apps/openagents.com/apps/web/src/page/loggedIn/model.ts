@@ -545,6 +545,17 @@ export const PrefilledWorkspaceIntroReceipt = S.Struct({
 export type PrefilledWorkspaceIntroReceipt =
   typeof PrefilledWorkspaceIntroReceipt.Type
 
+export const PrefilledWorkspaceEngagement = S.Struct({
+  invitedAt: S.NullOr(S.String),
+  firstViewedAt: S.NullOr(S.String),
+  firstClaimedAt: S.NullOr(S.String),
+  firstRunAt: S.NullOr(S.String),
+  lastViewedAt: S.NullOr(S.String),
+  revisitCount: S.Number,
+})
+export type PrefilledWorkspaceEngagement =
+  typeof PrefilledWorkspaceEngagement.Type
+
 export const PrefilledWorkspace = S.Struct({
   id: S.String,
   projectName: S.String,
@@ -552,6 +563,7 @@ export const PrefilledWorkspace = S.Struct({
   seededMemory: S.Array(PrefilledWorkspaceSeededMemoryEntry),
   starterWorkflows: S.Array(PrefilledWorkspaceStarterWorkflow),
   introReceipt: PrefilledWorkspaceIntroReceipt,
+  engagement: S.optionalKey(PrefilledWorkspaceEngagement),
 })
 export type PrefilledWorkspace = typeof PrefilledWorkspace.Type
 

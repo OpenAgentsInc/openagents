@@ -236,7 +236,14 @@ epics below; not all lands today — the aim is the main spine.
   public business-signup intake endpoint + D1 queue for opt-in Slack Connect
   requests, with `manual_invite_pending` status and the automation boundary
   documented in
-  `docs/blitz/forge/2026-06-16-business-slack-connect-intake.md`.
+  `docs/blitz/forge/2026-06-16-business-slack-connect-intake.md`. **C2**
+  (#5093) shipped the operator seed-to-invite loop: `POST /api/workspaces` now
+  returns a personal `/workspaces/{workspaceId}` invite URL, signed-in holders
+  can claim an unbound invited workspace, holder reads record first view/revisit
+  engagement, and `/api/workspaces/{workspaceId}/engagement` records the first
+  starter-run handoff. Operator reads expose engagement; holder projections still
+  hide operator-only bindings. Contract:
+  `docs/blitz/forge/2026-06-16-workspace-seeding-invite-engagement.md`.
 - **Login surface — real `/login` page + email OTP (#5111, CLOSED, deployed
   `d9113b02`):** `/login` is now a branded SPA page (`apps/web/src/page/login.ts`,
   over the constellation animation) offering **email one-time-code** sign-in +
@@ -273,7 +280,6 @@ epics below; not all lands today — the aim is the main spine.
 
 **Targeted next (this session / soon — won't all land today):**
 
-- **C2** (#5093) operator seeding + invite-link + engagement tracking.
 - **Epic D — customer-#1 dogfood (#5104):** **D1** (#5096) route our own AI/coding
   spend through the pool/nodes (ship now) · **D4** (#5106) fixed: Pylon now has
   lane-scoped change capture/commit guards, shared-file conflict refs, and dirty
@@ -313,15 +319,16 @@ the one true infra gap between "manual two-device proof" and "any installer is
 auto-paired," and it unblocks #5061 / the §C green-flips.
 
 Section **A** is fully closed; the apps/web wave (Epic A live-render #5108,
-`/login` #5111 + OTP hardening #5120, `/animations`) has landed and deployed. Other
-clean non-overlapping assistant-lane work: the §F **Targeted next** items — **B3**
-(#5089 Forge Automations), **C2** (#5093 operator seeding/invite/engagement), **D1**
-(#5096 route our own AI/coding spend through the pool) — plus the **email strategy
-"NEXT" slice** (Cloudflare verified-destination smoke + `cloudflare_email` provider
-behind `EmailService`; see the unified strategy doc). The owner-gated green-flips
-(**B/C** §C, built-in agent §D) still need the owner + a real second device + the
-concurrent desktop session. Coordinate to avoid the duplicate-work collisions seen
-on #5067.
+`/login` #5111 + OTP hardening #5120, `/animations`) has landed and deployed.
+With B3 (#5089 Forge Automations) and C2 (#5093 operator
+seeding/invite/engagement) now landed, the clean non-overlapping assistant-lane
+work is D1 (#5096 route our own AI/coding spend through the pool), the **email
+strategy "NEXT" slice** (Cloudflare verified-destination smoke +
+`cloudflare_email` provider behind `EmailService`; see the unified strategy
+doc), and Epic G Forge Autopilot Coder surfaces. The owner-gated green-flips
+(**B/C** §C, built-in agent §D) still need the owner + a real second device +
+the concurrent desktop session. Coordinate to avoid the duplicate-work
+collisions seen on #5067.
 
 ## Coordination note
 

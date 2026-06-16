@@ -14,8 +14,9 @@ The current implementation is a reusable seed template in
 `apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.ts`.
 It deliberately creates a **draft** workspace input, not a live matter, legal
 advice surface, or attorney-reviewed packet. Operators can pass the returned
-input into the existing `POST /api/workspaces` flow once #5093's operator
-seeding/invite workflow chooses the real holder binding.
+input into the existing `POST /api/workspaces` flow, set `status: "invited"`
+when the workspace is ready, and send the returned `/workspaces/{workspaceId}`
+invite URL.
 
 ## Template Ref
 
@@ -76,8 +77,9 @@ are seeded.
 ## Operator Boundary
 
 This template is ready for manual or automated operator seeding through the
-existing workspace primitive, but it does not itself invite a partner or bind a
-holder account. That binding belongs to #5093.
+existing workspace primitive. The #5093 invite flow now generates the personal
+invite URL, lets the first signed-in holder claim an unbound invited workspace,
+and records view/revisit/first-run engagement for operator inspection.
 
 Until a holder connects matter, document, CRM, or timekeeping systems, the
 workspace must treat live legal data as absent. Any client delivery, matter
