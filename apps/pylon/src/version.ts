@@ -6,7 +6,8 @@
 // authoritative for the running binary.
 //
 // Bump for each release cut. v1.0-rc cut: 2026-06-16 (#5122).
-export const PYLON_VERSION = "1.0.0-rc.8"
+// rc.9: spark-selftest diagnostic + readiness auto-report + binary SDK guard (#5166).
+export const PYLON_VERSION = "1.0.0-rc.9"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.

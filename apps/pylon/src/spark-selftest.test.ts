@@ -28,3 +28,20 @@ describe("sparkModuleSelftest", () => {
     expect(r.moduleLoaded).toBe(false)
   })
 })
+
+import { toSatNumber } from "./spark-backup-helper"
+
+describe("toSatNumber (balance coercion #5166)", () => {
+  it("accepts number, bigint, and decimal-string sat amounts", () => {
+    expect(toSatNumber(50000)).toBe(50000)
+    expect(toSatNumber(0)).toBe(0)
+    expect(toSatNumber(50000n)).toBe(50000)
+    expect(toSatNumber("50000")).toBe(50000)
+  })
+  it("rejects non-amounts as null", () => {
+    expect(toSatNumber(undefined)).toBeNull()
+    expect(toSatNumber(null)).toBeNull()
+    expect(toSatNumber("abc")).toBeNull()
+    expect(toSatNumber(NaN)).toBeNull()
+  })
+})

@@ -1010,6 +1010,38 @@ async function resolveSparkBackupOptions(
   }
 }
 
+// #5166 fleet diagnostic: load the Spark SDK with NO network and NO seed, and
+// report which gate would make the offline-receive helper unavailable on THIS
+// node (compiled-binary vs source, seed present, module actually loads). Cheap,
+// secret-free, and safe to run on every readiness report.
+export interface SparkSelftest {
+  isCompiledBinary: boolean
+  enabled: boolean
+  identitySource: string
+  seedPresent: boolean
+  moduleLoaded: boolean
+  moduleReason: string | null
+}
+async function computeSparkSelftest(state: PylonLocalState): Promise<SparkSelftest> {
+  // A Bun-compiled standalone binary runs its modules from the virtual
+  // `/$bunfs/` filesystem; a source/npm run resolves to a real path.
+  const isCompiledBinary =
+    typeof import.meta.url === "string" && import.meta.url.includes("/$bunfs/")
+  const enabled =
+    Bun.env.PYLON_SPARK_BACKUP_ENABLED === "1" || Bun.env.PYLON_SPARK_BACKUP_ENABLED === "true"
+  const idPath = resolveNostrIdentityPath(state.paths, Bun.env)
+  const mnemonic = await readIdentityMnemonicOrNull(state)
+  const moduleResult = await sparkModuleSelftest()
+  return {
+    isCompiledBinary,
+    enabled,
+    identitySource: idPath.source,
+    seedPresent: mnemonic !== null && mnemonic.trim() !== "",
+    moduleLoaded: moduleResult.moduleLoaded,
+    moduleReason: moduleResult.reason,
+  }
+}
+
 // Best-effort resolve this node's static Spark-hosted Lightning Address (#5078)
 // for publishing alongside the BOLT 12 offer in tip-recipient readiness. Returns
 // undefined (and costs nothing) when the Spark backup is not opt-in enabled, or
@@ -2221,7 +2253,10 @@ async function main() {
         const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
         if (!baseUrl) throw new Error("wallet report-readiness requires --base-url or PYLON_OPENAGENTS_BASE_URL")
         const status = await classifyMdkWallet()
-        const result = await reportWalletReadiness({ status }, {
+        // #5166: attach a secret-free Spark selftest so the platform collects,
+        // fleet-wide, which gate makes the offline-receive helper unavailable.
+        const sparkSelftest = await computeSparkSelftest(state)
+        const result = await reportWalletReadiness({ status, sparkSelftest }, {
           agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
           baseUrl,
           pylonRef: state.identity.pylonRef,
@@ -2360,29 +2395,16 @@ async function main() {
         // present, WITHOUT any network or secret exposure. This is the signal we
         // collect fleet-wide (via report-readiness / OTA) to localize why the
         // offline-receive helper is unavailable on some nodes.
-        // A Bun-compiled standalone binary runs its modules from the virtual
-        // `/$bunfs/` filesystem; a source/npm run resolves to a real path.
-        const isCompiledBinary =
-          typeof import.meta.url === "string" && import.meta.url.includes("/$bunfs/")
-        const enabled =
-          Bun.env.PYLON_SPARK_BACKUP_ENABLED === "1" || Bun.env.PYLON_SPARK_BACKUP_ENABLED === "true"
-        const idPath = resolveNostrIdentityPath(state.paths, Bun.env)
-        const mnemonic = await readIdentityMnemonicOrNull(state)
-        const moduleResult = await sparkModuleSelftest()
+        const selftest = await computeSparkSelftest(state)
         const body = {
           schema: "openagents.pylon.spark_selftest.v0.1",
-          isCompiledBinary,
-          enabled,
           embeddedCredentialAvailable: true,
-          identitySource: idPath.source,
-          seedPresent: mnemonic !== null && mnemonic.trim() !== "",
-          moduleLoaded: moduleResult.moduleLoaded,
-          moduleReason: moduleResult.reason,
+          ...selftest,
         }
         process.stdout.write(`${JSON.stringify(body, null, 2)}\n`)
         // Loading the SDK can leave a background handle alive; exit explicitly
         // like the other Spark commands (#5162).
-        process.exit(moduleResult.moduleLoaded ? 0 : 1)
+        process.exit(selftest.moduleLoaded ? 0 : 1)
       }
       if (command === "send") {
         const destinationRef = options["destination-ref"]

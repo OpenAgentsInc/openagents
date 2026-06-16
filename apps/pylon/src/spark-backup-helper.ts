@@ -197,6 +197,27 @@ export async function sparkModuleSelftest(
 }
 
 /**
+ * Coerce a satoshi amount that the SDK may hand back as a JS number, a bigint
+ * (wasm-bindgen u64), or a decimal string into a plain number. Returns null when
+ * the value is absent or not a non-negative integer amount. This is what keeps a
+ * real received balance from being misreported as `null` (#5166).
+ */
+export function toSatNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null
+  if (typeof value === "bigint") {
+    return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : Number.MAX_SAFE_INTEGER
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (/^\d+$/.test(trimmed)) {
+      const n = Number(trimmed)
+      return Number.isFinite(n) ? n : null
+    }
+  }
+  return null
+}
+
+/**
  * Build a short-lived SDK session. Prefers `SdkBuilder.new(...).withStorage(...)`
  * with a `bun:sqlite` backend so storage initializes under Pylon's Bun runtime
  * (#5080). Falls back to the legacy `connect()` default only when the module
@@ -291,7 +312,15 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
             timeoutMs,
             "spark listUnclaimedDeposits",
           ).catch(() => ({ deposits: undefined }))
-          const balance = typeof info?.balanceSats === "number" ? info.balanceSats : null
+          // The SDK's wasm-bindgen layer can return u64 balances as a bigint (or
+          // a decimal string), not a JS number. A strict `typeof === "number"`
+          // check then reports a real balance as `null`, making received funds
+          // invisible (#5166 / offline-receive reconcile). Coerce defensively.
+          const balance = toSatNumber(
+            (info as { balanceSats?: unknown; balance_sats?: unknown; balanceSat?: unknown })?.balanceSats ??
+              (info as { balance_sats?: unknown })?.balance_sats ??
+              (info as { balanceSat?: unknown })?.balanceSat,
+          )
           const unclaimed = Array.isArray(deposits?.deposits) ? deposits.deposits.length : null
           return helperOk({
             balance_sats: balance,

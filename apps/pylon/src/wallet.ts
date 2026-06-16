@@ -666,10 +666,32 @@ export function admitPayoutTarget(input: { kind: PayoutTargetKind; ref: string }
 }
 
 export async function reportWalletReadiness(
-  input: { status: WalletStatusProjection },
+  input: {
+    status: WalletStatusProjection
+    // #5166: optional, secret-free Spark selftest encoded into readinessRefs so
+    // the platform can collect — fleet-wide — which gate makes the
+    // offline-receive helper unavailable on each node. Booleans + an enum
+    // source only; never a path, seed, address, or error string.
+    sparkSelftest?: {
+      isCompiledBinary: boolean
+      enabled: boolean
+      identitySource: string
+      seedPresent: boolean
+      moduleLoaded: boolean
+    }
+  },
   options: WalletNetworkOptions,
 ) {
   const readinessRef = `readiness.public.pylon.${input.status.readiness.replace(/_/g, "-")}`
+  const selftestRefs = input.sparkSelftest
+    ? [
+        `selftest.spark.compiled_binary.${input.sparkSelftest.isCompiledBinary}`,
+        `selftest.spark.enabled.${input.sparkSelftest.enabled}`,
+        `selftest.spark.module_loaded.${input.sparkSelftest.moduleLoaded}`,
+        `selftest.spark.seed_present.${input.sparkSelftest.seedPresent}`,
+        `selftest.spark.identity_source.${input.sparkSelftest.identitySource}`,
+      ]
+    : []
   const body = {
     balanceRefs: input.status.balanceSats === null
       ? ["balance.public.not_reported"]
@@ -677,7 +699,7 @@ export async function reportWalletReadiness(
     liquidityRefs: input.status.sendReady
       ? ["liquidity.public.send_ready_redacted"]
       : ["liquidity.public.send_readiness_unproven"],
-    readinessRefs: [readinessRef, ...input.status.blockerRefs],
+    readinessRefs: [readinessRef, ...input.status.blockerRefs, ...selftestRefs],
     status: input.status.receiveReady ? "ready" : "blocked",
     walletReady: input.status.receiveReady,
     walletRef: input.status.configured
