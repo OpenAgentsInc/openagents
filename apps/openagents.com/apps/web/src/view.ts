@@ -15,6 +15,7 @@ import * as Business from './page/business'
 import * as Components from './page/components'
 import * as Docs from './page/docs'
 import * as Forum from './page/forum'
+import * as Run from './page/run'
 import type {
   PublicPylonStats,
   PublicPylonStatsModel,
@@ -359,6 +360,7 @@ const title = (model: Model): string =>
         M.tag('ComponentsFamily', () => 'Components - OpenAgents'),
         M.tag('Business', () => 'For your business - OpenAgents'),
         M.tag('Animations', () => 'Animations - OpenAgents'),
+        M.tag('Run', () => 'Live Tassadar run - OpenAgents'),
         M.tag('Login', () => 'Log in - OpenAgents'),
         M.tag('PublicAgent', ({ agentRef }) => `${agentRef} - OpenAgents`),
         M.tag('Share', () => 'Shared Workroom - OpenAgents'),
@@ -469,7 +471,8 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'Components' &&
       model.route._tag !== 'ComponentsFamily' &&
       model.route._tag !== 'Business' &&
-      model.route._tag !== 'Animations'
+      model.route._tag !== 'Animations' &&
+      model.route._tag !== 'Run'
     ) {
       return undefined
     }
@@ -493,6 +496,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Animations') {
     return Animations.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'Run') {
+    return Run.view<Message>(authState)
   }
 
   if (model.route._tag === 'Components') {

@@ -34,6 +34,7 @@ import {
   PublicTrainingRunRoute,
   PublicTrainingRunsRoute,
   PylonRoute,
+  RunRoute,
   ShareRoute,
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
@@ -127,6 +128,10 @@ describe('app route parser', () => {
 
   test('accepts the OpenAgents Moksha narrative route', () => {
     expect(urlToAppRoute(appUrl('/moksha2'))).toEqual(Moksha2Route())
+  })
+
+  test('accepts the public live Tassadar run route', () => {
+    expect(urlToAppRoute(appUrl('/run'))).toEqual(RunRoute())
   })
 
   test('uses the Pylon scene as the root route', () => {

@@ -155,6 +155,7 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'ComponentsFamily' &&
   route._tag !== 'Business' &&
   route._tag !== 'Animations' &&
+  route._tag !== 'Run' &&
   route._tag !== 'Login' &&
   route._tag !== 'Blog' &&
   route._tag !== 'BlogPost' &&
@@ -235,6 +236,7 @@ export const browserRouteProductIntents = {
   PublicStatsArchive: 'public.stats.archive',
   PublicTrainingRun: 'public.training.run',
   PublicTrainingRuns: 'public.training.runs',
+  Run: 'public.tassadar.run',
   Share: 'share.projection',
   SiteCheckoutDemo: 'public.sites.demo-checkout',
   SiteCheckoutDemoReturn: 'public.sites.demo-checkout-return',

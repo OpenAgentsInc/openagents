@@ -14,6 +14,7 @@ import * as Components from '../components'
 import * as Docs from '../docs'
 import * as Forum from '../forum'
 import * as Login from '../login'
+import * as Run from '../run'
 import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import { Message } from './message'
 import { Model } from './model'
@@ -115,6 +116,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                 Components.view({ _tag: 'LoggedOut' }, route.family),
               Business: () => Business.view({ _tag: 'LoggedOut' }),
               Animations: () => Animations.view({ _tag: 'LoggedOut' }),
+              Run: () => Run.view({ _tag: 'LoggedOut' }),
               Login: () => Login.view({ _tag: 'LoggedOut' }),
               Blog: route => Blog.view(route, { _tag: 'LoggedOut' }),
               BlogPost: route => Blog.view(route, { _tag: 'LoggedOut' }),

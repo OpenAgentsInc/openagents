@@ -16,6 +16,7 @@ import {
   chatRouter,
   clientsPreviewRouter,
   animationsRouter,
+  runRouter,
   loginRouter,
   componentsFamilyRouter,
   componentsRouter,
@@ -115,6 +116,7 @@ const currentHref = (model: Model): string =>
       ComponentsFamily: ({ family }) => componentsFamilyRouter({ family }),
       Business: () => businessRouter(),
       Animations: () => animationsRouter(),
+      Run: () => runRouter(),
       Login: () => loginRouter(),
       Blog: () => blogRouter(),
       BlogPost: ({ slug }) => blogPostRouter({ slug }),
@@ -172,6 +174,7 @@ const routeKey = (model: Model): string =>
       ComponentsFamily: () => 'Components',
       Business: () => 'Business',
       Animations: () => 'Animations',
+      Run: () => 'Run',
       Login: () => 'Login',
       Blog: () => 'Blog',
       BlogPost: ({ slug }) => `BlogPost:${slug}`,
@@ -525,6 +528,10 @@ const routeView = (model: Model): Html => {
           Animations: () =>
             Ui.workroomScrollableRoute<Message>([
               notFoundView('/animations', chatRouter(), 'Go to Chat'),
+            ]),
+          Run: () =>
+            Ui.workroomScrollableRoute<Message>([
+              notFoundView('/run', chatRouter(), 'Go to Chat'),
             ]),
           Login: () =>
             Ui.workroomScrollableRoute<Message>([
