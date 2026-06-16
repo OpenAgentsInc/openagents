@@ -44,10 +44,34 @@ export const LEGAL_DESIGN_PARTNER_STAGE_KEYS = [
   'deploy',
 ] as const
 
+export const MARKETING_AGENCY_DESIGN_PARTNER_TEMPLATE_REF =
+  'forge.template.marketing_agency.white_label_launch.v1'
+
+export const MARKETING_AGENCY_DESIGN_PARTNER_SOURCE_REFS = [
+  'docs/blitz/forge/2026-06-16-per-vertical-forge-stage-templates.md#marketing-agency-template',
+  'docs/blitz/forge/2026-06-16-marketing-agency-prefilled-workspace.md',
+  'github.issue.OpenAgentsInc.openagents.5102',
+] as const
+
+export const MARKETING_AGENCY_DESIGN_PARTNER_STAGE_KEYS = [
+  'signal',
+  'triage',
+  'codegen',
+  'validate',
+  'release',
+  'document',
+  'monitor',
+  'deploy',
+] as const
+
 const ecommerceTemplateSourceRef = ECOMMERCE_DESIGN_PARTNER_SOURCE_REFS[0]
 const ecommerceWorkspaceSourceRef = ECOMMERCE_DESIGN_PARTNER_SOURCE_REFS[1]
 const legalTemplateSourceRef = LEGAL_DESIGN_PARTNER_SOURCE_REFS[0]
 const legalWorkspaceSourceRef = LEGAL_DESIGN_PARTNER_SOURCE_REFS[1]
+const marketingAgencyTemplateSourceRef =
+  MARKETING_AGENCY_DESIGN_PARTNER_SOURCE_REFS[0]
+const marketingAgencyWorkspaceSourceRef =
+  MARKETING_AGENCY_DESIGN_PARTNER_SOURCE_REFS[1]
 
 const ecommerceSeededMemory = (): ReadonlyArray<SeededMemoryEntry> => [
   {
@@ -232,5 +256,104 @@ export const makeLegalDesignPartnerWorkspaceInput =
       summary:
         'Seeded the first legal design-partner workspace with the Forge legal stage template, forms/intake copilot starter, NDA-style packet workflow, source-linked review checklist, suggested time-entry handoff, and strict human-review/no-legal-advice boundaries. This is public-safe seed material only; live matter data, confidential documents, delivery, and time-entry authority stay blocked until the holder connects accounts and a qualified reviewer approves them.',
       publicSourceRefs: [...LEGAL_DESIGN_PARTNER_SOURCE_REFS],
+    },
+  })
+
+const marketingAgencySeededMemory = (): ReadonlyArray<SeededMemoryEntry> => [
+  {
+    label: 'Selected Forge template',
+    value: `${MARKETING_AGENCY_DESIGN_PARTNER_TEMPLATE_REF}: use the marketing-agency vertical mapping for Client Signal, Creative Triage, Creative Production, Brand QA, Client Approval, Account Handoff, Campaign Watch, and Channel Launch.`,
+    publicSourceRef: marketingAgencyTemplateSourceRef,
+  },
+  {
+    label: 'Canonical stage keys',
+    value: MARKETING_AGENCY_DESIGN_PARTNER_STAGE_KEYS.join(', '),
+    publicSourceRef: marketingAgencyTemplateSourceRef,
+  },
+  {
+    label: 'Starter accepted outcomes',
+    value:
+      'Client landing page plus welcome email in the agency brand for a white-label subdomain, paired with an operator-on-Autopilot admin lane so the agency can run its own Forge work.',
+    publicSourceRef: marketingAgencyWorkspaceSourceRef,
+  },
+  {
+    label: 'Client Signal input',
+    value:
+      'Start from a client brief, brand guideline, analytics issue, launch date, stakeholder comment, or agency internal operator need. Keep brand-source refs and audience caveats explicit.',
+    publicSourceRef: marketingAgencyTemplateSourceRef,
+  },
+  {
+    label: 'Creative Triage output',
+    value:
+      'Produce a scoped deliverable with audience, channel, tone, success metric, approval lane, brand-fit checks, missing assets, and stakeholder dependencies.',
+    publicSourceRef: marketingAgencyTemplateSourceRef,
+  },
+  {
+    label: 'Creative Production output',
+    value:
+      'Prepare landing-page structure, welcome-email copy, ad/social variants, campaign plan, asset brief, or operator-admin lane setup with source and brand maps.',
+    publicSourceRef: marketingAgencyTemplateSourceRef,
+  },
+  {
+    label: 'Brand QA gate',
+    value:
+      'Before approval, verify brand consistency, factuality, accessibility, link and CTA behavior, channel fit, white-label domain state, and reviewer notes.',
+    publicSourceRef: marketingAgencyTemplateSourceRef,
+  },
+  {
+    label: 'Authority blocker',
+    value:
+      'Do not publish a landing page, send email, configure DNS/subdomain, claim white-label delivery, or operate client/admin lanes without client approval, domain authority, channel access, and delivery permission.',
+    publicSourceRef: marketingAgencyWorkspaceSourceRef,
+  },
+  {
+    label: 'Agency operator lane',
+    value:
+      'The agency is both customer and white-label channel. Seed an admin lane for running its own accepted-outcome work on Forge, separate from client-facing approvals and receipts.',
+    publicSourceRef: marketingAgencyWorkspaceSourceRef,
+  },
+  {
+    label: 'Measurement contract',
+    value:
+      'Receipt must separate approved deliverable refs, white-label subdomain state, email send/scheduled state, operator-lane acceptance, metric window, attribution caveat, and freshness timestamp.',
+    publicSourceRef: marketingAgencyTemplateSourceRef,
+  },
+]
+
+const marketingAgencyStarterWorkflows = (): ReadonlyArray<StarterWorkflow> => [
+  {
+    title: 'White-label landing page',
+    description:
+      'Draft the agency-branded landing-page structure for a white-label subdomain with brand-source refs, audience, CTA, accessibility checks, and domain/publish authority blockers.',
+    outcomeKind: 'agency_white_label_landing_page',
+    status: 'queued',
+  },
+  {
+    title: 'Welcome email',
+    description:
+      'Draft the agency-branded welcome email with source-linked claims, channel caveats, approval state, send/schedule blocker, and measurement handoff.',
+    outcomeKind: 'agency_welcome_email',
+    status: 'queued',
+  },
+  {
+    title: 'Operator on Autopilot admin lane',
+    description:
+      'Set up the agency internal admin lane for running its own accepted-outcome work on Forge, with separate approvals, owner refs, and receipts from client-facing work.',
+    outcomeKind: 'agency_operator_autopilot_lane',
+    status: 'queued',
+  },
+]
+
+export const makeMarketingAgencyDesignPartnerWorkspaceInput =
+  (): CreatePrefilledWorkspaceInput => ({
+    holderRef: 'design_partner.marketing_agency.white_label_launch.v1',
+    projectName: 'Agency White-Label Launch Workspace',
+    status: 'draft',
+    seededMemory: marketingAgencySeededMemory(),
+    starterWorkflows: marketingAgencyStarterWorkflows(),
+    introReceipt: {
+      summary:
+        'Seeded the first marketing-agency design-partner workspace with the Forge agency stage template, agency-branded landing page, welcome email, white-label subdomain delivery contract, and operator-on-Autopilot admin lane. This is public-safe seed material only; live brand assets, DNS/subdomain control, email channel access, client delivery, and admin-lane authority stay blocked until the holder connects accounts and approves them.',
+      publicSourceRefs: [...MARKETING_AGENCY_DESIGN_PARTNER_SOURCE_REFS],
     },
   })

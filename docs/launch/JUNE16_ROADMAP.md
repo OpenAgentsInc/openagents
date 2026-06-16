@@ -201,7 +201,13 @@ epics below; not all lands today — the aim is the main spine.
   forms/intake copilot workspace input, with NDA-style packet, review checklist,
   source-link, suggested time-entry, no-legal-advice, human-review, and
   authority-blocker gates documented in
-  `docs/blitz/forge/2026-06-16-legal-prefilled-workspace.md`.
+  `docs/blitz/forge/2026-06-16-legal-prefilled-workspace.md`. **E3
+  marketing-agency (#5102) landed:** typed seed template
+  `forge.template.marketing_agency.white_label_launch.v1` now creates the
+  public-safe agency workspace input, with landing page, welcome email,
+  white-label subdomain, operator-on-Autopilot admin lane, client approval,
+  DNS/publish, and channel-authority gates documented in
+  `docs/blitz/forge/2026-06-16-marketing-agency-prefilled-workspace.md`.
 - **Epic G — fold the terminal-agent-systems into the Forge Autopilot Coder
   (#5107, long arc):** runtime spine already built (Agent Runtime Kernel + tools,
   Pack A/B/C, worktree materialization); next, surface diff-review, plan/todo,

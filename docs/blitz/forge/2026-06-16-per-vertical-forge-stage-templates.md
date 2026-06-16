@@ -132,6 +132,11 @@ Metric mapping:
 Use for #5102: brand landing/email deliverables, campaign calendars, client
 operator-on-Autopilot lanes, and white-label execution.
 
+Implementation note: #5102 now has a typed seed template at
+`apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.ts`
+and the operator/audit note at
+`docs/blitz/forge/2026-06-16-marketing-agency-prefilled-workspace.md`.
+
 | Forge stage | Agency stage name   | Input                                                                             | Output                                                                              | Validation and evidence                                       |
 | ----------- | ------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | Signal      | Client Signal       | Client brief, brand guideline, analytics issue, launch date, stakeholder comment. | Creative/opportunity brief.                                                         | Brief refs, brand-source refs, channel/audience caveats.      |

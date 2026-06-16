@@ -8,8 +8,12 @@ import {
   LEGAL_DESIGN_PARTNER_SOURCE_REFS,
   LEGAL_DESIGN_PARTNER_STAGE_KEYS,
   LEGAL_DESIGN_PARTNER_TEMPLATE_REF,
+  MARKETING_AGENCY_DESIGN_PARTNER_SOURCE_REFS,
+  MARKETING_AGENCY_DESIGN_PARTNER_STAGE_KEYS,
+  MARKETING_AGENCY_DESIGN_PARTNER_TEMPLATE_REF,
   makeEcommerceDesignPartnerWorkspaceInput,
   makeLegalDesignPartnerWorkspaceInput,
+  makeMarketingAgencyDesignPartnerWorkspaceInput,
 } from './prefilled-workspace-vertical-templates'
 
 const fixtureRuntime = {
@@ -157,6 +161,72 @@ describe('legal prefilled workspace template', () => {
 
   test('keeps every legal seeded-memory fact backed by a public source reference', () => {
     const input = makeLegalDesignPartnerWorkspaceInput()
+
+    expect(input.seededMemory).toBeDefined()
+    for (const entry of input.seededMemory ?? []) {
+      expect(entry.publicSourceRef).not.toBe('')
+      expect(entry.publicSourceRef).not.toMatch(/secret|token|password/i)
+    }
+  })
+})
+
+describe('marketing-agency prefilled workspace template', () => {
+  test('creates a valid draft workspace record from public-safe seed material', () => {
+    const input = makeMarketingAgencyDesignPartnerWorkspaceInput()
+    const record = makePrefilledWorkspaceRecord(input, fixtureRuntime)
+
+    expect(record.id).toBe('workspace_fixture')
+    expect(record.projectName).toBe('Agency White-Label Launch Workspace')
+    expect(record.holderRef).toBe(
+      'design_partner.marketing_agency.white_label_launch.v1',
+    )
+    expect(record.status).toBe('draft')
+    expect(record.holderUserId).toBeNull()
+    expect(record.seededMemory.length).toBeGreaterThanOrEqual(10)
+    expect(record.starterWorkflows).toHaveLength(3)
+    expect(record.introReceipt.publicSourceRefs).toEqual(
+      expect.arrayContaining([...MARKETING_AGENCY_DESIGN_PARTNER_SOURCE_REFS]),
+    )
+    expect(record.introReceipt.summary).toContain('public-safe seed material')
+  })
+
+  test('preserves the Forge canonical stage keys and marketing-agency template ref', () => {
+    const input = makeMarketingAgencyDesignPartnerWorkspaceInput()
+    const templateMemory = input.seededMemory?.find(
+      entry => entry.label === 'Selected Forge template',
+    )
+    const canonicalStageMemory = input.seededMemory?.find(
+      entry => entry.label === 'Canonical stage keys',
+    )
+
+    expect(templateMemory?.value).toContain(
+      MARKETING_AGENCY_DESIGN_PARTNER_TEMPLATE_REF,
+    )
+    expect(canonicalStageMemory?.value).toBe(
+      MARKETING_AGENCY_DESIGN_PARTNER_STAGE_KEYS.join(', '),
+    )
+    expect(input.introReceipt.publicSourceRefs).toContain(
+      'github.issue.OpenAgentsInc.openagents.5102',
+    )
+  })
+
+  test('seeds the requested white-label, email, admin-lane, and authority gates', () => {
+    const input = makeMarketingAgencyDesignPartnerWorkspaceInput()
+    const flattenedSeed = flattenTemplateInput(input)
+
+    expect(flattenedSeed).toContain('landing page')
+    expect(flattenedSeed).toContain('welcome email')
+    expect(flattenedSeed).toContain('agency brand')
+    expect(flattenedSeed).toContain('white-label subdomain')
+    expect(flattenedSeed).toContain('operator-on-autopilot')
+    expect(flattenedSeed).toContain('admin lane')
+    expect(flattenedSeed).toContain('client approval')
+    expect(flattenedSeed).toContain('do not publish')
+    expect(flattenedSeed).toContain('dns')
+  })
+
+  test('keeps every marketing-agency seeded-memory fact backed by a public source reference', () => {
+    const input = makeMarketingAgencyDesignPartnerWorkspaceInput()
 
     expect(input.seededMemory).toBeDefined()
     for (const entry of input.seededMemory ?? []) {
