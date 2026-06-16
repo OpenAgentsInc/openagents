@@ -93,6 +93,7 @@ export const startupRouteForLoggedOut = (
       'Components',
       'ComponentsFamily',
       'Business',
+      'Animations',
       'Blog',
       'BlogPost',
       'PublicAgent',
@@ -169,6 +170,7 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
       'Components',
       'ComponentsFamily',
       'Business',
+      'Animations',
       'Blog',
       'BlogPost',
       route =>
@@ -253,6 +255,7 @@ const startupRouteForCompleteOnboarding = (
       'Components',
       'ComponentsFamily',
       'Business',
+      'Animations',
       'Blog',
       'BlogPost',
       'Admin',

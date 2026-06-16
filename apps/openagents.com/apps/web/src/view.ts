@@ -10,6 +10,7 @@ import {
 import type { Model } from './model'
 import { Demo, LoggedIn, LoggedOut } from './model'
 import * as Blog from './page/blog'
+import * as Animations from './page/animations'
 import * as Business from './page/business'
 import * as Components from './page/components'
 import * as Docs from './page/docs'
@@ -357,6 +358,7 @@ const title = (model: Model): string =>
         M.tag('Components', () => 'Components - OpenAgents'),
         M.tag('ComponentsFamily', () => 'Components - OpenAgents'),
         M.tag('Business', () => 'For your business - OpenAgents'),
+        M.tag('Animations', () => 'Animations - OpenAgents'),
         M.tag('PublicAgent', ({ agentRef }) => `${agentRef} - OpenAgents`),
         M.tag('Share', () => 'Shared Workroom - OpenAgents'),
         M.orElse(() => 'OpenAgents'),
@@ -454,7 +456,8 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'BlogPost' &&
       model.route._tag !== 'Components' &&
       model.route._tag !== 'ComponentsFamily' &&
-      model.route._tag !== 'Business'
+      model.route._tag !== 'Business' &&
+      model.route._tag !== 'Animations'
     ) {
       return undefined
     }
@@ -474,6 +477,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Business') {
     return Business.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'Animations') {
+    return Animations.view<Message>(authState)
   }
 
   if (model.route._tag === 'Components') {

@@ -53,6 +53,7 @@ export const ComponentsFamilyRoute = r('ComponentsFamily', {
   family: S.String,
 })
 export const BusinessRoute = r('Business')
+export const AnimationsRoute = r('Animations')
 export const BlogRoute = r('Blog')
 export const BlogPostRoute = r('BlogPost', { slug: S.String })
 export const PublicAgentRoute = r('PublicAgent', { agentRef: S.String })
@@ -130,6 +131,7 @@ export type ClientsPreviewRoute = typeof ClientsPreviewRoute.Type
 export type ComponentsRoute = typeof ComponentsRoute.Type
 export type ComponentsFamilyRoute = typeof ComponentsFamilyRoute.Type
 export type BusinessRoute = typeof BusinessRoute.Type
+export type AnimationsRoute = typeof AnimationsRoute.Type
 export type BlogRoute = typeof BlogRoute.Type
 export type BlogPostRoute = typeof BlogPostRoute.Type
 export type PublicAgentRoute = typeof PublicAgentRoute.Type
@@ -182,6 +184,7 @@ export const LoggedOutRoute = S.Union([
   ComponentsRoute,
   ComponentsFamilyRoute,
   BusinessRoute,
+  AnimationsRoute,
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
@@ -223,6 +226,7 @@ export const LoggedInRoute = S.Union([
   ComponentsRoute,
   ComponentsFamilyRoute,
   BusinessRoute,
+  AnimationsRoute,
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
@@ -271,6 +275,7 @@ export const AppRoute = S.Union([
   ComponentsRoute,
   ComponentsFamilyRoute,
   BusinessRoute,
+  AnimationsRoute,
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
@@ -452,6 +457,10 @@ export const businessRouter = pipe(
   literal('business'),
   Route.mapTo(BusinessRoute),
 )
+export const animationsRouter = pipe(
+  literal('animations'),
+  Route.mapTo(AnimationsRoute),
+)
 export const blogRouter = pipe(literal('blog'), Route.mapTo(BlogRoute))
 export const blogPostRouter = pipe(
   literal('blog'),
@@ -586,6 +595,7 @@ const routeParser = Route.oneOf(
   componentsFamilyRouter,
   componentsRouter,
   businessRouter,
+  animationsRouter,
   forumReceiptRouter,
   forumTopicRouter,
   forumForumRouter,
