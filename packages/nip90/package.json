@@ -18,7 +18,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "nostr-effect": "github:OpenAgentsInc/nostr-effect#e6582ef"
+    "nostr-effect": "github:OpenAgentsInc/nostr-effect#6187985"
   },
   "devDependencies": {
     "bun-types": "^1.0.0",
