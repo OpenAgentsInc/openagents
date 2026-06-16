@@ -1007,6 +1007,117 @@ describe('autopilot work detail view', () => {
     expect(rendered).not.toContain('private.example')
   })
 
+  test('renders Extensibility request receipts with guard refs', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            extensibility: {
+              effectiveConfig: {
+                configRef: 'extensibility-config.public.work_1',
+                entries: [
+                  {
+                    catalogRefs: ['mcp-catalog.public.work_1'],
+                    configRefs: ['mcp-config.public.filesystem'],
+                    domain: 'mcp',
+                    effectiveState: 'enabled',
+                    policyRefs: ['mcp-policy.public.workspace_read'],
+                    sourceRefs: ['mcp-source.public.filesystem'],
+                  },
+                  {
+                    catalogRefs: ['skill-catalog.public.work_1'],
+                    configRefs: ['skill-config.public.context_summary'],
+                    domain: 'skills',
+                    effectiveState: 'enabled',
+                    policyRefs: ['skill-policy.public.disclosure_required'],
+                    sourceRefs: ['skill-source.public.context_summary'],
+                  },
+                ],
+                freshness: 'fresh',
+              },
+              executionRequests: [
+                {
+                  configRefs: ['mcp-config.public.filesystem'],
+                  domain: 'mcp',
+                  policyRefs: ['mcp-policy.public.workspace_read'],
+                  providerAccountRefs: ['provider-account.public.local_mcp'],
+                  requestKind: 'mcp_tool_call',
+                  requestRef: 'extensibility-request.public.mcp_files',
+                  targetRef: 'mcp-source.public.filesystem',
+                },
+                {
+                  configRefs: ['skill-config.public.context_summary'],
+                  domain: 'skills',
+                  requestKind: 'skill_body_disclosure',
+                  requestRef: 'extensibility-request.public.skill_context',
+                  targetRef: 'skill-source.public.context_summary',
+                },
+              ],
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Extensibility requests')
+    expect(rendered).toContain('mcp tool call')
+    expect(rendered).toContain('callable')
+    expect(rendered).toContain('provider-account.public.local_mcp')
+    expect(rendered).toContain('skill body disclosure')
+    expect(rendered).toContain('skill-body-disclosure-not-explicit')
+    expect(rendered).toContain('Skill bodies loaded')
+    expect(rendered).toContain('false')
+  })
+
+  test('omits unsafe extensibility execution request material before rendering', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            extensibility: {
+              effectiveConfig: {
+                configRef: 'extensibility-config.public.work_1',
+                entries: [
+                  {
+                    configRefs: ['skill-config.public.context_summary'],
+                    domain: 'skills',
+                    effectiveState: 'enabled',
+                    policyRefs: ['skill-policy.public.disclosure_required'],
+                    sourceRefs: ['skill-source.public.context_summary'],
+                  },
+                ],
+              },
+              executionRequests: [
+                {
+                  blockerRefs: ['raw shell command $(cat ~/.ssh/id_rsa)'],
+                  configRefs: [
+                    'skill-config.public.context_summary',
+                    'raw config /Users/christopher/private.json',
+                  ],
+                  domain: 'skills',
+                  explicitDisclosure: true,
+                  requestKind: 'skill_body_disclosure',
+                  requestRef: 'extensibility-request.public.skill_context',
+                  sourceRefs: ['skill-source.public.safe', 'skill body raw text'],
+                  targetRef: '/Users/christopher/private/skill.md',
+                },
+              ],
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Extensibility requests')
+    expect(rendered).toContain('unsafe-target-ref-omitted')
+    expect(rendered).toContain('unsafe-extensibility-request-material-omitted')
+    expect(rendered).toContain('unsafe extensibility ref(s) were omitted')
+    expect(rendered).not.toContain('/Users/christopher')
+    expect(rendered).not.toContain('raw shell')
+    expect(rendered).not.toContain('raw config')
+    expect(rendered).not.toContain('skill body raw text')
+  })
+
   test('renders active progress for running Runs', () => {
     const rendered = renderHtml(
       detailView(

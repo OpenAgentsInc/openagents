@@ -42,6 +42,12 @@ import {
   projectForgePlanMutationReceipts,
 } from '../autopilot-work/plan-mutation-receipts'
 import {
+  type ForgeExtensibilityExecutionReceipt,
+  type ForgeExtensibilityExecutionReceiptsInput,
+  type ForgeExtensibilityExecutionReceiptsView,
+  projectForgeExtensibilityExecutionReceipts,
+} from '../autopilot-work/extensibility-execution-receipts'
+import {
   type ForgeRunProgressItem,
   type ForgeRunProgressItemStatus,
   type ForgeRunProgressStatus,
@@ -1723,6 +1729,159 @@ const retrievalSearchPanel = (work: AutopilotWorkProjection): Html => {
   ])
 }
 
+const extensibilityExecutionInput = (
+  work: AutopilotWorkProjection,
+): ForgeExtensibilityExecutionReceiptsInput | undefined => {
+  const source = work.extensibility
+  const effectiveConfig = source?.effectiveConfig
+
+  return source === undefined
+    ? undefined
+    : {
+        config: {
+          configRef:
+            effectiveConfig?.configRef ?? `extensibility-config:${work.workOrderRef}`,
+          generatedAt: effectiveConfig?.generatedAt ?? work.generatedAt,
+          workOrderRef: effectiveConfig?.workOrderRef ?? work.workOrderRef,
+          ...(effectiveConfig?.blockerRefs === undefined
+            ? {}
+            : { blockerRefs: effectiveConfig.blockerRefs }),
+          ...(effectiveConfig?.entries === undefined
+            ? {}
+            : { entries: effectiveConfig.entries }),
+          ...(effectiveConfig?.freshness === undefined
+            ? {}
+            : { freshness: effectiveConfig.freshness }),
+        },
+        generatedAt: work.generatedAt,
+        workOrderRef: work.workOrderRef,
+        ...(source.executionRequests === undefined
+          ? {}
+          : { requests: source.executionRequests }),
+      }
+}
+
+const extensibilityOutcomeTone = (
+  outcome: ForgeExtensibilityExecutionReceipt['outcome'],
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  outcome === 'callable'
+    ? 'positive'
+    : outcome === 'blocked' || outcome === 'failed'
+      ? 'negative'
+      : outcome === 'needs_auth' || outcome === 'needs_trust'
+        ? 'warning'
+        : 'accent'
+
+const extensibilityStatusTone = (
+  status: ForgeExtensibilityExecutionReceiptsView['status'],
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  status === 'ready' ? 'positive' : status === 'blocked' ? 'negative' : 'accent'
+
+const extensibilityReceiptPanel = (
+  receipt: ForgeExtensibilityExecutionReceipt,
+): Html => {
+  const h = html<Message>()
+
+  return h.article(
+    [
+      Ui.className<Message>('grid gap-4 border border-[#222] p-4'),
+      h.DataAttribute('forge-extensibility-execution-receipt', receipt.receiptRef),
+      h.DataAttribute('forge-extensibility-execution-outcome', receipt.outcome),
+      h.DataAttribute('forge-extensibility-execution-kind', receipt.requestKind),
+    ],
+    [
+      h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+        h.div([Ui.className<Message>('min-w-0 grid gap-1')], [
+          h.h3(
+            [
+              Ui.className<Message>(
+                'm-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-white/80',
+              ),
+            ],
+            [receipt.requestKind.replaceAll('_', ' ')],
+          ),
+          h.p([Ui.className<Message>('m-0 text-xs text-white/40')], [
+            `Generated ${formatIsoDateTime(receipt.generatedAt)} - skill body loaded: ${String(receipt.authority.skillBodyLoaded)}`,
+          ]),
+        ]),
+        h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+          badge(receipt.outcome.replaceAll('_', ' '), extensibilityOutcomeTone(receipt.outcome)),
+          badge(receipt.domain, 'accent'),
+        ]),
+      ]),
+      h.div([Ui.className<Message>('grid gap-4 md:grid-cols-2')], [
+        refSection('Request ref', [receipt.requestRef]),
+        refSection('Receipt ref', [receipt.receiptRef]),
+        refSection('Target ref', [receipt.targetRef]),
+        refSection('Config refs', receipt.configRefs),
+        refSection('Catalog refs', receipt.catalogRefs),
+        refSection('Policy refs', receipt.policyRefs),
+        refSection('Source refs', receipt.sourceRefs),
+        refSection('Auth refs', receipt.authRefs),
+        refSection('Provider account refs', receipt.providerAccountRefs),
+        refSection('Workspace trust refs', receipt.workspaceTrustRefs),
+        refSection('Failure refs', receipt.failureRefs),
+        refSection('Request blockers', receipt.blockerRefs),
+      ]),
+    ],
+  )
+}
+
+const extensibilityExecutionPanel = (work: AutopilotWorkProjection): Html => {
+  const h = html<Message>()
+  const input = extensibilityExecutionInput(work)
+
+  if (input === undefined) {
+    return h.span([Ui.className<Message>('hidden')], [])
+  }
+
+  const view = projectForgeExtensibilityExecutionReceipts(input)
+
+  return h.section([Ui.className<Message>('grid gap-4 border-t border-[#222] pt-5')], [
+    h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+      h.div([Ui.className<Message>('grid gap-1')], [
+        h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
+          'Extensibility requests',
+        ]),
+        h.p([Ui.className<Message>('m-0 max-w-3xl text-sm text-white/45')], [
+          'Refs-only request receipts for MCP, skills, hooks, plugins, and settings capabilities.',
+        ]),
+      ]),
+      h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+        badge(view.status, extensibilityStatusTone(view.status)),
+        badge(view.config.status.replaceAll('_', ' '), 'accent'),
+      ]),
+    ]),
+    h.div([Ui.className<Message>('grid gap-3 md:grid-cols-4')], [
+      contextMetric('Requests', String(view.receipts.length)),
+      contextMetric('Config status', view.config.status),
+      contextMetric('Skill bodies loaded', 'false'),
+      contextMetric('Unsafe refs omitted', String(view.omittedUnsafeRefCount)),
+    ]),
+    view.receipts.length === 0
+      ? h.div([Ui.className<Message>('border border-[#222] p-4')], [
+          h.p([Ui.className<Message>('m-0 text-sm text-white/45')], [
+            'No extensibility execution requests available yet.',
+          ]),
+        ])
+      : h.div([Ui.className<Message>('grid gap-3')], [
+          ...view.receipts.map(extensibilityReceiptPanel),
+        ]),
+    h.div(
+      [Ui.className<Message>('grid gap-4 border border-[#222] p-4 md:grid-cols-2')],
+      [
+        refSection('Effective config ref', [view.config.configRef]),
+        refSection('Extensibility blockers', view.blockerRefs),
+      ],
+    ),
+    view.omittedUnsafeRefCount === 0
+      ? h.span([Ui.className<Message>('hidden')], [])
+      : h.p([Ui.className<Message>('m-0 text-sm text-[#ffb400]')], [
+          `${view.omittedUnsafeRefCount} unsafe extensibility ref(s) were omitted before rendering.`,
+        ]),
+  ])
+}
+
 const briefingPanel = (briefing: AutopilotMissionBriefing): Html => {
   const closeoutRefs = briefing.drilldown.flatMap(group =>
     group.kind === 'closeout' ? group.refs : [],
@@ -2112,6 +2271,7 @@ const workSummaryPanel = (model: Model, work: AutopilotWorkProjection): Html => 
     contextSnapshotPanel(work),
     sessionNavigationPanel(work),
     retrievalSearchPanel(work),
+    extensibilityExecutionPanel(work),
     diffReviewPanel(model, work),
     receiptPanel(model, work),
     eventsPanel(model),

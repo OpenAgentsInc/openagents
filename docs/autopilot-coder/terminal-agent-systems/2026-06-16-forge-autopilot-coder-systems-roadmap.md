@@ -332,6 +332,16 @@ ordering, and unsafe-material omission coverage. It does not add settings UI,
 config writes, runtime policy changes, loading/execution, tool calls, hook
 execution, or network calls.
 
+Implementation status, 2026-06-16: #5150 adds guarded extensibility execution
+request receipts over that effective-config projection. MCP tool/resource
+requests, skill-body disclosure requests, hook enablement, plugin activation,
+and settings activation now project callable/disabled/needs-auth/needs-trust/
+blocked/failed/pending receipts with config/catalog/policy/source/auth/provider/
+workspace-trust/failure refs. Skill disclosure remains explicit and body-free by
+default; hooks/plugins/settings stay blocked without workspace-trust refs; MCP
+tool calls stay blocked without provider-account refs. The browser still does
+not execute MCP calls, hooks, plugin code, settings writes, or skill-body loads.
+
 ### G7 - Verification, Ops, And Product-Gate Evidence
 
 Systems: system 51 Testing/Smoke, system 52 Evaluation/Regression, system 53
@@ -432,6 +442,12 @@ UI-facing contract, requires explicit source and workspace-boundary refs,
 blocks provider-backed semantic/model modes without provider evidence, records
 low-score/duplicate/stale/missing-source/unsupported skips, and includes a
 regression proving prose-like query text does not trigger keyword-only routing.
+
+Implementation status, 2026-06-16: #5150 adds the guarded extensibility
+execution-request receipt surface and renders it in `/autopilot`. It turns the
+G6 effective-config refs into request receipts without execution authority,
+preserves progressive skill-body disclosure, and records the policy/auth/trust/
+provider blockers that must clear before runtime can execute anything.
 
 ## Recommended Sequencing
 

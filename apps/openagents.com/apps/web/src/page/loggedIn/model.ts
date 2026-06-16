@@ -2254,6 +2254,99 @@ export const AutopilotWorkRetrievalPlan = S.Struct({
 export type AutopilotWorkRetrievalPlan =
   typeof AutopilotWorkRetrievalPlan.Type
 
+export const AutopilotWorkExtensibilityDomain = S.Literals([
+  'hooks',
+  'mcp',
+  'plugins',
+  'skills',
+])
+export type AutopilotWorkExtensibilityDomain =
+  typeof AutopilotWorkExtensibilityDomain.Type
+
+export const AutopilotWorkExtensibilityEffectiveState = S.Literals([
+  'blocked',
+  'disabled',
+  'enabled',
+  'needs_auth',
+  'needs_trust',
+  'pending',
+])
+export type AutopilotWorkExtensibilityEffectiveState =
+  typeof AutopilotWorkExtensibilityEffectiveState.Type
+
+export const AutopilotWorkExtensibilityFreshness = S.Literals([
+  'fresh',
+  'stale',
+  'unknown',
+])
+export type AutopilotWorkExtensibilityFreshness =
+  typeof AutopilotWorkExtensibilityFreshness.Type
+
+export const AutopilotWorkExtensibilityConfigEntry = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  catalogRefs: S.optionalKey(S.Array(S.String)),
+  configRefs: S.optionalKey(S.Array(S.String)),
+  domain: AutopilotWorkExtensibilityDomain,
+  effectiveState: S.optionalKey(AutopilotWorkExtensibilityEffectiveState),
+  freshness: S.optionalKey(AutopilotWorkExtensibilityFreshness),
+  policyRefs: S.optionalKey(S.Array(S.String)),
+  sourceRefs: S.optionalKey(S.Array(S.String)),
+})
+export type AutopilotWorkExtensibilityConfigEntry =
+  typeof AutopilotWorkExtensibilityConfigEntry.Type
+
+export const AutopilotWorkExtensibilityEffectiveConfig = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  configRef: S.String,
+  entries: S.optionalKey(S.Array(AutopilotWorkExtensibilityConfigEntry)),
+  freshness: S.optionalKey(AutopilotWorkExtensibilityFreshness),
+  generatedAt: S.optionalKey(S.String),
+  workOrderRef: S.optionalKey(S.String),
+})
+export type AutopilotWorkExtensibilityEffectiveConfig =
+  typeof AutopilotWorkExtensibilityEffectiveConfig.Type
+
+export const AutopilotWorkExtensibilityExecutionRequestKind = S.Literals([
+  'hook_enablement',
+  'mcp_resource_read',
+  'mcp_tool_call',
+  'plugin_activation',
+  'settings_activation',
+  'skill_body_disclosure',
+])
+export type AutopilotWorkExtensibilityExecutionRequestKind =
+  typeof AutopilotWorkExtensibilityExecutionRequestKind.Type
+
+export const AutopilotWorkExtensibilityExecutionRequest = S.Struct({
+  actorRef: S.optionalKey(S.NullOr(S.String)),
+  authRefs: S.optionalKey(S.Array(S.String)),
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  catalogRefs: S.optionalKey(S.Array(S.String)),
+  configRefs: S.optionalKey(S.Array(S.String)),
+  domain: AutopilotWorkExtensibilityDomain,
+  explicitDisclosure: S.optionalKey(S.Boolean),
+  failureRefs: S.optionalKey(S.Array(S.String)),
+  generatedAt: S.optionalKey(S.String),
+  observedState: S.optionalKey(S.NullOr(S.Literals(['failed']))),
+  policyRefs: S.optionalKey(S.Array(S.String)),
+  providerAccountRefs: S.optionalKey(S.Array(S.String)),
+  requestKind: AutopilotWorkExtensibilityExecutionRequestKind,
+  requestRef: S.String,
+  sourceRefs: S.optionalKey(S.Array(S.String)),
+  targetRef: S.String,
+  workspaceTrustRefs: S.optionalKey(S.Array(S.String)),
+})
+export type AutopilotWorkExtensibilityExecutionRequest =
+  typeof AutopilotWorkExtensibilityExecutionRequest.Type
+
+export const AutopilotWorkExtensibility = S.Struct({
+  effectiveConfig: S.optionalKey(AutopilotWorkExtensibilityEffectiveConfig),
+  executionRequests: S.optionalKey(
+    S.Array(AutopilotWorkExtensibilityExecutionRequest),
+  ),
+})
+export type AutopilotWorkExtensibility = typeof AutopilotWorkExtensibility.Type
+
 export const AutopilotWorkPlanMutationAction = S.Literals([
   'add',
   'block',
@@ -2348,6 +2441,7 @@ export const AutopilotWorkProjection = S.Struct({
   repositoryAuthorities: S.Array(S.Unknown),
   reviewDecision: S.NullOr(AutopilotWorkReviewDecision),
   contextSnapshot: S.optionalKey(AutopilotWorkContextSnapshot),
+  extensibility: S.optionalKey(AutopilotWorkExtensibility),
   planMutationReceipts: S.optionalKey(S.Array(AutopilotWorkPlanMutationReceipt)),
   planMutationRequests: S.optionalKey(S.Array(AutopilotWorkPlanMutationRequest)),
   retrievalPlan: S.optionalKey(AutopilotWorkRetrievalPlan),
