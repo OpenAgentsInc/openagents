@@ -327,6 +327,13 @@ deterministic ordering, public-safe output, and unsafe-material omission
 coverage. It does not add UI, product-promise changes, deployment gates, public
 claims, eval execution, retention policy changes, or runtime authority changes.
 
+Implementation status, 2026-06-16: #5143 adds a cross-lane private-material
+regression fixture covering representative G1-G6 projections: context, session
+navigation, retrieval, MCP, skill descriptors, hooks, and unified
+extensibility config. The test uses synthetic private markers only and proves
+safe refs survive while local paths, raw prompts/transcripts/shell material,
+provider payloads, tokens, and private material markers are omitted.
+
 ## Recommended Sequencing
 
 1. G1.1 diff-review lane, because Pack C already provides safe refs and the
