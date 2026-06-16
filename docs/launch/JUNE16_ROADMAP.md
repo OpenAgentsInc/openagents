@@ -32,10 +32,13 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
 - **Spark offline-tipping chain → code-complete (16th):** #5078 (receive-only backup,
   slices 1-3) + #5080 (Bun storage) + #5085 (legacy `migrate-spark` rewire) all landed.
   See §E.
-- **`/business`, `/autopilot` Forge cockpit, `/components` (16th):** the
-  apps/web Epic A/B/C wave (#5081–#5094) is landing on `main` in parallel
-  (`5e1e9398f` /autopilot, `5e82b6a1d` /business, `/components`); driven by the
-  concurrent session — verified `/business` route tests pass under vitest/happy-dom.
+- **Forge product surface + component library (16th, assistant lane):** a large
+  apps/web build wave landed on `main` — full status in §F. Epic A (shared Foldkit
+  component library `@openagentsinc/ui`) **complete & deployed to prod**; Forge
+  cockpit (`/autopilot`) + factory dashboard (`/forge`) live; `/business` landing
+  live (+ public `/components` gallery); workspace-primitive backend landed. The
+  repo-wide **`typecheck:api` gate is green again** (`872cf8c47` — fixed the forum
+  post-list error channel + two other pre-existing own-source errors).
 
 ## A. Short-term bug fixes (cleanest closeable work — projection/freshness family)
 
@@ -132,6 +135,45 @@ is the **Spark backup-receive fallback** in
   Whitefang + Trigger tips (no waiting on them to come online).
 
 (Comunero + Orrery tips already settled.) Files an issue when scoped into work.
+
+## F. Forge product surface + component library (apps/web build wave)
+
+Building the **Forge** product (our software-factory category entry) on a shared
+component library, evolving `/autopilot` into the cockpit, and standing up the
+prefilled-workspace + `/business` funnel. Sequenced backlog is tracked under the
+epics below; not all lands today — the aim is the main spine.
+
+**Landed today (merged to `main`):**
+- **Epic A — `@openagentsinc/ui` component library (#5084, COMPLETE):** extracted
+  the shared Foldkit kit into `packages/ui` (#5081 `9658a8be1`); added the **AI
+  Elements** family — prompt-input/message/code-block/task/sources/tool/confirmation/
+  reasoning/web-preview (#5083 `70c522782`); shipped the public **`/components`**
+  gallery (#5082 `a93ede881`); icon-path follow-up (#5086 `34ab4237d`).
+  **Deployed to prod** + `/components` made publicly servable.
+- **Epic B — Forge cockpit (#5091):** **B1** (#5087 `5e1e9398f`) reframed
+  `/autopilot` on `@openagentsinc/ui` (Runs / compute-routing / accepted-outcome
+  receipts). **B2** (#5088 `abdb6c8ce`) shipped the **`/forge` factory dashboard**
+  (signal→deploy pipeline over real Run+pool data, honest real-vs-seeded labeling).
+- **Epic C — prefilled workspaces + `/business` funnel (#5103):** **C3** (#5094
+  `5e82b6a1d`) shipped the public **`/business`** landing + signup form (first-class
+  phone field, opt-in Slack request, usage-based token-credit pricing copy). **C1**
+  (#5092 `ba02c9d6b`) landed the **workspace-primitive backend** (schema + D1 + API);
+  frontend wiring is the open follow-up.
+
+**Targeted next (this session / soon — won't all land today):**
+- **B3** (#5089) Forge **Automations** surface · **B4** (#5090) metric definitions.
+- **C1 frontend** (workspace page + invite UI) · **C2** (#5093) operator seeding +
+  invite-link + engagement tracking · **C4** (#5095) Slack Connect invite.
+- **Epic D — customer-#1 dogfood (#5104):** **D1** (#5096) route our own AI/coding
+  spend through the pool/nodes (ship now) · **D4** (#5106) **per-lane worktree
+  isolation hardening** for the Autopilot Coder (no shared-checkout
+  cross-contamination — see Coordination note).
+- **Epic E — first design-partner deliverables (#5105):** prefilled workspaces per
+  vertical (e-commerce / legal / marketing-agency) + per-vertical stage templates.
+- **Epic G — fold the terminal-agent-systems into the Forge Autopilot Coder
+  (#5107, long arc):** runtime spine already built (Agent Runtime Kernel + tools,
+  Pack A/B/C, worktree materialization); next, surface diff-review, plan/todo,
+  resume, context+repo-memory, retrieval in the cockpit.
 
 ## Recommended next (assistant lane)
 
