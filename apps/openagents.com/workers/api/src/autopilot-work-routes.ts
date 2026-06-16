@@ -333,15 +333,33 @@ export type AutopilotWorkOrderRecord = Readonly<{
 const AutopilotWorkExecutionCloseoutRecord = S.Struct({
   assignmentRefs: S.Array(S.String),
   artifactRefs: S.optionalKey(S.Array(S.String)),
+  authorityReceiptRefs: S.optionalKey(S.Array(S.String)),
   blockerRefs: S.optionalKey(S.Array(S.String)),
   buildRefs: S.optionalKey(S.Array(S.String)),
+  changeCaptureRefs: S.optionalKey(S.Array(S.String)),
+  changeCaptureStatus: S.optionalKey(
+    S.Literals(['blocked', 'review_ready', 'stale']),
+  ),
   closeoutRefs: S.Array(S.String),
+  deliveryReadinessFreshness: S.optionalKey(S.Literals(['fresh', 'stale'])),
+  deliveryReadinessRefs: S.optionalKey(S.Array(S.String)),
+  deliveryReadinessStatus: S.optionalKey(
+    S.Literals(['blocked', 'ready', 'scoped_exception']),
+  ),
+  fileCount: S.optionalKey(S.Number),
+  addedLineCount: S.optionalKey(S.Number),
+  patchDigestRef: S.optionalKey(S.NullOr(S.String)),
   previewRefs: S.optionalKey(S.Array(S.String)),
   proofRefs: S.Array(S.String),
+  removedLineCount: S.optionalKey(S.Number),
   resultRefs: S.Array(S.String),
+  reviewCaveatRefs: S.optionalKey(S.Array(S.String)),
   runnerKind: OpenAgentsAutopilotRunnerKind,
   summaryRefs: S.optionalKey(S.Array(S.String)),
   testRefs: S.optionalKey(S.Array(S.String)),
+  verificationRefs: S.optionalKey(S.Array(S.String)),
+  worktreeIdentityStatus: S.optionalKey(S.Literals(['blocked', 'ready', 'stale'])),
+  writebackRequired: S.optionalKey(S.Boolean),
 })
 export type AutopilotWorkExecutionCloseoutRecord =
   typeof AutopilotWorkExecutionCloseoutRecord.Type
@@ -1112,15 +1130,33 @@ type AutopilotWorkReviewDecisionRequest =
 const AutopilotWorkFallbackCloseoutRequest = S.Struct({
   assignmentRefs: S.Array(S.String),
   artifactRefs: S.optionalKey(S.Array(S.String)),
+  authorityReceiptRefs: S.optionalKey(S.Array(S.String)),
   blockerRefs: S.optionalKey(S.Array(S.String)),
   buildRefs: S.optionalKey(S.Array(S.String)),
+  changeCaptureRefs: S.optionalKey(S.Array(S.String)),
+  changeCaptureStatus: S.optionalKey(
+    S.Literals(['blocked', 'review_ready', 'stale']),
+  ),
   closeoutRefs: S.Array(S.String),
+  deliveryReadinessFreshness: S.optionalKey(S.Literals(['fresh', 'stale'])),
+  deliveryReadinessRefs: S.optionalKey(S.Array(S.String)),
+  deliveryReadinessStatus: S.optionalKey(
+    S.Literals(['blocked', 'ready', 'scoped_exception']),
+  ),
+  fileCount: S.optionalKey(S.Number),
+  addedLineCount: S.optionalKey(S.Number),
+  patchDigestRef: S.optionalKey(S.NullOr(S.String)),
   previewRefs: S.optionalKey(S.Array(S.String)),
   proofRefs: S.Array(S.String),
+  removedLineCount: S.optionalKey(S.Number),
   resultRefs: S.Array(S.String),
+  reviewCaveatRefs: S.optionalKey(S.Array(S.String)),
   runnerKind: OpenAgentsAutopilotRunnerKind,
   summaryRefs: S.optionalKey(S.Array(S.String)),
   testRefs: S.optionalKey(S.Array(S.String)),
+  verificationRefs: S.optionalKey(S.Array(S.String)),
+  worktreeIdentityStatus: S.optionalKey(S.Literals(['blocked', 'ready', 'stale'])),
+  writebackRequired: S.optionalKey(S.Boolean),
 })
 type AutopilotWorkFallbackCloseoutRequest =
   typeof AutopilotWorkFallbackCloseoutRequest.Type
@@ -1144,6 +1180,13 @@ const optionalPublicSafeExecutionCloseoutRefs = (
   refs: ReadonlyArray<string> | undefined,
 ): boolean => refs === undefined || refs.every(publicSafeExecutionCloseoutRef)
 
+const optionalPublicSafeExecutionCloseoutRef = (
+  ref: string | null | undefined,
+): boolean => ref === null || ref === undefined || publicSafeExecutionCloseoutRef(ref)
+
+const optionalNonNegativeInteger = (value: number | undefined): boolean =>
+  value === undefined || (Number.isSafeInteger(value) && value >= 0)
+
 const publicSafeReviewRefs = (refs: ReadonlyArray<string>): boolean =>
   refs.every(publicSafeExecutionCloseoutRef)
 
@@ -1154,6 +1197,67 @@ const publicSafeRefsFromBody = (
   Array.isArray(body[key])
     ? body[key].filter((ref): ref is string => typeof ref === 'string')
     : []
+
+const optionalPublicSafeRefsFromBody = (
+  body: Record<string, unknown>,
+  key: string,
+): ReadonlyArray<string> | undefined =>
+  key in body ? publicSafeRefsFromBody(body, key) : undefined
+
+const optionalPublicSafeRefFromBody = (
+  body: Record<string, unknown>,
+  key: string,
+): string | null | undefined =>
+  key in body
+    ? body[key] === null
+      ? null
+      : typeof body[key] === 'string'
+        ? body[key]
+        : undefined
+    : undefined
+
+const optionalNonNegativeIntegerFromBody = (
+  body: Record<string, unknown>,
+  key: string,
+): number | undefined =>
+  typeof body[key] === 'number' && Number.isSafeInteger(body[key]) && body[key] >= 0
+    ? body[key]
+    : undefined
+
+const optionalChangeCaptureStatusFromBody = (
+  body: Record<string, unknown>,
+): AutopilotWorkExecutionCloseoutRecord['changeCaptureStatus'] =>
+  body.changeCaptureStatus === 'blocked' ||
+  body.changeCaptureStatus === 'review_ready' ||
+  body.changeCaptureStatus === 'stale'
+    ? body.changeCaptureStatus
+    : undefined
+
+const optionalDeliveryReadinessFreshnessFromBody = (
+  body: Record<string, unknown>,
+): AutopilotWorkExecutionCloseoutRecord['deliveryReadinessFreshness'] =>
+  body.deliveryReadinessFreshness === 'fresh' ||
+  body.deliveryReadinessFreshness === 'stale'
+    ? body.deliveryReadinessFreshness
+    : undefined
+
+const optionalDeliveryReadinessStatusFromBody = (
+  body: Record<string, unknown>,
+): AutopilotWorkExecutionCloseoutRecord['deliveryReadinessStatus'] =>
+  body.deliveryReadinessStatus === 'blocked' ||
+  body.deliveryReadinessStatus === 'ready' ||
+  body.deliveryReadinessStatus === 'scoped_exception'
+    ? body.deliveryReadinessStatus
+    : undefined
+
+const optionalWorktreeIdentityStatusFromBody = (
+  body: Record<string, unknown>,
+): AutopilotWorkExecutionCloseoutRecord['worktreeIdentityStatus'] =>
+  body.worktreeIdentityStatus === 'blocked' ||
+  body.worktreeIdentityStatus === 'ready' ||
+  body.worktreeIdentityStatus === 'stale'
+    ? body.worktreeIdentityStatus
+    : undefined
 
 const reviewStateForAction = (
   action: AutopilotWorkReviewAction,
@@ -1862,10 +1966,7 @@ const validateExecutionCloseoutForWork = (
     executionCloseout.assignmentRefs.length > 0 &&
     executionCloseout.assignmentRefs.every(ref => assignmentRefs.has(ref))
   const refsArePublicSafe =
-    allPublicSafeExecutionCloseoutRefs(executionCloseout.assignmentRefs) &&
-    allPublicSafeExecutionCloseoutRefs(executionCloseout.closeoutRefs) &&
-    allPublicSafeExecutionCloseoutRefs(executionCloseout.proofRefs) &&
-    allPublicSafeExecutionCloseoutRefs(executionCloseout.resultRefs)
+    executionCloseoutRefsArePublicSafe(executionCloseout)
   const runnerMatches =
     work.placementDecision.selectedRunnerKind === hostedGeminiRunnerKind &&
     executionCloseout.runnerKind === hostedGeminiRunnerKind
@@ -1888,14 +1989,23 @@ const executionCloseoutRefsArePublicSafe = (
 ): boolean =>
   allPublicSafeExecutionCloseoutRefs(executionCloseout.assignmentRefs) &&
   optionalPublicSafeExecutionCloseoutRefs(executionCloseout.artifactRefs) &&
+  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.authorityReceiptRefs) &&
   optionalPublicSafeExecutionCloseoutRefs(executionCloseout.blockerRefs) &&
   optionalPublicSafeExecutionCloseoutRefs(executionCloseout.buildRefs) &&
+  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.changeCaptureRefs) &&
   allPublicSafeExecutionCloseoutRefs(executionCloseout.closeoutRefs) &&
+  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.deliveryReadinessRefs) &&
+  optionalNonNegativeInteger(executionCloseout.fileCount) &&
+  optionalNonNegativeInteger(executionCloseout.addedLineCount) &&
+  optionalPublicSafeExecutionCloseoutRef(executionCloseout.patchDigestRef) &&
   optionalPublicSafeExecutionCloseoutRefs(executionCloseout.previewRefs) &&
   allPublicSafeExecutionCloseoutRefs(executionCloseout.proofRefs) &&
+  optionalNonNegativeInteger(executionCloseout.removedLineCount) &&
   allPublicSafeExecutionCloseoutRefs(executionCloseout.resultRefs) &&
+  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.reviewCaveatRefs) &&
   optionalPublicSafeExecutionCloseoutRefs(executionCloseout.summaryRefs) &&
-  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.testRefs)
+  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.testRefs) &&
+  optionalPublicSafeExecutionCloseoutRefs(executionCloseout.verificationRefs)
 
 const codingAssignmentString = (
   assignment: PylonApiAssignmentRecord,
@@ -1928,26 +2038,84 @@ const executionCloseoutFromPylonWorkerCloseout = (
   const workOrderRef = autopilotWorkOrderRefForAssignment(input.assignment)
   const taskRef = autopilotTaskRefForAssignment(input.assignment)
   const artifactRefs = publicSafeRefsFromBody(input.body, 'artifactRefs')
+  const authorityReceiptRefs = optionalPublicSafeRefsFromBody(
+    input.body,
+    'authorityReceiptRefs',
+  )
   const blockerRefs = publicSafeRefsFromBody(input.body, 'blockerRefs')
   const buildRefs = publicSafeRefsFromBody(input.body, 'buildRefs')
+  const changeCaptureRefs = optionalPublicSafeRefsFromBody(
+    input.body,
+    'changeCaptureRefs',
+  )
   const closeoutRefs = publicSafeRefsFromBody(input.body, 'closeoutRefs')
+  const deliveryReadinessRefs = optionalPublicSafeRefsFromBody(
+    input.body,
+    'deliveryReadinessRefs',
+  )
   const previewRefs = publicSafeRefsFromBody(input.body, 'previewRefs')
   const proofRefs = publicSafeRefsFromBody(input.body, 'proofRefs')
   const resultRefs = publicSafeRefsFromBody(input.body, 'resultRefs')
+  const reviewCaveatRefs = optionalPublicSafeRefsFromBody(
+    input.body,
+    'reviewCaveatRefs',
+  )
   const summaryRefs = publicSafeRefsFromBody(input.body, 'summaryRefs')
   const testRefs = publicSafeRefsFromBody(input.body, 'testRefs')
+  const verificationRefs = optionalPublicSafeRefsFromBody(
+    input.body,
+    'verificationRefs',
+  )
+  const changeCaptureStatus = optionalChangeCaptureStatusFromBody(input.body)
+  const deliveryReadinessFreshness =
+    optionalDeliveryReadinessFreshnessFromBody(input.body)
+  const deliveryReadinessStatus =
+    optionalDeliveryReadinessStatusFromBody(input.body)
+  const fileCount = optionalNonNegativeIntegerFromBody(input.body, 'fileCount')
+  const addedLineCount = optionalNonNegativeIntegerFromBody(
+    input.body,
+    'addedLineCount',
+  )
+  const patchDigestRef = optionalPublicSafeRefFromBody(
+    input.body,
+    'patchDigestRef',
+  )
+  const removedLineCount = optionalNonNegativeIntegerFromBody(
+    input.body,
+    'removedLineCount',
+  )
+  const worktreeIdentityStatus =
+    optionalWorktreeIdentityStatusFromBody(input.body)
   const executionCloseout: AutopilotWorkExecutionCloseoutRecord = {
     assignmentRefs: [input.assignment.assignmentRef],
     artifactRefs,
+    ...(authorityReceiptRefs === undefined ? {} : { authorityReceiptRefs }),
     blockerRefs,
     buildRefs,
+    ...(changeCaptureRefs === undefined ? {} : { changeCaptureRefs }),
+    ...(changeCaptureStatus === undefined ? {} : { changeCaptureStatus }),
     closeoutRefs,
+    ...(deliveryReadinessFreshness === undefined
+      ? {}
+      : { deliveryReadinessFreshness }),
+    ...(deliveryReadinessRefs === undefined ? {} : { deliveryReadinessRefs }),
+    ...(deliveryReadinessStatus === undefined ? {} : { deliveryReadinessStatus }),
+    ...(fileCount === undefined ? {} : { fileCount }),
+    ...(addedLineCount === undefined ? {} : { addedLineCount }),
+    ...(patchDigestRef === undefined ? {} : { patchDigestRef }),
     previewRefs,
     proofRefs,
+    ...(removedLineCount === undefined ? {} : { removedLineCount }),
     resultRefs,
+    ...(reviewCaveatRefs === undefined ? {} : { reviewCaveatRefs }),
     runnerKind: 'requester_pylon',
     summaryRefs,
     testRefs,
+    ...(verificationRefs === undefined ? {} : { verificationRefs }),
+    ...(worktreeIdentityStatus === undefined ? {} : { worktreeIdentityStatus }),
+    ...(typeof input.body.writebackRequired === 'boolean'
+      ? { writebackRequired: input.body.writebackRequired }
+      : {}),
   }
   const refsArePublicSafe =
     executionCloseoutRefsArePublicSafe(executionCloseout)
@@ -1975,15 +2143,55 @@ const executionCloseoutRecordFromFallbackCloseoutBody = (
 ): AutopilotWorkExecutionCloseoutRecord => ({
   assignmentRefs: body.assignmentRefs,
   ...(body.artifactRefs === undefined ? {} : { artifactRefs: body.artifactRefs }),
+  ...(body.authorityReceiptRefs === undefined
+    ? {}
+    : { authorityReceiptRefs: body.authorityReceiptRefs }),
   ...(body.blockerRefs === undefined ? {} : { blockerRefs: body.blockerRefs }),
   ...(body.buildRefs === undefined ? {} : { buildRefs: body.buildRefs }),
+  ...(body.changeCaptureRefs === undefined
+    ? {}
+    : { changeCaptureRefs: body.changeCaptureRefs }),
+  ...(body.changeCaptureStatus === undefined
+    ? {}
+    : { changeCaptureStatus: body.changeCaptureStatus }),
   closeoutRefs: body.closeoutRefs,
+  ...(body.deliveryReadinessFreshness === undefined
+    ? {}
+    : { deliveryReadinessFreshness: body.deliveryReadinessFreshness }),
+  ...(body.deliveryReadinessRefs === undefined
+    ? {}
+    : { deliveryReadinessRefs: body.deliveryReadinessRefs }),
+  ...(body.deliveryReadinessStatus === undefined
+    ? {}
+    : { deliveryReadinessStatus: body.deliveryReadinessStatus }),
+  ...(body.fileCount === undefined ? {} : { fileCount: body.fileCount }),
+  ...(body.addedLineCount === undefined
+    ? {}
+    : { addedLineCount: body.addedLineCount }),
+  ...(body.patchDigestRef === undefined
+    ? {}
+    : { patchDigestRef: body.patchDigestRef }),
   ...(body.previewRefs === undefined ? {} : { previewRefs: body.previewRefs }),
   proofRefs: body.proofRefs,
+  ...(body.removedLineCount === undefined
+    ? {}
+    : { removedLineCount: body.removedLineCount }),
   resultRefs: body.resultRefs,
+  ...(body.reviewCaveatRefs === undefined
+    ? {}
+    : { reviewCaveatRefs: body.reviewCaveatRefs }),
   runnerKind: body.runnerKind,
   ...(body.summaryRefs === undefined ? {} : { summaryRefs: body.summaryRefs }),
   ...(body.testRefs === undefined ? {} : { testRefs: body.testRefs }),
+  ...(body.verificationRefs === undefined
+    ? {}
+    : { verificationRefs: body.verificationRefs }),
+  ...(body.worktreeIdentityStatus === undefined
+    ? {}
+    : { worktreeIdentityStatus: body.worktreeIdentityStatus }),
+  ...(body.writebackRequired === undefined
+    ? {}
+    : { writebackRequired: body.writebackRequired }),
 })
 
 const executionCloseoutFromFallbackCloseout = (

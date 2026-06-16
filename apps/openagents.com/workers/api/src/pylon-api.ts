@@ -18,6 +18,7 @@ const PublicSafeRef = NonEmptyTrimmedString.check(
   S.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/),
 )
 const PublicSafeRefs = S.optionalKey(S.Array(PublicSafeRef))
+const NonNegativeInteger = S.Int.check(S.isGreaterThanOrEqualTo(0))
 const PylonRef = NonEmptyTrimmedString.check(
   S.isMinLength(3),
   S.isMaxLength(120),
@@ -247,15 +248,33 @@ export type PylonApiArtifactProofMetadataRequest =
 
 export const PylonApiAssignmentWorkerCloseoutRequest = S.Struct({
   artifactRefs: PublicSafeRefs,
+  authorityReceiptRefs: PublicSafeRefs,
   blockerRefs: PublicSafeRefs,
   buildRefs: PublicSafeRefs,
+  changeCaptureRefs: PublicSafeRefs,
+  changeCaptureStatus: S.optionalKey(
+    S.Literals(['blocked', 'review_ready', 'stale']),
+  ),
   closeoutRefs: PublicSafeRefs,
+  deliveryReadinessFreshness: S.optionalKey(S.Literals(['fresh', 'stale'])),
+  deliveryReadinessRefs: PublicSafeRefs,
+  deliveryReadinessStatus: S.optionalKey(
+    S.Literals(['blocked', 'ready', 'scoped_exception']),
+  ),
+  fileCount: S.optionalKey(NonNegativeInteger),
+  addedLineCount: S.optionalKey(NonNegativeInteger),
+  patchDigestRef: S.optionalKey(S.NullOr(PublicSafeRef)),
   previewRefs: PublicSafeRefs,
   proofRefs: PublicSafeRefs,
+  removedLineCount: S.optionalKey(NonNegativeInteger),
   resultRefs: PublicSafeRefs,
+  reviewCaveatRefs: PublicSafeRefs,
   status: S.optionalKey(PylonEventStatus),
   summaryRefs: PublicSafeRefs,
   testRefs: PublicSafeRefs,
+  verificationRefs: PublicSafeRefs,
+  worktreeIdentityStatus: S.optionalKey(S.Literals(['blocked', 'ready', 'stale'])),
+  writebackRequired: S.optionalKey(S.Boolean),
 })
 export type PylonApiAssignmentWorkerCloseoutRequest =
   typeof PylonApiAssignmentWorkerCloseoutRequest.Type

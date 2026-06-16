@@ -109,6 +109,13 @@ Why first: Pack C already created the review-ready evidence layer, and the
 existing cockpit already owns Run review actions. Surfacing that evidence is
 the smallest user-visible #5107 slice.
 
+Implementation status, 2026-06-16: #5123 adds the first refs-only
+`/autopilot` Review changes lane, optional Pack C closeout fields, Pylon
+worker-closeout pass-through, and regression coverage for unsafe review
+material omission/rejection. Follow-on G1 work should only add raw diff
+inspection through a separately fetched and projected public-safe artifact
+surface, not by placing raw patches into the Run projection.
+
 ### G2 - Plan, Todo, Progress, And Blocker Lane
 
 Systems: system 10 Plan/Todo/Progress, system 25 Notifications/Attention,

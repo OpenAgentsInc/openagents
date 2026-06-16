@@ -21,6 +21,11 @@ import { formatIsoDateTime } from '../../../time-format'
 import { autopilotWorkDetailRouter, autopilotWorkRouter } from '../../../route'
 import * as Ui from '../../../ui'
 import {
+  type ForgeDiffReviewStatus,
+  type ForgeDiffReviewView,
+  projectForgeDiffReview,
+} from '../autopilot-work/diff-review'
+import {
   Message,
   RequestedLoadAutopilotWorkDetail,
   RequestedLoadAutopilotWorkList,
@@ -704,6 +709,94 @@ const briefingStatePanel = (model: Model): Html =>
     M.exhaustive,
   )
 
+const loadedBriefing = (model: Model): AutopilotMissionBriefing | null =>
+  model.autopilotWorkBriefing._tag === 'AutopilotWorkBriefingLoaded'
+    ? model.autopilotWorkBriefing.response.briefing
+    : null
+
+const reviewStatusLabel = (status: ForgeDiffReviewStatus): string =>
+  status.replaceAll('_', ' ')
+
+const reviewStatusTone = (
+  status: ForgeDiffReviewStatus,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  status === 'review_ready'
+    ? 'positive'
+    : status === 'pending_delivery'
+      ? 'info'
+      : 'warning'
+
+const reviewValue = (value: number | string | null): string =>
+  value === null ? 'missing' : String(value)
+
+const lineDeltaLabel = (review: ForgeDiffReviewView): string => {
+  const added = review.addedLineCount === null ? '?' : `+${review.addedLineCount}`
+  const removed =
+    review.removedLineCount === null ? '?' : `-${review.removedLineCount}`
+
+  return `${added} / ${removed}`
+}
+
+const reviewMetric = (label: string, value: string): Html => {
+  const h = html<Message>()
+
+  return h.div([Ui.className<Message>('grid gap-1 border border-[#222] p-3')], [
+    h.div([Ui.className<Message>('text-[0.6875rem] uppercase text-white/35')], [
+      label,
+    ]),
+    h.div(
+      [Ui.className<Message>('min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-white/75')],
+      [value],
+    ),
+  ])
+}
+
+const diffReviewPanel = (
+  model: Model,
+  work: AutopilotWorkProjection,
+): Html => {
+  const h = html<Message>()
+  const review = projectForgeDiffReview(work, loadedBriefing(model))
+
+  return h.section([Ui.className<Message>('grid gap-4 border-t border-[#222] pt-5')], [
+    h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+      h.div([Ui.className<Message>('grid gap-1')], [
+        h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
+          'Review changes',
+        ]),
+        h.p([Ui.className<Message>('m-0 max-w-3xl text-sm text-white/45')], [
+          'Refs-only delivery review. Raw patches and private local material stay out of the cockpit projection.',
+        ]),
+      ]),
+      badge(reviewStatusLabel(review.status), reviewStatusTone(review.status)),
+    ]),
+    h.div([Ui.className<Message>('grid gap-3 md:grid-cols-4')], [
+      reviewMetric('Files', reviewValue(review.fileCount)),
+      reviewMetric('Lines', lineDeltaLabel(review)),
+      reviewMetric('Patch digest', reviewValue(review.patchDigestRef)),
+      reviewMetric('Verification', review.verificationState),
+    ]),
+    h.div(
+      [Ui.className<Message>('grid gap-4 border border-[#222] p-4 md:grid-cols-2')],
+      [
+        refSection('Change captures', review.changeCaptureRefs),
+        refSection('Delivery readiness', review.deliveryReadinessRefs),
+        refSection('Verification refs', review.verificationRefs),
+        refSection('Writeback authority', review.authorityReceiptRefs),
+        refSection('Artifacts', review.artifactRefs),
+        refSection('Results', review.resultRefs),
+        refSection('Caveats', review.reviewCaveatRefs),
+        refSection('Blockers', review.blockerRefs),
+      ],
+    ),
+    review.omittedUnsafeRefCount === 0
+      ? h.span([Ui.className<Message>('hidden')], [])
+      : h.p([Ui.className<Message>('m-0 text-sm text-[#ffb400]')], [
+          `${review.omittedUnsafeRefCount} unsafe review ref(s) were omitted before rendering.`,
+        ]),
+  ])
+}
+
 // The accepted-outcome receipt: an approval gate over a delivered Run. Reframes
 // the review action onto the `AiElements` confirmation primitive while keeping
 // the existing review messages and disable rules.
@@ -854,6 +947,7 @@ const workSummaryPanel = (model: Model, work: AutopilotWorkProjection): Html => 
             refSection('Blocker refs', work.executionCloseout.blockerRefs ?? []),
           ],
         ),
+    diffReviewPanel(model, work),
     receiptPanel(model, work),
     eventsPanel(model),
     briefingStatePanel(model),
