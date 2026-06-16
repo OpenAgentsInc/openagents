@@ -1007,6 +1007,26 @@ async function resolveSparkBackupOptions(
   }
 }
 
+// Best-effort resolve this node's static Spark-hosted Lightning Address (#5078)
+// for publishing alongside the BOLT 12 offer in tip-recipient readiness. Returns
+// undefined (and costs nothing) when the Spark backup is not opt-in enabled, or
+// when the helper cannot reach the Spark network. Never throws.
+async function resolveLightningAddressForReadiness(
+  state: PylonLocalState,
+): Promise<string | undefined> {
+  try {
+    const sparkOptions = await resolveSparkBackupOptions(state, { showLocalTarget: true })
+    const result = await prepareSparkBackupReceive({ ...sparkOptions, kind: "lightning-address" })
+    return result.ok &&
+      typeof result.localTarget === "string" &&
+      result.localTarget.trim() !== ""
+      ? result.localTarget.trim()
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 function parseDevLoopOptions(args: string[]) {
   const options: { allowDirty: boolean; command?: string; json: boolean } = {
     allowDirty: false,
@@ -1829,7 +1849,11 @@ async function main() {
       }
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const state = await ensurePylonLocalState(summary)
-      const result = await claimTipReadiness(networkOptions, { pylonRef: state.identity.pylonRef })
+      const lightningAddress = await resolveLightningAddressForReadiness(state)
+      const result = await claimTipReadiness(networkOptions, {
+        pylonRef: state.identity.pylonRef,
+        lightningAddress,
+      })
       process.stdout.write(`${JSON.stringify({ claimed: true, tipRecipientReadiness: (result as { tipRecipientReadiness?: unknown }).tipRecipientReadiness ?? null }, null, 2)}\n`)
       return
     } catch (error) {
@@ -2206,12 +2230,13 @@ async function main() {
         let tipReadinessClaim: Record<string, unknown> | { error: string } | null = null
         if (status.receiveReady) {
           try {
+            const lightningAddress = await resolveLightningAddressForReadiness(state)
             tipReadinessClaim = await claimTipReadiness(
               {
                 agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
                 baseUrl,
               },
-              { pylonRef: state.identity.pylonRef },
+              { pylonRef: state.identity.pylonRef, lightningAddress },
             )
           } catch (error) {
             tipReadinessClaim = { error: error instanceof Error ? error.message : String(error) }

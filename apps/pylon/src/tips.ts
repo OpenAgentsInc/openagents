@@ -99,7 +99,7 @@ export async function setTipPreferences(
 // the offer attachment.
 export async function claimTipReadiness(
   options: TipsNetworkOptions,
-  input: { pylonRef: string },
+  input: { pylonRef: string; lightningAddress?: string | null },
   runner: WalletCommandRunner = defaultWalletCommandRunner,
 ): Promise<Record<string, unknown>> {
   const offerResult = await runner(["receive-bolt12"])
@@ -115,10 +115,18 @@ export async function claimTipReadiness(
   }
 
   const slug = input.pylonRef.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40)
+  // The static Spark-hosted Lightning Address (#5078) is published alongside the
+  // BOLT 12 offer when available, so the treasury can pay this recipient even
+  // while their node is offline (LNURL -> BOLT11, LSP-held, claimed on sync).
+  const lightningAddress =
+    typeof input.lightningAddress === "string" && input.lightningAddress.trim() !== ""
+      ? input.lightningAddress.trim()
+      : undefined
   return agentRequest(options, {
     idempotencyKey: `pylon-tip-claim:${slug}`,
     body: {
       bolt12Offer: offer,
+      ...(lightningAddress ? { lightningAddress } : {}),
       readinessRefs: [
         "readiness.public.mdk_agent.daemon_running",
         "readiness.public.mdk_agent.setup_present",

@@ -62,12 +62,12 @@ describe("selectUpdate", () => {
   })
 
   test("rollout 0 gates everyone; minVersion forces regardless", () => {
-    const rolled = feed([release({ version: "1.0.0-rc.6", rolloutPercent: 0 })])
+    const rolled = feed([release({ version: "1.0.0-rc.7", rolloutPercent: 0 })])
     expect(selectUpdate(rolled, "1.0.0-rc.1", "c")).toBeNull()
     const floored = feed([
-      release({ version: "1.0.0-rc.6", rolloutPercent: 0, minVersion: "1.0.0-rc.4" }),
+      release({ version: "1.0.0-rc.7", rolloutPercent: 0, minVersion: "1.0.0-rc.4" }),
     ])
-    expect(selectUpdate(floored, "1.0.0-rc.1", "c")?.version).toBe("1.0.0-rc.6")
+    expect(selectUpdate(floored, "1.0.0-rc.1", "c")?.version).toBe("1.0.0-rc.7")
   })
 })
 
