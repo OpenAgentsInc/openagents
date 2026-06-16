@@ -16,6 +16,9 @@ acceptance, and walk the teammate through what they can access.
   source text into transcripts, issue comments, public docs, or public demos.
 - Keep raw invite responses in a private shell only. The response contains an
   `acceptUrl`; treat it as bearer-like invite material.
+- When invite emails are copied to the operator, use BCC or a separate operator
+  ledger/copy email. Do not visibly CC private recipient lists to customers,
+  teammates, partners, or other invitees.
 - Use `/demo/legal` only for generalized, public-safe legal concepts. Private
   package material belongs only in the gated workspace until a separate
   generalization pass approves broader copy.
@@ -54,6 +57,78 @@ The invitee does **not** get raw private source material from the invite alone.
 Private package material appears only after it is seeded into gated team/project
 surfaces or private workspace rows.
 
+## API-First Gap And Target
+
+The current production path is safe but still too manual:
+
+- team/project creation is still an operator SQL step;
+- `POST /api/operator/team-workspace-invites` sends or refreshes one invite at a
+  time;
+- invite requests have a `role`, but no explicit participant kind such as
+  `internal_team_member`, `external_partner`, or future `client`;
+- the invite email path uses the Resend-backed `EmailService` ledger, but it
+  does not yet expose operator-copy controls such as `copyOperator`, `bcc`, or a
+  separate copy ledger message.
+
+The implementation ticket is
+`https://github.com/OpenAgentsInc/openagents/issues/5156`.
+
+The target API is one operator-authenticated call that an agent can safely use
+when asked to create a named private project workspace and invite known people:
+
+```http
+POST /api/operator/private-project-workspaces
+```
+
+Example request shape, with placeholder addresses only:
+
+```json
+{
+  "project": {
+    "name": "Private project workspace",
+    "slug": "optional-stable-slug",
+    "teamName": "Optional team label",
+    "teamSlug": "optional-team-slug"
+  },
+  "workspace": {
+    "createPrefilledWorkspace": true,
+    "workspaceLabel": "Private project workspace"
+  },
+  "email": {
+    "copyOperator": true,
+    "copyMode": "bcc_or_ledger_copy"
+  },
+  "invitations": [
+    {
+      "email": "<team-member-email>",
+      "role": "admin",
+      "participantKind": "internal_team_member",
+      "sendEmail": true,
+      "copyOperator": true
+    },
+    {
+      "email": "<external-partner-email>",
+      "role": "member",
+      "participantKind": "external_partner"
+    }
+  ]
+}
+```
+
+API defaults after #5156 should be:
+
+- `sendEmail: true` for each invite unless explicitly disabled;
+- `copyOperator: true` for API-created invite emails unless explicitly disabled
+  at the request or per-invite level;
+- no raw accept URLs or invite tokens in normal responses unless the operator
+  passes an explicit private debug flag;
+- idempotent project/team selection and invite refresh so repeating the same
+  request does not create duplicate teams or uncontrolled duplicate emails;
+- safe response fields only: team/project/workspace refs, invite refs, invite
+  status, email status, and redacted delivery refs.
+
+Until #5156 lands, use the manual path below.
+
 ## Inputs
 
 Prepare these in a private shell:
@@ -81,7 +156,8 @@ or escape them manually before running the file.
 ## 1. Create Or Select The Private Team/Project
 
 If the team/project already exists, skip to preflight. If not, create both rows
-with a reviewed SQL file. This is an operator-only step.
+with a reviewed SQL file. This is an operator-only step and should be replaced
+by the #5156 API-first path as soon as that endpoint ships.
 
 From `apps/openagents.com/workers/api`:
 
