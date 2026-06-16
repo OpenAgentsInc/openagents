@@ -36,6 +36,11 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   **`rc.4` followed (npm + GitHub prerelease, CLI/npm-only):**
   `@openagentsinc/pylon@1.0.0-rc.4` on the `rc` dist-tag — ships the #5121
   validator auto-run (`validate --auto`) + the #5077 heartbeat fix. See §B.
+  **`rc.5` is the corrective npm RC for #5122:** source/package runtime version
+  truth is aligned again, and the headless node presence service now passes
+  `OPENAGENTS_AGENT_TOKEN` to register/heartbeat just like the CLI and assignment
+  worker paths. The signed standalone RC feed remains a separate release surface
+  and only advances when the signed binary publish path runs.
 - **Spark offline-tipping chain → code-complete (16th):** #5078 (receive-only backup,
   slices 1-3) + #5080 (Bun storage) + #5085 (legacy `migrate-spark` rewire) all landed.
   See §E.
@@ -92,7 +97,8 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
     `--lease-ref`/`--workload`). **SHIPPED as `@openagentsinc/pylon@1.0.0-rc.4`**
     (npm `rc` dist-tag, `latest` stays `0.2.5`; GitHub prerelease
     `pylon-v1.0.0-rc.4`). rc.4 also carries the #5077 heartbeat fix. CLI/npm-only
-    RC (no new desktop DMG).
+    RC (no new desktop DMG). **rc.5 follows as the #5122 corrective npm RC** so
+    runtime version reporting and authenticated headless presence are aligned.
   - **`resolveValidatorCandidates()` stays intentionally empty by design** — the
     trust anchor is a separate-device replay, so the server must never fabricate a
     validator digest. Verdicts are produced by the validator **push** path
@@ -101,7 +107,7 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
     `requireAgent`, settlement stays `requireAdmin` + bounded-spend (pairing/
     discovery only — no payout-authority change). 6 new worker route tests + 6 new
     Pylon client tests; full deploy gate green.
-  - Remaining to fully close: a live auto-validation on rc.4 that pairs a real
+  - Remaining to fully close: a live auto-validation on the current `@rc` that pairs a real
     distinct device → `Verified` (this is also the #5061 self-serve proof).
     Contributors can run it now: `npm i -g @openagentsinc/pylon@rc` →
     `pylon training validate --auto --watch`. Follow along on the issue + forum.

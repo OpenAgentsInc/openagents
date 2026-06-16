@@ -6,6 +6,7 @@ import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {
   completePylonLink,
   degradeStalePresence,
+  presenceClientOptionsFromEnv,
   refreshPylonLink,
   registerPylon,
   sendHeartbeat,
@@ -93,6 +94,27 @@ function fakePresenceServer(input: { failHeartbeats?: number } = {}) {
 }
 
 describe("Pylon presence registration and heartbeat", () => {
+  test("builds headless presence client options from OPENAGENTS_AGENT_TOKEN (#5122)", () => {
+    const tokenEnv = {
+      OPENAGENTS_AGENT_TOKEN: "  test-headless-agent-token  ",
+      OPENAGENTS_MARKET_RELAY_URL: "wss://relay.openagents.com",
+    } as NodeJS.ProcessEnv
+    const authenticated = presenceClientOptionsFromEnv({
+      baseUrl: "https://openagents.test",
+      env: tokenEnv,
+    })
+    const unauthenticated = presenceClientOptionsFromEnv({
+      baseUrl: "https://openagents.test",
+      env: {} as NodeJS.ProcessEnv,
+    })
+
+    expect(authenticated.baseUrl).toBe("https://openagents.test")
+    expect(authenticated.agentToken).toBe("test-headless-agent-token")
+    expect(authenticated.env).toBe(tokenEnv)
+    expect(unauthenticated.agentToken).toBeUndefined()
+    expect(unauthenticated.baseUrl).toBe("https://openagents.test")
+  })
+
   test("uses bearer auth and idempotency keys when an agent token is supplied", async () => {
     await withTempHome(async (home) => {
       const requests: { path: string; body: any; headers: Headers }[] = []

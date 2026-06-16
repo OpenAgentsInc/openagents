@@ -211,7 +211,7 @@
     },
     "apps/pylon": {
       "name": "@openagentsinc/pylon",
-      "version": "1.0.0-rc.3",
+      "version": "1.0.0-rc.5",
       "bin": {
         "pylon": "src/index.ts",
         "pylon-foundation-bridge": "bin/foundation-bridge",

@@ -5,8 +5,8 @@
 // compares against it. Keep package.json's "version" in sync, but treat this as
 // authoritative for the running binary.
 //
-// Bump for each release cut. v1.0-rc cut: 2026-06-15 (#5047).
-export const PYLON_VERSION = "1.0.0-rc.3"
+// Bump for each release cut. v1.0-rc cut: 2026-06-16 (#5122).
+export const PYLON_VERSION = "1.0.0-rc.5"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.

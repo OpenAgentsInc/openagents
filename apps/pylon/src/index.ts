@@ -130,6 +130,7 @@ import {
 import { ensurePylonLocalState, projectPublicStatus, writeRuntimeState, type PylonLocalState } from "./state"
 import {
   completePylonLink,
+  presenceClientOptionsFromEnv,
   refreshPylonLink,
   registerPylon,
   sendHeartbeat,
@@ -772,6 +773,10 @@ const runHeadlessNode = Effect.gen(function* () {
   yield* logMessage(runtime, "info", `[Identity] Pylon Nostr npub: ${localState.identity.npub}`, { transient: true })
 
   const presenceBaseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
+  const presenceClientOptions = presenceClientOptionsFromEnv({
+    baseUrl: presenceBaseUrl ?? "",
+    env: Bun.env,
+  })
   yield* forkNodeServices(runtime, {
     wallet: { classify: () => classifyMdkWallet() },
     telemetry: {
@@ -784,8 +789,8 @@ const runHeadlessNode = Effect.gen(function* () {
     },
     heartbeat: {
       baseUrl: presenceBaseUrl,
-      register: () => registerPylon(bootstrapSummary, { baseUrl: presenceBaseUrl ?? "" }),
-      heartbeat: () => sendHeartbeat(bootstrapSummary, { baseUrl: presenceBaseUrl ?? "" }),
+      register: () => registerPylon(bootstrapSummary, presenceClientOptions),
+      heartbeat: () => sendHeartbeat(bootstrapSummary, presenceClientOptions),
     },
   })
   if (presenceBaseUrl && Bun.env.PYLON_ASSIGNMENT_WORKER === "1") {
@@ -1657,10 +1662,7 @@ async function main() {
         throw new Error("presence commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
       }
       const summary = await createPresenceBootstrapSummary(presenceArgs, Bun.env)
-      const clientOptions = {
-        agentToken: Bun.env.OPENAGENTS_AGENT_TOKEN,
-        baseUrl,
-      }
+      const clientOptions = presenceClientOptionsFromEnv({ baseUrl, env: Bun.env })
       const result =
         command === "register"
           ? await registerPylon(summary, clientOptions)

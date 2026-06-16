@@ -36,6 +36,15 @@ change, update its linked runbook **and** fix the pointer here.
 | **Pylon Cloud node** | managed/cloud Pylon node | `apps/pylon/docs/cloud-node-deployment.md` | see runbook | — |
 | **SHC agent** | SHC agent deploy | `apps/openagents.com/docs/2026-06-02-shc-agent-deployment-runbook.md` | see runbook | — |
 
+### Pylon npm vs signed OTA feed
+
+The Pylon npm RC and signed standalone RC feed are independent release surfaces.
+Publishing `@openagentsinc/pylon@rc` with `npm publish --tag rc` only updates the
+npm install path. The signed auto-update feed at `updates.openagents.com/pylon/rc/...`
+only moves after the signed binary flow (`apps/pylon/scripts/build-rc-binaries.sh`)
+and the `oa-updates` publish/deploy path run. Do not infer one surface's current
+version from the other.
+
 ## Signing & secrets — the trust layer
 
 **Runbook: `apps/oa-updates/docs/release-signing-runbook.md` — read before any signed release.**

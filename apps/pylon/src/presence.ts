@@ -26,6 +26,19 @@ export type PresenceClientOptions = {
   now?: () => Date
 }
 
+export function presenceClientOptionsFromEnv(input: {
+  baseUrl: string
+  env?: NodeJS.ProcessEnv
+}): PresenceClientOptions {
+  const env = input.env ?? process.env
+  const agentToken = env.OPENAGENTS_AGENT_TOKEN?.trim()
+  return {
+    baseUrl: input.baseUrl,
+    env,
+    ...(agentToken ? { agentToken } : {}),
+  }
+}
+
 export type PylonProviderDiscoveryFields = {
   providerNostrPubkey: string
   providerNostrNpub: string
