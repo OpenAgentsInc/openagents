@@ -16,6 +16,7 @@ export type ForumTipRecipientWalletState = Exclude<
 export type ForumTipRecipientWalletRecord = Readonly<{
   actorRef: string
   bolt12Offer: string | null
+  lightningAddress: string | null
   caveatRefs: ReadonlyArray<string>
   claimPolicyRefs: ReadonlyArray<string>
   custodyPolicyRefs: ReadonlyArray<string>
@@ -67,6 +68,48 @@ const bolt12OfferIsPublicReceiveInstruction = (value: string): boolean => {
       normalized,
     )
   )
+}
+
+// A static Lightning Address is `localpart@domain` (LNURL-pay), e.g.
+// `oab38ad12345abcd9@spark.money`. It is a public payment destination the
+// recipient chooses to publish, like a BOLT 12 offer, so the `@` is allowed
+// here even though the generic unsafe-material pattern flags `@` for refs.
+const lightningAddressPattern =
+  /^[a-z0-9][a-z0-9._%+-]{0,127}@[a-z0-9](?:[a-z0-9-]{0,62}\.)+[a-z]{2,24}$/i
+
+const lightningAddressIsPublicReceiveInstruction = (value: string): boolean => {
+  const normalized = value.trim()
+
+  return (
+    normalized.length <= 512 &&
+    !/\s/.test(normalized) &&
+    lightningAddressPattern.test(normalized) &&
+    !containsProviderSecretMaterial(normalized) &&
+    // Reject anything that is actually a raw invoice / lnurl / wallet secret
+    // smuggled into the address field. A plain email-shaped address is fine.
+    !/lnbc|lntb|lnbcrt|lnurl|lno1|mnemonic|preimage|payment[_-]?secret|private[_-]?key|wallet[_-]?secret|seed[_-]?phrase|recovery[_-]?phrase|access[_-]?token|api[_-]?key|macaroon/i.test(
+      normalized,
+    )
+  )
+}
+
+const assertLightningAddress = (
+  label: string,
+  value: string | null | undefined,
+): string | null => {
+  if (value === null || value === undefined) {
+    return null
+  }
+
+  const normalized = value.trim()
+
+  if (!lightningAddressIsPublicReceiveInstruction(normalized)) {
+    throw new ForumTipRecipientWalletUnsafe({
+      reason: `${label} must be a public static Lightning Address of the form name@domain, not a BOLT 11 invoice, LNURL, mnemonic, preimage, private key, wallet secret, or provider credential.`,
+    })
+  }
+
+  return normalized
 }
 
 const assertSafeRef = (label: string, value: string | null): void => {
@@ -152,6 +195,10 @@ export const assertForumTipRecipientWalletRecordSafe = (
     'Forum tip recipient BOLT 12 offer',
     record.bolt12Offer,
   )
+  const lightningAddress = assertLightningAddress(
+    'Forum tip recipient Lightning Address',
+    record.lightningAddress,
+  )
   const readinessRefs = assertSafeRefs(
     'Forum tip recipient readiness ref',
     record.readinessRefs,
@@ -186,6 +233,7 @@ export const assertForumTipRecipientWalletRecordSafe = (
   return {
     ...record,
     bolt12Offer,
+    lightningAddress,
     caveatRefs,
     claimPolicyRefs,
     custodyPolicyRefs,
@@ -217,6 +265,12 @@ export const projectForumTipRecipientReadiness = (
     safe.state === 'ready' && safe.bolt12Offer !== null
       ? {
           bolt12Offer: safe.bolt12Offer,
+          // Project the static Lightning Address fallback alongside the BOLT 12
+          // offer when present (#5078). Both are public payment destinations the
+          // recipient publishes; the primary online rail stays bolt12Offer.
+          ...(safe.lightningAddress !== null
+            ? { lightningAddress: safe.lightningAddress }
+            : {}),
           kind: 'bolt12_offer' as const,
           settlementAuthority: 'recipient_wallet_direct' as const,
         }
@@ -270,6 +324,10 @@ export const forumTipRecipientReadinessIsSafe = (
     (directPayment === null ||
       (directPayment.kind === 'bolt12_offer' &&
         directPayment.settlementAuthority === 'recipient_wallet_direct' &&
-        bolt12OfferIsPublicReceiveInstruction(directPayment.bolt12Offer)))
+        bolt12OfferIsPublicReceiveInstruction(directPayment.bolt12Offer) &&
+        (directPayment.lightningAddress === undefined ||
+          lightningAddressIsPublicReceiveInstruction(
+            directPayment.lightningAddress,
+          ))))
   )
 }

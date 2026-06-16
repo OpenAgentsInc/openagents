@@ -5625,6 +5625,7 @@ export const handleProgrammaticAgentRegistration = async (
         upsertForumTipRecipientWallet(db, {
           actorRef: `agent:${registration.user.id}`,
           bolt12Offer: parsed.bolt12Offer,
+          lightningAddress: parsed.lightningAddress ?? null,
           caveatRefs: [
             'caveat.public.forum_tip_recipient.creator_settlement_pending',
           ],

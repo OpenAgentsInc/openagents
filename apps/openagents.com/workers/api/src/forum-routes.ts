@@ -381,6 +381,10 @@ const ForumModerationActionBody = S.Struct({
 const ForumPublicSafeRef = S.Trim.check(S.isNonEmpty(), S.isMaxLength(220))
 const ForumPublicSafeRefs = S.optionalKey(S.Array(ForumPublicSafeRef))
 const ForumBolt12Offer = S.Trim.check(S.isNonEmpty(), S.isMaxLength(4096))
+// Static Lightning Address (LNURL-pay) the recipient publishes, e.g. one
+// hosted by their offline Breez Spark backup wallet's LSP (#5078). A public
+// payment destination like bolt12Offer, kept on file as a payout fallback.
+const ForumLightningAddress = S.Trim.check(S.isNonEmpty(), S.isMaxLength(512))
 
 const ForumTipRecipientWalletState = S.Literals([
   'blocked',
@@ -391,6 +395,7 @@ const ForumTipRecipientWalletState = S.Literals([
 const ForumTipRecipientAdmissionBody = S.Struct({
   actorRef: ForumPublicSafeRef,
   bolt12Offer: S.optionalKey(S.NullOr(ForumBolt12Offer)),
+  lightningAddress: S.optionalKey(S.NullOr(ForumLightningAddress)),
   caveatRefs: ForumPublicSafeRefs,
   claimPolicyRefs: ForumPublicSafeRefs,
   custodyPolicyRefs: ForumPublicSafeRefs,
@@ -406,6 +411,7 @@ const ForumTipRecipientAdmissionBody = S.Struct({
 
 const ForumTipRecipientClaimBody = S.Struct({
   bolt12Offer: S.optionalKey(S.NullOr(ForumBolt12Offer)),
+  lightningAddress: S.optionalKey(S.NullOr(ForumLightningAddress)),
   caveatRefs: ForumPublicSafeRefs,
   claimPolicyRefs: ForumPublicSafeRefs,
   custodyPolicyRefs: ForumPublicSafeRefs,
@@ -3962,6 +3968,7 @@ const tipRecipientAdmissionResponse = (
       {
         actorRef: body.actorRef,
         bolt12Offer: body.bolt12Offer ?? null,
+        lightningAddress: body.lightningAddress ?? null,
         caveatRefs: body.caveatRefs ?? [],
         claimPolicyRefs: body.claimPolicyRefs ?? [],
         custodyPolicyRefs: body.custodyPolicyRefs ?? [],
@@ -4017,6 +4024,7 @@ const tipRecipientWalletClaimResponse = (
       {
         actorRef,
         bolt12Offer: body.bolt12Offer ?? null,
+        lightningAddress: body.lightningAddress ?? null,
         caveatRefs: [
           'caveat.public.forum_tip_recipient.creator_settlement_pending',
           ...(body.caveatRefs ?? []),
@@ -4489,6 +4497,7 @@ const tipLadderResponse = (
 
     const directPayment = readiness.directPayment as {
       bolt12Offer?: string
+      lightningAddress?: string
     } | null
     const tipsBufferPay = dependencies.tipsBufferPay ?? null
 

@@ -182,6 +182,7 @@ type TipRecipientWalletRow = Readonly<{
   actor_ref: string
   archived_at: string | null
   bolt12_offer: string | null
+  lightning_address: string | null
   caveat_refs_json: string
   claim_policy_refs_json: string
   created_at: string
@@ -453,24 +454,26 @@ class ForumRepositoryStatement implements D1PreparedStatement {
         actor_ref: actorRef,
         archived_at: null,
         bolt12_offer: this.values[5] === null ? null : String(this.values[5]),
-        caveat_refs_json: String(this.values[8]),
-        claim_policy_refs_json: String(this.values[10]),
-        created_at: String(this.values[14]),
-        custody_policy_refs_json: String(this.values[9]),
-        disabled_at: this.values[16] === null ? null : String(this.values[16]),
+        lightning_address:
+          this.values[6] === null ? null : String(this.values[6]),
+        caveat_refs_json: String(this.values[9]),
+        claim_policy_refs_json: String(this.values[11]),
+        created_at: String(this.values[15]),
+        custody_policy_refs_json: String(this.values[10]),
+        disabled_at: this.values[17] === null ? null : String(this.values[17]),
         id: String(this.values[0]),
         payout_target_approval_ref:
-          this.values[6] === null ? null : String(this.values[6]),
+          this.values[7] === null ? null : String(this.values[7]),
         provider_class: this.values[2] as
           | 'external_lightning'
           | 'hosted_mdk'
           | 'mdk_agent_wallet',
-        public_projection_json: String(this.values[13]),
-        readiness_refs_json: String(this.values[7]),
+        public_projection_json: String(this.values[14]),
+        readiness_refs_json: String(this.values[8]),
         receive_capability_ref: String(this.values[4]),
-        source_ref: String(this.values[11]),
-        state: this.values[12] as 'ready' | 'disabled' | 'blocked',
-        updated_at: String(this.values[15]),
+        source_ref: String(this.values[12]),
+        state: this.values[13] as 'ready' | 'disabled' | 'blocked',
+        updated_at: String(this.values[16]),
         wallet_ref: String(this.values[3]),
       }
       const existingIndex = this.store.tipRecipientWallets.findIndex(

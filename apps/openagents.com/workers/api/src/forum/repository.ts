@@ -499,6 +499,7 @@ type ForumTipRecipientWalletRow = Readonly<{
   actor_ref: string
   archived_at: string | null
   bolt12_offer: string | null
+  lightning_address: string | null
   caveat_refs_json: string
   claim_policy_refs_json: string
   created_at: string
@@ -697,6 +698,7 @@ export type ForumRepositoryError =
 export type ForumTipRecipientWalletInput = Readonly<{
   actorRef: string
   bolt12Offer?: string | null | undefined
+  lightningAddress?: string | null | undefined
   caveatRefs?: ReadonlyArray<string> | undefined
   claimPolicyRefs?: ReadonlyArray<string> | undefined
   custodyPolicyRefs?: ReadonlyArray<string> | undefined
@@ -858,6 +860,7 @@ const tipRecipientWalletRecordFromRow = (
 ): ForumTipRecipientWalletRecord => ({
   actorRef: row.actor_ref,
   bolt12Offer: row.bolt12_offer,
+  lightningAddress: row.lightning_address,
   caveatRefs: parseJsonStringArray(row.caveat_refs_json),
   claimPolicyRefs: parseJsonStringArray(row.claim_policy_refs_json),
   custodyPolicyRefs: parseJsonStringArray(row.custody_policy_refs_json),
@@ -877,6 +880,7 @@ const tipRecipientWalletInputToRecord = (
 ): ForumTipRecipientWalletRecord => ({
   actorRef: input.actorRef,
   bolt12Offer: input.bolt12Offer ?? null,
+  lightningAddress: input.lightningAddress ?? null,
   caveatRefs: input.caveatRefs ?? [],
   claimPolicyRefs: input.claimPolicyRefs ?? [],
   custodyPolicyRefs: input.custodyPolicyRefs ?? [],
@@ -2164,6 +2168,7 @@ export const upsertForumTipRecipientWallet = (
              wallet_ref,
              receive_capability_ref,
              bolt12_offer,
+             lightning_address,
              payout_target_approval_ref,
              readiness_refs_json,
              caveat_refs_json,
@@ -2177,12 +2182,13 @@ export const upsertForumTipRecipientWallet = (
              disabled_at,
              archived_at
            )
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
            ON CONFLICT(actor_ref) DO UPDATE SET
              provider_class = excluded.provider_class,
              wallet_ref = excluded.wallet_ref,
              receive_capability_ref = excluded.receive_capability_ref,
              bolt12_offer = excluded.bolt12_offer,
+             lightning_address = excluded.lightning_address,
              payout_target_approval_ref = excluded.payout_target_approval_ref,
              readiness_refs_json = excluded.readiness_refs_json,
              caveat_refs_json = excluded.caveat_refs_json,
@@ -2202,6 +2208,7 @@ export const upsertForumTipRecipientWallet = (
           record.walletRef,
           record.receiveCapabilityRef,
           record.bolt12Offer,
+          record.lightningAddress,
           record.payoutTargetApprovalRef,
           JSON.stringify(record.readinessRefs),
           JSON.stringify(record.caveatRefs),

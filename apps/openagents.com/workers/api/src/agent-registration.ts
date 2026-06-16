@@ -27,6 +27,17 @@ export const ProgrammaticAgentRegistrationRequest = S.Struct({
       S.isPattern(/^lno1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{16,4092}$/i),
     ),
   ),
+  // Optional static Lightning Address (LNURL-pay) payout fallback, e.g. one
+  // hosted by an offline Breez Spark backup wallet's LSP (#5078). Mirrors
+  // bolt12Offer: a public payment destination kept on file alongside it.
+  lightningAddress: S.optionalKey(
+    TrimmedString.check(
+      S.isMaxLength(512),
+      S.isPattern(
+        /^[a-z0-9][a-z0-9._%+-]{0,127}@[a-z0-9](?:[a-z0-9-]{0,62}\.)+[a-z]{2,24}$/i,
+      ),
+    ),
+  ),
 })
 
 export type ProgrammaticAgentRegistrationRequest =
