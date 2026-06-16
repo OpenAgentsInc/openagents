@@ -14,7 +14,7 @@ discovery:
 1. **Wrong contributor instruction (shipped + corrected).** The docs told
    contributors to run `pylon training closeout`, which is the **operator**
    window-closeout (`POST /api/training/windows/{ref}/closeout`, `requireAdmin`) —
-   not contributor submission. (Accountability: `JUNE15_LAUNCH_PLAN.md`.)
+   not contributor submission. (Accountability: `docs/launch/JUNE15_LAUNCH_PLAN.md`.)
 2. **No contributor-callable submit route.** Every training write **except**
    `POST /api/training/leases/claim` is `requireAdmin` — including
    `POST /api/training/runs/{ref}/executor-trace-closeout`. So even with correct

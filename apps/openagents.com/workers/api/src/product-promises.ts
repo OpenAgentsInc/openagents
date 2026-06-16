@@ -2285,7 +2285,7 @@ export const publicProductPromisesDocument = () => {
           'Do not claim the already-published rc.2 installer includes this built-in agent, do not claim green/no-setup availability before a signed recut and live smoke, and do not describe hosted compute as free/unmetered or authority to spend/settle on the user behalf.',
         evidenceRefs: [
           'docs/transcripts/237.md',
-          'JUNE15_LAUNCH_PLAN.md',
+          'docs/launch/JUNE15_LAUNCH_PLAN.md',
           'promise:autopilot.desktop_gui_client.v1',
           'apps/autopilot-desktop/src/shared/builtin-agent.ts',
           'apps/autopilot-desktop/src/bun/index.ts',

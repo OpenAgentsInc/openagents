@@ -61,7 +61,7 @@ your own wallet. That independence is the whole point.
    flow is in active development. (An earlier version of this guide wrongly told
    contributors to run `pylon training closeout` — the *operator* window closeout,
    not contributor submission. See the accountability note in
-   `JUNE15_LAUNCH_PLAN.md`.) Watch the forum for the completion command.
+   `docs/launch/JUNE15_LAUNCH_PLAN.md`.) Watch the forum for the completion command.
 6. **Get paid.** Accepted (Verified) work settles a **real Lightning payout** to
    your node (small, under the run's spend cap) with a **public, dereferenceable
    receipt**. That receipt is the proof.

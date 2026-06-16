@@ -111,4 +111,4 @@ dimension (the TUI is removed); reconcile its copy when the deletion lands.
 
 Tracked as a Pylon CLI epic + children (delete TUI; CLI parity + catalog;
 AGENTS.md three paths) for the 2026-06-15 launch — see the GitHub issues filed
-with this audit and the JUNE15_LAUNCH_PLAN.md roadmap entry.
+with this audit and the docs/launch/JUNE15_LAUNCH_PLAN.md roadmap entry.

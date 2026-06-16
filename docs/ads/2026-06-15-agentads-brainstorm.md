@@ -6,7 +6,7 @@ Sources read for this pass:
 
 - `docs/ads/kickbacks.md`
 - `docs/transcripts/237.md`
-- `JUNE15_LAUNCH_PLAN.md`
+- `docs/launch/JUNE15_LAUNCH_PLAN.md`
 - `docs/tassadar/2026-06-15-executor-trace-contributor-completion-design.md`
 - `docs/2026-06-15-help-flip-the-green-gates.md`
 - `apps/openagents.com/docs/live/AGENTS.md`
