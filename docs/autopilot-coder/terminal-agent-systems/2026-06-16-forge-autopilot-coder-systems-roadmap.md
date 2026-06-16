@@ -334,6 +334,23 @@ extensibility config. The test uses synthetic private markers only and proves
 safe refs survive while local paths, raw prompts/transcripts/shell material,
 provider payloads, tokens, and private material markers are omitted.
 
+Implementation status, 2026-06-16: #5144 adds the first refs-only
+product-promise evidence gate for exact #5107 claims. The gate reports ready
+only when claim, product-promise, signed deploy, live-smoke, signature, and
+public-safety refs are present; otherwise it emits missing-evidence blockers.
+It is explicitly non-authoritative and does not write product promises, change
+public copy, run deploys or smokes, mutate deployment gates, or change runtime
+authority.
+
+## Completion Status
+
+The scoped child slices for this roadmap are implemented in issues #5123
+through #5144. The result is an operator-facing projection foundation for the
+terminal-agent systems named by #5107, plus safety tests and readiness gates.
+This does not mean OpenAgents can publish broader product claims by default:
+any public product-promise update still needs exact signed deploy and live-smoke
+evidence through the G7.3 gate.
+
 ## Recommended Sequencing
 
 1. G1.1 diff-review lane, because Pack C already provides safe refs and the
@@ -350,9 +367,7 @@ provider payloads, tokens, and private material markers are omitted.
 7. G7 verification/readiness projection, then product-promise changes only if
    the deployed product has live evidence.
 
-## First Issue To File
-
-Open exactly one child issue now:
+## Initial Issue Filed
 
 Title:
 
@@ -364,3 +379,6 @@ It is the smallest, most grounded continuation of #5107: the evidence exists in
 Pack C and Pylon, the cockpit exists in `/autopilot`, and the work is scoped to
 rendering/guarding review facts rather than changing settlement, payout, or
 runtime authority.
+
+Status, 2026-06-16: this initial slice was opened as #5123 and the roadmap was
+then split and completed through #5144.
