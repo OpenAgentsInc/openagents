@@ -320,6 +320,13 @@ Candidate child issues:
 - G7.3 - Update product-promise evidence only after a signed, deployed, live
   smoke proves the exact claim.
 
+Implementation status, 2026-06-16: #5142 adds the first refs-only terminal-agent
+systems readiness projection for #5107, including system/group/evidence/test/
+public-safety/blocker refs, surfaced/tested/public-safe/stale/blocked counts,
+deterministic ordering, public-safe output, and unsafe-material omission
+coverage. It does not add UI, product-promise changes, deployment gates, public
+claims, eval execution, retention policy changes, or runtime authority changes.
+
 ## Recommended Sequencing
 
 1. G1.1 diff-review lane, because Pack C already provides safe refs and the
