@@ -2366,6 +2366,34 @@ export const publicProductPromisesDocument = () => {
         authorityBoundary:
           'This promise is a local user-owned model path only. It grants no cloud compute, paid assignment, payout, settlement, provider-account, deploy, spend, or public-claim authority, and local tools remain bounded by explicit workspace/tool policy.',
       },
+      {
+        ...basePromiseFields,
+        promiseId: 'payments.offline_receive_spark_fallback.v1',
+        productArea: 'payments',
+        audience: ['contributor', 'operator', 'public'],
+        state: 'planned',
+        claim:
+          'When a node’s primary MDK wallet is offline or cannot mint a receive request, the node can still receive a tip or payout through a narrow, opt-in, receive-only Spark fallback (a static Spark address / single-use Spark invoice), then reconcile and sweep the funds on the next Spark sync.',
+        safeCopy:
+          'Planned, not built. The problem is real: a recipient must currently be online with inbound liquidity to receive a Lightning tip/payout, so offline nodes fail (`agent_wallet_send_failed`, observed on real RC testers). The fix is the receive-only Spark fallback audited in `apps/pylon/docs/2026-06-15-spark-backup-receive-fallback-audit.md`: MDK stays the primary rail; Spark is a backup RECEIVE target only — a static Spark address can be handed out even while MDK is offline, with funds detected/claimed/credited/swept only after a Spark sync, under the legacy-Spark migration consent model. Describe it as the planned offline-receive resilience path, not a shipped capability.',
+        unsafeCopy:
+          'Do not claim Spark receive works yet, do not imply Spark regains send/payout/accepted-work-settlement/public-payout-target authority, and do not mark Spark-fallback funds detected, credited, swept, or settled before a real Spark sync confirms them. No raw historical Spark credential material is reused.',
+        evidenceRefs: [
+          'apps/pylon/docs/2026-06-15-spark-backup-receive-fallback-audit.md',
+          'apps/pylon/docs/legacy-spark-wallet-migration.md',
+          'docs/launch/JUNE16_ROADMAP.md',
+          'promise:payments.money_dev_kit.v1',
+          'promise:payments.reliable_tips_sweepable_balances.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.spark_backup_receive_not_built',
+          'blocker.product_promises.spark_receive_sync_reconcile_missing',
+        ],
+        verification:
+          'Green requires a shipped opt-in receive-only Spark fallback that returns a static Spark address / single-use invoice when MDK is offline, a sync → detect → claim → sweep → reconcile path with public-safe receipts, and public evidence of an offline-recipient receive that reconciled on next sync — with send, payout, and settlement authority still gated off.',
+        authorityBoundary:
+          'The Spark fallback is RECEIVE-ONLY. It grants no send, payout, accepted-work settlement, or public payout-target authority; activating any of those requires a separate explicit gate.',
+      },
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
