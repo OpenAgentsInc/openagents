@@ -21,10 +21,20 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   (verified live at `/api/public/product-promises`). `.6` flipped the training
   gate, `.7` flipped the install promise, `.8` added an honest auto-update
   caveat (see §H). Counts shift as promises flip.
-- **⏭ NEXT (before cutting stable v1.0): a new RC + three live gates** — Spark
-  fallback payout, auto-payout, and auto-update, all tested with the RC. See §H.
-  This is the current top lane; the owner cuts final v1.0 + starts promoting
-  once those pass.
+- **⏭ NEXT (before cutting stable v1.0): three live gates** — Spark fallback
+  payout, auto-payout, and auto-update, all tested with the RC. See §H.
+- **🧪 rc.7 SHIPPED + offline-payout rail LIVE (16th):**
+  `@openagentsinc/pylon@1.0.0-rc.7` on the npm `rc` tag + GitHub prerelease
+  (`latest` stays `0.2.5`). Carries #5078 (static Spark-hosted **Lightning
+  Address**: `backup-receive --kind lightning-address` registers it,
+  `report-readiness` publishes it on file beside the BOLT12 offer), #5151
+  (heartbeat publishes live wallet readiness), and the Spark out-of-box
+  credential fix. Worker side **deployed** (`8d2f8f8f`; migrations `0194`–`0196`
+  applied) — readiness keeps `lightningAddress`, payout prefers BOLT12/MDK online
+  and **falls back to paying the Lightning Address** (normal Lightning send, no
+  Spark sender; LSP-backed so it lands offline). **Community testing is open**
+  (forum CTA posted). The held Trigger/Whitefang payouts land once they publish a
+  Lightning Address on rc.7. Auto-payout + auto-update gates still pending.
 - **Built-in hosted agent backend is LIVE:** `GEMINI_API_KEY` set + verified on
   prod (`generateContent` returns real output); the keyless quota-gated grant
   route `POST /api/provider-accounts/google-gemini/grants/builtin` is deployed
