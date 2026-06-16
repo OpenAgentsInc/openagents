@@ -33,14 +33,13 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   Developer-ID-signed + Apple-notarized + stapled (Gatekeeper-accepted), attached to
   the release and mirrored to `gs://openagentsgemini-oa-updates/desktop/`. A unified
   release hub now lives at **`docs/DEPLOYMENT.md`** (linked from `AGENTS.md`).
-  **`rc.4` followed (npm + GitHub prerelease, CLI/npm-only):**
-  `@openagentsinc/pylon@1.0.0-rc.4` on the `rc` dist-tag — ships the #5121
-  validator auto-run (`validate --auto`) + the #5077 heartbeat fix. See §B.
-  **`rc.5` is the corrective npm RC for #5122:** source/package runtime version
-  truth is aligned again, and the headless node presence service now passes
-  `OPENAGENTS_AGENT_TOKEN` to register/heartbeat just like the CLI and assignment
-  worker paths. The signed standalone RC feed remains a separate release surface
-  and only advances when the signed binary publish path runs.
+  **`rc.5` is the current npm/GitHub Pylon RC (CLI/npm-only):**
+  `@openagentsinc/pylon@1.0.0-rc.5` on the `rc` dist-tag ships the #5121
+  validator auto-run (`validate --auto`), the #5077 heartbeat projection fix,
+  and the #5122 correction for rc4's immutable version-drift tarball plus
+  unauthenticated headless daemon presence. `latest` stays `0.2.5`. The signed
+  standalone RC feed remains a separate release surface and only advances when
+  the signed binary publish path runs.
 - **Spark offline-tipping chain → code-complete (16th):** #5078 (receive-only backup,
   slices 1-3) + #5080 (Bun storage) + #5085 (legacy `migrate-spark` rewire) all landed.
   See §E.
@@ -94,11 +93,12 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   - **Pylon:** `discoverNextUnpaired()` + `runValidatorAuto()` + opt-in CLI
     **`pylon training validate --auto [--watch …]`** (loads the committed pinned
     fixture, discovers → replays → submits via `/replay-verdict`; no manual
-    `--lease-ref`/`--workload`). **SHIPPED as `@openagentsinc/pylon@1.0.0-rc.4`**
-    (npm `rc` dist-tag, `latest` stays `0.2.5`; GitHub prerelease
-    `pylon-v1.0.0-rc.4`). rc.4 also carries the #5077 heartbeat fix. CLI/npm-only
-    RC (no new desktop DMG). **rc.5 follows as the #5122 corrective npm RC** so
-    runtime version reporting and authenticated headless presence are aligned.
+    `--lease-ref`/`--workload`). **SHIPPED to contributors as
+    `@openagentsinc/pylon@1.0.0-rc.5`** (npm `rc` dist-tag, `latest` stays
+    `0.2.5`; GitHub prerelease `pylon-v1.0.0-rc.5`). rc5 carries the #5121
+    auto-validator, the #5077 heartbeat projection fix, and the #5122 corrective
+    fix for rc4's runtime version drift plus unauthenticated headless presence.
+    CLI/npm-only RC (no new desktop DMG).
   - **`resolveValidatorCandidates()` stays intentionally empty by design** — the
     trust anchor is a separate-device replay, so the server must never fabricate a
     validator digest. Verdicts are produced by the validator **push** path
