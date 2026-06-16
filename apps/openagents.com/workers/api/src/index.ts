@@ -7352,6 +7352,32 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       }),
   },
   {
+    // Operator payout from the tips-buffer wallet (mirrors the treasury payout
+    // against the tips-buffer MDK wallet). Used to pay BOLT12 offers from the
+    // buffer directly — e.g. operator-directed recognition rewards — without the
+    // tip-ladder's per-sender ledger-balance requirement.
+    path: '/api/operator/tips-buffer/payout',
+    handler: (request, env) =>
+      handleOperatorTreasuryPayoutApi(request, {
+        fetchTreasury: fetchMdkTipsBufferPath(env),
+        recordPayoutTransaction: async input => {
+          await makeD1TreasuryTransactionStore(openAgentsDatabase(env)).insert({
+            amountSat: input.amountSat,
+            bolt11: null,
+            createdAt: currentIsoTimestamp(),
+            direction: 'out',
+            expiresAt: null,
+            id: `tips_buffer_payout_${randomUuid()}`,
+            paymentRef: input.paymentRef,
+            settledAt: input.settled ? currentIsoTimestamp() : null,
+            state: input.settled ? 'settled' : 'pending',
+          })
+        },
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+      }),
+  },
+  {
     path: '/api/public/artanis/report',
     handler: (request, env) => handlePublicArtanisReportApi(request, env),
   },
