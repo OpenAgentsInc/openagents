@@ -195,6 +195,11 @@ export const PylonApiHeartbeatRequest = S.Struct({
   providerNostrPubkey: S.optionalKey(ProviderNostrPubkeyHex),
   resourceMode: S.optionalKey(PylonResourceMode),
   status: S.optionalKey(PylonEventStatus),
+  // Live receive-readiness published by the heartbeat (#5151): an online,
+  // receive-ready node now updates registration.walletReady (and thus public
+  // walletReadyNow) without needing a separate wallet-readiness event. Omitted
+  // when the node could not probe its wallet, leaving the last known value.
+  walletReady: S.optionalKey(S.Boolean),
 })
 export type PylonApiHeartbeatRequest = typeof PylonApiHeartbeatRequest.Type
 

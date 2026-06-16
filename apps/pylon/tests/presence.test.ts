@@ -17,6 +17,16 @@ import { verifyNip98Authorization } from "../src/nostr-identity"
 import { PYLON_NIP90_PROVIDER_CAPABILITY_REF, providerNip90LaneRefs } from "../src/provider-nip90"
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState } from "../src/state"
 
+// Inject a deterministic wallet probe so heartbeat tests don't spawn the MDK
+// CLI (`classifyMdkWallet` default). Offline by default; tests that exercise
+// the #5151 readiness path override it.
+const offlineWalletProbe = async () => ({
+  configured: false,
+  daemonOnline: false,
+  receiveReady: false,
+  sendReady: false,
+})
+
 const servers: ReturnType<typeof Bun.serve>[] = []
 
 afterEach(() => {
@@ -155,6 +165,7 @@ describe("Pylon presence registration and heartbeat", () => {
         agentToken: "test-agent-token",
         baseUrl: `http://127.0.0.1:${server.port}`,
         now: () => new Date("2026-06-10T12:31:00.000Z"),
+        walletProbe: offlineWalletProbe,
       })
 
       expect(registered.registered).toBe(true)
@@ -163,6 +174,45 @@ describe("Pylon presence registration and heartbeat", () => {
         "/api/pylons/register",
         `/api/pylons/${encodeURIComponent(registered.pylonRef)}/heartbeat`,
       ])
+    })
+  })
+
+  test("heartbeat publishes live wallet receive-readiness (#5151)", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakePresenceServer()
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs(["--display-name", "Readiness Test"]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      await registerPylon(summary, { baseUrl: fake.baseUrl })
+
+      // A receive-ready local wallet must publish walletReady:true so the public
+      // walletReadyNow projection flips without a separate report-readiness.
+      await sendHeartbeat(summary, {
+        baseUrl: fake.baseUrl,
+        walletProbe: async () => ({
+          configured: true,
+          daemonOnline: true,
+          receiveReady: true,
+          sendReady: false,
+        }),
+      })
+      const ready = fake.requests.filter(r => r.path.includes("/heartbeat")).at(-1)!
+      expect(ready.body.walletReadiness).toBe("receive-ready")
+      expect(ready.body.walletReady).toBe(true)
+
+      // A probe failure leaves walletReadiness "unknown" and OMITS walletReady,
+      // so the server keeps the last known value (no flap to false).
+      await sendHeartbeat(summary, {
+        baseUrl: fake.baseUrl,
+        walletProbe: async () => {
+          throw new Error("daemon unreachable")
+        },
+      })
+      const failed = fake.requests.filter(r => r.path.includes("/heartbeat")).at(-1)!
+      expect(failed.body.walletReadiness).toBe("unknown")
+      expect("walletReady" in failed.body).toBe(false)
     })
   })
 
@@ -176,7 +226,7 @@ describe("Pylon presence registration and heartbeat", () => {
       )
 
       const registered = await registerPylon(summary, { baseUrl: fake.baseUrl })
-      const heartbeat = await sendHeartbeat(summary, { baseUrl: fake.baseUrl })
+      const heartbeat = await sendHeartbeat(summary, { baseUrl: fake.baseUrl, walletProbe: offlineWalletProbe })
       const linked = await completePylonLink(summary, { baseUrl: fake.baseUrl })
       const refreshed = await refreshPylonLink(summary, { baseUrl: fake.baseUrl })
 
@@ -200,7 +250,7 @@ describe("Pylon presence registration and heartbeat", () => {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--display-name", "Retry Test"]), { PYLON_HOME: home }, "linux")
       const retries: number[] = []
 
-      const result = await withPresenceRetry(() => sendHeartbeat(summary, { baseUrl: fake.baseUrl }), {
+      const result = await withPresenceRetry(() => sendHeartbeat(summary, { baseUrl: fake.baseUrl, walletProbe: offlineWalletProbe }), {
         attempts: 2,
         onRetry: (_error, attempt) => retries.push(attempt),
       })
@@ -248,7 +298,7 @@ describe("Pylon presence registration and heartbeat", () => {
       const env = { OPENAGENTS_MARKET_RELAY_URL: "wss://relay.openagents.com" }
 
       await registerPylon(summary, { baseUrl: fake.baseUrl, env })
-      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, env })
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, env, walletProbe: offlineWalletProbe })
 
       const register = fake.requests.find((request) => request.path === "/api/pylons/register")
       const heartbeat = fake.requests.find((request) => request.path.includes("/heartbeat"))
@@ -272,7 +322,7 @@ describe("Pylon presence registration and heartbeat", () => {
       )
 
       await registerPylon(summary, { baseUrl: fake.baseUrl })
-      await sendHeartbeat(summary, { baseUrl: fake.baseUrl })
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, walletProbe: offlineWalletProbe })
 
       for (const request of fake.requests) {
         expect(request.body.providerNostrPubkey).toBeUndefined()

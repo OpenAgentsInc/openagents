@@ -964,6 +964,34 @@ describe('Pylon API routes', () => {
     )
   })
 
+  test('heartbeat with walletReady=true flips registration walletReady without a separate wallet-readiness event (#5151)', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+
+    const heartbeat = await route(store, '/api/pylons/pylon.test.one/heartbeat', {
+      body: {
+        capacityRefs: ['capacity.public.gpu_available'],
+        clientProtocolVersion: '0.2.6',
+        clientVersion: 'pylon-v0.2.6',
+        healthRefs: ['health.public.ok'],
+        loadRefs: ['load.public.low'],
+        resourceMode: 'balanced',
+        status: 'online',
+        walletReady: true,
+      },
+      idempotencyKey: 'key-heartbeat-walletready',
+      method: 'POST',
+      tokenUserId: 'agent-one',
+    })
+    expect(heartbeat.status).toBe(201)
+
+    const detail = await responseJson<PylonRouteJson>(
+      await route(store, '/api/pylons/pylon.test.one'),
+    )
+    // Before #5151 this stayed false until a separate wallet-readiness event.
+    expect(detail.pylon?.walletReady).toBe(true)
+  })
+
   test('records heartbeat, wallet readiness, assignment, artifact, payment, and settlement events', async () => {
     const store = new MemoryPylonApiStore()
     await registerPylon(store)

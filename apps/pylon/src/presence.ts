@@ -17,6 +17,15 @@ import {
   type PylonRuntimeState,
   writePresenceState,
 } from "./state"
+import { classifyMdkWallet, type WalletStatusProjection } from "./wallet"
+
+// The fields of the local wallet probe the heartbeat needs to publish
+// receive-readiness (openagents #5151). A full WalletStatusProjection satisfies
+// this, so `classifyMdkWallet` is the default probe.
+export type HeartbeatWalletProbe = Pick<
+  WalletStatusProjection,
+  "configured" | "daemonOnline" | "receiveReady" | "sendReady"
+>
 
 export type PresenceClientOptions = {
   agentToken?: string
@@ -24,6 +33,30 @@ export type PresenceClientOptions = {
   env?: NodeJS.ProcessEnv
   fetch?: typeof fetch
   now?: () => Date
+  // Local wallet probe used by `sendHeartbeat` to publish live receive-readiness
+  // so an online, receive-ready node is not shown `walletReadyNow=false` until a
+  // separate `wallet report-readiness` (openagents #5151). Defaults to
+  // `classifyMdkWallet`; injected in tests to avoid spawning the MDK CLI.
+  walletProbe?: () => Promise<HeartbeatWalletProbe>
+}
+
+// Map the local wallet probe to the heartbeat's public readiness fields. The
+// boolean `walletReady` is what the server projects into `walletReadyNow`; the
+// `walletReadiness` enum is the richer public-safe label. Receive-ready is the
+// bar for "can receive a tip/payout".
+export const heartbeatWalletReadiness = (
+  status: HeartbeatWalletProbe,
+): {
+  walletReadiness: PylonHeartbeatRequest["walletReadiness"]
+  walletReady: boolean
+} => {
+  if (!status.configured || !status.daemonOnline) {
+    return { walletReadiness: "offline", walletReady: false }
+  }
+  if (status.sendReady) return { walletReadiness: "send-ready", walletReady: true }
+  if (status.receiveReady)
+    return { walletReadiness: "receive-ready", walletReady: true }
+  return { walletReadiness: "blocked", walletReady: false }
 }
 
 export function presenceClientOptionsFromEnv(input: {
@@ -73,6 +106,9 @@ export type PylonHeartbeatRequest = {
   resourceMode: string
   status: "online"
   walletReadiness: "unknown" | "offline" | "receive-ready" | "send-ready" | "blocked"
+  // Boolean the server projects into public `walletReadyNow` (#5151). Omitted
+  // when the probe could not run, so the server keeps the last known value.
+  walletReady?: boolean
   assignmentReadiness: "not-ready" | "ready" | "blocked"
   capabilityRefs: string[]
   blockerRefs: string[]
@@ -232,6 +268,23 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
   const presence = await loadOrCreatePresenceState(state.paths, state.identity)
   const sequence = presence.heartbeatSequence + 1
   const sentAt = (options.now?.() ?? new Date()).toISOString()
+  // Publish live receive-readiness so an online, receive-ready node is not shown
+  // `walletReadyNow=false` until a separate `wallet report-readiness` (#5151).
+  // Best-effort: a probe failure leaves `walletReadiness: "unknown"` and omits
+  // `walletReady`, so the server keeps the last known value (no flap to false).
+  const walletProbe =
+    options.walletProbe ??
+    (() => classifyMdkWallet(undefined, options.env ?? process.env))
+  let walletReadiness: PylonHeartbeatRequest["walletReadiness"] = "unknown"
+  let walletReady: boolean | undefined
+  try {
+    const probe = heartbeatWalletReadiness(await walletProbe())
+    walletReadiness = probe.walletReadiness
+    walletReady = probe.walletReady
+  } catch {
+    walletReadiness = "unknown"
+    walletReady = undefined
+  }
   const body: PylonHeartbeatRequest = {
     schema: "openagents.pylon.heartbeat.v0.3",
     pylonRef: state.identity.pylonRef,
@@ -245,7 +298,8 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
     loadRefs: ["load.public.pylon_cli.low"],
     resourceMode: state.runtime.resourceMode,
     status: "online",
-    walletReadiness: "unknown",
+    walletReadiness,
+    ...(walletReady === undefined ? {} : { walletReady }),
     assignmentReadiness: state.runtime.lifecycle === "assignment-ready" ? "ready" : "not-ready",
     capabilityRefs: publishableCapabilityRefs(state.runtime.capabilityRefs),
     blockerRefs: [...state.runtime.blockerRefs, ...presence.blockerRefs],
