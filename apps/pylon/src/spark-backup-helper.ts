@@ -157,7 +157,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
  * (CJS/ESM) which auto-loads WASM. Kept lazy + optional: a missing package
  * rejects, and the adapter degrades to `helper-unavailable`.
  */
-async function loadBreezSparkModule(): Promise<BreezSparkModule> {
+export async function loadBreezSparkModule(): Promise<BreezSparkModule> {
   // Dynamic import so packaging stays clean and the dependency is optional.
   const mod = (await import(/* @vite-ignore */ "@breeztech/breez-sdk-spark")) as unknown as BreezSparkModule
   if (typeof mod?.defaultConfig !== "function") {
@@ -169,6 +169,31 @@ async function loadBreezSparkModule(): Promise<BreezSparkModule> {
     throw new Error("breez sdk spark module missing SdkBuilder.new/connect")
   }
   return mod
+}
+
+/**
+ * Diagnostic: attempt to load the Breez Spark SDK module with NO network and NO
+ * wallet seed, and report whether it actually loaded (#5166). The whole point is
+ * to distinguish "the SDK module does not even load in this runtime" (e.g. a
+ * compiled standalone binary that failed to bundle/instantiate the WASM) from
+ * the other reasons the backup helper can be unavailable (missing seed, network
+ * failure). Used by `pylon wallet spark-selftest` and the RC binary build guard.
+ *
+ * Never touches the network, never needs a seed, never returns secrets — only a
+ * boolean and a redacted error message.
+ */
+export async function sparkModuleSelftest(
+  loadModule: () => Promise<BreezSparkModule> = loadBreezSparkModule,
+): Promise<{ moduleLoaded: boolean; reason: string | null }> {
+  try {
+    const mod = await loadModule()
+    const ok =
+      typeof mod?.defaultConfig === "function" &&
+      (typeof mod?.SdkBuilder?.new === "function" || typeof mod?.connect === "function")
+    return { moduleLoaded: ok, reason: ok ? null : "module loaded but missing defaultConfig/SdkBuilder" }
+  } catch (error) {
+    return { moduleLoaded: false, reason: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 /**

@@ -17,11 +17,36 @@ mkdir -p "$OUT"
 # bun --compile cross-targets. darwin-arm64 is native here; the rest cross-compile.
 TARGETS=(bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-linux-arm64)
 built=()
+
+# Host platform — only the native target can be executed on this build host, so
+# the Spark-SDK load guard (#5166) runs against it. Cross-compiled targets share
+# the same bundle graph, so a passing native guard covers them.
+case "$(uname -sm)" in
+  "Darwin arm64") HOST_PLAT=darwin-arm64;;
+  "Darwin x86_64") HOST_PLAT=darwin-x64;;
+  "Linux x86_64") HOST_PLAT=linux-x64;;
+  "Linux aarch64"|"Linux arm64") HOST_PLAT=linux-arm64;;
+  *) HOST_PLAT="";;
+esac
+
 for t in "${TARGETS[@]}"; do
   plat="${t#bun-}"
   bin="$OUT/pylon-$plat"
   echo "== build $plat =="
   if bun build src/index.ts --compile --target="$t" --outfile "$bin" 2>/tmp/pylon-build-$plat.err; then
+    # #5166 guard: a standalone binary that cannot load the Spark SDK must NOT
+    # ship (the offline-receive rail would be silently dead). Run the native
+    # target's own spark-selftest (no network, no seed) and require moduleLoaded.
+    if [ "$plat" = "$HOST_PLAT" ]; then
+      st="$(PYLON_SPARK_BACKUP_ENABLED=1 OPENAGENTS_PYLON_HOME="$(mktemp -d)/pylon" "$bin" wallet spark-selftest --json 2>/dev/null || true)"
+      if printf '%s' "$st" | grep -q '"moduleLoaded": true'; then
+        echo "  spark-selftest OK ($plat): Spark SDK loads in the compiled binary"
+      else
+        echo "  FAIL $plat: Spark SDK did not load in the compiled binary (#5166 guard)" >&2
+        printf '%s\n' "$st" >&2
+        exit 1
+      fi
+    fi
     OPENAGENTS_RELEASE_SIGNED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" bun "$SIGNER" "$bin" > "$bin.sig.json"
     bun "$VERIFIER" "$bin" "$bin.sig.json"
     built+=("$plat")

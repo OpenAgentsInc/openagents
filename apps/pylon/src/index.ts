@@ -157,7 +157,9 @@ import {
   legacySparkHelperRunner,
   resolveLegacySparkApiKey,
   resolveSparkBackupHelper,
+  sparkModuleSelftest,
 } from "./spark-backup-helper"
+import { resolveNostrIdentityPath } from "./nostr-identity"
 import {
   acceptAssignment,
   pollAssignments,
@@ -2351,6 +2353,36 @@ async function main() {
         // Exit explicitly: backup-status opens the opt-in Spark backup SDK,
         // which keeps a background connection alive (#5162).
         process.exit(body.ok ? 0 : 1)
+      }
+      if (command === "spark-selftest") {
+        // #5166 diagnostic: prove WHETHER the Spark SDK actually loads in THIS
+        // runtime (notably a compiled standalone binary) and whether a seed is
+        // present, WITHOUT any network or secret exposure. This is the signal we
+        // collect fleet-wide (via report-readiness / OTA) to localize why the
+        // offline-receive helper is unavailable on some nodes.
+        // A Bun-compiled standalone binary runs its modules from the virtual
+        // `/$bunfs/` filesystem; a source/npm run resolves to a real path.
+        const isCompiledBinary =
+          typeof import.meta.url === "string" && import.meta.url.includes("/$bunfs/")
+        const enabled =
+          Bun.env.PYLON_SPARK_BACKUP_ENABLED === "1" || Bun.env.PYLON_SPARK_BACKUP_ENABLED === "true"
+        const idPath = resolveNostrIdentityPath(state.paths, Bun.env)
+        const mnemonic = await readIdentityMnemonicOrNull(state)
+        const moduleResult = await sparkModuleSelftest()
+        const body = {
+          schema: "openagents.pylon.spark_selftest.v0.1",
+          isCompiledBinary,
+          enabled,
+          embeddedCredentialAvailable: true,
+          identitySource: idPath.source,
+          seedPresent: mnemonic !== null && mnemonic.trim() !== "",
+          moduleLoaded: moduleResult.moduleLoaded,
+          moduleReason: moduleResult.reason,
+        }
+        process.stdout.write(`${JSON.stringify(body, null, 2)}\n`)
+        // Loading the SDK can leave a background handle alive; exit explicitly
+        // like the other Spark commands (#5162).
+        process.exit(moduleResult.moduleLoaded ? 0 : 1)
       }
       if (command === "send") {
         const destinationRef = options["destination-ref"]
