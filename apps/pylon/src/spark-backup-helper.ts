@@ -36,7 +36,12 @@
 
 import { mkdirSync } from "node:fs"
 import * as nodePath from "node:path"
-import type { SparkBackupCommand, SparkBackupHelper, WalletCommandResult } from "./wallet"
+import type {
+  LegacySparkCommandRunner,
+  SparkBackupCommand,
+  SparkBackupHelper,
+  WalletCommandResult,
+} from "./wallet"
 import { SparkBunStorage } from "./spark-bun-storage"
 
 // Embedded default OpenAgents Breez/Spark API key. This key was committed to the
@@ -329,4 +334,96 @@ export function resolveSparkBackupHelper(input: {
     storageDir: input.storageDir,
     loadModule: input.loadModule,
   })
+}
+
+/**
+ * Resolve the Breez/Spark API key for legacy migration: first any configured
+ * env override, else the embedded owner-authorized default key. ALWAYS returns
+ * a usable key (the embedded default), so legacy migration never dead-ends on a
+ * missing manual Breez key (#5085). The key is a service API key, not a wallet
+ * seed, and grants no spend authority. NEVER logged or returned to projections.
+ */
+export function resolveLegacySparkApiKey(env: NodeJS.ProcessEnv = process.env): string {
+  return (
+    [env.OPENAGENTS_SPARK_API_KEY, env.BREEZ_API_KEY, env.PYLON_SPARK_BACKUP_API_KEY].find(
+      (value) => value !== undefined && value.trim() !== "",
+    ) ?? DEFAULT_OPENAGENTS_SPARK_API_KEY
+  )
+}
+
+/**
+ * Build a `LegacySparkCommandRunner` backed by the Bun-native Breez SDK Spark
+ * helper (`createSparkBackupHelper`) instead of the external `spark-wallet-cli`
+ * binary (#5085). Spark wallets are deterministic from the seed, so the user's
+ * 12-word identity mnemonic re-derives their old Spark wallet and balance with
+ * the embedded service key — no manual Breez key, no external binary.
+ *
+ * The legacy migration preflight only ever invokes `["status"]`; this maps that
+ * to the helper's `status` command (which returns `{balance_sats,
+ * unclaimed_deposit_count}`). RECEIVE-SIDE ONLY: there is no send/pay path.
+ *
+ * SAFETY: the mnemonic and API key ride only inside the helper closure; they
+ * are never returned to the caller, logged, or placed in any projection. A
+ * missing/blank mnemonic resolves to a runner that reports the helper as
+ * unavailable rather than throwing.
+ */
+export function legacySparkHelperRunner(input: {
+  env?: NodeJS.ProcessEnv
+  mnemonic: string | null | undefined
+  storageDir?: string
+  network?: "mainnet" | "regtest"
+  // First-sync against the live network can take longer than the receive-only
+  // default; callers may widen this for the legacy migration probe.
+  timeoutMs?: number
+  loadModule?: () => Promise<BreezSparkModule>
+}): LegacySparkCommandRunner {
+  const env = input.env ?? process.env
+  const mnemonic = input.mnemonic ?? null
+  const network =
+    input.network ?? (env.PYLON_SPARK_BACKUP_NETWORK === "regtest" ? "regtest" : "mainnet")
+  // The legacy first-sync re-derives the user's old Spark wallet from the seed
+  // and may sync more state than the steady-state receive helper. Allow an env
+  // override, default to a generous 90s ceiling.
+  const timeoutMs =
+    input.timeoutMs ??
+    (() => {
+      const raw = env.PYLON_LEGACY_SPARK_TIMEOUT_MS
+      const parsed = raw === undefined ? NaN : Number(raw)
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 90_000
+    })()
+
+  return async (args: string[]): Promise<WalletCommandResult> => {
+    if (!mnemonic || mnemonic.trim() === "") {
+      return {
+        exitCode: 1,
+        stdout: "",
+        stderr: "legacy spark helper: missing identity or recovery mnemonic",
+      }
+    }
+    const helper = createSparkBackupHelper({
+      apiKey: resolveLegacySparkApiKey(env),
+      mnemonic,
+      network,
+      storageDir: input.storageDir,
+      timeoutMs,
+      loadModule: input.loadModule,
+    })
+    const command = args[0]
+    switch (command) {
+      case "status":
+        return helper("status")
+      case "address":
+        return helper("address")
+      case "history":
+        return helper("history")
+      case "unclaimed-deposits":
+        return helper("unclaimed-deposits")
+      default:
+        return {
+          exitCode: 1,
+          stdout: "",
+          stderr: `legacy spark helper: unsupported command`,
+        }
+    }
+  }
 }

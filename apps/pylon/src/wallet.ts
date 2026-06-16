@@ -146,6 +146,11 @@ export type LegacySparkMigrationGuidedRecovery = {
 export type LegacySparkMigrationOptions = {
   destinationInvoiceReady?: boolean
   dryRun?: boolean
+  // When true, an owner-authorized embedded Breez/Spark service key is available
+  // even if no env credential is set. This counts as a valid credential so the
+  // legacy migration never dead-ends on `breez_api_key_missing` (#5085). The key
+  // is a service key with no spend authority and is NEVER passed through here.
+  embeddedCredentialAvailable?: boolean
   env?: NodeJS.ProcessEnv
   helperRunner?: LegacySparkCommandRunner
   identityMnemonicPath?: string
@@ -260,7 +265,11 @@ function envNumber(env: NodeJS.ProcessEnv, key: string) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function hasLegacySparkCredential(env: NodeJS.ProcessEnv) {
+function hasLegacySparkCredential(env: NodeJS.ProcessEnv, embeddedCredentialAvailable = false) {
+  // The embedded owner-authorized default key counts as a valid credential
+  // (#5085): with it present, legacy migration must NOT raise
+  // `breez_api_key_missing` even when no env key is set.
+  if (embeddedCredentialAvailable) return true
   return [
     env.PYLON_LEGACY_SPARK_CREDENTIAL_READY,
     env.OPENAGENTS_SPARK_API_KEY,
@@ -500,7 +509,10 @@ export async function preflightLegacySparkMigration(
   const dryRun = options.dryRun !== false
   const hintedBalance = envNumber(env, "PYLON_LEGACY_SPARK_BALANCE_SATS")
   const hintedDeposits = envNumber(env, "PYLON_LEGACY_SPARK_UNCLAIMED_DEPOSIT_COUNT")
-  const legacyHelperCredentialReady = hasLegacySparkCredential(env)
+  const legacyHelperCredentialReady = hasLegacySparkCredential(
+    env,
+    options.embeddedCredentialAvailable === true,
+  )
   const identityMnemonicPresent = options.identityMnemonicPath === undefined
     ? env.PYLON_LEGACY_SPARK_IDENTITY_PRESENT === "1"
     : existsSync(options.identityMnemonicPath)
@@ -759,7 +771,11 @@ export type SparkBackupReceiveOptions = {
   showLocalTarget?: boolean
 }
 
-function hasSparkBackupCredential(env: NodeJS.ProcessEnv) {
+function hasSparkBackupCredential(env: NodeJS.ProcessEnv, embeddedCredentialAvailable = false) {
+  // The embedded owner-authorized default key counts as a valid credential
+  // (#5085) so a consented legacy-Spark sweep is not blocked on a missing env
+  // key. Inert-by-default is still enforced by the opt-in/consent gates above.
+  if (embeddedCredentialAvailable) return true
   return [
     env.PYLON_SPARK_BACKUP_CREDENTIAL_READY,
     env.OPENAGENTS_SPARK_API_KEY,
@@ -1093,6 +1109,10 @@ export type SparkBackupSweepOptions = SparkBackupReceiveOptions & {
   // dry-run and refuses to move funds (audit failure mode 6 + legacy-Spark
   // migration consent model).
   confirmSweep?: boolean
+  // When true, the embedded owner-authorized default Breez/Spark key counts as
+  // a valid credential for this consented reconcile (#5085), so a legacy
+  // migration sweep is not blocked on a missing env key.
+  embeddedCredentialAvailable?: boolean
   // Whether the node's MDK destination is ready to receive the swept funds.
   // The live claim+send path requires this; the mock-backed path threads it
   // through so tests can assert the destination-readiness blocker.
@@ -1206,7 +1226,7 @@ export async function sweepSparkBackupToMdk(
     })
   }
 
-  if (!hasSparkBackupCredential(env)) {
+  if (!hasSparkBackupCredential(env, options.embeddedCredentialAvailable === true)) {
     return safeSparkBackupReconcile({
       ...base,
       state: "credential-missing",

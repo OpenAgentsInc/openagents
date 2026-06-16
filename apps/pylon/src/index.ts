@@ -148,7 +148,12 @@ import {
   sweepSparkBackupToMdk,
   writeCachedSparkTarget,
 } from "./wallet"
-import { resolveSparkBackupHelper } from "./spark-backup-helper"
+import {
+  createSparkBackupHelper,
+  legacySparkHelperRunner,
+  resolveLegacySparkApiKey,
+  resolveSparkBackupHelper,
+} from "./spark-backup-helper"
 import {
   acceptAssignment,
   pollAssignments,
@@ -953,19 +958,29 @@ function stringPsionicOption(options: Record<string, string | true>, key: string
  * passes the `--show-local-target` flag through. Reads the local mnemonic only
  * to seed the SDK closure; the raw seed is NEVER returned or logged here.
  */
+/**
+ * Read the node's 12-word identity mnemonic from local private state, if it
+ * exists. Returns null when the file is absent or unreadable. The raw seed is
+ * used ONLY to seed the local Spark SDK closure and is NEVER logged, returned to
+ * a projection, or emitted to stdout by callers.
+ */
+async function readIdentityMnemonicOrNull(state: PylonLocalState): Promise<string | null> {
+  try {
+    const { existsSync } = await import("node:fs")
+    if (existsSync(state.paths.identityMnemonic)) {
+      return (await readFile(state.paths.identityMnemonic, "utf8")).trim()
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
 async function resolveSparkBackupOptions(
   state: PylonLocalState,
   input: { showLocalTarget?: boolean } = {},
 ) {
-  let mnemonic: string | null = null
-  try {
-    const { existsSync } = await import("node:fs")
-    if (existsSync(state.paths.identityMnemonic)) {
-      mnemonic = (await readFile(state.paths.identityMnemonic, "utf8")).trim()
-    }
-  } catch {
-    mnemonic = null
-  }
+  const mnemonic = await readIdentityMnemonicOrNull(state)
   const helper = resolveSparkBackupHelper({
     env: Bun.env,
     mnemonic,
@@ -2039,14 +2054,93 @@ async function main() {
             reconcile.state === "swept-to-mdk" || reconcile.state === "nothing-to-sweep" ? 0 : 1
           return
         }
+        // #5085: rewire legacy migration to the Bun-native Breez SDK helper
+        // seeded from the user's identity mnemonic + the embedded service key.
+        // No manual Breez key, no external `spark-wallet-cli` binary. Spark is
+        // deterministic from the seed, so the same identity mnemonic re-derives
+        // the user's old Spark wallet and its balance.
+        const identityMnemonicPath =
+          stringPsionicOption(sparkOptions, "identity-mnemonic-path") ?? state.paths.identityMnemonic
+        // Resolve the mnemonic the helper should derive from: an explicit
+        // private-recovery path overrides the node's identity mnemonic.
+        const explicitMnemonicPath = stringPsionicOption(sparkOptions, "identity-mnemonic-path")
+        let migrationMnemonic: string | null = null
+        if (explicitMnemonicPath) {
+          try {
+            migrationMnemonic = (await readFile(explicitMnemonicPath, "utf8")).trim()
+          } catch {
+            migrationMnemonic = null
+          }
+        } else {
+          migrationMnemonic = await readIdentityMnemonicOrNull(state)
+        }
+        const legacyStorageDir = `${state.paths.home}/wallet/spark-backup/legacy-migrate`
+        // Falls back gracefully: with no mnemonic the runner reports the helper
+        // unavailable and the preflight surfaces the mnemonic-required blocker.
+        const helperRunner = legacySparkHelperRunner({
+          env: Bun.env,
+          mnemonic: migrationMnemonic,
+          storageDir: legacyStorageDir,
+        })
         const result = await preflightLegacySparkMigration({
           destinationInvoiceReady: sparkOptions["destination-invoice-ready"] === true,
           dryRun: sparkOptions.execute !== true,
+          embeddedCredentialAvailable: true,
           env: Bun.env,
-          identityMnemonicPath: stringPsionicOption(sparkOptions, "identity-mnemonic-path") ?? state.paths.identityMnemonic,
+          helperRunner,
+          identityMnemonicPath,
           mnemonicRecoveryRequested: sparkOptions["mnemonic-recovery"] === true,
           yes: sparkOptions.yes === true,
         })
+
+        // Consented sweep: when the user runs `migrate-spark --execute --yes`
+        // with a ready destination and the preflight is otherwise ready to
+        // migrate, perform the actual RECEIVE-SIDE reconcile — sweep the
+        // detected legacy balance into the node's OWN MDK wallet via the
+        // slice-3 `sweepSparkBackupToMdk` path. NOT a third-party payout. Fund
+        // movement is gated by explicit consent here, not by
+        // PYLON_SPARK_BACKUP_ENABLED, so we enable the reconcile explicitly and
+        // inject the same mnemonic-backed helper.
+        if (result.state === "migrated") {
+          const reconcile = await sweepSparkBackupToMdk({
+            enabled: true,
+            embeddedCredentialAvailable: true,
+            env: Bun.env,
+            helper: createSparkBackupHelper({
+              apiKey: resolveLegacySparkApiKey(Bun.env),
+              mnemonic: migrationMnemonic ?? "",
+              network: Bun.env.PYLON_SPARK_BACKUP_NETWORK === "regtest" ? "regtest" : "mainnet",
+              storageDir: legacyStorageDir,
+            }),
+            confirmSweep: true,
+            destinationReady:
+              result.destinationInvoiceReady ||
+              sparkOptions["destination-ready"] === true ||
+              sparkOptions["destination-invoice-ready"] === true,
+          })
+          if (reconcile.state === "swept-to-mdk") {
+            for (const receiptRef of reconcile.publicReceiptRefs) {
+              await appendLedgerEvent(state.paths, {
+                kind: "spark-backup-reconcile-swept",
+                ref: receiptRef,
+                data: {
+                  receiptRef,
+                  rail: "spark_backup",
+                  source: "legacy_spark_migrate",
+                  sweptAmountSats: reconcile.sweptAmountSats,
+                  claimedDepositCount: reconcile.claimedDepositCount,
+                },
+              })
+            }
+          }
+          process.stdout.write(
+            `${JSON.stringify({ ok: reconcile.state === "swept-to-mdk", migration: result, reconcile }, null, 2)}\n`,
+          )
+          process.exitCode =
+            reconcile.state === "swept-to-mdk" || reconcile.state === "nothing-to-sweep" ? 0 : 1
+          return
+        }
+
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         process.exitCode = result.state === "blocked" ? 1 : 0
         return
