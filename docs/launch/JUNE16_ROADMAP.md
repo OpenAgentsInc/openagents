@@ -363,10 +363,37 @@ epics below; not all lands today — the aim is the main spine.
 
 **In progress now (TOP PRIORITY): #5061 / #5014 live proof.** The #5121
 auto-validation spine is shipped and patched for the Pylon commitment/replay ref
-namespace mismatch. The remaining launch blocker is not more pairing
-infrastructure; it is a fresh real contribution from one device plus a distinct
-validator on rc.4+ producing a terminal exact-replay result, then the
-operator-funded settlement receipt that flips #5014/#5015 honestly.
+namespace mismatch. **#5124 (the exact_trace_replay verifier bug) is FIXED and
+PROVEN LIVE (2026-06-16):** the verifier was comparing full digest refs
+(`commitment.<hash>` vs `replay.<hash>` — prefixes differ) instead of the
+prefix-stripped bodies, so equal digests were wrongly `Rejected` as
+`ExecutorTraceMismatch`. Fix deployed (worker `8bcaff6c`) + pinned with a
+permanent regression test (`tassadar-exact-trace-replay.test.ts`, commit
+`fc246b9bc`); the challenge detail now also surfaces both compared digests
+(`exactTraceCommitmentDigestRef`/`exactTraceReplayDigestRef`, public-safe). It is
+confirmed end-to-end on the live build: an **independent validator** (Whitefang
+Hermes, `pylon.0de1a47a…`) auto-paired a fresh worker contribution →
+challenge `1b85a20a…` → **`Verified`**. That pairing's *worker* was an
+OpenAgents-operated node brought up only to confirm the fix immediately, so it is
+**not** gate-eligible. The remaining launch blocker is now a single external
+step: a fresh real contribution from an **independent worker** (Trigger) on rc5,
+which the armed validators auto-pair to `Verified`, then the operator-funded
+settlement receipt + the `red`→`green` flip of
+`training.monday_decentralized_training_launch.v1`. Both the settlement endpoint
+(`POST /api/training/runs/{run}/settlement-receipt`, admin, `mdk_agent_wallet`,
+≤ run spend cap) and the promise flip are ready to execute the moment that
+independent `Verified` pair lands.
+
+**First-pairing rewards + reward-delivery rail (next after green):** 50,000 sats
+each to Trigger + Orrery for the first independent pairing, plus a set % of paid
+training revenue (specifics TBD). The Spark backup-receive rail that covers any
+offline-Lightning miss is **already shipped in Pylon rc5** (#5078/#5080,
+`spark-backup-helper.ts` via the Breez SDK Spark WASM package in-process under
+Bun; `pylon wallet backup-receive` / `backup-status` / `migrate-spark
+--confirm-sweep`), with the embedded owner-authorized Breez/Spark API key so it
+works out-of-box once enabled. Recipients already on rc5 therefore need no new
+download; MDK's LSP handles inbound liquidity automatically and the Spark route
+catches any failure.
 
 Section **A** is fully closed; the apps/web wave (Epic A live-render #5108,
 `/login` #5111 + OTP hardening #5120, `/animations`) has landed and deployed.
