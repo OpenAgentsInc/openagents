@@ -279,6 +279,15 @@ policy/auth/blocker refs, explicit non-authority flags, and unsafe-material
 omission coverage. It does not add MCP runtime clients, network calls, tool
 calls, settings edits, auth flows, or UI.
 
+Implementation status, 2026-06-16: #5139 adds the first refs-only skill
+descriptor catalog projection with available, pending, disabled, failed, and
+needs-review states, stable ordering, state counts, summary/trigger/source/
+policy/body-request refs, progressive-disclosure flags proving full skill
+bodies are not included by default, explicit non-authority flags, and
+unsafe-material omission coverage. It does not add skill loading, full-body
+rendering, prompt injection, tool execution, settings UI, or runtime policy
+changes.
+
 ### G7 - Verification, Ops, And Product-Gate Evidence
 
 Systems: system 51 Testing/Smoke, system 52 Evaluation/Regression, system 53
