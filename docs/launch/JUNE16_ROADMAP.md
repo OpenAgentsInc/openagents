@@ -178,7 +178,9 @@ epics below; not all lands today — the aim is the main spine.
   lane-scoped change capture/commit guards, shared-file conflict refs, and dirty
   workspace retention for Autopilot Coder worktrees.
 - **Epic E — first design-partner deliverables (#5105):** prefilled workspaces per
-  vertical (e-commerce / legal / marketing-agency) + per-vertical stage templates.
+  vertical (e-commerce / legal / marketing-agency) + per-vertical stage templates
+  (locked in
+  `docs/blitz/forge/2026-06-16-per-vertical-forge-stage-templates.md`).
 - **Epic G — fold the terminal-agent-systems into the Forge Autopilot Coder
   (#5107, long arc):** runtime spine already built (Agent Runtime Kernel + tools,
   Pack A/B/C, worktree materialization); next, surface diff-review, plan/todo,
