@@ -240,6 +240,116 @@ describe('autopilot work detail view', () => {
     expect(rendered).toContain('closeout.public.work_1.summary')
   })
 
+  test('renders Context snapshot lane with repo, instruction, adapter, and job refs', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            contextSnapshot: {
+              adapters: {
+                capabilityRefs: ['capability.codex_agent_task.v1'],
+                refs: ['adapter.codex.ready'],
+              },
+              currentJob: {
+                capabilityRefs: ['capability.codex_agent_task.v1'],
+                jobRefs: ['assignment.public.work_1', 'workspace.public.work_1'],
+                verificationRefs: ['verification-command.public.bun_test'],
+              },
+              devDoctor: {
+                refs: ['doctor.public.pylon.context.v0_3'],
+              },
+              instructions: {
+                configRefs: ['config.pylon.default_adapter.codex'],
+                refs: ['instructions.public.AGENTS.md.sha256_abcd'],
+              },
+              observedAt: '2026-06-16T15:55:00.000Z',
+              repo: {
+                changedCount: 0,
+                dirtyState: 'clean',
+                identityRefs: [
+                  'repo.github.OpenAgentsInc.openagents',
+                  'branch.main',
+                  'commit.f9793718e000',
+                ],
+              },
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Context snapshot')
+    expect(rendered).toContain('repo.github.OpenAgentsInc.openagents')
+    expect(rendered).toContain('instructions.public.AGENTS.md.sha256_abcd')
+    expect(rendered).toContain('adapter.codex.ready')
+    expect(rendered).toContain('doctor.public.pylon.context.v0_3')
+    expect(rendered).toContain('assignment.public.work_1')
+    expect(rendered).toContain('verification-command.public.bun_test')
+    expect(rendered).toContain('ready')
+    expect(rendered).toContain('fresh')
+  })
+
+  test('renders Context snapshot missing-evidence blockers when context is absent', () => {
+    const rendered = renderHtml(detailView(modelForWork(workForState('delivered', null))))
+
+    expect(rendered).toContain('Context snapshot')
+    expect(rendered).toContain('No context evidence available yet.')
+    expect(rendered).toContain('missing-context-evidence')
+    expect(rendered).toContain('unknown-context-freshness')
+  })
+
+  test('omits unsafe context refs before rendering', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            contextSnapshot: {
+              adapters: {
+                refs: ['adapter.codex.ready', 'provider payload sk-private'],
+              },
+              blockerRefs: ['private repo content /Users/christopher/src/openagents'],
+              currentJob: {
+                jobRefs: [
+                  'assignment.public.work_1',
+                  'raw shell command $(cat ~/.ssh/id_rsa)',
+                ],
+              },
+              devDoctor: {
+                refs: ['doctor.public.safe', 'diff --git a/private.ts b/private.ts'],
+              },
+              instructions: {
+                refs: [
+                  'instructions.public.AGENTS.md.sha256_abcd',
+                  'raw prompt /Users/christopher/private.md',
+                ],
+              },
+              observedAt: '2026-06-16T15:55:00.000Z',
+              repo: {
+                dirtyState: 'clean',
+                identityRefs: [
+                  'repo.github.OpenAgentsInc.openagents',
+                  '/Users/christopher/work/openagents',
+                ],
+              },
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Context snapshot')
+    expect(rendered).toContain('repo.github.OpenAgentsInc.openagents')
+    expect(rendered).toContain('adapter.codex.ready')
+    expect(rendered).toContain('assignment.public.work_1')
+    expect(rendered).toContain('unsafe-context-material-omitted')
+    expect(rendered).toContain('unsafe context ref(s) were omitted')
+    expect(rendered).not.toContain('/Users/christopher')
+    expect(rendered).not.toContain('diff --git')
+    expect(rendered).not.toContain('raw prompt')
+    expect(rendered).not.toContain('raw shell')
+    expect(rendered).not.toContain('sk-private')
+  })
+
   test('renders Session navigation lane with unavailable controls', () => {
     const rendered = renderHtml(
       detailView(

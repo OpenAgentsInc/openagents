@@ -21,6 +21,14 @@ import { formatIsoDateTime } from '../../../time-format'
 import { autopilotWorkDetailRouter, autopilotWorkRouter } from '../../../route'
 import * as Ui from '../../../ui'
 import {
+  type ForgeContextDirtyState,
+  type ForgeContextFreshness,
+  type ForgeContextRefGroupInput,
+  type ForgeContextSnapshotInput,
+  type ForgeContextSnapshotStatus,
+  projectForgeContextSnapshot,
+} from '../autopilot-work/context-snapshot'
+import {
   type ForgeDiffReviewStatus,
   type ForgeDiffReviewView,
   projectForgeDiffReview,
@@ -740,6 +748,227 @@ const progressPanel = (
   ])
 }
 
+const contextSnapshotTone = (
+  status: ForgeContextSnapshotStatus,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  status === 'ready'
+    ? 'positive'
+    : status === 'blocked'
+      ? 'negative'
+      : status === 'stale'
+        ? 'warning'
+        : 'accent'
+
+const contextFreshnessTone = (
+  freshness: ForgeContextFreshness,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  freshness === 'fresh'
+    ? 'positive'
+    : freshness === 'stale'
+      ? 'warning'
+      : 'accent'
+
+const contextDirtyTone = (
+  dirtyState: ForgeContextDirtyState,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  dirtyState === 'clean'
+    ? 'positive'
+    : dirtyState === 'dirty'
+      ? 'warning'
+      : 'accent'
+
+const contextMetric = (label: string, value: string): Html => {
+  const h = html<Message>()
+
+  return h.div([Ui.className<Message>('grid gap-1 border border-[#222] p-3')], [
+    h.div([Ui.className<Message>('text-[0.6875rem] uppercase text-white/35')], [
+      label,
+    ]),
+    h.div(
+      [Ui.className<Message>('min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-white/75')],
+      [value],
+    ),
+  ])
+}
+
+const contextRefGroup = (
+  group:
+    | (Readonly<{
+        blockerRefs?: ReadonlyArray<string>
+        refs?: ReadonlyArray<string>
+      }>)
+    | undefined,
+): ForgeContextRefGroupInput | undefined =>
+  group === undefined
+    ? undefined
+    : {
+        ...(group.blockerRefs === undefined ? {} : { blockerRefs: group.blockerRefs }),
+        ...(group.refs === undefined ? {} : { refs: group.refs }),
+      }
+
+const contextSnapshotInput = (
+  work: AutopilotWorkProjection,
+): ForgeContextSnapshotInput => {
+  const source = work.contextSnapshot
+  const devDoctor = contextRefGroup(source?.devDoctor)
+  const adapters =
+    source?.adapters === undefined
+      ? undefined
+      : {
+          ...(source.adapters.blockerRefs === undefined
+            ? {}
+            : { blockerRefs: source.adapters.blockerRefs }),
+          ...(source.adapters.capabilityRefs === undefined
+            ? {}
+            : { capabilityRefs: source.adapters.capabilityRefs }),
+          ...(source.adapters.refs === undefined ? {} : { refs: source.adapters.refs }),
+        }
+  const currentJob =
+    source?.currentJob === undefined
+      ? undefined
+      : {
+          ...(source.currentJob.blockerRefs === undefined
+            ? {}
+            : { blockerRefs: source.currentJob.blockerRefs }),
+          ...(source.currentJob.capabilityRefs === undefined
+            ? {}
+            : { capabilityRefs: source.currentJob.capabilityRefs }),
+          ...(source.currentJob.jobRefs === undefined
+            ? {}
+            : { jobRefs: source.currentJob.jobRefs }),
+          ...(source.currentJob.verificationRefs === undefined
+            ? {}
+            : { verificationRefs: source.currentJob.verificationRefs }),
+        }
+  const instructions =
+    source?.instructions === undefined
+      ? undefined
+      : {
+          ...(source.instructions.blockerRefs === undefined
+            ? {}
+            : { blockerRefs: source.instructions.blockerRefs }),
+          ...(source.instructions.configRefs === undefined
+            ? {}
+            : { configRefs: source.instructions.configRefs }),
+          ...(source.instructions.refs === undefined
+            ? {}
+            : { refs: source.instructions.refs }),
+        }
+  const repo =
+    source?.repo === undefined
+      ? undefined
+      : {
+          ...(source.repo.blockerRefs === undefined
+            ? {}
+            : { blockerRefs: source.repo.blockerRefs }),
+          ...(source.repo.changedCount === undefined
+            ? {}
+            : { changedCount: source.repo.changedCount }),
+          ...(source.repo.dirtyState === undefined
+            ? {}
+            : { dirtyState: source.repo.dirtyState }),
+          ...(source.repo.dirtyStateRefs === undefined
+            ? {}
+            : { dirtyStateRefs: source.repo.dirtyStateRefs }),
+          ...(source.repo.identityRefs === undefined
+            ? {}
+            : { identityRefs: source.repo.identityRefs }),
+        }
+
+  return {
+    generatedAt: work.generatedAt,
+    workOrderRef: work.workOrderRef,
+    ...(adapters === undefined ? {} : { adapters }),
+    ...(currentJob === undefined ? {} : { currentJob }),
+    ...(devDoctor === undefined ? {} : { devDoctor }),
+    ...(source?.blockerRefs === undefined ? {} : { blockerRefs: source.blockerRefs }),
+    ...(source?.freshness === undefined ? {} : { freshness: source.freshness }),
+    ...(source?.observedAt === undefined ? {} : { observedAt: source.observedAt }),
+    ...(instructions === undefined ? {} : { instructions }),
+    ...(repo === undefined ? {} : { repo }),
+  }
+}
+
+const contextEvidenceCount = (
+  context: ReturnType<typeof projectForgeContextSnapshot>,
+): number =>
+  context.repo.identityRefs.length +
+  context.repo.dirtyStateRefs.length +
+  context.instructions.instructionRefs.length +
+  context.instructions.configRefs.length +
+  context.adapters.readinessRefs.length +
+  context.adapters.capabilityRefs.length +
+  context.devDoctor.doctorRefs.length +
+  context.currentJob.jobRefs.length +
+  context.currentJob.verificationRefs.length +
+  context.currentJob.capabilityRefs.length
+
+const contextSnapshotPanel = (work: AutopilotWorkProjection): Html => {
+  const h = html<Message>()
+  const context = projectForgeContextSnapshot(contextSnapshotInput(work))
+  const observedLabel =
+    context.observedAt === null
+      ? 'No observation time'
+      : `Observed ${formatIsoDateTime(context.observedAt)}`
+
+  return h.section([Ui.className<Message>('grid gap-4 border-t border-[#222] pt-5')], [
+    h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+      h.div([Ui.className<Message>('grid gap-1')], [
+        h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
+          'Context snapshot',
+        ]),
+        h.p([Ui.className<Message>('m-0 max-w-3xl text-sm text-white/45')], [
+          'Refs-only context readiness for repo identity, instructions, adapters, dev doctor, and current job state.',
+        ]),
+      ]),
+      h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+        badge(context.status, contextSnapshotTone(context.status)),
+        badge(context.freshness, contextFreshnessTone(context.freshness)),
+      ]),
+    ]),
+    h.div([Ui.className<Message>('grid gap-3 md:grid-cols-3')], [
+      contextMetric('Observed', observedLabel),
+      contextMetric('Dirty state', context.repo.dirtyState),
+      contextMetric(
+        'Changed files',
+        context.repo.changedCount === null ? 'unknown' : String(context.repo.changedCount),
+      ),
+    ]),
+    h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+      badge(context.repo.dirtyState, contextDirtyTone(context.repo.dirtyState)),
+      badge(`${contextEvidenceCount(context)} context ref(s)`, 'accent'),
+    ]),
+    contextEvidenceCount(context) === 0
+      ? h.div([Ui.className<Message>('border border-[#222] p-4')], [
+          h.p([Ui.className<Message>('m-0 text-sm text-white/45')], [
+            'No context evidence available yet.',
+          ]),
+        ])
+      : h.span([Ui.className<Message>('hidden')], []),
+    h.div(
+      [Ui.className<Message>('grid gap-4 border border-[#222] p-4 md:grid-cols-2')],
+      [
+        refSection('Repo identity', context.repo.identityRefs),
+        refSection('Dirty state refs', context.repo.dirtyStateRefs),
+        refSection('Instruction refs', context.instructions.instructionRefs),
+        refSection('Config refs', context.instructions.configRefs),
+        refSection('Adapter readiness', context.adapters.readinessRefs),
+        refSection('Adapter capabilities', context.adapters.capabilityRefs),
+        refSection('Dev doctor', context.devDoctor.doctorRefs),
+        refSection('Current job', context.currentJob.jobRefs),
+        refSection('Verification refs', context.currentJob.verificationRefs),
+        refSection('Current capabilities', context.currentJob.capabilityRefs),
+        refSection('Context blockers', context.blockerRefs),
+      ],
+    ),
+    context.omittedUnsafeRefCount === 0
+      ? h.span([Ui.className<Message>('hidden')], [])
+      : h.p([Ui.className<Message>('m-0 text-sm text-[#ffb400]')], [
+          `${context.omittedUnsafeRefCount} unsafe context ref(s) were omitted before rendering.`,
+        ]),
+  ])
+}
+
 const sessionNavigationTone = (
   status: ForgeSessionNavigationStatus,
 ): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
@@ -1193,6 +1422,7 @@ const workSummaryPanel = (model: Model, work: AutopilotWorkProjection): Html => 
           ],
         ),
     progressPanel(model, work),
+    contextSnapshotPanel(work),
     sessionNavigationPanel(work),
     diffReviewPanel(model, work),
     receiptPanel(model, work),

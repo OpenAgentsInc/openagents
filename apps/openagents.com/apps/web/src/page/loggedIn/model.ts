@@ -1985,6 +1985,76 @@ export const AutopilotWorkSessionNavigation = S.Struct({
 export type AutopilotWorkSessionNavigation =
   typeof AutopilotWorkSessionNavigation.Type
 
+export const AutopilotWorkContextFreshness = S.Literals([
+  'fresh',
+  'stale',
+  'unknown',
+])
+export type AutopilotWorkContextFreshness =
+  typeof AutopilotWorkContextFreshness.Type
+
+export const AutopilotWorkContextDirtyState = S.Literals([
+  'clean',
+  'dirty',
+  'unknown',
+])
+export type AutopilotWorkContextDirtyState =
+  typeof AutopilotWorkContextDirtyState.Type
+
+export const AutopilotWorkContextRefGroup = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  refs: S.optionalKey(S.Array(S.String)),
+})
+export type AutopilotWorkContextRefGroup =
+  typeof AutopilotWorkContextRefGroup.Type
+
+export const AutopilotWorkContextRepo = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  changedCount: S.optionalKey(S.NullOr(S.Number)),
+  dirtyState: S.optionalKey(AutopilotWorkContextDirtyState),
+  dirtyStateRefs: S.optionalKey(S.Array(S.String)),
+  identityRefs: S.optionalKey(S.Array(S.String)),
+})
+export type AutopilotWorkContextRepo = typeof AutopilotWorkContextRepo.Type
+
+export const AutopilotWorkContextAdapters = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  capabilityRefs: S.optionalKey(S.Array(S.String)),
+  refs: S.optionalKey(S.Array(S.String)),
+})
+export type AutopilotWorkContextAdapters =
+  typeof AutopilotWorkContextAdapters.Type
+
+export const AutopilotWorkContextCurrentJob = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  capabilityRefs: S.optionalKey(S.Array(S.String)),
+  jobRefs: S.optionalKey(S.Array(S.String)),
+  verificationRefs: S.optionalKey(S.Array(S.String)),
+})
+export type AutopilotWorkContextCurrentJob =
+  typeof AutopilotWorkContextCurrentJob.Type
+
+export const AutopilotWorkContextInstructions = S.Struct({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  configRefs: S.optionalKey(S.Array(S.String)),
+  refs: S.optionalKey(S.Array(S.String)),
+})
+export type AutopilotWorkContextInstructions =
+  typeof AutopilotWorkContextInstructions.Type
+
+export const AutopilotWorkContextSnapshot = S.Struct({
+  adapters: S.optionalKey(AutopilotWorkContextAdapters),
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  currentJob: S.optionalKey(AutopilotWorkContextCurrentJob),
+  devDoctor: S.optionalKey(AutopilotWorkContextRefGroup),
+  freshness: S.optionalKey(AutopilotWorkContextFreshness),
+  instructions: S.optionalKey(AutopilotWorkContextInstructions),
+  observedAt: S.optionalKey(S.NullOr(S.String)),
+  repo: S.optionalKey(AutopilotWorkContextRepo),
+})
+export type AutopilotWorkContextSnapshot =
+  typeof AutopilotWorkContextSnapshot.Type
+
 export const AutopilotWorkReviewDecision = S.Struct({
   acceptedWorkAuthority: S.Boolean,
   action: AutopilotWorkReviewAction,
@@ -2032,6 +2102,7 @@ export const AutopilotWorkProjection = S.Struct({
   quote: S.Unknown,
   repositoryAuthorities: S.Array(S.Unknown),
   reviewDecision: S.NullOr(AutopilotWorkReviewDecision),
+  contextSnapshot: S.optionalKey(AutopilotWorkContextSnapshot),
   sessionNavigation: S.optionalKey(AutopilotWorkSessionNavigation),
   state: AutopilotWorkState,
   statusUrlRef: S.String,
