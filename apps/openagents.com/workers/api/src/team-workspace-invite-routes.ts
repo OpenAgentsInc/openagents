@@ -9,6 +9,7 @@ import {
   methodNotAllowed,
   noStoreJsonResponse,
   redirectResponse,
+  serverError,
   unauthorized,
 } from './http/responses'
 import { readJsonObject } from './json-boundary'
@@ -59,9 +60,7 @@ type TeamWorkspaceInviteRouteDependencies<
     session: Session,
   ) => HttpResponse
   appOrigin: (env: Bindings) => string
-  getResendEmailConfig?: (
-    env: Bindings,
-  ) => ResendEmailConfig | undefined
+  getResendEmailConfig?: (env: Bindings) => ResendEmailConfig | undefined
   makeStore: (env: Bindings) => TeamWorkspaceInviteStore
   nowIso?: () => string
   requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
@@ -114,6 +113,37 @@ const decodeBody = <A>(
       badRequest(error instanceof Error ? error.message : String(error)),
     try: async () => S.decodeUnknownSync(schema)(await readJsonObject(request)),
   })
+
+const dependencyPromise = <A>(
+  tryPromise: () => Promise<A>,
+): Effect.Effect<A, HttpResponse> =>
+  Effect.tryPromise({
+    catch: () => serverError(),
+    try: tryPromise,
+  })
+
+const recordInviteEmailAttempt = <
+  Bindings,
+  Session extends TeamWorkspaceInviteSession = TeamWorkspaceInviteSession,
+>(
+  dependencies: TeamWorkspaceInviteRouteDependencies<Bindings, Session>,
+  env: Bindings,
+  input: Readonly<{
+    attemptedAt: string
+    emailMessageId: string
+    inviteId: string
+  }>,
+): Effect.Effect<void> => {
+  const store = dependencies.makeStore(env)
+
+  return Effect.tryPromise({
+    catch: () => undefined,
+    try: () => store.recordEmailAttempt(input),
+  }).pipe(
+    Effect.asVoid,
+    Effect.catch(() => Effect.void),
+  )
+}
 
 const acceptUrl = <
   Bindings,
@@ -209,13 +239,11 @@ const sendInviteEmail = <
     .pipe(
       Effect.flatMap(result =>
         Effect.gen(function* () {
-          yield* Effect.promise(() =>
-            dependencies.makeStore(env).recordEmailAttempt({
-              attemptedAt: routeNowIso(dependencies),
-              emailMessageId: result.emailMessageId,
-              inviteId: invite.id,
-            }),
-          )
+          yield* recordInviteEmailAttempt(dependencies, env, {
+            attemptedAt: routeNowIso(dependencies),
+            emailMessageId: result.emailMessageId,
+            inviteId: invite.id,
+          })
 
           return result.ok
             ? {
@@ -287,7 +315,7 @@ const createInvite = <
     }
 
     const body = yield* decodeBody(CreateTeamWorkspaceInviteRequest, request)
-    const result = yield* Effect.promise(() =>
+    const result = yield* dependencyPromise(() =>
       dependencies.makeStore(env).createOrRefreshInvite({
         email: body.email,
         expiresAt: body.expiresAt,
@@ -408,7 +436,7 @@ const acceptInvite = <
       return unauthorized()
     }
 
-    const result = yield* Effect.promise(() =>
+    const result = yield* dependencyPromise(() =>
       dependencies.makeStore(env).acceptInvite({
         sessionEmail: session.user.email,
         token,

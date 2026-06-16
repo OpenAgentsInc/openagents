@@ -7,11 +7,7 @@ import {
   randomUuid,
 } from './runtime-primitives'
 
-export const TeamWorkspaceInviteRole = S.Literals([
-  'admin',
-  'member',
-  'viewer',
-])
+export const TeamWorkspaceInviteRole = S.Literals(['admin', 'member', 'viewer'])
 export type TeamWorkspaceInviteRole = typeof TeamWorkspaceInviteRole.Type
 
 export const TeamWorkspaceInviteStatus = S.Literals([
@@ -146,6 +142,13 @@ type TeamWorkspaceInviteRow = Readonly<{
   token_hash: string
   updated_at: string
 }>
+
+class TeamWorkspaceInviteWriteError extends Error {
+  constructor(inviteId: string) {
+    super(`Invite ${inviteId} was not found after write.`)
+    this.name = 'TeamWorkspaceInviteWriteError'
+  }
+}
 
 const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const DEFAULT_INVITE_TTL_HOURS = 72
@@ -329,7 +332,7 @@ const readInviteById = async (
     .first<TeamWorkspaceInviteRow>()
 
   if (row === null) {
-    throw new Error(`Invite ${inviteId} was not found after write.`)
+    throw new TeamWorkspaceInviteWriteError(inviteId)
   }
 
   return recordFromRow(row)

@@ -32,8 +32,7 @@ const PrivateProjectParticipantKind = S.Literals([
   'external_partner',
   'client',
 ])
-type PrivateProjectParticipantKind =
-  typeof PrivateProjectParticipantKind.Type
+type PrivateProjectParticipantKind = typeof PrivateProjectParticipantKind.Type
 
 const PrivateProjectEmailCopyMode = S.Literals(['bcc_or_ledger_copy'])
 type PrivateProjectEmailCopyMode = typeof PrivateProjectEmailCopyMode.Type
@@ -97,8 +96,7 @@ const PrivateProjectInvitationInput = S.Struct({
   role: S.optionalKey(TeamWorkspaceInviteRole),
   sendEmail: S.optionalKey(S.Boolean),
 })
-type PrivateProjectInvitationInput =
-  typeof PrivateProjectInvitationInput.Type
+type PrivateProjectInvitationInput = typeof PrivateProjectInvitationInput.Type
 
 const CreatePrivateProjectWorkspaceRequest = S.Struct({
   email: S.optionalKey(PrivateProjectEmailInput),
@@ -136,9 +134,7 @@ export type PrivateProjectWorkspaceProjectRecord = Readonly<{
 }>
 
 export type PrivateProjectWorkspaceStore = Readonly<{
-  createOrUpdateProject: (
-    input: CreateOrUpdatePrivateProjectInput,
-  ) => Promise<
+  createOrUpdateProject: (input: CreateOrUpdatePrivateProjectInput) => Promise<
     Readonly<{
       project: PrivateProjectWorkspaceProjectRecord
       team: PrivateProjectWorkspaceTeamRecord
@@ -169,6 +165,13 @@ type ProjectRow = Readonly<{
   team_id: string
 }>
 
+class PrivateProjectWorkspaceWriteError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PrivateProjectWorkspaceWriteError'
+  }
+}
+
 type PrivateProjectWorkspaceEmailDelivery =
   | Readonly<{
       emailMessageId: string
@@ -195,9 +198,7 @@ type PrivateProjectWorkspaceEmailDelivery =
 
 type PrivateProjectWorkspaceRoutesDependencies<Bindings> = Readonly<{
   appOrigin: (env: Bindings) => string
-  getResendEmailConfig?: (
-    env: Bindings,
-  ) => ResendEmailConfig | undefined
+  getResendEmailConfig?: (env: Bindings) => ResendEmailConfig | undefined
   makeInviteStore: (env: Bindings) => TeamWorkspaceInviteStore
   makePrivateProjectStore: (env: Bindings) => PrivateProjectWorkspaceStore
   makeWorkspaceStore: (env: Bindings) => PrefilledWorkspaceServiceShape
@@ -229,7 +230,9 @@ const normalizeSlug = (value: string): string | undefined => {
     : undefined
 }
 
-const teamRecordFromRow = (row: TeamRow): PrivateProjectWorkspaceTeamRecord => ({
+const teamRecordFromRow = (
+  row: TeamRow,
+): PrivateProjectWorkspaceTeamRecord => ({
   id: row.id,
   name: row.name,
   slug: row.slug,
@@ -311,7 +314,9 @@ export const makeD1PrivateProjectWorkspaceStore = (
     const team = await readTeamBySlug(db, input.teamSlug)
 
     if (team === undefined) {
-      throw new Error('Private project team was not found after write.')
+      throw new PrivateProjectWorkspaceWriteError(
+        'Private project team was not found after write.',
+      )
     }
 
     const existingProject = await readProjectByTeamAndSlug(
@@ -357,7 +362,9 @@ export const makeD1PrivateProjectWorkspaceStore = (
     )
 
     if (project === undefined) {
-      throw new Error('Private project was not found after write.')
+      throw new PrivateProjectWorkspaceWriteError(
+        'Private project was not found after write.',
+      )
     }
 
     return { project, team }
@@ -385,6 +392,26 @@ const dependencyPromise = <A>(
     catch: () => serverError(),
     try: tryPromise,
   })
+
+const recordInviteEmailAttempt = <Bindings>(
+  dependencies: PrivateProjectWorkspaceRoutesDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    attemptedAt: string
+    emailMessageId: string
+    inviteId: string
+  }>,
+): Effect.Effect<void> => {
+  const store = dependencies.makeInviteStore(env)
+
+  return Effect.tryPromise({
+    catch: () => undefined,
+    try: () => store.recordEmailAttempt(input),
+  }).pipe(
+    Effect.asVoid,
+    Effect.catch(() => Effect.void),
+  )
+}
 
 const acceptUrl = <Bindings>(
   dependencies: PrivateProjectWorkspaceRoutesDependencies<Bindings>,
@@ -554,13 +581,11 @@ const sendInviteAndOperatorCopy = <Bindings>(
       'emailMessageId' in email ? email.emailMessageId : null
 
     if (emailMessageId !== null) {
-      yield* Effect.promise(() =>
-        dependencies.makeInviteStore(env).recordEmailAttempt({
-          attemptedAt: routeNowIso(dependencies),
-          emailMessageId,
-          inviteId: invite.id,
-        }),
-      )
+      yield* recordInviteEmailAttempt(dependencies, env, {
+        attemptedAt: routeNowIso(dependencies),
+        emailMessageId,
+        inviteId: invite.id,
+      })
     }
 
     if (!copyOperator) {
@@ -657,8 +682,7 @@ const validateCreateRequest = (
     projectName,
     projectSlug,
     teamName:
-      body.project.teamName === undefined ||
-      body.project.teamName.trim() === ''
+      body.project.teamName === undefined || body.project.teamName.trim() === ''
         ? `${projectName} Team`
         : compactText(body.project.teamName, 200),
     teamSlug,
@@ -736,7 +760,10 @@ const createPrivateProjectWorkspace = <Bindings>(
       return unauthorized()
     }
 
-    const body = yield* decodeBody(CreatePrivateProjectWorkspaceRequest, request)
+    const body = yield* decodeBody(
+      CreatePrivateProjectWorkspaceRequest,
+      request,
+    )
     const normalized = yield* validateCreateRequest(body)
     const privateProject = yield* dependencyPromise(() =>
       dependencies.makePrivateProjectStore(env).createOrUpdateProject({
@@ -750,7 +777,7 @@ const createPrivateProjectWorkspace = <Bindings>(
     const workspace =
       body.workspace?.createPrefilledWorkspace === false
         ? null
-        : yield* Effect.promise(() =>
+        : yield* dependencyPromise(() =>
             dependencies
               .makeWorkspaceStore(env)
               .readPrivateWorkspaceByTarget(
@@ -760,7 +787,7 @@ const createPrivateProjectWorkspace = <Bindings>(
           ).pipe(
             Effect.flatMap(existing =>
               existing === undefined
-                ? Effect.promise(() =>
+                ? dependencyPromise(() =>
                     dependencies
                       .makeWorkspaceStore(env)
                       .createWorkspace(
@@ -781,16 +808,13 @@ const createPrivateProjectWorkspace = <Bindings>(
         Effect.gen(function* () {
           const copyOperator =
             invitation.copyOperator ?? body.email?.copyOperator ?? true
-          const inviteResult = yield* Effect.promise(() =>
+          const inviteResult = yield* dependencyPromise(() =>
             dependencies.makeInviteStore(env).createOrRefreshInvite({
               email: invitation.email,
               expiresAt: invitation.expiresAt,
               expiresInHours: invitation.expiresInHours,
               invitedByActorRef: 'operator:admin_api',
-              metadataJson: metadataJsonForInvitation(
-                invitation,
-                copyOperator,
-              ),
+              metadataJson: metadataJsonForInvitation(invitation, copyOperator),
               projectId: privateProject.project.id,
               role: invitation.role,
               teamId: privateProject.team.id,
@@ -824,7 +848,9 @@ const createPrivateProjectWorkspace = <Bindings>(
                   }
                 }),
               InvalidEmail: () =>
-                Effect.fail(badRequest('Every invitation needs a valid email.')),
+                Effect.fail(
+                  badRequest('Every invitation needs a valid email.'),
+                ),
               ProjectNotFound: () =>
                 Effect.fail(
                   noStoreJsonResponse(
