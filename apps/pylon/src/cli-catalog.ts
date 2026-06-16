@@ -105,11 +105,12 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     needsNetwork: false,
     json: true,
     args: [
-      pos("status|receive|send|admit-payout-target|request-payout-target-admission|report-readiness|migrate-spark", "Subcommand."),
+      pos("status|receive|send|admit-payout-target|request-payout-target-admission|report-readiness|migrate-spark|backup-receive|backup-status", "Subcommand."),
       opt("--amount", "send/receive amount in sats."),
       opt("--destination-ref", "send destination."),
-      opt("--kind", "payout-target kind."),
+      opt("--kind", "payout-target kind; or backup-receive kind (spark-address)."),
       opt("--ref", "payout-target ref."),
+      flag("--show-local-target", "backup-receive/backup-status: print the raw local Spark target (LOCAL/PRIVATE only)."),
     ],
   },
   {

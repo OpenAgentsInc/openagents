@@ -12,12 +12,15 @@ import {
   classifySparkBackupReceive,
   preflightLegacySparkMigration,
   prepareSparkBackupReceive,
+  readCachedSparkTarget,
   receiveWithFallback,
   receiveWithMdk,
   recommendSparkSweep,
   reportWalletReadiness,
   requestPayoutTargetAdmission,
   sendWithMdk,
+  sparkBackupTargetPath,
+  writeCachedSparkTarget,
   type SparkBackupHelper,
   type WalletCommandRunner,
 } from "../src/wallet"
@@ -606,5 +609,44 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
     expect(projection.state).toBe("disabled")
     expect(projection.receiveTargetRef).toBeNull()
     assertPublicProjectionSafe(projection)
+  })
+
+  test("caches the raw Spark target only in mode-0600 local private state", async () => {
+    await withTempHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs([]), { PYLON_HOME: home }, "darwin")
+      const state = await ensurePylonLocalState(summary)
+      expect(await readCachedSparkTarget(state.paths)).toBeNull()
+
+      await writeCachedSparkTarget(state.paths, RAW_SPARK_ADDRESS)
+      expect(await readCachedSparkTarget(state.paths)).toBe(RAW_SPARK_ADDRESS)
+
+      const targetPath = sparkBackupTargetPath(state.paths)
+      const { statSync } = await import("node:fs")
+      // Mode 0600: only the owner can read/write the raw receive material.
+      expect(statSync(targetPath).mode & 0o777).toBe(0o600)
+
+      // The cached file lives under the private wallet/spark-backup dir, not
+      // public state, and is not posted anywhere by these functions.
+      expect(targetPath.startsWith(`${home}/wallet/spark-backup/`)).toBe(true)
+    })
+  })
+
+  test("a cached target lets the helper-offline path report cached-address-ready", async () => {
+    await withTempHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs([]), { PYLON_HOME: home }, "darwin")
+      const state = await ensurePylonLocalState(summary)
+      await writeCachedSparkTarget(state.paths, RAW_SPARK_ADDRESS)
+      const cached = await readCachedSparkTarget(state.paths)
+
+      const projection = await classifySparkBackupReceive({
+        enabled: true,
+        env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+        helper: sparkHelper({ address: { exitCode: 1, stderr: "helper offline" } }),
+        cachedAddress: cached,
+      })
+      expect(projection.state).toBe("cached-address-ready")
+      expect(JSON.stringify(projection)).not.toContain(RAW_SPARK_ADDRESS)
+      assertPublicProjectionSafe(projection)
+    })
   })
 })

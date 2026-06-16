@@ -1060,6 +1060,50 @@ export async function sendWithMdk(
   return { ok: true, receiptRef: paymentRef }
 }
 
+// ---------------------------------------------------------------------------
+// Spark backup local private state (slice 2).
+//
+// The raw Spark receive target is cached ONLY in Pylon-home private state, mode
+// 0600, never in public state and never in any projection. The cache lets
+// `cached-address-ready` work when the helper is offline (audit failure mode 2).
+// ---------------------------------------------------------------------------
+
+export function sparkBackupTargetPath(paths: PylonPaths) {
+  return `${paths.home}/wallet/spark-backup/receive-target.json`
+}
+
+type SparkBackupTargetFile = {
+  schema: "openagents.pylon.spark_backup_target.local.v0.1"
+  rawTarget: string
+  updatedAt: string
+}
+
+export async function readCachedSparkTarget(paths: PylonPaths): Promise<string | null> {
+  const path = sparkBackupTargetPath(paths)
+  if (!existsSync(path)) return null
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8")) as Partial<SparkBackupTargetFile>
+    return typeof parsed.rawTarget === "string" && parsed.rawTarget.trim() !== "" ? parsed.rawTarget : null
+  } catch {
+    return null
+  }
+}
+
+export async function writeCachedSparkTarget(paths: PylonPaths, rawTarget: string): Promise<void> {
+  if (!rawTarget || rawTarget.trim() === "") return
+  const path = sparkBackupTargetPath(paths)
+  const { mkdir } = await import("node:fs/promises")
+  const dir = path.slice(0, path.lastIndexOf("/"))
+  await mkdir(dir, { recursive: true })
+  const file: SparkBackupTargetFile = {
+    schema: "openagents.pylon.spark_backup_target.local.v0.1",
+    rawTarget,
+    updatedAt: new Date().toISOString(),
+  }
+  // Mode 0600: this file holds raw wallet-operable receive material.
+  await writeFile(path, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 })
+}
+
 export async function appendLedgerEvent(paths: PylonPaths, event: Omit<LedgerEvent, "eventId" | "createdAt"> & { eventId?: string }) {
   await ensureStateDirectories(paths)
   const eventId = event.eventId ?? stableRef("ledger", `${event.kind}:${event.ref}`)

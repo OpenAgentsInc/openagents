@@ -125,7 +125,7 @@ import {
   parseBootstrapArgs,
   writeBootstrapFiles,
 } from "./bootstrap"
-import { ensurePylonLocalState, projectPublicStatus, writeRuntimeState } from "./state"
+import { ensurePylonLocalState, projectPublicStatus, writeRuntimeState, type PylonLocalState } from "./state"
 import {
   completePylonLink,
   refreshPylonLink,
@@ -135,12 +135,19 @@ import {
 import {
   admitPayoutTarget,
   classifyMdkWallet,
+  classifySparkBackupReceive,
+  prepareSparkBackupReceive,
   preflightLegacySparkMigration,
+  readCachedSparkTarget,
+  receiveWithFallback,
   receiveWithMdk,
+  recommendSparkSweep,
   reportWalletReadiness,
   requestPayoutTargetAdmission,
   sendWithMdk,
+  writeCachedSparkTarget,
 } from "./wallet"
+import { resolveSparkBackupHelper } from "./spark-backup-helper"
 import {
   acceptAssignment,
   pollAssignments,
@@ -936,6 +943,40 @@ function parsePsionicOptions(args: string[]) {
 function stringPsionicOption(options: Record<string, string | true>, key: string) {
   const value = options[key]
   return typeof value === "string" ? value : undefined
+}
+
+/**
+ * Build slice-1 `SparkBackupReceiveOptions` for the running node. Resolves the
+ * real Breez SDK Spark helper (inert/null unless opt-in enabled + credential +
+ * seed are present), reads the cached raw target from local private state, and
+ * passes the `--show-local-target` flag through. Reads the local mnemonic only
+ * to seed the SDK closure; the raw seed is NEVER returned or logged here.
+ */
+async function resolveSparkBackupOptions(
+  state: PylonLocalState,
+  input: { showLocalTarget?: boolean } = {},
+) {
+  let mnemonic: string | null = null
+  try {
+    const { existsSync } = await import("node:fs")
+    if (existsSync(state.paths.identityMnemonic)) {
+      mnemonic = (await readFile(state.paths.identityMnemonic, "utf8")).trim()
+    }
+  } catch {
+    mnemonic = null
+  }
+  const helper = resolveSparkBackupHelper({
+    env: Bun.env,
+    mnemonic,
+    storageDir: `${state.paths.home}/wallet/spark-backup/sdk`,
+  })
+  const cachedAddress = await readCachedSparkTarget(state.paths)
+  return {
+    env: Bun.env,
+    ...(helper ? { helper } : {}),
+    cachedAddress,
+    showLocalTarget: input.showLocalTarget === true,
+  }
 }
 
 function parseDevLoopOptions(args: string[]) {
@@ -2007,8 +2048,98 @@ async function main() {
       if (command === "receive") {
         const amount = Number(options.amount)
         if (!Number.isFinite(amount) || amount <= 0) throw new Error("wallet receive requires --amount")
-        const result = await receiveWithMdk(amount)
-        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        // MDK-first; Spark backup second, only on an MDK offline/unavailable
+        // class AND when the backup is opt-in enabled (slice 1 fallback).
+        const sparkBackupOptions = await resolveSparkBackupOptions(state)
+        const result = await receiveWithFallback(amount, { sparkBackup: sparkBackupOptions })
+        if (result.rail === "spark_backup" && result.ok && result.sparkBackup.localTarget) {
+          // Persist the freshly issued raw target to local private state only.
+          await writeCachedSparkTarget(state.paths, result.sparkBackup.localTarget)
+        }
+        if (result.rail === "spark_backup" && result.receiptRef) {
+          await appendLedgerEvent(state.paths, {
+            kind: "backup-receive-selected",
+            ref: result.receiptRef,
+            data: { receiptRef: result.receiptRef, rail: "spark_backup", mdkFailureRef: result.mdkFailureRef },
+          })
+        }
+        // Never emit the raw local target from `wallet receive`; redacted refs only.
+        const redacted =
+          result.rail === "spark_backup"
+            ? {
+                ok: result.ok,
+                rail: result.rail,
+                receiptRef: result.receiptRef,
+                mdkFailureRef: result.mdkFailureRef,
+                rawTargetAvailableLocally: result.rawTargetAvailableLocally,
+                state: result.sparkBackup.projection.state,
+                blockerRefs: result.sparkBackup.blockerRefs,
+                nextHint: "Run `pylon wallet backup-receive --kind spark-address --show-local-target` to view the local target.",
+              }
+            : result
+        process.stdout.write(`${JSON.stringify(redacted, null, 2)}\n`)
+        return
+      }
+      if (command === "backup-receive") {
+        const sparkOptions = parsePsionicOptions(walletArgs)
+        const kind = stringPsionicOption(sparkOptions, "kind") ?? "spark-address"
+        if (kind !== "spark-address") {
+          throw new Error("wallet backup-receive supports --kind spark-address only")
+        }
+        const showLocalTarget = sparkOptions["show-local-target"] === true
+        const sparkBackupOptions = await resolveSparkBackupOptions(state, { showLocalTarget })
+        const result = await prepareSparkBackupReceive(sparkBackupOptions)
+        if (result.ok && result.localTarget) {
+          await writeCachedSparkTarget(state.paths, result.localTarget)
+        }
+        if (result.ok && result.receiptRef) {
+          await appendLedgerEvent(state.paths, {
+            kind: "backup-receive-selected",
+            ref: result.receiptRef,
+            data: { receiptRef: result.receiptRef, rail: "spark_backup", state: result.state },
+          })
+        }
+        // Public-safe body always; raw local target only when explicitly asked.
+        const body: Record<string, unknown> = {
+          ok: result.ok,
+          rail: result.rail,
+          state: result.state,
+          receiptRef: result.receiptRef,
+          rawTargetAvailableLocally: result.rawTargetAvailableLocally,
+          blockerRefs: result.blockerRefs,
+          projection: result.projection,
+        }
+        if (showLocalTarget && result.localTarget) {
+          // Local terminal output ONLY. Marked local/private.
+          body.localTarget = result.localTarget
+          body.localTargetNote = "LOCAL/PRIVATE: do not share, log, or post this raw target."
+        }
+        process.stdout.write(`${JSON.stringify(body, null, 2)}\n`)
+        process.exitCode = result.ok ? 0 : 1
+        return
+      }
+      if (command === "backup-status") {
+        const sparkOptions = parsePsionicOptions(walletArgs)
+        const showLocalTarget = sparkOptions["show-local-target"] === true
+        const sparkBackupOptions = await resolveSparkBackupOptions(state, { showLocalTarget })
+        const projection = await classifySparkBackupReceive(sparkBackupOptions)
+        const sweep = recommendSparkSweep({
+          detectedBalanceSats: projection.detectedBalanceSats,
+          unclaimedDepositCount: projection.unclaimedDepositCount,
+        })
+        const body: Record<string, unknown> = {
+          ok: projection.state !== "credential-missing" && projection.state !== "helper-unavailable",
+          projection,
+          sweep,
+        }
+        if (showLocalTarget) {
+          const cached = await readCachedSparkTarget(state.paths)
+          if (cached) {
+            body.localTarget = cached
+            body.localTargetNote = "LOCAL/PRIVATE: do not share, log, or post this raw target."
+          }
+        }
+        process.stdout.write(`${JSON.stringify(body, null, 2)}\n`)
         return
       }
       if (command === "send") {
