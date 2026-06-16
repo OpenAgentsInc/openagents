@@ -183,6 +183,16 @@ session navigation projection with source/state counts, safe session/evidence
 refs, control blocker refs, non-authority flags, and unsafe-title/ref omission
 regressions.
 
+Implementation status, 2026-06-16: #5147 adds the first authority-gated
+session control contract. Session summaries can now advertise supported
+resume/fork/rewind/cancel verbs, public-safe authority refs, policy refs,
+freshness, and blockers; `/autopilot` renders enabled POST controls only when
+that advertised contract is fresh and unblocked. Unsupported, stale, missing-
+authority, and missing-policy controls remain disabled with explicit blocker
+refs. Public-safe control receipts render alongside the session summaries. The
+web surface still does not execute or fabricate runtime state; the authoritative
+bridge/runtime owns the actual control effect.
+
 ### G4 - Context Assembly, Repository Memory, And Onboarding
 
 Systems: system 12 Context Assembly, system 18 Repository Memory/Onboarding,
@@ -382,6 +392,14 @@ requested, applied, blocked, and stale mutations with actor, generatedAt,
 provenance, request, receipt, and blocker refs; carries explicit non-authority
 flags; blocks plan-complete receipts from implying Run completion without
 closeout evidence; and omits raw/private plan material before rendering.
+
+Implementation status, 2026-06-16: #5147 adds the session control request and
+receipt surface for the Session navigation lane. Resume/fork/rewind/cancel
+controls become submit-capable only when the session advertises support plus
+fresh public-safe authority and policy refs; otherwise the UI preserves the
+blocked/stale/unavailable state. Receipts expose only refs, actor/provenance
+refs, outcome, generatedAt, and blockers, with private material omitted before
+rendering.
 
 ## Recommended Sequencing
 

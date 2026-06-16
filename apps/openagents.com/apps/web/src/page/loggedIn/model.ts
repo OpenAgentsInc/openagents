@@ -1963,23 +1963,69 @@ export const AutopilotWorkSessionState = S.Literals([
 ])
 export type AutopilotWorkSessionState = typeof AutopilotWorkSessionState.Type
 
+export const AutopilotWorkSessionControlAction = S.Literals([
+  'cancel',
+  'fork',
+  'resume',
+  'rewind',
+])
+export type AutopilotWorkSessionControlAction =
+  typeof AutopilotWorkSessionControlAction.Type
+
+export const AutopilotWorkSessionControlFreshness = S.Literals([
+  'fresh',
+  'stale',
+])
+export type AutopilotWorkSessionControlFreshness =
+  typeof AutopilotWorkSessionControlFreshness.Type
+
+export const AutopilotWorkSessionControlOutcome = S.Literals([
+  'applied',
+  'blocked',
+  'queued',
+  'stale',
+])
+export type AutopilotWorkSessionControlOutcome =
+  typeof AutopilotWorkSessionControlOutcome.Type
+
 export const AutopilotWorkSessionSummary = S.Struct({
   artifactRefs: S.optionalKey(S.Array(S.String)),
   bridgeRefs: S.optionalKey(S.Array(S.String)),
   checkpointRefs: S.optionalKey(S.Array(S.String)),
+  controlAuthorityRefs: S.optionalKey(S.Array(S.String)),
+  controlBlockerRefs: S.optionalKey(S.Array(S.String)),
+  controlFreshness: S.optionalKey(AutopilotWorkSessionControlFreshness),
+  controlPolicyRefs: S.optionalKey(S.Array(S.String)),
   eventRefs: S.optionalKey(S.Array(S.String)),
   observedAt: S.optionalKey(S.NullOr(S.String)),
   sessionRef: S.String,
   state: S.optionalKey(AutopilotWorkSessionState),
+  supportedControlActions: S.optionalKey(S.Array(AutopilotWorkSessionControlAction)),
   title: S.optionalKey(S.NullOr(S.String)),
 })
 export type AutopilotWorkSessionSummary =
   typeof AutopilotWorkSessionSummary.Type
 
+export const AutopilotWorkSessionControlReceipt = S.Struct({
+  action: AutopilotWorkSessionControlAction,
+  actorRef: S.String,
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  generatedAt: S.String,
+  outcome: AutopilotWorkSessionControlOutcome,
+  provenanceRefs: S.optionalKey(S.Array(S.String)),
+  publicSafe: S.Boolean,
+  receiptRef: S.String,
+  requestRef: S.String,
+  sessionRef: S.String,
+})
+export type AutopilotWorkSessionControlReceipt =
+  typeof AutopilotWorkSessionControlReceipt.Type
+
 export const AutopilotWorkSessionNavigation = S.Struct({
   bridgeSessions: S.optionalKey(S.Array(AutopilotWorkSessionSummary)),
   claudeSessions: S.optionalKey(S.Array(AutopilotWorkSessionSummary)),
   codexSessions: S.optionalKey(S.Array(AutopilotWorkSessionSummary)),
+  controlReceipts: S.optionalKey(S.Array(AutopilotWorkSessionControlReceipt)),
   localPylonSessions: S.optionalKey(S.Array(AutopilotWorkSessionSummary)),
 })
 export type AutopilotWorkSessionNavigation =

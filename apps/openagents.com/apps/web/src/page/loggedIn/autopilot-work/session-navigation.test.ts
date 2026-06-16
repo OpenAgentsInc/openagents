@@ -89,16 +89,180 @@ describe('Forge session navigation projection', () => {
     const actions = view.items[0]?.actions
 
     expect(view.status).toBe('complete')
-    expect(actions?.resume).toEqual({
+    expect(actions?.resume).toMatchObject({
       action: 'resume',
+      authorityRefs: [],
       availability: 'unavailable',
       blockerRefs: [
         'forge-session-navigation-blocker:pylon.session.work_1:resume-control-verb-unavailable',
       ],
+      policyRefs: [],
+      requestRef: 'forge-session-control-request:pylon.session.work_1:resume',
     })
     expect(actions?.fork.availability).toBe('unavailable')
     expect(actions?.rewind.availability).toBe('unavailable')
     expect(actions?.cancel.availability).toBe('unavailable')
+  })
+
+  test('enables advertised session controls with authority and policy refs', () => {
+    const view = projectForgeSessionNavigation(
+      baseInput({
+        localPylonSessions: [
+          {
+            controlAuthorityRefs: ['authority.public.session-control.bridge'],
+            controlPolicyRefs: ['policy.public.resume-fork.allowed'],
+            sessionRef: 'pylon.session.work_1',
+            state: 'running',
+            supportedControlActions: ['resume', 'fork'],
+          },
+        ],
+      }),
+    )
+    const actions = view.items[0]?.actions
+
+    expect(actions?.resume).toEqual({
+      action: 'resume',
+      authorityRefs: ['authority.public.session-control.bridge'],
+      availability: 'available',
+      blockerRefs: [],
+      policyRefs: ['policy.public.resume-fork.allowed'],
+      requestRef: 'forge-session-control-request:pylon.session.work_1:resume',
+    })
+    expect(actions?.fork.availability).toBe('available')
+    expect(actions?.rewind.availability).toBe('unavailable')
+    expect(actions?.cancel.availability).toBe('unavailable')
+  })
+
+  test('blocks supported controls without authority or policy refs', () => {
+    const view = projectForgeSessionNavigation(
+      baseInput({
+        localPylonSessions: [
+          {
+            sessionRef: 'pylon.session.work_1',
+            state: 'running',
+            supportedControlActions: ['rewind'],
+          },
+        ],
+      }),
+    )
+    const rewind = view.items[0]?.actions.rewind
+
+    expect(rewind?.availability).toBe('blocked')
+    expect(rewind?.blockerRefs).toEqual([
+      'forge-session-navigation-blocker:pylon.session.work_1:rewind-missing-authority-ref',
+      'forge-session-navigation-blocker:pylon.session.work_1:rewind-missing-policy-ref',
+    ])
+  })
+
+  test('keeps stale supported controls disabled with a stale-session blocker', () => {
+    const view = projectForgeSessionNavigation(
+      baseInput({
+        localPylonSessions: [
+          {
+            controlAuthorityRefs: ['authority.public.session-control.bridge'],
+            controlFreshness: 'stale',
+            controlPolicyRefs: ['policy.public.resume.allowed'],
+            sessionRef: 'pylon.session.work_1',
+            state: 'running',
+            supportedControlActions: ['resume'],
+          },
+        ],
+      }),
+    )
+    const resume = view.items[0]?.actions.resume
+
+    expect(resume?.availability).toBe('stale')
+    expect(resume?.blockerRefs).toEqual([
+      'forge-session-navigation-blocker:pylon.session.work_1:resume-stale-session-ref',
+    ])
+  })
+
+  test('projects public-safe session control receipts', () => {
+    const view = projectForgeSessionNavigation(
+      baseInput({
+        controlReceipts: [
+          {
+            action: 'resume',
+            actorRef: 'actor.public.raynor',
+            generatedAt: '2026-06-16T17:06:00.000Z',
+            outcome: 'queued',
+            provenanceRefs: ['bridge.public.session-control'],
+            publicSafe: true,
+            receiptRef: 'receipt.public.resume.1',
+            requestRef: 'forge-session-control-request:pylon.session.work_1:resume',
+            sessionRef: 'pylon.session.work_1',
+          },
+        ],
+        localPylonSessions: [
+          {
+            sessionRef: 'pylon.session.work_1',
+            state: 'running',
+          },
+        ],
+      }),
+    )
+
+    expect(view.controlReceipts).toEqual([
+      {
+        action: 'resume',
+        actorRef: 'actor.public.raynor',
+        blockerRefs: [],
+        generatedAt: '2026-06-16T17:06:00.000Z',
+        outcome: 'queued',
+        provenanceRefs: ['bridge.public.session-control'],
+        publicSafe: true,
+        receiptRef: 'receipt.public.resume.1',
+        requestRef: 'forge-session-control-request:pylon.session.work_1:resume',
+        sessionRef: 'pylon.session.work_1',
+      },
+    ])
+  })
+
+  test('omits private material from session control receipts', () => {
+    const view = projectForgeSessionNavigation(
+      baseInput({
+        controlReceipts: [
+          {
+            action: 'resume',
+            actorRef: 'actor.public.safe',
+            generatedAt: '2026-06-16T17:06:00.000Z',
+            outcome: 'blocked',
+            provenanceRefs: ['raw transcript /Users/christopher/private.jsonl'],
+            publicSafe: true,
+            receiptRef: 'receipt.public.resume.1',
+            requestRef: 'forge-session-control-request:pylon.session.work_1:resume',
+            sessionRef: 'pylon.session.work_1',
+          },
+          {
+            action: 'fork',
+            actorRef: 'actor.private.should-not-render',
+            generatedAt: '2026-06-16T17:07:00.000Z',
+            outcome: 'queued',
+            publicSafe: false,
+            receiptRef: 'receipt.private.fork.1',
+            requestRef: 'forge-session-control-request:pylon.session.work_1:fork',
+            sessionRef: 'pylon.session.work_1',
+          },
+        ],
+        localPylonSessions: [
+          {
+            sessionRef: 'pylon.session.work_1',
+            state: 'running',
+          },
+        ],
+      }),
+    )
+    const payload = JSON.stringify(view)
+
+    expect(view.controlReceipts).toHaveLength(1)
+    expect(view.controlReceipts[0]?.provenanceRefs).toEqual([])
+    expect(view.omittedUnsafeRefCount).toBe(2)
+    expect(view.blockerRefs).toContain(
+      'forge-session-navigation-blocker:work_1:unsafe-session-material-omitted',
+    )
+    expect(payload).not.toContain('/Users/christopher')
+    expect(payload).not.toContain('raw transcript')
+    expect(payload).not.toContain('actor.private.should-not-render')
   })
 
   test('reports explicit blockers when no session summaries are available', () => {

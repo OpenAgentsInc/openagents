@@ -16,28 +16,57 @@ export type ForgeSessionNavigationStatus =
   | 'queued'
 
 export type ForgeSessionNavigationAction = 'cancel' | 'fork' | 'resume' | 'rewind'
+export type ForgeSessionActionAvailability =
+  | 'available'
+  | 'blocked'
+  | 'stale'
+  | 'unavailable'
+export type ForgeSessionControlFreshness = 'fresh' | 'stale'
+export type ForgeSessionControlOutcome = 'applied' | 'blocked' | 'queued' | 'stale'
 
 export type ForgeSessionActionState = Readonly<{
   action: ForgeSessionNavigationAction
-  availability: 'unavailable'
+  authorityRefs: ReadonlyArray<string>
+  availability: ForgeSessionActionAvailability
   blockerRefs: ReadonlyArray<string>
+  policyRefs: ReadonlyArray<string>
+  requestRef: string
 }>
 
 export type ForgeSessionSummaryInput = Readonly<{
   artifactRefs?: ReadonlyArray<string>
   bridgeRefs?: ReadonlyArray<string>
   checkpointRefs?: ReadonlyArray<string>
+  controlAuthorityRefs?: ReadonlyArray<string>
+  controlBlockerRefs?: ReadonlyArray<string>
+  controlFreshness?: ForgeSessionControlFreshness
+  controlPolicyRefs?: ReadonlyArray<string>
   eventRefs?: ReadonlyArray<string>
   observedAt?: string | null
   sessionRef: string
   state?: ForgeSessionState
+  supportedControlActions?: ReadonlyArray<ForgeSessionNavigationAction>
   title?: string | null
+}>
+
+export type ForgeSessionControlReceiptInput = Readonly<{
+  action: ForgeSessionNavigationAction
+  actorRef: string
+  blockerRefs?: ReadonlyArray<string>
+  generatedAt: string
+  outcome: ForgeSessionControlOutcome
+  provenanceRefs?: ReadonlyArray<string>
+  publicSafe: boolean
+  receiptRef: string
+  requestRef: string
+  sessionRef: string
 }>
 
 export type ForgeSessionNavigationInput = Readonly<{
   bridgeSessions?: ReadonlyArray<ForgeSessionSummaryInput>
   claudeSessions?: ReadonlyArray<ForgeSessionSummaryInput>
   codexSessions?: ReadonlyArray<ForgeSessionSummaryInput>
+  controlReceipts?: ReadonlyArray<ForgeSessionControlReceiptInput>
   generatedAt: string
   localPylonSessions?: ReadonlyArray<ForgeSessionSummaryInput>
   workOrderRef: string
@@ -48,6 +77,9 @@ export type ForgeSessionNavigationItem = Readonly<{
   artifactRefs: ReadonlyArray<string>
   bridgeRefs: ReadonlyArray<string>
   checkpointRefs: ReadonlyArray<string>
+  controlAuthorityRefs: ReadonlyArray<string>
+  controlBlockerRefs: ReadonlyArray<string>
+  controlPolicyRefs: ReadonlyArray<string>
   eventRefs: ReadonlyArray<string>
   observedAt: string | null
   sessionRef: string
@@ -56,8 +88,22 @@ export type ForgeSessionNavigationItem = Readonly<{
   title: string
 }>
 
+export type ForgeSessionControlReceiptItem = Readonly<{
+  action: ForgeSessionNavigationAction
+  actorRef: string
+  blockerRefs: ReadonlyArray<string>
+  generatedAt: string
+  outcome: ForgeSessionControlOutcome
+  provenanceRefs: ReadonlyArray<string>
+  publicSafe: true
+  receiptRef: string
+  requestRef: string
+  sessionRef: string
+}>
+
 export type ForgeSessionNavigationView = Readonly<{
   blockerRefs: ReadonlyArray<string>
+  controlReceipts: ReadonlyArray<ForgeSessionControlReceiptItem>
   generatedAt: string
   items: ReadonlyArray<ForgeSessionNavigationItem>
   omittedUnsafeRefCount: number
@@ -127,6 +173,12 @@ const SESSION_STATES: ReadonlyArray<ForgeSessionState> = [
   'queued',
   'running',
   'unknown',
+]
+const SESSION_CONTROL_ACTIONS: ReadonlyArray<ForgeSessionNavigationAction> = [
+  'cancel',
+  'fork',
+  'resume',
+  'rewind',
 ]
 const SAFE_SESSION_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const PRIVATE_SESSION_MARKERS: ReadonlyArray<RegExp> = [
@@ -204,19 +256,61 @@ const sourceTitle = (source: ForgeSessionSource): string =>
 const controlActionState = (
   sessionRef: string,
   action: ForgeSessionNavigationAction,
+  control: Readonly<{
+    authorityRefs: ReadonlyArray<string>
+    blockerRefs: ReadonlyArray<string>
+    freshness: ForgeSessionControlFreshness
+    policyRefs: ReadonlyArray<string>
+    supportedActions: ReadonlyArray<ForgeSessionNavigationAction>
+  }>,
 ): ForgeSessionActionState => ({
   action,
-  availability: 'unavailable',
-  blockerRefs: [blockerRef(sessionRef, `${action}-control-verb-unavailable`)],
+  authorityRefs: control.authorityRefs,
+  availability: control.supportedActions.includes(action)
+    ? control.freshness === 'stale'
+      ? 'stale'
+      : control.authorityRefs.length === 0 ||
+          control.policyRefs.length === 0 ||
+          control.blockerRefs.length > 0
+        ? 'blocked'
+        : 'available'
+    : 'unavailable',
+  blockerRefs: Array.from(
+    new Set([
+      ...(!control.supportedActions.includes(action)
+        ? [blockerRef(sessionRef, `${action}-control-verb-unavailable`)]
+        : []),
+      ...(control.supportedActions.includes(action) && control.freshness === 'stale'
+        ? [blockerRef(sessionRef, `${action}-stale-session-ref`)]
+        : []),
+      ...(control.supportedActions.includes(action) &&
+      control.authorityRefs.length === 0
+        ? [blockerRef(sessionRef, `${action}-missing-authority-ref`)]
+        : []),
+      ...(control.supportedActions.includes(action) && control.policyRefs.length === 0
+        ? [blockerRef(sessionRef, `${action}-missing-policy-ref`)]
+        : []),
+      ...(control.supportedActions.includes(action) ? control.blockerRefs : []),
+    ]),
+  ),
+  policyRefs: control.policyRefs,
+  requestRef: `forge-session-control-request:${sessionRef}:${action}`,
 })
 
 const controlActions = (
   sessionRef: string,
+  control: Readonly<{
+    authorityRefs: ReadonlyArray<string>
+    blockerRefs: ReadonlyArray<string>
+    freshness: ForgeSessionControlFreshness
+    policyRefs: ReadonlyArray<string>
+    supportedActions: ReadonlyArray<ForgeSessionNavigationAction>
+  }>,
 ): Readonly<Record<ForgeSessionNavigationAction, ForgeSessionActionState>> => ({
-  cancel: controlActionState(sessionRef, 'cancel'),
-  fork: controlActionState(sessionRef, 'fork'),
-  resume: controlActionState(sessionRef, 'resume'),
-  rewind: controlActionState(sessionRef, 'rewind'),
+  cancel: controlActionState(sessionRef, 'cancel', control),
+  fork: controlActionState(sessionRef, 'fork', control),
+  resume: controlActionState(sessionRef, 'resume', control),
+  rewind: controlActionState(sessionRef, 'rewind', control),
 })
 
 const stateRank = (state: ForgeSessionState): number =>
@@ -273,11 +367,24 @@ const normalizeSessions = (
       const bridgeRefs = safeRefs(session.bridgeRefs)
       const checkpointRefs = safeRefs(session.checkpointRefs)
       const eventRefs = safeRefs(session.eventRefs)
+      const controlAuthorityRefs = safeRefs(session.controlAuthorityRefs)
+      const controlBlockerRefs = safeRefs(session.controlBlockerRefs)
+      const controlPolicyRefs = safeRefs(session.controlPolicyRefs)
+      const supportedControlActions = Array.from(
+        new Set(
+          (session.supportedControlActions ?? []).filter(action =>
+            SESSION_CONTROL_ACTIONS.includes(action),
+          ),
+        ),
+      )
       const omitted =
         artifactRefs.omittedUnsafeRefCount +
         bridgeRefs.omittedUnsafeRefCount +
         checkpointRefs.omittedUnsafeRefCount +
         eventRefs.omittedUnsafeRefCount +
+        controlAuthorityRefs.omittedUnsafeRefCount +
+        controlBlockerRefs.omittedUnsafeRefCount +
+        controlPolicyRefs.omittedUnsafeRefCount +
         (sessionRef === null ? 1 : 0) +
         (session.title !== undefined &&
         session.title !== null &&
@@ -297,16 +404,86 @@ const normalizeSessions = (
         items: [
           ...state.items,
           {
-            actions: controlActions(sessionRef),
+            actions: controlActions(sessionRef, {
+              authorityRefs: controlAuthorityRefs.refs,
+              blockerRefs: controlBlockerRefs.refs,
+              freshness: session.controlFreshness ?? 'fresh',
+              policyRefs: controlPolicyRefs.refs,
+              supportedActions: supportedControlActions,
+            }),
             artifactRefs: artifactRefs.refs,
             bridgeRefs: bridgeRefs.refs,
             checkpointRefs: checkpointRefs.refs,
+            controlAuthorityRefs: controlAuthorityRefs.refs,
+            controlBlockerRefs: controlBlockerRefs.refs,
+            controlPolicyRefs: controlPolicyRefs.refs,
             eventRefs: eventRefs.refs,
             observedAt: session.observedAt ?? null,
             sessionRef,
             source,
             state: session.state ?? 'unknown',
             title: title ?? sourceTitle(source),
+          },
+        ],
+        omitted: state.omitted + omitted,
+      }
+    },
+    { items: [], omitted: 0 },
+  )
+
+const normalizeControlReceipts = (
+  receipts: ReadonlyArray<ForgeSessionControlReceiptInput> | undefined,
+): Readonly<{
+  items: ReadonlyArray<ForgeSessionControlReceiptItem>
+  omitted: number
+}> =>
+  (receipts ?? []).reduce<{
+    items: ReadonlyArray<ForgeSessionControlReceiptItem>
+    omitted: number
+  }>(
+    (state, receipt) => {
+      const sessionRef = safeRef(receipt.sessionRef)
+      const requestRef = safeRef(receipt.requestRef)
+      const receiptRef = safeRef(receipt.receiptRef)
+      const actorRef = safeRef(receipt.actorRef)
+      const blockerRefs = safeRefs(receipt.blockerRefs)
+      const provenanceRefs = safeRefs(receipt.provenanceRefs)
+      const omitted =
+        blockerRefs.omittedUnsafeRefCount +
+        provenanceRefs.omittedUnsafeRefCount +
+        (sessionRef === null ? 1 : 0) +
+        (requestRef === null ? 1 : 0) +
+        (receiptRef === null ? 1 : 0) +
+        (actorRef === null ? 1 : 0) +
+        (receipt.publicSafe ? 0 : 1)
+
+      if (
+        !receipt.publicSafe ||
+        sessionRef === null ||
+        requestRef === null ||
+        receiptRef === null ||
+        actorRef === null
+      ) {
+        return {
+          items: state.items,
+          omitted: state.omitted + omitted,
+        }
+      }
+
+      return {
+        items: [
+          ...state.items,
+          {
+            action: receipt.action,
+            actorRef,
+            blockerRefs: blockerRefs.refs,
+            generatedAt: receipt.generatedAt,
+            outcome: receipt.outcome,
+            provenanceRefs: provenanceRefs.refs,
+            publicSafe: true,
+            receiptRef,
+            requestRef,
+            sessionRef,
           },
         ],
         omitted: state.omitted + omitted,
@@ -322,6 +499,7 @@ export const projectForgeSessionNavigation = (
   const codex = normalizeSessions('codex', input.codexSessions)
   const claude = normalizeSessions('claude', input.claudeSessions)
   const bridge = normalizeSessions('bridge', input.bridgeSessions)
+  const controlReceipts = normalizeControlReceipts(input.controlReceipts)
   const items = [
     ...localPylon.items,
     ...codex.items,
@@ -334,7 +512,11 @@ export const projectForgeSessionNavigation = (
       left.sessionRef.localeCompare(right.sessionRef),
   )
   const omittedUnsafeRefCount =
-    localPylon.omitted + codex.omitted + claude.omitted + bridge.omitted
+    localPylon.omitted +
+    codex.omitted +
+    claude.omitted +
+    bridge.omitted +
+    controlReceipts.omitted
   const blockerRefs = safeRefs([
     ...(items.length === 0
       ? [blockerRef(input.workOrderRef, 'no-session-summaries')]
@@ -346,6 +528,11 @@ export const projectForgeSessionNavigation = (
 
   return {
     blockerRefs,
+    controlReceipts: Array.from(controlReceipts.items).sort(
+      (left, right) =>
+        observedTime(right.generatedAt) - observedTime(left.generatedAt) ||
+        left.receiptRef.localeCompare(right.receiptRef),
+    ),
     generatedAt: input.generatedAt,
     items,
     omittedUnsafeRefCount,

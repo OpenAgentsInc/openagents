@@ -641,6 +641,58 @@ describe('autopilot work detail view', () => {
     expect(rendered).toContain('resume-control-verb-unavailable')
   })
 
+  test('renders authority-gated session controls and public-safe receipts', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('queued_or_running', null, {
+            executionCloseout: null,
+            sessionNavigation: {
+              controlReceipts: [
+                {
+                  action: 'resume',
+                  actorRef: 'actor.public.raynor',
+                  generatedAt: '2026-06-16T17:06:00.000Z',
+                  outcome: 'queued',
+                  provenanceRefs: ['bridge.public.session-control'],
+                  publicSafe: true,
+                  receiptRef: 'receipt.public.resume.1',
+                  requestRef:
+                    'forge-session-control-request:pylon.session.work_1:resume',
+                  sessionRef: 'pylon.session.work_1',
+                },
+              ],
+              localPylonSessions: [
+                {
+                  controlAuthorityRefs: ['authority.public.session-control.bridge'],
+                  controlPolicyRefs: ['policy.public.resume.allowed'],
+                  eventRefs: ['event.public.pylon.running'],
+                  observedAt: '2026-06-16T15:45:00.000Z',
+                  sessionRef: 'pylon.session.work_1',
+                  state: 'running',
+                  supportedControlActions: ['resume'],
+                  title: 'Pylon local session',
+                },
+              ],
+            },
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('/api/autopilot/session-control')
+    expect(rendered).toContain(
+      'forge-session-control-request:pylon.session.work_1:resume',
+    )
+    expect(rendered).toContain('authority.public.session-control.bridge')
+    expect(rendered).toContain('policy.public.resume.allowed')
+    expect(rendered).toContain('Session control receipts')
+    expect(rendered).toContain('receipt.public.resume.1')
+    expect(rendered).toContain('actor.public.raynor')
+    expect(rendered).toContain('bridge.public.session-control')
+    expect(rendered).toContain('fork-control-verb-unavailable')
+  })
+
   test('renders Session navigation empty state when summaries are absent', () => {
     const rendered = renderHtml(detailView(modelForWork(workForState('delivered', null))))
 

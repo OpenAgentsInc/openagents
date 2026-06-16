@@ -376,20 +376,28 @@ epics below; not all lands today — the aim is the main spine.
   request and receipt projection beside Run progress, with actor/provenance/
   generatedAt refs, applied/requested/blocked/stale states, explicit
   non-authority flags, closeout-consistency blockers, and unsafe/private plan
-  material omission tests.
+  material omission tests. **H3 landed:** #5147 adds authority-gated
+  session-control contracts to the Session navigation lane: supported
+  resume/fork/rewind/cancel actions render as POST controls only when fresh
+  public-safe authority and policy refs are present; unsupported, stale, and
+  under-authorized actions remain disabled with explicit blocker refs; public-
+  safe control receipts render without raw transcripts, local paths, prompts,
+  provider payloads, or private repo content.
 
   **Completion assessment:** this moved #5107 from planning into a real
   operator-facing foundation, but it is not the whole "~all terminal-agent
   systems" parent epic. Roughly, the first wave touches the key starting
   systems named in #5107 and gives them safe projections, tests, and readiness
   gates; that is about a quarter of the long-arc product incorporation, not a
-  final green. The new H-wave is the action/integration layer. If coding keeps
-  moving at the same sustained pace, H1-H6 can plausibly get Forge from
-  read-only evidence toward a usable P0/P1 coder surface in the next wave; one
-  to two more waves after that could put the Forge Autopilot Coder around
-  50-60% of the full #5107 product arc. The rest remains live-device/product
-  proof, deeper runtime authority, collaboration, IDE/browser/voice, release,
-  enterprise, and polish work across the 62-system map.
+  final green. The H-wave is the action/integration layer, and H1-H3 have now
+  moved diff inspection, plan mutation receipts, and session controls from
+  read-only evidence toward constrained operator actions. At this pace,
+  finishing H4-H6 would plausibly get Forge to a usable P0/P1 cockpit for
+  bounded local/cloud coding work. One to two more similarly scoped waves after
+  H6 could put the Forge Autopilot Coder around 50-60% of the full #5107 product
+  arc. The rest remains live-device/product proof, deeper runtime authority,
+  collaboration, IDE/browser/voice, release, enterprise, and polish work across
+  the 62-system map.
 
 ## Recommended next (assistant lane)
 

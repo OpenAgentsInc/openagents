@@ -56,6 +56,7 @@ import {
   projectForgeRetrievalPlan,
 } from '../autopilot-work/retrieval-plan'
 import {
+  type ForgeSessionControlReceiptItem,
   type ForgeSessionNavigationAction,
   type ForgeSessionNavigationItem,
   type ForgeSessionNavigationStatus,
@@ -1095,12 +1096,57 @@ const sessionActionBlockerRefs = (
     ),
   )
 
-const unavailableSessionAction = (
+const SESSION_CONTROL_ACTION_PATH = '/api/autopilot/session-control'
+
+const hiddenInput = (name: string, value: string): Html => {
+  const h = html<Message>()
+
+  return h.input([h.Type('hidden'), h.Name(name), h.Value(value)])
+}
+
+const sessionControlAction = (
+  workOrderRef: string,
   item: ForgeSessionNavigationItem,
   action: ForgeSessionNavigationAction,
 ): Html => {
   const h = html<Message>()
   const actionState = item.actions[action]
+
+  if (actionState.availability === 'available') {
+    return h.form(
+      [
+        Ui.className<Message>('contents'),
+        h.Method('post'),
+        h.Action(SESSION_CONTROL_ACTION_PATH),
+        h.DataAttribute('forge-session-action-form', action),
+        h.DataAttribute('forge-session-action-availability', actionState.availability),
+      ],
+      [
+        hiddenInput('workOrderRef', workOrderRef),
+        hiddenInput('sessionRef', item.sessionRef),
+        hiddenInput('action', action),
+        hiddenInput('requestRef', actionState.requestRef),
+        ...actionState.authorityRefs.map(ref =>
+          hiddenInput('controlAuthorityRef', ref),
+        ),
+        ...actionState.policyRefs.map(ref => hiddenInput('controlPolicyRef', ref)),
+        Ui.button<Message>({
+          attrs: [
+            h.Type('submit'),
+            h.DataAttribute('forge-session-action', action),
+            h.DataAttribute(
+              'forge-session-action-availability',
+              actionState.availability,
+            ),
+            h.DataAttribute('forge-session-control-request-ref', actionState.requestRef),
+          ],
+          label: sessionActionLabel(action),
+          size: 'sm',
+          variant: 'secondary',
+        }),
+      ],
+    )
+  }
 
   return Ui.button<Message>({
     attrs: [
@@ -1108,6 +1154,10 @@ const unavailableSessionAction = (
       h.Disabled(true),
       h.DataAttribute('forge-session-action', action),
       h.DataAttribute('forge-session-action-availability', actionState.availability),
+      h.DataAttribute(
+        'forge-session-action-blocker-refs',
+        actionState.blockerRefs.join(' '),
+      ),
     ],
     label: sessionActionLabel(action),
     size: 'sm',
@@ -1115,7 +1165,10 @@ const unavailableSessionAction = (
   })
 }
 
-const sessionItemPanel = (item: ForgeSessionNavigationItem): Html => {
+const sessionItemPanel = (
+  workOrderRef: string,
+  item: ForgeSessionNavigationItem,
+): Html => {
   const h = html<Message>()
 
   return h.article(
@@ -1153,13 +1206,62 @@ const sessionItemPanel = (item: ForgeSessionNavigationItem): Html => {
         refSection('Events', item.eventRefs),
         refSection('Checkpoints', item.checkpointRefs),
         refSection('Bridge refs', item.bridgeRefs),
+        refSection('Control authority', item.controlAuthorityRefs),
+        refSection('Control policy', item.controlPolicyRefs),
         refSection('Control blockers', sessionActionBlockerRefs(item)),
       ]),
       h.div([Ui.className<Message>('flex flex-wrap gap-2')], [
-        unavailableSessionAction(item, 'resume'),
-        unavailableSessionAction(item, 'fork'),
-        unavailableSessionAction(item, 'rewind'),
-        unavailableSessionAction(item, 'cancel'),
+        sessionControlAction(workOrderRef, item, 'resume'),
+        sessionControlAction(workOrderRef, item, 'fork'),
+        sessionControlAction(workOrderRef, item, 'rewind'),
+        sessionControlAction(workOrderRef, item, 'cancel'),
+      ]),
+    ],
+  )
+}
+
+const sessionControlReceiptTone = (
+  outcome: ForgeSessionControlReceiptItem['outcome'],
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  outcome === 'applied'
+    ? 'positive'
+    : outcome === 'blocked'
+      ? 'negative'
+      : outcome === 'stale'
+        ? 'warning'
+        : 'info'
+
+const sessionControlReceiptPanel = (
+  receipt: ForgeSessionControlReceiptItem,
+): Html => {
+  const h = html<Message>()
+
+  return h.article(
+    [
+      Ui.className<Message>('grid gap-3 border border-[#222] p-4'),
+      h.DataAttribute('forge-session-control-receipt', receipt.receiptRef),
+      h.DataAttribute('forge-session-control-outcome', receipt.outcome),
+      h.DataAttribute('forge-session-control-action', receipt.action),
+    ],
+    [
+      h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+        h.div([Ui.className<Message>('grid gap-1')], [
+          h.h3([Ui.className<Message>('m-0 text-sm font-medium text-white/80')], [
+            `${sessionActionLabel(receipt.action)} ${receipt.outcome}`,
+          ]),
+          h.p([Ui.className<Message>('m-0 text-xs text-white/40')], [
+            `Generated ${formatIsoDateTime(receipt.generatedAt)}`,
+          ]),
+        ]),
+        badge(receipt.outcome, sessionControlReceiptTone(receipt.outcome)),
+      ]),
+      h.div([Ui.className<Message>('grid gap-4 md:grid-cols-2')], [
+        refSection('Receipt ref', [receipt.receiptRef]),
+        refSection('Request ref', [receipt.requestRef]),
+        refSection('Session ref', [receipt.sessionRef]),
+        refSection('Actor ref', [receipt.actorRef]),
+        refSection('Provenance refs', receipt.provenanceRefs),
+        refSection('Receipt blockers', receipt.blockerRefs),
       ]),
     ],
   )
@@ -1180,6 +1282,9 @@ const sessionNavigationPanel = (work: AutopilotWorkProjection): Html => {
     ...(source?.codexSessions === undefined
       ? {}
       : { codexSessions: source.codexSessions }),
+    ...(source?.controlReceipts === undefined
+      ? {}
+      : { controlReceipts: source.controlReceipts }),
     ...(source?.localPylonSessions === undefined
       ? {}
       : { localPylonSessions: source.localPylonSessions }),
@@ -1192,7 +1297,7 @@ const sessionNavigationPanel = (work: AutopilotWorkProjection): Html => {
           'Session navigation',
         ]),
         h.p([Ui.className<Message>('m-0 max-w-3xl text-sm text-white/45')], [
-          'Read-only session summaries for Pylon, Codex, Claude, and bridge runs. Control verbs stay disabled until runtime authority exists.',
+          'Session summaries for Pylon, Codex, Claude, and bridge runs with authority-gated resume, fork, rewind, and cancel controls.',
         ]),
       ]),
       badge(
@@ -1207,7 +1312,17 @@ const sessionNavigationPanel = (work: AutopilotWorkProjection): Html => {
           ]),
         ])
       : h.div([Ui.className<Message>('grid gap-3')], [
-          ...sessionNavigation.items.map(sessionItemPanel),
+          ...sessionNavigation.items.map(item =>
+            sessionItemPanel(sessionNavigation.workOrderRef, item),
+          ),
+        ]),
+    sessionNavigation.controlReceipts.length === 0
+      ? h.span([Ui.className<Message>('hidden')], [])
+      : h.div([Ui.className<Message>('grid gap-3')], [
+          h.h3([Ui.className<Message>('m-0 text-sm font-medium text-white/75')], [
+            'Session control receipts',
+          ]),
+          ...sessionNavigation.controlReceipts.map(sessionControlReceiptPanel),
         ]),
     refSection('Session blockers', sessionNavigation.blockerRefs),
     sessionNavigation.omittedUnsafeRefCount === 0
