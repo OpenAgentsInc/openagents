@@ -288,6 +288,8 @@ import {
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
 import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
+import { makeTeamWorkspaceInviteRoutes } from './team-workspace-invite-routes'
+import { makeD1TeamWorkspaceInviteStore } from './team-workspace-invites'
 import { publicProductPromisesDocument } from './product-promises'
 import {
   handleOperatorPromiseTransitionApi,
@@ -6304,6 +6306,15 @@ const prefilledWorkspaceRoutes = makePrefilledWorkspaceRoutes<WorkerBindings>({
   requireOperator: (request, env) => requireAdminApiToken(request, env),
 })
 
+const teamWorkspaceInviteRoutes =
+  makeTeamWorkspaceInviteRoutes<WorkerBindings, VerifiedSession>({
+    appendRefreshedSessionCookies,
+    appOrigin: getAppOrigin,
+    makeStore: env => makeD1TeamWorkspaceInviteStore(openAgentsDatabase(env)),
+    requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+    requireBrowserSession,
+  })
+
 const tenantClientRoutes = makeTenantClientRoutes({
   database: (env: WorkerBindings) => openAgentsDatabase(env),
   requireBrowserSession,
@@ -7673,6 +7684,11 @@ const routeRequest = makeWorkerRouteRequest({
     omniHandoffRoutes.routeOmniHandoffRequest(request, env, ctx) ??
     nativeListsRoutes.routeNativeListsRequest(request, env, ctx) ??
     prefilledWorkspaceRoutes.routePrefilledWorkspaceRequest(
+      request,
+      env,
+      ctx,
+    ) ??
+    teamWorkspaceInviteRoutes.routeTeamWorkspaceInviteRequest(
       request,
       env,
       ctx,
