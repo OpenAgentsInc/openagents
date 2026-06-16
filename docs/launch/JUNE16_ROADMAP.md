@@ -528,6 +528,19 @@ three things tested live on that RC.** Audit of each as of 2026-06-16:
 
 ### Gate 3 — Auto-update (in prod) — ✅ VERIFIED (2026-06-16)
 
+- **Which build auto-update landed in, and what's required for it to work:** the
+  default-on OTA self-updater shipped in **`1.0.0-rc.1`** (commit `9f5319c89`,
+  #5042) and is in **every v1.0 RC signed binary since** (rc.1, rc.2, rc.7,
+  rc.8 — all on the feed). It runs **on node startup** (`maybeAutoUpdate()` in
+  `apps/pylon/src/index.ts`, before the node boots; opt out with
+  `PYLON_DISABLE_AUTOUPDATE`). **It only updates a compiled standalone binary:**
+  `resolveSelfBinaryPath()` returns null for a `bun src/index.ts` source run or
+  the npm `-g` CLI, so auto-update is a deliberate no-op there. So **for
+  auto-update to be expected to work, run the standalone signed Pylon binary (or
+  Autopilot Desktop, which bundles it) as a node** — on each (re)launch it pulls
+  the latest signed RC. Source checkouts update via `git pull`; npm via
+  `npm install -g @openagentsinc/pylon@rc`. (This is why Trigger, on a source
+  checkout, doesn't auto-update — not a build problem; his run mode.)
 - **Built + PROVEN LIVE.** Both Pylon binaries + Autopilot Desktop ship
   **default-on, ed25519-signature-verified OTA** from `updates.openagents.com`,
   fail-closed. Verified end-to-end against the LIVE feed: driving the real
