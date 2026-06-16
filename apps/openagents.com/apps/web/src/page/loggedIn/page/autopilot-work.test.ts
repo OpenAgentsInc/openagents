@@ -2,6 +2,7 @@ import type { Html } from 'foldkit/html'
 import { describe, expect, test } from 'vitest'
 
 import type {
+  AutopilotMissionBriefing,
   AutopilotWorkEvent,
   AutopilotWorkProjection,
   AutopilotWorkReviewDecision,
@@ -183,12 +184,59 @@ const workEvent = (
     ...overrides,
   }) as AutopilotWorkEvent
 
+const briefingForWork = (
+  overrides: Partial<AutopilotMissionBriefing> = {},
+): AutopilotMissionBriefing => ({
+  briefingRef: 'briefing.public.work_1',
+  costs: {},
+  decisionsWaiting: {
+    callerActionRefs: [],
+    nextActionState: 'delivered',
+    reasonRefs: [],
+    reviewAction: null,
+    reviewRecordedAt: null,
+  },
+  drilldown: [],
+  generatedAt: '2026-06-16T16:00:00.000Z',
+  kind: 'autopilot_mission_briefing',
+  promiseRef: null,
+  publicSafe: true,
+  state: 'delivered',
+  whatChanged: {
+    artifactRefs: ['artifact.public.work_1.briefing_diff'],
+    resultRefs: ['result.public.work_1.briefing_result'],
+    runnerKind: 'requester_pylon',
+    summaryRefs: ['summary.public.work_1.briefing'],
+  },
+  whatHappened: [],
+  whatIsBlocked: {
+    accessRequirementRefs: [],
+    blockerRefs: [],
+    placementRefusalReasonRefs: [],
+  },
+  whatIsRunning: {
+    pylonAssignmentIntentRefs: [],
+    running: false,
+    selectedRunnerKind: 'requester_pylon',
+    taskRefs: ['task.public.work_1'],
+  },
+  workOrderRef: 'work_1',
+  ...overrides,
+})
+
 const modelForWork = (
   work: AutopilotWorkProjection,
   events?: ReadonlyArray<AutopilotWorkEvent>,
+  briefing?: AutopilotMissionBriefing,
 ): Model =>
   ({
-    autopilotWorkBriefing: { _tag: 'AutopilotWorkBriefingIdle' },
+    autopilotWorkBriefing:
+      briefing === undefined
+        ? { _tag: 'AutopilotWorkBriefingIdle' }
+        : {
+            _tag: 'AutopilotWorkBriefingLoaded',
+            response: { briefing },
+          },
     autopilotWorkDetail: {
       _tag: 'AutopilotWorkDetailLoaded',
       response: { work },
@@ -217,10 +265,87 @@ describe('autopilot work detail view', () => {
     const rendered = renderHtml(detailView(modelForWork(workForState(state, review))))
 
     expect(rendered).toContain('Review changes')
+    expect(rendered).toContain('Diff artifact drilldown')
+    expect(rendered).toContain('Open diff artifact drilldown')
     expect(rendered).toContain('change-capture.public.work_1.pack_c')
     expect(rendered).toContain('patch-digest.public.work_1.sha256_abc123')
     expect(rendered).toContain('verification.public.work_1.bun_test')
     expect(rendered).toContain('Accepted-outcome receipt')
+  })
+
+  test('renders public-safe diff artifact drilldown refs from mission briefing', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('delivered', null),
+          undefined,
+          briefingForWork({
+            drilldown: [
+              {
+                kind: 'diff_file',
+                refs: ['diff-file.public.work_1.src_app_ts.modified'],
+              },
+              {
+                kind: 'hunk_summary',
+                refs: ['diff-hunk.public.work_1.src_app_ts.summary_1'],
+              },
+              {
+                kind: 'diff_summary',
+                refs: ['diff-summary.public.work_1.pack_c'],
+              },
+            ],
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Diff artifact drilldown')
+    expect(rendered).toContain('#diff-artifact-drilldown-work_1')
+    expect(rendered).toContain('diff-file.public.work_1.src_app_ts.modified')
+    expect(rendered).toContain('diff-hunk.public.work_1.src_app_ts.summary_1')
+    expect(rendered).toContain('diff-summary.public.work_1.pack_c')
+    expect(rendered).toContain(
+      'forge-diff-artifact-drilldown:work_1:file-1',
+    )
+    expect(rendered).toContain('Bounded artifact evidence only')
+    expect(rendered).not.toContain('diff --git')
+  })
+
+  test('omits unsafe diff artifact drilldown refs before rendering', () => {
+    const rendered = renderHtml(
+      detailView(
+        modelForWork(
+          workForState('delivered', null),
+          undefined,
+          briefingForWork({
+            drilldown: [
+              {
+                kind: 'diff_file',
+                refs: [
+                  'diff-file.public.work_1.safe',
+                  '/Users/christopher/private.ts',
+                ],
+              },
+              {
+                kind: 'hunk_summary',
+                refs: [
+                  'diff-hunk.public.work_1.safe',
+                  'raw patch @@ -1 +1',
+                ],
+              },
+            ],
+          }),
+        ),
+      ),
+    )
+
+    expect(rendered).toContain('Diff artifact drilldown')
+    expect(rendered).toContain('diff-file.public.work_1.safe')
+    expect(rendered).toContain('diff-hunk.public.work_1.safe')
+    expect(rendered).toContain('unsafe-artifact-material-omitted')
+    expect(rendered).toContain('unsafe diff artifact ref(s) were omitted')
+    expect(rendered).not.toContain('/Users/christopher')
+    expect(rendered).not.toContain('@@ -1 +1')
   })
 
   test('renders Run progress lane for delivered Runs', () => {

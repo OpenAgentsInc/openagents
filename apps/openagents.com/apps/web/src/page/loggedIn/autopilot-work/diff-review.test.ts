@@ -7,7 +7,10 @@ import type {
   AutopilotWorkReviewDecision,
   AutopilotWorkState,
 } from '../model'
-import { projectForgeDiffReview } from './diff-review'
+import {
+  projectForgeDiffArtifactDrilldown,
+  projectForgeDiffReview,
+} from './diff-review'
 
 const reviewDecision = (
   action: AutopilotWorkReviewDecision['action'],
@@ -108,7 +111,9 @@ const work = (
   workOrderRef: 'work_1',
 })
 
-const briefing = (): AutopilotMissionBriefing => ({
+const briefing = (
+  overrides: Partial<AutopilotMissionBriefing> = {},
+): AutopilotMissionBriefing => ({
   briefingRef: 'briefing.public.work_1',
   costs: {},
   decisionsWaiting: {
@@ -143,6 +148,7 @@ const briefing = (): AutopilotMissionBriefing => ({
     taskRefs: ['task.public.work_1'],
   },
   workOrderRef: 'work_1',
+  ...overrides,
 })
 
 describe('Forge diff review projection', () => {
@@ -258,5 +264,171 @@ describe('Forge diff review projection', () => {
     )
     expect(renderedPayload).not.toContain('diff --git')
     expect(renderedPayload).not.toContain('/Users/christopherdavid')
+  })
+
+  test('projects a public-safe diff artifact drilldown from bounded evidence refs', () => {
+    const view = projectForgeDiffArtifactDrilldown(
+      work('delivered', closeout()),
+      briefing({
+        drilldown: [
+          {
+            kind: 'diff_file',
+            refs: [
+              'diff-file.public.work_1.src_app_ts.modified',
+              'diff-file.public.work_1.src_test_ts.added',
+            ],
+          },
+          {
+            kind: 'hunk_summary',
+            refs: [
+              'diff-hunk.public.work_1.src_app_ts.summary_1',
+              'diff-hunk.public.work_1.src_test_ts.summary_1',
+            ],
+          },
+          {
+            kind: 'diff_summary',
+            refs: ['diff-summary.public.work_1.pack_c'],
+          },
+        ],
+      }),
+    )
+
+    expect(view).toMatchObject({
+      authority: {
+        acceptedOutcomeAuthority: false,
+        deployAuthority: false,
+        rawPatchAuthority: false,
+        settlementAuthority: false,
+        writebackAuthority: false,
+      },
+      patchDigestRef: 'patch-digest:sha256:work_1',
+      publicSafe: true,
+      status: 'ready',
+      workOrderRef: 'work_1',
+    })
+    expect(view.fileGroups).toEqual([
+      {
+        artifactRefs: [
+          'artifact.public.work_1.diff_summary',
+          'artifact.public.work_1.briefing_diff',
+        ],
+        fileRefs: ['diff-file.public.work_1.src_app_ts.modified'],
+        groupRef: 'forge-diff-artifact-drilldown:work_1:file-1',
+        hunkSummaryRefs: [
+          'diff-hunk.public.work_1.src_app_ts.summary_1',
+          'diff-hunk.public.work_1.src_test_ts.summary_1',
+        ],
+        summaryRefs: [
+          'summary.public.work_1.customer_safe',
+          'summary.public.work_1.briefing',
+          'diff-summary.public.work_1.pack_c',
+        ],
+      },
+      {
+        artifactRefs: [
+          'artifact.public.work_1.diff_summary',
+          'artifact.public.work_1.briefing_diff',
+        ],
+        fileRefs: ['diff-file.public.work_1.src_test_ts.added'],
+        groupRef: 'forge-diff-artifact-drilldown:work_1:file-2',
+        hunkSummaryRefs: [
+          'diff-hunk.public.work_1.src_app_ts.summary_1',
+          'diff-hunk.public.work_1.src_test_ts.summary_1',
+        ],
+        summaryRefs: [
+          'summary.public.work_1.customer_safe',
+          'summary.public.work_1.briefing',
+          'diff-summary.public.work_1.pack_c',
+        ],
+      },
+    ])
+    expect(view.blockerRefs).toEqual([])
+  })
+
+  test('blocks the diff artifact drilldown when artifact evidence is missing', () => {
+    const view = projectForgeDiffArtifactDrilldown(
+      work(
+        'delivered',
+        closeout({
+          artifactRefs: [],
+        }),
+      ),
+      briefing({
+        whatChanged: {
+          artifactRefs: [],
+          resultRefs: ['result.public.work_1.briefing_result'],
+          runnerKind: 'requester_pylon',
+          summaryRefs: ['summary.public.work_1.briefing'],
+        },
+      }),
+    )
+
+    expect(view.status).toBe('blocked')
+    expect(view.fileGroups).toEqual([])
+    expect(view.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'forge-diff-artifact-drilldown-blocker:work_1:missing-artifact-ref',
+      ]),
+    )
+  })
+
+  test('keeps stale diff artifact evidence distinct from ready evidence', () => {
+    const view = projectForgeDiffArtifactDrilldown(
+      work(
+        'delivered',
+        closeout({
+          changeCaptureStatus: 'stale',
+          deliveryReadinessFreshness: 'stale',
+          worktreeIdentityStatus: 'stale',
+        }),
+      ),
+      null,
+    )
+
+    expect(view.status).toBe('stale')
+    expect(view.blockerRefs).toEqual([
+      'forge-diff-review-blocker:work_1:stale-change-capture',
+      'forge-diff-review-blocker:work_1:stale-worktree-identity',
+      'forge-diff-review-blocker:work_1:stale-delivery-readiness',
+    ])
+  })
+
+  test('omits unsafe private drilldown refs before projection', () => {
+    const view = projectForgeDiffArtifactDrilldown(
+      work('delivered', closeout()),
+      briefing({
+        drilldown: [
+          {
+            kind: 'diff_file',
+            refs: [
+              'diff-file.public.work_1.safe',
+              '/Users/christopher/private.ts',
+              'diff --git a/private.ts b/private.ts',
+            ],
+          },
+          {
+            kind: 'hunk_summary',
+            refs: [
+              'diff-hunk.public.work_1.safe',
+              'raw patch @@ -1 +1',
+            ],
+          },
+        ],
+      }),
+    )
+    const payload = JSON.stringify(view)
+
+    expect(view.status).toBe('blocked')
+    expect(view.omittedUnsafeRefCount).toBe(3)
+    expect(view.fileGroups[0]?.fileRefs).toEqual([
+      'diff-file.public.work_1.safe',
+    ])
+    expect(view.hunkSummaryRefs).toEqual(['diff-hunk.public.work_1.safe'])
+    expect(view.blockerRefs).toContain(
+      'forge-diff-artifact-drilldown-blocker:work_1:unsafe-artifact-material-omitted',
+    )
+    expect(payload).not.toContain('/Users/christopher')
+    expect(payload).not.toContain('diff --git')
+    expect(payload).not.toContain('raw patch')
   })
 })

@@ -368,7 +368,11 @@ epics below; not all lands today — the aim is the main spine.
   **Second wave opened one-by-one:** #5145 public-safe diff artifact drilldown,
   #5146 plan/todo mutation receipts, #5147 session control verbs, #5148
   repository-memory persistence, #5149 bounded live retrieval adapters, and
-  #5150 guarded extensibility execution-request receipts.
+  #5150 guarded extensibility execution-request receipts. **H1 landed:** #5145
+  adds the public-safe diff artifact drilldown in `/autopilot`, composed from
+  bounded Pack C/artifact-review refs with file/hunk summary refs, digest/
+  provenance/caveat/blocker refs, explicit non-authority flags, and raw/private
+  material omission tests.
 
   **Completion assessment:** this moved #5107 from planning into a real
   operator-facing foundation, but it is not the whole "~all terminal-agent

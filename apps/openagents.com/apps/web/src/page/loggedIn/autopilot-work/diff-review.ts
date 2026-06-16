@@ -35,6 +35,42 @@ export type ForgeDiffReviewView = Readonly<{
   workOrderRef: string
 }>
 
+export type ForgeDiffArtifactDrilldownStatus = 'blocked' | 'ready' | 'stale'
+
+export type ForgeDiffArtifactDrilldownFileGroup = Readonly<{
+  artifactRefs: ReadonlyArray<string>
+  fileRefs: ReadonlyArray<string>
+  groupRef: string
+  hunkSummaryRefs: ReadonlyArray<string>
+  summaryRefs: ReadonlyArray<string>
+}>
+
+export type ForgeDiffArtifactDrilldownAuthority = Readonly<{
+  acceptedOutcomeAuthority: false
+  deployAuthority: false
+  rawPatchAuthority: false
+  settlementAuthority: false
+  writebackAuthority: false
+}>
+
+export type ForgeDiffArtifactDrilldownView = Readonly<{
+  artifactRefs: ReadonlyArray<string>
+  authority: ForgeDiffArtifactDrilldownAuthority
+  blockerRefs: ReadonlyArray<string>
+  caveatRefs: ReadonlyArray<string>
+  changeCaptureRefs: ReadonlyArray<string>
+  deliveryReadinessRefs: ReadonlyArray<string>
+  fileGroups: ReadonlyArray<ForgeDiffArtifactDrilldownFileGroup>
+  generatedAt: string
+  hunkSummaryRefs: ReadonlyArray<string>
+  omittedUnsafeRefCount: number
+  patchDigestRef: string | null
+  publicSafe: true
+  status: ForgeDiffArtifactDrilldownStatus
+  verificationRefs: ReadonlyArray<string>
+  workOrderRef: string
+}>
+
 type RefBundle = Readonly<{
   omittedUnsafeRefCount: number
   refs: ReadonlyArray<string>
@@ -115,6 +151,9 @@ const nonNegativeInteger = (value: number | undefined): number | null =>
 
 const missingBlocker = (workOrderRef: string, suffix: string): string =>
   `forge-diff-review-blocker:${workOrderRef}:${suffix}`
+
+const drilldownBlocker = (workOrderRef: string, suffix: string): string =>
+  `forge-diff-artifact-drilldown-blocker:${workOrderRef}:${suffix}`
 
 const changeCaptureBlockers = (
   workOrderRef: string,
@@ -287,6 +326,149 @@ export const projectForgeDiffReview = (
     summaryRefs: summaryRefs.refs,
     verificationRefs: verificationRefs.refs,
     verificationState,
+    workOrderRef: work.workOrderRef,
+  }
+}
+
+const DIFF_FILE_GROUP_KINDS: ReadonlySet<string> = new Set([
+  'changed_file',
+  'changed_files',
+  'diff_file',
+  'diff_files',
+  'file_group',
+])
+const DIFF_HUNK_GROUP_KINDS: ReadonlySet<string> = new Set([
+  'diff_hunk',
+  'diff_hunks',
+  'hunk_summary',
+  'hunk_summaries',
+])
+const DIFF_SUMMARY_GROUP_KINDS: ReadonlySet<string> = new Set([
+  'diff_artifact',
+  'diff_summary',
+  'review_summary',
+])
+
+const briefingDrilldownRefs = (
+  briefing: AutopilotMissionBriefing | null,
+  kinds: ReadonlySet<string>,
+): RefBundle =>
+  safeRefs(
+    ...(briefing?.drilldown ?? [])
+      .filter(group => kinds.has(group.kind))
+      .map(group => group.refs),
+  )
+
+const fallbackFileGroup = (
+  workOrderRef: string,
+  review: ForgeDiffReviewView,
+  summaryRefs: ReadonlyArray<string>,
+  hunkSummaryRefs: ReadonlyArray<string>,
+): ForgeDiffArtifactDrilldownFileGroup =>
+  ({
+    artifactRefs: review.artifactRefs,
+    fileRefs: [],
+    groupRef: `forge-diff-artifact-drilldown:${workOrderRef}:artifact-summary`,
+    hunkSummaryRefs,
+    summaryRefs,
+  })
+
+const fileGroups = (
+  workOrderRef: string,
+  review: ForgeDiffReviewView,
+  fileRefs: ReadonlyArray<string>,
+  summaryRefs: ReadonlyArray<string>,
+  hunkSummaryRefs: ReadonlyArray<string>,
+): ReadonlyArray<ForgeDiffArtifactDrilldownFileGroup> => {
+  if (fileRefs.length === 0) {
+    return review.artifactRefs.length === 0
+      ? []
+      : [fallbackFileGroup(workOrderRef, review, summaryRefs, hunkSummaryRefs)]
+  }
+
+  return fileRefs.map((fileRef, index) => ({
+    artifactRefs: review.artifactRefs,
+    fileRefs: [fileRef],
+    groupRef: `forge-diff-artifact-drilldown:${workOrderRef}:file-${index + 1}`,
+    hunkSummaryRefs,
+    summaryRefs,
+  }))
+}
+
+const drilldownStatus = (
+  blockerRefs: ReadonlyArray<string>,
+): ForgeDiffArtifactDrilldownStatus => {
+  if (blockerRefs.length === 0) {
+    return 'ready'
+  }
+
+  return blockerRefs.every(ref => ref.includes(':stale-'))
+    ? 'stale'
+    : 'blocked'
+}
+
+export const projectForgeDiffArtifactDrilldown = (
+  work: AutopilotWorkProjection,
+  briefing: AutopilotMissionBriefing | null,
+): ForgeDiffArtifactDrilldownView => {
+  const review = projectForgeDiffReview(work, briefing)
+  const fileRefs = briefingDrilldownRefs(briefing, DIFF_FILE_GROUP_KINDS)
+  const hunkSummaryRefs = briefingDrilldownRefs(briefing, DIFF_HUNK_GROUP_KINDS)
+  const drilldownSummaryRefs = briefingDrilldownRefs(
+    briefing,
+    DIFF_SUMMARY_GROUP_KINDS,
+  )
+  const summaryRefs = safeRefs(review.summaryRefs, drilldownSummaryRefs.refs)
+  const omittedUnsafeRefCount =
+    review.omittedUnsafeRefCount +
+    fileRefs.omittedUnsafeRefCount +
+    hunkSummaryRefs.omittedUnsafeRefCount +
+    drilldownSummaryRefs.omittedUnsafeRefCount +
+    summaryRefs.omittedUnsafeRefCount
+  const derivedBlockers = [
+    ...(review.artifactRefs.length === 0
+      ? [drilldownBlocker(work.workOrderRef, 'missing-artifact-ref')]
+      : []),
+    ...(review.patchDigestRef === null
+      ? [drilldownBlocker(work.workOrderRef, 'missing-patch-digest')]
+      : []),
+    ...(review.verificationRefs.length === 0
+      ? [drilldownBlocker(work.workOrderRef, 'missing-verification-ref')]
+      : []),
+    ...(omittedUnsafeRefCount === 0
+      ? []
+      : [drilldownBlocker(work.workOrderRef, 'unsafe-artifact-material-omitted')]),
+  ]
+  const blockerRefs = safeRefs(review.blockerRefs, derivedBlockers)
+  const groups = fileGroups(
+    work.workOrderRef,
+    review,
+    fileRefs.refs,
+    summaryRefs.refs,
+    hunkSummaryRefs.refs,
+  )
+
+  return {
+    artifactRefs: review.artifactRefs,
+    authority: {
+      acceptedOutcomeAuthority: false,
+      deployAuthority: false,
+      rawPatchAuthority: false,
+      settlementAuthority: false,
+      writebackAuthority: false,
+    },
+    blockerRefs: blockerRefs.refs,
+    caveatRefs: review.reviewCaveatRefs,
+    changeCaptureRefs: review.changeCaptureRefs,
+    deliveryReadinessRefs: review.deliveryReadinessRefs,
+    fileGroups: groups,
+    generatedAt: work.generatedAt,
+    hunkSummaryRefs: hunkSummaryRefs.refs,
+    omittedUnsafeRefCount,
+    patchDigestRef: review.patchDigestRef,
+    publicSafe: true,
+    status: drilldownStatus(blockerRefs.refs),
+    verificationRefs: review.verificationRefs,
     workOrderRef: work.workOrderRef,
   }
 }

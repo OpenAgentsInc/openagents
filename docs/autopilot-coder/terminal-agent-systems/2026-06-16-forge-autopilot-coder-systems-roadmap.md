@@ -369,6 +369,13 @@ This wave should turn the first-wave evidence surfaces into constrained
 operator workflows. It still does not close the #5107 parent epic, because the
 full parent covers the wider 62-system terminal-agent map.
 
+Implementation status, 2026-06-16: #5145 adds the public-safe diff artifact
+drilldown for the existing Forge Review changes lane. The drilldown is composed
+from bounded Pack C/artifact-review refs, renders artifact/file/hunk summary
+refs, digest/provenance/caveat/blocker refs, and explicit non-authority flags,
+and keeps raw patches, private repo content, local paths, shell output, prompts,
+and provider payloads out of the Run projection.
+
 ## Recommended Sequencing
 
 1. G1.1 diff-review lane, because Pack C already provides safe refs and the
