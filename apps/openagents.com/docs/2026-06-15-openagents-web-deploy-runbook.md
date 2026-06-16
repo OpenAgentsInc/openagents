@@ -28,6 +28,36 @@ The `--assets ../../apps/web/dist` argument is mandatory. A deploy can otherwise
 publish a Worker version whose `ASSETS` binding returns 404 for `/` and the
 hashed web bundle, even though Wrangler reports a successful Worker upload.
 
+## Keep shared github-dependency pins consistent across workspaces
+
+`typecheck:web` (and therefore the deploy gate) can break for a reason that has
+nothing to do with the change you are shipping: a **shared github dependency
+pinned to different commits in two workspaces**. Bun installs one hoisted copy
+for the monorepo, so if two packages pin the same dep to different commits, the
+web import can resolve to the *other* workspace's older copy and fail to find
+symbols that exist only in the newer pin.
+
+This bit us with `@openagentsinc/three-effect` on 2026-06-16: `apps/web` pinned
+`#f1794af` (which exports `TrainingRunBeam/Burst/EntityDefinition`) while
+`apps/autopilot-desktop` still pinned the older `#0cce6ccd`, so `typecheck:web`
+failed with "`@openagentsinc/three-effect` has no exported member …" even though
+the web pin was correct.
+
+Rules:
+
+- When you bump a **shared** github dependency (notably
+  `@openagentsinc/three-effect`, `foldkit`, `nostr-effect`), bump it to the **same
+  commit in every workspace that pins it** — today that is `apps/web` **and**
+  `apps/autopilot-desktop`. Grep first:
+  `grep -rn "three-effect" --include=package.json .` (exclude `node_modules`).
+- Run `bun install` after changing any pin and confirm `bun.lock` resolves a
+  **single** commit for that dep (`grep -nE "three-effect.*github" bun.lock` →
+  one hash), then re-run `bun run typecheck:web`.
+- If `typecheck:web` fails on missing exports from a `@openagentsinc/*` github
+  dep, suspect a divergent pin / stale install **before** suspecting the web
+  code. The fix is usually aligning the pins + `bun install`, not editing the
+  importing file.
+
 ## JS / Web-Asset-Only Changes
 
 When the change is limited to browser JavaScript, CSS, public docs, or other web
