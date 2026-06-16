@@ -358,6 +358,12 @@ const schemaComponents = (): JsonSchema => ({
   TrainingRunEnvelope: objectSummary(
     'Public-safe training-run projection with trainingRunRef, promiseRef, state, sourceRefs, receiptRefs, display timestamps, and optional summary metrics. Public summary metrics include provenance labels for windows, contributors, verification, receipt refs, provider-confirmed settled payout sats, and the CS336 A1 real-gradient status/loss/leaderboard projection. Pending, offered, claimed, and wallet-side records are not counted as paid. The real-gradient status remains blocked unless Psionic evidence includes two real contributor devices, Freivalds commitments, merge/eval refs, verified closeouts, and loss under budget. It grants no assignment, payout, model-publication, or spend authority.',
   ),
+  PublicTrainingRunEnvelope: objectSummary(
+    'Public-safe live-at-read training-run projection for public pages and spatial visualizations. Carries generatedAt, a top-level staleness contract with maxStalenessSeconds 0, the public run projection, sourceRefs, and the provenance-labeled summary metrics for windows, verified work, device counts, validation loss, receipt refs, and provider-confirmed settled payout sats. Pending, offered, claimed, wallet-side records, private logs, wallet material, and admin-only details are excluded. Read-only; grants no assignment, payout, model-publication, spend, DNS, or deployment authority.',
+  ),
+  PublicTassadarRunSummaryEnvelope: objectSummary(
+    'Public-safe live-at-read compatibility summary for the live Tassadar executor run. Carries schemaVersion, generatedAt, the public-projection staleness contract, runRef, runState, empty-state honesty, and the same provenance-labeled TrainingRunPublicSummary metrics consumed by the spatial snapshot adapter. Defaults to run.tassadar.executor.20260615 and accepts a run query override. Pending, offered, claimed, wallet-side records, private logs, wallet material, and admin-only controls are excluded. Read-only; grants no assignment, payout, model-publication, spend, DNS, or deployment authority.',
+  ),
   TrainingRunListEnvelope: objectSummary(
     'Public-safe training-run index with active/recent run projections and provenance-labeled summaries, including A1 real-gradient loss/leaderboard status when evidence exists, the providerConfirmedSettledPayoutSats settlement metric, and the Tassadar verified-trace corpus block (acceptedTraceCount of accepted Verified exact_trace_replay closed ticks with public-safe trace/verdict refs and a live-at-read staleness contract, rebuilding on verification-challenge transitions). Empty runs stay visible as idle instead of being hidden.',
   ),
@@ -3416,6 +3422,42 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Training run projection.',
           '#/components/schemas/TrainingRunEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/tassadar-run-summary': {
+    get: operation({
+      operationId: 'getPublicTassadarRunSummary',
+      summary: 'Read public Tassadar run summary',
+      description:
+        'Reads a public-safe, live-at-read summary envelope for the live Tassadar executor run, defaulting to `run.tassadar.executor.20260615` with an optional `run` query override. This is the compatibility feed consumed by the #5113/#5118 spatial snapshot path. No admin token is required; private datasets, logs, wallet material, payout detail, and admin-only controls are excluded.',
+      tags: ['Training'],
+      security: publicRead,
+      parameters: [queryParam('run', 'Training run ref override.')],
+      responses: {
+        '200': okJson(
+          'Public Tassadar run summary.',
+          '#/components/schemas/PublicTassadarRunSummaryEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/training/runs/{trainingRunRef}': {
+    get: operation({
+      operationId: 'getPublicTrainingRun',
+      summary: 'Read public training run',
+      description:
+        'Reads the same Worker-authoritative public-safe training-run projection under an explicit /api/public alias for public pages and spatial visualizations, including generatedAt and a live_at_read staleness contract. Intended for the live Tassadar run projection (`run.tassadar.executor.20260615`) and other public run views. No admin token is required; private datasets, logs, wallet material, payout detail, and admin-only controls are excluded.',
+      tags: ['Training'],
+      security: publicRead,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      responses: {
+        '200': okJson(
+          'Public training run projection.',
+          '#/components/schemas/PublicTrainingRunEnvelope',
         ),
         ...errorResponses(),
       },

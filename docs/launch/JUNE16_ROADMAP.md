@@ -70,6 +70,14 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   externally-settled trace receipt. Now needs only a real 2nd device + an
   independent contributor — recruited via the Tassadar Release-Candidates posts
   (`/forum/t/594a1aea-…`). Flips the headline green (below).
+- **Living-run public projection (#5114):** the live Tassadar run now has an
+  explicit public, read-only feed at
+  `GET /api/public/training/runs/run.tassadar.executor.20260615`, plus the
+  compatibility summary feed `GET /api/public/tassadar-run-summary` used by the
+  #5113/#5118 spatial snapshot path. Both are backed by the existing
+  Worker-authoritative training-run summary builder and return `generatedAt`, a
+  top-level `live_at_read` staleness contract, public run projection/summary
+  data, and provenance-labeled metrics for the spatial `oa-training-run` view.
 
 ## C. Owner-gated launch green-flips (receipt-first — only the owner/live event can)
 

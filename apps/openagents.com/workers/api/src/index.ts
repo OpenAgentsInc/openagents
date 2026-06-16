@@ -299,6 +299,7 @@ import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
+import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
 import { makeD1PylonApiStore } from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
 import {
@@ -411,7 +412,6 @@ import {
 } from './token-usage'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
 import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
-import { handlePublicTassadarRunSummary } from './public-tassadar-run-summary-routes'
 import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
 import {
   buildTrainingVerificationChallengeRecord,
@@ -6653,7 +6653,10 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   },
   {
     path: '/api/public/tassadar-run-summary',
-    handler: (request, env) => handlePublicTassadarRunSummary(request, env),
+    handler: (request, env) =>
+      Effect.promise(() =>
+        buildPublicTassadarRunSummaryEnvelopeForRequest(request, env),
+      ).pipe(Effect.map(envelope => noStoreJsonResponse(envelope))),
   },
   {
     path: '/api/public/product-promises',

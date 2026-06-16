@@ -129,6 +129,13 @@ type TrainingRunDetailJson = Readonly<{
   summary: TrainingRunPublicSummary
 }>
 
+type PublicTrainingRunDetailJson = TrainingRunDetailJson &
+  Readonly<{
+    generatedAt: string
+    sourceRefs: ReadonlyArray<string>
+    staleness: TrainingRunProjection['staleness']
+  }>
+
 type TrainingRunLeaderboardJson = Readonly<{
   leaderboardRows: ReadonlyArray<
     TrainingRunPublicSummary['realGradient']['leaderboardRows'][number]
@@ -601,6 +608,68 @@ describe('training run window routes', () => {
         settledPayoutSats: 0,
       }),
     ])
+  })
+
+  it('serves the public Tassadar run summary alias without admin auth and with live-at-read staleness (#5114)', async () => {
+    const store = makeMemoryStore()
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => 'public-tassadar',
+      makeStore: () => store,
+      nowIso: () => '2026-06-16T13:30:00.000Z',
+      requireAdminApiToken: async request =>
+        request.headers.get('authorization') === 'Bearer admin-token-test',
+    })
+
+    const planned = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          '/api/training/runs',
+          {
+            promiseRef: 'training.monday_decentralized_training_launch.v1',
+            sourceRefs: ['issue.github.openagents.5114'],
+            trainingRunRef: 'run.tassadar.executor.20260615',
+          },
+          { headers: { authorization: 'Bearer admin-token-test' } },
+        ),
+        {},
+      ),
+    )
+    expect(planned.status).toBe(200)
+
+    const publicRead = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request(
+          'https://openagents.test/api/public/training/runs/run.tassadar.executor.20260615',
+        ),
+        {},
+      ),
+    )
+    const body = (await publicRead.json()) as PublicTrainingRunDetailJson
+
+    expect(publicRead.status).toBe(200)
+    expect(body.generatedAt).toBe('2026-06-16T13:30:00.000Z')
+    expect(body.run.trainingRunRef).toBe('run.tassadar.executor.20260615')
+    expect(body.summary.run.trainingRunRef).toBe(
+      'run.tassadar.executor.20260615',
+    )
+    expect(body.summary.emptyState.idle).toBe(true)
+    expect(body.summary.metrics.verifiedWorkCount.value).toBe(0)
+    expect(body.summary.metrics.providerConfirmedSettledPayoutSats.value).toBe(
+      0,
+    )
+    expect(body.staleness).toMatchObject({
+      composition: 'live_at_read',
+      maxStalenessSeconds: 0,
+    })
+    expect(body.staleness.rebuildsOn).toContain(
+      'training_run_state_transition_recorded',
+    )
+    expect(body.sourceRefs).toContain(
+      'route:/api/public/training/runs/run.tassadar.executor.20260615',
+    )
+    expect(body.summary.sourceRefs).toContain(
+      'route:/api/public/training/runs/run.tassadar.executor.20260615',
+    )
   })
 
   it('transitions a run planned -> active through the run state-transition route (#5006)', async () => {

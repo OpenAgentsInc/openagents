@@ -8,8 +8,7 @@
 // (metrics carry provenance, refs are redacted, no private material). RECEIPT-FIRST:
 // a run that is not found or has no data returns an honest idle envelope (zeroed,
 // `planned`), never a faked value.
-
-import { noStoreJsonResponse } from './http/responses'
+import { liveAtReadStaleness } from './public-projection-staleness'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
@@ -21,6 +20,12 @@ import {
 export const DEFAULT_TASSADAR_RUN_REF = 'run.tassadar.executor.20260615'
 export const PublicTassadarRunSummarySchemaVersion =
   'openagents.public_tassadar_run_summary.v1'
+const publicTassadarRunSummaryStaleness = () =>
+  liveAtReadStaleness([
+    'training_run_state_transition_recorded',
+    'training_window_state_transition_recorded',
+    'training_run_evidence_attached',
+  ])
 
 const idleEnvelope = (runRef: string, generatedAt: string) =>
   ({
@@ -28,6 +33,7 @@ const idleEnvelope = (runRef: string, generatedAt: string) =>
     runRef,
     runState: 'planned',
     generatedAt,
+    staleness: publicTassadarRunSummaryStaleness(),
     emptyState: { idle: true, reason: 'run not found or no data yet' },
     metrics: {},
     realGradient: null,
@@ -64,26 +70,29 @@ export const buildPublicTassadarRunSummaryEnvelope = async (
     runState: run.state,
     generatedAt,
     ...summary,
+    staleness: summary.run.staleness,
   }
 }
 
-export const handlePublicTassadarRunSummary = async (
+export const buildPublicTassadarRunSummaryEnvelopeForRequest = async (
   request: Request,
   env: Parameters<typeof openAgentsDatabase>[0],
   deps: {
-    readonly makeStore?: (env: Parameters<typeof openAgentsDatabase>[0]) => TrainingAuthorityStore
+    readonly makeStore?: (
+      env: Parameters<typeof openAgentsDatabase>[0],
+    ) => TrainingAuthorityStore
     readonly now?: () => string
   } = {},
-): Promise<Response> => {
+): Promise<Record<string, unknown>> => {
   const makeStore =
     deps.makeStore ?? (e => makeD1TrainingAuthorityStore(openAgentsDatabase(e)))
   const generatedAt = (deps.now ?? currentIsoTimestamp)()
   const runRef =
-    new URL(request.url).searchParams.get('run')?.trim() || DEFAULT_TASSADAR_RUN_REF
-  const envelope = await buildPublicTassadarRunSummaryEnvelope(
+    new URL(request.url).searchParams.get('run')?.trim() ||
+    DEFAULT_TASSADAR_RUN_REF
+  return buildPublicTassadarRunSummaryEnvelope(
     makeStore(env),
     runRef,
     generatedAt,
   )
-  return noStoreJsonResponse(envelope)
 }

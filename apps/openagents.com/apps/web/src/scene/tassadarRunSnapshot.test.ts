@@ -6,7 +6,11 @@ import {
   trainingRunSnapshotFromPublicSummary,
 } from './tassadarRunSnapshot'
 
-const m = (value: number) => ({ value, provenanceLabel: 'observed', sourceRefs: [] })
+const m = (value: number) => ({
+  value,
+  provenanceLabel: 'observed',
+  sourceRefs: [],
+})
 
 const populated: TassadarRunPublicSummary = {
   runRef: 'run.tassadar.executor.20260615',
@@ -26,8 +30,15 @@ const populated: TassadarRunPublicSummary = {
     providerConfirmedSettledPayoutSats: m(2100),
   },
   realGradient: {
-    deviceRequirement: { observedDistinctContributorDevices: 4, requiredDistinctContributorDevices: 4 },
-    lossUnderBudget: { finalValidationLoss: 2.74, maxValidationLoss: 3.1, satisfied: true },
+    deviceRequirement: {
+      observedDistinctContributorDevices: 4,
+      requiredDistinctContributorDevices: 4,
+    },
+    lossUnderBudget: {
+      finalValidationLoss: 2.74,
+      maxValidationLoss: 3.1,
+      satisfied: true,
+    },
     closeoutRequirement: {
       satisfied: true,
       freivaldsCommitmentRefs: ['a', 'b', 'c', 'd', 'e'],
@@ -90,9 +101,8 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     const s = trainingRunSnapshotFromPublicSummary({
       metrics: {
         verifiedWorkCount: { value: Number.NaN },
-        settledPayoutSats: undefined,
-      } as unknown as TassadarRunPublicSummary['metrics'],
-      realGradient: { lossUnderBudget: { finalValidationLoss: undefined } },
+      },
+      realGradient: { lossUnderBudget: {} },
     })
     expect(s.verifiedWorkCount).toBe(0) // NaN → 0
     expect(s.settledPayoutSats).toBe(0)

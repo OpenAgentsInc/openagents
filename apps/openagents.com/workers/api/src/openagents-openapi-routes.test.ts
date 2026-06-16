@@ -126,6 +126,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(body, '/api/training/leaderboards/{lane}', 'get').operationId,
     ).toBe('getTrainingLeaderboardLane')
+    expect(
+      operationAt(body, '/api/public/training/runs/{trainingRunRef}', 'get')
+        .operationId,
+    ).toBe('getPublicTrainingRun')
+    expect(
+      operationAt(body, '/api/public/tassadar-run-summary', 'get').operationId,
+    ).toBe('getPublicTassadarRunSummary')
     expect(operationAt(body, '/api/training/evals/a5', 'get').operationId).toBe(
       'readTrainingA5EvalDashboard',
     )
@@ -463,6 +470,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(operationAt(body, '/api/public/proof/otec', 'get').security).toEqual(
       [],
     )
+    expect(
+      operationAt(body, '/api/public/training/runs/{trainingRunRef}', 'get')
+        .security,
+    ).toEqual([])
+    expect(
+      operationAt(body, '/api/public/tassadar-run-summary', 'get').security,
+    ).toEqual([])
     expect(
       operationAt(body, '/api/customer-orders/active', 'get').security,
     ).toEqual([{ browserSession: [] }, { agentBearer: [] }])

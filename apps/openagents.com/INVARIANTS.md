@@ -1238,6 +1238,18 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     inserted business signup row — compliant (`generatedAt`, contract,
     public-safe request id/status only; no email, phone, website, or freeform
     request text echoed).
+  - `GET /api/public/training/runs/{trainingRunRef}` — live at read over the
+    Worker-authoritative training run, window, lease, verification challenge,
+    and provider-confirmed settlement receipt rows — compliant (`generatedAt`,
+    top-level contract, public-safe run projection, source refs, and
+    provenance-labeled summary metrics only; no admin token, private logs,
+    wallet material, pending-as-paid payout, or write authority).
+  - `GET /api/public/tassadar-run-summary` — live at read compatibility feed
+    for the live Tassadar spatial view over the same Worker-authoritative
+    training run/window/lease/challenge rows — compliant (`generatedAt`,
+    top-level contract, public-safe summary metrics, and honest idle envelope
+    only; no admin token, private logs, wallet material, pending-as-paid
+    payout, or write authority).
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no

@@ -7,21 +7,52 @@ import {
   unauthorized,
 } from './http/responses'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
+import { parseJsonRecord } from './json-boundary'
+import type { NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 import {
-  TrainingLeaderboardLanes,
-  buildTrainingLeaderboardsProjection,
-  settledSatsFromPaymentAuthorityReceipt,
-} from './training-leaderboards'
+  TassadarExecutorTraceCloseoutEvidenceSchema,
+  tassadarExecutorTraceVerificationChallengeRequest,
+} from './tassadar-executor-trace-homework'
+import {
+  TrainingRunAdmissionRequest,
+  decideTassadarRunAdmission,
+} from './tassadar-run-admission'
+import {
+  TassadarRunSettlementRequest,
+  TassadarRunSettlementUnsafe,
+  buildTassadarRunSettlement,
+} from './tassadar-run-settlement'
+import {
+  Cs336A5AlignmentEvidenceRequest,
+  admitCs336A5AlignmentEvidence,
+} from './training-alignment-evals'
+import {
+  Cs336A4DataRefineryEvidenceRequest,
+  Cs336A4RequiredVerifiedStageCount,
+  admitCs336A4DataRefineryEvidence,
+  publicDataRefineryProjection,
+} from './training-data-refinery'
 import {
   Cs336A2DeviceBenchmarkEvidenceRequest,
   admitCs336A2DeviceBenchmarkEvidence,
   publicDeviceCapabilityProjection,
 } from './training-device-capability'
 import {
+  TrainingLeaderboardLanes,
+  buildTrainingLeaderboardsProjection,
+  settledSatsFromPaymentAuthorityReceipt,
+} from './training-leaderboards'
+import {
+  Cs336A1RealGradientEvidenceRequest,
+  admitCs336A1RealGradientEvidence,
+} from './training-real-gradient-evidence'
+import {
   type TrainingAuthorityStore,
   TrainingAuthorityStoreError,
   TrainingRunPlanRequest,
+  type TrainingRunProjection,
+  type TrainingRunPublicSummary,
   type TrainingRunState,
   TrainingRunTransitionRequest,
   TrainingWindowLeaseClaimRequest,
@@ -40,49 +71,20 @@ import {
   transitionTrainingRunRecord,
   transitionTrainingWindowRecord,
 } from './training-run-window-authority'
-import type { NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
-import {
-  TassadarRunSettlementRequest,
-  TassadarRunSettlementUnsafe,
-  buildTassadarRunSettlement,
-} from './tassadar-run-settlement'
-import { parseJsonRecord } from './json-boundary'
 import {
   Cs336A3ScalingSweepEvidenceRequest,
   admitCs336A3ScalingSweepEvidence,
   publicScalingSweepProjection,
 } from './training-scaling-sweep'
 import {
-  TrainingWindowBootstrapGrantRequest,
-  decideTrainingWindowBootstrapGrant,
-} from './training-window-bootstrap'
-import {
-  Cs336A1RealGradientEvidenceRequest,
-  admitCs336A1RealGradientEvidence,
-} from './training-real-gradient-evidence'
-import {
-  Cs336A4DataRefineryEvidenceRequest,
-  Cs336A4RequiredVerifiedStageCount,
-  admitCs336A4DataRefineryEvidence,
-  publicDataRefineryProjection,
-} from './training-data-refinery'
-import {
-  Cs336A5AlignmentEvidenceRequest,
-  admitCs336A5AlignmentEvidence,
-} from './training-alignment-evals'
-import {
-  TrainingRunAdmissionRequest,
-  decideTassadarRunAdmission,
-} from './tassadar-run-admission'
-import {
-  TassadarExecutorTraceCloseoutEvidenceSchema,
-  tassadarExecutorTraceVerificationChallengeRequest,
-} from './tassadar-executor-trace-homework'
-import {
   type TrainingVerificationChallengeCreateRequest,
   type TrainingVerificationChallengeRecord,
   publicTrainingVerificationChallengeProjection,
 } from './training-verification'
+import {
+  TrainingWindowBootstrapGrantRequest,
+  decideTrainingWindowBootstrapGrant,
+} from './training-window-bootstrap'
 
 type HttpResponse = globalThis.Response
 
@@ -116,6 +118,23 @@ class TrainingRunWindowUnauthorized extends S.TaggedErrorClass<TrainingRunWindow
 type TrainingRunWindowRouteError =
   | TrainingAuthorityStoreError
   | TrainingRunWindowUnauthorized
+
+const uniqueRouteRefs = (
+  refs: ReadonlyArray<string | undefined>,
+): ReadonlyArray<string> =>
+  [
+    ...new Set(refs.map(ref => ref?.trim() ?? '').filter(ref => ref !== '')),
+  ].sort()
+
+type TrainingRunPublicReadEnvelope = Readonly<{
+  generatedAt: string
+  run: TrainingRunProjection
+  sourceRefs: ReadonlyArray<string>
+  // Live-at-read staleness contract from publicTrainingRunProjection
+  // (maxStalenessSeconds: 0; shared vocabulary in public-projection-staleness).
+  staleness: TrainingRunProjection['staleness']
+  summary: TrainingRunPublicSummary
+}>
 
 const routeErrorResponse = (error: TrainingRunWindowRouteError): HttpResponse =>
   M.value(error).pipe(
@@ -295,8 +314,7 @@ const routeTransitionWindow = <Bindings extends TrainingRunWindowRouteEnv>(
     const stored = yield* nextState === 'sealed'
       ? Effect.tryPromise({
           catch: trainingAuthorityStoreErrorFromUnknown,
-          try: () =>
-            store.beginRunSealBarrier(current.trainingRunRef, nowIso),
+          try: () => store.beginRunSealBarrier(current.trainingRunRef, nowIso),
         }).pipe(
           Effect.andThen(persistTransition),
           Effect.ensuring(
@@ -389,7 +407,10 @@ const routeAdmitRunContributor = <Bindings extends TrainingRunWindowRouteEnv>(
       try: () => decideTassadarRunAdmission(body),
     })
 
-    return noStoreJsonResponse({ admission, trainingRunRef: run.trainingRunRef })
+    return noStoreJsonResponse({
+      admission,
+      trainingRunRef: run.trainingRunRef,
+    })
   })
 
 const routeExecutorTraceCloseout = <Bindings extends TrainingRunWindowRouteEnv>(
@@ -694,11 +715,12 @@ const routeClaimLease = <Bindings extends TrainingRunWindowRouteEnv>(
     return noStoreJsonResponse({ lease: stored })
   })
 
-const routeReadRun = <Bindings extends TrainingRunWindowRouteEnv>(
+const readRunPublicEnvelope = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
   trainingRunRef: string,
-): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  publicRouteRef?: string,
+): Effect.Effect<TrainingRunPublicReadEnvelope, TrainingRunWindowRouteError> =>
   Effect.gen(function* () {
     const nowIso = routeNowIso(dependencies)
     const record = yield* Effect.tryPromise({
@@ -732,21 +754,51 @@ const routeReadRun = <Bindings extends TrainingRunWindowRouteEnv>(
       ...leases.flatMap(lease => lease.receiptRefs),
       ...challenges.flatMap(challenge => challenge.verdictRefs),
     ])
-
-    return noStoreJsonResponse({
-      run: publicTrainingRunProjection(record, nowIso),
-      summary: publicTrainingRunSummary({
-        challenges,
-        leases,
-        nowIso,
-        run: record,
-        settledSatsByReceiptRef: settlement.settledSatsByReceiptRef,
-        settlementReceiptRefsByContributor:
-          settlement.settlementReceiptRefsByContributor,
-        windows,
-      }),
+    const baseSummary = publicTrainingRunSummary({
+      challenges,
+      leases,
+      nowIso,
+      run: record,
+      settledSatsByReceiptRef: settlement.settledSatsByReceiptRef,
+      settlementReceiptRefsByContributor:
+        settlement.settlementReceiptRefsByContributor,
+      windows,
     })
+    const summary = {
+      ...baseSummary,
+      sourceRefs: uniqueRouteRefs([...baseSummary.sourceRefs, publicRouteRef]),
+    }
+
+    return {
+      generatedAt: nowIso,
+      run: summary.run,
+      sourceRefs: summary.sourceRefs,
+      staleness: summary.run.staleness,
+      summary,
+    }
   })
+
+const routeReadRun = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+  trainingRunRef: string,
+  publicRouteRef?: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  readRunPublicEnvelope(dependencies, env, trainingRunRef, publicRouteRef).pipe(
+    Effect.map(envelope => noStoreJsonResponse(envelope)),
+  )
+
+const routeReadPublicRun = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  routeReadRun(
+    dependencies,
+    env,
+    trainingRunRef,
+    `route:/api/public/training/runs/${trainingRunRef}`,
+  )
 
 const routeListRuns = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
@@ -949,9 +1001,8 @@ const resolveRunSettlements = <Bindings extends TrainingRunWindowRouteEnv>(
       Effect.tryPromise({
         catch: trainingAuthorityStoreErrorFromUnknown,
         try: async () => {
-          const record = await ledger.readPaymentAuthorityReceiptByRef(
-            receiptRef,
-          )
+          const record =
+            await ledger.readPaymentAuthorityReceiptByRef(receiptRef)
 
           return [
             receiptRef,
@@ -1176,9 +1227,7 @@ const routeA4DataRefinery = <Bindings extends TrainingRunWindowRouteEnv>(
     const shards = projections.flatMap(projection => projection.shards)
     const verifiedStages = [
       ...new Set(
-        shards
-          .filter(shard => shard.verified)
-          .map(shard => shard.stage),
+        shards.filter(shard => shard.verified).map(shard => shard.stage),
       ),
     ].sort()
 
@@ -1614,8 +1663,7 @@ const routeAttachAlignmentEvalEvidence = <
           kind: 'validation_error',
           reason: error instanceof Error ? error.message : String(error),
         }),
-      try: () =>
-        admitCs336A5AlignmentEvidence({ nowIso, request: body, run }),
+      try: () => admitCs336A5AlignmentEvidence({ nowIso, request: body, run }),
     })
     const stored = yield* Effect.tryPromise({
       catch: trainingAuthorityStoreErrorFromUnknown,
@@ -1741,6 +1789,22 @@ export const makeTrainingRunWindowRoutes = <
       return routeTrainingLeaderboards(dependencies, env, lane).pipe(
         Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
       )
+    }
+
+    const publicRunReadMatch = /^\/api\/public\/training\/runs\/([^/]+)$/.exec(
+      url.pathname,
+    )
+
+    if (publicRunReadMatch !== null) {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeReadPublicRun(
+        dependencies,
+        env,
+        decodeURIComponent(publicRunReadMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
     if (url.pathname === '/api/training/device-capabilities/a2') {
@@ -1936,8 +2000,9 @@ export const makeTrainingRunWindowRoutes = <
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
-    const runAdmitMatch =
-      /^\/api\/training\/runs\/([^/]+)\/admit$/.exec(url.pathname)
+    const runAdmitMatch = /^\/api\/training\/runs\/([^/]+)\/admit$/.exec(
+      url.pathname,
+    )
 
     if (runAdmitMatch !== null) {
       if (request.method !== 'POST') {

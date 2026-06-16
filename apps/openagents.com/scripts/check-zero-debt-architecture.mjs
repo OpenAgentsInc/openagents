@@ -465,6 +465,16 @@ const publicProjectionSurfaces = [
     route: '/api/public/business-signup',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/training-run-window-routes.ts',
+    route: '/api/public/training/runs/{trainingRunRef}',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/public-tassadar-run-summary-routes.ts',
+    route: '/api/public/tassadar-run-summary',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',
