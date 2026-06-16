@@ -6,13 +6,25 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
 ## Where we are (verified 2026-06-16)
 
 - **Launched:** Autopilot 1.0 + Pylon v1.0 release candidates (signed/notarized,
-  default-on auto-update), the Tassadar run (`run.tassadar.executor.20260615`,
+  default-on auto-update *config*), the Tassadar run (`run.tassadar.executor.20260615`,
   active), Episode 237 + essay, the forum/Nostr/Bitcoin-tip rails.
-- **Live promises:** source registry at **`2026-06-16.5`** and the **deployed
-  worker now serves `2026-06-16.5`** (verified live at
-  `/api/public/product-promises`) — the apps/web deploys on the 16th
-  (components-live / `/login` / `/animations`, latest worker `d9113b02`) published
-  the earlier `.1`–`.5` bumps. Counts shift as promises flip.
+- **🟢 LAUNCH GATE GREEN (16th):** the crucial launch epic **#5012 is CLOSED /
+  completed**. Both crucial promises flipped green and live:
+  `training.monday_decentralized_training_launch.v1` (#5014 — first independent
+  cross-owner Verified pairing `59ba1f30` + provider-confirmed settlement) and
+  `pylon.install_without_wallet_knowledge.v1` (#5015 — self-serve install→earn,
+  no operator staging of the contributor). Announced at
+  `/blog/tassadar-run-is-live` (#5018) + the launch forum thread. #5124 verifier
+  bug fixed+regression-tested; #5051/#5061/#5121 closed. Run shows
+  `providerConfirmedSettledPayoutSats=5`, `qualifiedContributorCount=1`.
+- **Live promises:** source + **deployed worker now serve `2026-06-16.8`**
+  (verified live at `/api/public/product-promises`). `.6` flipped the training
+  gate, `.7` flipped the install promise, `.8` added an honest auto-update
+  caveat (see §H). Counts shift as promises flip.
+- **⏭ NEXT (before cutting stable v1.0): a new RC + three live gates** — Spark
+  fallback payout, auto-payout, and auto-update, all tested with the RC. See §H.
+  This is the current top lane; the owner cuts final v1.0 + starts promoting
+  once those pass.
 - **Built-in hosted agent backend is LIVE:** `GEMINI_API_KEY` set + verified on
   prod (`generateContent` returns real output); the keyless quota-gated grant
   route `POST /api/provider-accounts/google-gemini/grants/builtin` is deployed
@@ -204,13 +216,28 @@ is the **Spark backup-receive fallback** in
   detects balance, and sweeps to MDK on consent. Smoke-verified (no env key → no
   `breez_api_key_missing`; `helperInitReady: true`).
 - Promise `payments.offline_receive_spark_fallback.v1`: **yellow** (receive path
-  live-proven under Bun; Bun-storage blocker cleared).
-- **Owed tips (Whitefang Hermes + Trigger, 250 each):** unblocked once a real node runs
-  the receive+reconcile — ready to complete.
-- **Remaining (the only gate, owner/live):** one **live offline-recipient
-  receive+reconcile in real Pylon** (real sats → an offline node's Spark address →
-  sync/claim/`migrate-spark`/receipt) → flips the promise green and lands the owed tips.
-  No code work left; this is a live-event proof.
+  live-proven under Bun; Bun-storage blocker cleared; blockers remaining:
+  `spark_backup_receive_live_smoke_missing`, `spark_receive_sync_reconcile_missing`).
+- **Held payouts (now the launch-recognition sats, not the old 250):** during the
+  16th green-gate run, real treasury sends hit `treasury_pay_failed` for **Trigger
+  (50,000-sat recognition)** and **Whitefang (50,000-sat recognition + 5-sat
+  validator fee)** because their MDK/Lightning nodes weren't accepting inbound at
+  that moment; **Orrery's** worker 5-sat + 50k recognition dispatched (BOLT12
+  `pending`). These held payouts are the **live test material** for the Spark
+  fallback below.
+- **#5151 (Trigger, OPEN) compounds the symptom:** `presence heartbeat` posts
+  `walletReadiness: "unknown"`, so `/api/public/pylon-stats` keeps
+  `walletReadyNow=false` for an online node until a separate
+  `pylon wallet report-readiness` — which made Trigger's node *look* unavailable
+  for the payout retry even though its local probe was receive-ready. Fix:
+  heartbeat should publish the local wallet probe (or the payout path should not
+  treat `walletReadyNow=false` as "skip" without re-probing). Belongs in the
+  next-RC payout-reliability work (§H).
+- **Remaining (the gates, owner/live — see §H):** (a) wire the Spark fallback
+  into the **payout path** (prefer MDK/BOLT12 online, Spark when offline);
+  (b) one **live offline-recipient receive+reconcile in real Pylon** (real sats →
+  an offline node's Spark address → sync/claim/`migrate-spark`/receipt) → flips
+  the promise green; (c) use it to land the held Trigger/Whitefang payouts.
 
 **Original goal — narrow, opt-in, receive-only Spark fallback:**
 
@@ -399,41 +426,80 @@ epics below; not all lands today — the aim is the main spine.
   collaboration, IDE/browser/voice, release, enterprise, and polish work across
   the 62-system map.
 
+## H. Next RC → final v1.0 release gates (audit — Spark payout, auto-payout, auto-update)
+
+**The launch gate is green. Before cutting STABLE v1.0 and promoting, the owner
+wants a new RC that closes the payout-reliability + self-maintenance loop, with
+three things tested live on that RC.** Audit of each as of 2026-06-16:
+
+### Gate 1 — Spark fallback **payout** (#5078) + land the held payouts
+
+- **Built (code-complete):** receive-only Spark backup core + Breez SDK Spark
+  adapter + Bun storage (#5080) + legacy `migrate-spark` rewire (#5085) +
+  embedded owner-authorized Breez key. Receive path live-proven (returns a real
+  mainnet static Spark address under Node and Bun). Promise
+  `payments.offline_receive_spark_fallback.v1` = **yellow**.
+- **NOT done:** (1) the RC must **prefer MDK/BOLT12 when the recipient is online
+  and fall back to the recipient's Spark address when offline**, on the *payout*
+  leg (today `/api/operator/treasury/payout` and the per-window settlement only
+  try the MDK/BOLT12 destination and return `treasury_pay_failed` when the node
+  is offline); (2) a **live offline-recipient receive+reconcile** in real Pylon
+  (the two open promise blockers); (3) **use it to land the held payouts**
+  (Trigger 50k, Whitefang 50k + 5-sat). These held payouts are the test cases.
+- **#5151** (heartbeat `walletReadyNow=false`) must be handled so an online,
+  receive-ready node is not skipped during a payout retry.
+
+### Gate 2 — Auto-payout
+
+- **What it means:** verified work + the operator-approved settlement should
+  dispatch the contributor payout automatically (within bounded spend caps),
+  including selecting MDK-vs-Spark by recipient liveness, and recording the
+  receipt — without a human running the payout command per pairing.
+- **Status:** the settlement-receipt + treasury-payout rails exist and were
+  exercised manually for the green flip; the **automatic** dispatch on Verified
+  (bounded, with MDK→Spark fallback selection) is **not yet wired/tested**. Test
+  on the RC against the held payouts.
+- Boundary: payout *approval* stays operator-gated / bounded-spend (a permanent
+  safety control); "auto-payout" automates *dispatch within those bounds*, not
+  unbounded self-spend.
+
+### Gate 3 — Auto-update (in prod)
+
+- **Built:** both Pylon binaries + Autopilot Desktop ship **default-on,
+  ed25519-signature-verified OTA**, fetching from our `updates.openagents.com`
+  feed and failing closed on anything unverified.
+- **NOT verified:** a **live production auto-update** — an already-installed RC
+  fetching and applying a newer signed RC end-to-end on a real machine — has not
+  been done yet. The product promises now say this explicitly (registry
+  `2026-06-16.8`: `pylon.v03_release_candidate.v1` /
+  `pylon.release_tomorrow.v1` unsafeCopy). The next RC is the test: publish
+  RC N+1 and confirm an installed RC N updates itself.
+
+### v1.0 cut gate
+
+Cut stable **v1.0.0** (and start promoting) only after Gate 1 (Spark fallback
+payout proven + held payouts landed), Gate 2 (auto-payout dispatch tested), and
+Gate 3 (live prod auto-update verified) all pass — receipt-first, with
+dereferenceable evidence, same discipline as the launch gate.
+
+**Open issues in this lane:** #5078 (Spark fallback — keep open until the live
+payout proof + held payouts land), #5151 (heartbeat wallet-readiness). Auto-payout
+and auto-update verification are tracked here until they have their own issues.
+
 ## Recommended next (assistant lane)
 
-**In progress now (TOP PRIORITY): #5061 / #5014 live proof.** The #5121
-auto-validation spine is shipped and patched for the Pylon commitment/replay ref
-namespace mismatch. **#5124 (the exact_trace_replay verifier bug) is FIXED and
-PROVEN LIVE (2026-06-16):** the verifier was comparing full digest refs
-(`commitment.<hash>` vs `replay.<hash>` — prefixes differ) instead of the
-prefix-stripped bodies, so equal digests were wrongly `Rejected` as
-`ExecutorTraceMismatch`. Fix deployed (worker `8bcaff6c`) + pinned with a
-permanent regression test (`tassadar-exact-trace-replay.test.ts`, commit
-`fc246b9bc`); the challenge detail now also surfaces both compared digests
-(`exactTraceCommitmentDigestRef`/`exactTraceReplayDigestRef`, public-safe). It is
-confirmed end-to-end on the live build: an **independent validator** (Whitefang
-Hermes, `pylon.0de1a47a…`) auto-paired a fresh worker contribution →
-challenge `1b85a20a…` → **`Verified`**. That pairing's *worker* was an
-OpenAgents-operated node brought up only to confirm the fix immediately, so it is
-**not** gate-eligible. The remaining launch blocker is now a single external
-step: a fresh real contribution from an **independent worker** (Trigger) on rc5,
-which the armed validators auto-pair to `Verified`, then the operator-funded
-settlement receipt + the `red`→`green` flip of
-`training.monday_decentralized_training_launch.v1`. Both the settlement endpoint
-(`POST /api/training/runs/{run}/settlement-receipt`, admin, `mdk_agent_wallet`,
-≤ run spend cap) and the promise flip are ready to execute the moment that
-independent `Verified` pair lands.
+**✅ Launch gate is GREEN and DONE (see "Where we are" + §C).** The #5124 verifier
+bug is fixed+proven, the first independent cross-owner Verified pairing settled,
+both crucial promises flipped green, the launch is announced, and epic #5012 is
+closed. That lane is complete.
 
-**First-pairing rewards + reward-delivery rail (next after green):** 50,000 sats
-each to Trigger + Orrery for the first independent pairing, plus a set % of paid
-training revenue (specifics TBD). The Spark backup-receive rail that covers any
-offline-Lightning miss is **already shipped in Pylon rc5** (#5078/#5080,
-`spark-backup-helper.ts` via the Breez SDK Spark WASM package in-process under
-Bun; `pylon wallet backup-receive` / `backup-status` / `migrate-spark
---confirm-sweep`), with the embedded owner-authorized Breez/Spark API key so it
-works out-of-box once enabled. Recipients already on rc5 therefore need no new
-download; MDK's LSP handles inbound liquidity automatically and the Spark route
-catches any failure.
+**TOP PRIORITY NOW: the next RC + the three release gates before stable v1.0 —
+see §H.** The owner's plan: cut a new RC that wires the **Spark fallback into the
+payout path** (prefer MDK/BOLT12 when online, Spark when offline), then test
+three things live with that RC — (1) Spark fallback payout (#5078, lands the
+held contributor payouts), (2) auto-payout, (3) auto-update in prod — then cut
+final v1.0 and start promoting. The held recognition payouts (Trigger + Whitefang
+50k each, Whitefang's 5-sat validator fee) are the live test material for #5078.
 
 Section **A** is fully closed; the apps/web wave (Epic A live-render #5108,
 `/login` #5111 + OTP hardening #5120, `/animations`) has landed and deployed.
