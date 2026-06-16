@@ -56,13 +56,20 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
 - **#5066** — closed: Forum category topic lists now ordered by latest post activity
   (`5f6769df6`).
 
-## B. Tassadar executor-trace completion (deprioritized; backend built + inert)
+## B. Tassadar executor-trace completion (backend built; pairing now ARMED in prod)
 
+- **`TASSADAR_TRACE_PAIRING=1` is now LIVE in prod** (set as a secret on the
+  `openagents-autopilot` Worker on the 16th — no code redeploy; secrets survive
+  future deploys). The pairing orchestration is no longer inert. It relaxes no
+  `requireAdmin` and touches no settlement/payout, and the validator-candidate
+  resolver still returns `[]`, so a pairing only *completes* once a real,
+  **distinct** validator device is present.
 - **#5051** epic → **#5061** first external-validator dry-run with **Orrery**
   (volunteered, live non-owner node). This is the one thing that proves the loop:
-  enable `TASSADAR_TRACE_PAIRING`, pair a real worker + a **distinct** validator
-  device, produce the first externally-settled trace receipt. Needs a real 2nd
-  device + owner "go". Flips the headline green (below).
+  pair a real worker + a **distinct** validator device, produce the first
+  externally-settled trace receipt. Now needs only a real 2nd device + an
+  independent contributor — recruited via the Tassadar Release-Candidates posts
+  (`/forum/t/594a1aea-…`). Flips the headline green (below).
 
 ## C. Owner-gated launch green-flips (receipt-first — only the owner/live event can)
 
