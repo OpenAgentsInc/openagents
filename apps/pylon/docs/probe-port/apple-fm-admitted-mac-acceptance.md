@@ -4,6 +4,12 @@ Date: 2026-06-07
 
 Status: local admitted-hardware runbook for Probe issue #170.
 
+Current Autopilot Desktop/Pylon evidence for
+`autopilot.local_apple_fm_tool_chat.v1` lives in:
+
+- `docs/apple-fm/2026-06-15-local-autopilot-admitted-mac-runbook.md`
+- `docs/apple-fm/2026-06-15-local-autopilot-admitted-mac-smoke-evidence.md`
+
 ## Purpose
 
 The Apple FM backend is useful for bounded local Probe work, but it is not a

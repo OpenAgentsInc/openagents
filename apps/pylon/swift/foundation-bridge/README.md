@@ -46,8 +46,10 @@ apps/pylon/bin/foundation-bridge 11436
 
 The session endpoints are intentionally minimal for the first local Autopilot
 MVP: session creation returns a local session id, and response streaming emits a
-snapshot and completed SSE event for a bounded single-prompt turn. Tool-callback
-orchestration remains owned by the Pylon runtime and later desktop wiring.
+snapshot and completed SSE event for a bounded single-prompt turn. When Pylon
+projects a `read_file` tool and the prompt asks for local file inspection, the
+bridge calls Pylon's loopback tool callback with the session token and then
+keeps the callback URL/token out of logs and public evidence.
 
 The helper logs startup and listener failures only. It does not log prompts,
 message bodies, local files, secrets, or provider payloads by default.

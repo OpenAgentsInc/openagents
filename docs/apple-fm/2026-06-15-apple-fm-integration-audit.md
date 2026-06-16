@@ -39,7 +39,8 @@ The current truth is therefore yellow, not green:
 - the current monorepo now retains a buildable Swift Foundation Models bridge
   helper under `apps/pylon/swift/foundation-bridge`;
 - the current monorepo has Probe/Pylon Apple FM client, capability, control,
-  helper-discovery, and fake-bridge tests;
+  helper-discovery, fake-bridge tests, Autopilot Desktop loopback coverage,
+  and admitted-Mac local Autopilot smoke evidence;
 - live Pylon market claims still require current receipts, wallet readiness,
   assignment or NIP-90 evidence, and settlement proof.
 
@@ -392,8 +393,9 @@ desktop and future operator surfaces.
 
 ### Local Autopilot Session Path
 
-As of #5072, Pylon and Autopilot Desktop also have a bounded local
-chat/tool-session path for the user-owned Apple FM mode:
+As of #5072 and #5073, Pylon and Autopilot Desktop also have a bounded local
+chat/tool-session path plus public-safe admitted-Mac evidence for the
+user-owned Apple FM mode:
 
 - Pylon accepts `apple_fm.session.start` through the token-authenticated
   control session API only after `apple_fm.status` is ready.
@@ -407,10 +409,15 @@ chat/tool-session path for the user-owned Apple FM mode:
 - Regression coverage lives in `apps/pylon/tests/apple-fm-control-session.test.ts`
   and desktop focused tests for control verbs, sanitization, Pylon control,
   and the Foldkit Agent pane.
+- The desktop/Pylon loopback integration test lives in
+  `apps/autopilot-desktop/tests/apple-fm-loopback-integration.test.ts`.
+- The admitted-Mac runbook and public-safe smoke evidence live in
+  `docs/apple-fm/2026-06-15-local-autopilot-admitted-mac-runbook.md` and
+  `docs/apple-fm/2026-06-15-local-autopilot-admitted-mac-smoke-evidence.md`.
 
 This is source and fake-bridge evidence for local user-owned tool/chat. It is
 not a market-provider claim, hosted-compute fallback, Codex-parity claim, or
-proof that the signed installer has passed admitted-Mac smoke.
+proof that the signed installer bundles/supervises the helper.
 
 ### CLI Surface
 
@@ -613,7 +620,8 @@ history. It has:
 - Autopilot Desktop public-safe Apple FM readiness/mode UI;
 - a Pylon/Desktop bounded local Apple FM chat/tool session path with
   fake-bridge coverage;
-- admitted-Mac runbooks;
+- admitted-Mac runbooks and source/local smoke evidence for the Autopilot
+  loopback path;
 - one owner-operated NIP-90 Apple FM provider proof.
 
 It is not yet a green public earning promise. The green path is concrete:

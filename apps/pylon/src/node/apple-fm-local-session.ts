@@ -90,7 +90,7 @@ export async function runAppleFmLocalControlSession(
     editedFileCount: 0,
     eventCount,
     executionMode: "local_bounded",
-    externalSessionRef: result.bridgeSessionId,
+    externalSessionRef: stableDigestRef("session.pylon.apple_fm_bridge", result.bridgeSessionId),
     networkAccessEnabled: false,
     responseDigestRef:
       result.completion.text.length > 0

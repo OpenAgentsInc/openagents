@@ -16,9 +16,9 @@ Models bridge helper at `apps/pylon/swift/foundation-bridge`. Autopilot
 Desktop now consumes the Pylon readiness projection through Bun-owned RPC and
 renders hosted OpenAgents compute separately from local Apple FM mode. It now
 has a Desktop-originated bounded local Apple FM chat/tool session path through
-Pylon with fake-bridge tests and public-safe event summaries. It does not yet
-have bridge-helper launch/supervision or admitted-Mac desktop smoke evidence
-that lets the installer truthfully say "local Apple FM chat/tool mode works."
+Pylon with fake-bridge tests, public-safe event summaries, and admitted-Mac
+smoke evidence. It does not yet have bridge-helper launch/supervision in the
+signed installer path, so broad installer copy still must stay yellow.
 
 The integration path should be:
 
@@ -88,12 +88,12 @@ The current app does these things well:
   when live Apple FM readiness is ready.
 - It keeps hosted compute credentials and Pylon control tokens out of the
   webview.
+- It has an admitted-Mac smoke runbook and retained public-safe evidence for a
+  local `read_file` chat/tool session with no hosted model prompt path.
 
 The current app does not yet do these Apple FM-specific things:
 
 - It does not bundle, launch, or supervise the Foundation Models bridge helper.
-- It does not yet have admitted-Mac desktop smoke evidence for the local
-  chat/tool session path.
 - It does not advertise local Apple FM as the default backend for "Go online"
   yet.
 
@@ -140,9 +140,10 @@ It exposes `/health`, `/v1/models`, `/v1/chat/completions`, `/v1/sessions`,
 and `/v1/sessions/{id}/responses/stream` on loopback. The first restored
 version is intentionally modest: it creates fresh Foundation Models sessions,
 returns typed unavailable reasons for disabled or unsupported Apple FM states,
-and emits single-turn snapshot/completed SSE events for Pylon's local
-tool/chat MVP. It logs startup/listener state only, not prompts, message
-bodies, local files, or secrets.
+can invoke the projected read-only `read_file` callback for Pylon's local
+tool/chat MVP, and emits single-turn snapshot/completed SSE events. It logs
+startup/listener state only, not prompts, message bodies, local files, or
+secrets.
 
 Pylon source/package discovery for the helper now lives in:
 
@@ -592,9 +593,10 @@ Packaging tests:
    optional local backend.
 5. Done: add a Desktop-originated bounded local Apple FM chat/tool session
    runner through Pylon control with safe read-only workspace tools.
-6. Add provider go-online capability declaration for
+6. Done: add fake-bridge desktop loopback coverage and admitted-Mac local
+   chat/tool smoke evidence.
+7. Add provider go-online capability declaration for
    `probe.backend.apple_fm_bridge`, gated by live health.
-7. Add admitted-Mac acceptance docs and live smoke evidence.
 
 This order avoids presenting a UI promise before the control and runtime truth
 sources exist.
@@ -634,16 +636,19 @@ What is real:
 - Desktop `startAppleFmSession` RPC/control command path.
 - Fake-bridge coverage for ready session success, not-ready refusal,
   unsupported-tool refusal, and redaction.
+- Desktop fake-bridge loopback integration coverage.
+- Admitted-Mac source smoke evidence for bridge health, Pylon/Desktop
+  readiness, one local `read_file` chat/tool session, no cloud runner, no
+  resource usage receipt, read-only sandbox, disabled handling, and redaction.
 
 What is not connected yet:
 
 - Packaged helper resource.
 - Provider go-online capability declaration.
-- Current admitted-Mac desktop smoke evidence.
+- Signed/notarized installer helper launch/supervision and from-install smoke.
 
-The next honest milestone is not "Apple FM works in desktop." It is:
+The next honest milestone is not "source Apple FM works in desktop." It is:
 
-admitted-Mac smoke evidence that uses the ready projection, runs the bounded
-local session path on real supported hardware, keeps callback/tool authority
-inside Bun/Pylon, and records public-safe evidence without exposing prompts,
-files, tokens, or helper paths.
+a signed/notarized Autopilot Desktop recut that bundles or supervises the
+helper, launches from a normal install, repeats the admitted-Mac local
+chat/tool smoke, and keeps the same public-safe evidence boundary.

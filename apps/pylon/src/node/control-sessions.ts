@@ -156,6 +156,8 @@ export type ControlSessionProjection = {
   // recorded pending full cloud dispatch (#4997).
   lane: ControlSessionLane
   account: PublicPylonAccountSelection | null
+  accountRefHash: string | null
+  objectiveRef: string
   workspaceRef: string
   objectiveDigestRef: string
   verifyRef: string
@@ -167,6 +169,7 @@ export type ControlSessionProjection = {
   createdAt: string
   startedAt: string | null
   completedAt: string | null
+  updatedAt: string
   eventCount: number
   // Latest human-readable action (for the session list — what it's doing now).
   latestActivity: string
@@ -424,11 +427,14 @@ function parseAppleFmStartCommand(raw: AppleFmSessionStartCommand): AppleFmSessi
 }
 
 function projectionFor(record: SessionRecord): ControlSessionProjection {
+  const account = publicPylonAccountSelection(record.account)
   return {
     sessionRef: record.sessionRef,
     adapter: record.adapter,
     lane: record.lane,
-    account: publicPylonAccountSelection(record.account),
+    account,
+    accountRefHash: account?.accountRefHash ?? null,
+    objectiveRef: record.objectiveDigestRef,
     workspaceRef: record.workspace.workspaceRef,
     objectiveDigestRef: record.objectiveDigestRef,
     verifyRef: record.verifyRef,
@@ -440,6 +446,7 @@ function projectionFor(record: SessionRecord): ControlSessionProjection {
     createdAt: record.createdAt,
     startedAt: record.startedAt,
     completedAt: record.completedAt,
+    updatedAt: record.completedAt ?? record.startedAt ?? record.createdAt,
     eventCount: record.events.length,
     latestActivity: latestActivityOf(record.events),
     cloudRunner: record.cloudRunner,

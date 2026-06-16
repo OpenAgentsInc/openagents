@@ -9,6 +9,7 @@ import { makeAppleFmWorkspaceTools } from "../src/node/apple-fm-local-session"
 import { createControlSessionActions } from "../src/node/control-sessions"
 
 const servers: Bun.Server[] = []
+const fakeBridgeSessionId = "apple_fm_session_123e4567-e89b-12d3-a456-426614174000"
 
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true)
@@ -69,9 +70,9 @@ function fakeReadyBridge(input: {
           "list_files",
           "read_file",
         ])
-        return Response.json({ session: { id: "fake-apple-fm-session" } })
+        return Response.json({ session: { id: fakeBridgeSessionId } })
       }
-      if (url.pathname === "/v1/sessions/fake-apple-fm-session/responses/stream") {
+      if (url.pathname === `/v1/sessions/${fakeBridgeSessionId}/responses/stream`) {
         const callback = await fetch(callbackUrl, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -183,6 +184,8 @@ describe("Apple FM local control sessions", () => {
 
       const artifact = await readFile(join(proofDir, `${started.sessionRef}-proof.json`), "utf8")
       expect(artifact).toContain('"executionPathRef": "control_session.apple_fm_local"')
+      expect(artifact).toContain('"externalSessionRef": "session.pylon.apple_fm_bridge.')
+      expect(artifact).not.toContain(fakeBridgeSessionId)
       expect(artifact).not.toContain("Use read_file on README.md")
       expect(artifact).not.toContain("secret fixture body")
       expect(artifact).not.toContain("tool-callback")

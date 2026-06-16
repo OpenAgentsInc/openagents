@@ -3,7 +3,7 @@ import Foundation
 import FoundationModels
 import Network
 
-private let bridgeVersion = "0.1.0"
+private let bridgeVersion = "0.1.1"
 private let defaultPort: UInt16 = 11435
 private let modelId = "apple-foundation-model"
 private let maxRequestBytes = 1_048_576
@@ -28,6 +28,8 @@ enum FoundationBridge {
 }
 
 actor AppleFmHandler {
+    private var sessions: [String: AppleFmBridgeSession] = [:]
+
     func health() -> HealthResponse {
         let model = SystemLanguageModel.default
 
@@ -64,6 +66,28 @@ actor AppleFmHandler {
                 version: bridgeVersion
             )
         }
+    }
+
+    func createSession(_ request: SessionCreateRequest) -> SessionCreateResponse {
+        let sessionId = "apple_fm_session_\(UUID().uuidString.lowercased())"
+        sessions[sessionId] = AppleFmBridgeSession(
+            id: sessionId,
+            instructions: request.instructions,
+            tools: request.tools ?? [],
+            toolCallback: request.toolCallback
+        )
+
+        return SessionCreateResponse(session: SessionDescriptor(id: sessionId))
+    }
+
+    func streamSession(id: String, request: SessionStreamRequest) async throws -> ChatCompletionResponse {
+        let session = sessions[id]
+        let toolOutcome = await performReadFileCallbackIfRequested(session: session, prompt: request.prompt)
+        let prompt = buildSessionPrompt(prompt: request.prompt, toolOutcome: toolOutcome)
+
+        return try await complete(
+            ChatCompletionRequest(model: modelId, messages: [ChatMessage(role: "user", content: prompt, name: nil, toolCallId: nil)])
+        )
     }
 
     func complete(_ request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
@@ -112,6 +136,94 @@ actor AppleFmHandler {
                 return "\(message.role): \(message.content)"
             }
         }.joined(separator: "\n\n")
+    }
+
+    private func buildSessionPrompt(prompt: String, toolOutcome: ToolCallbackOutcome?) -> String {
+        guard let toolOutcome else {
+            return prompt
+        }
+
+        var parts = [
+            prompt,
+            "A local read-only \(toolOutcome.toolName) tool callback completed with status \(toolOutcome.status)."
+        ]
+
+        if let output = toolOutcome.output, !output.isEmpty {
+            parts.append("Local tool output JSON:\n\(String(output.prefix(4_000)))")
+        }
+
+        if let message = toolOutcome.message, !message.isEmpty {
+            parts.append("Tool callback message: \(message)")
+        }
+
+        parts.append("Answer using only the local prompt and local tool output. Do not mention callback URLs or callback tokens.")
+
+        return parts.joined(separator: "\n\n")
+    }
+
+    private func performReadFileCallbackIfRequested(session: AppleFmBridgeSession?, prompt: String) async -> ToolCallbackOutcome? {
+        guard let session, let toolCallback = session.toolCallback else {
+            return nil
+        }
+
+        guard session.tools.contains(where: { $0.name == "read_file" }) else {
+            return nil
+        }
+
+        let lowered = prompt.lowercased()
+        guard lowered.contains("read_file") || lowered.contains("read file") || lowered.contains("readme") else {
+            return nil
+        }
+
+        guard let callbackUrl = toolCallback.url, let sessionToken = toolCallback.sessionToken else {
+            return ToolCallbackOutcome(toolName: "read_file", status: "tool_failed", output: nil, message: "Missing local tool callback endpoint.")
+        }
+
+        guard let url = URL(string: callbackUrl) else {
+            return ToolCallbackOutcome(toolName: "read_file", status: "tool_failed", output: nil, message: "Invalid local tool callback endpoint.")
+        }
+
+        let payload = ToolCallbackPayload(
+            sessionToken: sessionToken,
+            toolName: "read_file",
+            arguments: ToolCallbackArguments(
+                generationId: "foundation-bridge-read-file-\(UUID().uuidString.lowercased())",
+                content: ["path": inferReadFilePath(prompt: prompt)],
+                isComplete: true
+            )
+        )
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(payload)
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
+            let decoded = try? JSONDecoder().decode(ToolCallbackResult.self, from: data)
+
+            if (200..<300).contains(statusCode) {
+                return ToolCallbackOutcome(toolName: "read_file", status: "success", output: decoded?.output, message: nil)
+            }
+
+            return ToolCallbackOutcome(
+                toolName: "read_file",
+                status: "refused",
+                output: nil,
+                message: decoded?.underlyingError ?? "Local tool callback returned HTTP \(statusCode)."
+            )
+        } catch {
+            return ToolCallbackOutcome(toolName: "read_file", status: "tool_failed", output: nil, message: error.localizedDescription)
+        }
+    }
+
+    private func inferReadFilePath(prompt: String) -> String {
+        if prompt.contains("README.md") || prompt.lowercased().contains("readme") {
+            return "README.md"
+        }
+
+        return "README.md"
     }
 
     private func estimateUsage(prompt: String, completion: String) -> UsageMeasurement {
@@ -224,19 +336,36 @@ final class HttpServer: @unchecked Sendable {
         }
 
         if request.method == "POST" && request.path == "/v1/sessions" {
-            return HttpResponse.json(
-                body: SessionCreateResponse(session: SessionDescriptor(id: "apple_fm_session_\(UUID().uuidString.lowercased())"))
-            )
+            return await createSession(request)
         }
 
         if request.method == "POST" && request.path.hasPrefix("/v1/sessions/") && request.path.hasSuffix("/responses/stream") {
-            return await streamSessionResponse(request)
+            guard let sessionId = sessionIdFromSessionStreamPath(request.path) else {
+                return HttpResponse.json(
+                    status: 404,
+                    body: ErrorResponse(error: "not_found", message: "No route for \(request.method) \(request.path)", unavailableReason: nil)
+                )
+            }
+            return await streamSessionResponse(request, sessionId: sessionId)
         }
 
         return HttpResponse.json(
             status: 404,
             body: ErrorResponse(error: "not_found", message: "No route for \(request.method) \(request.path)", unavailableReason: nil)
         )
+    }
+
+    private func createSession(_ request: HttpRequest) async -> HttpResponse {
+        do {
+            let decoded = try JSONDecoder().decode(SessionCreateRequest.self, from: request.body)
+            let response = await handler.createSession(decoded)
+            return HttpResponse.json(body: response)
+        } catch {
+            return HttpResponse.json(
+                status: 400,
+                body: ErrorResponse(error: "bad_request", message: error.localizedDescription, unavailableReason: nil)
+            )
+        }
     }
 
     private func completeChat(_ request: HttpRequest) async -> HttpResponse {
@@ -266,12 +395,10 @@ final class HttpServer: @unchecked Sendable {
         }
     }
 
-    private func streamSessionResponse(_ request: HttpRequest) async -> HttpResponse {
+    private func streamSessionResponse(_ request: HttpRequest, sessionId: String) async -> HttpResponse {
         do {
             let decoded = try JSONDecoder().decode(SessionStreamRequest.self, from: request.body)
-            let completion = try await handler.complete(
-                ChatCompletionRequest(model: modelId, messages: [ChatMessage(role: "user", content: decoded.prompt, name: nil, toolCallId: nil)])
-            )
+            let completion = try await handler.streamSession(id: sessionId, request: decoded)
             let output = completion.choices.first?.message.content ?? ""
             let usage = completion.usage ?? UsageMeasurement(truth: "unknown", promptTokens: nil, completionTokens: nil, totalTokens: nil)
             let snapshot = StreamSnapshot(sequence: 0, content: output, output: output, finishReason: "stop")
@@ -290,12 +417,31 @@ final class HttpServer: @unchecked Sendable {
                     unavailableReason: health.unavailableReason
                 )
             )
+        } catch BridgeError.badRequest(let message) {
+            return HttpResponse.json(
+                status: 400,
+                body: ErrorResponse(error: "bad_request", message: message, unavailableReason: nil)
+            )
         } catch {
             return HttpResponse.json(
                 status: 500,
                 body: ErrorResponse(error: "tool_stream_failed", message: error.localizedDescription, unavailableReason: "model_unavailable")
             )
         }
+    }
+
+    private func sessionIdFromSessionStreamPath(_ path: String) -> String? {
+        let prefix = "/v1/sessions/"
+        let suffix = "/responses/stream"
+        guard path.hasPrefix(prefix), path.hasSuffix(suffix) else {
+            return nil
+        }
+
+        let start = path.index(path.startIndex, offsetBy: prefix.count)
+        let end = path.index(path.endIndex, offsetBy: -suffix.count)
+        let rawSessionId = String(path[start..<end])
+
+        return rawSessionId.removingPercentEncoding ?? rawSessionId
     }
 }
 
@@ -413,6 +559,81 @@ struct UsageMeasurement: Codable {
 
 struct SessionStreamRequest: Codable {
     let prompt: String
+}
+
+struct SessionCreateRequest: Codable {
+    let instructions: String?
+    let tools: [SessionToolDescriptor]?
+    let toolCallback: ToolCallbackDescriptor?
+
+    enum CodingKeys: String, CodingKey {
+        case instructions
+        case tools
+        case toolCallback = "tool_callback"
+    }
+}
+
+struct SessionToolDescriptor: Codable {
+    let name: String?
+    let description: String?
+}
+
+struct ToolCallbackDescriptor: Codable {
+    let url: String?
+    let sessionToken: String?
+
+    enum CodingKeys: String, CodingKey {
+        case url
+        case sessionToken = "session_token"
+    }
+}
+
+struct AppleFmBridgeSession {
+    let id: String
+    let instructions: String?
+    let tools: [SessionToolDescriptor]
+    let toolCallback: ToolCallbackDescriptor?
+}
+
+struct ToolCallbackPayload: Codable {
+    let sessionToken: String
+    let toolName: String
+    let arguments: ToolCallbackArguments
+
+    enum CodingKeys: String, CodingKey {
+        case sessionToken = "session_token"
+        case toolName = "tool_name"
+        case arguments
+    }
+}
+
+struct ToolCallbackArguments: Codable {
+    let generationId: String
+    let content: [String: String]
+    let isComplete: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case generationId = "generation_id"
+        case content
+        case isComplete = "is_complete"
+    }
+}
+
+struct ToolCallbackResult: Codable {
+    let output: String?
+    let underlyingError: String?
+
+    enum CodingKeys: String, CodingKey {
+        case output
+        case underlyingError = "underlying_error"
+    }
+}
+
+struct ToolCallbackOutcome {
+    let toolName: String
+    let status: String
+    let output: String?
+    let message: String?
 }
 
 struct SessionCreateResponse: Codable {

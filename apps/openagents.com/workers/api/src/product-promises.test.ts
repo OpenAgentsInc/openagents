@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-15.10')
+    expect(decoded.version).toBe('2026-06-15.11')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -308,10 +308,13 @@ describe('public product promises document', () => {
         expect.objectContaining({
           audience: expect.arrayContaining(['user', 'agent', 'operator']),
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.local_apple_fm_admitted_mac_smoke_missing',
+            'blocker.product_promises.local_apple_fm_signed_installer_recut_missing',
+            'blocker.product_promises.local_apple_fm_helper_supervision_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
             'docs/apple-fm/2026-06-15-current-apple-fm-electrobun-desktop-audit.md',
+            'docs/apple-fm/2026-06-15-local-autopilot-admitted-mac-runbook.md',
+            'docs/apple-fm/2026-06-15-local-autopilot-admitted-mac-smoke-evidence.md',
             'apps/pylon/packages/runtime/src/backends/apple-fm/client.ts',
             'apps/pylon/swift/foundation-bridge/Sources/foundation-bridge/main.swift',
             'apps/pylon/src/node/apple-fm-bridge-helper.ts',
@@ -324,10 +327,11 @@ describe('public product promises document', () => {
             'apps/autopilot-desktop/src/shared/rpc.ts',
             'apps/autopilot-desktop/src/shared/install-readiness.ts',
             'apps/autopilot-desktop/src/ui/view.ts',
+            'apps/autopilot-desktop/tests/apple-fm-loopback-integration.test.ts',
             'apps/autopilot-desktop/tests/cl-53-sanitize.test.ts',
           ]),
           promiseId: 'autopilot.local_apple_fm_tool_chat.v1',
-          state: 'planned',
+          state: 'yellow',
         }),
       ]),
     )
@@ -346,18 +350,21 @@ describe('public product promises document', () => {
     expect(localAppleFmPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.local_apple_fm_chat_tool_session_missing',
     )
+    expect(localAppleFmPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.local_apple_fm_admitted_mac_smoke_missing',
+    )
   })
 
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-15.10', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-15.11', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-15.10',
+      expectedVersion: '2026-06-15.11',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-15.10',
+      servedVersion: '2026-06-15.11',
       status: 'ready',
     })
     expect(
@@ -367,7 +374,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-15.10',
+      servedVersion: '2026-06-15.11',
       status: 'blocked',
     })
   })
