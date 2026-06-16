@@ -37,6 +37,69 @@ export type WalletCommandResult = {
   stderr: string
 }
 
+// ---------------------------------------------------------------------------
+// Spark backup receive (slice 1: testable, inert core).
+//
+// Spark is reintroduced ONLY as a receive-only backup rail when the primary
+// MDK rail is offline/unavailable AND the backup is explicitly opt-in enabled.
+// There is NO send/payout/settlement path here; PayoutTargetKind is unchanged.
+// Public projections expose only redacted refs + blocker refs, never raw
+// Spark address/invoice/preimage/mnemonic/key/path material.
+// ---------------------------------------------------------------------------
+
+export type SparkBackupReceiveState =
+  | "disabled"
+  | "credential-missing"
+  | "helper-unavailable"
+  | "address-ready"
+  | "cached-address-ready"
+  | "receive-selected-mdk-offline"
+  | "payment-detected"
+  | "claim-pending"
+  | "claim-blocked"
+  | "credited"
+  | "sweep-to-mdk-recommended"
+  | "swept-to-mdk"
+
+export type SparkBackupReceiveProjection = {
+  schema: "openagents.pylon.spark_backup_receive.v0.1"
+  enabled: boolean
+  state: SparkBackupReceiveState
+  selectedBecauseRefs: string[]
+  receiveTargetRef: string | null
+  rawTargetAvailableLocally: boolean
+  credentialReady: boolean
+  helperReady: boolean
+  detectedBalanceSats: number | null
+  unclaimedDepositCount: number | null
+  blockerRefs: string[]
+  nextActionRefs: string[]
+  publicReceiptRefs: string[]
+  contentRedacted: true
+}
+
+/**
+ * Narrow, injectable Spark helper command contract.
+ *
+ * The live Breez SDK Spark integration is NOT wired in this slice. A helper is
+ * an injected dependency that responds to exactly these four commands. A stub
+ * (`unavailableSparkBackupHelper`) reports `helper-unavailable` when none is
+ * configured; tests inject a fake helper.
+ */
+export type SparkBackupCommand = "status" | "address" | "history" | "unclaimed-deposits"
+
+export type SparkBackupHelper = (command: SparkBackupCommand) => Promise<WalletCommandResult>
+
+/**
+ * Default stub helper. There is no live Breez SDK in slice 1, so every command
+ * reports the helper is unavailable. This keeps default node behavior inert.
+ */
+export const unavailableSparkBackupHelper: SparkBackupHelper = async (command) => ({
+  exitCode: 1,
+  stdout: "",
+  stderr: `spark backup helper unavailable: ${command}`,
+})
+
 export type WalletCommandRunner = (args: string[]) => Promise<WalletCommandResult>
 export type LegacySparkCommandRunner = (args: string[]) => Promise<WalletCommandResult>
 
@@ -643,6 +706,342 @@ export async function receiveWithMdk(amountSats: number, runner: WalletCommandRu
     return { ok: false, receiptRef: "wallet.receive_failure.missing_invoice" }
   }
   return { ok: true, receiptRef: stableRef("wallet.receive", data.invoice) }
+}
+
+/**
+ * Classify an MDK receive failure as either an offline/unavailable class
+ * (eligible for the Spark backup rail) or a validation/user-error class
+ * (NOT eligible — stay on MDK).
+ *
+ * Offline class: daemon offline, connection refused/unreachable, init/start
+ * timeouts, daemon-not-ready. Validation/user class: bad amount, malformed
+ * arguments, policy rejections, anything that is not a transport/availability
+ * problem. When uncertain, default to NO fallback (validation class) so we
+ * never silently switch rails on a user error.
+ */
+export function classifyMdkReceiveFailure(result: WalletCommandResult): {
+  class: "offline" | "validation"
+  ref: string
+} {
+  const text = `${result.stderr}\n${result.stdout}`.toLowerCase()
+  const offline =
+    /daemon[\s_-]*(unavailable|offline|not[\s_-]*ready|unreachable)/.test(text) ||
+    /\b(offline|unreachable)\b/.test(text) ||
+    /connection\s+(refused|reset|failed|error)/.test(text) ||
+    /econnrefused|enotfound|etimedout|ehostunreach|enetunreach/.test(text) ||
+    /(init|initiali[sz]e|initiali[sz]ation|start|startup|connect|connection)\b.*\b(timed?\s*out|timeout)/.test(text) ||
+    /\b(timed?\s*out|timeout)\b.*\b(init|initiali[sz]|start|startup|connect|connection|daemon)/.test(text) ||
+    /could\s+not\s+connect|unable\s+to\s+connect|no\s+such\s+host|service\s+unavailable/.test(text)
+  return {
+    class: offline ? "offline" : "validation",
+    ref: stableRef(offline ? "wallet.receive_failure.offline" : "wallet.receive_failure.validation", result.stderr || result.stdout || "unknown"),
+  }
+}
+
+/**
+ * Public-projection guard specialized for Spark backup. Runs the shared
+ * `assertPublicProjectionSafe` (which now rejects raw Spark address/invoice
+ * material via the state.ts forbidden patterns) and additionally rejects raw
+ * Spark-shaped strings anywhere in the projection. Redacted refs such as
+ * `wallet.backup.spark_address.<digest>` and `blocker.wallet.spark_backup.*`
+ * remain allowed.
+ */
+function assertSparkBackupProjectionSafe<T>(projection: T): T {
+  assertPublicProjectionSafe(projection)
+  return projection
+}
+
+export type SparkBackupReceiveOptions = {
+  enabled?: boolean
+  env?: NodeJS.ProcessEnv
+  helper?: SparkBackupHelper
+  cachedAddress?: string | null
+  showLocalTarget?: boolean
+}
+
+function hasSparkBackupCredential(env: NodeJS.ProcessEnv) {
+  return [
+    env.PYLON_SPARK_BACKUP_CREDENTIAL_READY,
+    env.OPENAGENTS_SPARK_API_KEY,
+    env.BREEZ_API_KEY,
+  ].some((value) => value !== undefined && value.trim() !== "")
+}
+
+function isSparkBackupEnabled(options: SparkBackupReceiveOptions, env: NodeJS.ProcessEnv) {
+  if (options.enabled !== undefined) return options.enabled
+  const raw = env.PYLON_SPARK_BACKUP_ENABLED
+  return raw === "1" || raw === "true"
+}
+
+/**
+ * Build a Spark backup receive projection. INERT by default:
+ * - opt-in disabled -> `disabled` (no helper calls).
+ * - missing credential -> `credential-missing` blocker.
+ * - helper offline with a cached address -> `cached-address-ready` (no fresh
+ *   sync claim).
+ * - helper offline, no cache -> `helper-unavailable` blocker.
+ * - helper ready -> `address-ready` with a redacted receive-target ref and
+ *   `rawTargetAvailableLocally: true`.
+ *
+ * The raw Spark target is NEVER placed in the returned projection. It is only
+ * surfaced separately (see `prepareSparkBackupReceive`) when `--show-local-target`
+ * is explicitly set, for local-only output.
+ */
+export async function classifySparkBackupReceive(
+  options: SparkBackupReceiveOptions = {},
+): Promise<SparkBackupReceiveProjection> {
+  const env = options.env ?? process.env
+  const enabled = isSparkBackupEnabled(options, env)
+  const helper = options.helper ?? unavailableSparkBackupHelper
+  const cachedAddress = options.cachedAddress ?? null
+
+  const base: SparkBackupReceiveProjection = {
+    schema: "openagents.pylon.spark_backup_receive.v0.1",
+    enabled,
+    state: "disabled",
+    selectedBecauseRefs: [],
+    receiveTargetRef: null,
+    rawTargetAvailableLocally: false,
+    credentialReady: false,
+    helperReady: false,
+    detectedBalanceSats: null,
+    unclaimedDepositCount: null,
+    blockerRefs: [],
+    nextActionRefs: [],
+    publicReceiptRefs: [],
+    contentRedacted: true,
+  }
+
+  if (!enabled) {
+    return assertSparkBackupProjectionSafe({
+      ...base,
+      state: "disabled",
+      nextActionRefs: ["action.wallet.spark_backup.enable_opt_in"],
+    })
+  }
+
+  const credentialReady = hasSparkBackupCredential(env)
+  if (!credentialReady) {
+    return assertSparkBackupProjectionSafe({
+      ...base,
+      state: "credential-missing",
+      credentialReady: false,
+      blockerRefs: ["blocker.wallet.spark_backup.credential_missing"],
+      nextActionRefs: ["action.wallet.spark_backup.configure_local_credential"],
+    })
+  }
+
+  let helperResult: WalletCommandResult
+  try {
+    helperResult = await helper("address")
+  } catch (error) {
+    helperResult = { exitCode: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) }
+  }
+  const helperReady = helperResult.exitCode === 0
+  const helperData = helperReady ? parseMaybeJson(helperResult.stdout) : null
+  const rawTarget =
+    typeof helperData?.spark_address === "string"
+      ? helperData.spark_address
+      : typeof helperData?.address === "string"
+        ? helperData.address
+        : typeof helperData?.spark_invoice === "string"
+          ? helperData.spark_invoice
+          : null
+
+  if (helperReady && rawTarget) {
+    return assertSparkBackupProjectionSafe({
+      ...base,
+      state: "address-ready",
+      credentialReady: true,
+      helperReady: true,
+      receiveTargetRef: stableRef("wallet.backup.spark_address", rawTarget),
+      rawTargetAvailableLocally: true,
+      nextActionRefs: ["action.wallet.spark_backup.backup_status"],
+    })
+  }
+
+  if (cachedAddress) {
+    return assertSparkBackupProjectionSafe({
+      ...base,
+      state: "cached-address-ready",
+      credentialReady: true,
+      helperReady: false,
+      receiveTargetRef: stableRef("wallet.backup.spark_address", cachedAddress),
+      rawTargetAvailableLocally: true,
+      blockerRefs: ["blocker.wallet.spark_backup.sync_unavailable"],
+      nextActionRefs: ["action.wallet.spark_backup.reconnect_helper_to_sync"],
+    })
+  }
+
+  return assertSparkBackupProjectionSafe({
+    ...base,
+    state: "helper-unavailable",
+    credentialReady: true,
+    helperReady: false,
+    blockerRefs: ["blocker.wallet.spark_backup.helper_unavailable"],
+    nextActionRefs: ["action.wallet.spark_backup.install_or_start_helper"],
+  })
+}
+
+export type SparkBackupReceiveResult = {
+  ok: boolean
+  rail: "spark_backup"
+  state: SparkBackupReceiveState
+  receiptRef: string | null
+  rawTargetAvailableLocally: boolean
+  // Raw local target is only present when `--show-local-target` is explicitly
+  // set, for local terminal/TUI output. It is NEVER placed in any projection
+  // or network post.
+  localTarget?: string
+  projection: SparkBackupReceiveProjection
+  blockerRefs: string[]
+}
+
+/**
+ * Prepare a Spark backup receive target. Returns a redacted receipt ref and,
+ * only when `showLocalTarget` is explicitly set, the raw local target for
+ * local-only display. Without `showLocalTarget`, raw target output is withheld.
+ */
+export async function prepareSparkBackupReceive(
+  options: SparkBackupReceiveOptions = {},
+): Promise<SparkBackupReceiveResult> {
+  const helper = options.helper ?? unavailableSparkBackupHelper
+  const cachedAddress = options.cachedAddress ?? null
+  const projection = await classifySparkBackupReceive(options)
+
+  const ready = projection.state === "address-ready" || projection.state === "cached-address-ready"
+  const receiptRef = projection.receiveTargetRef
+    ? `wallet.backup_receive.${projection.receiveTargetRef.split(".").pop()}`
+    : null
+
+  // Resolve the raw local target only when explicitly requested. For the
+  // cached path we already hold it; for the live path we re-read from the
+  // helper (kept out of the projection).
+  let localTarget: string | undefined
+  if (ready && options.showLocalTarget === true) {
+    if (projection.state === "cached-address-ready" && cachedAddress) {
+      localTarget = cachedAddress
+    } else if (projection.state === "address-ready") {
+      try {
+        const result = await helper("address")
+        const data = result.exitCode === 0 ? parseMaybeJson(result.stdout) : null
+        const raw =
+          typeof data?.spark_address === "string"
+            ? data.spark_address
+            : typeof data?.address === "string"
+              ? data.address
+              : typeof data?.spark_invoice === "string"
+                ? data.spark_invoice
+                : undefined
+        localTarget = raw
+      } catch {
+        localTarget = undefined
+      }
+    }
+  }
+
+  return {
+    ok: ready,
+    rail: "spark_backup",
+    state: projection.state,
+    receiptRef,
+    rawTargetAvailableLocally: projection.rawTargetAvailableLocally,
+    ...(localTarget !== undefined ? { localTarget } : {}),
+    projection,
+    blockerRefs: projection.blockerRefs,
+  }
+}
+
+export type WalletReceiveFallbackResult =
+  | { ok: true; rail: "mdk"; receiptRef: string }
+  | {
+      ok: boolean
+      rail: "spark_backup"
+      receiptRef: string | null
+      mdkFailureRef: string
+      rawTargetAvailableLocally: boolean
+      sparkBackup: SparkBackupReceiveResult
+    }
+  | { ok: false; rail: "mdk"; receiptRef: string; mdkFailureClass: "offline" | "validation" }
+
+/**
+ * `wallet receive` fallback chooser: MDK first, Spark backup second.
+ *
+ * Spark backup is consulted ONLY when:
+ *   1. the MDK failure is in the offline/unavailable class, AND
+ *   2. the Spark backup is opt-in enabled.
+ *
+ * On an MDK validation/user error, the rail does NOT switch (stays on MDK).
+ * Default behavior is unchanged/inert: with the opt-in off and the stub helper,
+ * a non-offline failure returns the MDK failure ref and an offline failure with
+ * the backup disabled also stays on MDK.
+ */
+export async function receiveWithFallback(
+  amountSats: number,
+  options: {
+    runner?: WalletCommandRunner
+    sparkBackup?: SparkBackupReceiveOptions
+  } = {},
+): Promise<WalletReceiveFallbackResult> {
+  const runner = options.runner ?? defaultWalletCommandRunner
+  const result = await runner(["receive", String(amountSats)])
+  if (result.exitCode === 0) {
+    const data = parseJson(result.stdout)
+    if (typeof data?.invoice === "string") {
+      return { ok: true, rail: "mdk", receiptRef: stableRef("wallet.receive", data.invoice) }
+    }
+    return { ok: false, rail: "mdk", receiptRef: "wallet.receive_failure.missing_invoice", mdkFailureClass: "validation" }
+  }
+
+  const failure = classifyMdkReceiveFailure(result)
+  const env = options.sparkBackup?.env ?? process.env
+  const enabled = isSparkBackupEnabled(options.sparkBackup ?? {}, env)
+
+  // Validation/user error, or backup disabled -> do NOT switch rails.
+  if (failure.class !== "offline" || !enabled) {
+    return { ok: false, rail: "mdk", receiptRef: failure.ref, mdkFailureClass: failure.class }
+  }
+
+  const sparkBackup = await prepareSparkBackupReceive(options.sparkBackup ?? {})
+  // Annotate why the backup rail was selected, without leaking raw material.
+  sparkBackup.projection.selectedBecauseRefs = [failure.ref]
+  if (sparkBackup.ok && sparkBackup.projection.state === "address-ready") {
+    sparkBackup.projection.state = "receive-selected-mdk-offline"
+  }
+
+  return {
+    ok: sparkBackup.ok,
+    rail: "spark_backup",
+    receiptRef: sparkBackup.receiptRef,
+    mdkFailureRef: failure.ref,
+    rawTargetAvailableLocally: sparkBackup.rawTargetAvailableLocally,
+    sparkBackup,
+  }
+}
+
+/**
+ * Reconciliation helper for `backup-status`: given a detected Spark balance,
+ * recommend `migrate-spark` but NEVER mark settlement. This is receive-only;
+ * funds move only through the consented `migrate-spark` sweep (a later slice).
+ */
+export function recommendSparkSweep(input: {
+  detectedBalanceSats: number | null
+  unclaimedDepositCount?: number | null
+}): {
+  state: SparkBackupReceiveState
+  recommendsMigrateSpark: boolean
+  settlementMarked: false
+  nextActionRefs: string[]
+} {
+  const credited = input.detectedBalanceSats !== null && input.detectedBalanceSats > 0
+  return {
+    state: credited ? "sweep-to-mdk-recommended" : "credited",
+    recommendsMigrateSpark: credited,
+    settlementMarked: false,
+    nextActionRefs: credited
+      ? ["action.wallet.spark_backup.run_migrate_spark_with_consent"]
+      : [],
+  }
 }
 
 export async function sendWithMdk(

@@ -7,12 +7,18 @@ import { assertPublicProjectionSafe, ensurePylonLocalState } from "../src/state"
 import {
   admitPayoutTarget,
   appendLedgerEvent,
+  classifyMdkReceiveFailure,
   classifyMdkWallet,
+  classifySparkBackupReceive,
   preflightLegacySparkMigration,
+  prepareSparkBackupReceive,
+  receiveWithFallback,
   receiveWithMdk,
+  recommendSparkSweep,
   reportWalletReadiness,
   requestPayoutTargetAdmission,
   sendWithMdk,
+  type SparkBackupHelper,
   type WalletCommandRunner,
 } from "../src/wallet"
 
@@ -397,5 +403,208 @@ describe("MDK wallet readiness and ledger", () => {
   test("rejects raw wallet and payment material in public projection", () => {
     expect(() => assertPublicProjectionSafe({ invoice: "lnbc10n1rawinvoice" })).toThrow("not public-safe")
     expect(() => assertPublicProjectionSafe({ note: "payment preimage abc" })).toThrow("private-data-shaped")
+  })
+})
+
+const RAW_SPARK_ADDRESS = "sp1pgssy9raw7examplespark0address0material0that0must0never0leak0publicly00"
+
+const sparkHelper =
+  (responses: Partial<Record<"status" | "address" | "history" | "unclaimed-deposits", { exitCode?: number; stdout?: unknown; stderr?: string }>>): SparkBackupHelper =>
+  async (command) => {
+    const response = responses[command] ?? { exitCode: 1, stderr: `unexpected spark command: ${command}` }
+    return {
+      exitCode: response.exitCode ?? 0,
+      stdout: typeof response.stdout === "string" ? response.stdout : JSON.stringify(response.stdout ?? {}),
+      stderr: response.stderr ?? "",
+    }
+  }
+
+describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
+  test("MDK receive success does not call the Spark backup helper", async () => {
+    let helperCalls = 0
+    const helper: SparkBackupHelper = async () => {
+      helperCalls += 1
+      return { exitCode: 0, stdout: JSON.stringify({ spark_address: RAW_SPARK_ADDRESS }), stderr: "" }
+    }
+    const result = await receiveWithFallback(1000, {
+      runner: runner({ "receive 1000": { stdout: { invoice: "lnbc10n1rawinvoice" } } }),
+      sparkBackup: { enabled: true, env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv, helper },
+    })
+    expect(result.ok).toBe(true)
+    expect(result.rail).toBe("mdk")
+    expect(helperCalls).toBe(0)
+  })
+
+  test("MDK daemon offline selects Spark backup receive when enabled", async () => {
+    const result = await receiveWithFallback(1000, {
+      runner: runner({ "receive 1000": { exitCode: 1, stderr: "MDK daemon offline" } }),
+      sparkBackup: {
+        enabled: true,
+        env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+        helper: sparkHelper({ address: { stdout: { spark_address: RAW_SPARK_ADDRESS } } }),
+      },
+    })
+    expect(result.rail).toBe("spark_backup")
+    if (result.rail !== "spark_backup") throw new Error("expected spark_backup rail")
+    expect(result.ok).toBe(true)
+    expect(result.receiptRef).toMatch(/^wallet\.backup_receive\.[a-f0-9]{24}$/)
+    expect(result.mdkFailureRef).toMatch(/^wallet\.receive_failure\.offline\.[a-f0-9]{24}$/)
+    expect(result.sparkBackup.projection.state).toBe("receive-selected-mdk-offline")
+    expect(result.sparkBackup.projection.selectedBecauseRefs).toEqual([result.mdkFailureRef])
+    assertPublicProjectionSafe(result.sparkBackup.projection)
+  })
+
+  test("MDK validation error does NOT switch rails", async () => {
+    const result = await receiveWithFallback(1000, {
+      runner: runner({ "receive 1000": { exitCode: 1, stderr: "invalid amount: must be positive" } }),
+      sparkBackup: {
+        enabled: true,
+        env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+        helper: sparkHelper({ address: { stdout: { spark_address: RAW_SPARK_ADDRESS } } }),
+      },
+    })
+    expect(result.rail).toBe("mdk")
+    expect(result.ok).toBe(false)
+    if (result.rail !== "mdk" || !("mdkFailureClass" in result)) throw new Error("expected mdk validation result")
+    expect(result.mdkFailureClass).toBe("validation")
+    expect(classifyMdkReceiveFailure({ exitCode: 1, stdout: "", stderr: "invalid amount" }).class).toBe("validation")
+    expect(classifyMdkReceiveFailure({ exitCode: 1, stdout: "", stderr: "connection refused" }).class).toBe("offline")
+    expect(classifyMdkReceiveFailure({ exitCode: 1, stdout: "", stderr: "init timed out" }).class).toBe("offline")
+  })
+
+  test("offline failure with backup disabled stays on MDK (inert default)", async () => {
+    const result = await receiveWithFallback(1000, {
+      runner: runner({ "receive 1000": { exitCode: 1, stderr: "MDK daemon offline" } }),
+      sparkBackup: { env: {} as NodeJS.ProcessEnv },
+    })
+    expect(result.rail).toBe("mdk")
+    expect(result.ok).toBe(false)
+  })
+
+  test("Spark helper missing returns a typed blocker", async () => {
+    const projection = await classifySparkBackupReceive({
+      enabled: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      helper: sparkHelper({ address: { exitCode: 1, stderr: "helper not installed" } }),
+    })
+    expect(projection.state).toBe("helper-unavailable")
+    expect(projection.helperReady).toBe(false)
+    expect(projection.blockerRefs).toContain("blocker.wallet.spark_backup.helper_unavailable")
+    expect(projection.receiveTargetRef).toBeNull()
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("missing Spark credential returns a typed blocker", async () => {
+    const projection = await classifySparkBackupReceive({
+      enabled: true,
+      env: {} as NodeJS.ProcessEnv,
+      helper: sparkHelper({ address: { stdout: { spark_address: RAW_SPARK_ADDRESS } } }),
+    })
+    expect(projection.state).toBe("credential-missing")
+    expect(projection.credentialReady).toBe(false)
+    expect(projection.blockerRefs).toContain("blocker.wallet.spark_backup.credential_missing")
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("cached Spark address works as cached-address-ready when helper is offline", async () => {
+    const projection = await classifySparkBackupReceive({
+      enabled: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      helper: sparkHelper({ address: { exitCode: 1, stderr: "helper offline" } }),
+      cachedAddress: RAW_SPARK_ADDRESS,
+    })
+    expect(projection.state).toBe("cached-address-ready")
+    expect(projection.receiveTargetRef).toMatch(/^wallet\.backup\.spark_address\.[a-f0-9]{24}$/)
+    expect(projection.blockerRefs).toContain("blocker.wallet.spark_backup.sync_unavailable")
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("--show-local-target is required before raw target output is allowed", async () => {
+    const withoutFlag = await prepareSparkBackupReceive({
+      enabled: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      helper: sparkHelper({ address: { stdout: { spark_address: RAW_SPARK_ADDRESS } } }),
+    })
+    expect(withoutFlag.ok).toBe(true)
+    expect(withoutFlag.localTarget).toBeUndefined()
+    expect(withoutFlag.receiptRef).toMatch(/^wallet\.backup_receive\.[a-f0-9]{24}$/)
+    assertPublicProjectionSafe(withoutFlag.projection)
+    // The redacted result object must not carry the raw address anywhere.
+    expect(JSON.stringify(withoutFlag.projection)).not.toContain(RAW_SPARK_ADDRESS)
+
+    const withFlag = await prepareSparkBackupReceive({
+      enabled: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      helper: sparkHelper({ address: { stdout: { spark_address: RAW_SPARK_ADDRESS } } }),
+      showLocalTarget: true,
+    })
+    expect(withFlag.localTarget).toBe(RAW_SPARK_ADDRESS)
+    // Even with the local flag, the projection itself stays redacted.
+    expect(JSON.stringify(withFlag.projection)).not.toContain(RAW_SPARK_ADDRESS)
+    assertPublicProjectionSafe(withFlag.projection)
+  })
+
+  test("assertPublicProjectionSafe rejects projections containing raw Spark material", () => {
+    expect(() => assertPublicProjectionSafe({ note: `target ${RAW_SPARK_ADDRESS}` })).toThrow("private-data-shaped")
+    expect(() => assertPublicProjectionSafe({ note: "spark1qqexampleinvoicematerialthatleaks0000" })).toThrow(
+      "private-data-shaped",
+    )
+    expect(() => assertPublicProjectionSafe({ spark_address: "anything" })).toThrow("not public-safe")
+    expect(() => assertPublicProjectionSafe({ sparkInvoice: "anything" })).toThrow("not public-safe")
+    // Redacted refs remain allowed.
+    expect(() =>
+      assertPublicProjectionSafe({ receiveTargetRef: "wallet.backup.spark_address.deadbeefdeadbeefdeadbeef" }),
+    ).not.toThrow()
+    expect(() =>
+      assertPublicProjectionSafe({ blockerRefs: ["blocker.wallet.spark_backup.credential_missing"] }),
+    ).not.toThrow()
+  })
+
+  test("backup-receive ledger events are idempotent", async () => {
+    await withTempHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs([]), { PYLON_HOME: home }, "darwin")
+      const state = await ensurePylonLocalState(summary)
+      const prepared = await prepareSparkBackupReceive({
+        enabled: true,
+        env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+        helper: sparkHelper({ address: { stdout: { spark_address: RAW_SPARK_ADDRESS } } }),
+      })
+      const ref = prepared.receiptRef as string
+      const first = await appendLedgerEvent(state.paths, {
+        kind: "backup-receive-selected",
+        ref,
+        data: { receiptRef: ref, rail: "spark_backup" },
+      })
+      const second = await appendLedgerEvent(state.paths, {
+        kind: "backup-receive-selected",
+        ref,
+        data: { receiptRef: ref, rail: "spark_backup" },
+      })
+      const ledger = await readFile(state.paths.ledger, "utf8")
+      expect(first).toBe(second)
+      expect(ledger.trim().split("\n")).toHaveLength(1)
+      expect(ledger).not.toContain(RAW_SPARK_ADDRESS)
+      expect(ledger).not.toContain("sp1")
+    })
+  })
+
+  test("detected balance recommends migrate-spark but does NOT mark settlement", () => {
+    const credited = recommendSparkSweep({ detectedBalanceSats: 4242, unclaimedDepositCount: 1 })
+    expect(credited.recommendsMigrateSpark).toBe(true)
+    expect(credited.state).toBe("sweep-to-mdk-recommended")
+    expect(credited.settlementMarked).toBe(false)
+    expect(credited.nextActionRefs).toContain("action.wallet.spark_backup.run_migrate_spark_with_consent")
+
+    const empty = recommendSparkSweep({ detectedBalanceSats: 0 })
+    expect(empty.recommendsMigrateSpark).toBe(false)
+    expect(empty.settlementMarked).toBe(false)
+  })
+
+  test("backup receive is inert by default (opt-in off, stub helper)", async () => {
+    const projection = await classifySparkBackupReceive({ env: {} as NodeJS.ProcessEnv })
+    expect(projection.enabled).toBe(false)
+    expect(projection.state).toBe("disabled")
+    expect(projection.receiveTargetRef).toBeNull()
+    assertPublicProjectionSafe(projection)
   })
 })

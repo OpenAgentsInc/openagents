@@ -85,13 +85,13 @@ export type PublicProjection =
   | Record<string, unknown>
 
 const forbiddenKeyPattern =
-  /(^|[._-])(wallet_seed|seed|mnemonic|private_key|privatekey|preimage|bearer|access_token|api_key|apikey|provider_token|provider_auth|raw_prompt|raw_prompts|private_repo|repo_content|private_topology|cache_path|cachepath|env_dump|environment_dump|capacity_pool_secret|internal_accounting_credential|invoice|offer|payment_hash|payment_preimage|secret|password|xprv)([._-]|$)/i
+  /(^|[._-])(wallet_seed|seed|mnemonic|private_key|privatekey|preimage|bearer|access_token|api_key|apikey|provider_token|provider_auth|raw_prompt|raw_prompts|private_repo|repo_content|private_topology|cache_path|cachepath|env_dump|environment_dump|capacity_pool_secret|internal_accounting_credential|invoice|offer|payment_hash|payment_preimage|spark_address|spark_invoice|spark_request|secret|password|xprv)([._-]|$)/i
 
 const forbiddenExactKeyPattern =
-  /^(walletSeed|seed|mnemonic|privateKey|private_key|preimage|bearer|accessToken|apiKey|providerToken|providerAuth|rawPrompt|rawPrompts|privateRepo|repoContent|privateTopology|cachePath|envDump|environmentDump|capacityPoolSecret|internalAccountingCredential|invoice|offer|paymentHash|paymentPreimage|secret|password|xprv)$/i
+  /^(walletSeed|seed|mnemonic|privateKey|private_key|preimage|bearer|accessToken|apiKey|providerToken|providerAuth|rawPrompt|rawPrompts|privateRepo|repoContent|privateTopology|cachePath|envDump|environmentDump|capacityPoolSecret|internalAccountingCredential|invoice|offer|paymentHash|paymentPreimage|sparkAddress|sparkInvoice|sparkRequest|secret|password|xprv)$/i
 
 const forbiddenStringPattern =
-  /\b(wallet seed|mnemonic|private key|payment preimage|bearer\s+[a-z0-9._-]+|sk-[a-z0-9_-]+|lnbc[a-z0-9]+|lntb[a-z0-9]+|lno[a-z0-9]+|private-repo:\/\/|private_repo|raw prompt|capacity pool secret|internal accounting credential|xprv|\/Users\/[^\s]+\/\.cache|\/home\/[^\s]+\/\.cache)\b/i
+  /\b(wallet seed|mnemonic|private key|payment preimage|bearer\s+[a-z0-9._-]+|sk-[a-z0-9_-]+|lnbc[a-z0-9]+|lntb[a-z0-9]+|lno[a-z0-9]+|spark1[a-z0-9]{20,}|sprt1[a-z0-9]{20,}|spt1[a-z0-9]{20,}|sp1[a-z0-9]{20,}|private-repo:\/\/|private_repo|raw prompt|capacity pool secret|internal accounting credential|xprv|\/Users\/[^\s]+\/\.cache|\/home\/[^\s]+\/\.cache)\b/i
 
 function stableHash(input: string, length = 24) {
   return createHash("sha256").update(input).digest("hex").slice(0, length)
