@@ -8,10 +8,11 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
 - **Launched:** Autopilot 1.0 + Pylon v1.0 release candidates (signed/notarized,
   default-on auto-update), the Tassadar run (`run.tassadar.executor.20260615`,
   active), Episode 237 + essay, the forum/Nostr/Bitcoin-tip rails.
-- **Live promises:** source registry at **`2026-06-16.5`**; the deployed worker
-  still serves an earlier version (the `.1`–`.4` bumps from the 16th are
-  **undeployed** — deploy from a clean `origin/main` to publish them). Counts shift
-  as promises flip; see `/api/public/product-promises`.
+- **Live promises:** source registry at **`2026-06-16.5`** and the **deployed
+  worker now serves `2026-06-16.5`** (verified live at
+  `/api/public/product-promises`) — the apps/web deploys on the 16th
+  (components-live / `/login` / `/animations`, latest worker `d9113b02`) published
+  the earlier `.1`–`.5` bumps. Counts shift as promises flip.
 - **Built-in hosted agent backend is LIVE:** `GEMINI_API_KEY` set + verified on
   prod (`generateContent` returns real output); the keyless quota-gated grant
   route `POST /api/provider-accounts/google-gemini/grants/builtin` is deployed
@@ -39,9 +40,12 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   apps/web build wave landed on `main` — full status in §F. Epic A (shared Foldkit
   component library `@openagentsinc/ui`) **complete & deployed to prod**; Forge
   cockpit (`/autopilot`) + factory dashboard (`/forge`) live; `/business` landing
-  live (+ public `/components` gallery); workspace-primitive backend landed. The
+  live (+ public `/components` gallery, now rendering **live** component instances
+  via #5108); workspace-primitive backend landed. The
   repo-wide **`typecheck:api` gate is green again** (`872cf8c47` — fixed the forum
-  post-list error channel + two other pre-existing own-source errors).
+  post-list error channel + two other pre-existing own-source errors). The wave
+  continued with the real **`/login` page + email OTP** (#5111, deployed) and the
+  **`/animations`** three.js playground — see §F.
 
 ## A. Short-term bug fixes — ✅ all closed (16th)
 
@@ -184,6 +188,12 @@ epics below; not all lands today — the aim is the main spine.
   reasoning/web-preview (#5083 `70c522782`); shipped the public **`/components`**
   gallery (#5082 `a93ede881`); icon-path follow-up (#5086 `34ab4237d`).
   **Deployed to prod** + `/components` made publicly servable.
+  - **#5108 (CLOSED `81bdc9497`) — gallery renders LIVE component instances:**
+    every family page now leads with real rendered components on a black surface
+    (`previewBox`/`familyShowcase`) and demotes the contract metadata to a
+    secondary "Contract" section — fixing the "this is just descriptions/metadata,
+    where are the components" gap. Login family shows the real WebGL light-beams
+    showcase. `components-route.test.ts` asserts rendered instances appear.
 - **Epic B — Forge cockpit (#5091):** **B1** (#5087 `5e1e9398f`) reframed
   `/autopilot` on `@openagentsinc/ui` (Runs / compute-routing / accepted-outcome
   receipts). **B2** (#5088 `abdb6c8ce`) shipped the **`/forge` factory dashboard**
@@ -201,6 +211,32 @@ epics below; not all lands today — the aim is the main spine.
   requests, with `manual_invite_pending` status and the automation boundary
   documented in
   `docs/blitz/forge/2026-06-16-business-slack-connect-intake.md`.
+- **Login surface — real `/login` page + email OTP (#5111, CLOSED, deployed
+  `d9113b02`):** `/login` is now a branded SPA page (`apps/web/src/page/login.ts`,
+  over the constellation animation) offering **email one-time-code** sign-in +
+  GitHub — no longer a 302 to `/`. OpenAuth `CodeProvider`/`CodeUI` registered;
+  `success()` accepts `provider:'code'`, upserts by verified email, issues the
+  same session; `UserSubject` widened to `'github' | 'email'`. Auth-code email
+  goes **direct via Resend** (interim, decoupled from the `EmailService` ledger).
+  Gating preserved (login only authenticates; product stays downstream-gated) —
+  recorded as the "Login Surface" invariant. The architecture rule was relaxed to
+  allow the real login route while still banning the deleted *simulated* auth
+  symbols. Audit + posture: `docs/auth/2026-06-16-login-and-auth-audit.md`.
+- **`/animations` internal three.js playground (deployed `d0cf8a5e`):** a scrollable
+  `/animations` page of self-contained WebGL experiments via a `makeAnimationView`
+  factory — the live pylon bezier network + WebGL permutations, R3F-/three.js-ported
+  scenes (constellation, instanced field, flow field, tube flow, glow knot, wobble
+  sphere, shader gradient, grid floor), and a TouchDesigner-style **blob-tracking**
+  data-aesthetics scene built on `@openagentsinc/three-effect` instancing. Source
+  the login/constellation backdrop and future viz reuse from here. (Also committed
+  the previously-untracked `lightBeams.ts`/`lightBeamsElement.ts`.)
+- **Auth + email strategy reconciled (docs):** the Cloudflare Email Service audit
+  (`docs/auth/2026-06-16-cloudflare-email-automation-audit.md`) now owns the single
+  **"Unified Email & Auth Strategy — what we do when"** roadmap (provider-role
+  matrix + DONE/NOW/NEXT/LATER sequence). Net: **no change to shipped login** —
+  Resend stays the auth transport now; Cloudflare (dedicated auth subdomain) is the
+  forward target, reached only after a verified-destination smoke + a provider
+  adapter behind `EmailService`. Cold/bulk/marketing stays off Cloudflare.
 
 **Targeted next (this session / soon — won't all land today):**
 
@@ -238,10 +274,16 @@ epics below; not all lands today — the aim is the main spine.
 
 ## Recommended next (assistant lane)
 
-Section **A** is the cleanest non-overlapping closeable work I own (worker/pylon
-projection fixes: #5076, #5075). **B/C** need the owner + a real second
-device. **D** needs the concurrent desktop session. Coordinate to avoid the
-duplicate-work collisions seen on #5067.
+Section **A** is fully closed; the apps/web wave (Epic A live-render #5108,
+`/login` #5111, `/animations`) has landed and deployed. Cleanest non-overlapping
+assistant-lane work now: the §F **Targeted next** items — **B3** (#5089 Forge
+Automations), **C2** (#5093 operator seeding/invite/engagement), **D1** (#5096
+route our own AI/coding spend through the pool) — plus the **email strategy
+"NEXT" slice** (Cloudflare verified-destination smoke + `cloudflare_email`
+provider behind `EmailService`; see the unified strategy doc). The owner-gated
+green-flips (**B/C** §C, built-in agent §D) still need the owner + a real second
+device + the concurrent desktop session. Coordinate to avoid the duplicate-work
+collisions seen on #5067.
 
 ## Coordination note
 
