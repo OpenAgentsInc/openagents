@@ -381,6 +381,7 @@ const pageShellClass = 'h-dvh overflow-auto bg-[#000] text-[#f1efe8]'
 
 export const view = <Message>(
   authState: PublicHeaderAuthState<Message>,
+  selectedFamily?: string,
 ): Html => {
   const h = html<Message>()
 
@@ -395,13 +396,21 @@ export const view = <Message>(
             'mx-auto grid w-[min(100%,1120px)] gap-8 px-4 py-8 lg:grid-cols-[220px_minmax(0,1fr)]',
           ),
         ],
-        [sidebarView<Message>(), articleView<Message>()],
+        [
+          sidebarView<Message>(selectedFamily),
+          articleView<Message>(selectedFamily),
+        ],
       ),
     ],
   )
 }
 
-const sidebarView = <Message>(): Html => {
+const navLinkClass = (active: boolean): string =>
+  active
+    ? 'rounded bg-white/[0.07] px-2 py-2 text-base text-[#f1efe8] sm:text-sm'
+    : 'rounded px-2 py-2 text-base text-white/50 hover:bg-white/[0.04] hover:text-[#f1efe8] sm:text-sm'
+
+const sidebarView = <Message>(selectedFamily?: string): Html => {
   const h = html<Message>()
 
   const aiElementsNavLabel = aiElementsExported
@@ -426,12 +435,19 @@ const sidebarView = <Message>(): Html => {
           Ui.className<Message>('mt-3 grid gap-1'),
         ],
         [
+          h.a(
+            [
+              h.Href('/components'),
+              Ui.className<Message>(navLinkClass(selectedFamily === undefined)),
+            ],
+            ['All families'],
+          ),
           ...Array.map(families, family =>
             h.a(
               [
-                h.Href(`#family-${family.id}`),
+                h.Href(`/components/${family.id}`),
                 Ui.className<Message>(
-                  'rounded px-2 py-2 text-base text-white/50 hover:bg-white/[0.04] hover:text-[#f1efe8] sm:text-sm',
+                  navLinkClass(selectedFamily === family.id),
                 ),
               ],
               [family.title],
@@ -439,9 +455,9 @@ const sidebarView = <Message>(): Html => {
           ),
           h.a(
             [
-              h.Href('#family-ai-elements'),
+              h.Href('/components/ai-elements'),
               Ui.className<Message>(
-                'rounded px-2 py-2 text-base text-white/50 hover:bg-white/[0.04] hover:text-[#f1efe8] sm:text-sm',
+                navLinkClass(selectedFamily === 'ai-elements'),
               ),
             ],
             [aiElementsNavLabel],
@@ -452,8 +468,24 @@ const sidebarView = <Message>(): Html => {
   )
 }
 
-const articleView = <Message>(): Html => {
+const articleView = <Message>(selectedFamily?: string): Html => {
   const h = html<Message>()
+
+  const knownFamily = families.find(family => family.id === selectedFamily)
+  const isIndex =
+    selectedFamily === undefined ||
+    (selectedFamily !== 'ai-elements' && knownFamily === undefined)
+
+  const familySections: ReadonlyArray<Html> = isIndex
+    ? [
+        ...Array.map(families, family => familyCard<Message>(family)),
+        aiElementsCard<Message>(),
+      ]
+    : selectedFamily === 'ai-elements'
+      ? [aiElementsCard<Message>()]
+      : knownFamily !== undefined
+        ? [familyCard<Message>(knownFamily)]
+        : []
 
   return h.article(
     [
@@ -488,14 +520,8 @@ const articleView = <Message>(): Html => {
           'Every component family in @openagentsinc/ui, rendered in the real Foldkit app shell (not Storybook). This is an internal reference: it is intentionally kept out of the public navigation and honors the dark-only, pure-black, compact-mono, thin-border design contract.',
         ],
       ),
-      liveSamplesView<Message>(),
-      h.div(
-        [Ui.className<Message>('mt-8 grid gap-4')],
-        [
-          ...Array.map(families, family => familyCard<Message>(family)),
-          aiElementsCard<Message>(),
-        ],
-      ),
+      ...(isIndex ? [liveSamplesView<Message>()] : []),
+      h.div([Ui.className<Message>('mt-8 grid gap-4')], familySections),
     ],
   )
 }

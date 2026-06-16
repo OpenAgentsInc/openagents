@@ -98,6 +98,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                 SiteCheckoutDemo.view(route, { _tag: 'LoggedOut' }),
               ClientsPreview: () => ClientsPreview.view(),
               Components: () => Components.view({ _tag: 'LoggedOut' }),
+              ComponentsFamily: route =>
+                Components.view({ _tag: 'LoggedOut' }, route.family),
               Business: () => Business.view({ _tag: 'LoggedOut' }),
               Blog: route => Blog.view(route, { _tag: 'LoggedOut' }),
               BlogPost: route => Blog.view(route, { _tag: 'LoggedOut' }),

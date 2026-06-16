@@ -49,6 +49,9 @@ export const SiteCheckoutDemoReturnRoute = r('SiteCheckoutDemoReturn', {
 })
 export const ClientsPreviewRoute = r('ClientsPreview')
 export const ComponentsRoute = r('Components')
+export const ComponentsFamilyRoute = r('ComponentsFamily', {
+  family: S.String,
+})
 export const BusinessRoute = r('Business')
 export const BlogRoute = r('Blog')
 export const BlogPostRoute = r('BlogPost', { slug: S.String })
@@ -125,6 +128,7 @@ export type SiteCheckoutDemoReturnRoute =
   typeof SiteCheckoutDemoReturnRoute.Type
 export type ClientsPreviewRoute = typeof ClientsPreviewRoute.Type
 export type ComponentsRoute = typeof ComponentsRoute.Type
+export type ComponentsFamilyRoute = typeof ComponentsFamilyRoute.Type
 export type BusinessRoute = typeof BusinessRoute.Type
 export type BlogRoute = typeof BlogRoute.Type
 export type BlogPostRoute = typeof BlogPostRoute.Type
@@ -176,6 +180,7 @@ export const LoggedOutRoute = S.Union([
   SiteCheckoutDemoReturnRoute,
   ClientsPreviewRoute,
   ComponentsRoute,
+  ComponentsFamilyRoute,
   BusinessRoute,
   BlogRoute,
   BlogPostRoute,
@@ -216,6 +221,7 @@ export const LoggedInRoute = S.Union([
   SiteCheckoutDemoReturnRoute,
   ClientsPreviewRoute,
   ComponentsRoute,
+  ComponentsFamilyRoute,
   BusinessRoute,
   BlogRoute,
   BlogPostRoute,
@@ -263,6 +269,7 @@ export const AppRoute = S.Union([
   SiteCheckoutDemoReturnRoute,
   ClientsPreviewRoute,
   ComponentsRoute,
+  ComponentsFamilyRoute,
   BusinessRoute,
   BlogRoute,
   BlogPostRoute,
@@ -436,6 +443,11 @@ export const componentsRouter = pipe(
   literal('components'),
   Route.mapTo(ComponentsRoute),
 )
+export const componentsFamilyRouter = pipe(
+  literal('components'),
+  slash(string('family')),
+  Route.mapTo(ComponentsFamilyRoute),
+)
 export const businessRouter = pipe(
   literal('business'),
   Route.mapTo(BusinessRoute),
@@ -571,6 +583,7 @@ const routeParser = Route.oneOf(
   siteCheckoutDemoReturnRouter,
   siteCheckoutDemoRouter,
   clientsPreviewRouter,
+  componentsFamilyRouter,
   componentsRouter,
   businessRouter,
   forumReceiptRouter,

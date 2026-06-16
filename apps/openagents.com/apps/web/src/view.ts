@@ -355,6 +355,7 @@ const title = (model: Model): string =>
         M.tag('Blog', () => 'Blog - OpenAgents'),
         M.tag('BlogPost', ({ slug }) => `${blogTitle(slug)} - OpenAgents`),
         M.tag('Components', () => 'Components - OpenAgents'),
+        M.tag('ComponentsFamily', () => 'Components - OpenAgents'),
         M.tag('Business', () => 'For your business - OpenAgents'),
         M.tag('PublicAgent', ({ agentRef }) => `${agentRef} - OpenAgents`),
         M.tag('Share', () => 'Shared Workroom - OpenAgents'),
@@ -452,6 +453,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'Blog' &&
       model.route._tag !== 'BlogPost' &&
       model.route._tag !== 'Components' &&
+      model.route._tag !== 'ComponentsFamily' &&
       model.route._tag !== 'Business'
     ) {
       return undefined
@@ -476,6 +478,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Components') {
     return Components.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'ComponentsFamily') {
+    return Components.view<Message>(authState, model.route.family)
   }
 
   if (

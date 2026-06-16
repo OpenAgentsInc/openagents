@@ -5,7 +5,7 @@ import { describe, expect, test } from 'vitest'
 import { authBootstrapFromSession } from './domain/session'
 import { Flags, init } from './main'
 import { LoggedIn, LoggedOut } from './model'
-import { ComponentsRoute } from './route'
+import { ComponentsFamilyRoute, ComponentsRoute } from './route'
 import { update } from './update'
 import { view } from './view'
 
@@ -59,6 +59,31 @@ describe('components gallery route', () => {
       _tag: 'LoggedIn',
       route: { _tag: 'Components' },
     })
+  })
+
+  test('parses /components/<family> to the family route', () => {
+    const [model] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/components/data-display'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: { _tag: 'ComponentsFamily', family: 'data-display' },
+    })
+  })
+
+  test('renders the selected family on /components/<family>', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(
+        LoggedOut.init(ComponentsFamilyRoute({ family: 'data-display' })),
+      ),
+      Scene.expect(
+        Scene.role('heading', { name: 'Component library' }),
+      ).toExist(),
+      Scene.expect(Scene.role('heading', { name: 'Data display' })).toExist(),
+    )
   })
 
   test('renders the design-system workbench with every family', () => {
