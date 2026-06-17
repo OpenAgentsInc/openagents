@@ -24,6 +24,10 @@ import {
   buildTassadarRunSettlement,
 } from './tassadar-run-settlement'
 import {
+  readTassadarRealSettlementGate,
+  resolveTassadarSettlementAdapter,
+} from './tassadar-run-settlement-gate'
+import {
   Cs336A5AlignmentEvidenceRequest,
   admitCs336A5AlignmentEvidence,
 } from './training-alignment-evals'
@@ -85,6 +89,11 @@ import {
   TrainingWindowBootstrapGrantRequest,
   decideTrainingWindowBootstrapGrant,
 } from './training-window-bootstrap'
+import {
+  TreasuryPaymentAuthorityError,
+  type TreasuryPaymentAuthorityShape,
+  type TreasuryPaymentAuthorityWalletReadiness,
+} from './treasury-payment-authority'
 
 type HttpResponse = globalThis.Response
 
@@ -98,8 +107,40 @@ type TrainingRunWindowRouteDependencies<Bindings> = Readonly<{
   // receipts (for settledPayoutSats projections) and writes the run-tied
   // settlement chain (openagents #5009).
   makePayoutLedgerStore?: (env: Bindings) => NexusTreasuryPayoutLedgerStore
+  // REAL-settlement wiring (openagents #5232, Gate 2). All optional: when the
+  // owner gate is OFF (the default, everywhere), none of these are consulted and
+  // the route is byte-for-byte the current simulation. The real branch is only
+  // reachable when `resolveTassadarSettlementAdapter` authorizes the real
+  // adapter (gate enabled + allowlisted + under cap), and then it requires the
+  // payment authority + wallet readiness + destination resolver to be wired.
+  //
+  // The payment authority drives the proven Spark treasury rail
+  // (`makeSparkTreasuryPayoutAdapter` through `makeTreasuryPaymentAuthority`):
+  // deterministic idempotency-keyed dispatch, no-double-pay dedupe, redaction,
+  // pause/cap/wallet-readiness gates. Reuse, do not rebuild.
+  makeSettlementPaymentAuthority?: (
+    env: Bindings,
+    context: Readonly<{
+      adapterKind: 'spark_treasury'
+      ledgerStore: NexusTreasuryPayoutLedgerStore
+      privatePayoutDestination: string
+      providerRef: string
+    }>,
+  ) => TreasuryPaymentAuthorityShape
+  // Resolve the (private, never-projected) payout destination for the gated
+  // recipient. The destination never enters any receipt projection; only the
+  // adapter's redacted refs do.
+  resolveSettlementPayoutDestination?: (
+    env: Bindings,
+    contributorRef: string,
+  ) => Promise<string | undefined>
   makeStore: (env: Bindings) => TrainingAuthorityStore
   nowIso?: () => string
+  // Fresh wallet-readiness evidence for the real payout authority gate. Absent
+  // or stale readiness fails the real dispatch closed (no payout).
+  readSettlementWalletReadiness?: (
+    env: Bindings,
+  ) => Promise<TreasuryPaymentAuthorityWalletReadiness>
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
 }>
 
@@ -502,6 +543,186 @@ const settlementErrorFromUnsafe = (
     reason: error.reason,
   })
 
+// Map a payment-authority payout failure onto the route's typed error. Malformed
+// amount/target are caller-validation (400); every other failure (paused,
+// stale wallet readiness, missing approval, adapter unavailable, replayed key)
+// is an operational conflict (409). Either way the route surfaces a typed error
+// and never writes a real-settled receipt — no "paid" claim without a payout.
+const settlementErrorFromAuthority = (
+  error: TreasuryPaymentAuthorityError,
+): TrainingAuthorityStoreError =>
+  new TrainingAuthorityStoreError({
+    kind:
+      error.reason === 'malformed_payout_amount' ||
+      error.reason === 'malformed_payout_target'
+        ? 'validation_error'
+        : 'conflict',
+    reason: `real_settlement_payout_blocked:${error.reason}`,
+  })
+
+/**
+ * Drive a REAL Bitcoin run-settlement payout (openagents #5232, Gate 2).
+ *
+ * Only reached when the owner gate authorizes the real `spark_treasury` adapter
+ * (gate enabled + recipient/run allowlisted + amount under the gate cap). It is
+ * RECEIPT-FIRST and IDEMPOTENT:
+ *
+ * 1. If a settlement receipt already exists for this run/window+recipient
+ *    (deterministic ref derived from the request `idempotencyRef`), return
+ *    immediately — a retry never re-dispatches.
+ * 2. Otherwise drive `TreasuryPaymentAuthority.createPayoutIntent` ->
+ *    `dispatchPayout` (Spark adapter) -> `reconcilePayout`, keyed by the
+ *    builder's deterministic idempotency-key hashes. The authority dedupes on
+ *    the intent key (rejects replay) and the attempt key (returns the existing
+ *    attempt without re-dispatching), so at most ONE Spark dispatch occurs per
+ *    run/window+recipient.
+ * 3. Persist the `settlement_recorded` receipt ONLY after a confirmed dispatch
+ *    + matched reconciliation. The persisted records carry the builder's
+ *    `moneyMovement:'real_bitcoin'` / matched / settled projection, so
+ *    `nexus-pylon-visibility.ts` derives `realBitcoinMoved:true`.
+ *
+ * On any payout failure no real-settled receipt is written and a typed error is
+ * surfaced.
+ */
+const dispatchRealRunSettlement = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    contributorRef: string
+    ledger: NexusTreasuryPayoutLedgerStore
+    nowIso: string
+    settlement: ReturnType<typeof buildTassadarRunSettlement>
+  }>,
+): Effect.Effect<void, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const { contributorRef, ledger, settlement } = input
+    const makeAuthority = dependencies.makeSettlementPaymentAuthority
+    const readWalletReadiness = dependencies.readSettlementWalletReadiness
+    const resolveDestination = dependencies.resolveSettlementPayoutDestination
+
+    if (
+      makeAuthority === undefined ||
+      readWalletReadiness === undefined ||
+      resolveDestination === undefined
+    ) {
+      // The gate authorized a real payout but the live dispatch path is not
+      // wired in this deployment. Fail closed (no money, no receipt).
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'storage_error',
+        reason:
+          'Real settlement is gate-authorized but the payout authority is not configured.',
+      })
+    }
+
+    // Idempotent short-circuit: if the deterministic receipt already exists,
+    // this run/window+recipient already settled. Do not dispatch again.
+    const existingReceipt = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () =>
+        ledger.readPaymentAuthorityReceiptByRef(
+          settlement.settlementReceiptRef,
+        ),
+    })
+
+    if (existingReceipt !== undefined) {
+      return
+    }
+
+    const walletReadiness = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => readWalletReadiness(env),
+    })
+
+    if (walletReadiness !== 'ready') {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'conflict',
+        reason: `real_settlement_payout_blocked:stale_or_absent_wallet_readiness:${walletReadiness}`,
+      })
+    }
+
+    const privatePayoutDestination = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => resolveDestination(env, contributorRef),
+    })
+
+    if (
+      privatePayoutDestination === undefined ||
+      privatePayoutDestination.trim() === ''
+    ) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'conflict',
+        reason: 'real_settlement_payout_blocked:missing_payout_destination',
+      })
+    }
+
+    const authority = makeAuthority(env, {
+      adapterKind: 'spark_treasury',
+      ledgerStore: ledger,
+      privatePayoutDestination,
+      providerRef: settlement.reconciliationEvent.providerRef,
+    })
+
+    // The payout-target approval is a foreign key for the intent; write it
+    // first (matches the simulation path and the proven accepted-work bridge).
+    yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => ledger.createPayoutTargetApproval(settlement.targetApproval),
+    })
+
+    // createPayoutIntent rejects a replayed idempotency key. On retry, the
+    // intent already exists; reuse it rather than failing the whole route.
+    const existingIntent = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () =>
+        ledger.readPayoutIntentByIdempotencyKeyHash(
+          settlement.intent.idempotencyKeyHash,
+        ),
+    })
+
+    if (existingIntent === undefined) {
+      yield* authority
+        .createPayoutIntent({
+          intent: settlement.intent,
+          walletReadiness,
+        })
+        .pipe(Effect.mapError(settlementErrorFromAuthority))
+    }
+
+    // dispatchPayout reads the existing attempt by idempotency key first and
+    // returns it WITHOUT re-dispatching, so a retry dispatches at most once.
+    const dispatch = yield* authority
+      .dispatchPayout({
+        attempt: settlement.attempt,
+        payoutIntentRef: settlement.intent.payoutIntentRef,
+      })
+      .pipe(Effect.mapError(settlementErrorFromAuthority))
+
+    const reconciliation = yield* authority
+      .reconcilePayout({ event: settlement.reconciliationEvent })
+      .pipe(Effect.mapError(settlementErrorFromAuthority))
+
+    // Receipt-first guard: only a confirmed dispatch + matched reconciliation
+    // may back a real-settled receipt. Anything else fails closed.
+    if (
+      dispatch.attempt.status !== 'dispatched' ||
+      reconciliation.event.status !== 'matched'
+    ) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'conflict',
+        reason: `real_settlement_payout_unconfirmed:${dispatch.attempt.status}:${reconciliation.event.status}`,
+      })
+    }
+
+    // Now — and only now — persist the settlement_recorded receipt. Its
+    // projection already carries moneyMovement:'real_bitcoin' / settled, so the
+    // public derivation yields realBitcoinMoved:true.
+    yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () =>
+        ledger.createPaymentAuthorityReceipt(settlement.settlementReceipt),
+    })
+  })
+
 /**
  * Settle one accepted (Verified) executor-trace work item for a run
  * (openagents #5009, JUNE15_LAUNCH_PLAN §4.D — the earn-Bitcoin leg). Records
@@ -571,6 +792,22 @@ const routeRunSettlementReceipt = <Bindings extends TrainingRunWindowRouteEnv>(
       })
     }
 
+    // Resolve the settlement adapter through the owner gate (openagents #5232).
+    // DEFAULT OFF: with no `OPENAGENTS_REAL_SETTLEMENT_GATE` set (the state
+    // everywhere today) this always resolves to `simulation`, even if an admin
+    // passes `spark_treasury`. The resolved kind — not the raw request kind —
+    // is what drives the builder, so the simulation path is byte-for-byte
+    // unchanged. The real branch is only reachable when the gate is enabled AND
+    // the recipient/run are allowlisted AND the amount is under the gate cap.
+    const contributorRef = lease.pylonRef.trim()
+    const settlementDecision = resolveTassadarSettlementAdapter({
+      amountSats: body.amountSats,
+      contributorRef,
+      gate: readTassadarRealSettlementGate(env),
+      requestedAdapterKind: body.adapterKind ?? 'simulation',
+      trainingRunRef,
+    })
+
     const settlement = yield* Effect.try({
       catch: error =>
         error instanceof TassadarRunSettlementUnsafe
@@ -584,24 +821,43 @@ const routeRunSettlementReceipt = <Bindings extends TrainingRunWindowRouteEnv>(
           challenge,
           lease,
           nowIso,
-          request: body,
+          // The resolved (gated) adapter kind overrides the request. Anything
+          // not authorized by the gate builds the simulation chain.
+          request: { ...body, adapterKind: settlementDecision.adapterKind },
           run,
         }),
     })
     const ledger = makePayoutLedgerStore(env)
 
-    yield* Effect.tryPromise({
-      catch: trainingAuthorityStoreErrorFromUnknown,
-      try: async () => {
-        // The payout intent foreign-keys the payout-target approval, so the
-        // approval row must be written first (see tassadar-run-settlement.ts).
-        await ledger.createPayoutTargetApproval(settlement.targetApproval)
-        await ledger.createPayoutIntent(settlement.intent)
-        await ledger.createPayoutAttempt(settlement.attempt)
-        await ledger.createReconciliationEvent(settlement.reconciliationEvent)
-        await ledger.createPaymentAuthorityReceipt(settlement.settlementReceipt)
-      },
-    })
+    if (settlementDecision.realAuthorized) {
+      // REAL Bitcoin branch (openagents #5232). Receipt-first: dispatch the
+      // payout through the proven Spark treasury rail before the
+      // settlement_recorded receipt is ever written, keyed by the builder's
+      // deterministic idempotency-key hashes so a retry pays AT MOST ONCE. On
+      // any payout failure we write NO real-settled receipt and surface a typed
+      // error (no "paid" claim without a confirmed real payout).
+      yield* dispatchRealRunSettlement(dependencies, env, {
+        contributorRef,
+        ledger,
+        nowIso,
+        settlement,
+      })
+    } else {
+      yield* Effect.tryPromise({
+        catch: trainingAuthorityStoreErrorFromUnknown,
+        try: async () => {
+          // The payout intent foreign-keys the payout-target approval, so the
+          // approval row must be written first (see tassadar-run-settlement.ts).
+          await ledger.createPayoutTargetApproval(settlement.targetApproval)
+          await ledger.createPayoutIntent(settlement.intent)
+          await ledger.createPayoutAttempt(settlement.attempt)
+          await ledger.createReconciliationEvent(settlement.reconciliationEvent)
+          await ledger.createPaymentAuthorityReceipt(
+            settlement.settlementReceipt,
+          )
+        },
+      })
+    }
 
     const linked = appendTrainingRunReceiptRefs({
       nowIso,

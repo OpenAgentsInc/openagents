@@ -6879,6 +6879,51 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
   },
   makePayoutLedgerStore: env =>
     makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(env)),
+  // REAL Bitcoin settlement wiring (openagents #5232, Gate 2). INERT by default:
+  // these are only consulted on the real branch, which is unreachable unless the
+  // owner sets OPENAGENTS_REAL_SETTLEMENT_GATE (enabled + allowlisted + capped).
+  // The rail is the proven Spark treasury payout adapter driven through the
+  // treasury payment authority (idempotency-keyed dispatch, dedupe, redaction,
+  // pause/cap/wallet-readiness gates).
+  makeSettlementPaymentAuthority: (env, context) =>
+    makeTreasuryPaymentAuthority({
+      adapters: [
+        makeSparkTreasuryPayoutAdapter({
+          fetchTreasury: fetchMdkTreasuryPath(env),
+          providerRef: context.providerRef,
+          resolveDestination: () =>
+            Effect.succeed(context.privatePayoutDestination),
+        }),
+      ],
+      ledgerStore: context.ledgerStore,
+    }),
+  // Wallet readiness for the gated payout: the treasury Spark rail is ready only
+  // when its container is reachable and reports a spendable balance. Any failure
+  // fails closed to 'absent' (no payout).
+  readSettlementWalletReadiness: async env => {
+    const fetchTreasury = fetchMdkTreasuryPath(env)
+
+    if (fetchTreasury === undefined) {
+      return 'absent'
+    }
+
+    try {
+      const response = await fetchTreasury('/spark/balance')
+
+      return response.ok ? 'ready' : 'absent'
+    } catch {
+      return 'absent'
+    }
+  },
+  // The private payout destination for the gated recipient (the contributor at
+  // lease.pylonRef) is NOT auto-resolvable here yet: training contributors do
+  // not carry a vetted on-file payout address in this path. Returning undefined
+  // fails the real branch closed (no send to a wrong/placeholder destination)
+  // even if the gate is flipped. The owner must wire a recipient-specific,
+  // vetted destination resolver (e.g. the contributor's confirmed Spark
+  // Lightning Address) before the first bounded real settlement — see
+  // docs/2026-06-17-real-settlement-gate2-design.md §6.
+  resolveSettlementPayoutDestination: async () => undefined,
   makeStore: env => makeD1TrainingAuthorityStore(openAgentsDatabase(env)),
   requireAdminApiToken,
 })

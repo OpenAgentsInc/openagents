@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { nexusPylonPublicReceiptDetailFromLedger } from './nexus-pylon-visibility'
 import type {
   NexusPaymentAuthorityReceiptRecord,
   NexusTreasuryPayoutAttemptRecord,
@@ -25,6 +26,11 @@ import {
   finalizeTrainingVerificationChallengeRecord,
   leaseTrainingVerificationChallengeRecord,
 } from './training-verification'
+import {
+  type TreasuryPaymentAuthorityAdapter,
+  TreasuryPaymentAuthorityError,
+  makeTreasuryPaymentAuthority,
+} from './treasury-payment-authority'
 
 /**
  * In-memory treasury payout ledger stub. Reads come from the seeded receipt map
@@ -2132,5 +2138,454 @@ describe('training run window routes', () => {
         kind: 'granted',
       },
     })
+  })
+})
+
+// REAL Bitcoin settlement route wiring (openagents #5232, Gate 2).
+//
+// These tests exercise routeRunSettlementReceipt end to end through the owner
+// gate. The gate env value is OPENAGENTS_REAL_SETTLEMENT_GATE; absent/unset =>
+// simulation (byte-for-byte today). The real branch is reachable only when the
+// gate is enabled AND the recipient/run are allowlisted AND the amount is under
+// the cap; it dispatches through a mocked payment authority whose Spark-like
+// adapter counts dispatches.
+describe('real settlement route wiring (#5232, gate default OFF)', () => {
+  const REAL_RUN_REF = 'run.tassadar.executor.20260615'
+  const REAL_CONTRIBUTOR = 'pylon.contributor.stranger'
+
+  // A full in-memory ledger with idempotency reads, so the authority dedupe
+  // (no-double-pay) path is real, not stubbed.
+  const makeRealLedgerStore = (): NexusTreasuryPayoutLedgerStore & {
+    readonly receipts: Map<string, NexusPaymentAuthorityReceiptRecord>
+  } => {
+    const intents = new Map<string, NexusTreasuryPayoutIntentRecord>()
+    const intentsByIdem = new Map<string, NexusTreasuryPayoutIntentRecord>()
+    const attempts = new Map<string, NexusTreasuryPayoutAttemptRecord>()
+    const attemptsByIdem = new Map<string, NexusTreasuryPayoutAttemptRecord>()
+    const events = new Map<
+      string,
+      NexusTreasuryPayoutReconciliationEventRecord
+    >()
+    const receipts = new Map<string, NexusPaymentAuthorityReceiptRecord>()
+    const notImplemented = async (): Promise<never> => {
+      throw new Error('not implemented in real ledger store')
+    }
+
+    return {
+      createPaymentAuthorityReceipt: async record => {
+        receipts.set(record.receiptRef, record)
+      },
+      createPayoutAttempt: async record => {
+        attempts.set(record.payoutAttemptRef, record)
+        attemptsByIdem.set(record.idempotencyKeyHash, record)
+      },
+      createPayoutIntent: async record => {
+        intents.set(record.payoutIntentRef, record)
+        intentsByIdem.set(record.idempotencyKeyHash, record)
+      },
+      createPayoutTargetApproval: async () => {},
+      createReconciliationEvent: async record => {
+        events.set(record.eventRef, record)
+      },
+      createReleaseGate: async () => {},
+      listPaymentAuthorityReceipts: async () => [...receipts.values()],
+      readPaymentAuthorityReceiptByRef: async receiptRef =>
+        receipts.get(receiptRef),
+      readPayoutAttemptByIdempotencyKeyHash: async idempotencyKeyHash =>
+        attemptsByIdem.get(idempotencyKeyHash),
+      readPayoutAttemptByRef: async payoutAttemptRef =>
+        attempts.get(payoutAttemptRef),
+      readPayoutIntentByBuyerPaymentRef: notImplemented,
+      readPayoutIntentByIdempotencyKeyHash: async idempotencyKeyHash =>
+        intentsByIdem.get(idempotencyKeyHash),
+      readPayoutIntentByRef: async payoutIntentRef =>
+        intents.get(payoutIntentRef),
+      readReconciliationEventByRef: async eventRef => events.get(eventRef),
+      receipts,
+    }
+  }
+
+  // A Spark-like adapter that counts dispatches and stamps the real_bitcoin /
+  // matched projection, exactly as the production Spark adapter does.
+  class CountingSparkAdapter {
+    dispatchCalls = 0
+    failDispatch = false
+
+    adapter: TreasuryPaymentAuthorityAdapter = {
+      adapterKind: 'spark_treasury',
+      dispatch: input =>
+        Effect.suspend(() => {
+          this.dispatchCalls += 1
+
+          if (this.failDispatch) {
+            return Effect.fail(
+              new TreasuryPaymentAuthorityError({
+                message: 'spark_treasury_pay_failed',
+                reason: 'adapter_unavailable',
+              }),
+            )
+          }
+
+          return Effect.succeed({
+            ...input.attempt,
+            adapterKind: 'spark_treasury' as const,
+            publicProjectionJson: JSON.stringify({
+              adapter: 'spark_treasury',
+              moneyMovement: 'real_bitcoin',
+              rawMaterialStored: false,
+              state: 'dispatch_reported',
+            }),
+            redactedPaymentRef: 'payment.redacted.spark_treasury.test',
+            status: 'dispatched' as const,
+          })
+        }),
+      preview: input =>
+        Effect.succeed({
+          adapterKind: 'spark_treasury',
+          amount: input.intent.amount,
+          dispatchAllowed: true,
+          payoutIntentRef: input.intent.payoutIntentRef,
+          payoutTargetApprovalRef: input.intent.payoutTargetApprovalRef ?? '',
+          policySnapshotRef: input.intent.policySnapshotRef,
+          spendCap: input.intent.spendCap,
+        }),
+      reconcile: input =>
+        Effect.succeed({
+          ...input.event,
+          adapterKind: 'spark_treasury',
+          publicProjectionJson: JSON.stringify({
+            adapter: 'spark_treasury',
+            moneyMovement: 'real_bitcoin',
+            state: 'reconciliation_matched',
+          }),
+          status: 'matched' as const,
+        }),
+    }
+  }
+
+  const seedRealSettlementStore = () => {
+    const store = makeMemoryStore()
+    const planned = buildTrainingRunRecord({
+      makeId: () => 'run5232',
+      nowIso: '2026-06-17T10:00:00.000Z',
+      request: {
+        manifest: {
+          artifactDigestRefs: [],
+          blockerRefs: [],
+          spendCapSats: 100,
+        },
+        promiseRef: 'training.monday_decentralized_training_launch.v1',
+        trainingRunRef: REAL_RUN_REF,
+      },
+    })
+    store._testSeedRun({ ...planned, state: 'active' })
+
+    const lease: TrainingWindowLeaseRecord = {
+      claimedAt: '2026-06-17T10:01:00.000Z',
+      id: 'lease5232',
+      leaseExpiresAt: '2026-06-17T12:00:00.000Z',
+      leaseRef: 'lease.tassadar.5232',
+      publicProjectionJson: '{}',
+      pylonRef: REAL_CONTRIBUTOR,
+      receiptRefs: [],
+      state: 'active',
+      trainingRunRef: REAL_RUN_REF,
+      windowRef: 'training.window.tassadar.executor.20260615.w1',
+    }
+
+    const verified = finalizeTrainingVerificationChallengeRecord({
+      challenge: leaseTrainingVerificationChallengeRecord({
+        challenge: buildTrainingVerificationChallengeRecord({
+          makeId: () => '5232',
+          nowIso: '2026-06-17T10:02:00.000Z',
+          request: {
+            commitmentRefs: ['commitment.tassadar.5232'],
+            contributionRef: 'contribution.tassadar.5232',
+            homeworkKind: 'admin_dispatched_homework',
+            payload: {
+              replayDigestRef: 'digest.replay.5232',
+              traceCommitmentDigestRef: 'digest.commitment.5232',
+            },
+            trainingRunRef: REAL_RUN_REF,
+            verificationClass: 'exact_trace_replay',
+            windowRef: 'training.window.tassadar.executor.20260615.w1',
+          },
+        }).challenge,
+        eventId: '5232-lease',
+        nowIso: '2026-06-17T10:02:30.000Z',
+        request: { validatorRef: 'validator.tassadar.5232' },
+      }).challenge,
+      eventId: '5232-final',
+      nowIso: '2026-06-17T10:03:00.000Z',
+      request: { receiptRefs: ['receipt.tassadar.verdict.5232'] },
+      verdict: {
+        failureCodes: [],
+        state: 'Verified',
+        verdictRefs: ['verdict.tassadar.5232'],
+      },
+    }).challenge
+
+    return { lease, store, verified }
+  }
+
+  const realSettlementBody = (
+    challengeRef: string,
+    overrides: Record<string, unknown> = {},
+  ) => ({
+    adapterKind: 'spark_treasury',
+    amountSats: 21,
+    challengeRef,
+    idempotencyRef: 'idem.tassadar.5232',
+    leaseRef: 'lease.tassadar.5232',
+    operatorApprovalRef: 'operator.approval.5232',
+    payoutTargetApprovalRef: 'payout.target.approval.5232',
+    payoutTargetRef: 'payout.target.5232',
+    ...overrides,
+  })
+
+  const enabledGateEnv = (overrides: Record<string, unknown> = {}) => ({
+    OPENAGENTS_REAL_SETTLEMENT_GATE: JSON.stringify({
+      enabled: true,
+      allowedAdapterKind: 'spark_treasury',
+      allowedContributorRefs: [REAL_CONTRIBUTOR],
+      allowedRunRefs: [REAL_RUN_REF],
+      maxPayoutSats: 50,
+      ...overrides,
+    }),
+  })
+
+  const settlementReceiptFromStore = (
+    ledger: ReturnType<typeof makeRealLedgerStore>,
+  ): NexusPaymentAuthorityReceiptRecord | undefined =>
+    [...ledger.receipts.values()].find(
+      receipt => receipt.receiptKind === 'settlement_recorded',
+    )
+
+  it('gate OFF (default) => simulation, no payout dispatch, realBitcoinMoved:false', async () => {
+    const { lease, store, verified } = seedRealSettlementStore()
+    await store.claimLease(lease, '2026-06-17T10:01:00.000Z')
+    store._testSeedChallenge(verified)
+    const ledger = makeRealLedgerStore()
+    const spark = new CountingSparkAdapter()
+
+    const routes = makeTrainingRunWindowRoutes({
+      makePayoutLedgerStore: () => ledger,
+      makeSettlementPaymentAuthority: (_env, context) =>
+        makeTreasuryPaymentAuthority({
+          adapters: [spark.adapter],
+          ledgerStore: context.ledgerStore,
+        }),
+      makeStore: () => store,
+      nowIso: () => '2026-06-17T10:05:00.000Z',
+      readSettlementWalletReadiness: async () => 'ready',
+      requireAdminApiToken: async () => true,
+      resolveSettlementPayoutDestination: async () => 'destination.test',
+    })
+
+    // No gate env set anywhere => byte-for-byte simulation, even though the
+    // admin explicitly requested spark_treasury.
+    const settled = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          `/api/training/runs/${REAL_RUN_REF}/settlement-receipt`,
+          realSettlementBody(verified.challengeRef),
+        ),
+        {},
+      ),
+    )
+
+    expect(settled.status).toBe(200)
+    expect(spark.dispatchCalls).toBe(0)
+    const receipt = settlementReceiptFromStore(ledger)
+    expect(receipt).toBeDefined()
+    const projection = JSON.parse(receipt!.publicProjectionJson) as {
+      moneyMovement: string
+    }
+    expect(projection.moneyMovement).toBe('none')
+  })
+
+  it('gate ON + allowlisted + under cap => exactly one dispatch, realBitcoinMoved:true receipt', async () => {
+    const { lease, store, verified } = seedRealSettlementStore()
+    await store.claimLease(lease, '2026-06-17T10:01:00.000Z')
+    store._testSeedChallenge(verified)
+    const ledger = makeRealLedgerStore()
+    const spark = new CountingSparkAdapter()
+
+    const routes = makeTrainingRunWindowRoutes({
+      makePayoutLedgerStore: () => ledger,
+      makeSettlementPaymentAuthority: (_env, context) =>
+        makeTreasuryPaymentAuthority({
+          adapters: [spark.adapter],
+          ledgerStore: context.ledgerStore,
+        }),
+      makeStore: () => store,
+      nowIso: () => '2026-06-17T10:05:00.000Z',
+      readSettlementWalletReadiness: async () => 'ready',
+      requireAdminApiToken: async () => true,
+      resolveSettlementPayoutDestination: async () => 'destination.test',
+    })
+
+    const settled = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          `/api/training/runs/${REAL_RUN_REF}/settlement-receipt`,
+          realSettlementBody(verified.challengeRef),
+        ),
+        enabledGateEnv(),
+      ),
+    )
+
+    expect(settled.status).toBe(200)
+    expect(spark.dispatchCalls).toBe(1)
+    const receipt = settlementReceiptFromStore(ledger)
+    expect(receipt).toBeDefined()
+    const projection = JSON.parse(receipt!.publicProjectionJson) as {
+      moneyMovement: string
+      state: string
+    }
+    expect(projection.moneyMovement).toBe('real_bitcoin')
+    expect(projection.state).toBe('settled')
+
+    const detail = nexusPylonPublicReceiptDetailFromLedger({
+      appUrl: 'https://openagents.com',
+      attempt: await ledger.readPayoutAttemptByRef(receipt!.payoutAttemptRef!),
+      event:
+        receipt!.eventRef === null
+          ? undefined
+          : await ledger.readReconciliationEventByRef(receipt!.eventRef),
+      intent: await ledger.readPayoutIntentByRef(receipt!.payoutIntentRef),
+      nowIso: '2026-06-17T10:05:00.000Z',
+      receipt: receipt!,
+    })
+    expect(detail.realBitcoinMoved).toBe(true)
+  })
+
+  it('retry of the same run-window+recipient settlement dispatches at most once (idempotent)', async () => {
+    const { lease, store, verified } = seedRealSettlementStore()
+    await store.claimLease(lease, '2026-06-17T10:01:00.000Z')
+    store._testSeedChallenge(verified)
+    const ledger = makeRealLedgerStore()
+    const spark = new CountingSparkAdapter()
+
+    const routes = makeTrainingRunWindowRoutes({
+      makePayoutLedgerStore: () => ledger,
+      makeSettlementPaymentAuthority: (_env, context) =>
+        makeTreasuryPaymentAuthority({
+          adapters: [spark.adapter],
+          ledgerStore: context.ledgerStore,
+        }),
+      makeStore: () => store,
+      nowIso: () => '2026-06-17T10:05:00.000Z',
+      readSettlementWalletReadiness: async () => 'ready',
+      requireAdminApiToken: async () => true,
+      resolveSettlementPayoutDestination: async () => 'destination.test',
+    })
+
+    const first = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          `/api/training/runs/${REAL_RUN_REF}/settlement-receipt`,
+          realSettlementBody(verified.challengeRef),
+        ),
+        enabledGateEnv(),
+      ),
+    )
+    const second = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          `/api/training/runs/${REAL_RUN_REF}/settlement-receipt`,
+          realSettlementBody(verified.challengeRef),
+        ),
+        enabledGateEnv(),
+      ),
+    )
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    // Receipt-first idempotent short-circuit + authority dedupe => one dispatch.
+    expect(spark.dispatchCalls).toBe(1)
+    expect(ledger.receipts.size).toBe(1)
+  })
+
+  it('payout FAILS => no real-settled receipt, typed error', async () => {
+    const { lease, store, verified } = seedRealSettlementStore()
+    await store.claimLease(lease, '2026-06-17T10:01:00.000Z')
+    store._testSeedChallenge(verified)
+    const ledger = makeRealLedgerStore()
+    const spark = new CountingSparkAdapter()
+    spark.failDispatch = true
+
+    const routes = makeTrainingRunWindowRoutes({
+      makePayoutLedgerStore: () => ledger,
+      makeSettlementPaymentAuthority: (_env, context) =>
+        makeTreasuryPaymentAuthority({
+          adapters: [spark.adapter],
+          ledgerStore: context.ledgerStore,
+        }),
+      makeStore: () => store,
+      nowIso: () => '2026-06-17T10:05:00.000Z',
+      readSettlementWalletReadiness: async () => 'ready',
+      requireAdminApiToken: async () => true,
+      resolveSettlementPayoutDestination: async () => 'destination.test',
+    })
+
+    const failed = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          `/api/training/runs/${REAL_RUN_REF}/settlement-receipt`,
+          realSettlementBody(verified.challengeRef),
+        ),
+        enabledGateEnv(),
+      ),
+    )
+
+    expect(failed.status).toBeGreaterThanOrEqual(400)
+    expect(spark.dispatchCalls).toBe(1)
+    // No real-settled receipt was written (a policy_rejected operator receipt
+    // may exist, but never a settlement_recorded one).
+    expect(settlementReceiptFromStore(ledger)).toBeUndefined()
+    const body = (await failed.json()) as { reason?: string }
+    expect(body.reason).toContain('real_settlement_payout_blocked')
+  })
+
+  it('gate ON but amount over the gate cap => simulation, no dispatch', async () => {
+    const { lease, store, verified } = seedRealSettlementStore()
+    await store.claimLease(lease, '2026-06-17T10:01:00.000Z')
+    store._testSeedChallenge(verified)
+    const ledger = makeRealLedgerStore()
+    const spark = new CountingSparkAdapter()
+
+    const routes = makeTrainingRunWindowRoutes({
+      makePayoutLedgerStore: () => ledger,
+      makeSettlementPaymentAuthority: (_env, context) =>
+        makeTreasuryPaymentAuthority({
+          adapters: [spark.adapter],
+          ledgerStore: context.ledgerStore,
+        }),
+      makeStore: () => store,
+      nowIso: () => '2026-06-17T10:05:00.000Z',
+      readSettlementWalletReadiness: async () => 'ready',
+      requireAdminApiToken: async () => true,
+      resolveSettlementPayoutDestination: async () => 'destination.test',
+    })
+
+    // amountSats 60 > gate cap 50 (still under the run spendCap 100), so the
+    // gate fails closed to simulation.
+    const settled = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          `/api/training/runs/${REAL_RUN_REF}/settlement-receipt`,
+          realSettlementBody(verified.challengeRef, { amountSats: 60 }),
+        ),
+        enabledGateEnv(),
+      ),
+    )
+
+    expect(settled.status).toBe(200)
+    expect(spark.dispatchCalls).toBe(0)
+    const projection = JSON.parse(
+      settlementReceiptFromStore(ledger)!.publicProjectionJson,
+    ) as { moneyMovement: string }
+    expect(projection.moneyMovement).toBe('none')
   })
 })
