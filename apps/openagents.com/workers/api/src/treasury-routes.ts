@@ -763,6 +763,9 @@ const treasuryPayoutDiagnosticPayload = (
   balanceChanged: safeTreasuryPayoutDiagnosticBoolean(
     payResult.balanceChanged,
   ),
+  balanceDeltaSat: safeTreasuryPayoutDiagnosticNumber(
+    payResult.balanceDeltaSat,
+  ),
   balanceSatAfter: safeTreasuryPayoutDiagnosticNumber(
     payResult.balanceSatAfter,
   ),
@@ -773,6 +776,9 @@ const treasuryPayoutDiagnosticPayload = (
   destinationKind: safeTreasuryPayoutDiagnosticString(payResult.destinationKind),
   errorCode: safeTreasuryPayoutDiagnosticString(payResult.errorCode),
   errorName: safeTreasuryPayoutDiagnosticString(payResult.errorName),
+  eventOutcomeStatus: safeTreasuryPayoutDiagnosticString(
+    payResult.eventOutcomeStatus,
+  ),
   failureStage: safeTreasuryPayoutDiagnosticString(payResult.failureStage),
   feeBudgetMsatAfter: safeTreasuryPayoutDiagnosticNumber(
     payResult.feeBudgetMsatAfter,
@@ -786,14 +792,26 @@ const treasuryPayoutDiagnosticPayload = (
   paymentIdPresent: safeTreasuryPayoutDiagnosticBoolean(
     payResult.paymentIdPresent,
   ),
+  paymentHashPresent: safeTreasuryPayoutDiagnosticBoolean(
+    payResult.paymentHashPresent,
+  ),
   payResponseStatus: safeTreasuryPayoutDiagnosticNumber(
     payResult.payResponseStatus,
   ),
   preflightBalanceMaxSendableSat: safeTreasuryPayoutDiagnosticNumber(
     payResult.preflightBalanceMaxSendableSat,
   ),
+  preflightCoverageSat: safeTreasuryPayoutDiagnosticNumber(
+    payResult.preflightCoverageSat,
+  ),
   preflightMaxSendableSat: safeTreasuryPayoutDiagnosticNumber(
     payResult.preflightMaxSendableSat,
+  ),
+  preflightRouteAvailable: safeTreasuryPayoutDiagnosticBoolean(
+    payResult.preflightRouteAvailable,
+  ),
+  preimagePresent: safeTreasuryPayoutDiagnosticBoolean(
+    payResult.preimagePresent,
   ),
   reasonClass: safeTreasuryPayoutDiagnosticString(payResult.reasonClass),
   resolvedDestinationKind: safeTreasuryPayoutDiagnosticString(

@@ -150,6 +150,22 @@ const safePaySnapshot = (node, destination) => {
   }
 }
 
+const balanceDeltaSat = (beforeSnapshot, afterSnapshot) =>
+  typeof beforeSnapshot.balanceSat === 'number' &&
+  typeof afterSnapshot.balanceSat === 'number'
+    ? afterSnapshot.balanceSat - beforeSnapshot.balanceSat
+    : null
+
+const preflightCoverageSat = (snapshot, amountSat) =>
+  typeof snapshot.destinationMaxSendableSat === 'number'
+    ? snapshot.destinationMaxSendableSat - amountSat
+    : null
+
+const preflightRouteAvailable = (snapshot, amountSat) =>
+  typeof snapshot.destinationMaxSendableSat === 'number'
+    ? snapshot.destinationMaxSendableSat >= amountSat
+    : null
+
 const balanceResponse = node => {
   const snapshot = paySnapshot(node)
 
@@ -220,11 +236,17 @@ const payResponse = async (request, node) => {
   ) {
     return json(409, {
       balanceSatBefore: beforeSnapshot.balanceSat,
+      balanceDeltaSat: null,
       destinationKind,
       error: 'treasury_insufficient_spendable_balance',
       failureStage: 'preflight_max_sendable',
       feeBudgetMsatBefore: beforeSnapshot.destinationFeeBudgetMsat,
       maxSendableSat: preflightMaxSendableSat,
+      preflightCoverageSat: preflightCoverageSat(beforeSnapshot, amountSat),
+      preflightRouteAvailable: preflightRouteAvailable(
+        beforeSnapshot,
+        amountSat,
+      ),
       reasonClass: 'insufficient_spendable_balance',
       reasonRef: 'reason.public.treasury_payout.insufficient_spendable_balance',
     })
@@ -242,10 +264,14 @@ const payResponse = async (request, node) => {
       typeof afterSnapshot.balanceSat === 'number'
         ? beforeSnapshot.balanceSat !== afterSnapshot.balanceSat
         : null
+    const balanceDelta = balanceDeltaSat(beforeSnapshot, afterSnapshot)
+    const routeAvailable = preflightRouteAvailable(beforeSnapshot, amountSat)
+    const routeCoverage = preflightCoverageSat(beforeSnapshot, amountSat)
 
     console.warn({
       amountSat,
       balanceChanged,
+      balanceDeltaSat: balanceDelta,
       balanceSatAfter: afterSnapshot.balanceSat,
       balanceSatBefore: beforeSnapshot.balanceSat,
       destinationKind,
@@ -258,7 +284,9 @@ const payResponse = async (request, node) => {
       messageFingerprint: diagnostics.messageFingerprint,
       paymentIdPresent: false,
       preflightBalanceMaxSendableSat: beforeSnapshot.maxSendableSat,
+      preflightCoverageSat: routeCoverage,
       preflightMaxSendableSat,
+      preflightRouteAvailable: routeAvailable,
       resultReturned: false,
       reasonClass: diagnostics.reasonClass,
       service: 'openagents-mdk-treasury',
@@ -268,6 +296,7 @@ const payResponse = async (request, node) => {
     return json(502, {
       amountSat,
       balanceChanged,
+      balanceDeltaSat: balanceDelta,
       balanceSatAfter: afterSnapshot.balanceSat,
       balanceSatBefore: beforeSnapshot.balanceSat,
       destinationKind,
@@ -280,7 +309,9 @@ const payResponse = async (request, node) => {
       messageFingerprint: diagnostics.messageFingerprint,
       paymentIdPresent: false,
       preflightBalanceMaxSendableSat: beforeSnapshot.maxSendableSat,
+      preflightCoverageSat: routeCoverage,
       preflightMaxSendableSat,
+      preflightRouteAvailable: routeAvailable,
       reason: error instanceof Error ? error.message : String(error),
       reasonClass: diagnostics.reasonClass,
       reasonRef: diagnostics.reasonRef,
@@ -292,31 +323,63 @@ const payResponse = async (request, node) => {
   drainPaymentEvents(node)
   const outcome = paymentOutcomes.get(result.paymentId)
   const afterSnapshot = safePaySnapshot(node, destination)
-
-  return json(200, {
-    balanceChanged:
-      typeof beforeSnapshot.balanceSat === 'number' &&
-      typeof afterSnapshot.balanceSat === 'number'
-        ? beforeSnapshot.balanceSat !== afterSnapshot.balanceSat
-        : null,
+  const status =
+    result.preimage !== undefined && result.preimage !== null
+      ? 'succeeded'
+      : (outcome?.status ?? 'pending')
+  const balanceChanged =
+    typeof beforeSnapshot.balanceSat === 'number' &&
+    typeof afterSnapshot.balanceSat === 'number'
+      ? beforeSnapshot.balanceSat !== afterSnapshot.balanceSat
+      : null
+  const responsePayload = {
+    balanceChanged,
+    balanceDeltaSat: balanceDeltaSat(beforeSnapshot, afterSnapshot),
     balanceSatAfter: afterSnapshot.balanceSat,
     balanceSatBefore: beforeSnapshot.balanceSat,
     destinationKind,
+    eventOutcomeStatus: outcome?.status ?? null,
     feeBudgetMsatAfter: afterSnapshot.destinationFeeBudgetMsat,
     feeBudgetMsatBefore: beforeSnapshot.destinationFeeBudgetMsat,
+    paymentHash: result.paymentHash ?? null,
+    paymentHashPresent: typeof result.paymentHash === 'string',
     paymentId: result.paymentId,
     paymentIdPresent: typeof result.paymentId === 'string',
-    paymentHash: result.paymentHash ?? null,
-    preimage: result.preimage ?? null,
     preflightBalanceMaxSendableSat: beforeSnapshot.maxSendableSat,
+    preflightCoverageSat: preflightCoverageSat(beforeSnapshot, amountSat),
     preflightMaxSendableSat,
+    preflightRouteAvailable: preflightRouteAvailable(
+      beforeSnapshot,
+      amountSat,
+    ),
+    preimage: result.preimage ?? null,
+    preimagePresent:
+      result.preimage !== undefined && result.preimage !== null,
     resultReturned: true,
-    status:
-      result.preimage !== undefined && result.preimage !== null
-        ? 'succeeded'
-        : (outcome?.status ?? 'pending'),
+    status,
+    timeoutSecs,
+  }
+
+  console.info({
+    amountSat,
+    balanceChanged,
+    balanceDeltaSat: responsePayload.balanceDeltaSat,
+    destinationKind,
+    event: 'treasury_pay_completed',
+    eventOutcomeStatus: responsePayload.eventOutcomeStatus,
+    paymentHashPresent: responsePayload.paymentHashPresent,
+    paymentIdPresent: responsePayload.paymentIdPresent,
+    preflightBalanceMaxSendableSat: beforeSnapshot.maxSendableSat,
+    preflightCoverageSat: responsePayload.preflightCoverageSat,
+    preflightMaxSendableSat,
+    preflightRouteAvailable: responsePayload.preflightRouteAvailable,
+    preimagePresent: responsePayload.preimagePresent,
+    service: 'openagents-mdk-treasury',
+    status,
     timeoutSecs,
   })
+
+  return json(200, responsePayload)
 }
 
 const paymentStatusResponse = (node, paymentId) => {

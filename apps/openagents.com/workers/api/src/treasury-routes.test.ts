@@ -782,6 +782,83 @@ describe('operator treasury payout', () => {
     expect(paid).toEqual(['lno1recipient'])
   })
 
+  test('returns safe payout diagnostics for successful operator sends', async () => {
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({ amountSat: 5000, destination: 'lno1recipient' }),
+        {
+          fetchTreasury: (path, init) => {
+            if (path === '/balance') {
+              return Promise.resolve(
+                jsonResponse(200, {
+                  balanceSat: 60000,
+                  maxSendableSat: 55000,
+                }),
+              )
+            }
+
+            if (path === '/pay' && init?.method === 'POST') {
+              return Promise.resolve(
+                jsonResponse(200, {
+                  balanceChanged: true,
+                  balanceDeltaSat: -5001,
+                  balanceSatAfter: 54999,
+                  balanceSatBefore: 60000,
+                  destinationKind: 'bolt11',
+                  eventOutcomeStatus: 'succeeded',
+                  feeBudgetMsatAfter: 900,
+                  feeBudgetMsatBefore: 1000,
+                  paymentHash: 'raw_hash_not_returned_in_diagnostics',
+                  paymentHashPresent: true,
+                  paymentId: 'pay_success_diag',
+                  paymentIdPresent: true,
+                  preflightBalanceMaxSendableSat: 55000,
+                  preflightCoverageSat: 48000,
+                  preflightMaxSendableSat: 53000,
+                  preflightRouteAvailable: true,
+                  preimage: 'raw_preimage_not_returned_in_diagnostics',
+                  preimagePresent: true,
+                  resultReturned: true,
+                  status: 'succeeded',
+                  timeoutSecs: 50,
+                }),
+              )
+            }
+
+            return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
+          },
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const bodyText = await response.text()
+    const body = JSON.parse(bodyText) as {
+      diagnostics: {
+        balanceDeltaSat: number | null
+        eventOutcomeStatus: string | null
+        paymentHashPresent: boolean | null
+        paymentIdPresent: boolean | null
+        preflightCoverageSat: number | null
+        preflightRouteAvailable: boolean | null
+        preimagePresent: boolean | null
+      }
+    }
+
+    expect(body.diagnostics).toMatchObject({
+      balanceDeltaSat: -5001,
+      eventOutcomeStatus: 'succeeded',
+      paymentHashPresent: true,
+      paymentIdPresent: true,
+      preflightCoverageSat: 48000,
+      preflightRouteAvailable: true,
+      preimagePresent: true,
+    })
+    expect(bodyText).not.toContain('raw_hash_not_returned_in_diagnostics')
+    expect(bodyText).not.toContain('raw_preimage_not_returned_in_diagnostics')
+  })
+
   test('primary fail retries the Lightning Address fallback (#5078)', async () => {
     const paid: Array<string> = []
     const response = await run(
@@ -1111,20 +1188,26 @@ describe('operator treasury payout', () => {
     const body = JSON.parse(bodyText) as {
       diagnostics: {
         balanceChanged: boolean | null
+        balanceDeltaSat: number | null
         balanceSatAfter: number | null
         balanceSatBefore: number | null
         containerStatus: string | null
         destinationKind: string | null
         errorCode: string | null
         errorName: string | null
+        eventOutcomeStatus: string | null
         failureStage: string | null
         feeBudgetMsatAfter: number | null
         feeBudgetMsatBefore: number | null
         messageFingerprint: string | null
+        paymentHashPresent: boolean | null
         paymentIdPresent: boolean | null
         payResponseStatus: number | null
         preflightBalanceMaxSendableSat: number | null
+        preflightCoverageSat: number | null
         preflightMaxSendableSat: number | null
+        preflightRouteAvailable: boolean | null
+        preimagePresent: boolean | null
         reasonClass: string | null
         resolvedDestinationKind: string | null
         resultReturned: boolean | null
@@ -1138,21 +1221,27 @@ describe('operator treasury payout', () => {
     expect(body.reasonRef).toBe('reason.public.treasury_payout.no_route')
     expect(body.diagnostics).toEqual({
       balanceChanged: false,
+      balanceDeltaSat: null,
       balanceSatAfter: 100000,
       balanceSatBefore: 100000,
       containerStatus: null,
       destinationKind: 'bolt11',
       errorCode: 'err_private_route',
       errorName: 'mdk_error',
+      eventOutcomeStatus: null,
       failureStage: 'pay_throws',
       feeBudgetMsatAfter: 42,
       feeBudgetMsatBefore: 42,
       messageFingerprint:
         '9aedda5a994a799337d6c5398271f2468702ee95b305d0d08f3a7c8f14eabf19',
+      paymentHashPresent: null,
       paymentIdPresent: false,
       payResponseStatus: 502,
       preflightBalanceMaxSendableSat: 99000,
+      preflightCoverageSat: null,
       preflightMaxSendableSat: 94000,
+      preflightRouteAvailable: null,
+      preimagePresent: null,
       reasonClass: 'no_route',
       resolvedDestinationKind: 'bolt11',
       resultReturned: false,
