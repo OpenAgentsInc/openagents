@@ -18,6 +18,22 @@ const valueFlags = new Set([
 ])
 const booleanFlags = new Set(['help', 'h', 'json'])
 const adminCommands = new Set(['list', 'upsert'])
+const cohortRowStates = new Set([
+  'candidate',
+  'invited',
+  'workspace_seeded',
+  'first_run_started',
+  'delivery_reviewed',
+  'loop_completed',
+  'blocked',
+  'deferred',
+])
+const templatePlaceholderMarkers = [
+  /\breplace(?:[-_. ]?me)?\b/i,
+  /\bplaceholder\b/i,
+  /\btodo\b/i,
+  /\btbd\b/i,
+]
 
 const unsafeRowMarkers = [
   /raw[_ -]prompt/i,
@@ -42,6 +58,8 @@ const unsafeRowMarkers = [
 
 export const usage = () => `Usage:
   node scripts/customer-one-cohort-recorder.mjs public [--json]
+  node scripts/customer-one-cohort-recorder.mjs check --row-file row.json [--json]
+  node scripts/customer-one-cohort-recorder.mjs check --row-json '{"teamCohortRef":"cohort.team.alpha.v1",...}' [--json]
   node scripts/customer-one-cohort-recorder.mjs list [--json]
   node scripts/customer-one-cohort-recorder.mjs upsert --row-file row.json [--json]
   node scripts/customer-one-cohort-recorder.mjs upsert --row-json '{"teamCohortRef":"cohort.team.alpha.v1",...}' [--json]
@@ -57,10 +75,11 @@ Environment:
   OPENAGENTS_BASE_URL          Optional base URL.
   OPENAGENTS_ADMIN_API_TOKEN   Required for list and upsert.
 
-This recorder posts public-safe refs only. It refuses obvious raw prompts,
-private paths, URLs, emails, bearer/API tokens, wallet/payment material, and
-provider payload markers before sending an upsert request. It does not create
-fake cohort rows and does not complete #5098 by itself.`
+This recorder posts public-safe refs only. The check and upsert commands refuse
+obvious raw prompts, private paths, URLs, emails, bearer/API tokens,
+wallet/payment material, provider payload markers, unresolved template
+placeholders, and completed rows missing completion/privacy review refs. It
+does not create fake cohort rows and does not complete #5098 by itself.`
 
 const canonicalFlagName = name =>
   ({
@@ -163,6 +182,92 @@ export const assertPublicSafeRow = row => {
   return row
 }
 
+const isRecord = value =>
+  value !== null && !Array.isArray(value) && typeof value === 'object'
+
+const hasNonEmptyString = (row, key) =>
+  typeof row[key] === 'string' && row[key].trim() !== ''
+
+const collectStringLeaves = (value, path = '$') => {
+  if (typeof value === 'string') {
+    return [{ path, value }]
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) =>
+      collectStringLeaves(item, `${path}[${index}]`),
+    )
+  }
+
+  if (isRecord(value)) {
+    return Object.entries(value).flatMap(([key, child]) =>
+      collectStringLeaves(child, `${path}.${key}`),
+    )
+  }
+
+  return []
+}
+
+export const validateCohortRowPacket = row => {
+  assertPublicSafeRow(row)
+
+  const errors = []
+
+  if (!hasNonEmptyString(row, 'teamCohortRef')) {
+    errors.push('teamCohortRef is required.')
+  }
+
+  if (!hasNonEmptyString(row, 'state')) {
+    errors.push('state is required.')
+  } else if (!cohortRowStates.has(row.state)) {
+    errors.push(
+      `state must be one of: ${Array.from(cohortRowStates).join(', ')}.`,
+    )
+  }
+
+  if (!hasNonEmptyString(row, 'updatedAt')) {
+    errors.push('updatedAt is required.')
+  } else if (Number.isNaN(Date.parse(row.updatedAt))) {
+    errors.push('updatedAt must be an ISO timestamp.')
+  }
+
+  if (row.blockerRefs !== undefined && !Array.isArray(row.blockerRefs)) {
+    errors.push('blockerRefs must be an array when present.')
+  }
+
+  if (row.caveatRefs !== undefined && !Array.isArray(row.caveatRefs)) {
+    errors.push('caveatRefs must be an array when present.')
+  }
+
+  if (row.state === 'loop_completed') {
+    if (!hasNonEmptyString(row, 'completionBundleRef')) {
+      errors.push('loop_completed rows require completionBundleRef.')
+    }
+
+    if (!hasNonEmptyString(row, 'privacyReviewRef')) {
+      errors.push('loop_completed rows require privacyReviewRef.')
+    }
+  }
+
+  const placeholders = collectStringLeaves(row).filter(({ value }) =>
+    templatePlaceholderMarkers.some(pattern => pattern.test(value)),
+  )
+
+  if (placeholders.length > 0) {
+    errors.push(
+      `unresolved template placeholders: ${placeholders
+        .map(({ path }) => path)
+        .join(', ')}.`,
+    )
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Invalid cohort row packet:\n- ${errors.join('\n- ')}`)
+  }
+
+  return row
+}
+
 export const readRowInput = (
   parsed,
   readTextFile = path => readFileSync(path, 'utf8'),
@@ -175,10 +280,12 @@ export const readRowInput = (
   }
 
   if (rowFile === undefined && rowJson === undefined) {
-    throw new Error('Missing --row-file or --row-json for upsert.')
+    throw new Error('Missing --row-file or --row-json for row packet.')
   }
 
-  return assertPublicSafeRow(parseJsonObject(rowJson ?? readTextFile(rowFile)))
+  return validateCohortRowPacket(
+    parseJsonObject(rowJson ?? readTextFile(rowFile)),
+  )
 }
 
 const adminTokenFor = (command, env) => {
@@ -265,6 +372,14 @@ const completedCount = payload =>
 export const humanSummary = (command, result) => {
   const payload = result.payload
 
+  if (command === 'check') {
+    return [
+      `Customer #1 cohort row packet valid: ${payload?.row?.teamCohortRef ?? 'unknown'}`,
+      `State: ${payload?.row?.state ?? 'unknown'}`,
+      `Counts toward D3: ${payload?.countsTowardD3 === true ? 'yes' : 'no'}`,
+    ].join('\n')
+  }
+
   if (command === 'public') {
     return [
       `Customer #1 cohort gate: ${payload?.gate?.state ?? 'unknown'}`,
@@ -294,6 +409,22 @@ export const runRecorder = async (argv, env = process.env, io = {}) => {
   if (parsed.command === undefined || hasFlag(parsed, 'help')) {
     stdout.write(`${usage()}\n`)
     return parsed.command === undefined ? 2 : 0
+  }
+
+  if (parsed.command === 'check') {
+    const row = readRowInput(parsed, io.readTextFile)
+    const payload = {
+      countsTowardD3: row.state === 'loop_completed',
+      row,
+    }
+
+    if (hasFlag(parsed, 'json')) {
+      stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
+    } else {
+      stdout.write(`${humanSummary(parsed.command, { payload })}\n`)
+    }
+
+    return 0
   }
 
   const request = buildRecorderRequest(parsed, env, io.readTextFile)

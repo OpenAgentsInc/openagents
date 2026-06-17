@@ -100,6 +100,26 @@ describe('customer one cohort recorder', () => {
     })
   })
 
+  test('checks a valid privacy-reviewed completion row without a network request', async () => {
+    const stdout = outputBuffer()
+    const stderr = outputBuffer()
+    const fetchImpl = vi.fn()
+
+    const exitCode = await recorder.runRecorder(
+      ['check', '--row-json', JSON.stringify(completedRow)],
+      {},
+      { fetchImpl, stderr: stderr.sink, stdout: stdout.sink },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(stdout.text()).toContain(
+      'Customer #1 cohort row packet valid: cohort.team.alpha.v1',
+    )
+    expect(stdout.text()).toContain('Counts toward D3: yes')
+    expect(stderr.text()).toBe('')
+  })
+
   test('refuses obvious private material before upsert', () => {
     const parsed = recorder.parseRecorderArgs([
       'upsert',
@@ -115,6 +135,36 @@ describe('customer one cohort recorder', () => {
         OPENAGENTS_ADMIN_API_TOKEN: 'oa_admin_secret_123',
       }),
     ).toThrow(/unsafe private material/)
+  })
+
+  test('refuses completed rows missing privacy-review evidence', () => {
+    const parsed = recorder.parseRecorderArgs([
+      'check',
+      '--row-json',
+      JSON.stringify({
+        ...completedRow,
+        privacyReviewRef: '',
+      }),
+    ])
+
+    expect(() => recorder.readRowInput(parsed)).toThrow(
+      /loop_completed rows require privacyReviewRef/,
+    )
+  })
+
+  test('refuses unresolved template placeholders', () => {
+    const parsed = recorder.parseRecorderArgs([
+      'check',
+      '--row-json',
+      JSON.stringify({
+        ...completedRow,
+        teamCohortRef: 'cohort.team.replace-me.v1',
+      }),
+    ])
+
+    expect(() => recorder.readRowInput(parsed)).toThrow(
+      /unresolved template placeholders/,
+    )
   })
 
   test('redacts admin and bearer tokens from printable errors', () => {
