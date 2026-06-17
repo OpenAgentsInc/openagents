@@ -184,9 +184,15 @@ the two buckets.
    local control wallet-status, readiness/heartbeat, and the operator snapshot
    report Spark as the one agent-facing balance. MDK is excluded from that public
    agent balance and remains auxiliary for treasury/checkouts/legacy paths.
-3. **Solve large-single-payment delivery** (the 40k/50k pre-dispatch failures), or
-   formalize chunked payout ≤25–30k as policy. Either way the treasury pays agents
-   via their Spark Lightning Address.
+3. **Formalize large-payment delivery.** #5179 now chunks hosted-MDK
+   accepted-work payouts above 25,000 sats when the destination is reusable
+   (Spark Lightning Address, LNURL, or BOLT12-style offer). Each chunk has its
+   own deterministic hash idempotency key and reconciliation waits on every
+   chunk before claiming settlement. Fixed BOLT11 invoices remain single-payment.
+   The accepted-work payout route can now resolve the pylon owner agent's saved
+   Forum tip-recipient Spark Lightning Address, so treasury can pay agents via
+   their Spark Lightning Address for normal payouts without echoing that
+   destination into ledger projections.
 4. **Add recipient attribution + a confirmed-receipt step** to the payout ledger so
    "sent" reconciles against "received" automatically (would have prevented the
    over-send going unnoticed).
@@ -210,8 +216,9 @@ legacy recovery, but no longer contributes to the displayed agent balance.
 3. **Use #5177/#5178 to make Spark funds the primary agent balance and spend
    path**; keep #5169 only as an explicit local recovery/compatibility sweep.
 4. **Add destination + confirmed-receipt to the payout ledger.**
-5. **Fix or formalize large-payment delivery** (chunk ≤25–30k, or solve the
-   route/liquidity failure).
+5. **Monitor the #5179 chunked large-payment path** with a funded 50,000-sat
+   Spark Lightning Address payout smoke; fixed BOLT11 large-invoice behavior
+   remains a separate route/liquidity question.
 6. **Reconcile MDK leftovers out of the agent-balance UX** as part of the MDK
    scope-down work.
 

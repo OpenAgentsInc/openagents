@@ -206,7 +206,18 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   treasury ~82 sats max-sendable, tips-buffer ~15 sats max-sendable. Conclusion:
   Orrery's Lightning Address → BOLT11 path is live and settling at available
   liquidity; the full 5,000 / 50,000 diagnostic retry now requires refilling a
-  payout wallet first.
+  payout wallet first. **#5179 follow-up:** hosted-MDK accepted-work payouts now
+  formalize the chunk policy instead of forcing one fragile large send: reusable
+  destinations (Spark Lightning Address, LNURL, BOLT12-style offers) above
+  25,000 sats split into sequential per-chunk hosted-MDK sends with deterministic
+  hash idempotency keys, and reconciliation waits on every chunk before claiming
+  settlement. Fixed BOLT11 invoices stay single-payment because they are
+  amount-bound and must not be split. The accepted-work payout route now also
+  resolves the recipient endpoint from the pylon owner agent's saved Forum
+  tip-recipient Spark Lightning Address when the operator request omits a
+  private destination. Public/operator ledger projections keep only redacted
+  payment refs, chunk counts, public-safe metadata refs, and the usual
+  settlement state.
 - **🧰 Pylon wallet self-recovery (#5167) fixed.** Field report: an unclean MDK
   agent-wallet shutdown could leave `~/.mdk-wallet/daemon.pid` pointing at a
   dead process, stranding `wallet report-readiness` until an operator manually

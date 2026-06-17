@@ -77,6 +77,19 @@ type NexusPylonVisibilityPylonStore = Pick<
   'listEventsForAssignment' | 'listEventsForPylon' | 'readAssignment' | 'readRegistration'
 >
 
+type NexusPylonVisibilityTipRecipientReadiness = Readonly<{
+  directPayment: null | Readonly<{
+    lightningAddress?: string | undefined
+  }>
+  state: string
+}>
+
+type NexusPylonVisibilityTipRecipientReadinessReader = Readonly<{
+  readForActor: (
+    actorRef: string,
+  ) => Effect.Effect<NexusPylonVisibilityTipRecipientReadiness, unknown>
+}>
+
 type NexusPylonVisibilityDependencies<
   Session extends NexusPylonVisibilitySession,
   Bindings,
@@ -103,6 +116,9 @@ type NexusPylonVisibilityDependencies<
     }>,
   ) => TreasuryPaymentAuthorityShape
   makePylonApiStore?: (env: Bindings) => NexusPylonVisibilityPylonStore
+  makeTipRecipientReadinessReader?: (
+    env: Bindings,
+  ) => NexusPylonVisibilityTipRecipientReadinessReader
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
   requireBrowserSession: (
     request: Request,
@@ -460,6 +476,69 @@ const assertPrivatePayoutDestination = (
 
   return trimmed
 }
+
+const agentActorRefForUserId = (userId: string): string => `agent:${userId}`
+
+const lightningAddressFromTipRecipientReadiness = (
+  readiness: NexusPylonVisibilityTipRecipientReadiness,
+): string | undefined => {
+  if (readiness.state !== 'ready') {
+    return undefined
+  }
+
+  const lightningAddress = readiness.directPayment?.lightningAddress?.trim()
+
+  return lightningAddress === '' ? undefined : lightningAddress
+}
+
+const resolveAcceptedWorkPayoutDestination = <
+  Session extends NexusPylonVisibilitySession,
+  Bindings,
+>(
+  dependencies: NexusPylonVisibilityDependencies<Session, Bindings>,
+  env: Bindings,
+  adapterKind: 'hosted_mdk' | 'mdk_agent_wallet',
+  requestDestination: string | undefined,
+  registration: PylonApiRegistrationRecord | undefined,
+): Effect.Effect<string | undefined, NexusPylonVisibilityBridgeBlocked> =>
+  Effect.gen(function* () {
+    const explicitDestination = yield* Effect.try({
+      catch: error =>
+        error instanceof NexusPylonVisibilityBridgeBlocked
+          ? error
+          : bridgeBlocked('privatePayoutDestination is invalid.'),
+      try: () => assertPrivatePayoutDestination(requestDestination),
+    })
+
+    if (explicitDestination !== undefined || adapterKind !== 'hosted_mdk') {
+      return explicitDestination
+    }
+
+    const makeReader = dependencies.makeTipRecipientReadinessReader
+
+    if (makeReader === undefined || registration === undefined) {
+      return undefined
+    }
+
+    const actorRef = agentActorRefForUserId(registration.ownerAgentUserId)
+    const readiness = yield* makeReader(env).readForActor(actorRef).pipe(
+      Effect.mapError(() =>
+        bridgeBlocked(
+          'Hosted MDK payouts could not read the agent on-file Spark Lightning Address.',
+        ),
+      ),
+    )
+    const lightningAddress =
+      lightningAddressFromTipRecipientReadiness(readiness)
+
+    return yield* Effect.try({
+      catch: error =>
+        error instanceof NexusPylonVisibilityBridgeBlocked
+          ? error
+          : bridgeBlocked('on-file Spark Lightning Address is invalid.'),
+      try: () => assertPrivatePayoutDestination(lightningAddress),
+    })
+  })
 
 const receiptKindForReconciliation = (
   status: NexusTreasuryPayoutReconciliationEventRecord['status'],
@@ -965,19 +1044,6 @@ const operatorAssignmentAcceptedWorkPayout = <
       try: () => decodeAcceptedWorkPayoutRequest(request),
     })
     const adapterKind = body.adapterKind ?? 'hosted_mdk'
-    const privatePayoutDestination = yield* Effect.try({
-      catch: error =>
-        error instanceof NexusPylonVisibilityBridgeBlocked
-          ? error
-          : bridgeBlocked('privatePayoutDestination is invalid.'),
-      try: () => assertPrivatePayoutDestination(body.privatePayoutDestination),
-    })
-
-    if (adapterKind === 'hosted_mdk' && privatePayoutDestination === undefined) {
-      return yield* bridgeBlocked(
-        'Hosted MDK payouts require privatePayoutDestination.',
-      )
-    }
 
     const pylonStore = makePylonApiStore(env)
     const ledgerStore = makeLedgerStore(env)
@@ -1111,6 +1177,21 @@ const operatorAssignmentAcceptedWorkPayout = <
     if (walletReadiness !== 'ready') {
       return yield* bridgeBlocked(
         `Payout requires fresh wallet readiness evidence; current state is ${walletReadiness}.`,
+      )
+    }
+
+    const privatePayoutDestination =
+      yield* resolveAcceptedWorkPayoutDestination(
+        dependencies,
+        env,
+        adapterKind,
+        body.privatePayoutDestination,
+        registration,
+      )
+
+    if (adapterKind === 'hosted_mdk' && privatePayoutDestination === undefined) {
+      return yield* bridgeBlocked(
+        'Hosted MDK payouts require privatePayoutDestination or an agent on-file Spark Lightning Address.',
       )
     }
 
@@ -1288,6 +1369,7 @@ const operatorAssignmentAcceptedWorkPayout = <
       idempotencyKeyHash: dispatch.attempt.idempotencyKeyHash,
       metadataRefs: uniqueRefs([
         ...metadataRefs,
+        ...dispatch.attempt.metadataRefs,
         'metadata.nexus.accepted_work_payout.reconciliation_requested',
       ]),
       payoutAttemptRef: dispatch.attempt.payoutAttemptRef,

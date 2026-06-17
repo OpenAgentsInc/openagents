@@ -26,16 +26,7 @@ export type HostedMdkPayoutDestinationResolver = (
   input: HostedMdkPayoutDestinationResolverInput,
 ) => Effect.Effect<string, TreasuryPaymentAuthorityError>
 
-export type HostedMdkPayoutAdapterConfig = Readonly<{
-  accessToken?: string | undefined
-  baseUrl?: string | undefined
-  fetch?: typeof fetch
-  providerRef?: string | undefined
-  resolveDestination: HostedMdkPayoutDestinationResolver
-  waitTimeoutMs?: number | undefined
-}>
-
-type HostedMdkRpcClient = Readonly<{
+export type HostedMdkRpcClient = Readonly<{
   checkout: Readonly<{
     programmaticPayout: (input: Readonly<{
       amountSats: number
@@ -50,13 +41,28 @@ type HostedMdkRpcClient = Readonly<{
   }>
 }>
 
+export type HostedMdkPayoutAdapterConfig = Readonly<{
+  accessToken?: string | undefined
+  baseUrl?: string | undefined
+  client?: HostedMdkRpcClient | undefined
+  fetch?: typeof fetch
+  maxSinglePayoutSats?: number | undefined
+  providerRef?: string | undefined
+  resolveDestination: HostedMdkPayoutDestinationResolver
+  waitTimeoutMs?: number | undefined
+}>
+
 const textEncoder = new TextEncoder()
 const defaultBaseUrl = 'https://moneydevkit.com/rpc'
+const defaultMaxSinglePayoutSats = 25_000
 const defaultWaitTimeoutMs = 15_000
+const hostedMdkChunkIdempotencyMetadataPrefix =
+  'metadata.nexus.hosted_mdk.chunk_idempotency.'
 const stableRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,220}$/
 const unsafeRefPattern =
   /(@|bolt11|bolt12|invoice|lnbc|lntb|lnbcrt|lno1|lnurl|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment[_-]?(hash|preimage)=|preimage|raw[_-]?(destination|invoice|payment|wallet)|secret|wallet[_-]?(config|mnemonic|secret|state))/i
 const controlCharacterPattern = /[\u0000-\u001f\u007f]/
+const reusableDestinationPattern = /(^lno1|^lnurl|\S+@\S+)/i
 
 const stableRef = (value: string): string =>
   value.replaceAll(/[^A-Za-z0-9_.:/-]+/g, '_').slice(0, 160)
@@ -85,6 +91,13 @@ const redactedMaterialRef = async (
   rawMaterial: string,
 ): Promise<string> =>
   `${prefix}.${(await sha256Hex(rawMaterial)).slice(0, 32)}`
+
+type HostedMdkPayoutChunk = Readonly<{
+  amountSats: number
+  idempotencyKey: string
+  index: number
+  total: number
+}>
 
 const amountToMdkSats = (
   intent: NexusTreasuryPayoutIntentRecord,
@@ -139,10 +152,111 @@ const ensureDestination = (
   return Effect.succeed(trimmed)
 }
 
+const maxSinglePayoutSats = (config: HostedMdkPayoutAdapterConfig): number => {
+  const configured = config.maxSinglePayoutSats
+
+  return typeof configured === 'number' &&
+    Number.isInteger(configured) &&
+    configured > 0
+    ? configured
+    : defaultMaxSinglePayoutSats
+}
+
+const destinationCanBeChunked = (destination: string): boolean =>
+  reusableDestinationPattern.test(destination.trim())
+
+const chunkAmounts = (
+  amountSats: number,
+  maxChunkSats: number,
+): ReadonlyArray<number> =>
+  amountSats <= maxChunkSats
+    ? [amountSats]
+    : [maxChunkSats, ...chunkAmounts(amountSats - maxChunkSats, maxChunkSats)]
+
+const chunkIdempotencyKey = async (
+  baseIdempotencyKeyHash: string,
+  chunkIndex: number,
+  chunkTotal: number,
+  amountSats: number,
+): Promise<string> =>
+  `hash.hosted_mdk_payout_chunk.${(
+    await sha256Hex(
+      [
+        'hosted-mdk-payout-chunk',
+        baseIdempotencyKeyHash,
+        String(chunkIndex),
+        String(chunkTotal),
+        String(amountSats),
+      ].join(':'),
+    )
+  ).slice(0, 64)}`
+
+const payoutChunks = (
+  config: HostedMdkPayoutAdapterConfig,
+  amountSats: number,
+  destination: string,
+  baseIdempotencyKeyHash: string,
+): Effect.Effect<ReadonlyArray<HostedMdkPayoutChunk>> =>
+  Effect.promise(async () => {
+    const maxChunkSats = maxSinglePayoutSats(config)
+    const amounts =
+      amountSats > maxChunkSats && destinationCanBeChunked(destination)
+        ? chunkAmounts(amountSats, maxChunkSats)
+        : [amountSats]
+    const total = amounts.length
+    const keys = await Promise.all(
+      amounts.map((chunkAmountSats, index) =>
+        total === 1
+          ? Promise.resolve(baseIdempotencyKeyHash)
+          : chunkIdempotencyKey(
+              baseIdempotencyKeyHash,
+              index + 1,
+              total,
+              chunkAmountSats,
+            ),
+      ),
+    )
+
+    return amounts.map((chunkAmountSats, index) => ({
+      amountSats: chunkAmountSats,
+      idempotencyKey: keys[index]!,
+      index: index + 1,
+      total,
+    }))
+  })
+
+const chunkMetadataRefs = (
+  chunks: ReadonlyArray<HostedMdkPayoutChunk>,
+  maxChunkSats: number,
+): ReadonlyArray<string> =>
+  chunks.length <= 1
+    ? []
+    : [
+        'metadata.nexus.hosted_mdk.dispatch.chunked',
+        `metadata.nexus.hosted_mdk.chunk_count.${chunks.length}`,
+        `metadata.nexus.hosted_mdk.max_single_payout_sats.${maxChunkSats}`,
+        ...chunks.flatMap(chunk => [
+          `${hostedMdkChunkIdempotencyMetadataPrefix}${chunk.idempotencyKey}`,
+          `metadata.nexus.hosted_mdk.chunk_amount_sats.${chunk.index}.${chunk.amountSats}`,
+        ]),
+      ]
+
+const chunkIdempotencyKeysFromMetadata = (
+  metadataRefs: ReadonlyArray<string>,
+): ReadonlyArray<string> =>
+  metadataRefs
+    .filter(ref => ref.startsWith(hostedMdkChunkIdempotencyMetadataPrefix))
+    .map(ref => ref.slice(hostedMdkChunkIdempotencyMetadataPrefix.length))
+    .filter(ref => stableRefPattern.test(ref) && !unsafeRefPattern.test(ref))
+
 const clientForConfig = (
   config: HostedMdkPayoutAdapterConfig,
   accessToken: string,
 ): HostedMdkRpcClient => {
+  if (config.client !== undefined) {
+    return config.client
+  }
+
   const link = new RPCLink({
     ...(config.fetch === undefined ? {} : { fetch: config.fetch }),
     headers: () => ({ 'x-api-key': accessToken }),
@@ -188,35 +302,38 @@ const classifyHostedMdkError = (
 
 const publicProjectionJson = (
   state: string,
+  details: Readonly<Record<string, number>> = {},
 ): string =>
   JSON.stringify({
     adapter: 'hosted_mdk',
     commandBoundary: 'moneydevkit_hosted_rpc',
+    ...details,
     moneyMovement: 'real_bitcoin',
     rawMaterialStored: false,
     state,
   })
 
-const reconciliationStatusByHostedMdkStatus:
-  Readonly<
-    Record<
-      WaitForPayoutResultOutput['status'],
-      NexusTreasuryPayoutReconciliationEventRecord['status']
-    >
-  > = {
-    FAILED: 'rejected',
-    REQUESTED: 'observed',
-    SUCCESS: 'matched',
-  }
-
 const paymentMaterialForDispatch = (
   result: ProgrammaticPayoutResult,
 ): string => result.paymentHash ?? result.paymentId
+
+const paymentMaterialForDispatchResults = (
+  results: ReadonlyArray<ProgrammaticPayoutResult>,
+): string => results.map(paymentMaterialForDispatch).join(':')
 
 const paymentMaterialForReconciliation = (
   result: WaitForPayoutResultOutput,
   fallback: string,
 ): string => result.paymentHash ?? fallback
+
+const reconciliationStatusForResults = (
+  results: ReadonlyArray<WaitForPayoutResultOutput>,
+): NexusTreasuryPayoutReconciliationEventRecord['status'] =>
+  results.some(result => result.status === 'FAILED')
+    ? 'rejected'
+    : results.some(result => result.status === 'REQUESTED')
+      ? 'observed'
+      : 'matched'
 
 export const makeHostedMdkPayoutAdapter = (
   config: HostedMdkPayoutAdapterConfig,
@@ -239,21 +356,34 @@ export const makeHostedMdkPayoutAdapter = (
         Effect.flatMap(ensureDestination),
       )
       const client = clientForConfig(config, accessToken)
-      const result = yield* Effect.tryPromise({
-        catch: error => classifyHostedMdkError(error, 'Hosted MDK dispatch'),
-        try: () =>
-          client.checkout.programmaticPayout({
-            amountSats,
-            destination,
-            idempotencyKey: input.attempt.idempotencyKeyHash,
+      const chunks = yield* payoutChunks(
+        config,
+        amountSats,
+        destination,
+        input.attempt.idempotencyKeyHash,
+      )
+      const results = yield* Effect.forEach(
+        chunks,
+        chunk =>
+          Effect.tryPromise({
+            catch: error =>
+              classifyHostedMdkError(error, 'Hosted MDK dispatch'),
+            try: () =>
+              client.checkout.programmaticPayout({
+                amountSats: chunk.amountSats,
+                destination,
+                idempotencyKey: chunk.idempotencyKey,
+              }),
           }),
-      })
+        { concurrency: 1 },
+      )
       const paymentRef = yield* Effect.promise(() =>
         redactedMaterialRef(
           'payment.redacted.hosted_mdk',
-          paymentMaterialForDispatch(result),
+          paymentMaterialForDispatchResults(results),
         ),
       )
+      const maxChunkSats = maxSinglePayoutSats(config)
 
       return {
         ...input.attempt,
@@ -264,9 +394,13 @@ export const makeHostedMdkPayoutAdapter = (
           ...new Set([
             ...input.attempt.metadataRefs,
             'metadata.nexus.hosted_mdk.dispatch.accepted',
+            ...chunkMetadataRefs(chunks, maxChunkSats),
           ]),
         ],
-        publicProjectionJson: publicProjectionJson('dispatch_reported'),
+        publicProjectionJson: publicProjectionJson('dispatch_reported', {
+          chunkCount: chunks.length,
+          maxSinglePayoutSats: maxChunkSats,
+        }),
         redactedPaymentRef: paymentRef,
         status: 'dispatched',
       } satisfies NexusTreasuryPayoutAttemptRecord
@@ -296,24 +430,46 @@ export const makeHostedMdkPayoutAdapter = (
 
       const accessToken = yield* configuredAccessToken(config)
       const client = clientForConfig(config, accessToken)
-      const result = yield* Effect.tryPromise({
-        catch: error => classifyHostedMdkError(error, 'Hosted MDK reconcile'),
-        try: () =>
-          client.checkout.waitForPayoutResult({
-            idempotencyKey: input.event.idempotencyKeyHash,
-            timeoutMs: config.waitTimeoutMs ?? defaultWaitTimeoutMs,
-          }),
-      })
-      const resultMaterial = paymentMaterialForReconciliation(
-        result,
-        input.event.externalEventRef,
+      const chunkIdempotencyKeys = chunkIdempotencyKeysFromMetadata(
+        input.event.metadataRefs,
       )
-      const resultRef = result.status === 'REQUESTED'
+      const idempotencyKeys =
+        chunkIdempotencyKeys.length === 0
+          ? [input.event.idempotencyKeyHash]
+          : chunkIdempotencyKeys
+      const results = yield* Effect.forEach(
+        idempotencyKeys,
+        idempotencyKey =>
+          Effect.tryPromise({
+            catch: error =>
+              classifyHostedMdkError(error, 'Hosted MDK reconcile'),
+            try: () =>
+              client.checkout.waitForPayoutResult({
+                idempotencyKey,
+                timeoutMs: config.waitTimeoutMs ?? defaultWaitTimeoutMs,
+              }),
+          }),
+        { concurrency: 1 },
+      )
+      const status = reconciliationStatusForResults(results)
+      const resultMaterial = results
+        .map((result, index) =>
+          paymentMaterialForReconciliation(
+            result,
+            idempotencyKeys[index] ?? input.event.externalEventRef,
+          ),
+        )
+        .join(':')
+      const resultRef = status === 'observed'
         ? `result.hosted_mdk.requested.${stableRef(input.event.idempotencyKeyHash)}`
         : yield* Effect.promise(() =>
             redactedMaterialRef('payment.redacted.hosted_mdk', resultMaterial),
           )
       const providerRef = config.providerRef ?? input.event.providerRef
+      const statusRefs = results.map(
+        result =>
+          `metadata.nexus.hosted_mdk.reconciliation.${result.status.toLowerCase()}`,
+      )
 
       return {
         ...input.event,
@@ -321,15 +477,16 @@ export const makeHostedMdkPayoutAdapter = (
         metadataRefs: [
           ...new Set([
             ...input.event.metadataRefs,
-            `metadata.nexus.hosted_mdk.reconciliation.${result.status.toLowerCase()}`,
+            ...statusRefs,
           ]),
         ],
         providerRef,
         publicProjectionJson: publicProjectionJson(
-          `reconciliation_${result.status.toLowerCase()}`,
+          `reconciliation_${status}`,
+          { chunkCount: idempotencyKeys.length },
         ),
         resultRef,
-        status: reconciliationStatusByHostedMdkStatus[result.status],
+        status,
       } satisfies NexusTreasuryPayoutReconciliationEventRecord
     }),
 })

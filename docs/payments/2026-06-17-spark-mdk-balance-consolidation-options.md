@@ -84,9 +84,23 @@ when needed, `caveat.wallet.spark_claimable_htlcs_require_backup_claim`.
    not become the normal product path because it adds custody/support overhead
    and blurs contributor self-custody.
 
+6. Treasury-to-agent payout chunking.
+   **Implemented in #5179 for hosted-MDK accepted-work payouts.** When the
+   operator payout destination is reusable (Spark Lightning Address, LNURL, or a
+   BOLT12-style offer), hosted-MDK payouts above 25,000 sats are split into
+   sequential chunks. Each chunk gets a deterministic hash idempotency key, and
+   reconciliation waits on every chunk idempotency key before claiming the
+   accepted-work payout is settled. Fixed BOLT11 invoices are not chunked because
+   they are amount-bound. The accepted-work payout route resolves the pylon owner
+   agent's saved Forum tip-recipient Spark Lightning Address when the operator
+   request does not supply a private destination. Public projections expose only
+   redacted payment refs, chunk count, public-safe metadata refs, and settlement
+   state.
+
 ## Recommendation
 
 The product path is option 4: Spark is the single agent balance. Option 2 remains
 a local recovery/compatibility path when a user explicitly wants to move credited
 Spark funds into MDK, and option 3 is the direct spend path for the primary Spark
-balance.
+balance. Option 6 is the treasury delivery policy for larger agent payouts while
+Spark Lightning Address is the normal recipient endpoint.

@@ -176,6 +176,7 @@ import { makeEmailSequenceAuthoringRoutes } from './email-sequence-authoring-rou
 import { makeForumRoutes } from './forum-routes'
 import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
 import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
+import { readForumTipRecipientReadinessForActor } from './forum/repository'
 import {
   GITHUB_WRITE_REQUIRED_SCOPES,
   GitHubWriteApiFailure,
@@ -6737,6 +6738,10 @@ const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
     })
   },
   makePylonApiStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
+  makeTipRecipientReadinessReader: env => ({
+    readForActor: actorRef =>
+      readForumTipRecipientReadinessForActor(openAgentsDatabase(env), actorRef),
+  }),
   requireAdminApiToken,
   requireBrowserSession,
 })
