@@ -219,33 +219,58 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     const layer = trainingRunEntityLayerFromPublicSummary(populated)
     expect(layer.contributors).toEqual([])
     expect(layer.entities).toEqual([
-      { id: 'pylon.worker.one', label: 'P1', status: 'verified' },
-      { id: 'pylon.worker.two', label: 'P2', status: 'real_settled' },
-      { id: 'contribution.tassadar.worker.1', label: 'W1', status: 'verified' },
-      { id: 'validator.tassadar.1', label: 'V1', status: 'verified' },
+      {
+        id: 'pylon.worker.one',
+        label: 'P1',
+        position: [-2.35, 1.5, 0.12],
+        status: 'verified',
+      },
+      {
+        id: 'pylon.worker.two',
+        label: 'P2',
+        position: [-2.35, -1.5, 0.12],
+        status: 'real_settled',
+      },
+      {
+        id: 'contribution.tassadar.worker.1',
+        label: 'W1',
+        position: [0, 2.05, 0.12],
+        status: 'verified',
+      },
+      {
+        id: 'validator.tassadar.1',
+        label: 'V1',
+        position: [0, 1.48, 0.12],
+        status: 'verified',
+      },
       {
         id: 'contribution.tassadar.worker.rejected.1',
         label: 'RW1',
+        position: [0, -1.14, 0.12],
         status: 'rejected',
       },
       {
         id: 'validator.tassadar.rejected.1',
         label: 'RV1',
+        position: [0, -1.86, 0.12],
         status: 'rejected',
       },
       {
         id: 'receipt.nexus.tassadar.settlement.real.1',
         label: '2100s',
+        position: [-1.15, -2.2, 0.12],
         status: 'real_settled',
       },
       {
         id: 'trace.tassadar.accepted.1',
         label: 'T1',
+        position: [2.25, 0.8, 0.12],
         status: 'accepted_trace',
       },
       {
         id: 'trace.tassadar.accepted.2',
         label: 'T2',
+        position: [2.25, -0.6, 0.12],
         status: 'accepted_trace',
       },
     ])
@@ -306,11 +331,13 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     expect(layer.entities).toContainEqual({
       id: 'pylon.simulation.only',
       label: 'P1',
+      position: [-2.35, 0, 0.12],
       status: 'simulation_settled',
     })
     expect(layer.entities).toContainEqual({
       id: 'receipt.nexus.tassadar.simulation.only',
       label: '5s',
+      position: [-1.15, -2.2, 0.12],
       status: 'simulation_settled',
     })
     expect(layer.bursts).toEqual([])

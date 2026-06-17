@@ -103,6 +103,12 @@ primitives.
   now, because the page does not yet explain them well enough. The loss panel,
   status mini-chart, stale ring, contributor orbit, product-promise gate, and
   fleet-stats text are hidden from the primary canvas.
+- 2026-06-17: The simplified entity field now assigns real refs to explicit
+  lanes instead of relying on the generic entity ring: pylon refs on the left,
+  verified replay refs along the top, rejected replay refs along the bottom,
+  accepted trace refs on the right, and settlement receipt refs lower-left. This
+  keeps labels from collapsing into clusters while preserving the "only real
+  nodes" rule.
 
 ## Short answer
 

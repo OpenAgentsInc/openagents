@@ -14,6 +14,7 @@
 import {
   type TrainingRunEntityDefinition,
   type TrainingRunNodeDefinition,
+  type TrainingRunVector,
   type TrainingRunVisualizationOptions,
   type TrainingRunVisualizationSnapshot,
   trainingRunVisualizationOptionsFromSnapshot,
@@ -161,6 +162,57 @@ const shortRef = (ref: string): string => {
   return tail.length <= 10 ? tail : `${tail.slice(0, 4)}…${tail.slice(-4)}`
 }
 
+const liveEntityZ = 0.12
+
+const coordinate = (value: number): number => Math.round(value * 1000) / 1000
+
+const spread = (
+  index: number,
+  total: number,
+  start: number,
+  end: number,
+): number =>
+  coordinate(
+    total <= 1
+      ? (start + end) / 2
+      : start + ((end - start) * index) / (total - 1),
+  )
+
+const pylonEntityPosition = (
+  index: number,
+  total: number,
+): TrainingRunVector => [-2.35, spread(index, total, 1.5, -1.5), liveEntityZ]
+
+const verifiedReplayEntityPosition = (
+  index: number,
+  total: number,
+  role: 'worker' | 'validator',
+): TrainingRunVector => [
+  spread(index, total, -0.95, 0.95),
+  role === 'worker' ? 2.05 : 1.48,
+  liveEntityZ,
+]
+
+const rejectedReplayEntityPosition = (
+  index: number,
+  total: number,
+  role: 'worker' | 'validator',
+): TrainingRunVector => [
+  spread(index, total, -0.95, 0.95),
+  role === 'worker' ? -1.14 : -1.86,
+  liveEntityZ,
+]
+
+const settlementEntityPosition = (
+  index: number,
+  total: number,
+): TrainingRunVector => [spread(index, total, -1.55, -0.75), -2.2, liveEntityZ]
+
+const corpusEntityPosition = (
+  index: number,
+  total: number,
+): TrainingRunVector => [2.25, spread(index, total, 0.8, -0.6), liveEntityZ]
+
 const settlementRowReceiptRef = (
   row: PublicTassadarSettlementRow,
 ): string | undefined => {
@@ -231,25 +283,36 @@ const leaderboardRowStatus = (
 const leaderboardEntities = (
   rows: ReadonlyArray<PublicTrainingRunLeaderboardRow> | undefined,
   settlements: ReadonlyArray<PublicTassadarSettlementRow>,
-): ReadonlyArray<TrainingRunEntityDefinition> =>
-  (rows ?? []).flatMap(row => {
-    if (row.pylonRef === undefined || row.pylonRef.trim() === '') {
-      return []
-    }
+): ReadonlyArray<TrainingRunEntityDefinition> => {
+  const validRows = (rows ?? []).filter(
+    row => row.pylonRef !== undefined && row.pylonRef.trim() !== '',
+  )
+  return validRows.flatMap((row, index) => {
+    const pylonRef = row.pylonRef?.trim() ?? ''
+    if (pylonRef === '') return []
     const rank = finiteOrZero(row.rank)
     return [
       {
-        id: row.pylonRef,
-        label: rank > 0 ? `P${rank}` : shortRef(row.pylonRef),
+        id: pylonRef,
+        label: rank > 0 ? `P${rank}` : shortRef(pylonRef),
+        position: pylonEntityPosition(index, validRows.length),
         status: leaderboardRowStatus(row, settlements),
       },
     ]
   })
+}
 
 const verifiedReplayEntities = (
   pairs: ReadonlyArray<PublicTrainingRunVerifiedReplayPair> | undefined,
-): ReadonlyArray<TrainingRunEntityDefinition> =>
-  (pairs ?? []).flatMap((pair, index) => {
+): ReadonlyArray<TrainingRunEntityDefinition> => {
+  const validPairs = (pairs ?? []).filter(
+    pair =>
+      pair.workerRef !== undefined &&
+      pair.workerRef.trim() !== '' &&
+      pair.validatorRef !== undefined &&
+      pair.validatorRef.trim() !== '',
+  )
+  return validPairs.flatMap((pair, index) => {
     if (
       pair.workerRef === undefined ||
       pair.workerRef.trim() === '' ||
@@ -259,20 +322,51 @@ const verifiedReplayEntities = (
       return []
     }
     return [
-      { id: pair.workerRef, label: `W${index + 1}`, status: 'verified' },
-      { id: pair.validatorRef, label: `V${index + 1}`, status: 'verified' },
+      {
+        id: pair.workerRef,
+        label: `W${index + 1}`,
+        position: verifiedReplayEntityPosition(
+          index,
+          validPairs.length,
+          'worker',
+        ),
+        status: 'verified',
+      },
+      {
+        id: pair.validatorRef,
+        label: `V${index + 1}`,
+        position: verifiedReplayEntityPosition(
+          index,
+          validPairs.length,
+          'validator',
+        ),
+        status: 'verified',
+      },
     ]
   })
+}
 
 const rejectedReplayEntities = (
   pairs: ReadonlyArray<PublicTrainingRunRejectedReplayPair> | undefined,
-): ReadonlyArray<TrainingRunEntityDefinition> =>
-  (pairs ?? []).flatMap((pair, index) => {
+): ReadonlyArray<TrainingRunEntityDefinition> => {
+  const validPairs = (pairs ?? []).filter(
+    pair =>
+      (pair.workerRef !== undefined && pair.workerRef.trim() !== '') ||
+      (pair.validatorRef !== null &&
+        pair.validatorRef !== undefined &&
+        pair.validatorRef.trim() !== ''),
+  )
+  return validPairs.flatMap((pair, index) => {
     const entities: TrainingRunEntityDefinition[] = []
     if (pair.workerRef !== undefined && pair.workerRef.trim() !== '') {
       entities.push({
         id: pair.workerRef,
         label: `RW${index + 1}`,
+        position: rejectedReplayEntityPosition(
+          index,
+          validPairs.length,
+          'worker',
+        ),
         status: 'rejected',
       })
     }
@@ -282,17 +376,23 @@ const rejectedReplayEntities = (
         entities.push({
           id: validatorRef,
           label: `RV${index + 1}`,
+          position: rejectedReplayEntityPosition(
+            index,
+            validPairs.length,
+            'validator',
+          ),
           status: 'rejected',
         })
       }
     }
     return entities
   })
+}
 
 const settlementEntities = (
   rows: ReadonlyArray<PublicTassadarSettlementRow>,
 ): ReadonlyArray<TrainingRunEntityDefinition> =>
-  rows.flatMap(row => {
+  rows.flatMap((row, index) => {
     const receiptRef = settlementRowReceiptRef(row)
     if (receiptRef === undefined) return []
     const amount =
@@ -303,6 +403,7 @@ const settlementEntities = (
       {
         id: receiptRef,
         label: amount,
+        position: settlementEntityPosition(index, rows.length),
         status: settlementRowStatus(row),
       },
     ]
@@ -310,12 +411,15 @@ const settlementEntities = (
 
 const corpusEntities = (
   summary: TassadarRunPublicSummary,
-): ReadonlyArray<TrainingRunEntityDefinition> =>
-  publicRefs(summary.corpus?.traceRefs).map((traceRef, index) => ({
+): ReadonlyArray<TrainingRunEntityDefinition> => {
+  const refs = publicRefs(summary.corpus?.traceRefs)
+  return refs.map((traceRef, index) => ({
     id: traceRef,
     label: `T${index + 1}`,
+    position: corpusEntityPosition(index, refs.length),
     status: 'accepted_trace',
   }))
+}
 
 const runNodeStatus = (
   state: string | undefined,

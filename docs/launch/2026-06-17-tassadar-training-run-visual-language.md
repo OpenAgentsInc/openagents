@@ -416,6 +416,9 @@ families.
 12. Do not put the product-promise gate or fleet-wide pylon stats as bottom text
     in the main view. Those are support surfaces and registry/proof links, not
     the first visual grammar.
+13. Give dense real-ref sets explicit lanes by role instead of relying on a
+    generic ring. Pylons, verified replay refs, rejected replay refs, accepted
+    traces, and receipts should not collapse into one overlapping label cluster.
 
 ## Candidate scene grammar
 
