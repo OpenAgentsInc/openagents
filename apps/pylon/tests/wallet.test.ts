@@ -1086,6 +1086,38 @@ describe("Spark backup send / withdraw (#5177)", () => {
     assertPublicProjectionSafe(send)
   })
 
+  test("a native Spark send surfaces method spark_native in the public projection (#5225)", async () => {
+    const RAW_SPARK_NATIVE = "spark1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3jn54khce6mua7lqpzr"
+    const nativeSend: SparkBackupSendTransfer = async ({ amountSats, destination }) => {
+      expect(destination).toBe(RAW_SPARK_NATIVE)
+      return {
+        ok: true,
+        transferRef: "wallet.spark_backup_send.deadbeefdeadbeefdeadbeef",
+        sparkPaymentRef: "wallet.spark_backup_send_payment.deadbeefdeadbeefdeadbeef",
+        amountSats,
+        // Native Spark→Spark carries no Lightning routing fee.
+        feeSats: 0,
+        method: "spark_native",
+        status: "completed",
+      }
+    }
+    const send = await sendWithSparkBackup({
+      amountSats: 3000,
+      destination: RAW_SPARK_NATIVE,
+      confirmSend: true,
+      env: enabledEnv,
+      transfer: nativeSend,
+      now: () => new Date("2026-06-17T00:00:00.000Z"),
+    })
+    expect(send.state).toBe("sent")
+    expect(send.method).toBe("spark_native")
+    expect(send.feeSats).toBe(0)
+    expect(send.amountSats).toBe(3000)
+    expect(send.publicReceiptRefs[0]).toMatch(/^receipt\.pylon\.spark_backup_send\.[a-f0-9]{24}$/)
+    expect(JSON.stringify(send)).not.toContain(RAW_SPARK_NATIVE)
+    assertPublicProjectionSafe(send)
+  })
+
   test("a timed-out (indeterminate) send is marked pending, not failed, and offers no retry (#5196)", async () => {
     const send = await sendWithSparkBackup({
       amountSats: 21000,

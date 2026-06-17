@@ -288,6 +288,19 @@ const lightningAddressPattern =
 const isLightningAddress = (value: string): boolean =>
   lightningAddressPattern.test(value.trim().toLowerCase())
 
+// #5225: a native Spark address. The Spark address uses a bech32m-style encoding
+// with the human-readable prefix `spark1` and a long lowercase bech32 data part
+// (observed ~68 chars on real infra). We mirror the conservative style of
+// `lightningAddressPattern`: a strict `spark1` HRP, the bech32 charset (the data
+// part excludes `1`, `b`, `i`, `o`; `1` is the HRP separator), and a bounded
+// length. A native Spark→Spark send settles WITHOUT a Lightning routing fee, so
+// classifying it up front lets us route it natively (NO bolt11Invoice/preferSpark
+// options, NO LNURL resolve, NO Lightning fallback) and label it `spark_native`
+// instead of mislabeling it `payment_request`.
+const sparkAddressPattern = /^spark1[023456789acdefghjklmnpqrstuvwxyz]{20,180}$/u
+export const isSparkAddress = (value: string): boolean =>
+  sparkAddressPattern.test(value.trim().toLowerCase())
+
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null
 
@@ -390,13 +403,25 @@ async function sendSparkPaymentFromSdk(input: {
   // Valid-UUID TransferId for every SDK send call (see uuidFromStableSeed).
   const sdkIdempotencyKey = uuidFromStableSeed(input.idempotencyKey)
 
+  // #5225: a native Spark address routes Spark→Spark with NO Lightning routing
+  // (verified on real infra: feeSats 0, settles in seconds). Detect it up front
+  // so we (a) NEVER enter the Lightning-Address LNURL-resolve branch for it and
+  // (b) NEVER attempt the BOLT11/preferSpark:false Lightning fallback for it.
+  // The native send is just prepare → sendPayment with `options: undefined`
+  // (already the non-bolt11 path below); this flag makes the intent explicit and
+  // drives the `spark_native` method label. A `spark1…` HRP cannot also match the
+  // lud16 `name@domain` Lightning-Address shape, but guarding explicitly keeps the
+  // money-path classification unambiguous and future-proof.
+  const isSparkNative = isSparkAddress(destination)
+
   // #5195: pay a Lightning Address by resolving it to a BOLT11 (LNURL-pay) and
   // sending that through the proven sendPayment path below — NOT via the SDK's
   // lnurlPay, which throws "Tree service error: insufficient funds" from the
   // Spark leaf structure even when the balance covers the amount. This mirrors
   // how the treasury Spark sender pays Lightning Addresses.
-  let method: "payment_request" | "lnurl_pay" = "payment_request"
-  if (input.allowLnurlPay && isLightningAddress(destination)) {
+  let method: "payment_request" | "lnurl_pay" | "spark_native" =
+    isSparkNative ? "spark_native" : "payment_request"
+  if (!isSparkNative && input.allowLnurlPay && isLightningAddress(destination)) {
     // #5195 follow-up: resolve LNURL-pay under its OWN generous timeout, NOT the
     // short read timeout — an external LNURL server is slower than a local SDK
     // read, and each inner fetch is independently abort-bounded so a hung host
@@ -438,6 +463,15 @@ async function sendSparkPaymentFromSdk(input: {
   sparkTiming("prepare_send_payment", performance.now() - tPrepare)
   const paymentMethod = (prepareResponse as { paymentMethod?: { type?: string } })?.paymentMethod
   const isBolt11 = paymentMethod?.type === "bolt11Invoice"
+  // #5225: confirm the native label off the SDK's resolved payment method, not
+  // only the destination string. A non-bolt11 resolved method that we did NOT
+  // already classify as an LNURL-pay (Lightning Address → BOLT11) is a native
+  // Spark send, so report it as `spark_native`. A bolt11 method keeps the
+  // existing `payment_request`/`lnurl_pay` label; we never downgrade an
+  // already-resolved `lnurl_pay`.
+  if (!isBolt11 && method !== "lnurl_pay") {
+    method = "spark_native"
+  }
   // #5196: wait at least the SDK's completion window + a buffer for the send to
   // settle — never the short read-timeout — so a slow/large send is not aborted
   // while it completes server-side (false-negative). prepare/resolve above stay

@@ -1610,7 +1610,9 @@ export type SparkBackupSendProjection = {
   destinationRef: string | null
   sparkPaymentRef: string | null
   transferRef: string | null
-  method: "payment_request" | "lnurl_pay" | null
+  // #5225: `spark_native` = a Spark→Spark send that routed natively (no Lightning
+  // routing fee), distinct from a BOLT11 `payment_request` or an LNURL `lnurl_pay`.
+  method: "payment_request" | "lnurl_pay" | "spark_native" | null
   status: string | null
   blockerRefs: string[]
   failureRefs: string[]
@@ -1626,7 +1628,8 @@ export type SparkBackupSendTransferResult =
       sparkPaymentRef: string
       amountSats: number | null
       feeSats: number | null
-      method: "payment_request" | "lnurl_pay"
+      // #5225: `spark_native` for a native Spark→Spark send (no Lightning routing fee).
+      method: "payment_request" | "lnurl_pay" | "spark_native"
       status: string | null
     }
   | {

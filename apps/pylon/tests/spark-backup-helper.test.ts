@@ -5,8 +5,14 @@ import {
   createSparkBackupHelper,
   createSparkBackupSendTransfer,
   createSparkBackupSweepTransfer,
+  isSparkAddress,
   resolveSparkBackupHelper,
 } from "../src/spark-backup-helper"
+
+// #5225: a native Spark address (bech32m `spark1…` HRP, ~68 chars on real infra).
+// Synthetic but shape-faithful; never a real address and must not leak in refs.
+const RAW_SPARK_NATIVE_ADDRESS =
+  "spark1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3jn54khce6mua7lqpzr"
 
 const RAW_SPARK_ADDRESS = "sp1pgssy9fakesparkaddressmaterialthatmustnotleakpublicly00000000000000"
 const TEST_MNEMONIC =
@@ -89,7 +95,13 @@ function fakeSparkModule(opts: {
         },
         prepareSendPayment: async (request: { paymentRequest: string; amount?: bigint }) => {
           opts.onPrepareSend?.(request)
-          return { prepared: true, paymentMethod: { type: "bolt11Invoice" }, paymentRequest: request.paymentRequest }
+          // #5225: mirror the real SDK — a native `spark1…` destination resolves
+          // to a NON-bolt11 payment method (`sparkAddress`); everything else
+          // (BOLT11 invoices, LNURL-resolved BOLT11s) resolves to `bolt11Invoice`.
+          const type = request.paymentRequest.trim().toLowerCase().startsWith("spark1")
+            ? "sparkAddress"
+            : "bolt11Invoice"
+          return { prepared: true, paymentMethod: { type }, paymentRequest: request.paymentRequest }
         },
         sendPayment: async (request: { idempotencyKey?: string; options?: unknown; prepareResponse: unknown }) => {
           opts.onSend?.(request)
@@ -341,6 +353,89 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
     expect(result.method).toBe("payment_request")
     expect(JSON.stringify(result)).not.toContain(rawPaymentRequest)
     assertPublicProjectionSafe(result)
+  })
+
+  test("isSparkAddress recognizes spark1 addresses and rejects everything else (#5225)", () => {
+    expect(isSparkAddress(RAW_SPARK_NATIVE_ADDRESS)).toBe(true)
+    // Tolerates surrounding whitespace / case like the Lightning-address helper.
+    expect(isSparkAddress(`  ${RAW_SPARK_NATIVE_ADDRESS.toUpperCase()}  `)).toBe(true)
+    // Not a Spark address: BOLT11, Lightning Address, empty, wrong HRP.
+    expect(isSparkAddress("lnbc42420n1rawpaymentrequest")).toBe(false)
+    expect(isSparkAddress("oa12345@spark.example")).toBe(false)
+    expect(isSparkAddress("")).toBe(false)
+    expect(isSparkAddress("spark1")).toBe(false)
+    expect(isSparkAddress("bc1qexampleonchainaddressnotspark")).toBe(false)
+  })
+
+  test("send transfer routes a native Spark address Spark→Spark (spark_native), no LNURL, no Lightning options/fallback (#5225)", async () => {
+    let preparedTarget: string | null = null
+    let sentIdempotencyKey: string | null = null
+    let sentOptions: unknown = "unset"
+    let parseTouched = false
+    let lnurlTouched = false
+    let sendCalls = 0
+    // The LNURL resolve path must never be touched for a native Spark address.
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (url: string | URL) => {
+      throw new Error(`fetch must not be called for a native Spark send: ${String(url)}`)
+    }) as typeof fetch
+    try {
+      const transfer = createSparkBackupSendTransfer({
+        apiKey: "k",
+        mnemonic: TEST_MNEMONIC,
+        loadModule: async () =>
+          fakeSparkModule({
+            balanceSats: 3000,
+            onParse: () => {
+              parseTouched = true
+            },
+            onLnurlPay: () => {
+              lnurlTouched = true
+            },
+            onPrepareSend: (request) => {
+              preparedTarget = request.paymentRequest
+              expect(request.amount).toBe(3000n)
+            },
+            onSend: (request) => {
+              sendCalls += 1
+              sentIdempotencyKey = request.idempotencyKey ?? null
+              sentOptions = request.options
+            },
+          }),
+      })
+
+      const result = await transfer({
+        amountSats: 3000,
+        destination: RAW_SPARK_NATIVE_ADDRESS,
+        idempotencyKey: "test-spark-native-key",
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected native Spark transfer success")
+      // Native classification.
+      expect(result.method).toBe("spark_native")
+      // The destination went straight to prepare — NOT through LNURL resolve.
+      expect(preparedTarget).toBe(RAW_SPARK_NATIVE_ADDRESS)
+      expect(parseTouched).toBe(false)
+      expect(lnurlTouched).toBe(false)
+      // sendPayment was called exactly once with NO bolt11Invoice/preferSpark
+      // options (native rail) and NEVER a preferSpark:false Lightning fallback.
+      expect(sendCalls).toBe(1)
+      expect(sentOptions).toBeUndefined()
+      // Valid-UUID TransferId, not the raw idempotency key (#5185 preserved).
+      expect(sentIdempotencyKey).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      )
+      expect(sentIdempotencyKey).not.toBe("test-spark-native-key")
+      expect(result.transferRef).toMatch(/^wallet\.spark_backup_send\.[a-f0-9]{24}$/)
+      expect(result.sparkPaymentRef).toMatch(/^wallet\.spark_backup_send_payment\.[a-f0-9]{24}$/)
+      expect(result.amountSats).toBe(3000)
+      // Native Spark→Spark carries no Lightning routing fee; the fake reports 3.
+      expect(JSON.stringify(result)).not.toContain(RAW_SPARK_NATIVE_ADDRESS)
+      assertPublicProjectionSafe(result)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 
   test("send transfer resolves a Lightning Address to a BOLT11 and pays it via sendPayment (#5195)", async () => {
