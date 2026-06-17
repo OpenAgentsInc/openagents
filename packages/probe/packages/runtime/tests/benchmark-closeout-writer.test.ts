@@ -6,6 +6,8 @@ import { Effect } from "effect";
 import {
   PROBE_BENCHMARK_ASSIGNMENT_SCHEMA_REF,
   PROBE_BENCHMARK_CLOSEOUT_BUNDLE_FILE_NAMES,
+  PROBE_STUDYBENCH_CLAIM_SCORE_SCHEMA_REF,
+  PROBE_STUDYBENCH_RUBRIC_SCORE_SCHEMA_REF,
   decodeProbeBenchmarkAssignment,
   makeProbeBenchmarkCloseoutBundle,
   projectProbeGepaLiveRunnerGate,
@@ -127,6 +129,86 @@ describe("Probe benchmark closeout writer", () => {
     expect(closeout.runStatus).toBe("failed");
     expect((closeout.retainedFailureRefs as string[])[0]).toContain("service_readiness");
     expect(JSON.stringify(failure)).toContain("service_readiness");
+  });
+
+  test("failed retained StudyBench patch runs carry task and rubric score evidence only", async () => {
+    const assignment = await fakeAssignment();
+    const studybenchTaskRef = "studybench_task.openagents.public_retained.openagents_launch_0009";
+    const studybenchScoreRef = "rubric_score.probe.studybench.openagents_launch_0009.failed.1";
+    const evidenceUseRef = "evidence_use.probe.studybench.openagents_launch_0009.failed.1";
+    const bundle = await Effect.runPromise(
+      makeProbeBenchmarkCloseoutBundle({
+        assignment,
+        artifactManifestRefs: ["artifact_manifest.probe.studybench_patch.failed.1"],
+        failureClassification: {
+          classificationRef: "failure_classification.studybench_patch.verifier_failure",
+          family: "verifier_failure",
+          summaryRef: "summary.failure.studybench_patch.openagents_launch_0009",
+        },
+        proofBundleRefs: ["proof_bundle.probe.studybench_patch.failed.1"],
+        resourceUsageRef: "resource_usage.probe.studybench_patch.failed.1",
+        runRef: "probe_run.studybench_patch.openagents_launch_0009.failed.1",
+        runStatus: "failed",
+        scorerRef: "scorer.probe.studybench.manual_or_judge_supplied.v0",
+        studybenchEvidenceUseRefs: [evidenceUseRef],
+        studybenchRubricScore: {
+          schemaRef: PROBE_STUDYBENCH_RUBRIC_SCORE_SCHEMA_REF,
+          candidateHash: assignment.candidateHash,
+          claimScores: [
+            {
+              schemaRef: PROBE_STUDYBENCH_CLAIM_SCORE_SCHEMA_REF,
+              claimId: "c1",
+              claimType: "core",
+              evidenceSpanIds: ["s1"],
+              rationaleRef: "rationale.probe.studybench.openagents_launch_0009.c1",
+              satisfied: false,
+              scoreBps: 0,
+              scorerRef: "scorer.probe.studybench.manual_or_judge_supplied.v0",
+              weight: 100,
+            },
+          ],
+          coreGatePassed: false,
+          evidenceUseRefs: [evidenceUseRef],
+          finalScoreBps: 0,
+          goldAnswerRef: "gold_answer.openagents_studybench.public_retained.openagents_launch_0009",
+          redactionState: "public_safe",
+          taskId: "openagents_launch_0009",
+          weightedScoreBps: 0,
+        },
+        studybenchScoreRef,
+        studybenchTaskRef,
+        verifierRef: "verifier.probe.studybench.patch_mode.v0",
+      }),
+    );
+    const closeout = bundle.files["probe-closeout.json"] as { readonly [key: string]: unknown };
+    const taskRefFile = bundle.files["studybench-task-ref.json"] as { readonly [key: string]: unknown };
+    const rubricScoreFile = bundle.files["rubric-score.json"] as {
+      readonly [key: string]: unknown;
+      readonly rubricScore?: { readonly finalScoreBps?: number };
+    };
+
+    expect((closeout.retainedFailureRefs as string[])[0]).toContain("verifier_failure");
+    expect(taskRefFile.taskRef).toBe(studybenchTaskRef);
+    expect(rubricScoreFile.rubricScoreRef).toBe(studybenchScoreRef);
+    expect(rubricScoreFile.evidenceUseRefs).toEqual([evidenceUseRef]);
+    expect(rubricScoreFile.rubricScore?.finalScoreBps).toBe(0);
+
+    const gate = await Effect.runPromise(
+      projectProbeGepaLiveRunnerGate({
+        bundle,
+        candidateManifestAuthorityRefs: ["candidate_manifest_authority.psionic.gepa.stage_0.v1"],
+        mode: "sandbox",
+        runnerExecutionRefs: ["runner_execution.probe.studybench_patch.failed.1"],
+      }),
+    );
+
+    expect(gate.runnerGateReady).toBe(true);
+    expect(gate.evidenceRefs.studybenchRefs).toContain(studybenchTaskRef);
+    expect(gate.evidenceRefs.studybenchRefs).toContain(studybenchScoreRef);
+    expect(gate.evidenceRefs.studybenchRefs).toContain(evidenceUseRef);
+    expect(gate.publicScoreClaimAllowed).toBe(false);
+    expect(gate.productPromotionAllowed).toBe(false);
+    expect(gate.payoutClaimAllowed).toBe(false);
   });
 
   test("timed-out runs emit timeout state, partial artifact refs, and resource unavailable reason", async () => {

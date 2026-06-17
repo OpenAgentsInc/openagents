@@ -50,6 +50,11 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   rubrics, support manual/judge-supplied and deterministic-check scorer refs,
   compute weighted basis-point scores, apply the strict core-claim gate, and
   reject raw evaluator rationale text from public score summaries.
+- 2026-06-17: #5289 / MSB-MVP-07 complete. Probe closeout bundles now carry
+  stable StudyBench task-ref and rubric-score summaries, preserve existing
+  Terminal-Bench closeouts, project StudyBench task/score/evidence-use refs
+  into the GEPA live-runner gate as evidence only, and keep product, payout,
+  and public-score authority disabled unless separate gates are supplied.
 
 ## Short Answer
 

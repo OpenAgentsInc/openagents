@@ -30,6 +30,7 @@ import {
   type ProbeBenchmarkRunStatus,
 } from "../contracts/benchmark";
 import { type JsonValue, type ProbePublicProjectionUnsafe } from "../contracts/provider-account";
+import { type ProbeStudybenchRubricScore, decodeProbeStudybenchRubricScore } from "./studybench";
 
 export const PROBE_BENCHMARK_CLOSEOUT_BUNDLE_SCHEMA_REF = "probe.benchmark_closeout_bundle.v1" as const;
 export const PROBE_GEPA_LIVE_RUNNER_GATE_SCHEMA_REF = "probe.gepa_live_runner_gate.v1" as const;
@@ -46,6 +47,8 @@ export const PROBE_BENCHMARK_CLOSEOUT_BUNDLE_FILE_NAMES = [
   "policy-findings.json",
   "failure-classification.json",
   "route-scorecard.json",
+  "studybench-task-ref.json",
+  "rubric-score.json",
 ] as const;
 export type ProbeBenchmarkCloseoutBundleFileName = (typeof PROBE_BENCHMARK_CLOSEOUT_BUNDLE_FILE_NAMES)[number];
 
@@ -77,6 +80,10 @@ export interface ProbeBenchmarkCloseoutWriterInput {
   readonly scorerRef: string;
   readonly startedAt?: string;
   readonly summaryArtifactRef?: string;
+  readonly studybenchEvidenceUseRefs?: ReadonlyArray<string>;
+  readonly studybenchRubricScore?: ProbeStudybenchRubricScore;
+  readonly studybenchScoreRef?: string;
+  readonly studybenchTaskRef?: string;
   readonly toolMenuSnapshot?: JsonValue;
   readonly verifierRef: string;
   readonly verifierResultRefs?: ReadonlyArray<string>;
@@ -127,6 +134,7 @@ export interface ProbeGepaLiveRunnerGateProjection {
     readonly routeScorecardRefs: ReadonlyArray<string>;
     readonly runRefs: ReadonlyArray<string>;
     readonly selectedSignatureRefs: ReadonlyArray<string>;
+    readonly studybenchRefs: ReadonlyArray<string>;
     readonly toolMenuRefs: ReadonlyArray<string>;
     readonly verifierRefs: ReadonlyArray<string>;
   };
@@ -180,6 +188,7 @@ export function makeProbeBenchmarkCloseoutBundle(
       : "blocked";
     const summaryArtifactRef = input.summaryArtifactRef ?? `artifact.probe.benchmark.${input.runRef}.decision_trace_summary`;
     const routeScorecard = yield* routeScorecardFor(input, resourceCostRefs);
+    const studybenchCloseoutRefs = yield* studybenchCloseoutRefsFor(input);
 
     if (resourceCostRefs.resourceUsageRef === undefined && resourceCostRefs.unavailableReason === undefined) {
       return yield* Effect.fail(
@@ -280,6 +289,9 @@ export function makeProbeBenchmarkCloseoutBundle(
         partialArtifactRefs,
         proofBundleRefs,
         runStatus: input.runStatus,
+        studybenchEvidenceUseRefs: studybenchCloseoutRefs.evidenceUseRefs,
+        studybenchScoreRef: studybenchCloseoutRefs.scoreRef,
+        studybenchTaskRef: studybenchCloseoutRefs.taskRef,
         verifierResultRefs: [...(input.verifierResultRefs ?? [])],
       }),
       "resource-usage-ref.json": toJsonValue({
@@ -299,6 +311,23 @@ export function makeProbeBenchmarkCloseoutBundle(
         retainedFailureRefs,
       }),
       "route-scorecard.json": toJsonValue(routeScorecard),
+      "studybench-task-ref.json": toJsonValue({
+        schemaRef: "probe.studybench_task_ref_summary.v1",
+        assignmentRef: assignment.assignmentRef,
+        evidenceSplit: assignment.split.evidenceSplit,
+        present: studybenchCloseoutRefs.present,
+        taskChecksum: assignment.task.taskChecksum,
+        taskRef: studybenchCloseoutRefs.taskRef,
+      }),
+      "rubric-score.json": toJsonValue({
+        schemaRef: "probe.studybench_rubric_score_summary.v1",
+        assignmentRef: assignment.assignmentRef,
+        evidenceUseRefs: studybenchCloseoutRefs.evidenceUseRefs,
+        present: studybenchCloseoutRefs.rubricScore !== undefined || studybenchCloseoutRefs.scoreRef !== undefined,
+        rubricScore: studybenchCloseoutRefs.rubricScore,
+        rubricScoreRef: studybenchCloseoutRefs.scoreRef,
+        taskRef: studybenchCloseoutRefs.taskRef,
+      }),
     };
 
     return {
@@ -332,6 +361,8 @@ export function projectProbeGepaLiveRunnerGate(
     const signatures = yield* expectRecord(files["selected-signatures.json"], "selected-signatures.json");
     const toolMenu = yield* expectRecord(files["tool-menu.json"], "tool-menu.json");
     const candidate = yield* expectRecord(files["candidate-ref.json"], "candidate-ref.json");
+    const studybenchTask = expectOptionalRecord(files["studybench-task-ref.json"]);
+    const rubricScore = expectOptionalRecord(files["rubric-score.json"]);
 
     const evidenceRefs = {
       artifactRefs: refsFrom(artifacts.artifactManifestRefs, artifacts.partialArtifactRefs),
@@ -348,6 +379,15 @@ export function projectProbeGepaLiveRunnerGate(
       routeScorecardRefs: refsFrom(scorecard.scorecardRef, closeout.routeScorecardRef),
       runRefs: refsFrom(input.bundle.runRef, run.runRef),
       selectedSignatureRefs: refsFrom(signatures.selectedSignatureRefs, closeout.selectedSignatureRefs),
+      studybenchRefs: refsFrom(
+        studybenchTask.taskRef,
+        studybenchTask.taskChecksum,
+        rubricScore.rubricScoreRef,
+        rubricScore.evidenceUseRefs,
+        artifacts.studybenchTaskRef,
+        artifacts.studybenchScoreRef,
+        artifacts.studybenchEvidenceUseRefs,
+      ),
       toolMenuRefs: refsFrom(toolMenu.toolMenuRef, closeout.toolMenuRef),
       verifierRefs: refsFrom(getNestedString(closeout, ["verifierScorerRefs", "verifierRef"]), artifacts.verifierResultRefs),
     };
@@ -554,6 +594,116 @@ function routeScoreForStatus(runStatus: ProbeBenchmarkTerminalRunStatus): number
     case "errored":
       return 500;
   }
+}
+
+interface StudybenchCloseoutRefs {
+  readonly evidenceUseRefs: ReadonlyArray<string>;
+  readonly present: boolean;
+  readonly rubricScore?: ProbeStudybenchRubricScore;
+  readonly scoreRef?: string;
+  readonly taskRef?: string;
+}
+
+function studybenchCloseoutRefsFor(
+  input: ProbeBenchmarkCloseoutWriterInput,
+): Effect.Effect<StudybenchCloseoutRefs, ProbeBenchmarkContractError | ProbePublicProjectionUnsafe> {
+  return Effect.gen(function* () {
+    const hasStudybenchInput =
+      input.studybenchTaskRef !== undefined ||
+      input.studybenchScoreRef !== undefined ||
+      input.studybenchRubricScore !== undefined ||
+      (input.studybenchEvidenceUseRefs?.length ?? 0) > 0;
+
+    if (!hasStudybenchInput) {
+      return {
+        evidenceUseRefs: [],
+        present: false,
+      };
+    }
+
+    if (input.studybenchTaskRef === undefined) {
+      return yield* studybenchCloseoutError(
+        "benchmarkCloseoutWriterInput.studybenchTaskRef",
+        "is required when StudyBench score evidence is attached",
+      );
+    }
+
+    yield* requireOpaqueStudybenchRef(input.studybenchTaskRef, "benchmarkCloseoutWriterInput.studybenchTaskRef");
+
+    let rubricScore: ProbeStudybenchRubricScore | undefined;
+    if (input.studybenchRubricScore !== undefined) {
+      rubricScore = yield* decodeProbeStudybenchRubricScore(input.studybenchRubricScore);
+      yield* validateRubricScorePublicRefs(rubricScore);
+    }
+
+    const scoreRef =
+      input.studybenchScoreRef ??
+      (rubricScore === undefined
+        ? undefined
+        : `rubric_score.probe.studybench.${input.runRef}.${rubricScore.taskId}`);
+
+    if (scoreRef !== undefined) {
+      yield* requireOpaqueStudybenchRef(scoreRef, "benchmarkCloseoutWriterInput.studybenchScoreRef");
+    }
+
+    const evidenceUseRefs = input.studybenchEvidenceUseRefs ?? rubricScore?.evidenceUseRefs ?? [];
+    for (const [index, ref] of evidenceUseRefs.entries()) {
+      yield* requireOpaqueStudybenchRef(ref, `benchmarkCloseoutWriterInput.studybenchEvidenceUseRefs[${index}]`);
+    }
+
+    return {
+      evidenceUseRefs: [...evidenceUseRefs],
+      present: true,
+      rubricScore,
+      scoreRef,
+      taskRef: input.studybenchTaskRef,
+    };
+  });
+}
+
+function validateRubricScorePublicRefs(
+  rubricScore: ProbeStudybenchRubricScore,
+): Effect.Effect<void, ProbeBenchmarkContractError> {
+  return Effect.gen(function* () {
+    yield* requireOpaqueStudybenchRef(rubricScore.candidateHash, "studybenchRubricScore.candidateHash");
+    yield* requireOpaqueStudybenchRef(rubricScore.goldAnswerRef, "studybenchRubricScore.goldAnswerRef");
+
+    for (const [index, ref] of rubricScore.evidenceUseRefs.entries()) {
+      yield* requireOpaqueStudybenchRef(ref, `studybenchRubricScore.evidenceUseRefs[${index}]`);
+    }
+
+    for (const [index, claimScore] of rubricScore.claimScores.entries()) {
+      yield* requireOpaqueStudybenchRef(claimScore.claimId, `studybenchRubricScore.claimScores[${index}].claimId`);
+      yield* requireOpaqueStudybenchRef(
+        claimScore.rationaleRef,
+        `studybenchRubricScore.claimScores[${index}].rationaleRef`,
+      );
+      yield* requireOpaqueStudybenchRef(claimScore.scorerRef, `studybenchRubricScore.claimScores[${index}].scorerRef`);
+
+      for (const [spanIndex, spanId] of claimScore.evidenceSpanIds.entries()) {
+        yield* requireOpaqueStudybenchRef(
+          spanId,
+          `studybenchRubricScore.claimScores[${index}].evidenceSpanIds[${spanIndex}]`,
+        );
+      }
+    }
+  });
+}
+
+function requireOpaqueStudybenchRef(value: string, path: string): Effect.Effect<void, ProbeBenchmarkContractError> {
+  if (value.trim().length === 0) {
+    return studybenchCloseoutError(path, "must be a non-empty ref");
+  }
+
+  if (/\s/.test(value) || /[!?]$/.test(value) || /because|critique/i.test(value)) {
+    return studybenchCloseoutError(path, "must be an opaque artifact ref, not raw evaluator text");
+  }
+
+  return Effect.void;
+}
+
+function studybenchCloseoutError(path: string, reason: string): Effect.Effect<never, ProbeBenchmarkContractError> {
+  return Effect.fail(new ProbeBenchmarkContractError({ path, reason }));
 }
 
 export function writeProbeBenchmarkCloseoutBundle(
