@@ -532,6 +532,18 @@ const readTreasuryFunding = (
     },
   }).pipe(Effect.catch(() => Effect.succeed(null)))
 
+const readSparkTreasuryFunding = (
+  fetchSparkTreasury: ContainerPathFetch,
+): Effect.Effect<unknown> =>
+  Effect.tryPromise({
+    catch: () => null,
+    try: async () => {
+      const response = await fetchSparkTreasury('/spark/funding-destination')
+
+      return response.ok ? await response.json() : null
+    },
+  }).pipe(Effect.catch(() => Effect.succeed(null)))
+
 export const handleOperatorTreasuryFundingDestinationApi = (
   request: Request,
   dependencies: TreasuryRouteDependencies,
@@ -570,6 +582,49 @@ export const handleOperatorTreasuryFundingDestinationApi = (
                 { status: 503 },
               )
             : noStoreJsonResponse({ funding, service: 'mdk_treasury' }),
+      )
+    }),
+  )
+}
+
+export const handleOperatorSparkTreasuryFundingDestinationApi = (
+  request: Request,
+  dependencies: TreasuryRouteDependencies,
+) => {
+  if (request.method !== 'GET') {
+    return Effect.succeed(methodNotAllowed(['GET']))
+  }
+
+  return Effect.tryPromise({
+    catch: () => false,
+    try: () => dependencies.requireAdminApiToken(request),
+  }).pipe(
+    Effect.catch(() => Effect.succeed(false)),
+    Effect.flatMap(authorized => {
+      if (!authorized) {
+        return Effect.succeed(
+          noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 }),
+        )
+      }
+
+      if (dependencies.fetchSparkTreasury === undefined) {
+        return Effect.succeed(
+          noStoreJsonResponse(
+            { error: 'spark_treasury_unprovisioned' },
+            { status: 503 },
+          ),
+        )
+      }
+
+      return Effect.map(
+        readSparkTreasuryFunding(dependencies.fetchSparkTreasury),
+        funding =>
+          funding === null
+            ? noStoreJsonResponse(
+                { error: 'spark_treasury_funding_destination_unavailable' },
+                { status: 503 },
+              )
+            : noStoreJsonResponse({ funding, service: 'spark_treasury' }),
       )
     }),
   )

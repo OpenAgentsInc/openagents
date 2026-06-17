@@ -461,6 +461,7 @@ import { makeHostedMdkPayoutAdapter } from './treasury-payment-hosted-mdk-payout
 import { makeSparkTreasuryPayoutAdapter } from './treasury-payment-spark-payout-adapter'
 import {
   TREASURY_SERVICE_TOKEN_HEADER,
+  handleOperatorSparkTreasuryFundingDestinationApi,
   handleOperatorTreasuryFundingDestinationApi,
   handleOperatorTreasuryPayoutApi,
   handleOperatorTreasuryRecipientConfirmationApi,
@@ -7436,6 +7437,15 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       handleOperatorTreasuryFundingDestinationApi(request, {
         fetchTreasury: fetchMdkTreasuryPath(env),
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+      }),
+  },
+  {
+    path: '/api/operator/treasury/spark-funding-destination',
+    handler: (request, env) =>
+      handleOperatorSparkTreasuryFundingDestinationApi(request, {
+        fetchSparkTreasury: fetchMdkTreasuryPath(env),
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
       }),

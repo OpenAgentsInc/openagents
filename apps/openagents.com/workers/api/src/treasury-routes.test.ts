@@ -8,6 +8,7 @@ import type {
 } from './treasury-page-routes'
 import {
   executeTreasuryPayout,
+  handleOperatorSparkTreasuryFundingDestinationApi,
   handleOperatorTreasuryFundingDestinationApi,
   handleOperatorTreasuryPayoutApi,
   handleOperatorTreasuryRecipientConfirmationApi,
@@ -386,6 +387,84 @@ describe('operator treasury funding destination', () => {
     )
 
     expect(response.status).toBe(503)
+  })
+})
+
+describe('operator spark treasury funding destination', () => {
+  test('requires the admin api token', async () => {
+    const response = await run(
+      handleOperatorSparkTreasuryFundingDestinationApi(
+        new Request(
+          'https://openagents.com/api/operator/treasury/spark-funding-destination',
+        ),
+        {
+          fetchSparkTreasury: () =>
+            Promise.resolve(
+              jsonResponse(200, { rail: 'spark', sparkAddress: 'sp1x' }),
+            ),
+          requireAdminApiToken: () => Promise.resolve(false),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  test('serves spark funding rails to an authorized operator', async () => {
+    const response = await run(
+      handleOperatorSparkTreasuryFundingDestinationApi(
+        new Request(
+          'https://openagents.com/api/operator/treasury/spark-funding-destination',
+        ),
+        {
+          fetchSparkTreasury: path =>
+            Promise.resolve(
+              path === '/spark/funding-destination'
+                ? jsonResponse(200, {
+                    lightningAddress: 'oaabc123@spark.money',
+                    rail: 'spark',
+                    sparkAddress: 'sp1example',
+                  })
+                : jsonResponse(404, { error: 'not_found' }),
+            ),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+    const body = (await response.json()) as {
+      funding: {
+        lightningAddress: string
+        rail: string
+        sparkAddress: string
+      }
+      service: string
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.service).toBe('spark_treasury')
+    expect(body.funding.rail).toBe('spark')
+    expect(body.funding.sparkAddress).toBe('sp1example')
+    expect(body.funding.lightningAddress).toBe('oaabc123@spark.money')
+  })
+
+  test('returns 503 when the spark container funding destination is unavailable', async () => {
+    const response = await run(
+      handleOperatorSparkTreasuryFundingDestinationApi(
+        new Request(
+          'https://openagents.com/api/operator/treasury/spark-funding-destination',
+        ),
+        {
+          fetchSparkTreasury: () =>
+            Promise.resolve(jsonResponse(503, { error: 'spark_down' })),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({
+      error: 'spark_treasury_funding_destination_unavailable',
+    })
   })
 })
 
