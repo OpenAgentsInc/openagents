@@ -826,9 +826,9 @@ const runNodeFromPublicSummary = (
   summary: TassadarRunPublicSummary,
 ): TrainingRunNodeDefinition => ({
   connectedTo: [],
-  detail: summary.runRef ?? 'run.tassadar.executor.20260615',
+  detail: '',
   id: 'run',
-  label: summary.runLabel ?? 'Tassadar executor run',
+  label: 'Tassadar',
   position: [-0.15, 0.28, 0],
   role: 'run',
   status: runNodeStatus(summary.runState),

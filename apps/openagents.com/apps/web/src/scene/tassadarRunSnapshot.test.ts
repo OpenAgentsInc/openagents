@@ -200,9 +200,9 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     expect(options.nodes).toEqual([
       {
         connectedTo: [],
-        detail: 'run.tassadar.executor.20260615',
+        detail: '',
         id: 'run',
-        label: 'Tassadar executor run',
+        label: 'Tassadar',
         position: [-0.15, 0.28, 0],
         role: 'run',
         status: 'active',
@@ -299,9 +299,9 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     expect(layer.nodes).toEqual([
       {
         connectedTo: [],
-        detail: 'run.tassadar.executor.20260615',
+        detail: '',
         id: 'run',
-        label: 'Tassadar executor run',
+        label: 'Tassadar',
         position: [-0.15, 0.28, 0],
         role: 'run',
         status: 'active',
