@@ -1,7 +1,7 @@
 # SpacetimeDB To Tassadar Integration Next Steps
 
 Date: 2026-06-17
-Status: Phase 0, Phase 1, Phase 2, base ops hardening, and MVP interaction schema implemented; station/avatar projection next
+Status: Phase 0, Phase 1, Phase 2, base ops hardening, MVP interaction schema, and station/avatar projection implemented; rendering next
 
 ## Current Boundary
 
@@ -160,8 +160,18 @@ and `set_agent_intent`. The new service-only reducers are
 `record_system_world_message`, and `expire_interaction_rows`.
 
 These rows do not create proof, settlement, receipt, pylon, or training truth.
-The next step is issue #5262: derive pylon stations and one pylon-agent avatar
-per public pylon ref from the existing Tassadar summary bridge.
+
+Issue #5262 now derives pylon stations and one pylon-agent avatar per visible
+public leaderboard pylon ref from the existing Tassadar summary bridge. The
+bridge dry-run against `https://openagents.com/api/public/tassadar-run-summary`
+plans 194 reducer calls, including 6 `upsert_pylon_station_from_projection`
+calls and 6 `ensure_pylon_agent_avatar` calls. After publishing the schema and
+applying/replaying the bridge, live counts stayed stable at 17 `world_event`
+rows and added 6 `pylon_station`, 6 `agent_avatar`, and 6 `avatar_position`
+rows.
+
+The next step is issue #5263: subscribe to those public interaction rows in the
+browser adapter and render stations plus pylon-agent avatars on `/tassadar`.
 
 After the base projection works, add subscriptions that are useful only when an
 entity is selected:

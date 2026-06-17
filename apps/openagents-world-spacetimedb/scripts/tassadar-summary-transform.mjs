@@ -190,6 +190,49 @@ const addProofsForEntity = (calls, runRef, entityRef, refs, proofKind) => {
   })
 }
 
+const coordinate = value => Math.round(value * 1_000) / 1_000
+
+const spread = (index, total, start, end) =>
+  coordinate(
+    total <= 1
+      ? (start + end) / 2
+      : start + ((end - start) * index) / (total - 1),
+  )
+
+const pylonStationPosition = (index, total) => ({
+  x: -2.35,
+  y: 0,
+  z: spread(index, total, 1.5, -1.5),
+})
+
+const addPylonStation = (calls, input) => {
+  addCall(calls, 'upsert_pylon_station_from_projection', [
+    input.pylonRef,
+    input.runRef,
+    input.regionRef,
+    input.label,
+    input.sourceUrl,
+    input.position.x,
+    input.position.y,
+    input.position.z,
+    input.headingYaw,
+    input.interactionRadiusMeters,
+  ])
+}
+
+const addPylonAgentAvatar = (calls, input) => {
+  addCall(calls, 'ensure_pylon_agent_avatar', [
+    input.avatarRef,
+    input.pylonRef,
+    input.displayName,
+    input.regionRef,
+    input.position.x,
+    input.position.y,
+    input.position.z,
+    input.yaw,
+  ])
+}
+
 export const buildTassadarProjectionPlan = (
   summary,
   options = {},
@@ -203,6 +246,7 @@ export const buildTassadarProjectionPlan = (
   const maxStalenessSeconds = integerOrZero(staleness.maxStalenessSeconds)
   const sourceHash = stableHash(summary)
   const calls = []
+  const regionRef = `region.${runRef}.main`
 
   addCall(calls, 'upsert_training_run', [
     runRef,
@@ -235,16 +279,27 @@ export const buildTassadarProjectionPlan = (
 
   const settlementRows = array(summary?.settlementRows)
   const leaderboardRows = array(summary?.realGradient?.leaderboardRows)
-  leaderboardRows.forEach((row, index) => {
+  const visiblePylonRows = leaderboardRows.filter(
+    row => text(row?.pylonRef) !== '',
+  )
+  visiblePylonRows.forEach((row, index) => {
     const entityRef = text(row.pylonRef)
     if (entityRef === '') return
     const rank = integerOrZero(row.rank)
+    const label = rank > 0 ? `P${rank}` : shortRef(entityRef)
     const refs = sourceRefsFor(row.sourceRefs, [entityRef])
     const sourceRef = firstPublicRef(refs)
+    const stationPosition = pylonStationPosition(index, visiblePylonRows.length)
+    const agentPosition = {
+      x: coordinate(stationPosition.x + 0.45),
+      y: stationPosition.y,
+      z: stationPosition.z,
+    }
+    const sourceUrlForStation = trainingRunUrl(runRef, sourceRef || entityRef)
     addEntity(calls, {
       entityKind: 'pylon',
       entityRef,
-      label: rank > 0 ? `P${rank}` : shortRef(entityRef),
+      label,
       lane: 'pylon',
       proofCount: refs.length,
       runRef,
@@ -258,6 +313,24 @@ export const buildTassadarProjectionPlan = (
       runRef,
       sourceRef,
       toEntityRef: entityRef,
+    })
+    addPylonStation(calls, {
+      headingYaw: 0,
+      interactionRadiusMeters: 2.4,
+      label,
+      position: stationPosition,
+      pylonRef: entityRef,
+      regionRef,
+      runRef,
+      sourceUrl: sourceUrlForStation,
+    })
+    addPylonAgentAvatar(calls, {
+      avatarRef: `avatar.pylon_agent.${entityRef}`,
+      displayName: `${label} agent`,
+      position: agentPosition,
+      pylonRef: entityRef,
+      regionRef,
+      yaw: 0,
     })
     addWorldEvent(calls, {
       entityRef,

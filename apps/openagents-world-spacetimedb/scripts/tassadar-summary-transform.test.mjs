@@ -76,8 +76,45 @@ describe('Tassadar SpacetimeDB projection transform', () => {
     expect(counts.upsert_training_run).toBe(1)
     expect(counts.upsert_run_entity).toBeGreaterThanOrEqual(7)
     expect(counts.upsert_settlement_ref).toBe(1)
+    expect(counts.upsert_pylon_station_from_projection).toBe(1)
+    expect(counts.ensure_pylon_agent_avatar).toBe(1)
     expect(counts.record_projection_cursor).toBe(1)
     expect(counts.append_world_event).toBeGreaterThan(0)
+  })
+
+  it('projects deterministic pylon stations and pylon-agent avatars', () => {
+    const plan = buildTassadarProjectionPlan(summary)
+    const stationCalls = plan.calls.filter(
+      call => call.reducer === 'upsert_pylon_station_from_projection',
+    )
+    const avatarCalls = plan.calls.filter(
+      call => call.reducer === 'ensure_pylon_agent_avatar',
+    )
+
+    expect(stationCalls).toHaveLength(summary.realGradient.leaderboardRows.length)
+    expect(avatarCalls).toHaveLength(summary.realGradient.leaderboardRows.length)
+    expect(stationCalls[0]?.args).toEqual([
+      'pylon.public.worker1',
+      'run.tassadar.executor.20260615',
+      'region.run.tassadar.executor.20260615.main',
+      'P1',
+      'https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615?focusRef=pylon.public.worker1',
+      -2.35,
+      0,
+      0,
+      0,
+      2.4,
+    ])
+    expect(avatarCalls[0]?.args).toEqual([
+      'avatar.pylon_agent.pylon.public.worker1',
+      'pylon.public.worker1',
+      'P1 agent',
+      'region.run.tassadar.executor.20260615.main',
+      -1.9,
+      0,
+      0,
+      0,
+    ])
   })
 
   it('is deterministic for replaying the same summary', () => {

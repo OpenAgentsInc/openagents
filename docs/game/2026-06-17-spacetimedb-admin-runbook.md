@@ -361,9 +361,13 @@ bun apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs --app
 
 The apply path calls VM-local service reducers with the `spacetimedb` user's
 local identity. It upserts `training_run`, `run_entity`, `world_edge`,
-`proof_ref`, `settlement_ref`, and `projection_cursor`, appends only missing
-`world_event` refs, and records `bridge_health` through
-`record_bridge_success`.
+`proof_ref`, `settlement_ref`, `projection_cursor`, `pylon_station`,
+`agent_avatar`, and `avatar_position`, appends only missing `world_event` refs,
+and records `bridge_health` through `record_bridge_success`.
+
+The script inserts a `--` separator before reducer arguments because station
+coordinates can be negative and the SpacetimeDB CLI otherwise parses values
+such as `-2.35` as options.
 
 Issue #5237 projected canonical run `run.tassadar.executor.20260615` on
 2026-06-17. The dry-run planned 182 reducer calls:
@@ -395,6 +399,39 @@ bridge_health: 1
 the bridge de-duplicates public refs through table primary keys. Replaying the
 bridge left `world_event` at 17 rows.
 
+Issue #5262 extended the same bridge on 2026-06-17 to seed pylon stations and
+pylon-agent avatars from public leaderboard pylon refs. The dry-run planned 194
+reducer calls:
+
+```text
+upsert_training_run: 1
+upsert_run_entity: 23
+append_world_event: 17
+upsert_proof_ref: 123
+upsert_world_edge: 16
+upsert_pylon_station_from_projection: 6
+ensure_pylon_agent_avatar: 6
+upsert_settlement_ref: 1
+record_projection_cursor: 1
+```
+
+After publishing the #5261 schema and applying/replaying the #5262 bridge, the
+live interaction counts were:
+
+```text
+pylon_station: 6
+agent_avatar: 6
+avatar_position: 6
+pylon_attention: 0
+local_chat_message: 0
+chat_bubble: 0
+local_emote: 0
+agent_intent: 0
+```
+
+`world_event` stayed at 17 after replay, confirming that replay did not create
+duplicate projection events.
+
 Verify live counts:
 
 ```bash
@@ -405,8 +442,8 @@ gcloud compute ssh spacetimedb-world-1 \
   --command='set -e; for table in training_run run_entity world_edge proof_ref settlement_ref world_event projection_cursor bridge_health; do printf "\n%s\n" "$table"; sudo -u spacetimedb /stdb/bin/2.6.0/spacetimedb-cli sql -s local openagents-world "SELECT COUNT(*) AS count FROM $table"; done'
 ```
 
-Issue #5261 adds public interaction tables for the shared world layer. After a
-schema publish, verify those tables too:
+Issue #5261 added public interaction tables for the shared world layer. Verify
+those tables too:
 
 ```bash
 gcloud compute ssh spacetimedb-world-1 \
@@ -416,8 +453,9 @@ gcloud compute ssh spacetimedb-world-1 \
   --command='set -e; for table in pylon_station agent_avatar avatar_position pylon_attention local_chat_message chat_bubble local_emote agent_intent; do printf "\n%s\n" "$table"; sudo -u spacetimedb /stdb/bin/2.6.0/spacetimedb-cli sql -s local openagents-world "SELECT COUNT(*) AS count FROM $table"; done'
 ```
 
-Until issue #5262 projects pylon stations and pylon-agent avatars, these
-interaction tables may legitimately be empty.
+Before issue #5264/#5265 browser interaction is enabled, `pylon_attention`,
+`local_chat_message`, `chat_bubble`, `local_emote`, and `agent_intent` may
+legitimately be empty.
 
 ## Browser Subscription Adapter
 

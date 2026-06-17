@@ -160,6 +160,16 @@ primitives.
   projection and expiry. This does not change `/tassadar` truth authority:
   Worker/D1 remains canonical for run, pylon, proof, receipt, settlement, and
   product-claim state.
+- 2026-06-17: Issue #5262 published the interaction schema to the self-hosted
+  `openagents-world` module and extended the Tassadar bridge to seed inhabited
+  world rows from public leaderboard pylon refs. The live dry-run planned 194
+  reducer calls, including 6 `upsert_pylon_station_from_projection` calls and
+  6 `ensure_pylon_agent_avatar` calls. Applying and replaying the bridge left
+  projection counts stable (`world_event` stayed at 17) and produced 6
+  `pylon_station`, 6 `agent_avatar`, and 6 `avatar_position` rows. The station
+  coordinates mirror the existing left-lane P1-P6 pylon layout, and avatar refs
+  are deterministic `avatar.pylon_agent.{pylonRef}` values derived only from
+  public pylon refs.
 
 ## Short answer
 

@@ -11,6 +11,12 @@ attention, local chat messages, chat bubbles, local emotes, and agent intent,
 plus generated TypeScript bindings for the web adapter. The authority split
 below still applies.
 
+Update: issue #5262 extended the public Tassadar bridge to seed one
+`pylon_station`, one pylon-agent `agent_avatar`, and one `avatar_position` per
+visible leaderboard pylon ref. The live `openagents-world` database now has 6
+station rows, 6 pylon-agent avatar rows, and 6 pylon-agent position rows for
+the canonical Tassadar run.
+
 ## Thesis
 
 The next visible step should be simple to explain:
@@ -307,12 +313,15 @@ That is the minimum "actual game" slice.
 
 ### P0: Schema And Read-Only Avatar View
 
-- Done in issue #5261: add `pylon_station`, `agent_avatar`, `avatar_position`, `pylon_attention`,
-  `local_chat_message`, `chat_bubble`, `local_emote`, and `agent_intent` tables
-  to `apps/openagents-world-spacetimedb`.
-- Done in issue #5261: add reducers for join/leave, position update, attention update, and local
-  message send.
+- Done in issue #5261: add `pylon_station`, `agent_avatar`,
+  `avatar_position`, `pylon_attention`, `local_chat_message`, `chat_bubble`,
+  `local_emote`, and `agent_intent` tables to
+  `apps/openagents-world-spacetimedb`.
+- Done in issue #5261: add reducers for join/leave, position update, attention
+  update, and local message send.
 - Done in issue #5261: generate TypeScript bindings.
+- Done in issue #5262: project one station, pylon-agent avatar, and initial
+  avatar position per public leaderboard pylon ref.
 - Add `/tassadar` subscriptions for avatars, positions, pylon stations,
   attention rows, and recent local messages.
 - Render static pylon-agent avatars first, even before remote movement.

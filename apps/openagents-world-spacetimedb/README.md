@@ -139,6 +139,8 @@ bun apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs --app
 ```
 
 The bridge writes the public projection tables through service-only reducers
-and records `bridge_health` with `record_bridge_success`. Replaying the same
-summary is deterministic, and `append_world_event` ignores existing event refs
-so live replay does not create duplicate events.
+and records `bridge_health` with `record_bridge_success`. It also projects one
+`pylon_station`, `agent_avatar`, and `avatar_position` row for each visible
+public leaderboard pylon ref. Replaying the same summary is deterministic, and
+`append_world_event` ignores existing event refs so live replay does not create
+duplicate events.

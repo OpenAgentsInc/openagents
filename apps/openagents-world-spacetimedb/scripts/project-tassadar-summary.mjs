@@ -77,6 +77,7 @@ const reducerCommand = (options, database, call) =>
     '-y',
     shellQuote(database),
     shellQuote(call.reducer),
+    '--',
     ...call.args.map(arg => shellQuote(String(arg))),
   ].join(' ')
 
