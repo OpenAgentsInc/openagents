@@ -78,6 +78,11 @@ export type SparkBackupReceiveProjection = {
   helperReady: boolean
   detectedBalanceSats: number | null
   unclaimedDepositCount: number | null
+  // #5166: pending Lightning HTLCs (offline-received funds awaiting
+  // `backup-claim`). Read-only — lets an operator see incoming funds before
+  // claiming. Optional for back-compat with older projections.
+  claimableHtlcCount?: number | null
+  claimableHtlcSats?: number | null
   blockerRefs: string[]
   nextActionRefs: string[]
   publicReceiptRefs: string[]
@@ -1193,10 +1198,12 @@ function safeSparkBackupReconcile(
  * unclaimed deposits via the receive-only `status` + `unclaimed-deposits`
  * commands. Returns only numeric counts/amounts (never raw material).
  */
-async function detectSparkBackupBalance(helper: SparkBackupHelper): Promise<{
+export async function detectSparkBackupBalance(helper: SparkBackupHelper): Promise<{
   helperReady: boolean
   detectedBalanceSats: number | null
   unclaimedDepositCount: number | null
+  claimableHtlcCount: number | null
+  claimableHtlcSats: number | null
 }> {
   let statusResult: WalletCommandResult
   try {
@@ -1205,11 +1212,19 @@ async function detectSparkBackupBalance(helper: SparkBackupHelper): Promise<{
     statusResult = { exitCode: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) }
   }
   if (statusResult.exitCode !== 0) {
-    return { helperReady: false, detectedBalanceSats: null, unclaimedDepositCount: null }
+    return {
+      helperReady: false,
+      detectedBalanceSats: null,
+      unclaimedDepositCount: null,
+      claimableHtlcCount: null,
+      claimableHtlcSats: null,
+    }
   }
   const statusData = parseMaybeJson(statusResult.stdout)
   const detectedBalanceSats =
     toSatNumber(statusData?.balance_sats) ?? toSatNumber(statusData?.spendable_balance_sats)
+  const claimableHtlcCount = toSatNumber(statusData?.claimable_htlc_count)
+  const claimableHtlcSats = toSatNumber(statusData?.claimable_htlc_sats)
   let unclaimedDepositCount = toSatNumber(statusData?.unclaimed_deposit_count)
 
   if (unclaimedDepositCount === null) {
@@ -1225,7 +1240,7 @@ async function detectSparkBackupBalance(helper: SparkBackupHelper): Promise<{
     }
   }
 
-  return { helperReady: true, detectedBalanceSats, unclaimedDepositCount }
+  return { helperReady: true, detectedBalanceSats, unclaimedDepositCount, claimableHtlcCount, claimableHtlcSats }
 }
 
 /**

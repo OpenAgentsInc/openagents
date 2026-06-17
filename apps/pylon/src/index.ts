@@ -140,6 +140,7 @@ import {
   appendLedgerEvent,
   classifyMdkWallet,
   classifySparkBackupReceive,
+  detectSparkBackupBalance,
   prepareSparkBackupReceive,
   preflightLegacySparkMigration,
   readCachedSparkTarget,
@@ -2368,6 +2369,21 @@ async function main() {
         const showLocalTarget = sparkOptions["show-local-target"] === true
         const sparkBackupOptions = await resolveSparkBackupOptions(state, { showLocalTarget })
         const projection = await classifySparkBackupReceive(sparkBackupOptions)
+        // #5166: classify only confirms the address; it never read the actual
+        // balance, so detectedBalanceSats was always null here. Read the real
+        // balance + pending-claimable HTLCs (read-only) and merge them in, so a
+        // cautious owner can SEE offline-received funds before claiming.
+        if (sparkBackupOptions.helper !== undefined) {
+          try {
+            const detected = await detectSparkBackupBalance(sparkBackupOptions.helper)
+            projection.detectedBalanceSats = detected.detectedBalanceSats
+            projection.unclaimedDepositCount = detected.unclaimedDepositCount
+            projection.claimableHtlcCount = detected.claimableHtlcCount
+            projection.claimableHtlcSats = detected.claimableHtlcSats
+          } catch {
+            // Best-effort: keep the classify projection as-is on any failure.
+          }
+        }
         const sweep = recommendSparkSweep({
           detectedBalanceSats: projection.detectedBalanceSats,
           unclaimedDepositCount: projection.unclaimedDepositCount,

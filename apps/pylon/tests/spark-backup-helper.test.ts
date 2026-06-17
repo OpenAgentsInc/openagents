@@ -67,7 +67,12 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
     })
     const result = await helper("status")
     expect(result.exitCode).toBe(0)
-    expect(JSON.parse(result.stdout)).toEqual({ balance_sats: 4242, unclaimed_deposit_count: 2 })
+    expect(JSON.parse(result.stdout)).toEqual({
+      balance_sats: 4242,
+      unclaimed_deposit_count: 2,
+      claimable_htlc_count: 0,
+      claimable_htlc_sats: 0,
+    })
   })
 
   test("history command returns only a count, never raw payment material", async () => {

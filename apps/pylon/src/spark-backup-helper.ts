@@ -73,7 +73,7 @@ type BreezSparkSdk = {
   listUnclaimedDeposits(request: Record<string, never>): Promise<{ deposits?: unknown[] }>
   // #5166: claim Lightning HTLC receives (offline-receive funds arrive as HTLCs
   // that must be claimed before they credit the balance). syncWallet pulls latest.
-  syncWallet(request: Record<string, never>): Promise<unknown>
+  syncWallet?(request: Record<string, never>): Promise<unknown>
   claimHtlcPayment(request: { preimage: string }): Promise<{ payment?: { amount?: unknown } }>
   // Static Lightning Address (LNURL-pay) hosted by this Spark wallet's LSP.
   // Optional-tolerant: not all SDK builds / injected test fakes expose these.
@@ -297,6 +297,13 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
           return helperOk({ spark_address: raw })
         }
         case "status": {
+          // Sync first: getInfo({ensureSynced}) alone returned a stale null in
+          // real-infra testing even right after a claim; an explicit syncWallet
+          // makes the balance + pending list current (#5166). Guarded so older
+          // SDK builds / test fakes without syncWallet degrade gracefully.
+          if (typeof sdk.syncWallet === "function") {
+            await withTimeout(sdk.syncWallet({}), timeoutMs, "spark syncWallet").catch(() => undefined)
+          }
           const info = await withTimeout(sdk.getInfo({ ensureSynced: true }), timeoutMs, "spark getInfo")
           const deposits = await withTimeout(
             sdk.listUnclaimedDeposits({}),
@@ -313,9 +320,33 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
               (info as { balanceSat?: unknown })?.balanceSat,
           )
           const unclaimed = Array.isArray(deposits?.deposits) ? deposits.deposits.length : null
+          // READ-ONLY (#5166): surface pending Lightning HTLCs — offline-received
+          // funds awaiting `backup-claim` — so an operator (or a cautious owner
+          // who only permits read commands) can SEE the funds before claiming.
+          let claimableCount = 0
+          let claimableSats = 0
+          const list =
+            typeof sdk.listPayments === "function"
+              ? await withTimeout(
+                  sdk.listPayments({ statusFilter: ["pending"], limit: 100 }),
+                  timeoutMs,
+                  "spark listPayments",
+                ).catch(() => ({ payments: undefined }))
+              : { payments: undefined }
+          const payments = Array.isArray(list?.payments) ? list.payments : []
+          for (const p of payments) {
+            const htlc = (p as { details?: { htlcDetails?: { status?: string } } }).details?.htlcDetails
+            if (htlc && htlc.status === "waitingForPreimage") {
+              claimableCount += 1
+              const amt = toSatNumber((p as { amount?: unknown }).amount)
+              if (amt !== null) claimableSats += amt
+            }
+          }
           return helperOk({
             balance_sats: balance,
             unclaimed_deposit_count: unclaimed,
+            claimable_htlc_count: claimableCount,
+            claimable_htlc_sats: claimableSats,
           })
         }
         case "history": {
@@ -391,7 +422,9 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
           // one-shot helper previously never claimed, so offline-received funds
           // never credited. Sync, then claim every pending Lightning HTLC whose
           // preimage we already hold, then report the post-claim balance.
-          await withTimeout(sdk.syncWallet({}), timeoutMs, "spark syncWallet").catch(() => undefined)
+          if (typeof sdk.syncWallet === "function") {
+            await withTimeout(sdk.syncWallet({}), timeoutMs, "spark syncWallet").catch(() => undefined)
+          }
           const list = await withTimeout(
             sdk.listPayments({ statusFilter: ["pending"], limit: 100 }),
             timeoutMs,
