@@ -22,6 +22,10 @@ direction.
 - `2026-06-17-tassadar-wasd-mouselook-controller-plan.md` - implementation plan
   for adding a reusable `three-effect` WASD + mouselook controller and enabling a
   2.5D first-person `/tassadar` navigation mode.
+- `2026-06-17-agent-avatar-proximity-chatter-world-plan.md` - brainstorm and
+  implementation direction for making each pylon's agent visible as a world
+  avatar that can move, notice nearby visitors, talk locally, and emit chat
+  bubbles during a run.
 
 ## Implementation Homes
 
