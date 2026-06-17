@@ -375,7 +375,11 @@ const buildStages = (
   const stageCount = (key: string): number => digest.byStage[key] ?? 0
   const hasRuns = digest.total > 0
   const progress = (stageKey: ForgeStageKey): StageProgressSummary =>
-    stageProgressFor(stageKey, runsLoaded ? workOrders : [], runsLoaded ? 'live' : 'seeded')
+    stageProgressFor(
+      stageKey,
+      runsLoaded ? workOrders : [],
+      runsLoaded ? 'live' : 'seeded',
+    )
 
   // A real per-stage trailing series is only meaningful for the whole intake;
   // we reuse the real daily-created series as the Triage/Signal sparkline and
@@ -616,7 +620,9 @@ const buildPanels = (digest: RunDigest): ReadonlyArray<DetailPanel> => {
   ]
 }
 
-const buildDogfoodMetrics = (data: FactoryData): ReadonlyArray<DogfoodMetric> => {
+const buildDogfoodMetrics = (
+  data: FactoryData,
+): ReadonlyArray<DogfoodMetric> => {
   const openWork = Math.max(
     0,
     data.digest.total - data.digest.accepted - data.digest.rejectedOrInvalid,
@@ -671,8 +677,7 @@ const digestRouting = (
             ? 1
             : 0),
         fallback: digest.fallback + (routing.source === 'fallback' ? 1 : 0),
-        metered:
-          digest.metered + (routing.buyerDebitRequired === true ? 1 : 0),
+        metered: digest.metered + (routing.buyerDebitRequired === true ? 1 : 0),
         requesterPylon:
           digest.requesterPylon +
           (routing.source === 'requester_pylon' ? 1 : 0),
@@ -719,6 +724,33 @@ const buildRoutingMetrics = (
     },
   ]
 }
+
+const buildCohortReadinessMetrics = (): ReadonlyArray<DogfoodMetric> => [
+  {
+    key: 'target-teams',
+    label: 'Target teams',
+    provenance: 'configured',
+    value: '3-5',
+  },
+  {
+    key: 'completion-bundles',
+    label: 'Completion bundles',
+    provenance: 'seeded',
+    value: '—',
+  },
+  {
+    key: 'privacy-reviews',
+    label: 'Privacy reviews',
+    provenance: 'seeded',
+    value: '—',
+  },
+  {
+    key: 'gate-status',
+    label: 'D3 gate',
+    provenance: 'seeded',
+    value: 'Awaiting source',
+  },
+]
 
 // ---------------------------------------------------------------------------
 // Rendering primitives (dark contract, no model-authored markup).
@@ -922,21 +954,25 @@ const stageProgressChip = (
   )
 }
 
-const stageProgressRunLinks = (progress: StageProgressSummary): ReadonlyArray<Html> => {
+const stageProgressRunLinks = (
+  progress: StageProgressSummary,
+): ReadonlyArray<Html> => {
   const h = html<Message>()
 
-  return progress.refs.slice(0, 3).map(ref =>
-    h.a(
-      [
-        h.Href(autopilotWorkDetailRouter({ workOrderRef: ref })),
-        Ui.className<Message>(
-          'min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[0.625rem] text-white/55 underline decoration-white/20 underline-offset-3 hover:text-white',
-        ),
-        h.DataAttribute('forge-stage-progress-run', ref),
-      ],
-      [ref],
-    ),
-  )
+  return progress.refs
+    .slice(0, 3)
+    .map(ref =>
+      h.a(
+        [
+          h.Href(autopilotWorkDetailRouter({ workOrderRef: ref })),
+          Ui.className<Message>(
+            'min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[0.625rem] text-white/55 underline decoration-white/20 underline-offset-3 hover:text-white',
+          ),
+          h.DataAttribute('forge-stage-progress-run', ref),
+        ],
+        [ref],
+      ),
+    )
 }
 
 const stageProgressView = (
@@ -954,63 +990,75 @@ const stageProgressView = (
       h.DataAttribute('forge-stage-progress-total', String(progress.total)),
       h.DataAttribute('forge-stage-progress-active', String(progress.active)),
       h.DataAttribute('forge-stage-progress-pending', String(progress.pending)),
-      h.DataAttribute('forge-stage-progress-completed', String(progress.completed)),
+      h.DataAttribute(
+        'forge-stage-progress-completed',
+        String(progress.completed),
+      ),
       h.DataAttribute('forge-stage-progress-blocked', String(progress.blocked)),
       h.DataAttribute('forge-stage-progress-failed', String(progress.failed)),
     ],
     [
-      h.div([Ui.className<Message>('flex flex-wrap items-center gap-1.5')], [
-        stageProgressChip(
-          stageKey,
-          'active',
-          progress.active,
-          'active',
-          progress.provenance,
-        ),
-        stageProgressChip(
-          stageKey,
-          'pending',
-          progress.pending,
-          'pending',
-          progress.provenance,
-        ),
-        stageProgressChip(
-          stageKey,
-          'done',
-          progress.completed,
-          'completed',
-          progress.provenance,
-        ),
-        stageProgressChip(
-          stageKey,
-          'blocked',
-          progress.blocked,
-          'blocked',
-          progress.provenance,
-        ),
-        stageProgressChip(
-          stageKey,
-          'failed',
-          progress.failed,
-          'failed',
-          progress.provenance,
-        ),
-      ]),
+      h.div(
+        [Ui.className<Message>('flex flex-wrap items-center gap-1.5')],
+        [
+          stageProgressChip(
+            stageKey,
+            'active',
+            progress.active,
+            'active',
+            progress.provenance,
+          ),
+          stageProgressChip(
+            stageKey,
+            'pending',
+            progress.pending,
+            'pending',
+            progress.provenance,
+          ),
+          stageProgressChip(
+            stageKey,
+            'done',
+            progress.completed,
+            'completed',
+            progress.provenance,
+          ),
+          stageProgressChip(
+            stageKey,
+            'blocked',
+            progress.blocked,
+            'blocked',
+            progress.provenance,
+          ),
+          stageProgressChip(
+            stageKey,
+            'failed',
+            progress.failed,
+            'failed',
+            progress.provenance,
+          ),
+        ],
+      ),
       h.div(
         [Ui.className<Message>('grid gap-1')],
         links.length === 0
           ? [
-              h.span([Ui.className<Message>('text-[0.625rem] text-white/30')], [
-                progress.provenance === 'live' ? 'No Runs in stage' : 'Awaiting Runs',
-              ]),
+              h.span(
+                [Ui.className<Message>('text-[0.625rem] text-white/30')],
+                [
+                  progress.provenance === 'live'
+                    ? 'No Runs in stage'
+                    : 'Awaiting Runs',
+                ],
+              ),
             ]
           : links,
       ),
       progress.omittedUnsafeRefCount === 0
         ? h.span([Ui.className<Message>('hidden')], [])
-        : h.span([Ui.className<Message>('text-[0.625rem] text-[#ffb400]')], [
-            `${progress.omittedUnsafeRefCount} unsafe Run ref(s) omitted`,
-          ]),
+        : h.span(
+            [Ui.className<Message>('text-[0.625rem] text-[#ffb400]')],
+            [`${progress.omittedUnsafeRefCount} unsafe Run ref(s) omitted`],
+          ),
     ],
   )
 }
@@ -1761,9 +1809,10 @@ const dogfoodMetricView = (metric: DogfoodMetric): Html => {
         ],
         [metric.value],
       ),
-      h.div([Ui.className<Message>('justify-self-start')], [
-        provenanceTag(metric.provenance),
-      ]),
+      h.div(
+        [Ui.className<Message>('justify-self-start')],
+        [provenanceTag(metric.provenance)],
+      ),
     ],
   )
 }
@@ -1802,6 +1851,72 @@ const routingMetricView = (metric: DogfoodMetric): Html => {
   )
 }
 
+const cohortMetricView = (metric: DogfoodMetric): Html => {
+  const h = html<Message>()
+  const valueClass =
+    metric.provenance === 'configured' ? 'text-white/70' : 'text-white/35'
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border border-[#1b1b1b] bg-black/30 px-3 py-2',
+      ),
+      h.DataAttribute('forge-cohort-metric', metric.key),
+      h.DataAttribute('forge-cohort-value', metric.value),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'truncate text-[0.625rem] uppercase tracking-wide text-white/35',
+          ),
+        ],
+        [metric.label],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            `truncate text-sm font-semibold tabular-nums ${valueClass}`,
+          ),
+        ],
+        [metric.value],
+      ),
+    ],
+  )
+}
+
+const cohortReadinessSection = (): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>('grid gap-2 border-t border-[#1b1b1b] pt-3'),
+      h.DataAttribute('forge-cohort-readiness', 'true'),
+      h.DataAttribute('forge-cohort-gate', 'awaiting-source'),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'truncate text-[0.625rem] uppercase tracking-wide text-white/35',
+          ),
+        ],
+        ['Cohort readiness'],
+      ),
+      h.div(
+        [Ui.className<Message>('text-sm/6 text-white/45')],
+        [
+          'D3 needs at least three public-safe loop-completion bundles before #5098 can close.',
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-2 @2xl:grid-cols-4 sm:grid-cols-2')],
+        buildCohortReadinessMetrics().map(cohortMetricView),
+      ),
+    ],
+  )
+}
+
 const dogfoodFactorySection = (data: FactoryData): Html => {
   const h = html<Message>()
   const ready = data.runsLoaded && data.poolLoaded
@@ -1820,7 +1935,11 @@ const dogfoodFactorySection = (data: FactoryData): Html => {
     ],
     [
       h.div(
-        [Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')],
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-start justify-between gap-3',
+          ),
+        ],
         [
           h.div(
             [Ui.className<Message>('grid gap-1')],
@@ -1852,11 +1971,7 @@ const dogfoodFactorySection = (data: FactoryData): Html => {
         ],
       ),
       h.div(
-        [
-          Ui.className<Message>(
-            'grid gap-3 @2xl:grid-cols-4 sm:grid-cols-2',
-          ),
-        ],
+        [Ui.className<Message>('grid gap-3 @2xl:grid-cols-4 sm:grid-cols-2')],
         buildDogfoodMetrics(data).map(dogfoodMetricView),
       ),
       h.div(
@@ -1880,6 +1995,7 @@ const dogfoodFactorySection = (data: FactoryData): Html => {
           ),
         ],
       ),
+      cohortReadinessSection(),
     ],
   )
 }

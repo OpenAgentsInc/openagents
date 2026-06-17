@@ -876,6 +876,18 @@ describe('logged-in workroom sidebar', () => {
         Scene.selector('[data-forge-routing-metric="fallback-lanes"]'),
       ).toHaveAttr('data-forge-routing-value', '0'),
       Scene.expect(
+        Scene.selector('[data-forge-cohort-readiness="true"]'),
+      ).toHaveAttr('data-forge-cohort-gate', 'awaiting-source'),
+      Scene.expect(
+        Scene.selector('[data-forge-cohort-metric="target-teams"]'),
+      ).toHaveAttr('data-forge-cohort-value', '3-5'),
+      Scene.expect(
+        Scene.selector('[data-forge-cohort-metric="completion-bundles"]'),
+      ).toHaveAttr('data-forge-cohort-value', '—'),
+      Scene.expect(
+        Scene.selector('[data-forge-cohort-metric="privacy-reviews"]'),
+      ).toHaveAttr('data-forge-cohort-value', '—'),
+      Scene.expect(
         Scene.role('button', { name: 'Run Scope triage' }),
       ).toExist(),
       Scene.expect(
