@@ -589,9 +589,13 @@ export const treasuryPayoutPlan = (input: {
     : { kind: 'fractional_fallback_10pct', paidAmountSat: fallback }
 }
 
-const balancePayload = (
-  payload: unknown,
-): { maxSendableSat: number | null } | null => {
+type TreasuryBalancePayload = Readonly<{ maxSendableSat: number | null }>
+
+type TreasuryBalanceRead =
+  | Readonly<{ balance: TreasuryBalancePayload; kind: 'ok' }>
+  | Readonly<{ kind: 'unavailable' }>
+
+const balancePayload = (payload: unknown): TreasuryBalancePayload | null => {
   if (typeof payload !== 'object' || payload === null) {
     return null
   }
@@ -602,6 +606,51 @@ const balancePayload = (
   return value === null || typeof value === 'number'
     ? { maxSendableSat: value as number | null }
     : null
+}
+
+const waitForTreasurySendabilityRetry = (): Promise<void> =>
+  new Promise(resolve => setTimeout(resolve, 250))
+
+const readTreasuryBalancePayload = async (
+  fetchTreasury: ContainerPathFetch,
+): Promise<TreasuryBalanceRead> => {
+  try {
+    const balanceResponse = await fetchTreasury('/balance')
+
+    if (!balanceResponse.ok) {
+      return { kind: 'unavailable' }
+    }
+
+    const balance = balancePayload(await balanceResponse.json())
+
+    return balance === null
+      ? { kind: 'unavailable' }
+      : { balance, kind: 'ok' }
+  } catch {
+    return { kind: 'unavailable' }
+  }
+}
+
+const readTreasuryBalanceWithSendabilityRetry = async (
+  fetchTreasury: ContainerPathFetch,
+  remainingAttempts = 3,
+): Promise<TreasuryBalanceRead> => {
+  const read = await readTreasuryBalancePayload(fetchTreasury)
+
+  if (
+    read.kind !== 'ok' ||
+    read.balance.maxSendableSat !== null ||
+    remainingAttempts <= 1
+  ) {
+    return read
+  }
+
+  await waitForTreasurySendabilityRetry()
+
+  return readTreasuryBalanceWithSendabilityRetry(
+    fetchTreasury,
+    remainingAttempts - 1,
+  )
 }
 
 const safeReasonSegment = (value: string): string =>
@@ -735,8 +784,10 @@ export const executeTreasuryPayout = async (
     }
   }
 
-  const balanceResponse = await fetchTreasury('/balance')
-  if (!balanceResponse.ok) {
+  const balanceRead = await readTreasuryBalanceWithSendabilityRetry(
+    fetchTreasury,
+  )
+  if (balanceRead.kind === 'unavailable') {
     return {
       intendedAmountSat,
       kind: 'refused',
@@ -744,15 +795,7 @@ export const executeTreasuryPayout = async (
       reason: 'treasury_balance_unavailable',
     }
   }
-  const balance = balancePayload(await balanceResponse.json())
-  if (balance === null) {
-    return {
-      intendedAmountSat,
-      kind: 'refused',
-      policyApplied: null,
-      reason: 'treasury_balance_unavailable',
-    }
-  }
+  const balance = balanceRead.balance
   const plan = treasuryPayoutPlan({
     intendedAmountSat,
     maxSendableSat: balance.maxSendableSat ?? 0,
@@ -905,23 +948,18 @@ export const handleOperatorTreasuryPayoutApi = (
             )
           }
 
-          const balanceResponse = await fetchTreasury('/balance')
+          const balanceRead = await readTreasuryBalanceWithSendabilityRetry(
+            fetchTreasury,
+          )
 
-          if (!balanceResponse.ok) {
+          if (balanceRead.kind === 'unavailable') {
             return noStoreJsonResponse(
               { error: 'treasury_balance_unavailable' },
               { status: 503 },
             )
           }
 
-          const balance = balancePayload(await balanceResponse.json())
-
-          if (balance === null) {
-            return noStoreJsonResponse(
-              { error: 'treasury_balance_unavailable' },
-              { status: 503 },
-            )
-          }
+          const balance = balanceRead.balance
 
           const plan = treasuryPayoutPlan({
             intendedAmountSat,

@@ -706,6 +706,60 @@ describe('operator treasury payout', () => {
       return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
     }
 
+  test('retries transient null sendability before calling the treasury depleted', async () => {
+    const paid: Array<string> = []
+    let balanceReads = 0
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({ amountSat: 5000, destination: 'lno1recipient' }),
+        {
+          fetchTreasury: (path, init) => {
+            if (path === '/balance') {
+              balanceReads += 1
+              return Promise.resolve(
+                balanceReads === 1
+                  ? jsonResponse(200, {
+                      balanceSat: 40312,
+                      maxSendableSat: null,
+                    })
+                  : jsonResponse(200, {
+                      balanceSat: 40312,
+                      maxSendableSat: 39909,
+                    }),
+              )
+            }
+
+            if (path === '/pay' && init?.method === 'POST') {
+              paid.push(
+                String(JSON.parse(init.body ?? '{}').destination ?? ''),
+              )
+
+              return Promise.resolve(
+                jsonResponse(200, {
+                  paymentId: 'pay_retry_sendability',
+                  status: 'succeeded',
+                }),
+              )
+            }
+
+            return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
+          },
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+    const body = (await response.json()) as {
+      paidAmountSat: number
+      status: string
+    }
+
+    expect(response.status).toBe(200)
+    expect(balanceReads).toBe(2)
+    expect(body.paidAmountSat).toBe(5000)
+    expect(body.status).toBe('succeeded')
+    expect(paid).toEqual(['lno1recipient'])
+  })
+
   test('primary success does not use the fallback destination (#5078)', async () => {
     const paid: Array<string> = []
     const response = await run(
