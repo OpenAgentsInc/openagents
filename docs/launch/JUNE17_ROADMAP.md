@@ -101,6 +101,8 @@ signed recut.
   live behind `/api/operator/customer-one-cohort/rows`, and the public route
   reads that D1 source. **D3.7 (#5215) shipped:** `/forge` now renders cohort
   readiness from `/api/public/customer-one-cohort` with public-safe row labels.
+  **D3.8 (#5218) shipped:** `scripts/customer-one-cohort-recorder.mjs` can
+  read the public projection and admin-list/upsert real public-safe rows.
   Remaining D3 tail: record cohort rows and collect at least three real
   loop-completion bundles before closing #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
