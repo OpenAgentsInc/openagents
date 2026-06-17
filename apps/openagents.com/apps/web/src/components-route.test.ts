@@ -90,6 +90,25 @@ describe('components gallery route', () => {
     )
   })
 
+  test('renders the training grammar gallery on /components/training', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(ComponentsFamilyRoute({ family: 'training' }))),
+      Scene.expect(
+        Scene.role('heading', { name: 'Training grammar' }),
+      ).toExist(),
+      Scene.expect(Scene.text('Run field')).toExist(),
+      Scene.expect(Scene.text('Contributor node')).toExist(),
+      Scene.expect(Scene.text('Replay pair')).toExist(),
+      Scene.expect(Scene.text('Verification gate')).toExist(),
+      Scene.expect(Scene.text('Receipt burst')).toExist(),
+      Scene.expect(Scene.text('Proof drawer')).toExist(),
+      Scene.expect(
+        Scene.text('lightBeamsView + pylonBezierNetworkView + statGrid'),
+      ).toExist(),
+    )
+  })
+
   test('renders live component previews for representative families', () => {
     Scene.scene(
       { update, view },

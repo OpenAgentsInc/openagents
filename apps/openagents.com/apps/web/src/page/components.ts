@@ -4,6 +4,7 @@ import { html } from 'foldkit/html'
 
 import { docsRouter } from '../route'
 import { lightBeamsView } from '../scene/lightBeamsElement'
+import { pylonBezierNetworkView } from '../scene/pylonBezierNetworkElement'
 import * as Ui from '../ui'
 import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
@@ -193,9 +194,7 @@ const families: ReadonlyArray<FamilyMeta> = [
       'adding wayfinding between sections',
       'documenting breadcrumb or pagination spacing',
     ],
-    avoidWhen: [
-      'the surface is a workroom rail (use the workroom family)',
-    ],
+    avoidWhen: ['the surface is a workroom rail (use the workroom family)'],
     accessibility: [
       'Navigation regions use real nav landmarks and aria-current for the active item.',
     ],
@@ -222,9 +221,7 @@ const families: ReadonlyArray<FamilyMeta> = [
       'showing comparable records or run/evidence rows',
       'showing a short key/value detail list or a code block',
     ],
-    avoidWhen: [
-      'a single status pill would do (use a badge, not a table)',
-    ],
+    avoidWhen: ['a single status pill would do (use a badge, not a table)'],
     accessibility: [
       'Tables include a caption, headers, and real cells; code blocks are read-only.',
     ],
@@ -330,9 +327,7 @@ const families: ReadonlyArray<FamilyMeta> = [
       'documenting how families compose into a complete screen',
       'seeding a new page from an existing composite',
     ],
-    avoidWhen: [
-      'you only need one family in isolation (compose it directly)',
-    ],
+    avoidWhen: ['you only need one family in isolation (compose it directly)'],
     accessibility: [
       'Composites inherit landmark and heading structure from their families.',
     ],
@@ -450,6 +445,15 @@ const sidebarView = <Message>(selectedFamily?: string): Html => {
             ],
             ['Login (rendered)'],
           ),
+          h.a(
+            [
+              h.Href('/components/training'),
+              Ui.className<Message>(
+                navLinkClass(selectedFamily === 'training'),
+              ),
+            ],
+            ['Training grammar'],
+          ),
           ...Array.map(families, family =>
             h.a(
               [
@@ -481,6 +485,10 @@ const articleView = <Message>(selectedFamily?: string): Html => {
 
   if (selectedFamily === 'login') {
     return loginShowcaseView<Message>()
+  }
+
+  if (selectedFamily === 'training') {
+    return trainingGrammarShowcaseView<Message>()
   }
 
   const knownFamily = families.find(family => family.id === selectedFamily)
@@ -523,11 +531,7 @@ const articleView = <Message>(selectedFamily?: string): Html => {
         ['Component library'],
       ),
       h.p(
-        [
-          Ui.className<Message>(
-            'mt-3 max-w-[76ch] text-base/7 text-white/60',
-          ),
-        ],
+        [Ui.className<Message>('mt-3 max-w-[76ch] text-base/7 text-white/60')],
         [
           'Every component family in @openagentsinc/ui, rendered in the real Foldkit app shell (not Storybook). This is an internal reference: it is intentionally kept out of the public navigation and honors the dark-only, pure-black, compact-mono, thin-border design contract.',
         ],
@@ -632,7 +636,10 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
         box(
           'Text link',
           'textLink (textLinkClass)',
-          Ui.textLink<Message>({ href: '#family-primitives', label: 'A text link' }),
+          Ui.textLink<Message>({
+            href: '#family-primitives',
+            label: 'A text link',
+          }),
         ),
       ]
 
@@ -829,7 +836,11 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
           'Notification stack',
           'notificationStack',
           Ui.notificationStack<Message>([
-            { title: 'Run started', body: 'Workroom session is live.', tone: 'info' },
+            {
+              title: 'Run started',
+              body: 'Workroom session is live.',
+              tone: 'info',
+            },
             {
               title: 'Run completed',
               body: 'Evidence attached.',
@@ -985,7 +996,12 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
           'Stacked list',
           'stackedList',
           Ui.stackedList<Message>([
-            { title: 'run-001', detail: 'Completed', meta: '2m ago', tone: 'positive' },
+            {
+              title: 'run-001',
+              detail: 'Completed',
+              meta: '2m ago',
+              tone: 'positive',
+            },
             { title: 'run-002', detail: 'Running', meta: 'now', tone: 'info' },
           ]),
         ),
@@ -1042,7 +1058,10 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
           Ui.emptyState<Message>({
             title: 'No runs yet',
             body: 'Start a run to see activity here.',
-            action: Ui.button<Message>({ label: 'New run', variant: 'primary' }),
+            action: Ui.button<Message>({
+              label: 'New run',
+              variant: 'primary',
+            }),
           }),
         ),
       ]
@@ -1118,7 +1137,9 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
                 author: 'user',
                 label: 'Operator',
                 time: 'now',
-                parts: [{ kind: 'text', body: ['Implement the gallery showcase.'] }],
+                parts: [
+                  { kind: 'text', body: ['Implement the gallery showcase.'] },
+                ],
               },
               {
                 id: 'm2',
@@ -1173,9 +1194,17 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
             eyebrow: 'Why',
             title: 'Built for agents',
             features: [
-              { title: 'Composable', body: 'One family per concern.', tone: 'accent' },
+              {
+                title: 'Composable',
+                body: 'One family per concern.',
+                tone: 'accent',
+              },
               { title: 'Dark-only', body: 'Pure-black command surfaces.' },
-              { title: 'Verifiable', body: 'Evidence over claims.', tone: 'positive' },
+              {
+                title: 'Verifiable',
+                body: 'Evidence over claims.',
+                tone: 'positive',
+              },
             ],
           }),
         ),
@@ -1202,8 +1231,14 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
           'FAQ section',
           'faqSection',
           Ui.faqSection<Message>([
-            { question: 'What is this gallery?', answer: 'A live component reference.' },
-            { question: 'Is it public?', answer: 'No — internal, kept out of nav.' },
+            {
+              question: 'What is this gallery?',
+              answer: 'A live component reference.',
+            },
+            {
+              question: 'Is it public?',
+              answer: 'No — internal, kept out of nav.',
+            },
           ]),
         ),
         box(
@@ -1296,7 +1331,10 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
             [Ui.className<Message>('flex flex-wrap items-center gap-2')],
             [
               Ui.v4Button<Message>({ label: 'Primary', variant: 'primary' }),
-              Ui.v4Button<Message>({ label: 'Secondary', variant: 'secondary' }),
+              Ui.v4Button<Message>({
+                label: 'Secondary',
+                variant: 'secondary',
+              }),
               Ui.v4Button<Message>({ label: 'Ghost', variant: 'ghost' }),
               Ui.v4Button<Message>({ label: 'Danger', variant: 'danger' }),
             ],
@@ -1323,7 +1361,11 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
             [Ui.className<Message>('flex flex-wrap items-center gap-3')],
             [
               Ui.v4AgentIcon<Message>({ label: 'Agent', status: 'online' }),
-              Ui.v4AgentIcon<Message>({ label: 'Busy', tone: 'warning', status: 'busy' }),
+              Ui.v4AgentIcon<Message>({
+                label: 'Busy',
+                tone: 'warning',
+                status: 'busy',
+              }),
               Ui.v4AgentIcon<Message>({ label: 'Off', status: 'offline' }),
             ],
           ),
@@ -1368,7 +1410,10 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
           Ui.v4ModalCard<Message>({
             title: 'Connect provider',
             body: 'A v4-styled modal card surface.',
-            footer: Ui.v4Button<Message>({ label: 'Connect', variant: 'primary' }),
+            footer: Ui.v4Button<Message>({
+              label: 'Connect',
+              variant: 'primary',
+            }),
           }),
         ),
       ]
@@ -1439,7 +1484,7 @@ const aiElementsShowcase = <Message>(): ReadonlyArray<Html> => {
           props: {
             filename: 'example.ts',
             language: 'typescript',
-            code: "export const greet = (name: string): string =>\n  `Hello, ${name}`",
+            code: 'export const greet = (name: string): string =>\n  `Hello, ${name}`',
           },
           result: {
             status: 'passed',
@@ -1556,6 +1601,996 @@ const aiElementsShowcase = <Message>(): ReadonlyArray<Html> => {
   }
 
   return boxes
+}
+
+type TrainingTone =
+  | 'neutral'
+  | 'info'
+  | 'positive'
+  | 'warning'
+  | 'negative'
+  | 'accent'
+
+const trainingToneChromeClass = (tone: TrainingTone): string => {
+  switch (tone) {
+    case 'info':
+      return 'border-[#2979ff] bg-[rgba(41,121,255,0.10)] text-[#d6f6ff] shadow-[0_0_24px_rgba(41,121,255,0.16)]'
+    case 'positive':
+      return 'border-[#00c853] bg-[rgba(0,200,83,0.10)] text-[#d8ffe4] shadow-[0_0_24px_rgba(0,200,83,0.12)]'
+    case 'warning':
+      return 'border-[#ff6f00] bg-[rgba(255,111,0,0.10)] text-[#ffe0c2] shadow-[0_0_24px_rgba(255,111,0,0.12)]'
+    case 'negative':
+      return 'border-[#d32f2f] bg-[rgba(211,47,47,0.10)] text-[#ffd8d8] shadow-[0_0_24px_rgba(211,47,47,0.12)]'
+    case 'accent':
+      return 'border-[#ffb400] bg-[rgba(255,180,0,0.09)] text-[#ffe7ad] shadow-[0_0_24px_rgba(255,180,0,0.12)]'
+    case 'neutral':
+      return 'border-[#333] bg-white/[0.04] text-[#f1efe8]'
+  }
+}
+
+const trainingPrimitiveCard = <Message>(input: {
+  readonly id: string
+  readonly title: string
+  readonly source: string
+  readonly components: ReadonlyArray<string>
+  readonly intent: string
+  readonly preview: Html
+  readonly details?: Html
+}): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [
+      h.Id(`training-${input.id}`),
+      h.DataAttribute('training-primitive', input.id),
+      Ui.className<Message>(
+        'scroll-mt-6 border border-[#222] bg-white/[0.02] p-4 sm:p-5',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-baseline justify-between gap-2',
+          ),
+        ],
+        [
+          sectionHeading<Message>(input.title),
+          h.code(
+            [Ui.className<Message>('font-mono text-[0.75rem] text-white/40')],
+            [input.source],
+          ),
+        ],
+      ),
+      h.p(
+        [Ui.className<Message>('mt-2 max-w-[76ch] text-base/7 text-white/60')],
+        [input.intent],
+      ),
+      h.div(
+        [Ui.className<Message>('mt-3 flex flex-wrap gap-1.5')],
+        Array.map(input.components, component =>
+          h.code(
+            [
+              Ui.className<Message>(
+                'border border-[#333] px-1.5 py-0.5 font-mono text-[0.75rem] text-white/55',
+              ),
+            ],
+            [component],
+          ),
+        ),
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.8fr)]',
+          ),
+        ],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'relative min-h-[300px] overflow-hidden border border-[#1a1a1a] bg-[#000]',
+              ),
+            ],
+            [input.preview],
+          ),
+          input.details ?? trainingPrimitiveDetails<Message>(input),
+        ],
+      ),
+    ],
+  )
+}
+
+const trainingPrimitiveDetails = <Message>(input: {
+  readonly title: string
+  readonly components: ReadonlyArray<string>
+  readonly source: string
+}): Html => {
+  const h = html<Message>()
+
+  return Ui.drawerPanel<Message>({
+    title: `${input.title} parts`,
+    children: [
+      Ui.keyValueRows<Message>([
+        { label: 'Animation source', value: input.source },
+        { label: 'Component mix', value: input.components.join(' + ') },
+      ]),
+      h.div(
+        [Ui.className<Message>('mt-3 flex flex-wrap gap-2')],
+        [
+          Ui.badge<Message>({ label: 'training', tone: 'info' }),
+          Ui.badge<Message>({ label: 'initial pass', tone: 'neutral' }),
+        ],
+      ),
+    ],
+  })
+}
+
+const trainingNode = <Message>(input: {
+  readonly label: string
+  readonly meta?: string
+  readonly tone: TrainingTone
+  readonly className: string
+}): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        `grid place-items-center border font-mono ${trainingToneChromeClass(input.tone)} ${input.className}`,
+      ),
+    ],
+    [
+      h.span(
+        [
+          Ui.className<Message>(
+            'text-center text-[0.74rem] font-bold uppercase leading-none tracking-[0.08em]',
+          ),
+        ],
+        [input.label],
+      ),
+      input.meta === undefined
+        ? ''
+        : h.span(
+            [
+              Ui.className<Message>(
+                'mt-1 text-center text-[0.58rem] uppercase leading-none tracking-[0.08em] text-white/50',
+              ),
+            ],
+            [input.meta],
+          ),
+    ],
+  )
+}
+
+const trainingDot = <Message>(input: {
+  readonly label: string
+  readonly tone: TrainingTone
+  readonly className: string
+}): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        `absolute grid h-12 w-12 place-items-center rounded-full border font-mono text-[0.62rem] uppercase tracking-[0.08em] ${trainingToneChromeClass(input.tone)} ${input.className}`,
+      ),
+    ],
+    [input.label],
+  )
+}
+
+const meterSegment = <Message>(label: string, className: string): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        `grid min-h-14 place-items-center border px-3 text-center font-mono text-[0.68rem] uppercase tracking-[0.08em] ${className}`,
+      ),
+    ],
+    [label],
+  )
+}
+
+const runFieldPreview = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [Ui.className<Message>('relative h-[300px] overflow-hidden')],
+    [
+      lightBeamsView<Message>(),
+      pylonBezierNetworkView<Message>([
+        Ui.className<Message>(
+          'pointer-events-none absolute inset-0 opacity-65',
+        ),
+      ]),
+      h.div(
+        [
+          Ui.className<Message>(
+            'absolute left-1/2 top-1/2 h-56 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#2979ff]/30',
+          ),
+        ],
+        [],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'absolute left-1/2 top-1/2 h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#ffb400]/30',
+          ),
+        ],
+        [],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-[#d6f6ff] bg-[rgba(41,121,255,0.08)] shadow-[0_0_44px_rgba(41,121,255,0.32)]',
+          ),
+        ],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid h-full w-full -rotate-45 place-items-center font-mono text-[0.66rem] uppercase tracking-[0.08em] text-[#d6f6ff]',
+              ),
+            ],
+            ['run'],
+          ),
+        ],
+      ),
+      trainingDot<Message>({
+        label: 'P1',
+        tone: 'info',
+        className: 'left-[14%] top-[20%]',
+      }),
+      trainingDot<Message>({
+        label: 'P2',
+        tone: 'positive',
+        className: 'right-[16%] top-[26%]',
+      }),
+      trainingDot<Message>({
+        label: 'P3',
+        tone: 'accent',
+        className: 'bottom-[18%] left-[24%]',
+      }),
+      trainingDot<Message>({
+        label: 'V1',
+        tone: 'warning',
+        className: 'bottom-[20%] right-[24%]',
+      }),
+      h.div(
+        [
+          Ui.className<Message>(
+            'absolute inset-x-4 bottom-4 grid gap-2 sm:grid-cols-3',
+          ),
+        ],
+        [
+          Ui.badge<Message>({ label: 'active window', tone: 'info' }),
+          Ui.badge<Message>({ label: 'contributors', tone: 'positive' }),
+          Ui.badge<Message>({ label: 'receipt pulse', tone: 'accent' }),
+        ],
+      ),
+    ],
+  )
+}
+
+const contributorNodePreview = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid h-full min-h-[300px] gap-4 p-4 md:grid-cols-[1fr_1.1fr]',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'relative min-h-[250px] overflow-hidden border border-[#1a1a1a] bg-white/[0.02]',
+          ),
+        ],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'absolute left-1/2 top-1/2 h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#2979ff]/30',
+              ),
+            ],
+            [],
+          ),
+          trainingNode<Message>({
+            label: 'P-17',
+            meta: 'worker',
+            tone: 'info',
+            className:
+              'absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full',
+          }),
+          trainingNode<Message>({
+            label: 'cuda',
+            meta: 'slot',
+            tone: 'neutral',
+            className: 'absolute left-[12%] top-[16%] h-16 w-16 rounded-full',
+          }),
+          trainingNode<Message>({
+            label: 'data',
+            meta: 'shard',
+            tone: 'accent',
+            className:
+              'absolute bottom-[16%] left-[18%] h-16 w-16 rounded-full',
+          }),
+          trainingNode<Message>({
+            label: 'proof',
+            meta: 'ready',
+            tone: 'positive',
+            className: 'absolute right-[14%] top-[24%] h-16 w-16 rounded-full',
+          }),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid content-center gap-3')],
+        [
+          Ui.avatarGroup<Message>([
+            { title: 'Pylon 17' },
+            { title: 'Pylon 22' },
+            { title: 'Verifier 04' },
+          ]),
+          Ui.statGrid<Message>([
+            { label: 'Tokens', value: '11.8M', tone: 'info' },
+            { label: 'Replay', value: '2x', tone: 'positive' },
+            { label: 'Hold', value: '0', tone: 'neutral' },
+          ]),
+          Ui.keyValueRows<Message>([
+            { label: 'Lane', value: 'A1 loss' },
+            { label: 'State', value: 'training' },
+            { label: 'Receipt', value: 'run.window.024' },
+          ]),
+        ],
+      ),
+    ],
+  )
+}
+
+const traceStrandPreview = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [Ui.className<Message>('grid h-full min-h-[300px] gap-4 p-4')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'relative min-h-[150px] overflow-hidden border border-[#1a1a1a] bg-white/[0.02]',
+          ),
+        ],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'absolute left-[10%] right-[10%] top-1/2 h-px bg-[#2979ff]/45',
+              ),
+            ],
+            [],
+          ),
+          trainingNode<Message>({
+            label: 'seed',
+            tone: 'neutral',
+            className:
+              'absolute left-[6%] top-1/2 h-16 w-16 -translate-y-1/2 rounded-full',
+          }),
+          trainingNode<Message>({
+            label: 'step',
+            tone: 'info',
+            className:
+              'absolute left-[30%] top-1/2 h-16 w-16 -translate-y-1/2 rounded-full',
+          }),
+          trainingNode<Message>({
+            label: 'loss',
+            tone: 'accent',
+            className:
+              'absolute left-[54%] top-1/2 h-16 w-16 -translate-y-1/2 rounded-full',
+          }),
+          trainingNode<Message>({
+            label: 'hash',
+            tone: 'positive',
+            className:
+              'absolute right-[6%] top-1/2 h-16 w-16 -translate-y-1/2 rounded-full',
+          }),
+        ],
+      ),
+      Ui.progressList<Message>([
+        { label: 'Window opened', tone: 'neutral' },
+        { label: 'Sample consumed', tone: 'info', active: true },
+        { label: 'Gradient emitted', tone: 'info' },
+        { label: 'Digest attached', tone: 'positive' },
+      ]),
+    ],
+  )
+}
+
+const replayPairPreview = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [Ui.className<Message>('relative h-[300px] overflow-hidden p-4')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'absolute left-[22%] right-[22%] top-[42%] h-px rotate-[-5deg] bg-[#d6f6ff]/50 shadow-[0_0_18px_rgba(41,121,255,0.35)]',
+          ),
+        ],
+        [],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'absolute left-[22%] right-[22%] top-[56%] h-px rotate-[5deg] bg-[#ffb400]/45 shadow-[0_0_18px_rgba(255,180,0,0.22)]',
+          ),
+        ],
+        [],
+      ),
+      trainingNode<Message>({
+        label: 'worker',
+        meta: 'forward',
+        tone: 'info',
+        className:
+          'absolute left-[8%] top-1/2 h-28 w-28 -translate-y-1/2 rounded-full',
+      }),
+      trainingNode<Message>({
+        label: 'verifier',
+        meta: 'replay',
+        tone: 'positive',
+        className:
+          'absolute right-[8%] top-1/2 h-28 w-28 -translate-y-1/2 rounded-full',
+      }),
+      h.div(
+        [Ui.className<Message>('absolute bottom-4 left-4 right-4')],
+        [
+          Ui.keyValueRows<Message>([
+            { label: 'Pair', value: 'pair.024.worker17.verifier04' },
+            { label: 'Agreement', value: 'loss + digest match' },
+            { label: 'Disposition', value: 'verified' },
+          ]),
+        ],
+      ),
+    ],
+  )
+}
+
+const verificationGatePreview = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid h-full min-h-[300px] gap-4 p-4 md:grid-cols-[0.9fr_1.1fr]',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid min-h-[250px] place-items-center border border-[#1a1a1a] bg-white/[0.02] p-6',
+          ),
+        ],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid h-44 w-36 place-items-center border-x border-t border-[#d6f6ff] bg-[rgba(41,121,255,0.06)] shadow-[0_0_34px_rgba(41,121,255,0.20)]',
+              ),
+            ],
+            [
+              h.div(
+                [Ui.className<Message>('grid gap-2 text-center')],
+                [
+                  Ui.badge<Message>({ label: 'gate', tone: 'info' }),
+                  h.span(
+                    [
+                      Ui.className<Message>(
+                        'font-mono text-2xl text-[#f1efe8]',
+                      ),
+                    ],
+                    ['5/5'],
+                  ),
+                  h.span(
+                    [
+                      Ui.className<Message>(
+                        'font-mono text-[0.64rem] uppercase tracking-[0.08em] text-white/45',
+                      ),
+                    ],
+                    ['signals'],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid content-center gap-3')],
+        [
+          Ui.progressList<Message>([
+            { label: 'Boundary decoded', tone: 'positive' },
+            { label: 'Replay matched', tone: 'positive' },
+            { label: 'Receipt attached', tone: 'positive' },
+            { label: 'Settlement ready', tone: 'info', active: true },
+          ]),
+          Ui.alert<Message>({
+            title: 'Gate state',
+            body: 'Positive state requires every visible signal, not only a payment or completion marker.',
+            tone: 'info',
+          }),
+        ],
+      ),
+    ],
+  )
+}
+
+const receiptBurstPreview = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [Ui.className<Message>('relative h-[300px] overflow-hidden p-4')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'absolute left-1/2 top-[42%] h-56 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#00c853]/20',
+          ),
+        ],
+        [],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'absolute left-1/2 top-[42%] h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#ffb400]/30',
+          ),
+        ],
+        [],
+      ),
+      trainingNode<Message>({
+        label: 'receipt',
+        meta: 'burst',
+        tone: 'positive',
+        className:
+          'absolute left-1/2 top-[42%] h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full',
+      }),
+      trainingDot<Message>({
+        label: 'hash',
+        tone: 'neutral',
+        className: 'left-[18%] top-[20%]',
+      }),
+      trainingDot<Message>({
+        label: 'pay',
+        tone: 'accent',
+        className: 'right-[20%] top-[18%]',
+      }),
+      trainingDot<Message>({
+        label: 'acc',
+        tone: 'positive',
+        className: 'bottom-[26%] left-[26%]',
+      }),
+      trainingDot<Message>({
+        label: 'eval',
+        tone: 'info',
+        className: 'bottom-[24%] right-[26%]',
+      }),
+      h.div(
+        [Ui.className<Message>('absolute bottom-4 left-4 right-4')],
+        [
+          Ui.notificationStack<Message>([
+            { title: 'Window receipt', body: 'digest linked', tone: 'info' },
+            {
+              title: 'Verification receipt',
+              body: 'replay matched',
+              tone: 'positive',
+            },
+          ]),
+        ],
+      ),
+    ],
+  )
+}
+
+const corpusAccretionPreview = <Message>(): Html => {
+  const h = html<Message>()
+  const cells = [
+    'seed',
+    'doc',
+    'sample',
+    'batch',
+    'grad',
+    'loss',
+    'eval',
+    'digest',
+    'window',
+    'receipt',
+    'rank',
+    'settle',
+  ]
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid h-full min-h-[300px] gap-4 p-4 md:grid-cols-[1fr_0.85fr]',
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('grid grid-cols-3 gap-2 sm:grid-cols-4')],
+        Array.map(cells, (cell, index) =>
+          h.div(
+            [
+              Ui.className<Message>(
+                index < 8
+                  ? 'grid min-h-16 place-items-center border border-[#2979ff]/40 bg-[rgba(41,121,255,0.08)] px-2 text-center font-mono text-[0.66rem] uppercase tracking-[0.08em] text-[#d6f6ff]'
+                  : 'grid min-h-16 place-items-center border border-[#333] bg-white/[0.03] px-2 text-center font-mono text-[0.66rem] uppercase tracking-[0.08em] text-white/45',
+              ),
+            ],
+            [cell],
+          ),
+        ),
+      ),
+      h.div(
+        [Ui.className<Message>('grid content-center gap-3')],
+        [
+          Ui.statGrid<Message>([
+            { label: 'Accepted', value: '8', tone: 'positive' },
+            { label: 'Queued', value: '4', tone: 'info' },
+          ]),
+          Ui.codeBlock<Message>({
+            lines: [
+              'window: run.tassadar.024',
+              'digest: sha256:91ad...',
+              'visibility: public-safe',
+            ],
+          }),
+        ],
+      ),
+    ],
+  )
+}
+
+const quarantineWindowPreview = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [Ui.className<Message>('grid h-full min-h-[300px] gap-4 p-4')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'relative min-h-[170px] overflow-hidden border border-[#1a1a1a] bg-white/[0.02]',
+          ),
+        ],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'absolute left-[8%] right-[8%] top-[40%] h-px bg-[#00c853]/45',
+              ),
+            ],
+            [],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'absolute left-[16%] right-[18%] top-[68%] h-px border-t border-dashed border-[#ff6f00]/60',
+              ),
+            ],
+            [],
+          ),
+          trainingNode<Message>({
+            label: 'main',
+            meta: 'accepted',
+            tone: 'positive',
+            className:
+              'absolute left-[10%] top-[40%] h-16 w-16 -translate-y-1/2 rounded-full',
+          }),
+          trainingNode<Message>({
+            label: 'hold',
+            meta: 'quarantine',
+            tone: 'warning',
+            className:
+              'absolute left-[44%] top-[68%] h-16 w-16 -translate-y-1/2 rounded-full',
+          }),
+          trainingNode<Message>({
+            label: 'gate',
+            meta: 'promotion',
+            tone: 'info',
+            className:
+              'absolute right-[10%] top-[40%] h-16 w-16 -translate-y-1/2 rounded-full',
+          }),
+        ],
+      ),
+      Ui.alert<Message>({
+        title: 'Quarantine window',
+        body: 'A held trace remains visible without joining the accepted run line until the gate promotes it.',
+        tone: 'warning',
+      }),
+    ],
+  )
+}
+
+const energyOutcomeMeterPreview = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [Ui.className<Message>('grid h-full min-h-[300px] gap-4 p-4')],
+    [
+      h.div(
+        [Ui.className<Message>('grid gap-2 sm:grid-cols-[1.1fr_1.4fr_0.9fr]')],
+        [
+          meterSegment<Message>(
+            'compute',
+            'border-[#2979ff] bg-[rgba(41,121,255,0.10)] text-[#d6f6ff]',
+          ),
+          meterSegment<Message>(
+            'verified work',
+            'border-[#00c853] bg-[rgba(0,200,83,0.10)] text-[#d8ffe4]',
+          ),
+          meterSegment<Message>(
+            'settlement',
+            'border-[#ffb400] bg-[rgba(255,180,0,0.09)] text-[#ffe7ad]',
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'relative min-h-[110px] overflow-hidden border border-[#1a1a1a] bg-white/[0.02]',
+          ),
+        ],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'absolute bottom-0 left-0 top-0 w-[68%] bg-[linear-gradient(90deg,rgba(41,121,255,0.18),rgba(0,200,83,0.18),rgba(255,180,0,0.14))]',
+              ),
+            ],
+            [],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'absolute inset-0 grid place-items-center font-mono text-[0.72rem] uppercase tracking-[0.08em] text-white/60',
+              ),
+            ],
+            ['68% through current window'],
+          ),
+        ],
+      ),
+      Ui.statGrid<Message>([
+        { label: 'Loss delta', value: '-0.18', tone: 'positive' },
+        { label: 'Tokens/sec', value: '42k', tone: 'info' },
+        { label: 'Sats', value: '18,240', tone: 'neutral' },
+      ]),
+    ],
+  )
+}
+
+const proofDrawerPreview = <Message>(): Html =>
+  Ui.drawerPanel<Message>({
+    title: 'Proof drawer',
+    children: [
+      Ui.keyValueRows<Message>([
+        { label: 'Run', value: 'run.tassadar.executor' },
+        { label: 'Window', value: 'window.024' },
+        { label: 'Replay pair', value: 'worker17/verifier04' },
+        { label: 'Settlement', value: 'receipt.settle.024' },
+      ]),
+      Ui.divider<Message>('Attached records'),
+      Ui.stackedList<Message>([
+        {
+          title: 'training_window.024',
+          detail: 'public-safe projection',
+          meta: 'now',
+          tone: 'info',
+        },
+        {
+          title: 'verified_replay_pair.024',
+          detail: 'digest matched',
+          meta: 'now',
+          tone: 'positive',
+        },
+        {
+          title: 'settlement_receipt.024',
+          detail: 'pending release gate',
+          meta: 'queued',
+          tone: 'neutral',
+        },
+      ]),
+      proofDrawerFooter<Message>(),
+    ],
+  })
+
+const proofDrawerFooter = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [Ui.className<Message>('mt-4 flex flex-wrap gap-2')],
+    [
+      Ui.linkButton<Message>({
+        href: '/run',
+        label: 'Open run',
+        variant: 'secondary',
+      }),
+      Ui.textLink<Message>({
+        href: '/training/runs/run.cs336.a1.demo',
+        label: 'Public run record',
+      }),
+    ],
+  )
+}
+
+const trainingGrammarShowcaseView = <Message>(): Html => {
+  const h = html<Message>()
+
+  const primitives: ReadonlyArray<Html> = [
+    trainingPrimitiveCard<Message>({
+      id: 'run-field',
+      title: 'Run field',
+      source: 'lightBeamsView + pylonBezierNetworkView + statGrid',
+      components: [
+        'lightBeamsView',
+        'pylonBezierNetworkView',
+        'badge',
+        'statGrid',
+      ],
+      intent:
+        'The whole training run as a live field: central run, contributor orbit, active window, and receipt pulse.',
+      preview: runFieldPreview<Message>(),
+      details: Ui.drawerPanel<Message>({
+        title: 'Run field parts',
+        children: [
+          Ui.statGrid<Message>([
+            { label: 'Window', value: '024', tone: 'info' },
+            { label: 'Pylons', value: '34', tone: 'positive' },
+            { label: 'Receipts', value: '89', tone: 'neutral' },
+          ]),
+          Ui.keyValueRows<Message>([
+            { label: 'Base layer', value: 'Pylon homepage network' },
+            { label: 'Training layer', value: 'Tassadar run window' },
+          ]),
+        ],
+      }),
+    }),
+    trainingPrimitiveCard<Message>({
+      id: 'contributor-node',
+      title: 'Contributor node',
+      source: 'avatarGroup + statGrid + keyValueRows',
+      components: ['avatarGroup', 'statGrid', 'keyValueRows', 'badge'],
+      intent:
+        'A Pylon, verifier, or evaluator as an addressable node with role, capacity, receipts, and current lane.',
+      preview: contributorNodePreview<Message>(),
+    }),
+    trainingPrimitiveCard<Message>({
+      id: 'trace-strand',
+      title: 'Trace strand',
+      source: 'progressList + training DOM rail',
+      components: ['progressList', 'badge', 'codeBlock'],
+      intent:
+        'A compact strand that moves from seed to sample to gradient to digest without becoming a log dump.',
+      preview: traceStrandPreview<Message>(),
+    }),
+    trainingPrimitiveCard<Message>({
+      id: 'replay-pair',
+      title: 'Replay pair',
+      source: 'keyValueRows + paired node beam',
+      components: ['keyValueRows', 'badge', 'trainingNode'],
+      intent:
+        'The smallest verifier grammar: worker output and independent replay joined by an agreement beam.',
+      preview: replayPairPreview<Message>(),
+    }),
+    trainingPrimitiveCard<Message>({
+      id: 'verification-gate',
+      title: 'Verification gate',
+      source: 'progressList + alert + badge',
+      components: ['progressList', 'alert', 'badge'],
+      intent:
+        'A visible gate that separates completion, replay, receipt, and settlement readiness instead of blending them.',
+      preview: verificationGatePreview<Message>(),
+    }),
+    trainingPrimitiveCard<Message>({
+      id: 'receipt-burst',
+      title: 'Receipt burst',
+      source: 'notificationStack + node pulses',
+      components: ['notificationStack', 'badge', 'trainingDot'],
+      intent:
+        'A short visual emission when a window, replay, acceptance, or settlement receipt becomes public-safe.',
+      preview: receiptBurstPreview<Message>(),
+    }),
+    trainingPrimitiveCard<Message>({
+      id: 'corpus-accretion',
+      title: 'Corpus accretion',
+      source: 'gridList language + codeBlock',
+      components: ['statGrid', 'codeBlock', 'grid cells'],
+      intent:
+        'Accepted data and evidence accumulating as addressable tiles rather than a single undifferentiated pile.',
+      preview: corpusAccretionPreview<Message>(),
+    }),
+    trainingPrimitiveCard<Message>({
+      id: 'quarantine-window',
+      title: 'Quarantine window',
+      source: 'alert + split evidence lane',
+      components: ['alert', 'progressList', 'badge'],
+      intent:
+        'A secondary lane for suspicious, incomplete, or not-yet-promoted work that remains visible without implying acceptance.',
+      preview: quarantineWindowPreview<Message>(),
+    }),
+    trainingPrimitiveCard<Message>({
+      id: 'energy-outcome-meter',
+      title: 'Energy/outcome meter',
+      source: 'statGrid + segmented meter',
+      components: ['statGrid', 'meter segments', 'badge'],
+      intent:
+        'A compact meter tying compute energy, verified work, and payout/settlement without letting one stand in for another.',
+      preview: energyOutcomeMeterPreview<Message>(),
+    }),
+    trainingPrimitiveCard<Message>({
+      id: 'proof-drawer',
+      title: 'Proof drawer',
+      source: 'drawerPanel + keyValueRows + stackedList',
+      components: ['drawerPanel', 'keyValueRows', 'stackedList', 'textLink'],
+      intent:
+        'The drill-down surface for run refs, replay pairs, receipts, and public-safe links behind any visual mark.',
+      preview: h.div(
+        [Ui.className<Message>('grid h-full min-h-[300px] content-center p-4')],
+        [proofDrawerPreview<Message>()],
+      ),
+    }),
+  ]
+
+  return h.article(
+    [
+      Ui.className<Message>(
+        'min-w-0 border border-[#222] bg-[#010102] p-5 sm:p-6',
+      ),
+    ],
+    [
+      h.p(
+        [
+          Ui.className<Message>(
+            'mb-3 font-mono text-base text-white/35 sm:text-sm',
+          ),
+        ],
+        ['Internal - training visual grammar'],
+      ),
+      h.h1(
+        [
+          Ui.className<Message>(
+            'm-0 text-balance text-3xl font-medium tracking-normal text-[#f1efe8] sm:text-4xl',
+          ),
+        ],
+        ['Training grammar'],
+      ),
+      h.p(
+        [Ui.className<Message>('mt-3 max-w-[76ch] text-base/7 text-white/60')],
+        [
+          'Initial compositional primitives for the Tassadar training run, assembled from the current animation playground, Pylon homepage language, and the live component registry.',
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('mt-6 grid gap-3 md:grid-cols-[1.2fr_0.8fr]')],
+        [
+          Ui.alert<Message>({
+            title: 'Direction',
+            body: 'Keep the run as a verifiable field: nodes, strands, gates, receipts, and proof surfaces stay distinct.',
+            tone: 'info',
+          }),
+          Ui.progressList<Message>([
+            { label: 'Run field', tone: 'info', active: true },
+            { label: 'Replay pair', tone: 'positive' },
+            { label: 'Verification gate', tone: 'positive' },
+            { label: 'Proof drawer', tone: 'neutral' },
+          ]),
+        ],
+      ),
+      h.div([Ui.className<Message>('mt-8 grid gap-4')], primitives),
+    ],
+  )
 }
 
 // The Login showcase: the real loginScreen/loginForm from @openagentsinc/ui,
@@ -1743,10 +2778,7 @@ const metaList = <Message>(
       h.ul(
         [Ui.className<Message>('m-0 grid list-disc gap-1 pl-5')],
         Array.map(items, item =>
-          h.li(
-            [Ui.className<Message>('text-base/7 text-white/60')],
-            [item],
-          ),
+          h.li([Ui.className<Message>('text-base/7 text-white/60')], [item]),
         ),
       ),
     ],
@@ -1770,11 +2802,7 @@ const familyContractView = <Message>(family: FamilyMeta): Html => {
         ['Contract'],
       ),
       h.p(
-        [
-          Ui.className<Message>(
-            'mt-2 font-mono text-[0.75rem] text-white/45',
-          ),
-        ],
+        [Ui.className<Message>('mt-2 font-mono text-[0.75rem] text-white/45')],
         [`Owner: ${family.owner}`],
       ),
       h.p(
@@ -1849,7 +2877,12 @@ const familyCard = <Message>(family: FamilyMeta): Html => {
       ),
       // Lead with the live, rendered components (the primary content).
       ...(showcase.length > 0
-        ? [h.div([Ui.className<Message>('mt-4')], [showcaseGrid<Message>(showcase)])]
+        ? [
+            h.div(
+              [Ui.className<Message>('mt-4')],
+              [showcaseGrid<Message>(showcase)],
+            ),
+          ]
         : []),
       // Contract metadata as a secondary section below the rendered thing.
       familyContractView<Message>(family),
@@ -1887,7 +2920,12 @@ const aiElementsCard = <Message>(): Html => {
         ),
         // Lead with the live, rendered AI elements.
         ...(showcase.length > 0
-          ? [h.div([Ui.className<Message>('mt-4')], [showcaseGrid<Message>(showcase)])]
+          ? [
+              h.div(
+                [Ui.className<Message>('mt-4')],
+                [showcaseGrid<Message>(showcase)],
+              ),
+            ]
           : []),
         // Contract metadata as a secondary section.
         h.div(
