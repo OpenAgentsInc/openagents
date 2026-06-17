@@ -679,7 +679,7 @@ const mdkTreasuryContainerEnvVars = (
 const MDK_TREASURY_CONTAINER_GENERATION_KEY =
   'openagents.mdk_treasury.container_generation'
 const MDK_TREASURY_CONTAINER_GENERATION =
-  '2026-06-17.spark-treasury-uuid-transfer-id'
+  '2026-06-17.spark-treasury-bolt11-lightning-fallback'
 
 export class MdkTreasuryContainer extends DurableMdkOutcomeContainer {
   override defaultPort = 8080

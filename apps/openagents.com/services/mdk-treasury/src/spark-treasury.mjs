@@ -450,25 +450,51 @@ export const sparkTreasuryPayPayload = async input => {
     preferSparkForBolt11 = paymentMethod?.type === 'bolt11Invoice'
     resolvedDestinationKind = preparedPaymentMethodKind
     failureStage = 'spark_send_payment'
-    const sent = await withTimeout(
-      sdk.sendPayment({
-        idempotencyKey: sdkIdempotencyKey,
-        options:
-          paymentMethod?.type === 'bolt11Invoice'
-            ? {
-                completionTimeoutSecs: 60,
-                preferSpark: true,
-                type: 'bolt11Invoice',
-              }
-            : undefined,
-        prepareResponse,
-      }),
-      timeoutMs(),
-      'spark sendPayment',
+    const sendPreparedPayment = (idempotency, options) =>
+      withTimeout(
+        sdk.sendPayment({
+          idempotencyKey: idempotency,
+          options,
+          prepareResponse,
+        }),
+        timeoutMs(),
+        'spark sendPayment',
+      )
+    const options =
+      paymentMethod?.type === 'bolt11Invoice'
+        ? {
+            completionTimeoutSecs: 60,
+            preferSpark: true,
+            type: 'bolt11Invoice',
+          }
+        : undefined
+    const sent = await sendPreparedPayment(sdkIdempotencyKey, options).catch(
+      async error => {
+        const normalized = errorMessage(error).toLowerCase()
+        if (
+          paymentMethod?.type === 'bolt11Invoice' &&
+          normalized.includes('invalid transferid format')
+        ) {
+          failureStage = 'spark_send_payment_lightning_fallback'
+          return sendPreparedPayment(
+            uuidFromStableSeed(`${idempotencyKey}:bolt11-lightning-fallback`),
+            {
+              completionTimeoutSecs: 60,
+              preferSpark: false,
+              type: 'bolt11Invoice',
+            },
+          )
+        }
+
+        throw error
+      },
     )
 
     return {
-      method: 'payment_request',
+      method:
+        failureStage === 'spark_send_payment_lightning_fallback'
+          ? 'payment_request_lightning_fallback'
+          : 'payment_request',
       payment: paymentValue(sent),
       preparedAmountSat,
       preparedFeeSats,
