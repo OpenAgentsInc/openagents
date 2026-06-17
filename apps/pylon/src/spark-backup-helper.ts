@@ -557,7 +557,27 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
           if (typeof sdk.syncWallet === "function") {
             await withTimeout(sdk.syncWallet({}), timeoutMs, "spark syncWallet").catch(() => undefined)
           }
-          const info = await withTimeout(sdk.getInfo({ ensureSynced: true }), timeoutMs, "spark getInfo")
+          // #5194: some hosts fail getInfo({ensureSynced:true}) fast even after a
+          // successful wallet open + syncWallet — the read path degrades to
+          // helper-unavailable while send works. syncWallet already ran above, so
+          // fall back to a non-forced read; surface the forced-read reason under
+          // PYLON_SPARK_DEBUG=1.
+          const info = await withTimeout(
+            sdk.getInfo({ ensureSynced: true }),
+            timeoutMs,
+            "spark getInfo",
+          ).catch(error => {
+            if (process.env.PYLON_SPARK_DEBUG === "1") {
+              console.error(
+                `[spark-getinfo] ensureSynced failed: ${error instanceof Error ? error.message : String(error)}`,
+              )
+            }
+            return withTimeout(
+              sdk.getInfo({ ensureSynced: false }),
+              timeoutMs,
+              "spark getInfo (no ensureSync)",
+            )
+          })
           const deposits = await withTimeout(
             sdk.listUnclaimedDeposits({}),
             timeoutMs,
@@ -724,6 +744,12 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
+      // #5194: surface the raw helper failure (status/getInfo/sync/etc.) under
+      // PYLON_SPARK_DEBUG=1 so the underlying reason is visible on hosts where a
+      // command degrades to helper-unavailable; off by default (no payment material).
+      if (process.env.PYLON_SPARK_DEBUG === "1") {
+        console.error(`[spark-helper:${command}] ${message}`)
+      }
       // Surface missing-credential shape so slice-1 classification can map it.
       return helperError(command, message)
     } finally {
