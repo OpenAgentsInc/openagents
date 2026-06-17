@@ -345,6 +345,10 @@ describe('authenticated startup routing', () => {
       { update, view },
       Scene.with(model),
       Scene.expect(Scene.selector('oa-tassadar-run')).toExist(),
+      Scene.expect(Scene.selector('[data-route="tassadar"]')).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Docs' })).not.toExist(),
+      Scene.expect(Scene.role('link', { name: 'Blog' })).not.toExist(),
+      Scene.expect(Scene.role('link', { name: 'Log in' })).not.toExist(),
     )
   })
 

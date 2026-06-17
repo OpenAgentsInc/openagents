@@ -206,13 +206,19 @@ show the count, show the proof drawer row, but do not animate it.
 
 ## Motion roadmap
 
-1. Add a `three-effect` option to disable base edge flow pulses in
-   `oa-training-run`; `/tassadar` should use the disabled/static mode until
-   evidence-bound motion events exist.
-2. Replace anonymous renderer pulses with a typed motion-event layer. The
+Status as of 2026-06-17: the first enforcement pass is live in code.
+`@openagentsinc/three-effect` exposes `motionPolicy`, keeps structural edges and
+ambient orbit motion static by default, and can require `sourceRefs` before
+rendering beams or bursts. `/tassadar` uses that strict mode and only emits
+verified replay beams and real-Bitcoin bursts with public refs.
+
+1. Keep the `motionPolicy` tests green: base edge flow pulses must stay disabled
+   for `/tassadar`, and anonymous renderer motion must not re-enter through
+   graph topology.
+2. Replace any future renderer pulse with a richer typed motion-event layer. The
    renderer should accept arrays such as `traceMotions`, `replayMotions`,
    `settlementMotions`, and `presenceMotions`, each carrying the metadata above.
-3. Make the web adapter responsible for deriving motion events from
+3. Make the web adapter responsible for deriving all motion events from
    `/api/public/tassadar-run-summary`, `/api/public/product-promises`, and
    `/api/public/pylon-stats`; the renderer must not invent them from graph
    topology.
@@ -361,24 +367,28 @@ families.
 ## Composition rules
 
 1. Keep the scene full-bleed. Do not put the main run scene inside a decorative
-   card.
-2. Use black, off-white, thin borders, mono labels, and small blue/green/warning
+   card. For `/tassadar`, remove global nav/header chrome so the 3D canvas owns
+   the full viewport.
+2. Put supporting panels over the canvas as translucent glass: black with reduced
+   opacity, thin borders, and blur. They are overlays on the run field, not
+   layout boxes that frame or shrink it.
+3. Use black, off-white, thin borders, mono labels, and small blue/green/warning
    accents. Do not introduce a separate Tassadar palette.
-3. Let roles drive geometry:
+4. Let roles drive geometry:
    contributor nodes sit around the run, worker-validator pairs form replay
    beams, corpus sits as accumulation, settlement is a burst, blockers are gates.
-4. Use motion only when there is a bound public ref or measurable live state
+5. Use motion only when there is a bound public ref or measurable live state
    transition:
    flowing trace, replay pulse, receipt burst, slot-text counter roll, and
    heartbeat/liveness motion all need source refs or timestamped projections.
    Static proof should stay static.
-5. Never use one glow for multiple truths. Online, assigned, verified, settled,
+6. Never use one glow for multiple truths. Online, assigned, verified, settled,
    and recipient-confirmed need separate encodings.
-6. The first read should be visual; the second read should be inspectable refs.
+7. The first read should be visual; the second read should be inspectable refs.
    Every important visual element needs a data-display peer.
-7. Zero states are first-class. A run with no verified traces should still look
+8. Zero states are first-class. A run with no verified traces should still look
    like a real run, not an empty marketing failure.
-8. Anonymous edge pulses are banned for live training pages. If an edge does not
+9. Anonymous edge pulses are banned for live training pages. If an edge does not
    have a motion event, render it as static structure.
 
 ## Candidate scene grammar
@@ -404,10 +414,11 @@ For an idle or blocked run:
 
 ## Implementation path
 
-1. Keep `/run` as the canonical live-run surface and extend
-   `tassadarRunSnapshot.ts` instead of creating a parallel adapter.
-2. Disable anonymous base edge pulses for `/tassadar` before adding more motion.
-   The current abstract back-and-forth dots are not acceptable live-run language
+1. Keep `/tassadar` as the canonical live-run surface and `/run` as the current
+   alias while extending `tassadarRunSnapshot.ts` instead of creating a parallel
+   adapter.
+2. Keep anonymous base edge pulses disabled for `/tassadar` before adding more
+   motion. Abstract back-and-forth dots are not acceptable live-run language
    unless each pulse can answer which public ref caused it.
 3. Move the named scene concepts into `three-effect` primitives where they are
    reusable: contributor entity, trace strand, replay beam, receipt burst, corpus

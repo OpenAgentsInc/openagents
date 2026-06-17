@@ -155,6 +155,14 @@ const publicRefs = (
     ? refs.map(ref => ref.trim()).filter(ref => ref.length > 0)
     : []
 
+const uniquePublicRefs = (
+  refs: ReadonlyArray<string | undefined>,
+): ReadonlyArray<string> => [
+  ...new Set(
+    refs.flatMap(ref => (typeof ref === 'string' ? publicRefs([ref]) : [])),
+  ),
+]
+
 const lossOrNull = (value: number | null | undefined): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
 
@@ -269,6 +277,7 @@ const verifiedReplayEntities = (
 
 const verifiedReplayBeams = (
   pairs: ReadonlyArray<PublicTrainingRunVerifiedReplayPair> | undefined,
+  generatedAt: string | undefined,
 ): ReadonlyArray<TrainingRunBeamDefinition> =>
   (pairs ?? []).flatMap(pair => {
     if (
@@ -281,7 +290,22 @@ const verifiedReplayBeams = (
     ) {
       return []
     }
-    return [{ fromId: pair.workerRef, toId: pair.validatorRef }]
+    return [
+      {
+        fromId: pair.workerRef,
+        ...(generatedAt === undefined ? {} : { generatedAt }),
+        motionId: pair.challengeRef,
+        motionKind: 'replay_verified',
+        sourceRefs: uniquePublicRefs([
+          pair.challengeRef,
+          pair.workerRef,
+          pair.validatorRef,
+          ...publicRefs(pair.verdictRefs),
+          ...publicRefs(pair.sourceRefs),
+        ]),
+        toId: pair.validatorRef,
+      },
+    ]
   })
 
 const rejectedReplayEntities = (
@@ -339,12 +363,26 @@ const corpusEntities = (
 
 const settlementBursts = (
   rows: ReadonlyArray<PublicTassadarSettlementRow>,
+  generatedAt: string | undefined,
 ): ReadonlyArray<TrainingRunBurstDefinition> =>
   rows.flatMap(row =>
     row.realBitcoinMoved === true &&
     typeof row.contributorRef === 'string' &&
     row.contributorRef.trim() !== ''
-      ? [{ atId: row.contributorRef }]
+      ? [
+          {
+            atId: row.contributorRef,
+            ...(generatedAt === undefined ? {} : { generatedAt }),
+            motionId: settlementRowReceiptRef(row) ?? row.contributorRef,
+            motionKind: 'real_bitcoin_moved',
+            simulated: false,
+            sourceRefs: uniquePublicRefs([
+              ...publicRefs(row.sourceRefs),
+              settlementRowReceiptRef(row),
+              row.contributorRef,
+            ]),
+          },
+        ]
       : [],
   )
 
@@ -409,7 +447,12 @@ export const trainingRunEntityLayerFromPublicSummary = (
   summary: TassadarRunPublicSummary,
 ): Pick<
   TrainingRunVisualizationOptions,
-  'beams' | 'bursts' | 'contributors' | 'entities' | 'lossCurve'
+  | 'beams'
+  | 'bursts'
+  | 'contributors'
+  | 'entities'
+  | 'lossCurve'
+  | 'motionPolicy'
 > => {
   const rows = summary.realGradient?.leaderboardRows
   const pairs = summary.realGradient?.verifiedReplayPairs
@@ -426,11 +469,17 @@ export const trainingRunEntityLayerFromPublicSummary = (
   ]
 
   return {
-    beams: verifiedReplayBeams(pairs),
-    bursts: settlementBursts(settlements),
+    beams: verifiedReplayBeams(pairs, summary.generatedAt),
+    bursts: settlementBursts(settlements, summary.generatedAt),
     contributors: contributorDefinitions(rows, settlements),
     entities,
     lossCurve: lossCurveFromPublicSummary(summary),
+    motionPolicy: {
+      ambient: 'static',
+      bursts: 'once',
+      evidence: 'required',
+      structuralEdges: 'static',
+    },
   }
 }
 

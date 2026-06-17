@@ -76,10 +76,22 @@ primitives.
   pulse, flow, beam, burst, or counter roll must be bound to a public ref or a
   timestamped live state transition. Static aggregate graph structure is allowed;
   anonymous motion is not.
+- 2026-06-17: The motion rule is now implemented in `three-effect` and the
+  `/tassadar` adapter. `oa-training-run` has a `motionPolicy` with static base
+  edges and static ambient motion by default; `/tassadar` opts into
+  `evidence:"required"`, so beams and bursts render only when they carry public
+  `sourceRefs`. Verified replay beams now cite challenge/worker/validator/verdict
+  refs, and payout bursts cite settlement receipt/contributor/challenge refs and
+  still require `realBitcoinMoved:true`.
+- 2026-06-17: The `/tassadar` page shell is now headerless and full-bleed. The
+  public nav/header was removed for this route, and status/proof panels sit over
+  the 3D canvas with translucent black glass instead of enclosing the scene in
+  an app-frame card.
 
 ## Short answer
 
-We have the right live-page base, but the motion language is still too loose.
+We now have the right live-page base and the first enforcement pass for motion
+truth.
 
 The accurate path is to keep `/tassadar` on the existing live-run architecture:
 
@@ -93,19 +105,18 @@ Do not fork a second data adapter. Do not use the new
 public refs. Today those gallery primitives are useful visual grammar, but only
 `oa-training-run` is actually data-bound to the live Worker projection.
 
-The remaining work is mostly about motion truth, not raw visuals:
+The remaining work is no longer to remove anonymous renderer motion from
+`/tassadar`; that is done. The next work is to deepen event specificity and
+inspection:
 
-1. The fixed graph edges in `three-effect` still create anonymous flow pulses.
-   Those moving dots are not live pylon/device/work records and should be
-   disabled for `/tassadar`.
-2. Any replacement motion must come from typed motion events derived from public
+1. Any replacement motion must come from typed motion events derived from public
    refs: replay challenge refs, trace refs, receipt refs, pylon refs, or
    timestamped projection transitions.
-3. Counts can label or color aggregate stage nodes, but counts alone must not
+2. Counts can label or color aggregate stage nodes, but counts alone must not
    create moving dots, fake strands, fake traffic, or fake payout effects.
-4. Simulation-backed settlement can render as a selectable receipt/proof state,
+3. Simulation-backed settlement can render as a selectable receipt/proof state,
    but it must not animate like real Bitcoin movement.
-5. `/components/training` and `/animations` should keep unbound studies static
+4. `/components/training` and `/animations` should keep unbound studies static
    or visibly fixture-only until they accept real refs.
 
 ## Sources reviewed
@@ -273,17 +284,17 @@ pulse, flow, burst, animated counter roll, or liveness heartbeat must be bound
 to one of those refs or to a timestamped projection transition. If there is no
 ref or live transition, the fallback is static state.
 
-The immediate roadmap is:
+The immediate roadmap is now:
 
-1. Add a `three-effect` option to disable the base edge flow pulses in
-   `oa-training-run`.
-2. Use that disabled/static mode for `/tassadar`.
-3. Introduce typed motion events only when the public summary can supply
+1. Keep the `three-effect` `motionPolicy` static/evidence-required path green in
+   tests. Base edge flow pulses are disabled for `/tassadar`; do not regress
+   that back to graph-topology motion.
+2. Introduce richer typed motion events only when the public summary can supply
    `motionId`, `motionKind`, `sourceRefs`, `generatedAt`, and stale/expiry
    semantics.
-4. Add tests that fail if `tassadarRunVisualizationOptions(summary)` or the
-   `oa-training-run` default path produces anonymous live motion.
-5. Keep settlement bursts gated on settlement rows and `realBitcoinMoved:true`;
+3. Extend the proof drawer to expose the `sourceRefs` behind selected animated
+   marks.
+4. Keep settlement bursts gated on settlement rows and `realBitcoinMoved:true`;
    simulation settlement can be selected and inspected, but it must not move
    like real Bitcoin.
 
@@ -578,9 +589,9 @@ run instrument.
 ### Three primitives
 
 - Keep `oa-training-run` as the main data-bound component.
-- Add a renderer-level switch that makes base graph edges static. Use it by
-  default for live run pages unless the adapter supplies evidence-bound motion
-  events.
+- Keep the renderer-level `motionPolicy` switch that makes base graph edges and
+  ambient rotations static. Use it by default for live run pages unless the
+  adapter supplies evidence-bound motion events.
 - Introduce a typed motion-event API before re-enabling pulses:
   - `motionId`
   - `motionKind`

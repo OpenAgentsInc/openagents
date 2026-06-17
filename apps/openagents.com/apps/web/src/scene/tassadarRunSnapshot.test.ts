@@ -189,6 +189,12 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     // the resolver always yields a renderable option object (nodes/contributors derived)
     expect(typeof options).toBe('object')
     expect(options.lossCurve).toEqual([])
+    expect(options.motionPolicy).toEqual({
+      ambient: 'static',
+      bursts: 'once',
+      evidence: 'required',
+      structuralEdges: 'static',
+    })
   })
 
   it('adds data-bound pylon contributors/entities, verified replay beams, and settlement bursts', () => {
@@ -241,11 +247,37 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     expect(layer.beams).toEqual([
       {
         fromId: 'contribution.tassadar.worker.1',
+        motionId: 'challenge.tassadar.replay.1',
+        motionKind: 'replay_verified',
+        sourceRefs: [
+          'challenge.tassadar.replay.1',
+          'contribution.tassadar.worker.1',
+          'validator.tassadar.1',
+          'verdict.tassadar.replay.1',
+        ],
         toId: 'validator.tassadar.1',
       },
     ])
-    expect(layer.bursts).toEqual([{ atId: 'pylon.worker.two' }])
+    expect(layer.bursts).toEqual([
+      {
+        atId: 'pylon.worker.two',
+        motionId: 'receipt.nexus.tassadar.settlement.real.1',
+        motionKind: 'real_bitcoin_moved',
+        simulated: false,
+        sourceRefs: [
+          'receipt.nexus.tassadar.settlement.real.1',
+          'pylon.worker.two',
+          'challenge.tassadar.replay.1',
+        ],
+      },
+    ])
     expect(layer.lossCurve).toEqual([])
+    expect(layer.motionPolicy).toEqual({
+      ambient: 'static',
+      bursts: 'once',
+      evidence: 'required',
+      structuralEdges: 'static',
+    })
   })
 
   it('does not emit payout bursts for simulation-backed settlement rows', () => {
