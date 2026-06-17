@@ -76,6 +76,13 @@ import {
   projectForgeSessionNavigation,
 } from '../autopilot-work/session-navigation'
 import {
+  type ForgeDoctorCheckItem,
+  type ForgeDoctorSeverity,
+  type ForgeSupportDiagnosticsStatus,
+  type ForgeSupportExportReadiness,
+  projectForgeSupportDiagnostics,
+} from '../autopilot-work/support-diagnostics'
+import {
   Message,
   RequestedLoadAutopilotWorkDetail,
   RequestedLoadAutopilotWorkList,
@@ -1485,6 +1492,153 @@ const sessionNavigationPanel = (work: AutopilotWorkProjection): Html => {
   ])
 }
 
+const supportDiagnosticsTone = (
+  status: ForgeSupportDiagnosticsStatus,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  status === 'ready'
+    ? 'positive'
+    : status === 'attention'
+      ? 'warning'
+      : status === 'failing'
+        ? 'negative'
+        : 'accent'
+
+const doctorSeverityTone = (
+  severity: ForgeDoctorSeverity,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  severity === 'ok'
+    ? 'positive'
+    : severity === 'warning'
+      ? 'warning'
+      : severity === 'error'
+        ? 'negative'
+        : 'info'
+
+const supportExportReadinessTone = (
+  readiness: ForgeSupportExportReadiness,
+): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
+  readiness === 'ready'
+    ? 'positive'
+    : readiness === 'consent_required'
+      ? 'warning'
+      : 'negative'
+
+const doctorCheckPanel = (check: ForgeDoctorCheckItem): Html => {
+  const h = html<Message>()
+
+  return h.article(
+    [
+      Ui.className<Message>('grid gap-4 border border-[#222] p-4'),
+      h.DataAttribute('forge-support-doctor-check', check.checkRef),
+      h.DataAttribute('forge-support-doctor-category', check.category),
+      h.DataAttribute('forge-support-doctor-severity', check.severity),
+    ],
+    [
+      h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+        h.h3(
+          [
+            Ui.className<Message>(
+              'm-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-white/80',
+            ),
+          ],
+          [check.checkRef],
+        ),
+        h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+          badge(check.category, 'accent'),
+          badge(check.severity, doctorSeverityTone(check.severity)),
+        ]),
+      ]),
+      h.div([Ui.className<Message>('grid gap-4 md:grid-cols-2')], [
+        refSection('Evidence', check.evidenceRefs),
+        refSection('Fixes', check.fixRefs),
+      ]),
+    ],
+  )
+}
+
+const supportDiagnosticsPanel = (work: AutopilotWorkProjection): Html => {
+  const h = html<Message>()
+  const source = work.supportDiagnostics
+  const diagnostics = projectForgeSupportDiagnostics({
+    generatedAt: work.generatedAt,
+    workOrderRef: work.workOrderRef,
+    ...(source?.diagnosticLogRefs === undefined
+      ? {}
+      : { diagnosticLogRefs: source.diagnosticLogRefs }),
+    ...(source?.doctorChecks === undefined
+      ? {}
+      : { doctorChecks: source.doctorChecks }),
+    ...(source?.helpCommandRefs === undefined
+      ? {}
+      : { helpCommandRefs: source.helpCommandRefs }),
+    ...(source?.preflightRefs === undefined
+      ? {}
+      : { preflightRefs: source.preflightRefs }),
+    ...(source?.supportBundleSections === undefined
+      ? {}
+      : { supportBundleSections: source.supportBundleSections }),
+  })
+
+  return h.section(
+    [
+      Ui.className<Message>('grid gap-4 border-t border-[#222] pt-5'),
+      h.DataAttribute('forge-support-diagnostics-status', diagnostics.status),
+      h.DataAttribute(
+        'forge-support-diagnostics-export-readiness',
+        diagnostics.exportReadiness,
+      ),
+    ],
+    [
+      h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
+        h.div([Ui.className<Message>('grid gap-1')], [
+          h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
+            'Help, doctor, and debug',
+          ]),
+          h.p([Ui.className<Message>('m-0 max-w-3xl text-sm text-white/45')], [
+            'Refs-only help, environment doctor, preflight, and support-bundle evidence. Read-only: cannot run checks, export bundles, grant consent, mutate settings, or read credentials.',
+          ]),
+        ]),
+        h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+          badge(
+            diagnostics.status.replaceAll('_', ' '),
+            supportDiagnosticsTone(diagnostics.status),
+          ),
+          badge(
+            `export ${diagnostics.exportReadiness.replaceAll('_', ' ')}`,
+            supportExportReadinessTone(diagnostics.exportReadiness),
+          ),
+        ]),
+      ]),
+      diagnostics.doctorChecks.length === 0
+        ? h.div([Ui.className<Message>('border border-[#222] p-4')], [
+            h.p([Ui.className<Message>('m-0 text-sm text-white/45')], [
+              'No doctor checks reported yet.',
+            ]),
+          ])
+        : h.div([Ui.className<Message>('grid gap-3')], [
+            ...diagnostics.doctorChecks.map(doctorCheckPanel),
+          ]),
+      h.div([Ui.className<Message>('grid gap-4 md:grid-cols-2')], [
+        refSection('Help commands', diagnostics.helpCommandRefs),
+        refSection('Preflight', diagnostics.preflightRefs),
+        refSection('Diagnostic logs', diagnostics.diagnosticLogRefs),
+        refSection(
+          'Support bundle sections',
+          diagnostics.supportBundleSections.map(
+            section => `${section.sectionRef} (${section.consent})`,
+          ),
+        ),
+      ]),
+      refSection('Support diagnostics blockers', diagnostics.blockerRefs),
+      diagnostics.omittedUnsafeRefCount === 0
+        ? h.span([Ui.className<Message>('hidden')], [])
+        : h.p([Ui.className<Message>('m-0 text-sm text-[#ffb400]')], [
+            `${diagnostics.omittedUnsafeRefCount} unsafe support ref(s) were omitted before rendering.`,
+          ]),
+    ],
+  )
+}
+
 const retrievalStatusTone = (
   status: ForgeRetrievalPlanStatus,
 ): 'accent' | 'positive' | 'warning' | 'negative' | 'info' =>
@@ -2270,6 +2424,7 @@ const workSummaryPanel = (model: Model, work: AutopilotWorkProjection): Html => 
     progressPanel(model, work),
     contextSnapshotPanel(work),
     sessionNavigationPanel(work),
+    supportDiagnosticsPanel(work),
     retrievalSearchPanel(work),
     extensibilityExecutionPanel(work),
     diffReviewPanel(model, work),

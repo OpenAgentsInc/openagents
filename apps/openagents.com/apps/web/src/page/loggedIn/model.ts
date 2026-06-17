@@ -2031,6 +2031,65 @@ export const AutopilotWorkSessionNavigation = S.Struct({
 export type AutopilotWorkSessionNavigation =
   typeof AutopilotWorkSessionNavigation.Type
 
+export const AutopilotWorkDoctorSeverity = S.Literals([
+  'error',
+  'info',
+  'ok',
+  'warning',
+])
+export type AutopilotWorkDoctorSeverity =
+  typeof AutopilotWorkDoctorSeverity.Type
+
+export const AutopilotWorkDoctorCategory = S.Literals([
+  'extension',
+  'install',
+  'integration',
+  'keybinding',
+  'network',
+  'sandbox',
+  'search',
+  'settings',
+  'shell',
+  'update',
+])
+export type AutopilotWorkDoctorCategory =
+  typeof AutopilotWorkDoctorCategory.Type
+
+export const AutopilotWorkSupportBundleConsent = S.Literals([
+  'consented',
+  'declined',
+  'pending',
+])
+export type AutopilotWorkSupportBundleConsent =
+  typeof AutopilotWorkSupportBundleConsent.Type
+
+export const AutopilotWorkDoctorCheck = S.Struct({
+  category: S.optionalKey(AutopilotWorkDoctorCategory),
+  checkRef: S.String,
+  evidenceRefs: S.optionalKey(S.Array(S.String)),
+  fixRefs: S.optionalKey(S.Array(S.String)),
+  severity: S.optionalKey(AutopilotWorkDoctorSeverity),
+})
+export type AutopilotWorkDoctorCheck = typeof AutopilotWorkDoctorCheck.Type
+
+export const AutopilotWorkSupportBundleSection = S.Struct({
+  consent: S.optionalKey(AutopilotWorkSupportBundleConsent),
+  evidenceRefs: S.optionalKey(S.Array(S.String)),
+  sectionRef: S.String,
+})
+export type AutopilotWorkSupportBundleSection =
+  typeof AutopilotWorkSupportBundleSection.Type
+
+export const AutopilotWorkSupportDiagnostics = S.Struct({
+  diagnosticLogRefs: S.optionalKey(S.Array(S.String)),
+  doctorChecks: S.optionalKey(S.Array(AutopilotWorkDoctorCheck)),
+  helpCommandRefs: S.optionalKey(S.Array(S.String)),
+  preflightRefs: S.optionalKey(S.Array(S.String)),
+  supportBundleSections: S.optionalKey(S.Array(AutopilotWorkSupportBundleSection)),
+})
+export type AutopilotWorkSupportDiagnostics =
+  typeof AutopilotWorkSupportDiagnostics.Type
+
 export const AutopilotWorkContextFreshness = S.Literals([
   'fresh',
   'stale',
@@ -2446,6 +2505,7 @@ export const AutopilotWorkProjection = S.Struct({
   planMutationRequests: S.optionalKey(S.Array(AutopilotWorkPlanMutationRequest)),
   retrievalPlan: S.optionalKey(AutopilotWorkRetrievalPlan),
   sessionNavigation: S.optionalKey(AutopilotWorkSessionNavigation),
+  supportDiagnostics: S.optionalKey(AutopilotWorkSupportDiagnostics),
   state: AutopilotWorkState,
   statusUrlRef: S.String,
   taskRefs: S.Array(S.String),

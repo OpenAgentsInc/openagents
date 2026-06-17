@@ -281,6 +281,20 @@ refs, preserve deterministic selected/skipped ranking, and omit unsafe/private
 source/query/provenance material before the `/autopilot` Retrieval search lane
 renders it.
 
+Implementation status, 2026-06-17 (epic #5107): system 27 Help/Doctor now has
+its own first-class refs-only projection, `projectForgeSupportDiagnostics()`,
+and a dedicated `/autopilot` Help, doctor, and debug lane separate from the
+retrieval planner. The projection folds help-command, doctor-check (with
+category, severity, evidence, and fix refs), preflight, support-bundle-section
+(with per-section consent), and diagnostic-log evidence into one view. It
+derives an empty/ready/attention/failing status from doctor severity, emits a
+consent-gated export-readiness verdict (blocked/consent_required/ready) that
+stays blocked while any doctor check errors or unsafe material is present, and
+omits secret-like tokens, raw diffs/prompts, absolute/relative paths, URLs, and
+shell-metacharacter refs before rendering. It carries an all-false authority
+block and cannot run doctor/preflight checks, build or export support bundles,
+grant consent, mutate settings, or read credentials.
+
 ### G6 - Extensibility: MCP, Skills, Hooks, Plugins
 
 Systems: system 28 MCP Client, system 30 Plugin, system 31 Skill, system 32
