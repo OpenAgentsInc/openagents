@@ -6,7 +6,7 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
 ## Where we are (verified 2026-06-16)
 
 - **Launched:** Autopilot 1.0 + Pylon v1.0 release candidates (signed/notarized,
-  default-on auto-update *config*), the Tassadar run (`run.tassadar.executor.20260615`,
+  default-on auto-update _config_), the Tassadar run (`run.tassadar.executor.20260615`,
   active), Episode 237 + essay, the forum/Nostr/Bitcoin-tip rails.
 - **🟢 LAUNCH GATE GREEN (16th):** the crucial launch epic **#5012 is CLOSED /
   completed**. Both crucial promises flipped green and live:
@@ -235,6 +235,21 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   retain BOLT12 only for legacy rows without a Spark destination, not as a
   fallback after Spark LA. MDK remains deliberately available for customer
   checkouts and operator treasury rails.
+- **⚡ Spark treasury rail + single treasury balance (#5183).** The website
+  treasury container now exposes Spark treasury service endpoints
+  (`/spark/balance`, `/spark/funding-destination`, `/spark/pay`) backed by the
+  Breez Spark SDK and the copied Bun SQLite storage adapter. Operator treasury
+  payouts and Artanis spend prefer Spark treasury for Lightning Address/Spark
+  destinations when Spark has enough spendable balance; if Spark is unavailable
+  or preflight-insufficient they fall back to the existing MDK treasury path, but
+  a real Spark dispatch failure stops instead of attempting a second MDK send.
+  Raw Spark payment requests are accepted only as private operator/adapter input;
+  public agent readiness remains the existing Spark Lightning Address projection
+  because raw Spark addresses are treated as private wallet material.
+  Accepted-work settlement can select `adapterKind: "spark_treasury"` for a
+  single size-agnostic Spark treasury payment instead of the older hosted-MDK
+  chunk policy. Public `/treasury` now shows one top-line balance summed across
+  MDK + Spark rails, with the rail split kept as small secondary text.
 - **🧰 Pylon wallet self-recovery (#5167) fixed.** Field report: an unclean MDK
   agent-wallet shutdown could leave `~/.mdk-wallet/daemon.pid` pointing at a
   dead process, stranding `wallet report-readiness` until an operator manually
@@ -421,7 +436,7 @@ is the **Spark backup-receive fallback** in
   `presence heartbeat` used to post `walletReadiness: "unknown"` with no
   `walletReady`, and the server's heartbeat schema carried no wallet field, so
   `/api/public/pylon-stats` kept `walletReadyNow=false` for an online node until
-  a separate `pylon wallet report-readiness` — making Trigger's node *look*
+  a separate `pylon wallet report-readiness` — making Trigger's node _look_
   unavailable for the payout retry even though its local probe was receive-ready.
   Fixed both sides: the Pylon heartbeat now probes the local wallet
   (`classifyMdkWallet`, best-effort, injectable) and publishes real
@@ -517,7 +532,7 @@ epics below; not all lands today — the aim is the main spine.
   goes **direct via Resend** (interim, decoupled from the `EmailService` ledger).
   Gating preserved (login only authenticates; product stays downstream-gated) —
   recorded as the "Login Surface" invariant. The architecture rule was relaxed to
-  allow the real login route while still banning the deleted *simulated* auth
+  allow the real login route while still banning the deleted _simulated_ auth
   symbols. Audit + posture: `docs/auth/2026-06-16-login-and-auth-audit.md`.
   **#5120 hardening is now shipped:** `/code/authorize` send/resend is guarded by
   D1-backed per-IP, per-normalized-email, and global hourly caps; stale code
@@ -661,7 +676,7 @@ three things tested live on that RC.** Audit of each as of 2026-06-16:
 - **✅ DONE — offline payout to a Lightning Address works end-to-end (2026-06-16).**
   The model landed in rc.7/rc.8 + the worker: a recipient registers a static
   **Lightning Address** via their Spark backup wallet (`backup-receive --kind
-  lightning-address`) and publishes it on file beside their BOLT12
+lightning-address`) and publishes it on file beside their BOLT12
   (`report-readiness`); the treasury payout path now **resolves a Lightning
   Address via LNURL-pay → BOLT11 (`lnurl-pay.ts`) before the MDK send**, in both
   `executeTreasuryPayout` and the operator endpoint, for primary + fallback. No
@@ -700,8 +715,8 @@ three things tested live on that RC.** Audit of each as of 2026-06-16:
   exercised manually for the green flip; the **automatic** dispatch on Verified
   (bounded, with MDK→Spark fallback selection) is **not yet wired/tested**. Test
   on the RC against the held payouts.
-- Boundary: payout *approval* stays operator-gated / bounded-spend (a permanent
-  safety control); "auto-payout" automates *dispatch within those bounds*, not
+- Boundary: payout _approval_ stays operator-gated / bounded-spend (a permanent
+  safety control); "auto-payout" automates _dispatch within those bounds_, not
   unbounded self-spend.
 
 ### Gate 3 — Auto-update (in prod) — ✅ VERIFIED (2026-06-16)

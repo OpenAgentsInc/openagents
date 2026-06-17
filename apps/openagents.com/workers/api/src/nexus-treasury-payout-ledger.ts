@@ -14,6 +14,7 @@ export const NexusTreasuryPayoutAdapterKind = S.Literals([
   'legacy_nexus_import',
   'mdk_agent_wallet',
   'simulation',
+  'spark_treasury',
 ])
 export type NexusTreasuryPayoutAdapterKind =
   typeof NexusTreasuryPayoutAdapterKind.Type

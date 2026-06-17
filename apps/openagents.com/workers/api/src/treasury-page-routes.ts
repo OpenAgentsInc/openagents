@@ -87,8 +87,7 @@ const rowToRecord = (
   owedSat: row.owed_sat ?? null,
   paymentRef: row.payment_ref,
   recipientConfirmationRef: row.recipient_confirmation_ref ?? null,
-  recipientConfirmationState:
-    row.recipient_confirmation_state ?? 'unconfirmed',
+  recipientConfirmationState: row.recipient_confirmation_state ?? 'unconfirmed',
   recipientConfirmedAt: row.recipient_confirmed_at ?? null,
   recipientRef: row.recipient_ref ?? null,
   redactedDestinationRef: row.redacted_destination_ref ?? null,
@@ -251,32 +250,109 @@ const publicTransaction = (record: TreasuryTransactionRecord) => ({
   state: record.state,
 })
 
-const treasuryBalance = (
-  fetchTreasury: ContainerPathFetch,
-): Effect.Effect<{
+type TreasuryRailBalance = Readonly<{
+  balanceSat: number | null
+  maxSendableSat: number | null
+  rail: 'mdk' | 'spark'
+  state: 'ok' | 'unavailable'
+}>
+
+type TreasuryBalanceProjection = Readonly<{
   balanceSat: number
   maxSendableSat: number | null
-} | null> =>
+  rails: ReadonlyArray<TreasuryRailBalance>
+}>
+
+const railBalancePayload = (
+  rail: TreasuryRailBalance['rail'],
+  payload: unknown,
+): TreasuryRailBalance | null => {
+  if (typeof payload !== 'object' || payload === null) {
+    return null
+  }
+
+  const record = payload as Record<string, unknown>
+
+  return typeof record.balanceSat === 'number'
+    ? {
+        balanceSat: record.balanceSat,
+        maxSendableSat:
+          typeof record.maxSendableSat === 'number'
+            ? record.maxSendableSat
+            : null,
+        rail,
+        state: 'ok',
+      }
+    : null
+}
+
+const unavailableRail = (
+  rail: TreasuryRailBalance['rail'],
+): TreasuryRailBalance => ({
+  balanceSat: null,
+  maxSendableSat: null,
+  rail,
+  state: 'unavailable',
+})
+
+const readRailBalance = (
+  fetchTreasury: ContainerPathFetch,
+  rail: TreasuryRailBalance['rail'],
+  path: string,
+): Promise<TreasuryRailBalance> =>
+  fetchTreasury(path)
+    .then(async response =>
+      response.ok
+        ? (railBalancePayload(rail, await response.json()) ??
+          unavailableRail(rail))
+        : unavailableRail(rail),
+    )
+    .catch(() => unavailableRail(rail))
+
+const totalTreasuryBalance = (
+  rails: ReadonlyArray<TreasuryRailBalance>,
+): TreasuryBalanceProjection | null => {
+  const available = rails.filter(
+    (rail): rail is TreasuryRailBalance & { balanceSat: number } =>
+      rail.state === 'ok' && typeof rail.balanceSat === 'number',
+  )
+
+  if (available.length === 0) {
+    return null
+  }
+
+  const maxSendableValues = available
+    .map(rail => rail.maxSendableSat)
+    .filter(
+      (maxSendableSat): maxSendableSat is number =>
+        typeof maxSendableSat === 'number',
+    )
+
+  return {
+    balanceSat: available.reduce((sum, rail) => sum + rail.balanceSat, 0),
+    maxSendableSat:
+      maxSendableValues.length === 0
+        ? null
+        : maxSendableValues.reduce(
+            (sum, maxSendableSat) => sum + maxSendableSat,
+            0,
+          ),
+    rails,
+  }
+}
+
+const treasuryBalance = (
+  fetchTreasury: ContainerPathFetch,
+): Effect.Effect<TreasuryBalanceProjection | null> =>
   Effect.tryPromise({
     catch: () => null,
     try: async () => {
-      const response = await fetchTreasury('/balance')
+      const rails = await Promise.all([
+        readRailBalance(fetchTreasury, 'mdk', '/balance'),
+        readRailBalance(fetchTreasury, 'spark', '/spark/balance'),
+      ])
 
-      if (!response.ok) {
-        return null
-      }
-
-      const payload = (await response.json()) as Record<string, unknown>
-
-      return typeof payload.balanceSat === 'number'
-        ? {
-            balanceSat: payload.balanceSat,
-            maxSendableSat:
-              typeof payload.maxSendableSat === 'number'
-                ? payload.maxSendableSat
-                : null,
-          }
-        : null
+      return totalTreasuryBalance(rails)
     },
   }).pipe(Effect.catch(() => Effect.succeed(null)))
 
@@ -322,6 +398,7 @@ a.button { display:inline-block; background:#fff; color:#000; padding:10px 16px;
 .qr svg { display:block; width:100%; max-width:304px; height:auto; }
 .balance { font-size:32px; color:#fff; margin:8px 0 0; }
 .balance small { font-size:14px; color:#a1a1aa; }
+.rail-breakout { color:#71717a; font-size:12px; margin-top:4px; }
 table { width:100%; border-collapse:collapse; margin-top:16px; font-size:13px; }
 th { text-align:left; color:#71717a; font-weight:normal; border-bottom:1px solid #27272a; padding:6px 8px; text-transform:uppercase; letter-spacing:0.06em; font-size:11px; }
 td { border-bottom:1px solid #18181b; padding:8px; color:#e4e4e7; }
@@ -373,6 +450,24 @@ ${visible
   })
   .join('\n')}
 </table>`
+}
+
+const balanceRailBreakout = (
+  balance: TreasuryBalanceProjection | null,
+): string => {
+  if (balance === null) {
+    return ''
+  }
+
+  const label = (rail: TreasuryRailBalance): string => {
+    const name = rail.rail === 'mdk' ? 'MDK' : 'Spark'
+
+    return rail.state === 'ok' && rail.balanceSat !== null
+      ? `${name}: ${rail.balanceSat} sats`
+      : `${name}: unavailable`
+  }
+
+  return `<p class="rail-breakout">${balance.rails.map(label).join(' · ')}</p>`
 }
 
 const donationExpired = (
@@ -455,7 +550,7 @@ Balance and recent activity are public; recipients are not.</p>
 ${
   balance === null
     ? '<p class="muted">Balance temporarily unavailable.</p>'
-    : `<p class="balance">${balance.balanceSat} sats <small>(${balance.maxSendableSat ?? 0} spendable)</small></p>`
+    : `<p class="balance">${balance.balanceSat} sats <small>(${balance.maxSendableSat ?? 0} spendable)</small></p>${balanceRailBreakout(balance)}`
 }
 <a class="button" href="/treasury/donate">Donate</a>
 <h1 style="margin-top:32px">Recent transactions</h1>

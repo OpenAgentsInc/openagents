@@ -184,6 +184,74 @@ describe('public treasury api', () => {
     expect(JSON.stringify(body)).not.toContain('bolt11')
   })
 
+  test('aggregates MDK and Spark rails into one public balance', async () => {
+    const containerResponses = {
+      '/balance': jsonResponse(200, {
+        balanceSat: 442,
+        maxSendableSat: 432,
+      }),
+      '/spark/balance': jsonResponse(200, {
+        balanceSat: 50000,
+        maxSendableSat: 50000,
+        rail: 'spark',
+      }),
+    }
+    const response = await run(
+      makeRoutes({ containerResponses }).routeTreasuryPageRequest(
+        new Request('https://openagents.com/api/public/treasury'),
+      )!,
+    )
+    const body = (await response.json()) as {
+      balance: {
+        balanceSat: number
+        maxSendableSat: number
+        rails: ReadonlyArray<{
+          balanceSat: number | null
+          rail: string
+          state: string
+        }>
+      }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.balance.balanceSat).toBe(50442)
+    expect(body.balance.maxSendableSat).toBe(50432)
+    expect(body.balance.rails).toEqual([
+      expect.objectContaining({
+        balanceSat: 442,
+        rail: 'mdk',
+        state: 'ok',
+      }),
+      expect.objectContaining({
+        balanceSat: 50000,
+        rail: 'spark',
+        state: 'ok',
+      }),
+    ])
+
+    const page = await run(
+      makeRoutes({
+        containerResponses: {
+          '/balance': jsonResponse(200, {
+            balanceSat: 442,
+            maxSendableSat: 432,
+          }),
+          '/spark/balance': jsonResponse(200, {
+            balanceSat: 50000,
+            maxSendableSat: 50000,
+          }),
+        },
+      }).routeTreasuryPageRequest(
+        new Request('https://openagents.com/treasury'),
+      )!,
+    )
+    const html = await page.text()
+
+    expect(html).toContain('50442 sats')
+    expect(html).toContain('MDK: 442 sats')
+    expect(html).toContain('Spark: 50000 sats')
+  })
+
   test('keeps failed payout reason refs out of the public projection', async () => {
     const store = makeMemoryStore()
     await store.insert({

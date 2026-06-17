@@ -16,6 +16,7 @@ export const TREASURY_SERVICE_TOKEN_HEADER = 'x-treasury-service-token'
 
 export type TreasuryRouteDependencies = Readonly<{
   serviceLabel?: string
+  fetchSparkTreasury?: ContainerPathFetch | undefined
   fetchTreasury?: ContainerPathFetch | undefined
   fetchTipsBuffer?: ContainerPathFetch | undefined
   transactionStore?: TreasuryTransactionStore | undefined
@@ -218,9 +219,7 @@ const optionalPublicTreasuryAttributionRef = (
     return null
   }
 
-  return publicTreasuryAttributionRefPattern.test(trimmed)
-    ? trimmed
-    : 'invalid'
+  return publicTreasuryAttributionRefPattern.test(trimmed) ? trimmed : 'invalid'
 }
 
 const redactedTreasuryDestinationRef = async (
@@ -305,7 +304,9 @@ const treasuryRecipientReport = (
     owedSat,
     overSent: owedSat !== null && settledSentSat > owedSat,
     pendingSentSat: records
-      .filter(record => record.direction === 'out' && record.state === 'pending')
+      .filter(
+        record => record.direction === 'out' && record.state === 'pending',
+      )
       .reduce((sum, record) => sum + record.amountSat, 0),
     recipientRef,
     schemaVersion: 'openagents.treasury.recipient_report.v1',
@@ -949,9 +950,7 @@ const readTreasuryBalancePayload = async (
 
     const balance = balancePayload(await balanceResponse.json())
 
-    return balance === null
-      ? { kind: 'unavailable' }
-      : { balance, kind: 'ok' }
+    return balance === null ? { kind: 'unavailable' } : { balance, kind: 'ok' }
   } catch {
     return { kind: 'unavailable' }
   }
@@ -977,6 +976,126 @@ const readTreasuryBalanceWithSendabilityRetry = async (
     fetchTreasury,
     remainingAttempts - 1,
   )
+}
+
+type SparkTreasuryPayPreflight =
+  | Readonly<{
+      kind: 'available'
+      maxSendableSat: number
+    }>
+  | Readonly<{
+      kind: 'insufficient' | 'unavailable'
+    }>
+
+const sparkTreasuryBalancePreflight = async (
+  fetchSparkTreasury: ContainerPathFetch,
+): Promise<SparkTreasuryPayPreflight> => {
+  try {
+    const response = await fetchSparkTreasury('/spark/balance')
+
+    if (!response.ok) {
+      return { kind: 'unavailable' }
+    }
+
+    const payload = (await response.json()) as Record<string, unknown>
+    const maxSendableSat =
+      typeof payload.maxSendableSat === 'number'
+        ? payload.maxSendableSat
+        : typeof payload.balanceSat === 'number'
+          ? payload.balanceSat
+          : null
+
+    return maxSendableSat === null
+      ? { kind: 'unavailable' }
+      : { kind: 'available', maxSendableSat }
+  } catch {
+    return { kind: 'unavailable' }
+  }
+}
+
+const sparkTreasuryCandidateDestination = (
+  destination: string,
+  sparkDestination?: string | null,
+): string | null => {
+  if (typeof sparkDestination === 'string' && sparkDestination.trim() !== '') {
+    return sparkDestination.trim()
+  }
+
+  return isLightningAddress(destination) ? destination.trim() : null
+}
+
+const sparkTreasuryIdempotencyKey = async (input: {
+  amountSat: number
+  destination: string
+  idempotencySeed: string
+  owedRef?: string | null
+  recipientRef?: string | null
+}): Promise<string> =>
+  `hash.spark_treasury_payout.${(
+    await sha256Hex(
+      [
+        'spark-treasury-payout',
+        input.idempotencySeed,
+        input.destination,
+        String(input.amountSat),
+        input.owedRef ?? 'owed-unset',
+        input.recipientRef ?? 'recipient-unset',
+      ].join(':'),
+    )
+  ).slice(0, 64)}`
+
+const attemptSparkTreasuryPayout = async (input: {
+  amountSat: number
+  destination: string
+  fetchSparkTreasury: ContainerPathFetch
+  idempotencySeed: string
+  owedRef?: string | null
+  recipientRef?: string | null
+}): Promise<
+  | Readonly<{
+      kind: 'paid'
+      payResult: Record<string, unknown>
+      paymentRef: string
+    }>
+  | Readonly<{ kind: 'skipped'; reason: 'insufficient' | 'unavailable' }>
+  | Readonly<{ kind: 'failed'; payResult: Record<string, unknown> }>
+> => {
+  const balance = await sparkTreasuryBalancePreflight(input.fetchSparkTreasury)
+
+  if (balance.kind !== 'available') {
+    return { kind: 'skipped', reason: balance.kind }
+  }
+
+  if (balance.maxSendableSat < input.amountSat) {
+    return { kind: 'skipped', reason: 'insufficient' }
+  }
+
+  const idempotencyKey = await sparkTreasuryIdempotencyKey(input)
+  const response = await input.fetchSparkTreasury('/spark/pay', {
+    body: JSON.stringify({
+      amountSat: input.amountSat,
+      destination: input.destination,
+      idempotencyKey,
+    }),
+    method: 'POST',
+  })
+  const payResult = (await response.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >
+
+  if (!response.ok || payResult.status !== 'succeeded') {
+    return { kind: 'failed', payResult }
+  }
+
+  return {
+    kind: 'paid',
+    payResult,
+    paymentRef:
+      typeof payResult.paymentRef === 'string'
+        ? payResult.paymentRef
+        : `payment.redacted.spark_treasury.${idempotencyKey.slice(-32)}`,
+  }
 }
 
 const safeReasonSegment = (value: string): string =>
@@ -1080,9 +1199,7 @@ const treasuryPayoutFailureReasonRefFromPayResult = (
 const treasuryPayoutDiagnosticPayload = (
   payResult: Record<string, unknown>,
 ) => ({
-  balanceChanged: safeTreasuryPayoutDiagnosticBoolean(
-    payResult.balanceChanged,
-  ),
+  balanceChanged: safeTreasuryPayoutDiagnosticBoolean(payResult.balanceChanged),
   balanceDeltaSat: safeTreasuryPayoutDiagnosticNumber(
     payResult.balanceDeltaSat,
   ),
@@ -1093,7 +1210,9 @@ const treasuryPayoutDiagnosticPayload = (
     payResult.balanceSatBefore,
   ),
   containerStatus: safeTreasuryPayoutDiagnosticString(payResult.status),
-  destinationKind: safeTreasuryPayoutDiagnosticString(payResult.destinationKind),
+  destinationKind: safeTreasuryPayoutDiagnosticString(
+    payResult.destinationKind,
+  ),
   errorCode: safeTreasuryPayoutDiagnosticString(payResult.errorCode),
   errorName: safeTreasuryPayoutDiagnosticString(payResult.errorName),
   eventOutcomeStatus: safeTreasuryPayoutDiagnosticString(
@@ -1148,10 +1267,12 @@ const treasuryPayoutAttemptTrace = (input: {
   attempt: 'primary' | 'fallback'
   ok: boolean
   payResult: Record<string, unknown>
+  rail?: 'mdk_treasury' | 'spark_treasury'
 }) => ({
   attempt: input.attempt,
   diagnostics: treasuryPayoutDiagnosticPayload(input.payResult),
   outcome: input.ok ? 'accepted' : 'failed',
+  rail: input.rail ?? 'mdk_treasury',
   reasonRef: input.ok
     ? null
     : treasuryPayoutFailureReasonRefFromPayResult(input.payResult),
@@ -1169,7 +1290,9 @@ const treasuryPayRequestTimeoutMs = (
     : DEFAULT_TREASURY_PAY_REQUEST_TIMEOUT_MS
 }
 
-const treasuryPayTimeoutSignal = (timeoutMs: number): AbortSignal | undefined =>
+const treasuryPayTimeoutSignal = (
+  timeoutMs: number,
+): AbortSignal | undefined =>
   typeof AbortSignal.timeout === 'function'
     ? AbortSignal.timeout(timeoutMs)
     : undefined
@@ -1220,8 +1343,9 @@ export type TreasuryPayoutExecution =
       status: string
       // Which destination rail actually settled: the primary `destination`
       // (online BOLT 12 / MDK) or the `fallbackDestination` (e.g. the
-      // recipient's static Lightning Address held on file) (#5078).
-      paidVia: 'primary' | 'fallback'
+      // recipient's static Lightning Address held on file) (#5078), or the
+      // Spark treasury rail (#5183).
+      paidVia: 'fallback' | 'primary' | 'spark_treasury'
     }>
   | Readonly<{
       kind: 'refused'
@@ -1243,14 +1367,15 @@ export const executeTreasuryPayout = async (
     owedSat?: number | null
     recipientRef?: string | null
     redactedDestinationRef?: string | null
-    // Optional payout fallback (e.g. the recipient's static Lightning Address
-    // hosted by their offline Spark backup wallet's LSP). When the primary
-    // destination fails, we retry once against this address. Both are normal
-    // Lightning sends on the treasury's pay path — no Spark SDK on our side.
+    // Optional MDK payout fallback (e.g. the recipient's static Lightning
+    // Address). Spark treasury is a separate rail and is only used when
+    // fetchSparkTreasury is explicitly wired.
     fallbackDestination?: string | null
+    sparkDestination?: string | null
   }>,
 ): Promise<TreasuryPayoutExecution> => {
   const fetchTreasury = dependencies.fetchTreasury
+  const fetchSparkTreasury = dependencies.fetchSparkTreasury
   const intendedAmountSat = Math.floor(input.amountSat)
   const fallbackDestination =
     typeof input.fallbackDestination === 'string' &&
@@ -1268,9 +1393,62 @@ export const executeTreasuryPayout = async (
     }
   }
 
-  const balanceRead = await readTreasuryBalanceWithSendabilityRetry(
-    fetchTreasury,
+  const sparkDestination = sparkTreasuryCandidateDestination(
+    input.destination,
+    input.sparkDestination,
   )
+
+  if (fetchSparkTreasury !== undefined && sparkDestination !== null) {
+    const sparkAttempt = await attemptSparkTreasuryPayout({
+      amountSat: intendedAmountSat,
+      destination: sparkDestination,
+      fetchSparkTreasury,
+      idempotencySeed: input.owedRef ?? input.recipientRef ?? input.destination,
+      owedRef: input.owedRef ?? null,
+      recipientRef: input.recipientRef ?? null,
+    })
+
+    if (sparkAttempt.kind === 'paid') {
+      const redactedDestinationRef =
+        input.redactedDestinationRef ??
+        (await redactedTreasuryDestinationRef(sparkDestination))
+      const recipientRef =
+        input.recipientRef ??
+        (await treasuryRecipientRefForDestination(sparkDestination))
+
+      await dependencies.recordPayoutTransaction?.({
+        amountSat: intendedAmountSat,
+        owedRef: input.owedRef ?? null,
+        owedSat: input.owedSat ?? intendedAmountSat,
+        paymentRef: sparkAttempt.paymentRef,
+        recipientRef,
+        redactedDestinationRef,
+        settled: true,
+      })
+
+      return {
+        intendedAmountSat,
+        kind: 'paid',
+        paidAmountSat: intendedAmountSat,
+        paidVia: 'spark_treasury',
+        paymentRef: sparkAttempt.paymentRef,
+        policyApplied: 'full',
+        status: 'succeeded',
+      }
+    }
+
+    if (sparkAttempt.kind === 'failed') {
+      return {
+        intendedAmountSat,
+        kind: 'refused',
+        policyApplied: 'spark_treasury_failed',
+        reason: 'treasury_pay_failed',
+      }
+    }
+  }
+
+  const balanceRead =
+    await readTreasuryBalanceWithSendabilityRetry(fetchTreasury)
   if (balanceRead.kind === 'unavailable') {
     return {
       intendedAmountSat,
@@ -1395,6 +1573,7 @@ export const handleOperatorTreasuryPayoutApi = (
       }
 
       const fetchTreasury = dependencies.fetchTreasury
+      const fetchSparkTreasury = dependencies.fetchSparkTreasury
 
       if (fetchTreasury === undefined) {
         return Effect.succeed(
@@ -1412,6 +1591,7 @@ export const handleOperatorTreasuryPayoutApi = (
             amountSat?: unknown
             destination?: unknown
             fallbackDestination?: unknown
+            sparkDestination?: unknown
             owedRef?: unknown
             owedSat?: unknown
             recipientRef?: unknown
@@ -1434,11 +1614,19 @@ export const handleOperatorTreasuryPayoutApi = (
             body.fallbackDestination.trim() !== destination
               ? body.fallbackDestination.trim()
               : null
+          const sparkDestination = sparkTreasuryCandidateDestination(
+            destination,
+            typeof body.sparkDestination === 'string'
+              ? body.sparkDestination
+              : null,
+          )
           const intendedAmountSat = Number(body.amountSat)
           const recipientRefInput = optionalPublicTreasuryAttributionRef(
             body.recipientRef,
           )
-          const owedRefInput = optionalPublicTreasuryAttributionRef(body.owedRef)
+          const owedRefInput = optionalPublicTreasuryAttributionRef(
+            body.owedRef,
+          )
 
           if (destination === '') {
             return noStoreJsonResponse(
@@ -1469,7 +1657,9 @@ export const handleOperatorTreasuryPayoutApi = (
           }
 
           const owedSat =
-            body.owedSat === undefined ? intendedAmountSat : Number(body.owedSat)
+            body.owedSat === undefined
+              ? intendedAmountSat
+              : Number(body.owedSat)
 
           if (!Number.isInteger(owedSat) || owedSat <= 0) {
             return noStoreJsonResponse(
@@ -1478,9 +1668,158 @@ export const handleOperatorTreasuryPayoutApi = (
             )
           }
 
-          const balanceRead = await readTreasuryBalanceWithSendabilityRetry(
-            fetchTreasury,
-          )
+          const sparkAttempts: Array<
+            ReturnType<typeof treasuryPayoutAttemptTrace>
+          > = []
+
+          if (fetchSparkTreasury !== undefined && sparkDestination !== null) {
+            const sparkAttempt = await attemptSparkTreasuryPayout({
+              amountSat: intendedAmountSat,
+              destination: sparkDestination,
+              fetchSparkTreasury,
+              idempotencySeed:
+                request.headers.get('idempotency-key')?.trim() ??
+                `${owedRefInput ?? recipientRefInput ?? destination}:${intendedAmountSat}`,
+              owedRef: owedRefInput,
+              recipientRef: recipientRefInput,
+            })
+
+            if (sparkAttempt.kind === 'paid') {
+              const redactedDestinationRef =
+                await redactedTreasuryDestinationRef(sparkDestination)
+              const recipientRef =
+                recipientRefInput ??
+                (await treasuryRecipientRefForDestination(sparkDestination))
+
+              try {
+                await dependencies.recordPayoutTransaction?.({
+                  amountSat: intendedAmountSat,
+                  owedRef: owedRefInput,
+                  owedSat,
+                  paymentRef: sparkAttempt.paymentRef,
+                  recipientRef,
+                  redactedDestinationRef,
+                  settled: true,
+                })
+              } catch {
+                // The payment already happened; a ledger write failure must not
+                // convert a successful payout into an error response.
+              }
+
+              const diagnostics = treasuryPayoutDiagnosticPayload(
+                sparkAttempt.payResult,
+              )
+
+              return noStoreJsonResponse({
+                intendedAmountSat,
+                paidAmountSat: intendedAmountSat,
+                attempts: [
+                  {
+                    attempt: 'primary',
+                    diagnostics,
+                    outcome: 'accepted',
+                    rail: 'spark_treasury',
+                    reasonRef: null,
+                  },
+                ],
+                diagnostics,
+                paidVia: 'spark_treasury',
+                paymentRef: sparkAttempt.paymentRef,
+                policyApplied: 'full',
+                status: 'succeeded',
+              })
+            }
+
+            if (sparkAttempt.kind === 'failed') {
+              const diagnostics = treasuryPayoutDiagnosticPayload(
+                sparkAttempt.payResult,
+              )
+              const failureReasonRef =
+                treasuryPayoutFailureReasonRefFromPayResult(
+                  sparkAttempt.payResult,
+                )
+
+              try {
+                await dependencies.recordPayoutTransaction?.({
+                  amountSat: intendedAmountSat,
+                  failureReasonRef,
+                  owedRef: owedRefInput,
+                  owedSat,
+                  paymentRef: null,
+                  recipientRef: recipientRefInput,
+                  redactedDestinationRef:
+                    await redactedTreasuryDestinationRef(sparkDestination),
+                  settled: false,
+                })
+              } catch {
+                // Preserve the failure response even if D1 is briefly down.
+              }
+
+              return noStoreJsonResponse(
+                {
+                  error: 'treasury_pay_failed',
+                  intendedAmountSat,
+                  paidAmountSat: null,
+                  paidVia: 'spark_treasury',
+                  policyApplied: 'spark_treasury_failed',
+                  reason: failureReasonRef,
+                  reasonRef: failureReasonRef,
+                  diagnostics,
+                  attempts: [
+                    {
+                      attempt: 'primary',
+                      diagnostics,
+                      outcome: 'failed',
+                      rail: 'spark_treasury',
+                      reasonRef: failureReasonRef,
+                    },
+                  ],
+                },
+                { status: 502 },
+              )
+            }
+
+            sparkAttempts.push({
+              attempt: 'primary',
+              diagnostics: {
+                balanceChanged: null,
+                balanceDeltaSat: null,
+                balanceSatAfter: null,
+                balanceSatBefore: null,
+                containerStatus: null,
+                destinationKind: 'spark_treasury',
+                errorCode: null,
+                errorName: null,
+                eventOutcomeStatus: null,
+                failureStage: `spark_treasury_${sparkAttempt.reason}`,
+                feeBudgetMsatAfter: null,
+                feeBudgetMsatBefore: null,
+                messageFingerprint: null,
+                paymentHashPresent: null,
+                paymentIdPresent: null,
+                payResponseStatus: null,
+                preflightBalanceMaxSendableSat: null,
+                preflightCoverageSat: null,
+                preflightMaxSendableSat: null,
+                preflightRouteAvailable: null,
+                preimagePresent: null,
+                reasonClass: sparkAttempt.reason,
+                resolvedDestinationKind: null,
+                resultReturned: false,
+                sourceDestinationKind: 'spark_treasury',
+                timeoutSecs: null,
+              },
+              outcome: 'failed',
+              rail: 'spark_treasury',
+              reasonRef:
+                sparkAttempt.reason === 'insufficient'
+                  ? 'reason.public.treasury_payout.insufficient_spendable_balance'
+                  : 'reason.public.treasury_payout.failed',
+            })
+          }
+
+          const balanceRead =
+            await readTreasuryBalanceWithSendabilityRetry(fetchTreasury)
 
           if (balanceRead.kind === 'unavailable') {
             return noStoreJsonResponse(
@@ -1618,7 +1957,7 @@ export const handleOperatorTreasuryPayoutApi = (
           }
 
           const attempts: Array<ReturnType<typeof treasuryPayoutAttemptTrace>> =
-            []
+            [...sparkAttempts]
           let paidVia: 'primary' | 'fallback' = 'primary'
           let attempt = await attemptPay(destination)
           attempts.push(
@@ -1647,8 +1986,9 @@ export const handleOperatorTreasuryPayoutApi = (
             paidVia === 'fallback' && fallbackDestination !== null
               ? fallbackDestination
               : destination
-          const redactedDestinationRef =
-            await redactedTreasuryDestinationRef(attributedDestination)
+          const redactedDestinationRef = await redactedTreasuryDestinationRef(
+            attributedDestination,
+          )
           const recipientRef =
             recipientRefInput ??
             (await treasuryRecipientRefForDestination(attributedDestination))

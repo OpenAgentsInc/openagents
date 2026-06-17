@@ -206,6 +206,15 @@ import {
 } from './hosted-mdk-client'
 import type { ContainerPathFetch } from './http/container-fetch'
 import {
+  type DurableMdkPaymentOutcome,
+  durableMdkPaymentOutcomeResponse,
+  journalMdkResponseOutcome,
+  mdkPaymentIdFromStatusPath,
+  mdkPaymentOutcomeStorageKey,
+  mdkTerminalOutcomeFromPayload,
+} from './http/mdk-payment-outcome-journal'
+import { fetchAppShellWithPylonStatsBootPayload } from './http/pylon-stats-boot-payload'
+import {
   forbidden,
   methodNotAllowed,
   noStoreJsonResponse,
@@ -233,14 +242,6 @@ import {
   mdkContainerEnvVars,
   optionalMdkContainerSecret,
 } from './mdk-container-env'
-import {
-  type DurableMdkPaymentOutcome,
-  durableMdkPaymentOutcomeResponse,
-  journalMdkResponseOutcome,
-  mdkPaymentIdFromStatusPath,
-  mdkPaymentOutcomeStorageKey,
-  mdkTerminalOutcomeFromPayload,
-} from './http/mdk-payment-outcome-journal'
 import { makeMulletRoutes } from './mullet/routes'
 import { makeNativeListsService } from './native-lists'
 import { makeNativeListsRoutes } from './native-lists-routes'
@@ -302,8 +303,6 @@ import {
   makeD1PrivateProjectWorkspaceStore,
   makePrivateProjectWorkspaceRoutes,
 } from './private-project-workspace-routes'
-import { makeTeamWorkspaceInviteRoutes } from './team-workspace-invite-routes'
-import { makeD1TeamWorkspaceInviteStore } from './team-workspace-invites'
 import { publicProductPromisesDocument } from './product-promises'
 import {
   handleOperatorPromiseTransitionApi,
@@ -337,7 +336,6 @@ import {
   makeD1PylonCapacityFunnelSnapshotStore,
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
-import { fetchAppShellWithPylonStatsBootPayload } from './http/pylon-stats-boot-payload'
 import { makeD1PylonMarketplaceJobStore } from './pylon-marketplace-service'
 import {
   type RelayHealthFetch,
@@ -415,6 +413,8 @@ import {
   readActiveTeamProject,
   readTeamsForUser,
 } from './team-repository'
+import { makeTeamWorkspaceInviteRoutes } from './team-workspace-invite-routes'
+import { makeD1TeamWorkspaceInviteStore } from './team-workspace-invites'
 import { makeTenantClientRoutes } from './tenant-client-routes'
 import { makeTenantCustomHostnames } from './tenant-custom-hostnames'
 import {
@@ -458,6 +458,7 @@ import {
 } from './treasury-page-routes'
 import { makeTreasuryPaymentAuthority } from './treasury-payment-authority'
 import { makeHostedMdkPayoutAdapter } from './treasury-payment-hosted-mdk-payout-adapter'
+import { makeSparkTreasuryPayoutAdapter } from './treasury-payment-spark-payout-adapter'
 import {
   TREASURY_SERVICE_TOKEN_HEADER,
   handleOperatorTreasuryFundingDestinationApi,
@@ -632,6 +633,21 @@ const mdkTreasuryContainerEnvVars = (
   const serviceToken = optionalMdkContainerSecret(
     environment.MDK_TREASURY_SERVICE_TOKEN,
   )
+  const sparkApiKey = optionalMdkContainerSecret(
+    environment.SPARK_TREASURY_API_KEY ?? environment.OPENAGENTS_SPARK_API_KEY,
+  )
+  const sparkMnemonic = optionalMdkContainerSecret(
+    environment.SPARK_TREASURY_MNEMONIC,
+  )
+  const sparkNetwork = optionalMdkContainerSecret(
+    environment.SPARK_TREASURY_NETWORK,
+  )
+  const sparkStorageDir = optionalMdkContainerSecret(
+    environment.SPARK_TREASURY_STORAGE_DIR,
+  )
+  const sparkTimeoutMs = optionalMdkContainerSecret(
+    environment.SPARK_TREASURY_TIMEOUT_MS,
+  )
 
   return {
     ...(accessToken === undefined
@@ -641,6 +657,21 @@ const mdkTreasuryContainerEnvVars = (
     ...(serviceToken === undefined
       ? {}
       : { MDK_TREASURY_SERVICE_TOKEN: serviceToken }),
+    ...(sparkApiKey === undefined
+      ? {}
+      : { SPARK_TREASURY_API_KEY: sparkApiKey }),
+    ...(sparkMnemonic === undefined
+      ? {}
+      : { SPARK_TREASURY_MNEMONIC: sparkMnemonic }),
+    ...(sparkNetwork === undefined
+      ? {}
+      : { SPARK_TREASURY_NETWORK: sparkNetwork }),
+    ...(sparkStorageDir === undefined
+      ? {}
+      : { SPARK_TREASURY_STORAGE_DIR: sparkStorageDir }),
+    ...(sparkTimeoutMs === undefined
+      ? {}
+      : { SPARK_TREASURY_TIMEOUT_MS: sparkTimeoutMs }),
   }
 }
 
@@ -1419,7 +1450,9 @@ const upsertGitHubUser = async (
   user: UserSubject,
 ): Promise<void> => {
   if (user.githubId === undefined || user.login === undefined) {
-    throw new AuthSignInError({ reason: 'upsertGitHubUser requires a GitHub identity' })
+    throw new AuthSignInError({
+      reason: 'upsertGitHubUser requires a GitHub identity',
+    })
   }
   const githubId = user.githubId
   const login = user.login
@@ -5759,11 +5792,15 @@ export const handleProgrammaticAgentRegistration = async (
           ],
           custodyPolicyRefs: sparkPrimary
             ? ['policy.public.forum_tip_recipient.spark_self_custody']
-            : ['policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet'],
+            : [
+                'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet',
+              ],
           disabledAt: null,
           id: `forum_tip_recipient_wallet.user_${registration.user.id}.auto_claim`,
           payoutTargetApprovalRef: null,
-          providerClass: sparkPrimary ? 'external_lightning' : 'mdk_agent_wallet',
+          providerClass: sparkPrimary
+            ? 'external_lightning'
+            : 'mdk_agent_wallet',
           readinessRefs: sparkPrimary
             ? [
                 'readiness.public.spark_lightning_address.receive_ready',
@@ -6438,21 +6475,23 @@ const prefilledWorkspaceRoutes = makePrefilledWorkspaceRoutes<WorkerBindings>({
   requireOperator: (request, env) => requireAdminApiToken(request, env),
 })
 
-const teamWorkspaceInviteRoutes =
-  makeTeamWorkspaceInviteRoutes<WorkerBindings, VerifiedSession>({
-    appendRefreshedSessionCookies,
-    appOrigin: getAppOrigin,
-    getResendEmailConfig,
-    makeStore: env => makeD1TeamWorkspaceInviteStore(openAgentsDatabase(env)),
-    requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-    requireBrowserSession,
-    sendInviteEmailWithLedger: (env, config, input) =>
-      sendPrivateWorkspaceInviteEmailWithLedger(
-        openAgentsDatabase(env),
-        config,
-        input,
-      ),
-  })
+const teamWorkspaceInviteRoutes = makeTeamWorkspaceInviteRoutes<
+  WorkerBindings,
+  VerifiedSession
+>({
+  appendRefreshedSessionCookies,
+  appOrigin: getAppOrigin,
+  getResendEmailConfig,
+  makeStore: env => makeD1TeamWorkspaceInviteStore(openAgentsDatabase(env)),
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+  requireBrowserSession,
+  sendInviteEmailWithLedger: (env, config, input) =>
+    sendPrivateWorkspaceInviteEmailWithLedger(
+      openAgentsDatabase(env),
+      config,
+      input,
+    ),
+})
 
 const privateProjectWorkspaceRoutes =
   makePrivateProjectWorkspaceRoutes<WorkerBindings>({
@@ -6740,7 +6779,16 @@ const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
                   Effect.succeed(context.privatePayoutDestination ?? ''),
               }),
             ]
-          : [],
+          : context.adapterKind === 'spark_treasury'
+            ? [
+                makeSparkTreasuryPayoutAdapter({
+                  fetchTreasury: fetchMdkTreasuryPath(env),
+                  providerRef: context.providerRef,
+                  resolveDestination: () =>
+                    Effect.succeed(context.privatePayoutDestination ?? ''),
+                }),
+              ]
+            : [],
       ledgerStore,
     })
   },
@@ -7518,6 +7566,7 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
               (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
             nowIso: currentIsoTimestamp(),
             treasury: {
+              fetchSparkTreasury: fetchMdkTreasuryPath(env),
               fetchTreasury: fetchMdkTreasuryPath(env),
               recordPayoutTransaction: async input => {
                 await makeD1TreasuryTransactionStore(
@@ -7559,6 +7608,7 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/api/operator/treasury/payout',
     handler: (request, env) =>
       handleOperatorTreasuryPayoutApi(request, {
+        fetchSparkTreasury: fetchMdkTreasuryPath(env),
         fetchTreasury: fetchMdkTreasuryPath(env),
         recordPayoutTransaction: async input => {
           await makeD1TreasuryTransactionStore(openAgentsDatabase(env)).insert({

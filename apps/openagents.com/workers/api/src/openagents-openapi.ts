@@ -339,7 +339,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe Artanis administrator-tick monitor: persisted tick decisions (dispatched, no_action, blocked, dispatch_failed) with redaction-scanned reasons, assignment refs, countsByState, the daily dispatch bound, dispatchedToday, generatedAt, and explanatory notes. Pre-mind skips are not persisted rows. Read-only projection; it grants no dispatch, spend, or settlement authority.',
   ),
   PublicTreasuryResponse: objectSummary(
-    'Public-safe MDK treasury projection with the treasury balance read live from the treasury node and recent public transaction rows (direction, amount, state, public refs). Raw invoices, payment hashes, preimages, mnemonics, payout targets, and provider secrets are excluded. Read-only; grants no payout authority.',
+    'Public-safe treasury projection with one aggregate live balance across available treasury rails (MDK + Spark) plus a small rail breakout and recent public transaction rows (direction, amount, state, public refs). Raw invoices, payment hashes, preimages, mnemonics, payout targets, and provider secrets are excluded. Read-only; grants no payout authority.',
   ),
   PublicTreasuryLaunchStatusResponse: objectSummary(
     'Public-safe treasury launch-status projection: service label, typed state (including unprovisioned), configured-secret booleans only (mnemonic, accessToken, serviceToken - never the secret material), policyRefs, and the treasury authority boundary. Read-only; grants no payout or spend authority.',
@@ -1829,7 +1829,7 @@ const requestSchemas = (): JsonSchema => ({
     'Admin-only executor-trace closeout submission for a run: a public-safe closeout evidence object (assignmentRef, pylonDeviceRef, validatorDeviceRef, replayDigestRef, traceCommitmentDigestRef, sampledWindow + sampledWindowRef, workerReceiptRef, workloadFamily) plus the windowRef. Builds a run+window-tied exact_trace_replay verification challenge; the validator device must differ from the worker Pylon.',
   ),
   TrainingRunSettlementRequest: objectSummary(
-    'Admin-only operator-approved settlement of one accepted (Verified) exact_trace_replay executor-trace work item for a run: amountSats (within the run manifest spendCapSats and the hard per-payout cap), the challengeRef and leaseRef being settled, an idempotencyRef, an operatorApprovalRef, a redacted payoutTargetRef + payoutTargetApprovalRef, and an optional adapterKind (simulation for proofs; mdk_agent_wallet for the real treasury/Artanis dispatch). Records the treasury payout chain and links a provider-confirmed settlement receipt onto the run. No raw invoices, preimages, payment hashes, wallet material, or payout-target addresses are accepted or returned.',
+    'Admin-only operator-approved settlement of one accepted (Verified) exact_trace_replay executor-trace work item for a run: amountSats (within the run manifest spendCapSats and the hard per-payout cap), the challengeRef and leaseRef being settled, an idempotencyRef, an operatorApprovalRef, a redacted payoutTargetRef + payoutTargetApprovalRef, and an optional adapterKind (simulation for proofs; mdk_agent_wallet or spark_treasury for real treasury/Artanis dispatch). Records the treasury payout chain and links a provider-confirmed settlement receipt onto the run. No raw invoices, preimages, payment hashes, wallet material, or payout-target addresses are accepted or returned.',
   ),
   TrainingRunSettlementEnvelope: objectSummary(
     'Settlement result: the updated run projection, a settlement block (amountSats, contributorRef, settlementReceiptRef, verificationChallengeRef), and the run summary whose providerConfirmedSettledPayoutSats now reflects the provider-confirmed settled receipt linked to the run.',
@@ -2570,7 +2570,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getPublicTreasury',
       summary: 'Read public treasury projection',
       description:
-        'Returns the public-safe MDK treasury projection: live treasury balance and recent public transaction rows. Raw invoices, payment hashes, preimages, mnemonics, payout targets, and provider secrets are excluded. Read-only; grants no payout authority.',
+        'Returns the public-safe treasury projection: one aggregate live balance across available MDK and Spark treasury rails, a rail breakout, and recent public transaction rows. Raw invoices, payment hashes, preimages, mnemonics, payout targets, and provider secrets are excluded. Read-only; grants no payout authority.',
       tags: ['Public Proof', 'Payments'],
       security: publicRead,
       responses: {
@@ -3646,7 +3646,7 @@ const paths = (): JsonSchema => ({
       operationId: 'settleTrainingRunAcceptedWork',
       summary: 'Settle accepted executor-trace work into a run-linked receipt',
       description:
-        'Admin-only (#5009 — the earn-Bitcoin leg). Settles one accepted (Verified) exact_trace_replay executor-trace work item for the run: it records the operator-approved treasury payout chain (intent -> attempt -> reconciliation -> settlement_recorded receipt) under the run manifest spendCapSats plus a hard per-payout cap, then links the provider-confirmed settlement receipt onto the run. Payout itself is programmatic via the OpenAgents treasury wallet (Artanis pays out under bounded spend authority); adapterKind selects simulation (proofs, no money movement) or mdk_agent_wallet (real dispatch). After settlement the run summary providerConfirmedSettledPayoutSats and the A1 leaderboard settledPayoutSats reflect the settled receipt; pending/credited/payment-received states are never counted as settled. A non-Verified or wrong-class challenge, a challenge/lease not on the run, a missing run cap, or an over-cap amount is rejected. No raw invoices, preimages, payment hashes, wallet material, or payout-target addresses are accepted or returned.',
+        'Admin-only (#5009 — the earn-Bitcoin leg). Settles one accepted (Verified) exact_trace_replay executor-trace work item for the run: it records the operator-approved treasury payout chain (intent -> attempt -> reconciliation -> settlement_recorded receipt) under the run manifest spendCapSats plus a hard per-payout cap, then links the provider-confirmed settlement receipt onto the run. Payout itself is programmatic via the OpenAgents treasury wallet (Artanis pays out under bounded spend authority); adapterKind selects simulation (proofs, no money movement), mdk_agent_wallet, or spark_treasury (real dispatch through the Spark treasury SDK rail). After settlement the run summary providerConfirmedSettledPayoutSats and the A1 leaderboard settledPayoutSats reflect the settled receipt; pending/credited/payment-received states are never counted as settled. A non-Verified or wrong-class challenge, a challenge/lease not on the run, a missing run cap, or an over-cap amount is rejected. No raw invoices, preimages, payment hashes, wallet material, or payout-target addresses are accepted or returned.',
       tags: ['Training', 'Operator', 'Pylon'],
       security: adminBearer,
       parameters: [pathParam('trainingRunRef', 'Training run ref.')],

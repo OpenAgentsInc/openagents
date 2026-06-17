@@ -39,6 +39,7 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   MDK_TREASURY_MNEMONIC?: string | undefined
   MDK_TREASURY_SERVICE_TOKEN?: string | undefined
   MDK_WALLET_MNEMONIC?: string | undefined
+  OPENAGENTS_SPARK_API_KEY?: string | undefined
   OPENAGENTS_ADMIN_API_TOKEN?: string | undefined
   OPENAGENTS_APP_URL?: string | undefined
   OPENAUTH_CLIENT_ID?: string | undefined
@@ -65,6 +66,11 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   SHC_CONTROL_API_URL?: string | undefined
   SHC_DISPATCH_MODE?: string | undefined
   SHC_RUNNER_CALLBACK_TOKEN?: string | undefined
+  SPARK_TREASURY_API_KEY?: string | undefined
+  SPARK_TREASURY_MNEMONIC?: string | undefined
+  SPARK_TREASURY_NETWORK?: string | undefined
+  SPARK_TREASURY_STORAGE_DIR?: string | undefined
+  SPARK_TREASURY_TIMEOUT_MS?: string | undefined
   TREASURY_DISPATCH_DAILY_SATS_CAP?: string | undefined
   TREASURY_DISPATCH_ENABLED?: string | undefined
   TREASURY_DISPATCH_LIQUIDITY_BUFFER_SATS?: string | undefined

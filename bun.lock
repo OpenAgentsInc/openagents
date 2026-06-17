@@ -177,6 +177,7 @@
       "name": "@openagentsinc/mdk-treasury",
       "version": "0.1.0",
       "dependencies": {
+        "@breeztech/breez-sdk-spark": "^0.15.1",
         "@moneydevkit/core": "0.19.0",
         "@moneydevkit/lightning-js": "0.1.84",
       },

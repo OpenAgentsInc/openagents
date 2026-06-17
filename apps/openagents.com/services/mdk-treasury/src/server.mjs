@@ -5,6 +5,13 @@ import {
   paymentDestinationKind,
   treasuryPayoutFailureDiagnostics,
 } from './pay-failure.mjs'
+import {
+  sparkTreasuryBalancePayload,
+  sparkTreasuryConfiguredFlags,
+  sparkTreasuryFundingPayload,
+  sparkTreasuryPayPayload,
+  sparkTreasuryUnavailableReason,
+} from './spark-treasury.mjs'
 
 const port = Number(process.env.PORT ?? '8080')
 const MAX_WAIT_SECS = 50
@@ -19,6 +26,7 @@ const secret = name => {
 const configuredFlags = () => ({
   accessTokenConfigured: secret('MDK_TREASURY_ACCESS_TOKEN') !== undefined,
   mnemonicConfigured: secret('MDK_TREASURY_MNEMONIC') !== undefined,
+  ...sparkTreasuryConfiguredFlags(),
   serviceTokenConfigured: secret('MDK_TREASURY_SERVICE_TOKEN') !== undefined,
 })
 
@@ -227,8 +235,7 @@ const payResponse = async (request, node) => {
 
   const destinationKind = paymentDestinationKind(destination)
   const beforeSnapshot = safePaySnapshot(node, destination)
-  const preflightMaxSendableSat =
-    beforeSnapshot.destinationMaxSendableSat
+  const preflightMaxSendableSat = beforeSnapshot.destinationMaxSendableSat
 
   if (
     beforeSnapshot.destinationMaxSendableSat === null ||
@@ -348,13 +355,9 @@ const payResponse = async (request, node) => {
     preflightBalanceMaxSendableSat: beforeSnapshot.maxSendableSat,
     preflightCoverageSat: preflightCoverageSat(beforeSnapshot, amountSat),
     preflightMaxSendableSat,
-    preflightRouteAvailable: preflightRouteAvailable(
-      beforeSnapshot,
-      amountSat,
-    ),
+    preflightRouteAvailable: preflightRouteAvailable(beforeSnapshot, amountSat),
     preimage: result.preimage ?? null,
-    preimagePresent:
-      result.preimage !== undefined && result.preimage !== null,
+    preimagePresent: result.preimage !== undefined && result.preimage !== null,
     resultReturned: true,
     status,
     timeoutSecs,
@@ -408,6 +411,41 @@ const handleRequest = async request => {
 
   if (authFailure !== null) {
     return authFailure
+  }
+
+  if (request.method === 'GET' && url.pathname === '/spark/balance') {
+    const sparkUnavailable = sparkTreasuryUnavailableReason()
+    if (sparkUnavailable !== null) {
+      return json(503, { error: sparkUnavailable })
+    }
+
+    return json(200, await sparkTreasuryBalancePayload())
+  }
+
+  if (
+    request.method === 'GET' &&
+    url.pathname === '/spark/funding-destination'
+  ) {
+    const sparkUnavailable = sparkTreasuryUnavailableReason()
+    if (sparkUnavailable !== null) {
+      return json(503, { error: sparkUnavailable })
+    }
+
+    return json(200, await sparkTreasuryFundingPayload())
+  }
+
+  if (request.method === 'POST' && url.pathname === '/spark/pay') {
+    const sparkUnavailable = sparkTreasuryUnavailableReason()
+    if (sparkUnavailable !== null) {
+      return json(503, { error: sparkUnavailable })
+    }
+
+    const result = await sparkTreasuryPayPayload(
+      await request.json().catch(() => null),
+    )
+    const status = typeof result.status === 'number' ? result.status : 200
+
+    return json(status, result)
   }
 
   const unavailable = nodeUnavailableReason()

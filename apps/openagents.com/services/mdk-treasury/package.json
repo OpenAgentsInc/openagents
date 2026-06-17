@@ -8,6 +8,7 @@
     "smoke": "bun scripts/smoke.mjs"
   },
   "dependencies": {
+    "@breeztech/breez-sdk-spark": "^0.15.1",
     "@moneydevkit/core": "0.19.0",
     "@moneydevkit/lightning-js": "0.1.84"
   },

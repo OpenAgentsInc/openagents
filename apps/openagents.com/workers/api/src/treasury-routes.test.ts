@@ -792,9 +792,7 @@ describe('operator treasury payout', () => {
             }
 
             if (path === '/pay' && init?.method === 'POST') {
-              paid.push(
-                String(JSON.parse(init.body ?? '{}').destination ?? ''),
-              )
+              paid.push(String(JSON.parse(init.body ?? '{}').destination ?? ''))
 
               return Promise.resolve(
                 jsonResponse(200, {
@@ -971,9 +969,7 @@ describe('operator treasury payout', () => {
               recipientConfirmedAt: null,
               recipientRef: input.recipientRef ?? null,
               redactedDestinationRef: input.redactedDestinationRef ?? null,
-              settledAt: input.settled
-                ? '2026-06-17T18:00:04.000Z'
-                : null,
+              settledAt: input.settled ? '2026-06-17T18:00:04.000Z' : null,
               state: input.settled ? 'settled' : 'pending',
             }),
           requireAdminApiToken: () => Promise.resolve(true),
@@ -997,6 +993,313 @@ describe('operator treasury payout', () => {
     expect(row?.redactedDestinationRef).toMatch(
       /^destination\.redacted\.treasury_payout\.[a-f0-9]{32}$/,
     )
+    expect(bodyText).not.toContain('recipient@spark.money')
+  })
+
+  test('uses the funded Spark treasury rail for Lightning Address payouts (#5183)', async () => {
+    const store = makeMemoryTransactionStore()
+    const sparkPayCalls: Array<Record<string, unknown>> = []
+    const mdkPayCalls: Array<Record<string, unknown>> = []
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({
+          amountSat: 50000,
+          destination: 'recipient@spark.money',
+          owedRef: 'owed.public.recognition.20260617',
+          owedSat: 50000,
+          recipientRef: 'agent:recipient_user',
+        }),
+        {
+          fetchSparkTreasury: (path, init) => {
+            if (path === '/spark/balance') {
+              return Promise.resolve(
+                jsonResponse(200, {
+                  balanceSat: 75000,
+                  maxSendableSat: 75000,
+                  rail: 'spark',
+                }),
+              )
+            }
+
+            if (path === '/spark/pay' && init?.method === 'POST') {
+              sparkPayCalls.push(JSON.parse(init.body ?? '{}'))
+
+              return Promise.resolve(
+                jsonResponse(200, {
+                  method: 'lnurl_pay',
+                  paymentHash: 'raw_hash_not_returned',
+                  paymentRef: 'payment.redacted.spark_treasury.abc123',
+                  preimage: 'raw_preimage_not_returned',
+                  rail: 'spark',
+                  status: 'succeeded',
+                }),
+              )
+            }
+
+            return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
+          },
+          fetchTreasury: (path, init) => {
+            if (path === '/pay' && init?.method === 'POST') {
+              mdkPayCalls.push(JSON.parse(init.body ?? '{}'))
+            }
+
+            return Promise.resolve(
+              path === '/balance'
+                ? jsonResponse(200, {
+                    balanceSat: 100000,
+                    maxSendableSat: 100000,
+                  })
+                : jsonResponse(404, { error: 'not_found' }),
+            )
+          },
+          recordPayoutTransaction: input =>
+            store.insert({
+              amountSat: input.amountSat,
+              bolt11: null,
+              createdAt: '2026-06-17T18:00:03.000Z',
+              direction: 'out',
+              expiresAt: null,
+              failureReasonRef: input.failureReasonRef ?? null,
+              id: 'treasury_payout_spark_success',
+              owedRef: input.owedRef ?? null,
+              owedSat: input.owedSat ?? null,
+              paymentRef: input.paymentRef,
+              recipientConfirmationRef: null,
+              recipientConfirmationState: 'unconfirmed',
+              recipientConfirmedAt: null,
+              recipientRef: input.recipientRef ?? null,
+              redactedDestinationRef: input.redactedDestinationRef ?? null,
+              settledAt: input.settled ? '2026-06-17T18:00:04.000Z' : null,
+              state: input.settled ? 'settled' : 'pending',
+            }),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+    const bodyText = await response.text()
+    const body = JSON.parse(bodyText) as {
+      attempts: ReadonlyArray<{ outcome: string; rail: string }>
+      paidAmountSat: number
+      paidVia: string
+      paymentRef: string
+      policyApplied: string
+      status: string
+    }
+    const row = store.rows.get('treasury_payout_spark_success')
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      paidAmountSat: 50000,
+      paidVia: 'spark_treasury',
+      paymentRef: 'payment.redacted.spark_treasury.abc123',
+      policyApplied: 'full',
+      status: 'succeeded',
+    })
+    expect(body.attempts).toEqual([
+      expect.objectContaining({
+        outcome: 'accepted',
+        rail: 'spark_treasury',
+      }),
+    ])
+    expect(sparkPayCalls).toEqual([
+      expect.objectContaining({
+        amountSat: 50000,
+        destination: 'recipient@spark.money',
+      }),
+    ])
+    expect(mdkPayCalls).toEqual([])
+    expect(row).toMatchObject({
+      amountSat: 50000,
+      owedRef: 'owed.public.recognition.20260617',
+      owedSat: 50000,
+      paymentRef: 'payment.redacted.spark_treasury.abc123',
+      recipientRef: 'agent:recipient_user',
+      state: 'settled',
+    })
+    expect(bodyText).not.toContain('recipient@spark.money')
+    expect(bodyText).not.toContain('raw_hash_not_returned')
+    expect(bodyText).not.toContain('raw_preimage_not_returned')
+  })
+
+  test('falls back to MDK when Spark treasury is not sufficiently funded (#5183)', async () => {
+    const mdkPayCalls: Array<Record<string, unknown>> = []
+    const sparkPayCalls: Array<Record<string, unknown>> = []
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({
+          amountSat: 50000,
+          destination: 'recipient@spark.money',
+        }),
+        {
+          fetchSparkTreasury: (path, init) => {
+            if (path === '/spark/balance') {
+              return Promise.resolve(
+                jsonResponse(200, {
+                  balanceSat: 250,
+                  maxSendableSat: 250,
+                }),
+              )
+            }
+
+            if (path === '/spark/pay' && init?.method === 'POST') {
+              sparkPayCalls.push(JSON.parse(init.body ?? '{}'))
+            }
+
+            return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
+          },
+          fetchTreasury: (path, init) => {
+            if (path === '/balance') {
+              return Promise.resolve(
+                jsonResponse(200, {
+                  balanceSat: 100000,
+                  maxSendableSat: 100000,
+                }),
+              )
+            }
+
+            if (path === '/pay' && init?.method === 'POST') {
+              mdkPayCalls.push(JSON.parse(init.body ?? '{}'))
+
+              return Promise.resolve(
+                jsonResponse(200, {
+                  paymentId: 'pay_mdk_after_spark_insufficient',
+                  status: 'succeeded',
+                }),
+              )
+            }
+
+            return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
+          },
+          requireAdminApiToken: () => Promise.resolve(true),
+          resolveLightningAddress: () =>
+            Promise.resolve({ ok: true, bolt11: 'lnbc-resolved-50000' }),
+        },
+      ),
+    )
+    const body = (await response.json()) as {
+      attempts: ReadonlyArray<{
+        diagnostics: { failureStage: string | null }
+        outcome: string
+        rail: string
+        reasonRef: string | null
+      }>
+      paidAmountSat: number
+      paidVia: string
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.paidAmountSat).toBe(50000)
+    expect(body.paidVia).toBe('primary')
+    expect(body.attempts).toMatchObject([
+      {
+        diagnostics: { failureStage: 'spark_treasury_insufficient' },
+        outcome: 'failed',
+        rail: 'spark_treasury',
+        reasonRef:
+          'reason.public.treasury_payout.insufficient_spendable_balance',
+      },
+      {
+        outcome: 'accepted',
+        rail: 'mdk_treasury',
+      },
+    ])
+    expect(sparkPayCalls).toEqual([])
+    expect(mdkPayCalls).toEqual([
+      {
+        amountSat: 50000,
+        destination: 'lnbc-resolved-50000',
+      },
+    ])
+  })
+
+  test('does not fall back to MDK after a Spark treasury dispatch failure (#5183)', async () => {
+    const store = makeMemoryTransactionStore()
+    const mdkPayCalls: Array<Record<string, unknown>> = []
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({
+          amountSat: 50000,
+          destination: 'recipient@spark.money',
+          recipientRef: 'agent:orrery',
+        }),
+        {
+          fetchSparkTreasury: (path, init) => {
+            if (path === '/spark/balance') {
+              return Promise.resolve(
+                jsonResponse(200, {
+                  balanceSat: 75000,
+                  maxSendableSat: 75000,
+                }),
+              )
+            }
+
+            if (path === '/spark/pay' && init?.method === 'POST') {
+              return Promise.resolve(
+                jsonResponse(502, {
+                  error: 'spark_treasury_pay_failed',
+                  failureStage: 'spark_pay',
+                  reasonRef: 'reason.public.treasury_payout.no_route',
+                }),
+              )
+            }
+
+            return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
+          },
+          fetchTreasury: (path, init) => {
+            if (path === '/pay' && init?.method === 'POST') {
+              mdkPayCalls.push(JSON.parse(init.body ?? '{}'))
+            }
+
+            return Promise.resolve(
+              path === '/balance'
+                ? jsonResponse(200, {
+                    balanceSat: 100000,
+                    maxSendableSat: 100000,
+                  })
+                : jsonResponse(404, { error: 'not_found' }),
+            )
+          },
+          recordPayoutTransaction: input =>
+            store.insert({
+              amountSat: input.amountSat,
+              bolt11: null,
+              createdAt: '2026-06-17T18:00:05.000Z',
+              direction: 'out',
+              expiresAt: null,
+              failureReasonRef: input.failureReasonRef ?? null,
+              id: 'treasury_payout_spark_failed',
+              owedRef: input.owedRef ?? null,
+              owedSat: input.owedSat ?? null,
+              paymentRef: input.paymentRef,
+              recipientConfirmationRef: null,
+              recipientConfirmationState: 'unconfirmed',
+              recipientConfirmedAt: null,
+              recipientRef: input.recipientRef ?? null,
+              redactedDestinationRef: input.redactedDestinationRef ?? null,
+              settledAt: null,
+              state: 'failed',
+            }),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+    const bodyText = await response.text()
+    const body = JSON.parse(bodyText) as {
+      paidVia: string
+      reasonRef: string
+    }
+
+    expect(response.status).toBe(502)
+    expect(body.paidVia).toBe('spark_treasury')
+    expect(body.reasonRef).toBe('reason.public.treasury_payout.no_route')
+    expect(mdkPayCalls).toEqual([])
+    expect(store.rows.get('treasury_payout_spark_failed')).toMatchObject({
+      amountSat: 50000,
+      failureReasonRef: 'reason.public.treasury_payout.no_route',
+      paymentRef: null,
+      recipientRef: 'agent:orrery',
+      state: 'failed',
+    })
     expect(bodyText).not.toContain('recipient@spark.money')
   })
 
