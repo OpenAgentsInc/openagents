@@ -1520,6 +1520,20 @@ const topicWithLastPost = (
     lastPost,
   })
 
+// D1 caps bound parameters at 100 per query. Any `IN (...)` over post ids must
+// be chunked, or a thread crossing ~100 posts makes the tip-stats query throw
+// and 500s the ENTIRE topic read (one large thread should never crash). Keep a
+// margin below 100.
+const D1_PARAM_CHUNK = 90
+
+const chunkForD1Params = <T>(items: ReadonlyArray<T>): T[][] => {
+  const chunks: T[][] = []
+  for (let index = 0; index < items.length; index += D1_PARAM_CHUNK) {
+    chunks.push(items.slice(index, index + D1_PARAM_CHUNK))
+  }
+  return chunks
+}
+
 const readForumPostTipStats = (
   db: D1Database,
   postIds: ReadonlyArray<string>,
@@ -1530,12 +1544,13 @@ const readForumPostTipStats = (
     return Effect.succeed(new Map())
   }
 
-  const placeholders = uniquePostIds.map(() => '?').join(', ')
-
-  return d1Effect('forum.readPostTipStats', () =>
-    db
-      .prepare(
-        `SELECT ma.target_post_id AS post_id,
+  return Effect.forEach(
+    chunkForD1Params(uniquePostIds),
+    batch =>
+      d1Effect('forum.readPostTipStats', () =>
+        db
+          .prepare(
+            `SELECT ma.target_post_id AS post_id,
                 COUNT(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
                   THEN 1
@@ -1560,29 +1575,33 @@ const readForumPostTipStats = (
             AND pe.archived_at IS NULL
           WHERE ma.action_kind = 'post_reward'
             AND ma.amount_asset = 'sats'
-            AND ma.target_post_id IN (${placeholders})
+            AND ma.target_post_id IN (${batch.map(() => '?').join(', ')})
             AND ma.archived_at IS NULL
           GROUP BY ma.target_post_id`,
-      )
-      .bind(...uniquePostIds)
-      .all<ForumPostTipStatsRow>(),
+          )
+          .bind(...batch)
+          .all<ForumPostTipStatsRow>(),
+      ),
+    { concurrency: 'unbounded' },
   ).pipe(
-    Effect.map(result => {
-      const entries = (result.results ?? []).map(
-        row =>
-          [
-            row.post_id,
-            {
-              staleness: forumPostTipStatsStaleness,
-              tipCount: Math.max(0, Number(row.tip_count ?? 0)),
-              totalCreditedSats: 0 as number,
-              totalPaidSats: Math.max(0, Number(row.total_paid_sats ?? 0)),
-              totalSettledSats: Math.max(
-                0,
-                Number(row.total_settled_sats ?? 0),
-              ),
-            },
-          ] as const,
+    Effect.map(results => {
+      const entries = results.flatMap(result =>
+        (result.results ?? []).map(
+          row =>
+            [
+              row.post_id,
+              {
+                staleness: forumPostTipStatsStaleness,
+                tipCount: Math.max(0, Number(row.tip_count ?? 0)),
+                totalCreditedSats: 0 as number,
+                totalPaidSats: Math.max(0, Number(row.total_paid_sats ?? 0)),
+                totalSettledSats: Math.max(
+                  0,
+                  Number(row.total_settled_sats ?? 0),
+                ),
+              },
+            ] as const,
+        ),
       )
 
       return new Map(entries)
@@ -1613,7 +1632,8 @@ const readForumPostTipStats = (
 
 // Credited-rung tips from the payments ledger (issue #4706). The query
 // is failure-tolerant: environments without migration 0160 simply show
-// no credited totals rather than breaking tip stats.
+// no credited totals rather than breaking tip stats. Chunked for the D1
+// 100-bound-parameter limit so large threads stay correct.
 const readCreditedPostTipTotals = (
   db: D1Database,
   postIds: ReadonlyArray<string>,
@@ -1622,33 +1642,33 @@ const readCreditedPostTipTotals = (
     return Effect.succeed(new Map())
   }
 
-  const placeholders = postIds.map(() => '?').join(', ')
-  const contextRefs = postIds.map(postId => `forum.post.${postId}`)
-
   return Effect.promise(async () => {
+    const totals = new Map<string, number>()
     try {
-      const result = await db
-        .prepare(
-          `SELECT context_ref, COALESCE(SUM(cost_msat), 0) AS credited_msat
+      for (const batch of chunkForD1Params(postIds)) {
+        const contextRefs = batch.map(postId => `forum.post.${postId}`)
+        const result = await db
+          .prepare(
+            `SELECT context_ref, COALESCE(SUM(cost_msat), 0) AS credited_msat
              FROM pay_ins
             WHERE pay_in_type = 'tip'
               AND rung = 'credited'
               AND state = 'paid'
-              AND context_ref IN (${placeholders})
+              AND context_ref IN (${batch.map(() => '?').join(', ')})
             GROUP BY context_ref`,
-        )
-        .bind(...contextRefs)
-        .all()
+          )
+          .bind(...contextRefs)
+          .all()
 
-      const totals = new Map<string, number>()
-      for (const row of (result.results ?? []) as Array<{
-        context_ref: unknown
-        credited_msat: unknown
-      }>) {
-        totals.set(
-          String(row.context_ref).replace('forum.post.', ''),
-          Math.floor(Number(row.credited_msat) / 1000),
-        )
+        for (const row of (result.results ?? []) as Array<{
+          context_ref: unknown
+          credited_msat: unknown
+        }>) {
+          totals.set(
+            String(row.context_ref).replace('forum.post.', ''),
+            Math.floor(Number(row.credited_msat) / 1000),
+          )
+        }
       }
       return totals
     } catch {
