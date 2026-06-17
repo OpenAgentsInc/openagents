@@ -31,7 +31,8 @@ proper 3D MMO world.
   with the live public summary stubbed into the local app, confirmed the
   `Enter run` control and training scene host render, dispatched a settlement
   selection, and verified the linked proof drawer appears.
-- Remaining work is tracker closeout under `openagents#5221`.
+- `openagents#5221` is the final tracker closeout for the completed issue
+  sequence.
 
 ## References Read
 
