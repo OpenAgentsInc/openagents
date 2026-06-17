@@ -151,6 +151,8 @@ import {
   requestPayoutTargetAdmission,
   sendWithMdk,
   sweepSparkBackupToMdk,
+  unifiedWalletBalanceFromStatus,
+  withUnifiedWalletBalance,
   writeCachedSparkTarget,
 } from "./wallet"
 import {
@@ -286,6 +288,7 @@ const nodeWalletActions: ControlCommandActions = {
       configured: w.configured,
       daemonOnline: w.daemonOnline,
       balanceSats: w.balanceSats,
+      unifiedBalance: w.unifiedBalance,
       receiveReady: w.receiveReady,
       sendReady: w.sendReady,
       readiness: w.readiness,
@@ -679,6 +682,10 @@ function operatorTextFromInventory(inventory: Awaited<ReturnType<typeof discover
     blockerRefs: ["blocker.wallet.daemon_offline"],
     payoutTargetRefs: [],
     settlementRefs: [],
+    unifiedBalance: unifiedWalletBalanceFromStatus({
+      balanceSats: null,
+      sendReady: false,
+    }),
   }
   return formatOperatorSnapshotText(
     createOperatorSnapshot({ inventory, wallet: wallet as Parameters<typeof createOperatorSnapshot>[0]["wallet"] }),
@@ -1009,6 +1016,23 @@ async function resolveSparkBackupOptions(
     // legacy-migration path already do.
     embeddedCredentialAvailable: true,
   }
+}
+
+async function readSparkBackupStatusProjection(state: PylonLocalState) {
+  const sparkBackupOptions = await resolveSparkBackupOptions(state)
+  const projection = await classifySparkBackupReceive(sparkBackupOptions)
+  if (projection.enabled && sparkBackupOptions.helper !== undefined) {
+    try {
+      const detected = await detectSparkBackupBalance(sparkBackupOptions.helper)
+      projection.detectedBalanceSats = detected.detectedBalanceSats
+      projection.unclaimedDepositCount = detected.unclaimedDepositCount
+      projection.claimableHtlcCount = detected.claimableHtlcCount
+      projection.claimableHtlcSats = detected.claimableHtlcSats
+    } catch {
+      return projection
+    }
+  }
+  return projection
 }
 
 // #5166 fleet diagnostic: load the Spark SDK with NO network and NO seed, and
@@ -2111,7 +2135,9 @@ async function main() {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const state = await ensurePylonLocalState(summary)
       if (command === "status") {
-        const status = await classifyMdkWallet()
+        const mdkStatus = await classifyMdkWallet()
+        const sparkBackup = await readSparkBackupStatusProjection(state)
+        const status = withUnifiedWalletBalance(mdkStatus, sparkBackup)
         const legacySparkMigration = await preflightLegacySparkMigration({
           dryRun: true,
           env: Bun.env,

@@ -10,6 +10,7 @@ import {
   classifyMdkReceiveFailure,
   classifyMdkWallet,
   classifySparkBackupReceive,
+  detectSparkBackupBalance,
   preflightLegacySparkMigration,
   prepareSparkBackupReceive,
   readCachedSparkTarget,
@@ -21,6 +22,7 @@ import {
   sendWithMdk,
   sparkBackupTargetPath,
   sweepSparkBackupToMdk,
+  withUnifiedWalletBalance,
   writeCachedSparkTarget,
   type SparkBackupHelper,
   type WalletCommandRunner,
@@ -71,6 +73,19 @@ describe("MDK wallet readiness and ledger", () => {
     expect(status.readiness).toBe("send-ready-blocked")
     expect(status.blockerRefs).toContain("blocker.wallet.send_readiness_unproven")
     expect(status.blockerRefs).toContain("blocker.wallet.mnemonic_only_restore_not_send_ready")
+    expect(status.unifiedBalance).toMatchObject({
+      mdkSpendableSats: 123,
+      sparkBackupClaimableSats: null,
+      sparkBackupCreditedSats: null,
+      sparkBackupPendingSweepSats: 0,
+      totalVisibleSats: 123,
+    })
+    expect(status.unifiedBalance.caveatRefs).toContain(
+      "caveat.wallet.total_visible_is_not_single_spendable_balance",
+    )
+    expect(status.unifiedBalance.caveatRefs).toContain(
+      "caveat.wallet.mdk_send_readiness_tracked_separately",
+    )
     expect(status.sendReadinessPreflight).toMatchObject({
       mode: "mnemonic-only-restore",
       outboundCapacityKnown: true,
@@ -95,6 +110,13 @@ describe("MDK wallet readiness and ledger", () => {
     expect(withoutPort.blockerRefs).toContain("blocker.wallet.mdk_port_unset")
     expect(withPort.sendReady).toBe(true)
     expect(withPort.readiness).toBe("send-ready")
+    expect(withPort.unifiedBalance).toMatchObject({
+      mdkSpendableSats: 123,
+      totalVisibleSats: 123,
+    })
+    expect(withPort.unifiedBalance.caveatRefs).not.toContain(
+      "caveat.wallet.mdk_send_readiness_tracked_separately",
+    )
     expect(withPort.sendReadinessPreflight).toMatchObject({
       mode: "original-wallet-home",
       outboundCapacityKnown: true,
@@ -620,6 +642,53 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
     expect(projection.state).toBe("helper-unavailable")
     expect(projection.lightningAddressRef).toBeNull()
     assertPublicProjectionSafe(projection)
+  })
+
+  test("unified balance folds MDK and Spark backup buckets without spend overclaim", async () => {
+    const mdkStatus = await classifyMdkWallet(
+      runner({ balance: { stdout: { balance_sats: 123, send_ready: true, outbound_capacity_sats: 21 } } }),
+      { MDK_WALLET_PORT: "3457" } as NodeJS.ProcessEnv,
+    )
+    const helper = sparkHelper({
+      address: { stdout: { spark_address: RAW_SPARK_ADDRESS } },
+      status: {
+        stdout: {
+          balance_sats: 50_000,
+          claimable_htlc_count: 1,
+          claimable_htlc_sats: 7_000,
+          unclaimed_deposit_count: 0,
+        },
+      },
+    })
+    const sparkBackup = await classifySparkBackupReceive({
+      enabled: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      helper,
+    })
+    const detected = await detectSparkBackupBalance(helper)
+    sparkBackup.detectedBalanceSats = detected.detectedBalanceSats
+    sparkBackup.claimableHtlcSats = detected.claimableHtlcSats
+    sparkBackup.claimableHtlcCount = detected.claimableHtlcCount
+    sparkBackup.unclaimedDepositCount = detected.unclaimedDepositCount
+
+    const status = withUnifiedWalletBalance(mdkStatus, sparkBackup)
+
+    expect(status.unifiedBalance).toMatchObject({
+      mdkSpendableSats: 123,
+      sparkBackupClaimableSats: 7_000,
+      sparkBackupCreditedSats: 50_000,
+      sparkBackupPendingSweepSats: 50_000,
+      totalVisibleSats: 57_123,
+    })
+    expect(status.unifiedBalance.sourceRefs).toContain("source.wallet.spark_backup.status")
+    expect(status.unifiedBalance.caveatRefs).toContain(
+      "caveat.wallet.spark_backup_is_not_mdk_spendable_until_sweep_receipt",
+    )
+    expect(status.unifiedBalance.nextActionRefs).toContain(
+      "action.wallet.spark_backup.review_consent_sweep",
+    )
+    expect(JSON.stringify(status.unifiedBalance)).not.toContain(RAW_SPARK_ADDRESS)
+    assertPublicProjectionSafe(status.unifiedBalance)
   })
 
   test("assertPublicProjectionSafe rejects projections containing raw Spark material", () => {

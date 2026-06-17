@@ -16,9 +16,11 @@ two balances:
 - Spark backup balance: receive-only backup funds, claimable/credited after
   Spark sync/claim, not exposed as Spark send authority.
 
-## Selected near-term path: unified balance view
+## Implemented near-term path: unified balance view (#5168)
 
-Show one contributor-facing wallet summary with separate backed buckets:
+Pylon now shows one contributor-facing wallet summary with separate backed
+buckets in `pylon wallet status`, the local control wallet-status response, and
+the operator snapshot:
 
 - `mdkSpendableSats`
 - `sparkBackupCreditedSats`
@@ -35,10 +37,14 @@ operator surfaces should preserve the existing caveats:
 - Spark backup balance is not MDK spendable until a real sweep/transfer receipt
   exists.
 
+The summary carries `caveat.wallet.total_visible_is_not_single_spendable_balance`
+and `caveat.wallet.spark_backup_is_not_mdk_spendable_until_sweep_receipt` so
+callers can display the aggregate without implying one spendable MDK balance.
+
 ## Consolidation options
 
 1. Unified balance view only.
-   This is safest and should ship first. It reads MDK status plus Spark
+   **Done in #5168.** It reads MDK status plus Spark
    `backup-status`, displays one summary, and leaves the two custody/rail states
    explicit.
 

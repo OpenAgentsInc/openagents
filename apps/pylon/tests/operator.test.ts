@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { projectHostInventoryFixture } from "../src/inventory"
 import { createOperatorSnapshot, formatOperatorSnapshotText } from "../src/operator"
 import { assertPublicProjectionSafe } from "../src/state"
-import type { WalletStatusProjection } from "../src/wallet"
+import { unifiedWalletBalanceFromStatus, type WalletStatusProjection } from "../src/wallet"
 
 const inventory = projectHostInventoryFixture({
   platform: "darwin",
@@ -30,6 +30,10 @@ const wallet: WalletStatusProjection = {
   blockerRefs: ["blocker.wallet.send_readiness_unproven"],
   payoutTargetRefs: ["payout.bolt12.publicref"],
   settlementRefs: [],
+  unifiedBalance: unifiedWalletBalanceFromStatus({
+    balanceSats: 21,
+    sendReady: false,
+  }),
 }
 
 describe("Pylon operator snapshot", () => {
@@ -46,12 +50,14 @@ describe("Pylon operator snapshot", () => {
     expect(snapshot.desiredMode).toBe("automated")
     expect(snapshot.earningsState).toBe("no-spend")
     expect(snapshot.wallet.balanceKnown).toBe(true)
+    expect(snapshot.wallet.unifiedBalance.totalVisibleSats).toBe(21)
     expect(snapshot.inspect.eligibleInventoryCount).toBe(1)
     expect(snapshot.recovery.operatorOptInRequired).toBe(true)
     expect(snapshot.recovery.sandboxProfileRequired).toBe(true)
     expect(snapshot.recovery.budgetRequired).toBe(true)
     expect(snapshot.recovery.noWalletSecretEvidenceRequired).toBe(true)
     expect(text).toContain("Operate: automated")
+    expect(text).toContain("Total visible: 21 sats")
     expect(text).toContain("Recovery: opt-in gates")
     expect(JSON.stringify(snapshot)).not.toContain("lnbc")
     expect(JSON.stringify(snapshot)).not.toContain("mnemonic")

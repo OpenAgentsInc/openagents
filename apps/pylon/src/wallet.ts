@@ -29,6 +29,7 @@ export type WalletStatusProjection = {
   payoutTargetRefs: string[]
   sendReadinessPreflight: SendReadinessPreflight
   settlementRefs: string[]
+  unifiedBalance: UnifiedWalletBalanceProjection
   legacySparkMigration?: LegacySparkMigrationPreflight
 }
 
@@ -180,6 +181,19 @@ export type SendReadinessPreflight = {
   portConfigured: boolean
   portIsolationRef: "mdk.port.configured" | "mdk.port.default_possible_crosstalk"
   sendReady: boolean
+}
+
+export type UnifiedWalletBalanceProjection = {
+  schema: "openagents.pylon.unified_wallet_balance.v0.1"
+  mdkSpendableSats: number | null
+  sparkBackupCreditedSats: number | null
+  sparkBackupClaimableSats: number | null
+  sparkBackupPendingSweepSats: number | null
+  totalVisibleSats: number | null
+  sourceRefs: string[]
+  caveatRefs: string[]
+  nextActionRefs: string[]
+  contentRedacted: true
 }
 
 export type WalletNetworkOptions = {
@@ -391,6 +405,85 @@ function buildSendReadinessPreflight(input: {
   }
 }
 
+const nonNegativeSats = (value: number | null | undefined): number | null =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : null
+
+const sumKnownSats = (values: ReadonlyArray<number | null>): number | null => {
+  const known = values.filter((value): value is number => value !== null)
+  return known.length === 0
+    ? null
+    : known.reduce((total, value) => total + value, 0)
+}
+
+export function unifiedWalletBalanceFromStatus(
+  status: Pick<WalletStatusProjection, "balanceSats" | "sendReady">,
+  sparkBackup?: Pick<
+    SparkBackupReceiveProjection,
+    "claimableHtlcSats" | "detectedBalanceSats" | "nextActionRefs" | "state"
+  >,
+): UnifiedWalletBalanceProjection {
+  const mdkSpendableSats = nonNegativeSats(status.balanceSats)
+  const sparkBackupCreditedSats = nonNegativeSats(
+    sparkBackup?.detectedBalanceSats,
+  )
+  const sparkBackupClaimableSats = nonNegativeSats(
+    sparkBackup?.claimableHtlcSats,
+  )
+  const sparkBackupPendingSweepSats =
+    sparkBackupCreditedSats !== null && sparkBackupCreditedSats > 0
+      ? sparkBackupCreditedSats
+      : 0
+  const hasSparkBalance =
+    (sparkBackupCreditedSats ?? 0) > 0 ||
+    (sparkBackupClaimableSats ?? 0) > 0 ||
+    sparkBackup?.state === "sweep-to-mdk-recommended"
+
+  return {
+    schema: "openagents.pylon.unified_wallet_balance.v0.1",
+    mdkSpendableSats,
+    sparkBackupCreditedSats,
+    sparkBackupClaimableSats,
+    sparkBackupPendingSweepSats,
+    totalVisibleSats: sumKnownSats([
+      mdkSpendableSats,
+      sparkBackupCreditedSats,
+      sparkBackupClaimableSats,
+    ]),
+    sourceRefs: [
+      "source.wallet.mdk_agent_wallet.balance",
+      ...(sparkBackup === undefined
+        ? []
+        : ["source.wallet.spark_backup.status"]),
+    ],
+    caveatRefs: [
+      "caveat.wallet.total_visible_is_not_single_spendable_balance",
+      "caveat.wallet.spark_backup_is_not_mdk_spendable_until_sweep_receipt",
+      ...(status.sendReady
+        ? []
+        : ["caveat.wallet.mdk_send_readiness_tracked_separately"]),
+    ],
+    nextActionRefs: hasSparkBalance
+      ? [
+          "action.wallet.spark_backup.review_consent_sweep",
+          ...(sparkBackup?.nextActionRefs ?? []),
+        ]
+      : [],
+    contentRedacted: true,
+  }
+}
+
+export function withUnifiedWalletBalance(
+  status: WalletStatusProjection,
+  sparkBackup?: SparkBackupReceiveProjection,
+): WalletStatusProjection {
+  return {
+    ...status,
+    unifiedBalance: unifiedWalletBalanceFromStatus(status, sparkBackup),
+  }
+}
+
 async function postPylonEvent(
   options: WalletNetworkOptions,
   input: {
@@ -449,6 +542,10 @@ export async function classifyMdkWallet(
       payoutTargetRefs: [],
       sendReadinessPreflight,
       settlementRefs: [],
+      unifiedBalance: unifiedWalletBalanceFromStatus({
+        balanceSats: null,
+        sendReady: false,
+      }),
     } satisfies WalletStatusProjection
   }
 
@@ -478,6 +575,10 @@ export async function classifyMdkWallet(
       payoutTargetRefs: [],
       sendReadinessPreflight,
       settlementRefs: [],
+      unifiedBalance: unifiedWalletBalanceFromStatus({
+        balanceSats: null,
+        sendReady: false,
+      }),
     } satisfies WalletStatusProjection
   }
 
@@ -507,6 +608,10 @@ export async function classifyMdkWallet(
     payoutTargetRefs: [],
     sendReadinessPreflight,
     settlementRefs: [],
+    unifiedBalance: unifiedWalletBalanceFromStatus({
+      balanceSats: balance,
+      sendReady,
+    }),
   } satisfies WalletStatusProjection
 }
 

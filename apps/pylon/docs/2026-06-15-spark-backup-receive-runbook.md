@@ -89,6 +89,18 @@ Goal: prove that when MDK cannot create a receive request, the node still
 hands out a local Spark backup target, and that public output carries only
 redacted refs.
 
+0. Check the unified local wallet summary:
+
+   ```sh
+   pylon wallet status
+   ```
+
+   The `unifiedBalance` block shows `mdkSpendableSats`,
+   `sparkBackupCreditedSats`, `sparkBackupClaimableSats`,
+   `sparkBackupPendingSweepSats`, and `totalVisibleSats`. The total is visible
+   value, not one spendable MDK balance; Spark backup sats remain non-MDK-
+   spendable until a later consented sweep records a reconcile receipt.
+
 1. Confirm enablement and helper readiness (no funds, no movement):
 
    ```sh
