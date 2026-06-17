@@ -54,12 +54,14 @@ dependency wiring as its other operator actions.
    policyApplied, paymentId, status }` on success. On failure it returns a JSON
    body with `error`, `policyApplied`, a public-safe `reasonRef`, and safe
    diagnostics when the treasury container can provide them (`destinationKind`,
-   `failureStage`, `preflightMaxSendableSat`, `reasonClass`, `timeoutSecs`);
+   `failureStage`, `preflightMaxSendableSat`, `reasonClass`, `timeoutSecs`,
+   `errorName`, `errorCode`, `messageFingerprint`);
    manual operator calls must use `curl --fail-with-body` or omit `-f` so that
    body is not suppressed. The container classifies known failures before the
    Worker sees them, and the Worker falls back to its own classifier for older
-   or generic payloads, while still refusing to store or echo raw daemon text,
-   destinations, invoices, payment hashes, or preimages.
+   or generic payloads. `messageFingerprint` is a SHA-256 fingerprint of the
+   raw daemon message for correlation only; the route still refuses to store or
+   echo raw daemon text, destinations, invoices, payment hashes, or preimages.
    A failure before a durable payment id means no sats have been proven to leave
    the treasury; confirm by re-reading `balanceSat` / `maxSendableSat`.
    Large Lightning Address sends may fail even while smaller sends to the same
@@ -154,11 +156,22 @@ attempts without a durable MDK payment id store `payment_ref:null` and a
 public-safe `failure_reason_ref`; they never store raw destinations, BOLT11
 invoices, hashes, preimages, or daemon error text. Operator failure responses
 may include the public-safe diagnostics listed above; the public page reads
-from the ledger but shows only time, direction, amount, and state. The
-container's
-in-memory receive tracking means a donation confirmed across a container
-restart may sit pending until expiry even though the sats arrived — balance is
-always authoritative.
+from the ledger but shows only time, direction, amount, and state.
+
+Outbound MDK payment outcomes are now also journaled in the Worker-side
+`MdkTreasuryContainer` / `MdkTipsBufferContainer` Durable Object storage. When
+`POST /pay` or `GET /payments/{paymentId}` returns a terminal `succeeded` or
+`failed` state, the Container wrapper stores only `{ status, reasonRef }` under
+the private payment id. Later reconciliation can recover that terminal state
+even if the Bun service process lost its in-memory event map. This journal is
+not a public ledger and does not store raw daemon text, payment destinations,
+invoices, hashes, preimages, mnemonics, or tokens. If no Worker request ever
+observed the terminal event before a hard container loss, the row remains
+pending rather than guessed.
+
+The container's in-memory receive tracking means a donation confirmed across a
+container restart may sit pending until expiry even though the sats arrived —
+balance is always authoritative.
 
 Artanis should link `/treasury` (never raw balances pasted into posts) when
 reporting treasury state publicly, and may cite `GET /api/public/treasury`

@@ -142,11 +142,20 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   the row to `settled` or `failed`; it never returns raw payment ids, hashes,
   invoices, preimages, destinations, or wallet material. Worker cron now runs
   the same bounded reconciliation over pending outbound rows so future terminal
-  outcomes are persisted without a manual operator hit. **Follow-up hardening:**
-  pre-dispatch payout failures now persist as `failed` outbound rows with
-  `payment_ref:null` plus a public-safe `failure_reason_ref`, and operator curl
-  calls must preserve the JSON body (`--fail-with-body` or no `-f`) so 502
-  details are not hidden. Policy:
+  outcomes are persisted without a manual operator hit. **Resolved #5173
+  hardening:** pre-dispatch payout failures now persist as `failed` outbound
+  rows with `payment_ref:null` plus a public-safe `failure_reason_ref`, operator
+  curl calls must preserve the JSON body (`--fail-with-body` or no `-f`) so 502
+  details are not hidden, and the Worker-side treasury/tips-buffer Container
+  Durable Objects journal terminal outbound outcomes (`succeeded` / `failed`)
+  after `/pay` or `/payments/{paymentId}` observes them. The journal stores only
+  terminal state and a public-safe `reasonRef`; it does not store raw daemon
+  text, destinations, invoices, hashes, preimages, mnemonics, or tokens.
+  Follow-up Orrery retries bracketed the Spark Lightning Address rail: 25,000
+  sats succeeds, while 30,000 / 40,000 / 50,000 fail before dispatch with
+  sufficient `preflightMaxSendableSat`, no payment id, no treasury balance
+  movement, and the same MDK `GenericFailure` fingerprint. Until upstream is
+  fixed, split this rail at <=25,000 sats. Policy:
   `docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md`;
   payment status:
   `docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md`.

@@ -895,8 +895,12 @@ describe('operator treasury payout', () => {
               return Promise.resolve(
                 jsonResponse(502, {
                   destinationKind: 'bolt11',
+                  errorCode: 'err_private_route',
+                  errorName: 'mdk_error',
                   error: 'treasury_pay_failed',
                   failureStage: 'pay_throws',
+                  messageFingerprint:
+                    '9aedda5a994a799337d6c5398271f2468702ee95b305d0d08f3a7c8f14eabf19',
                   preflightMaxSendableSat: 94000,
                   reason: 'raw private daemon route failure',
                   reasonClass: 'no_route',
@@ -931,7 +935,10 @@ describe('operator treasury payout', () => {
     const body = JSON.parse(bodyText) as {
       diagnostics: {
         destinationKind: string | null
+        errorCode: string | null
+        errorName: string | null
         failureStage: string | null
+        messageFingerprint: string | null
         preflightMaxSendableSat: number | null
         reasonClass: string | null
         timeoutSecs: number | null
@@ -943,7 +950,11 @@ describe('operator treasury payout', () => {
     expect(body.reasonRef).toBe('reason.public.treasury_payout.no_route')
     expect(body.diagnostics).toEqual({
       destinationKind: 'bolt11',
+      errorCode: 'err_private_route',
+      errorName: 'mdk_error',
       failureStage: 'pay_throws',
+      messageFingerprint:
+        '9aedda5a994a799337d6c5398271f2468702ee95b305d0d08f3a7c8f14eabf19',
       preflightMaxSendableSat: 94000,
       reasonClass: 'no_route',
       timeoutSecs: 50,

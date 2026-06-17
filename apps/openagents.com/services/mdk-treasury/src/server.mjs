@@ -2,8 +2,8 @@ import { MAINNET_MDK_NODE_OPTIONS } from '@moneydevkit/core'
 import { MdkNode } from '@moneydevkit/lightning-js'
 
 import {
-  classifyTreasuryPayoutFailure,
   paymentDestinationKind,
+  treasuryPayoutFailureDiagnostics,
 } from './pay-failure.mjs'
 
 const port = Number(process.env.PORT ?? '8080')
@@ -198,14 +198,17 @@ const payResponse = async (request, node) => {
   try {
     result = node.payWhileRunning(destination, amountSat * 1000, timeoutSecs)
   } catch (error) {
-    const classified = classifyTreasuryPayoutFailure(error)
+    const diagnostics = treasuryPayoutFailureDiagnostics(error)
     console.warn({
       amountSat,
       destinationKind,
+      errorCode: diagnostics.errorCode,
+      errorName: diagnostics.errorName,
       event: 'treasury_pay_failed',
       failureStage: 'pay_throws',
+      messageFingerprint: diagnostics.messageFingerprint,
       preflightMaxSendableSat,
-      reasonClass: classified.reasonClass,
+      reasonClass: diagnostics.reasonClass,
       service: 'openagents-mdk-treasury',
       timeoutSecs,
     })
@@ -213,12 +216,15 @@ const payResponse = async (request, node) => {
     return json(502, {
       amountSat,
       destinationKind,
+      errorCode: diagnostics.errorCode,
+      errorName: diagnostics.errorName,
       error: 'treasury_pay_failed',
       failureStage: 'pay_throws',
+      messageFingerprint: diagnostics.messageFingerprint,
       preflightMaxSendableSat,
       reason: error instanceof Error ? error.message : String(error),
-      reasonClass: classified.reasonClass,
-      reasonRef: classified.reasonRef,
+      reasonClass: diagnostics.reasonClass,
+      reasonRef: diagnostics.reasonRef,
       timeoutSecs,
     })
   }

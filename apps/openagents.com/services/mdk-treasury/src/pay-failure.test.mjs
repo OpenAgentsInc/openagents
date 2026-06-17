@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   classifyTreasuryPayoutFailure,
   paymentDestinationKind,
+  treasuryPayoutFailureDiagnostics,
   treasuryPayoutFailureReasonRef,
 } from './pay-failure.mjs'
 
@@ -32,6 +33,22 @@ describe('treasury payout failure classification', () => {
       reasonClass: 'failed',
       reasonRef: 'reason.public.treasury_payout.failed',
     })
+  })
+
+  test('adds safe opaque diagnostics without returning raw daemon text', () => {
+    const error = new Error('private daemon text with route material')
+    error.code = 'ERR_PRIVATE_ROUTE'
+    const diagnostics = treasuryPayoutFailureDiagnostics(error)
+
+    expect(diagnostics).toEqual({
+      errorCode: 'err_private_route',
+      errorName: 'error',
+      messageFingerprint:
+        '47d5053bbbe4cf94c5f2a5e135adfded01c5f1d3a3b93fdd1229de6f40fa9b5b',
+      reasonClass: 'no_route',
+      reasonRef: 'reason.public.treasury_payout.no_route',
+    })
+    expect(JSON.stringify(diagnostics)).not.toContain('private daemon text')
   })
 })
 

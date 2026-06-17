@@ -1010,6 +1010,15 @@ export const handleOperatorTreasuryPayoutApi = (
             const timeoutSecs = safeTreasuryPayoutDiagnosticNumber(
               payResult.timeoutSecs,
             )
+            const errorCode = safeTreasuryPayoutDiagnosticString(
+              payResult.errorCode,
+            )
+            const errorName = safeTreasuryPayoutDiagnosticString(
+              payResult.errorName,
+            )
+            const messageFingerprint = safeTreasuryPayoutDiagnosticString(
+              payResult.messageFingerprint,
+            )
             const genericError =
               typeof payResult.error === 'string' &&
               payResult.error === 'treasury_pay_failed'
@@ -1053,7 +1062,10 @@ export const handleOperatorTreasuryPayoutApi = (
                 reasonRef: failureReasonRef,
                 diagnostics: {
                   destinationKind,
+                  errorCode,
+                  errorName,
                   failureStage,
+                  messageFingerprint,
                   preflightMaxSendableSat,
                   reasonClass,
                   timeoutSecs,

@@ -232,6 +232,14 @@ import {
   mdkContainerEnvVars,
   optionalMdkContainerSecret,
 } from './mdk-container-env'
+import {
+  type DurableMdkPaymentOutcome,
+  durableMdkPaymentOutcomeResponse,
+  mdkPaymentIdFromPayload,
+  mdkPaymentIdFromStatusPath,
+  mdkPaymentOutcomeStorageKey,
+  mdkTerminalOutcomeFromPayload,
+} from './mdk-payment-outcome-journal'
 import { makeMulletRoutes } from './mullet/routes'
 import { makeNativeListsService } from './native-lists'
 import { makeNativeListsRoutes } from './native-lists-routes'
@@ -539,6 +547,97 @@ export class MdkSidecarContainer extends Container<Env> {
   }
 }
 
+class DurableMdkOutcomeContainer extends Container<Env> {
+  private async readPaymentOutcome(
+    paymentId: string,
+  ): Promise<DurableMdkPaymentOutcome | null> {
+    const value = await this.ctx.storage.get<DurableMdkPaymentOutcome>(
+      mdkPaymentOutcomeStorageKey(paymentId),
+    )
+
+    return value === undefined ? null : value
+  }
+
+  private async writePaymentOutcome(
+    paymentId: string,
+    outcome: DurableMdkPaymentOutcome,
+  ): Promise<void> {
+    await this.ctx.storage.put(mdkPaymentOutcomeStorageKey(paymentId), outcome)
+  }
+
+  private async journalResponseOutcome(response: Response): Promise<void> {
+    const payload = await response
+      .clone()
+      .json()
+      .catch(() => null)
+    const paymentId = mdkPaymentIdFromPayload(payload)
+
+    if (paymentId === null) {
+      return
+    }
+
+    const outcome = mdkTerminalOutcomeFromPayload(
+      payload,
+      new Date().toISOString(),
+    )
+
+    if (outcome !== null) {
+      await this.writePaymentOutcome(paymentId, outcome)
+    }
+  }
+
+  override async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+
+    if (request.method === 'POST' && url.pathname === '/pay') {
+      const response = await this.containerFetch(request)
+      await this.journalResponseOutcome(response)
+
+      return response
+    }
+
+    if (request.method === 'GET') {
+      const paymentId = mdkPaymentIdFromStatusPath(url.pathname)
+
+      if (paymentId !== null) {
+        try {
+          const response = await this.containerFetch(request)
+          const payload = await response
+            .clone()
+            .json()
+            .catch(() => null)
+          const outcome = mdkTerminalOutcomeFromPayload(
+            payload,
+            new Date().toISOString(),
+          )
+
+          if (outcome !== null) {
+            await this.writePaymentOutcome(paymentId, outcome)
+
+            return response
+          }
+
+          const stored = await this.readPaymentOutcome(paymentId)
+
+          return stored === null
+            ? response
+            : durableMdkPaymentOutcomeResponse(paymentId, stored)
+        } catch (error) {
+          const stored = await this.readPaymentOutcome(paymentId)
+
+          if (stored !== null) {
+            return durableMdkPaymentOutcomeResponse(paymentId, stored)
+          }
+
+          throw error
+        }
+      }
+    }
+
+    return this.containerFetch(request)
+  }
+}
+
 const mdkTreasuryContainerEnvVars = (
   environment: OpenAgentsWorkerConfigEnv,
 ): Record<string, string> => {
@@ -561,7 +660,7 @@ const mdkTreasuryContainerEnvVars = (
   }
 }
 
-export class MdkTreasuryContainer extends Container<Env> {
+export class MdkTreasuryContainer extends DurableMdkOutcomeContainer {
   override defaultPort = 8080
   override sleepAfter = '30m'
   override pingEndpoint = 'localhost:8080/healthz'
@@ -632,7 +731,7 @@ const mdkTipsBufferContainerEnvVars = (
   }
 }
 
-export class MdkTipsBufferContainer extends Container<Env> {
+export class MdkTipsBufferContainer extends DurableMdkOutcomeContainer {
   override defaultPort = 8080
   override sleepAfter = '30m'
   override pingEndpoint = 'localhost:8080/healthz'

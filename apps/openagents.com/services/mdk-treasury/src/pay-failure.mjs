@@ -1,6 +1,52 @@
+import { createHash } from 'node:crypto'
+
 const publicReasonPrefix = 'reason.public.treasury_payout'
 
 const includesAny = (text, values) => values.some(value => text.includes(value))
+
+const safeDiagnosticSegment = value => {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:-]+/gu, '_')
+    .replace(/^_+|_+$/gu, '')
+    .slice(0, 80)
+
+  return normalized === '' ? null : normalized
+}
+
+const errorDetail = error => (error instanceof Error ? error.message : String(error))
+
+const errorCode = error => {
+  if (typeof error !== 'object' || error === null) {
+    return null
+  }
+
+  const record = error
+  const cause =
+    typeof record.cause === 'object' && record.cause !== null
+      ? record.cause
+      : null
+
+  return (
+    safeDiagnosticSegment(record.code) ??
+    safeDiagnosticSegment(record.errorCode) ??
+    safeDiagnosticSegment(cause?.code) ??
+    safeDiagnosticSegment(cause?.errorCode)
+  )
+}
+
+const messageFingerprint = detail => {
+  const normalized = String(detail ?? '').trim()
+
+  return normalized === ''
+    ? null
+    : createHash('sha256').update(normalized).digest('hex')
+}
 
 export const treasuryPayoutFailureReasonRef = detail => {
   const normalized = String(detail ?? '')
@@ -68,12 +114,25 @@ export const reasonClassFromRef = reasonRef =>
     : 'failed'
 
 export const classifyTreasuryPayoutFailure = error => {
-  const detail = error instanceof Error ? error.message : String(error)
+  const detail = errorDetail(error)
   const reasonRef = treasuryPayoutFailureReasonRef(detail)
 
   return {
     reasonClass: reasonClassFromRef(reasonRef),
     reasonRef,
+  }
+}
+
+export const treasuryPayoutFailureDiagnostics = error => {
+  const detail = errorDetail(error)
+  const classified = classifyTreasuryPayoutFailure(error)
+
+  return {
+    ...classified,
+    errorCode: errorCode(error),
+    errorName:
+      error instanceof Error ? safeDiagnosticSegment(error.name) : null,
+    messageFingerprint: messageFingerprint(detail),
   }
 }
 
