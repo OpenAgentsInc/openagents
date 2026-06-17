@@ -87,6 +87,12 @@ primitives.
   public nav/header was removed for this route, and status/proof panels sit over
   the 3D canvas with translucent black glass instead of enclosing the scene in
   an app-frame card.
+- 2026-06-17: The stage-node glyph grammar was tightened after visual review.
+  `registered`, `qualified`, `state synced`, `active`, `sync reentry`, `R1`, and
+  `R2` are aggregate run-stage concepts, not individual pylons. They now render
+  with compact gate markers on `/tassadar`; pylon/record orb glyphs are reserved
+  for actual contributor/entity refs such as `P1` through `P6`, replay workers,
+  validators, trace refs, and receipt refs.
 
 ## Short answer
 
@@ -254,6 +260,13 @@ Those aggregate stage nodes are allowed only as summarized counters. They can
 color or label the run state, but they must not create anonymous moving pulses.
 They must not be read as "there are N hidden real nodes behind each moving
 pulse".
+
+They also must not use the same pylon/record orb glyph on live pages. On
+`/tassadar`, aggregate stage nodes use compact gate markers. A label like
+`registered / 6 pylons seen` means "the registration stage has a public count of
+six pylon refs observed"; it is not itself a pylon and not one of the six pylon
+records. The six pylon records are the labeled `P1` through `P6` contributor and
+entity marks derived from public `pylonRef` fields.
 
 The data-bound marks in the current `/tassadar` scene are:
 

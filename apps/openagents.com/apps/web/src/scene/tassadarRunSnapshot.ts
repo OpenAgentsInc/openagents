@@ -453,6 +453,7 @@ export const trainingRunEntityLayerFromPublicSummary = (
   | 'entities'
   | 'lossCurve'
   | 'motionPolicy'
+  | 'stageNodeGlyph'
 > => {
   const rows = summary.realGradient?.leaderboardRows
   const pairs = summary.realGradient?.verifiedReplayPairs
@@ -480,6 +481,7 @@ export const trainingRunEntityLayerFromPublicSummary = (
       evidence: 'required',
       structuralEdges: 'static',
     },
+    stageNodeGlyph: 'compact_gate',
   }
 }
 

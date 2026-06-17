@@ -212,6 +212,13 @@ ambient orbit motion static by default, and can require `sourceRefs` before
 rendering beams or bursts. `/tassadar` uses that strict mode and only emits
 verified replay beams and real-Bitcoin bursts with public refs.
 
+The same distinction applies to shape language. Stage labels such as
+`registered`, `qualified`, `state synced`, `active`, and `sync reentry` are
+aggregate run-stage counters, not pylons. They should render as compact gate
+markers on live pages. The pylon/record orb language belongs to actual refs:
+`P1` through `P6`, replay workers, validators, accepted trace refs, and receipt
+refs.
+
 1. Keep the `motionPolicy` tests green: base edge flow pulses must stay disabled
    for `/tassadar`, and anonymous renderer motion must not re-enter through
    graph topology.
@@ -377,19 +384,22 @@ families.
 4. Let roles drive geometry:
    contributor nodes sit around the run, worker-validator pairs form replay
    beams, corpus sits as accumulation, settlement is a burst, blockers are gates.
-5. Use motion only when there is a bound public ref or measurable live state
+5. Use compact gate glyphs for aggregate stage concepts. Do not use pylon-like
+   bullseye/orb glyphs for `registered / 6 pylons seen` style stage counters;
+   those are counters attached to a run phase, not the pylon records themselves.
+6. Use motion only when there is a bound public ref or measurable live state
    transition:
    flowing trace, replay pulse, receipt burst, slot-text counter roll, and
    heartbeat/liveness motion all need source refs or timestamped projections.
    Static proof should stay static.
-6. Never use one glow for multiple truths. Online, assigned, verified, settled,
+7. Never use one glow for multiple truths. Online, assigned, verified, settled,
    and recipient-confirmed need separate encodings.
-7. The first read should be visual; the second read should be inspectable refs.
+8. The first read should be visual; the second read should be inspectable refs.
    Every important visual element needs a data-display peer.
-8. Zero states are first-class. A run with no verified traces should still look
+9. Zero states are first-class. A run with no verified traces should still look
    like a real run, not an empty marketing failure.
-9. Anonymous edge pulses are banned for live training pages. If an edge does not
-   have a motion event, render it as static structure.
+10. Anonymous edge pulses are banned for live training pages. If an edge does not
+    have a motion event, render it as static structure.
 
 ## Candidate scene grammar
 

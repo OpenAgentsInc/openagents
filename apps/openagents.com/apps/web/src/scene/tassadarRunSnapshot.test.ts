@@ -195,6 +195,7 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
       evidence: 'required',
       structuralEdges: 'static',
     })
+    expect(options.stageNodeGlyph).toBe('compact_gate')
   })
 
   it('adds data-bound pylon contributors/entities, verified replay beams, and settlement bursts', () => {
@@ -278,6 +279,7 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
       evidence: 'required',
       structuralEdges: 'static',
     })
+    expect(layer.stageNodeGlyph).toBe('compact_gate')
   })
 
   it('does not emit payout bursts for simulation-backed settlement rows', () => {
