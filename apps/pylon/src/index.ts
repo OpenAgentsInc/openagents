@@ -2181,7 +2181,10 @@ async function main() {
           identityMnemonicPath: state.paths.identityMnemonic,
         })
         process.stdout.write(`${JSON.stringify({ ...status, legacySparkMigration }, null, 2)}\n`)
-        return
+        // #5184: reading the Spark-primary balance opens the Spark SDK, which
+        // keeps a background handle alive — a bare `return` hangs the process so
+        // pipes like `| jq` never see EOF. Exit explicitly, like `wallet send`.
+        process.exit(0)
       }
       if (command === "migrate-spark") {
         const sparkOptions = parsePsionicOptions(walletArgs)

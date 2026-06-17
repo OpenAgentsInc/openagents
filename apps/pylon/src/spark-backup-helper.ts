@@ -307,18 +307,30 @@ async function sendSparkPaymentFromSdk(input: {
     }
   }
 
-  if (typeof input.sdk.prepareSendPayment !== "function" || typeof input.sdk.sendPayment !== "function") {
+  const prepareSendPayment = input.sdk.prepareSendPayment
+  if (typeof prepareSendPayment !== "function" || typeof input.sdk.sendPayment !== "function") {
     return { ok: false, failureRef: `${input.prefix}.send_unsupported` }
   }
 
-  const prepareResponse = await withTimeout(
-    input.sdk.prepareSendPayment({
-      paymentRequest: destination,
-      amount: BigInt(input.amountSats),
-    }),
-    input.timeoutMs,
-    "spark prepareSendPayment",
-  )
+  // #5185: a BOLT11 that already encodes an amount must be prepared WITHOUT an
+  // amount override — the Spark SDK rejects a redundant amount and the send
+  // fails generically. Prepare without an amount first (covers amount-encoded
+  // invoices), and only fall back to passing the amount for amountless invoices
+  // / spark addresses.
+  let prepareResponse: Awaited<ReturnType<typeof prepareSendPayment>>
+  try {
+    prepareResponse = await withTimeout(
+      prepareSendPayment({ paymentRequest: destination }),
+      input.timeoutMs,
+      "spark prepareSendPayment",
+    )
+  } catch {
+    prepareResponse = await withTimeout(
+      prepareSendPayment({ paymentRequest: destination, amount: BigInt(input.amountSats) }),
+      input.timeoutMs,
+      "spark prepareSendPayment (amount)",
+    )
+  }
   const paymentMethod = (prepareResponse as { paymentMethod?: { type?: string } })?.paymentMethod
   const sent = await withTimeout(
     input.sdk.sendPayment({
@@ -835,12 +847,16 @@ export function createSparkBackupSendTransfer(config: SparkBackupAdapterConfig):
         allowLnurlPay: true,
       })
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      // #5185: opt-in raw diagnostics (PYLON_SPARK_DEBUG=1) so an operator can
+      // see the exact SDK failure when a send is rejected; off by default so no
+      // payment material reaches normal output.
+      if (process.env.PYLON_SPARK_DEBUG === "1") {
+        console.error(`[spark-send] ${message}`)
+      }
       return {
         ok: false,
-        failureRef: publicRef(
-          "wallet.spark_backup_send_failure",
-          error instanceof Error ? error.message : String(error),
-        ),
+        failureRef: publicRef("wallet.spark_backup_send_failure", message),
       }
     } finally {
       if (sdk?.disconnect) {
