@@ -30,6 +30,7 @@ import {
 export const TASSADAR_RUN_TAG = 'oa-tassadar-run'
 export const TASSADAR_RUN_SUMMARY_ENDPOINT = '/api/public/tassadar-run-summary'
 export const PRODUCT_PROMISES_ENDPOINT = '/api/public/product-promises'
+export const PYLON_STATS_ENDPOINT = '/api/public/pylon-stats'
 
 export type TassadarRunDataState = 'loading' | 'ok' | 'empty' | 'error'
 export type TassadarRunProofLink = Readonly<{
@@ -56,6 +57,21 @@ export type ProductPromisesDocument = Readonly<{
   version?: string
 }>
 
+export type PublicPylonStatsContext = Readonly<{
+  asOfLabel?: string | null
+  asOfUnixMs?: number | null
+  available?: boolean
+  publicRealSatsSettled24h?: number | null
+  publicRealSatsSettledTotal?: number | null
+  pylonsAssignmentReadyNow?: number
+  pylonsOnlineNow?: number
+  pylonsWalletReadyNow?: number
+  status?: string
+  trainingAcceptedContributors?: number
+  trainingAssignedContributors?: number
+  trainingModelProgressContributors?: number
+}>
+
 const HOST_STYLE =
   ':host{position:absolute;inset:0;display:block;background:#000;color:#f1efe8}' +
   '.mount{position:absolute;inset:0}' +
@@ -77,9 +93,12 @@ const HOST_STYLE =
   '.promise-gate{position:absolute;left:0.75rem;right:0.75rem;bottom:0.75rem;z-index:2;display:grid;gap:0.55rem;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.62);padding:0.7rem 0.8rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(10px)}' +
   '.promise-gate header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.5rem}.promise-gate h2{margin:0;font-size:0.68rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.48)}' +
   '.promise-gate a{font-size:0.68rem;color:rgba(255,255,255,0.78);text-underline-offset:0.18rem}.promise-gate a:hover{color:#fff}' +
+  '.source-split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0.55rem;margin:0}.source-split div{min-width:0;border-top:1px solid rgba(255,255,255,0.12);padding-top:0.42rem}' +
+  '.source-split dt{margin:0 0 0.16rem;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.35)}.source-split dd{margin:0;font-size:0.68rem;line-height:1.42;color:rgba(255,255,255,0.68)}' +
+  '.source-note{margin:0;font-size:0.66rem;line-height:1.42;color:rgba(255,255,255,0.45)}' +
   '.promise-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0.45rem}.promise-item{min-width:0;border-top:1px solid rgba(255,255,255,0.12);padding-top:0.42rem}.promise-item strong{display:block;margin:0 0 0.16rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.68rem;font-weight:600;color:rgba(255,255,255,0.82)}' +
   '.promise-item span{display:block;font-size:0.64rem;color:rgba(255,255,255,0.46)}.promise-copy{margin:0;font-size:0.68rem;line-height:1.45;color:rgba(255,255,255,0.55)}' +
-  '@media (max-width:900px){.promise-list{grid-template-columns:repeat(2,minmax(0,1fr))}.promise-gate{max-height:40%;overflow:auto}}' +
+  '@media (max-width:900px){.source-split,.promise-list{grid-template-columns:repeat(2,minmax(0,1fr))}.promise-gate{max-height:40%;overflow:auto}}' +
   '.selection{position:absolute;right:1rem;bottom:1rem;z-index:2;max-width:min(26rem,calc(100% - 2rem));' +
   'border:1px solid rgba(255,255,255,0.14);background:rgba(0,0,0,0.78);padding:0.75rem 0.875rem;' +
   'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(10px)}' +
@@ -147,9 +166,51 @@ const metricNumber = (
     ? metric.value
     : 0
 
+const finiteNumberOrNull = (value: number | null | undefined): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+
+const numberText = (value: number | null | undefined): string => {
+  const finite = finiteNumberOrNull(value)
+  return finite === null ? 'unknown' : finite.toLocaleString('en-US')
+}
+
 const textOrUnknown = (value: string | undefined): string => {
   const text = value?.trim()
   return text === undefined || text.length === 0 ? 'unknown' : text
+}
+
+const runCanonicalMetricsText = (summary: TassadarRunPublicSummary): string =>
+  `assigned ${numberText(
+    metricNumber(summary.metrics?.assignedContributorCount),
+  )} / verified work ${numberText(
+    metricNumber(summary.metrics?.verifiedWorkCount),
+  )} / qualified ${numberText(
+    metricNumber(summary.metrics?.qualifiedContributorCount),
+  )} / settlement record ${numberText(
+    metricNumber(summary.metrics?.providerConfirmedSettledPayoutSats),
+  )} sats`
+
+const fleetContextText = (stats: PublicPylonStatsContext | null): string => {
+  if (stats === null || stats.available === false) {
+    return 'unavailable'
+  }
+
+  return `online ${numberText(stats.pylonsOnlineNow)} / wallet ready ${numberText(
+    stats.pylonsWalletReadyNow,
+  )} / assignment ready ${numberText(
+    stats.pylonsAssignmentReadyNow,
+  )} / accepted ${numberText(
+    stats.trainingAcceptedContributors,
+  )} / model progress ${numberText(
+    stats.trainingModelProgressContributors,
+  )} / real sats 24h ${numberText(stats.publicRealSatsSettled24h)}`
+}
+
+const fleetContextLabel = (stats: PublicPylonStatsContext | null): string => {
+  if (stats === null) return 'Fleet pylon stats'
+  const status = textOrUnknown(stats.status)
+  const asOf = stats.asOfLabel ?? 'unknown'
+  return `Fleet pylon stats / ${status} / ${asOf}`
 }
 
 const generatedAtText = (summary: TassadarRunPublicSummary): string =>
@@ -176,14 +237,15 @@ const trackedPromiseIds = [
   'pylon.first_real_model_training_run.v1',
 ] as const
 
-const promiseLabels: Readonly<Record<(typeof trackedPromiseIds)[number], string>> =
-  {
-    'training.monday_decentralized_training_launch.v1': 'Monday launch',
-    'pylon.install_without_wallet_knowledge.v1': 'Install path',
-    'models.tassadar_percepta_executor.v1': 'Trained model',
-    'training.public_gradient_windows.v1': 'Gradient windows',
-    'pylon.first_real_model_training_run.v1': 'First real run',
-  }
+const promiseLabels: Readonly<
+  Record<(typeof trackedPromiseIds)[number], string>
+> = {
+  'training.monday_decentralized_training_launch.v1': 'Monday launch',
+  'pylon.install_without_wallet_knowledge.v1': 'Install path',
+  'models.tassadar_percepta_executor.v1': 'Trained model',
+  'training.public_gradient_windows.v1': 'Gradient windows',
+  'pylon.first_real_model_training_run.v1': 'First real run',
+}
 
 const promiseById = (
   document: ProductPromisesDocument | null,
@@ -299,25 +361,25 @@ const linkForRef = (
 ): TassadarRunProofLink | null =>
   ref === undefined
     ? null
-    : (ref.startsWith('receipt.')
-        ? (settlementRowForRef(summary, ref) === undefined
-            ? proofDetail({
-                href: receiptHref(ref),
-                kind: isNexusPylonReceiptRef(ref)
-                  ? 'nexus_pylon_receipt'
-                  : 'forum_receipt',
-                label,
-                ref,
-                state: 'linked',
-              })
-            : settlementProofDetail(settlementRowForRef(summary, ref)!))
-        : proofDetail({
-            href: focusedTrainingRunHref(summary, ref),
-            kind: 'training_ref',
+    : ref.startsWith('receipt.')
+      ? settlementRowForRef(summary, ref) === undefined
+        ? proofDetail({
+            href: receiptHref(ref),
+            kind: isNexusPylonReceiptRef(ref)
+              ? 'nexus_pylon_receipt'
+              : 'forum_receipt',
             label,
             ref,
             state: 'linked',
-          }))
+          })
+        : settlementProofDetail(settlementRowForRef(summary, ref)!)
+      : proofDetail({
+          href: focusedTrainingRunHref(summary, ref),
+          kind: 'training_ref',
+          label,
+          ref,
+          state: 'linked',
+        })
 
 const replayPairForSelection = (
   summary: TassadarRunPublicSummary,
@@ -483,12 +545,13 @@ const makeClass = (): CustomElementConstructor =>
 
     async #load(signal: AbortSignal): Promise<void> {
       try {
-        const [response, promisesDocument] = await Promise.all([
+        const [response, promisesDocument, pylonStats] = await Promise.all([
           fetch(TASSADAR_RUN_SUMMARY_ENDPOINT, {
             headers: { accept: 'application/json' },
             signal,
           }),
           this.#loadProductPromises(signal),
+          this.#loadPylonStats(signal),
         ])
         if (signal.aborted) return
         if (!response.ok) {
@@ -500,7 +563,7 @@ const makeClass = (): CustomElementConstructor =>
         }
         const summary = (await response.json()) as TassadarRunPublicSummary
         if (signal.aborted) return
-        this.#renderScene(summary, new Date(), promisesDocument)
+        this.#renderScene(summary, new Date(), promisesDocument, pylonStats)
       } catch (error) {
         if (signal.aborted) return
         this.#renderError(
@@ -522,6 +585,21 @@ const makeClass = (): CustomElementConstructor =>
         })
         if (signal.aborted || !response.ok) return null
         return (await response.json()) as ProductPromisesDocument
+      } catch {
+        return null
+      }
+    }
+
+    async #loadPylonStats(
+      signal: AbortSignal,
+    ): Promise<PublicPylonStatsContext | null> {
+      try {
+        const response = await fetch(PYLON_STATS_ENDPOINT, {
+          headers: { accept: 'application/json' },
+          signal,
+        })
+        if (signal.aborted || !response.ok) return null
+        return (await response.json()) as PublicPylonStatsContext
       } catch {
         return null
       }
@@ -562,6 +640,7 @@ const makeClass = (): CustomElementConstructor =>
       summary: TassadarRunPublicSummary,
       fetchedAt: Date,
       promisesDocument: ProductPromisesDocument | null,
+      pylonStats: PublicPylonStatsContext | null,
     ): void {
       const base = this.#base()
       if (base === null) return
@@ -582,7 +661,7 @@ const makeClass = (): CustomElementConstructor =>
       })
       base.mount.append(run)
       this.#renderStatus(base.mount, summary, fetchedAt)
-      this.#renderPromiseGate(base.mount, promisesDocument)
+      this.#renderPromiseGate(base.mount, summary, promisesDocument, pylonStats)
     }
 
     #renderStatus(
@@ -620,7 +699,9 @@ const makeClass = (): CustomElementConstructor =>
 
     #renderPromiseGate(
       mount: HTMLDivElement,
+      summary: TassadarRunPublicSummary,
       promisesDocument: ProductPromisesDocument | null,
+      pylonStats: PublicPylonStatsContext | null,
     ): void {
       const panel = document.createElement('aside')
       panel.className = 'promise-gate'
@@ -628,7 +709,9 @@ const makeClass = (): CustomElementConstructor =>
       const header = document.createElement('header')
       const title = document.createElement('h2')
       const version =
-        promisesDocument?.registryVersion ?? promisesDocument?.version ?? 'unknown'
+        promisesDocument?.registryVersion ??
+        promisesDocument?.version ??
+        'unknown'
       title.textContent = `Promise gates / ${version}`
       const link = document.createElement('a')
       link.href = PRODUCT_PROMISES_ENDPOINT
@@ -636,6 +719,25 @@ const makeClass = (): CustomElementConstructor =>
       link.rel = 'noopener noreferrer'
       link.textContent = 'Open registry'
       header.append(title, link)
+      const sourceSplit = document.createElement('dl')
+      sourceSplit.className = 'source-split'
+      const sourceRows: ReadonlyArray<readonly [string, string]> = [
+        ['Run endpoint canonical', runCanonicalMetricsText(summary)],
+        [fleetContextLabel(pylonStats), fleetContextText(pylonStats)],
+      ]
+      for (const [term, value] of sourceRows) {
+        const item = document.createElement('div')
+        const dt = document.createElement('dt')
+        dt.textContent = term
+        const dd = document.createElement('dd')
+        dd.textContent = value
+        item.append(dt, dd)
+        sourceSplit.append(item)
+      }
+      const sourceNote = document.createElement('p')
+      sourceNote.className = 'source-note'
+      sourceNote.textContent =
+        'Run endpoint wins for Tassadar-specific accepted-work and settlement numbers; fleet stats are surrounding pylon-network context.'
       const list = document.createElement('div')
       list.className = 'promise-list'
       for (const promiseId of trackedPromiseIds) {
@@ -651,7 +753,7 @@ const makeClass = (): CustomElementConstructor =>
       const copy = document.createElement('p')
       copy.className = 'promise-copy'
       copy.textContent = promiseGateCaveat(promisesDocument)
-      panel.append(header, list, copy)
+      panel.append(header, sourceSplit, sourceNote, list, copy)
       mount.append(panel)
     }
 

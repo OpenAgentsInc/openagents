@@ -81,6 +81,17 @@ describe('Tassadar live page smoke', () => {
         })
       }
 
+      if (url.pathname === '/api/public/pylon-stats') {
+        return json({
+          asOfLabel: 'Just now',
+          publicRealSatsSettled24h: 338844,
+          pylonsAssignmentReadyNow: 2,
+          pylonsOnlineNow: 9,
+          trainingAcceptedContributors: 0,
+          trainingModelProgressContributors: 6,
+        })
+      }
+
       if (
         url.pathname ===
         '/api/public/nexus-pylon/receipts/receipt.nexus.tassadar.1'
@@ -105,6 +116,13 @@ describe('Tassadar live page smoke', () => {
       runState: 'active',
       settlementRowCount: 1,
     })
+    expect(output.pylonStats).toMatchObject({
+      asOfLabel: 'Just now',
+      publicRealSatsSettled24h: 338844,
+      pylonsOnlineNow: 9,
+      trainingAcceptedContributors: 0,
+      trainingModelProgressContributors: 6,
+    })
     expect(output.proof).toMatchObject({
       url: 'https://openagents.com/api/public/nexus-pylon/receipts/receipt.nexus.tassadar.1',
     })
@@ -118,6 +136,8 @@ describe('Tassadar live page smoke', () => {
       'summary_has_staleness_contract',
       'summary_has_typed_settlement_rows',
       'summary_has_rejected_replay_projection',
+      'pylon_stats_endpoint_200',
+      'pylon_stats_context_fields_present',
       'product_promises_endpoint_200',
       'product_promise_gate_refs_present',
       'first_settlement_proof_route_200',

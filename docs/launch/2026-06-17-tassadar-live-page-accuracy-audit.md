@@ -45,6 +45,11 @@ primitives.
   `/api/public/product-promises` gate refs, and the first settlement-row proof
   URL when present. The script is dependency-free; pixel-level WebGL nonblank
   validation still needs a browser-capable runner if we want it fully automated.
+- 2026-06-17: Issue #5193 reconciled run-specific metrics with fleet pylon
+  stats in the `/tassadar` page. The visible source split says the Tassadar run
+  endpoint is canonical for accepted-work and settlement numbers, while
+  `/api/public/pylon-stats` supplies surrounding fleet context. The live smoke
+  now also verifies the pylon stats fields used by that reconciliation block.
 
 ## Short answer
 

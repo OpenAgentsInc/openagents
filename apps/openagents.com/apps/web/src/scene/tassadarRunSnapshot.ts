@@ -13,8 +13,8 @@
 // worker's internal types; this is a narrow structural view of the public summary.
 import {
   type TrainingRunBeamDefinition,
-  type TrainingRunContributorDefinition,
   type TrainingRunBurstDefinition,
+  type TrainingRunContributorDefinition,
   type TrainingRunEntityDefinition,
   type TrainingRunLossPoint,
   type TrainingRunVisualizationOptions,
@@ -101,6 +101,7 @@ export interface TassadarRunPublicSummary {
     readonly pendingPayoutCount?: PublicMetric
     readonly receiptRefCount?: PublicMetric
     readonly providerConfirmedSettledPayoutSats?: PublicMetric
+    readonly qualifiedContributorCount?: PublicMetric
   }
   readonly realGradient?: {
     readonly deviceRequirement?: {
@@ -381,7 +382,9 @@ const contributorDefinitions = (
   return validRows.map((row, index) => ({
     id: row.pylonRef!,
     label:
-      finiteOrZero(row.rank) > 0 ? `P${finiteOrZero(row.rank)}` : shortRef(row.pylonRef!),
+      finiteOrZero(row.rank) > 0
+        ? `P${finiteOrZero(row.rank)}`
+        : shortRef(row.pylonRef!),
     lifecycleState: contributorLifecycleState(row, settlements),
     phase: index / divisor,
   }))

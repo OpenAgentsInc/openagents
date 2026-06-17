@@ -233,6 +233,37 @@ export const runTassadarLivePageSmoke = async ({
     },
   )
 
+  const pylonStatsResult = await requestJson(
+    fetchImpl,
+    origin,
+    '/api/public/pylon-stats',
+  )
+  const pylonStats = pylonStatsResult.body
+
+  assertCheck(
+    checks,
+    'pylon_stats_endpoint_200',
+    okStatus(pylonStatsResult.response),
+    {
+      status: pylonStatsResult.response.status,
+      url: pylonStatsResult.url,
+    },
+  )
+  assertCheck(
+    checks,
+    'pylon_stats_context_fields_present',
+    typeof pylonStats?.pylonsOnlineNow === 'number' &&
+      typeof pylonStats?.pylonsAssignmentReadyNow === 'number' &&
+      typeof pylonStats?.trainingAcceptedContributors === 'number' &&
+      typeof pylonStats?.trainingModelProgressContributors === 'number',
+    {
+      pylonsOnlineNow: pylonStats?.pylonsOnlineNow,
+      trainingAcceptedContributors: pylonStats?.trainingAcceptedContributors,
+      trainingModelProgressContributors:
+        pylonStats?.trainingModelProgressContributors,
+    },
+  )
+
   const promisesResult = await requestJson(
     fetchImpl,
     origin,
@@ -293,6 +324,15 @@ export const runTassadarLivePageSmoke = async ({
     baseUrl: origin,
     checks,
     ok: checks.every(check => check.passed),
+    pylonStats: {
+      asOfLabel: pylonStats?.asOfLabel ?? null,
+      publicRealSatsSettled24h: pylonStats?.publicRealSatsSettled24h ?? null,
+      pylonsOnlineNow: pylonStats?.pylonsOnlineNow ?? null,
+      trainingAcceptedContributors:
+        pylonStats?.trainingAcceptedContributors ?? null,
+      trainingModelProgressContributors:
+        pylonStats?.trainingModelProgressContributors ?? null,
+    },
     proof,
     run: {
       generatedAt: summary?.generatedAt ?? null,
