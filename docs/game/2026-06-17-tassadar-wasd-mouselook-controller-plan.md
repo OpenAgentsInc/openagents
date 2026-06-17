@@ -1,7 +1,7 @@
 # Tassadar WASD + Mouselook Controller Plan
 
 Date: 2026-06-17
-Status: Implementation in progress.
+Status: Implemented and verified.
 Goal: make `/tassadar` navigable with a first-person WASD + mouselook controller,
 starting as a 2.5D walkable version of the current run scene and moving toward a
 proper 3D MMO world.
@@ -15,13 +15,23 @@ proper 3D MMO world.
   `OpenAgentsInc/three-effect@7914994`: `trainingRunView` now supports
   `cameraMode: "perspective_walk"`, `controller: "wasd_mouselook"`, a 2.5D
   ground-plane view, and center-reticle raycasting while pointer lock is active.
+- `OpenAgentsInc/three-effect@d4a5ca4` fixes the first browser-smoke gap:
+  entity text labels now stay camera-facing during perspective walk/mouselook by
+  using billboarded text-label handles and updating `faceCamera(camera)` each
+  frame.
 - `openagents#5219` is implemented in this change: `/tassadar` pins the updated
   `@openagentsinc/three-effect`, passes the perspective/controller options into
   the live training-run element, renders a small `Enter run` affordance before
   the Three scene mounts, and exposes pointer-lock state through
   `data-pointer-lock`.
-- Remaining work is verification and cleanup under `openagents#5220` and the
-  tracker closeout under `openagents#5221`.
+- `openagents#5220` verification: local browser smoke confirmed `/tassadar`
+  enters pointer lock, supports WASD movement, and releases with Escape. The
+  smoke also found the camera-facing label bug above; the app now pins the
+  fixed `three-effect` commit. A follow-up local browser smoke loaded the route
+  with the live public summary stubbed into the local app, confirmed the
+  `Enter run` control and training scene host render, dispatched a settlement
+  selection, and verified the linked proof drawer appears.
+- Remaining work is tracker closeout under `openagents#5221`.
 
 ## References Read
 
@@ -294,13 +304,14 @@ P2 can add:
 
 Browser smoke:
 
-- run `/tassadar` locally;
-- click `Enter run`;
-- verify pointer lock enters;
-- move with W/A/S/D;
-- verify Esc unlocks;
-- verify proof selection still works;
-- verify no fake flow or unbacked motion was added.
+- done: run `/tassadar` locally;
+- done: click `Enter run`;
+- done: verify pointer lock enters;
+- done: move with W/A/S/D;
+- done: verify Esc unlocks;
+- follow-up fixed: text labels over entity nodes did not face the camera;
+- done: verify proof selection still works after the label-fix pin;
+- done: verify no fake flow or unbacked motion was added.
 
 ## Implementation Order
 
@@ -311,7 +322,8 @@ Browser smoke:
 5. Done: add center-reticle raycasting for locked pointer mode.
 6. Done: consume the new options in `tassadarRunElement.ts`.
 7. Done: add the tiny `/tassadar` enter-world overlay.
-8. Next: run the full deployment-facing checks and browser smoke.
+8. Done: run the full deployment-facing checks and final proof-selection smoke
+   after the label-fix pin.
 
 This keeps the reusable controller in `three-effect` while letting the
 OpenAgents page decide when the controller is enabled for the live run.
