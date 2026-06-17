@@ -92,7 +92,7 @@ export type SparkBackupReceiveProjection = {
  * (`unavailableSparkBackupHelper`) reports `helper-unavailable` when none is
  * configured; tests inject a fake helper.
  */
-export type SparkBackupCommand = "status" | "address" | "history" | "unclaimed-deposits" | "lightning-address"
+export type SparkBackupCommand = "status" | "address" | "history" | "unclaimed-deposits" | "lightning-address" | "claim"
 
 export type SparkBackupHelper = (command: SparkBackupCommand) => Promise<WalletCommandResult>
 

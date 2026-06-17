@@ -69,8 +69,12 @@ type BreezSparkSdk = {
   receivePayment(request: {
     paymentMethod: { type: "sparkAddress" }
   }): Promise<{ paymentRequest?: string }>
-  listPayments(request: { limit?: number }): Promise<{ payments?: unknown[] }>
+  listPayments(request: { limit?: number; statusFilter?: string[] }): Promise<{ payments?: unknown[] }>
   listUnclaimedDeposits(request: Record<string, never>): Promise<{ deposits?: unknown[] }>
+  // #5166: claim Lightning HTLC receives (offline-receive funds arrive as HTLCs
+  // that must be claimed before they credit the balance). syncWallet pulls latest.
+  syncWallet(request: Record<string, never>): Promise<unknown>
+  claimHtlcPayment(request: { preimage: string }): Promise<{ payment?: { amount?: unknown } }>
   // Static Lightning Address (LNURL-pay) hosted by this Spark wallet's LSP.
   // Optional-tolerant: not all SDK builds / injected test fakes expose these.
   getLightningAddress?(): Promise<{ lightningAddress?: string } | undefined>
@@ -378,6 +382,56 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
           if (!raw) return helperError(command, "no lightning address returned")
           // Raw address rides in helper stdout only; slice-1 redacts it.
           return helperOk({ lightning_address: raw })
+        }
+        case "claim": {
+          // #5166 (the real receive bug): a Lightning payment to a Spark
+          // Lightning Address arrives as an HTLC the recipient must CLAIM by
+          // revealing its preimage. Until claimed it is invisible — getInfo
+          // balance stays 0 and it is NOT an on-chain "unclaimed deposit". The
+          // one-shot helper previously never claimed, so offline-received funds
+          // never credited. Sync, then claim every pending Lightning HTLC whose
+          // preimage we already hold, then report the post-claim balance.
+          await withTimeout(sdk.syncWallet({}), timeoutMs, "spark syncWallet").catch(() => undefined)
+          const list = await withTimeout(
+            sdk.listPayments({ statusFilter: ["pending"], limit: 100 }),
+            timeoutMs,
+            "spark listPayments",
+          )
+          const payments = Array.isArray(list?.payments) ? list.payments : []
+          let claimedCount = 0
+          let claimedSats = 0
+          let claimableSeen = 0
+          for (const p of payments) {
+            const details = (p as { details?: { htlcDetails?: { status?: string; preimage?: string } } }).details
+            const htlc = details?.htlcDetails
+            if (!htlc || htlc.status !== "waitingForPreimage") continue
+            claimableSeen += 1
+            const preimage = typeof htlc.preimage === "string" ? htlc.preimage : ""
+            if (preimage === "") continue
+            try {
+              const res = await withTimeout(
+                sdk.claimHtlcPayment({ preimage }),
+                timeoutMs,
+                "spark claimHtlcPayment",
+              )
+              claimedCount += 1
+              const amt = toSatNumber((res as { payment?: { amount?: unknown } })?.payment?.amount)
+              if (amt !== null) claimedSats += amt
+            } catch {
+              // Skip individual claim failures; report the rest.
+            }
+          }
+          const info = await withTimeout(sdk.getInfo({ ensureSynced: true }), timeoutMs, "spark getInfo")
+          const balance = toSatNumber(
+            (info as { balanceSats?: unknown })?.balanceSats,
+          )
+          return helperOk({
+            claimed_count: claimedCount,
+            claimed_sats: claimedSats,
+            claimable_seen: claimableSeen,
+            pending_seen: payments.length,
+            balance_sats: balance,
+          })
         }
         default:
           return helperError(command, "unsupported command")

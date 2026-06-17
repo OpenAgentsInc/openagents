@@ -2389,6 +2389,35 @@ async function main() {
         // which keeps a background connection alive (#5162).
         process.exit(body.ok ? 0 : 1)
       }
+      if (command === "backup-claim") {
+        // #5166 (the receive bug): a Lightning payment to this node's Spark
+        // Lightning Address arrives as an HTLC that must be CLAIMED before it
+        // credits the wallet balance — it is invisible to backup-status until
+        // then (not an on-chain "unclaimed deposit"). This command syncs and
+        // claims all pending Lightning HTLCs whose preimage the wallet holds.
+        const sparkBackupOptions = await resolveSparkBackupOptions(state)
+        const helper = sparkBackupOptions.helper
+        if (helper === undefined) {
+          process.stdout.write(
+            `${JSON.stringify({ ok: false, error: "spark_backup_unavailable", hint: "enable PYLON_SPARK_BACKUP_ENABLED=1 and ensure an identity mnemonic exists" }, null, 2)}\n`,
+          )
+          process.exit(1)
+        }
+        const result = await helper("claim")
+        let data: Record<string, unknown> | null = null
+        try {
+          data = result.exitCode === 0 ? (JSON.parse(result.stdout || "{}") as Record<string, unknown>) : null
+        } catch {
+          data = null
+        }
+        const body: Record<string, unknown> =
+          data !== null
+            ? { ok: true, ...data }
+            : { ok: false, error: "claim_failed", reason: result.stderr || null }
+        process.stdout.write(`${JSON.stringify(body, null, 2)}\n`)
+        // Exit explicitly: the Spark SDK keeps a background connection alive (#5162).
+        process.exit(body.ok === true ? 0 : 1)
+      }
       if (command === "spark-selftest") {
         // #5166 diagnostic: prove WHETHER the Spark SDK actually loads in THIS
         // runtime (notably a compiled standalone binary) and whether a seed is
