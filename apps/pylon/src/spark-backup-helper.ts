@@ -856,7 +856,25 @@ async function buildSparkSdk(
     }
     const storage = new SparkBunStorage(dbPath)
     const builder = mod.SdkBuilder.new(sdkConfig, seed).withStorage(storage)
-    return await withTimeout(builder.build(), timeoutMs, "spark sdk build")
+    try {
+      return await withTimeout(builder.build(), timeoutMs, "spark sdk build")
+    } catch (buildError) {
+      // #5194: when SdkBuilder.build() throws for a reason outside
+      // classifySparkHelperFailureReason()'s buckets (helperUnavailableReason
+      // "unknown"), surface the RAW exception name + message so a
+      // deterministic-repro host can report the actual cause. Gated on
+      // PYLON_SPARK_DEBUG and filesystem-path-sanitized (no $HOME/temp paths,
+      // which could carry a username) — URLs/hosts/error types stay visible.
+      if (process.env.PYLON_SPARK_DEBUG === "1") {
+        const e = buildError as { name?: string; message?: string }
+        const name = typeof e?.name === "string" && e.name ? e.name : "Error"
+        const msg = (typeof e?.message === "string" ? e.message : String(buildError))
+          .replace(/\/(?:Users|home|private|var|opt|tmp|Library)\/[^\s'"):]+/g, "<path>")
+          .slice(0, 400)
+        console.error(`[spark-helper:build_error] ${name}: ${msg}`)
+      }
+      throw buildError
+    }
   }
   if (typeof mod.connect === "function") {
     return await withTimeout(
