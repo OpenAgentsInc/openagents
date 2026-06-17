@@ -124,7 +124,10 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   Linux, full egress): treasury → Spark Lightning Address → `backup-claim` →
   balance credited. Shipped rc.8→**rc.12** (OTA feed + npm `rc` + GH): `backup-claim`,
   `backup-status` now reads the real balance + surfaces read-only
-  `claimableHtlcCount/Sats`, WASM-embed + build guard. **Trigger recipient-
+  `claimableHtlcCount/Sats`, WASM-embed + build guard. **17th audit follow-up:**
+  `backup-status` now recommends `backup-claim` when read-only status shows
+  pending `waitingForPreimage` HTLCs, and the non-zero claimable-HTLC counting
+  path is regression-tested. **Trigger recipient-
   confirmed the real 50,000-sat backup balance on rc.12**, so
   `payments.offline_receive_spark_fallback.v1` is now green for the scoped
   receive/claim/visible-backup-balance promise (`2026-06-17.1`). Follow-up

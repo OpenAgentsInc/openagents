@@ -2429,6 +2429,8 @@ async function main() {
           }
         }
         const sweep = recommendSparkSweep({
+          claimableHtlcCount: projection.claimableHtlcCount,
+          claimableHtlcSats: projection.claimableHtlcSats,
           detectedBalanceSats: projection.detectedBalanceSats,
           unclaimedDepositCount: projection.unclaimedDepositCount,
         })

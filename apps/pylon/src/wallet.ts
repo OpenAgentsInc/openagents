@@ -1294,10 +1294,13 @@ export async function receiveWithFallback(
 
 /**
  * Reconciliation helper for `backup-status`: given a detected Spark balance,
- * recommend `migrate-spark` but NEVER mark settlement. This is receive-only;
- * funds move only through the consented `migrate-spark` sweep (a later slice).
+ * recommend the next local reconcile action but NEVER mark settlement. Pending
+ * HTLCs must be claimed before they can become credited Spark backup balance;
+ * credited funds move only through the consented `migrate-spark` sweep.
  */
 export function recommendSparkSweep(input: {
+  claimableHtlcCount?: number | null
+  claimableHtlcSats?: number | null
   detectedBalanceSats: number | null
   unclaimedDepositCount?: number | null
 }): {
@@ -1307,13 +1310,17 @@ export function recommendSparkSweep(input: {
   nextActionRefs: string[]
 } {
   const credited = input.detectedBalanceSats !== null && input.detectedBalanceSats > 0
+  const claimable =
+    (input.claimableHtlcCount !== null && input.claimableHtlcCount !== undefined && input.claimableHtlcCount > 0) ||
+    (input.claimableHtlcSats !== null && input.claimableHtlcSats !== undefined && input.claimableHtlcSats > 0)
   return {
-    state: credited ? "sweep-to-mdk-recommended" : "credited",
+    state: claimable ? "claim-pending" : credited ? "sweep-to-mdk-recommended" : "credited",
     recommendsMigrateSpark: credited,
     settlementMarked: false,
-    nextActionRefs: credited
-      ? ["action.wallet.spark_backup.run_migrate_spark_with_consent"]
-      : [],
+    nextActionRefs: [
+      ...(claimable ? ["action.wallet.spark_backup.run_backup_claim"] : []),
+      ...(credited ? ["action.wallet.spark_backup.run_migrate_spark_with_consent"] : []),
+    ],
   }
 }
 

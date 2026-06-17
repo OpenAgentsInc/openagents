@@ -808,6 +808,34 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
     expect(empty.settlementMarked).toBe(false)
   })
 
+  test("claimable HTLCs recommend backup-claim before sweep", () => {
+    const claimable = recommendSparkSweep({
+      claimableHtlcCount: 1,
+      claimableHtlcSats: 50_000,
+      detectedBalanceSats: 0,
+      unclaimedDepositCount: 0,
+    })
+
+    expect(claimable.state).toBe("claim-pending")
+    expect(claimable.recommendsMigrateSpark).toBe(false)
+    expect(claimable.settlementMarked).toBe(false)
+    expect(claimable.nextActionRefs).toEqual(["action.wallet.spark_backup.run_backup_claim"])
+
+    const claimableAndCredited = recommendSparkSweep({
+      claimableHtlcCount: 1,
+      claimableHtlcSats: 7_000,
+      detectedBalanceSats: 50_000,
+      unclaimedDepositCount: 0,
+    })
+
+    expect(claimableAndCredited.state).toBe("claim-pending")
+    expect(claimableAndCredited.recommendsMigrateSpark).toBe(true)
+    expect(claimableAndCredited.nextActionRefs).toEqual([
+      "action.wallet.spark_backup.run_backup_claim",
+      "action.wallet.spark_backup.run_migrate_spark_with_consent",
+    ])
+  })
+
   test("backup receive is inert by default (opt-in off, stub helper)", async () => {
     const projection = await classifySparkBackupReceive({ env: {} as NodeJS.ProcessEnv })
     expect(projection.enabled).toBe(false)

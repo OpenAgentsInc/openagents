@@ -17,6 +17,7 @@ const TEST_MNEMONIC =
 function fakeSparkModule(opts: {
   balanceSats?: number
   paymentRequest?: string
+  paymentRecords?: ReadonlyArray<unknown>
   payments?: number
   unclaimed?: number
   failConnect?: boolean
@@ -39,7 +40,11 @@ function fakeSparkModule(opts: {
           if (r.paymentMethod.type !== "sparkAddress") throw new Error("only sparkAddress receive")
           return { paymentRequest: opts.paymentRequest ?? RAW_SPARK_ADDRESS, fee: 0n }
         },
-        listPayments: async () => ({ payments: Array.from({ length: opts.payments ?? 0 }, (_, i) => ({ id: i })) }),
+        listPayments: async () => ({
+          payments:
+            opts.paymentRecords ??
+            Array.from({ length: opts.payments ?? 0 }, (_, i) => ({ id: i })),
+        }),
         listUnclaimedDeposits: async () => ({
           deposits: Array.from({ length: opts.unclaimed ?? 0 }, (_, i) => ({ txid: String(i), vout: 0 })),
         }),
@@ -93,6 +98,41 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
       unclaimed_deposit_count: 2,
       claimable_htlc_count: 0,
       claimable_htlc_sats: 0,
+    })
+  })
+
+  test("status command counts pending waitingForPreimage HTLCs", async () => {
+    const helper = createSparkBackupHelper({
+      apiKey: "k",
+      mnemonic: TEST_MNEMONIC,
+      loadModule: async () =>
+        fakeSparkModule({
+          balanceSats: 0,
+          paymentRecords: [
+            {
+              amount: 50_000n,
+              details: {
+                htlcDetails: { status: "waitingForPreimage" },
+              },
+              status: "pending",
+            },
+            {
+              amount: 3_000,
+              details: {
+                htlcDetails: { status: "completed" },
+              },
+              status: "pending",
+            },
+          ],
+        }),
+    })
+    const result = await helper("status")
+
+    expect(result.exitCode).toBe(0)
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      balance_sats: 0,
+      claimable_htlc_count: 1,
+      claimable_htlc_sats: 50_000,
     })
   })
 

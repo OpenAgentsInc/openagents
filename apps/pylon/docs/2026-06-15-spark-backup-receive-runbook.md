@@ -140,8 +140,10 @@ redacted refs.
 
 4. Send test sats to the local Spark address, then re-run `backup-status` to
    watch the funds move through detected / pending / credited. `backup-status`
-   surfaces the sweep recommendation (`recommendSparkSweep`): once a balance is
-   credited it reports `sweep-to-mdk-recommended` and
+   surfaces the next local reconcile action (`recommendSparkSweep`): pending
+   `waitingForPreimage` HTLCs report `claim-pending` and
+   `action.wallet.spark_backup.run_backup_claim`; once a balance is credited it
+   reports `sweep-to-mdk-recommended` and
    `action.wallet.spark_backup.run_migrate_spark_with_consent`.
 
 ## Step 4 — `migrate-spark` sweep + reconcile (consented)
