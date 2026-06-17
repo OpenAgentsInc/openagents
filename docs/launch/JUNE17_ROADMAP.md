@@ -105,9 +105,11 @@ signed recut.
   read the public projection and admin-list/upsert real public-safe rows.
   **D3.9 (#5223) shipped:** production now serves
   `/api/public/customer-one-cohort` after the remote D1 migration/deploy, and
-  the recorder public smoke reads the projection. Remaining D3 tail: record
-  cohort rows and collect at least three real loop-completion bundles before
-  closing #5098/#5104.
+  the recorder public smoke reads the projection.
+  **Active D3.10 slice: #5226** add a cohort evidence packet template and
+  local checker so operators can prepare real public-safe rows without
+  fabricating progress. Remaining D3 tail: record cohort rows and collect at
+  least three real loop-completion bundles before closing #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
