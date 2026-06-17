@@ -1152,6 +1152,12 @@ describe('operator treasury payout', () => {
               state: input.settled ? 'settled' : 'pending',
             }),
           requireAdminApiToken: () => Promise.resolve(true),
+          resolveLightningAddress: (address, amountSat) =>
+            Promise.resolve(
+              address === 'recipient@spark.money'
+                ? { ok: true, bolt11: `lnbc-resolved-spark-${amountSat}` }
+                : { ok: false, reason: 'unexpected_address' },
+            ),
         },
       ),
     )
@@ -1183,7 +1189,7 @@ describe('operator treasury payout', () => {
     expect(sparkPayCalls).toEqual([
       expect.objectContaining({
         amountSat: 50000,
-        destination: 'recipient@spark.money',
+        destination: 'lnbc-resolved-spark-50000',
       }),
     ])
     expect(mdkPayCalls).toEqual([])
@@ -1359,6 +1365,8 @@ describe('operator treasury payout', () => {
               state: 'failed',
             }),
           requireAdminApiToken: () => Promise.resolve(true),
+          resolveLightningAddress: () =>
+            Promise.resolve({ ok: true, bolt11: 'lnbc-resolved-spark-50000' }),
         },
       ),
     )

@@ -1106,6 +1106,7 @@ const attemptSparkTreasuryPayout = async (input: {
   idempotencySeed: string
   owedRef?: string | null
   recipientRef?: string | null
+  resolveLightningAddress?: TreasuryRouteDependencies['resolveLightningAddress']
 }): Promise<
   | Readonly<{
       kind: 'paid'
@@ -1126,10 +1127,37 @@ const attemptSparkTreasuryPayout = async (input: {
   }
 
   const idempotencyKey = await sparkTreasuryIdempotencyKey(input)
+  const resolvedDestination = isLightningAddress(input.destination)
+    ? await (input.resolveLightningAddress ?? resolveLightningAddressInvoice)(
+        input.destination,
+        input.amountSat,
+      )
+    : null
+
+  if (resolvedDestination !== null && !resolvedDestination.ok) {
+    return {
+      kind: 'failed',
+      payResult: {
+        error: 'spark_treasury_lightning_address_resolution_failed',
+        failureStage: 'lightning_address_resolution',
+        reasonClass: 'lightning_address_resolution_failed',
+        reasonRef: treasuryPayoutFailureReasonRef(
+          `lightning_address_resolution_failed:${resolvedDestination.reason}`,
+        ),
+        resolvedDestinationKind: null,
+        resultReturned: false,
+        sourceDestinationKind: 'lightning_address',
+      },
+    }
+  }
+
   const response = await input.fetchSparkTreasury('/spark/pay', {
     body: JSON.stringify({
       amountSat: input.amountSat,
-      destination: input.destination,
+      destination:
+        resolvedDestination !== null
+          ? resolvedDestination.bolt11
+          : input.destination,
       idempotencyKey,
     }),
     method: 'POST',
@@ -1461,6 +1489,7 @@ export const executeTreasuryPayout = async (
       idempotencySeed: input.owedRef ?? input.recipientRef ?? input.destination,
       owedRef: input.owedRef ?? null,
       recipientRef: input.recipientRef ?? null,
+      resolveLightningAddress: dependencies.resolveLightningAddress,
     })
 
     if (sparkAttempt.kind === 'paid') {
@@ -1737,6 +1766,7 @@ export const handleOperatorTreasuryPayoutApi = (
                 `${owedRefInput ?? recipientRefInput ?? destination}:${intendedAmountSat}`,
               owedRef: owedRefInput,
               recipientRef: recipientRefInput,
+              resolveLightningAddress: dependencies.resolveLightningAddress,
             })
 
             if (sparkAttempt.kind === 'paid') {

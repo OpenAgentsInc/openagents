@@ -75,6 +75,75 @@ const publicStatus = value =>
 
 const paymentValue = payload => payload?.payment ?? payload
 
+const safeDiagnosticString = value =>
+  typeof value === 'string' && value.trim() !== ''
+    ? value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_.:-]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 120) || null
+    : null
+
+const errorMessage = error =>
+  error instanceof Error ? error.message : String(error)
+
+const errorFingerprint = error =>
+  createHash('sha256').update(errorMessage(error)).digest('hex')
+
+const errorName = error =>
+  safeDiagnosticString(
+    error instanceof Error ? error.name : typeof error === 'object' && error
+      ? error.constructor?.name
+      : null,
+  )
+
+const errorCode = error =>
+  safeDiagnosticString(
+    typeof error === 'object' && error !== null && 'code' in error
+      ? String(error.code)
+      : null,
+  )
+
+const reasonClassFromError = error => {
+  const normalized = errorMessage(error).toLowerCase()
+
+  if (normalized.includes('insufficient')) {
+    return 'insufficient'
+  }
+  if (normalized.includes('liquidity')) {
+    return 'liquidity'
+  }
+  if (normalized.includes('route')) {
+    return 'no_route'
+  }
+  if (normalized.includes('invoice')) {
+    return 'invoice_rejected'
+  }
+  if (
+    normalized.includes('amount') ||
+    normalized.includes('minimum') ||
+    normalized.includes('maximum') ||
+    normalized.includes('sendable')
+  ) {
+    return 'amount_rejected'
+  }
+
+  return 'failed'
+}
+
+const reasonRefFromClass = reasonClass =>
+  reasonClass === 'insufficient'
+    ? 'reason.public.treasury_payout.insufficient_spendable_balance'
+    : reasonClass === 'liquidity'
+      ? 'reason.public.treasury_payout.liquidity'
+      : reasonClass === 'no_route'
+        ? 'reason.public.treasury_payout.no_route'
+        : reasonClass === 'invoice_rejected' ||
+            reasonClass === 'amount_rejected'
+          ? 'reason.public.treasury_payout.invoice_rejected'
+          : 'reason.public.treasury_payout.failed'
+
 const looksLikeLnurlPayDestination = destination => {
   const value = destination.trim()
   return /^lnurl/i.test(value) || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)
@@ -251,6 +320,12 @@ export const sparkTreasuryPayPayload = async input => {
     }
   }
 
+  let failureStage = 'spark_pay'
+  let sourceDestinationKind = looksLikeLnurlPayDestination(destination)
+    ? 'lightning_address'
+    : null
+  let resolvedDestinationKind = null
+
   const send = async () => {
     if (
       looksLikeLnurlPayDestination(destination) &&
@@ -258,11 +333,14 @@ export const sparkTreasuryPayPayload = async input => {
       typeof sdk.prepareLnurlPay === 'function' &&
       typeof sdk.lnurlPay === 'function'
     ) {
+      failureStage = 'spark_parse'
       const parsed = await withTimeout(
         sdk.parse(destination),
         timeoutMs(),
         'spark parse',
       )
+      sourceDestinationKind =
+        typeof parsed?.type === 'string' ? parsed.type : sourceDestinationKind
       const payRequest =
         parsed?.type === 'lightningAddress'
           ? parsed.payRequest
@@ -272,6 +350,7 @@ export const sparkTreasuryPayPayload = async input => {
       if (payRequest === null || payRequest === undefined) {
         throw new Error(`unsupported parsed input:${parsed?.type ?? 'unknown'}`)
       }
+      failureStage = 'spark_prepare_lnurl_pay'
       const prepareResponse = await withTimeout(
         sdk.prepareLnurlPay({
           amount: BigInt(amountSat),
@@ -280,6 +359,8 @@ export const sparkTreasuryPayPayload = async input => {
         timeoutMs(),
         'spark prepareLnurlPay',
       )
+      resolvedDestinationKind = 'bolt11'
+      failureStage = 'spark_lnurl_pay'
       const sent = await withTimeout(
         sdk.lnurlPay({ idempotencyKey, prepareResponse }),
         timeoutMs(),
@@ -295,6 +376,7 @@ export const sparkTreasuryPayPayload = async input => {
       throw new Error('spark send unsupported')
     }
 
+    failureStage = 'spark_prepare_send_payment'
     const prepareResponse = await withTimeout(
       sdk.prepareSendPayment({
         amount: BigInt(amountSat),
@@ -304,6 +386,9 @@ export const sparkTreasuryPayPayload = async input => {
       'spark prepareSendPayment',
     )
     const paymentMethod = prepareResponse?.paymentMethod
+    resolvedDestinationKind =
+      typeof paymentMethod?.type === 'string' ? paymentMethod.type : null
+    failureStage = 'spark_send_payment'
     const sent = await withTimeout(
       sdk.sendPayment({
         idempotencyKey,
@@ -311,7 +396,7 @@ export const sparkTreasuryPayPayload = async input => {
           paymentMethod?.type === 'bolt11Invoice'
             ? {
                 completionTimeoutSecs: 60,
-                preferSpark: true,
+                preferSpark: false,
                 type: 'bolt11Invoice',
               }
             : undefined,
@@ -328,16 +413,20 @@ export const sparkTreasuryPayPayload = async input => {
   try {
     sent = await send()
   } catch (error) {
+    const reasonClass = reasonClassFromError(error)
+
     return {
       balanceSatBefore: before.balanceSat,
       error: 'spark_treasury_pay_failed',
-      failureStage: 'spark_pay',
-      reasonRef:
-        error instanceof Error &&
-        error.message.toLowerCase().includes('insufficient')
-          ? 'reason.public.treasury_payout.insufficient_spendable_balance'
-          : 'reason.public.treasury_payout.failed',
+      errorCode: errorCode(error),
+      errorName: errorName(error),
+      failureStage,
+      messageFingerprint: errorFingerprint(error),
+      reasonClass,
+      reasonRef: reasonRefFromClass(reasonClass),
+      resolvedDestinationKind,
       resultReturned: false,
+      sourceDestinationKind,
       status: 502,
     }
   }
