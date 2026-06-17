@@ -660,6 +660,20 @@ const treasuryPayoutFailureReasonRef = (detail: string | null): string => {
   return 'reason.public.treasury_payout.failed'
 }
 
+const publicTreasuryPayoutReasonRef = (value: unknown): string | null =>
+  typeof value === 'string' &&
+  /^reason\.public\.treasury_payout\.[a-z0-9_.:-]{1,180}$/u.test(value)
+    ? value
+    : null
+
+const safeTreasuryPayoutDiagnosticString = (value: unknown): string | null =>
+  typeof value === 'string' && /^[a-z0-9_.:-]{1,120}$/u.test(value)
+    ? value
+    : null
+
+const safeTreasuryPayoutDiagnosticNumber = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+
 // Policy-applying payout core (issue #4703): the ONE path that moves
 // money out of the treasury, shared by the operator route and the
 // gated in-worker Artanis spend action. Applies the owner's
@@ -978,22 +992,43 @@ export const handleOperatorTreasuryPayoutApi = (
             // was LNURL resolution, no route, recipient offline, or liquidity.
             // Persist and return only a public-safe classification, never raw
             // daemon text, payment material, invoices, hashes, or destinations.
+            const containerReasonRef = publicTreasuryPayoutReasonRef(
+              payResult.reasonRef,
+            )
+            const reasonClass = safeTreasuryPayoutDiagnosticString(
+              payResult.reasonClass,
+            )
+            const failureStage = safeTreasuryPayoutDiagnosticString(
+              payResult.failureStage,
+            )
+            const destinationKind = safeTreasuryPayoutDiagnosticString(
+              payResult.destinationKind,
+            )
+            const preflightMaxSendableSat = safeTreasuryPayoutDiagnosticNumber(
+              payResult.preflightMaxSendableSat,
+            )
+            const timeoutSecs = safeTreasuryPayoutDiagnosticNumber(
+              payResult.timeoutSecs,
+            )
             const genericError =
               typeof payResult.error === 'string' &&
               payResult.error === 'treasury_pay_failed'
             const detail =
-              genericError && typeof payResult.reason === 'string'
-                ? payResult.reason
-                : typeof payResult.error === 'string'
-                  ? payResult.error
-                  : typeof payResult.reason === 'string'
-                    ? payResult.reason
-                    : typeof payResult.message === 'string'
-                      ? payResult.message
-                      : typeof payResult.code === 'string'
-                        ? payResult.code
-                        : null
-            const failureReasonRef = treasuryPayoutFailureReasonRef(detail)
+              containerReasonRef !== null
+                ? containerReasonRef
+                : genericError && typeof payResult.reason === 'string'
+                  ? payResult.reason
+                  : typeof payResult.error === 'string'
+                    ? payResult.error
+                    : typeof payResult.reason === 'string'
+                      ? payResult.reason
+                      : typeof payResult.message === 'string'
+                        ? payResult.message
+                        : typeof payResult.code === 'string'
+                          ? payResult.code
+                          : null
+            const failureReasonRef =
+              containerReasonRef ?? treasuryPayoutFailureReasonRef(detail)
 
             try {
               await dependencies.recordPayoutTransaction?.({
@@ -1016,6 +1051,13 @@ export const handleOperatorTreasuryPayoutApi = (
                 policyApplied: plan.kind,
                 reason: failureReasonRef,
                 reasonRef: failureReasonRef,
+                diagnostics: {
+                  destinationKind,
+                  failureStage,
+                  preflightMaxSendableSat,
+                  reasonClass,
+                  timeoutSecs,
+                },
               },
               { status: 502 },
             )

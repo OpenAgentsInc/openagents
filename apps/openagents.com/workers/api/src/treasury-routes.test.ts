@@ -872,6 +872,94 @@ describe('operator treasury payout', () => {
     })
   })
 
+  test('prefers container-classified safe payout diagnostics', async () => {
+    const store = makeMemoryTransactionStore()
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({
+          amountSat: 40000,
+          destination: 'recipient@spark.money',
+        }),
+        {
+          fetchTreasury: (path, init) => {
+            if (path === '/balance') {
+              return Promise.resolve(
+                jsonResponse(200, {
+                  balanceSat: 100000,
+                  maxSendableSat: 100000,
+                }),
+              )
+            }
+
+            if (path === '/pay' && init?.method === 'POST') {
+              return Promise.resolve(
+                jsonResponse(502, {
+                  destinationKind: 'bolt11',
+                  error: 'treasury_pay_failed',
+                  failureStage: 'pay_throws',
+                  preflightMaxSendableSat: 94000,
+                  reason: 'raw private daemon route failure',
+                  reasonClass: 'no_route',
+                  reasonRef: 'reason.public.treasury_payout.no_route',
+                  timeoutSecs: 50,
+                }),
+              )
+            }
+
+            return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
+          },
+          recordPayoutTransaction: input =>
+            store.insert({
+              amountSat: input.amountSat,
+              bolt11: null,
+              createdAt: '2026-06-17T18:00:01.750Z',
+              direction: 'out',
+              expiresAt: null,
+              failureReasonRef: input.failureReasonRef ?? null,
+              id: 'treasury_payout_failed_container_classified',
+              paymentRef: input.paymentRef,
+              settledAt: null,
+              state: 'failed',
+            }),
+          requireAdminApiToken: () => Promise.resolve(true),
+          resolveLightningAddress: () =>
+            Promise.resolve({ ok: true, bolt11: 'lnbc-resolved' }),
+        },
+      ),
+    )
+    const bodyText = await response.text()
+    const body = JSON.parse(bodyText) as {
+      diagnostics: {
+        destinationKind: string | null
+        failureStage: string | null
+        preflightMaxSendableSat: number | null
+        reasonClass: string | null
+        timeoutSecs: number | null
+      }
+      reasonRef: string
+    }
+
+    expect(response.status).toBe(502)
+    expect(body.reasonRef).toBe('reason.public.treasury_payout.no_route')
+    expect(body.diagnostics).toEqual({
+      destinationKind: 'bolt11',
+      failureStage: 'pay_throws',
+      preflightMaxSendableSat: 94000,
+      reasonClass: 'no_route',
+      timeoutSecs: 50,
+    })
+    expect(bodyText).not.toContain('raw private daemon route failure')
+    expect(bodyText).not.toContain('recipient@spark.money')
+    expect(
+      store.rows.get('treasury_payout_failed_container_classified'),
+    ).toMatchObject({
+      amountSat: 40000,
+      failureReasonRef: 'reason.public.treasury_payout.no_route',
+      paymentRef: null,
+      state: 'failed',
+    })
+  })
+
   test('records Lightning Address resolution failures with safe reason refs', async () => {
     const store = makeMemoryTransactionStore()
     const response = await run(

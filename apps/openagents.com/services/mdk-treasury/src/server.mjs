@@ -1,6 +1,11 @@
 import { MAINNET_MDK_NODE_OPTIONS } from '@moneydevkit/core'
 import { MdkNode } from '@moneydevkit/lightning-js'
 
+import {
+  classifyTreasuryPayoutFailure,
+  paymentDestinationKind,
+} from './pay-failure.mjs'
+
 const port = Number(process.env.PORT ?? '8080')
 const MAX_WAIT_SECS = 50
 const SERVICE_TOKEN_HEADER = 'x-treasury-service-token'
@@ -172,13 +177,19 @@ const payResponse = async (request, node) => {
     return json(409, { error: 'treasury_self_pay_refused' })
   }
 
+  const destinationKind = paymentDestinationKind(destination)
   const estimate = node.getMaxSendable(destination)
+  const preflightMaxSendableSat =
+    estimate === null ? null : Math.floor(estimate.amountMsat / 1000)
 
   if (estimate === null || estimate.amountMsat < amountSat * 1000) {
     return json(409, {
+      destinationKind,
       error: 'treasury_insufficient_spendable_balance',
-      maxSendableSat:
-        estimate === null ? null : Math.floor(estimate.amountMsat / 1000),
+      failureStage: 'preflight_max_sendable',
+      maxSendableSat: preflightMaxSendableSat,
+      reasonClass: 'insufficient_spendable_balance',
+      reasonRef: 'reason.public.treasury_payout.insufficient_spendable_balance',
     })
   }
 
@@ -187,9 +198,28 @@ const payResponse = async (request, node) => {
   try {
     result = node.payWhileRunning(destination, amountSat * 1000, timeoutSecs)
   } catch (error) {
+    const classified = classifyTreasuryPayoutFailure(error)
+    console.warn({
+      amountSat,
+      destinationKind,
+      event: 'treasury_pay_failed',
+      failureStage: 'pay_throws',
+      preflightMaxSendableSat,
+      reasonClass: classified.reasonClass,
+      service: 'openagents-mdk-treasury',
+      timeoutSecs,
+    })
+
     return json(502, {
+      amountSat,
+      destinationKind,
       error: 'treasury_pay_failed',
+      failureStage: 'pay_throws',
+      preflightMaxSendableSat,
       reason: error instanceof Error ? error.message : String(error),
+      reasonClass: classified.reasonClass,
+      reasonRef: classified.reasonRef,
+      timeoutSecs,
     })
   }
 
