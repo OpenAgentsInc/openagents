@@ -1694,7 +1694,10 @@ describe('operator treasury payout', () => {
                   balanceSatAfter: 100000,
                   balanceSatBefore: 100000,
                   destinationKind: 'bolt11',
+                  errorCauseMessageSummary: 'route_failed',
                   errorCode: 'err_private_route',
+                  errorKeySummary: 'name:code:cause',
+                  errorMessageSummary: 'no_route_found_for_payment',
                   errorName: 'mdk_error',
                   error: 'treasury_pay_failed',
                   failureStage: 'pay_throws',
@@ -1706,6 +1709,8 @@ describe('operator treasury payout', () => {
                   payResponseStatus: 502,
                   preflightBalanceMaxSendableSat: 99000,
                   preflightMaxSendableSat: 94000,
+                  preparedPaymentMethodKind: 'bolt11Invoice',
+                  preferSparkForBolt11: true,
                   reason: 'raw private daemon route failure',
                   reasonClass: 'no_route',
                   reasonRef: 'reason.public.treasury_payout.no_route',
@@ -1752,7 +1757,10 @@ describe('operator treasury payout', () => {
         balanceSatBefore: number | null
         containerStatus: string | null
         destinationKind: string | null
+        errorCauseMessageSummary: string | null
         errorCode: string | null
+        errorKeySummary: string | null
+        errorMessageSummary: string | null
         errorName: string | null
         eventOutcomeStatus: string | null
         failureStage: string | null
@@ -1791,7 +1799,10 @@ describe('operator treasury payout', () => {
       balanceSatBefore: 100000,
       containerStatus: null,
       destinationKind: 'bolt11',
+      errorCauseMessageSummary: 'route_failed',
       errorCode: 'err_private_route',
+      errorKeySummary: 'name:code:cause',
+      errorMessageSummary: 'no_route_found_for_payment',
       errorName: 'mdk_error',
       eventOutcomeStatus: null,
       failureStage: 'pay_throws',
@@ -1809,9 +1820,9 @@ describe('operator treasury payout', () => {
       preparedAmountSat: null,
       preparedFeeSats: null,
       preparedLightningFeeSats: null,
-      preparedPaymentMethodKind: null,
+      preparedPaymentMethodKind: 'bolt11invoice',
       preparedSparkTransferFeeSats: null,
-      preferSparkForBolt11: null,
+      preferSparkForBolt11: true,
       preimagePresent: null,
       reasonClass: 'no_route',
       resolvedDestinationKind: 'bolt11',

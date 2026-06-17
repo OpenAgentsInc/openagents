@@ -88,6 +88,36 @@ const safeDiagnosticString = value =>
 const errorMessage = error =>
   error instanceof Error ? error.message : String(error)
 
+const redactDiagnosticText = value =>
+  value
+    .replace(/\b(?:lnbc|lntb|lnbcrt)[a-z0-9]{20,}\b/giu, 'bolt11_redacted')
+    .replace(/\bspark1[a-z0-9]{20,}\b/giu, 'spark_address_redacted')
+    .replace(/\b[a-f0-9]{32,}\b/giu, 'hex_redacted')
+    .replace(/\b[A-Za-z0-9+/=]{40,}\b/gu, 'token_redacted')
+
+const errorMessageSummary = error =>
+  safeDiagnosticString(redactDiagnosticText(errorMessage(error)))
+
+const errorCauseMessageSummary = error => {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'cause' in error &&
+    error.cause !== undefined
+  ) {
+    return safeDiagnosticString(
+      redactDiagnosticText(errorMessage(error.cause)),
+    )
+  }
+
+  return null
+}
+
+const errorKeySummary = error =>
+  typeof error === 'object' && error !== null
+    ? safeDiagnosticString(Object.keys(error).slice(0, 8).join(':'))
+    : null
+
 const errorFingerprint = error =>
   createHash('sha256').update(errorMessage(error)).digest('hex')
 
@@ -443,7 +473,10 @@ export const sparkTreasuryPayPayload = async input => {
     return {
       balanceSatBefore: before.balanceSat,
       error: 'spark_treasury_pay_failed',
+      errorCauseMessageSummary: errorCauseMessageSummary(error),
       errorCode: errorCode(error),
+      errorKeySummary: errorKeySummary(error),
+      errorMessageSummary: errorMessageSummary(error),
       errorName: errorName(error),
       failureStage,
       messageFingerprint: errorFingerprint(error),

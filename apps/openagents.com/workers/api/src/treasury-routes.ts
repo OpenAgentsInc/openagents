@@ -1244,8 +1244,13 @@ const publicTreasuryPayoutReasonRef = (value: unknown): string | null =>
     : null
 
 const safeTreasuryPayoutDiagnosticString = (value: unknown): string | null =>
-  typeof value === 'string' && /^[a-z0-9_.:-]{1,120}$/u.test(value)
+  typeof value === 'string' && value.trim() !== ''
     ? value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_.:-]+/gu, '_')
+        .replace(/^_+|_+$/gu, '')
+        .slice(0, 120) || null
     : null
 
 const safeTreasuryPayoutDiagnosticNumber = (value: unknown): number | null =>
@@ -1296,7 +1301,16 @@ const treasuryPayoutDiagnosticPayload = (
   destinationKind: safeTreasuryPayoutDiagnosticString(
     payResult.destinationKind,
   ),
+  errorCauseMessageSummary: safeTreasuryPayoutDiagnosticString(
+    payResult.errorCauseMessageSummary,
+  ),
   errorCode: safeTreasuryPayoutDiagnosticString(payResult.errorCode),
+  errorKeySummary: safeTreasuryPayoutDiagnosticString(
+    payResult.errorKeySummary,
+  ),
+  errorMessageSummary: safeTreasuryPayoutDiagnosticString(
+    payResult.errorMessageSummary,
+  ),
   errorName: safeTreasuryPayoutDiagnosticString(payResult.errorName),
   eventOutcomeStatus: safeTreasuryPayoutDiagnosticString(
     payResult.eventOutcomeStatus,
