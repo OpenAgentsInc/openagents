@@ -21,7 +21,10 @@ import {
 } from '@openagentsinc/three-effect/core'
 
 import type {
+  AgentAvatar,
+  AvatarPosition,
   ProofRef,
+  PylonStation,
   RunEntity,
   SettlementRef,
   TrainingRun,
@@ -78,6 +81,35 @@ export interface PublicTassadarSettlementRow {
   readonly state?: string
   readonly trainingRunRef?: string | null
   readonly verificationChallengeRef?: string | null
+}
+
+export interface TassadarWorldVector {
+  readonly x: number
+  readonly y: number
+  readonly z: number
+}
+
+export interface TassadarWorldPylonStation {
+  readonly interactionRadiusMeters: number
+  readonly label: string
+  readonly position: TassadarWorldVector
+  readonly pylonRef: string
+  readonly regionRef: string
+  readonly sourceUrl: string
+}
+
+export interface TassadarWorldAgentAvatar {
+  readonly actorKind: string
+  readonly avatarRef: string
+  readonly displayName: string
+  readonly homePylonRef?: string
+}
+
+export interface TassadarWorldAvatarPosition {
+  readonly avatarRef: string
+  readonly movementMode: string
+  readonly position: TassadarWorldVector
+  readonly regionRef: string
 }
 
 /** Narrow structural view of the worker's `TrainingRunPublicSummary` (public-safe). */
@@ -140,6 +172,11 @@ export interface TassadarRunPublicSummary {
     readonly receiptRefs?: ReadonlyArray<string>
     readonly windowRef?: string
   }>
+  readonly world?: {
+    readonly agentAvatars?: ReadonlyArray<TassadarWorldAgentAvatar>
+    readonly avatarPositions?: ReadonlyArray<TassadarWorldAvatarPosition>
+    readonly pylonStations?: ReadonlyArray<TassadarWorldPylonStation>
+  }
 }
 
 const metricValue = (metric: PublicMetric | undefined): number =>
@@ -199,6 +236,37 @@ const pylonEntityPosition = (
   index: number,
   total: number,
 ): TrainingRunVector => [-2.35, spread(index, total, 1.5, -1.5), liveEntityZ]
+
+const worldEntityZ = 0.2
+
+const stationEntityId = (pylonRef: string): string => `station.${pylonRef}`
+
+const worldVectorFromRow = (row: {
+  readonly positionX?: number
+  readonly positionY?: number
+  readonly positionZ?: number
+}): TassadarWorldVector => ({
+  x: coordinate(finiteOrZero(row.positionX)),
+  y: coordinate(finiteOrZero(row.positionY)),
+  z: coordinate(finiteOrZero(row.positionZ)),
+})
+
+const stationEntityPosition = (
+  station: TassadarWorldPylonStation,
+): TrainingRunVector => [
+  coordinate(station.position.x - 0.32),
+  coordinate(station.position.z - 0.12),
+  worldEntityZ,
+]
+
+const avatarEntityPosition = (
+  position: TassadarWorldAvatarPosition | undefined,
+  station: TassadarWorldPylonStation | undefined,
+): TrainingRunVector => [
+  coordinate(position?.position.x ?? (station?.position.x ?? -1.9) + 0.45),
+  coordinate(position?.position.z ?? station?.position.z ?? 0),
+  worldEntityZ + 0.08,
+]
 
 const verifiedReplayEntityPosition = (
   index: number,
@@ -438,6 +506,48 @@ const corpusEntities = (
   }))
 }
 
+const pylonStationEntities = (
+  summary: TassadarRunPublicSummary,
+): ReadonlyArray<TrainingRunEntityDefinition> =>
+  (summary.world?.pylonStations ?? []).map(station => ({
+    id: stationEntityId(station.pylonRef),
+    label: `${station.label} hub`,
+    position: stationEntityPosition(station),
+    status: 'registered',
+  }))
+
+const pylonAgentAvatarEntities = (
+  summary: TassadarRunPublicSummary,
+): ReadonlyArray<TrainingRunEntityDefinition> => {
+  const stations = new Map(
+    (summary.world?.pylonStations ?? []).map(station => [
+      station.pylonRef,
+      station,
+    ]),
+  )
+  const positions = new Map(
+    (summary.world?.avatarPositions ?? []).map(position => [
+      position.avatarRef,
+      position,
+    ]),
+  )
+  return (summary.world?.agentAvatars ?? [])
+    .filter(avatar => avatar.actorKind === 'pylon_agent')
+    .map(avatar => {
+      const station =
+        avatar.homePylonRef === undefined
+          ? undefined
+          : stations.get(avatar.homePylonRef)
+      const position = positions.get(avatar.avatarRef)
+      return {
+        id: avatar.avatarRef,
+        label: avatar.displayName,
+        position: avatarEntityPosition(position, station),
+        status: position?.movementMode ?? 'idle',
+      }
+    })
+}
+
 const runNodeStatus = (
   state: string | undefined,
 ): TrainingRunNodeDefinition['status'] =>
@@ -464,7 +574,10 @@ const runNodeFromPublicSummary = (
 })
 
 export interface TassadarSpacetimeWorldRows {
+  readonly agentAvatars?: ReadonlyArray<AgentAvatar>
+  readonly avatarPositions?: ReadonlyArray<AvatarPosition>
   readonly proofRefs?: ReadonlyArray<ProofRef>
+  readonly pylonStations?: ReadonlyArray<PylonStation>
   readonly runEntities?: ReadonlyArray<RunEntity>
   readonly settlementRefs?: ReadonlyArray<SettlementRef>
   readonly trainingRuns?: ReadonlyArray<TrainingRun>
@@ -472,7 +585,8 @@ export interface TassadarSpacetimeWorldRows {
   readonly worldEvents?: ReadonlyArray<WorldEvent>
 }
 
-const rowText = (value: string | undefined): string => value?.trim() ?? ''
+const rowText = (value: string | null | undefined): string =>
+  value?.trim() ?? ''
 
 const labelOrdinal = (label: string, prefix: string): number => {
   const match = label.match(new RegExp(`^${prefix}(\\d+)$`))
@@ -524,6 +638,62 @@ const numberFromU64 = (value: SettlementRef['amountSats']): number =>
     : typeof value === 'number' && Number.isFinite(value)
       ? value
       : 0
+
+const worldStationsFromRows = (
+  rows: ReadonlyArray<PylonStation>,
+  runRef: string,
+): ReadonlyArray<TassadarWorldPylonStation> =>
+  [...rows]
+    .filter(row => row.runRef === runRef && rowText(row.pylonRef) !== '')
+    .sort((left, right) => {
+      const labelCompare =
+        labelOrdinal(rowText(left.label), 'P') -
+        labelOrdinal(rowText(right.label), 'P')
+      return labelCompare === 0
+        ? rowText(left.pylonRef).localeCompare(rowText(right.pylonRef))
+        : labelCompare
+    })
+    .map(row => ({
+      interactionRadiusMeters: finiteOrZero(row.interactionRadiusMeters),
+      label: rowText(row.label) || shortRef(row.pylonRef),
+      position: worldVectorFromRow(row),
+      pylonRef: row.pylonRef,
+      regionRef: row.regionRef,
+      sourceUrl: row.sourceUrl,
+    }))
+
+const worldAvatarsFromRows = (
+  rows: ReadonlyArray<AgentAvatar>,
+  stationRefs: ReadonlySet<string>,
+): ReadonlyArray<TassadarWorldAgentAvatar> =>
+  [...rows]
+    .filter(row => {
+      const homePylonRef = rowText(row.homePylonRef)
+      return homePylonRef !== '' && stationRefs.has(homePylonRef)
+    })
+    .sort((left, right) =>
+      rowText(left.displayName).localeCompare(rowText(right.displayName)),
+    )
+    .map(row => ({
+      actorKind: rowText(row.actorKind) || 'pylon_agent',
+      avatarRef: row.avatarRef,
+      displayName: rowText(row.displayName) || shortRef(row.avatarRef),
+      homePylonRef: rowText(row.homePylonRef),
+    }))
+
+const worldAvatarPositionsFromRows = (
+  rows: ReadonlyArray<AvatarPosition>,
+  avatarRefs: ReadonlySet<string>,
+): ReadonlyArray<TassadarWorldAvatarPosition> =>
+  [...rows]
+    .filter(row => avatarRefs.has(row.avatarRef))
+    .sort((left, right) => left.avatarRef.localeCompare(right.avatarRef))
+    .map(row => ({
+      avatarRef: row.avatarRef,
+      movementMode: rowText(row.movementMode) || 'idle',
+      position: worldVectorFromRow(row),
+      regionRef: row.regionRef,
+    }))
 
 const pylonRowsFromWorld = (
   entities: ReadonlyArray<RunEntity>,
@@ -663,13 +833,24 @@ export const spacetimeWorldSummaryFromRows = (
     row => row.runRef === runRef,
   )
   const events = (rows.worldEvents ?? []).filter(row => row.runRef === runRef)
+  const pylonStations = worldStationsFromRows(rows.pylonStations ?? [], runRef)
+  const stationRefs = new Set(pylonStations.map(row => row.pylonRef))
+  const agentAvatars = worldAvatarsFromRows(rows.agentAvatars ?? [], stationRefs)
+  const avatarRefs = new Set(agentAvatars.map(row => row.avatarRef))
+  const avatarPositions = worldAvatarPositionsFromRows(
+    rows.avatarPositions ?? [],
+    avatarRefs,
+  )
 
   if (
     trainingRun === undefined &&
     entities.length === 0 &&
     proofs.length === 0 &&
     settlements.length === 0 &&
-    events.length === 0
+    events.length === 0 &&
+    pylonStations.length === 0 &&
+    agentAvatars.length === 0 &&
+    avatarPositions.length === 0
   ) {
     return baseSummary
   }
@@ -733,6 +914,18 @@ export const spacetimeWorldSummaryFromRows = (
     runRef,
     ...(runState === undefined ? {} : { runState }),
     ...(settlementRows.length === 0 ? {} : { settlementRows }),
+    ...(pylonStations.length === 0 &&
+    agentAvatars.length === 0 &&
+    avatarPositions.length === 0
+      ? {}
+      : {
+          world: {
+            ...baseSummary.world,
+            ...(agentAvatars.length === 0 ? {} : { agentAvatars }),
+            ...(avatarPositions.length === 0 ? {} : { avatarPositions }),
+            ...(pylonStations.length === 0 ? {} : { pylonStations }),
+          },
+        }),
     ...(trainingRun === undefined
       ? {}
       : {
@@ -767,6 +960,8 @@ export const trainingRunEntityLayerFromPublicSummary = (
     : []
   const entities = [
     ...leaderboardEntities(rows, settlements),
+    ...pylonStationEntities(summary),
+    ...pylonAgentAvatarEntities(summary),
     ...verifiedReplayEntities(pairs),
     ...rejectedReplayEntities(rejectedPairs),
     ...settlementEntities(settlements),

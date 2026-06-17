@@ -474,6 +474,31 @@ describe('dataStateForSummary', () => {
 
 describe('proofLinkForSelection', () => {
   it('maps verification and receipt selections to public-safe proof URLs', () => {
+    const populatedWithWorld = {
+      ...populated,
+      world: {
+        agentAvatars: [
+          {
+            actorKind: 'pylon_agent',
+            avatarRef: 'avatar.pylon_agent.pylon.worker.one',
+            displayName: 'P1 agent',
+            homePylonRef: 'pylon.worker.one',
+          },
+        ],
+        pylonStations: [
+          {
+            interactionRadiusMeters: 2.4,
+            label: 'P1',
+            position: { x: -2.35, y: 0, z: 1.5 },
+            pylonRef: 'pylon.worker.one',
+            regionRef: 'region.run.tassadar.executor.20260615.main',
+            sourceUrl:
+              '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=pylon.worker.one',
+          },
+        ],
+      },
+    }
+
     expect(
       proofLinkForSelection(populated, {
         detail: 'verified',
@@ -499,6 +524,56 @@ describe('proofLinkForSelection', () => {
         label: 'receipt',
         role: 'receipt',
         status: 'verified',
+      }),
+    ).toEqual({
+      caveats: [
+        'Amount: 21 sats',
+        'Simulation-backed settlement record; this does not prove real Bitcoin moved.',
+      ],
+      href: '/api/public/nexus-pylon/receipts/receipt.nexus.tassadar_run_settlement.public_summary_test',
+      kind: 'settlement_recorded',
+      label: 'Settlement receipt',
+      ref: 'receipt.nexus.tassadar_run_settlement.public_summary_test',
+      sourceRefs: [
+        'receipt.nexus.tassadar_run_settlement.public_summary_test',
+        'pylon.worker.one',
+        'challenge.tassadar.replay.1',
+      ],
+      state: 'settled; simulation; real bitcoin moved: no',
+    })
+
+    expect(
+      proofLinkForSelection(populatedWithWorld, {
+        detail: 'station',
+        id: 'station.pylon.worker.one',
+        label: 'P1 hub',
+        role: 'run',
+        status: 'active',
+      }),
+    ).toEqual({
+      caveats: [
+        'Amount: 21 sats',
+        'Simulation-backed settlement record; this does not prove real Bitcoin moved.',
+      ],
+      href: '/api/public/nexus-pylon/receipts/receipt.nexus.tassadar_run_settlement.public_summary_test',
+      kind: 'settlement_recorded',
+      label: 'Settlement receipt',
+      ref: 'receipt.nexus.tassadar_run_settlement.public_summary_test',
+      sourceRefs: [
+        'receipt.nexus.tassadar_run_settlement.public_summary_test',
+        'pylon.worker.one',
+        'challenge.tassadar.replay.1',
+      ],
+      state: 'settled; simulation; real bitcoin moved: no',
+    })
+
+    expect(
+      proofLinkForSelection(populatedWithWorld, {
+        detail: 'avatar',
+        id: 'avatar.pylon_agent.pylon.worker.one',
+        label: 'P1 agent',
+        role: 'run',
+        status: 'active',
       }),
     ).toEqual({
       caveats: [

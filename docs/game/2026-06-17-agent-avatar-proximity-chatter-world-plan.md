@@ -17,6 +17,15 @@ visible leaderboard pylon ref. The live `openagents-world` database now has 6
 station rows, 6 pylon-agent avatar rows, and 6 pylon-agent position rows for
 the canonical Tassadar run.
 
+Update: issue #5263 made those rows visible on `/tassadar`. When the
+feature-flagged SpacetimeDB browser adapter is enabled and reachable, the scene
+now subscribes to `pylon_station`, `agent_avatar`, and `avatar_position`, maps
+one station plus one pylon-agent avatar per public pylon ref, and keeps the
+existing Worker/D1 summary as the startup and outage fallback. Station and
+avatar selections route through the existing public pylon proof/receipt
+inspector only when a public pylon ref exists. There is still no anonymous
+motion, fake chat, fake traffic, or fake payout animation.
+
 ## Thesis
 
 The next visible step should be simple to explain:

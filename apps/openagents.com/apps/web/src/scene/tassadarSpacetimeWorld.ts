@@ -1,5 +1,8 @@
 import type {
+  AgentAvatar,
+  AvatarPosition,
   ProofRef,
+  PylonStation,
   RunEntity,
   SettlementRef,
   TrainingRun,
@@ -25,6 +28,9 @@ const SUBSCRIBED_TABLES = [
   'world_event',
 ] as const
 
+const REGION_REF_PREFIX = 'region.'
+const REGION_REF_SUFFIX = '.main'
+
 type SpacetimeBindings = typeof import('./spacetimeWorldBindings')
 type DbConnection = InstanceType<SpacetimeBindings['DbConnection']>
 
@@ -34,7 +40,10 @@ export type TassadarSpacetimeWorldConfig = Readonly<{
 }>
 
 export type TassadarSpacetimeWorldRows = Readonly<{
+  agentAvatars: ReadonlyArray<AgentAvatar>
+  avatarPositions: ReadonlyArray<AvatarPosition>
   proofRefs: ReadonlyArray<ProofRef>
+  pylonStations: ReadonlyArray<PylonStation>
   runEntities: ReadonlyArray<RunEntity>
   settlementRefs: ReadonlyArray<SettlementRef>
   trainingRuns: ReadonlyArray<TrainingRun>
@@ -49,6 +58,9 @@ export type TassadarSpacetimeWorldSubscription = Readonly<{
 const text = (value: string | null): string => value?.trim() ?? ''
 
 const sqlString = (value: string): string => `'${value.replaceAll("'", "''")}'`
+
+const regionRefForRun = (runRef: string): string =>
+  `${REGION_REF_PREFIX}${runRef}${REGION_REF_SUFFIX}`
 
 export const spacetimeConfigFromElement = (
   element: HTMLElement,
@@ -65,11 +77,26 @@ export const spacetimeConfigFromElement = (
 
 const subscriptionQueries = (runRef: string): ReadonlyArray<string> => {
   const run = sqlString(runRef)
-  return SUBSCRIBED_TABLES.map(table => `SELECT * FROM ${table} WHERE run_ref = ${run}`)
+  const region = sqlString(regionRefForRun(runRef))
+  return [
+    ...SUBSCRIBED_TABLES.map(table => `SELECT * FROM ${table} WHERE run_ref = ${run}`),
+    `SELECT * FROM pylon_station WHERE run_ref = ${run}`,
+    'SELECT * FROM agent_avatar',
+    `SELECT * FROM avatar_position WHERE region_ref = ${region}`,
+  ]
 }
 
 const rowsFromConnection = (conn: DbConnection): TassadarSpacetimeWorldRows => ({
+  agentAvatars: [
+    ...conn.db.agent_avatar.iter(),
+  ] as unknown as ReadonlyArray<AgentAvatar>,
+  avatarPositions: [
+    ...conn.db.avatar_position.iter(),
+  ] as unknown as ReadonlyArray<AvatarPosition>,
   proofRefs: [...conn.db.proof_ref.iter()] as unknown as ReadonlyArray<ProofRef>,
+  pylonStations: [
+    ...conn.db.pylon_station.iter(),
+  ] as unknown as ReadonlyArray<PylonStation>,
   runEntities: [
     ...conn.db.run_entity.iter(),
   ] as unknown as ReadonlyArray<RunEntity>,
@@ -137,6 +164,9 @@ export const startTassadarSpacetimeWorldSubscription = async (
       observeTable(connection.db.proof_ref, publish)
       observeTable(connection.db.settlement_ref, publish)
       observeTable(connection.db.world_event, publish)
+      observeTable(connection.db.pylon_station, publish)
+      observeTable(connection.db.agent_avatar, publish)
+      observeTable(connection.db.avatar_position, publish)
       connection
         .subscriptionBuilder()
         .onApplied(publish)

@@ -1,7 +1,7 @@
 # SpacetimeDB To Tassadar Integration Next Steps
 
 Date: 2026-06-17
-Status: Phase 0, Phase 1, Phase 2, base ops hardening, MVP interaction schema, and station/avatar projection implemented; rendering next
+Status: Phase 0, Phase 1, Phase 2, base ops hardening, MVP interaction schema, station/avatar projection, and read-only station/avatar rendering implemented; movement and chatter next
 
 ## Current Boundary
 
@@ -170,8 +170,21 @@ applying/replaying the bridge, live counts stayed stable at 17 `world_event`
 rows and added 6 `pylon_station`, 6 `agent_avatar`, and 6 `avatar_position`
 rows.
 
-The next step is issue #5263: subscribe to those public interaction rows in the
-browser adapter and render stations plus pylon-agent avatars on `/tassadar`.
+Issue #5263 subscribes to those public interaction rows in the browser adapter
+and renders stations plus pylon-agent avatars on `/tassadar`. The scene still
+fetches `/api/public/tassadar-run-summary` first and continues rendering from
+that Worker/D1 summary when SpacetimeDB is disabled, unreachable, or returns no
+usable world rows. When SpacetimeDB is connected, `pylon_station` rows become
+compact station entities next to the public pylon lane, and `agent_avatar` rows
+with matching `avatar_position` rows become pylon-agent entities at their
+bounded world coordinates. Selection remains proof-safe: station and avatar
+entity IDs are resolved back to their public `home_pylon_ref`, then the existing
+public proof/receipt inspector decides whether a dereferenceable settlement
+receipt or pylon evidence link exists.
+
+This phase is intentionally read-only from the page's perspective. It does not
+emit browser position updates, does not invent anonymous visitors, and does not
+render chat bubbles or payout motion before row-backed interaction writes exist.
 
 After the base projection works, add subscriptions that are useful only when an
 entity is selected:
@@ -196,6 +209,9 @@ Required checks before treating `/tassadar` as connected:
   unavailable. Done in issue #5238.
 - Run the existing `/tassadar` smoke. Done in issue #5238 against the current
   production route.
+- Re-run the existing `/tassadar` smoke after station/avatar rendering. Done in
+  issue #5263 against the deployed production route and hashed
+  `/assets/index-D3gMYS5a.js` bundle.
 - Probe `https://spacetime.openagents.com/v1/database/openagents-world/subscribe`
   and expect `426` from a non-WebSocket curl. Done in issue #5238.
 - Manually verify the browser scene still contains no unbacked motion.

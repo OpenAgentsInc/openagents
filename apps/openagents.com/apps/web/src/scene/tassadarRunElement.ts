@@ -267,6 +267,18 @@ const leaderboardRowForSelection = (
     row => row.pylonRef === selection.id,
   )
 
+const worldPylonRefForSelection = (
+  summary: TassadarRunPublicSummary,
+  selection: TrainingRunNodeSelection,
+): string | undefined => {
+  const station = summary.world?.pylonStations?.find(
+    row => selection.id === `station.${row.pylonRef}`,
+  )
+  if (station !== undefined) return station.pylonRef
+  return summary.world?.agentAvatars?.find(row => row.avatarRef === selection.id)
+    ?.homePylonRef
+}
+
 const corpusTraceForSelection = (
   summary: TassadarRunPublicSummary,
   selection: TrainingRunNodeSelection,
@@ -305,6 +317,24 @@ export const proofLinkForSelection = (
       return settlementProofDetail(contributorSettlement)
     }
     return linkForRef(summary, 'Pylon evidence', firstRef(row.sourceRefs))
+  }
+
+  const worldPylonRef = worldPylonRefForSelection(summary, selection)
+  if (worldPylonRef !== undefined) {
+    const row = summary.realGradient?.leaderboardRows?.find(
+      row => row.pylonRef === worldPylonRef,
+    )
+    const contributorSettlement = settlementRows(summary).find(
+      settlementRow => settlementRow.contributorRef === worldPylonRef,
+    )
+    if (contributorSettlement !== undefined) {
+      return settlementProofDetail(contributorSettlement)
+    }
+    return linkForRef(
+      summary,
+      'Pylon evidence',
+      firstRef(row?.sourceRefs) ?? worldPylonRef,
+    )
   }
 
   const corpusTraceRef = corpusTraceForSelection(summary, selection)

@@ -170,6 +170,17 @@ primitives.
   coordinates mirror the existing left-lane P1-P6 pylon layout, and avatar refs
   are deterministic `avatar.pylon_agent.{pylonRef}` values derived only from
   public pylon refs.
+- 2026-06-17: Issue #5263 rendered the public interaction rows on `/tassadar`.
+  The browser adapter now subscribes to `pylon_station`, `agent_avatar`, and
+  `avatar_position` in addition to the proof projection tables. The scene maps
+  each public pylon station to a compact `station.{pylonRef}` entity and each
+  seeded pylon-agent avatar to its row-backed world position. Station/avatar
+  selections resolve back through the existing public pylon proof/receipt
+  inspector instead of adding SpacetimeDB-only proof URLs. The page still starts
+  from `/api/public/tassadar-run-summary` and falls back to that Worker/D1
+  summary when SpacetimeDB is disabled or unreachable. Deploy version
+  `337b4161-02d0-49fb-9755-a218b736cf3f` served hashed bundle
+  `/assets/index-D3gMYS5a.js`; the live `/tassadar` smoke passed after deploy.
 
 ## Short answer
 
@@ -258,7 +269,11 @@ Live checks while writing and later updating:
   promise registry.
 - `https://openagents.com/api/public/pylon-stats` returned live fleet counters.
 - `https://openagents.com/api/public/nexus-pylon/receipts/receipt.nexus.tassadar_run_settlement.idem.tassadar.settlement.59ba1f30.orrery.v2`
-  returned the public settlement receipt.
+  returned the public settlement receipt and returned `200` again in the
+  post-issue #5263 live smoke.
+- The post-issue #5263 deploy check returned `200` for
+  `https://openagents.com/`, `https://openagents.com/tassadar`, and
+  `https://openagents.com/assets/index-D3gMYS5a.js`.
 - The current simplified adapter resolves the same live payload to one run node,
   public-ref entities, zero contributor-orbit dots, zero verified replay beams,
   zero payout bursts, zero loss-curve points, and hidden optional scene chrome.
