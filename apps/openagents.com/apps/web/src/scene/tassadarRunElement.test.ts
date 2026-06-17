@@ -77,7 +77,32 @@ const populated = {
       },
     ],
   },
-  receiptRefs: ['receipt.pylon.settlement.1'],
+  receiptRefs: [
+    'receipt.nexus.tassadar_run_settlement.public_summary_test',
+    'receipt.forum.1',
+  ],
+  settlementRows: [
+    {
+      amountSats: 21,
+      apiUrl:
+        '/api/public/nexus-pylon/receipts/receipt.nexus.tassadar_run_settlement.public_summary_test',
+      contributorRef: 'pylon.worker.one',
+      movementMode: 'simulation',
+      realBitcoinMoved: false,
+      receiptKind: 'settlement_recorded',
+      receiptPageUrl:
+        '/nexus-pylon/receipts/receipt.nexus.tassadar_run_settlement.public_summary_test',
+      receiptRef: 'receipt.nexus.tassadar_run_settlement.public_summary_test',
+      sourceRefs: [
+        'receipt.nexus.tassadar_run_settlement.public_summary_test',
+        'pylon.worker.one',
+        'challenge.tassadar.replay.1',
+      ],
+      state: 'settled',
+      trainingRunRef: 'run.tassadar.executor.20260615',
+      verificationChallengeRef: 'challenge.tassadar.replay.1',
+    },
+  ],
   windows: [{ windowRef: 'training.window.tassadar.executor.20260615.w1' }],
 }
 
@@ -205,7 +230,7 @@ describe('tassadarRunView page wiring', () => {
     expect(overlay?.textContent ?? '').toContain('503')
   })
 
-  it('resolves node-selected events to a public proof link and opens it', async () => {
+  it('resolves node-selected events to an in-page public proof drawer without opening a tab', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(populated))
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
     const el = await mountAndSettle()
@@ -226,14 +251,49 @@ describe('tassadarRunView page wiring', () => {
       }),
     )
 
-    expect(openSpy).toHaveBeenCalledWith(
-      '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=challenge.tassadar.replay.1',
-      '_blank',
-      'noopener,noreferrer',
-    )
+    expect(openSpy).not.toHaveBeenCalled()
     const selection = el.shadowRoot?.querySelector('.selection')
     expect(selection?.getAttribute('data-proof-state')).toBe('linked')
     expect(selection?.textContent ?? '').toContain('Verified replay challenge')
+    expect(selection?.textContent ?? '').toContain(
+      '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=challenge.tassadar.replay.1',
+    )
+    expect(selection?.textContent ?? '').toContain('Open proof')
+  })
+
+  it('routes Nexus/Pylon settlement receipts to the public receipt API with simulation caveats', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(populated))
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const el = await mountAndSettle()
+    const run = el.shadowRoot?.querySelector(STUB_TAG)
+
+    run?.dispatchEvent(
+      new CustomEvent('node-selected', {
+        bubbles: true,
+        composed: true,
+        detail: {
+          detail: 'settlement',
+          id: 'settlement',
+          label: 'settlement',
+          role: 'rung',
+          status: 'settled',
+        },
+      }),
+    )
+
+    expect(openSpy).not.toHaveBeenCalled()
+    const selection = el.shadowRoot?.querySelector('.selection')
+    expect(selection?.getAttribute('data-proof-state')).toBe('linked')
+    expect(selection?.textContent ?? '').toContain('settlement_recorded')
+    expect(selection?.textContent ?? '').toContain(
+      '/api/public/nexus-pylon/receipts/receipt.nexus.tassadar_run_settlement.public_summary_test',
+    )
+    expect(selection?.textContent ?? '').toContain(
+      'Simulation-backed settlement record',
+    )
+    expect(selection?.textContent ?? '').toContain(
+      'real bitcoin moved: no',
+    )
   })
 
   it('leaves an unlinked selection panel when no public proof ref exists', async () => {
@@ -292,9 +352,13 @@ describe('proofLinkForSelection', () => {
         status: 'verified',
       }),
     ).toEqual({
+      caveats: [],
       href: '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=challenge.tassadar.replay.1',
+      kind: 'training_ref',
       label: 'Verified replay challenge',
       ref: 'challenge.tassadar.replay.1',
+      sourceRefs: [],
+      state: 'linked',
     })
 
     expect(
@@ -306,9 +370,20 @@ describe('proofLinkForSelection', () => {
         status: 'verified',
       }),
     ).toEqual({
-      href: '/api/forum/receipts/receipt.pylon.settlement.1',
-      label: 'Receipt',
-      ref: 'receipt.pylon.settlement.1',
+      caveats: [
+        'Amount: 21 sats',
+        'Simulation-backed settlement record; this does not prove real Bitcoin moved.',
+      ],
+      href: '/api/public/nexus-pylon/receipts/receipt.nexus.tassadar_run_settlement.public_summary_test',
+      kind: 'settlement_recorded',
+      label: 'Settlement receipt',
+      ref: 'receipt.nexus.tassadar_run_settlement.public_summary_test',
+      sourceRefs: [
+        'receipt.nexus.tassadar_run_settlement.public_summary_test',
+        'pylon.worker.one',
+        'challenge.tassadar.replay.1',
+      ],
+      state: 'settled; simulation; real bitcoin moved: no',
     })
   })
 })

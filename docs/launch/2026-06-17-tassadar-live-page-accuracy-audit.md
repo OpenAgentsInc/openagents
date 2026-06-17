@@ -18,6 +18,11 @@ primitives.
   carry receipt refs, contributor refs, challenge refs, amount sats,
   `movementMode`, `realBitcoinMoved`, state, and public Nexus/Pylon proof URLs,
   so later visual layers can stop inferring payout proof from aggregates.
+- 2026-06-17: Issue #5188 replaced automatic proof-tab opening with an in-page
+  proof drawer and made receipt routing namespace-aware. Nexus/Pylon receipts now
+  resolve through `/api/public/nexus-pylon/receipts/{receiptRef}` while forum
+  receipts retain `/api/forum/receipts/{receiptRef}`; settlement rows feed the
+  drawer's movement-mode and simulation caveats.
 
 ## Short answer
 

@@ -46,6 +46,21 @@ export interface PublicTrainingRunVerifiedReplayPair {
   readonly workerRef?: string
 }
 
+export interface PublicTassadarSettlementRow {
+  readonly amountSats?: number
+  readonly apiUrl?: string
+  readonly contributorRef?: string | null
+  readonly movementMode?: 'real_bitcoin' | 'simulation' | string
+  readonly realBitcoinMoved?: boolean
+  readonly receiptKind?: string
+  readonly receiptPageUrl?: string
+  readonly receiptRef?: string
+  readonly sourceRefs?: ReadonlyArray<string>
+  readonly state?: string
+  readonly trainingRunRef?: string | null
+  readonly verificationChallengeRef?: string | null
+}
+
 /** Narrow structural view of the worker's `TrainingRunPublicSummary` (public-safe). */
 export interface TassadarRunPublicSummary {
   readonly corpus?: {
@@ -95,6 +110,7 @@ export interface TassadarRunPublicSummary {
     readonly verifiedReplayPairs?: ReadonlyArray<PublicTrainingRunVerifiedReplayPair>
   }
   readonly receiptRefs?: ReadonlyArray<string>
+  readonly settlementRows?: ReadonlyArray<PublicTassadarSettlementRow>
   readonly windows?: ReadonlyArray<{
     readonly receiptRefs?: ReadonlyArray<string>
     readonly windowRef?: string

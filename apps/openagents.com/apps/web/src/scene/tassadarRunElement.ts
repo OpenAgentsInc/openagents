@@ -22,6 +22,7 @@ import { define as defineCustomElement } from 'foldkit/customElement'
 import type { Attribute, Html } from 'foldkit/html'
 
 import {
+  type PublicTassadarSettlementRow,
   type TassadarRunPublicSummary,
   tassadarRunVisualizationOptions,
 } from './tassadarRunSnapshot'
@@ -31,9 +32,13 @@ export const TASSADAR_RUN_SUMMARY_ENDPOINT = '/api/public/tassadar-run-summary'
 
 export type TassadarRunDataState = 'loading' | 'ok' | 'empty' | 'error'
 export type TassadarRunProofLink = Readonly<{
+  caveats: ReadonlyArray<string>
   href: string
+  kind: string
   label: string
   ref: string
+  sourceRefs: ReadonlyArray<string>
+  state: string
 }>
 
 const HOST_STYLE =
@@ -59,6 +64,8 @@ const HOST_STYLE =
   'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(10px)}' +
   '.selection strong{display:block;margin-bottom:0.25rem;font-size:0.78rem;font-weight:600;color:rgba(255,255,255,0.88)}' +
   '.selection p{margin:0;font-size:0.72rem;line-height:1.45;color:rgba(255,255,255,0.55)}' +
+  '.selection dl{display:grid;gap:0.45rem;margin:0.55rem 0 0}.selection dt{margin:0 0 0.12rem;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.35)}' +
+  '.selection dd{margin:0;overflow-wrap:anywhere;font-size:0.7rem;line-height:1.4;color:rgba(255,255,255,0.66)}' +
   '.selection a{display:inline-flex;margin-top:0.55rem;font-size:0.72rem;color:rgba(255,255,255,0.86);text-underline-offset:0.18rem}' +
   '.selection a:hover{color:#fff}'
 
@@ -83,8 +90,18 @@ const focusedTrainingRunHref = (
 ): string =>
   `${publicTrainingRunHref(summary)}?focusRef=${encodeURIComponent(ref)}`
 
+const isNexusPylonReceiptRef = (ref: string): boolean =>
+  ref.startsWith('receipt.nexus.') ||
+  ref.startsWith('receipt.nexus_') ||
+  ref.startsWith('receipt.nexus-pylon.')
+
+const nexusPylonReceiptHref = (ref: string): string =>
+  `/api/public/nexus-pylon/receipts/${encodeURIComponent(ref)}`
+
 const receiptHref = (ref: string): string =>
-  `/api/forum/receipts/${encodeURIComponent(ref)}`
+  isNexusPylonReceiptRef(ref)
+    ? nexusPylonReceiptHref(ref)
+    : `/api/forum/receipts/${encodeURIComponent(ref)}`
 
 const firstRef = (
   refs: ReadonlyArray<string> | undefined,
@@ -92,6 +109,13 @@ const firstRef = (
   Array.isArray(refs)
     ? refs.map(ref => ref.trim()).find(ref => ref.length > 0)
     : undefined
+
+const publicRefs = (
+  refs: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> =>
+  Array.isArray(refs)
+    ? refs.map(ref => ref.trim()).filter(ref => ref.length > 0)
+    : []
 
 const metricNumber = (
   metric: { readonly value?: number } | undefined,
@@ -123,6 +147,80 @@ const stalenessText = (summary: TassadarRunPublicSummary): string => {
   return `${contract} / ${composition} / max ${max}`
 }
 
+const settlementReceiptRef = (
+  row: PublicTassadarSettlementRow,
+): string | undefined => {
+  const ref = row.receiptRef?.trim()
+  return ref === undefined || ref === '' ? undefined : ref
+}
+
+const settlementRows = (
+  summary: TassadarRunPublicSummary,
+): ReadonlyArray<PublicTassadarSettlementRow> =>
+  Array.isArray(summary.settlementRows) ? summary.settlementRows : []
+
+const firstSettlementRow = (
+  summary: TassadarRunPublicSummary,
+): PublicTassadarSettlementRow | undefined =>
+  settlementRows(summary).find(row => settlementReceiptRef(row) !== undefined)
+
+const settlementRowForRef = (
+  summary: TassadarRunPublicSummary,
+  ref: string,
+): PublicTassadarSettlementRow | undefined =>
+  settlementRows(summary).find(row => settlementReceiptRef(row) === ref)
+
+const proofDetail = (
+  input: Readonly<{
+    caveats?: ReadonlyArray<string>
+    href: string
+    kind: string
+    label: string
+    ref: string
+    sourceRefs?: ReadonlyArray<string>
+    state?: string
+  }>,
+): TassadarRunProofLink => ({
+  caveats: publicRefs(input.caveats),
+  href: input.href,
+  kind: input.kind,
+  label: input.label,
+  ref: input.ref,
+  sourceRefs: publicRefs(input.sourceRefs),
+  state: input.state ?? 'linked',
+})
+
+const settlementProofDetail = (
+  row: PublicTassadarSettlementRow,
+): TassadarRunProofLink | null => {
+  const ref = settlementReceiptRef(row)
+  if (ref === undefined) return null
+  const movementMode = row.movementMode ?? 'unknown'
+  const state = row.state ?? 'unknown'
+  const realBitcoinMoved = row.realBitcoinMoved === true
+  const amount =
+    typeof row.amountSats === 'number' && Number.isFinite(row.amountSats)
+      ? `${row.amountSats} sats`
+      : 'amount unknown'
+
+  return proofDetail({
+    caveats: [
+      `Amount: ${amount}`,
+      realBitcoinMoved
+        ? 'Receipt claims real Bitcoin movement.'
+        : 'Simulation-backed settlement record; this does not prove real Bitcoin moved.',
+    ],
+    href: row.apiUrl ?? nexusPylonReceiptHref(ref),
+    kind: row.receiptKind ?? 'settlement_recorded',
+    label: 'Settlement receipt',
+    ref,
+    sourceRefs: row.sourceRefs ?? [],
+    state: `${state}; ${movementMode}; real bitcoin moved: ${
+      realBitcoinMoved ? 'yes' : 'no'
+    }`,
+  })
+}
+
 const linkForRef = (
   summary: TassadarRunPublicSummary,
   label: string,
@@ -130,13 +228,25 @@ const linkForRef = (
 ): TassadarRunProofLink | null =>
   ref === undefined
     ? null
-    : {
-        href: ref.startsWith('receipt.')
-          ? receiptHref(ref)
-          : focusedTrainingRunHref(summary, ref),
-        label,
-        ref,
-      }
+    : (ref.startsWith('receipt.')
+        ? (settlementRowForRef(summary, ref) === undefined
+            ? proofDetail({
+                href: receiptHref(ref),
+                kind: isNexusPylonReceiptRef(ref)
+                  ? 'nexus_pylon_receipt'
+                  : 'forum_receipt',
+                label,
+                ref,
+                state: 'linked',
+              })
+            : settlementProofDetail(settlementRowForRef(summary, ref)!))
+        : proofDetail({
+            href: focusedTrainingRunHref(summary, ref),
+            kind: 'training_ref',
+            label,
+            ref,
+            state: 'linked',
+          }))
 
 const replayPairForSelection = (
   summary: TassadarRunPublicSummary,
@@ -170,11 +280,13 @@ export const proofLinkForSelection = (
   }
 
   if (selection.id === 'run') {
-    return {
+    return proofDetail({
       href: publicTrainingRunHref(summary),
+      kind: 'training_run',
       label: 'Public run projection',
       ref: summary.runRef ?? 'run.tassadar.executor.20260615',
-    }
+      state: summary.runState ?? 'unknown',
+    })
   }
 
   if (selection.id === 'training_window' || selection.id === 'active') {
@@ -198,10 +310,18 @@ export const proofLinkForSelection = (
   }
 
   if (selection.id === 'receipt' || selection.role === 'receipt') {
+    const settlement = firstSettlementRow(summary)
+    if (settlement !== undefined) {
+      return settlementProofDetail(settlement)
+    }
     return linkForRef(summary, 'Receipt', firstRef(summary.receiptRefs))
   }
 
   if (selection.id === 'settlement' || selection.role === 'rung') {
+    const settlement = firstSettlementRow(summary)
+    if (settlement !== undefined) {
+      return settlementProofDetail(settlement)
+    }
     return metricNumber(summary.metrics?.providerConfirmedSettledPayoutSats) > 0
       ? linkForRef(summary, 'Settlement receipt', firstRef(summary.receiptRefs))
       : null
@@ -326,9 +446,6 @@ const makeClass = (): CustomElementConstructor =>
         if (!isTrainingRunNodeSelection(detail)) return
         const proofLink = proofLinkForSelection(summary, detail)
         this.#renderSelection(base.mount, detail, proofLink)
-        if (proofLink !== null) {
-          this.#openProofLink(proofLink)
-        }
       })
       base.mount.append(run)
       this.#renderStatus(base.mount, summary, fetchedAt)
@@ -385,23 +502,45 @@ const makeClass = (): CustomElementConstructor =>
       detail.textContent =
         proofLink === null
           ? `${selection.detail}. No public proof ref is linked yet.`
-          : `${proofLink.label}: ${proofLink.ref}`
+          : `${proofLink.label}`
       panel.append(title, detail)
       if (proofLink !== null) {
+        const list = document.createElement('dl')
+        const rows: ReadonlyArray<readonly [string, string]> = [
+          ['Kind', proofLink.kind],
+          ['State', proofLink.state],
+          ['Ref', proofLink.ref],
+          ['Route', proofLink.href],
+          [
+            'Caveats',
+            proofLink.caveats.length === 0
+              ? 'none'
+              : proofLink.caveats.join(' | '),
+          ],
+          [
+            'Source refs',
+            proofLink.sourceRefs.length === 0
+              ? 'none'
+              : proofLink.sourceRefs.slice(0, 6).join(' | '),
+          ],
+        ]
+        for (const [term, value] of rows) {
+          const item = document.createElement('div')
+          const dt = document.createElement('dt')
+          dt.textContent = term
+          const dd = document.createElement('dd')
+          dd.textContent = value
+          item.append(dt, dd)
+          list.append(item)
+        }
         const link = document.createElement('a')
         link.href = proofLink.href
         link.target = '_blank'
         link.rel = 'noopener noreferrer'
         link.textContent = 'Open proof'
-        panel.append(link)
+        panel.append(list, link)
       }
       mount.append(panel)
-    }
-
-    #openProofLink(proofLink: TassadarRunProofLink): void {
-      if (typeof window === 'undefined') return
-      if (typeof window.open !== 'function') return
-      window.open(proofLink.href, '_blank', 'noopener,noreferrer')
     }
 
     #overlay(label: string, message: string): HTMLDivElement {
