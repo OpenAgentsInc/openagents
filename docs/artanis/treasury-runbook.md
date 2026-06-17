@@ -54,7 +54,10 @@ dependency wiring as its other operator actions.
    policyApplied, paymentId, status }` on success. On failure it returns a JSON
    body with `error`, `policyApplied`, and a public-safe `reasonRef`; manual
    operator calls must use `curl --fail-with-body` or omit `-f` so that body is
-   not suppressed.
+   not suppressed. If the container reports a generic `treasury_pay_failed`
+   error plus a more specific daemon reason, the Worker classifies the specific
+   reason into the public-safe `reasonRef` while still refusing to store or
+   echo raw daemon text, destinations, invoices, payment hashes, or preimages.
 5. Scheduled X-claim dispatcher — the Worker-internal path for already
    operator-approved `x_claim_reward_ledger` rows in `dispatch_requested`.
    It is controlled by `TREASURY_DISPATCH_ENABLED`, which defaults off. When

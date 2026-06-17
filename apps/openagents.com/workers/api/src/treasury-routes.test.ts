@@ -808,6 +808,70 @@ describe('operator treasury payout', () => {
     })
   })
 
+  test('classifies the daemon reason when the container error is generic', async () => {
+    const store = makeMemoryTransactionStore()
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({
+          amountSat: 5000,
+          destination: 'recipient@spark.money',
+        }),
+        {
+          fetchTreasury: (path, init) => {
+            if (path === '/balance') {
+              return Promise.resolve(
+                jsonResponse(200, {
+                  balanceSat: 100000,
+                  maxSendableSat: 100000,
+                }),
+              )
+            }
+
+            if (path === '/pay' && init?.method === 'POST') {
+              return Promise.resolve(
+                jsonResponse(502, {
+                  error: 'treasury_pay_failed',
+                  reason: 'No route found for payment.',
+                }),
+              )
+            }
+
+            return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
+          },
+          recordPayoutTransaction: input =>
+            store.insert({
+              amountSat: input.amountSat,
+              bolt11: null,
+              createdAt: '2026-06-17T18:00:01.500Z',
+              direction: 'out',
+              expiresAt: null,
+              failureReasonRef: input.failureReasonRef ?? null,
+              id: 'treasury_payout_failed_reason',
+              paymentRef: input.paymentRef,
+              settledAt: null,
+              state: 'failed',
+            }),
+          requireAdminApiToken: () => Promise.resolve(true),
+          resolveLightningAddress: () =>
+            Promise.resolve({ ok: true, bolt11: 'lnbc-resolved' }),
+        },
+      ),
+    )
+    const bodyText = await response.text()
+    const body = JSON.parse(bodyText) as { reasonRef: string }
+
+    expect(response.status).toBe(502)
+    expect(body.reasonRef).toBe('reason.public.treasury_payout.no_route')
+    expect(bodyText).not.toContain('No route found')
+    expect(bodyText).not.toContain('recipient@spark.money')
+    expect(store.rows.get('treasury_payout_failed_reason')).toMatchObject({
+      amountSat: 5000,
+      failureReasonRef: 'reason.public.treasury_payout.no_route',
+      paymentRef: null,
+      state: 'failed',
+    })
+  })
+
   test('records Lightning Address resolution failures with safe reason refs', async () => {
     const store = makeMemoryTransactionStore()
     const response = await run(

@@ -978,16 +978,21 @@ export const handleOperatorTreasuryPayoutApi = (
             // was LNURL resolution, no route, recipient offline, or liquidity.
             // Persist and return only a public-safe classification, never raw
             // daemon text, payment material, invoices, hashes, or destinations.
+            const genericError =
+              typeof payResult.error === 'string' &&
+              payResult.error === 'treasury_pay_failed'
             const detail =
-              typeof payResult.error === 'string'
-                ? payResult.error
-                : typeof payResult.reason === 'string'
-                  ? payResult.reason
-                  : typeof payResult.message === 'string'
-                    ? payResult.message
-                    : typeof payResult.code === 'string'
-                      ? payResult.code
-                      : null
+              genericError && typeof payResult.reason === 'string'
+                ? payResult.reason
+                : typeof payResult.error === 'string'
+                  ? payResult.error
+                  : typeof payResult.reason === 'string'
+                    ? payResult.reason
+                    : typeof payResult.message === 'string'
+                      ? payResult.message
+                      : typeof payResult.code === 'string'
+                        ? payResult.code
+                        : null
             const failureReasonRef = treasuryPayoutFailureReasonRef(detail)
 
             try {
