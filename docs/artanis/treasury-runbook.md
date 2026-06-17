@@ -51,7 +51,10 @@ dependency wiring as its other operator actions.
    recipient's BOLT12 offer / BOLT11 invoice / LNURL / lightning address and
    `amountSat` is the intended payout. The route applies the owner payout
    policy below and returns `{ intendedAmountSat, paidAmountSat,
-   policyApplied, paymentId, status }`.
+   policyApplied, paymentId, status }` on success. On failure it returns a JSON
+   body with `error`, `policyApplied`, and a public-safe `reasonRef`; manual
+   operator calls must use `curl --fail-with-body` or omit `-f` so that body is
+   not suppressed.
 5. Scheduled X-claim dispatcher — the Worker-internal path for already
    operator-approved `x_claim_reward_ledger` rows in `dispatch_requested`.
    It is controlled by `TREASURY_DISPATCH_ENABLED`, which defaults off. When
@@ -133,12 +136,16 @@ invoice from the treasury node and redirects to
 `lightning:` link that auto-refreshes until the payment arrives, then thanks
 the donor with the received amount. Invoices expire after one hour.
 
-Ledger: every payout through `POST /api/operator/treasury/payout` and every
-donation is recorded in the `treasury_transactions` D1 table (migration
-0159). The public page reads from that table; the container's in-memory
-receive tracking means a donation confirmed across a container restart may
-sit pending until expiry even though the sats arrived — balance is always
-authoritative.
+Ledger: every successful payout through `POST /api/operator/treasury/payout`,
+every pre-dispatch payout failure, and every donation is recorded in the
+`treasury_transactions` D1 table (migrations 0159, 0197, 0198). Failed payout
+attempts without a durable MDK payment id store `payment_ref:null` and a
+public-safe `failure_reason_ref`; they never store raw destinations, BOLT11
+invoices, hashes, preimages, or daemon error text. The public page reads from
+that table but shows only time, direction, amount, and state. The container's
+in-memory receive tracking means a donation confirmed across a container
+restart may sit pending until expiry even though the sats arrived — balance is
+always authoritative.
 
 Artanis should link `/treasury` (never raw balances pasted into posts) when
 reporting treasury state publicly, and may cite `GET /api/public/treasury`

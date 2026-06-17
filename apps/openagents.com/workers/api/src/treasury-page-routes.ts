@@ -14,6 +14,7 @@ export type TreasuryTransactionRecord = Readonly<{
   state: 'pending' | 'settled' | 'expired' | 'failed'
   bolt11: string | null
   paymentRef: string | null
+  failureReasonRef: string | null
   createdAt: string
   settledAt: string | null
   expiresAt: string | null
@@ -44,6 +45,7 @@ type TreasuryTransactionRow = Readonly<{
   state: 'pending' | 'settled' | 'expired' | 'failed'
   bolt11: string | null
   payment_ref: string | null
+  failure_reason_ref?: string | null
   created_at: string
   settled_at: string | null
   expires_at: string | null
@@ -57,6 +59,7 @@ const rowToRecord = (
   createdAt: row.created_at,
   direction: row.direction,
   expiresAt: row.expires_at,
+  failureReasonRef: row.failure_reason_ref ?? null,
   id: row.id,
   paymentRef: row.payment_ref,
   settledAt: row.settled_at,
@@ -91,8 +94,8 @@ export const makeD1TreasuryTransactionStore = (
       .prepare(
         `INSERT INTO treasury_transactions
            (id, direction, amount_sat, state, bolt11, payment_ref,
-            created_at, settled_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            failure_reason_ref, created_at, settled_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         record.id,
@@ -101,6 +104,7 @@ export const makeD1TreasuryTransactionStore = (
         record.state,
         record.bolt11,
         record.paymentRef,
+        record.failureReasonRef,
         record.createdAt,
         record.settledAt,
         record.expiresAt,
@@ -441,6 +445,7 @@ const createDonation = (
         // Invoice expiry is 3600s from mint; derive from nowIso instead of
         // converting the epoch payload so no raw Date constructor is needed.
         expiresAt: isoTimestampAfterIso(nowIso, 3_600_000),
+        failureReasonRef: null,
         id: `treasury_donation_${dependencies.makeUuid()}`,
         paymentRef: payload.paymentHash.toLowerCase(),
         settledAt: null,

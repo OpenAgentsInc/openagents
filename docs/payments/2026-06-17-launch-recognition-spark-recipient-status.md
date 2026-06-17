@@ -43,6 +43,14 @@ requiring a manual operator click. Legacy rows whose stored payment refs are
 redacted or whose container no longer has the terminal event remain documented
 as pending/blocked rather than guessed.
 
+Pre-dispatch failures are different: if the operator payout route cannot mint a
+Lightning Address invoice or the MDK pay call fails before returning a durable
+payment id, the route records a `failed` outbound row with `payment_ref:null`
+and a public-safe `failure_reason_ref`. The reason ref classifies the failure
+without storing or returning raw destinations, BOLT11 invoices, hashes,
+preimages, or daemon error strings. Use `--fail-with-body` or omit `curl -f`
+when manually calling payout routes so the JSON failure body is not hidden.
+
 ## Operator rule
 
 Do not re-send recognition payouts from memory. Before any retry, reconcile the

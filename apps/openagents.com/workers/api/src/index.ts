@@ -7413,10 +7413,17 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                   createdAt: currentIsoTimestamp(),
                   direction: 'out',
                   expiresAt: null,
+                  failureReasonRef: input.failureReasonRef ?? null,
                   id: randomUuid(),
                   paymentRef: input.paymentRef,
                   settledAt: input.settled ? currentIsoTimestamp() : null,
-                  state: input.settled ? 'settled' : 'pending',
+                  state:
+                    input.failureReasonRef !== undefined &&
+                    input.failureReasonRef !== null
+                      ? 'failed'
+                      : input.settled
+                        ? 'settled'
+                        : 'pending',
                 })
               },
               requireAdminApiToken: async () => true,
@@ -7438,10 +7445,17 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
             createdAt: currentIsoTimestamp(),
             direction: 'out',
             expiresAt: null,
+            failureReasonRef: input.failureReasonRef ?? null,
             id: `treasury_payout_${randomUuid()}`,
             paymentRef: input.paymentRef,
             settledAt: input.settled ? currentIsoTimestamp() : null,
-            state: input.settled ? 'settled' : 'pending',
+            state:
+              input.failureReasonRef !== undefined &&
+              input.failureReasonRef !== null
+                ? 'failed'
+                : input.settled
+                  ? 'settled'
+                  : 'pending',
           })
         },
         requireAdminApiToken: adminRequest =>
@@ -7464,10 +7478,17 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
             createdAt: currentIsoTimestamp(),
             direction: 'out',
             expiresAt: null,
+            failureReasonRef: input.failureReasonRef ?? null,
             id: `tips_buffer_payout_${randomUuid()}`,
             paymentRef: input.paymentRef,
             settledAt: input.settled ? currentIsoTimestamp() : null,
-            state: input.settled ? 'settled' : 'pending',
+            state:
+              input.failureReasonRef !== undefined &&
+              input.failureReasonRef !== null
+                ? 'failed'
+                : input.settled
+                  ? 'settled'
+                  : 'pending',
           })
         },
         requireAdminApiToken: adminRequest =>

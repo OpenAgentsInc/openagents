@@ -142,7 +142,11 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   the row to `settled` or `failed`; it never returns raw payment ids, hashes,
   invoices, preimages, destinations, or wallet material. Worker cron now runs
   the same bounded reconciliation over pending outbound rows so future terminal
-  outcomes are persisted without a manual operator hit. Policy:
+  outcomes are persisted without a manual operator hit. **Follow-up hardening:**
+  pre-dispatch payout failures now persist as `failed` outbound rows with
+  `payment_ref:null` plus a public-safe `failure_reason_ref`, and operator curl
+  calls must preserve the JSON body (`--fail-with-body` or no `-f`) so 502
+  details are not hidden. Policy:
   `docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md`;
   payment status:
   `docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md`.

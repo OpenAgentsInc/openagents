@@ -271,6 +271,7 @@ const treasuryPayoutTransaction = (
   createdAt: input.createdAt ?? '2026-06-08T13:57:00.000Z',
   direction: 'out',
   expiresAt: null,
+  failureReasonRef: null,
   id: input.id,
   paymentRef: `payment.public.${input.id}`,
   settledAt: input.settledAt ?? '2026-06-08T13:58:00.000Z',

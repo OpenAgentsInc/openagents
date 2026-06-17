@@ -91,6 +91,7 @@ const settledOut = (
   createdAt: '2026-06-10T18:00:00.000Z',
   direction: 'out',
   expiresAt: null,
+  failureReasonRef: null,
   id,
   paymentRef: 'internal_payment_ref_should_not_leak',
   settledAt: '2026-06-10T18:00:05.000Z',
@@ -143,7 +144,52 @@ describe('public treasury api', () => {
     })
     expect(JSON.stringify(body)).not.toContain('should_not_leak')
     expect(JSON.stringify(body)).not.toContain('paymentRef')
+    expect(JSON.stringify(body)).not.toContain('failureReasonRef')
     expect(JSON.stringify(body)).not.toContain('bolt11')
+  })
+
+  test('keeps failed payout reason refs out of the public projection', async () => {
+    const store = makeMemoryStore()
+    await store.insert({
+      amountSat: 50000,
+      bolt11: null,
+      createdAt: '2026-06-10T18:05:00.000Z',
+      direction: 'out',
+      expiresAt: null,
+      failureReasonRef:
+        'reason.public.treasury_payout.lightning_address_resolution_failed.amount_out_of_range_1000_10000000_msat',
+      id: 'treasury_payout_failed',
+      paymentRef: null,
+      settledAt: null,
+      state: 'failed',
+    })
+    const routes = makeRoutes({
+      containerResponses: {
+        '/balance': jsonResponse(200, { balanceSat: 442, maxSendableSat: 432 }),
+      },
+      store,
+    })
+
+    const response = await run(
+      routes.routeTreasuryPageRequest(
+        new Request('https://openagents.com/api/public/treasury'),
+      )!,
+    )
+    const bodyText = await response.text()
+    const body = JSON.parse(bodyText) as {
+      transactions: Array<Record<string, unknown>>
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.transactions).toEqual([
+      expect.objectContaining({
+        amountSat: 50000,
+        direction: 'out',
+        state: 'failed',
+      }),
+    ])
+    expect(bodyText).not.toContain('failureReasonRef')
+    expect(bodyText).not.toContain('lightning_address_resolution_failed')
   })
 
   test('hides unpaid pending donation invoices from the public list', async () => {
@@ -154,6 +200,7 @@ describe('public treasury api', () => {
       createdAt: '2026-06-10T18:10:00.000Z',
       direction: 'in',
       expiresAt: '2026-06-10T19:10:00.000Z',
+      failureReasonRef: null,
       id: 'treasury_donation_unpaid',
       paymentRef: 'cd'.repeat(32),
       settledAt: null,
@@ -264,6 +311,7 @@ describe('donation flow', () => {
       createdAt: '2026-06-10T18:00:00.000Z',
       direction: 'in',
       expiresAt: '2026-06-10T19:30:00.000Z',
+      failureReasonRef: null,
       id: 'treasury_donation_uuid-1',
       paymentRef: 'ab'.repeat(32),
       settledAt: null,
@@ -302,6 +350,7 @@ describe('donation flow', () => {
       createdAt: '2026-06-10T18:00:00.000Z',
       direction: 'in',
       expiresAt: '2026-06-10T19:30:00.000Z',
+      failureReasonRef: null,
       id: 'treasury_donation_uuid-1',
       paymentRef: 'ab'.repeat(32),
       settledAt: null,
@@ -343,6 +392,7 @@ describe('donation flow', () => {
       createdAt: '2026-06-10T17:00:00.000Z',
       direction: 'in',
       expiresAt: '2026-06-10T18:00:00.000Z',
+      failureReasonRef: null,
       id: 'treasury_donation_uuid-1',
       paymentRef: 'ab'.repeat(32),
       settledAt: null,

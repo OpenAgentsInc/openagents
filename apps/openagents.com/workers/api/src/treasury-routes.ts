@@ -20,6 +20,7 @@ export type TreasuryRouteDependencies = Readonly<{
   recordPayoutTransaction?:
     | ((input: {
         amountSat: number
+        failureReasonRef?: string | null
         paymentRef: string | null
         settled: boolean
       }) => Promise<void>)
@@ -603,6 +604,62 @@ const balancePayload = (
     : null
 }
 
+const safeReasonSegment = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, '_')
+    .replace(/^_+|_+$/gu, '')
+    .slice(0, 80)
+
+const treasuryPayoutFailureReasonRef = (detail: string | null): string => {
+  if (detail === null || detail.trim() === '') {
+    return 'reason.public.treasury_payout.failed'
+  }
+
+  const normalized = detail.trim().toLowerCase()
+  const lightningPrefix = 'lightning_address_resolution_failed:'
+
+  if (normalized.startsWith(lightningPrefix)) {
+    const resolvedReason = safeReasonSegment(
+      normalized.slice(lightningPrefix.length),
+    )
+
+    return resolvedReason === ''
+      ? 'reason.public.treasury_payout.lightning_address_resolution_failed'
+      : `reason.public.treasury_payout.lightning_address_resolution_failed.${resolvedReason}`
+  }
+
+  if (
+    normalized.includes('treasury_insufficient_spendable_balance') ||
+    normalized.includes('insufficient')
+  ) {
+    return 'reason.public.treasury_payout.insufficient_spendable_balance'
+  }
+
+  if (normalized.includes('self_pay')) {
+    return 'reason.public.treasury_payout.self_pay_refused'
+  }
+
+  if (normalized.includes('timeout') || normalized.includes('timed out')) {
+    return 'reason.public.treasury_payout.timeout'
+  }
+
+  if (normalized.includes('liquidity')) {
+    return 'reason.public.treasury_payout.liquidity'
+  }
+
+  if (normalized.includes('route')) {
+    return 'reason.public.treasury_payout.no_route'
+  }
+
+  if (normalized.includes('invoice')) {
+    return 'reason.public.treasury_payout.invoice_rejected'
+  }
+
+  return 'reason.public.treasury_payout.failed'
+}
+
 // Policy-applying payout core (issue #4703): the ONE path that moves
 // money out of the treasury, shared by the operator route and the
 // gated in-worker Artanis spend action. Applies the owner's
@@ -919,7 +976,8 @@ export const handleOperatorTreasuryPayoutApi = (
             // Surface the underlying failure (resolution vs. the daemon's pay
             // error) so an opaque "treasury_pay_failed" doesn't hide whether it
             // was LNURL resolution, no route, recipient offline, or liquidity.
-            // Only safe error/reason/code/message fields, never payment material.
+            // Persist and return only a public-safe classification, never raw
+            // daemon text, payment material, invoices, hashes, or destinations.
             const detail =
               typeof payResult.error === 'string'
                 ? payResult.error
@@ -930,6 +988,20 @@ export const handleOperatorTreasuryPayoutApi = (
                     : typeof payResult.code === 'string'
                       ? payResult.code
                       : null
+            const failureReasonRef = treasuryPayoutFailureReasonRef(detail)
+
+            try {
+              await dependencies.recordPayoutTransaction?.({
+                amountSat: plan.paidAmountSat,
+                failureReasonRef,
+                paymentRef: null,
+                settled: false,
+              })
+            } catch {
+              // The response still reports the failure even if D1 is briefly
+              // unavailable; the operator can retry diagnostics without spend.
+            }
+
             return noStoreJsonResponse(
               {
                 error: 'treasury_pay_failed',
@@ -937,7 +1009,8 @@ export const handleOperatorTreasuryPayoutApi = (
                 paidAmountSat: null,
                 paidVia,
                 policyApplied: plan.kind,
-                reason: detail,
+                reason: failureReasonRef,
+                reasonRef: failureReasonRef,
               },
               { status: 502 },
             )

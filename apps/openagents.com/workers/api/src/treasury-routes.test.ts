@@ -111,6 +111,7 @@ const pendingOutTransaction = (
   createdAt: '2026-06-17T18:00:00.000Z',
   direction: 'out',
   expiresAt: null,
+  failureReasonRef: null,
   id,
   paymentRef,
   settledAt: null,
@@ -759,20 +760,109 @@ describe('operator treasury payout', () => {
 
   test('primary fail with no fallback still fails cleanly (#5078)', async () => {
     const paid: Array<string> = []
+    const store = makeMemoryTransactionStore()
     const response = await run(
       handleOperatorTreasuryPayoutApi(
         payoutRequest({ amountSat: 1000, destination: 'lno1recipient' }),
         {
           fetchTreasury: payDestinationsFetch(paid, () => false),
+          recordPayoutTransaction: input =>
+            store.insert({
+              amountSat: input.amountSat,
+              bolt11: null,
+              createdAt: '2026-06-17T18:00:01.000Z',
+              direction: 'out',
+              expiresAt: null,
+              failureReasonRef: input.failureReasonRef ?? null,
+              id: 'treasury_payout_failed_1',
+              paymentRef: input.paymentRef,
+              settledAt: null,
+              state:
+                input.failureReasonRef !== undefined &&
+                input.failureReasonRef !== null
+                  ? 'failed'
+                  : input.settled
+                    ? 'settled'
+                    : 'pending',
+            }),
           requireAdminApiToken: () => Promise.resolve(true),
         },
       ),
     )
 
     expect(response.status).toBe(502)
-    const body = (await response.json()) as { error: string }
+    const body = (await response.json()) as {
+      error: string
+      reason: string
+      reasonRef: string
+    }
     expect(body.error).toBe('treasury_pay_failed')
+    expect(body.reason).toBe('reason.public.treasury_payout.failed')
+    expect(body.reasonRef).toBe('reason.public.treasury_payout.failed')
     expect(paid).toEqual(['lno1recipient'])
+    expect(store.rows.get('treasury_payout_failed_1')).toMatchObject({
+      amountSat: 1000,
+      failureReasonRef: 'reason.public.treasury_payout.failed',
+      paymentRef: null,
+      state: 'failed',
+    })
+  })
+
+  test('records Lightning Address resolution failures with safe reason refs', async () => {
+    const store = makeMemoryTransactionStore()
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({
+          amountSat: 50000,
+          destination: 'recipient@spark.money',
+        }),
+        {
+          fetchTreasury: path =>
+            Promise.resolve(
+              path === '/balance'
+                ? jsonResponse(200, {
+                    balanceSat: 51690,
+                    maxSendableSat: 51173,
+                  })
+                : jsonResponse(404, { error: 'not_found' }),
+            ),
+          recordPayoutTransaction: input =>
+            store.insert({
+              amountSat: input.amountSat,
+              bolt11: null,
+              createdAt: '2026-06-17T18:00:02.000Z',
+              direction: 'out',
+              expiresAt: null,
+              failureReasonRef: input.failureReasonRef ?? null,
+              id: 'treasury_payout_failed_resolution',
+              paymentRef: input.paymentRef,
+              settledAt: null,
+              state: 'failed',
+            }),
+          requireAdminApiToken: () => Promise.resolve(true),
+          resolveLightningAddress: () =>
+            Promise.resolve({
+              ok: false,
+              reason: 'amount_out_of_range_1000_10000000_msat',
+            }),
+        },
+      ),
+    )
+    const bodyText = await response.text()
+    const body = JSON.parse(bodyText) as { reasonRef: string }
+
+    expect(response.status).toBe(502)
+    expect(body.reasonRef).toBe(
+      'reason.public.treasury_payout.lightning_address_resolution_failed.amount_out_of_range_1000_10000000_msat',
+    )
+    expect(bodyText).not.toContain('recipient@spark.money')
+    expect(store.rows.get('treasury_payout_failed_resolution')).toMatchObject({
+      amountSat: 50000,
+      failureReasonRef:
+        'reason.public.treasury_payout.lightning_address_resolution_failed.amount_out_of_range_1000_10000000_msat',
+      paymentRef: null,
+      state: 'failed',
+    })
   })
 
   test('executeTreasuryPayout core falls back then reports paidVia (#5078)', async () => {
