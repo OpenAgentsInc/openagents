@@ -184,6 +184,21 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   Remaining honest 40,000 / 50,000 single-invoice test still needs wallet refill;
   current treasury/tips-buffer max-sendable is below those amounts and the
   fractional fallback policy would otherwise change the test.
+  **Latest diagnostics follow-up (17th, later):** `90910cd5d` / deployed Worker
+  `02595ffe-ee65-4b10-8006-3dfc6151b3f4` extends the treasury and tips-buffer
+  containers plus the operator route with redacted success/failure diagnostics:
+  balance delta, route-coverage margin, route-available flag, event outcome,
+  payment-id/hash/preimage presence booleans, timeout, and public reason class
+  without exposing destinations, BOLT11s, raw payment ids, hashes, preimages,
+  mnemonics, or daemon text. Post-deploy Orrery Lightning Address retries:
+  intended 5,000 sats hit the depleted-wallet 10% fallback because tips-buffer
+  only had ~3,898 sats max-sendable, so it paid 389 sats and settled; then
+  1,000 sats settled full; then 2,500 sats settled full with only 14 sats of
+  preflight route coverage remaining. Final live balances after the test:
+  treasury ~82 sats max-sendable, tips-buffer ~15 sats max-sendable. Conclusion:
+  Orrery's Lightning Address → BOLT11 path is live and settling at available
+  liquidity; the full 5,000 / 50,000 diagnostic retry now requires refilling a
+  payout wallet first.
 - **🧰 Pylon wallet self-recovery (#5167) fixed.** Field report: an unclean MDK
   agent-wallet shutdown could leave `~/.mdk-wallet/daemon.pid` pointing at a
   dead process, stranding `wallet report-readiness` until an operator manually
