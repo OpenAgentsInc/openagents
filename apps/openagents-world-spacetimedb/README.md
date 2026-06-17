@@ -47,3 +47,35 @@ apps/openagents-world-spacetimedb/target/wasm32-unknown-unknown/release/openagen
 
 Publish through the VM-local SpacetimeDB CLI as documented in
 `docs/game/2026-06-17-spacetimedb-admin-runbook.md`.
+
+## Tassadar Bridge
+
+The operator bridge projects the public Worker summary into the
+`openagents-world` module. It reads only already-public data from:
+
+```text
+https://openagents.com/api/public/tassadar-run-summary
+```
+
+Dry-run the transform without writing rows:
+
+```bash
+bun apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs
+```
+
+Run the transform tests:
+
+```bash
+bun test apps/openagents-world-spacetimedb/scripts/tassadar-summary-transform.test.mjs
+```
+
+Apply the projection through IAP SSH and the VM-local SpacetimeDB CLI:
+
+```bash
+bun apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs --apply-vm
+```
+
+The bridge writes the public projection tables through service-only reducers
+and records `bridge_health` with `record_bridge_success`. Replaying the same
+summary is deterministic, and `append_world_event` ignores existing event refs
+so live replay does not create duplicate events.

@@ -413,6 +413,51 @@ pub fn record_bridge_health(
     Ok(())
 }
 
+#[spacetimedb::reducer]
+pub fn record_bridge_success(
+    ctx: &ReducerContext,
+    bridge_ref: String,
+    source_url: String,
+) -> Result<(), String> {
+    ensure_service(ctx)?;
+    let existing = ctx.db.bridge_health().bridge_ref().find(bridge_ref.clone());
+    upsert_bridge_health_row(
+        ctx,
+        BridgeHealth {
+            bridge_ref,
+            source_url,
+            last_success_at: Some(ctx.timestamp),
+            last_failure_at: existing.as_ref().and_then(|row| row.last_failure_at),
+            last_failure_summary: existing.and_then(|row| row.last_failure_summary),
+            heartbeat_at: ctx.timestamp,
+        },
+    );
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn record_bridge_failure(
+    ctx: &ReducerContext,
+    bridge_ref: String,
+    source_url: String,
+    failure_summary: String,
+) -> Result<(), String> {
+    ensure_service(ctx)?;
+    let existing = ctx.db.bridge_health().bridge_ref().find(bridge_ref.clone());
+    upsert_bridge_health_row(
+        ctx,
+        BridgeHealth {
+            bridge_ref,
+            source_url,
+            last_success_at: existing.as_ref().and_then(|row| row.last_success_at),
+            last_failure_at: Some(ctx.timestamp),
+            last_failure_summary: Some(failure_summary),
+            heartbeat_at: ctx.timestamp,
+        },
+    );
+    Ok(())
+}
+
 fn ensure_owner(ctx: &ReducerContext) -> Result<(), String> {
     if is_owner(ctx, ctx.sender()) {
         Ok(())

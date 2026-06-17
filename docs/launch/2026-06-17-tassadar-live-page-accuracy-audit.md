@@ -118,6 +118,16 @@ primitives.
   tables. This does not change `/tassadar` authority: the Worker/D1 public
   summary remains the source of truth until the bridge and browser subscription
   adapter are implemented and verified.
+- 2026-06-17: Issue #5237 implemented and ran the operator bridge from
+  `https://openagents.com/api/public/tassadar-run-summary` into
+  `openagents-world`. The bridge lives in the separate
+  `apps/openagents-world-spacetimedb` app, calls service-only reducers over IAP
+  SSH, and projected canonical run `run.tassadar.executor.20260615` into one
+  `training_run`, 16 de-duplicated `run_entity` rows, 16 `world_edge` rows, 58
+  de-duplicated `proof_ref` rows, one `settlement_ref`, 17 `world_event` rows,
+  one `projection_cursor`, and one `bridge_health` row. Replay left
+  `world_event` at 17 rows. `/tassadar` still renders from the Worker/D1 public
+  summary until the feature-flagged browser subscription adapter lands.
 
 ## Short answer
 

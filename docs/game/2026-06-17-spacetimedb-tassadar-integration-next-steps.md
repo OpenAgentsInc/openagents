@@ -1,7 +1,7 @@
 # SpacetimeDB To Tassadar Integration Next Steps
 
 Date: 2026-06-17
-Status: implementation plan
+Status: Phase 0 and Phase 1 implemented; browser adapter and ops hardening next
 
 ## Current Boundary
 
@@ -45,6 +45,8 @@ Use service-only reducers for authority projection rows:
 - `append_world_event`
 - `record_projection_cursor`
 - `record_bridge_health`
+- `record_bridge_success`
+- `record_bridge_failure`
 
 Browser/user reducers should be limited to explicit interaction state such as
 selection or presence after those rows are modeled. They must not create proof,
@@ -52,19 +54,37 @@ settlement, receipt, pylon, or training truth.
 
 ## Phase 1: Bridge From The Worker Projection
 
-Create an operator/server-side bridge. It should:
+Issue #5237 implemented the operator bridge on 2026-06-17. It:
 
-1. Read `https://openagents.com/api/public/tassadar-run-summary`.
-2. Validate the payload with the same structural assumptions used by
+1. Reads `https://openagents.com/api/public/tassadar-run-summary`.
+2. Validates the payload with the same structural assumptions used by
    `tassadarRunSnapshot.ts`.
-3. Transform the summary into the minimal SpacetimeDB tables above.
-4. Call service-only reducers on `openagents-world`.
-5. Store the source URL, `generatedAt`, projection staleness contract, and
+3. Transforms the summary into the minimal SpacetimeDB tables above.
+4. Calls service-only reducers on `openagents-world`.
+5. Stores the source URL, `generatedAt`, projection staleness contract, and
    public proof refs on the rows it writes.
 
 The bridge should be idempotent. Replaying the same public summary should
 update existing rows without inventing new events. A new `world_event` row
 requires a real source ref or a timestamped projection transition.
+
+The live bridge planned 182 reducer calls for canonical run
+`run.tassadar.executor.20260615` and projected these live row counts after an
+apply and replay:
+
+| Table | Count |
+| --- | ---: |
+| `training_run` | 1 |
+| `run_entity` | 16 |
+| `world_edge` | 16 |
+| `proof_ref` | 58 |
+| `settlement_ref` | 1 |
+| `world_event` | 17 |
+| `projection_cursor` | 1 |
+| `bridge_health` | 1 |
+
+`run_entity` and `proof_ref` counts are intentionally de-duplicated by primary
+key. The replay check left `world_event` at 17 rows.
 
 ## Phase 2: Browser Subscription Adapter
 

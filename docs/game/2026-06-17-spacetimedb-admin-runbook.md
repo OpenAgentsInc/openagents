@@ -211,7 +211,7 @@ gcloud compute ssh spacetimedb-world-1 \
   --project openagentsgemini \
   --zone us-central1-a \
   --tunnel-through-iap \
-  --command='sudo -u spacetimedb /stdb/bin/2.6.0/spacetimedb-cli publish -s local --bin-path /tmp/openagents-world.wasm openagents-world'
+  --command='sudo -u spacetimedb /stdb/bin/2.6.0/spacetimedb-cli publish -s local --bin-path /tmp/openagents-world.wasm --yes=all openagents-world'
 ```
 
 Issue #5236 published the initial module on 2026-06-17. The created database
@@ -224,6 +224,85 @@ c2003001c2b7d8f00db5ba85210abfefc8f8dfea110207f85f917d41faa89847
 Only service identities should call reducers that create or mutate authority
 projection rows. Browser clients may subscribe to public rows and call
 interaction reducers only after those reducers are explicitly modeled as safe.
+
+## Projecting The Public Tassadar Summary
+
+The bridge source lives next to the module:
+
+```text
+apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs
+apps/openagents-world-spacetimedb/scripts/tassadar-summary-transform.mjs
+```
+
+The bridge reads only the public Worker/D1 projection:
+
+```text
+https://openagents.com/api/public/tassadar-run-summary
+```
+
+Dry-run the projection locally:
+
+```bash
+bun apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs
+```
+
+Run the transform coverage:
+
+```bash
+bun test apps/openagents-world-spacetimedb/scripts/tassadar-summary-transform.test.mjs
+```
+
+Apply the projection through IAP SSH:
+
+```bash
+bun apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs --apply-vm
+```
+
+The apply path calls VM-local service reducers with the `spacetimedb` user's
+local identity. It upserts `training_run`, `run_entity`, `world_edge`,
+`proof_ref`, `settlement_ref`, and `projection_cursor`, appends only missing
+`world_event` refs, and records `bridge_health` through
+`record_bridge_success`.
+
+Issue #5237 projected canonical run `run.tassadar.executor.20260615` on
+2026-06-17. The dry-run planned 182 reducer calls:
+
+```text
+upsert_training_run: 1
+upsert_run_entity: 23
+append_world_event: 17
+upsert_proof_ref: 123
+upsert_world_edge: 16
+upsert_settlement_ref: 1
+record_projection_cursor: 1
+```
+
+The live table counts after apply and replay were:
+
+```text
+training_run: 1
+run_entity: 16
+world_edge: 16
+proof_ref: 58
+settlement_ref: 1
+world_event: 17
+projection_cursor: 1
+bridge_health: 1
+```
+
+`run_entity` and `proof_ref` counts are lower than reducer-call counts because
+the bridge de-duplicates public refs through table primary keys. Replaying the
+bridge left `world_event` at 17 rows.
+
+Verify live counts:
+
+```bash
+gcloud compute ssh spacetimedb-world-1 \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --tunnel-through-iap \
+  --command='set -e; for table in training_run run_entity world_edge proof_ref settlement_ref world_event projection_cursor bridge_health; do printf "\n%s\n" "$table"; sudo -u spacetimedb /stdb/bin/2.6.0/spacetimedb-cli sql -s local openagents-world "SELECT COUNT(*) AS count FROM $table"; done'
+```
 
 ## Logs
 
