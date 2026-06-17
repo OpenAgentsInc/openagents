@@ -39,6 +39,12 @@ primitives.
   launch/install/model/gradient/first-real-run states, links the registry, and
   keeps the simulation-settlement caveat visible so the page does not claim real
   sats paid, trained Tassadar, or accepted public gradients ahead of evidence.
+- 2026-06-17: Issue #5192 added `smoke:tassadar:live-page` for deployment
+  verification. The smoke checks `/tassadar`, hashed app script assets,
+  `/api/public/tassadar-run-summary` staleness and typed proof projections,
+  `/api/public/product-promises` gate refs, and the first settlement-row proof
+  URL when present. The script is dependency-free; pixel-level WebGL nonblank
+  validation still needs a browser-capable runner if we want it fully automated.
 
 ## Short answer
 
