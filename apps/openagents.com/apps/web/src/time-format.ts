@@ -2,6 +2,9 @@ export const unixEpochIsoTimestamp = '1970-01-01T00:00:00.000Z'
 
 export const currentUnixMs = (): number => Date.now()
 
+export const currentIsoTimestamp = (): string =>
+  new Date(currentUnixMs()).toISOString()
+
 export const formatIsoDateTime = (timestamp: string): string =>
   new Date(timestamp).toLocaleString()
 

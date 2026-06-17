@@ -21,6 +21,7 @@ import {
 import { define as defineCustomElement } from 'foldkit/customElement'
 import type { Attribute, Html } from 'foldkit/html'
 
+import { currentIsoTimestamp } from '../time-format'
 import {
   type PublicTassadarSettlementRow,
   type TassadarRunPublicSummary,
@@ -563,7 +564,12 @@ const makeClass = (): CustomElementConstructor =>
         }
         const summary = (await response.json()) as TassadarRunPublicSummary
         if (signal.aborted) return
-        this.#renderScene(summary, new Date(), promisesDocument, pylonStats)
+        this.#renderScene(
+          summary,
+          currentIsoTimestamp(),
+          promisesDocument,
+          pylonStats,
+        )
       } catch (error) {
         if (signal.aborted) return
         this.#renderError(
@@ -638,7 +644,7 @@ const makeClass = (): CustomElementConstructor =>
     // and tests can distinguish a just-launched run from a populated one.
     #renderScene(
       summary: TassadarRunPublicSummary,
-      fetchedAt: Date,
+      fetchedAt: string,
       promisesDocument: ProductPromisesDocument | null,
       pylonStats: PublicPylonStatsContext | null,
     ): void {
@@ -667,7 +673,7 @@ const makeClass = (): CustomElementConstructor =>
     #renderStatus(
       mount: HTMLDivElement,
       summary: TassadarRunPublicSummary,
-      fetchedAt: Date,
+      fetchedAt: string,
     ): void {
       const panel = document.createElement('aside')
       panel.className = 'status'
@@ -678,7 +684,7 @@ const makeClass = (): CustomElementConstructor =>
         ['State', textOrUnknown(summary.runState)],
         ['Generated', generatedAtText(summary)],
         ['Staleness', stalenessText(summary)],
-        ['Browser fetched', fetchedAt.toISOString()],
+        ['Browser fetched', fetchedAt],
       ]
       for (const [label, value] of rows) {
         const item = document.createElement('div')
