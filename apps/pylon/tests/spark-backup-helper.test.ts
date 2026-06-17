@@ -29,6 +29,16 @@ function fakeSparkModule(opts: {
   unclaimed?: number
   failConnect?: boolean
   failKind?: string
+  // #5250: fee fields the real SDK surfaces on the PREPARED payment method
+  // (`prepareResponse.paymentMethod`). For a bolt11 method the real Lightning
+  // fee is `lightningFeeSats` (+ optional `sparkTransferFeeSats`); a spark
+  // address/invoice carries a flat `fee` string.
+  preparedLightningFeeSats?: number
+  preparedSparkTransferFeeSats?: number
+  preparedFee?: string
+  // #5250: override the settled send-RESULT fee (`payment.fees`). The rc.22 bug
+  // reproduced with this 0/absent while a real fee was charged at prepare time.
+  sendResultFees?: bigint | null
   onDisconnect?: () => void
   onLnurlPay?: (request: { idempotencyKey?: string; prepareResponse: unknown }) => void
   onParse?: (input: string) => void
@@ -101,7 +111,20 @@ function fakeSparkModule(opts: {
           const type = request.paymentRequest.trim().toLowerCase().startsWith("spark1")
             ? "sparkAddress"
             : "bolt11Invoice"
-          return { prepared: true, paymentMethod: { type }, paymentRequest: request.paymentRequest }
+          // #5250: mirror the SDK `SendPaymentMethod` union — the real computed
+          // fee lives on the prepared payment method. Inject it when the test
+          // provides one so we can exercise the prepared-fee reconciliation.
+          const paymentMethod: Record<string, unknown> = { type }
+          if (opts.preparedLightningFeeSats !== undefined) {
+            paymentMethod.lightningFeeSats = opts.preparedLightningFeeSats
+          }
+          if (opts.preparedSparkTransferFeeSats !== undefined) {
+            paymentMethod.sparkTransferFeeSats = opts.preparedSparkTransferFeeSats
+          }
+          if (opts.preparedFee !== undefined) {
+            paymentMethod.fee = opts.preparedFee
+          }
+          return { prepared: true, paymentMethod, paymentRequest: request.paymentRequest }
         },
         sendPayment: async (request: { idempotencyKey?: string; options?: unknown; prepareResponse: unknown }) => {
           opts.onSend?.(request)
@@ -109,7 +132,9 @@ function fakeSparkModule(opts: {
             payment: {
               id: "spark-payment-1",
               amount: BigInt(opts.balanceSats ?? 4242),
-              fees: 3n,
+              // #5250: default 3 (legacy fake fee); a test may force this to 0/null
+              // to reproduce the rc.22 send-result-reports-no-fee case.
+              fees: opts.sendResultFees === undefined ? 3n : opts.sendResultFees,
               status: "complete",
             },
           }
@@ -503,6 +528,123 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
     } finally {
       globalThis.fetch = originalFetch
     }
+  })
+
+  test("send fee reconciles from the PREPARED Lightning fee when the send result reports fee 0 (#5250)", async () => {
+    // rc.22 regression: a 44-sat Lightning-Address send reported feeSats:0 but the
+    // balance dropped 4,140 (= 44 + 4096). The 4,096 was the real Lightning/LSP
+    // routing fee surfaced at PREPARE time on `paymentMethod.lightningFeeSats`;
+    // the settled send result reported fees:0. feeSats MUST reflect 4096, not 0.
+    const rawLightningAddress = "oa12345@spark.example"
+    const resolvedBolt11 = "lnbc44n1mockinvoicefromthelnurlcallbackthatmustnotleak5250"
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString()
+      if (u.includes("/.well-known/lnurlp/")) {
+        return new Response(
+          JSON.stringify({
+            tag: "payRequest",
+            callback: "https://spark.example/cb",
+            minSendable: 1000,
+            maxSendable: 1_000_000_000,
+          }),
+          { status: 200 },
+        )
+      }
+      return new Response(JSON.stringify({ pr: resolvedBolt11 }), { status: 200 })
+    }) as typeof fetch
+    try {
+      const transfer = createSparkBackupSendTransfer({
+        apiKey: "k",
+        mnemonic: TEST_MNEMONIC,
+        loadModule: async () =>
+          fakeSparkModule({
+            balanceSats: 44,
+            // The real computed fee is on the prepared bolt11 method ...
+            preparedLightningFeeSats: 4096,
+            // ... while the settled send result reports NO fee (the rc.22 bug).
+            sendResultFees: 0n,
+          }),
+      })
+
+      const result = await transfer({
+        amountSats: 44,
+        destination: rawLightningAddress,
+        idempotencyKey: "test-5250-lnurl-fee",
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected transfer success")
+      expect(result.method).toBe("lnurl_pay")
+      // The fee is the REAL prepared Lightning fee, NOT the 0 from the send result.
+      expect(result.feeSats).toBe(4096)
+      expect(result.feeFromPrepared).toBe(true)
+      // amount + fee reconciles with the observed 4,140-sat balance delta.
+      expect((result.amountSats ?? 0) + (result.feeSats ?? 0)).toBe(4140)
+      expect(JSON.stringify(result)).not.toContain(rawLightningAddress)
+      expect(JSON.stringify(result)).not.toContain(resolvedBolt11)
+      assertPublicProjectionSafe(result)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("send fee sums prepared lightning + spark-transfer fee components when the send result is 0 (#5250)", async () => {
+    const rawPaymentRequest = "lnbc1000n1rawpaymentrequestthatmustneverleakpublicly5250"
+    const transfer = createSparkBackupSendTransfer({
+      apiKey: "k",
+      mnemonic: TEST_MNEMONIC,
+      loadModule: async () =>
+        fakeSparkModule({
+          balanceSats: 1000,
+          preparedLightningFeeSats: 12,
+          preparedSparkTransferFeeSats: 4,
+          sendResultFees: null,
+        }),
+    })
+
+    const result = await transfer({
+      amountSats: 1000,
+      destination: rawPaymentRequest,
+      idempotencyKey: "test-5250-bolt11-sum",
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("expected transfer success")
+    expect(result.method).toBe("payment_request")
+    // 12 (lightning) + 4 (spark transfer) = 16; both prepared components count.
+    expect(result.feeSats).toBe(16)
+    expect(result.feeFromPrepared).toBe(true)
+    expect(JSON.stringify(result)).not.toContain(rawPaymentRequest)
+    assertPublicProjectionSafe(result)
+  })
+
+  test("send fee TRUSTS a real non-zero send-result fee over the prepared fee (#5250)", async () => {
+    const rawPaymentRequest = "lnbc1000n1rawpaymentrequestthatmustneverleakpublicly5250b"
+    const transfer = createSparkBackupSendTransfer({
+      apiKey: "k",
+      mnemonic: TEST_MNEMONIC,
+      loadModule: async () =>
+        fakeSparkModule({
+          balanceSats: 1000,
+          // Prepared estimate differs from the settled fee; the settled fee wins.
+          preparedLightningFeeSats: 99,
+          sendResultFees: 7n,
+        }),
+    })
+
+    const result = await transfer({
+      amountSats: 1000,
+      destination: rawPaymentRequest,
+      idempotencyKey: "test-5250-settled-wins",
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("expected transfer success")
+    // The authoritative settled fee (7) wins over the prepared estimate (99).
+    expect(result.feeSats).toBe(7)
+    expect(result.feeFromPrepared).toBe(false)
+    assertPublicProjectionSafe(result)
   })
 
   test("send transfer reports a CLEAR lnurl_resolve failure (not send-pending) when an external LNURL host hangs (#5195 follow-up)", async () => {

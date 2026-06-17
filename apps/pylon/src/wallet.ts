@@ -1607,6 +1607,11 @@ export type SparkBackupSendProjection = {
   consentRequired: boolean
   amountSats: number | null
   feeSats: number | null
+  // #5250: true when `feeSats` came from the PREPARED payment method because the
+  // settled send result reported no/zero fee. Surfaces fee provenance so the
+  // receipt reconciles (`amountSats + feeSats` == real balance delta) rather
+  // than claiming `feeSats: 0` on a send that actually paid a Lightning/LSP fee.
+  feeFromPrepared: boolean
   destinationRef: string | null
   sparkPaymentRef: string | null
   transferRef: string | null
@@ -1628,6 +1633,12 @@ export type SparkBackupSendTransferResult =
       sparkPaymentRef: string
       amountSats: number | null
       feeSats: number | null
+      // #5250: true when `feeSats` was taken from the PREPARED payment method
+      // (`prepareResponse.paymentMethod`) because the settled send result
+      // reported no/zero fee. Public-safe provenance so the receipt reconciles
+      // (`amountSats + feeSats` matches the real balance delta) instead of
+      // claiming `feeSats: 0` on a send that actually cost a Lightning/LSP fee.
+      feeFromPrepared?: boolean
       // #5225: `spark_native` for a native Spark→Spark send (no Lightning routing fee).
       method: "payment_request" | "lnurl_pay" | "spark_native"
       status: string | null
@@ -2050,6 +2061,7 @@ export async function sendWithSparkBackup(
     consentRequired: true,
     amountSats,
     feeSats: null,
+    feeFromPrepared: false,
     destinationRef,
     sparkPaymentRef: null,
     transferRef: null,
@@ -2150,6 +2162,7 @@ export async function sendWithSparkBackup(
     JSON.stringify({
       amount: result.amountSats,
       fee: result.feeSats,
+      feeFromPrepared: result.feeFromPrepared === true,
       destinationRef,
       transferRef: result.transferRef,
       paymentRef: result.sparkPaymentRef,
@@ -2167,6 +2180,7 @@ export async function sendWithSparkBackup(
     consentRequired: false,
     amountSats: result.amountSats,
     feeSats: result.feeSats,
+    feeFromPrepared: result.feeFromPrepared === true,
     sparkPaymentRef: result.sparkPaymentRef,
     transferRef: result.transferRef,
     method: result.method,

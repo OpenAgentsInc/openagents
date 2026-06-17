@@ -469,7 +469,23 @@ async function sendSparkPaymentFromSdk(input: {
     "spark prepareSendPayment",
   )
   sparkTiming("prepare_send_payment", performance.now() - tPrepare)
-  const paymentMethod = (prepareResponse as { paymentMethod?: { type?: string } })?.paymentMethod
+  const paymentMethod = (
+    prepareResponse as {
+      paymentMethod?: {
+        type?: string
+        // #5250: the REAL computed cost of the send is surfaced HERE on the
+        // prepared payment method, not (reliably) on the send-result `fees`.
+        // Per the Breez Spark SDK `SendPaymentMethod` union (d.ts line ~1435):
+        //   bolt11Invoice → { lightningFeeSats: number; sparkTransferFeeSats?: number }
+        //   sparkAddress  → { fee: string }
+        //   sparkInvoice  → { fee: string }
+        // These flow through `toSatNumber` (number | bigint | decimal string).
+        fee?: unknown
+        lightningFeeSats?: unknown
+        sparkTransferFeeSats?: unknown
+      }
+    }
+  )?.paymentMethod
   const isBolt11 = paymentMethod?.type === "bolt11Invoice"
   // #5225: confirm the native label off the SDK's resolved payment method, not
   // only the destination string. A non-bolt11 resolved method that we did NOT
@@ -518,7 +534,49 @@ async function sendSparkPaymentFromSdk(input: {
   sparkTiming("send_payment_settle", performance.now() - tSettle)
   const payment = paymentValue(sent)
   const amount = toSatNumber(payment.amount) ?? input.amountSats
-  const fee = toSatNumber(payment.fees)
+  // #5250 — RECONCILE THE FEE.
+  //
+  // BUG (rc.22): a 44-sat Lightning-Address send reported feeSats:0 while the
+  // wallet balance dropped 4,140 sats (= 44 + 4096). The 4,096 was the REAL
+  // Lightning/LSP routing fee for the tiny external send, computed by the SDK
+  // at PREPARE time and surfaced on `prepareResponse.paymentMethod`
+  // (`lightningFeeSats`/`sparkTransferFeeSats` for bolt11Invoice; `fee` for a
+  // spark address/invoice). The send-RESULT `payment.fees` came back 0/absent,
+  // so reading only that hid the spent sats and produced a non-reconciling
+  // receipt (amountSats + feeSats != balance delta).
+  //
+  // Fix: when the send-result fee is present AND non-zero, trust it (it is the
+  // authoritative settled fee). Otherwise fall back to the prepared fee — the
+  // same fields the treasury Spark sender extracts (`spark-treasury.mjs`:
+  // preparedFeeSats / preparedLightningFeeSats / preparedSparkTransferFeeSats).
+  // For a bolt11 method the total prepared cost is lightning + spark-transfer;
+  // for a spark address/invoice it is the single `fee`. There is NO separate
+  // "change"/leaf field in the SDK result — balance delta = amount + fees — so
+  // a correctly-reported fee fully reconciles the delta with no residual.
+  const sendResultFee = toSatNumber(payment.fees)
+  const preparedFeeFromMethod = toSatNumber(paymentMethod?.fee)
+  const preparedLightningFeeSats = toSatNumber(paymentMethod?.lightningFeeSats)
+  const preparedSparkTransferFeeSats = toSatNumber(paymentMethod?.sparkTransferFeeSats)
+  // Sum the bolt11 components (lightning + optional spark-transfer); the spark
+  // address/invoice case uses the flat `fee`. Any present component wins over a
+  // missing one; null only when nothing is reported.
+  const preparedFeeComponents = [
+    preparedFeeFromMethod,
+    preparedLightningFeeSats,
+    preparedSparkTransferFeeSats,
+  ].filter((value): value is number => value !== null)
+  const preparedFee =
+    preparedFeeComponents.length > 0
+      ? preparedFeeComponents.reduce((sum, value) => sum + value, 0)
+      : null
+  // Trust a real, non-zero settled fee; otherwise use the prepared fee so the
+  // receipt no longer claims feeSats:0 when sats were actually spent.
+  const fee =
+    sendResultFee !== null && sendResultFee > 0 ? sendResultFee : preparedFee ?? sendResultFee
+  // True when the reported fee came from the prepared method rather than the
+  // settled send result — public-safe provenance for the money-path receipt.
+  const feeFromPrepared =
+    (sendResultFee === null || sendResultFee === 0) && preparedFee !== null && preparedFee > 0
   return {
     ok: true,
     transferRef: publicRef(
@@ -535,6 +593,7 @@ async function sendSparkPaymentFromSdk(input: {
     sparkPaymentRef: paymentRef(`${input.prefix}_payment`, payment, input.idempotencyKey),
     amountSats: amount,
     feeSats: fee,
+    feeFromPrepared,
     method,
     status: publicStatus(payment.status),
   }
