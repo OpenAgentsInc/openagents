@@ -13,6 +13,11 @@ pinned public `openagents` source snapshot.
   rubrics, and evidence spans are public.
 - Private validation and private holdout rows are not committed here. Public
   docs may carry split refs and checksums only.
+- `private/`: ignored local authoring path for private rows and local scorer
+  artifacts. Only `private/.gitignore` is committed.
+
+See `private-boundary.md` for evaluator access, leak response, GEPA/study-packet
+limits, and refs-only public projection rules.
 
 ## Public-Retained Package
 

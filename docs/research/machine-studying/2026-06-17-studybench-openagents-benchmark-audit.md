@@ -40,6 +40,11 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   boundaries, Pylon launch priority, schema adaptation, answer-versus-patch
   mode, and product-promise/marketplace gates. Probe tests validate the rows as
   an `openagents.studybench_dataset_package.v0`.
+- 2026-06-17: #5287 / MSB-MVP-05 complete. The
+  `openagents-studybench/private-boundary.md` policy now defines private
+  validation and private holdout split refs, checksum refs, ignored local row
+  storage, evaluator/scorer access, leak response, and the rule that private
+  holdout rows cannot feed study packets or GEPA training.
 
 ## Short Answer
 
