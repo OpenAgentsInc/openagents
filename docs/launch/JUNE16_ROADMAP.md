@@ -172,6 +172,18 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   `docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md`;
   payment status:
   `docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md`.
+  **Latest Orrery payout follow-up (17th):** `c81e3b494` / deployed Worker
+  `964f051d-1676-4c41-8ae2-22b4682ae60c` adds a Worker-side timeout guard around
+  operator `/pay` calls into the MDK containers, so a stuck container send now
+  returns `reason.public.treasury_payout.timeout` with public-safe diagnostics
+  instead of hanging the caller. Post-deploy tips-buffer retries against Orrery's
+  Lightning Address succeeded for 5,000 sats and 20,000 sats, both settled in
+  the safe ledger and both showed Lightning Address → BOLT11 resolution,
+  `paymentIdPresent:true`, and `balanceChanged:true`. The earlier pre-guard
+  25,000-sat tips-buffer hang showed no later balance movement and no ledger row.
+  Remaining honest 40,000 / 50,000 single-invoice test still needs wallet refill;
+  current treasury/tips-buffer max-sendable is below those amounts and the
+  fractional fallback policy would otherwise change the test.
 - **🧰 Pylon wallet self-recovery (#5167) fixed.** Field report: an unclean MDK
   agent-wallet shutdown could leave `~/.mdk-wallet/daemon.pid` pointing at a
   dead process, stranding `wallet report-readiness` until an operator manually
