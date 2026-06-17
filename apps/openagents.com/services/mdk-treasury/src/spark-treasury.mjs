@@ -343,18 +343,38 @@ export const sparkTreasuryFundingInvoicePayload = async input => {
   const sdk = await buildSparkSdk()
   await syncWallet(sdk)
 
-  const response = await withTimeout(
-    sdk.receivePayment({
-      paymentMethod: {
-        amountSats: amountSat,
-        description: 'OpenAgents Spark treasury funding',
-        expirySecs: 3600,
-        type: 'bolt11Invoice',
-      },
-    }),
-    timeoutMs(),
-    'spark receivePayment bolt11Invoice',
-  )
+  let response
+  try {
+    response = await withTimeout(
+      sdk.receivePayment({
+        paymentMethod: {
+          amountSats: amountSat,
+          description: 'OpenAgents Spark treasury funding',
+          expirySecs: 3600,
+          type: 'bolt11Invoice',
+        },
+      }),
+      timeoutMs(),
+      'spark receivePayment bolt11Invoice',
+    )
+  } catch (error) {
+    const reasonClass = reasonClassFromError(error)
+
+    return {
+      amountSat,
+      error: 'spark_treasury_funding_invoice_failed',
+      errorCauseMessageSummary: errorCauseMessageSummary(error),
+      errorCode: errorCode(error),
+      errorKeySummary: errorKeySummary(error),
+      errorMessageSummary: errorMessageSummary(error),
+      errorName: errorName(error),
+      failureStage: 'spark_receive_payment_bolt11_invoice',
+      messageFingerprint: errorFingerprint(error),
+      reasonClass,
+      reasonRef: reasonRefFromClass(reasonClass),
+      status: 502,
+    }
+  }
 
   return typeof response?.paymentRequest === 'string' &&
     response.paymentRequest.trim() !== ''
@@ -366,6 +386,7 @@ export const sparkTreasuryFundingInvoicePayload = async input => {
       }
     : {
         error: 'spark_treasury_funding_invoice_unavailable',
+        failureStage: 'spark_receive_payment_bolt11_invoice_empty_response',
         status: 502,
       }
 }

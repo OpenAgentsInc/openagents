@@ -578,7 +578,7 @@ describe('operator spark treasury funding invoice', () => {
 
     expect(response.status).toBe(503)
     await expect(response.json()).resolves.toEqual({
-      error: 'spark_treasury_funding_invoice_unavailable',
+      error: 'spark_down',
     })
   })
 })

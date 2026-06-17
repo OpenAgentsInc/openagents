@@ -547,7 +547,7 @@ const readSparkTreasuryFunding = (
 const readSparkTreasuryFundingInvoice = (
   fetchSparkTreasury: ContainerPathFetch,
   amountSat: number,
-): Effect.Effect<unknown> =>
+): Effect.Effect<Readonly<{ body: unknown; status: number }> | null> =>
   Effect.tryPromise({
     catch: () => null,
     try: async () => {
@@ -557,7 +557,10 @@ const readSparkTreasuryFundingInvoice = (
         method: 'POST',
       })
 
-      return response.ok ? await response.json() : null
+      return {
+        body: await response.json().catch(() => null),
+        status: response.status,
+      }
     },
   }).pipe(Effect.catch(() => Effect.succeed(null)))
 
@@ -703,16 +706,23 @@ export const handleOperatorSparkTreasuryFundingInvoiceApi = (
               fetchSparkTreasury,
               amountSat,
             ),
-            invoice =>
-              invoice === null
+            invoiceResponse =>
+              invoiceResponse === null
                 ? noStoreJsonResponse(
                     { error: 'spark_treasury_funding_invoice_unavailable' },
                     { status: 503 },
                   )
-                : noStoreJsonResponse({
-                    invoice,
-                    service: 'spark_treasury',
-                  }),
+                : invoiceResponse.status >= 400
+                  ? noStoreJsonResponse(
+                      invoiceResponse.body ?? {
+                        error: 'spark_treasury_funding_invoice_unavailable',
+                      },
+                      { status: invoiceResponse.status },
+                    )
+                  : noStoreJsonResponse({
+                      invoice: invoiceResponse.body,
+                      service: 'spark_treasury',
+                    }),
           )
         }),
       )
