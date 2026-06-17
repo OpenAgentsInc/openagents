@@ -97,9 +97,11 @@ signed recut.
   `workers/api/src/customer-one-cohort-projection.test.ts`. Remaining D3 tail:
   **D3.5 (#5210) shipped:** `/api/public/customer-one-cohort` now serves the
   typed cohort projection as no-store JSON over an injectable source-store seam.
-  After that: implement private cohort row intake/storage, wire `/forge` to the
-  route, record cohort rows, and collect at least three real loop-completion
-  bundles before closing #5098/#5104.
+  **D3.6 (#5212) shipped:** private/operator cohort row intake and storage now
+  live behind `/api/operator/customer-one-cohort/rows`, and the public route
+  reads that D1 source. Remaining D3 tail: wire `/forge` to the route, record
+  cohort rows, and collect at least three real loop-completion bundles before
+  closing #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator

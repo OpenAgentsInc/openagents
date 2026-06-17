@@ -159,7 +159,11 @@ import {
   redactedValue,
 } from './config'
 import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
-import { handlePublicCustomerOneCohortApi } from './customer-one-cohort-routes'
+import {
+  handleOperatorCustomerOneCohortRowsApi,
+  handlePublicCustomerOneCohortApi,
+} from './customer-one-cohort-routes'
+import { makeD1CustomerOneCohortRowStore } from './customer-one-cohort-store'
 import {
   AutopilotDecisionEmailInput,
   OrderSitesTransactionalEmailInput,
@@ -7128,7 +7132,19 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   },
   {
     path: CustomerOneCohortEndpoint,
-    handler: request => handlePublicCustomerOneCohortApi(request),
+    handler: (request, env) =>
+      handlePublicCustomerOneCohortApi(request, {
+        store: makeD1CustomerOneCohortRowStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    path: '/api/operator/customer-one-cohort/rows',
+    handler: (request, env) =>
+      handleOperatorCustomerOneCohortRowsApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1CustomerOneCohortRowStore(openAgentsDatabase(env)),
+      }),
   },
   {
     path: '/api/operator/product-promises/transitions',

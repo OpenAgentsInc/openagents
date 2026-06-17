@@ -309,6 +309,15 @@ const schemaComponents = (): JsonSchema => ({
   CustomerOneCohortProjection: objectSummary(
     'Public-safe Customer #1 cohort dogfood projection. Includes generatedAt, the declared live_at_read staleness contract, public-safe opaque cohort refs, generic team labels, state counts, blocker refs, caveat refs, and the three-completion D3 gate. It is evidence-only and grants no runtime, deployment, merge, accepted-work, payout, settlement, provider, or broad public customer-success authority.',
   ),
+  CustomerOneCohortPrivateRow: objectSummary(
+    'Operator-only Customer #1 cohort source row. Contains public-safe refs and state used to produce the public cohort projection. Intake rejects raw prompts, shell logs, local paths, URLs, email addresses, provider payloads, wallet/payment material, invalid cohort refs, and customer private data.',
+  ),
+  CustomerOneCohortPrivateRowEnvelope: objectSummary(
+    'Operator-only Customer #1 cohort source row upsert response with kind and the stored private row. This receipt is storage evidence only and grants no runtime, deployment, merge, accepted-work, payout, settlement, or provider authority.',
+  ),
+  CustomerOneCohortPrivateRowsEnvelope: objectSummary(
+    'Operator-only Customer #1 cohort source row list with generatedAt and private rows. This feed is the source for the public evidence-only cohort projection and grants no runtime, deployment, merge, accepted-work, payout, settlement, or provider authority.',
+  ),
   ProductPromiseTransitionRequest: objectSummary(
     'Operator request to evaluate and record a promise transition: promiseId, toState, optional evidenceRefs, optional explicit exception (reasonRef, approvedByRef, expiresAt).',
   ),
@@ -2444,6 +2453,41 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Customer #1 cohort projection.',
           '#/components/schemas/CustomerOneCohortProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/customer-one-cohort/rows': {
+    get: operation({
+      operationId: 'operatorListCustomerOneCohortRows',
+      summary: 'List private Customer #1 cohort rows',
+      description:
+        'Admin-token-gated operator feed for the private Customer #1 cohort source rows used by the public evidence-only cohort projection. The rows contain public-safe refs only and are not public customer-success claims.',
+      tags: ['Admin'],
+      security: adminSession,
+      responses: {
+        '200': okJson(
+          'Customer #1 cohort private rows.',
+          '#/components/schemas/CustomerOneCohortPrivateRowsEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'operatorUpsertCustomerOneCohortRow',
+      summary: 'Upsert a private Customer #1 cohort row',
+      description:
+        'Admin-token-gated operator intake for one Customer #1 cohort source row. The row must contain public-safe refs only and must pass the same projection safety boundary before storage.',
+      tags: ['Admin'],
+      security: adminSession,
+      requestBody: jsonContent(
+        '#/components/schemas/CustomerOneCohortPrivateRow',
+      ),
+      responses: {
+        '201': okJson(
+          'Stored Customer #1 cohort private row.',
+          '#/components/schemas/CustomerOneCohortPrivateRowEnvelope',
         ),
         ...errorResponses(),
       },

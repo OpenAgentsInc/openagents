@@ -1323,6 +1323,10 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   Public surfaces may receive only an explicit projection that emits opaque
   cohort refs, generic display labels, state, counts, blocker refs, caveat refs,
   `generatedAt`, and the shared public-projection staleness contract.
+- Private Customer #1 cohort row intake and storage must stay behind the
+  operator/admin boundary at `/api/operator/customer-one-cohort/rows`. Stored
+  rows are source evidence only; the public route may expose only the
+  `CustomerOneCohortProjection` output.
 - The Customer #1 cohort projection must reject raw prompts, shell logs, private
   repo or local filesystem refs, URLs, email addresses, provider payloads,
   provider secrets, wallet material, payment hashes/preimages, invoices, and

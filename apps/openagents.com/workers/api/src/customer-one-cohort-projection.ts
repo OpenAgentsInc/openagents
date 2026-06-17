@@ -151,6 +151,21 @@ export type CustomerOneCohortProjectionInput = Readonly<{
   rows: ReadonlyArray<CustomerOneCohortPrivateRow>
 }>
 
+export const decodeCustomerOneCohortPrivateRow = (
+  value: unknown,
+): CustomerOneCohortPrivateRow => {
+  assertNoPrivateCohortMaterial(value, 'customer-one-cohort.row-input')
+
+  const row = S.decodeUnknownSync(CustomerOneCohortPrivateRow)(value)
+
+  projectCustomerOneCohort({
+    generatedAt: row.updatedAt,
+    rows: [row],
+  })
+
+  return row
+}
+
 const emptyCounts: CustomerOneCohortCounts = {
   blocked: 0,
   candidate: 0,
