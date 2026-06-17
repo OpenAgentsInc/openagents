@@ -1,0 +1,32 @@
+# Launch recognition Spark recipient payout status (#5170)
+
+Date: 2026-06-17
+
+Scope: public-safe status for the remaining launch-recognition Spark backup
+payout confirmations. This document intentionally records only refs, amounts,
+states, blockers, and next actions. It must not include raw Lightning
+Addresses, BOLT11 invoices, payment hashes, preimages, mnemonics, API keys, or
+wallet paths.
+
+## Recipient status
+
+| Recipient | Intended payout | Current evidence | Status | Blocker / root cause | Next action |
+| --- | ---: | --- | --- | --- | --- |
+| Trigger | 50,000 sats | Recipient-side rc.12 proof reported a visible 50,000-sat Spark backup balance after `backup-claim` / `backup-status`; the scoped offline-receive promise is green. | Confirmed | None for the scoped receive/claim/visible-balance promise. | Optional follow-up is #5169-style consented Spark-to-MDK sweep if Trigger wants one spendable MDK balance. |
+| Whitefang | 50,000-sat recognition + 5-sat validator fee | Earlier treasury send failed while the primary MDK/Lightning target was not accepting inbound. No public-safe rc.12+ Spark-backed Lightning Address publish, treasury retry receipt, or recipient `backup-claim` / `backup-status` proof is captured in this repo yet. | Blocked, not invisible | Missing recipient-published Spark fallback target and recipient-side claim/status proof. This is not classified as "sent but invisible"; there is no completed Spark fallback payout receipt to reconcile yet. | Whitefang installs rc.12+, runs `pylon wallet backup-receive --kind lightning-address`, reports readiness, receives the operator-approved treasury retry, then runs `pylon wallet backup-claim` and `pylon wallet backup-status` and shares public-safe receipt refs/counts. |
+| Orrery | 50,000-sat recognition + 5-sat worker fee | Earlier BOLT12 recognition/worker payout was recorded as pending. No public-safe Spark-backed Lightning Address publish, fallback treasury send receipt, or recipient `backup-claim` / `backup-status` proof is captured in this repo yet. | Blocked, pending fallback confirmation | Pending BOLT12 is a separate unsettled payout state, and no recipient Spark fallback target/proof is captured. This is not classified as "sent but invisible"; the actionable blocker is target/proof collection. | Orrery installs rc.12+, publishes the Spark-backed Lightning Address through readiness, receives the operator-approved treasury retry or resolves the pending BOLT12, then runs `backup-claim` / `backup-status` and shares public-safe receipt refs/counts. |
+
+## Operator rule
+
+Do not re-send recognition payouts from memory. Before any retry, reconcile the
+existing treasury attempt state and use the approved treasury path with an
+idempotency key / public-safe receipt. A recipient is complete only when one of
+these is true:
+
+- recipient-confirmed Spark backup credited balance exists after
+  `backup-claim` / `backup-status`; or
+- the blocker above is still current and documented with the next required
+  recipient/operator action.
+
+For #5170, Whitefang and Orrery satisfy the issue's fallback acceptance path as
+documented blockers, not as completed recipient confirmations.

@@ -35,8 +35,10 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   applied) — readiness keeps `lightningAddress`, payout prefers BOLT12/MDK online
   and **falls back to paying the Lightning Address** (normal Lightning send, no
   Spark sender; LSP-backed so it lands offline). **Community testing is open**
-  (forum CTA posted). The held Trigger/Whitefang payouts land once they publish a
-  Lightning Address on rc.7. Auto-payout + auto-update gates still pending.
+  (forum CTA posted). Trigger is now recipient-confirmed on rc.12; Whitefang
+  and Orrery are tracked as documented recipient blockers in
+  `docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md`.
+  Auto-payout + auto-update gates still pending.
 - **Built-in hosted agent backend is LIVE:** `GEMINI_API_KEY` set + verified on
   prod (`generateContent` returns real output); the keyless quota-gated grant
   route `POST /api/provider-accounts/google-gemini/grants/builtin` is deployed
@@ -315,11 +317,10 @@ is the **Spark backup-receive fallback** in
   (`09c5a042`); regression tests on both sides. **User-facing once the Pylon
   change ships in the next RC** — the server already accepts it, but running
   rc5 binaries don't send it yet, so #5151 stays open until that RC publishes.
-- **Remaining (the gates, owner/live — see §H):** (a) wire the Spark fallback
-  into the **payout path** (prefer MDK/BOLT12 online, Spark when offline);
-  (b) one **live offline-recipient receive+reconcile in real Pylon** (real sats →
-  an offline node's Spark address → sync/claim/`migrate-spark`/receipt) → flips
-  the promise green; (c) use it to land the held Trigger/Whitefang payouts.
+- **Remaining (the gates, owner/live — see §H):** the scoped
+  receive/claim/visible-backup-balance promise is green via Trigger's rc.12
+  proof. Whitefang and Orrery are no longer ambiguous; #5170 records them as
+  documented blockers needing recipient Spark fallback target/proof collection.
 
 **Original goal — narrow, opt-in, receive-only Spark fallback:**
 
@@ -335,8 +336,9 @@ is the **Spark backup-receive fallback** in
   `wallet address`/`invoice` receive + deposit-claim lifecycle), per the audit's
   "External SDK Reality Check" (Breez SDK Spark `receivePayment` modes).
 - Once shipped, the offline-recipient case is solved: a tip/payout to an offline node
-  lands on its Spark fallback and reconciles on next sync — and I complete the owed
-  Whitefang + Trigger tips (no waiting on them to come online).
+  lands on its Spark fallback and reconciles on next sync. Trigger has proven the
+  path; Whitefang and Orrery need the documented #5170 recipient target/proof
+  follow-up before their recognition payouts are recipient-confirmed.
 
 (Comunero + Orrery tips already settled.) Files an issue when scoped into work.
 
@@ -556,11 +558,17 @@ three things tested live on that RC.** Audit of each as of 2026-06-16:
 - **Promise flip:** Trigger's recipient-side rc.12 proof confirms the real
   50,000-sat backup balance is visible after claim, so
   `payments.offline_receive_spark_fallback.v1` is now **green** for offline
-  receive/claim/visible backup balance. Whitefang + Orrery still need their
-  Lightning Address publish/claim path for their own 50k payouts, but they no
-  longer block the scoped product promise. The single-balance follow-up is
-  separate: ship a unified balance view first, then finish/prove a consented
-  Spark→MDK sweep before calling Spark backup funds MDK-spendable.
+  receive/claim/visible backup balance. **#5170 recipient closeout:** Whitefang
+  and Orrery do not have recipient-confirmed Spark backup balances in repo
+  evidence yet, but their remaining work is now classified as documented
+  blockers instead of ambiguous "sent but invisible" payouts:
+  `docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md`.
+  Whitefang needs rc.12+ Spark Lightning Address publish + treasury retry +
+  `backup-claim` / `backup-status`; Orrery needs either the pending BOLT12
+  settled/reconciled or the same Spark fallback publish/retry/claim/status
+  path. They no longer block the scoped product promise. The single-balance
+  follow-up is separate: #5168 shipped the unified balance view and #5169
+  shipped the consented Spark→MDK sweep gate.
 - **#5151** (heartbeat `walletReadyNow=false`) — **fix implemented + server
   deployed** (`0fcacbc6b` / worker `09c5a042`): the heartbeat now publishes live
   wallet receive-readiness so an online, receive-ready node is no longer skipped
