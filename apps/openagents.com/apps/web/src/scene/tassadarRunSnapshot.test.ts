@@ -30,6 +30,11 @@ const populated: TassadarRunPublicSummary = {
     receiptRefCount: m(12),
     providerConfirmedSettledPayoutSats: m(2100),
   },
+  corpus: {
+    acceptedTraceCount: 2,
+    traceRefs: ['trace.tassadar.accepted.1', 'trace.tassadar.accepted.2'],
+    verdictRefs: ['verdict.tassadar.replay.1'],
+  },
   realGradient: {
     deviceRequirement: {
       observedDistinctContributorDevices: 4,
@@ -78,8 +83,41 @@ const populated: TassadarRunPublicSummary = {
         workerRef: 'contribution.tassadar.worker.1',
       },
     ],
+    rejectedReplayPairs: [
+      {
+        challengeRef: 'challenge.tassadar.replay.rejected.1',
+        failureCodes: ['DigestMismatch'],
+        sourceRefs: [
+          'challenge.tassadar.replay.rejected.1',
+          'contribution.tassadar.worker.rejected.1',
+          'validator.tassadar.rejected.1',
+          'verdict.tassadar.replay.rejected.1',
+        ],
+        validatorRef: 'validator.tassadar.rejected.1',
+        verdictRefs: ['verdict.tassadar.replay.rejected.1'],
+        workerRef: 'contribution.tassadar.worker.rejected.1',
+      },
+    ],
   },
   receiptRefs: ['receipt.pylon.settlement.1'],
+  settlementRows: [
+    {
+      amountSats: 2100,
+      contributorRef: 'pylon.worker.two',
+      movementMode: 'real_bitcoin',
+      realBitcoinMoved: true,
+      receiptKind: 'settlement_recorded',
+      receiptRef: 'receipt.nexus.tassadar.settlement.real.1',
+      sourceRefs: [
+        'receipt.nexus.tassadar.settlement.real.1',
+        'pylon.worker.two',
+        'challenge.tassadar.replay.1',
+      ],
+      state: 'settled',
+      trainingRunRef: 'run.tassadar.executor.20260615',
+      verificationChallengeRef: 'challenge.tassadar.replay.1',
+    },
+  ],
 }
 
 describe('trainingRunSnapshotFromPublicSummary', () => {
@@ -171,9 +209,34 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     ])
     expect(layer.entities).toEqual([
       { id: 'pylon.worker.one', label: 'P1', status: 'verified' },
-      { id: 'pylon.worker.two', label: 'P2', status: 'settled' },
+      { id: 'pylon.worker.two', label: 'P2', status: 'real_settled' },
       { id: 'contribution.tassadar.worker.1', label: 'W1', status: 'verified' },
       { id: 'validator.tassadar.1', label: 'V1', status: 'verified' },
+      {
+        id: 'contribution.tassadar.worker.rejected.1',
+        label: 'RW1',
+        status: 'rejected',
+      },
+      {
+        id: 'validator.tassadar.rejected.1',
+        label: 'RV1',
+        status: 'rejected',
+      },
+      {
+        id: 'receipt.nexus.tassadar.settlement.real.1',
+        label: '2100s',
+        status: 'real_settled',
+      },
+      {
+        id: 'trace.tassadar.accepted.1',
+        label: 'T1',
+        status: 'accepted_trace',
+      },
+      {
+        id: 'trace.tassadar.accepted.2',
+        label: 'T2',
+        status: 'accepted_trace',
+      },
     ])
     expect(layer.beams).toEqual([
       {
@@ -183,6 +246,44 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     ])
     expect(layer.bursts).toEqual([{ atId: 'pylon.worker.two' }])
     expect(layer.lossCurve).toEqual([])
+  })
+
+  it('does not emit payout bursts for simulation-backed settlement rows', () => {
+    const layer = trainingRunEntityLayerFromPublicSummary({
+      realGradient: {
+        leaderboardRows: [
+          {
+            pylonRef: 'pylon.simulation.only',
+            rank: 1,
+            sourceRefs: ['training.lease.simulation.only'],
+            verifiedWindowCount: 1,
+          },
+        ],
+      },
+      settlementRows: [
+        {
+          amountSats: 5,
+          contributorRef: 'pylon.simulation.only',
+          movementMode: 'simulation',
+          realBitcoinMoved: false,
+          receiptKind: 'settlement_recorded',
+          receiptRef: 'receipt.nexus.tassadar.simulation.only',
+          sourceRefs: ['receipt.nexus.tassadar.simulation.only'],
+          state: 'settled',
+        },
+      ],
+    })
+    expect(layer.entities).toContainEqual({
+      id: 'pylon.simulation.only',
+      label: 'P1',
+      status: 'simulation_settled',
+    })
+    expect(layer.entities).toContainEqual({
+      id: 'receipt.nexus.tassadar.simulation.only',
+      label: '5s',
+      status: 'simulation_settled',
+    })
+    expect(layer.bursts).toEqual([])
   })
 
   it('does not fabricate proof beams, payout bursts, contributors, or loss curves without public refs', () => {

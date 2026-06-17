@@ -257,6 +257,15 @@ const replayPairForSelection = (
       pair.workerRef === selection.id || pair.validatorRef === selection.id,
   )
 
+const rejectedReplayPairForSelection = (
+  summary: TassadarRunPublicSummary,
+  selection: TrainingRunNodeSelection,
+) =>
+  summary.realGradient?.rejectedReplayPairs?.find(
+    pair =>
+      pair.workerRef === selection.id || pair.validatorRef === selection.id,
+  )
+
 const leaderboardRowForSelection = (
   summary: TassadarRunPublicSummary,
   selection: TrainingRunNodeSelection,
@@ -265,18 +274,49 @@ const leaderboardRowForSelection = (
     row => row.pylonRef === selection.id,
   )
 
+const corpusTraceForSelection = (
+  summary: TassadarRunPublicSummary,
+  selection: TrainingRunNodeSelection,
+): string | undefined =>
+  publicRefs(summary.corpus?.traceRefs).find(ref => ref === selection.id)
+
 export const proofLinkForSelection = (
   summary: TassadarRunPublicSummary,
   selection: TrainingRunNodeSelection,
 ): TassadarRunProofLink | null => {
+  const settlement = settlementRowForRef(summary, selection.id)
+  if (settlement !== undefined) {
+    return settlementProofDetail(settlement)
+  }
+
   const pair = replayPairForSelection(summary, selection)
   if (pair !== undefined) {
     return linkForRef(summary, 'Verified replay challenge', pair.challengeRef)
   }
 
+  const rejectedPair = rejectedReplayPairForSelection(summary, selection)
+  if (rejectedPair !== undefined) {
+    return linkForRef(
+      summary,
+      'Rejected replay challenge',
+      rejectedPair.challengeRef,
+    )
+  }
+
   const row = leaderboardRowForSelection(summary, selection)
   if (row !== undefined) {
+    const contributorSettlement = settlementRows(summary).find(
+      settlementRow => settlementRow.contributorRef === row.pylonRef,
+    )
+    if (contributorSettlement !== undefined) {
+      return settlementProofDetail(contributorSettlement)
+    }
     return linkForRef(summary, 'Pylon evidence', firstRef(row.sourceRefs))
+  }
+
+  const corpusTraceRef = corpusTraceForSelection(summary, selection)
+  if (corpusTraceRef !== undefined) {
+    return linkForRef(summary, 'Accepted trace corpus ref', corpusTraceRef)
   }
 
   if (selection.id === 'run') {

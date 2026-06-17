@@ -58,6 +58,11 @@ const populated = {
     verifiedWorkCount: { value: 9 },
     providerConfirmedSettledPayoutSats: { value: 2100 },
   },
+  corpus: {
+    acceptedTraceCount: 1,
+    traceRefs: ['trace.tassadar.accepted.1'],
+    verdictRefs: ['verdict.tassadar.replay.1'],
+  },
   realGradient: {
     leaderboardRows: [
       {
@@ -74,6 +79,15 @@ const populated = {
         validatorRef: 'validator.tassadar.1',
         verdictRefs: ['verdict.tassadar.replay.1'],
         workerRef: 'contribution.tassadar.worker.1',
+      },
+    ],
+    rejectedReplayPairs: [
+      {
+        challengeRef: 'challenge.tassadar.replay.rejected.1',
+        failureCodes: ['DigestMismatch'],
+        validatorRef: 'validator.tassadar.rejected.1',
+        verdictRefs: ['verdict.tassadar.replay.rejected.1'],
+        workerRef: 'contribution.tassadar.worker.rejected.1',
       },
     ],
   },
@@ -384,6 +398,42 @@ describe('proofLinkForSelection', () => {
         'challenge.tassadar.replay.1',
       ],
       state: 'settled; simulation; real bitcoin moved: no',
+    })
+
+    expect(
+      proofLinkForSelection(populated, {
+        detail: 'rejected',
+        id: 'contribution.tassadar.worker.rejected.1',
+        label: 'RW1',
+        role: 'run',
+        status: 'active',
+      }),
+    ).toEqual({
+      caveats: [],
+      href: '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=challenge.tassadar.replay.rejected.1',
+      kind: 'training_ref',
+      label: 'Rejected replay challenge',
+      ref: 'challenge.tassadar.replay.rejected.1',
+      sourceRefs: [],
+      state: 'linked',
+    })
+
+    expect(
+      proofLinkForSelection(populated, {
+        detail: 'accepted_trace',
+        id: 'trace.tassadar.accepted.1',
+        label: 'T1',
+        role: 'run',
+        status: 'active',
+      }),
+    ).toEqual({
+      caveats: [],
+      href: '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=trace.tassadar.accepted.1',
+      kind: 'training_ref',
+      label: 'Accepted trace corpus ref',
+      ref: 'trace.tassadar.accepted.1',
+      sourceRefs: [],
+      state: 'linked',
     })
   })
 })

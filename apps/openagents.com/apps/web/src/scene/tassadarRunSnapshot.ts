@@ -48,6 +48,16 @@ export interface PublicTrainingRunVerifiedReplayPair {
   readonly workerRef?: string
 }
 
+export interface PublicTrainingRunRejectedReplayPair {
+  readonly challengeRef?: string
+  readonly failureCodes?: ReadonlyArray<string>
+  readonly provenanceLabel?: string
+  readonly sourceRefs?: ReadonlyArray<string>
+  readonly validatorRef?: string | null
+  readonly verdictRefs?: ReadonlyArray<string>
+  readonly workerRef?: string
+}
+
 export interface PublicTassadarSettlementRow {
   readonly amountSats?: number
   readonly apiUrl?: string
@@ -113,6 +123,7 @@ export interface TassadarRunPublicSummary {
     }
     readonly externalAsk?: { readonly blockerRefs?: ReadonlyArray<string> }
     readonly leaderboardRows?: ReadonlyArray<PublicTrainingRunLeaderboardRow>
+    readonly rejectedReplayPairs?: ReadonlyArray<PublicTrainingRunRejectedReplayPair>
     readonly verifiedReplayPairs?: ReadonlyArray<PublicTrainingRunVerifiedReplayPair>
   }
   readonly receiptRefs?: ReadonlyArray<string>
@@ -152,18 +163,76 @@ const shortRef = (ref: string): string => {
   return tail.length <= 10 ? tail : `${tail.slice(0, 4)}…${tail.slice(-4)}`
 }
 
-const leaderboardRowStatus = (row: PublicTrainingRunLeaderboardRow): string => {
-  if (finiteOrZero(row.settledPayoutSats) > 0) {
-    return 'settled'
+const settlementRowReceiptRef = (
+  row: PublicTassadarSettlementRow,
+): string | undefined => {
+  const ref = row.receiptRef?.trim()
+  return ref === undefined || ref.length === 0 ? undefined : ref
+}
+
+const settlementRowsForContributor = (
+  rows: ReadonlyArray<PublicTassadarSettlementRow>,
+  contributorRef: string,
+): ReadonlyArray<PublicTassadarSettlementRow> =>
+  rows.filter(row => row.contributorRef === contributorRef)
+
+const settlementRowStatus = (row: PublicTassadarSettlementRow): string => {
+  if (row.realBitcoinMoved === true) {
+    return 'real_settled'
+  }
+  if (row.state === 'settled' && row.movementMode === 'simulation') {
+    return 'simulation_settled'
+  }
+  if (
+    row.state === 'failed' ||
+    row.state === 'expired' ||
+    row.state === 'rejected'
+  ) {
+    return 'failed_or_expired'
+  }
+  return 'pending_payout'
+}
+
+const contributorSettlementStatus = (
+  rows: ReadonlyArray<PublicTassadarSettlementRow>,
+): string | undefined => {
+  if (rows.some(row => settlementRowStatus(row) === 'real_settled')) {
+    return 'real_settled'
+  }
+  if (rows.some(row => settlementRowStatus(row) === 'simulation_settled')) {
+    return 'simulation_settled'
+  }
+  if (rows.some(row => settlementRowStatus(row) === 'pending_payout')) {
+    return 'pending_payout'
+  }
+  if (rows.some(row => settlementRowStatus(row) === 'failed_or_expired')) {
+    return 'failed_or_expired'
+  }
+  return undefined
+}
+
+const leaderboardRowStatus = (
+  row: PublicTrainingRunLeaderboardRow,
+  settlements: ReadonlyArray<PublicTassadarSettlementRow>,
+): string => {
+  const settlementStatus =
+    row.pylonRef === undefined
+      ? undefined
+      : contributorSettlementStatus(
+          settlementRowsForContributor(settlements, row.pylonRef),
+        )
+  if (settlementStatus !== undefined) {
+    return settlementStatus
   }
   if (finiteOrZero(row.verifiedWindowCount) > 0) {
     return 'verified'
   }
-  return publicRefs(row.sourceRefs).length > 0 ? 'active' : 'registered'
+  return publicRefs(row.sourceRefs).length > 0 ? 'assigned' : 'registered'
 }
 
 const leaderboardEntities = (
   rows: ReadonlyArray<PublicTrainingRunLeaderboardRow> | undefined,
+  settlements: ReadonlyArray<PublicTassadarSettlementRow>,
 ): ReadonlyArray<TrainingRunEntityDefinition> =>
   (rows ?? []).flatMap(row => {
     if (row.pylonRef === undefined || row.pylonRef.trim() === '') {
@@ -174,7 +243,7 @@ const leaderboardEntities = (
       {
         id: row.pylonRef,
         label: rank > 0 ? `P${rank}` : shortRef(row.pylonRef),
-        status: leaderboardRowStatus(row),
+        status: leaderboardRowStatus(row, settlements),
       },
     ]
   })
@@ -214,21 +283,84 @@ const verifiedReplayBeams = (
     return [{ fromId: pair.workerRef, toId: pair.validatorRef }]
   })
 
+const rejectedReplayEntities = (
+  pairs: ReadonlyArray<PublicTrainingRunRejectedReplayPair> | undefined,
+): ReadonlyArray<TrainingRunEntityDefinition> =>
+  (pairs ?? []).flatMap((pair, index) => {
+    const entities: TrainingRunEntityDefinition[] = []
+    if (pair.workerRef !== undefined && pair.workerRef.trim() !== '') {
+      entities.push({
+        id: pair.workerRef,
+        label: `RW${index + 1}`,
+        status: 'rejected',
+      })
+    }
+    if (pair.validatorRef !== null && pair.validatorRef !== undefined) {
+      const validatorRef = pair.validatorRef.trim()
+      if (validatorRef !== '') {
+        entities.push({
+          id: validatorRef,
+          label: `RV${index + 1}`,
+          status: 'rejected',
+        })
+      }
+    }
+    return entities
+  })
+
+const settlementEntities = (
+  rows: ReadonlyArray<PublicTassadarSettlementRow>,
+): ReadonlyArray<TrainingRunEntityDefinition> =>
+  rows.flatMap(row => {
+    const receiptRef = settlementRowReceiptRef(row)
+    if (receiptRef === undefined) return []
+    const amount =
+      typeof row.amountSats === 'number' && Number.isFinite(row.amountSats)
+        ? `${row.amountSats}s`
+        : 'receipt'
+    return [
+      {
+        id: receiptRef,
+        label: amount,
+        status: settlementRowStatus(row),
+      },
+    ]
+  })
+
+const corpusEntities = (
+  summary: TassadarRunPublicSummary,
+): ReadonlyArray<TrainingRunEntityDefinition> =>
+  publicRefs(summary.corpus?.traceRefs).map((traceRef, index) => ({
+    id: traceRef,
+    label: `T${index + 1}`,
+    status: 'accepted_trace',
+  }))
+
 const settlementBursts = (
-  rows: ReadonlyArray<PublicTrainingRunLeaderboardRow> | undefined,
+  rows: ReadonlyArray<PublicTassadarSettlementRow>,
 ): ReadonlyArray<TrainingRunBurstDefinition> =>
-  (rows ?? []).flatMap(row =>
-    row.pylonRef !== undefined &&
-    row.pylonRef.trim() !== '' &&
-    finiteOrZero(row.settledPayoutSats) > 0
-      ? [{ atId: row.pylonRef }]
+  rows.flatMap(row =>
+    row.realBitcoinMoved === true &&
+    typeof row.contributorRef === 'string' &&
+    row.contributorRef.trim() !== ''
+      ? [{ atId: row.contributorRef }]
       : [],
   )
 
 const contributorLifecycleState = (
   row: PublicTrainingRunLeaderboardRow,
+  settlements: ReadonlyArray<PublicTassadarSettlementRow>,
 ): TrainingRunContributorDefinition['lifecycleState'] => {
-  if (finiteOrZero(row.settledPayoutSats) > 0) {
+  const settlementStatus =
+    row.pylonRef === undefined
+      ? undefined
+      : contributorSettlementStatus(
+          settlementRowsForContributor(settlements, row.pylonRef),
+        )
+  if (
+    settlementStatus === 'real_settled' ||
+    settlementStatus === 'simulation_settled'
+  ) {
     return 'active'
   }
   if (finiteOrZero(row.verifiedWindowCount) > 0) {
@@ -239,6 +371,7 @@ const contributorLifecycleState = (
 
 const contributorDefinitions = (
   rows: ReadonlyArray<PublicTrainingRunLeaderboardRow> | undefined,
+  settlements: ReadonlyArray<PublicTassadarSettlementRow>,
 ): ReadonlyArray<TrainingRunContributorDefinition> => {
   const validRows = (rows ?? []).filter(
     row => row.pylonRef !== undefined && row.pylonRef.trim() !== '',
@@ -249,7 +382,7 @@ const contributorDefinitions = (
     id: row.pylonRef!,
     label:
       finiteOrZero(row.rank) > 0 ? `P${finiteOrZero(row.rank)}` : shortRef(row.pylonRef!),
-    lifecycleState: contributorLifecycleState(row),
+    lifecycleState: contributorLifecycleState(row, settlements),
     phase: index / divisor,
   }))
 }
@@ -277,15 +410,22 @@ export const trainingRunEntityLayerFromPublicSummary = (
 > => {
   const rows = summary.realGradient?.leaderboardRows
   const pairs = summary.realGradient?.verifiedReplayPairs
+  const rejectedPairs = summary.realGradient?.rejectedReplayPairs
+  const settlements = Array.isArray(summary.settlementRows)
+    ? summary.settlementRows
+    : []
   const entities = [
-    ...leaderboardEntities(rows),
+    ...leaderboardEntities(rows, settlements),
     ...verifiedReplayEntities(pairs),
+    ...rejectedReplayEntities(rejectedPairs),
+    ...settlementEntities(settlements),
+    ...corpusEntities(summary),
   ]
 
   return {
     beams: verifiedReplayBeams(pairs),
-    bursts: settlementBursts(rows),
-    contributors: contributorDefinitions(rows),
+    bursts: settlementBursts(settlements),
+    contributors: contributorDefinitions(rows, settlements),
     entities,
     lossCurve: lossCurveFromPublicSummary(summary),
   }

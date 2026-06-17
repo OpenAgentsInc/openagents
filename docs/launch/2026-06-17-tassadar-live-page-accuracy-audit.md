@@ -28,6 +28,12 @@ primitives.
   public summary provides real loss points, and contributor-ring marks are
   derived from public leaderboard rows rather than the dependency's synthetic
   placeholder contributors.
+- 2026-06-17: Issue #5190 bound the remaining training grammar marks to public
+  refs in the Tassadar adapter. Contributor entities now distinguish assigned,
+  verified, simulation-settled, real-settled, pending, and failed settlement
+  states; rejected replay pairs, settlement receipts, and accepted trace corpus
+  refs become selectable proof entities; payout bursts render only for
+  `realBitcoinMoved:true` settlement rows.
 
 ## Short answer
 
