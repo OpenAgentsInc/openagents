@@ -558,6 +558,32 @@ const sparkHelper =
     }
   }
 
+describe("Spark balance read consistency (#5197)", () => {
+  test("a non-forced (fallback) status read flags balanceRefreshing, not a confirmed balance", async () => {
+    const detected = await detectSparkBackupBalance(
+      sparkHelper({ status: { stdout: { balance_sats: 12406, balance_synced: false } } }),
+    )
+    expect(detected.helperReady).toBe(true)
+    expect(detected.detectedBalanceSats).toBe(12406)
+    expect(detected.balanceRefreshing).toBe(true)
+  })
+
+  test("a force-synced status read is not flagged refreshing", async () => {
+    const detected = await detectSparkBackupBalance(
+      sparkHelper({ status: { stdout: { balance_sats: 28790, balance_synced: true } } }),
+    )
+    expect(detected.detectedBalanceSats).toBe(28790)
+    expect(detected.balanceRefreshing).toBe(false)
+  })
+
+  test("an older helper without balance_synced is treated as synced (back-compat)", async () => {
+    const detected = await detectSparkBackupBalance(
+      sparkHelper({ status: { stdout: { balance_sats: 28790 } } }),
+    )
+    expect(detected.balanceRefreshing).toBe(false)
+  })
+})
+
 describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
   test("MDK receive success does not call the Spark backup helper", async () => {
     let helperCalls = 0

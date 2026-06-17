@@ -134,6 +134,7 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
     expect(result.exitCode).toBe(0)
     expect(JSON.parse(result.stdout)).toEqual({
       balance_sats: 4242,
+      balance_synced: true,
       unclaimed_deposit_count: 2,
       claimable_htlc_count: 0,
       claimable_htlc_sats: 0,

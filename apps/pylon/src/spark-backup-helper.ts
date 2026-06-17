@@ -192,6 +192,11 @@ const DEFAULT_SPARK_TIMEOUT_MS = 15_000
 // moved (a dangerous false-negative that invites a double-spend retry).
 const SEND_COMPLETION_TIMEOUT_SECS = 60
 const SEND_TIMEOUT_BUFFER_MS = 15_000
+// #5197: a fresh post-restart Spark sync can take longer than the short read
+// timeout. Give status reads room to FORCE-sync before reporting a balance, so
+// the first read after restart doesn't fall back to a stale (pre-sync) balance
+// and present it as confirmed-spendable. Warm reads (already synced) stay fast.
+const READ_SYNC_TIMEOUT_MS = 45_000
 
 function helperError(command: SparkBackupCommand, message: string): WalletCommandResult {
   // The message is helper stderr; slice-1 code keeps it out of public
@@ -591,19 +596,25 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
           // real-infra testing even right after a claim; an explicit syncWallet
           // makes the balance + pending list current (#5166). Guarded so older
           // SDK builds / test fakes without syncWallet degrade gracefully.
+          // #5197: give the sync room to complete after a restart (it can exceed
+          // the short read timeout) so we don't report a stale pre-sync balance.
+          const readSyncTimeoutMs = Math.max(timeoutMs, READ_SYNC_TIMEOUT_MS)
           if (typeof sdk.syncWallet === "function") {
-            await withTimeout(sdk.syncWallet({}), timeoutMs, "spark syncWallet").catch(() => undefined)
+            await withTimeout(sdk.syncWallet({}), readSyncTimeoutMs, "spark syncWallet").catch(() => undefined)
           }
           // #5194: some hosts fail getInfo({ensureSynced:true}) fast even after a
           // successful wallet open + syncWallet — the read path degrades to
-          // helper-unavailable while send works. syncWallet already ran above, so
-          // fall back to a non-forced read; surface the forced-read reason under
-          // PYLON_SPARK_DEBUG=1.
+          // helper-unavailable while send works. Fall back to a non-forced read so
+          // it stays readable, but #5197: TRACK that the balance is then a
+          // possibly-stale, non-authoritative read so the projection flags it as
+          // refreshing instead of presenting it as a confirmed-spendable balance.
+          let balanceSynced = true
           const info = await withTimeout(
             sdk.getInfo({ ensureSynced: true }),
-            timeoutMs,
+            readSyncTimeoutMs,
             "spark getInfo",
           ).catch(error => {
+            balanceSynced = false
             if (process.env.PYLON_SPARK_DEBUG === "1") {
               console.error(
                 `[spark-getinfo] ensureSynced failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -654,6 +665,10 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
           }
           return helperOk({
             balance_sats: balance,
+            // #5197: false => balance came from a non-forced fallback read and may
+            // be stale (e.g. mid-sync right after restart); the projection flags it
+            // refreshing rather than confirmed-spendable.
+            balance_synced: balanceSynced,
             unclaimed_deposit_count: unclaimed,
             claimable_htlc_count: claimableCount,
             claimable_htlc_sats: claimableSats,

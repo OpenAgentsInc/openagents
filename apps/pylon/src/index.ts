@@ -1051,6 +1051,14 @@ async function readSparkBackupStatusProjection(
       projection.unclaimedDepositCount = detected.unclaimedDepositCount
       projection.claimableHtlcCount = detected.claimableHtlcCount
       projection.claimableHtlcSats = detected.claimableHtlcSats
+      // #5197: a non-forced fallback balance is possibly-stale; flag it refreshing
+      // + add a blocker so it is not read as a confirmed-spendable balance.
+      if (detected.balanceRefreshing) {
+        projection.balanceRefreshing = true
+        if (!projection.blockerRefs.includes("blocker.wallet.spark_backup.balance_refreshing")) {
+          projection.blockerRefs = [...projection.blockerRefs, "blocker.wallet.spark_backup.balance_refreshing"]
+        }
+      }
     } catch {
       return projection
     }
@@ -2441,6 +2449,13 @@ async function main() {
             projection.unclaimedDepositCount = detected.unclaimedDepositCount
             projection.claimableHtlcCount = detected.claimableHtlcCount
             projection.claimableHtlcSats = detected.claimableHtlcSats
+            // #5197: flag a possibly-stale fallback balance as refreshing.
+            if (detected.balanceRefreshing) {
+              projection.balanceRefreshing = true
+              if (!projection.blockerRefs.includes("blocker.wallet.spark_backup.balance_refreshing")) {
+                projection.blockerRefs = [...projection.blockerRefs, "blocker.wallet.spark_backup.balance_refreshing"]
+              }
+            }
           } catch {
             // Best-effort: keep the classify projection as-is on any failure.
           }
