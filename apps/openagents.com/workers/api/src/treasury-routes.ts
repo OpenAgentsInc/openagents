@@ -18,6 +18,9 @@ export type TreasuryRouteDependencies = Readonly<{
   fetchTreasury?: ContainerPathFetch | undefined
   fetchTipsBuffer?: ContainerPathFetch | undefined
   transactionStore?: TreasuryTransactionStore | undefined
+  // Bounds operator payout calls into the MDK container so a stuck daemon send
+  // returns a classified diagnostic instead of hanging the operator request.
+  payRequestTimeoutMs?: number | undefined
   recordPayoutTransaction?:
     | ((input: {
         amountSat: number
@@ -566,6 +569,8 @@ export const handleOperatorTreasuryTransactionReconcileApi = (
 // fee-buffered honest spendable figure.
 export const TREASURY_FRACTIONAL_FALLBACK_DIVISOR = 10
 
+const DEFAULT_TREASURY_PAY_REQUEST_TIMEOUT_MS = 65_000
+
 export const treasuryPayoutPlan = (input: {
   intendedAmountSat: number
   maxSendableSat: number | null
@@ -812,6 +817,55 @@ const treasuryPayoutAttemptTrace = (input: {
   reasonRef: input.ok
     ? null
     : treasuryPayoutFailureReasonRefFromPayResult(input.payResult),
+})
+
+const treasuryPayRequestTimeoutMs = (
+  dependencies: TreasuryRouteDependencies,
+): number => {
+  const configured = dependencies.payRequestTimeoutMs
+
+  return typeof configured === 'number' &&
+    Number.isFinite(configured) &&
+    configured > 0
+    ? Math.floor(configured)
+    : DEFAULT_TREASURY_PAY_REQUEST_TIMEOUT_MS
+}
+
+const treasuryPayTimeoutSignal = (timeoutMs: number): AbortSignal | undefined =>
+  typeof AbortSignal.timeout === 'function'
+    ? AbortSignal.timeout(timeoutMs)
+    : undefined
+
+const treasuryPayRequestTimeout = (
+  timeoutMs: number,
+): Promise<{ kind: 'timeout' }> =>
+  new Promise(resolve => {
+    setTimeout(() => resolve({ kind: 'timeout' }), timeoutMs)
+  })
+
+const treasuryPayRequestErrorName = (error: unknown): string | null =>
+  error instanceof Error ? safeReasonSegment(error.name) : null
+
+const treasuryPayRequestFailurePayload = (input: {
+  error?: unknown
+  resolvedDestinationKind: string | null
+  sourceDestinationKind: string | null
+  timeoutMs: number
+  timedOut: boolean
+}): Record<string, unknown> => ({
+  error: input.timedOut
+    ? 'treasury_pay_request_timeout'
+    : 'treasury_pay_request_failed',
+  errorName:
+    input.error === undefined ? null : treasuryPayRequestErrorName(input.error),
+  failureStage: input.timedOut ? 'pay_request_timeout' : 'pay_request_fetch',
+  reasonRef: input.timedOut
+    ? 'reason.public.treasury_payout.timeout'
+    : 'reason.public.treasury_payout.failed',
+  resolvedDestinationKind: input.resolvedDestinationKind,
+  resultReturned: false,
+  sourceDestinationKind: input.sourceDestinationKind,
+  timeoutSecs: Math.ceil(input.timeoutMs / 1000),
 })
 
 // Policy-applying payout core (issue #4703): the ONE path that moves
@@ -1097,33 +1151,79 @@ export const handleOperatorTreasuryPayoutApi = (
               sendDestination = resolved.bolt11
               resolvedDestinationKind = 'bolt11'
             }
-            const payResponse = await fetchTreasury('/pay', {
+            const timeoutMs = treasuryPayRequestTimeoutMs(dependencies)
+            const payRequest = fetchTreasury('/pay', {
               body: JSON.stringify({
                 amountSat: plan.paidAmountSat,
                 destination: sendDestination,
               }),
               method: 'POST',
+              signal: treasuryPayTimeoutSignal(timeoutMs),
             })
-            let payResult: Record<string, unknown>
+              .then(async payResponse => {
+                let payResult: Record<string, unknown>
 
-            try {
-              const parsed = await payResponse.json()
-              payResult = isRecord(parsed) ? parsed : {}
-            } catch {
-              payResult = {
-                error: 'treasury_pay_response_invalid_json',
-                failureStage: 'pay_response_invalid_json',
+                try {
+                  const parsed = await payResponse.json()
+                  payResult = isRecord(parsed) ? parsed : {}
+                } catch {
+                  payResult = {
+                    error: 'treasury_pay_response_invalid_json',
+                    failureStage: 'pay_response_invalid_json',
+                  }
+                }
+
+                return { kind: 'response' as const, payResponse, payResult }
+              })
+              .catch(error => ({ error, kind: 'error' as const }))
+
+            const payOutcome = await Promise.race([
+              payRequest,
+              treasuryPayRequestTimeout(timeoutMs),
+            ])
+
+            if (payOutcome.kind === 'timeout') {
+              return {
+                ok: false,
+                payResult: treasuryPayRequestFailurePayload({
+                  resolvedDestinationKind,
+                  sourceDestinationKind,
+                  timedOut: true,
+                  timeoutMs,
+                }),
               }
             }
 
+            if (payOutcome.kind === 'error') {
+              return {
+                ok: false,
+                payResult: treasuryPayRequestFailurePayload({
+                  error: payOutcome.error,
+                  resolvedDestinationKind,
+                  sourceDestinationKind,
+                  timedOut: false,
+                  timeoutMs,
+                }),
+              }
+            }
+            const resultReturned =
+              typeof payOutcome.payResult.resultReturned === 'boolean'
+                ? payOutcome.payResult.resultReturned
+                : true
+
             return {
-              ok: payResponse.ok,
+              ok:
+                payOutcome.payResponse.ok &&
+                payOutcome.payResult.status === 'succeeded',
               payResult: {
-                ...payResult,
-                payResponseStatus: payResponse.status,
+                ...payOutcome.payResult,
+                payResponseStatus: payOutcome.payResponse.status,
                 resolvedDestinationKind:
                   resolvedDestinationKind ??
-                  safeTreasuryPayoutDiagnosticString(payResult.destinationKind),
+                  safeTreasuryPayoutDiagnosticString(
+                    payOutcome.payResult.destinationKind,
+                  ),
+                resultReturned,
                 sourceDestinationKind,
               },
             }

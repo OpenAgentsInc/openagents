@@ -700,6 +700,7 @@ const fetchMdkTreasuryPath = (
             : { [TREASURY_SERVICE_TOKEN_HEADER]: serviceToken }),
         },
         method: init?.method ?? 'GET',
+        ...(init?.signal === undefined ? {} : { signal: init.signal }),
       }),
     )
 }
@@ -777,6 +778,7 @@ const fetchMdkTipsBufferPath = (
             : { [TIPS_BUFFER_SERVICE_TOKEN_HEADER]: serviceToken }),
         },
         method: init?.method ?? 'GET',
+        ...(init?.signal === undefined ? {} : { signal: init.signal }),
       }),
     )
 }

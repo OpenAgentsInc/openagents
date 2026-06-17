@@ -891,6 +891,90 @@ describe('operator treasury payout', () => {
     })
   })
 
+  test('times out stuck container pay calls with safe diagnostics', async () => {
+    const store = makeMemoryTransactionStore()
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({ amountSat: 1000, destination: 'lno1recipient' }),
+        {
+          fetchTreasury: path => {
+            if (path === '/balance') {
+              return Promise.resolve(
+                jsonResponse(200, {
+                  balanceSat: 100000,
+                  maxSendableSat: 100000,
+                }),
+              )
+            }
+
+            if (path === '/pay') {
+              return new Promise<Response>(() => {})
+            }
+
+            return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
+          },
+          payRequestTimeoutMs: 1,
+          recordPayoutTransaction: input =>
+            store.insert({
+              amountSat: input.amountSat,
+              bolt11: null,
+              createdAt: '2026-06-17T18:00:01.250Z',
+              direction: 'out',
+              expiresAt: null,
+              failureReasonRef: input.failureReasonRef ?? null,
+              id: 'treasury_payout_pay_timeout',
+              paymentRef: input.paymentRef,
+              settledAt: null,
+              state: 'failed',
+            }),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+    const bodyText = await response.text()
+    const body = JSON.parse(bodyText) as {
+      attempts: ReadonlyArray<{
+        diagnostics: {
+          failureStage: string | null
+          resultReturned: boolean | null
+          timeoutSecs: number | null
+        }
+        reasonRef: string | null
+      }>
+      diagnostics: {
+        failureStage: string | null
+        resultReturned: boolean | null
+        timeoutSecs: number | null
+      }
+      reasonRef: string
+    }
+
+    expect(response.status).toBe(502)
+    expect(body.reasonRef).toBe('reason.public.treasury_payout.timeout')
+    expect(body.diagnostics).toMatchObject({
+      failureStage: 'pay_request_timeout',
+      resultReturned: false,
+      timeoutSecs: 1,
+    })
+    expect(body.attempts).toMatchObject([
+      {
+        diagnostics: {
+          failureStage: 'pay_request_timeout',
+          resultReturned: false,
+          timeoutSecs: 1,
+        },
+        reasonRef: 'reason.public.treasury_payout.timeout',
+      },
+    ])
+    expect(bodyText).not.toContain('lno1recipient')
+    expect(store.rows.get('treasury_payout_pay_timeout')).toMatchObject({
+      amountSat: 1000,
+      failureReasonRef: 'reason.public.treasury_payout.timeout',
+      paymentRef: null,
+      state: 'failed',
+    })
+  })
+
   test('classifies the daemon reason when the container error is generic', async () => {
     const store = makeMemoryTransactionStore()
     const response = await run(
