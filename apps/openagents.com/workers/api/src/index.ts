@@ -235,11 +235,11 @@ import {
 import {
   type DurableMdkPaymentOutcome,
   durableMdkPaymentOutcomeResponse,
-  mdkPaymentIdFromPayload,
+  journalMdkResponseOutcome,
   mdkPaymentIdFromStatusPath,
   mdkPaymentOutcomeStorageKey,
   mdkTerminalOutcomeFromPayload,
-} from './mdk-payment-outcome-journal'
+} from './http/mdk-payment-outcome-journal'
 import { makeMulletRoutes } from './mullet/routes'
 import { makeNativeListsService } from './native-lists'
 import { makeNativeListsRoutes } from './native-lists-routes'
@@ -336,7 +336,7 @@ import {
   makeD1PylonCapacityFunnelSnapshotStore,
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
-import { fetchAppShellWithPylonStatsBootPayload } from './pylon-stats-boot-payload'
+import { fetchAppShellWithPylonStatsBootPayload } from './http/pylon-stats-boot-payload'
 import { makeD1PylonMarketplaceJobStore } from './pylon-marketplace-service'
 import {
   type RelayHealthFetch,
@@ -565,33 +565,14 @@ class DurableMdkOutcomeContainer extends Container<Env> {
     await this.ctx.storage.put(mdkPaymentOutcomeStorageKey(paymentId), outcome)
   }
 
-  private async journalResponseOutcome(response: Response): Promise<void> {
-    const payload = await response
-      .clone()
-      .json()
-      .catch(() => null)
-    const paymentId = mdkPaymentIdFromPayload(payload)
-
-    if (paymentId === null) {
-      return
-    }
-
-    const outcome = mdkTerminalOutcomeFromPayload(
-      payload,
-      new Date().toISOString(),
-    )
-
-    if (outcome !== null) {
-      await this.writePaymentOutcome(paymentId, outcome)
-    }
-  }
-
-  override async fetch(request: Request): Promise<Response> {
+  override async fetch(request: Request) {
     const url = new URL(request.url)
 
     if (request.method === 'POST' && url.pathname === '/pay') {
       const response = await this.containerFetch(request)
-      await this.journalResponseOutcome(response)
+      await journalMdkResponseOutcome(response, (paymentId, outcome) =>
+        this.writePaymentOutcome(paymentId, outcome),
+      )
 
       return response
     }
@@ -608,7 +589,7 @@ class DurableMdkOutcomeContainer extends Container<Env> {
             .catch(() => null)
           const outcome = mdkTerminalOutcomeFromPayload(
             payload,
-            new Date().toISOString(),
+            currentIsoTimestamp(),
           )
 
           if (outcome !== null) {

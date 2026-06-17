@@ -7,6 +7,8 @@
 // §2) so both surfaces agree: glow tracks sessions in flight, NIP-90 jobs
 // settling, and training progress. Fail-soft: any error => intensity 0 (dormant).
 
+import { parseJsonRecord } from '../json-boundary'
+
 export type PylonStatsSnapshot = {
   readonly available?: boolean
   readonly status?: string
@@ -56,9 +58,6 @@ export const computeActivityIntensity = (snapshot: PylonStatsSnapshot | null): n
 
 export const PYLON_STATS_URL = '/api/public/pylon-stats'
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 type PylonStatsBootDocument = Pick<Document, 'getElementById'>
 
 export const readInitialPylonStatsSnapshot = (
@@ -70,12 +69,8 @@ export const readInitialPylonStatsSnapshot = (
 
   if (text === null || text.trim() === '') return null
 
-  try {
-    const parsed = JSON.parse(text)
-    return isRecord(parsed) ? (parsed as PylonStatsSnapshot) : null
-  } catch {
-    return null
-  }
+  const parsed = parseJsonRecord(text)
+  return parsed === undefined ? null : (parsed as PylonStatsSnapshot)
 }
 
 // Fetch the live snapshot. Fail-soft -> null (dormant).

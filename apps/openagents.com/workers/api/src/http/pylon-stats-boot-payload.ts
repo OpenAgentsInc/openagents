@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 
-import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
+import { parseJsonUnknown } from '../json-boundary'
+import { handlePublicPylonStatsApi } from '../public-pylon-stats-routes'
 
 export const PYLON_STATS_BOOT_SCRIPT_ID = 'openagents-pylon-stats-snapshot'
 
@@ -76,7 +77,7 @@ const loadPublicPylonStatsSnapshotJson = async (
   const text = await response.text()
 
   try {
-    const parsed = JSON.parse(text)
+    const parsed = parseJsonUnknown(text)
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       return null
     }

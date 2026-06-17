@@ -1,3 +1,5 @@
+import { currentIsoTimestamp } from '../runtime-primitives'
+
 export type MdkPaymentOutcomeStatus = 'succeeded' | 'failed'
 
 export type DurableMdkPaymentOutcome = Readonly<{
@@ -99,3 +101,30 @@ export const durableMdkPaymentOutcomeResponse = (
       status: 200,
     },
   )
+
+// Parse a container payment Response and journal its terminal outcome via the
+// provided storage writer. Lives in the /http/ response-shaping layer so the
+// MDK Durable Object keeps no Response-typed surface of its own.
+export const journalMdkResponseOutcome = async (
+  response: Response,
+  writeOutcome: (
+    paymentId: string,
+    outcome: DurableMdkPaymentOutcome,
+  ) => Promise<void>,
+): Promise<void> => {
+  const payload = await response
+    .clone()
+    .json()
+    .catch(() => null)
+  const paymentId = mdkPaymentIdFromPayload(payload)
+
+  if (paymentId === null) {
+    return
+  }
+
+  const outcome = mdkTerminalOutcomeFromPayload(payload, currentIsoTimestamp())
+
+  if (outcome !== null) {
+    await writeOutcome(paymentId, outcome)
+  }
+}

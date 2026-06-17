@@ -280,6 +280,11 @@ const runPromiseAllowlist = new Map([
   ['workers/api/src/thread-access.ts', 1],
   ['workers/api/src/onboarding/repository.ts', 1],
   ['packages/sync-worker/src/index.ts', 1],
+  // Added 2026-06-17: the homepage pylon-stats boot-payload injector runs the
+  // Effect-returning public-stats handler once from the asset-shell path to
+  // SSR-seed the snapshot. Named bridge; ratchet down if the asset path moves
+  // to an Effect program.
+  ['workers/api/src/http/pylon-stats-boot-payload.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)
