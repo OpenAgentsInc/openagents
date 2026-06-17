@@ -979,6 +979,40 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/pylon-api-routes.test.ts`.
 
+## Spark Address Payout Target Registration
+
+- A Pylon may register its OWN Spark address as a payout target so the platform
+  can pay it natively over Spark (#5252). `spark_address` is an admitted
+  `PayoutTargetKind` whose only public projection is the redacted
+  `payout.spark.<digest>` ref (digest of the raw address), mirroring the
+  existing `bolt12_offer → payout.bolt12.*` allow-prefix pattern.
+- The raw `spark1…` is PAYMENT MATERIAL. It rides only the authenticated
+  `POST /api/pylons/:ref/spark-payout-target` request body, is stored in the
+  private operator store `pylon_spark_payout_targets` keyed to the agent's
+  `pylonRef`, and must never enter a public projection, a public Pylon event
+  body, a tracked file, a commit, a log, or normal output. Public surfaces carry
+  only the redacted digest ref. `assertPublicProjectionSafe` and
+  `admitPayoutTarget` must continue to reject a raw `spark1…` in any public ref,
+  and `JSON.stringify` of a projection must never contain a `spark1…`.
+- Registration is auth-scoped: an agent may register a Spark target only on a
+  Pylon it owns (`ownerAgentUserId` from the bearer-token session), and the
+  declared `payout.spark.<digest>` ref must match the server-recomputed digest of
+  the submitted raw address. A mismatch fails closed as a validation error.
+- Registration is idempotent: re-registering the same address for the same Pylon
+  is a no-op upsert (private store keyed by `pylonRef`, public event
+  idempotency-keyed), not a duplicate.
+- The settlement payout destination resolver looks up the recipient's registered
+  raw Spark address from the private store and returns it as the native Spark
+  send destination for the gated real-settlement path (#5232) and native send
+  (#5225). It fails closed (returns `undefined`, no send) when the recipient has
+  no registered Spark target or the private store read fails; the raw
+  destination never enters any receipt projection. Registration grants no
+  payout, settlement, spend, accepted-work, or public-claim authority by itself.
+- Regression coverage for this policy lives in
+  `workers/api/src/pylon-api-routes.test.ts` and `apps/pylon/tests/wallet.test.ts`;
+  the private D1 backing store starts in
+  `workers/api/migrations/0202_pylon_spark_payout_targets.sql`.
+
 ## Probe GEPA Campaign Public Projection
 
 - Artanis/Probe GEPA campaign projections are public-safe summaries of

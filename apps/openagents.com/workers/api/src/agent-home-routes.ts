@@ -693,6 +693,15 @@ export const buildProgrammaticAgentHome = (
         status: 'available_owned_request_only',
       },
       {
+        // #5252: register the node's OWN raw Spark address as a payout target.
+        // The raw spark1… rides only this authenticated body and is stored
+        // privately; the public projection carries only payout.spark.<digest>.
+        id: 'pylon_spark_payout_target',
+        method: 'POST',
+        href: 'https://openagents.com/api/pylons/{pylonRef}/spark-payout-target',
+        status: 'available_owned',
+      },
+      {
         id: 'pylon_assignments_list',
         method: 'GET',
         href: 'https://openagents.com/api/pylons/{pylonRef}/assignments',

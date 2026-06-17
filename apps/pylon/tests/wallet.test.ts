@@ -18,8 +18,10 @@ import {
   receiveWithMdk,
   recommendSparkSweep,
   reclaimStaleMdkDaemonPidfile,
+  registerSparkPayoutTarget,
   reportWalletReadiness,
   requestPayoutTargetAdmission,
+  sparkPayoutTargetRef,
   sendWithMdk,
   sendWithSparkBackup,
   sparkBackupTargetPath,
@@ -410,6 +412,79 @@ describe("MDK wallet readiness and ledger", () => {
       readiness: "payout-target-admitted",
     })
     expect(() => admitPayoutTarget({ kind: "bolt11_invoice", ref: "lnbc10n1rawinvoice" })).toThrow("public-safe")
+  })
+
+  test("admits a spark_address payout target only as a payout.spark.* ref (#5252)", () => {
+    expect(admitPayoutTarget({ kind: "spark_address", ref: "payout.spark.deadbeefdeadbeefdeadbeef" })).toEqual({
+      kind: "spark_address",
+      payoutTargetRef: "payout.spark.deadbeefdeadbeefdeadbeef",
+      readiness: "payout-target-admitted",
+    })
+    // A raw spark1… can never be admitted as a public payout-target ref.
+    expect(() =>
+      admitPayoutTarget({
+        kind: "spark_address",
+        ref: "spark1qqqqraw0000000000000000000000address",
+      }),
+    ).toThrow("public-safe")
+  })
+
+  test("sparkPayoutTargetRef redacts the raw address to a stable digest ref (#5252)", () => {
+    const raw = "spark1pqqqqq0000000000000000000000000000example"
+    const ref = sparkPayoutTargetRef(raw)
+    expect(ref).toMatch(/^payout\.spark\.[0-9a-f]{24}$/)
+    // The redacted ref must NOT contain the raw spark1… anywhere.
+    expect(ref).not.toContain("spark1")
+    // Stable / idempotent: same input -> same digest ref.
+    expect(sparkPayoutTargetRef(raw)).toBe(ref)
+    // assertPublicProjectionSafe must accept the redacted ref but reject the raw.
+    expect(() => assertPublicProjectionSafe({ payoutTargetRef: ref })).not.toThrow()
+    expect(() => assertPublicProjectionSafe({ payoutTargetRef: raw })).toThrow()
+    expect(() => sparkPayoutTargetRef("   ")).toThrow("non-empty")
+  })
+
+  test("registerSparkPayoutTarget posts raw address only in the private body and projects only the digest (#5252)", async () => {
+    const rawSparkAddress = "spark1pqqqqq0000000000000000000000000000agentpayout"
+    const requests: Array<{ body: Record<string, unknown>; headers: Headers; url: string }> = []
+    const fetchImpl: typeof fetch = async (input, init) => {
+      requests.push({
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        headers: new Headers(init?.headers),
+        url: input.toString(),
+      })
+      return new Response(JSON.stringify({ ok: true, payoutTargetRef: sparkPayoutTargetRef(rawSparkAddress) }), {
+        status: 200,
+      })
+    }
+
+    const result = await registerSparkPayoutTarget(
+      { rawSparkAddress },
+      {
+        agentToken: "oa_agent_test",
+        baseUrl: "https://openagents.test",
+        fetch: fetchImpl,
+        now: () => new Date("2026-06-17T12:00:00.000Z"),
+        pylonRef: "pylon.test.wallet",
+      },
+    )
+
+    const expectedRef = sparkPayoutTargetRef(rawSparkAddress)
+    expect(result.ok).toBe(true)
+    expect(result.payoutTargetRef).toBe(expectedRef)
+    // The result the caller logs/prints must NOT carry the raw address.
+    expect(JSON.stringify({ ok: result.ok, payoutTargetRef: result.payoutTargetRef })).not.toContain("spark1")
+
+    const request = requests[0]
+    expect(request?.url).toBe("https://openagents.test/api/pylons/pylon.test.wallet/spark-payout-target")
+    expect(request?.headers.get("authorization")).toBe("Bearer oa_agent_test")
+    // The raw address rides ONLY the authenticated request body under rawSparkAddress.
+    expect(request?.body.rawSparkAddress).toBe(rawSparkAddress)
+    expect(request?.body.payoutTargetRef).toBe(expectedRef)
+    // The public-safe portion of the body (everything except the raw field) must
+    // not contain a spark1…; only the digest ref does.
+    const { rawSparkAddress: _raw, ...publicView } = request?.body ?? {}
+    expect(JSON.stringify(publicView)).not.toContain("spark1")
+    expect(() => assertPublicProjectionSafe(publicView)).not.toThrow()
   })
 
   test("reports wallet readiness and payout-target admission with public-safe event bodies", async () => {

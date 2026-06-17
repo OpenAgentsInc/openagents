@@ -146,6 +146,7 @@ import {
   preflightLegacySparkMigration,
   readCachedSparkTarget,
   recommendSparkSweep,
+  registerSparkPayoutTarget,
   reportWalletReadiness,
   requestPayoutTargetAdmission,
   sendWithSparkBackup,
@@ -2776,6 +2777,49 @@ async function main() {
           throw new Error("wallet send --rail mdk is no longer supported for agent funds; MDK is scoped to checkouts and treasury. Use --rail spark --destination ... --confirm-send.")
         }
         throw new Error("wallet send --rail supports spark")
+      }
+      if (command === "register-payout-target") {
+        // #5252: register this node's OWN Spark address as its registerable
+        // payout target. The raw spark1… is resolved locally from the wallet
+        // helper, posted ONLY in the authenticated private request body, and
+        // never printed/logged here. Output shows only the redacted digest ref.
+        const sparkOptions = parsePsionicOptions(walletArgs)
+        const kind = stringPsionicOption(sparkOptions, "kind") ?? "spark-address"
+        if (kind !== "spark-address") {
+          throw new Error("wallet register-payout-target currently supports --kind spark-address")
+        }
+        const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+        if (!baseUrl) {
+          throw new Error("wallet register-payout-target requires --base-url or PYLON_OPENAGENTS_BASE_URL")
+        }
+        // Resolve the node's own raw Spark address locally (kept out of any
+        // projection); showLocalTarget true so we can hand the raw value to the
+        // authenticated private request body only.
+        const sparkBackupOptions = await resolveSparkBackupOptions(state, {
+          enabled: true,
+          showLocalTarget: true,
+        })
+        const prepared = await prepareSparkBackupReceive({ ...sparkBackupOptions, kind: "spark-address" })
+        if (!prepared.ok || !prepared.localTarget) {
+          process.stdout.write(
+            `${JSON.stringify({ ok: false, error: "spark_address_unavailable", state: prepared.state, blockerRefs: prepared.blockerRefs }, null, 2)}\n`,
+          )
+          process.exit(1)
+        }
+        const result = await registerSparkPayoutTarget(
+          { rawSparkAddress: prepared.localTarget },
+          {
+            agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+            baseUrl,
+            pylonRef: state.identity.pylonRef,
+          },
+        )
+        // Redacted output ONLY: the digest ref, never the raw spark1….
+        process.stdout.write(
+          `${JSON.stringify({ ok: result.ok, payoutTargetRef: result.payoutTargetRef, response: result.response }, null, 2)}\n`,
+        )
+        // The Spark SDK keeps a background connection alive (#5162); exit explicitly.
+        process.exit(result.ok ? 0 : 1)
       }
       if (command === "admit-payout-target") {
         const kind = options.kind as any

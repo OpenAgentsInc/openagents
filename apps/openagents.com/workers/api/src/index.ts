@@ -334,7 +334,11 @@ import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receip
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
 import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
-import { makeD1PylonApiStore } from './pylon-api'
+import {
+  makeD1PylonApiStore,
+  makeD1PylonSparkPayoutTargetStore,
+  resolveSparkPayoutDestination,
+} from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
 import {
   handlePylonCapacityFunnelApi,
@@ -6843,6 +6847,9 @@ const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
   makeStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
+  // #5252: private operator-only store for raw Spark payout targets.
+  makeSparkPayoutTargetStore: env =>
+    makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
   recordAutopilotWorkerCloseout: async (env, input) => {
     const delivered = await recordAutopilotWorkerCloseoutFromPylon(
       makeD1AutopilotWorkStore(openAgentsDatabase(env)),
@@ -6915,15 +6922,23 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
       return 'absent'
     }
   },
-  // The private payout destination for the gated recipient (the contributor at
-  // lease.pylonRef) is NOT auto-resolvable here yet: training contributors do
-  // not carry a vetted on-file payout address in this path. Returning undefined
-  // fails the real branch closed (no send to a wrong/placeholder destination)
-  // even if the gate is flipped. The owner must wire a recipient-specific,
-  // vetted destination resolver (e.g. the contributor's confirmed Spark
-  // Lightning Address) before the first bounded real settlement — see
-  // docs/2026-06-17-real-settlement-gate2-design.md §6.
-  resolveSettlementPayoutDestination: async () => undefined,
+  // #5252: resolve the (private, never-projected) payout destination for the
+  // gated recipient (the contributor at lease.pylonRef) from the recipient's
+  // OWN registered raw Spark address. The raw `spark1…` lives only in the
+  // private operator store keyed to its pylonRef; we return it here as the
+  // native Spark send destination so #5232's real settlement (and #5225 native
+  // send) pay it natively over Spark. The destination never enters any receipt
+  // projection — only the adapter's redacted refs do.
+  //
+  // Fails closed: when the recipient has no registered Spark target (or the
+  // store read fails), this returns undefined and the real settlement branch
+  // does not send. The owner may later add a BOLT12/Lightning-Address fallback
+  // resolver here; until then, no vetted Spark target == no native send.
+  resolveSettlementPayoutDestination: (env, contributorRef) =>
+    resolveSparkPayoutDestination(
+      makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
+      contributorRef,
+    ),
   makeStore: env => makeD1TrainingAuthorityStore(openAgentsDatabase(env)),
   requireAdminApiToken,
 })

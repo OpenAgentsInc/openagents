@@ -223,6 +223,142 @@ export const PylonApiPayoutTargetAdmissionRequest = S.Struct({
 export type PylonApiPayoutTargetAdmissionRequest =
   typeof PylonApiPayoutTargetAdmissionRequest.Type
 
+// #5252: raw Spark address registration. The raw `spark1…` is PAYMENT MATERIAL.
+// It rides ONLY this authenticated request body, is stored in the private
+// operator store keyed to the agent's pylonRef, and is NEVER projected, logged,
+// or persisted into a public event. The redacted `payout.spark.<digest>` ref is
+// the only public projection. `RawSparkAddress` is deliberately NOT a
+// `PublicSafeRef`: it bounds the raw value's shape (a Spark bech32 address)
+// without ever flowing into a projection.
+const RawSparkAddress = NonEmptyTrimmedString.check(
+  S.isMaxLength(200),
+  S.isPattern(/^spark1[0-9a-z]{20,}$/i),
+)
+const SparkPayoutTargetRef = PublicSafeRef.check(
+  S.isPattern(/^payout\.spark\.[0-9a-f]{8,}$/i),
+)
+
+export const PylonApiSparkPayoutTargetRegisterRequest = S.Struct({
+  payoutTargetRef: SparkPayoutTargetRef,
+  policyRefs: PublicSafeRefs,
+  // PRIVATE: stored operator-only, never projected. Decoded here so the raw
+  // address never reaches a route handler as an unvalidated string.
+  rawSparkAddress: RawSparkAddress,
+  status: S.optionalKey(PylonEventStatus),
+})
+export type PylonApiSparkPayoutTargetRegisterRequest =
+  typeof PylonApiSparkPayoutTargetRegisterRequest.Type
+
+// Private operator-only store for raw Spark payout targets (#5252). The raw
+// `spark1…` lives ONLY here, keyed by pylonRef and bound to the owning agent.
+// Public surfaces resolve only the redacted `payout.spark.<digest>` ref.
+export type PylonSparkPayoutTargetRecord = Readonly<{
+  pylonRef: string
+  ownerAgentUserId: string
+  payoutTargetRef: string
+  // Raw payment material; never enters a projection.
+  rawSparkAddress: string
+  createdAt: string
+  updatedAt: string
+}>
+
+export type PylonSparkPayoutTargetStore = Readonly<{
+  // Idempotent upsert keyed by pylonRef. Re-registering the same address for the
+  // same pylon is a no-op update, not a duplicate.
+  upsert: (
+    record: PylonSparkPayoutTargetRecord,
+  ) => Promise<PylonSparkPayoutTargetRecord>
+  read: (
+    pylonRef: string,
+  ) => Promise<PylonSparkPayoutTargetRecord | undefined>
+}>
+
+export const makeD1PylonSparkPayoutTargetStore = (
+  db: D1Database,
+): PylonSparkPayoutTargetStore => ({
+  upsert: async record => {
+    await db
+      .prepare(
+        `INSERT INTO pylon_spark_payout_targets
+           (pylon_ref, owner_agent_user_id, payout_target_ref, raw_spark_address,
+            created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(pylon_ref) DO UPDATE SET
+           owner_agent_user_id = excluded.owner_agent_user_id,
+           payout_target_ref = excluded.payout_target_ref,
+           raw_spark_address = excluded.raw_spark_address,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(
+        record.pylonRef,
+        record.ownerAgentUserId,
+        record.payoutTargetRef,
+        record.rawSparkAddress,
+        record.createdAt,
+        record.updatedAt,
+      )
+      .run()
+
+    return record
+  },
+
+  read: async pylonRef => {
+    const row = await db
+      .prepare(
+        `SELECT pylon_ref, owner_agent_user_id, payout_target_ref,
+                raw_spark_address, created_at, updated_at
+           FROM pylon_spark_payout_targets
+          WHERE pylon_ref = ?
+          LIMIT 1`,
+      )
+      .bind(pylonRef)
+      .first<{
+        pylon_ref: string
+        owner_agent_user_id: string
+        payout_target_ref: string
+        raw_spark_address: string
+        created_at: string
+        updated_at: string
+      }>()
+
+    if (row === null) {
+      return undefined
+    }
+
+    return {
+      pylonRef: row.pylon_ref,
+      ownerAgentUserId: row.owner_agent_user_id,
+      payoutTargetRef: row.payout_target_ref,
+      rawSparkAddress: row.raw_spark_address,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }
+  },
+})
+
+/**
+ * Resolve a recipient's registered raw Spark payout destination (#5252).
+ * Returns the recipient's OWN registered raw `spark1…` (never projected) so the
+ * settlement payout authority can pay it natively over Spark, or `undefined`
+ * when the recipient has no registered Spark target (or the read fails). The
+ * caller fails closed on `undefined` — no vetted target, no native send. The
+ * raw address returned here is payment material and must never be logged or
+ * projected.
+ */
+export const resolveSparkPayoutDestination = async (
+  store: PylonSparkPayoutTargetStore,
+  contributorRef: string,
+): Promise<string | undefined> => {
+  try {
+    const record = await store.read(contributorRef)
+    const raw = record?.rawSparkAddress.trim()
+
+    return raw !== undefined && raw !== '' ? raw : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export const PylonApiAssignmentAcceptanceRequest = S.Struct({
   acceptanceRefs: PublicSafeRefs,
   accepted: S.Boolean,
@@ -638,6 +774,11 @@ type PylonProviderJobLifecycleRow = Readonly<{
 const unsafePylonApiMaterialPattern =
   /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\/Users\/|\/home\/|access[_-]?token|auth\.json|balance[._-]?sats|bearer|channel[_-]?monitor|cookie|customer[_-]?(email|name|value)|email[_-]?(address|body)|entropy|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice|lnbc|lntb|lnbcrt|lno1|lnurl|macaroon|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|id|preimage|proof=)|payout[_-]?(address|destination|private|raw)|preimage|private[_-]?(artifact|channel|key|output|proof|wallet)|provider[_-]?(grant|payload|secret|token)|raw[_-]?(artifact|auth|backup|balance|channel|invoice|liquidity|output|payload|payment|payout|prompt|proof|provider|runner|run[_-]?log|state|telemetry|webhook)|recovery[_-]?phrase|secret|seed[_-]?phrase|sk-[a-z0-9]|token|wallet[._-](key|material|mnemonic|payment|preimage|secret|seed))/i
 const exactBalanceRefPattern = /balance\.mdk_agent_wallet\.\d+\b/i
+// #5252: a raw Spark address/invoice is PAYMENT MATERIAL and must never appear
+// in a public Pylon payload. The redacted `payout.spark.<digest>` ref does not
+// match (it has no `spark1…`/`spark1q…` body), so this rejects only the raw
+// address forms while leaving the digest ref safe.
+const rawSparkPaymentMaterialPattern = /\bspark1[0-9a-z]{20,}\b/i
 const rawTimestampPattern = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
 const safeFalseTracePolicyJsonReplacements: ReadonlyArray<
   readonly [RegExp, string]
@@ -673,6 +814,7 @@ export const pylonApiPayloadHasPrivateMaterial = (value: unknown): boolean => {
     containsProviderSecretMaterial(json) ||
     unsafePylonApiMaterialPattern.test(json) ||
     exactBalanceRefPattern.test(json) ||
+    rawSparkPaymentMaterialPattern.test(json) ||
     rawTimestampPattern.test(json)
   )
 }

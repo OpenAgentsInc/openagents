@@ -17,7 +17,12 @@ export type WalletReadiness =
   | "payable-pending-settlement"
   | "settlement-recorded"
 
-export type PayoutTargetKind = "bolt12_offer" | "bolt11_invoice" | "bip353_name" | "lnurl_pay"
+export type PayoutTargetKind =
+  | "bolt12_offer"
+  | "bolt11_invoice"
+  | "bip353_name"
+  | "lnurl_pay"
+  | "spark_address"
 
 export type WalletStatusProjection = {
   schema: "openagents.pylon.wallet_status.v0.3"
@@ -333,7 +338,7 @@ const compactTimestamp = (now: Date) =>
 
 const makeIdempotencyKey = (
   pylonRef: string,
-  action: "wallet-readiness" | "payout-target-admission",
+  action: "wallet-readiness" | "payout-target-admission" | "spark-payout-target",
   now: Date,
 ) => `pylon-wallet:${pylonRef}:${action}:${compactTimestamp(now)}`
 
@@ -688,7 +693,7 @@ export function mdkScopedAgentWalletStatus(): WalletStatusProjection {
 async function postPylonEvent(
   options: WalletNetworkOptions,
   input: {
-    action: "wallet-readiness" | "payout-target-admission"
+    action: "wallet-readiness" | "payout-target-admission" | "spark-payout-target"
     body: Record<string, unknown>
     path: string
   },
@@ -954,6 +959,10 @@ export function admitPayoutTarget(input: { kind: PayoutTargetKind; ref: string }
     bolt11_invoice: "payout.bolt11",
     bip353_name: "payout.bip353",
     lnurl_pay: "payout.lnurl",
+    // Spark address payout targets project ONLY the redacted digest ref
+    // `payout.spark.<digest>`. The raw `spark1…` is payment material and never
+    // enters a public projection, an admission body, or this ref (#5252).
+    spark_address: "payout.spark",
   }
   if (!input.ref.startsWith(`${allowedPrefix[input.kind]}.`)) {
     throw new Error(`${input.kind} payout target must be a public-safe ${allowedPrefix[input.kind]}.* ref`)
@@ -965,6 +974,20 @@ export function admitPayoutTarget(input: { kind: PayoutTargetKind; ref: string }
   }
   assertPublicProjectionSafe(projection)
   return projection
+}
+
+/**
+ * Derive the public-safe redacted payout-target ref for a raw Spark address.
+ * The raw `spark1…` never appears in the returned ref or in any projection —
+ * only its `payout.spark.<digest>` digest does. The digest is stable per raw
+ * address, so re-registering the same address yields the same ref (idempotent).
+ */
+export function sparkPayoutTargetRef(rawSparkAddress: string): string {
+  const trimmed = rawSparkAddress.trim()
+  if (trimmed === "") {
+    throw new Error("spark payout target requires a non-empty raw Spark address")
+  }
+  return stableRef("payout.spark", trimmed)
 }
 
 export async function reportWalletReadiness(
@@ -1046,6 +1069,68 @@ export async function requestPayoutTargetAdmission(
     body,
     path: `/api/pylons/${encodeURIComponent(options.pylonRef)}/payout-target-admission`,
   })
+}
+
+export type SparkPayoutTargetRegisterResult = {
+  ok: boolean
+  payoutTargetRef: string
+  rawAddressPostedPrivately: true
+  response: Record<string, unknown>
+}
+
+/**
+ * Register this node's OWN raw Spark address as its registerable payout target
+ * (#5252). The raw `spark1…` is PAYMENT MATERIAL: it rides ONLY the
+ * authenticated POST body to the private operator endpoint
+ * `/api/pylons/:ref/spark-payout-target`. Everything this function returns and
+ * any projection/log it produces carries ONLY the redacted
+ * `payout.spark.<digest>` ref. The server stores the raw address privately
+ * (keyed to the agent's pylonRef) and emits the public `payout_target_admission`
+ * event carrying only the digest.
+ *
+ * Auth is the agent's own bearer token, so a node can only set its own target.
+ * The server upsert is idempotent (re-registering the same address is a no-op
+ * update, not a duplicate).
+ */
+export async function registerSparkPayoutTarget(
+  input: { rawSparkAddress: string },
+  options: WalletNetworkOptions,
+): Promise<SparkPayoutTargetRegisterResult> {
+  const rawSparkAddress = input.rawSparkAddress.trim()
+  if (rawSparkAddress === "") {
+    throw new Error("spark payout target registration requires a non-empty raw Spark address")
+  }
+  const payoutTargetRef = sparkPayoutTargetRef(rawSparkAddress)
+  // Admit the digest ref first so an unsafe/raw ref can never reach the wire.
+  admitPayoutTarget({ kind: "spark_address", ref: payoutTargetRef })
+
+  // The body carries the raw address ONLY under `rawSparkAddress`, plus the
+  // redacted digest ref. The public-safe guard runs over the redacted view
+  // (without the raw field) so it never leaks into a projection or log.
+  const redactedView = {
+    payoutTargetRef,
+    policyRefs: ["policy.private.pylon.spark_payout_target_raw_stored_operator_only"],
+    status: "registered",
+  }
+  assertPublicProjectionSafe(redactedView)
+
+  const response = await postPylonEvent(options, {
+    action: "spark-payout-target",
+    body: {
+      ...redactedView,
+      // PRIVATE: never projected, never logged, never persisted to a public
+      // event. Stored only in the operator/private store keyed to pylonRef.
+      rawSparkAddress,
+    },
+    path: `/api/pylons/${encodeURIComponent(options.pylonRef)}/spark-payout-target`,
+  })
+
+  return {
+    ok: true,
+    payoutTargetRef,
+    rawAddressPostedPrivately: true,
+    response,
+  }
 }
 
 async function createMdkReceiveTarget(
