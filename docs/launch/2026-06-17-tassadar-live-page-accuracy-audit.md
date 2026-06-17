@@ -64,6 +64,13 @@ primitives.
   regression coverage that `/tassadar` skips auth bootstrap, initializes
   without a session, and renders the `oa-tassadar-run` element through the
   top-level view.
+- 2026-06-17: A truth-map follow-up clarified the moving-dot semantics in the
+  Three scene. The white dots moving along the fixed graph edges are renderer
+  flow pulses, not pylon/device/work nodes and not rows in the public summary.
+  The live data-bound marks are the contributor orbit dots, entity-ring marks,
+  verified replay beams, settlement receipt entity, accepted trace entities,
+  promise registry marks, and aggregate stage-node labels/statuses described
+  below.
 
 ## Short answer
 
@@ -145,6 +152,10 @@ Live checks while writing:
 - `https://openagents.com/run` returned `200`.
 - `https://openagents.com/api/public/tassadar-run-summary` returned the live
   run summary at `generatedAt: 2026-06-17T16:20:10Z`.
+- A later truth-map check of the same endpoint returned
+  `generatedAt: 2026-06-17T17:49:53.847Z` and resolved the browser scene to 6
+  contributor dots, 22 ref-backed entities, 3 verified replay beams, 0 payout
+  bursts, and 0 loss-curve points.
 - `https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615`
   returned the canonical public run envelope at the same time.
 - `https://openagents.com/api/public/product-promises` returned the current
@@ -155,7 +166,8 @@ Live checks while writing:
 
 ## Live snapshot
 
-As of the live checks above, the run-specific projection says:
+As of the live checks above, and rechecked at
+`generatedAt: 2026-06-17T17:49:53.847Z`, the run-specific projection says:
 
 - `runRef`: `run.tassadar.executor.20260615`
 - `runState`: `active`
@@ -166,6 +178,13 @@ As of the live checks above, the run-specific projection says:
 - sealed windows: 0
 - reconciled windows: 0
 - assigned contributors: 6
+- contributor refs:
+  - `pylon.448ba824b5fc879f3a59`
+  - `pylon.5526de0746260942e85f`
+  - `pylon.5651e69649c63004aa0b`
+  - `pylon.7bb0d5628ca4b6e9c731`
+  - `pylon.81f0facfe7971870f685`
+  - `pylon.92141e78e39df40cc828`
 - distinct contributor devices observed for the real-gradient generic gate: 6
   of required 2
 - verified work: 3
@@ -199,6 +218,58 @@ The promise registry says:
 - `training.public_distributed_training_run.v1`: red.
 - `pylon.first_real_model_training_run.v1`: yellow.
 
+## What the moving dots mean
+
+The moving white dots on the fixed graph edges are not real nodes. They are
+`@openagentsinc/three-effect` flow pulses created for every edge between the
+base training-stage nodes. They show liveness/state flow through the rendered
+grammar only. They do not correspond to a pylon, a device, a lease, a trace, a
+verification challenge, a receipt, a payout, or a training datum.
+
+The base stage nodes are also not individual records. They are aggregate grammar
+nodes whose label, status, and detail are derived from the public summary
+metrics. Examples:
+
+- `registered`: `6 pylons seen`
+- `qualified`: `6/2 device gate`
+- `sync_reentry`: `3 blockers`
+- `run`: `run.tassadar.executor.20260615`
+- `training_window`: `0 plan / 1 act / 0 seal`
+- `receipt`: `32 receipts`
+- `settlement`: `5 sats`
+
+Those aggregate stage nodes are allowed only as summarized counters. They must
+not be read as "there are N hidden real nodes behind each moving pulse".
+
+The data-bound marks in the current `/tassadar` scene are:
+
+| Visual mark                                       | Source                                                         | Current truth                                                                                                |
+| ------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Contributor orbit dots labeled `P1` through `P6`  | `realGradient.leaderboardRows[].pylonRef`                      | 6 real public pylon refs.                                                                                    |
+| Entity-ring pylon marks                           | `realGradient.leaderboardRows` plus top-level `settlementRows` | 6 real pylon refs; `P1` is `simulation_settled`, the rest are `verified`.                                    |
+| Verified replay beams                             | `realGradient.verifiedReplayPairs[]`                           | 3 real verified worker-to-validator replay pairs.                                                            |
+| Rejected replay entities                          | `realGradient.rejectedReplayPairs[]`                           | 3 rejected replay pairs, rendered as rejected worker/validator entities rather than success beams.           |
+| Settlement receipt entity labeled `5s`            | top-level `settlementRows[]`                                   | 1 real public receipt ref, `movementMode: simulation`, `realBitcoinMoved: false`.                            |
+| Payout burst particles                            | top-level `settlementRows[]` with `realBitcoinMoved: true`     | 0 currently. The current simulation settlement must not render a real-Bitcoin burst.                         |
+| Accepted trace entities labeled `T1` through `T3` | top-level `corpus.traceRefs[]`                                 | 3 public verified challenge refs counted as accepted trace corpus entries.                                   |
+| Loss curve points                                 | `realGradient.lossCurve[]`                                     | 0 currently. No default/demo loss curve is passed by the web adapter.                                        |
+| Promise registry marks                            | `/api/public/product-promises`                                 | Real promise records; they explain launch/install/model/gradient gates and the simulation settlement caveat. |
+
+Current resolved visual layer from the live payload:
+
+- `contributors`: 6
+- `entities`: 22
+- `beams`: 3
+- `bursts`: 0
+- `lossCurve`: 0 points
+
+Truth rule: every mark that looks like a pylon, contributor, worker, validator,
+trace, receipt, settlement, payout, beam, or proof must come from a public-safe
+ref. The base edge pulses are exempt only because they are not data marks; if
+the page makes them look like real pylon/device nodes, the visual language is
+too ambiguous and should be changed in `three-effect` or disabled for
+`/tassadar`.
+
 The fleet-wide pylon stats snapshot says:
 
 - pylons online now: 9
@@ -226,8 +297,10 @@ A totally accurate page needs to satisfy these rules:
    the shared staleness contract.
 2. The page must show the projection timestamp and whether the browser has
    refreshed it recently.
-3. Every visible node, beam, burst, corpus tile, and proof drawer row must be
-   backed by a public-safe ref, or must be visibly absent/unknown.
+3. Every visible data entity, beam, burst, corpus tile, settlement mark, and
+   proof drawer row must be backed by a public-safe ref, or must be visibly
+   absent/unknown. Fixed stage nodes may summarize public metrics, but they must
+   read as aggregate grammar, not hidden record nodes.
 4. "Assigned", "verified", "settlement recorded", "real bitcoin moved",
    "qualified", "accepted trace", "corpus growth", and "trained model" must
    remain separate.
@@ -251,13 +324,17 @@ settlement count, verified replay entities, beams, and payout bursts.
 
 Needed for total accuracy:
 
-- Add `/tassadar` route and title using the same view.
-- Show `generatedAt`, `staleness.composition`, and last refresh age in the page
-  chrome.
-- Add polling or an explicit manual refresh. Today the custom element fetches
-  once on connect; the animation breathes, but the data does not.
-- Prevent default loss-curve rendering when no real loss curve exists.
-- Feed product-promise signals into the scene or adjacent proof panel.
+- Keep `/tassadar` public in the server document-route allowlist and browser
+  startup resolver.
+- Keep showing `generatedAt`, `staleness.composition`, browser fetched time, and
+  explicit manual refresh in the page chrome.
+- Consider polling if the page needs unattended wall-display behavior; today it
+  is a live snapshot with manual refresh.
+- Keep passing an empty `lossCurve` when no real loss evidence exists.
+- Keep product-promise signals adjacent to the scene where they affect claim
+  interpretation.
+- Make the fixed edge flow pulses visually distinct from real pylon/entity
+  marks, or add a `three-effect` option to disable them for `/tassadar`.
 
 ### Contributor node
 
@@ -283,11 +360,13 @@ Needed:
 
 ### Trace strand
 
-Current status: not data-bound. The `/components/training` trace strand is a
-prototype scene.
+Current status: partially data-bound. The `/components/training` trace strand is
+still a prototype scene, but `/tassadar` renders accepted trace entities from
+top-level `corpus.traceRefs`.
 
-The live summary has verified and rejected challenge counts, but it does not
-project a submitted/queued trace list suitable for strand rendering.
+The live summary has verified and rejected challenge counts plus accepted trace
+refs, but it does not project a submitted/queued trace list suitable for strand
+rendering.
 
 Needed:
 
@@ -297,13 +376,13 @@ Needed:
 
 ### Replay pair
 
-Current status: data exists for verified pairs. The live summary projects three
-`verifiedReplayPairs`, each with worker ref, validator ref, challenge ref,
-verdict ref, and source refs.
+Current status: data exists for verified and rejected pairs. The live summary
+projects three `verifiedReplayPairs`, each with worker ref, validator ref,
+challenge ref, verdict ref, and source refs. It also projects three
+`rejectedReplayPairs`, each with public-safe failure/source refs.
 
 Needed:
 
-- Add rejected replay pairs if the page should visualize failed work.
 - Add device-distinctness labels or caveat refs in the proof drawer.
 - Do not show a replay beam for queued or unverified challenges.
 
@@ -322,16 +401,15 @@ Needed:
 
 ### Receipt burst
 
-Current status: unsafe for exact truth. `TrainingRunBurstDefinition` is only
-`{ atId }`. It carries no receipt ref, amount, movement mode, or
-`realBitcoinMoved` flag.
+Current status: safe in the `/tassadar` adapter, still structurally thin in
+`three-effect`. `TrainingRunBurstDefinition` is only `{ atId }`, but the web
+adapter now creates bursts only from top-level settlement rows with
+`realBitcoinMoved:true`. The current live settlement row is
+`movementMode: simulation` and `realBitcoinMoved:false`, so the resolved scene
+has `bursts: []`.
 
 Needed:
 
-- Extend the Worker public summary with settlement rows, for example:
-  `receiptRef`, `contributorRef`, `verificationChallengeRef`, `amountSats`,
-  `receiptKind`, `movementMode`, `realBitcoinMoved`, `state`, `apiUrl`, and
-  `receiptPageUrl`.
 - Extend the web adapter and/or `three-effect` burst type so burst color and
   proof text can distinguish:
   - `settlement_recorded_simulation`
@@ -376,21 +454,25 @@ Needed:
 
 ### Proof drawer
 
-Current status: click-through exists but is not accurate enough.
+Current status: in-page proof selection exists. Node/entity selection renders an
+aside with kind, state, ref, route, caveats, source refs, and an explicit
+`Open proof` link. Nexus/Pylon receipt refs resolve through
+`/api/public/nexus-pylon/receipts/{ref}`; forum receipts keep the forum receipt
+route. The current settlement proof row includes the simulation caveat.
 
 Problems:
 
-- It opens a new tab immediately rather than giving a drawer first.
-- It maps any `receipt.*` ref to `/api/forum/receipts/{ref}`; the live Tassadar
-  settlement receipt 404s there and resolves through
-  `/api/public/nexus-pylon/receipts/{ref}` plus its HTML receipt page.
-- It cannot explain simulation vs real settlement.
+- The proof drawer is still compact and selection-driven; it is not yet a full
+  searchable proof table.
+- Some aggregate stage nodes can be selected without a public proof ref because
+  they summarize multiple public metrics rather than one row.
 
 Needed:
 
-- A real drawer with ref, kind, state, caveats, source refs, and route.
-- Receipt-kind-aware route resolution.
-- No automatic tab open on selection; make "Open proof" explicit.
+- Keep aggregate stage-node selections honest by saying no single public proof
+  ref is linked.
+- Consider adding a persistent proof table for all public refs used by the
+  current scene.
 
 ## Page composition recommendation
 
@@ -435,30 +517,33 @@ run instrument.
 
 ### Route and shell
 
-- Add `TassadarRoute` or map literal `tassadar` to the existing `RunRoute`.
-- Add route tests for `/tassadar`.
-- Give the document title `Tassadar run - OpenAgents` or reuse the existing
+- Keep `TassadarRoute` mapped to the existing live run view.
+- Keep route/startup tests for `/tassadar` so logged-out users get the public
+  scene instead of auth bootstrap or a home redirect.
+- Keep the document title `Tassadar run - OpenAgents` or reuse the existing
   `Live Tassadar run - OpenAgents`.
 - Keep `/run` as an alias unless there is a deliberate migration.
 
 ### Public projection
 
-- Add settlement rows to `public-tassadar-run-summary-routes.ts` or the shared
-  `publicTrainingRunSummary` output.
-- Fix per-leaderboard settlement attribution or stop using row
-  `settledPayoutSats` for visual bursts.
-- Add `realBitcoinMoved` and `movementMode` to public-safe settlement
-  projections consumed by the page.
-- Consider adding rejected replay pair projections with public-safe mismatch
-  reason refs.
-- Keep all new fields under the shared `projection_staleness.v1` contract.
+- Keep top-level `settlementRows` in the shared public summary output with
+  `receiptRef`, `contributorRef`, `verificationChallengeRef`, `amountSats`,
+  `receiptKind`, `movementMode`, `realBitcoinMoved`, `state`, `apiUrl`, and
+  `receiptPageUrl`.
+- Do not use leaderboard-row `settledPayoutSats` for visual bursts while row
+  values remain zero and the run-level settlement receipt is represented by
+  top-level `settlementRows`.
+- Keep rejected replay pair projections public-safe; failure codes and source
+  refs are acceptable, private trace payloads are not.
+- Keep all fields under the shared `projection_staleness.v1` contract.
 
 ### Web adapter
 
-- Remove the default loss curve when no loss data exists.
-- Map settlement rows into typed visual states.
-- Map product-promise records into scene signals or an adjacent panel.
-- Route receipt links by receipt namespace:
+- Keep passing `lossCurve: []` when no loss data exists.
+- Keep mapping settlement rows into typed visual states.
+- Keep mapping product-promise records into scene signals and the adjacent copy
+  gate.
+- Keep routing receipt links by receipt namespace:
   - `receipt.nexus...` and `receipt.nexus_pylon...` ->
     `/api/public/nexus-pylon/receipts/{ref}` or the HTML receipt page.
   - Forum receipts -> `/api/forum/receipts/{ref}`.
