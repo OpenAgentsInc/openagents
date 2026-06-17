@@ -88,9 +88,12 @@ signed recut.
   at `docs/blitz/forge/2026-06-17-customer-one-cohort-evidence-ledger.md`.
   **D3.2 (#5201) shipped:** `/forge` now renders the cohort-readiness lane with
   configured target, absent completion-bundle evidence, absent privacy-review
-  evidence, and an explicit awaiting-source gate. Remaining D3 tail: record
-  cohort rows and collect at least three real loop-completion bundles before
-  closing #5098/#5104.
+  evidence, and an explicit awaiting-source gate. **D3.3 (#5203) shipped:** the
+  cohort-row source contract now lives at
+  `docs/blitz/forge/2026-06-17-customer-one-cohort-source-contract.md`.
+  Remaining D3 tail: implement storage/projection wiring, record cohort rows,
+  and collect at least three real loop-completion bundles before closing
+  #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
