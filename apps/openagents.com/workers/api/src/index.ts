@@ -676,6 +676,11 @@ const mdkTreasuryContainerEnvVars = (
   }
 }
 
+const MDK_TREASURY_CONTAINER_GENERATION_KEY =
+  'openagents.mdk_treasury.container_generation'
+const MDK_TREASURY_CONTAINER_GENERATION =
+  '2026-06-17.spark-treasury-prefer-spark-bolt11'
+
 export class MdkTreasuryContainer extends DurableMdkOutcomeContainer {
   override defaultPort = 8080
   override sleepAfter = '30m'
@@ -687,6 +692,31 @@ export class MdkTreasuryContainer extends DurableMdkOutcomeContainer {
     this.labels = {
       service: 'openagents-mdk-treasury',
     }
+  }
+
+  private async ensureCurrentContainerGeneration(): Promise<void> {
+    const current = await this.ctx.storage.get<string>(
+      MDK_TREASURY_CONTAINER_GENERATION_KEY,
+    )
+
+    if (current === MDK_TREASURY_CONTAINER_GENERATION) {
+      return
+    }
+
+    if (this.ctx.container.running) {
+      await this.ctx.container.destroy('openagents-mdk-treasury-generation-bump')
+    }
+
+    await this.ctx.storage.put(
+      MDK_TREASURY_CONTAINER_GENERATION_KEY,
+      MDK_TREASURY_CONTAINER_GENERATION,
+    )
+  }
+
+  override async fetch(request: Request) {
+    await this.ensureCurrentContainerGeneration()
+
+    return super.fetch(request)
   }
 }
 
