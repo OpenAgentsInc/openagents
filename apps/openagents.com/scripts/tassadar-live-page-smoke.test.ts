@@ -60,23 +60,23 @@ describe('Tassadar live page smoke', () => {
         return json({
           promises: [
             {
-              promiseRef: 'training.monday_decentralized_training_launch.v1',
+              promiseId: 'training.monday_decentralized_training_launch.v1',
               state: 'green',
             },
             {
-              promiseRef: 'pylon.install_without_wallet_knowledge.v1',
+              promiseId: 'pylon.install_without_wallet_knowledge.v1',
               state: 'green',
             },
             {
-              promiseRef: 'models.tassadar_percepta_executor.v1',
+              promiseId: 'models.tassadar_percepta_executor.v1',
               state: 'red',
             },
             {
-              promiseRef: 'training.public_gradient_windows.v1',
+              promiseId: 'training.public_gradient_windows.v1',
               state: 'planned',
             },
             {
-              promiseRef: 'pylon.first_real_model_training_run.v1',
+              promiseId: 'pylon.first_real_model_training_run.v1',
               state: 'yellow',
             },
           ],

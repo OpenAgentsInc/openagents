@@ -273,7 +273,10 @@ export const runTassadarLivePageSmoke = async ({
   const promiseRecords = promiseRecordsFrom(promisesResult.body)
   const promiseRefs = new Set(
     promiseRecords
-      .map(record => record?.promiseRef || record?.id || record?.ref)
+      .map(
+        record =>
+          record?.promiseId || record?.promiseRef || record?.id || record?.ref,
+      )
       .filter(Boolean),
   )
 
