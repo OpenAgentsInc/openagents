@@ -8,9 +8,15 @@
 // (metrics carry provenance, refs are redacted, no private material). RECEIPT-FIRST:
 // a run that is not found or has no data returns an honest idle envelope (zeroed,
 // `planned`), never a faked value.
+import { parseJsonRecord } from './json-boundary'
+import {
+  makeD1NexusTreasuryPayoutLedgerStore,
+  type NexusTreasuryPayoutLedgerStore,
+} from './nexus-treasury-payout-ledger'
 import { liveAtReadStaleness } from './public-projection-staleness'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
+import { settledSatsFromPaymentAuthorityReceipt } from './training-leaderboards'
 import {
   type TrainingAuthorityStore,
   makeD1TrainingAuthorityStore,
@@ -39,6 +45,95 @@ const idleEnvelope = (runRef: string, generatedAt: string) =>
     realGradient: null,
   }) as const
 
+const maxSettlementReceiptLookups = 128
+
+type RunSettlementInfo = Readonly<{
+  contributorRef: string | null
+  settledSats: number
+}>
+
+type RunSettlementResolution = Readonly<{
+  settledSatsByReceiptRef: ReadonlyMap<string, number>
+  settlementReceiptRefsByContributor: ReadonlyMap<string, ReadonlyArray<string>>
+}>
+
+const emptyRunSettlementResolution: RunSettlementResolution = {
+  settledSatsByReceiptRef: new Map<string, number>(),
+  settlementReceiptRefsByContributor: new Map<string, ReadonlyArray<string>>(),
+}
+
+const uniqueRefs = (refs: ReadonlyArray<string>): ReadonlyArray<string> =>
+  [...new Set(refs.map(ref => ref.trim()).filter(ref => ref !== ''))].sort()
+
+const settlementInfoFromReceipt = (
+  record: Readonly<{ publicProjectionJson: string; receiptKind: string }>,
+): RunSettlementInfo => {
+  const settledSats = settledSatsFromPaymentAuthorityReceipt(record)
+
+  if (settledSats <= 0) {
+    return { contributorRef: null, settledSats: 0 }
+  }
+
+  const projection = parseJsonRecord(record.publicProjectionJson)
+  const contributorRef =
+    typeof projection?.contributorRef === 'string'
+      ? projection.contributorRef
+      : null
+
+  return { contributorRef, settledSats }
+}
+
+const resolveRunSettlements = async (
+  payoutLedgerStore: NexusTreasuryPayoutLedgerStore | undefined,
+  receiptRefs: ReadonlyArray<string>,
+): Promise<RunSettlementResolution> => {
+  if (payoutLedgerStore === undefined) {
+    return emptyRunSettlementResolution
+  }
+
+  const refs = uniqueRefs(receiptRefs).slice(0, maxSettlementReceiptLookups)
+
+  if (refs.length === 0) {
+    return emptyRunSettlementResolution
+  }
+
+  const entries = await Promise.all(
+    refs.map(async receiptRef => {
+      const record =
+        await payoutLedgerStore.readPaymentAuthorityReceiptByRef(receiptRef)
+
+      return [
+        receiptRef,
+        record === undefined
+          ? { contributorRef: null, settledSats: 0 }
+          : settlementInfoFromReceipt(record),
+      ] as const
+    }),
+  )
+  const settled = entries.filter(([, info]) => info.settledSats > 0)
+
+  return {
+    settledSatsByReceiptRef: new Map<string, number>(
+      settled.map(([receiptRef, info]) => [receiptRef, info.settledSats]),
+    ),
+    settlementReceiptRefsByContributor: settled.reduce(
+      (byContributor, [receiptRef, info]) => {
+        if (info.contributorRef === null) {
+          return byContributor
+        }
+
+        byContributor.set(info.contributorRef, [
+          ...(byContributor.get(info.contributorRef) ?? []),
+          receiptRef,
+        ])
+
+        return byContributor
+      },
+      new Map<string, ReadonlyArray<string>>(),
+    ),
+  }
+}
+
 /**
  * Load the run's records and build the public summary envelope the 3D view
  * consumes (the #5113 adapter reads `runRef`/`runState`/`emptyState`/`metrics`/
@@ -48,6 +143,7 @@ export const buildPublicTassadarRunSummaryEnvelope = async (
   store: TrainingAuthorityStore,
   runRef: string,
   generatedAt: string,
+  payoutLedgerStore?: NexusTreasuryPayoutLedgerStore,
 ): Promise<Record<string, unknown>> => {
   const run = await store.readRun(runRef)
   if (run === undefined) return { ...idleEnvelope(runRef, generatedAt) }
@@ -57,11 +153,20 @@ export const buildPublicTassadarRunSummaryEnvelope = async (
     store.listWindowLeasesForRun(runRef, 1000),
     store.listVerificationChallengesForRun(runRef, 1000),
   ])
+  const settlement = await resolveRunSettlements(payoutLedgerStore, [
+    ...run.receiptRefs,
+    ...windows.flatMap(window => window.receiptRefs),
+    ...leases.flatMap(lease => lease.receiptRefs),
+    ...challenges.flatMap(challenge => challenge.verdictRefs),
+  ])
   const summary = publicTrainingRunSummary({
     challenges,
     leases,
     nowIso: generatedAt,
     run,
+    settledSatsByReceiptRef: settlement.settledSatsByReceiptRef,
+    settlementReceiptRefsByContributor:
+      settlement.settlementReceiptRefsByContributor,
     windows,
   })
   return {
@@ -78,6 +183,9 @@ export const buildPublicTassadarRunSummaryEnvelopeForRequest = async (
   request: Request,
   env: Parameters<typeof openAgentsDatabase>[0],
   deps: {
+    readonly makePayoutLedgerStore?: (
+      env: Parameters<typeof openAgentsDatabase>[0],
+    ) => NexusTreasuryPayoutLedgerStore
     readonly makeStore?: (
       env: Parameters<typeof openAgentsDatabase>[0],
     ) => TrainingAuthorityStore
@@ -86,6 +194,9 @@ export const buildPublicTassadarRunSummaryEnvelopeForRequest = async (
 ): Promise<Record<string, unknown>> => {
   const makeStore =
     deps.makeStore ?? (e => makeD1TrainingAuthorityStore(openAgentsDatabase(e)))
+  const makePayoutLedgerStore =
+    deps.makePayoutLedgerStore ??
+    (e => makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(e)))
   const generatedAt = (deps.now ?? currentIsoTimestamp)()
   const runRef =
     new URL(request.url).searchParams.get('run')?.trim() ||
@@ -94,5 +205,6 @@ export const buildPublicTassadarRunSummaryEnvelopeForRequest = async (
     makeStore(env),
     runRef,
     generatedAt,
+    makePayoutLedgerStore(env),
   )
 }

@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 
 import type { ContainerPathFetch } from './http/container-fetch'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { isRecord } from './json-boundary'
 import { isLightningAddress, resolveLightningAddressInvoice } from './lnurl-pay'
 import { currentIsoTimestamp } from './runtime-primitives'
 import type {
@@ -1020,8 +1021,7 @@ export const handleOperatorTreasuryPayoutApi = (
 
             try {
               const parsed = await payResponse.json()
-              payResult =
-                typeof parsed === 'object' && parsed !== null ? parsed : {}
+              payResult = isRecord(parsed) ? parsed : {}
             } catch {
               payResult = {
                 error: 'treasury_pay_response_invalid_json',

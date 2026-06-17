@@ -108,7 +108,11 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   Training contributors now read the live Tassadar run authority store's distinct
   contributor lease refs instead of stale registrations or constants. The older
   strict accepted-work gate remains separate: direct treasury outflows are not
-  upgraded into accepted-work settlement.
+  upgraded into accepted-work settlement. **17th compatibility fix (#5175):** the older
+  `/api/public/tassadar-run-summary` endpoint used by the living-run/spatial view
+  now resolves the same provider-confirmed settlement receipts as canonical
+  `/api/public/training/runs/{runRef}`, so settled payout sats and qualified
+  contributor counts no longer drop to zero on the compatibility surface.
 - **🔌 Offline-receive (#5166) fully root-caused + proven on real infra.** The
   "sent-but-invisible" recognition sats were **unclaimed Lightning HTLCs**: a
   payment to a Spark Lightning Address arrives as a `waitingForPreimage` HTLC the

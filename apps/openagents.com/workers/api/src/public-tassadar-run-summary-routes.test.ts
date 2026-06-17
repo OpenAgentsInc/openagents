@@ -5,6 +5,12 @@ import {
   PublicTassadarRunSummarySchemaVersion,
   buildPublicTassadarRunSummaryEnvelopeForRequest,
 } from './public-tassadar-run-summary-routes'
+import type {
+  TrainingRunRecord,
+  TrainingWindowLeaseRecord,
+  TrainingWindowRecord,
+} from './training-run-window-authority'
+import type { TrainingVerificationChallengeRecord } from './training-verification'
 
 // Minimal fake store; tests never hit D1. readRun defaults to "not found".
 const fakeStore = (overrides: Record<string, unknown> = {}) =>
@@ -20,6 +26,108 @@ const fakeStore = (overrides: Record<string, unknown> = {}) =>
 const now = () => '2026-06-16T12:00:00.000Z'
 const req = (url = 'https://openagents.com/api/public/tassadar-run-summary') =>
   new Request(url)
+const runRef = 'run.tassadar.executor.20260615'
+const windowRef = 'training.window.tassadar.executor.20260615.w1'
+const pylonRef = 'pylon.public.contributor'
+const settlementReceiptRef =
+  'receipt.nexus.tassadar_run_settlement.public_summary_test'
+
+const runRecord: TrainingRunRecord = {
+  createdAt: '2026-06-16T10:00:00.000Z',
+  id: 'run-public-summary-test',
+  manifest: {
+    artifactDigestRefs: [],
+    blockerRefs: [],
+    spendCapSats: 100_000,
+  },
+  maxAllowedStale: 5,
+  promiseRef: 'training.monday_decentralized_training_launch.v1',
+  publicProjectionJson: '{}',
+  receiptRefs: [settlementReceiptRef],
+  sealInFlightAt: null,
+  sealPublicationCadenceWindows: 1,
+  sourceRefs: ['issue.github.openagents.5006'],
+  state: 'active',
+  trainingRunRef: runRef,
+  updatedAt: '2026-06-16T10:00:00.000Z',
+}
+
+const windowRecord: TrainingWindowRecord = {
+  activatedAt: '2026-06-16T10:00:00.000Z',
+  datasetRefs: [],
+  homeworkKind: 'admin_dispatched_homework',
+  id: 'window-public-summary-test',
+  plannedAt: '2026-06-16T10:00:00.000Z',
+  priority: 100,
+  publicProjectionJson: '{}',
+  receiptRefs: [],
+  reconciledAt: null,
+  sealMetadata: null,
+  sealedAt: null,
+  sourceRefs: ['workload.tassadar_executor.alm_numeric_trace.v1'],
+  state: 'active',
+  trainingRunRef: runRef,
+  updatedAt: '2026-06-16T10:00:00.000Z',
+  windowRef,
+}
+
+const leaseRecord: TrainingWindowLeaseRecord = {
+  claimedAt: '2026-06-16T10:01:00.000Z',
+  id: 'lease-public-summary-test',
+  leaseExpiresAt: '2026-06-16T12:01:00.000Z',
+  leaseRef: 'training.lease.public_summary_test',
+  publicProjectionJson: '{}',
+  pylonRef,
+  receiptRefs: [],
+  state: 'active',
+  trainingRunRef: runRef,
+  windowRef,
+}
+
+const verifiedChallenge: TrainingVerificationChallengeRecord = {
+  challengeRef: 'training.verification.challenge.public_summary_test',
+  commitmentRefs: [],
+  contributionRef: 'contribution.tassadar.public_summary_test',
+  createdAt: '2026-06-16T10:02:00.000Z',
+  failureCodes: [],
+  homeworkKind: 'admin_dispatched_homework',
+  id: 'challenge-public-summary-test',
+  leaseExpiresAt: null,
+  leaseRef: leaseRecord.leaseRef,
+  leasedToRef: 'pylon.public.validator',
+  maxAttempts: 3,
+  payloadJson: JSON.stringify({
+    pylonDeviceRef: pylonRef,
+    validatorDeviceRef: 'pylon.public.validator',
+  }),
+  publicProjectionJson: '{}',
+  rejectedAt: null,
+  samplingPolicy: 'per_contribution',
+  state: 'Verified',
+  timedOutAt: null,
+  trainingRunRef: runRef,
+  updatedAt: '2026-06-16T10:03:00.000Z',
+  verdictRefs: ['verdict.training.exact_trace_replay.public_summary_test'],
+  verificationClass: 'exact_trace_replay',
+  verifiedAt: '2026-06-16T10:03:00.000Z',
+  windowRef,
+}
+
+const fakePayoutLedgerStore = () =>
+  ({
+    readPaymentAuthorityReceiptByRef: async (receiptRef: string) =>
+      receiptRef === settlementReceiptRef
+        ? {
+            publicProjectionJson: JSON.stringify({
+              amountSats: 21,
+              contributorRef: pylonRef,
+              state: 'settled',
+            }),
+            receiptKind: 'settlement_recorded',
+          }
+        : undefined,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  }) as any
 
 describe('buildPublicTassadarRunSummaryEnvelopeForRequest (public read, #5114)', () => {
   it('returns an honest idle envelope when the run is not found (receipt-first)', async () => {
@@ -76,5 +184,37 @@ describe('buildPublicTassadarRunSummaryEnvelopeForRequest (public read, #5114)',
       },
     )
     expect(body.runRef).toBe(DEFAULT_TASSADAR_RUN_REF)
+  })
+
+  it('resolves provider-confirmed settlement receipts like the canonical public training-run endpoint', async () => {
+    const body = await buildPublicTassadarRunSummaryEnvelopeForRequest(
+      req(),
+      {} as never,
+      {
+        makePayoutLedgerStore: fakePayoutLedgerStore,
+        makeStore: () =>
+          fakeStore({
+            readRun: async () => runRecord,
+            listWindowsForRun: async () => [windowRecord],
+            listWindowLeasesForRun: async () => [leaseRecord],
+            listVerificationChallengesForRun: async () => [verifiedChallenge],
+          }),
+        now,
+      },
+    )
+    const metrics = body.metrics as {
+      providerConfirmedSettledPayoutSats: { value: number }
+      qualifiedContributorCount: {
+        sourceRefs: ReadonlyArray<string>
+        value: number
+      }
+    }
+
+    expect(metrics.providerConfirmedSettledPayoutSats.value).toBe(21)
+    expect(metrics.qualifiedContributorCount.value).toBe(1)
+    expect(metrics.qualifiedContributorCount.sourceRefs).toContain(pylonRef)
+    expect(metrics.qualifiedContributorCount.sourceRefs).toContain(
+      settlementReceiptRef,
+    )
   })
 })
