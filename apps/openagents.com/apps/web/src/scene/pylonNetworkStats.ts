@@ -21,6 +21,8 @@ export type PylonStatsSnapshot = {
   } | null
 }
 
+export const PYLON_STATS_BOOT_SCRIPT_ID = 'openagents-pylon-stats-snapshot'
+
 const pos = (value: number | null | undefined): number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
 
@@ -52,6 +54,28 @@ export const computeActivityIntensity = (snapshot: PylonStatsSnapshot | null): n
 }
 
 export const PYLON_STATS_URL = '/api/public/pylon-stats'
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+type PylonStatsBootDocument = Pick<Document, 'getElementById'>
+
+export const readInitialPylonStatsSnapshot = (
+  documentRef: PylonStatsBootDocument | undefined =
+    typeof document === 'undefined' ? undefined : document,
+): PylonStatsSnapshot | null => {
+  const text =
+    documentRef?.getElementById(PYLON_STATS_BOOT_SCRIPT_ID)?.textContent ?? null
+
+  if (text === null || text.trim() === '') return null
+
+  try {
+    const parsed = JSON.parse(text)
+    return isRecord(parsed) ? (parsed as PylonStatsSnapshot) : null
+  } catch {
+    return null
+  }
+}
 
 // Fetch the live snapshot. Fail-soft -> null (dormant).
 export const fetchPylonStats = async (

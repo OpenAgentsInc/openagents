@@ -2,7 +2,11 @@ import { define as defineCustomElement } from 'foldkit/customElement'
 import type { Attribute, Html } from 'foldkit/html'
 import { slotText } from 'slot-text'
 
-import { fetchPylonStats, type PylonStatsSnapshot } from './pylonNetworkStats'
+import {
+  fetchPylonStats,
+  readInitialPylonStatsSnapshot,
+  type PylonStatsSnapshot,
+} from './pylonNetworkStats'
 
 // #5050: live network stats overlaid on the homepage, using the SAME slot-text
 // digit-roll as the countdown (pylonCountdownElement) so updating numbers roll.
@@ -65,15 +69,22 @@ export type PylonStatsHandle = Readonly<{ dispose: () => void }>
 
 export const mountPylonStats = (
   root: HTMLElement,
-  options: { fetchFn?: typeof fetch; intervalMs?: number } = {},
+  options: {
+    fetchFn?: typeof fetch
+    initialSnapshot?: PylonStatsSnapshot
+    intervalMs?: number
+  } = {},
 ): PylonStatsHandle => {
   const controllers: Record<string, ReturnType<typeof slotText>> = {}
-  // Show a loading placeholder ("…") until the first fetch lands, so the page
-  // never flashes "0" (which reads as "no pylons") before stats load.
+  const initialValues =
+    options.initialSnapshot === undefined
+      ? null
+      : statValues(options.initialSnapshot)
   const LOADING = '…'
   for (const stat of STATS) {
     const valueEl = root.querySelector<HTMLElement>(`[data-stat-value="${stat.key}"]`)
-    if (valueEl) controllers[stat.key] = slotText(valueEl, LOADING, {})
+    const initialText = initialValues?.[stat.key] ?? LOADING
+    if (valueEl) controllers[stat.key] = slotText(valueEl, initialText, {})
   }
 
   let disposed = false
@@ -132,7 +143,10 @@ const makePylonStatsElement = (): CustomElementConstructor =>
       overlay.append(row)
       shadow.append(style, overlay)
 
-      this.#handle = mountPylonStats(overlay)
+      const initialSnapshot = readInitialPylonStatsSnapshot()
+      this.#handle = mountPylonStats(overlay, {
+        ...(initialSnapshot === null ? {} : { initialSnapshot }),
+      })
     }
 
     disconnectedCallback(): void {

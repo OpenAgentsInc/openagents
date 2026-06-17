@@ -91,9 +91,12 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   the client only polled every **15s**. Fixed: parallelized the N+1
   (`Promise.all` + memoized intent reads, same semantics), added a ~4s in-isolate
   snapshot cache (test-bypassed), and dropped the client poll to **3s**. Warm
-  latency ~5s → sub-200ms; `…` is now a brief flash; refresh ~5× faster. Phase 2
-  (zero-flash + true push): SSR the initial snapshot + a presence Durable Object
-  WebSocket/SSE. Audit: `docs/2026-06-16-homepage-pylon-stats-realtime-audit.md`.
+  latency ~5s → sub-200ms; refresh ~5× faster. Follow-up #5171 now embeds the
+  same cached `/api/public/pylon-stats` payload into the `/` and `/pylon` app
+  shells, so the slot-text stats seed from real values before the first client
+  fetch when the snapshot is available. Remaining phase 2 work: presence Durable
+  Object WebSocket/SSE for true push. Audit:
+  `docs/2026-06-16-homepage-pylon-stats-realtime-audit.md`.
 - **🏠 Homepage SATS SETTLED + TRAINING CONTRIBUTORS corrected (17th follow-up).**
   The first #5050 pass fixed latency but the value still undercounted reality:
   `SATS SETTLED · 24H` only summed NIP-90 market receipts, excluding the real

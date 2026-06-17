@@ -328,6 +328,7 @@ import {
   makeD1PylonCapacityFunnelSnapshotStore,
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
+import { fetchAppShellWithPylonStatsBootPayload } from './pylon-stats-boot-payload'
 import { makeD1PylonMarketplaceJobStore } from './pylon-marketplace-service'
 import {
   type RelayHealthFetch,
@@ -2724,7 +2725,10 @@ const handleAppShellPage = async (
     cookies.has(ACCESS_COOKIE) || cookies.has(REFRESH_COOKIE)
   const session = await verifySession(request, env, ctx)
   const tokens = session?.tokens
-  const assetResponse = await env.ASSETS.fetch(request)
+  const assetResponse = await fetchAppShellWithPylonStatsBootPayload(
+    request,
+    env,
+  )
 
   if (tokens !== undefined) {
     return cloneResponseWithHeaders(assetResponse, headers => {

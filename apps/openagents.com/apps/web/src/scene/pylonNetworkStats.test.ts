@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  PYLON_STATS_BOOT_SCRIPT_ID,
   computeActivityIntensity,
   fetchPylonStats,
+  readInitialPylonStatsSnapshot,
   type PylonStatsSnapshot,
 } from './pylonNetworkStats'
 
@@ -62,5 +64,37 @@ describe('fetchPylonStats (fail-soft)', () => {
     const snap: PylonStatsSnapshot = { available: true, pylonsOnlineNow: 3 }
     const fetchFn = (async () => new Response(JSON.stringify(snap), { status: 200 })) as unknown as typeof fetch
     expect((await fetchPylonStats(fetchFn, '/x'))?.pylonsOnlineNow).toBe(3)
+  })
+})
+
+describe('readInitialPylonStatsSnapshot', () => {
+  test('reads the Worker-embedded boot payload', () => {
+    const snap: PylonStatsSnapshot = {
+      available: true,
+      publicRealSatsSettled24h: 150_000,
+      pylonsOnlineNow: 4,
+      trainingModelProgressContributors: 3,
+    }
+    const documentRef = {
+      getElementById: (id: string) =>
+        id === PYLON_STATS_BOOT_SCRIPT_ID
+          ? ({ textContent: JSON.stringify(snap) } as HTMLElement)
+          : null,
+    } as Pick<Document, 'getElementById'>
+
+    expect(readInitialPylonStatsSnapshot(documentRef)).toEqual(snap)
+  })
+
+  test('fails soft when the boot payload is absent or malformed', () => {
+    expect(
+      readInitialPylonStatsSnapshot({
+        getElementById: () => null,
+      } as Pick<Document, 'getElementById'>),
+    ).toBeNull()
+    expect(
+      readInitialPylonStatsSnapshot({
+        getElementById: () => ({ textContent: '{' }) as HTMLElement,
+      } as Pick<Document, 'getElementById'>),
+    ).toBeNull()
   })
 })
