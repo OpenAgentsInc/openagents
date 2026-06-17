@@ -209,20 +209,24 @@ show the count, show the proof drawer row, but do not animate it.
 Status as of 2026-06-17: the first enforcement pass is live in code.
 `@openagentsinc/three-effect` exposes `motionPolicy`, keeps structural edges and
 ambient orbit motion static by default, and can require `sourceRefs` before
-rendering beams or bursts. `/tassadar` uses that strict mode and only emits
-verified replay beams and real-Bitcoin bursts with public refs.
+rendering beams or bursts. A follow-up simplification made `/tassadar` stricter
+than the general primitive: it currently emits no replay beams, no payout bursts,
+no contributor-orbit dots, and no loss panel in the primary scene. The main
+field is the run node plus public-ref entities only.
 
 The same distinction applies to shape language. Stage labels such as
 `registered`, `qualified`, `state synced`, `active`, and `sync reentry` are
 aggregate run-stage counters, not pylons. They should render as compact gate
-markers on live pages. The pylon/record orb language belongs to actual refs:
+markers in a legend or secondary support surface, not as spatial nodes in the
+`/tassadar` main field. The pylon/record orb language belongs to actual refs:
 `P1` through `P6`, replay workers, validators, accepted trace refs, and receipt
 refs.
 
 1. Keep the `motionPolicy` tests green: base edge flow pulses must stay disabled
    for `/tassadar`, and anonymous renderer motion must not re-enter through
    graph topology.
-2. Replace any future renderer pulse with a richer typed motion-event layer. The
+2. Replace any future renderer pulse or replay traffic with a richer typed
+   motion-event layer and a clear proof/legend treatment. The
    renderer should accept arrays such as `traceMotions`, `replayMotions`,
    `settlementMotions`, and `presenceMotions`, each carrying the metadata above.
 3. Make the web adapter responsible for deriving all motion events from
@@ -242,6 +246,10 @@ refs.
 7. Update the proof drawer to show the source refs for any selected animated
    mark. The user should be able to ask "why did that move?" and get a public
    answer immediately.
+8. Keep lifecycle-stage concepts such as registration, qualification, synced
+   state, active window, and sync reentry out of the main spatial field. If they
+   are needed, render them as a compact legend/table that clearly reads as
+   aggregate state, not as a pylon/node cluster.
 
 ## Proposed compositional primitives
 
@@ -387,6 +395,8 @@ families.
 5. Use compact gate glyphs for aggregate stage concepts. Do not use pylon-like
    bullseye/orb glyphs for `registered / 6 pylons seen` style stage counters;
    those are counters attached to a run phase, not the pylon records themselves.
+   On `/tassadar`, keep those aggregate concepts out of the main 3D field unless
+   they move into a clearly labeled legend or secondary support panel.
 6. Use motion only when there is a bound public ref or measurable live state
    transition:
    flowing trace, replay pulse, receipt burst, slot-text counter roll, and
@@ -400,16 +410,23 @@ families.
    like a real run, not an empty marketing failure.
 10. Anonymous edge pulses are banned for live training pages. If an edge does not
     have a motion event, render it as static structure.
+11. Do not show a loss curve in the main view until there is product-ready,
+    public loss data and a clear reason to make that chart part of the first
+    read.
+12. Do not put the product-promise gate or fleet-wide pylon stats as bottom text
+    in the main view. Those are support surfaces and registry/proof links, not
+    the first visual grammar.
 
 ## Candidate scene grammar
 
-For a populated run:
+For a future populated run after the proof/legend treatment exists:
 
 - Center: `Run field`, label + run ref.
 - Inner orbit: active training window and verification gate.
 - Middle orbit: worker submissions and validator devices.
 - Outer orbit: contributor pylons.
-- Beams: verified replay pairs only.
+- Beams: verified replay pairs only, and only when the page can explain the
+  worker ref, validator ref, challenge ref, and verdict/source refs.
 - Faint strands: claimed/submitted traces that are not verified yet.
 - Bursts: settlement events, with recipient-confirmed state separate.
 - Corpus ring: accepted replay-verified traces only.
@@ -422,14 +439,20 @@ For an idle or blocked run:
 - Counters roll to zero or blocked, not hidden.
 - CTA points to install/go-online only when that action is actually available.
 
+For the current `/tassadar` page, the live main field is intentionally smaller:
+center run node plus selectable public-ref entities. It does not show the stage
+counter board, loss curve, promise gate, fleet stats, contributor orbit, replay
+beam traffic, or payout bursts.
+
 ## Implementation path
 
 1. Keep `/tassadar` as the canonical live-run surface and `/run` as the current
    alias while extending `tassadarRunSnapshot.ts` instead of creating a parallel
    adapter.
-2. Keep anonymous base edge pulses disabled for `/tassadar` before adding more
-   motion. Abstract back-and-forth dots are not acceptable live-run language
-   unless each pulse can answer which public ref caused it.
+2. Keep anonymous base edge pulses and verified-replay traffic disabled for
+   `/tassadar` before adding more motion. Abstract back-and-forth dots are not
+   acceptable live-run language unless each pulse can answer which public ref
+   caused it and the page explains that answer.
 3. Move the named scene concepts into `three-effect` primitives where they are
    reusable: contributor entity, trace strand, replay beam, receipt burst, corpus
    ring, proof drawer events.

@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
-  PRODUCT_PROMISES_ENDPOINT,
-  PYLON_STATS_ENDPOINT,
   TASSADAR_RUN_SUMMARY_ENDPOINT,
   TASSADAR_RUN_TAG,
   dataStateForSummary,
@@ -129,48 +127,6 @@ const idle = {
   emptyState: { idle: true, reason: 'no verified work yet' },
 }
 
-const promisesDocument = {
-  registryVersion: '2026-06-17.2',
-  promises: [
-    {
-      promiseId: 'training.monday_decentralized_training_launch.v1',
-      safeCopy: 'Scoped green with realBitcoinMoved:false caveat.',
-      state: 'green',
-    },
-    {
-      promiseId: 'pylon.install_without_wallet_knowledge.v1',
-      safeCopy: 'Install path green with realBitcoinMoved:false caveat.',
-      state: 'green',
-    },
-    {
-      promiseId: 'models.tassadar_percepta_executor.v1',
-      state: 'red',
-    },
-    {
-      promiseId: 'training.public_gradient_windows.v1',
-      state: 'planned',
-    },
-    {
-      promiseId: 'pylon.first_real_model_training_run.v1',
-      state: 'yellow',
-    },
-  ],
-}
-
-const pylonStats = {
-  asOfLabel: 'Just now',
-  available: true,
-  publicRealSatsSettled24h: 338844,
-  publicRealSatsSettledTotal: 448344,
-  pylonsAssignmentReadyNow: 2,
-  pylonsOnlineNow: 9,
-  pylonsWalletReadyNow: 2,
-  status: 'live',
-  trainingAcceptedContributors: 0,
-  trainingAssignedContributors: 6,
-  trainingModelProgressContributors: 6,
-}
-
 const jsonResponse = (body: unknown, status = 200): Response =>
   ({
     ok: status >= 200 && status < 300,
@@ -215,10 +171,8 @@ describe('tassadarRunView page wiring', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(jsonResponse(populated))
     await mountAndSettle()
-    expect(fetchSpy).toHaveBeenCalledTimes(3)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
     expect(fetchSpy.mock.calls[0]?.[0]).toBe(TASSADAR_RUN_SUMMARY_ENDPOINT)
-    expect(fetchSpy.mock.calls[1]?.[0]).toBe(PRODUCT_PROMISES_ENDPOINT)
-    expect(fetchSpy.mock.calls[2]?.[0]).toBe(PYLON_STATS_ENDPOINT)
   })
 
   it('(a) populated summary → ok state, mounts renderer with produced options', async () => {
@@ -243,12 +197,8 @@ describe('tassadarRunView page wiring', () => {
     let summaryCalls = 0
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockImplementation(async input =>
-        input === PRODUCT_PROMISES_ENDPOINT
-          ? jsonResponse(promisesDocument)
-          : input === PYLON_STATS_ENDPOINT
-            ? jsonResponse(pylonStats)
-            : jsonResponse(summaryCalls++ === 0 ? populated : refreshed),
+      .mockImplementation(async () =>
+        jsonResponse(summaryCalls++ === 0 ? populated : refreshed),
       )
 
     const el = await mountAndSettle()
@@ -258,71 +208,28 @@ describe('tassadarRunView page wiring', () => {
     )
     expect(status?.textContent ?? '').toContain('active')
     expect(status?.textContent ?? '').toContain('2026-06-17T16:39:20.270Z')
-    expect(status?.textContent ?? '').toContain('projection_staleness.v1')
-    expect(status?.textContent ?? '').toContain('live_at_read')
     expect(status?.textContent ?? '').toContain('Refresh snapshot')
+
+    expect(el.shadowRoot?.querySelector('.promise-gate')).toBeNull()
 
     const refresh = el.shadowRoot?.querySelector('button')
     expect(refresh).not.toBeNull()
     refresh?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await waitForSettled(el)
 
-    expect(fetchSpy).toHaveBeenCalledTimes(6)
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
     expect(
       el.shadowRoot?.querySelector('.status')?.textContent ?? '',
     ).toContain('2026-06-17T16:40:20.270Z')
   })
 
-  it('renders product-promise copy gates from the public registry without changing run truth', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
-      if (input === PRODUCT_PROMISES_ENDPOINT) {
-        return jsonResponse(promisesDocument)
-      }
-      if (input === PYLON_STATS_ENDPOINT) {
-        return jsonResponse(pylonStats)
-      }
-      return jsonResponse(populated)
-    })
+  it('does not render product-promise gates or fleet stats in the main scene chrome', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(populated))
 
     const el = await mountAndSettle()
-    const gate = el.shadowRoot?.querySelector('.promise-gate')
-    const text = gate?.textContent ?? ''
-    expect(text).toContain('Promise gates / 2026-06-17.2')
-    expect(text).toContain('Monday launch')
-    expect(text).toContain('green')
-    expect(text).toContain('Trained model')
-    expect(text).toContain('red')
-    expect(text).toContain('Gradient windows')
-    expect(text).toContain('planned')
-    expect(text).toContain('simulation-backed settlement caveat')
-    expect(text).toContain('Do not claim real sats paid')
-  })
-
-  it('renders run-specific metrics as canonical and fleet pylon stats as context', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
-      if (input === PRODUCT_PROMISES_ENDPOINT) {
-        return jsonResponse(promisesDocument)
-      }
-      if (input === PYLON_STATS_ENDPOINT) {
-        return jsonResponse(pylonStats)
-      }
-      return jsonResponse(populated)
-    })
-
-    const el = await mountAndSettle()
-    const gate = el.shadowRoot?.querySelector('.promise-gate')
-    const text = gate?.textContent ?? ''
-    expect(text).toContain('Run endpoint canonical')
-    expect(text).toContain(
-      'assigned 0 / verified work 9 / qualified 1 / settlement record 2,100 sats',
-    )
-    expect(text).toContain('Fleet pylon stats / live / Just now')
-    expect(text).toContain(
-      'online 9 / wallet ready 2 / assignment ready 2 / accepted 0 / model progress 6 / real sats 24h 338,844',
-    )
-    expect(text).toContain(
-      'Run endpoint wins for Tassadar-specific accepted-work and settlement numbers',
-    )
+    expect(el.shadowRoot?.querySelector('.promise-gate')).toBeNull()
+    expect(el.shadowRoot?.textContent ?? '').not.toContain('Promise gates')
+    expect(el.shadowRoot?.textContent ?? '').not.toContain('Fleet pylon stats')
   })
 
   it('(b) idle summary → empty state, still renders the honest (zeroed) scene — never faked', async () => {

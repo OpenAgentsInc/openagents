@@ -93,11 +93,21 @@ primitives.
   with compact gate markers on `/tassadar`; pylon/record orb glyphs are reserved
   for actual contributor/entity refs such as `P1` through `P6`, replay workers,
   validators, trace refs, and receipt refs.
+- 2026-06-17: A later live-page review found that even compact aggregate gates
+  were too spatially prominent and still read like unexplained nodes. `/tassadar`
+  now keeps the main 3D field to the run node plus public-ref entities only:
+  pylon refs, replay worker/validator refs, rejected replay refs, trace refs, and
+  settlement receipt refs. Aggregate lifecycle counters such as `registered`,
+  `qualified`, `state synced`, `active`, and `sync reentry` are not placed as
+  scene nodes. Verified replay beams are also removed from the main view for
+  now, because the page does not yet explain them well enough. The loss panel,
+  status mini-chart, stale ring, contributor orbit, product-promise gate, and
+  fleet-stats text are hidden from the primary canvas.
 
 ## Short answer
 
-We now have the right live-page base and the first enforcement pass for motion
-truth.
+We now have the right live-page base and a stricter first-read composition for
+motion truth.
 
 The accurate path is to keep `/tassadar` on the existing live-run architecture:
 
@@ -106,20 +116,26 @@ The accurate path is to keep `/tassadar` on the existing live-run architecture:
 - `apps/openagents.com/apps/web/src/scene/tassadarRunElement.ts`
 - `@openagentsinc/three-effect` `oa-training-run`
 
-Do not fork a second data adapter. Do not use the new
-`/components/training` grammar items as live state until they are wired to
-public refs. Today those gallery primitives are useful visual grammar, but only
-`oa-training-run` is actually data-bound to the live Worker projection.
+Do not fork a second data adapter. Do not use the new `/components/training`
+grammar items as live state until they are wired to public refs. Today those
+gallery primitives are useful visual grammar, but only `oa-training-run` is
+actually data-bound to the live Worker projection.
 
-The remaining work is no longer to remove anonymous renderer motion from
-`/tassadar`; that is done. The next work is to deepen event specificity and
-inspection:
+The current main view should answer only one question on first read: "what real
+public refs exist for this run right now?" It should not spatialize lifecycle
+legend labels, show a loss chart before there is product-ready loss evidence, or
+display promise/fleet copy in the primary canvas.
+
+The remaining work is no longer to remove anonymous renderer motion or compact
+aggregate gates from `/tassadar`; that is done. The next work is to deepen event
+specificity and inspection:
 
 1. Any replacement motion must come from typed motion events derived from public
    refs: replay challenge refs, trace refs, receipt refs, pylon refs, or
    timestamped projection transitions.
 2. Counts can label or color aggregate stage nodes, but counts alone must not
-   create moving dots, fake strands, fake traffic, or fake payout effects.
+   create moving dots, fake strands, fake traffic, fake payout effects, or
+   spatial nodes in the main field.
 3. Simulation-backed settlement can render as a selectable receipt/proof state,
    but it must not animate like real Bitcoin movement.
 4. `/components/training` and `/animations` should keep unbound studies static
@@ -161,7 +177,7 @@ Live checks while writing and later updating:
 - `https://openagents.com/run` returned `200`.
 - `https://openagents.com/api/public/tassadar-run-summary` returned the live
   run summary at `generatedAt: 2026-06-17T16:20:10Z`.
-- A later truth-map check of the same endpoint returned
+- An earlier truth-map check of the same endpoint returned
   `generatedAt: 2026-06-17T17:49:53.847Z` and resolved the browser scene to 6
   contributor dots, 22 ref-backed entities, 3 verified replay beams, 0 payout
   bursts, and 0 loss-curve points.
@@ -176,6 +192,9 @@ Live checks while writing and later updating:
 - `https://openagents.com/api/public/pylon-stats` returned live fleet counters.
 - `https://openagents.com/api/public/nexus-pylon/receipts/receipt.nexus.tassadar_run_settlement.idem.tassadar.settlement.59ba1f30.orrery.v2`
   returned the public settlement receipt.
+- The current simplified adapter resolves the same live payload to one run node,
+  public-ref entities, zero contributor-orbit dots, zero verified replay beams,
+  zero payout bursts, zero loss-curve points, and hidden optional scene chrome.
 
 ## Live snapshot
 
@@ -244,9 +263,9 @@ bound to a real public ref or a timestamped live state transition. Fixed graph
 edges may remain as static structure; their anonymous motion should be disabled
 or replaced with typed, evidence-bound motion events.
 
-The base stage nodes are also not individual records. They are aggregate grammar
-nodes whose label, status, and detail are derived from the public summary
-metrics. Examples:
+The base stage labels are also not individual records. They are aggregate
+grammar concepts whose label, status, and detail can be derived from the public
+summary metrics. Examples:
 
 - `registered`: `6 pylons seen`
 - `qualified`: `6/2 device gate`
@@ -256,39 +275,41 @@ metrics. Examples:
 - `receipt`: `32 receipts`
 - `settlement`: `5 sats`
 
-Those aggregate stage nodes are allowed only as summarized counters. They can
-color or label the run state, but they must not create anonymous moving pulses.
-They must not be read as "there are N hidden real nodes behind each moving
-pulse".
+Those aggregate concepts are allowed only as summarized counters or legend rows.
+They are not allowed as spatial nodes in the `/tassadar` main field. They must
+not create anonymous moving pulses and must not be read as "there are N hidden
+real nodes behind each moving pulse".
 
-They also must not use the same pylon/record orb glyph on live pages. On
-`/tassadar`, aggregate stage nodes use compact gate markers. A label like
-`registered / 6 pylons seen` means "the registration stage has a public count of
-six pylon refs observed"; it is not itself a pylon and not one of the six pylon
-records. The six pylon records are the labeled `P1` through `P6` contributor and
+They also must not use the same pylon/record orb glyph on live pages. A label
+like `registered / 6 pylons seen` means "the registration stage has a public
+count of six pylon refs observed"; it is not itself a pylon and not one of the
+six pylon records. The six pylon records are the labeled `P1` through `P6`
 entity marks derived from public `pylonRef` fields.
 
 The data-bound marks in the current `/tassadar` scene are:
 
-| Visual mark                                       | Source                                                         | Current truth                                                                                                |
-| ------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Contributor orbit dots labeled `P1` through `P6`  | `realGradient.leaderboardRows[].pylonRef`                      | 6 real public pylon refs.                                                                                    |
-| Entity-ring pylon marks                           | `realGradient.leaderboardRows` plus top-level `settlementRows` | 6 real pylon refs; `P1` is `simulation_settled`, the rest are `verified`.                                    |
-| Verified replay beams                             | `realGradient.verifiedReplayPairs[]`                           | 3 real verified worker-to-validator replay pairs.                                                            |
-| Rejected replay entities                          | `realGradient.rejectedReplayPairs[]`                           | 3 rejected replay pairs, rendered as rejected worker/validator entities rather than success beams.           |
-| Settlement receipt entity labeled `5s`            | top-level `settlementRows[]`                                   | 1 real public receipt ref, `movementMode: simulation`, `realBitcoinMoved: false`.                            |
-| Payout burst particles                            | top-level `settlementRows[]` with `realBitcoinMoved: true`     | 0 currently. The current simulation settlement must not render a real-Bitcoin burst.                         |
-| Accepted trace entities labeled `T1` through `T3` | top-level `corpus.traceRefs[]`                                 | 3 public verified challenge refs counted as accepted trace corpus entries.                                   |
-| Loss curve points                                 | `realGradient.lossCurve[]`                                     | 0 currently. No default/demo loss curve is passed by the web adapter.                                        |
-| Promise registry marks                            | `/api/public/product-promises`                                 | Real promise records; they explain launch/install/model/gradient gates and the simulation settlement caveat. |
+| Visual mark                                       | Source                                                         | Current truth                                                                                              |
+| ------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Run node                                          | `runRef`, `runLabel`, `runState`                               | One public run anchor, not an aggregate lifecycle board.                                                   |
+| Entity-ring pylon marks                           | `realGradient.leaderboardRows` plus top-level `settlementRows` | 6 real public pylon refs; `P1` is `simulation_settled`, the rest are `verified`.                           |
+| Verified replay worker/validator entities         | `realGradient.verifiedReplayPairs[]`                           | 3 real verified worker-to-validator replay pairs, shown as selectable entities rather than animated beams. |
+| Rejected replay entities                          | `realGradient.rejectedReplayPairs[]`                           | 3 rejected replay pairs, rendered as rejected worker/validator entities rather than success beams.         |
+| Settlement receipt entity labeled `5s`            | top-level `settlementRows[]`                                   | 1 real public receipt ref, `movementMode: simulation`, `realBitcoinMoved: false`.                          |
+| Payout burst particles                            | top-level `settlementRows[]` with `realBitcoinMoved: true`     | 0 currently. The current simulation settlement must not render a real-Bitcoin burst.                       |
+| Accepted trace entities labeled `T1` through `T3` | top-level `corpus.traceRefs[]`                                 | 3 public verified challenge refs counted as accepted trace corpus entries.                                 |
+| Loss curve points                                 | `realGradient.lossCurve[]`                                     | 0 currently. No default/demo loss curve is passed by the web adapter.                                      |
+| Promise registry marks                            | `/api/public/product-promises`                                 | Real promise records, but not rendered in the primary scene chrome.                                        |
 
 Current resolved visual layer from the live payload:
 
-- `contributors`: 6
+- `nodes`: 1 run node
+- `contributors`: 0
 - `entities`: 22
-- `beams`: 3
+- `beams`: 0
 - `bursts`: 0
 - `lossCurve`: 0 points
+- optional scene chrome: hidden contributor orbit, loss panel, stale ring, and
+  status mini-chart
 
 Truth rule: every animated mark must have a public reason to move. Every mark
 that looks like a pylon, contributor, worker, validator, trace, receipt,
@@ -341,7 +362,8 @@ A totally accurate page needs to satisfy these rules:
 3. Every visible data entity, beam, burst, corpus tile, settlement mark, and
    proof drawer row must be backed by a public-safe ref, or must be visibly
    absent/unknown. Fixed stage nodes may summarize public metrics, but they must
-   read as aggregate grammar, not hidden record nodes.
+   read as aggregate grammar, not hidden record nodes. On `/tassadar`, aggregate
+   stage nodes stay out of the main spatial field.
 4. Every moving mark must be evidence-bound. Anonymous edge pulses, decorative
    flow fields, fixture-like particle motion, and count-derived fake motion are
    banned from live training pages.
@@ -365,18 +387,22 @@ A totally accurate page needs to satisfy these rules:
 Current status: usable as the base. `oa-training-run` can render lifecycle
 nodes, run state, windows, devices, verified/rejected work counts, receipt count,
 settlement count, verified replay entities, beams, and payout bursts.
+The current `/tassadar` adapter intentionally disables most of that chrome and
+keeps only the central run node plus public-ref entities in the main field.
 
 Needed for total accuracy:
 
 - Keep `/tassadar` public in the server document-route allowlist and browser
   startup resolver.
-- Keep showing `generatedAt`, `staleness.composition`, browser fetched time, and
-  explicit manual refresh in the page chrome.
+- Keep showing `generatedAt` and explicit manual refresh in the page chrome.
+  Staleness detail can move to a secondary/supporting surface if the top strip
+  becomes too dense.
 - Consider polling if the page needs unattended wall-display behavior; today it
   is a live snapshot with manual refresh.
 - Keep passing an empty `lossCurve` when no real loss evidence exists.
-- Keep product-promise signals adjacent to the scene where they affect claim
-  interpretation.
+- Keep product-promise signals in docs, registry links, or a secondary support
+  surface where they affect claim interpretation. Do not render a bottom
+  `Promise gates` block in the main view.
 - Disable fixed edge flow pulses for `/tassadar`, or bind every pulse to a typed
   motion event with public refs. Visual distinction is not enough; anonymous
   motion should not appear on the live run page.
@@ -531,7 +557,7 @@ Use this structure:
    - generated-at age
    - staleness contract
    - refresh state
-3. Left or bottom compact counters:
+3. Supporting counters, if used, should be compact and clearly secondary:
    - assigned contributors
    - verified exact-replay work
    - rejected exact-replay work
@@ -544,12 +570,12 @@ Use this structure:
    - provenance label
    - public endpoint
    - caveats and blocker refs
-5. Promise/copy gate strip:
+5. Promise/copy gate access, outside the main scene:
    - Monday launch: green, simulation caveat
    - install-to-verified-contribution: green, simulation caveat
    - trained Tassadar model: red
    - public gradient windows: planned
-6. Secondary fleet context:
+6. Secondary fleet context, outside the main scene:
    - pylons online
    - wallet/assignment readiness
    - training assigned contributors
@@ -557,6 +583,10 @@ Use this structure:
 
 Avoid a marketing landing page. `/tassadar` should open directly on the live
 run instrument.
+
+Current first-read rule: the main canvas shows nodes and selectable public-ref
+entities. It does not show a loss curve, aggregate lifecycle board, promise-gate
+panel, fleet-stats panel, or unexplained replay traffic.
 
 ## Implementation checklist
 
@@ -586,8 +616,9 @@ run instrument.
 
 - Keep passing `lossCurve: []` when no loss data exists.
 - Keep mapping settlement rows into typed visual states.
-- Keep mapping product-promise records into scene signals and the adjacent copy
-  gate.
+- Keep product-promise records available through registry/API surfaces; do not
+  add the bottom copy-gate panel back to the main `/tassadar` canvas without a
+  deliberate secondary-support design.
 - Keep routing receipt links by receipt namespace:
   - `receipt.nexus...` and `receipt.nexus_pylon...` ->
     `/api/public/nexus-pylon/receipts/{ref}` or the HTML receipt page.
@@ -646,7 +677,8 @@ run instrument.
   - exact hashed JS asset returns 200
   - the WebGL canvas is nonblank
   - the page displays generated-at/staleness text
-  - base edge pulses are absent unless backed by live motion events
+  - base edge pulses and replay-beam traffic are absent unless backed by live
+    motion events and a clear legend/proof treatment
   - selecting a settlement/proof node opens a drawer with a public route that
     returns 200 by GET
 - Copy gate:

@@ -12,11 +12,8 @@
 // settled, never a faked value. The web app intentionally does NOT import the
 // worker's internal types; this is a narrow structural view of the public summary.
 import {
-  type TrainingRunBeamDefinition,
-  type TrainingRunBurstDefinition,
-  type TrainingRunContributorDefinition,
   type TrainingRunEntityDefinition,
-  type TrainingRunLossPoint,
+  type TrainingRunNodeDefinition,
   type TrainingRunVisualizationOptions,
   type TrainingRunVisualizationSnapshot,
   trainingRunVisualizationOptionsFromSnapshot,
@@ -155,14 +152,6 @@ const publicRefs = (
     ? refs.map(ref => ref.trim()).filter(ref => ref.length > 0)
     : []
 
-const uniquePublicRefs = (
-  refs: ReadonlyArray<string | undefined>,
-): ReadonlyArray<string> => [
-  ...new Set(
-    refs.flatMap(ref => (typeof ref === 'string' ? publicRefs([ref]) : [])),
-  ),
-]
-
 const lossOrNull = (value: number | null | undefined): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
 
@@ -275,39 +264,6 @@ const verifiedReplayEntities = (
     ]
   })
 
-const verifiedReplayBeams = (
-  pairs: ReadonlyArray<PublicTrainingRunVerifiedReplayPair> | undefined,
-  generatedAt: string | undefined,
-): ReadonlyArray<TrainingRunBeamDefinition> =>
-  (pairs ?? []).flatMap(pair => {
-    if (
-      pair.workerRef === undefined ||
-      pair.workerRef.trim() === '' ||
-      pair.validatorRef === undefined ||
-      pair.validatorRef.trim() === '' ||
-      pair.challengeRef === undefined ||
-      pair.challengeRef.trim() === ''
-    ) {
-      return []
-    }
-    return [
-      {
-        fromId: pair.workerRef,
-        ...(generatedAt === undefined ? {} : { generatedAt }),
-        motionId: pair.challengeRef,
-        motionKind: 'replay_verified',
-        sourceRefs: uniquePublicRefs([
-          pair.challengeRef,
-          pair.workerRef,
-          pair.validatorRef,
-          ...publicRefs(pair.verdictRefs),
-          ...publicRefs(pair.sourceRefs),
-        ]),
-        toId: pair.validatorRef,
-      },
-    ]
-  })
-
 const rejectedReplayEntities = (
   pairs: ReadonlyArray<PublicTrainingRunRejectedReplayPair> | undefined,
 ): ReadonlyArray<TrainingRunEntityDefinition> =>
@@ -361,87 +317,30 @@ const corpusEntities = (
     status: 'accepted_trace',
   }))
 
-const settlementBursts = (
-  rows: ReadonlyArray<PublicTassadarSettlementRow>,
-  generatedAt: string | undefined,
-): ReadonlyArray<TrainingRunBurstDefinition> =>
-  rows.flatMap(row =>
-    row.realBitcoinMoved === true &&
-    typeof row.contributorRef === 'string' &&
-    row.contributorRef.trim() !== ''
-      ? [
-          {
-            atId: row.contributorRef,
-            ...(generatedAt === undefined ? {} : { generatedAt }),
-            motionId: settlementRowReceiptRef(row) ?? row.contributorRef,
-            motionKind: 'real_bitcoin_moved',
-            simulated: false,
-            sourceRefs: uniquePublicRefs([
-              ...publicRefs(row.sourceRefs),
-              settlementRowReceiptRef(row),
-              row.contributorRef,
-            ]),
-          },
-        ]
-      : [],
-  )
+const runNodeStatus = (
+  state: string | undefined,
+): TrainingRunNodeDefinition['status'] =>
+  state === 'active'
+    ? 'active'
+    : state === 'sealed' || state === 'reconciled'
+      ? 'sealed'
+      : state === 'blocked'
+        ? 'blocked'
+        : state === 'planned'
+          ? 'planned'
+          : 'queued'
 
-const contributorLifecycleState = (
-  row: PublicTrainingRunLeaderboardRow,
-  settlements: ReadonlyArray<PublicTassadarSettlementRow>,
-): TrainingRunContributorDefinition['lifecycleState'] => {
-  const settlementStatus =
-    row.pylonRef === undefined
-      ? undefined
-      : contributorSettlementStatus(
-          settlementRowsForContributor(settlements, row.pylonRef),
-        )
-  if (
-    settlementStatus === 'real_settled' ||
-    settlementStatus === 'simulation_settled'
-  ) {
-    return 'active'
-  }
-  if (finiteOrZero(row.verifiedWindowCount) > 0) {
-    return 'active'
-  }
-  return publicRefs(row.sourceRefs).length > 0 ? 'warmup' : 'registered'
-}
-
-const contributorDefinitions = (
-  rows: ReadonlyArray<PublicTrainingRunLeaderboardRow> | undefined,
-  settlements: ReadonlyArray<PublicTassadarSettlementRow>,
-): ReadonlyArray<TrainingRunContributorDefinition> => {
-  const validRows = (rows ?? []).filter(
-    row => row.pylonRef !== undefined && row.pylonRef.trim() !== '',
-  )
-  const divisor = Math.max(validRows.length, 1)
-
-  return validRows.map((row, index) => ({
-    id: row.pylonRef!,
-    label:
-      finiteOrZero(row.rank) > 0
-        ? `P${finiteOrZero(row.rank)}`
-        : shortRef(row.pylonRef!),
-    lifecycleState: contributorLifecycleState(row, settlements),
-    phase: index / divisor,
-  }))
-}
-
-const lossCurveFromPublicSummary = (
+const runNodeFromPublicSummary = (
   summary: TassadarRunPublicSummary,
-): ReadonlyArray<TrainingRunLossPoint> =>
-  (summary.realGradient?.lossCurve ?? []).flatMap(point => {
-    if (
-      typeof point.step !== 'number' ||
-      typeof point.validationLoss !== 'number' ||
-      !Number.isFinite(point.step) ||
-      !Number.isFinite(point.validationLoss)
-    ) {
-      return []
-    }
-    return [{ step: point.step, validationLoss: point.validationLoss }]
-  })
+): TrainingRunNodeDefinition => ({
+  connectedTo: [],
+  detail: summary.runRef ?? 'run.tassadar.executor.20260615',
+  id: 'run',
+  label: summary.runLabel ?? 'Tassadar executor run',
+  position: [-0.15, 0.28, 0],
+  role: 'run',
+  status: runNodeStatus(summary.runState),
+})
 
 export const trainingRunEntityLayerFromPublicSummary = (
   summary: TassadarRunPublicSummary,
@@ -453,6 +352,8 @@ export const trainingRunEntityLayerFromPublicSummary = (
   | 'entities'
   | 'lossCurve'
   | 'motionPolicy'
+  | 'nodes'
+  | 'sceneChrome'
   | 'stageNodeGlyph'
 > => {
   const rows = summary.realGradient?.leaderboardRows
@@ -470,16 +371,23 @@ export const trainingRunEntityLayerFromPublicSummary = (
   ]
 
   return {
-    beams: verifiedReplayBeams(pairs, summary.generatedAt),
-    bursts: settlementBursts(settlements, summary.generatedAt),
-    contributors: contributorDefinitions(rows, settlements),
+    beams: [],
+    bursts: [],
+    contributors: [],
     entities,
-    lossCurve: lossCurveFromPublicSummary(summary),
+    lossCurve: [],
     motionPolicy: {
       ambient: 'static',
       bursts: 'once',
       evidence: 'required',
       structuralEdges: 'static',
+    },
+    nodes: [runNodeFromPublicSummary(summary)],
+    sceneChrome: {
+      contributorOrbit: 'hidden',
+      lossPanel: 'hidden',
+      staleRing: 'hidden',
+      statusChart: 'hidden',
     },
     stageNodeGlyph: 'compact_gate',
   }

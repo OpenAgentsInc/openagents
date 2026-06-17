@@ -195,25 +195,29 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
       evidence: 'required',
       structuralEdges: 'static',
     })
+    expect(options.nodes).toEqual([
+      {
+        connectedTo: [],
+        detail: 'run.tassadar.executor.20260615',
+        id: 'run',
+        label: 'Tassadar executor run',
+        position: [-0.15, 0.28, 0],
+        role: 'run',
+        status: 'active',
+      },
+    ])
+    expect(options.sceneChrome).toEqual({
+      contributorOrbit: 'hidden',
+      lossPanel: 'hidden',
+      staleRing: 'hidden',
+      statusChart: 'hidden',
+    })
     expect(options.stageNodeGlyph).toBe('compact_gate')
   })
 
-  it('adds data-bound pylon contributors/entities, verified replay beams, and settlement bursts', () => {
+  it('adds data-bound pylon/proof entities without duplicate orbit dots or main-view motion', () => {
     const layer = trainingRunEntityLayerFromPublicSummary(populated)
-    expect(layer.contributors).toEqual([
-      {
-        id: 'pylon.worker.one',
-        label: 'P1',
-        lifecycleState: 'active',
-        phase: 0,
-      },
-      {
-        id: 'pylon.worker.two',
-        label: 'P2',
-        lifecycleState: 'active',
-        phase: 0.5,
-      },
-    ])
+    expect(layer.contributors).toEqual([])
     expect(layer.entities).toEqual([
       { id: 'pylon.worker.one', label: 'P1', status: 'verified' },
       { id: 'pylon.worker.two', label: 'P2', status: 'real_settled' },
@@ -245,39 +249,31 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
         status: 'accepted_trace',
       },
     ])
-    expect(layer.beams).toEqual([
-      {
-        fromId: 'contribution.tassadar.worker.1',
-        motionId: 'challenge.tassadar.replay.1',
-        motionKind: 'replay_verified',
-        sourceRefs: [
-          'challenge.tassadar.replay.1',
-          'contribution.tassadar.worker.1',
-          'validator.tassadar.1',
-          'verdict.tassadar.replay.1',
-        ],
-        toId: 'validator.tassadar.1',
-      },
-    ])
-    expect(layer.bursts).toEqual([
-      {
-        atId: 'pylon.worker.two',
-        motionId: 'receipt.nexus.tassadar.settlement.real.1',
-        motionKind: 'real_bitcoin_moved',
-        simulated: false,
-        sourceRefs: [
-          'receipt.nexus.tassadar.settlement.real.1',
-          'pylon.worker.two',
-          'challenge.tassadar.replay.1',
-        ],
-      },
-    ])
+    expect(layer.beams).toEqual([])
+    expect(layer.bursts).toEqual([])
     expect(layer.lossCurve).toEqual([])
     expect(layer.motionPolicy).toEqual({
       ambient: 'static',
       bursts: 'once',
       evidence: 'required',
       structuralEdges: 'static',
+    })
+    expect(layer.nodes).toEqual([
+      {
+        connectedTo: [],
+        detail: 'run.tassadar.executor.20260615',
+        id: 'run',
+        label: 'Tassadar executor run',
+        position: [-0.15, 0.28, 0],
+        role: 'run',
+        status: 'active',
+      },
+    ])
+    expect(layer.sceneChrome).toEqual({
+      contributorOrbit: 'hidden',
+      lossPanel: 'hidden',
+      staleRing: 'hidden',
+      statusChart: 'hidden',
     })
     expect(layer.stageNodeGlyph).toBe('compact_gate')
   })
@@ -333,7 +329,7 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     expect(layer.lossCurve).toEqual([])
   })
 
-  it('passes through public loss curve points only when the summary supplies them', () => {
+  it('keeps the main view loss-free even if internal loss points appear before the product is ready', () => {
     const options = tassadarRunVisualizationOptions({
       realGradient: {
         lossCurve: [
@@ -342,9 +338,7 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
         ],
       },
     })
-    expect(options.lossCurve).toEqual([
-      { step: 0, validationLoss: 3.2 },
-      { step: 1, validationLoss: 2.9 },
-    ])
+    expect(options.lossCurve).toEqual([])
+    expect(options.sceneChrome?.lossPanel).toBe('hidden')
   })
 })
