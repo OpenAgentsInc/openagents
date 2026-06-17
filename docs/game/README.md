@@ -14,6 +14,11 @@ direction.
   reference material for an OpenAgents world-state database.
 - `2026-06-17-spacetimedb-gcp-deployment-receipt.md` - live GCP deployment
   receipt for the first self-hosted SpacetimeDB world database endpoint.
+- `2026-06-17-spacetimedb-admin-runbook.md` - operator runbook for the
+  self-hosted SpacetimeDB VM, domain, TLS, publishing, logs, and recovery.
+- `2026-06-17-spacetimedb-tassadar-integration-next-steps.md` - concrete
+  next-step plan for connecting the live SpacetimeDB world projection to
+  `/tassadar` without moving authority away from the Worker/D1 projection.
 - `2026-06-17-tassadar-wasd-mouselook-controller-plan.md` - implementation plan
   for adding a reusable `three-effect` WASD + mouselook controller and enabling a
   2.5D first-person `/tassadar` navigation mode.

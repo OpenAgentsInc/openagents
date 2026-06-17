@@ -58,7 +58,8 @@ authority bridge that projects verified product facts into the world database.
 
 ## Proposed OpenAgents Role
 
-Create an `openagents_world` SpacetimeDB module as the MMO state layer.
+Publish an `openagents-world` SpacetimeDB database/module as the MMO state
+layer.
 
 It should own:
 
@@ -185,7 +186,7 @@ logic.
 
 The page should eventually become a SpacetimeDB-backed world client:
 
-1. Connect to `openagents_world`.
+1. Connect to `openagents-world`.
 2. Subscribe to the canonical Tassadar run query set.
 3. Render `pylon_node`, `run_entity`, and `world_edge` rows as real Three.js
    entities.
@@ -200,9 +201,15 @@ event must resolve to a row with a source reference.
 
 ## Prototype Plan
 
+The first self-hosted deployment is live at
+`https://spacetime.openagents.com`. Its admin runbook is
+`docs/game/2026-06-17-spacetimedb-admin-runbook.md`, and the current
+`/tassadar` connection plan is
+`docs/game/2026-06-17-spacetimedb-tassadar-integration-next-steps.md`.
+
 P0:
 
-- Create a local `openagents_world` SpacetimeDB module prototype in a dedicated
+- Create a local `openagents-world` SpacetimeDB module prototype in a dedicated
   app/package once implementation starts.
 - Model only `training_run`, `run_entity`, `world_edge`, `proof_ref`, and
   `world_event`.

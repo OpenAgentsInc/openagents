@@ -2,27 +2,27 @@
 
 Date: 2026-06-17
 Issue: `OpenAgentsInc/openagents#5228`
-Status: deployed with temporary DNS-over-IP endpoint.
+Status: deployed on the primary OpenAgents subdomain.
 
 ## Live Endpoint
 
-Verified HTTPS endpoint:
-
-```text
-https://spacetime.34.28.177.95.sslip.io
-```
-
-Intended permanent endpoint:
+Primary verified HTTPS endpoint:
 
 ```text
 https://spacetime.openagents.com
 ```
 
-`openagents.com` is Cloudflare-backed, but the local Cloudflare token available
-during this deployment returned `403` for zone lookup/DNS mutation. The
-deployment therefore uses `sslip.io` for an immediately verifiable HTTPS
-endpoint. Add `A spacetime.openagents.com -> 34.28.177.95` once a DNS-capable
-Cloudflare credential is available.
+Fallback DNS-over-IP endpoint:
+
+```text
+https://spacetime.34.28.177.95.sslip.io
+```
+
+`spacetime.openagents.com` resolves to the static GCP IP
+`34.28.177.95`. The original deployment used the `sslip.io` fallback because
+the local Cloudflare token available during deployment returned `403` for DNS
+mutation. The owner-created `A` record is now live, so the OpenAgents subdomain
+is canonical and the fallback remains only an emergency verification endpoint.
 
 ## GCP Resources
 
@@ -54,7 +54,9 @@ SpacetimeDB CLI binary: /stdb/bin/2.6.0/spacetimedb-cli
 SpacetimeDB service: spacetimedb.service
 Listen address: 127.0.0.1:3000
 Reverse proxy: nginx
-Certificate: Let's Encrypt for spacetime.34.28.177.95.sslip.io
+Certificate: Let's Encrypt lineage spacetime.34.28.177.95.sslip.io
+Certificate SANs: spacetime.openagents.com, spacetime.34.28.177.95.sslip.io
+Certificate path: /etc/letsencrypt/live/spacetime.34.28.177.95.sslip.io/fullchain.pem
 Certificate renewal: certbot.timer
 ```
 
@@ -93,13 +95,13 @@ Public route probes:
 
 ```bash
 curl -sS -o /tmp/spacetime-root.txt -w '%{http_code} %{ssl_verify_result} %{remote_ip}\n' \
-  https://spacetime.34.28.177.95.sslip.io/
+  https://spacetime.openagents.com/
 
 curl -sS -o /tmp/spacetime-identity.txt -w '%{http_code} %{ssl_verify_result} %{remote_ip}\n' \
-  https://spacetime.34.28.177.95.sslip.io/v1/identity
+  https://spacetime.openagents.com/v1/identity
 
 curl -sS -o /tmp/spacetime-subscribe.txt -w '%{http_code} %{ssl_verify_result} %{remote_ip}\n' \
-  https://spacetime.34.28.177.95.sslip.io/v1/database/openagents-world/subscribe
+  https://spacetime.openagents.com/v1/database/openagents-world/subscribe
 ```
 
 Observed:
@@ -172,14 +174,15 @@ Publish from a VM-local WASM path:
 ```bash
 sudo -u spacetimedb /stdb/bin/2.6.0/spacetimedb-cli publish \
   -s local \
-  --bin-path /tmp/openagents_world.wasm \
+  --bin-path /tmp/openagents-world.wasm \
   openagents-world
 ```
 
 Runbook follow-up:
 
-- add the permanent `spacetime.openagents.com` DNS record;
-- issue a replacement Let's Encrypt certificate for `spacetime.openagents.com`;
+- keep `spacetime.openagents.com` as the canonical public endpoint;
 - publish the first `openagents-world` module once the schema is ready;
+- wire a service bridge from the public Tassadar projection to SpacetimeDB rows;
 - add uptime checks and snapshots before meaningful world data accumulates.
-
+- add DNS automation only after a Cloudflare credential with the right zone
+  scope is available.
