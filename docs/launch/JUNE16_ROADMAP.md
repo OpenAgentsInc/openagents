@@ -17,10 +17,12 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   `/blog/tassadar-run-is-live` (#5018) + the launch forum thread. #5124 verifier
   bug fixed+regression-tested; #5051/#5061/#5121 closed. Run shows
   `providerConfirmedSettledPayoutSats=5`, `qualifiedContributorCount=1`.
-- **Live promises:** source + **deployed worker now serve `2026-06-16.8`**
+- **Live promises:** source now targets **`2026-06-17.1`**
   (verified live at `/api/public/product-promises`). `.6` flipped the training
   gate, `.7` flipped the install promise, `.8` added an honest auto-update
-  caveat (see §H). Counts shift as promises flip.
+  caveat, `.9` proved signed-binary OTA, and `2026-06-17.1` flips the scoped
+  Spark offline-receive promise green after recipient-visible rc.12 evidence
+  (see §H). Counts shift as promises flip.
 - **⏭ NEXT (before cutting stable v1.0): three live gates** — Spark fallback
   payout, auto-payout, and auto-update, all tested with the RC. See §H.
 - **🧪 rc.7 SHIPPED + offline-payout rail LIVE (16th):**
@@ -75,6 +77,55 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   post-list error channel + two other pre-existing own-source errors). The wave
   continued with the real **`/login` page + email OTP** (#5111, deployed) and the
   **`/animations`** three.js playground — see §F.
+
+## Late-16th updates (homepage stats realtime + offline-receive root cause)
+
+- **🏠 Homepage pylon-stats — instant + near-realtime (#5050).** Owner reported the
+  stats bar (PYLONS ONLINE / WORKING NOW / SATS SETTLED · 24H / TRAINING
+  CONTRIBUTORS) showed `…` for ~15s and didn't update live. Root cause:
+  `GET /api/public/pylon-stats` took ~5s/call from a **serial N+1** in the
+  settlement-totals computation (up to 3 sequential D1 reads per settlement
+  receipt) with **no caching** (`no-store`, recomputed per request/visitor), and
+  the client only polled every **15s**. Fixed: parallelized the N+1
+  (`Promise.all` + memoized intent reads, same semantics), added a ~4s in-isolate
+  snapshot cache (test-bypassed), and dropped the client poll to **3s**. Warm
+  latency ~5s → sub-200ms; `…` is now a brief flash; refresh ~5× faster. Phase 2
+  (zero-flash + true push): SSR the initial snapshot + a presence Durable Object
+  WebSocket/SSE. Audit: `docs/2026-06-16-homepage-pylon-stats-realtime-audit.md`.
+- **🏠 Homepage SATS SETTLED + TRAINING CONTRIBUTORS corrected (17th follow-up).**
+  The first #5050 pass fixed latency but the value still undercounted reality:
+  `SATS SETTLED · 24H` only summed NIP-90 market receipts, excluding the real
+  direct treasury/tips-buffer payouts made during the launch-recognition work;
+  `TRAINING CONTRIBUTORS` still read hardcoded zeros. Fixed in the public stats
+  projection: `publicRealSatsSettled24h` composes real settled treasury outflows,
+  NIP-90 settled receipts, and accepted-work settlement receipts while avoiding
+  accepted-work/treasury double-counting; the homepage now prefers that field.
+  Training contributors now read the live Tassadar run authority store's distinct
+  contributor lease refs instead of stale registrations or constants. The older
+  strict accepted-work gate remains separate: direct treasury outflows are not
+  upgraded into accepted-work settlement.
+- **🔌 Offline-receive (#5166) fully root-caused + proven on real infra.** The
+  "sent-but-invisible" recognition sats were **unclaimed Lightning HTLCs**: a
+  payment to a Spark Lightning Address arrives as a `waitingForPreimage` HTLC the
+  recipient must **claim** before it credits — invisible in both `getInfo` balance
+  and `unclaimedDepositCount`, and the one-shot helper never claimed. Ruled out
+  the bigint-balance theory (direct SDK probe: `balanceSats` is a number) and
+  fixed the separate binary bug (the compiled binary baked a build-machine WASM
+  path; rc.11 embeds the WASM). **Proven end-to-end on `pylon-gcp-1`** (real
+  Linux, full egress): treasury → Spark Lightning Address → `backup-claim` →
+  balance credited. Shipped rc.8→**rc.12** (OTA feed + npm `rc` + GH): `backup-claim`,
+  `backup-status` now reads the real balance + surfaces read-only
+  `claimableHtlcCount/Sats`, WASM-embed + build guard. **Trigger recipient-
+  confirmed the real 50,000-sat backup balance on rc.12**, so
+  `payments.offline_receive_spark_fallback.v1` is now green for the scoped
+  receive/claim/visible-backup-balance promise (`2026-06-17.1`). This does **not**
+  claim one spendable MDK balance yet: Spark remains receive-only, and the
+  consolidation direction is documented at
+  `docs/payments/2026-06-17-spark-mdk-balance-consolidation-options.md`
+  (selected path: unified balance view first, then real consented Spark→MDK
+  sweep). Open integrity item: the green `training.monday` gate is backed by a
+  **simulation** settlement receipt (`realBitcoinMoved:false`) — owner's call
+  (flagged, not flipped).
 
 ## A. Short-term bug fixes — ✅ all closed (16th)
 
@@ -502,11 +553,14 @@ three things tested live on that RC.** Audit of each as of 2026-06-16:
   missing LNURL resolution, now shipped; failure reasons are also no longer
   masked. rc.8 also fixed the `appendLedgerEvent` crash + clean exit + mysql2
   (#5162).
-- **Remaining:** Whitefang + Orrery have no Lightning Address on file yet — they
-  update to rc.8 + run the publish flow, then their 50k pays the same way.
-  Promise `payments.offline_receive_spark_fallback.v1` stays **yellow** until a
-  recipient confirms wallet-visible receipt (receipt-first; Trigger's send
-  succeeded, pending his wallet-side confirmation).
+- **Promise flip:** Trigger's recipient-side rc.12 proof confirms the real
+  50,000-sat backup balance is visible after claim, so
+  `payments.offline_receive_spark_fallback.v1` is now **green** for offline
+  receive/claim/visible backup balance. Whitefang + Orrery still need their
+  Lightning Address publish/claim path for their own 50k payouts, but they no
+  longer block the scoped product promise. The single-balance follow-up is
+  separate: ship a unified balance view first, then finish/prove a consented
+  Spark→MDK sweep before calling Spark backup funds MDK-spendable.
 - **#5151** (heartbeat `walletReadyNow=false`) — **fix implemented + server
   deployed** (`0fcacbc6b` / worker `09c5a042`): the heartbeat now publishes live
   wallet receive-readiness so an online, receive-ready node is no longer skipped

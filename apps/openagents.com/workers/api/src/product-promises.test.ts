@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-16.9')
+    expect(decoded.version).toBe('2026-06-17.1')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -270,6 +270,18 @@ describe('public product promises document', () => {
           state: 'yellow',
         }),
         expect.objectContaining({
+          blockerRefs: [],
+          evidenceRefs: expect.arrayContaining([
+            'apps/pylon/docs/2026-06-15-spark-backup-receive-runbook.md',
+            'https://openagents.com/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9#post-734d9003-e177-457e-8e33-757deda644ae',
+          ]),
+          promiseId: 'payments.offline_receive_spark_fallback.v1',
+          state: 'green',
+          unsafeCopy: expect.stringContaining(
+            'do not call the Spark backup balance a unified MDK spendable balance',
+          ),
+        }),
+        expect.objectContaining({
           evidenceRefs: expect.arrayContaining([
             'apps/openagents.com/docs/2026-06-10-compliant-usage-labor-policy.md',
           ]),
@@ -360,12 +372,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-16.9', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-17.1', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-16.9',
+      expectedVersion: '2026-06-17.1',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-16.9',
+      servedVersion: '2026-06-17.1',
       status: 'ready',
     })
     expect(
@@ -375,7 +387,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-16.9',
+      servedVersion: '2026-06-17.1',
       status: 'blocked',
     })
   })

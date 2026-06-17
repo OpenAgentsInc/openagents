@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-16.9'
+export const PublicProductPromisesVersion = '2026-06-17.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -2367,29 +2367,29 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'payments.offline_receive_spark_fallback.v1',
         productArea: 'payments',
         audience: ['contributor', 'operator', 'public'],
-        state: 'yellow',
+        state: 'green',
         claim:
-          'When a node’s primary MDK wallet is offline or cannot mint a receive request, the node can still receive a tip or payout through a narrow, opt-in, receive-only Spark fallback (a static Spark address / single-use Spark invoice), then reconcile and sweep the funds on the next Spark sync.',
+          'When a node’s primary MDK wallet is offline or cannot mint a receive request, the node can still receive a tip or payout through a narrow, opt-in, receive-only Spark fallback (for example a Spark-backed Lightning Address), then claim and see the credited backup balance on the next Spark sync. Sweeping that backup balance into the primary MDK wallet remains a separate consented consolidation step.',
         safeCopy:
-          'Built and inert, opt-in, not yet proven live. The problem is real: a recipient must currently be online with inbound liquidity to receive a Lightning tip/payout, so offline nodes fail (`agent_wallet_send_failed`, observed on real RC testers). The receive-only Spark fallback is now built (slices 1-2 of #5078) behind an off-by-default opt-in flag (`PYLON_SPARK_BACKUP_ENABLED`): MDK stays the primary rail; when MDK is offline Pylon can hand out a static Spark address as a backup RECEIVE target (Breez SDK Spark, WASM-based, bundled as an optional dependency), with funds detected/claimed/credited/swept only after a Spark sync, under the legacy-Spark migration consent model. It stays inert until an owner sets a Breez API key and enables the flag, and it has not yet completed a live offline-recipient receive. Describe it as built-but-unproven offline-receive resilience, not a live capability.',
+          'Live for the scoped offline-receive claim. MDK remains the primary rail, but a Pylon on rc.12 can publish a Spark-backed Lightning Address as a backup RECEIVE target, the treasury can pay that address through normal LNURL-pay -> BOLT11 -> MDK send, and the recipient can run the read-only Spark backup commands to claim and see the credited sats while the primary MDK wallet was not accepting inbound. Proven on real infrastructure and then recipient-confirmed: a 50,000-sat recognition payout to the Spark Lightning Address became visible in the recipient backup balance after `backup-claim` / `backup-status`. Describe this as live backup receive resilience, not as unified spendable wallet balance.',
         unsafeCopy:
-          'Do not claim Spark receive works live yet (no offline-recipient receive has reconciled on a real Spark sync), do not imply Spark regains send/payout/accepted-work-settlement/public-payout-target authority, and do not mark Spark-fallback funds detected, credited, swept, or settled before a real Spark sync confirms them. No raw historical Spark credential material is reused.',
+          'Do not imply Spark regains send/payout/accepted-work-settlement authority, do not call the Spark backup balance a unified MDK spendable balance, and do not mark backup funds swept into MDK until a consented sweep/reconcile path records that later receipt. No raw historical Spark credential material is reused.',
         evidenceRefs: [
           'apps/pylon/docs/2026-06-15-spark-backup-receive-fallback-audit.md',
+          'apps/pylon/docs/2026-06-15-spark-backup-receive-runbook.md',
           'apps/pylon/docs/legacy-spark-wallet-migration.md',
           'apps/pylon/src/wallet.ts',
           'apps/pylon/src/spark-backup-helper.ts',
           'apps/pylon/tests/spark-backup-helper.test.ts',
           'docs/launch/JUNE16_ROADMAP.md',
+          'docs/payments/2026-06-17-spark-mdk-balance-consolidation-options.md',
+          'https://openagents.com/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9#post-734d9003-e177-457e-8e33-757deda644ae',
           'promise:payments.money_dev_kit.v1',
           'promise:payments.reliable_tips_sweepable_balances.v1',
         ],
-        blockerRefs: [
-          'blocker.product_promises.spark_backup_receive_live_smoke_missing',
-          'blocker.product_promises.spark_receive_sync_reconcile_missing',
-        ],
+        blockerRefs: [],
         verification:
-          'Yellow is satisfied by the shipped opt-in receive-only core plus the Breez SDK Spark adapter (slices 1-2 of #5078) with mock-backed unit tests, inert by default (off without a Breez API key and `PYLON_SPARK_BACKUP_ENABLED`), receive-only (no send/payout/settlement, `PayoutTargetKind` unchanged), and public projections emitting only redacted refs. The receive path is live-proven under both Node and Pylon’s Bun runtime: with the embedded key it returns a real mainnet static Spark address. Bun support is via a `bun:sqlite` port of the SDK storage injected through `SdkBuilder.withStorage()` (issue #5080, resolved). Green now requires only the live offline-recipient smoke in real Pylon: a static Spark address handed out while MDK is offline, a sync → detect → claim → sweep → reconcile path with public-safe receipts, and public evidence of an offline-recipient receive that reconciled on next sync — with send, payout, and settlement authority still gated off.',
+          'Green is satisfied by the shipped opt-in receive-only core, Breez SDK Spark adapter, Bun `bun:sqlite` storage, embedded-key out-of-box address readiness, LNURL-pay treasury payout fallback, rc.12 `backup-claim`, and a real recipient-visible proof: treasury sent 50,000 sats to a Spark-backed Lightning Address and the recipient’s rc.12 read-only backup-status reported the credited 50,000-sat balance after claim. The claim remains scoped to receive resilience. Spark send, public payout-target authority, accepted-work settlement authority, and a unified MDK spendable balance remain separate gates.',
         authorityBoundary:
           'The Spark fallback is RECEIVE-ONLY. It grants no send, payout, accepted-work settlement, or public payout-target authority; activating any of those requires a separate explicit gate.',
       },

@@ -32,6 +32,9 @@ import {
   currentEpochMillis,
   epochMillisToIsoTimestamp,
 } from './runtime-primitives'
+import type { TrainingAuthorityStore } from './training-run-window-authority'
+import { publicTrainingRunSummary } from './training-run-window-authority'
+import type { TreasuryTransactionStore } from './treasury-page-routes'
 
 export const PUBLIC_NEXUS_STATS_URL = 'https://nexus.openagents.com/api/stats'
 export const PUBLIC_PYLON_STATS_URL =
@@ -46,6 +49,7 @@ const PUBLIC_PYLON_EARNING_LAUNCH_GATE_REF =
 const PUBLIC_PYLON_SETTLEMENT_TOTALS_GATE_REF =
   'gate.public.pylon.accepted_work_settlement_receipts.v1'
 const OPENAGENTS_PUBLIC_APP_URL = 'https://openagents.com'
+const DEFAULT_STATS_TRAINING_RUN_REF = 'run.tassadar.executor.20260615'
 const onlineHeartbeatStatuses = new Set([
   'available',
   'healthy',
@@ -74,6 +78,18 @@ export type PublicPylonSettlementReceiptStore = Readonly<{
     eventRef: string,
   ) => Promise<NexusTreasuryPayoutReconciliationEventRecord | undefined>
 }>
+
+export type PublicTreasuryPayoutStatsStore = Pick<
+  TreasuryTransactionStore,
+  'listRecent'
+>
+export type PublicTrainingContributorStatsStore = Pick<
+  TrainingAuthorityStore,
+  | 'listVerificationChallengesForRun'
+  | 'listWindowLeasesForRun'
+  | 'listWindowsForRun'
+  | 'readRun'
+>
 
 export class PublicRecentPylon extends S.Class<PublicRecentPylon>(
   'PublicRecentPylon',
@@ -186,6 +202,12 @@ export class PublicPylonStats extends S.Class<PublicPylonStats>(
   nexusAcceptedWorkPayoutReceiptRefs: S.Array(S.String),
   nexusAcceptedWorkSettlementGate: PublicPylonAcceptedWorkSettlementGate,
   nip90MarketSettlementStats: PublicNip90MarketSettlementStats,
+  treasuryPayoutSatsPaidTotal: S.NullOr(S.Int),
+  treasuryPayoutSatsPaid24h: S.NullOr(S.Int),
+  treasuryPayoutCountTotal: S.NullOr(S.Int),
+  treasuryPayoutCount24h: S.NullOr(S.Int),
+  publicRealSatsSettledTotal: S.NullOr(S.Int),
+  publicRealSatsSettled24h: S.NullOr(S.Int),
   trainingAssignedContributors: S.Int,
   trainingAcceptedContributors: S.Int,
   trainingModelProgressContributors: S.Int,
@@ -436,6 +458,25 @@ type PublicPylonSettlementTotals = Readonly<{
 
 type PublicNip90MarketSettlementTotals = PublicNip90MarketSettlementStats
 
+type PublicTreasuryPayoutTotals = Readonly<{
+  available: boolean
+  error: string | null
+  payoutCount24h: number | null
+  payoutCountTotal: number | null
+  satsPaid24h: number | null
+  satsPaidTotal: number | null
+  sourceRefs: ReadonlyArray<string>
+}>
+
+type PublicTrainingContributorTotals = Readonly<{
+  acceptedContributors: number
+  assignedContributors: number
+  available: boolean
+  error: string | null
+  modelProgressContributors: number
+  sourceRefs: ReadonlyArray<string>
+}>
+
 const emptyUnavailableSettlementTotals = (
   error: string,
 ): PublicPylonSettlementTotals => ({
@@ -507,6 +548,103 @@ const emptyAvailableSettlementTotals = (): PublicPylonSettlementTotals => ({
   ],
 })
 
+const emptyUnavailableTreasuryPayoutTotals = (
+  error: string,
+): PublicTreasuryPayoutTotals => ({
+  available: false,
+  error,
+  payoutCount24h: null,
+  payoutCountTotal: null,
+  satsPaid24h: null,
+  satsPaidTotal: null,
+  sourceRefs: ['route:/api/public/pylon-stats'],
+})
+
+const emptyAvailableTreasuryPayoutTotals =
+  (): PublicTreasuryPayoutTotals => ({
+    available: true,
+    error: null,
+    payoutCount24h: 0,
+    payoutCountTotal: 0,
+    satsPaid24h: 0,
+    satsPaidTotal: 0,
+    sourceRefs: [
+      'route:/api/public/pylon-stats',
+      'openagents.public.treasury_transactions.outbound_settled',
+    ],
+  })
+
+const emptyUnavailableTrainingContributorTotals = (
+  error: string,
+): PublicTrainingContributorTotals => ({
+  acceptedContributors: 0,
+  assignedContributors: 0,
+  available: false,
+  error,
+  modelProgressContributors: 0,
+  sourceRefs: ['route:/api/public/pylon-stats'],
+})
+
+const emptyAvailableTrainingContributorTotals =
+  (): PublicTrainingContributorTotals => ({
+    acceptedContributors: 0,
+    assignedContributors: 0,
+    available: true,
+    error: null,
+    modelProgressContributors: 0,
+    sourceRefs: [
+      'route:/api/public/pylon-stats',
+      `route:/api/public/training/runs/${DEFAULT_STATS_TRAINING_RUN_REF}`,
+    ],
+  })
+
+const knownSum = (
+  values: ReadonlyArray<number | null>,
+): number | null => {
+  const known = values.filter((value): value is number => value !== null)
+
+  return known.length === 0
+    ? null
+    : known.reduce((total, value) => total + value, 0)
+}
+
+const marketSats24h = (
+  totals: PublicNip90MarketSettlementTotals,
+): number | null =>
+  totals.available
+    ? Math.floor(
+        totals.compute.satsSettled24h +
+          totals.data.satsSettled24h +
+          totals.labor.satsSettled24h,
+      )
+    : null
+
+const marketSatsTotal = (
+  totals: PublicNip90MarketSettlementTotals,
+): number | null =>
+  totals.available
+    ? Math.floor(
+        totals.compute.satsSettledTotal +
+          totals.data.satsSettledTotal +
+          totals.labor.satsSettledTotal,
+      )
+    : null
+
+const publicRealSatsSettled = (input: {
+  acceptedWorkSats: number | null
+  marketSats: number | null
+  treasuryOutflowSats: number | null
+}): number | null => {
+  const localTreasuryOrAccepted =
+    input.treasuryOutflowSats === null
+      ? input.acceptedWorkSats
+      : input.acceptedWorkSats === null
+        ? input.treasuryOutflowSats
+        : Math.max(input.treasuryOutflowSats, input.acceptedWorkSats)
+
+  return knownSum([localTreasuryOrAccepted, input.marketSats])
+}
+
 const publicPylonAcceptedWorkSettlementGate = (
   totals: PublicPylonSettlementTotals,
 ): PublicPylonAcceptedWorkSettlementGate => {
@@ -572,6 +710,97 @@ const settledWithin24h = (createdAt: string, nowUnixMs: number): boolean => {
     nowUnixMs - createdMs >= 0 &&
     nowUnixMs - createdMs <= SEEN_24H_WINDOW_MS
   )
+}
+
+const publicTreasuryPayoutTotalsFromTransactions = async (
+  input: Readonly<{
+    nowUnixMs: number
+    treasuryPayoutStore: PublicTreasuryPayoutStatsStore
+  }>,
+): Promise<PublicTreasuryPayoutTotals> => {
+  const transactions = await input.treasuryPayoutStore.listRecent(1000)
+  const settledOut = transactions.filter(
+    transaction =>
+      transaction.direction === 'out' &&
+      transaction.state === 'settled' &&
+      Number.isInteger(transaction.amountSat) &&
+      transaction.amountSat > 0,
+  )
+  const settledOut24h = settledOut.filter(transaction =>
+    settledWithin24h(
+      transaction.settledAt ?? transaction.createdAt,
+      input.nowUnixMs,
+    ),
+  )
+
+  return {
+    ...emptyAvailableTreasuryPayoutTotals(),
+    payoutCount24h: settledOut24h.length,
+    payoutCountTotal: settledOut.length,
+    satsPaid24h: settledOut24h.reduce(
+      (total, transaction) => total + transaction.amountSat,
+      0,
+    ),
+    satsPaidTotal: settledOut.reduce(
+      (total, transaction) => total + transaction.amountSat,
+      0,
+    ),
+  }
+}
+
+const publicTrainingContributorTotalsFromStore = async (
+  input: Readonly<{
+    nowUnixMs: number
+    store: PublicTrainingContributorStatsStore
+    trainingRunRef?: string
+  }>,
+): Promise<PublicTrainingContributorTotals> => {
+  const trainingRunRef = input.trainingRunRef ?? DEFAULT_STATS_TRAINING_RUN_REF
+  const nowIso = epochMillisToIsoTimestamp(input.nowUnixMs)
+  const run = await input.store.readRun(trainingRunRef)
+
+  if (run === undefined) {
+    return emptyAvailableTrainingContributorTotals()
+  }
+
+  const [windows, leases, challenges] = await Promise.all([
+    input.store.listWindowsForRun(trainingRunRef, 100),
+    input.store.listWindowLeasesForRun(trainingRunRef, 1000),
+    input.store.listVerificationChallengesForRun(trainingRunRef, 1000),
+  ])
+  const summary = publicTrainingRunSummary({
+    challenges,
+    leases,
+    nowIso,
+    run,
+    windows,
+  })
+  const assignedContributors =
+    summary.metrics.assignedContributorCount.value
+  const acceptedContributors =
+    summary.metrics.qualifiedContributorCount.value
+  const modelProgressContributors = Math.max(
+    assignedContributors,
+    acceptedContributors,
+    summary.realGradient.deviceRequirement.observedDistinctContributorDevices,
+    summary.realGradient.leaderboardRows.length,
+  )
+
+  return {
+    acceptedContributors,
+    assignedContributors,
+    available: true,
+    error: null,
+    modelProgressContributors,
+    sourceRefs: uniqueRefs([
+      'route:/api/public/pylon-stats',
+      `route:/api/public/training/runs/${trainingRunRef}`,
+      ...summary.sourceRefs,
+      ...summary.metrics.assignedContributorCount.sourceRefs,
+      ...summary.metrics.qualifiedContributorCount.sourceRefs,
+      ...summary.realGradient.deviceRequirement.sourceRefs,
+    ]),
+  }
 }
 
 const marketStreamStatsFromReceipts = (
@@ -673,70 +902,73 @@ const publicPylonSettlementTotalsFromReceipts = async (
   const settlementReceipts = receipts
     .filter(receipt => receipt.receiptKind === 'settlement_recorded')
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-  const countedByIntent = await settlementReceipts.reduce(
-    async (previous, receipt) => {
-      const counted = await previous
 
-      if (counted.has(receipt.payoutIntentRef)) {
-        return counted
-      }
-
-      const intent = await input.receiptStore.readPayoutIntentByRef(
-        receipt.payoutIntentRef,
-      )
-      const event =
+  // #5050 perf: the old reduce did up to 3 sequential D1 reads PER receipt (a
+  // serial N+1 that made /api/public/pylon-stats take ~5s). Resolve every
+  // receipt's intent/event/attempt in PARALLEL instead, memoizing intent reads
+  // by ref (multiple receipts share an intent). Then accumulate in sorted order
+  // with the exact same first-pass-per-intent semantics.
+  const intentReads = new Map<
+    string,
+    ReturnType<PublicPylonSettlementReceiptStore['readPayoutIntentByRef']>
+  >()
+  const readIntent = (ref: string) => {
+    const existing = intentReads.get(ref)
+    if (existing !== undefined) return existing
+    const pending = input.receiptStore.readPayoutIntentByRef(ref)
+    intentReads.set(ref, pending)
+    return pending
+  }
+  const resolved = await Promise.all(
+    settlementReceipts.map(async receipt => {
+      const [intent, event, attempt] = await Promise.all([
+        readIntent(receipt.payoutIntentRef),
         receipt.eventRef === null
-          ? undefined
-          : await input.receiptStore.readReconciliationEventByRef(
-              receipt.eventRef,
-            )
-      const attempt =
+          ? Promise.resolve(undefined)
+          : input.receiptStore.readReconciliationEventByRef(receipt.eventRef),
         receipt.payoutAttemptRef === null
-          ? undefined
-          : await input.receiptStore.readPayoutAttemptByRef(
-              receipt.payoutAttemptRef,
-            )
-
-      if (intent === undefined || intent.acceptedWorkRefs.length === 0) {
-        return counted
-      }
-
-      const detail = nexusPylonPublicReceiptDetailFromLedger({
-        appUrl: OPENAGENTS_PUBLIC_APP_URL,
-        attempt,
-        event,
-        intent,
-        nowIso,
-        receipt,
-      })
-      const sats = satsFromBitcoinMillisats(intent.amount)
-
-      if (
-        sats === null ||
-        !receiptPublicProjectionIsRealBitcoin(receipt) ||
-        !detail.realBitcoinMoved ||
-        detail.receiptKind !== 'settlement_recorded' ||
-        detail.settlement.state !== 'settled' ||
-        !detail.payoutMovement.terminalSettlementClaimAllowed
-      ) {
-        return counted
-      }
-
-      counted.set(receipt.payoutIntentRef, {
-        receiptRef: receipt.receiptRef,
-        sats,
-        settledAt: receipt.createdAt,
-      })
-
-      return counted
-    },
-    Promise.resolve(
-      new Map<
-        string,
-        Readonly<{ receiptRef: string; sats: number; settledAt: string }>
-      >(),
-    ),
+          ? Promise.resolve(undefined)
+          : input.receiptStore.readPayoutAttemptByRef(receipt.payoutAttemptRef),
+      ])
+      return { attempt, event, intent, receipt }
+    }),
   )
+
+  const countedByIntent = new Map<
+    string,
+    Readonly<{ receiptRef: string; sats: number; settledAt: string }>
+  >()
+  for (const { attempt, event, intent, receipt } of resolved) {
+    if (countedByIntent.has(receipt.payoutIntentRef)) continue
+    if (intent === undefined || intent.acceptedWorkRefs.length === 0) continue
+
+    const detail = nexusPylonPublicReceiptDetailFromLedger({
+      appUrl: OPENAGENTS_PUBLIC_APP_URL,
+      attempt,
+      event,
+      intent,
+      nowIso,
+      receipt,
+    })
+    const sats = satsFromBitcoinMillisats(intent.amount)
+
+    if (
+      sats === null ||
+      !receiptPublicProjectionIsRealBitcoin(receipt) ||
+      !detail.realBitcoinMoved ||
+      detail.receiptKind !== 'settlement_recorded' ||
+      detail.settlement.state !== 'settled' ||
+      !detail.payoutMovement.terminalSettlementClaimAllowed
+    ) {
+      continue
+    }
+
+    countedByIntent.set(receipt.payoutIntentRef, {
+      receiptRef: receipt.receiptRef,
+      sats,
+      settledAt: receipt.createdAt,
+    })
+  }
 
   const counted = [...countedByIntent.values()]
   const receiptRefs = uniqueRefs(counted.map(item => item.receiptRef))
@@ -796,6 +1028,12 @@ export const publicPylonStatsFromRegistrations = (
   marketSettlementTotals: PublicNip90MarketSettlementTotals = emptyUnavailableMarketSettlementTotals(
     'NIP-90 market receipt store unavailable.',
   ),
+  treasuryPayoutTotals: PublicTreasuryPayoutTotals = emptyUnavailableTreasuryPayoutTotals(
+    'Treasury payout transaction store unavailable.',
+  ),
+  trainingContributorTotals: PublicTrainingContributorTotals = emptyUnavailableTrainingContributorTotals(
+    'Training run authority store unavailable.',
+  ),
 ): PublicPylonStats => {
   const eligibleRegistrations = registrations.filter(
     isActiveEligibleRegistration,
@@ -838,6 +1076,16 @@ export const publicPylonStatsFromRegistrations = (
   const pylonsWalletReadyNow = walletReadyRegistrations.length
   const pylonsAssignmentReadyNow = assignmentReadyRegistrations.length
   const settlementGate = publicPylonAcceptedWorkSettlementGate(settlementTotals)
+  const publicRealSatsSettled24h = publicRealSatsSettled({
+    acceptedWorkSats: settlementTotals.satsPaid24h,
+    marketSats: marketSats24h(marketSettlementTotals),
+    treasuryOutflowSats: treasuryPayoutTotals.satsPaid24h,
+  })
+  const publicRealSatsSettledTotal = publicRealSatsSettled({
+    acceptedWorkSats: settlementTotals.satsPaidTotal,
+    marketSats: marketSatsTotal(marketSettlementTotals),
+    treasuryOutflowSats: treasuryPayoutTotals.satsPaidTotal,
+  })
 
   return new PublicPylonStats({
     available: true,
@@ -863,9 +1111,18 @@ export const publicPylonStatsFromRegistrations = (
     nexusAcceptedWorkPayoutReceiptRefs: [...settlementTotals.receiptRefs],
     nexusAcceptedWorkSettlementGate: settlementGate,
     nip90MarketSettlementStats: marketSettlementTotals,
-    trainingAssignedContributors: 0,
-    trainingAcceptedContributors: 0,
-    trainingModelProgressContributors: 0,
+    treasuryPayoutSatsPaidTotal: treasuryPayoutTotals.satsPaidTotal,
+    treasuryPayoutSatsPaid24h: treasuryPayoutTotals.satsPaid24h,
+    treasuryPayoutCountTotal: treasuryPayoutTotals.payoutCountTotal,
+    treasuryPayoutCount24h: treasuryPayoutTotals.payoutCount24h,
+    publicRealSatsSettledTotal,
+    publicRealSatsSettled24h,
+    trainingAssignedContributors:
+      trainingContributorTotals.assignedContributors,
+    trainingAcceptedContributors:
+      trainingContributorTotals.acceptedContributors,
+    trainingModelProgressContributors:
+      trainingContributorTotals.modelProgressContributors,
     counterWindows: publicPylonStatsCounterWindows(),
     recentPylons,
     earningLaunchGate: publicPylonEarningLaunchGate({
@@ -881,12 +1138,18 @@ export const publicPylonStatsFromRegistrations = (
       'caveat.public.assignment_ready_is_not_payout_evidence',
       'caveat.public.wallet_ready_is_receive_readiness_not_send_ready',
       'caveat.public.accepted_work_totals_require_settled_real_bitcoin_receipts',
+      'caveat.public.sats_settled_24h_includes_real_settled_treasury_outflows_nip90_and_accepted_work_receipts',
+      'caveat.public.treasury_outflows_are_not_accepted_work_claims',
+      'caveat.public.accepted_work_not_added_on_top_of_treasury_outflows_to_avoid_double_count',
+      'caveat.public.training_contributors_are_live_run_contributor_refs_not_stale_registrations',
       'caveat.public.no_sensitive_material',
     ],
     sourceRefs: uniqueRefs([
       ...sourceRefs,
       ...settlementTotals.sourceRefs,
       ...marketSettlementTotals.sourceRefs,
+      ...treasuryPayoutTotals.sourceRefs,
+      ...trainingContributorTotals.sourceRefs,
     ]),
   })
 }
@@ -962,6 +1225,12 @@ export const publicPylonStatsFromNexusPayload = (
     nip90MarketSettlementStats: emptyUnavailableMarketSettlementTotals(
       'Legacy Nexus public payload did not include NIP-90 market receipts.',
     ),
+    treasuryPayoutSatsPaidTotal: null,
+    treasuryPayoutSatsPaid24h: null,
+    treasuryPayoutCountTotal: null,
+    treasuryPayoutCount24h: null,
+    publicRealSatsSettledTotal: legacyTotals.satsPaidTotal,
+    publicRealSatsSettled24h: legacyTotals.satsPaid24h,
     trainingAssignedContributors: intValue(
       payload.training_assigned_contributors,
     ),
@@ -1012,6 +1281,12 @@ const unavailablePublicPylonStats = (error: string): PublicPylonStats =>
       emptyUnavailableSettlementTotals(error),
     ),
     nip90MarketSettlementStats: emptyUnavailableMarketSettlementTotals(error),
+    treasuryPayoutSatsPaidTotal: null,
+    treasuryPayoutSatsPaid24h: null,
+    treasuryPayoutCountTotal: null,
+    treasuryPayoutCount24h: null,
+    publicRealSatsSettledTotal: null,
+    publicRealSatsSettled24h: null,
     trainingAssignedContributors: 0,
     trainingAcceptedContributors: 0,
     trainingModelProgressContributors: 0,
@@ -1034,6 +1309,8 @@ export const publicPylonStatsSnapshot = (
     marketReceiptStore?: Nip90MarketReceiptStore | undefined
     receiptStore?: PublicPylonSettlementReceiptStore | undefined
     store: PublicPylonStatsStore
+    trainingStore?: PublicTrainingContributorStatsStore | undefined
+    treasuryPayoutStore?: PublicTreasuryPayoutStatsStore | undefined
   }>,
 ): Effect.Effect<PublicPylonStats> =>
   Effect.gen(function* () {
@@ -1050,6 +1327,8 @@ export const publicPylonStatsSnapshot = (
     })
     const receiptStore = input.receiptStore
     const marketReceiptStore = input.marketReceiptStore
+    const treasuryPayoutStore = input.treasuryPayoutStore
+    const trainingStore = input.trainingStore
     const settlementTotals =
       receiptStore === undefined
         ? emptyUnavailableSettlementTotals(
@@ -1092,12 +1371,58 @@ export const publicPylonStatsSnapshot = (
               ),
             ),
           )
+    const treasuryPayoutTotals =
+      treasuryPayoutStore === undefined
+        ? emptyUnavailableTreasuryPayoutTotals(
+            'Treasury payout transaction store unavailable.',
+          )
+        : yield* Effect.tryPromise({
+            catch: error =>
+              new PublicPylonStatsSnapshotError({
+                reason: error instanceof Error ? error.message : String(error),
+              }),
+            try: () =>
+              publicTreasuryPayoutTotalsFromTransactions({
+                nowUnixMs,
+                treasuryPayoutStore,
+              }),
+          }).pipe(
+            Effect.catch(error =>
+              Effect.succeed(
+                emptyUnavailableTreasuryPayoutTotals(error.reason),
+              ),
+            ),
+          )
+    const trainingContributorTotals =
+      trainingStore === undefined
+        ? emptyUnavailableTrainingContributorTotals(
+            'Training run authority store unavailable.',
+          )
+        : yield* Effect.tryPromise({
+            catch: error =>
+              new PublicPylonStatsSnapshotError({
+                reason: error instanceof Error ? error.message : String(error),
+              }),
+            try: () =>
+              publicTrainingContributorTotalsFromStore({
+                nowUnixMs,
+                store: trainingStore,
+              }),
+          }).pipe(
+            Effect.catch(error =>
+              Effect.succeed(
+                emptyUnavailableTrainingContributorTotals(error.reason),
+              ),
+            ),
+          )
 
     return publicPylonStatsFromRegistrations(
       registrations,
       nowUnixMs,
       settlementTotals,
       marketSettlementTotals,
+      treasuryPayoutTotals,
+      trainingContributorTotals,
     )
   }).pipe(
     Effect.catch(error =>

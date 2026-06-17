@@ -23,6 +23,9 @@ const pos = (value: number | null | undefined): number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0
 
 const sumSats24h = (snapshot: PylonStatsSnapshot): number => {
+  const publicReal = pos(snapshot.publicRealSatsSettled24h)
+  if (publicReal > 0) return publicReal
+
   const m = snapshot.nip90MarketSettlementStats
   if (!m) return 0
   return pos(m.compute?.satsSettled24h) + pos(m.data?.satsSettled24h) + pos(m.labor?.satsSettled24h)
@@ -81,7 +84,10 @@ export const mountPylonStats = (
     for (const stat of STATS) controllers[stat.key]?.set(values[stat.key] ?? '0')
   }
   void apply()
-  const timer = setInterval(() => void apply(), options.intervalMs ?? 15_000)
+  // #5050: poll every 3s for near-realtime "pylons join/leave" updates. The
+  // server caches the snapshot (~4s TTL) so this is cheap; each poll returns the
+  // latest cached value instantly instead of recomputing.
+  const timer = setInterval(() => void apply(), options.intervalMs ?? 3_000)
 
   return {
     dispose: () => {

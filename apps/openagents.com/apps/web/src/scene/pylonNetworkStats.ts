@@ -12,6 +12,7 @@ export type PylonStatsSnapshot = {
   readonly status?: string
   readonly pylonsOnlineNow?: number
   readonly pylonSessionsOnlineNow?: number
+  readonly publicRealSatsSettled24h?: number | null
   readonly trainingModelProgressContributors?: number
   readonly nip90MarketSettlementStats?: {
     readonly compute?: { readonly jobsSettled24h?: number; readonly satsSettled24h?: number }
