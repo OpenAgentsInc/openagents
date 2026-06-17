@@ -42,6 +42,11 @@ proper 3D MMO world.
   live scene, so a locked cursor with no camera rotation can be diagnosed from
   the browser console by checking whether mousemove samples arrive and whether
   their `movementX` / `movementY` values are non-zero.
+- `OpenAgentsInc/three-effect@435afe0` fixes the re-entry failure observed in
+  Chrome after Escape/unlock: the scene now requests pointer lock from a real
+  `click` gesture rather than `pointerdown`, suppresses Three's default
+  `pointerlockerror` console dump, catches rejected pointer-lock promises, and
+  emits `lock_error` diagnostics through `[three-effect:wasd_mouselook]`.
 
 ## References Read
 
