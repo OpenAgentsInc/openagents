@@ -84,7 +84,10 @@ signed recut.
 ### 6. Other active lanes (separate epics, not blocking #5176)
 
 - **#5104** Customer #1 dogfood (run our own work on Forge) + **#5098** onboard 3–5
-  teams.
+  teams. **D3.1 (#5200) shipped:** the public-safe cohort evidence ledger now lives
+  at `docs/blitz/forge/2026-06-17-customer-one-cohort-evidence-ledger.md`.
+  Remaining D3 tail: render/record cohort rows and collect at least three real
+  loop-completion bundles before closing #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
