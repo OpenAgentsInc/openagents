@@ -11,7 +11,7 @@ export type TreasuryTransactionRecord = Readonly<{
   id: string
   direction: 'in' | 'out'
   amountSat: number
-  state: 'pending' | 'settled' | 'expired'
+  state: 'pending' | 'settled' | 'expired' | 'failed'
   bolt11: string | null
   paymentRef: string | null
   createdAt: string
@@ -31,13 +31,14 @@ export type TreasuryTransactionStore = Readonly<{
     settledAt: string
   }) => Promise<void>
   expire: (input: { expiredAt: string; id: string }) => Promise<void>
+  fail: (input: { id: string }) => Promise<void>
 }>
 
 type TreasuryTransactionRow = Readonly<{
   id: string
   direction: 'in' | 'out'
   amount_sat: number
-  state: 'pending' | 'settled' | 'expired'
+  state: 'pending' | 'settled' | 'expired' | 'failed'
   bolt11: string | null
   payment_ref: string | null
   created_at: string
@@ -67,6 +68,16 @@ export const makeD1TreasuryTransactionStore = (
       .prepare(
         `UPDATE treasury_transactions
          SET state = 'expired', settled_at = NULL
+         WHERE id = ? AND state = 'pending'`,
+      )
+      .bind(input.id)
+      .run()
+  },
+  fail: async input => {
+    await db
+      .prepare(
+        `UPDATE treasury_transactions
+         SET state = 'failed', settled_at = NULL
          WHERE id = ? AND state = 'pending'`,
       )
       .bind(input.id)

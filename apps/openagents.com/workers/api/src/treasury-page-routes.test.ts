@@ -31,6 +31,15 @@ const makeMemoryStore = (): TreasuryTransactionStore & {
 
       return Promise.resolve()
     },
+    fail: input => {
+      const row = rows.get(input.id)
+
+      if (row !== undefined && row.state === 'pending') {
+        rows.set(input.id, { ...row, state: 'failed', settledAt: null })
+      }
+
+      return Promise.resolve()
+    },
     insert: record => {
       rows.set(record.id, record)
 
@@ -61,7 +70,10 @@ const makeMemoryStore = (): TreasuryTransactionStore & {
   }
 }
 
-const settledOut = (id: string, amountSat: number): TreasuryTransactionRecord => ({
+const settledOut = (
+  id: string,
+  amountSat: number,
+): TreasuryTransactionRecord => ({
   amountSat,
   bolt11: null,
   createdAt: '2026-06-10T18:00:00.000Z',

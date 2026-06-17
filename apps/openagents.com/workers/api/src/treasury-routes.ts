@@ -2,10 +2,12 @@ import { Effect } from 'effect'
 
 import type { ContainerPathFetch } from './http/container-fetch'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import {
-  isLightningAddress,
-  resolveLightningAddressInvoice,
-} from './lnurl-pay'
+import { isLightningAddress, resolveLightningAddressInvoice } from './lnurl-pay'
+import { currentIsoTimestamp } from './runtime-primitives'
+import type {
+  TreasuryTransactionRecord,
+  TreasuryTransactionStore,
+} from './treasury-page-routes'
 import type { XClaimRewardTreasuryDispatchStats } from './x-claim-reward-treasury-dispatcher'
 
 export const TREASURY_SERVICE_TOKEN_HEADER = 'x-treasury-service-token'
@@ -13,6 +15,8 @@ export const TREASURY_SERVICE_TOKEN_HEADER = 'x-treasury-service-token'
 export type TreasuryRouteDependencies = Readonly<{
   serviceLabel?: string
   fetchTreasury?: ContainerPathFetch | undefined
+  fetchTipsBuffer?: ContainerPathFetch | undefined
+  transactionStore?: TreasuryTransactionStore | undefined
   recordPayoutTransaction?:
     | ((input: {
         amountSat: number
@@ -126,6 +130,40 @@ export const handlePublicTreasuryLaunchStatusApi = (
     }),
   )
 }
+
+type TreasuryPaymentStatus = 'pending' | 'succeeded' | 'failed'
+
+type TreasuryTransactionWallet = 'treasury' | 'tips_buffer'
+
+const transactionWallet = (
+  record: TreasuryTransactionRecord,
+): TreasuryTransactionWallet =>
+  record.id.startsWith('tips_buffer_payout_') ? 'tips_buffer' : 'treasury'
+
+const paymentIdForContainerLookup = (paymentRef: string): string | null =>
+  paymentRef.startsWith('payment.treasury.') ||
+  paymentRef.startsWith('payment.tips_buffer.')
+    ? null
+    : paymentRef
+
+const paymentStatusFromPayload = (payload: unknown): TreasuryPaymentStatus => {
+  if (typeof payload !== 'object' || payload === null) {
+    return 'pending'
+  }
+
+  const status = (payload as Record<string, unknown>).status
+
+  return status === 'succeeded' || status === 'failed' ? status : 'pending'
+}
+
+const readTreasuryPaymentStatus = (
+  fetchPaymentStatus: ContainerPathFetch,
+  paymentId: string,
+): Promise<TreasuryPaymentStatus> =>
+  fetchPaymentStatus(`/payments/${encodeURIComponent(paymentId)}`)
+    .then(response => (response.ok ? response.json() : null))
+    .then(paymentStatusFromPayload)
+    .catch(() => 'pending' as const)
 
 const readTreasuryBalance = (
   fetchTreasury: ContainerPathFetch,
@@ -268,6 +306,166 @@ export const handleOperatorTreasuryFundingDestinationApi = (
   )
 }
 
+export const handleOperatorTreasuryTransactionReconcileApi = (
+  request: Request,
+  dependencies: TreasuryRouteDependencies,
+) => {
+  if (request.method !== 'POST') {
+    return Effect.succeed(methodNotAllowed(['POST']))
+  }
+
+  return Effect.tryPromise({
+    catch: () => false,
+    try: () => dependencies.requireAdminApiToken(request),
+  }).pipe(
+    Effect.catch(() => Effect.succeed(false)),
+    Effect.flatMap(authorized => {
+      if (!authorized) {
+        return Effect.succeed(
+          noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 }),
+        )
+      }
+
+      const store = dependencies.transactionStore
+
+      if (store === undefined) {
+        return Effect.succeed(
+          noStoreJsonResponse(
+            { error: 'treasury_transaction_store_unavailable' },
+            { status: 503 },
+          ),
+        )
+      }
+
+      return Effect.tryPromise({
+        catch: () => null,
+        try: async () => {
+          let body: { transactionId?: unknown } = {}
+
+          try {
+            body = (await request.json()) as typeof body
+          } catch {
+            return noStoreJsonResponse(
+              { error: 'invalid_json_body' },
+              { status: 400 },
+            )
+          }
+
+          const transactionId =
+            typeof body.transactionId === 'string'
+              ? body.transactionId.trim()
+              : ''
+
+          if (transactionId === '') {
+            return noStoreJsonResponse(
+              { error: 'transaction_id_required' },
+              { status: 400 },
+            )
+          }
+
+          const record = await store.read(transactionId)
+
+          if (record === undefined) {
+            return noStoreJsonResponse(
+              { error: 'treasury_transaction_not_found' },
+              { status: 404 },
+            )
+          }
+
+          if (record.direction !== 'out') {
+            return noStoreJsonResponse(
+              { error: 'treasury_transaction_not_outbound' },
+              { status: 400 },
+            )
+          }
+
+          const wallet = transactionWallet(record)
+          const fetchPaymentStatus =
+            wallet === 'tips_buffer'
+              ? dependencies.fetchTipsBuffer
+              : dependencies.fetchTreasury
+
+          if (fetchPaymentStatus === undefined) {
+            return noStoreJsonResponse(
+              { error: 'treasury_payment_status_unavailable' },
+              { status: 503 },
+            )
+          }
+
+          if (record.paymentRef === null) {
+            return noStoreJsonResponse(
+              { error: 'treasury_payment_ref_missing' },
+              { status: 409 },
+            )
+          }
+
+          const paymentId = paymentIdForContainerLookup(record.paymentRef)
+
+          if (paymentId === null) {
+            return noStoreJsonResponse(
+              { error: 'treasury_payment_ref_not_reconcilable' },
+              { status: 409 },
+            )
+          }
+
+          const paymentStatus = await readTreasuryPaymentStatus(
+            fetchPaymentStatus,
+            paymentId,
+          )
+
+          if (record.state === 'pending' && paymentStatus === 'succeeded') {
+            await store.settle({
+              amountSat: record.amountSat,
+              id: record.id,
+              settledAt: currentIsoTimestamp(),
+            })
+          }
+
+          if (record.state === 'pending' && paymentStatus === 'failed') {
+            await store.fail({ id: record.id })
+          }
+
+          const reconciledState =
+            record.state !== 'pending'
+              ? record.state
+              : paymentStatus === 'succeeded'
+                ? 'settled'
+                : paymentStatus === 'failed'
+                  ? 'failed'
+                  : 'pending'
+
+          return noStoreJsonResponse({
+            amountSat: record.amountSat,
+            paymentStatus,
+            previousState: record.state,
+            reconciledState,
+            transactionId: record.id,
+            updated: record.state !== reconciledState,
+            wallet,
+          })
+        },
+      }).pipe(
+        Effect.catch(() =>
+          Effect.succeed(
+            noStoreJsonResponse(
+              { error: 'treasury_transaction_reconcile_failed' },
+              { status: 502 },
+            ),
+          ),
+        ),
+        Effect.map(response =>
+          response === null
+            ? noStoreJsonResponse(
+                { error: 'treasury_transaction_reconcile_failed' },
+                { status: 502 },
+              )
+            : response,
+        ),
+      )
+    }),
+  )
+}
+
 // Owner payout policy (2026-06-10): a payout that exceeds the treasury's
 // spendable balance is not refused outright - it falls back to 10% of the
 // current spendable amount (floored), so a depleted treasury pays out in a
@@ -299,7 +497,9 @@ export const treasuryPayoutPlan = (input: {
     : { kind: 'fractional_fallback_10pct', paidAmountSat: fallback }
 }
 
-const balancePayload = (payload: unknown): { maxSendableSat: number | null } | null => {
+const balancePayload = (
+  payload: unknown,
+): { maxSendableSat: number | null } | null => {
   if (typeof payload !== 'object' || payload === null) {
     return null
   }

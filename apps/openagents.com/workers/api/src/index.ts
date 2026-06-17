@@ -454,6 +454,7 @@ import {
   handleOperatorTreasuryFundingDestinationApi,
   handleOperatorTreasuryPayoutApi,
   handleOperatorTreasuryStatusApi,
+  handleOperatorTreasuryTransactionReconcileApi,
   handlePublicTreasuryLaunchStatusApi,
 } from './treasury-routes'
 import {
@@ -7294,6 +7295,19 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         fetchTreasury: fetchMdkTreasuryPath(env),
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
+      }),
+  },
+  {
+    path: '/api/operator/treasury/transactions/reconcile',
+    handler: (request, env) =>
+      handleOperatorTreasuryTransactionReconcileApi(request, {
+        fetchTipsBuffer: fetchMdkTipsBufferPath(env),
+        fetchTreasury: fetchMdkTreasuryPath(env),
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        transactionStore: makeD1TreasuryTransactionStore(
+          openAgentsDatabase(env),
+        ),
       }),
   },
   {

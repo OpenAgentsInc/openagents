@@ -943,6 +943,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/operator/treasury/funding-destination',
   '/api/operator/treasury/payout',
   '/api/operator/treasury/status',
+  '/api/operator/treasury/transactions/reconcile',
   // Browser-session product app internals (signed-in openagents.com app only):
   '/api/auth/teams',
   '/api/auth/totals',

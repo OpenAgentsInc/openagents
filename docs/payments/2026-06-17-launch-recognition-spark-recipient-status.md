@@ -16,6 +16,27 @@ wallet paths.
 | Whitefang | 50,000-sat recognition + 5-sat validator fee | Earlier treasury send failed while the primary MDK/Lightning target was not accepting inbound. No public-safe rc.12+ Spark-backed Lightning Address publish, treasury retry receipt, or recipient `backup-claim` / `backup-status` proof is captured in this repo yet. | Blocked, not invisible | Missing recipient-published Spark fallback target and recipient-side claim/status proof. This is not classified as "sent but invisible"; there is no completed Spark fallback payout receipt to reconcile yet. | Whitefang installs rc.12+, runs `pylon wallet backup-receive --kind lightning-address`, reports readiness, receives the operator-approved treasury retry, then runs `pylon wallet backup-claim` and `pylon wallet backup-status` and shares public-safe receipt refs/counts. |
 | Orrery | 50,000-sat recognition + 5-sat worker fee | Earlier BOLT12 recognition/worker payout was recorded as pending. No public-safe Spark-backed Lightning Address publish, fallback treasury send receipt, or recipient `backup-claim` / `backup-status` proof is captured in this repo yet. | Blocked, pending fallback confirmation | Pending BOLT12 is a separate unsettled payout state, and no recipient Spark fallback target/proof is captured. This is not classified as "sent but invisible"; the actionable blocker is target/proof collection. | Orrery installs rc.12+, publishes the Spark-backed Lightning Address through readiness, receives the operator-approved treasury retry or resolves the pending BOLT12, then runs `backup-claim` / `backup-status` and shares public-safe receipt refs/counts. |
 
+## Treasury pending semantics
+
+`pending` in `treasury_transactions` is a local D1 projection state, not a
+settled Lightning receipt. For outbound rows it means the treasury or
+tips-buffer MDK container returned an internal payment id, but OpenAgents has
+not recorded a terminal `succeeded` event/preimage or a terminal `failed`
+event for that id. It does not prove that the recipient received sats, and it
+does not by itself prove that the sats are permanently gone from the treasury;
+the live wallet balance / max-sendable value remains the spendable-wallet
+truth.
+
+The operator API now exposes a public-safe reconciliation action:
+`POST /api/operator/treasury/transactions/reconcile` with
+`{ "transactionId": "..." }`. The route is admin-only, reads the stored
+internal payment id, asks the correct MDK container (`treasury` or
+`tips_buffer`) for `/payments/{paymentId}`, and moves the D1 row from
+`pending` to `settled` or `failed` only when the container reports a terminal
+outcome. If the container still reports `pending` (including after an event map
+restart), the D1 row stays `pending`. The API response does not expose payment
+ids, hashes, preimages, invoices, destinations, mnemonics, or tokens.
+
 ## Operator rule
 
 Do not re-send recognition payouts from memory. Before any retry, reconcile the

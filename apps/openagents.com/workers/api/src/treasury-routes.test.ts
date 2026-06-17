@@ -2,12 +2,16 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import type { ContainerPathFetch } from './http/container-fetch'
-
+import type {
+  TreasuryTransactionRecord,
+  TreasuryTransactionStore,
+} from './treasury-page-routes'
 import {
   executeTreasuryPayout,
   handleOperatorTreasuryFundingDestinationApi,
   handleOperatorTreasuryPayoutApi,
   handleOperatorTreasuryStatusApi,
+  handleOperatorTreasuryTransactionReconcileApi,
   handlePublicTreasuryLaunchStatusApi,
   treasuryPayoutPlan,
 } from './treasury-routes'
@@ -27,6 +31,77 @@ const healthzPayload = (configured: boolean) => ({
   ok: true,
   serviceTokenConfigured: configured,
   service: 'openagents-mdk-treasury',
+})
+
+const makeMemoryTransactionStore = (
+  seed: ReadonlyArray<TreasuryTransactionRecord> = [],
+): TreasuryTransactionStore & {
+  rows: Map<string, TreasuryTransactionRecord>
+} => {
+  const rows = new Map(seed.map(record => [record.id, record]))
+
+  return {
+    expire: input => {
+      const row = rows.get(input.id)
+
+      if (row !== undefined && row.state === 'pending') {
+        rows.set(input.id, { ...row, state: 'expired' })
+      }
+
+      return Promise.resolve()
+    },
+    fail: input => {
+      const row = rows.get(input.id)
+
+      if (row !== undefined && row.state === 'pending') {
+        rows.set(input.id, { ...row, settledAt: null, state: 'failed' })
+      }
+
+      return Promise.resolve()
+    },
+    insert: record => {
+      rows.set(record.id, record)
+
+      return Promise.resolve()
+    },
+    listRecent: limit =>
+      Promise.resolve(
+        [...rows.values()]
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, limit),
+      ),
+    read: id => Promise.resolve(rows.get(id)),
+    rows,
+    settle: input => {
+      const row = rows.get(input.id)
+
+      if (row !== undefined && row.state === 'pending') {
+        rows.set(input.id, {
+          ...row,
+          amountSat: input.amountSat,
+          settledAt: input.settledAt,
+          state: 'settled',
+        })
+      }
+
+      return Promise.resolve()
+    },
+  }
+}
+
+const pendingOutTransaction = (
+  id: string,
+  paymentRef: string | null = 'payment_secret_1',
+): TreasuryTransactionRecord => ({
+  amountSat: 50005,
+  bolt11: null,
+  createdAt: '2026-06-17T18:00:00.000Z',
+  direction: 'out',
+  expiresAt: null,
+  id,
+  paymentRef,
+  settledAt: null,
+  state: 'pending',
 })
 
 describe('public treasury launch status', () => {
@@ -238,6 +313,180 @@ describe('operator treasury funding destination', () => {
   })
 })
 
+describe('operator treasury transaction reconciliation', () => {
+  const reconcileRequest = (body: unknown) =>
+    new Request(
+      'https://openagents.com/api/operator/treasury/transactions/reconcile',
+      {
+        body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      },
+    )
+
+  test('requires the admin api token', async () => {
+    const response = await run(
+      handleOperatorTreasuryTransactionReconcileApi(
+        reconcileRequest({ transactionId: 'treasury_payout_1' }),
+        {
+          fetchTreasury: () =>
+            Promise.resolve(jsonResponse(200, { status: 'succeeded' })),
+          requireAdminApiToken: () => Promise.resolve(false),
+          transactionStore: makeMemoryTransactionStore(),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  test('settles a pending treasury row when MDK reports succeeded', async () => {
+    const store = makeMemoryTransactionStore([
+      pendingOutTransaction('treasury_payout_1', 'payment_secret_succeeded'),
+    ])
+    const response = await run(
+      handleOperatorTreasuryTransactionReconcileApi(
+        reconcileRequest({ transactionId: 'treasury_payout_1' }),
+        {
+          fetchTreasury: path =>
+            Promise.resolve(
+              path === '/payments/payment_secret_succeeded'
+                ? jsonResponse(200, {
+                    paymentId: 'payment_secret_succeeded',
+                    status: 'succeeded',
+                  })
+                : jsonResponse(404, { error: 'not_found' }),
+            ),
+          requireAdminApiToken: () => Promise.resolve(true),
+          transactionStore: store,
+        },
+      ),
+    )
+    const body = (await response.json()) as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      paymentStatus: 'succeeded',
+      previousState: 'pending',
+      reconciledState: 'settled',
+      transactionId: 'treasury_payout_1',
+      updated: true,
+      wallet: 'treasury',
+    })
+    expect(JSON.stringify(body)).not.toContain('payment_secret_succeeded')
+    expect(store.rows.get('treasury_payout_1')).toMatchObject({
+      state: 'settled',
+    })
+  })
+
+  test('marks a pending treasury row failed when MDK reports failed', async () => {
+    const store = makeMemoryTransactionStore([
+      pendingOutTransaction('treasury_payout_1', 'payment_secret_failed'),
+    ])
+    const response = await run(
+      handleOperatorTreasuryTransactionReconcileApi(
+        reconcileRequest({ transactionId: 'treasury_payout_1' }),
+        {
+          fetchTreasury: () =>
+            Promise.resolve(jsonResponse(200, { status: 'failed' })),
+          requireAdminApiToken: () => Promise.resolve(true),
+          transactionStore: store,
+        },
+      ),
+    )
+    const body = (await response.json()) as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      paymentStatus: 'failed',
+      reconciledState: 'failed',
+      updated: true,
+    })
+    expect(JSON.stringify(body)).not.toContain('payment_secret_failed')
+    expect(store.rows.get('treasury_payout_1')?.state).toBe('failed')
+  })
+
+  test('leaves a row pending when the container still has no terminal outcome', async () => {
+    const store = makeMemoryTransactionStore([
+      pendingOutTransaction('treasury_payout_1', 'payment_secret_pending'),
+    ])
+    const response = await run(
+      handleOperatorTreasuryTransactionReconcileApi(
+        reconcileRequest({ transactionId: 'treasury_payout_1' }),
+        {
+          fetchTreasury: () =>
+            Promise.resolve(jsonResponse(200, { status: 'pending' })),
+          requireAdminApiToken: () => Promise.resolve(true),
+          transactionStore: store,
+        },
+      ),
+    )
+    const body = (await response.json()) as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      paymentStatus: 'pending',
+      reconciledState: 'pending',
+      updated: false,
+    })
+    expect(store.rows.get('treasury_payout_1')?.state).toBe('pending')
+  })
+
+  test('uses the tips-buffer container for tips-buffer payout rows', async () => {
+    const store = makeMemoryTransactionStore([
+      pendingOutTransaction('tips_buffer_payout_1', 'payment_secret_buffer'),
+    ])
+    const called: Array<string> = []
+    const response = await run(
+      handleOperatorTreasuryTransactionReconcileApi(
+        reconcileRequest({ transactionId: 'tips_buffer_payout_1' }),
+        {
+          fetchTipsBuffer: path => {
+            called.push(path)
+
+            return Promise.resolve(jsonResponse(200, { status: 'succeeded' }))
+          },
+          fetchTreasury: path => {
+            called.push(`treasury:${path}`)
+
+            return Promise.resolve(jsonResponse(404, { error: 'wrong' }))
+          },
+          requireAdminApiToken: () => Promise.resolve(true),
+          transactionStore: store,
+        },
+      ),
+    )
+    const body = (await response.json()) as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect(body.wallet).toBe('tips_buffer')
+    expect(called).toEqual(['/payments/payment_secret_buffer'])
+    expect(store.rows.get('tips_buffer_payout_1')?.state).toBe('settled')
+  })
+
+  test('refuses non-reconcilable redacted payment refs', async () => {
+    const store = makeMemoryTransactionStore([
+      pendingOutTransaction('treasury_payout_1', 'payment.treasury.abcdef123'),
+    ])
+    const response = await run(
+      handleOperatorTreasuryTransactionReconcileApi(
+        reconcileRequest({ transactionId: 'treasury_payout_1' }),
+        {
+          fetchTreasury: () =>
+            Promise.resolve(jsonResponse(200, { status: 'succeeded' })),
+          requireAdminApiToken: () => Promise.resolve(true),
+          transactionStore: store,
+        },
+      ),
+    )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(409)
+    expect(body.error).toBe('treasury_payment_ref_not_reconcilable')
+    expect(store.rows.get('treasury_payout_1')?.state).toBe('pending')
+  })
+})
+
 describe('treasury payout plan policy', () => {
   test('pays the full amount when spendable covers it', () => {
     expect(
@@ -367,10 +616,11 @@ describe('operator treasury payout', () => {
   })
 
   // #5078: pay an offline recipient via a static Lightning Address fallback.
-  const payDestinationsFetch = (
-    paid: Array<string>,
-    succeedFor: (destination: string) => boolean,
-  ): ContainerPathFetch =>
+  const payDestinationsFetch =
+    (
+      paid: Array<string>,
+      succeedFor: (destination: string) => boolean,
+    ): ContainerPathFetch =>
     (path, init) => {
       if (path === '/balance') {
         return Promise.resolve(

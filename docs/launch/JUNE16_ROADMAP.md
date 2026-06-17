@@ -129,11 +129,21 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   node's own credited Spark backup balance, and emit the reconcile receipt only
   after MDK balance verification. **Resolved #5172:** the green
   `training.monday` gate stays green only for the scoped launch/run/verification
-  + settlement-record path. The Orrery settlement receipt remains explicitly
+  and settlement-record path. The Orrery settlement receipt remains explicitly
   **simulation-backed** (`realBitcoinMoved:false`) and does **not** count as real
   Bitcoin movement, accepted-work sats settled, or contributor spendable payout.
-  Real payout copy requires a public-safe `realBitcoinMoved:true` receipt. Policy:
-  `docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md`.
+  Real payout copy requires a public-safe `realBitcoinMoved:true` receipt.
+  **Treasury `pending` clarified:** outbound `pending` rows mean "internal MDK
+  payment id recorded, no terminal succeeded/failed outcome recorded yet" — not
+  recipient-confirmed sats and not proof the treasury permanently lost funds.
+  Added admin API reconciliation at
+  `POST /api/operator/treasury/transactions/reconcile`, which checks the stored
+  payment id against the treasury/tips-buffer MDK container and only then moves
+  the row to `settled` or `failed`; it never returns raw payment ids, hashes,
+  invoices, preimages, destinations, or wallet material. Policy:
+  `docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md`;
+  payment status:
+  `docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md`.
 
 ## A. Short-term bug fixes — ✅ all closed (16th)
 
