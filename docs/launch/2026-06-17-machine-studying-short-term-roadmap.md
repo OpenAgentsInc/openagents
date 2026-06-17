@@ -23,6 +23,11 @@ Machine-studying source docs:
 - `docs/research/machine-studying/research-note.md`
 - `docs/research/machine-studying/2026-06-17-blueprint-marketplace-ties.md`
 - `docs/research/machine-studying/2026-06-17-tassadar-openagents-repo-studying-roadmap.md`
+- `docs/research/machine-studying/2026-06-17-studybench-openagents-benchmark-audit.md`
+
+External benchmark reference:
+
+- StudyBench dataset: `https://huggingface.co/datasets/jacobli/studybench`
 
 ## Short Version
 
@@ -94,6 +99,7 @@ Related artifacts:
 - `openagents_repo_corpus_manifest.v0`
 - `openagents_launch_study_packet.v0`
 - `machine_studying_openagents_launch_exam.v0`
+- `openagents_studybench.v0`
 - `machine_studying_openagents_launch_attempt_receipt.v0`
 - `tassadar.repo_refinery_artifact.v0`
 
@@ -168,6 +174,20 @@ Acceptance:
 Build an internal exam that evaluates whether studying helps agents edit the
 actual launch surfaces.
 
+The exam should use a StudyBench-compatible row shape instead of an ad hoc
+rubric format. Each task should have a stable id, topic, question, gold answer,
+weighted core/supporting rubric claims, and source evidence spans from a pinned
+`openagents` commit. OpenAgents-specific extensions should add corpus refs,
+authority refs, test refs, forbidden-claim refs, visibility tier, and private
+material policy refs.
+
+The public `jacobli/studybench` dataset should be used as an external
+calibration lane, especially the `dspy` subset for DSPy/GEPA behavior. It is not
+a hidden benchmark, so it should not be used as standalone product-claim
+evidence. The launch exam should become our own `openagents_studybench.v0`
+slice, with public-retained rows for examples/regression and private validation
+or holdout rows for real lift measurement.
+
 Task families:
 
 - Product-promise copy: rewrite a launch claim so it maps to the current promise
@@ -195,7 +215,8 @@ Budgets:
 Score:
 
 - Hidden deterministic checks and focused tests.
-- Review rubric for authority, claim discipline, edit scope, and privacy.
+- StudyBench-style weighted claim rubric for authority, claim discipline, edit
+  scope, privacy, evidence use, and expected tests.
 - Tokens, wall-clock time, tool calls, wrong-file reads, and first divergence.
 - Reach versus use: did the right source refs enter the trajectory, and were
   they applied correctly?
@@ -203,6 +224,8 @@ Score:
 Acceptance:
 
 - At least 20 hidden tasks exist before claiming lift.
+- Each task has source evidence spans from the pinned corpus manifest.
+- Public-retained rows are separated from private validation and holdout rows.
 - Baseline and study-packet runs use the same budget classes.
 - The report distinguishes real lift from memorizing answer keys.
 - Failed attempts become retained failure refs only after labeling.
@@ -246,6 +269,8 @@ Good deterministic refinery candidates:
 - Corpus manifest generation.
 - Redaction/exclusion validation.
 - Source-map index generation from manifest refs.
+- StudyBench-style evidence span extraction and hashing.
+- StudyBench-style row-schema and split-manifest validation.
 - Hidden-exam manifest generation without answer leakage.
 - Attempt receipt normalization.
 - Scoring harness replay for deterministic checks.
@@ -366,7 +391,8 @@ Forbidden public phrasing until separate evidence and promise gates exist:
 | --- | --- | --- | --- |
 | `openagents_repo_corpus_manifest.v0` | `docs/research/machine-studying/` first; later schema/code | Reproducible admitted corpus with exclusions and digests | Blocks study packet; blocked by redaction policy |
 | `openagents_launch_study_packet.v0` | `docs/research/machine-studying/` or Blueprint docs | Launch-specific source map, traps, test catalog, claim boundaries | Blocks exam-assisted runs |
-| `machine_studying_openagents_launch_exam.v0` | Probe/benchmark docs | Hidden repo-edit exam over current launch surfaces | Blocks expertise curve |
+| `openagents_studybench.v0` | Probe/benchmark docs plus machine-studying docs | StudyBench-compatible rows over the pinned `openagents` repo, with public-retained and private validation/holdout splits | Blocks expertise curve |
+| `machine_studying_openagents_launch_exam.v0` | Probe/benchmark docs | Launch-focused slice of `openagents_studybench.v0` | Blocks expertise curve |
 | `machine_studying_openagents_launch_attempt_receipt.v0` | Probe/Forge evidence | Attempt trajectory, refs, tests, score, caveats | Blocks measured lift |
 | `tassadar.repo_refinery_artifact.v0` | Tassadar docs/design | Deterministic corpus/refinery proof shape | Blocks exact-refinery claims |
 | Forge Coder study packet projection | #5107 lane | Refs-only packet visibility/freshness in operator cockpit | Blocked by measured usefulness |
