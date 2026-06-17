@@ -56,15 +56,18 @@ storing raw secrets or raw private content.
 
 The public-safe row packet template for real D3 cohort evidence lives at
 `docs/blitz/forge/2026-06-17-customer-one-cohort-row-template.json`.
+The privacy-review checklist for issuing `privacyReviewRef` lives at
+`docs/blitz/forge/2026-06-17-customer-one-cohort-privacy-review-checklist.md`.
 
 To prepare a real row:
 
 1. Copy the template outside the repo or into an ignored operator workspace.
 2. Replace every `replace-me` / placeholder value with opaque public-safe refs.
-3. Run
+3. Complete the privacy-review checklist before setting `privacyReviewRef`.
+4. Run
    `node scripts/customer-one-cohort-recorder.mjs check --row-file <row.json>`
    from `apps/openagents.com`.
-4. Only after the local check passes, run the authenticated `upsert` command
+5. Only after the local check passes, run the authenticated `upsert` command
    with `OPENAGENTS_ADMIN_API_TOKEN`.
 
 The checker rejects obvious private-material markers, unresolved placeholders,
