@@ -733,7 +733,7 @@ const treasuryPayoutFailureReasonRefFromPayResult = (
   const containerReasonRef = publicTreasuryPayoutReasonRef(payResult.reasonRef)
   const genericError =
     typeof payResult.error === 'string' &&
-    payResult.error === 'treasury_pay_failed'
+    payResult.error.endsWith('_pay_failed')
   const detail =
     containerReasonRef !== null
       ? containerReasonRef

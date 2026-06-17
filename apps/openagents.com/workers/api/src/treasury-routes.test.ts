@@ -913,7 +913,7 @@ describe('operator treasury payout', () => {
             if (path === '/pay' && init?.method === 'POST') {
               return Promise.resolve(
                 jsonResponse(502, {
-                  error: 'treasury_pay_failed',
+                  error: 'tips_buffer_pay_failed',
                   reason: 'No route found for payment.',
                 }),
               )

@@ -1,6 +1,11 @@
 import { MAINNET_MDK_NODE_OPTIONS } from '@moneydevkit/core'
 import { MdkNode } from '@moneydevkit/lightning-js'
 
+import {
+  paymentDestinationKind,
+  treasuryPayoutFailureDiagnostics,
+} from './pay-failure.mjs'
+
 const port = Number(process.env.PORT ?? '8080')
 const MAX_WAIT_SECS = 50
 const SERVICE_TOKEN_HEADER = 'x-tips-buffer-service-token'
@@ -112,14 +117,46 @@ const requireServiceToken = request => {
   return null
 }
 
-const balanceResponse = node => {
+const paySnapshot = (node, destination = undefined) => {
   const estimate = node.getMaxSendable()
+  const destinationEstimate =
+    destination === undefined ? estimate : node.getMaxSendable(destination)
 
-  return json(200, {
+  return {
     balanceSat: node.getBalanceWhileRunning(),
     feeBudgetMsat: estimate === null ? null : estimate.feeBudgetMsat,
     maxSendableSat:
       estimate === null ? null : Math.floor(estimate.amountMsat / 1000),
+    destinationFeeBudgetMsat:
+      destinationEstimate === null ? null : destinationEstimate.feeBudgetMsat,
+    destinationMaxSendableSat:
+      destinationEstimate === null
+        ? null
+        : Math.floor(destinationEstimate.amountMsat / 1000),
+  }
+}
+
+const safePaySnapshot = (node, destination) => {
+  try {
+    return paySnapshot(node, destination)
+  } catch {
+    return {
+      balanceSat: null,
+      destinationFeeBudgetMsat: null,
+      destinationMaxSendableSat: null,
+      feeBudgetMsat: null,
+      maxSendableSat: null,
+    }
+  }
+}
+
+const balanceResponse = node => {
+  const snapshot = paySnapshot(node)
+
+  return json(200, {
+    balanceSat: snapshot.balanceSat,
+    feeBudgetMsat: snapshot.feeBudgetMsat,
+    maxSendableSat: snapshot.maxSendableSat,
   })
 }
 
@@ -172,13 +209,23 @@ const payResponse = async (request, node) => {
     return json(409, { error: 'tips_buffer_self_pay_refused' })
   }
 
-  const estimate = node.getMaxSendable(destination)
+  const destinationKind = paymentDestinationKind(destination)
+  const beforeSnapshot = safePaySnapshot(node, destination)
+  const preflightMaxSendableSat = beforeSnapshot.destinationMaxSendableSat
 
-  if (estimate === null || estimate.amountMsat < amountSat * 1000) {
+  if (
+    beforeSnapshot.destinationMaxSendableSat === null ||
+    beforeSnapshot.destinationMaxSendableSat < amountSat
+  ) {
     return json(409, {
+      balanceSatBefore: beforeSnapshot.balanceSat,
+      destinationKind,
       error: 'tips_buffer_insufficient_spendable_balance',
-      maxSendableSat:
-        estimate === null ? null : Math.floor(estimate.amountMsat / 1000),
+      failureStage: 'preflight_max_sendable',
+      feeBudgetMsatBefore: beforeSnapshot.destinationFeeBudgetMsat,
+      maxSendableSat: preflightMaxSendableSat,
+      reasonClass: 'insufficient_spendable_balance',
+      reasonRef: 'reason.public.treasury_payout.insufficient_spendable_balance',
     })
   }
 
@@ -187,23 +234,86 @@ const payResponse = async (request, node) => {
   try {
     result = node.payWhileRunning(destination, amountSat * 1000, timeoutSecs)
   } catch (error) {
+    const diagnostics = treasuryPayoutFailureDiagnostics(error)
+    const afterSnapshot = safePaySnapshot(node, destination)
+    const balanceChanged =
+      typeof beforeSnapshot.balanceSat === 'number' &&
+      typeof afterSnapshot.balanceSat === 'number'
+        ? beforeSnapshot.balanceSat !== afterSnapshot.balanceSat
+        : null
+
+    console.warn({
+      amountSat,
+      balanceChanged,
+      balanceSatAfter: afterSnapshot.balanceSat,
+      balanceSatBefore: beforeSnapshot.balanceSat,
+      destinationKind,
+      errorCode: diagnostics.errorCode,
+      errorName: diagnostics.errorName,
+      event: 'tips_buffer_pay_failed',
+      failureStage: 'pay_throws',
+      feeBudgetMsatAfter: afterSnapshot.destinationFeeBudgetMsat,
+      feeBudgetMsatBefore: beforeSnapshot.destinationFeeBudgetMsat,
+      messageFingerprint: diagnostics.messageFingerprint,
+      paymentIdPresent: false,
+      preflightBalanceMaxSendableSat: beforeSnapshot.maxSendableSat,
+      preflightMaxSendableSat,
+      resultReturned: false,
+      reasonClass: diagnostics.reasonClass,
+      service: 'openagents-mdk-tips-buffer',
+      timeoutSecs,
+    })
+
     return json(502, {
+      amountSat,
+      balanceChanged,
+      balanceSatAfter: afterSnapshot.balanceSat,
+      balanceSatBefore: beforeSnapshot.balanceSat,
+      destinationKind,
+      errorCode: diagnostics.errorCode,
+      errorName: diagnostics.errorName,
       error: 'tips_buffer_pay_failed',
+      failureStage: 'pay_throws',
+      feeBudgetMsatAfter: afterSnapshot.destinationFeeBudgetMsat,
+      feeBudgetMsatBefore: beforeSnapshot.destinationFeeBudgetMsat,
+      messageFingerprint: diagnostics.messageFingerprint,
+      paymentIdPresent: false,
+      preflightBalanceMaxSendableSat: beforeSnapshot.maxSendableSat,
+      preflightMaxSendableSat,
       reason: error instanceof Error ? error.message : String(error),
+      reasonClass: diagnostics.reasonClass,
+      reasonRef: diagnostics.reasonRef,
+      resultReturned: false,
+      timeoutSecs,
     })
   }
 
   drainPaymentEvents(node)
   const outcome = paymentOutcomes.get(result.paymentId)
+  const afterSnapshot = safePaySnapshot(node, destination)
 
   return json(200, {
+    balanceChanged:
+      typeof beforeSnapshot.balanceSat === 'number' &&
+      typeof afterSnapshot.balanceSat === 'number'
+        ? beforeSnapshot.balanceSat !== afterSnapshot.balanceSat
+        : null,
+    balanceSatAfter: afterSnapshot.balanceSat,
+    balanceSatBefore: beforeSnapshot.balanceSat,
+    destinationKind,
+    feeBudgetMsatAfter: afterSnapshot.destinationFeeBudgetMsat,
+    feeBudgetMsatBefore: beforeSnapshot.destinationFeeBudgetMsat,
     paymentId: result.paymentId,
+    paymentIdPresent: typeof result.paymentId === 'string',
     paymentHash: result.paymentHash ?? null,
     preimage: result.preimage ?? null,
+    preflightBalanceMaxSendableSat: beforeSnapshot.maxSendableSat,
+    preflightMaxSendableSat,
     status:
       result.preimage !== undefined && result.preimage !== null
         ? 'succeeded'
         : (outcome?.status ?? 'pending'),
+    timeoutSecs,
   })
 }
 
