@@ -4,6 +4,44 @@ Date: 2026-06-17. Carries the open work forward from `JUNE16_ROADMAP.md` (now
 closed out). June 15 shipped the launch; June 16 stabilized it and shipped the
 Spark wallet unification; this file tracks what's left.
 
+## END-OF-DAY UPDATE (2026-06-17) — what shipped since the morning (rc.13)
+
+The wallet went from "rc.13 published" to **hardened + proven end-to-end + latency
+fixed**, across rc.13 → **rc.22** (all on npm `rc` + signed OTA 4-platform rollout
+100 + GitHub prereleases; `latest` stays `0.2.5`):
+
+- **Spending PROVEN with real sats, receipt-first:** BOLT11 send (#5185 — root
+  cause was a non-UUID idempotency key → `Invalid TransferId format`; fixed via the
+  treasury sender's UUID TransferId + `preferSpark` fallback), large/slow sends
+  (#5196 — the 15 s send timeout aborted slow sends that then completed; fixed by
+  waiting the full completion window + a `send-pending` indeterminate state — no
+  blind-retry, no double-pay), and Lightning-Address sends (#5208 — the SDK's
+  `lnurlPay` "Tree service error: insufficient funds"; fixed by resolving LA→BOLT11
+  and paying via the proven `sendPayment` path). **#5185/#5196 closed
+  (contributor-confirmed); #5208 shipped, awaiting Whitefang's owner-approved
+  retest.**
+- **Read path hardened:** #5184 (version-drift loop + `wallet status` hang) closed;
+  #5197 (stale post-restart balance read → 45 s force-sync window + a
+  `balanceRefreshing` flag) **closed, Trigger-confirmed**; #5194 (read
+  `helper-unavailable` on one macOS host → fallback + diagnostic) shipped, awaiting
+  Orrery's retest.
+- **Epics/closeouts:** **#5176 (Spark wallet unification) CLOSED**; **#5078 (the
+  original offline-receive gap) CLOSED** (Trigger + Whitefang recipient-confirmed);
+  #5182 recognition closeout CLOSED. Product-promise registry updated to
+  `2026-06-17.3`.
+- **Per-send latency: overhead eliminated (#5207 — CLOSED, verified).** A warm,
+  daemon-resident Spark session + background sync removes the ~4 s cold build +
+  `syncWallet` from every send (measured: a daemon-routed send skipped the sync and
+  did no rebuild). Audit: `apps/pylon/docs/2026-06-17-spark-send-latency-audit.md`.
+- **In progress (delegated, under review):** **#5225** Spark-native routing
+  (Spark→Spark settles **0-fee, ~3.6 s, no Lightning-routing variance** — measured;
+  making it explicit + preferring Spark addresses for internal flows) and **#5232**
+  real settlement / Gate 2 (flip accepted-work/training payouts from simulation to
+  real Bitcoin — gated scaffold being designed; real money stays owner-gated).
+- **Strategy:** Ark/bark adoption audit written
+  (`docs/2026-06-17-ark-bark-adoption-audit.md`) — recommends a signet PoC of Ark
+  as a third rail behind the wallet abstraction.
+
 ## Where we are (verified 2026-06-17)
 
 - **Launch gate is GREEN and closed (#5012).** Both crucial promises live; the
@@ -54,23 +92,30 @@ the signed OTA feed (`updates.openagents.com`, all 4 platforms, rollout 100, kid
 `pylon-v1.0.0-rc.13`. `pylon wallet send` / withdraw and the Spark-primary balance
 are now usable by real nodes (npm immediately; binary/Desktop on next auto-update).
 
-### 3. Fix the native Spark transfer path (`invalid_transferid_format`)
+### 3. Native Spark transfer — ✅ send fixed (#5185); native routing in progress (#5225)
 
-The Spark-preferred send path errors with `invalid_transferid_format`, so the
-deployed code falls back to `preferSpark:false` (pays the resolved BOLT11 over
-Lightning from the Spark wallet). The 50k still settled because the Spark
-treasury's Lightning liquidity handled it — but the genuinely native, size-agnostic
-`spark1→spark1` transfer is **broken by design right now**, not proven. Fix it so
-size-agnostic payouts hold by construction, not by Lightning-liquidity luck — and
-so recipients can be paid to a native Spark address, not only a Lightning Address.
+The `Invalid TransferId format` error is **fixed** (#5185 — it was a non-UUID
+idempotency key, not the amount; the treasury sender's UUID TransferId resolved
+it), and `wallet send` is proven for BOLT11 / large / Lightning-Address
+destinations. The genuinely native `spark1→spark1` transfer is now confirmed
+working and **measured: 0-fee, ~3.6 s, no Lightning-routing variance** — tracked as
+**#5225** to make native routing explicit (classify a Spark-address destination →
+native, never fall back to Lightning, label `method: spark_native`) and to **prefer
+Spark addresses for internal flows** (agent↔agent, agent↔treasury) so those payouts
+go native by construction instead of over Lightning. In progress (delegated, under
+review). Owner directive: native whenever possible, Lightning as fallback.
 
 ### 4. v1.0 release gates (carried from June 16 §H)
 
 - **Gate 1 — Spark fallback payout:** ✅ proven (Trigger + Whitefang 50k landed).
-- **Gate 2 — auto-payout dispatch:** ⏳ not wired/tested. Verified work + bounded,
-  operator-gated settlement should auto-dispatch the payout (MDK-vs-Spark by
-  recipient liveness) and record the receipt, without a human running the command
-  per pairing. Approval stays operator-gated/bounded; only dispatch is automated.
+- **Gate 2 — real settlement / auto-payout dispatch:** ⏳ in progress as **#5232**
+  (the biggest milestone left). Flip accepted-work/training settlement from
+  simulation (`movementMode:'simulation'` / `realBitcoinMoved:false`) to REAL
+  Bitcoin actually moving over the now-proven Spark rail — idempotent, bounded,
+  owner-gated — with a `realBitcoinMoved:true` receipt and the receipt-first
+  promise flip. A gated scaffold (defaults to simulation; real money only behind an
+  explicit owner-gate + sat cap) is being designed; real-money enablement +
+  verification stay owner-gated and with the lead, not auto-shipped.
 - **Gate 3 — auto-update in prod:** ✅ verified end-to-end against the signed feed.
 - **v1.0 cut gate:** cut stable v1.0 only after Gate 2 passes and the RC above is
   published, receipt-first with dereferenceable evidence.
