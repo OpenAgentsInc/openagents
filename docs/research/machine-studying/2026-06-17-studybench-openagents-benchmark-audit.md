@@ -45,6 +45,11 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   validation and private holdout split refs, checksum refs, ignored local row
   storage, evaluator/scorer access, leak response, and the rule that private
   holdout rows cannot feed study packets or GEPA training.
+- 2026-06-17: #5288 / MSB-MVP-06 complete. Probe runtime now exports
+  StudyBench rubric scorer helpers that validate score vectors against task
+  rubrics, support manual/judge-supplied and deterministic-check scorer refs,
+  compute weighted basis-point scores, apply the strict core-claim gate, and
+  reject raw evaluator rationale text from public score summaries.
 
 ## Short Answer
 

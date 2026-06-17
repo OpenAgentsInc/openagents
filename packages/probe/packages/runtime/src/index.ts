@@ -20,6 +20,7 @@ export * from "./benchmark/fixtures";
 export * from "./benchmark/repo-corpus-manifest";
 export * from "./benchmark/studybench";
 export * from "./benchmark/studybench-external";
+export * from "./benchmark/studybench-score";
 export * from "./blueprint";
 export * from "./cli";
 export * from "./file-mutation";
