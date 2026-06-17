@@ -1,10 +1,24 @@
+import {
+  type TrainingRunVisualizationOptions,
+  trainingRunVisualizationOptionsFromSnapshot,
+} from '@openagentsinc/three-effect/core'
+import { trainingRunView } from '@openagentsinc/three-effect/foldkit'
 import { Array } from 'effect'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 import { docsRouter } from '../route'
+import {
+  trainingContributorNodeView,
+  trainingCorpusAccretionView,
+  trainingEnergyOutcomeMeterView,
+  trainingProofDrawerView,
+  trainingQuarantineWindowView,
+  trainingReceiptBurstView,
+  trainingReplayPairView,
+  trainingTraceStrandView,
+} from '../scene/animations/trainingGrammar'
 import { lightBeamsView } from '../scene/lightBeamsElement'
-import { pylonBezierNetworkView } from '../scene/pylonBezierNetworkElement'
 import * as Ui from '../ui'
 import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
@@ -1603,824 +1617,139 @@ const aiElementsShowcase = <Message>(): ReadonlyArray<Html> => {
   return boxes
 }
 
-type TrainingTone =
-  | 'neutral'
-  | 'info'
-  | 'positive'
-  | 'warning'
-  | 'negative'
-  | 'accent'
+const trainingRunFieldVisualization = {
+  ...trainingRunVisualizationOptionsFromSnapshot({
+    activeWindowCount: 3,
+    assignedContributorCount: 12,
+    blockerRefCount: 0,
+    closeoutSatisfied: true,
+    deviceObserved: 8,
+    deviceRequired: 8,
+    finalValidationLoss: 2.58,
+    freivaldsRefCount: 6,
+    gradientCloseoutRefCount: 5,
+    maxAllowedStaleSteps: 5,
+    maxValidationLoss: 3.1,
+    pendingPayoutCount: 2,
+    plannedWindowCount: 2,
+    receiptRefCount: 18,
+    reconciledWindowCount: 1,
+    runDetail: 'training grammar field',
+    runLabel: 'Tassadar run field',
+    runState: 'active',
+    sealInFlight: true,
+    sealedWindowCount: 4,
+    settledPayoutSats: 24000,
+    verifiedWorkCount: 14,
+  }),
+  beams: [
+    { fromId: 'worker.alpha', toId: 'validator.alpha' },
+    { fromId: 'worker.beta', toId: 'validator.beta' },
+  ],
+  bursts: [{ atId: 'worker.alpha' }, { atId: 'validator.beta' }],
+  entities: [
+    {
+      id: 'worker.alpha',
+      label: 'W1',
+      position: [-4.55, -0.7, 0],
+      status: 'verified',
+    },
+    {
+      id: 'validator.alpha',
+      label: 'V1',
+      position: [-3.35, -0.95, 0],
+      status: 'verified',
+    },
+    {
+      id: 'worker.beta',
+      label: 'W2',
+      position: [3.1, -0.95, 0],
+      status: 'active',
+    },
+    {
+      id: 'validator.beta',
+      label: 'V2',
+      position: [4.35, -0.7, 0],
+      status: 'verified',
+    },
+  ],
+  pulseSpeed: 0.22,
+} satisfies TrainingRunVisualizationOptions
 
-const trainingToneChromeClass = (tone: TrainingTone): string => {
-  switch (tone) {
-    case 'info':
-      return 'border-[#2979ff] bg-[rgba(41,121,255,0.10)] text-[#d6f6ff] shadow-[0_0_24px_rgba(41,121,255,0.16)]'
-    case 'positive':
-      return 'border-[#00c853] bg-[rgba(0,200,83,0.10)] text-[#d8ffe4] shadow-[0_0_24px_rgba(0,200,83,0.12)]'
-    case 'warning':
-      return 'border-[#ff6f00] bg-[rgba(255,111,0,0.10)] text-[#ffe0c2] shadow-[0_0_24px_rgba(255,111,0,0.12)]'
-    case 'negative':
-      return 'border-[#d32f2f] bg-[rgba(211,47,47,0.10)] text-[#ffd8d8] shadow-[0_0_24px_rgba(211,47,47,0.12)]'
-    case 'accent':
-      return 'border-[#ffb400] bg-[rgba(255,180,0,0.09)] text-[#ffe7ad] shadow-[0_0_24px_rgba(255,180,0,0.12)]'
-    case 'neutral':
-      return 'border-[#333] bg-white/[0.04] text-[#f1efe8]'
-  }
-}
+const trainingVerificationGateVisualization = {
+  ...trainingRunVisualizationOptionsFromSnapshot({
+    activeWindowCount: 1,
+    assignedContributorCount: 6,
+    blockerRefCount: 1,
+    closeoutSatisfied: false,
+    deviceObserved: 5,
+    deviceRequired: 6,
+    externalStatus: 'observed',
+    finalValidationLoss: 3.08,
+    freivaldsRefCount: 4,
+    gradientCloseoutRefCount: 2,
+    maxAllowedStaleSteps: 5,
+    maxValidationLoss: 3.1,
+    pendingPayoutCount: 1,
+    plannedWindowCount: 2,
+    receiptRefCount: 7,
+    reconciledWindowCount: 0,
+    rejectedWorkCount: 1,
+    runDetail: 'verification gate',
+    runLabel: 'Replay and closeout gate',
+    runState: 'sealed',
+    sealInFlight: true,
+    sealedWindowCount: 1,
+    settledPayoutSats: 0,
+    verifiedWorkCount: 4,
+  }),
+  pulseSpeed: 0.13,
+} satisfies TrainingRunVisualizationOptions
 
-const trainingPrimitiveCard = <Message>(input: {
-  readonly id: string
+const trainingGrammarTile = <Message>(input: {
   readonly title: string
   readonly source: string
-  readonly components: ReadonlyArray<string>
-  readonly intent: string
-  readonly preview: Html
-  readonly details?: Html
+  readonly detail: string
+  readonly node: Html
 }): Html => {
   const h = html<Message>()
 
   return h.section(
-    [
-      h.Id(`training-${input.id}`),
-      h.DataAttribute('training-primitive', input.id),
-      Ui.className<Message>(
-        'scroll-mt-6 border border-[#222] bg-white/[0.02] p-4 sm:p-5',
-      ),
-    ],
+    [Ui.className<Message>('border border-[#222] bg-white/[0.02] p-3 sm:p-4')],
     [
       h.div(
         [
           Ui.className<Message>(
-            'flex flex-wrap items-baseline justify-between gap-2',
+            'mb-2 flex flex-wrap items-baseline justify-between gap-2',
           ),
         ],
         [
-          sectionHeading<Message>(input.title),
+          h.h2(
+            [
+              Ui.className<Message>(
+                'm-0 text-base font-medium tracking-normal text-[#f1efe8]',
+              ),
+            ],
+            [input.title],
+          ),
           h.code(
-            [Ui.className<Message>('font-mono text-[0.75rem] text-white/40')],
+            [Ui.className<Message>('font-mono text-[0.75rem] text-white/35')],
             [input.source],
           ),
         ],
       ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'relative h-[360px] overflow-hidden border border-[#1a1a1a] bg-[#000]',
+          ),
+        ],
+        [input.node],
+      ),
       h.p(
-        [Ui.className<Message>('mt-2 max-w-[76ch] text-base/7 text-white/60')],
-        [input.intent],
+        [Ui.className<Message>('mt-3 max-w-[76ch] text-base/7 text-white/55')],
+        [input.detail],
       ),
-      h.div(
-        [Ui.className<Message>('mt-3 flex flex-wrap gap-1.5')],
-        Array.map(input.components, component =>
-          h.code(
-            [
-              Ui.className<Message>(
-                'border border-[#333] px-1.5 py-0.5 font-mono text-[0.75rem] text-white/55',
-              ),
-            ],
-            [component],
-          ),
-        ),
-      ),
-      h.div(
-        [
-          Ui.className<Message>(
-            'mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.8fr)]',
-          ),
-        ],
-        [
-          h.div(
-            [
-              Ui.className<Message>(
-                'relative min-h-[300px] overflow-hidden border border-[#1a1a1a] bg-[#000]',
-              ),
-            ],
-            [input.preview],
-          ),
-          input.details ?? trainingPrimitiveDetails<Message>(input),
-        ],
-      ),
-    ],
-  )
-}
-
-const trainingPrimitiveDetails = <Message>(input: {
-  readonly title: string
-  readonly components: ReadonlyArray<string>
-  readonly source: string
-}): Html => {
-  const h = html<Message>()
-
-  return Ui.drawerPanel<Message>({
-    title: `${input.title} parts`,
-    children: [
-      Ui.keyValueRows<Message>([
-        { label: 'Animation source', value: input.source },
-        { label: 'Component mix', value: input.components.join(' + ') },
-      ]),
-      h.div(
-        [Ui.className<Message>('mt-3 flex flex-wrap gap-2')],
-        [
-          Ui.badge<Message>({ label: 'training', tone: 'info' }),
-          Ui.badge<Message>({ label: 'initial pass', tone: 'neutral' }),
-        ],
-      ),
-    ],
-  })
-}
-
-const trainingNode = <Message>(input: {
-  readonly label: string
-  readonly meta?: string
-  readonly tone: TrainingTone
-  readonly className: string
-}): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [
-      Ui.className<Message>(
-        `grid place-items-center border font-mono ${trainingToneChromeClass(input.tone)} ${input.className}`,
-      ),
-    ],
-    [
-      h.span(
-        [
-          Ui.className<Message>(
-            'text-center text-[0.74rem] font-bold uppercase leading-none tracking-[0.08em]',
-          ),
-        ],
-        [input.label],
-      ),
-      input.meta === undefined
-        ? ''
-        : h.span(
-            [
-              Ui.className<Message>(
-                'mt-1 text-center text-[0.58rem] uppercase leading-none tracking-[0.08em] text-white/50',
-              ),
-            ],
-            [input.meta],
-          ),
-    ],
-  )
-}
-
-const trainingDot = <Message>(input: {
-  readonly label: string
-  readonly tone: TrainingTone
-  readonly className: string
-}): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [
-      Ui.className<Message>(
-        `absolute grid h-12 w-12 place-items-center rounded-full border font-mono text-[0.62rem] uppercase tracking-[0.08em] ${trainingToneChromeClass(input.tone)} ${input.className}`,
-      ),
-    ],
-    [input.label],
-  )
-}
-
-const meterSegment = <Message>(label: string, className: string): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [
-      Ui.className<Message>(
-        `grid min-h-14 place-items-center border px-3 text-center font-mono text-[0.68rem] uppercase tracking-[0.08em] ${className}`,
-      ),
-    ],
-    [label],
-  )
-}
-
-const runFieldPreview = <Message>(): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [Ui.className<Message>('relative h-[300px] overflow-hidden')],
-    [
-      lightBeamsView<Message>(),
-      pylonBezierNetworkView<Message>([
-        Ui.className<Message>(
-          'pointer-events-none absolute inset-0 opacity-65',
-        ),
-      ]),
-      h.div(
-        [
-          Ui.className<Message>(
-            'absolute left-1/2 top-1/2 h-56 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#2979ff]/30',
-          ),
-        ],
-        [],
-      ),
-      h.div(
-        [
-          Ui.className<Message>(
-            'absolute left-1/2 top-1/2 h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#ffb400]/30',
-          ),
-        ],
-        [],
-      ),
-      h.div(
-        [
-          Ui.className<Message>(
-            'absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-[#d6f6ff] bg-[rgba(41,121,255,0.08)] shadow-[0_0_44px_rgba(41,121,255,0.32)]',
-          ),
-        ],
-        [
-          h.div(
-            [
-              Ui.className<Message>(
-                'grid h-full w-full -rotate-45 place-items-center font-mono text-[0.66rem] uppercase tracking-[0.08em] text-[#d6f6ff]',
-              ),
-            ],
-            ['run'],
-          ),
-        ],
-      ),
-      trainingDot<Message>({
-        label: 'P1',
-        tone: 'info',
-        className: 'left-[14%] top-[20%]',
-      }),
-      trainingDot<Message>({
-        label: 'P2',
-        tone: 'positive',
-        className: 'right-[16%] top-[26%]',
-      }),
-      trainingDot<Message>({
-        label: 'P3',
-        tone: 'accent',
-        className: 'bottom-[18%] left-[24%]',
-      }),
-      trainingDot<Message>({
-        label: 'V1',
-        tone: 'warning',
-        className: 'bottom-[20%] right-[24%]',
-      }),
-      h.div(
-        [
-          Ui.className<Message>(
-            'absolute inset-x-4 bottom-4 grid gap-2 sm:grid-cols-3',
-          ),
-        ],
-        [
-          Ui.badge<Message>({ label: 'active window', tone: 'info' }),
-          Ui.badge<Message>({ label: 'contributors', tone: 'positive' }),
-          Ui.badge<Message>({ label: 'receipt pulse', tone: 'accent' }),
-        ],
-      ),
-    ],
-  )
-}
-
-const contributorNodePreview = <Message>(): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [
-      Ui.className<Message>(
-        'grid h-full min-h-[300px] gap-4 p-4 md:grid-cols-[1fr_1.1fr]',
-      ),
-    ],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'relative min-h-[250px] overflow-hidden border border-[#1a1a1a] bg-white/[0.02]',
-          ),
-        ],
-        [
-          h.div(
-            [
-              Ui.className<Message>(
-                'absolute left-1/2 top-1/2 h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#2979ff]/30',
-              ),
-            ],
-            [],
-          ),
-          trainingNode<Message>({
-            label: 'P-17',
-            meta: 'worker',
-            tone: 'info',
-            className:
-              'absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full',
-          }),
-          trainingNode<Message>({
-            label: 'cuda',
-            meta: 'slot',
-            tone: 'neutral',
-            className: 'absolute left-[12%] top-[16%] h-16 w-16 rounded-full',
-          }),
-          trainingNode<Message>({
-            label: 'data',
-            meta: 'shard',
-            tone: 'accent',
-            className:
-              'absolute bottom-[16%] left-[18%] h-16 w-16 rounded-full',
-          }),
-          trainingNode<Message>({
-            label: 'proof',
-            meta: 'ready',
-            tone: 'positive',
-            className: 'absolute right-[14%] top-[24%] h-16 w-16 rounded-full',
-          }),
-        ],
-      ),
-      h.div(
-        [Ui.className<Message>('grid content-center gap-3')],
-        [
-          Ui.avatarGroup<Message>([
-            { title: 'Pylon 17' },
-            { title: 'Pylon 22' },
-            { title: 'Verifier 04' },
-          ]),
-          Ui.statGrid<Message>([
-            { label: 'Tokens', value: '11.8M', tone: 'info' },
-            { label: 'Replay', value: '2x', tone: 'positive' },
-            { label: 'Hold', value: '0', tone: 'neutral' },
-          ]),
-          Ui.keyValueRows<Message>([
-            { label: 'Lane', value: 'A1 loss' },
-            { label: 'State', value: 'training' },
-            { label: 'Receipt', value: 'run.window.024' },
-          ]),
-        ],
-      ),
-    ],
-  )
-}
-
-const traceStrandPreview = <Message>(): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [Ui.className<Message>('grid h-full min-h-[300px] gap-4 p-4')],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'relative min-h-[150px] overflow-hidden border border-[#1a1a1a] bg-white/[0.02]',
-          ),
-        ],
-        [
-          h.div(
-            [
-              Ui.className<Message>(
-                'absolute left-[10%] right-[10%] top-1/2 h-px bg-[#2979ff]/45',
-              ),
-            ],
-            [],
-          ),
-          trainingNode<Message>({
-            label: 'seed',
-            tone: 'neutral',
-            className:
-              'absolute left-[6%] top-1/2 h-16 w-16 -translate-y-1/2 rounded-full',
-          }),
-          trainingNode<Message>({
-            label: 'step',
-            tone: 'info',
-            className:
-              'absolute left-[30%] top-1/2 h-16 w-16 -translate-y-1/2 rounded-full',
-          }),
-          trainingNode<Message>({
-            label: 'loss',
-            tone: 'accent',
-            className:
-              'absolute left-[54%] top-1/2 h-16 w-16 -translate-y-1/2 rounded-full',
-          }),
-          trainingNode<Message>({
-            label: 'hash',
-            tone: 'positive',
-            className:
-              'absolute right-[6%] top-1/2 h-16 w-16 -translate-y-1/2 rounded-full',
-          }),
-        ],
-      ),
-      Ui.progressList<Message>([
-        { label: 'Window opened', tone: 'neutral' },
-        { label: 'Sample consumed', tone: 'info', active: true },
-        { label: 'Gradient emitted', tone: 'info' },
-        { label: 'Digest attached', tone: 'positive' },
-      ]),
-    ],
-  )
-}
-
-const replayPairPreview = <Message>(): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [Ui.className<Message>('relative h-[300px] overflow-hidden p-4')],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'absolute left-[22%] right-[22%] top-[42%] h-px rotate-[-5deg] bg-[#d6f6ff]/50 shadow-[0_0_18px_rgba(41,121,255,0.35)]',
-          ),
-        ],
-        [],
-      ),
-      h.div(
-        [
-          Ui.className<Message>(
-            'absolute left-[22%] right-[22%] top-[56%] h-px rotate-[5deg] bg-[#ffb400]/45 shadow-[0_0_18px_rgba(255,180,0,0.22)]',
-          ),
-        ],
-        [],
-      ),
-      trainingNode<Message>({
-        label: 'worker',
-        meta: 'forward',
-        tone: 'info',
-        className:
-          'absolute left-[8%] top-1/2 h-28 w-28 -translate-y-1/2 rounded-full',
-      }),
-      trainingNode<Message>({
-        label: 'verifier',
-        meta: 'replay',
-        tone: 'positive',
-        className:
-          'absolute right-[8%] top-1/2 h-28 w-28 -translate-y-1/2 rounded-full',
-      }),
-      h.div(
-        [Ui.className<Message>('absolute bottom-4 left-4 right-4')],
-        [
-          Ui.keyValueRows<Message>([
-            { label: 'Pair', value: 'pair.024.worker17.verifier04' },
-            { label: 'Agreement', value: 'loss + digest match' },
-            { label: 'Disposition', value: 'verified' },
-          ]),
-        ],
-      ),
-    ],
-  )
-}
-
-const verificationGatePreview = <Message>(): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [
-      Ui.className<Message>(
-        'grid h-full min-h-[300px] gap-4 p-4 md:grid-cols-[0.9fr_1.1fr]',
-      ),
-    ],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'grid min-h-[250px] place-items-center border border-[#1a1a1a] bg-white/[0.02] p-6',
-          ),
-        ],
-        [
-          h.div(
-            [
-              Ui.className<Message>(
-                'grid h-44 w-36 place-items-center border-x border-t border-[#d6f6ff] bg-[rgba(41,121,255,0.06)] shadow-[0_0_34px_rgba(41,121,255,0.20)]',
-              ),
-            ],
-            [
-              h.div(
-                [Ui.className<Message>('grid gap-2 text-center')],
-                [
-                  Ui.badge<Message>({ label: 'gate', tone: 'info' }),
-                  h.span(
-                    [
-                      Ui.className<Message>(
-                        'font-mono text-2xl text-[#f1efe8]',
-                      ),
-                    ],
-                    ['5/5'],
-                  ),
-                  h.span(
-                    [
-                      Ui.className<Message>(
-                        'font-mono text-[0.64rem] uppercase tracking-[0.08em] text-white/45',
-                      ),
-                    ],
-                    ['signals'],
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-      h.div(
-        [Ui.className<Message>('grid content-center gap-3')],
-        [
-          Ui.progressList<Message>([
-            { label: 'Boundary decoded', tone: 'positive' },
-            { label: 'Replay matched', tone: 'positive' },
-            { label: 'Receipt attached', tone: 'positive' },
-            { label: 'Settlement ready', tone: 'info', active: true },
-          ]),
-          Ui.alert<Message>({
-            title: 'Gate state',
-            body: 'Positive state requires every visible signal, not only a payment or completion marker.',
-            tone: 'info',
-          }),
-        ],
-      ),
-    ],
-  )
-}
-
-const receiptBurstPreview = <Message>(): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [Ui.className<Message>('relative h-[300px] overflow-hidden p-4')],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'absolute left-1/2 top-[42%] h-56 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#00c853]/20',
-          ),
-        ],
-        [],
-      ),
-      h.div(
-        [
-          Ui.className<Message>(
-            'absolute left-1/2 top-[42%] h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#ffb400]/30',
-          ),
-        ],
-        [],
-      ),
-      trainingNode<Message>({
-        label: 'receipt',
-        meta: 'burst',
-        tone: 'positive',
-        className:
-          'absolute left-1/2 top-[42%] h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full',
-      }),
-      trainingDot<Message>({
-        label: 'hash',
-        tone: 'neutral',
-        className: 'left-[18%] top-[20%]',
-      }),
-      trainingDot<Message>({
-        label: 'pay',
-        tone: 'accent',
-        className: 'right-[20%] top-[18%]',
-      }),
-      trainingDot<Message>({
-        label: 'acc',
-        tone: 'positive',
-        className: 'bottom-[26%] left-[26%]',
-      }),
-      trainingDot<Message>({
-        label: 'eval',
-        tone: 'info',
-        className: 'bottom-[24%] right-[26%]',
-      }),
-      h.div(
-        [Ui.className<Message>('absolute bottom-4 left-4 right-4')],
-        [
-          Ui.notificationStack<Message>([
-            { title: 'Window receipt', body: 'digest linked', tone: 'info' },
-            {
-              title: 'Verification receipt',
-              body: 'replay matched',
-              tone: 'positive',
-            },
-          ]),
-        ],
-      ),
-    ],
-  )
-}
-
-const corpusAccretionPreview = <Message>(): Html => {
-  const h = html<Message>()
-  const cells = [
-    'seed',
-    'doc',
-    'sample',
-    'batch',
-    'grad',
-    'loss',
-    'eval',
-    'digest',
-    'window',
-    'receipt',
-    'rank',
-    'settle',
-  ]
-
-  return h.div(
-    [
-      Ui.className<Message>(
-        'grid h-full min-h-[300px] gap-4 p-4 md:grid-cols-[1fr_0.85fr]',
-      ),
-    ],
-    [
-      h.div(
-        [Ui.className<Message>('grid grid-cols-3 gap-2 sm:grid-cols-4')],
-        Array.map(cells, (cell, index) =>
-          h.div(
-            [
-              Ui.className<Message>(
-                index < 8
-                  ? 'grid min-h-16 place-items-center border border-[#2979ff]/40 bg-[rgba(41,121,255,0.08)] px-2 text-center font-mono text-[0.66rem] uppercase tracking-[0.08em] text-[#d6f6ff]'
-                  : 'grid min-h-16 place-items-center border border-[#333] bg-white/[0.03] px-2 text-center font-mono text-[0.66rem] uppercase tracking-[0.08em] text-white/45',
-              ),
-            ],
-            [cell],
-          ),
-        ),
-      ),
-      h.div(
-        [Ui.className<Message>('grid content-center gap-3')],
-        [
-          Ui.statGrid<Message>([
-            { label: 'Accepted', value: '8', tone: 'positive' },
-            { label: 'Queued', value: '4', tone: 'info' },
-          ]),
-          Ui.codeBlock<Message>({
-            lines: [
-              'window: run.tassadar.024',
-              'digest: sha256:91ad...',
-              'visibility: public-safe',
-            ],
-          }),
-        ],
-      ),
-    ],
-  )
-}
-
-const quarantineWindowPreview = <Message>(): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [Ui.className<Message>('grid h-full min-h-[300px] gap-4 p-4')],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'relative min-h-[170px] overflow-hidden border border-[#1a1a1a] bg-white/[0.02]',
-          ),
-        ],
-        [
-          h.div(
-            [
-              Ui.className<Message>(
-                'absolute left-[8%] right-[8%] top-[40%] h-px bg-[#00c853]/45',
-              ),
-            ],
-            [],
-          ),
-          h.div(
-            [
-              Ui.className<Message>(
-                'absolute left-[16%] right-[18%] top-[68%] h-px border-t border-dashed border-[#ff6f00]/60',
-              ),
-            ],
-            [],
-          ),
-          trainingNode<Message>({
-            label: 'main',
-            meta: 'accepted',
-            tone: 'positive',
-            className:
-              'absolute left-[10%] top-[40%] h-16 w-16 -translate-y-1/2 rounded-full',
-          }),
-          trainingNode<Message>({
-            label: 'hold',
-            meta: 'quarantine',
-            tone: 'warning',
-            className:
-              'absolute left-[44%] top-[68%] h-16 w-16 -translate-y-1/2 rounded-full',
-          }),
-          trainingNode<Message>({
-            label: 'gate',
-            meta: 'promotion',
-            tone: 'info',
-            className:
-              'absolute right-[10%] top-[40%] h-16 w-16 -translate-y-1/2 rounded-full',
-          }),
-        ],
-      ),
-      Ui.alert<Message>({
-        title: 'Quarantine window',
-        body: 'A held trace remains visible without joining the accepted run line until the gate promotes it.',
-        tone: 'warning',
-      }),
-    ],
-  )
-}
-
-const energyOutcomeMeterPreview = <Message>(): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [Ui.className<Message>('grid h-full min-h-[300px] gap-4 p-4')],
-    [
-      h.div(
-        [Ui.className<Message>('grid gap-2 sm:grid-cols-[1.1fr_1.4fr_0.9fr]')],
-        [
-          meterSegment<Message>(
-            'compute',
-            'border-[#2979ff] bg-[rgba(41,121,255,0.10)] text-[#d6f6ff]',
-          ),
-          meterSegment<Message>(
-            'verified work',
-            'border-[#00c853] bg-[rgba(0,200,83,0.10)] text-[#d8ffe4]',
-          ),
-          meterSegment<Message>(
-            'settlement',
-            'border-[#ffb400] bg-[rgba(255,180,0,0.09)] text-[#ffe7ad]',
-          ),
-        ],
-      ),
-      h.div(
-        [
-          Ui.className<Message>(
-            'relative min-h-[110px] overflow-hidden border border-[#1a1a1a] bg-white/[0.02]',
-          ),
-        ],
-        [
-          h.div(
-            [
-              Ui.className<Message>(
-                'absolute bottom-0 left-0 top-0 w-[68%] bg-[linear-gradient(90deg,rgba(41,121,255,0.18),rgba(0,200,83,0.18),rgba(255,180,0,0.14))]',
-              ),
-            ],
-            [],
-          ),
-          h.div(
-            [
-              Ui.className<Message>(
-                'absolute inset-0 grid place-items-center font-mono text-[0.72rem] uppercase tracking-[0.08em] text-white/60',
-              ),
-            ],
-            ['68% through current window'],
-          ),
-        ],
-      ),
-      Ui.statGrid<Message>([
-        { label: 'Loss delta', value: '-0.18', tone: 'positive' },
-        { label: 'Tokens/sec', value: '42k', tone: 'info' },
-        { label: 'Sats', value: '18,240', tone: 'neutral' },
-      ]),
-    ],
-  )
-}
-
-const proofDrawerPreview = <Message>(): Html =>
-  Ui.drawerPanel<Message>({
-    title: 'Proof drawer',
-    children: [
-      Ui.keyValueRows<Message>([
-        { label: 'Run', value: 'run.tassadar.executor' },
-        { label: 'Window', value: 'window.024' },
-        { label: 'Replay pair', value: 'worker17/verifier04' },
-        { label: 'Settlement', value: 'receipt.settle.024' },
-      ]),
-      Ui.divider<Message>('Attached records'),
-      Ui.stackedList<Message>([
-        {
-          title: 'training_window.024',
-          detail: 'public-safe projection',
-          meta: 'now',
-          tone: 'info',
-        },
-        {
-          title: 'verified_replay_pair.024',
-          detail: 'digest matched',
-          meta: 'now',
-          tone: 'positive',
-        },
-        {
-          title: 'settlement_receipt.024',
-          detail: 'pending release gate',
-          meta: 'queued',
-          tone: 'neutral',
-        },
-      ]),
-      proofDrawerFooter<Message>(),
-    ],
-  })
-
-const proofDrawerFooter = <Message>(): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [Ui.className<Message>('mt-4 flex flex-wrap gap-2')],
-    [
-      Ui.linkButton<Message>({
-        href: '/run',
-        label: 'Open run',
-        variant: 'secondary',
-      }),
-      Ui.textLink<Message>({
-        href: '/training/runs/run.cs336.a1.demo',
-        label: 'Public run record',
-      }),
     ],
   )
 }
@@ -2428,118 +1757,76 @@ const proofDrawerFooter = <Message>(): Html => {
 const trainingGrammarShowcaseView = <Message>(): Html => {
   const h = html<Message>()
 
-  const primitives: ReadonlyArray<Html> = [
-    trainingPrimitiveCard<Message>({
-      id: 'run-field',
+  const tiles: ReadonlyArray<Html> = [
+    trainingGrammarTile<Message>({
       title: 'Run field',
-      source: 'lightBeamsView + pylonBezierNetworkView + statGrid',
-      components: [
-        'lightBeamsView',
-        'pylonBezierNetworkView',
-        'badge',
-        'statGrid',
-      ],
-      intent:
-        'The whole training run as a live field: central run, contributor orbit, active window, and receipt pulse.',
-      preview: runFieldPreview<Message>(),
-      details: Ui.drawerPanel<Message>({
-        title: 'Run field parts',
-        children: [
-          Ui.statGrid<Message>([
-            { label: 'Window', value: '024', tone: 'info' },
-            { label: 'Pylons', value: '34', tone: 'positive' },
-            { label: 'Receipts', value: '89', tone: 'neutral' },
-          ]),
-          Ui.keyValueRows<Message>([
-            { label: 'Base layer', value: 'Pylon homepage network' },
-            { label: 'Training layer', value: 'Tassadar run window' },
-          ]),
-        ],
-      }),
+      source: 'oa-training-run / @openagentsinc/three-effect',
+      detail:
+        'The full run as a three-effect field: lifecycle nodes, contributor orbit, replay beams, and settlement bursts.',
+      node: trainingRunView<Message>([], trainingRunFieldVisualization),
     }),
-    trainingPrimitiveCard<Message>({
-      id: 'contributor-node',
+    trainingGrammarTile<Message>({
       title: 'Contributor node',
-      source: 'avatarGroup + statGrid + keyValueRows',
-      components: ['avatarGroup', 'statGrid', 'keyValueRows', 'badge'],
-      intent:
-        'A Pylon, verifier, or evaluator as an addressable node with role, capacity, receipts, and current lane.',
-      preview: contributorNodePreview<Message>(),
+      source: 'oa-training-grammar-contributor-node',
+      detail:
+        'A contributor as an addressable 3D node with capacity, role, and proof satellites.',
+      node: trainingContributorNodeView<Message>(),
     }),
-    trainingPrimitiveCard<Message>({
-      id: 'trace-strand',
+    trainingGrammarTile<Message>({
       title: 'Trace strand',
-      source: 'progressList + training DOM rail',
-      components: ['progressList', 'badge', 'codeBlock'],
-      intent:
-        'A compact strand that moves from seed to sample to gradient to digest without becoming a log dump.',
-      preview: traceStrandPreview<Message>(),
+      source: 'oa-training-grammar-trace-strand',
+      detail:
+        'A moving WebGL strand from seed to sample to gradient to digest.',
+      node: trainingTraceStrandView<Message>(),
     }),
-    trainingPrimitiveCard<Message>({
-      id: 'replay-pair',
+    trainingGrammarTile<Message>({
       title: 'Replay pair',
-      source: 'keyValueRows + paired node beam',
-      components: ['keyValueRows', 'badge', 'trainingNode'],
-      intent:
-        'The smallest verifier grammar: worker output and independent replay joined by an agreement beam.',
-      preview: replayPairPreview<Message>(),
+      source: 'oa-training-grammar-replay-pair',
+      detail:
+        'Worker and verifier linked by independent replay beams and moving agreement pulses.',
+      node: trainingReplayPairView<Message>(),
     }),
-    trainingPrimitiveCard<Message>({
-      id: 'verification-gate',
+    trainingGrammarTile<Message>({
       title: 'Verification gate',
-      source: 'progressList + alert + badge',
-      components: ['progressList', 'alert', 'badge'],
-      intent:
-        'A visible gate that separates completion, replay, receipt, and settlement readiness instead of blending them.',
-      preview: verificationGatePreview<Message>(),
+      source: 'oa-training-run / verification snapshot',
+      detail:
+        'The existing training-run scene tuned to the replay and closeout gate state.',
+      node: trainingRunView<Message>([], trainingVerificationGateVisualization),
     }),
-    trainingPrimitiveCard<Message>({
-      id: 'receipt-burst',
+    trainingGrammarTile<Message>({
       title: 'Receipt burst',
-      source: 'notificationStack + node pulses',
-      components: ['notificationStack', 'badge', 'trainingDot'],
-      intent:
-        'A short visual emission when a window, replay, acceptance, or settlement receipt becomes public-safe.',
-      preview: receiptBurstPreview<Message>(),
+      source: 'oa-training-grammar-receipt-burst',
+      detail:
+        'A WebGL emission for public-safe receipts becoming visible around a run event.',
+      node: trainingReceiptBurstView<Message>(),
     }),
-    trainingPrimitiveCard<Message>({
-      id: 'corpus-accretion',
+    trainingGrammarTile<Message>({
       title: 'Corpus accretion',
-      source: 'gridList language + codeBlock',
-      components: ['statGrid', 'codeBlock', 'grid cells'],
-      intent:
-        'Accepted data and evidence accumulating as addressable tiles rather than a single undifferentiated pile.',
-      preview: corpusAccretionPreview<Message>(),
+      source: 'oa-training-grammar-corpus-accretion',
+      detail:
+        'Accepted traces accumulating as animated 3D tiles instead of a static ledger block.',
+      node: trainingCorpusAccretionView<Message>(),
     }),
-    trainingPrimitiveCard<Message>({
-      id: 'quarantine-window',
+    trainingGrammarTile<Message>({
       title: 'Quarantine window',
-      source: 'alert + split evidence lane',
-      components: ['alert', 'progressList', 'badge'],
-      intent:
-        'A secondary lane for suspicious, incomplete, or not-yet-promoted work that remains visible without implying acceptance.',
-      preview: quarantineWindowPreview<Message>(),
+      source: 'oa-training-grammar-quarantine-window',
+      detail:
+        'A held-work lane that stays visually separate from the accepted training line.',
+      node: trainingQuarantineWindowView<Message>(),
     }),
-    trainingPrimitiveCard<Message>({
-      id: 'energy-outcome-meter',
+    trainingGrammarTile<Message>({
       title: 'Energy/outcome meter',
-      source: 'statGrid + segmented meter',
-      components: ['statGrid', 'meter segments', 'badge'],
-      intent:
-        'A compact meter tying compute energy, verified work, and payout/settlement without letting one stand in for another.',
-      preview: energyOutcomeMeterPreview<Message>(),
+      source: 'oa-training-grammar-energy-outcome-meter',
+      detail:
+        'Compute, verified work, and settlement as animated bars in one Three scene.',
+      node: trainingEnergyOutcomeMeterView<Message>(),
     }),
-    trainingPrimitiveCard<Message>({
-      id: 'proof-drawer',
+    trainingGrammarTile<Message>({
       title: 'Proof drawer',
-      source: 'drawerPanel + keyValueRows + stackedList',
-      components: ['drawerPanel', 'keyValueRows', 'stackedList', 'textLink'],
-      intent:
-        'The drill-down surface for run refs, replay pairs, receipts, and public-safe links behind any visual mark.',
-      preview: h.div(
-        [Ui.className<Message>('grid h-full min-h-[300px] content-center p-4')],
-        [proofDrawerPreview<Message>()],
-      ),
+      source: 'oa-training-grammar-proof-drawer',
+      detail:
+        'Proof records as layered 3D planes that can become the drill-down grammar later.',
+      node: trainingProofDrawerView<Message>(),
     }),
   ]
 
@@ -2569,26 +1856,10 @@ const trainingGrammarShowcaseView = <Message>(): Html => {
       h.p(
         [Ui.className<Message>('mt-3 max-w-[76ch] text-base/7 text-white/60')],
         [
-          'Initial compositional primitives for the Tassadar training run, assembled from the current animation playground, Pylon homepage language, and the live component registry.',
+          'Initial compositional primitives for the Tassadar training run, rendered as live Three/custom-element scenes like /animations.',
         ],
       ),
-      h.div(
-        [Ui.className<Message>('mt-6 grid gap-3 md:grid-cols-[1.2fr_0.8fr]')],
-        [
-          Ui.alert<Message>({
-            title: 'Direction',
-            body: 'Keep the run as a verifiable field: nodes, strands, gates, receipts, and proof surfaces stay distinct.',
-            tone: 'info',
-          }),
-          Ui.progressList<Message>([
-            { label: 'Run field', tone: 'info', active: true },
-            { label: 'Replay pair', tone: 'positive' },
-            { label: 'Verification gate', tone: 'positive' },
-            { label: 'Proof drawer', tone: 'neutral' },
-          ]),
-        ],
-      ),
-      h.div([Ui.className<Message>('mt-8 grid gap-4')], primitives),
+      h.div([Ui.className<Message>('mt-8 grid gap-4')], tiles),
     ],
   )
 }

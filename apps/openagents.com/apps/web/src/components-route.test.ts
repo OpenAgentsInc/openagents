@@ -104,8 +104,9 @@ describe('components gallery route', () => {
       Scene.expect(Scene.text('Receipt burst')).toExist(),
       Scene.expect(Scene.text('Proof drawer')).toExist(),
       Scene.expect(
-        Scene.text('lightBeamsView + pylonBezierNetworkView + statGrid'),
+        Scene.text('oa-training-run / @openagentsinc/three-effect'),
       ).toExist(),
+      Scene.expect(Scene.text('oa-training-grammar-replay-pair')).toExist(),
     )
   })
 
