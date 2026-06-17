@@ -158,6 +158,8 @@ import {
   getOpenAgentsWorkerConfig,
   redactedValue,
 } from './config'
+import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
+import { handlePublicCustomerOneCohortApi } from './customer-one-cohort-routes'
 import {
   AutopilotDecisionEmailInput,
   OrderSitesTransactionalEmailInput,
@@ -7123,6 +7125,10 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: '/api/public/metrics/accepted-outcomes-per-kwh',
     handler: request => handleAcceptedOutcomesPerKwhApi(request),
+  },
+  {
+    path: CustomerOneCohortEndpoint,
+    handler: request => handlePublicCustomerOneCohortApi(request),
   },
   {
     path: '/api/operator/product-promises/transitions',

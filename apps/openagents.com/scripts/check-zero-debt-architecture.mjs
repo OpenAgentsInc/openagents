@@ -466,6 +466,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/customer-one-cohort-projection.ts',
+    route: '/api/public/customer-one-cohort',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/business-signup-routes.ts',
     route: '/api/public/business-signup',
     status: 'staleness_declared',

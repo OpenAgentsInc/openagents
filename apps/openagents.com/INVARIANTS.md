@@ -1251,6 +1251,10 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     the receipt-backed accepted-outcome seed, metric definition, and product
     promise registry — compliant (`generatedAt`, contract, evidence-state
     labels, caveats, and modeled-vs-measured gate).
+  - `GET /api/public/customer-one-cohort` — live at read over Customer #1
+    cohort source rows and privacy-review evidence — compliant (`generatedAt`,
+    contract, evidence-only opaque cohort refs, generic labels, counts, blockers,
+    caveats, and three-completion D3 gate).
   - `POST /api/public/business-signup` — live-at-write intake receipt over the
     inserted business signup row — compliant (`generatedAt`, contract,
     public-safe request id/status only; no email, phone, website, or freeform

@@ -9,6 +9,8 @@ import {
 export const CUSTOMER_ONE_COHORT_PROJECTION_VERSION =
   'customer-one-cohort-projection:v1' as const
 
+export const CustomerOneCohortEndpoint = '/api/public/customer-one-cohort'
+
 const CUSTOMER_ONE_COHORT_PUBLIC_COLLECTION =
   'customer_one_cohort_public_projection'
 

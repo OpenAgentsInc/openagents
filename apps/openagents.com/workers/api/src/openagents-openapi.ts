@@ -10,6 +10,7 @@ import {
   AGENT_SEARCH_PAYMENT_PREVIEW_ENDPOINT,
   AGENT_SEARCH_PAYMENT_REDEEM_ENDPOINT,
 } from './agent-search'
+import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
 import { ForumPostBodyTextMaxLength } from './forum-limits'
 import { OmniApiSdkSeedEndpoint } from './omni-api-sdk-seed'
 import { PublicProductPromisesVersion } from './product-promises'
@@ -304,6 +305,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   AcceptedOutcomesPerKwhProjection: objectSummary(
     'Public-safe Accepted Outcomes per Kilowatt-Hour projection. Includes generatedAt, the declared staleness contract, the frozen metric definition ref, receipt-backed accepted-outcome counter, modeled/measured energy evidence labels, gate state, blocker refs, caveats, and published datapoints. Modeled seed datapoints are clearly labeled and do not grant payout, settlement, dispatch, energy-market, investment, or grid-operation authority.',
+  ),
+  CustomerOneCohortProjection: objectSummary(
+    'Public-safe Customer #1 cohort dogfood projection. Includes generatedAt, the declared live_at_read staleness contract, public-safe opaque cohort refs, generic team labels, state counts, blocker refs, caveat refs, and the three-completion D3 gate. It is evidence-only and grants no runtime, deployment, merge, accepted-work, payout, settlement, provider, or broad public customer-success authority.',
   ),
   ProductPromiseTransitionRequest: objectSummary(
     'Operator request to evaluate and record a promise transition: promiseId, toState, optional evidenceRefs, optional explicit exception (reasonRef, approvedByRef, expiresAt).',
@@ -2423,6 +2427,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Accepted Outcomes per kWh metric.',
           '#/components/schemas/AcceptedOutcomesPerKwhProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [CustomerOneCohortEndpoint]: {
+    get: operation({
+      operationId: 'getPublicCustomerOneCohort',
+      summary: 'Read Customer #1 cohort dogfood projection',
+      description:
+        'Returns the public-safe Customer #1 cohort dogfood projection. Rows contain opaque cohort refs and generic team labels only. The D3 gate opens only after three rows have both completion-bundle and privacy-review refs. The projection is evidence-only and does not create runtime, deployment, merge, accepted-work, payout, settlement, provider, or broad public customer-success authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Customer #1 cohort projection.',
+          '#/components/schemas/CustomerOneCohortProjection',
         ),
         ...errorResponses(),
       },
