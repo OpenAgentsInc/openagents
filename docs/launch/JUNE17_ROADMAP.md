@@ -159,10 +159,11 @@ signed recut.
   contract now links a privacy-review checklist required before a completion
   row can carry `privacyReviewRef`. **D3.13 (#5241) shipped:** production now
   records the first internal Customer #1 completion row, and the public
-  projection reports 1/3 counted completions. **Active D3.14 slice: #5243**
-  record the second internal Customer #1 completion row. Remaining D3 tail:
-  record one more real cohort row and collect at least three real
-  loop-completion bundles before closing #5098/#5104.
+  projection reports 1/3 counted completions. **D3.14 (#5243) shipped:**
+  production now records the second internal Customer #1 completion row, and
+  the public projection reports 2/3 counted completions. Remaining D3 tail:
+  record one more real cohort row and pass the public audit before closing
+  #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
