@@ -1,4 +1,4 @@
-import { Match as M, Option } from 'effect'
+import { Option } from 'effect'
 import { type Document, type Html, html } from 'foldkit/html'
 
 import {
@@ -343,31 +343,53 @@ const blogTitle = (slug: string): string =>
     onSome: postTitle => postTitle,
   })
 
-const title = (model: Model): string =>
-  model._tag === 'Demo'
-    ? 'OpenAgents Demo'
-    : M.value(model.route).pipe(
-        M.tag('Docs', () => 'Docs - OpenAgents'),
-        M.tag('DocsPage', ({ slug }) => `${docTitle(slug)} - OpenAgents`),
-        M.tag('Forum', () => 'Forum - OpenAgents'),
-        M.tag('ForumForum', route => Forum.title(route)),
-        M.tag('ForumTopic', route => Forum.title(route)),
-        M.tag('ForumReceipt', route => Forum.title(route)),
-        M.tag('SiteCheckoutDemo', () => 'Demo checkout - OpenAgents'),
-        M.tag('SiteCheckoutDemoReturn', route => SiteCheckoutDemo.title(route)),
-        M.tag('Blog', () => 'Blog - OpenAgents'),
-        M.tag('BlogPost', ({ slug }) => `${blogTitle(slug)} - OpenAgents`),
-        M.tag('Components', () => 'Components - OpenAgents'),
-        M.tag('ComponentsFamily', () => 'Components - OpenAgents'),
-        M.tag('Business', () => 'For your business - OpenAgents'),
-        M.tag('Animations', () => 'Animations - OpenAgents'),
-        M.tag('DemoLegal', () => 'Legal demo - OpenAgents'),
-        M.tag('Run', () => 'Live Tassadar run - OpenAgents'),
-        M.tag('Login', () => 'Log in - OpenAgents'),
-        M.tag('PublicAgent', ({ agentRef }) => `${agentRef} - OpenAgents`),
-        M.tag('Share', () => 'Shared Workroom - OpenAgents'),
-        M.orElse(() => 'OpenAgents'),
-      )
+const title = (model: Model): string => {
+  if (model._tag === 'Demo') {
+    return 'OpenAgents Demo'
+  }
+
+  switch (model.route._tag) {
+    case 'Docs':
+      return 'Docs - OpenAgents'
+    case 'DocsPage':
+      return `${docTitle(model.route.slug)} - OpenAgents`
+    case 'Forum':
+      return 'Forum - OpenAgents'
+    case 'ForumForum':
+    case 'ForumTopic':
+    case 'ForumReceipt':
+      return Forum.title(model.route)
+    case 'SiteCheckoutDemo':
+      return 'Demo checkout - OpenAgents'
+    case 'SiteCheckoutDemoReturn':
+      return SiteCheckoutDemo.title(model.route)
+    case 'Blog':
+      return 'Blog - OpenAgents'
+    case 'BlogPost':
+      return `${blogTitle(model.route.slug)} - OpenAgents`
+    case 'Components':
+    case 'ComponentsFamily':
+      return 'Components - OpenAgents'
+    case 'Business':
+      return 'For your business - OpenAgents'
+    case 'Animations':
+      return 'Animations - OpenAgents'
+    case 'DemoLegal':
+      return 'Legal demo - OpenAgents'
+    case 'Run':
+      return 'Live Tassadar run - OpenAgents'
+    case 'Tassadar':
+      return 'Tassadar run - OpenAgents'
+    case 'Login':
+      return 'Log in - OpenAgents'
+    case 'PublicAgent':
+      return `${model.route.agentRef} - OpenAgents`
+    case 'Share':
+      return 'Shared Workroom - OpenAgents'
+    default:
+      return 'OpenAgents'
+  }
+}
 
 const publicRouteBody = (model: Model): Document['body'] | undefined => {
   if (model._tag === 'Demo') {
@@ -475,7 +497,8 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'Business' &&
       model.route._tag !== 'Animations' &&
       model.route._tag !== 'DemoLegal' &&
-      model.route._tag !== 'Run'
+      model.route._tag !== 'Run' &&
+      model.route._tag !== 'Tassadar'
     ) {
       return undefined
     }
@@ -505,7 +528,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     return DemoLegal.view<Message>(authState)
   }
 
-  if (model.route._tag === 'Run') {
+  if (model.route._tag === 'Run' || model.route._tag === 'Tassadar') {
     return Run.view<Message>(authState)
   }
 

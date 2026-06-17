@@ -39,6 +39,7 @@ import {
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
   StatsRoute,
+  TassadarRoute,
   WorkspaceRoute,
   urlToAppRoute,
 } from './route'
@@ -132,6 +133,7 @@ describe('app route parser', () => {
 
   test('accepts the public live Tassadar run route', () => {
     expect(urlToAppRoute(appUrl('/run'))).toEqual(RunRoute())
+    expect(urlToAppRoute(appUrl('/tassadar'))).toEqual(TassadarRoute())
   })
 
   test('uses the Pylon scene as the root route', () => {

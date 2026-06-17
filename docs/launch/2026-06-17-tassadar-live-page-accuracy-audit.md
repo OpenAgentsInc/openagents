@@ -6,6 +6,14 @@ Scope: future `/tassadar`, current `/run`, `/components/training`, live
 Tassadar public projections, and `@openagentsinc/three-effect` training
 primitives.
 
+## Implementation updates
+
+- 2026-06-17: Issue #5186 implemented the canonical `/tassadar` route as a
+  public alias over the live Tassadar run view. The browser scene now renders a
+  live snapshot strip from the fetched public summary: run ref, run state,
+  `generatedAt`, `projection_staleness.v1` composition, browser fetched time,
+  and a manual refresh control. `/run` remains as the existing alias.
+
 ## Short answer
 
 We have the right base, but not the full accurate page yet.

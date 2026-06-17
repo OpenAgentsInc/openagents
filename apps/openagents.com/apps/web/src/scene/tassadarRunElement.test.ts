@@ -43,9 +43,15 @@ vi.mock('@openagentsinc/three-effect/foldkit', () => {
 })
 
 const populated = {
+  generatedAt: '2026-06-17T16:39:20.270Z',
   runRef: 'run.tassadar.executor.20260615',
   runLabel: 'Tassadar executor run',
   runState: 'active',
+  staleness: {
+    composition: 'live_at_read',
+    contractVersion: 'projection_staleness.v1',
+    maxStalenessSeconds: 0,
+  },
   emptyState: { idle: false },
   metrics: {
     activeWindowCount: { value: 2 },
@@ -94,6 +100,11 @@ const mountAndSettle = async (): Promise<HTMLElement> => {
   tassadarRunView()
   const el = document.createElement(TASSADAR_RUN_TAG)
   document.body.append(el)
+  await waitForSettled(el)
+  return el
+}
+
+const waitForSettled = async (el: HTMLElement): Promise<void> => {
   for (
     let i = 0;
     i < 50 && el.getAttribute('data-state') === 'loading';
@@ -102,7 +113,6 @@ const mountAndSettle = async (): Promise<HTMLElement> => {
     await Promise.resolve()
     await new Promise(resolve => setTimeout(resolve, 0))
   }
-  return el
 }
 
 describe('tassadarRunView page wiring', () => {
@@ -135,6 +145,39 @@ describe('tassadarRunView page wiring', () => {
     expect(typeof options).toBe('object')
     // The underlying renderer element was mounted.
     expect(el.shadowRoot?.querySelector(STUB_TAG)).not.toBeNull()
+  })
+
+  it('renders the live snapshot metadata and manual refresh state from the public summary', async () => {
+    const refreshed = {
+      ...populated,
+      generatedAt: '2026-06-17T16:40:20.270Z',
+      runState: 'active',
+    }
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse(populated))
+      .mockResolvedValueOnce(jsonResponse(refreshed))
+
+    const el = await mountAndSettle()
+    const status = el.shadowRoot?.querySelector('.status')
+    expect(status?.textContent ?? '').toContain(
+      'run.tassadar.executor.20260615',
+    )
+    expect(status?.textContent ?? '').toContain('active')
+    expect(status?.textContent ?? '').toContain('2026-06-17T16:39:20.270Z')
+    expect(status?.textContent ?? '').toContain('projection_staleness.v1')
+    expect(status?.textContent ?? '').toContain('live_at_read')
+    expect(status?.textContent ?? '').toContain('Refresh snapshot')
+
+    const refresh = el.shadowRoot?.querySelector('button')
+    expect(refresh).not.toBeNull()
+    refresh?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await waitForSettled(el)
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(el.shadowRoot?.querySelector('.status')?.textContent ?? '').toContain(
+      '2026-06-17T16:40:20.270Z',
+    )
   })
 
   it('(b) idle summary → empty state, still renders the honest (zeroed) scene — never faked', async () => {

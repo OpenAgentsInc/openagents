@@ -44,6 +44,16 @@ const HOST_STYLE =
   '.overlay p{margin:0;max-width:48ch;font-size:0.95rem;line-height:1.6;color:rgba(241,239,232,0.6)}' +
   '.overlay .label{display:block;margin-bottom:0.4rem;font-size:0.7rem;letter-spacing:0.08em;' +
   'text-transform:uppercase;color:rgba(241,239,232,0.35)}' +
+  '.status{position:absolute;top:0.75rem;left:0.75rem;right:0.75rem;z-index:3;display:flex;align-items:flex-start;' +
+  'justify-content:space-between;gap:0.75rem;border:1px solid rgba(255,255,255,0.14);background:rgba(0,0,0,0.68);' +
+  'padding:0.7rem 0.8rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(10px)}' +
+  '.status dl{display:grid;grid-template-columns:repeat(5,minmax(0,auto));gap:0.55rem 1rem;margin:0;min-width:0}' +
+  '.status div{min-width:0}.status dt{margin:0 0 0.18rem;font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.35)}' +
+  '.status dd{margin:0;max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.72rem;color:rgba(255,255,255,0.78)}' +
+  '.status button{min-height:2rem;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.06);padding:0 0.65rem;' +
+  'font:inherit;font-size:0.7rem;color:rgba(255,255,255,0.82);cursor:pointer}' +
+  '.status button:focus-visible{outline:2px solid rgba(114,191,255,0.9);outline-offset:2px}' +
+  '@media (max-width:720px){.status{display:grid}.status dl{grid-template-columns:repeat(2,minmax(0,1fr))}.status dd{max-width:none}.status button{justify-self:start}}' +
   '.selection{position:absolute;right:1rem;bottom:1rem;z-index:2;max-width:min(26rem,calc(100% - 2rem));' +
   'border:1px solid rgba(255,255,255,0.14);background:rgba(0,0,0,0.78);padding:0.75rem 0.875rem;' +
   'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(10px)}' +
@@ -91,6 +101,27 @@ const metricNumber = (
   Number.isFinite(metric.value)
     ? metric.value
     : 0
+
+const textOrUnknown = (value: string | undefined): string => {
+  const text = value?.trim()
+  return text === undefined || text.length === 0 ? 'unknown' : text
+}
+
+const generatedAtText = (summary: TassadarRunPublicSummary): string =>
+  textOrUnknown(summary.generatedAt)
+
+const stalenessText = (summary: TassadarRunPublicSummary): string => {
+  const staleness = summary.staleness
+  if (staleness === undefined) return 'unknown'
+  const contract = textOrUnknown(staleness.contractVersion)
+  const composition = textOrUnknown(staleness.composition)
+  const max =
+    typeof staleness.maxStalenessSeconds === 'number' &&
+    Number.isFinite(staleness.maxStalenessSeconds)
+      ? `${staleness.maxStalenessSeconds}s`
+      : 'unknown'
+  return `${contract} / ${composition} / max ${max}`
+}
 
 const linkForRef = (
   summary: TassadarRunPublicSummary,
@@ -203,15 +234,20 @@ const makeClass = (): CustomElementConstructor =>
     connectedCallback(): void {
       const shadow = this.shadowRoot ?? this.attachShadow({ mode: 'open' })
       this.#shadow = shadow
-      this.#renderLoading()
-      this.#abort = new AbortController()
-      void this.#load(this.#abort.signal)
+      this.#refresh()
     }
 
     disconnectedCallback(): void {
       this.#abort?.abort()
       this.#abort = null
       this.#shadow?.replaceChildren()
+    }
+
+    #refresh(): void {
+      this.#abort?.abort()
+      this.#renderLoading()
+      this.#abort = new AbortController()
+      void this.#load(this.#abort.signal)
     }
 
     async #load(signal: AbortSignal): Promise<void> {
@@ -230,7 +266,7 @@ const makeClass = (): CustomElementConstructor =>
         }
         const summary = (await response.json()) as TassadarRunPublicSummary
         if (signal.aborted) return
-        this.#renderScene(summary)
+        this.#renderScene(summary, new Date())
       } catch (error) {
         if (signal.aborted) return
         this.#renderError(
@@ -273,7 +309,7 @@ const makeClass = (): CustomElementConstructor =>
     // Receipt-first: idle summaries still render the real (zeroed) scene; we do
     // not substitute placeholder numbers. Only the data-state differs so callers
     // and tests can distinguish a just-launched run from a populated one.
-    #renderScene(summary: TassadarRunPublicSummary): void {
+    #renderScene(summary: TassadarRunPublicSummary, fetchedAt: Date): void {
       const base = this.#base()
       if (base === null) return
       this.setAttribute('data-state', dataStateForSummary(summary))
@@ -295,6 +331,40 @@ const makeClass = (): CustomElementConstructor =>
         }
       })
       base.mount.append(run)
+      this.#renderStatus(base.mount, summary, fetchedAt)
+    }
+
+    #renderStatus(
+      mount: HTMLDivElement,
+      summary: TassadarRunPublicSummary,
+      fetchedAt: Date,
+    ): void {
+      const panel = document.createElement('aside')
+      panel.className = 'status'
+      panel.setAttribute('aria-label', 'Live Tassadar snapshot status')
+      const list = document.createElement('dl')
+      const rows: ReadonlyArray<readonly [string, string]> = [
+        ['Run', textOrUnknown(summary.runRef)],
+        ['State', textOrUnknown(summary.runState)],
+        ['Generated', generatedAtText(summary)],
+        ['Staleness', stalenessText(summary)],
+        ['Browser fetched', fetchedAt.toISOString()],
+      ]
+      for (const [label, value] of rows) {
+        const item = document.createElement('div')
+        const term = document.createElement('dt')
+        term.textContent = label
+        const detail = document.createElement('dd')
+        detail.textContent = value
+        item.append(term, detail)
+        list.append(item)
+      }
+      const refresh = document.createElement('button')
+      refresh.type = 'button'
+      refresh.textContent = 'Refresh snapshot'
+      refresh.addEventListener('click', () => this.#refresh())
+      panel.append(list, refresh)
+      mount.append(panel)
     }
 
     #renderSelection(

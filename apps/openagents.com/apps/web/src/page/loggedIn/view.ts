@@ -43,6 +43,7 @@ import {
   siteCheckoutDemoReturnRouter,
   siteCheckoutDemoRouter,
   statsRouter,
+  tassadarRouter,
   teamChatRouter,
   teamFileRouter,
   teamFilesRouter,
@@ -119,6 +120,7 @@ const currentHref = (model: Model): string =>
       Animations: () => animationsRouter(),
       DemoLegal: () => demoLegalRouter(),
       Run: () => runRouter(),
+      Tassadar: () => tassadarRouter(),
       Login: () => loginRouter(),
       Blog: () => blogRouter(),
       BlogPost: ({ slug }) => blogPostRouter({ slug }),
@@ -178,6 +180,7 @@ const routeKey = (model: Model): string =>
       Animations: () => 'Animations',
       DemoLegal: () => 'DemoLegal',
       Run: () => 'Run',
+      Tassadar: () => 'Tassadar',
       Login: () => 'Login',
       Blog: () => 'Blog',
       BlogPost: ({ slug }) => `BlogPost:${slug}`,
@@ -539,6 +542,10 @@ const routeView = (model: Model): Html => {
           Run: () =>
             Ui.workroomScrollableRoute<Message>([
               notFoundView('/run', chatRouter(), 'Go to Chat'),
+            ]),
+          Tassadar: () =>
+            Ui.workroomScrollableRoute<Message>([
+              notFoundView('/tassadar', chatRouter(), 'Go to Chat'),
             ]),
           Login: () =>
             Ui.workroomScrollableRoute<Message>([

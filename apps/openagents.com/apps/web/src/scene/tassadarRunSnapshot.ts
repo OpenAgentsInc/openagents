@@ -53,9 +53,15 @@ export interface TassadarRunPublicSummary {
     readonly traceRefs?: ReadonlyArray<string>
     readonly verdictRefs?: ReadonlyArray<string>
   }
+  readonly generatedAt?: string
   readonly runRef?: string
   readonly runLabel?: string
   readonly runState?: string
+  readonly staleness?: {
+    readonly composition?: string
+    readonly contractVersion?: string
+    readonly maxStalenessSeconds?: number
+  }
   readonly emptyState?: { readonly idle?: boolean; readonly reason?: string }
   readonly metrics?: {
     readonly activeWindowCount?: PublicMetric
