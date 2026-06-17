@@ -2554,6 +2554,104 @@ export const AutopilotWorkListState = S.Union([
 ])
 export type AutopilotWorkListState = typeof AutopilotWorkListState.Type
 
+export const CustomerOneCohortRowState = S.Literals([
+  'candidate',
+  'invited',
+  'workspace_seeded',
+  'first_run_started',
+  'delivery_reviewed',
+  'loop_completed',
+  'blocked',
+  'deferred',
+])
+export type CustomerOneCohortRowState = typeof CustomerOneCohortRowState.Type
+
+export const CustomerOneCohortCounts = S.Struct({
+  blocked: S.Number,
+  candidate: S.Number,
+  deferred: S.Number,
+  delivery_reviewed: S.Number,
+  first_run_started: S.Number,
+  invited: S.Number,
+  loop_completed: S.Number,
+  workspace_seeded: S.Number,
+})
+export type CustomerOneCohortCounts = typeof CustomerOneCohortCounts.Type
+
+export const CustomerOneCohortProjectionRow = S.Struct({
+  artifactRef: S.optionalKey(S.String),
+  blockerRefs: S.Array(S.String),
+  caveatRefs: S.Array(S.String),
+  completionBundleRef: S.optionalKey(S.String),
+  countsTowardD3Completion: S.Boolean,
+  displayLabel: S.String,
+  privacyReviewRef: S.optionalKey(S.String),
+  reviewRef: S.optionalKey(S.String),
+  routingRef: S.optionalKey(S.String),
+  runRef: S.optionalKey(S.String),
+  state: CustomerOneCohortRowState,
+  teamCohortRef: S.String,
+  templateRef: S.optionalKey(S.String),
+  verificationRef: S.optionalKey(S.String),
+  verticalRef: S.optionalKey(S.String),
+  workspaceRef: S.optionalKey(S.String),
+})
+export type CustomerOneCohortProjectionRow =
+  typeof CustomerOneCohortProjectionRow.Type
+
+export const CustomerOneCohortGate = S.Struct({
+  reasonRefs: S.Array(S.String),
+  state: S.Literals(['blocked', 'ready']),
+})
+export type CustomerOneCohortGate = typeof CustomerOneCohortGate.Type
+
+export const PublicProjectionStalenessContract = S.Struct({
+  composition: S.Literals([
+    'live_at_read',
+    'rebuilt_on_transition',
+    'stored_snapshot',
+  ]),
+  contractVersion: S.Literal('projection_staleness.v1'),
+  maxStalenessSeconds: S.Number,
+  rebuildsOn: S.Array(S.String),
+})
+export type PublicProjectionStalenessContract =
+  typeof PublicProjectionStalenessContract.Type
+
+export const CustomerOneCohortProjection = S.Struct({
+  authority: S.Literal('evidence_only'),
+  blockerRefs: S.Array(S.String),
+  caveatRefs: S.Array(S.String),
+  cohortProjectionVersion: S.Literal('customer-one-cohort-projection:v1'),
+  counts: CustomerOneCohortCounts,
+  gate: CustomerOneCohortGate,
+  generatedAt: S.String,
+  rows: S.Array(CustomerOneCohortProjectionRow),
+  staleness: PublicProjectionStalenessContract,
+  target: S.Struct({
+    maximumTargetTeams: S.Number,
+    minimumCompletedTeams: S.Number,
+  }),
+})
+export type CustomerOneCohortProjection =
+  typeof CustomerOneCohortProjection.Type
+
+export const CustomerOneCohortIdle = ts('CustomerOneCohortIdle', {})
+export const CustomerOneCohortLoading = ts('CustomerOneCohortLoading', {})
+export const CustomerOneCohortLoaded = ts('CustomerOneCohortLoaded', {
+  response: CustomerOneCohortProjection,
+})
+export const CustomerOneCohortFailed = ts('CustomerOneCohortFailed', {
+  error: S.String,
+})
+export const CustomerOneCohortState = S.Union([
+  CustomerOneCohortIdle,
+  CustomerOneCohortLoading,
+  CustomerOneCohortLoaded,
+  CustomerOneCohortFailed,
+])
+export type CustomerOneCohortState = typeof CustomerOneCohortState.Type
+
 export const AutopilotWorkComposerField = S.Literals([
   'branch',
   'maxSpendCents',
@@ -3573,6 +3671,7 @@ export const Model = ts('LoggedIn', {
   customerOrderDraft: S.String,
   customerOrder: CustomerOrderState,
   customerOrders: CustomerOrdersState,
+  customerOneCohort: CustomerOneCohortState,
   customerFulfillmentArtifacts: CustomerFulfillmentArtifactsState,
   customerSiteFeedback: CustomerSiteFeedbackState,
   customerSiteFeedbackDraft: S.String,
@@ -4131,6 +4230,7 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
     customerOrderDraft: '',
     customerOrder: CustomerOrderIdle(),
     customerOrders: CustomerOrdersIdle(),
+    customerOneCohort: CustomerOneCohortIdle(),
     customerFulfillmentArtifacts: CustomerFulfillmentArtifactsIdle(),
     customerSiteFeedback: CustomerSiteFeedbackIdle(),
     customerSiteFeedbackDraft: '',

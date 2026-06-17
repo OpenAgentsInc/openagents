@@ -75,6 +75,9 @@ import {
   type ArtanisOperatorConsoleResponse,
   AutopilotWorkListLoaded,
   type AutopilotWorkSummary,
+  CustomerOneCohortLoaded,
+  type CustomerOneCohortProjection,
+  type CustomerOneCohortProjectionRow,
   type CustomerOrder,
   CustomerOrderLoaded,
   CustomerOrdersLoaded,
@@ -283,6 +286,91 @@ const providerPoolLoadedFixture = () =>
       },
     },
   })
+
+const customerOneCohortProjectionFixture = (
+  overrides: Partial<CustomerOneCohortProjection> = {},
+): CustomerOneCohortProjection => ({
+  authority: 'evidence_only',
+  blockerRefs: ['reason.customer_one.cohort_completion_bundles_missing'],
+  caveatRefs: [],
+  cohortProjectionVersion: 'customer-one-cohort-projection:v1',
+  counts: {
+    blocked: 0,
+    candidate: 0,
+    deferred: 0,
+    delivery_reviewed: 0,
+    first_run_started: 0,
+    invited: 0,
+    loop_completed: 0,
+    workspace_seeded: 0,
+  },
+  gate: {
+    reasonRefs: ['reason.customer_one.cohort_completion_bundles_missing'],
+    state: 'blocked',
+  },
+  generatedAt: '2026-06-17T20:00:00.000Z',
+  rows: [],
+  staleness: {
+    composition: 'live_at_read',
+    contractVersion: 'projection_staleness.v1',
+    maxStalenessSeconds: 0,
+    rebuildsOn: ['cohort_row_written', 'privacy_review_recorded'],
+  },
+  target: {
+    maximumTargetTeams: 5,
+    minimumCompletedTeams: 3,
+  },
+  ...overrides,
+})
+
+const completedCohortProjectionRow = (
+  index: number,
+): CustomerOneCohortProjectionRow => ({
+  artifactRef: `artifact.customer-one.team-${index}.delivery.v1`,
+  blockerRefs: [],
+  caveatRefs: [],
+  completionBundleRef: `completion.customer-one.team-${index}.bundle.v1`,
+  countsTowardD3Completion: true,
+  displayLabel: `Team ${index}`,
+  privacyReviewRef: `privacy.customer-one.team-${index}.review.v1`,
+  reviewRef: `review.customer-one.team-${index}.human.v1`,
+  routingRef: `routing.customer-one.team-${index}.owned-node.v1`,
+  runRef: `run.customer-one.team-${index}.primary.v1`,
+  state: 'loop_completed',
+  teamCohortRef: `cohort.team.private-customer-${index}.v1`,
+  templateRef: 'forge.template.ecommerce.inventory_campaign.v1',
+  verificationRef: `verification.customer-one.team-${index}.smoke.v1`,
+  verticalRef: 'vertical.private-customer-ecommerce.v1',
+  workspaceRef: `workspace.customer-one.private-customer-${index}.v1`,
+})
+
+const readyCustomerOneCohortProjectionFixture =
+  (): CustomerOneCohortProjection => {
+    const rows = [
+      completedCohortProjectionRow(1),
+      completedCohortProjectionRow(2),
+      completedCohortProjectionRow(3),
+    ]
+
+    return customerOneCohortProjectionFixture({
+      blockerRefs: [],
+      counts: {
+        blocked: 0,
+        candidate: 0,
+        deferred: 0,
+        delivery_reviewed: 0,
+        first_run_started: 0,
+        invited: 0,
+        loop_completed: 3,
+        workspace_seeded: 0,
+      },
+      gate: {
+        reasonRefs: [],
+        state: 'ready',
+      },
+      rows,
+    })
+  }
 
 const workspaceScope = 'workspace:github:14167547'
 const syncedMissionModel = (route: LoggedInRoute = ChatRoute()) => {
@@ -846,6 +934,9 @@ describe('logged-in workroom sidebar', () => {
           },
         }),
         providerAccountPool: providerPoolLoadedFixture(),
+        customerOneCohort: CustomerOneCohortLoaded({
+          response: customerOneCohortProjectionFixture(),
+        }),
       }),
       Scene.expect(
         Scene.selector('[data-component="forge-factory-dashboard"]'),
@@ -877,22 +968,65 @@ describe('logged-in workroom sidebar', () => {
       ).toHaveAttr('data-forge-routing-value', '0'),
       Scene.expect(
         Scene.selector('[data-forge-cohort-readiness="true"]'),
-      ).toHaveAttr('data-forge-cohort-gate', 'awaiting-source'),
+      ).toHaveAttr('data-forge-cohort-gate', 'blocked'),
+      Scene.expect(
+        Scene.selector('[data-forge-cohort-readiness="true"]'),
+      ).toHaveAttr('data-forge-cohort-completed', '0'),
       Scene.expect(
         Scene.selector('[data-forge-cohort-metric="target-teams"]'),
       ).toHaveAttr('data-forge-cohort-value', '3-5'),
       Scene.expect(
         Scene.selector('[data-forge-cohort-metric="completion-bundles"]'),
-      ).toHaveAttr('data-forge-cohort-value', '—'),
+      ).toHaveAttr('data-forge-cohort-value', '0'),
       Scene.expect(
         Scene.selector('[data-forge-cohort-metric="privacy-reviews"]'),
-      ).toHaveAttr('data-forge-cohort-value', '—'),
+      ).toHaveAttr('data-forge-cohort-value', '0'),
+      Scene.expect(
+        Scene.selector('[data-forge-cohort-metric="gate-status"]'),
+      ).toHaveAttr('data-forge-cohort-value', 'Blocked'),
+      Scene.expect(
+        Scene.selector('[data-forge-cohort-empty="true"]'),
+      ).toExist(),
       Scene.expect(
         Scene.role('button', { name: 'Run Scope triage' }),
       ).toExist(),
       Scene.expect(
         Scene.selector('[data-forge-automation-tuning="true"]'),
       ).toExist(),
+    )
+  })
+
+  test('renders Forge cohort readiness as ready from public-safe rows only', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with({
+        ...LoggedIn.init(ForgeRoute(), auth),
+        customerOneCohort: CustomerOneCohortLoaded({
+          response: readyCustomerOneCohortProjectionFixture(),
+        }),
+        providerAccountPool: providerPoolLoadedFixture(),
+      }),
+      Scene.expect(
+        Scene.selector('[data-forge-cohort-readiness="true"]'),
+      ).toHaveAttr('data-forge-cohort-gate', 'ready'),
+      Scene.expect(
+        Scene.selector('[data-forge-cohort-readiness="true"]'),
+      ).toHaveAttr('data-forge-cohort-completed', '3'),
+      Scene.expect(
+        Scene.selector('[data-forge-cohort-metric="completion-bundles"]'),
+      ).toHaveAttr('data-forge-cohort-value', '3'),
+      Scene.expect(
+        Scene.selector('[data-forge-cohort-metric="privacy-reviews"]'),
+      ).toHaveAttr('data-forge-cohort-value', '3'),
+      Scene.expect(
+        Scene.selector('[data-forge-cohort-metric="gate-status"]'),
+      ).toHaveAttr('data-forge-cohort-value', 'Ready'),
+      Scene.expect(Scene.text('Team 1')).toExist(),
+      Scene.expect(Scene.text('Team 2')).toExist(),
+      Scene.expect(Scene.text('Team 3')).toExist(),
+      Scene.expect(Scene.text('private-customer')).not.toExist(),
+      Scene.expect(Scene.text('workspace.customer-one')).not.toExist(),
+      Scene.expect(Scene.text('cohort.team')).not.toExist(),
     )
   })
 

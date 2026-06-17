@@ -43,6 +43,7 @@ import {
   AutopilotWorkResponse,
   AutopilotWorkReviewAction,
   CustomerFulfillmentArtifactsResponse,
+  CustomerOneCohortProjection,
   CustomerOrderResponse,
   CustomerOrdersResponse,
   CustomerSiteBuilderEventsResponse,
@@ -338,6 +339,18 @@ export const SucceededLoadAutopilotWorkList = m(
   },
 )
 export const FailedLoadAutopilotWorkList = m('FailedLoadAutopilotWorkList', {
+  error: S.String,
+})
+export const RequestedLoadCustomerOneCohort = m(
+  'RequestedLoadCustomerOneCohort',
+)
+export const SucceededLoadCustomerOneCohort = m(
+  'SucceededLoadCustomerOneCohort',
+  {
+    response: CustomerOneCohortProjection,
+  },
+)
+export const FailedLoadCustomerOneCohort = m('FailedLoadCustomerOneCohort', {
   error: S.String,
 })
 export const RequestedLoadAutopilotMorningReport = m(
@@ -1265,6 +1278,9 @@ export const Message = S.Union([
   RequestedLoadAutopilotWorkList,
   SucceededLoadAutopilotWorkList,
   FailedLoadAutopilotWorkList,
+  RequestedLoadCustomerOneCohort,
+  SucceededLoadCustomerOneCohort,
+  FailedLoadCustomerOneCohort,
   RequestedLoadAutopilotMorningReport,
   SucceededLoadAutopilotMorningReport,
   FailedLoadAutopilotMorningReport,

@@ -8,6 +8,7 @@
 //                                          backlog, pass rate, ship rate
 //   - the provider-account pool       -> Code Gen capacity / "where work runs"
 //   - the overnight report counts     -> awaiting-decision / blocked signal
+//   - Customer #1 cohort projection   -> public-safe dogfood loop readiness
 //
 // Every number is tagged with its provenance. A metric backed by a real
 // projection is labeled `live`; a metric with no real source yet is labeled
@@ -39,6 +40,8 @@ import {
 import type {
   AutopilotWorkState,
   AutopilotWorkSummary,
+  CustomerOneCohortProjection,
+  CustomerOneCohortProjectionRow,
   Model,
   ProviderAccountPoolSummary,
 } from '../model'
@@ -100,6 +103,8 @@ interface DogfoodMetric {
   readonly value: string
   readonly provenance: Provenance
 }
+
+type CohortGateStatus = 'blocked' | 'loading' | 'ready' | 'unavailable'
 
 interface RoutingDigest {
   readonly blocked: number
@@ -725,32 +730,97 @@ const buildRoutingMetrics = (
   ]
 }
 
-const buildCohortReadinessMetrics = (): ReadonlyArray<DogfoodMetric> => [
-  {
-    key: 'target-teams',
-    label: 'Target teams',
-    provenance: 'configured',
-    value: '3-5',
-  },
-  {
-    key: 'completion-bundles',
-    label: 'Completion bundles',
-    provenance: 'seeded',
-    value: '—',
-  },
-  {
-    key: 'privacy-reviews',
-    label: 'Privacy reviews',
-    provenance: 'seeded',
-    value: '—',
-  },
-  {
-    key: 'gate-status',
-    label: 'D3 gate',
-    provenance: 'seeded',
-    value: 'Awaiting source',
-  },
-]
+const countCompletionBundles = (
+  projection: CustomerOneCohortProjection,
+): number =>
+  projection.rows.filter(row => row.completionBundleRef !== undefined).length
+
+const countPrivacyReviews = (projection: CustomerOneCohortProjection): number =>
+  projection.rows.filter(row => row.privacyReviewRef !== undefined).length
+
+const cohortGateStatus = (data: FactoryData): CohortGateStatus => {
+  if (data.cohort !== null) {
+    return data.cohort.gate.state
+  }
+
+  return data.cohortError === null ? 'loading' : 'unavailable'
+}
+
+const cohortGateLabel = (status: CohortGateStatus): string => {
+  if (status === 'ready') {
+    return 'Ready'
+  }
+
+  if (status === 'blocked') {
+    return 'Blocked'
+  }
+
+  if (status === 'unavailable') {
+    return 'Unavailable'
+  }
+
+  return 'Loading'
+}
+
+const cohortReadinessCopy = (data: FactoryData): string => {
+  const status = cohortGateStatus(data)
+
+  if (status === 'ready') {
+    return 'Three public-safe completion bundles are recorded for Customer #1 dogfood.'
+  }
+
+  if (status === 'blocked') {
+    return 'Customer #1 stays blocked until three loop-completion bundles pass privacy review.'
+  }
+
+  if (status === 'unavailable') {
+    return 'Cohort evidence is unavailable, so the D3 gate stays blocked.'
+  }
+
+  return 'Loading public-safe cohort evidence for the D3 gate.'
+}
+
+const buildCohortReadinessMetrics = (
+  data: FactoryData,
+): ReadonlyArray<DogfoodMetric> => {
+  const projection = data.cohort
+  const provenance = projection === null ? 'seeded' : 'live'
+  const target =
+    projection === null
+      ? '3-5'
+      : `${projection.target.minimumCompletedTeams}-${projection.target.maximumTargetTeams}`
+
+  return [
+    {
+      key: 'target-teams',
+      label: 'Target teams',
+      provenance: projection === null ? 'configured' : 'live',
+      value: target,
+    },
+    {
+      key: 'completion-bundles',
+      label: 'Completion bundles',
+      provenance,
+      value:
+        projection === null
+          ? '—'
+          : formatInt(countCompletionBundles(projection)),
+    },
+    {
+      key: 'privacy-reviews',
+      label: 'Privacy reviews',
+      provenance,
+      value:
+        projection === null ? '—' : formatInt(countPrivacyReviews(projection)),
+    },
+    {
+      key: 'gate-status',
+      label: 'D3 gate',
+      provenance,
+      value: cohortGateLabel(cohortGateStatus(data)),
+    },
+  ]
+}
 
 // ---------------------------------------------------------------------------
 // Rendering primitives (dark contract, no model-authored markup).
@@ -1608,6 +1678,8 @@ const automationTuningSection = (model: Model): Html => {
 interface FactoryData {
   readonly digest: RunDigest
   readonly pool: ProviderAccountPoolSummary | null
+  readonly cohort: CustomerOneCohortProjection | null
+  readonly cohortError: string | null
   readonly generatedAt: string | null
   readonly runsLoaded: boolean
   readonly poolLoaded: boolean
@@ -1618,15 +1690,22 @@ interface FactoryData {
 const readFactoryData = (model: Model): FactoryData => {
   const list = model.autopilotWorkList
   const poolState = model.providerAccountPool
+  const cohortState = model.customerOneCohort
 
   const pool =
     poolState._tag === 'ProviderAccountPoolLoaded'
       ? poolState.response.summary
       : null
+  const cohort =
+    cohortState._tag === 'CustomerOneCohortLoaded' ? cohortState.response : null
+  const cohortError =
+    cohortState._tag === 'CustomerOneCohortFailed' ? cohortState.error : null
 
   if (list._tag === 'AutopilotWorkListLoaded') {
     const generatedAt = list.response.generatedAt
     return {
+      cohort,
+      cohortError,
       digest: digestRuns(list.response.workOrders, generatedAt),
       pool,
       generatedAt,
@@ -1638,6 +1717,8 @@ const readFactoryData = (model: Model): FactoryData => {
   }
 
   return {
+    cohort,
+    cohortError,
     digest: emptyDigest,
     pool,
     generatedAt: null,
@@ -1854,7 +1935,7 @@ const routingMetricView = (metric: DogfoodMetric): Html => {
 const cohortMetricView = (metric: DogfoodMetric): Html => {
   const h = html<Message>()
   const valueClass =
-    metric.provenance === 'configured' ? 'text-white/70' : 'text-white/35'
+    metric.provenance === 'seeded' ? 'text-white/35' : 'text-white/70'
 
   return h.div(
     [
@@ -1885,14 +1966,110 @@ const cohortMetricView = (metric: DogfoodMetric): Html => {
   )
 }
 
-const cohortReadinessSection = (): Html => {
+const cohortRowStateLabel = (row: CustomerOneCohortProjectionRow): string => {
+  if (row.countsTowardD3Completion) {
+    return 'Complete'
+  }
+
+  if (row.state === 'blocked') {
+    return 'Blocked'
+  }
+
+  if (row.state === 'deferred') {
+    return 'Deferred'
+  }
+
+  if (row.privacyReviewRef !== undefined) {
+    return 'Reviewed'
+  }
+
+  if (row.completionBundleRef !== undefined) {
+    return 'Needs review'
+  }
+
+  return 'In progress'
+}
+
+const cohortRowView = (row: CustomerOneCohortProjectionRow): Html => {
   const h = html<Message>()
+  const stateLabel = cohortRowStateLabel(row)
+  const stateClass = row.countsTowardD3Completion
+    ? 'border-[#1b5e20] text-[#7ccf8a]'
+    : row.state === 'blocked'
+      ? 'border-[#5a3b00] text-[#ffb400]'
+      : row.state === 'deferred'
+        ? 'border-[#333] text-white/40'
+        : 'border-[#24415f] text-[#8fc8ff]'
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border border-[#1b1b1b] bg-black/20 px-3 py-2',
+      ),
+      h.DataAttribute('forge-cohort-row', row.displayLabel),
+      h.DataAttribute('forge-cohort-row-state', row.state),
+      h.DataAttribute(
+        'forge-cohort-row-complete',
+        row.countsTowardD3Completion ? 'true' : 'false',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'truncate text-[0.6875rem] font-medium text-white/65',
+          ),
+        ],
+        [row.displayLabel],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            `inline-flex min-h-5 items-center border px-1.5 text-[0.5625rem] uppercase tracking-wide ${stateClass}`,
+          ),
+        ],
+        [stateLabel],
+      ),
+    ],
+  )
+}
+
+const cohortRowsView = (data: FactoryData): ReadonlyArray<Html> => {
+  const h = html<Message>()
+
+  if (data.cohort === null) {
+    return []
+  }
+
+  if (data.cohort.rows.length === 0) {
+    return [
+      h.div(
+        [
+          Ui.className<Message>(
+            'border border-[#1b1b1b] bg-black/20 px-3 py-2 text-[0.6875rem] text-white/35',
+          ),
+          h.DataAttribute('forge-cohort-empty', 'true'),
+        ],
+        ['No cohort rows recorded.'],
+      ),
+    ]
+  }
+
+  return data.cohort.rows.map(cohortRowView)
+}
+
+const cohortReadinessSection = (data: FactoryData): Html => {
+  const h = html<Message>()
+  const gate = cohortGateStatus(data)
+  const completed =
+    data.cohort === null ? '0' : formatInt(data.cohort.counts.loop_completed)
 
   return h.div(
     [
       Ui.className<Message>('grid gap-2 border-t border-[#1b1b1b] pt-3'),
       h.DataAttribute('forge-cohort-readiness', 'true'),
-      h.DataAttribute('forge-cohort-gate', 'awaiting-source'),
+      h.DataAttribute('forge-cohort-gate', gate),
+      h.DataAttribute('forge-cohort-completed', completed),
     ],
     [
       h.div(
@@ -1905,13 +2082,15 @@ const cohortReadinessSection = (): Html => {
       ),
       h.div(
         [Ui.className<Message>('text-sm/6 text-white/45')],
-        [
-          'D3 needs at least three public-safe loop-completion bundles before #5098 can close.',
-        ],
+        [cohortReadinessCopy(data)],
       ),
       h.div(
         [Ui.className<Message>('grid gap-2 @2xl:grid-cols-4 sm:grid-cols-2')],
-        buildCohortReadinessMetrics().map(cohortMetricView),
+        buildCohortReadinessMetrics(data).map(cohortMetricView),
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-2 sm:grid-cols-3')],
+        cohortRowsView(data),
       ),
     ],
   )
@@ -1995,7 +2174,7 @@ const dogfoodFactorySection = (data: FactoryData): Html => {
           ),
         ],
       ),
-      cohortReadinessSection(),
+      cohortReadinessSection(data),
     ],
   )
 }

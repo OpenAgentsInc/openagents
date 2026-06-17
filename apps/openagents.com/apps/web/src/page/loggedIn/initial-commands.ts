@@ -9,6 +9,7 @@ import {
   LoadAutopilotWorkDetail,
   LoadAutopilotWorkEvents,
   LoadAutopilotWorkList,
+  LoadCustomerOneCohort,
 } from './autopilot-work/transitions'
 import {
   teamChatMessagesRequestForRoute,
@@ -86,6 +87,7 @@ export const initialCommands = (
       InstallAccountMenuOutsideClick(),
       LoadAutopilotWorkList({}),
       LoadAutopilotMorningReport({}),
+      LoadCustomerOneCohort({}),
       LoadProviderAccountPool({}),
     ]
   }

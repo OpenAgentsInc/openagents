@@ -99,9 +99,10 @@ signed recut.
   typed cohort projection as no-store JSON over an injectable source-store seam.
   **D3.6 (#5212) shipped:** private/operator cohort row intake and storage now
   live behind `/api/operator/customer-one-cohort/rows`, and the public route
-  reads that D1 source. Remaining D3 tail: wire `/forge` to the route, record
-  cohort rows, and collect at least three real loop-completion bundles before
-  closing #5098/#5104.
+  reads that D1 source. **D3.7 (#5215) shipped:** `/forge` now renders cohort
+  readiness from `/api/public/customer-one-cohort` with public-safe row labels.
+  Remaining D3 tail: record cohort rows and collect at least three real
+  loop-completion bundles before closing #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator

@@ -12,6 +12,7 @@ import {
   FailedLoadAutopilotWorkDetail,
   FailedLoadAutopilotWorkEvents,
   FailedLoadAutopilotWorkList,
+  FailedLoadCustomerOneCohort,
   Message,
   SucceededAutopilotWorkComposer,
   SucceededAutopilotWorkReview,
@@ -20,6 +21,7 @@ import {
   SucceededLoadAutopilotWorkDetail,
   SucceededLoadAutopilotWorkEvents,
   SucceededLoadAutopilotWorkList,
+  SucceededLoadCustomerOneCohort,
 } from '../message'
 import {
   AUTOPILOT_WORK_LIST_PROMISE_ID,
@@ -53,6 +55,10 @@ import {
   AutopilotWorkReviewIdle,
   AutopilotWorkReviewSubmitting,
   AutopilotWorkReviewSucceeded,
+  CustomerOneCohortFailed,
+  CustomerOneCohortLoaded,
+  CustomerOneCohortLoading,
+  CustomerOneCohortProjection,
   Model,
 } from '../model'
 import { type UpdateReturn } from '../transition'
@@ -61,6 +67,8 @@ const withUpdateReturn = M.withReturnType<UpdateReturn>()
 
 const autopilotWorkListPath = (): string =>
   `/api/autopilot/work?promiseId=${encodeURIComponent(AUTOPILOT_WORK_LIST_PROMISE_ID)}`
+
+const customerOneCohortPath = (): string => '/api/public/customer-one-cohort'
 
 const autopilotWorkPath = (workOrderRef: string): string =>
   `/api/autopilot/work/${encodeURIComponent(workOrderRef)}`
@@ -217,6 +225,36 @@ export const LoadAutopilotWorkList = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadAutopilotWorkList({
+          error: errorMessageFromUnknown(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadCustomerOneCohort = Command.define(
+  'LoadCustomerOneCohort',
+  {},
+  SucceededLoadCustomerOneCohort,
+  FailedLoadCustomerOneCohort,
+)(() =>
+  Effect.gen(function* () {
+    const response = yield* requestJson({
+      init: {
+        cache: 'no-store',
+        credentials: 'include',
+        headers: { accept: 'application/json' },
+      },
+      name: 'loggedIn.customerOneCohort.load',
+      request: customerOneCohortPath(),
+      schema: CustomerOneCohortProjection,
+    })
+
+    return SucceededLoadCustomerOneCohort({ response })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadCustomerOneCohort({
           error: errorMessageFromUnknown(error),
         }),
       ),
@@ -472,6 +510,27 @@ export const updateAutopilotWork = (
       FailedLoadAutopilotWorkList: ({ error }) => [
         evo(model, {
           autopilotWorkList: () => AutopilotWorkListFailed({ error }),
+        }),
+        [],
+        Option.none(),
+      ],
+      RequestedLoadCustomerOneCohort: () => [
+        evo(model, {
+          customerOneCohort: () => CustomerOneCohortLoading(),
+        }),
+        [LoadCustomerOneCohort({})],
+        Option.none(),
+      ],
+      SucceededLoadCustomerOneCohort: ({ response }) => [
+        evo(model, {
+          customerOneCohort: () => CustomerOneCohortLoaded({ response }),
+        }),
+        [],
+        Option.none(),
+      ],
+      FailedLoadCustomerOneCohort: ({ error }) => [
+        evo(model, {
+          customerOneCohort: () => CustomerOneCohortFailed({ error }),
         }),
         [],
         Option.none(),
