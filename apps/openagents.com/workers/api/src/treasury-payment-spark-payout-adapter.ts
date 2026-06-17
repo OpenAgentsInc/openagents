@@ -178,11 +178,13 @@ export const makeSparkTreasuryPayoutAdapter = (
           >
 
           if (!response.ok || parsed.status !== 'succeeded') {
-            throw new Error(
-              typeof parsed.error === 'string'
-                ? parsed.error
-                : 'spark_treasury_pay_failed',
-            )
+            throw new TreasuryPaymentAuthorityError({
+              message:
+                typeof parsed.error === 'string'
+                  ? parsed.error
+                  : 'spark_treasury_pay_failed',
+              reason: 'adapter_unavailable',
+            })
           }
 
           return parsed
