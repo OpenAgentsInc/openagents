@@ -24,6 +24,9 @@ export type TreasuryTransactionStore = Readonly<{
   listRecent: (
     limit: number,
   ) => Promise<ReadonlyArray<TreasuryTransactionRecord>>
+  listPendingOutbound: (
+    limit: number,
+  ) => Promise<ReadonlyArray<TreasuryTransactionRecord>>
   read: (id: string) => Promise<TreasuryTransactionRecord | undefined>
   settle: (input: {
     amountSat: number
@@ -109,6 +112,21 @@ export const makeD1TreasuryTransactionStore = (
       .prepare(
         `SELECT * FROM treasury_transactions
          ORDER BY created_at DESC
+         LIMIT ?`,
+      )
+      .bind(limit)
+      .all<TreasuryTransactionRow>()
+
+    return (result.results ?? []).map(rowToRecord)
+  },
+  listPendingOutbound: async limit => {
+    const result = await db
+      .prepare(
+        `SELECT * FROM treasury_transactions
+         WHERE direction = 'out'
+           AND state = 'pending'
+           AND payment_ref IS NOT NULL
+         ORDER BY created_at ASC
          LIMIT ?`,
       )
       .bind(limit)

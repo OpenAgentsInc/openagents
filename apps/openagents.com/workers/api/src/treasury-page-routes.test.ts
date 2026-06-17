@@ -51,6 +51,18 @@ const makeMemoryStore = (): TreasuryTransactionStore & {
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
           .slice(0, limit),
       ),
+    listPendingOutbound: limit =>
+      Promise.resolve(
+        [...rows.values()]
+          .filter(
+            row =>
+              row.direction === 'out' &&
+              row.state === 'pending' &&
+              row.paymentRef !== null,
+          )
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+          .slice(0, limit),
+      ),
     read: id => Promise.resolve(rows.get(id)),
     rows,
     settle: input => {

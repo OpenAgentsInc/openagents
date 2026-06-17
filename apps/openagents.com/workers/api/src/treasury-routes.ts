@@ -165,6 +165,146 @@ const readTreasuryPaymentStatus = (
     .then(paymentStatusFromPayload)
     .catch(() => 'pending' as const)
 
+export type TreasuryTransactionReconcileResult = Readonly<{
+  amountSat: number
+  paymentStatus: TreasuryPaymentStatus
+  previousState: TreasuryTransactionRecord['state']
+  reconciledState: TreasuryTransactionRecord['state']
+  transactionId: string
+  updated: boolean
+  wallet: TreasuryTransactionWallet
+}>
+
+type TreasuryTransactionReconcileBlocked = Readonly<{
+  error: string
+  kind: 'blocked'
+  status: number
+}>
+
+type TreasuryTransactionReconcileDependencies = Readonly<{
+  fetchTipsBuffer?: ContainerPathFetch | undefined
+  fetchTreasury?: ContainerPathFetch | undefined
+  transactionStore: TreasuryTransactionStore
+}>
+
+const reconcileTreasuryTransactionRecord = async (
+  dependencies: TreasuryTransactionReconcileDependencies,
+  record: TreasuryTransactionRecord,
+): Promise<
+  TreasuryTransactionReconcileResult | TreasuryTransactionReconcileBlocked
+> => {
+  const wallet = transactionWallet(record)
+  const fetchPaymentStatus =
+    wallet === 'tips_buffer'
+      ? dependencies.fetchTipsBuffer
+      : dependencies.fetchTreasury
+
+  if (fetchPaymentStatus === undefined) {
+    return {
+      error: 'treasury_payment_status_unavailable',
+      kind: 'blocked',
+      status: 503,
+    }
+  }
+
+  if (record.paymentRef === null) {
+    return {
+      error: 'treasury_payment_ref_missing',
+      kind: 'blocked',
+      status: 409,
+    }
+  }
+
+  const paymentId = paymentIdForContainerLookup(record.paymentRef)
+
+  if (paymentId === null) {
+    return {
+      error: 'treasury_payment_ref_not_reconcilable',
+      kind: 'blocked',
+      status: 409,
+    }
+  }
+
+  const paymentStatus = await readTreasuryPaymentStatus(
+    fetchPaymentStatus,
+    paymentId,
+  )
+
+  if (record.state === 'pending' && paymentStatus === 'succeeded') {
+    await dependencies.transactionStore.settle({
+      amountSat: record.amountSat,
+      id: record.id,
+      settledAt: currentIsoTimestamp(),
+    })
+  }
+
+  if (record.state === 'pending' && paymentStatus === 'failed') {
+    await dependencies.transactionStore.fail({ id: record.id })
+  }
+
+  const reconciledState =
+    record.state !== 'pending'
+      ? record.state
+      : paymentStatus === 'succeeded'
+        ? 'settled'
+        : paymentStatus === 'failed'
+          ? 'failed'
+          : 'pending'
+
+  return {
+    amountSat: record.amountSat,
+    paymentStatus,
+    previousState: record.state,
+    reconciledState,
+    transactionId: record.id,
+    updated: record.state !== reconciledState,
+    wallet,
+  }
+}
+
+const isTreasuryTransactionReconcileBlocked = (
+  result:
+    | TreasuryTransactionReconcileResult
+    | TreasuryTransactionReconcileBlocked,
+): result is TreasuryTransactionReconcileBlocked => 'kind' in result
+
+export const reconcilePendingTreasuryTransactions = async (
+  dependencies: TreasuryTransactionReconcileDependencies &
+    Readonly<{ limit?: number | undefined }>,
+) => {
+  const records = await dependencies.transactionStore.listPendingOutbound(
+    dependencies.limit ?? 20,
+  )
+  const results = await Promise.all(
+    records.map(record =>
+      reconcileTreasuryTransactionRecord(dependencies, record),
+    ),
+  )
+  const reconciledResults = results.filter(
+    (result): result is TreasuryTransactionReconcileResult =>
+      !isTreasuryTransactionReconcileBlocked(result),
+  )
+
+  return {
+    blocked: results.filter(isTreasuryTransactionReconcileBlocked).length,
+    checked: results.length,
+    failed: results.filter(
+      result =>
+        !isTreasuryTransactionReconcileBlocked(result) &&
+        result.reconciledState === 'failed',
+    ).length,
+    pending: results.filter(
+      result =>
+        !isTreasuryTransactionReconcileBlocked(result) &&
+        result.reconciledState === 'pending',
+    ).length,
+    settled: reconciledResults.filter(
+      result => result.reconciledState === 'settled',
+    ).length,
+    updated: reconciledResults.filter(result => result.updated).length,
+  }
+}
+
 const readTreasuryBalance = (
   fetchTreasury: ContainerPathFetch,
 ): Effect.Effect<unknown> =>
@@ -379,70 +519,21 @@ export const handleOperatorTreasuryTransactionReconcileApi = (
             )
           }
 
-          const wallet = transactionWallet(record)
-          const fetchPaymentStatus =
-            wallet === 'tips_buffer'
-              ? dependencies.fetchTipsBuffer
-              : dependencies.fetchTreasury
-
-          if (fetchPaymentStatus === undefined) {
-            return noStoreJsonResponse(
-              { error: 'treasury_payment_status_unavailable' },
-              { status: 503 },
-            )
-          }
-
-          if (record.paymentRef === null) {
-            return noStoreJsonResponse(
-              { error: 'treasury_payment_ref_missing' },
-              { status: 409 },
-            )
-          }
-
-          const paymentId = paymentIdForContainerLookup(record.paymentRef)
-
-          if (paymentId === null) {
-            return noStoreJsonResponse(
-              { error: 'treasury_payment_ref_not_reconcilable' },
-              { status: 409 },
-            )
-          }
-
-          const paymentStatus = await readTreasuryPaymentStatus(
-            fetchPaymentStatus,
-            paymentId,
+          const result = await reconcileTreasuryTransactionRecord(
+            {
+              fetchTipsBuffer: dependencies.fetchTipsBuffer,
+              fetchTreasury: dependencies.fetchTreasury,
+              transactionStore: store,
+            },
+            record,
           )
 
-          if (record.state === 'pending' && paymentStatus === 'succeeded') {
-            await store.settle({
-              amountSat: record.amountSat,
-              id: record.id,
-              settledAt: currentIsoTimestamp(),
-            })
-          }
-
-          if (record.state === 'pending' && paymentStatus === 'failed') {
-            await store.fail({ id: record.id })
-          }
-
-          const reconciledState =
-            record.state !== 'pending'
-              ? record.state
-              : paymentStatus === 'succeeded'
-                ? 'settled'
-                : paymentStatus === 'failed'
-                  ? 'failed'
-                  : 'pending'
-
-          return noStoreJsonResponse({
-            amountSat: record.amountSat,
-            paymentStatus,
-            previousState: record.state,
-            reconciledState,
-            transactionId: record.id,
-            updated: record.state !== reconciledState,
-            wallet,
-          })
+          return isTreasuryTransactionReconcileBlocked(result)
+            ? noStoreJsonResponse(
+                { error: result.error },
+                { status: result.status },
+              )
+            : noStoreJsonResponse(result)
         },
       }).pipe(
         Effect.catch(() =>

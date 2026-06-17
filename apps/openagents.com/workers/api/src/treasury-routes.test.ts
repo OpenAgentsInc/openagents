@@ -13,6 +13,7 @@ import {
   handleOperatorTreasuryStatusApi,
   handleOperatorTreasuryTransactionReconcileApi,
   handlePublicTreasuryLaunchStatusApi,
+  reconcilePendingTreasuryTransactions,
   treasuryPayoutPlan,
 } from './treasury-routes'
 
@@ -68,6 +69,18 @@ const makeMemoryTransactionStore = (
       Promise.resolve(
         [...rows.values()]
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, limit),
+      ),
+    listPendingOutbound: limit =>
+      Promise.resolve(
+        [...rows.values()]
+          .filter(
+            row =>
+              row.direction === 'out' &&
+              row.state === 'pending' &&
+              row.paymentRef !== null,
+          )
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
           .slice(0, limit),
       ),
     read: id => Promise.resolve(rows.get(id)),
@@ -484,6 +497,57 @@ describe('operator treasury transaction reconciliation', () => {
     expect(response.status).toBe(409)
     expect(body.error).toBe('treasury_payment_ref_not_reconcilable')
     expect(store.rows.get('treasury_payout_1')?.state).toBe('pending')
+  })
+
+  test('scheduled reconciliation persists terminal outcomes for pending outbound rows', async () => {
+    const store = makeMemoryTransactionStore([
+      pendingOutTransaction('treasury_payout_succeeded', 'payment_secret_done'),
+      pendingOutTransaction(
+        'treasury_payout_pending',
+        'payment_secret_pending',
+      ),
+      pendingOutTransaction(
+        'tips_buffer_payout_failed',
+        'payment_secret_failed',
+      ),
+      pendingOutTransaction(
+        'treasury_payout_redacted',
+        'payment.treasury.abcdef123',
+      ),
+    ])
+    const fetchTreasury: ContainerPathFetch = path =>
+      Promise.resolve(
+        path === '/payments/payment_secret_done'
+          ? jsonResponse(200, { status: 'succeeded' })
+          : path === '/payments/payment_secret_pending'
+            ? jsonResponse(200, { status: 'pending' })
+            : jsonResponse(404, { error: 'not_found' }),
+      )
+    const fetchTipsBuffer: ContainerPathFetch = path =>
+      Promise.resolve(
+        path === '/payments/payment_secret_failed'
+          ? jsonResponse(200, { status: 'failed' })
+          : jsonResponse(404, { error: 'not_found' }),
+      )
+
+    const summary = await reconcilePendingTreasuryTransactions({
+      fetchTipsBuffer,
+      fetchTreasury,
+      transactionStore: store,
+    })
+
+    expect(summary).toEqual({
+      blocked: 1,
+      checked: 4,
+      failed: 1,
+      pending: 1,
+      settled: 1,
+      updated: 2,
+    })
+    expect(store.rows.get('treasury_payout_succeeded')?.state).toBe('settled')
+    expect(store.rows.get('tips_buffer_payout_failed')?.state).toBe('failed')
+    expect(store.rows.get('treasury_payout_pending')?.state).toBe('pending')
+    expect(store.rows.get('treasury_payout_redacted')?.state).toBe('pending')
   })
 })
 

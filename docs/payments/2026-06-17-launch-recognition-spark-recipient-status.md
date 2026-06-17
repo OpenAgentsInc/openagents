@@ -37,6 +37,12 @@ outcome. If the container still reports `pending` (including after an event map
 restart), the D1 row stays `pending`. The API response does not expose payment
 ids, hashes, preimages, invoices, destinations, mnemonics, or tokens.
 
+The Worker cron also reconciles a bounded batch of pending outbound rows every
+tick using the same logic, so future terminal MDK outcomes are persisted without
+requiring a manual operator click. Legacy rows whose stored payment refs are
+redacted or whose container no longer has the terminal event remain documented
+as pending/blocked rather than guessed.
+
 ## Operator rule
 
 Do not re-send recognition payouts from memory. Before any retry, reconcile the

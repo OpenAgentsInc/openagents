@@ -456,6 +456,7 @@ import {
   handleOperatorTreasuryStatusApi,
   handleOperatorTreasuryTransactionReconcileApi,
   handlePublicTreasuryLaunchStatusApi,
+  reconcilePendingTreasuryTransactions,
 } from './treasury-routes'
 import {
   type ViralAgentFunnelEventKind,
@@ -8394,6 +8395,19 @@ export default {
             },
             makeId: randomUuid,
             nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+          }),
+        ),
+      ),
+      observedEffect(
+        'TreasuryTransactions.reconcilePending',
+        Effect.promise(() =>
+          reconcilePendingTreasuryTransactions({
+            fetchTipsBuffer: fetchMdkTipsBufferPath(env),
+            fetchTreasury: fetchMdkTreasuryPath(env),
+            limit: 25,
+            transactionStore: makeD1TreasuryTransactionStore(
+              openAgentsDatabase(env),
+            ),
           }),
         ),
       ),
