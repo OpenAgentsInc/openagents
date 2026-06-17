@@ -4,6 +4,8 @@ import {
   TASSADAR_RUN_SUMMARY_ENDPOINT,
   TASSADAR_RUN_TAG,
   dataStateForSummary,
+  nextTassadarLocalAvatarPosition,
+  pylonAttentionForAvatar,
   proofLinkForSelection,
   tassadarRunView,
 } from './tassadarRunElement'
@@ -235,8 +237,9 @@ describe('tassadarRunView page wiring', () => {
     expect(options.cameraMode).toBe('perspective_walk')
     expect(options.controller).toBe('wasd_mouselook')
     expect(options.walkController).toMatchObject({
-      bounds: { minX: -8, maxX: 8, minZ: -8, maxZ: 8 },
+      bounds: { minX: -8, maxX: 8, minZ: -6, maxZ: 6 },
       eyeHeight: 1.65,
+      initialPosition: [0, 1.65, 5.6],
       movementSpeed: 4.5,
       sprintMultiplier: 1.8,
     })
@@ -469,6 +472,107 @@ describe('dataStateForSummary', () => {
     expect(dataStateForSummary(idle)).toBe('empty')
     expect(dataStateForSummary(populated)).toBe('ok')
     expect(dataStateForSummary({})).toBe('ok')
+  })
+})
+
+describe('MVP avatar movement and pylon attention mapping', () => {
+  it('integrates local WASD movement inside the server-enforced run bounds', () => {
+    const next = nextTassadarLocalAvatarPosition(
+      {
+        movementMode: 'idle',
+        pitch: 0,
+        positionX: 7.9,
+        positionY: 0,
+        positionZ: -5.9,
+        yaw: Math.PI / 2,
+      },
+      {
+        backward: false,
+        forward: true,
+        left: false,
+        right: true,
+        sprint: true,
+      },
+      1_000,
+    )
+
+    expect(next.movementMode).toBe('running')
+    expect(next.positionX).toBeLessThanOrEqual(8)
+    expect(next.positionZ).toBeGreaterThanOrEqual(-6)
+  })
+
+  it('maps nearby, looking, and selected inspection states to reducer-safe attention rows', () => {
+    const summary = {
+      world: {
+        pylonStations: [
+          {
+            interactionRadiusMeters: 2.4,
+            label: 'P1',
+            position: { x: 0, y: 0, z: 0 },
+            pylonRef: 'pylon.worker.one',
+            regionRef: 'region.run.tassadar.executor.20260615.main',
+            sourceUrl:
+              '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=pylon.worker.one',
+          },
+        ],
+      },
+    }
+
+    expect(
+      pylonAttentionForAvatar(
+        summary,
+        {
+          movementMode: 'idle',
+          pitch: 0,
+          positionX: 0,
+          positionY: 0,
+          positionZ: 1,
+          yaw: 0,
+        },
+        null,
+      ),
+    ).toMatchObject({
+      attentionKind: 'looking',
+      distanceMeters: 1,
+      pylonRef: 'pylon.worker.one',
+    })
+
+    expect(
+      pylonAttentionForAvatar(
+        summary,
+        {
+          movementMode: 'idle',
+          pitch: 0,
+          positionX: 1,
+          positionY: 0,
+          positionZ: 0,
+          yaw: 0,
+        },
+        null,
+      ),
+    ).toMatchObject({
+      attentionKind: 'nearby',
+      pylonRef: 'pylon.worker.one',
+    })
+
+    expect(
+      pylonAttentionForAvatar(
+        summary,
+        {
+          movementMode: 'idle',
+          pitch: 0,
+          positionX: 6,
+          positionY: 0,
+          positionZ: 6,
+          yaw: 0,
+        },
+        'pylon.worker.one',
+      ),
+    ).toMatchObject({
+      attentionKind: 'inspecting',
+      pylonRef: 'pylon.worker.one',
+      sourceEntityRef: 'pylon.worker.one',
+    })
   })
 })
 

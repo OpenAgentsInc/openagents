@@ -158,6 +158,53 @@ Interpretation:
   reachable and the endpoint expects a WebSocket client.
 - `ssl_verify_result=0` means the certificate validates.
 
+## Interaction TTLs And Browser Reducers
+
+The live module accepts browser/user reducers only for explicit interaction
+state. These reducers do not create run, proof, settlement, receipt, payout, or
+product-claim truth:
+
+```text
+join_region
+leave_region
+set_avatar_position
+focus_pylon
+clear_pylon_focus
+send_local_message
+send_pylon_message
+send_emote
+set_agent_intent
+```
+
+The module clamps avatar coordinates to the initial run region:
+
+```text
+x: -8..8
+y: 0..4
+z: -6..6
+```
+
+It also enforces a minimum 100 ms interval between accepted
+`set_avatar_position` writes and rejects impossible movement over
+14 meters/second. The `/tassadar` browser client is more conservative: it sends
+position updates at most every 250 ms, sends a 5 second idle keepalive while
+connected, and emits pylon attention at most every 1 second.
+
+Cleanup is service-owned. Run `expire_interaction_rows` from an authorized
+service identity to remove:
+
+```text
+stale non-service avatar positions after 20 seconds
+pylon_attention rows after 8 seconds
+chat_bubble rows after 8 seconds
+local_emote rows after 8 seconds
+agent_intent rows after 15 seconds
+local_chat_message rows after 90 seconds
+```
+
+Pylon-agent and service-agent avatar positions are intentionally preserved by
+expiry; guest/human positions are not.
+
 ## SSH And Service Checks
 
 Open an operator shell:

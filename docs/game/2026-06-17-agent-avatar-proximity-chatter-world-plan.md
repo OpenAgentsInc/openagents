@@ -26,6 +26,15 @@ avatar selections route through the existing public pylon proof/receipt
 inspector only when a public pylon ref exists. There is still no anonymous
 motion, fake chat, fake traffic, or fake payout animation.
 
+Update: issue #5264 added the first browser movement and pylon visitor-attention
+loop. A connected `/tassadar` viewer now joins the run region as a public-safe
+guest avatar, sends bounded `set_avatar_position` updates at a client throttle
+of 250 ms or slower with a 5 second idle keepalive, and emits `focus_pylon`
+rows at a 1 second throttle when near, looking at, or inspecting a pylon station.
+The scene subscribes to `pylon_attention`, renders guest avatar rows from the
+same run region, and marks stations with compact `+N` visitor labels while
+preserving Worker/D1 as the truth source and fallback.
+
 ## Thesis
 
 The next visible step should be simple to explain:
@@ -218,11 +227,15 @@ accepted a trace," or "this receipt settled."
 The movement model should be intentionally small:
 
 1. The browser controls its own local camera and avatar.
-2. The browser sends throttled position updates to SpacetimeDB, likely 4-10 Hz.
+2. The browser sends throttled position updates to SpacetimeDB, currently at
+   most 4 Hz with a 5 second idle keepalive.
 3. SpacetimeDB stores latest position, not a full movement trace.
-4. Other clients subscribe to nearby `avatar_position` rows and interpolate.
+4. Other clients subscribe to nearby `avatar_position` rows and render the
+   latest row-backed positions; smoother interpolation can follow once the
+   row-backed multiplayer loop is stable.
 5. Server reducers clamp to region bounds and reject impossible jumps.
-6. Stale avatars expire when `last_seen_at` crosses a short TTL.
+6. Stale avatars expire after the 20 second module TTL when the service expiry
+   reducer runs; connected idle clients refresh at the keepalive interval.
 
 For pylon agents, start with simple goal-based movement:
 

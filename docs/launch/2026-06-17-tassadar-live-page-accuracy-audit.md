@@ -181,6 +181,18 @@ primitives.
   summary when SpacetimeDB is disabled or unreachable. Deploy version
   `337b4161-02d0-49fb-9755-a218b736cf3f` served hashed bundle
   `/assets/index-D3gMYS5a.js`; the live `/tassadar` smoke passed after deploy.
+- 2026-06-17: Issue #5264 added the first live movement and pylon visitor
+  attention loop. When SpacetimeDB connects, `/tassadar` joins the run region as
+  a public guest avatar, tracks the WASD/mouselook controls into a bounded local
+  avatar position, calls `set_avatar_position` no faster than every 250 ms, and
+  sends a 5 second idle keepalive. The browser emits `focus_pylon` no faster
+  than every 1 second when near, looking at, or inspecting a public pylon
+  station. The scene subscribes to `pylon_attention`, renders guest/avatar rows
+  from the run region, and marks stations with compact `+N` attention labels.
+  Server reducers still clamp coordinates, reject impossible jumps, and keep the
+  20 second stale-avatar TTL. Deploy version
+  `5ca9e407-38ea-4887-b2b8-17345a9049b4` served hashed bundle
+  `/assets/index-B9O9w_54.js`; the live `/tassadar` smoke passed after deploy.
 
 ## Short answer
 
@@ -274,6 +286,12 @@ Live checks while writing and later updating:
 - The post-issue #5263 deploy check returned `200` for
   `https://openagents.com/`, `https://openagents.com/tassadar`, and
   `https://openagents.com/assets/index-D3gMYS5a.js`.
+- The post-issue #5264 deploy check returned `200` for
+  `https://openagents.com/`, `https://openagents.com/tassadar`, and
+  `https://openagents.com/assets/index-B9O9w_54.js`; the live smoke also
+  returned `200` for `/api/public/tassadar-run-summary`,
+  `/api/public/pylon-stats`, `/api/public/product-promises`, and the first
+  settlement proof route.
 - The current simplified adapter resolves the same live payload to one run node,
   public-ref entities, zero contributor-orbit dots, zero verified replay beams,
   zero payout bursts, zero loss-curve points, and hidden optional scene chrome.

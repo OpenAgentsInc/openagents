@@ -24,6 +24,7 @@ import type {
   AgentAvatar,
   AvatarPosition,
   ProofRef,
+  PylonAttention,
   PylonStation,
   RunEntity,
   SettlementRef,
@@ -108,8 +109,19 @@ export interface TassadarWorldAgentAvatar {
 export interface TassadarWorldAvatarPosition {
   readonly avatarRef: string
   readonly movementMode: string
+  readonly pitch: number
   readonly position: TassadarWorldVector
   readonly regionRef: string
+  readonly yaw: number
+}
+
+export interface TassadarWorldPylonAttention {
+  readonly attentionKind: string
+  readonly attentionRef: string
+  readonly avatarRef: string
+  readonly distanceMeters: number
+  readonly pylonRef: string
+  readonly sourceEntityRef?: string
 }
 
 /** Narrow structural view of the worker's `TrainingRunPublicSummary` (public-safe). */
@@ -175,6 +187,7 @@ export interface TassadarRunPublicSummary {
   readonly world?: {
     readonly agentAvatars?: ReadonlyArray<TassadarWorldAgentAvatar>
     readonly avatarPositions?: ReadonlyArray<TassadarWorldAvatarPosition>
+    readonly pylonAttention?: ReadonlyArray<TassadarWorldPylonAttention>
     readonly pylonStations?: ReadonlyArray<TassadarWorldPylonStation>
   }
 }
@@ -508,13 +521,27 @@ const corpusEntities = (
 
 const pylonStationEntities = (
   summary: TassadarRunPublicSummary,
-): ReadonlyArray<TrainingRunEntityDefinition> =>
-  (summary.world?.pylonStations ?? []).map(station => ({
-    id: stationEntityId(station.pylonRef),
-    label: `${station.label} hub`,
-    position: stationEntityPosition(station),
-    status: 'registered',
-  }))
+): ReadonlyArray<TrainingRunEntityDefinition> => {
+  const attentionCountByPylon = new Map<string, number>()
+  for (const attention of summary.world?.pylonAttention ?? []) {
+    attentionCountByPylon.set(
+      attention.pylonRef,
+      (attentionCountByPylon.get(attention.pylonRef) ?? 0) + 1,
+    )
+  }
+  return (summary.world?.pylonStations ?? []).map(station => {
+    const attentionCount = attentionCountByPylon.get(station.pylonRef) ?? 0
+    return {
+      id: stationEntityId(station.pylonRef),
+      label:
+        attentionCount === 0
+          ? `${station.label} hub`
+          : `${station.label} hub +${attentionCount}`,
+      position: stationEntityPosition(station),
+      status: attentionCount === 0 ? 'registered' : 'nearby',
+    }
+  })
+}
 
 const pylonAgentAvatarEntities = (
   summary: TassadarRunPublicSummary,
@@ -531,21 +558,19 @@ const pylonAgentAvatarEntities = (
       position,
     ]),
   )
-  return (summary.world?.agentAvatars ?? [])
-    .filter(avatar => avatar.actorKind === 'pylon_agent')
-    .map(avatar => {
-      const station =
-        avatar.homePylonRef === undefined
-          ? undefined
-          : stations.get(avatar.homePylonRef)
-      const position = positions.get(avatar.avatarRef)
-      return {
-        id: avatar.avatarRef,
-        label: avatar.displayName,
-        position: avatarEntityPosition(position, station),
-        status: position?.movementMode ?? 'idle',
-      }
-    })
+  return (summary.world?.agentAvatars ?? []).map(avatar => {
+    const station =
+      avatar.homePylonRef === undefined
+        ? undefined
+        : stations.get(avatar.homePylonRef)
+    const position = positions.get(avatar.avatarRef)
+    return {
+      id: avatar.avatarRef,
+      label: avatar.displayName,
+      position: avatarEntityPosition(position, station),
+      status: position?.movementMode ?? 'idle',
+    }
+  })
 }
 
 const runNodeStatus = (
@@ -577,6 +602,7 @@ export interface TassadarSpacetimeWorldRows {
   readonly agentAvatars?: ReadonlyArray<AgentAvatar>
   readonly avatarPositions?: ReadonlyArray<AvatarPosition>
   readonly proofRefs?: ReadonlyArray<ProofRef>
+  readonly pylonAttention?: ReadonlyArray<PylonAttention>
   readonly pylonStations?: ReadonlyArray<PylonStation>
   readonly runEntities?: ReadonlyArray<RunEntity>
   readonly settlementRefs?: ReadonlyArray<SettlementRef>
@@ -665,34 +691,62 @@ const worldStationsFromRows = (
 const worldAvatarsFromRows = (
   rows: ReadonlyArray<AgentAvatar>,
   stationRefs: ReadonlySet<string>,
+  avatarRefs: ReadonlySet<string>,
 ): ReadonlyArray<TassadarWorldAgentAvatar> =>
   [...rows]
     .filter(row => {
       const homePylonRef = rowText(row.homePylonRef)
-      return homePylonRef !== '' && stationRefs.has(homePylonRef)
+      return (
+        (homePylonRef !== '' && stationRefs.has(homePylonRef)) ||
+        avatarRefs.has(row.avatarRef)
+      )
     })
     .sort((left, right) =>
       rowText(left.displayName).localeCompare(rowText(right.displayName)),
     )
-    .map(row => ({
-      actorKind: rowText(row.actorKind) || 'pylon_agent',
-      avatarRef: row.avatarRef,
-      displayName: rowText(row.displayName) || shortRef(row.avatarRef),
-      homePylonRef: rowText(row.homePylonRef),
-    }))
+    .map(row => {
+      const homePylonRef = rowText(row.homePylonRef)
+      return {
+        actorKind: rowText(row.actorKind) || 'pylon_agent',
+        avatarRef: row.avatarRef,
+        displayName: rowText(row.displayName) || shortRef(row.avatarRef),
+        ...(homePylonRef === '' ? {} : { homePylonRef }),
+      }
+    })
 
 const worldAvatarPositionsFromRows = (
   rows: ReadonlyArray<AvatarPosition>,
-  avatarRefs: ReadonlySet<string>,
+  regionRefs: ReadonlySet<string>,
 ): ReadonlyArray<TassadarWorldAvatarPosition> =>
   [...rows]
-    .filter(row => avatarRefs.has(row.avatarRef))
+    .filter(row => regionRefs.has(row.regionRef))
     .sort((left, right) => left.avatarRef.localeCompare(right.avatarRef))
     .map(row => ({
       avatarRef: row.avatarRef,
       movementMode: rowText(row.movementMode) || 'idle',
+      pitch: finiteOrZero(row.pitch),
       position: worldVectorFromRow(row),
       regionRef: row.regionRef,
+      yaw: finiteOrZero(row.yaw),
+    }))
+
+const worldPylonAttentionFromRows = (
+  rows: ReadonlyArray<PylonAttention>,
+  stationRefs: ReadonlySet<string>,
+  avatarRefs: ReadonlySet<string>,
+): ReadonlyArray<TassadarWorldPylonAttention> =>
+  [...rows]
+    .filter(row => stationRefs.has(row.pylonRef) && avatarRefs.has(row.avatarRef))
+    .sort((left, right) => left.attentionRef.localeCompare(right.attentionRef))
+    .map(row => ({
+      attentionKind: rowText(row.attentionKind) || 'nearby',
+      attentionRef: row.attentionRef,
+      avatarRef: row.avatarRef,
+      distanceMeters: finiteOrZero(row.distanceMeters),
+      pylonRef: row.pylonRef,
+      ...(rowText(row.sourceEntityRef) === ''
+        ? {}
+        : { sourceEntityRef: rowText(row.sourceEntityRef) }),
     }))
 
 const pylonRowsFromWorld = (
@@ -835,10 +889,25 @@ export const spacetimeWorldSummaryFromRows = (
   const events = (rows.worldEvents ?? []).filter(row => row.runRef === runRef)
   const pylonStations = worldStationsFromRows(rows.pylonStations ?? [], runRef)
   const stationRefs = new Set(pylonStations.map(row => row.pylonRef))
-  const agentAvatars = worldAvatarsFromRows(rows.agentAvatars ?? [], stationRefs)
-  const avatarRefs = new Set(agentAvatars.map(row => row.avatarRef))
+  const regionRefs = new Set(
+    pylonStations.map(row => row.regionRef).filter(ref => ref !== ''),
+  )
   const avatarPositions = worldAvatarPositionsFromRows(
     rows.avatarPositions ?? [],
+    regionRefs,
+  )
+  const positionedAvatarRefs = new Set(
+    avatarPositions.map(row => row.avatarRef),
+  )
+  const agentAvatars = worldAvatarsFromRows(
+    rows.agentAvatars ?? [],
+    stationRefs,
+    positionedAvatarRefs,
+  )
+  const avatarRefs = new Set(agentAvatars.map(row => row.avatarRef))
+  const pylonAttention = worldPylonAttentionFromRows(
+    rows.pylonAttention ?? [],
+    stationRefs,
     avatarRefs,
   )
 
@@ -850,7 +919,8 @@ export const spacetimeWorldSummaryFromRows = (
     events.length === 0 &&
     pylonStations.length === 0 &&
     agentAvatars.length === 0 &&
-    avatarPositions.length === 0
+    avatarPositions.length === 0 &&
+    pylonAttention.length === 0
   ) {
     return baseSummary
   }
@@ -916,13 +986,15 @@ export const spacetimeWorldSummaryFromRows = (
     ...(settlementRows.length === 0 ? {} : { settlementRows }),
     ...(pylonStations.length === 0 &&
     agentAvatars.length === 0 &&
-    avatarPositions.length === 0
+    avatarPositions.length === 0 &&
+    pylonAttention.length === 0
       ? {}
       : {
           world: {
             ...baseSummary.world,
             ...(agentAvatars.length === 0 ? {} : { agentAvatars }),
             ...(avatarPositions.length === 0 ? {} : { avatarPositions }),
+            ...(pylonAttention.length === 0 ? {} : { pylonAttention }),
             ...(pylonStations.length === 0 ? {} : { pylonStations }),
           },
         }),

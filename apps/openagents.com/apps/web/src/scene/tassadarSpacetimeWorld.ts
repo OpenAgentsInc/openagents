@@ -2,6 +2,7 @@ import type {
   AgentAvatar,
   AvatarPosition,
   ProofRef,
+  PylonAttention,
   PylonStation,
   RunEntity,
   SettlementRef,
@@ -18,6 +19,17 @@ export const TASSADAR_SPACETIME_WORLD_URL_DATA_KEY = 'spacetime-world-url'
 export const TASSADAR_SPACETIME_DATABASE_DATA_KEY = 'spacetime-database'
 export const TASSADAR_SPACETIME_WORLD_URL_ATTRIBUTE = `data-${TASSADAR_SPACETIME_WORLD_URL_DATA_KEY}`
 export const TASSADAR_SPACETIME_DATABASE_ATTRIBUTE = `data-${TASSADAR_SPACETIME_DATABASE_DATA_KEY}`
+export const TASSADAR_AVATAR_POSITION_THROTTLE_MS = 250
+export const TASSADAR_ATTENTION_THROTTLE_MS = 1_000
+export const TASSADAR_STALE_AVATAR_POSITION_MS = 20_000
+export const TASSADAR_REGION_BOUNDS = {
+  maxX: 8,
+  maxY: 4,
+  maxZ: 6,
+  minX: -8,
+  minY: 0,
+  minZ: -6,
+} as const
 
 const SUBSCRIBED_TABLES = [
   'training_run',
@@ -43,6 +55,7 @@ export type TassadarSpacetimeWorldRows = Readonly<{
   agentAvatars: ReadonlyArray<AgentAvatar>
   avatarPositions: ReadonlyArray<AvatarPosition>
   proofRefs: ReadonlyArray<ProofRef>
+  pylonAttention: ReadonlyArray<PylonAttention>
   pylonStations: ReadonlyArray<PylonStation>
   runEntities: ReadonlyArray<RunEntity>
   settlementRefs: ReadonlyArray<SettlementRef>
@@ -52,15 +65,63 @@ export type TassadarSpacetimeWorldRows = Readonly<{
 }>
 
 export type TassadarSpacetimeWorldSubscription = Readonly<{
+  clearPylonFocus: (pylonRef: string) => void
   disconnect: () => void
+  focusPylon: (input: TassadarPylonAttentionUpdate) => void
+  regionRef: string
+  updateLocalAvatar: (position: TassadarLocalAvatarPosition) => void
+}>
+
+export type TassadarLocalAvatarPosition = Readonly<{
+  movementMode: 'ghost' | 'idle' | 'inspecting' | 'running' | 'walking'
+  pitch: number
+  positionX: number
+  positionY: number
+  positionZ: number
+  yaw: number
+}>
+
+export type TassadarPylonAttentionUpdate = Readonly<{
+  attentionKind: 'approaching' | 'inspecting' | 'looking' | 'nearby' | 'talking'
+  distanceMeters: number
+  pylonRef: string
+  sourceEntityRef?: string
 }>
 
 const text = (value: string | null): string => value?.trim() ?? ''
 
 const sqlString = (value: string): string => `'${value.replaceAll("'", "''")}'`
 
-const regionRefForRun = (runRef: string): string =>
+export const tassadarRegionRefForRun = (runRef: string): string =>
   `${REGION_REF_PREFIX}${runRef}${REGION_REF_SUFFIX}`
+
+export const clampTassadarWorldCoordinate = (
+  value: number,
+  min: number,
+  max: number,
+): number =>
+  Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : min
+
+export const clampTassadarLocalAvatarPosition = (
+  position: TassadarLocalAvatarPosition,
+): TassadarLocalAvatarPosition => ({
+  ...position,
+  positionX: clampTassadarWorldCoordinate(
+    position.positionX,
+    TASSADAR_REGION_BOUNDS.minX,
+    TASSADAR_REGION_BOUNDS.maxX,
+  ),
+  positionY: clampTassadarWorldCoordinate(
+    position.positionY,
+    TASSADAR_REGION_BOUNDS.minY,
+    TASSADAR_REGION_BOUNDS.maxY,
+  ),
+  positionZ: clampTassadarWorldCoordinate(
+    position.positionZ,
+    TASSADAR_REGION_BOUNDS.minZ,
+    TASSADAR_REGION_BOUNDS.maxZ,
+  ),
+})
 
 export const spacetimeConfigFromElement = (
   element: HTMLElement,
@@ -77,12 +138,13 @@ export const spacetimeConfigFromElement = (
 
 const subscriptionQueries = (runRef: string): ReadonlyArray<string> => {
   const run = sqlString(runRef)
-  const region = sqlString(regionRefForRun(runRef))
+  const region = sqlString(tassadarRegionRefForRun(runRef))
   return [
     ...SUBSCRIBED_TABLES.map(table => `SELECT * FROM ${table} WHERE run_ref = ${run}`),
     `SELECT * FROM pylon_station WHERE run_ref = ${run}`,
     'SELECT * FROM agent_avatar',
     `SELECT * FROM avatar_position WHERE region_ref = ${region}`,
+    'SELECT * FROM pylon_attention',
   ]
 }
 
@@ -94,6 +156,9 @@ const rowsFromConnection = (conn: DbConnection): TassadarSpacetimeWorldRows => (
     ...conn.db.avatar_position.iter(),
   ] as unknown as ReadonlyArray<AvatarPosition>,
   proofRefs: [...conn.db.proof_ref.iter()] as unknown as ReadonlyArray<ProofRef>,
+  pylonAttention: [
+    ...conn.db.pylon_attention.iter(),
+  ] as unknown as ReadonlyArray<PylonAttention>,
   pylonStations: [
     ...conn.db.pylon_station.iter(),
   ] as unknown as ReadonlyArray<PylonStation>,
@@ -131,15 +196,29 @@ export const startTassadarSpacetimeWorldSubscription = async (
   input: Readonly<{
     baseSummary: TassadarRunPublicSummary
     config: TassadarSpacetimeWorldConfig
+    displayName: string
     onError: (error: unknown) => void
     onSummary: (summary: TassadarRunPublicSummary) => void
   }>,
 ): Promise<TassadarSpacetimeWorldSubscription> => {
   const { DbConnection } = await import('./spacetimeWorldBindings')
   const runRef = input.baseSummary.runRef ?? 'run.tassadar.executor.20260615'
+  const regionRef = tassadarRegionRefForRun(runRef)
   let closed = false
+  let connected = false
   let pending = false
   let conn: DbConnection | null = null
+
+  const callReducer = (
+    reducerName: string,
+    params: Record<string, unknown>,
+  ): void => {
+    if (closed || !connected || conn === null) return
+    const reducer = (conn.reducers as Record<string, unknown>)[reducerName]
+    if (typeof reducer !== 'function') return
+    void (reducer as (params: Record<string, unknown>) => Promise<void>)(params)
+      .catch(input.onError)
+  }
 
   const publish = (): void => {
     if (closed || conn === null || pending) return
@@ -158,6 +237,7 @@ export const startTassadarSpacetimeWorldSubscription = async (
     .withDatabaseName(input.config.database)
     .withCompression('none')
     .onConnect((connection: DbConnection) => {
+      conn = connection
       observeTable(connection.db.training_run, publish)
       observeTable(connection.db.run_entity, publish)
       observeTable(connection.db.world_edge, publish)
@@ -167,6 +247,12 @@ export const startTassadarSpacetimeWorldSubscription = async (
       observeTable(connection.db.pylon_station, publish)
       observeTable(connection.db.agent_avatar, publish)
       observeTable(connection.db.avatar_position, publish)
+      observeTable(connection.db.pylon_attention, publish)
+      connected = true
+      callReducer('joinRegion', {
+        displayName: input.displayName,
+        regionRef,
+      })
       connection
         .subscriptionBuilder()
         .onApplied(publish)
@@ -182,10 +268,36 @@ export const startTassadarSpacetimeWorldSubscription = async (
     .build()
 
   return {
+    clearPylonFocus: pylonRef => {
+      callReducer('clearPylonFocus', { pylonRef })
+    },
     disconnect: () => {
       closed = true
+      if (connected && conn !== null) {
+        const reducer = (conn.reducers as Record<string, unknown>).leaveRegion
+        if (typeof reducer === 'function') {
+          void (reducer as (params: { regionRef: string }) => Promise<void>)({
+            regionRef,
+          }).catch(input.onError)
+        }
+      }
       conn?.disconnect()
       conn = null
+    },
+    focusPylon: input => {
+      callReducer('focusPylon', {
+        attentionKind: input.attentionKind,
+        distanceMeters: input.distanceMeters,
+        pylonRef: input.pylonRef,
+        sourceEntityRef: input.sourceEntityRef ?? null,
+      })
+    },
+    regionRef,
+    updateLocalAvatar: position => {
+      callReducer('setAvatarPosition', {
+        ...clampTassadarLocalAvatarPosition(position),
+        regionRef,
+      })
     },
   }
 }

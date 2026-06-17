@@ -1,7 +1,7 @@
 # SpacetimeDB To Tassadar Integration Next Steps
 
 Date: 2026-06-17
-Status: Phase 0, Phase 1, Phase 2, base ops hardening, MVP interaction schema, station/avatar projection, and read-only station/avatar rendering implemented; movement and chatter next
+Status: Phase 0, Phase 1, Phase 2, base ops hardening, MVP interaction schema, station/avatar projection, read-only station/avatar rendering, and browser movement/attention implemented; local chatter next
 
 ## Current Boundary
 
@@ -182,9 +182,29 @@ entity IDs are resolved back to their public `home_pylon_ref`, then the existing
 public proof/receipt inspector decides whether a dereferenceable settlement
 receipt or pylon evidence link exists.
 
-This phase is intentionally read-only from the page's perspective. It does not
-emit browser position updates, does not invent anonymous visitors, and does not
-render chat bubbles or payout motion before row-backed interaction writes exist.
+Issue #5264 makes the browser an interaction writer without changing proof
+authority. When SpacetimeDB connects, `/tassadar` calls `join_region` with a
+session-local public display name, tracks the existing WASD/mouselook controls
+with a small bounded local avatar state, and calls `set_avatar_position` at a
+250 ms client throttle or slower. Idle connected viewers send a 5 second
+keepalive so they remain visible; disconnected or stale non-service avatars are
+still removed by the module's 20 second stale-position TTL when
+`expire_interaction_rows` runs. The browser also emits `focus_pylon` at a
+1 second throttle when the local avatar is near, looking at, or inspecting a
+pylon station, and clears focus when it leaves the station.
+
+The scene now subscribes to `pylon_attention` and maps guest/human/service
+avatars with current `avatar_position` rows in the run region, so a second
+browser session appears as a row-backed avatar. Pylon stations show compact
+`+N` visitor labels when attention rows exist. If SpacetimeDB is disabled or
+unreachable, the WASD/mouselook scene still works locally from the Worker/D1
+summary and no multiplayer reducers are called.
+
+This phase still does not render chat bubbles or payout motion before
+row-backed interaction writes exist.
+
+The next step is issue #5265: add public-safe local and pylon-targeted chatter,
+chat bubbles, and a nearby transcript over the same interaction boundary.
 
 After the base projection works, add subscriptions that are useful only when an
 entity is selected:
@@ -212,6 +232,9 @@ Required checks before treating `/tassadar` as connected:
 - Re-run the existing `/tassadar` smoke after station/avatar rendering. Done in
   issue #5263 against the deployed production route and hashed
   `/assets/index-D3gMYS5a.js` bundle.
+- Add web coverage for bounded movement integration, SpacetimeDB-unavailable
+  fallback, guest-avatar row mapping, and pylon-attention row mapping. Done in
+  issue #5264.
 - Probe `https://spacetime.openagents.com/v1/database/openagents-world/subscribe`
   and expect `426` from a non-WebSocket curl. Done in issue #5238.
 - Manually verify the browser scene still contains no unbacked motion.

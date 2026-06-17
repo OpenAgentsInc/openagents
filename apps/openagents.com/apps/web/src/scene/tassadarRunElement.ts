@@ -32,13 +32,30 @@ import {
   tassadarRunVisualizationOptions,
 } from './tassadarRunSnapshot'
 import {
+  TASSADAR_ATTENTION_THROTTLE_MS,
+  TASSADAR_AVATAR_POSITION_THROTTLE_MS,
+  TASSADAR_REGION_BOUNDS,
   type TassadarSpacetimeWorldSubscription,
+  type TassadarLocalAvatarPosition,
+  type TassadarPylonAttentionUpdate,
   spacetimeConfigFromElement,
   startTassadarSpacetimeWorldSubscription,
 } from './tassadarSpacetimeWorld'
 
 export const TASSADAR_RUN_TAG = 'oa-tassadar-run'
 export const TASSADAR_RUN_SUMMARY_ENDPOINT = '/api/public/tassadar-run-summary'
+const TASSADAR_LOCAL_VIEWER_SESSION_KEY = 'openagents.tassadar.viewerName'
+const TASSADAR_INITIAL_AVATAR_POSITION = {
+  movementMode: 'idle',
+  pitch: 0,
+  positionX: 0,
+  positionY: 0,
+  positionZ: 5.6,
+  yaw: 0,
+} satisfies TassadarLocalAvatarPosition
+const TASSADAR_WALK_METERS_PER_SECOND = 3.2
+const TASSADAR_RUN_METERS_PER_SECOND = 5.6
+const TASSADAR_AVATAR_KEEPALIVE_MS = 5_000
 
 export type TassadarRunDataState = 'loading' | 'ok' | 'empty' | 'error'
 export type TassadarRunProofLink = Readonly<{
@@ -135,6 +152,148 @@ const metricNumber = (
 const textOrUnknown = (value: string | undefined): string => {
   const text = value?.trim()
   return text === undefined || text.length === 0 ? 'unknown' : text
+}
+
+const localViewerDisplayName = (): string => {
+  const fallback = 'viewer'
+  if (typeof sessionStorage === 'undefined') return fallback
+  try {
+    const existing = sessionStorage
+      .getItem(TASSADAR_LOCAL_VIEWER_SESSION_KEY)
+      ?.trim()
+    if (existing !== undefined && existing.length > 0) return existing
+    sessionStorage.setItem(TASSADAR_LOCAL_VIEWER_SESSION_KEY, fallback)
+    return fallback
+  } catch {
+    return fallback
+  }
+}
+
+type TassadarMovementKey =
+  | 'backward'
+  | 'forward'
+  | 'left'
+  | 'right'
+  | 'sprint'
+
+type TassadarMovementKeyState = Record<TassadarMovementKey, boolean>
+
+type TassadarAvatarMovementSync = {
+  activeAttentionPylonRef: string | null
+  intervalId: number
+  lastAttentionAt: number
+  lastFrameAt: number
+  lastSentAt: number
+  lastSentSignature: string
+  subscription: TassadarSpacetimeWorldSubscription
+}
+
+const emptyMovementKeys = (): TassadarMovementKeyState => ({
+  backward: false,
+  forward: false,
+  left: false,
+  right: false,
+  sprint: false,
+})
+
+const movementKeyForCode = (code: string): TassadarMovementKey | undefined => {
+  switch (code) {
+    case 'ArrowUp':
+    case 'KeyW':
+      return 'forward'
+    case 'ArrowDown':
+    case 'KeyS':
+      return 'backward'
+    case 'ArrowLeft':
+    case 'KeyA':
+      return 'left'
+    case 'ArrowRight':
+    case 'KeyD':
+      return 'right'
+    case 'ShiftLeft':
+    case 'ShiftRight':
+      return 'sprint'
+    default:
+      return undefined
+  }
+}
+
+const movementModeForKeys = (
+  keys: TassadarMovementKeyState,
+): TassadarLocalAvatarPosition['movementMode'] =>
+  keys.forward || keys.backward || keys.left || keys.right
+    ? keys.sprint
+      ? 'running'
+      : 'walking'
+    : 'idle'
+
+const avatarPositionSignature = (
+  position: TassadarLocalAvatarPosition,
+): string =>
+  [
+    position.positionX.toFixed(3),
+    position.positionY.toFixed(3),
+    position.positionZ.toFixed(3),
+    position.yaw.toFixed(3),
+    position.pitch.toFixed(3),
+    position.movementMode,
+  ].join(':')
+
+const pylonRefFromProofLink = (
+  summary: TassadarRunPublicSummary,
+  proofLink: TassadarRunProofLink | null,
+): string | undefined => {
+  if (proofLink === null) return undefined
+  const pylonRefs = new Set(
+    (summary.realGradient?.leaderboardRows ?? [])
+      .map(row => row.pylonRef?.trim())
+      .filter((ref): ref is string => ref !== undefined && ref.length > 0),
+  )
+  return proofLink.sourceRefs.find(ref => pylonRefs.has(ref))
+}
+
+const clamp = (value: number, min: number, max: number): number =>
+  Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : min
+
+export const nextTassadarLocalAvatarPosition = (
+  current: TassadarLocalAvatarPosition,
+  keys: TassadarMovementKeyState,
+  deltaMs: number,
+): TassadarLocalAvatarPosition => {
+  const forward = (keys.forward ? 1 : 0) - (keys.backward ? 1 : 0)
+  const strafe = (keys.right ? 1 : 0) - (keys.left ? 1 : 0)
+  const moving = forward !== 0 || strafe !== 0
+  const length = moving ? Math.hypot(forward, strafe) : 1
+  const speed = keys.sprint
+    ? TASSADAR_RUN_METERS_PER_SECOND
+    : TASSADAR_WALK_METERS_PER_SECOND
+  const distance = Math.max(0, Math.min(deltaMs, 500)) / 1_000 * speed
+  const yaw = Number.isFinite(current.yaw) ? current.yaw : 0
+  const forwardX = Math.sin(yaw)
+  const forwardZ = -Math.cos(yaw)
+  const rightX = Math.cos(yaw)
+  const rightZ = Math.sin(yaw)
+  return {
+    ...current,
+    movementMode: movementModeForKeys(keys),
+    positionX: clamp(
+      current.positionX +
+        ((forward / length) * forwardX + (strafe / length) * rightX) * distance,
+      TASSADAR_REGION_BOUNDS.minX,
+      TASSADAR_REGION_BOUNDS.maxX,
+    ),
+    positionY: clamp(
+      current.positionY,
+      TASSADAR_REGION_BOUNDS.minY,
+      TASSADAR_REGION_BOUNDS.maxY,
+    ),
+    positionZ: clamp(
+      current.positionZ +
+        ((forward / length) * forwardZ + (strafe / length) * rightZ) * distance,
+      TASSADAR_REGION_BOUNDS.minZ,
+      TASSADAR_REGION_BOUNDS.maxZ,
+    ),
+  }
 }
 
 const generatedAtText = (summary: TassadarRunPublicSummary): string =>
@@ -279,6 +438,63 @@ const worldPylonRefForSelection = (
     ?.homePylonRef
 }
 
+const pylonRefForSelection = (
+  summary: TassadarRunPublicSummary,
+  selection: TrainingRunNodeSelection,
+): string | undefined =>
+  leaderboardRowForSelection(summary, selection)?.pylonRef ??
+  worldPylonRefForSelection(summary, selection)
+
+export const pylonAttentionForAvatar = (
+  summary: TassadarRunPublicSummary,
+  position: TassadarLocalAvatarPosition,
+  selectedPylonRef: string | null,
+): TassadarPylonAttentionUpdate | null => {
+  const stations = summary.world?.pylonStations ?? []
+  if (stations.length === 0) return null
+  const selectedStation =
+    selectedPylonRef === null
+      ? undefined
+      : stations.find(station => station.pylonRef === selectedPylonRef)
+  const nearest = stations
+    .map(station => {
+      const dx = station.position.x - position.positionX
+      const dz = station.position.z - position.positionZ
+      return { distanceMeters: Math.hypot(dx, dz), dx, dz, station }
+    })
+    .sort((left, right) => left.distanceMeters - right.distanceMeters)[0]
+  const candidate =
+    selectedStation === undefined
+      ? nearest
+      : {
+          distanceMeters: Math.hypot(
+            selectedStation.position.x - position.positionX,
+            selectedStation.position.z - position.positionZ,
+          ),
+          dx: selectedStation.position.x - position.positionX,
+          dz: selectedStation.position.z - position.positionZ,
+          station: selectedStation,
+        }
+  if (candidate === undefined) return null
+  const radius = Math.max(0.1, candidate.station.interactionRadiusMeters)
+  const withinInteraction = candidate.distanceMeters <= radius
+  const selected = selectedPylonRef === candidate.station.pylonRef
+  if (!withinInteraction && !selected) return null
+  const forwardX = Math.sin(position.yaw)
+  const forwardZ = -Math.cos(position.yaw)
+  const distance = Math.max(candidate.distanceMeters, 0.0001)
+  const looking =
+    withinInteraction &&
+    (candidate.dx / distance) * forwardX + (candidate.dz / distance) * forwardZ >
+      0.82
+  return {
+    attentionKind: selected ? 'inspecting' : looking ? 'looking' : 'nearby',
+    distanceMeters: Number(candidate.distanceMeters.toFixed(3)),
+    pylonRef: candidate.station.pylonRef,
+    ...(selected ? { sourceEntityRef: candidate.station.pylonRef } : {}),
+  }
+}
+
 const corpusTraceForSelection = (
   summary: TassadarRunPublicSummary,
   selection: TrainingRunNodeSelection,
@@ -414,6 +630,12 @@ const makeClass = (): CustomElementConstructor =>
     #shadow: ShadowRoot | null = null
     #abort: AbortController | null = null
     #spacetimeWorld: TassadarSpacetimeWorldSubscription | null = null
+    #avatarMovement: TassadarAvatarMovementSync | null = null
+    #movementKeys = emptyMovementKeys()
+    #localAvatarPosition: TassadarLocalAvatarPosition = {
+      ...TASSADAR_INITIAL_AVATAR_POSITION,
+    }
+    #selectedPylonRef: string | null = null
     #summary: TassadarRunPublicSummary | null = null
     #mouselookDebugCount = 0
 
@@ -427,12 +649,14 @@ const makeClass = (): CustomElementConstructor =>
       this.#abort?.abort()
       this.#abort = null
       this.#disconnectSpacetimeWorld()
+      this.#stopAvatarMovement()
       this.#shadow?.replaceChildren()
     }
 
     #refresh(): void {
       this.#abort?.abort()
       this.#disconnectSpacetimeWorld()
+      this.#stopAvatarMovement()
       this.#renderLoading()
       this.#abort = new AbortController()
       void this.#load(this.#abort.signal)
@@ -522,6 +746,11 @@ const makeClass = (): CustomElementConstructor =>
         const detail = (event as CustomEvent<unknown>).detail
         if (!isTrainingRunNodeSelection(detail)) return
         const proofLink = proofLinkForSelection(this.#summary ?? summary, detail)
+        const activeSummary = this.#summary ?? summary
+        this.#selectedPylonRef =
+          pylonRefForSelection(activeSummary, detail) ??
+          pylonRefFromProofLink(activeSummary, proofLink) ??
+          null
         this.#renderSelection(base.mount, detail, proofLink)
       })
       base.mount.append(run)
@@ -530,6 +759,7 @@ const makeClass = (): CustomElementConstructor =>
     }
 
     #disconnectSpacetimeWorld(): void {
+      this.#stopAvatarMovement()
       this.#spacetimeWorld?.disconnect()
       this.#spacetimeWorld = null
       this.removeAttribute('data-spacetime-state')
@@ -547,6 +777,7 @@ const makeClass = (): CustomElementConstructor =>
       void startTassadarSpacetimeWorldSubscription({
         baseSummary: summary,
         config,
+        displayName: localViewerDisplayName(),
         onError: () => {
           if (!this.isConnected || signal?.aborted === true) return
           this.setAttribute('data-spacetime-state', 'error')
@@ -570,6 +801,7 @@ const makeClass = (): CustomElementConstructor =>
             return
           }
           this.#spacetimeWorld = subscription
+          this.#startAvatarMovement(subscription)
         })
         .catch(() => {
           if (!this.isConnected || signal?.aborted === true) return
@@ -577,10 +809,147 @@ const makeClass = (): CustomElementConstructor =>
         })
     }
 
+    #startAvatarMovement(
+      subscription: TassadarSpacetimeWorldSubscription,
+    ): void {
+      this.#stopAvatarMovement()
+      this.#movementKeys = emptyMovementKeys()
+      this.#localAvatarPosition = { ...TASSADAR_INITIAL_AVATAR_POSITION }
+      const now = 0
+      this.#avatarMovement = {
+        activeAttentionPylonRef: null,
+        intervalId: window.setInterval(() => {
+          const current = this.#avatarMovement
+          this.#tickAvatarMovement(
+            current === null ? 0 : current.lastFrameAt + 100,
+          )
+        }, 100),
+        lastAttentionAt: 0,
+        lastFrameAt: now,
+        lastSentAt: 0,
+        lastSentSignature: '',
+        subscription,
+      }
+      window.addEventListener('keydown', this.#handleMovementKeyDown, {
+        passive: true,
+      })
+      window.addEventListener('keyup', this.#handleMovementKeyUp, {
+        passive: true,
+      })
+      this.#syncLocalAvatar(now, true)
+      this.#syncPylonAttention(now, true)
+    }
+
+    #stopAvatarMovement(): void {
+      const movement = this.#avatarMovement
+      if (movement === null) return
+      window.clearInterval(movement.intervalId)
+      window.removeEventListener('keydown', this.#handleMovementKeyDown)
+      window.removeEventListener('keyup', this.#handleMovementKeyUp)
+      if (movement.activeAttentionPylonRef !== null) {
+        movement.subscription.clearPylonFocus(movement.activeAttentionPylonRef)
+      }
+      this.#avatarMovement = null
+      this.#movementKeys = emptyMovementKeys()
+    }
+
+    #handleMovementKeyDown = (event: KeyboardEvent): void => {
+      const key = movementKeyForCode(event.code)
+      if (key === undefined) return
+      this.#movementKeys[key] = true
+    }
+
+    #handleMovementKeyUp = (event: KeyboardEvent): void => {
+      const key = movementKeyForCode(event.code)
+      if (key === undefined) return
+      this.#movementKeys[key] = false
+    }
+
+    #tickAvatarMovement(now: number): void {
+      const movement = this.#avatarMovement
+      if (movement === null) return
+      const deltaMs = Math.max(0, now - movement.lastFrameAt)
+      movement.lastFrameAt = now
+      this.#localAvatarPosition = nextTassadarLocalAvatarPosition(
+        this.#localAvatarPosition,
+        this.#movementKeys,
+        deltaMs,
+      )
+      this.#syncLocalAvatar(now, false)
+      this.#syncPylonAttention(now, false)
+    }
+
+    #syncLocalAvatar(now: number, force: boolean): void {
+      const movement = this.#avatarMovement
+      if (movement === null) return
+      const signature = avatarPositionSignature(this.#localAvatarPosition)
+      const changed = signature !== movement.lastSentSignature
+      const throttled =
+        !force &&
+        now < movement.lastSentAt + TASSADAR_AVATAR_POSITION_THROTTLE_MS
+      const keepaliveDue =
+        now >= movement.lastSentAt + TASSADAR_AVATAR_KEEPALIVE_MS
+      if (throttled || (!changed && !keepaliveDue && !force)) return
+      movement.subscription.updateLocalAvatar(this.#localAvatarPosition)
+      movement.lastSentAt = now
+      movement.lastSentSignature = signature
+      this.setAttribute('data-avatar-sync', this.#localAvatarPosition.movementMode)
+    }
+
+    #syncPylonAttention(now: number, force: boolean): void {
+      const movement = this.#avatarMovement
+      if (movement === null) return
+      if (
+        !force &&
+        now < movement.lastAttentionAt + TASSADAR_ATTENTION_THROTTLE_MS
+      ) {
+        return
+      }
+      const nextAttention = pylonAttentionForAvatar(
+        this.#summary ?? {},
+        this.#localAvatarPosition,
+        this.#selectedPylonRef,
+      )
+      if (
+        nextAttention === null &&
+        movement.activeAttentionPylonRef !== null
+      ) {
+        movement.subscription.clearPylonFocus(movement.activeAttentionPylonRef)
+        movement.activeAttentionPylonRef = null
+        movement.lastAttentionAt = now
+        this.removeAttribute('data-pylon-attention')
+        return
+      }
+      if (nextAttention === null) return
+      if (
+        movement.activeAttentionPylonRef !== null &&
+        movement.activeAttentionPylonRef !== nextAttention.pylonRef
+      ) {
+        movement.subscription.clearPylonFocus(movement.activeAttentionPylonRef)
+      }
+      movement.subscription.focusPylon(nextAttention)
+      movement.activeAttentionPylonRef = nextAttention.pylonRef
+      movement.lastAttentionAt = now
+      this.setAttribute(
+        'data-pylon-attention',
+        `${nextAttention.pylonRef}:${nextAttention.attentionKind}`,
+      )
+    }
+
     #walkControllerOptions(): WasdMouseLookControllerOptions {
       return {
-        bounds: { minX: -8, maxX: 8, minZ: -8, maxZ: 8 },
+        bounds: {
+          minX: TASSADAR_REGION_BOUNDS.minX,
+          maxX: TASSADAR_REGION_BOUNDS.maxX,
+          minZ: TASSADAR_REGION_BOUNDS.minZ,
+          maxZ: TASSADAR_REGION_BOUNDS.maxZ,
+        },
         eyeHeight: 1.65,
+        initialPosition: [
+          TASSADAR_INITIAL_AVATAR_POSITION.positionX,
+          1.65,
+          TASSADAR_INITIAL_AVATAR_POSITION.positionZ,
+        ],
         movementSpeed: 4.5,
         sprintMultiplier: 1.8,
         debug: this.#recordMouselookDebug,
@@ -602,6 +971,11 @@ const makeClass = (): CustomElementConstructor =>
       this.setAttribute('data-mouselook-source', snapshot.source)
       this.setAttribute('data-mouselook-locked', String(snapshot.locked))
       this.setAttribute('data-mouselook-applied', String(snapshot.applied))
+      this.#localAvatarPosition = {
+        ...this.#localAvatarPosition,
+        pitch: snapshot.pitch,
+        yaw: snapshot.yaw,
+      }
       this.setAttribute(
         'data-mouselook-delta',
         `${snapshot.movementX},${snapshot.movementY}`,

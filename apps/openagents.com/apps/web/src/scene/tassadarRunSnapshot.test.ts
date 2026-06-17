@@ -381,15 +381,35 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
           homePylonRef: 'pylon.world.one',
           publicProfileUrl: undefined,
         } as never,
+        {
+          actorKind: 'guest',
+          actorRef: 'identity.viewer.one',
+          avatarRef: 'avatar.viewer.one',
+          displayName: 'Viewer one',
+          homePylonRef: undefined,
+          publicProfileUrl: undefined,
+        } as never,
       ],
       avatarPositions: [
         {
           avatarRef: 'avatar.pylon_agent.pylon.world.one',
           movementMode: 'idle',
+          pitch: 0,
           positionX: -1.9,
           positionY: 0,
           positionZ: 0,
           regionRef: 'region.run.tassadar.executor.20260615.main',
+          yaw: 0,
+        } as never,
+        {
+          avatarRef: 'avatar.viewer.one',
+          movementMode: 'walking',
+          pitch: 0.1,
+          positionX: -2.1,
+          positionY: 0,
+          positionZ: 0.1,
+          regionRef: 'region.run.tassadar.executor.20260615.main',
+          yaw: -0.2,
         } as never,
       ],
       proofRefs: [
@@ -414,6 +434,16 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
           runRef: 'run.tassadar.executor.20260615',
           sourceUrl:
             '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=pylon.world.one',
+        } as never,
+      ],
+      pylonAttention: [
+        {
+          attentionKind: 'nearby',
+          attentionRef: 'attention.pylon.world.one.avatar.viewer.one',
+          avatarRef: 'avatar.viewer.one',
+          distanceMeters: 0.35,
+          pylonRef: 'pylon.world.one',
+          sourceEntityRef: undefined,
         } as never,
       ],
       runEntities: [
@@ -552,13 +582,37 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
         displayName: 'P1 agent',
         homePylonRef: 'pylon.world.one',
       },
+      {
+        actorKind: 'guest',
+        avatarRef: 'avatar.viewer.one',
+        displayName: 'Viewer one',
+      },
     ])
     expect(fromWorld.world?.avatarPositions).toEqual([
       {
         avatarRef: 'avatar.pylon_agent.pylon.world.one',
         movementMode: 'idle',
+        pitch: 0,
         position: { x: -1.9, y: 0, z: 0 },
         regionRef: 'region.run.tassadar.executor.20260615.main',
+        yaw: 0,
+      },
+      {
+        avatarRef: 'avatar.viewer.one',
+        movementMode: 'walking',
+        pitch: 0.1,
+        position: { x: -2.1, y: 0, z: 0.1 },
+        regionRef: 'region.run.tassadar.executor.20260615.main',
+        yaw: -0.2,
+      },
+    ])
+    expect(fromWorld.world?.pylonAttention).toEqual([
+      {
+        attentionKind: 'nearby',
+        attentionRef: 'attention.pylon.world.one.avatar.viewer.one',
+        avatarRef: 'avatar.viewer.one',
+        distanceMeters: 0.35,
+        pylonRef: 'pylon.world.one',
       },
     ])
 
@@ -571,15 +625,21 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     })
     expect(options.entities).toContainEqual({
       id: 'station.pylon.world.one',
-      label: 'P1 hub',
+      label: 'P1 hub +1',
       position: [-2.67, -0.12, 0.2],
-      status: 'registered',
+      status: 'nearby',
     })
     expect(options.entities).toContainEqual({
       id: 'avatar.pylon_agent.pylon.world.one',
       label: 'P1 agent',
       position: [-1.9, 0, 0.28],
       status: 'idle',
+    })
+    expect(options.entities).toContainEqual({
+      id: 'avatar.viewer.one',
+      label: 'Viewer one',
+      position: [-2.1, 0.1, 0.28],
+      status: 'walking',
     })
     expect(options.entities).toContainEqual({
       id: 'worker.world.1',
