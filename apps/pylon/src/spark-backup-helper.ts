@@ -233,6 +233,22 @@ function publicStatus(value: unknown) {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null
 }
 
+// The Breez Spark SDK uses the idempotencyKey as the on-wire TransferId, which
+// MUST be a valid UUID — a plain string key is rejected with "Invalid TransferId
+// format" (the original #5185 cause). Derive a stable UUID from the caller's
+// idempotency key, exactly as the treasury Spark sender does.
+function uuidFromStableSeed(seed: string): string {
+  const hex = createHash("sha256").update(seed).digest("hex")
+  const variant = ((Number.parseInt(hex.slice(16, 17), 16) & 0x3) | 0x8).toString(16)
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    `5${hex.slice(13, 16)}`,
+    `${variant}${hex.slice(17, 20)}`,
+    hex.slice(20, 32),
+  ].join("-")
+}
+
 async function sendSparkPaymentFromSdk(input: {
   amountSats: number
   destination: string
@@ -249,6 +265,8 @@ async function sendSparkPaymentFromSdk(input: {
   if (!Number.isInteger(input.amountSats) || input.amountSats <= 0) {
     return { ok: false, failureRef: publicRef(`${input.prefix}_failure`, "invalid amount") }
   }
+  // Valid-UUID TransferId for every SDK send/lnurl call (see uuidFromStableSeed).
+  const sdkIdempotencyKey = uuidFromStableSeed(input.idempotencyKey)
 
   if (
     input.allowLnurlPay &&
@@ -278,7 +296,7 @@ async function sendSparkPaymentFromSdk(input: {
     const sent = await withTimeout(
       input.sdk.lnurlPay({
         prepareResponse,
-        idempotencyKey: input.idempotencyKey,
+        idempotencyKey: sdkIdempotencyKey,
       }),
       input.timeoutMs,
       "spark lnurlPay",
@@ -307,47 +325,55 @@ async function sendSparkPaymentFromSdk(input: {
     }
   }
 
-  const prepareSendPayment = input.sdk.prepareSendPayment
-  if (typeof prepareSendPayment !== "function" || typeof input.sdk.sendPayment !== "function") {
+  if (typeof input.sdk.prepareSendPayment !== "function" || typeof input.sdk.sendPayment !== "function") {
     return { ok: false, failureRef: `${input.prefix}.send_unsupported` }
   }
 
-  // #5185: a BOLT11 that already encodes an amount must be prepared WITHOUT an
-  // amount override — the Spark SDK rejects a redundant amount and the send
-  // fails generically. Prepare without an amount first (covers amount-encoded
-  // invoices), and only fall back to passing the amount for amountless invoices
-  // / spark addresses.
-  let prepareResponse: Awaited<ReturnType<typeof prepareSendPayment>>
-  try {
-    prepareResponse = await withTimeout(
-      prepareSendPayment({ paymentRequest: destination }),
-      input.timeoutMs,
-      "spark prepareSendPayment",
-    )
-  } catch {
-    prepareResponse = await withTimeout(
-      prepareSendPayment({ paymentRequest: destination, amount: BigInt(input.amountSats) }),
-      input.timeoutMs,
-      "spark prepareSendPayment (amount)",
-    )
-  }
-  const paymentMethod = (prepareResponse as { paymentMethod?: { type?: string } })?.paymentMethod
-  const sent = await withTimeout(
-    input.sdk.sendPayment({
-      prepareResponse,
-      options:
-        paymentMethod?.type === "bolt11Invoice"
-          ? {
-              type: "bolt11Invoice",
-              preferSpark: false,
-              completionTimeoutSecs: 60,
-            }
-          : undefined,
-      idempotencyKey: input.idempotencyKey,
+  // SDK methods stay bound to the instance: they are wasm-bindgen methods that
+  // read `this.__wbg_ptr`, so a detached reference throws "undefined is not an
+  // object". Always call via `input.sdk.<method>(...)`.
+  //
+  // #5185: prepare WITH the amount (matches the treasury Spark sender — the SDK
+  // accepts it for amount-encoded and amountless invoices alike). Send preferring
+  // the native Spark rail; on the SDK's "Invalid TransferId format" validation
+  // failure, fall back to settling the BOLT11 over Lightning (preferSpark:false)
+  // under a FRESH idempotency UUID — the exact fix the treasury Spark sender uses.
+  const prepareResponse = await withTimeout(
+    input.sdk.prepareSendPayment({
+      paymentRequest: destination,
+      amount: BigInt(input.amountSats),
     }),
     input.timeoutMs,
-    "spark sendPayment",
+    "spark prepareSendPayment",
   )
+  const paymentMethod = (prepareResponse as { paymentMethod?: { type?: string } })?.paymentMethod
+  const isBolt11 = paymentMethod?.type === "bolt11Invoice"
+  const sendPrepared = (idempotency: string, preferSpark: boolean) =>
+    withTimeout(
+      input.sdk.sendPayment({
+        prepareResponse,
+        options: isBolt11
+          ? { type: "bolt11Invoice", preferSpark, completionTimeoutSecs: 60 }
+          : undefined,
+        idempotencyKey: idempotency,
+      }),
+      input.timeoutMs,
+      "spark sendPayment",
+    )
+  const sent = isBolt11
+    ? await sendPrepared(sdkIdempotencyKey, true).catch(error => {
+        const message = (
+          error instanceof Error ? error.message : String(error)
+        ).toLowerCase()
+        if (message.includes("invalid transferid format")) {
+          return sendPrepared(
+            uuidFromStableSeed(`${input.idempotencyKey}:bolt11-lightning-fallback`),
+            false,
+          )
+        }
+        throw error
+      })
+    : await sendPrepared(sdkIdempotencyKey, true)
   const payment = paymentValue(sent)
   const amount = toSatNumber(payment.amount) ?? input.amountSats
   const fee = toSatNumber(payment.fees)

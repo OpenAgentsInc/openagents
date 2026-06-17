@@ -268,7 +268,7 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
             sentIdempotencyKey = request.idempotencyKey ?? null
             expect(request.options).toMatchObject({
               type: "bolt11Invoice",
-              preferSpark: false,
+              preferSpark: true,
             })
           },
         }),
@@ -283,7 +283,11 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error("expected transfer success")
     expect(preparedTarget).toBe(rawReceiveTarget)
-    expect(sentIdempotencyKey).toBe("test-sweep-key")
+    // #5185: the SDK TransferId must be a valid UUID, not the raw idempotency key.
+    expect(sentIdempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
+    expect(sentIdempotencyKey).not.toBe("test-sweep-key")
     expect(result.transferRef).toMatch(/^wallet\.spark_backup_transfer\.[a-f0-9]{24}$/)
     expect(result.amountSats).toBe(4242)
     expect(result.feeSats).toBe(3)
@@ -309,7 +313,7 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
             sentIdempotencyKey = request.idempotencyKey ?? null
             expect(request.options).toMatchObject({
               type: "bolt11Invoice",
-              preferSpark: false,
+              preferSpark: true,
             })
           },
         }),
@@ -324,7 +328,11 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error("expected transfer success")
     expect(preparedTarget).toBe(rawPaymentRequest)
-    expect(sentIdempotencyKey).toBe("test-send-key")
+    // #5185: the SDK TransferId must be a valid UUID, not the raw idempotency key.
+    expect(sentIdempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
+    expect(sentIdempotencyKey).not.toBe("test-send-key")
     expect(result.transferRef).toMatch(/^wallet\.spark_backup_send\.[a-f0-9]{24}$/)
     expect(result.sparkPaymentRef).toMatch(/^wallet\.spark_backup_send_payment\.[a-f0-9]{24}$/)
     expect(result.amountSats).toBe(2100)
@@ -367,7 +375,11 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
     if (!result.ok) throw new Error("expected transfer success")
     expect(parsedInput).toBe(rawLightningAddress)
     expect(preparedAmount).toBe(5000n)
-    expect(sentIdempotencyKey).toBe("test-lnurl-send-key")
+    // #5185: the SDK TransferId must be a valid UUID, not the raw idempotency key.
+    expect(sentIdempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
+    expect(sentIdempotencyKey).not.toBe("test-lnurl-send-key")
     expect(result.method).toBe("lnurl_pay")
     expect(result.transferRef).toMatch(/^wallet\.spark_backup_send\.[a-f0-9]{24}$/)
     expect(result.sparkPaymentRef).toMatch(/^wallet\.spark_backup_send_payment\.[a-f0-9]{24}$/)
