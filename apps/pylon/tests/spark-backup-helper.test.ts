@@ -410,6 +410,45 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
     }
   })
 
+  test("send transfer reports a CLEAR lnurl_resolve failure (not send-pending) when an external LNURL host hangs (#5195 follow-up)", async () => {
+    // Simulate a slow/aborting external LNURL server: the metadata fetch aborts
+    // via the per-fetch AbortSignal. This must surface as a distinct, clean
+    // resolve FAILURE (ok:false with reason) classified as a normal failure ref,
+    // NOT the generic "timed out" that the outer catch maps to INDETERMINATE
+    // (send-pending).
+    const rawLightningAddress = "someone@slowhost.example"
+    const originalFetch = globalThis.fetch
+    let sawSignal = false
+    globalThis.fetch = (async (_url: string | URL, init?: { signal?: AbortSignal }) => {
+      sawSignal = init?.signal instanceof AbortSignal
+      throw new DOMException("The operation timed out.", "TimeoutError")
+    }) as typeof fetch
+    try {
+      const transfer = createSparkBackupSendTransfer({
+        apiKey: "k",
+        mnemonic: TEST_MNEMONIC,
+        loadModule: async () => fakeSparkModule({ balanceSats: 5000 }),
+      })
+
+      const result = await transfer({
+        amountSats: 500,
+        destination: rawLightningAddress,
+        idempotencyKey: "test-lnurl-hang-key",
+      })
+
+      // A resolve failure is a REAL failure with a reason, never indeterminate.
+      expect(result.ok).toBe(false)
+      if (result.ok) throw new Error("expected resolve failure")
+      expect(result.failureRef).toMatch(/^wallet\.spark_backup_send_failure\.[a-f0-9]{24}$/)
+      expect(result.failureRef).not.toContain("indeterminate")
+      expect(sawSignal).toBe(true)
+      expect(JSON.stringify(result)).not.toContain(rawLightningAddress)
+      assertPublicProjectionSafe(result)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   test("a missing-credential SDK error feeds slice-1 credential classification path", async () => {
     // When the SDK reports a missing key, the helper stderr carries it; the
     // adapter never throws. Slice-1 classify only calls the helper after the

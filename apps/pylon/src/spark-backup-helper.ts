@@ -197,6 +197,24 @@ const SEND_TIMEOUT_BUFFER_MS = 15_000
 // the first read after restart doesn't fall back to a stale (pre-sync) balance
 // and present it as confirmed-spendable. Warm reads (already synced) stay fast.
 const READ_SYNC_TIMEOUT_MS = 45_000
+// #5195 follow-up: resolving an EXTERNAL Lightning Address is two sequential
+// HTTPS round-trips to an arbitrary third-party LNURL server, which can be much
+// slower than the short read timeout. Reusing the 15s read timeout made external
+// sends to slow hosts blow the wrap and surface as a generic "timed out" — which
+// the outer catch then classified as INDETERMINATE (send-pending) even though
+// NOTHING was sent. Give LNURL-pay resolution its OWN generous timeout, and bound
+// each individual fetch (below) so one hung host fails with a CLEAR reason.
+const LNURL_RESOLVE_TIMEOUT_MS = 30_000
+const LNURL_FETCH_TIMEOUT_MS = 12_000
+
+// Send-latency audit: opt-in per-step timing (PYLON_SPARK_DEBUG=1) so the cold
+// per-command send pipeline cost is MEASURABLE on real infra. Monotonic clock,
+// no payment material — just labelled millisecond deltas on stderr.
+const sparkTiming = (label: string, ms: number) => {
+  if (process.env.PYLON_SPARK_DEBUG === "1") {
+    console.error(`[spark-timing] ${label}=${Math.round(ms)}ms`)
+  }
+}
 
 function helperError(command: SparkBackupCommand, message: string): WalletCommandResult {
   // The message is helper stderr; slice-1 code keeps it out of public
@@ -263,6 +281,14 @@ const isLightningAddress = (value: string): boolean =>
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null
 
+// AbortSignal.timeout(...) rejects fetch with a DOMException whose name is
+// "TimeoutError" (some runtimes use "AbortError"). Treat either as a per-fetch
+// timeout so we can report a distinct, non-indeterminate lnurl_resolve reason.
+const isAbortError = (error: unknown): boolean => {
+  const name = (error as { name?: unknown } | null)?.name
+  return name === "TimeoutError" || name === "AbortError"
+}
+
 // Resolve a Lightning Address to a BOLT11 via the standard LNURL-pay flow
 // (GET /.well-known/lnurlp/<name> -> callback?amount=<msat>). Result-typed; the
 // returned bolt11 is payment material. #5195: we pay the resolved BOLT11 through
@@ -280,11 +306,19 @@ async function resolveLightningAddressInvoice(
   const metaUrl = `https://${domain}/.well-known/lnurlp/${encodeURIComponent(name)}`
   let meta: Record<string, unknown> | null
   try {
-    const response = await fetch(metaUrl, { headers: { accept: "application/json" } })
+    const response = await fetch(metaUrl, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(LNURL_FETCH_TIMEOUT_MS),
+    })
     if (!response.ok) return { ok: false, reason: `lnurlp_meta_http_${response.status}` }
     meta = asRecord(await response.json())
-  } catch {
-    return { ok: false, reason: "lnurlp_meta_fetch_failed" }
+  } catch (error) {
+    // A per-fetch abort is a CLEAR, distinct failure (a slow external host),
+    // not the generic "timed out" the outer catch maps to INDETERMINATE.
+    return {
+      ok: false,
+      reason: isAbortError(error) ? "lnurlp_meta_timeout" : "lnurlp_meta_fetch_failed",
+    }
   }
   if (meta === null || meta.tag !== "payRequest") return { ok: false, reason: "lnurlp_meta_not_pay_request" }
   const callback = typeof meta.callback === "string" ? meta.callback : ""
@@ -308,11 +342,17 @@ async function resolveLightningAddressInvoice(
   callbackUrl.searchParams.set("amount", String(amountMsat))
   let invoice: Record<string, unknown> | null
   try {
-    const response = await fetch(callbackUrl.toString(), { headers: { accept: "application/json" } })
+    const response = await fetch(callbackUrl.toString(), {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(LNURL_FETCH_TIMEOUT_MS),
+    })
     if (!response.ok) return { ok: false, reason: `lnurlp_callback_http_${response.status}` }
     invoice = asRecord(await response.json())
-  } catch {
-    return { ok: false, reason: "lnurlp_callback_fetch_failed" }
+  } catch (error) {
+    return {
+      ok: false,
+      reason: isAbortError(error) ? "lnurlp_callback_timeout" : "lnurlp_callback_fetch_failed",
+    }
   }
   if (invoice === null) return { ok: false, reason: "lnurlp_callback_not_json" }
   if (invoice.status === "ERROR") return { ok: false, reason: "lnurlp_callback_error" }
@@ -347,9 +387,13 @@ async function sendSparkPaymentFromSdk(input: {
   // how the treasury Spark sender pays Lightning Addresses.
   let method: "payment_request" | "lnurl_pay" = "payment_request"
   if (input.allowLnurlPay && isLightningAddress(destination)) {
+    // #5195 follow-up: resolve LNURL-pay under its OWN generous timeout, NOT the
+    // short read timeout — an external LNURL server is slower than a local SDK
+    // read, and each inner fetch is independently abort-bounded so a hung host
+    // yields a CLEAR lnurl_resolve failure (not a scary send-pending).
     const resolved = await withTimeout(
       resolveLightningAddressInvoice(destination, input.amountSats),
-      input.timeoutMs,
+      LNURL_RESOLVE_TIMEOUT_MS,
       "lnurl-pay resolve",
     )
     if (!resolved.ok) {
@@ -372,6 +416,7 @@ async function sendSparkPaymentFromSdk(input: {
   // the native Spark rail; on the SDK's "Invalid TransferId format" validation
   // failure, fall back to settling the BOLT11 over Lightning (preferSpark:false)
   // under a FRESH idempotency UUID — the exact fix the treasury Spark sender uses.
+  const tPrepare = performance.now()
   const prepareResponse = await withTimeout(
     input.sdk.prepareSendPayment({
       paymentRequest: destination,
@@ -380,6 +425,7 @@ async function sendSparkPaymentFromSdk(input: {
     input.timeoutMs,
     "spark prepareSendPayment",
   )
+  sparkTiming("prepare_send_payment", performance.now() - tPrepare)
   const paymentMethod = (prepareResponse as { paymentMethod?: { type?: string } })?.paymentMethod
   const isBolt11 = paymentMethod?.type === "bolt11Invoice"
   // #5196: wait at least the SDK's completion window + a buffer for the send to
@@ -402,6 +448,7 @@ async function sendSparkPaymentFromSdk(input: {
       sendTimeoutMs,
       "spark sendPayment",
     )
+  const tSettle = performance.now()
   const sent = isBolt11
     ? await sendPrepared(sdkIdempotencyKey, true).catch(error => {
         const message = (
@@ -416,6 +463,7 @@ async function sendSparkPaymentFromSdk(input: {
         throw error
       })
     : await sendPrepared(sdkIdempotencyKey, true)
+  sparkTiming("send_payment_settle", performance.now() - tSettle)
   const payment = paymentValue(sent)
   const amount = toSatNumber(payment.amount) ?? input.amountSats
   const fee = toSatNumber(payment.fees)
@@ -927,10 +975,16 @@ export function createSparkBackupSendTransfer(config: SparkBackupAdapterConfig):
     }
 
     let sdk: BreezSparkSdk | null = null
+    // Latency audit: process start -> reaching this send closure (cold binary
+    // start + CLI parse + option resolution). The rest are per-step deltas.
+    sparkTiming("process_to_send_closure", process.uptime() * 1000)
+    const tStart = performance.now()
     try {
       const mod = await withTimeout(loadModule(), timeoutMs, "spark sdk load")
+      sparkTiming("module_load", performance.now() - tStart)
       const sdkConfig = mod.defaultConfig(network)
       sdkConfig.apiKey = config.apiKey
+      const tBuild = performance.now()
       sdk = await buildSparkSdk(
         mod,
         sdkConfig,
@@ -938,10 +992,14 @@ export function createSparkBackupSendTransfer(config: SparkBackupAdapterConfig):
         config.storageDir,
         timeoutMs,
       )
+      sparkTiming("sdk_build_connect", performance.now() - tBuild)
       if (typeof sdk.syncWallet === "function") {
+        const tSync = performance.now()
         await withTimeout(sdk.syncWallet({}), timeoutMs, "spark syncWallet").catch(() => undefined)
+        sparkTiming("sync_wallet", performance.now() - tSync)
       }
-      return await sendSparkPaymentFromSdk({
+      const tSend = performance.now()
+      const result = await sendSparkPaymentFromSdk({
         amountSats,
         destination,
         idempotencyKey,
@@ -950,6 +1008,9 @@ export function createSparkBackupSendTransfer(config: SparkBackupAdapterConfig):
         timeoutMs,
         allowLnurlPay: true,
       })
+      sparkTiming("send_payment_step", performance.now() - tSend)
+      sparkTiming("transfer_total_in_closure", performance.now() - tStart)
+      return result
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       // #5185: opt-in raw diagnostics (PYLON_SPARK_DEBUG=1) so an operator can
