@@ -8,6 +8,7 @@ import {
 import {
   sparkTreasuryBalancePayload,
   sparkTreasuryConfiguredFlags,
+  sparkTreasuryFundingInvoicePayload,
   sparkTreasuryFundingPayload,
   sparkTreasuryPayPayload,
   sparkTreasuryUnavailableReason,
@@ -432,6 +433,20 @@ const handleRequest = async request => {
     }
 
     return json(200, await sparkTreasuryFundingPayload())
+  }
+
+  if (request.method === 'POST' && url.pathname === '/spark/funding-invoice') {
+    const sparkUnavailable = sparkTreasuryUnavailableReason()
+    if (sparkUnavailable !== null) {
+      return json(503, { error: sparkUnavailable })
+    }
+
+    const result = await sparkTreasuryFundingInvoicePayload(
+      await request.json().catch(() => null),
+    )
+    const status = typeof result.status === 'number' ? result.status : 200
+
+    return json(status, result)
   }
 
   if (request.method === 'POST' && url.pathname === '/spark/pay') {

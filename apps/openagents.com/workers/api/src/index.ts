@@ -462,6 +462,7 @@ import { makeSparkTreasuryPayoutAdapter } from './treasury-payment-spark-payout-
 import {
   TREASURY_SERVICE_TOKEN_HEADER,
   handleOperatorSparkTreasuryFundingDestinationApi,
+  handleOperatorSparkTreasuryFundingInvoiceApi,
   handleOperatorTreasuryFundingDestinationApi,
   handleOperatorTreasuryPayoutApi,
   handleOperatorTreasuryRecipientConfirmationApi,
@@ -679,7 +680,7 @@ const mdkTreasuryContainerEnvVars = (
 const MDK_TREASURY_CONTAINER_GENERATION_KEY =
   'openagents.mdk_treasury.container_generation'
 const MDK_TREASURY_CONTAINER_GENERATION =
-  '2026-06-17.spark-treasury-bolt11-lightning-fallback'
+  '2026-06-17.spark-treasury-funding-invoice'
 
 export class MdkTreasuryContainer extends DurableMdkOutcomeContainer {
   override defaultPort = 8080
@@ -7475,6 +7476,15 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/api/operator/treasury/spark-funding-destination',
     handler: (request, env) =>
       handleOperatorSparkTreasuryFundingDestinationApi(request, {
+        fetchSparkTreasury: fetchMdkTreasuryPath(env),
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+      }),
+  },
+  {
+    path: '/api/operator/treasury/spark-funding-invoice',
+    handler: (request, env) =>
+      handleOperatorSparkTreasuryFundingInvoiceApi(request, {
         fetchSparkTreasury: fetchMdkTreasuryPath(env),
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),

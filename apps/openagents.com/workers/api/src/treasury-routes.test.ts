@@ -9,6 +9,7 @@ import type {
 import {
   executeTreasuryPayout,
   handleOperatorSparkTreasuryFundingDestinationApi,
+  handleOperatorSparkTreasuryFundingInvoiceApi,
   handleOperatorTreasuryFundingDestinationApi,
   handleOperatorTreasuryPayoutApi,
   handleOperatorTreasuryRecipientConfirmationApi,
@@ -464,6 +465,120 @@ describe('operator spark treasury funding destination', () => {
     expect(response.status).toBe(503)
     await expect(response.json()).resolves.toEqual({
       error: 'spark_treasury_funding_destination_unavailable',
+    })
+  })
+})
+
+describe('operator spark treasury funding invoice', () => {
+  const invoiceRequest = (body: unknown) =>
+    new Request(
+      'https://openagents.com/api/operator/treasury/spark-funding-invoice',
+      {
+        body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      },
+    )
+
+  test('requires the admin api token', async () => {
+    const response = await run(
+      handleOperatorSparkTreasuryFundingInvoiceApi(
+        invoiceRequest({ amountSat: 52000 }),
+        {
+          fetchSparkTreasury: () =>
+            Promise.resolve(
+              jsonResponse(200, {
+                amountSat: 52000,
+                bolt11Invoice: 'lnbc520u1test',
+                rail: 'spark',
+              }),
+            ),
+          requireAdminApiToken: () => Promise.resolve(false),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  test('requires a positive integer amount', async () => {
+    const response = await run(
+      handleOperatorSparkTreasuryFundingInvoiceApi(
+        invoiceRequest({ amountSat: 0 }),
+        {
+          fetchSparkTreasury: () =>
+            Promise.resolve(jsonResponse(500, { error: 'should_not_call' })),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'amount_sat_must_be_positive_integer',
+    })
+  })
+
+  test('mints a Spark treasury BOLT11 invoice for an authorized operator', async () => {
+    const response = await run(
+      handleOperatorSparkTreasuryFundingInvoiceApi(
+        invoiceRequest({ amountSat: 52000 }),
+        {
+          fetchSparkTreasury: (path, init) => {
+            expect(path).toBe('/spark/funding-invoice')
+            expect(init?.method).toBe('POST')
+            expect(JSON.parse(String(init?.body))).toEqual({
+              amountSat: 52000,
+            })
+
+            return Promise.resolve(
+              jsonResponse(200, {
+                amountSat: 52000,
+                bolt11Invoice: 'lnbc520u1test',
+                expiresInSeconds: 3600,
+                rail: 'spark',
+              }),
+            )
+          },
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+    const body = (await response.json()) as {
+      invoice: {
+        amountSat: number
+        bolt11Invoice: string
+        expiresInSeconds: number
+        rail: string
+      }
+      service: string
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.service).toBe('spark_treasury')
+    expect(body.invoice).toEqual({
+      amountSat: 52000,
+      bolt11Invoice: 'lnbc520u1test',
+      expiresInSeconds: 3600,
+      rail: 'spark',
+    })
+  })
+
+  test('returns 503 when the Spark treasury invoice is unavailable', async () => {
+    const response = await run(
+      handleOperatorSparkTreasuryFundingInvoiceApi(
+        invoiceRequest({ amountSat: 52000 }),
+        {
+          fetchSparkTreasury: () =>
+            Promise.resolve(jsonResponse(503, { error: 'spark_down' })),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({
+      error: 'spark_treasury_funding_invoice_unavailable',
     })
   })
 })

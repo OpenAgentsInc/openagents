@@ -333,6 +333,43 @@ export const sparkTreasuryFundingPayload = async () => {
   }
 }
 
+export const sparkTreasuryFundingInvoicePayload = async input => {
+  const amountSat = Number(input?.amountSat)
+
+  if (!Number.isInteger(amountSat) || amountSat <= 0) {
+    return { error: 'amount_sat_must_be_positive_integer', status: 400 }
+  }
+
+  const sdk = await buildSparkSdk()
+  await syncWallet(sdk)
+
+  const response = await withTimeout(
+    sdk.receivePayment({
+      paymentMethod: {
+        amountSats: amountSat,
+        description: 'OpenAgents Spark treasury funding',
+        expirySecs: 3600,
+        type: 'bolt11Invoice',
+      },
+    }),
+    timeoutMs(),
+    'spark receivePayment bolt11Invoice',
+  )
+
+  return typeof response?.paymentRequest === 'string' &&
+    response.paymentRequest.trim() !== ''
+    ? {
+        amountSat,
+        bolt11Invoice: response.paymentRequest,
+        expiresInSeconds: 3600,
+        rail: 'spark',
+      }
+    : {
+        error: 'spark_treasury_funding_invoice_unavailable',
+        status: 502,
+      }
+}
+
 export const sparkTreasuryPayPayload = async input => {
   const sdk = await buildSparkSdk()
   await syncWallet(sdk)
