@@ -200,9 +200,11 @@ the two buckets.
    their Spark Lightning Address for normal payouts without echoing that
    destination into ledger projections.
 4. **Add a Spark-native treasury rail for agent payouts.** #5183 now gives the
-   website treasury container its own Spark SDK rail. Operator treasury payouts
-   and Artanis spend prefer Spark treasury for Spark Lightning Address/Spark
-   destinations when funded, without chunking; preflight-unavailable or
+   website treasury container its own Spark SDK rail. It uses an explicit Spark
+   treasury mnemonic when present, otherwise the canonical treasury mnemonic
+   seeds the Spark rail too. Operator treasury payouts and Artanis spend prefer
+   Spark treasury for Spark Lightning Address/Spark destinations when funded,
+   without chunking; preflight-unavailable or
    insufficient Spark falls back to MDK, while a real Spark dispatch failure
    stops instead of risking a second send. Accepted-work settlement can select
    `adapterKind: "spark_treasury"` for one size-agnostic Spark treasury payment.

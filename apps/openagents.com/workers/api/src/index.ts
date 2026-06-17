@@ -637,7 +637,7 @@ const mdkTreasuryContainerEnvVars = (
     environment.SPARK_TREASURY_API_KEY ?? environment.OPENAGENTS_SPARK_API_KEY,
   )
   const sparkMnemonic = optionalMdkContainerSecret(
-    environment.SPARK_TREASURY_MNEMONIC,
+    environment.SPARK_TREASURY_MNEMONIC ?? environment.MDK_TREASURY_MNEMONIC,
   )
   const sparkNetwork = optionalMdkContainerSecret(
     environment.SPARK_TREASURY_NETWORK,

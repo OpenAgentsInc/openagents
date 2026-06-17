@@ -238,9 +238,11 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
 - **⚡ Spark treasury rail + single treasury balance (#5183).** The website
   treasury container now exposes Spark treasury service endpoints
   (`/spark/balance`, `/spark/funding-destination`, `/spark/pay`) backed by the
-  Breez Spark SDK and the copied Bun SQLite storage adapter. Operator treasury
-  payouts and Artanis spend prefer Spark treasury for Lightning Address/Spark
-  destinations when Spark has enough spendable balance; if Spark is unavailable
+  Breez Spark SDK and the copied Bun SQLite storage adapter; it uses an explicit
+  Spark treasury mnemonic when present, otherwise the canonical treasury
+  mnemonic seeds the Spark rail too. Operator treasury payouts and Artanis spend
+  prefer Spark treasury for Lightning Address/Spark destinations when Spark has
+  enough spendable balance; if Spark is unavailable
   or preflight-insufficient they fall back to the existing MDK treasury path, but
   a real Spark dispatch failure stops instead of attempting a second MDK send.
   Raw Spark payment requests are accepted only as private operator/adapter input;
