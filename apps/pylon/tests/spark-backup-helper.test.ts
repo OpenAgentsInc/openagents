@@ -342,51 +342,71 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
     assertPublicProjectionSafe(result)
   })
 
-  test("send transfer pays a Lightning Address through the SDK LNURL path", async () => {
+  test("send transfer resolves a Lightning Address to a BOLT11 and pays it via sendPayment (#5195)", async () => {
     const rawLightningAddress = "oa12345@spark.example"
-    let parsedInput: string | null = null
-    let preparedAmount: bigint | null = null
+    const resolvedBolt11 = "lnbc50u1mockinvoicefromthelnurlcallbackthatmustnotleak"
+    let preparedTarget: string | null = null
     let sentIdempotencyKey: string | null = null
-    const transfer = createSparkBackupSendTransfer({
-      apiKey: "k",
-      mnemonic: TEST_MNEMONIC,
-      loadModule: async () =>
-        fakeSparkModule({
-          balanceSats: 5000,
-          onParse: (input) => {
-            parsedInput = input
-          },
-          onPrepareLnurlPay: (request) => {
-            preparedAmount = request.amount
-          },
-          onLnurlPay: (request) => {
-            sentIdempotencyKey = request.idempotencyKey ?? null
-          },
-        }),
-    })
+    let calledAmountMsat: string | null = null
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString()
+      if (u.includes("/.well-known/lnurlp/")) {
+        return new Response(
+          JSON.stringify({
+            tag: "payRequest",
+            callback: "https://spark.example/cb",
+            minSendable: 1000,
+            maxSendable: 1_000_000_000,
+          }),
+          { status: 200 },
+        )
+      }
+      calledAmountMsat = new URL(u).searchParams.get("amount")
+      return new Response(JSON.stringify({ pr: resolvedBolt11 }), { status: 200 })
+    }) as typeof fetch
+    try {
+      const transfer = createSparkBackupSendTransfer({
+        apiKey: "k",
+        mnemonic: TEST_MNEMONIC,
+        loadModule: async () =>
+          fakeSparkModule({
+            balanceSats: 5000,
+            onPrepareSend: (request) => {
+              preparedTarget = request.paymentRequest
+            },
+            onSend: (request) => {
+              sentIdempotencyKey = request.idempotencyKey ?? null
+            },
+          }),
+      })
 
-    const result = await transfer({
-      amountSats: 5000,
-      destination: rawLightningAddress,
-      idempotencyKey: "test-lnurl-send-key",
-    })
+      const result = await transfer({
+        amountSats: 5000,
+        destination: rawLightningAddress,
+        idempotencyKey: "test-lnurl-send-key",
+      })
 
-    expect(result.ok).toBe(true)
-    if (!result.ok) throw new Error("expected transfer success")
-    expect(parsedInput).toBe(rawLightningAddress)
-    expect(preparedAmount).toBe(5000n)
-    // #5185: the SDK TransferId must be a valid UUID, not the raw idempotency key.
-    expect(sentIdempotencyKey).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-    )
-    expect(sentIdempotencyKey).not.toBe("test-lnurl-send-key")
-    expect(result.method).toBe("lnurl_pay")
-    expect(result.transferRef).toMatch(/^wallet\.spark_backup_send\.[a-f0-9]{24}$/)
-    expect(result.sparkPaymentRef).toMatch(/^wallet\.spark_backup_send_payment\.[a-f0-9]{24}$/)
-    expect(result.amountSats).toBe(5000)
-    expect(result.feeSats).toBe(4)
-    expect(JSON.stringify(result)).not.toContain(rawLightningAddress)
-    assertPublicProjectionSafe(result)
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected transfer success")
+      // #5195: the LA was resolved to a BOLT11 via LNURL-pay and paid through
+      // sendPayment (NOT the SDK lnurlPay), with the amount in msat.
+      expect(preparedTarget).toBe(resolvedBolt11)
+      expect(calledAmountMsat).toBe("5000000")
+      expect(result.method).toBe("lnurl_pay")
+      // valid-UUID TransferId, not the raw idempotency key.
+      expect(sentIdempotencyKey).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      )
+      expect(sentIdempotencyKey).not.toBe("test-lnurl-send-key")
+      expect(result.transferRef).toMatch(/^wallet\.spark_backup_send\.[a-f0-9]{24}$/)
+      expect(result.amountSats).toBe(5000)
+      expect(JSON.stringify(result)).not.toContain(rawLightningAddress)
+      expect(JSON.stringify(result)).not.toContain(resolvedBolt11)
+      assertPublicProjectionSafe(result)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 
   test("a missing-credential SDK error feeds slice-1 credential classification path", async () => {

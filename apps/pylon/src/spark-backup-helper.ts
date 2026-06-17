@@ -223,12 +223,6 @@ function paymentRef(prefix: string, payment: { id?: unknown; status?: unknown },
   )
 }
 
-function looksLikeLnurlPayDestination(destination: string) {
-  const value = destination.trim()
-  if (/^lnurl/i.test(value)) return true
-  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)
-}
-
 function publicStatus(value: unknown) {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null
 }
@@ -249,6 +243,73 @@ function uuidFromStableSeed(seed: string): string {
   ].join("-")
 }
 
+// lud16 Lightning Address: name@domain.tld.
+const lightningAddressPattern =
+  /^[a-z0-9._+-]{1,64}@[a-z0-9.-]{1,190}\.[a-z]{2,63}$/u
+const isLightningAddress = (value: string): boolean =>
+  lightningAddressPattern.test(value.trim().toLowerCase())
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null
+
+// Resolve a Lightning Address to a BOLT11 via the standard LNURL-pay flow
+// (GET /.well-known/lnurlp/<name> -> callback?amount=<msat>). Result-typed; the
+// returned bolt11 is payment material. #5195: we pay the resolved BOLT11 through
+// the proven sendPayment path because the SDK's lnurlPay throws "Tree service
+// error: insufficient funds" from the Spark leaf structure even when funded.
+async function resolveLightningAddressInvoice(
+  address: string,
+  amountSats: number,
+): Promise<{ ok: true; bolt11: string } | { ok: false; reason: string }> {
+  const trimmed = address.trim()
+  const at = trimmed.indexOf("@")
+  if (at <= 0 || at === trimmed.length - 1) return { ok: false, reason: "not_a_lightning_address" }
+  const name = trimmed.slice(0, at)
+  const domain = trimmed.slice(at + 1)
+  const metaUrl = `https://${domain}/.well-known/lnurlp/${encodeURIComponent(name)}`
+  let meta: Record<string, unknown> | null
+  try {
+    const response = await fetch(metaUrl, { headers: { accept: "application/json" } })
+    if (!response.ok) return { ok: false, reason: `lnurlp_meta_http_${response.status}` }
+    meta = asRecord(await response.json())
+  } catch {
+    return { ok: false, reason: "lnurlp_meta_fetch_failed" }
+  }
+  if (meta === null || meta.tag !== "payRequest") return { ok: false, reason: "lnurlp_meta_not_pay_request" }
+  const callback = typeof meta.callback === "string" ? meta.callback : ""
+  if (callback === "" || !/^https:\/\//u.test(callback)) return { ok: false, reason: "lnurlp_meta_callback_invalid" }
+  const amountMsat = amountSats * 1000
+  const minSendable = Number(meta.minSendable ?? 0)
+  const maxSendable = Number(meta.maxSendable ?? Number.MAX_SAFE_INTEGER)
+  if (
+    Number.isFinite(minSendable) &&
+    Number.isFinite(maxSendable) &&
+    (amountMsat < minSendable || amountMsat > maxSendable)
+  ) {
+    return { ok: false, reason: `amount_out_of_range_${minSendable}_${maxSendable}_msat` }
+  }
+  let callbackUrl: URL
+  try {
+    callbackUrl = new URL(callback)
+  } catch {
+    return { ok: false, reason: "lnurlp_callback_unparseable" }
+  }
+  callbackUrl.searchParams.set("amount", String(amountMsat))
+  let invoice: Record<string, unknown> | null
+  try {
+    const response = await fetch(callbackUrl.toString(), { headers: { accept: "application/json" } })
+    if (!response.ok) return { ok: false, reason: `lnurlp_callback_http_${response.status}` }
+    invoice = asRecord(await response.json())
+  } catch {
+    return { ok: false, reason: "lnurlp_callback_fetch_failed" }
+  }
+  if (invoice === null) return { ok: false, reason: "lnurlp_callback_not_json" }
+  if (invoice.status === "ERROR") return { ok: false, reason: "lnurlp_callback_error" }
+  const pr = typeof invoice.pr === "string" ? invoice.pr.trim() : ""
+  if (pr === "" || !/^ln[a-z0-9]/iu.test(pr)) return { ok: false, reason: "lnurlp_callback_no_invoice" }
+  return { ok: true, bolt11: pr }
+}
+
 async function sendSparkPaymentFromSdk(input: {
   amountSats: number
   destination: string
@@ -258,71 +319,33 @@ async function sendSparkPaymentFromSdk(input: {
   timeoutMs: number
   allowLnurlPay: boolean
 }): Promise<SparkBackupSendTransferResult> {
-  const destination = input.destination.trim()
+  let destination = input.destination.trim()
   if (destination === "") {
     return { ok: false, failureRef: publicRef(`${input.prefix}_failure`, "empty destination") }
   }
   if (!Number.isInteger(input.amountSats) || input.amountSats <= 0) {
     return { ok: false, failureRef: publicRef(`${input.prefix}_failure`, "invalid amount") }
   }
-  // Valid-UUID TransferId for every SDK send/lnurl call (see uuidFromStableSeed).
+  // Valid-UUID TransferId for every SDK send call (see uuidFromStableSeed).
   const sdkIdempotencyKey = uuidFromStableSeed(input.idempotencyKey)
 
-  if (
-    input.allowLnurlPay &&
-    looksLikeLnurlPayDestination(destination) &&
-    typeof input.sdk.parse === "function" &&
-    typeof input.sdk.prepareLnurlPay === "function" &&
-    typeof input.sdk.lnurlPay === "function"
-  ) {
-    const parsed = await withTimeout(input.sdk.parse(destination), input.timeoutMs, "spark parse")
-    const payRequest =
-      parsed.type === "lightningAddress"
-        ? (parsed as { payRequest?: unknown }).payRequest
-        : parsed.type === "lnurlPay"
-          ? parsed
-          : null
-    if (payRequest === null || payRequest === undefined) {
-      return { ok: false, failureRef: publicRef(`${input.prefix}_failure`, `unsupported parsed input:${parsed.type}`) }
-    }
-    const prepareResponse = await withTimeout(
-      input.sdk.prepareLnurlPay({
-        amount: BigInt(input.amountSats),
-        payRequest,
-      }),
+  // #5195: pay a Lightning Address by resolving it to a BOLT11 (LNURL-pay) and
+  // sending that through the proven sendPayment path below — NOT via the SDK's
+  // lnurlPay, which throws "Tree service error: insufficient funds" from the
+  // Spark leaf structure even when the balance covers the amount. This mirrors
+  // how the treasury Spark sender pays Lightning Addresses.
+  let method: "payment_request" | "lnurl_pay" = "payment_request"
+  if (input.allowLnurlPay && isLightningAddress(destination)) {
+    const resolved = await withTimeout(
+      resolveLightningAddressInvoice(destination, input.amountSats),
       input.timeoutMs,
-      "spark prepareLnurlPay",
+      "lnurl-pay resolve",
     )
-    const sent = await withTimeout(
-      input.sdk.lnurlPay({
-        prepareResponse,
-        idempotencyKey: sdkIdempotencyKey,
-      }),
-      input.timeoutMs,
-      "spark lnurlPay",
-    )
-    const payment = paymentValue(sent)
-    const amount = toSatNumber(payment.amount) ?? input.amountSats
-    const fee = toSatNumber(payment.fees)
-    return {
-      ok: true,
-      transferRef: publicRef(
-        input.prefix,
-        [
-          typeof payment.id === "string" ? payment.id : "id-redacted",
-          publicStatus(payment.status) ?? "status-redacted",
-          "lnurl_pay",
-          String(amount),
-          fee === null ? "fee-unknown" : String(fee),
-          input.idempotencyKey,
-        ].join(":"),
-      ),
-      sparkPaymentRef: paymentRef(`${input.prefix}_payment`, payment, input.idempotencyKey),
-      amountSats: amount,
-      feeSats: fee,
-      method: "lnurl_pay",
-      status: publicStatus(payment.status),
+    if (!resolved.ok) {
+      return { ok: false, failureRef: publicRef(`${input.prefix}_failure`, `lnurl_resolve:${resolved.reason}`) }
     }
+    destination = resolved.bolt11
+    method = "lnurl_pay"
   }
 
   if (typeof input.sdk.prepareSendPayment !== "function" || typeof input.sdk.sendPayment !== "function") {
@@ -384,7 +407,7 @@ async function sendSparkPaymentFromSdk(input: {
       [
         typeof payment.id === "string" ? payment.id : "id-redacted",
         publicStatus(payment.status) ?? "status-redacted",
-        "payment_request",
+        method,
         String(amount),
         fee === null ? "fee-unknown" : String(fee),
         input.idempotencyKey,
@@ -393,7 +416,7 @@ async function sendSparkPaymentFromSdk(input: {
     sparkPaymentRef: paymentRef(`${input.prefix}_payment`, payment, input.idempotencyKey),
     amountSats: amount,
     feeSats: fee,
-    method: "payment_request",
+    method,
     status: publicStatus(payment.status),
   }
 }
