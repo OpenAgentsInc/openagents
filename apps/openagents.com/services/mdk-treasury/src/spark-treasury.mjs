@@ -70,6 +70,20 @@ const withTimeout = async (promise, ms, label) => {
 const publicRef = (prefix, value) =>
   `${prefix}.${createHash('sha256').update(value).digest('hex').slice(0, 32)}`
 
+const uuidFromStableSeed = seed => {
+  const hex = createHash('sha256').update(seed).digest('hex')
+  const variant = ((Number.parseInt(hex.slice(16, 17), 16) & 0x3) | 0x8)
+    .toString(16)
+
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    `5${hex.slice(13, 16)}`,
+    `${variant}${hex.slice(17, 20)}`,
+    hex.slice(20, 32),
+  ].join('-')
+}
+
 const publicStatus = value =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : null
 
@@ -336,6 +350,7 @@ export const sparkTreasuryPayPayload = async input => {
   if (idempotencyKey === '') {
     return { error: 'idempotency_key_required', status: 400 }
   }
+  const sdkIdempotencyKey = uuidFromStableSeed(idempotencyKey)
 
   const before = await sparkTreasuryBalancePayload()
   if (
@@ -398,7 +413,7 @@ export const sparkTreasuryPayPayload = async input => {
       resolvedDestinationKind = 'bolt11'
       failureStage = 'spark_lnurl_pay'
       const sent = await withTimeout(
-        sdk.lnurlPay({ idempotencyKey, prepareResponse }),
+        sdk.lnurlPay({ idempotencyKey: sdkIdempotencyKey, prepareResponse }),
         timeoutMs(),
         'spark lnurlPay',
       )
@@ -437,7 +452,7 @@ export const sparkTreasuryPayPayload = async input => {
     failureStage = 'spark_send_payment'
     const sent = await withTimeout(
       sdk.sendPayment({
-        idempotencyKey,
+        idempotencyKey: sdkIdempotencyKey,
         options:
           paymentMethod?.type === 'bolt11Invoice'
             ? {
