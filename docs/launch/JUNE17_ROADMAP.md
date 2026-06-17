@@ -108,10 +108,11 @@ signed recut.
   the recorder public smoke reads the projection.
   **D3.10 (#5226) shipped:** the cohort recorder now has a local `check`
   command, and the source contract links a public-safe row packet template.
-  **Active D3.11 slice: #5230** add a public cohort completion audit command
-  that fails until the projection proves at least three privacy-reviewed
-  completions. Remaining D3 tail: record real cohort rows and collect at least
-  three real loop-completion bundles before closing #5098/#5104.
+  **D3.11 (#5230) shipped:** the cohort recorder now has a public `audit`
+  command that fails until the projection gate is ready and at least three
+  counted completions exist. Remaining D3 tail: record real cohort rows and
+  collect at least three real loop-completion bundles before closing
+  #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
