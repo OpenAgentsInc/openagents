@@ -121,8 +121,22 @@ As of 2026-06-17:
   station, avatar, proof, receipt, corpus, and chat entities, loss/chart chrome
   remains hidden, and no beams/bursts or transfer dots are emitted without
   evidence-backed rows.
+- `three-effect` issue #9 landed the first terrain substrate in
+  `packages/core/src/terrainPrimitives.ts`: deterministic seeded height
+  sampling, stable chunk keys, quadtree LOD planning, synchronous and
+  module-worker-backed chunk geometry building, skirt vertices, splat
+  texture-index/weight output, and a width-keyed chunk pool. This is isolated
+  substrate only; no OpenAgents page consumes terrain by default.
+- OpenAgents issue #5275 added the owned world asset catalog and provenance
+  policy in `docs/game/2026-06-17-openagents-world-asset-catalog.md`. It records
+  current `/tassadar` procedural assets as approved-owned, defines target
+  avatar/station/prop/material/adornment IDs, and gates Quick reference assets
+  by source/license/production eligibility.
 
-Remaining work starts at the terrain prototype and owned asset provenance.
+The original issue sequence is now implemented through the owned asset catalog.
+Next work should move from substrate/catalog into actual owned avatar and prop
+asset production, a machine-readable asset manifest, and only then runtime model
+consumption.
 
 ## Mechanics Inventory
 
@@ -566,6 +580,9 @@ Plan:
   before any production use.
 - Prefer owned/generated OpenAgents-specific GLBs and textures for brand-critical
   surfaces.
+- The owned catalog is now
+  `docs/game/2026-06-17-openagents-world-asset-catalog.md`; it is the production
+  gate until a machine-readable manifest replaces it.
 
 ## Target Architecture
 
@@ -706,6 +723,7 @@ Status: started.
 
 ### P7: Terrain And Scenery
 
+- Status: first shared terrain substrate landed in `three-effect` issue #9.
 - Add deterministic flat-world station terrain first.
 - Then add terrain primitives from Quick:
   - height sampler.
@@ -729,6 +747,7 @@ Status: started.
 
 ### P9: Asset Pipeline
 
+- Status: initial owned asset catalog landed in OpenAgents issue #5275.
 - Create owned asset catalog.
 - Decide whether to use any CC0 Quaternius prototype props.
 - Avoid production reliance on Mixamo/game-icons/terrain assets until license
@@ -835,6 +854,11 @@ For `/tassadar`, each release should smoke:
    a compact legend/HUD and real station entities only.
 10. `three-effect`: terrain height/quadtree/worker chunk prototype.
 11. `openagents.com`: owned world asset catalog and license/provenance record.
+
+Status as of 2026-06-17: all eleven issues in this initial breakdown have been
+implemented or documented. Follow-on issues should be smaller and asset-specific:
+owned GLB production, machine-readable manifest, runtime manifest validation,
+and only then `/tassadar` model consumption.
 
 ## Bottom Line
 

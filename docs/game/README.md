@@ -26,6 +26,9 @@ direction.
   implementation direction for making each pylon's agent visible as a world
   avatar that can move, notice nearby visitors, talk locally, and emit chat
   bubbles during a run.
+- `2026-06-17-openagents-world-asset-catalog.md` - owned OpenAgents world asset
+  catalog and provenance policy for avatars, stations, props, materials,
+  adornments, and Quick 3D MMORPG reference-asset eligibility.
 
 ## Implementation Homes
 
