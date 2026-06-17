@@ -8,6 +8,8 @@ states, blockers, and next actions. It must not include raw Lightning
 Addresses, BOLT11 invoices, payment hashes, preimages, mnemonics, API keys, or
 wallet paths.
 
+Closeout accounting record: `docs/payments/2026-06-17-launch-recognition-closeout.md`.
+
 ## Recipient status
 
 | Recipient | Intended payout | Current evidence | Status | Blocker / root cause | Next action |

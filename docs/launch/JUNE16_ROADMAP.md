@@ -252,6 +252,19 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   single size-agnostic Spark treasury payment instead of the older hosted-MDK
   chunk policy. Public `/treasury` now shows one top-line balance summed across
   MDK + Spark rails, with the rail split kept as small secondary text.
+- **🧾 Launch-recognition closeout (#5182) partially closed, funding-gated.**
+  Migration `0200_launch_recognition_treasury_backfill.sql` backfills public-safe
+  recipient refs / owed refs / confirmation refs for the known Trigger,
+  Whitefang, and Orrery treasury rows so the operator recipient-report API can
+  produce owed vs settled-sent vs pending vs confirmed-received. Trigger is
+  closed at 50k confirmed. Whitefang has a confirmed 1k canary and still needs
+  the remaining recognition closeout once the Spark treasury rail is funded.
+  Orrery is marked do-not-resend: settled-sent is 234,639 sats against a 50k
+  debt, with the owner decision that the overage stays as hazard pay; recipient
+  confirmation still awaits Orrery's wallet-side read. The three legacy pending
+  rows were reconciled through the supported API and remain `pending` because
+  the containers still report no terminal outcome. Closeout:
+  `docs/payments/2026-06-17-launch-recognition-closeout.md`.
 - **🧰 Pylon wallet self-recovery (#5167) fixed.** Field report: an unclean MDK
   agent-wallet shutdown could leave `~/.mdk-wallet/daemon.pid` pointing at a
   dead process, stranding `wallet report-readiness` until an operator manually
