@@ -18,7 +18,7 @@ export const pylonStatsTagName = 'oa-pylon-stats'
 
 const STATS: ReadonlyArray<{ key: string; label: string }> = [
   { key: 'online', label: 'pylons online' },
-  { key: 'working', label: 'working now' },
+  { key: 'working', label: 'work-ready now' },
   { key: 'sats24h', label: 'sats settled · 24h' },
   { key: 'training', label: 'training contributors' },
 ]
@@ -40,7 +40,7 @@ const statValues = (snapshot: PylonStatsSnapshot | null): Record<string, string>
   if (snapshot === null) return { online: '0', working: '0', sats24h: '0', training: '0' }
   return {
     online: fmt(pos(snapshot.pylonsOnlineNow)),
-    working: fmt(pos(snapshot.pylonSessionsOnlineNow)),
+    working: fmt(pos(snapshot.pylonsAssignmentReadyNow)),
     sats24h: fmt(sumSats24h(snapshot)),
     training: fmt(pos(snapshot.trainingModelProgressContributors)),
   }

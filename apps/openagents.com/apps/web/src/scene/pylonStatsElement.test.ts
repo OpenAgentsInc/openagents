@@ -35,7 +35,8 @@ describe('mountPylonStats boot snapshot', () => {
     const snapshot: PylonStatsSnapshot = {
       available: true,
       publicRealSatsSettled24h: 150_000,
-      pylonSessionsOnlineNow: 2,
+      pylonSessionsOnlineNow: 9,
+      pylonsAssignmentReadyNow: 2,
       pylonsOnlineNow: 4,
       trainingModelProgressContributors: 3,
     }
