@@ -7,7 +7,8 @@ import { SparkBunStorage } from './spark-bun-storage.ts'
 
 // Same owner-authorized Breez/Spark service API key already used by Pylon for
 // Spark receive/send. It is not wallet material; SPARK_TREASURY_API_KEY can
-// override it. Spend authority comes only from SPARK_TREASURY_MNEMONIC.
+// override it. Spend authority comes from the treasury mnemonic: prefer an
+// explicit SPARK_TREASURY_MNEMONIC override, otherwise use MDK_TREASURY_MNEMONIC.
 const DEFAULT_OPENAGENTS_SPARK_API_KEY =
   'MIIBfjCCATCgAwIBAgIHPYzgGw0A+zAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjQxMTI0MjIxOTMzWhcNMzQxMTIyMjIxOTMzWjA3MRkwFwYDVQQKExBPcGVuQWdlbnRzLCBJbmMuMRowGAYDVQQDExFDaHJpc3RvcGhlciBEYXZpZDAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GBMH8wDgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFNo5o+5ea0sNMlW/75VgGJCv2AcJMB8GA1UdIwQYMBaAFN6q1pJW843ndJIW/Ey2ILJrKJhrMB8GA1UdEQQYMBaBFGNocmlzQG9wZW5hZ2VudHMuY29tMAUGAytlcANBABvQIfNsop0kGIk0bgO/2kPum5B5lv6pYaSBXz73G1RV+eZj/wuW88lNQoGwVER+rA9+kWWTaR/dpdi8AFwjxw0='
 
@@ -25,15 +26,16 @@ const sparkApiKey = () =>
   secret('BREEZ_API_KEY') ??
   DEFAULT_OPENAGENTS_SPARK_API_KEY
 
+const sparkMnemonic = () =>
+  secret('SPARK_TREASURY_MNEMONIC') ?? secret('MDK_TREASURY_MNEMONIC')
+
 export const sparkTreasuryConfiguredFlags = () => ({
   sparkApiKeyConfigured: sparkApiKey() !== undefined,
-  sparkMnemonicConfigured: secret('SPARK_TREASURY_MNEMONIC') !== undefined,
+  sparkMnemonicConfigured: sparkMnemonic() !== undefined,
 })
 
 export const sparkTreasuryUnavailableReason = () =>
-  secret('SPARK_TREASURY_MNEMONIC') === undefined
-    ? 'spark_treasury_unconfigured'
-    : null
+  sparkMnemonic() === undefined ? 'spark_treasury_unconfigured' : null
 
 const timeoutMs = () => {
   const parsed = Number(process.env.SPARK_TREASURY_TIMEOUT_MS)
@@ -98,7 +100,7 @@ const buildSparkSdk = async () => {
     return runningSparkSdk
   }
 
-  const mnemonic = secret('SPARK_TREASURY_MNEMONIC')
+  const mnemonic = sparkMnemonic()
   if (mnemonic === undefined) {
     throw new Error('spark treasury mnemonic missing')
   }
