@@ -41,6 +41,39 @@ fixed**, across rc.13 → **rc.22** (all on npm `rc` + signed OTA 4-platform rol
 - **Strategy:** Ark/bark adoption audit written
   (`docs/2026-06-17-ark-bark-adoption-audit.md`) — recommends a signet PoC of Ark
   as a third rail behind the wallet abstraction.
+- **Forge Autopilot Coder #5107 CLOSED.** The terminal-agent-systems
+  operationalization wave is now folded into the Forge `/autopilot` Run-detail
+  surface through the current #5107 scope. The work spans the original G1-G7
+  evidence foundation, the H1-H6 operational follow-on, and the I1-I43 system
+  lanes, with the parent issue closed after the final audit found no remaining
+  open child issue referencing #5107. Everything is intentionally refs-only:
+  the browser can inspect typed evidence, blockers, receipts, and public-safe
+  summaries, but it does not gain runtime execution, provider-call, workspace
+  write, approval-grant, public-claim, accepted-outcome, payout, or settlement
+  authority.
+- **What changed in the product surface for #5107:** `/autopilot` now has
+  first-class Run-detail lanes for review/change evidence, plan/progress,
+  session navigation and control receipts, context/repository memory,
+  retrieval/search planning, Help/doctor/debug, MCP/skill/hook/plugin/settings
+  readiness, guarded extensibility execution requests, error recovery,
+  compaction, usage and budget, model provider resolution, instruction
+  layering, session/team memory, notifications, command/input/keybinding,
+  browser/desktop/editor/git/external-work integration, MCP server export,
+  scheduling, artifact receipts, migration, structured event logs,
+  credential storage, telemetry/privacy, performance diagnostics, multi-agent
+  coordination, companion surface, update/release, testing/evaluation/security/
+  retention/onboarding evidence, output style/persona, prompt suggestions,
+  tips/education, multimodal input, terminal UI shell, theme/visual design,
+  accessibility and non-interactive mode, localization boundaries, and
+  enterprise managed policy.
+- **Final #5107 verification:** the last focused lane (#5281 / I43 Enterprise
+  managed policy) passed `2 files / 126 tests`; the full terminal-agent-systems
+  web bucket passed `63 files / 633 tests`; and `git diff --check` passed. Full
+  `bun run --cwd apps/openagents.com/apps/web typecheck` is still blocked by
+  unrelated baseline scene and SpacetimeDB binding errors (`spacetimedb`,
+  `@openagentsinc/three-effect` WASD look exports, `tassadarRunElement`,
+  `tassadarRunSnapshot*`, and `tassadarSpacetimeWorld` generated-binding
+  mismatches), not by the #5107 evidence lanes.
 
 ## Where we are (verified 2026-06-17)
 
@@ -67,6 +100,13 @@ fixed**, across rc.13 → **rc.22** (all on npm `rc` + signed OTA 4-platform rol
   `wallet send` / Spark-primary build the agents were waiting on.
 - **Ledger cleaned:** the 3 orphaned pending rows (100,005 sats, all Orrery's
   never-dispatched attempts) are now `expired`; 0 pending outbound remain.
+- **Forge Autopilot Coder terminal-agent systems (#5107) is closed for this
+  wave.** The launch posture is now implementation-complete for the current
+  terminal-agent-systems incorporation plan, with public-safe refs-only
+  projections in the Run detail surface and documented verification in
+  `docs/autopilot-coder/terminal-agent-systems/2026-06-16-forge-autopilot-coder-systems-roadmap.md`.
+  Broader product-promise/copy claims still need the separate G7 signed-deploy
+  and live-smoke evidence gate.
 
 ## Open work
 
@@ -167,7 +207,15 @@ signed recut.
   completions, and the public audit passes. D3 is complete, #5098/#5104 are
   closed, and the closeout audit lives at
   `docs/launch/2026-06-17-customer-one-dogfood-audit.md`.
-- **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
+- **#5107 fold terminal-agent-systems into the Forge Autopilot Coder — CLOSED
+  (2026-06-17).** The implementation record now lives in
+  `docs/autopilot-coder/terminal-agent-systems/2026-06-16-forge-autopilot-coder-systems-roadmap.md`.
+  The completed scope includes #5123-#5144 (first refs-only projection and
+  readiness foundation), #5145-#5150 (public-safe drilldowns and guarded
+  operational receipts), and #5198-#5281 (the I1-I43 terminal-agent system
+  lanes). Final proof: 63 web test files / 633 tests passed for the full
+  terminal-agent-systems bucket, `git diff --check` passed, and the parent
+  issue was closed after the no-open-child audit.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
   notification through the `cloudflare_email` adapter.
