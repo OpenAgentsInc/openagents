@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-17.2'
+export const PublicProductPromisesVersion = '2026-06-17.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -2385,14 +2385,19 @@ export const publicProductPromisesDocument = () => {
           'apps/pylon/src/spark-backup-helper.ts',
           'apps/pylon/tests/spark-backup-helper.test.ts',
           'docs/launch/JUNE16_ROADMAP.md',
+          'docs/launch/JUNE17_ROADMAP.md',
           'docs/payments/2026-06-17-spark-mdk-balance-consolidation-options.md',
           'https://openagents.com/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9#post-734d9003-e177-457e-8e33-757deda644ae',
+          'https://openagents.com/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9#post-abee1453-5eb9-406a-84e3-be43b3bc377f',
+          'https://github.com/OpenAgentsInc/openagents/issues/5078',
+          'https://github.com/OpenAgentsInc/openagents/issues/5176',
+          'https://github.com/OpenAgentsInc/openagents/issues/5185',
           'promise:payments.money_dev_kit.v1',
           'promise:payments.reliable_tips_sweepable_balances.v1',
         ],
         blockerRefs: [],
         verification:
-          'Green is satisfied by the shipped opt-in receive-only core, Breez SDK Spark adapter, Bun `bun:sqlite` storage, embedded-key out-of-box address readiness, LNURL-pay treasury payout fallback, rc.12 `backup-claim`, and a real recipient-visible proof: treasury sent 50,000 sats to a Spark-backed Lightning Address and the recipient’s rc.12 read-only backup-status reported the credited 50,000-sat balance after claim. The claim remains scoped to receive resilience. Spark send, public payout-target authority, accepted-work settlement authority, and a unified MDK spendable balance remain separate gates.',
+          'Green is satisfied by the shipped opt-in receive-only core, Breez SDK Spark adapter, Bun `bun:sqlite` storage, embedded-key out-of-box address readiness, LNURL-pay treasury payout fallback, rc.12 `backup-claim`, and a real recipient-visible proof: treasury sent 50,000 sats to a Spark-backed Lightning Address and the recipient’s rc.12 read-only backup-status reported the credited 50,000-sat balance after claim. Strengthened 2026-06-17: a SECOND independent recipient (Whitefang) recipient-confirmed a 50,000-sat recognition payout (backup-status detectedBalanceSats 51,030). The claim remains scoped to receive resilience. Separately, the consented owner-approved `wallet send --rail spark --confirm-send` path referenced below as a distinct gate is now shipped and verified end-to-end on rc.16 (real 100-sat and 878-sat Spark sends returned state=sent/status=completed with redacted receipts and debited the balance); it stays user-consented and grants no automatic payout-target or accepted-work-settlement authority. A dedicated public promise for consented Spark spend/withdraw is an owner product-claim decision and is not asserted by this receive-only record. The wallet-unification epic #5176 (incl. Spark as the primary agent balance) is closed.',
         authorityBoundary:
           'The Spark fallback is RECEIVE-ONLY. It grants no send, payout, accepted-work settlement, or public payout-target authority; activating any of those requires a separate explicit gate.',
       },
@@ -2424,6 +2429,7 @@ export const publicProductPromisesDocument = () => {
       'Registry 2026-06-14.3: Nostr resilience. AGENTS.md now carries a firm falldown instruction — on any OpenAgents infrastructure outage, agents keep retrying with backoff/idempotency AND coordinate over Nostr (NIP-01/02/17/29/38/65/90 on the owned relay wss://relay.openagents.com and public relays) until OpenAgents recovers, then reconcile on OpenAgents as authority of record. New record agents.nostr_fallback_coordination.v1 (yellow): the relay + NIP-90 negotiation are live (first labor job settled over the relay, #4777) and Pylon v1.0 provisions Nostr credentials, but an end-to-end coordination-during-outage drill is not yet demonstrated. Nostr is a communication/coordination substrate and outage fallback, never a replacement for OpenAgents authority during normal operation.',
       'Registry 2026-06-14.3: Coder Cloud contract layer started landing (concurrent agent work merged): the lane selector auto|local|cloud-gcp|cloud-shc is wired end to end (#4998), the Vortex-independent Codex grant endpoint contract is in place (#4999), and the cloud placement endpoint shipped Google-first (cloud #86/#87/#88). The remaining seam to a live loop is #4997: cloud-gcp spawns still execute locally and per-session GCE provisioning is unwired. autopilot.cloud_coding_sessions.v1 stays red until the desktop->GCE dispatch loop is demonstrable.',
       'Registry 2026-06-14.4: Coder Cloud Phase 1 contract layer fully landed (#4997 Pylon cloud dispatch to the placement endpoint with local fallback, plus cloud #90 GCE lease lifecycle, on top of #4998/#4999/cloud #86-#88). autopilot.cloud_coding_sessions.v1 stays red: live GCE provisioning is a fake-default ADC-gated stub and the cloud.gce.* event kinds + resource_usage_receipt ref do not round-trip to the desktop yet (#5005, open). This registry version is the one deployed after the zero-debt architecture gate (check:architecture) was brought back to green: the wave-3 comment-only false positives were reworded, the 7 raw JSON.parse calls were routed through the parseJsonUnknown json-boundary helper, and three migration-bridge budgets (route Effect.promise adapters 8->18, Worker Response surfaces 80->83, index.ts runPromise allowlist 6->7) were raised under owner authorization with ratchet-down notes.',
+      'Registry 2026-06-17.3: the Spark agent-wallet unification epic #5176 closed end-to-end. Offline receive is recipient-confirmed by two independent contributors (Trigger 50k, Whitefang 50k) with payments.offline_receive_spark_fallback.v1 green; Spark is now the primary agent balance (#5178); and consented owner-approved Spark send/withdraw (`wallet send --rail spark --confirm-send`) is shipped and verified on Pylon rc.16 with real 100-sat and 878-sat sends (state=sent/status=completed, balance debited). The original offline-receive gap #5078 and the rc.13 send/version bugs #5184/#5185 are closed. This version updates the offline-receive record’s evidence/verification only — the claim stays receive-only and no new public send/withdraw claim is asserted; a dedicated consented-spend/withdraw promise remains an owner product-claim decision. Host-specific balance-read follow-up is tracked in #5194 (rc.17 candidate fix + PYLON_SPARK_DEBUG diagnostic).',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
