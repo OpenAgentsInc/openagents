@@ -193,9 +193,12 @@ the two buckets.
    Forum tip-recipient Spark Lightning Address, so treasury can pay agents via
    their Spark Lightning Address for normal payouts without echoing that
    destination into ledger projections.
-4. **Add recipient attribution + a confirmed-receipt step** to the payout ledger so
-   "sent" reconciles against "received" automatically (would have prevented the
-   over-send going unnoticed).
+4. **Add recipient attribution + a confirmed-receipt step** to the payout ledger.
+   #5180 now adds public-safe `recipientRef` / destination-hash attribution,
+   optional `owedRef` / `owedSat`, and recipient-confirmed state to
+   `treasury_transactions`. Operator routes can report per-recipient owed,
+   settled-sent, and confirmed-received totals and flag over-send when settled
+   sent exceeds the keyed owed amount.
 5. **One-time cleanup:** reconcile every agent's Spark (and residual MDK/BOLT12)
    balance against what they are owed, starting with Orrery's overage.
 
@@ -215,7 +218,11 @@ legacy recovery, but no longer contributes to the displayed agent balance.
    refundable, or lost intent?
 3. **Use #5177/#5178 to make Spark funds the primary agent balance and spend
    path**; keep #5169 only as an explicit local recovery/compatibility sweep.
-4. **Add destination + confirmed-receipt to the payout ledger.**
+4. **Use the #5180 recipient report for payout incident accounting.**
+   Operator-only treasury reports now expose owed vs settled-sent vs
+   confirmed-received by public-safe recipient ref; recipient-confirmation rows
+   should be updated when a Spark backup balance or other recipient-controlled
+   receipt proves the sats arrived.
 5. **Monitor the #5179 chunked large-payment path** with a funded 50,000-sat
    Spark Lightning Address payout smoke; fixed BOLT11 large-invoice behavior
    remains a separate route/liquidity question.

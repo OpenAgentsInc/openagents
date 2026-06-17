@@ -10,6 +10,8 @@ import {
   executeTreasuryPayout,
   handleOperatorTreasuryFundingDestinationApi,
   handleOperatorTreasuryPayoutApi,
+  handleOperatorTreasuryRecipientConfirmationApi,
+  handleOperatorTreasuryRecipientReportApi,
   handleOperatorTreasuryStatusApi,
   handleOperatorTreasuryTransactionReconcileApi,
   handlePublicTreasuryLaunchStatusApi,
@@ -42,6 +44,24 @@ const makeMemoryTransactionStore = (
   const rows = new Map(seed.map(record => [record.id, record]))
 
   return {
+    confirmReceived: input => {
+      const row = rows.get(input.id)
+
+      if (
+        row !== undefined &&
+        row.direction === 'out' &&
+        row.state === 'settled'
+      ) {
+        rows.set(input.id, {
+          ...row,
+          recipientConfirmationRef: input.confirmationRef,
+          recipientConfirmationState: 'confirmed_received',
+          recipientConfirmedAt: input.recipientConfirmedAt,
+        })
+      }
+
+      return Promise.resolve()
+    },
     expire: input => {
       const row = rows.get(input.id)
 
@@ -83,6 +103,13 @@ const makeMemoryTransactionStore = (
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
           .slice(0, limit),
       ),
+    listByRecipient: input =>
+      Promise.resolve(
+        [...rows.values()]
+          .filter(row => row.recipientRef === input.recipientRef)
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, input.limit),
+      ),
     read: id => Promise.resolve(rows.get(id)),
     rows,
     settle: input => {
@@ -113,9 +140,44 @@ const pendingOutTransaction = (
   expiresAt: null,
   failureReasonRef: null,
   id,
+  owedRef: null,
+  owedSat: null,
   paymentRef,
+  recipientConfirmationRef: null,
+  recipientConfirmationState: 'unconfirmed',
+  recipientConfirmedAt: null,
+  recipientRef: null,
+  redactedDestinationRef: null,
   settledAt: null,
   state: 'pending',
+})
+
+const settledRecipientOutTransaction = (
+  input: Readonly<{
+    amountSat: number
+    confirmed?: boolean
+    id: string
+    owedRef?: string | null
+    owedSat?: number | null
+    recipientRef: string
+  }>,
+): TreasuryTransactionRecord => ({
+  ...pendingOutTransaction(input.id, `payment_secret_${input.id}`),
+  amountSat: input.amountSat,
+  owedRef: input.owedRef ?? null,
+  owedSat: input.owedSat ?? null,
+  recipientConfirmationRef:
+    input.confirmed === true
+      ? `recipient_confirmation.public.${input.id}`
+      : null,
+  recipientConfirmationState:
+    input.confirmed === true ? 'confirmed_received' : 'unconfirmed',
+  recipientConfirmedAt:
+    input.confirmed === true ? '2026-06-17T18:10:00.000Z' : null,
+  recipientRef: input.recipientRef,
+  redactedDestinationRef: `destination.redacted.${input.id}`,
+  settledAt: '2026-06-17T18:05:00.000Z',
+  state: 'settled',
 })
 
 describe('public treasury launch status', () => {
@@ -859,6 +921,85 @@ describe('operator treasury payout', () => {
     expect(bodyText).not.toContain('raw_preimage_not_returned_in_diagnostics')
   })
 
+  test('records public-safe recipient attribution for operator payouts', async () => {
+    const store = makeMemoryTransactionStore()
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({
+          amountSat: 50000,
+          destination: 'recipient@spark.money',
+          owedRef: 'owed.public.recognition.20260617',
+          owedSat: 50000,
+          recipientRef: 'agent:recipient_user',
+        }),
+        {
+          fetchTreasury: (path, init) => {
+            if (path === '/balance') {
+              return Promise.resolve(
+                jsonResponse(200, {
+                  balanceSat: 100000,
+                  maxSendableSat: 100000,
+                }),
+              )
+            }
+
+            if (path === '/pay' && init?.method === 'POST') {
+              return Promise.resolve(
+                jsonResponse(200, {
+                  paymentId: 'pay_recipient_attr',
+                  status: 'succeeded',
+                }),
+              )
+            }
+
+            return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
+          },
+          recordPayoutTransaction: input =>
+            store.insert({
+              amountSat: input.amountSat,
+              bolt11: null,
+              createdAt: '2026-06-17T18:00:03.000Z',
+              direction: 'out',
+              expiresAt: null,
+              failureReasonRef: input.failureReasonRef ?? null,
+              id: 'treasury_payout_recipient_attr',
+              owedRef: input.owedRef ?? null,
+              owedSat: input.owedSat ?? null,
+              paymentRef: input.paymentRef,
+              recipientConfirmationRef: null,
+              recipientConfirmationState: 'unconfirmed',
+              recipientConfirmedAt: null,
+              recipientRef: input.recipientRef ?? null,
+              redactedDestinationRef: input.redactedDestinationRef ?? null,
+              settledAt: input.settled
+                ? '2026-06-17T18:00:04.000Z'
+                : null,
+              state: input.settled ? 'settled' : 'pending',
+            }),
+          requireAdminApiToken: () => Promise.resolve(true),
+          resolveLightningAddress: () =>
+            Promise.resolve({ ok: true, bolt11: 'lnbc-resolved' }),
+        },
+      ),
+    )
+    const bodyText = await response.text()
+    const row = store.rows.get('treasury_payout_recipient_attr')
+
+    expect(response.status).toBe(200)
+    expect(row).toMatchObject({
+      amountSat: 50000,
+      owedRef: 'owed.public.recognition.20260617',
+      owedSat: 50000,
+      recipientConfirmationState: 'unconfirmed',
+      recipientRef: 'agent:recipient_user',
+      state: 'settled',
+    })
+    expect(row?.redactedDestinationRef).toMatch(
+      /^destination\.redacted\.treasury_payout\.[a-f0-9]{32}$/,
+    )
+    expect(bodyText).not.toContain('recipient@spark.money')
+  })
+
   test('primary fail retries the Lightning Address fallback (#5078)', async () => {
     const paid: Array<string> = []
     const response = await run(
@@ -935,7 +1076,14 @@ describe('operator treasury payout', () => {
               expiresAt: null,
               failureReasonRef: input.failureReasonRef ?? null,
               id: 'treasury_payout_failed_1',
+              owedRef: input.owedRef ?? null,
+              owedSat: input.owedSat ?? null,
               paymentRef: input.paymentRef,
+              recipientConfirmationRef: null,
+              recipientConfirmationState: 'unconfirmed',
+              recipientConfirmedAt: null,
+              recipientRef: input.recipientRef ?? null,
+              redactedDestinationRef: input.redactedDestinationRef ?? null,
               settledAt: null,
               state:
                 input.failureReasonRef !== undefined &&
@@ -1000,7 +1148,14 @@ describe('operator treasury payout', () => {
               expiresAt: null,
               failureReasonRef: input.failureReasonRef ?? null,
               id: 'treasury_payout_pay_timeout',
+              owedRef: input.owedRef ?? null,
+              owedSat: input.owedSat ?? null,
               paymentRef: input.paymentRef,
+              recipientConfirmationRef: null,
+              recipientConfirmationState: 'unconfirmed',
+              recipientConfirmedAt: null,
+              recipientRef: input.recipientRef ?? null,
+              redactedDestinationRef: input.redactedDestinationRef ?? null,
               settledAt: null,
               state: 'failed',
             }),
@@ -1091,7 +1246,14 @@ describe('operator treasury payout', () => {
               expiresAt: null,
               failureReasonRef: input.failureReasonRef ?? null,
               id: 'treasury_payout_failed_reason',
+              owedRef: input.owedRef ?? null,
+              owedSat: input.owedSat ?? null,
               paymentRef: input.paymentRef,
+              recipientConfirmationRef: null,
+              recipientConfirmationState: 'unconfirmed',
+              recipientConfirmedAt: null,
+              recipientRef: input.recipientRef ?? null,
+              redactedDestinationRef: input.redactedDestinationRef ?? null,
               settledAt: null,
               state: 'failed',
             }),
@@ -1174,7 +1336,14 @@ describe('operator treasury payout', () => {
               expiresAt: null,
               failureReasonRef: input.failureReasonRef ?? null,
               id: 'treasury_payout_failed_container_classified',
+              owedRef: input.owedRef ?? null,
+              owedSat: input.owedSat ?? null,
               paymentRef: input.paymentRef,
+              recipientConfirmationRef: null,
+              recipientConfirmationState: 'unconfirmed',
+              recipientConfirmedAt: null,
+              recipientRef: input.recipientRef ?? null,
+              redactedDestinationRef: input.redactedDestinationRef ?? null,
               settledAt: null,
               state: 'failed',
             }),
@@ -1287,7 +1456,14 @@ describe('operator treasury payout', () => {
               expiresAt: null,
               failureReasonRef: input.failureReasonRef ?? null,
               id: 'treasury_payout_failed_resolution',
+              owedRef: input.owedRef ?? null,
+              owedSat: input.owedSat ?? null,
               paymentRef: input.paymentRef,
+              recipientConfirmationRef: null,
+              recipientConfirmationState: 'unconfirmed',
+              recipientConfirmedAt: null,
+              recipientRef: input.recipientRef ?? null,
+              redactedDestinationRef: input.redactedDestinationRef ?? null,
               settledAt: null,
               state: 'failed',
             }),
@@ -1351,5 +1527,95 @@ describe('operator treasury payout', () => {
     if (noFallback.kind === 'refused') {
       expect(noFallback.reason).toBe('treasury_pay_failed')
     }
+  })
+})
+
+describe('operator treasury recipient report', () => {
+  test('summarizes owed, settled-sent, confirmed-received, and over-send state', async () => {
+    const store = makeMemoryTransactionStore([
+      settledRecipientOutTransaction({
+        amountSat: 25000,
+        confirmed: true,
+        id: 'send_1',
+        owedRef: 'owed.public.recognition.20260617',
+        owedSat: 50000,
+        recipientRef: 'agent:recipient_user',
+      }),
+      settledRecipientOutTransaction({
+        amountSat: 30000,
+        id: 'send_2',
+        owedRef: 'owed.public.recognition.20260617',
+        owedSat: 50000,
+        recipientRef: 'agent:recipient_user',
+      }),
+    ])
+    const response = await run(
+      handleOperatorTreasuryRecipientReportApi(
+        new Request(
+          'https://openagents.com/api/operator/treasury/recipient-report?recipientRef=agent:recipient_user',
+        ),
+        {
+          requireAdminApiToken: () => Promise.resolve(true),
+          transactionStore: store,
+        },
+      ),
+    )
+    const bodyText = await response.text()
+    const body = JSON.parse(bodyText) as {
+      confirmedReceivedSat: number
+      owedSat: number
+      overSent: boolean
+      settledSentSat: number
+      transactions: ReadonlyArray<Record<string, unknown>>
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.owedSat).toBe(50000)
+    expect(body.settledSentSat).toBe(55000)
+    expect(body.confirmedReceivedSat).toBe(25000)
+    expect(body.overSent).toBe(true)
+    expect(body.transactions).toHaveLength(2)
+    expect(bodyText).not.toContain('payment_secret')
+  })
+
+  test('marks a settled payout as recipient-confirmed', async () => {
+    const store = makeMemoryTransactionStore([
+      settledRecipientOutTransaction({
+        amountSat: 50000,
+        id: 'send_confirm',
+        owedRef: 'owed.public.recognition.20260617',
+        owedSat: 50000,
+        recipientRef: 'agent:recipient_user',
+      }),
+    ])
+    const response = await run(
+      handleOperatorTreasuryRecipientConfirmationApi(
+        new Request(
+          'https://openagents.com/api/operator/treasury/recipient-confirmations',
+          {
+            body: JSON.stringify({
+              confirmationRef: 'receipt.public.spark_backup.balance_detected',
+              transactionId: 'send_confirm',
+            }),
+            method: 'POST',
+          },
+        ),
+        {
+          requireAdminApiToken: () => Promise.resolve(true),
+          transactionStore: store,
+        },
+      ),
+    )
+    const body = (await response.json()) as {
+      recipientConfirmationState: string
+    }
+    const row = store.rows.get('send_confirm')
+
+    expect(response.status).toBe(200)
+    expect(body.recipientConfirmationState).toBe('confirmed_received')
+    expect(row).toMatchObject({
+      recipientConfirmationRef: 'receipt.public.spark_backup.balance_detected',
+      recipientConfirmationState: 'confirmed_received',
+    })
   })
 })

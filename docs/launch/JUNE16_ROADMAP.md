@@ -218,6 +218,14 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   private destination. Public/operator ledger projections keep only redacted
   payment refs, chunk counts, public-safe metadata refs, and the usual
   settlement state.
+- **🧾 Treasury payout ledger attribution (#5180).** Direct treasury and
+  tips-buffer payout rows now carry public-safe recipient attribution
+  (`recipientRef` or destination-hash), optional keyed owed refs/amounts, and a
+  recipient-confirmed state separate from treasury-side `settled`. Added
+  operator-only recipient reporting for owed vs settled-sent vs
+  confirmed-received totals, plus over-send detection when settled sent exceeds
+  keyed owed. Added a recipient-confirmation endpoint for attaching public-safe
+  balance/receipt evidence after the recipient proves the sats arrived.
 - **🧰 Pylon wallet self-recovery (#5167) fixed.** Field report: an unclean MDK
   agent-wallet shutdown could leave `~/.mdk-wallet/daemon.pid` pointing at a
   dead process, stranding `wallet report-readiness` until an operator manually

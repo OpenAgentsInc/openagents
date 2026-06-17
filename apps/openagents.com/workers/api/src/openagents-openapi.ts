@@ -344,6 +344,15 @@ const schemaComponents = (): JsonSchema => ({
   PublicTreasuryLaunchStatusResponse: objectSummary(
     'Public-safe treasury launch-status projection: service label, typed state (including unprovisioned), configured-secret booleans only (mnemonic, accessToken, serviceToken - never the secret material), policyRefs, and the treasury authority boundary. Read-only; grants no payout or spend authority.',
   ),
+  OperatorTreasuryRecipientReportResponse: objectSummary(
+    'Admin-only recipient-attributed treasury payout report. Summarizes owedSat, settledSentSat, confirmedReceivedSat, pendingSentSat, overSent, transactionCount, and redacted transaction rows keyed by recipientRef. Transaction rows expose public-safe recipient refs, owed refs, redacted destination refs, treasury state, and recipient confirmation refs only; raw destinations, invoices, payment hashes, preimages, wallet material, and provider secrets are excluded. Read-only; grants no payout or settlement authority.',
+  ),
+  OperatorTreasuryRecipientConfirmationRequest: objectSummary(
+    'Admin-only recipient confirmation request. Requires transactionId for an already-settled outbound treasury row and a public-safe confirmationRef proving recipient-visible receipt. Raw destinations, invoices, payment hashes, preimages, wallet material, and provider payloads are rejected by policy and must not be supplied.',
+  ),
+  OperatorTreasuryRecipientConfirmationResponse: objectSummary(
+    'Admin-only recipient confirmation receipt with transactionId, confirmationRef, recipientConfirmationState, and recipientConfirmedAt. It marks recipient-visible receipt separately from treasury-side settled state and exposes no wallet or payment material.',
+  ),
   HealthResponse: {
     type: 'object',
     additionalProperties: false,
@@ -2564,6 +2573,49 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Treasury launch status.',
           '#/components/schemas/PublicTreasuryLaunchStatusResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/treasury/recipient-report': {
+    get: operation({
+      operationId: 'getOperatorTreasuryRecipientReport',
+      summary: 'Read recipient-attributed treasury payout report',
+      description:
+        'Admin-only report for one recipientRef. It returns owed, treasury-side settled-sent, recipient-confirmed received, pending-sent, over-send flag, and redacted transaction rows so operators can reconcile sent versus recipient-visible receipt without inferring from private destinations. Raw destinations, invoices, payment hashes, preimages, wallet material, and provider secrets are never returned. Read-only; grants no payout or settlement authority.',
+      tags: ['Payments', 'Operator'],
+      security: adminBearer,
+      parameters: [
+        queryParam(
+          'recipientRef',
+          'Public-safe recipient attribution ref, such as recipient.actor.<id> or recipient.destination_hash.<digest>.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Recipient-attributed treasury payout report.',
+          '#/components/schemas/OperatorTreasuryRecipientReportResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/treasury/recipient-confirmations': {
+    post: operation({
+      operationId: 'confirmOperatorTreasuryRecipientReceipt',
+      summary: 'Mark a treasury payout as recipient-confirmed',
+      description:
+        'Admin-only confirmation for an already-settled outbound treasury transaction after a recipient-visible receipt is observed. This records recipientConfirmationState separately from treasury-side settled state. The request accepts transactionId and a public-safe confirmationRef only; raw destinations, invoices, payment hashes, preimages, wallet material, and provider payloads are not accepted or returned.',
+      tags: ['Payments', 'Operator'],
+      security: adminBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/OperatorTreasuryRecipientConfirmationRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Recipient confirmation receipt.',
+          '#/components/schemas/OperatorTreasuryRecipientConfirmationResponse',
         ),
         ...errorResponses(),
       },

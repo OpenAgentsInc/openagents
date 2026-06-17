@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 
+import { sha256Hex } from './agent-registration'
 import type { ContainerPathFetch } from './http/container-fetch'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { isRecord } from './json-boundary'
@@ -25,10 +26,15 @@ export type TreasuryRouteDependencies = Readonly<{
     | ((input: {
         amountSat: number
         failureReasonRef?: string | null
+        owedRef?: string | null
+        owedSat?: number | null
         paymentRef: string | null
+        recipientRef?: string | null
+        redactedDestinationRef?: string | null
         settled: boolean
       }) => Promise<void>)
     | undefined
+  recipientReportLimit?: number | undefined
   readRewardDispatchStats?: () => Promise<XClaimRewardTreasuryDispatchStats>
   requireAdminApiToken: (request: Request) => Promise<boolean>
   // LNURL-pay resolver used to turn a Lightning Address destination into a
@@ -191,6 +197,123 @@ type TreasuryTransactionReconcileDependencies = Readonly<{
   fetchTreasury?: ContainerPathFetch | undefined
   transactionStore: TreasuryTransactionStore
 }>
+
+const publicTreasuryAttributionRefPattern =
+  /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,240}$/u
+
+const optionalPublicTreasuryAttributionRef = (
+  value: unknown,
+): string | null | 'invalid' => {
+  if (value === undefined || value === null) {
+    return null
+  }
+
+  if (typeof value !== 'string') {
+    return 'invalid'
+  }
+
+  const trimmed = value.trim()
+
+  if (trimmed === '') {
+    return null
+  }
+
+  return publicTreasuryAttributionRefPattern.test(trimmed)
+    ? trimmed
+    : 'invalid'
+}
+
+const redactedTreasuryDestinationRef = async (
+  destination: string,
+): Promise<string> =>
+  `destination.redacted.treasury_payout.${(await sha256Hex(destination)).slice(0, 32)}`
+
+const treasuryRecipientRefForDestination = async (
+  destination: string,
+): Promise<string> =>
+  `recipient.destination_hash.${(await sha256Hex(destination)).slice(0, 32)}`
+
+const transactionOwedTotal = (
+  records: ReadonlyArray<TreasuryTransactionRecord>,
+): number | null => {
+  const owedByRef = new Map<string, number>()
+  const unkeyedOwed = records.reduce(
+    (sum, record) =>
+      record.owedSat === null || record.owedRef !== null
+        ? sum
+        : sum + record.owedSat,
+    0,
+  )
+
+  records.forEach(record => {
+    if (record.owedSat === null || record.owedRef === null) {
+      return
+    }
+
+    owedByRef.set(
+      record.owedRef,
+      Math.max(owedByRef.get(record.owedRef) ?? 0, record.owedSat),
+    )
+  })
+
+  const keyedOwed = [...owedByRef.values()].reduce(
+    (sum, amountSat) => sum + amountSat,
+    0,
+  )
+  const total = keyedOwed + unkeyedOwed
+
+  return total === 0 ? null : total
+}
+
+const treasuryRecipientTransactionProjection = (
+  record: TreasuryTransactionRecord,
+) => ({
+  amountSat: record.amountSat,
+  createdAt: record.createdAt,
+  failureReasonRef: record.failureReasonRef,
+  id: record.id,
+  owedRef: record.owedRef,
+  owedSat: record.owedSat,
+  recipientConfirmationRef: record.recipientConfirmationRef,
+  recipientConfirmationState: record.recipientConfirmationState,
+  recipientConfirmedAt: record.recipientConfirmedAt,
+  recipientRef: record.recipientRef,
+  redactedDestinationRef: record.redactedDestinationRef,
+  settledAt: record.settledAt,
+  state: record.state,
+})
+
+const treasuryRecipientReport = (
+  recipientRef: string,
+  records: ReadonlyArray<TreasuryTransactionRecord>,
+) => {
+  const settledSentSat = records
+    .filter(record => record.direction === 'out' && record.state === 'settled')
+    .reduce((sum, record) => sum + record.amountSat, 0)
+  const confirmedReceivedSat = records
+    .filter(
+      record =>
+        record.direction === 'out' &&
+        record.state === 'settled' &&
+        record.recipientConfirmationState === 'confirmed_received',
+    )
+    .reduce((sum, record) => sum + record.amountSat, 0)
+  const owedSat = transactionOwedTotal(records)
+
+  return {
+    confirmedReceivedSat,
+    owedSat,
+    overSent: owedSat !== null && settledSentSat > owedSat,
+    pendingSentSat: records
+      .filter(record => record.direction === 'out' && record.state === 'pending')
+      .reduce((sum, record) => sum + record.amountSat, 0),
+    recipientRef,
+    schemaVersion: 'openagents.treasury.recipient_report.v1',
+    settledSentSat,
+    transactionCount: records.length,
+    transactions: records.map(treasuryRecipientTransactionProjection),
+  }
+}
 
 const reconcileTreasuryTransactionRecord = async (
   dependencies: TreasuryTransactionReconcileDependencies,
@@ -562,6 +685,203 @@ export const handleOperatorTreasuryTransactionReconcileApi = (
   )
 }
 
+export const handleOperatorTreasuryRecipientReportApi = (
+  request: Request,
+  dependencies: TreasuryRouteDependencies,
+) => {
+  if (request.method !== 'GET') {
+    return Effect.succeed(methodNotAllowed(['GET']))
+  }
+
+  return Effect.tryPromise({
+    catch: () => false,
+    try: () => dependencies.requireAdminApiToken(request),
+  }).pipe(
+    Effect.catch(() => Effect.succeed(false)),
+    Effect.flatMap(authorized => {
+      if (!authorized) {
+        return Effect.succeed(
+          noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 }),
+        )
+      }
+
+      const store = dependencies.transactionStore
+
+      if (store === undefined) {
+        return Effect.succeed(
+          noStoreJsonResponse(
+            { error: 'treasury_transaction_store_unavailable' },
+            { status: 503 },
+          ),
+        )
+      }
+
+      return Effect.tryPromise({
+        catch: () => null,
+        try: async () => {
+          const url = new URL(request.url)
+          const recipientRef = optionalPublicTreasuryAttributionRef(
+            url.searchParams.get('recipientRef'),
+          )
+
+          if (recipientRef === null) {
+            return noStoreJsonResponse(
+              { error: 'recipient_ref_required' },
+              { status: 400 },
+            )
+          }
+
+          if (recipientRef === 'invalid') {
+            return noStoreJsonResponse(
+              { error: 'recipient_ref_invalid' },
+              { status: 400 },
+            )
+          }
+
+          const records = await store.listByRecipient({
+            limit: dependencies.recipientReportLimit ?? 100,
+            recipientRef,
+          })
+
+          return noStoreJsonResponse(
+            treasuryRecipientReport(recipientRef, records),
+          )
+        },
+      }).pipe(
+        Effect.catch(() =>
+          Effect.succeed(
+            noStoreJsonResponse(
+              { error: 'treasury_recipient_report_failed' },
+              { status: 502 },
+            ),
+          ),
+        ),
+      )
+    }),
+  )
+}
+
+export const handleOperatorTreasuryRecipientConfirmationApi = (
+  request: Request,
+  dependencies: TreasuryRouteDependencies,
+) => {
+  if (request.method !== 'POST') {
+    return Effect.succeed(methodNotAllowed(['POST']))
+  }
+
+  return Effect.tryPromise({
+    catch: () => false,
+    try: () => dependencies.requireAdminApiToken(request),
+  }).pipe(
+    Effect.catch(() => Effect.succeed(false)),
+    Effect.flatMap(authorized => {
+      if (!authorized) {
+        return Effect.succeed(
+          noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 }),
+        )
+      }
+
+      const store = dependencies.transactionStore
+
+      if (store === undefined) {
+        return Effect.succeed(
+          noStoreJsonResponse(
+            { error: 'treasury_transaction_store_unavailable' },
+            { status: 503 },
+          ),
+        )
+      }
+
+      return Effect.tryPromise({
+        catch: () => null,
+        try: async () => {
+          let body: {
+            confirmationRef?: unknown
+            transactionId?: unknown
+          } = {}
+
+          try {
+            body = (await request.json()) as typeof body
+          } catch {
+            return noStoreJsonResponse(
+              { error: 'invalid_json_body' },
+              { status: 400 },
+            )
+          }
+
+          const transactionId =
+            typeof body.transactionId === 'string'
+              ? body.transactionId.trim()
+              : ''
+          const confirmationRef = optionalPublicTreasuryAttributionRef(
+            body.confirmationRef,
+          )
+
+          if (transactionId === '') {
+            return noStoreJsonResponse(
+              { error: 'transaction_id_required' },
+              { status: 400 },
+            )
+          }
+
+          if (confirmationRef === null) {
+            return noStoreJsonResponse(
+              { error: 'confirmation_ref_required' },
+              { status: 400 },
+            )
+          }
+
+          if (confirmationRef === 'invalid') {
+            return noStoreJsonResponse(
+              { error: 'confirmation_ref_invalid' },
+              { status: 400 },
+            )
+          }
+
+          const record = await store.read(transactionId)
+
+          if (record === undefined) {
+            return noStoreJsonResponse(
+              { error: 'treasury_transaction_not_found' },
+              { status: 404 },
+            )
+          }
+
+          if (record.direction !== 'out' || record.state !== 'settled') {
+            return noStoreJsonResponse(
+              { error: 'treasury_transaction_not_recipient_confirmable' },
+              { status: 409 },
+            )
+          }
+
+          const nowIso = currentIsoTimestamp()
+          await store.confirmReceived({
+            confirmationRef,
+            id: transactionId,
+            recipientConfirmedAt: nowIso,
+          })
+
+          return noStoreJsonResponse({
+            confirmationRef,
+            recipientConfirmationState: 'confirmed_received',
+            recipientConfirmedAt: nowIso,
+            transactionId,
+          })
+        },
+      }).pipe(
+        Effect.catch(() =>
+          Effect.succeed(
+            noStoreJsonResponse(
+              { error: 'treasury_recipient_confirmation_failed' },
+              { status: 502 },
+            ),
+          ),
+        ),
+      )
+    }),
+  )
+}
+
 // Owner payout policy (2026-06-10): a payout that exceeds the treasury's
 // spendable balance is not refused outright - it falls back to 10% of the
 // current spendable amount (floored), so a depleted treasury pays out in a
@@ -919,6 +1239,10 @@ export const executeTreasuryPayout = async (
   input: Readonly<{
     destination: string
     amountSat: number
+    owedRef?: string | null
+    owedSat?: number | null
+    recipientRef?: string | null
+    redactedDestinationRef?: string | null
     // Optional payout fallback (e.g. the recipient's static Lightning Address
     // hosted by their offline Spark backup wallet's LSP). When the primary
     // destination fails, we retry once against this address. Both are normal
@@ -1018,9 +1342,24 @@ export const executeTreasuryPayout = async (
   }
 
   const paymentRef = `payment.treasury.${String(payResult.paymentId ?? '').slice(0, 12)}`
+  const paidDestination =
+    paidVia === 'fallback' && fallbackDestination !== null
+      ? fallbackDestination
+      : input.destination
+  const redactedDestinationRef =
+    input.redactedDestinationRef ??
+    (await redactedTreasuryDestinationRef(paidDestination))
+  const recipientRef =
+    input.recipientRef ??
+    (await treasuryRecipientRefForDestination(paidDestination))
+
   await dependencies.recordPayoutTransaction?.({
     amountSat: plan.paidAmountSat,
+    owedRef: input.owedRef ?? null,
+    owedSat: input.owedSat ?? intendedAmountSat,
     paymentRef,
+    recipientRef,
+    redactedDestinationRef,
     settled: true,
   })
 
@@ -1073,6 +1412,9 @@ export const handleOperatorTreasuryPayoutApi = (
             amountSat?: unknown
             destination?: unknown
             fallbackDestination?: unknown
+            owedRef?: unknown
+            owedSat?: unknown
+            recipientRef?: unknown
           } = {}
 
           try {
@@ -1093,6 +1435,10 @@ export const handleOperatorTreasuryPayoutApi = (
               ? body.fallbackDestination.trim()
               : null
           const intendedAmountSat = Number(body.amountSat)
+          const recipientRefInput = optionalPublicTreasuryAttributionRef(
+            body.recipientRef,
+          )
+          const owedRefInput = optionalPublicTreasuryAttributionRef(body.owedRef)
 
           if (destination === '') {
             return noStoreJsonResponse(
@@ -1101,9 +1447,33 @@ export const handleOperatorTreasuryPayoutApi = (
             )
           }
 
+          if (recipientRefInput === 'invalid') {
+            return noStoreJsonResponse(
+              { error: 'recipient_ref_invalid' },
+              { status: 400 },
+            )
+          }
+
+          if (owedRefInput === 'invalid') {
+            return noStoreJsonResponse(
+              { error: 'owed_ref_invalid' },
+              { status: 400 },
+            )
+          }
+
           if (!Number.isInteger(intendedAmountSat) || intendedAmountSat <= 0) {
             return noStoreJsonResponse(
               { error: 'amount_sat_must_be_positive_integer' },
+              { status: 400 },
+            )
+          }
+
+          const owedSat =
+            body.owedSat === undefined ? intendedAmountSat : Number(body.owedSat)
+
+          if (!Number.isInteger(owedSat) || owedSat <= 0) {
+            return noStoreJsonResponse(
+              { error: 'owed_sat_must_be_positive_integer' },
               { status: 400 },
             )
           }
@@ -1273,6 +1643,15 @@ export const handleOperatorTreasuryPayoutApi = (
           }
 
           const payResult = attempt.payResult
+          const attributedDestination =
+            paidVia === 'fallback' && fallbackDestination !== null
+              ? fallbackDestination
+              : destination
+          const redactedDestinationRef =
+            await redactedTreasuryDestinationRef(attributedDestination)
+          const recipientRef =
+            recipientRefInput ??
+            (await treasuryRecipientRefForDestination(attributedDestination))
 
           if (!attempt.ok) {
             // Surface the underlying failure (resolution vs. the daemon's pay
@@ -1288,7 +1667,11 @@ export const handleOperatorTreasuryPayoutApi = (
               await dependencies.recordPayoutTransaction?.({
                 amountSat: plan.paidAmountSat,
                 failureReasonRef,
+                owedRef: owedRefInput,
+                owedSat,
                 paymentRef: null,
+                recipientRef,
+                redactedDestinationRef,
                 settled: false,
               })
             } catch {
@@ -1315,10 +1698,14 @@ export const handleOperatorTreasuryPayoutApi = (
           try {
             await dependencies.recordPayoutTransaction?.({
               amountSat: plan.paidAmountSat,
+              owedRef: owedRefInput,
+              owedSat,
               paymentRef:
                 typeof payResult.paymentId === 'string'
                   ? payResult.paymentId
                   : null,
+              recipientRef,
+              redactedDestinationRef,
               settled: payResult.status === 'succeeded',
             })
           } catch {

@@ -22,6 +22,24 @@ const makeMemoryStore = (): TreasuryTransactionStore & {
   const rows = new Map<string, TreasuryTransactionRecord>()
 
   return {
+    confirmReceived: input => {
+      const row = rows.get(input.id)
+
+      if (
+        row !== undefined &&
+        row.direction === 'out' &&
+        row.state === 'settled'
+      ) {
+        rows.set(input.id, {
+          ...row,
+          recipientConfirmationRef: input.confirmationRef,
+          recipientConfirmationState: 'confirmed_received',
+          recipientConfirmedAt: input.recipientConfirmedAt,
+        })
+      }
+
+      return Promise.resolve()
+    },
     expire: input => {
       const row = rows.get(input.id)
 
@@ -63,6 +81,13 @@ const makeMemoryStore = (): TreasuryTransactionStore & {
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
           .slice(0, limit),
       ),
+    listByRecipient: input =>
+      Promise.resolve(
+        [...rows.values()]
+          .filter(row => row.recipientRef === input.recipientRef)
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, input.limit),
+      ),
     read: id => Promise.resolve(rows.get(id)),
     rows,
     settle: input => {
@@ -82,6 +107,16 @@ const makeMemoryStore = (): TreasuryTransactionStore & {
   }
 }
 
+const unattributed = () => ({
+  owedRef: null,
+  owedSat: null,
+  recipientConfirmationRef: null,
+  recipientConfirmationState: 'unconfirmed' as const,
+  recipientConfirmedAt: null,
+  recipientRef: null,
+  redactedDestinationRef: null,
+})
+
 const settledOut = (
   id: string,
   amountSat: number,
@@ -94,6 +129,7 @@ const settledOut = (
   failureReasonRef: null,
   id,
   paymentRef: 'internal_payment_ref_should_not_leak',
+  ...unattributed(),
   settledAt: '2026-06-10T18:00:05.000Z',
   state: 'settled',
 })
@@ -160,6 +196,7 @@ describe('public treasury api', () => {
         'reason.public.treasury_payout.lightning_address_resolution_failed.amount_out_of_range_1000_10000000_msat',
       id: 'treasury_payout_failed',
       paymentRef: null,
+      ...unattributed(),
       settledAt: null,
       state: 'failed',
     })
@@ -203,6 +240,7 @@ describe('public treasury api', () => {
       failureReasonRef: null,
       id: 'treasury_donation_unpaid',
       paymentRef: 'cd'.repeat(32),
+      ...unattributed(),
       settledAt: null,
       state: 'pending',
     })
@@ -314,6 +352,7 @@ describe('donation flow', () => {
       failureReasonRef: null,
       id: 'treasury_donation_uuid-1',
       paymentRef: 'ab'.repeat(32),
+      ...unattributed(),
       settledAt: null,
       state: 'pending',
     })
@@ -353,6 +392,7 @@ describe('donation flow', () => {
       failureReasonRef: null,
       id: 'treasury_donation_uuid-1',
       paymentRef: 'ab'.repeat(32),
+      ...unattributed(),
       settledAt: null,
       state: 'pending',
     })
@@ -395,6 +435,7 @@ describe('donation flow', () => {
       failureReasonRef: null,
       id: 'treasury_donation_uuid-1',
       paymentRef: 'ab'.repeat(32),
+      ...unattributed(),
       settledAt: null,
       state: 'pending',
     })

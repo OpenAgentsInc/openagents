@@ -462,6 +462,8 @@ import {
   TREASURY_SERVICE_TOKEN_HEADER,
   handleOperatorTreasuryFundingDestinationApi,
   handleOperatorTreasuryPayoutApi,
+  handleOperatorTreasuryRecipientConfirmationApi,
+  handleOperatorTreasuryRecipientReportApi,
   handleOperatorTreasuryStatusApi,
   handleOperatorTreasuryTransactionReconcileApi,
   handlePublicTreasuryLaunchStatusApi,
@@ -7399,6 +7401,28 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       }),
   },
   {
+    path: '/api/operator/treasury/recipient-report',
+    handler: (request, env) =>
+      handleOperatorTreasuryRecipientReportApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        transactionStore: makeD1TreasuryTransactionStore(
+          openAgentsDatabase(env),
+        ),
+      }),
+  },
+  {
+    path: '/api/operator/treasury/recipient-confirmations',
+    handler: (request, env) =>
+      handleOperatorTreasuryRecipientConfirmationApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        transactionStore: makeD1TreasuryTransactionStore(
+          openAgentsDatabase(env),
+        ),
+      }),
+  },
+  {
     path: '/api/operator/tips-buffer/status',
     handler: (request, env) =>
       handleOperatorTreasuryStatusApi(request, {
@@ -7502,7 +7526,14 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                   expiresAt: null,
                   failureReasonRef: input.failureReasonRef ?? null,
                   id: randomUuid(),
+                  owedRef: input.owedRef ?? null,
+                  owedSat: input.owedSat ?? null,
                   paymentRef: input.paymentRef,
+                  recipientConfirmationRef: null,
+                  recipientConfirmationState: 'unconfirmed',
+                  recipientConfirmedAt: null,
+                  recipientRef: input.recipientRef ?? null,
+                  redactedDestinationRef: input.redactedDestinationRef ?? null,
                   settledAt: input.settled ? currentIsoTimestamp() : null,
                   state:
                     input.failureReasonRef !== undefined &&
@@ -7534,7 +7565,14 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
             expiresAt: null,
             failureReasonRef: input.failureReasonRef ?? null,
             id: `treasury_payout_${randomUuid()}`,
+            owedRef: input.owedRef ?? null,
+            owedSat: input.owedSat ?? null,
             paymentRef: input.paymentRef,
+            recipientConfirmationRef: null,
+            recipientConfirmationState: 'unconfirmed',
+            recipientConfirmedAt: null,
+            recipientRef: input.recipientRef ?? null,
+            redactedDestinationRef: input.redactedDestinationRef ?? null,
             settledAt: input.settled ? currentIsoTimestamp() : null,
             state:
               input.failureReasonRef !== undefined &&
@@ -7567,7 +7605,14 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
             expiresAt: null,
             failureReasonRef: input.failureReasonRef ?? null,
             id: `tips_buffer_payout_${randomUuid()}`,
+            owedRef: input.owedRef ?? null,
+            owedSat: input.owedSat ?? null,
             paymentRef: input.paymentRef,
+            recipientConfirmationRef: null,
+            recipientConfirmationState: 'unconfirmed',
+            recipientConfirmedAt: null,
+            recipientRef: input.recipientRef ?? null,
+            redactedDestinationRef: input.redactedDestinationRef ?? null,
             settledAt: input.settled ? currentIsoTimestamp() : null,
             state:
               input.failureReasonRef !== undefined &&

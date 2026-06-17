@@ -15,6 +15,13 @@ export type TreasuryTransactionRecord = Readonly<{
   bolt11: string | null
   paymentRef: string | null
   failureReasonRef: string | null
+  owedRef: string | null
+  owedSat: number | null
+  recipientConfirmationRef: string | null
+  recipientConfirmationState: 'unconfirmed' | 'confirmed_received'
+  recipientConfirmedAt: string | null
+  recipientRef: string | null
+  redactedDestinationRef: string | null
   createdAt: string
   settledAt: string | null
   expiresAt: string | null
@@ -28,11 +35,19 @@ export type TreasuryTransactionStore = Readonly<{
   listPendingOutbound: (
     limit: number,
   ) => Promise<ReadonlyArray<TreasuryTransactionRecord>>
+  listByRecipient: (
+    input: Readonly<{ limit: number; recipientRef: string }>,
+  ) => Promise<ReadonlyArray<TreasuryTransactionRecord>>
   read: (id: string) => Promise<TreasuryTransactionRecord | undefined>
   settle: (input: {
     amountSat: number
     id: string
     settledAt: string
+  }) => Promise<void>
+  confirmReceived: (input: {
+    confirmationRef: string
+    id: string
+    recipientConfirmedAt: string
   }) => Promise<void>
   expire: (input: { expiredAt: string; id: string }) => Promise<void>
   fail: (input: { id: string }) => Promise<void>
@@ -46,6 +61,13 @@ type TreasuryTransactionRow = Readonly<{
   bolt11: string | null
   payment_ref: string | null
   failure_reason_ref?: string | null
+  owed_ref?: string | null
+  owed_sat?: number | null
+  recipient_confirmation_ref?: string | null
+  recipient_confirmation_state?: 'unconfirmed' | 'confirmed_received' | null
+  recipient_confirmed_at?: string | null
+  recipient_ref?: string | null
+  redacted_destination_ref?: string | null
   created_at: string
   settled_at: string | null
   expires_at: string | null
@@ -61,7 +83,15 @@ const rowToRecord = (
   expiresAt: row.expires_at,
   failureReasonRef: row.failure_reason_ref ?? null,
   id: row.id,
+  owedRef: row.owed_ref ?? null,
+  owedSat: row.owed_sat ?? null,
   paymentRef: row.payment_ref,
+  recipientConfirmationRef: row.recipient_confirmation_ref ?? null,
+  recipientConfirmationState:
+    row.recipient_confirmation_state ?? 'unconfirmed',
+  recipientConfirmedAt: row.recipient_confirmed_at ?? null,
+  recipientRef: row.recipient_ref ?? null,
+  redactedDestinationRef: row.redacted_destination_ref ?? null,
   settledAt: row.settled_at,
   state: row.state,
 })
@@ -94,8 +124,11 @@ export const makeD1TreasuryTransactionStore = (
       .prepare(
         `INSERT INTO treasury_transactions
            (id, direction, amount_sat, state, bolt11, payment_ref,
-            failure_reason_ref, created_at, settled_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            failure_reason_ref, recipient_ref, redacted_destination_ref,
+            owed_ref, owed_sat, recipient_confirmation_state,
+            recipient_confirmation_ref, recipient_confirmed_at,
+            created_at, settled_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         record.id,
@@ -105,6 +138,13 @@ export const makeD1TreasuryTransactionStore = (
         record.bolt11,
         record.paymentRef,
         record.failureReasonRef,
+        record.recipientRef,
+        record.redactedDestinationRef,
+        record.owedRef,
+        record.owedSat,
+        record.recipientConfirmationState,
+        record.recipientConfirmationRef,
+        record.recipientConfirmedAt,
         record.createdAt,
         record.settledAt,
         record.expiresAt,
@@ -119,6 +159,19 @@ export const makeD1TreasuryTransactionStore = (
          LIMIT ?`,
       )
       .bind(limit)
+      .all<TreasuryTransactionRow>()
+
+    return (result.results ?? []).map(rowToRecord)
+  },
+  listByRecipient: async input => {
+    const result = await db
+      .prepare(
+        `SELECT * FROM treasury_transactions
+         WHERE recipient_ref = ?
+         ORDER BY created_at DESC
+         LIMIT ?`,
+      )
+      .bind(input.recipientRef, input.limit)
       .all<TreasuryTransactionRow>()
 
     return (result.results ?? []).map(rowToRecord)
@@ -154,6 +207,20 @@ export const makeD1TreasuryTransactionStore = (
          WHERE id = ? AND state = 'pending'`,
       )
       .bind(input.amountSat, input.settledAt, input.id)
+      .run()
+  },
+  confirmReceived: async input => {
+    await db
+      .prepare(
+        `UPDATE treasury_transactions
+         SET recipient_confirmation_state = 'confirmed_received',
+             recipient_confirmation_ref = ?,
+             recipient_confirmed_at = ?
+         WHERE id = ?
+           AND direction = 'out'
+           AND state = 'settled'`,
+      )
+      .bind(input.confirmationRef, input.recipientConfirmedAt, input.id)
       .run()
   },
 })
@@ -447,7 +514,14 @@ const createDonation = (
         expiresAt: isoTimestampAfterIso(nowIso, 3_600_000),
         failureReasonRef: null,
         id: `treasury_donation_${dependencies.makeUuid()}`,
+        owedRef: null,
+        owedSat: null,
         paymentRef: payload.paymentHash.toLowerCase(),
+        recipientConfirmationRef: null,
+        recipientConfirmationState: 'unconfirmed',
+        recipientConfirmedAt: null,
+        recipientRef: null,
+        redactedDestinationRef: null,
         settledAt: null,
         state: 'pending',
       }

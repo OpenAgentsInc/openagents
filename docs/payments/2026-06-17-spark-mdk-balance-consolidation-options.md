@@ -97,10 +97,23 @@ when needed, `caveat.wallet.spark_claimable_htlcs_require_backup_claim`.
    redacted payment refs, chunk count, public-safe metadata refs, and settlement
    state.
 
+7. Recipient-attributed treasury ledger.
+   **Implemented in #5180 for direct treasury/tips-buffer payout accounting.**
+   `treasury_transactions` now stores a public-safe recipient ref (or
+   destination-hash fallback), optional keyed owed refs/amounts, and a
+   recipient-confirmed state separate from treasury-side `settled`. Operator
+   reports can pull owed vs settled-sent vs confirmed-received totals by
+   recipient and flag over-send when settled sent exceeds keyed owed. Recipient
+   confirmation is a separate operator action backed by public-safe receipt or
+   balance evidence; it does not expose raw destination, invoice, preimage,
+   payment hash, or wallet material.
+
 ## Recommendation
 
 The product path is option 4: Spark is the single agent balance. Option 2 remains
 a local recovery/compatibility path when a user explicitly wants to move credited
 Spark funds into MDK, and option 3 is the direct spend path for the primary Spark
 balance. Option 6 is the treasury delivery policy for larger agent payouts while
-Spark Lightning Address is the normal recipient endpoint.
+Spark Lightning Address is the normal recipient endpoint. Option 7 is the
+operator accounting layer that distinguishes sent from recipient-confirmed
+received.
