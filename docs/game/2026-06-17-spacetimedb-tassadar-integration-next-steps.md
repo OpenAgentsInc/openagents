@@ -233,6 +233,19 @@ speakers and pylon stations, and shows a compact nearby transcript HUD. Pylon
 messages render at both the speaker and station from the same public message and
 bubble rows.
 
+Issue #5273 tightens the `/tassadar` world binding around those rows. The
+browser adapter now subscribes to `world_region` rows and includes the region
+envelope in the public-summary shape. The first valid region row supplies the
+first-person movement/controller bounds; the static fallback remains only for
+Worker-summary or older projection cases where no region row is available.
+Station entities still require real `pylon_station` rows, and avatar entities
+now require both `agent_avatar` and matching `avatar_position` rows. Crowded
+station/avatar positions are separated with the shared `three-effect`
+`SpatialHashGrid` and minimum-distance layout helper, then chat bubbles follow
+the adjusted row-backed anchor positions. The `three-effect` renderer used by
+the page also resolves node/entity hits through the shared hit-target registry
+for both unlocked clicks and pointer-locked center-reticle clicks.
+
 This phase still does not render payout motion before row-backed settlement
 evidence exists, and it does not store private prompts, private runtime logs,
 wallet material, provider payloads, or fixture chatter.
@@ -269,6 +282,12 @@ Required checks before treating `/tassadar` as connected:
 - Add web coverage for chat sanitization, chat row mapping, pylon-targeted
   speaker/station bubble rendering, and fallback with no fixture chatter. Done
   in issue #5265.
+- Add web coverage for `world_region` row mapping, row-backed avatar gating,
+  shared minimum-distance station/avatar layout, region-bounded movement
+  handoff, mouselook debug handoff, and proof-safe selection drawer behavior.
+  Done in issue #5273 through focused web scene unit tests. The existing
+  dependency-free live smoke remains HTTP/API/asset-level; pixel-level WebGL,
+  WASD, mouselook, and canvas selection smoke still requires a browser runner.
 - Build the SpacetimeDB WASM module after reducer-boundary changes. Done in
   issue #5265.
 - Probe `https://spacetime.openagents.com/v1/database/openagents-world/subscribe`

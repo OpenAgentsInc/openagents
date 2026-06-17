@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   type TassadarRunPublicSummary,
+  applyWorldEntitySpatialLayout,
   spacetimeWorldSummaryFromRows,
   tassadarRunVisualizationOptions,
   trainingRunEntityLayerFromPublicSummary,
@@ -370,6 +371,32 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     expect(options.sceneChrome?.lossPanel).toBe('hidden')
   })
 
+  it('separates crowded row-backed world entities with the shared spatial layout helper', () => {
+    const entities = applyWorldEntitySpatialLayout([
+      {
+        id: 'station.pylon.world.one',
+        label: 'P1 hub',
+        position: [-2, 0, 0.2],
+        status: 'registered',
+      },
+      {
+        id: 'avatar.pylon_agent.pylon.world.one',
+        label: 'P1 agent',
+        position: [-2.05, 0.03, 0.28],
+        status: 'idle',
+      },
+    ])
+
+    const [station, avatar] = entities
+    expect(station?.position).toBeDefined()
+    expect(avatar?.position).toBeDefined()
+    const distance = Math.hypot(
+      (station?.position?.[0] ?? 0) - (avatar?.position?.[0] ?? 0),
+      (station?.position?.[1] ?? 0) - (avatar?.position?.[1] ?? 0),
+    )
+    expect(distance).toBeGreaterThanOrEqual(0.82)
+  })
+
   it('maps SpacetimeDB projection rows through the existing summary visualization shape', () => {
     const fromWorld = spacetimeWorldSummaryFromRows(populated, {
       agentAvatars: [
@@ -420,6 +447,22 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
           runRef: 'run.tassadar.executor.20260615',
           title: 'challenge world',
           url: '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=challenge.world.1',
+        } as never,
+      ],
+      worldRegions: [
+        {
+          avatarPositionMinIntervalMs: 100n,
+          label: 'Tassadar main run space',
+          maxX: 8,
+          maxY: 4,
+          maxZ: 6,
+          minX: -8,
+          minY: 0,
+          minZ: -6,
+          proximityRadiusMeters: 12,
+          regionRef: 'region.run.tassadar.executor.20260615.main',
+          runRef: 'run.tassadar.executor.20260615',
+          staleAvatarPositionMs: 20_000n,
         } as never,
       ],
       pylonStations: [
@@ -613,6 +656,24 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
           '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=pylon.world.one',
       },
     ])
+    expect(fromWorld.world?.worldRegions).toEqual([
+      {
+        avatarPositionMinIntervalMs: 100,
+        bounds: {
+          maxX: 8,
+          maxY: 4,
+          maxZ: 6,
+          minX: -8,
+          minY: 0,
+          minZ: -6,
+        },
+        label: 'Tassadar main run space',
+        proximityRadiusMeters: 12,
+        regionRef: 'region.run.tassadar.executor.20260615.main',
+        runRef: 'run.tassadar.executor.20260615',
+        staleAvatarPositionMs: 20000,
+      },
+    ])
     expect(fromWorld.world?.agentAvatars).toEqual([
       {
         actorKind: 'pylon_agent',
@@ -699,37 +760,37 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     expect(options.entities).toContainEqual({
       id: 'station.pylon.world.one',
       label: 'P1 hub +1',
-      position: [-2.67, -0.12, 0.2],
+      position: [-3.045, -0.293, 0.2],
       status: 'nearby',
     })
     expect(options.entities).toContainEqual({
       id: 'avatar.pylon_agent.pylon.world.one',
       label: 'P1 agent',
-      position: [-1.9, 0, 0.28],
+      position: [-1.398, -0.284, 0.28],
       status: 'idle',
     })
     expect(options.entities).toContainEqual({
       id: 'avatar.viewer.one',
       label: 'Viewer one',
-      position: [-2.1, 0.1, 0.28],
+      position: [-2.227, 0.557, 0.28],
       status: 'walking',
     })
     expect(options.entities).toContainEqual({
       id: 'bubble.message.local.1',
       label: 'hello nearby agents',
-      position: [-2.1, 0.42, 0.38],
+      position: [-2.227, 0.877, 0.38],
       status: 'chat',
     })
     expect(options.entities).toContainEqual({
       id: 'bubble.message.pylon.1.speaker',
       label: 'checking your receipt',
-      position: [-2.1, 0.42, 0.38],
+      position: [-2.227, 0.877, 0.38],
       status: 'chat',
     })
     expect(options.entities).toContainEqual({
       id: 'bubble.message.pylon.1',
       label: 'checking your receipt',
-      position: [-2.67, 0.2, 0.38],
+      position: [-3.045, 0.027, 0.38],
       status: 'talking_to_pylon',
     })
     expect(options.entities).toContainEqual({
@@ -747,5 +808,40 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     expect(options.beams).toEqual([])
     expect(options.bursts).toEqual([])
     expect(options.contributors).toEqual([])
+  })
+
+  it('does not render avatar entities without matching avatar_position rows', () => {
+    const options = tassadarRunVisualizationOptions({
+      world: {
+        agentAvatars: [
+          {
+            actorKind: 'pylon_agent',
+            avatarRef: 'avatar.pylon_agent.missing_position',
+            displayName: 'Missing position',
+            homePylonRef: 'pylon.world.missing',
+          },
+        ],
+        pylonStations: [
+          {
+            interactionRadiusMeters: 2.4,
+            label: 'P1',
+            position: { x: -2.35, y: 0, z: 0 },
+            pylonRef: 'pylon.world.missing',
+            regionRef: 'region.run.tassadar.executor.20260615.main',
+            sourceUrl:
+              '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=pylon.world.missing',
+          },
+        ],
+      },
+    })
+
+    expect(options.entities?.some(entity => entity.id === 'station.pylon.world.missing')).toBe(
+      true,
+    )
+    expect(
+      options.entities?.some(
+        entity => entity.id === 'avatar.pylon_agent.missing_position',
+      ),
+    ).toBe(false)
   })
 })

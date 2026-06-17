@@ -60,6 +60,14 @@ const TASSADAR_CHAT_MAX_CHARS = 280
 const TASSADAR_LOCAL_CHAT_RADIUS_METERS = 8
 
 export type TassadarRunDataState = 'loading' | 'ok' | 'empty' | 'error'
+type TassadarRegionBounds = Readonly<{
+  maxX: number
+  maxY: number
+  maxZ: number
+  minX: number
+  minY: number
+  minZ: number
+}>
 export type TassadarRunProofLink = Readonly<{
   caveats: ReadonlyArray<string>
   href: string
@@ -274,10 +282,32 @@ const pylonRefFromProofLink = (
 const clamp = (value: number, min: number, max: number): number =>
   Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : min
 
+const regionBoundsFromSummary = (
+  summary: TassadarRunPublicSummary,
+): TassadarRegionBounds => {
+  const bounds = summary.world?.worldRegions?.[0]?.bounds
+  if (
+    bounds === undefined ||
+    !Number.isFinite(bounds.minX) ||
+    !Number.isFinite(bounds.maxX) ||
+    !Number.isFinite(bounds.minY) ||
+    !Number.isFinite(bounds.maxY) ||
+    !Number.isFinite(bounds.minZ) ||
+    !Number.isFinite(bounds.maxZ) ||
+    bounds.minX >= bounds.maxX ||
+    bounds.minY >= bounds.maxY ||
+    bounds.minZ >= bounds.maxZ
+  ) {
+    return TASSADAR_REGION_BOUNDS
+  }
+  return bounds
+}
+
 export const nextTassadarLocalAvatarPosition = (
   current: TassadarLocalAvatarPosition,
   keys: TassadarMovementKeyState,
   deltaMs: number,
+  bounds: TassadarRegionBounds = TASSADAR_REGION_BOUNDS,
 ): TassadarLocalAvatarPosition => {
   const forward = (keys.forward ? 1 : 0) - (keys.backward ? 1 : 0)
   const strafe = (keys.right ? 1 : 0) - (keys.left ? 1 : 0)
@@ -298,19 +328,19 @@ export const nextTassadarLocalAvatarPosition = (
     positionX: clamp(
       current.positionX +
         ((forward / length) * forwardX + (strafe / length) * rightX) * distance,
-      TASSADAR_REGION_BOUNDS.minX,
-      TASSADAR_REGION_BOUNDS.maxX,
+      bounds.minX,
+      bounds.maxX,
     ),
     positionY: clamp(
       current.positionY,
-      TASSADAR_REGION_BOUNDS.minY,
-      TASSADAR_REGION_BOUNDS.maxY,
+      bounds.minY,
+      bounds.maxY,
     ),
     positionZ: clamp(
       current.positionZ +
         ((forward / length) * forwardZ + (strafe / length) * rightZ) * distance,
-      TASSADAR_REGION_BOUNDS.minZ,
-      TASSADAR_REGION_BOUNDS.maxZ,
+      bounds.minZ,
+      bounds.maxZ,
     ),
   }
 }
@@ -897,6 +927,7 @@ const makeClass = (): CustomElementConstructor =>
         this.#localAvatarPosition,
         this.#movementKeys,
         deltaMs,
+        regionBoundsFromSummary(this.#summary ?? {}),
       )
       this.#syncLocalAvatar(now, false)
       this.#syncPylonAttention(now, false)
@@ -960,12 +991,13 @@ const makeClass = (): CustomElementConstructor =>
     }
 
     #walkControllerOptions(): WasdMouseLookControllerOptions {
+      const bounds = regionBoundsFromSummary(this.#summary ?? {})
       return {
         bounds: {
-          minX: TASSADAR_REGION_BOUNDS.minX,
-          maxX: TASSADAR_REGION_BOUNDS.maxX,
-          minZ: TASSADAR_REGION_BOUNDS.minZ,
-          maxZ: TASSADAR_REGION_BOUNDS.maxZ,
+          minX: bounds.minX,
+          maxX: bounds.maxX,
+          minZ: bounds.minZ,
+          maxZ: bounds.maxZ,
         },
         eyeHeight: 1.65,
         initialPosition: [

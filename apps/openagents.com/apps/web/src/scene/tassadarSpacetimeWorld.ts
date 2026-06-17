@@ -11,6 +11,7 @@ import type {
   TrainingRun,
   WorldEdge,
   WorldEvent,
+  WorldRegion,
 } from './spacetimeWorldBindings/types'
 import {
   type TassadarRunPublicSummary,
@@ -40,6 +41,7 @@ const SUBSCRIBED_TABLES = [
   'proof_ref',
   'settlement_ref',
   'world_event',
+  'world_region',
 ] as const
 
 const REGION_REF_PREFIX = 'region.'
@@ -66,6 +68,7 @@ export type TassadarSpacetimeWorldRows = Readonly<{
   trainingRuns: ReadonlyArray<TrainingRun>
   worldEdges: ReadonlyArray<WorldEdge>
   worldEvents: ReadonlyArray<WorldEvent>
+  worldRegions: ReadonlyArray<WorldRegion>
 }>
 
 export type TassadarSpacetimeWorldSubscription = Readonly<{
@@ -202,6 +205,9 @@ const rowsFromConnection = (conn: DbConnection): TassadarSpacetimeWorldRows => (
   worldEvents: [
     ...conn.db.world_event.iter(),
   ] as unknown as ReadonlyArray<WorldEvent>,
+  worldRegions: [
+    ...conn.db.world_region.iter(),
+  ] as unknown as ReadonlyArray<WorldRegion>,
 })
 
 const observeTable = <Row>(
@@ -269,6 +275,7 @@ export const startTassadarSpacetimeWorldSubscription = async (
       observeTable(connection.db.proof_ref, publish)
       observeTable(connection.db.settlement_ref, publish)
       observeTable(connection.db.world_event, publish)
+      observeTable(connection.db.world_region, publish)
       observeTable(connection.db.pylon_station, publish)
       observeTable(connection.db.agent_avatar, publish)
       observeTable(connection.db.avatar_position, publish)

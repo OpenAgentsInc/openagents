@@ -105,11 +105,21 @@ As of 2026-06-17:
   contract, service-owned region upsert, region-bounded avatar/station/chat
   writes, region-specific avatar cadence/stale expiry, updated bridge
   projection, and regenerated web bindings.
+- `three-effect` support commit `d87a79f` moved the training-run renderer's
+  node/entity picking path onto the shared `HitTargetRegistry`, so unlocked
+  clicks and pointer-locked center-reticle clicks use the same shared raycast
+  primitive.
+- OpenAgents issue #5273 bound `/tassadar` station/avatar rendering to the new
+  spatial primitives. Browser snapshots now subscribe to `world_region`,
+  require a matching `avatar_position` row before drawing an avatar, apply the
+  shared spatial hash/minimum-distance layout helper to row-backed stations and
+  avatars, carry layout-adjusted chat bubbles with their anchor rows, and use
+  the region row for movement/controller bounds.
 
-Remaining work starts at the `/tassadar` binding pass: replace page-local
-layout/picking helpers with the new `three-effect` spatial primitives, then
-continue through real-entity-only scene cleanup, terrain prototype, and owned
-asset provenance.
+Remaining work starts at the real-entity-only cleanup pass: remove any remaining
+non-entity lifecycle spatial nodes from the primary canvas, keep them in a
+compact HUD/legend when needed, then continue through terrain prototype and
+owned asset provenance.
 
 ## Mechanics Inventory
 
