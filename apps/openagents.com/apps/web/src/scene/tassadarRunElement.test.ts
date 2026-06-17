@@ -189,13 +189,13 @@ describe('tassadarRunView page wiring', () => {
     expect(options.walkController).toMatchObject({
       bounds: { minX: -8, maxX: 8, minZ: -8, maxZ: 8 },
       eyeHeight: 1.65,
-      lockSelector: '[data-tassadar-enter-world]',
       movementSpeed: 4.5,
       sprintMultiplier: 1.8,
     })
+    expect(options.walkController).not.toHaveProperty('lockSelector')
     expect(
       el.shadowRoot?.querySelector('[data-tassadar-enter-world]'),
-    ).not.toBeNull()
+    ).toBeNull()
     const walkController = options.walkController as {
       onLockChange?: (locked: boolean) => void
     }
@@ -207,18 +207,8 @@ describe('tassadarRunView page wiring', () => {
     expect(el.shadowRoot?.querySelector(STUB_TAG)).not.toBeNull()
   })
 
-  it('renders the live snapshot metadata and manual refresh state from the public summary', async () => {
-    const refreshed = {
-      ...populated,
-      generatedAt: '2026-06-17T16:40:20.270Z',
-      runState: 'active',
-    }
-    let summaryCalls = 0
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockImplementation(async () =>
-        jsonResponse(summaryCalls++ === 0 ? populated : refreshed),
-      )
+  it('renders live snapshot metadata without manual refresh chrome', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(populated))
 
     const el = await mountAndSettle()
     const status = el.shadowRoot?.querySelector('.status')
@@ -227,19 +217,10 @@ describe('tassadarRunView page wiring', () => {
     )
     expect(status?.textContent ?? '').toContain('active')
     expect(status?.textContent ?? '').toContain('2026-06-17T16:39:20.270Z')
-    expect(status?.textContent ?? '').toContain('Refresh snapshot')
+    expect(status?.textContent ?? '').not.toContain('Refresh snapshot')
+    expect(el.shadowRoot?.querySelector('.status button')).toBeNull()
 
     expect(el.shadowRoot?.querySelector('.promise-gate')).toBeNull()
-
-    const refresh = el.shadowRoot?.querySelector('.status button')
-    expect(refresh).not.toBeNull()
-    refresh?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await waitForSettled(el)
-
-    expect(fetchSpy).toHaveBeenCalledTimes(2)
-    expect(
-      el.shadowRoot?.querySelector('.status')?.textContent ?? '',
-    ).toContain('2026-06-17T16:40:20.270Z')
   })
 
   it('does not render product-promise gates or fleet stats in the main scene chrome', async () => {
