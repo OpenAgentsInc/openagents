@@ -727,6 +727,93 @@ const safeTreasuryPayoutDiagnosticNumber = (value: unknown): number | null =>
 const safeTreasuryPayoutDiagnosticBoolean = (value: unknown): boolean | null =>
   typeof value === 'boolean' ? value : null
 
+const treasuryPayoutFailureReasonRefFromPayResult = (
+  payResult: Record<string, unknown>,
+): string => {
+  const containerReasonRef = publicTreasuryPayoutReasonRef(payResult.reasonRef)
+  const genericError =
+    typeof payResult.error === 'string' &&
+    payResult.error === 'treasury_pay_failed'
+  const detail =
+    containerReasonRef !== null
+      ? containerReasonRef
+      : genericError && typeof payResult.reason === 'string'
+        ? payResult.reason
+        : typeof payResult.error === 'string'
+          ? payResult.error
+          : typeof payResult.reason === 'string'
+            ? payResult.reason
+            : typeof payResult.message === 'string'
+              ? payResult.message
+              : typeof payResult.code === 'string'
+                ? payResult.code
+                : null
+
+  return containerReasonRef ?? treasuryPayoutFailureReasonRef(detail)
+}
+
+const treasuryPayoutDiagnosticPayload = (
+  payResult: Record<string, unknown>,
+) => ({
+  balanceChanged: safeTreasuryPayoutDiagnosticBoolean(
+    payResult.balanceChanged,
+  ),
+  balanceSatAfter: safeTreasuryPayoutDiagnosticNumber(
+    payResult.balanceSatAfter,
+  ),
+  balanceSatBefore: safeTreasuryPayoutDiagnosticNumber(
+    payResult.balanceSatBefore,
+  ),
+  containerStatus: safeTreasuryPayoutDiagnosticString(payResult.status),
+  destinationKind: safeTreasuryPayoutDiagnosticString(payResult.destinationKind),
+  errorCode: safeTreasuryPayoutDiagnosticString(payResult.errorCode),
+  errorName: safeTreasuryPayoutDiagnosticString(payResult.errorName),
+  failureStage: safeTreasuryPayoutDiagnosticString(payResult.failureStage),
+  feeBudgetMsatAfter: safeTreasuryPayoutDiagnosticNumber(
+    payResult.feeBudgetMsatAfter,
+  ),
+  feeBudgetMsatBefore: safeTreasuryPayoutDiagnosticNumber(
+    payResult.feeBudgetMsatBefore,
+  ),
+  messageFingerprint: safeTreasuryPayoutDiagnosticString(
+    payResult.messageFingerprint,
+  ),
+  paymentIdPresent: safeTreasuryPayoutDiagnosticBoolean(
+    payResult.paymentIdPresent,
+  ),
+  payResponseStatus: safeTreasuryPayoutDiagnosticNumber(
+    payResult.payResponseStatus,
+  ),
+  preflightBalanceMaxSendableSat: safeTreasuryPayoutDiagnosticNumber(
+    payResult.preflightBalanceMaxSendableSat,
+  ),
+  preflightMaxSendableSat: safeTreasuryPayoutDiagnosticNumber(
+    payResult.preflightMaxSendableSat,
+  ),
+  reasonClass: safeTreasuryPayoutDiagnosticString(payResult.reasonClass),
+  resolvedDestinationKind: safeTreasuryPayoutDiagnosticString(
+    payResult.resolvedDestinationKind,
+  ),
+  resultReturned: safeTreasuryPayoutDiagnosticBoolean(payResult.resultReturned),
+  sourceDestinationKind: safeTreasuryPayoutDiagnosticString(
+    payResult.sourceDestinationKind,
+  ),
+  timeoutSecs: safeTreasuryPayoutDiagnosticNumber(payResult.timeoutSecs),
+})
+
+const treasuryPayoutAttemptTrace = (input: {
+  attempt: 'primary' | 'fallback'
+  ok: boolean
+  payResult: Record<string, unknown>
+}) => ({
+  attempt: input.attempt,
+  diagnostics: treasuryPayoutDiagnosticPayload(input.payResult),
+  outcome: input.ok ? 'accepted' : 'failed',
+  reasonRef: input.ok
+    ? null
+    : treasuryPayoutFailureReasonRefFromPayResult(input.payResult),
+})
+
 // Policy-applying payout core (issue #4703): the ONE path that moves
 // money out of the treasury, shared by the operator route and the
 // gated in-worker Artanis spend action. Applies the owner's
@@ -1042,13 +1129,29 @@ export const handleOperatorTreasuryPayoutApi = (
             }
           }
 
+          const attempts: Array<ReturnType<typeof treasuryPayoutAttemptTrace>> =
+            []
           let paidVia: 'primary' | 'fallback' = 'primary'
           let attempt = await attemptPay(destination)
+          attempts.push(
+            treasuryPayoutAttemptTrace({
+              attempt: 'primary',
+              ok: attempt.ok,
+              payResult: attempt.payResult,
+            }),
+          )
           if (!attempt.ok && fallbackDestination !== null) {
             // Retry once against the recipient's payout fallback (e.g. their
             // static Lightning Address). Still a normal Lightning send.
             paidVia = 'fallback'
             attempt = await attemptPay(fallbackDestination)
+            attempts.push(
+              treasuryPayoutAttemptTrace({
+                attempt: 'fallback',
+                ok: attempt.ok,
+                payResult: attempt.payResult,
+              }),
+            )
           }
 
           const payResult = attempt.payResult
@@ -1059,86 +1162,9 @@ export const handleOperatorTreasuryPayoutApi = (
             // was LNURL resolution, no route, recipient offline, or liquidity.
             // Persist and return only a public-safe classification, never raw
             // daemon text, payment material, invoices, hashes, or destinations.
-            const containerReasonRef = publicTreasuryPayoutReasonRef(
-              payResult.reasonRef,
-            )
-            const reasonClass = safeTreasuryPayoutDiagnosticString(
-              payResult.reasonClass,
-            )
-            const failureStage = safeTreasuryPayoutDiagnosticString(
-              payResult.failureStage,
-            )
-            const destinationKind = safeTreasuryPayoutDiagnosticString(
-              payResult.destinationKind,
-            )
-            const preflightMaxSendableSat = safeTreasuryPayoutDiagnosticNumber(
-              payResult.preflightMaxSendableSat,
-            )
-            const timeoutSecs = safeTreasuryPayoutDiagnosticNumber(
-              payResult.timeoutSecs,
-            )
-            const errorCode = safeTreasuryPayoutDiagnosticString(
-              payResult.errorCode,
-            )
-            const errorName = safeTreasuryPayoutDiagnosticString(
-              payResult.errorName,
-            )
-            const messageFingerprint = safeTreasuryPayoutDiagnosticString(
-              payResult.messageFingerprint,
-            )
-            const sourceDestinationKind = safeTreasuryPayoutDiagnosticString(
-              payResult.sourceDestinationKind,
-            )
-            const resolvedDestinationKind = safeTreasuryPayoutDiagnosticString(
-              payResult.resolvedDestinationKind,
-            )
-            const payResponseStatus = safeTreasuryPayoutDiagnosticNumber(
-              payResult.payResponseStatus,
-            )
-            const balanceSatBefore = safeTreasuryPayoutDiagnosticNumber(
-              payResult.balanceSatBefore,
-            )
-            const balanceSatAfter = safeTreasuryPayoutDiagnosticNumber(
-              payResult.balanceSatAfter,
-            )
-            const balanceChanged = safeTreasuryPayoutDiagnosticBoolean(
-              payResult.balanceChanged,
-            )
-            const feeBudgetMsatBefore = safeTreasuryPayoutDiagnosticNumber(
-              payResult.feeBudgetMsatBefore,
-            )
-            const feeBudgetMsatAfter = safeTreasuryPayoutDiagnosticNumber(
-              payResult.feeBudgetMsatAfter,
-            )
-            const preflightBalanceMaxSendableSat =
-              safeTreasuryPayoutDiagnosticNumber(
-                payResult.preflightBalanceMaxSendableSat,
-              )
-            const resultReturned = safeTreasuryPayoutDiagnosticBoolean(
-              payResult.resultReturned,
-            )
-            const paymentIdPresent = safeTreasuryPayoutDiagnosticBoolean(
-              payResult.paymentIdPresent,
-            )
-            const genericError =
-              typeof payResult.error === 'string' &&
-              payResult.error === 'treasury_pay_failed'
-            const detail =
-              containerReasonRef !== null
-                ? containerReasonRef
-                : genericError && typeof payResult.reason === 'string'
-                  ? payResult.reason
-                  : typeof payResult.error === 'string'
-                    ? payResult.error
-                    : typeof payResult.reason === 'string'
-                      ? payResult.reason
-                      : typeof payResult.message === 'string'
-                        ? payResult.message
-                        : typeof payResult.code === 'string'
-                          ? payResult.code
-                          : null
+            const diagnostics = treasuryPayoutDiagnosticPayload(payResult)
             const failureReasonRef =
-              containerReasonRef ?? treasuryPayoutFailureReasonRef(detail)
+              treasuryPayoutFailureReasonRefFromPayResult(payResult)
 
             try {
               await dependencies.recordPayoutTransaction?.({
@@ -1161,27 +1187,8 @@ export const handleOperatorTreasuryPayoutApi = (
                 policyApplied: plan.kind,
                 reason: failureReasonRef,
                 reasonRef: failureReasonRef,
-                diagnostics: {
-                  balanceChanged,
-                  balanceSatAfter,
-                  balanceSatBefore,
-                  destinationKind,
-                  errorCode,
-                  errorName,
-                  failureStage,
-                  feeBudgetMsatAfter,
-                  feeBudgetMsatBefore,
-                  messageFingerprint,
-                  paymentIdPresent,
-                  payResponseStatus,
-                  preflightBalanceMaxSendableSat,
-                  preflightMaxSendableSat,
-                  reasonClass,
-                  resolvedDestinationKind,
-                  resultReturned,
-                  sourceDestinationKind,
-                  timeoutSecs,
-                },
+                diagnostics,
+                attempts,
               },
               { status: 502 },
             )
@@ -1204,6 +1211,8 @@ export const handleOperatorTreasuryPayoutApi = (
           return noStoreJsonResponse({
             intendedAmountSat,
             paidAmountSat: plan.paidAmountSat,
+            attempts,
+            diagnostics: treasuryPayoutDiagnosticPayload(payResult),
             paymentId: payResult.paymentId ?? null,
             policyApplied: plan.kind,
             status: payResult.status ?? null,

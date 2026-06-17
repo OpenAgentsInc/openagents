@@ -806,8 +806,37 @@ describe('operator treasury payout', () => {
     )
 
     expect(response.status).toBe(200)
-    const body = (await response.json()) as { paidVia: string }
+    const body = (await response.json()) as {
+      attempts: ReadonlyArray<{
+        attempt: string
+        diagnostics: {
+          containerStatus: string | null
+          payResponseStatus: number | null
+          resolvedDestinationKind: string | null
+          sourceDestinationKind: string | null
+        }
+        outcome: string
+      }>
+      paidVia: string
+    }
     expect(body.paidVia).toBe('fallback')
+    expect(body.attempts).toMatchObject([
+      {
+        attempt: 'primary',
+        diagnostics: { payResponseStatus: 502 },
+        outcome: 'failed',
+      },
+      {
+        attempt: 'fallback',
+        diagnostics: {
+          containerStatus: 'succeeded',
+          payResponseStatus: 200,
+          resolvedDestinationKind: 'bolt11',
+          sourceDestinationKind: 'lightning_address',
+        },
+        outcome: 'accepted',
+      },
+    ])
     // The MDK send receives the resolved BOLT11, not the raw address.
     expect(paid).toEqual(['lno1recipient', 'lnbc-resolved-fallback'])
   })
@@ -1000,6 +1029,7 @@ describe('operator treasury payout', () => {
         balanceChanged: boolean | null
         balanceSatAfter: number | null
         balanceSatBefore: number | null
+        containerStatus: string | null
         destinationKind: string | null
         errorCode: string | null
         errorName: string | null
@@ -1026,6 +1056,7 @@ describe('operator treasury payout', () => {
       balanceChanged: false,
       balanceSatAfter: 100000,
       balanceSatBefore: 100000,
+      containerStatus: null,
       destinationKind: 'bolt11',
       errorCode: 'err_private_route',
       errorName: 'mdk_error',

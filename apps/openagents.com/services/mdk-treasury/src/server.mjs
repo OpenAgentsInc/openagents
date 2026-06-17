@@ -301,14 +301,21 @@ const payResponse = async (request, node) => {
         : null,
     balanceSatAfter: afterSnapshot.balanceSat,
     balanceSatBefore: beforeSnapshot.balanceSat,
+    destinationKind,
+    feeBudgetMsatAfter: afterSnapshot.destinationFeeBudgetMsat,
+    feeBudgetMsatBefore: beforeSnapshot.destinationFeeBudgetMsat,
     paymentId: result.paymentId,
+    paymentIdPresent: typeof result.paymentId === 'string',
     paymentHash: result.paymentHash ?? null,
     preimage: result.preimage ?? null,
+    preflightBalanceMaxSendableSat: beforeSnapshot.maxSendableSat,
+    preflightMaxSendableSat,
     resultReturned: true,
     status:
       result.preimage !== undefined && result.preimage !== null
         ? 'succeeded'
         : (outcome?.status ?? 'pending'),
+    timeoutSecs,
   })
 }
 
