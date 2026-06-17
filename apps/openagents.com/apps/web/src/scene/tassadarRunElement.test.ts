@@ -184,6 +184,25 @@ describe('tassadarRunView page wiring', () => {
     const options = recordedVisualizations[0] as Record<string, unknown>
     expect(options).toBeTruthy()
     expect(typeof options).toBe('object')
+    expect(options.cameraMode).toBe('perspective_walk')
+    expect(options.controller).toBe('wasd_mouselook')
+    expect(options.walkController).toMatchObject({
+      bounds: { minX: -8, maxX: 8, minZ: -8, maxZ: 8 },
+      eyeHeight: 1.65,
+      lockSelector: '[data-tassadar-enter-world]',
+      movementSpeed: 4.5,
+      sprintMultiplier: 1.8,
+    })
+    expect(
+      el.shadowRoot?.querySelector('[data-tassadar-enter-world]'),
+    ).not.toBeNull()
+    const walkController = options.walkController as {
+      onLockChange?: (locked: boolean) => void
+    }
+    walkController.onLockChange?.(true)
+    expect(el.getAttribute('data-pointer-lock')).toBe('locked')
+    walkController.onLockChange?.(false)
+    expect(el.getAttribute('data-pointer-lock')).toBe('released')
     // The underlying renderer element was mounted.
     expect(el.shadowRoot?.querySelector(STUB_TAG)).not.toBeNull()
   })
@@ -212,7 +231,7 @@ describe('tassadarRunView page wiring', () => {
 
     expect(el.shadowRoot?.querySelector('.promise-gate')).toBeNull()
 
-    const refresh = el.shadowRoot?.querySelector('button')
+    const refresh = el.shadowRoot?.querySelector('.status button')
     expect(refresh).not.toBeNull()
     refresh?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await waitForSettled(el)

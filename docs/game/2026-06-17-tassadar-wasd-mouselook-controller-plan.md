@@ -1,10 +1,27 @@
 # Tassadar WASD + Mouselook Controller Plan
 
 Date: 2026-06-17
-Status: Initial implementation plan.
+Status: Implementation in progress.
 Goal: make `/tassadar` navigable with a first-person WASD + mouselook controller,
 starting as a 2.5D walkable version of the current run scene and moving toward a
 proper 3D MMO world.
+
+## Implementation Status
+
+- `three-effect#1` is implemented in
+  `OpenAgentsInc/three-effect@0e6d5a9`: `playerControllerPrimitives.ts` now
+  owns the reusable WASD + pointer-lock mouselook controller primitive.
+- `three-effect#2` is implemented in
+  `OpenAgentsInc/three-effect@7914994`: `trainingRunView` now supports
+  `cameraMode: "perspective_walk"`, `controller: "wasd_mouselook"`, a 2.5D
+  ground-plane view, and center-reticle raycasting while pointer lock is active.
+- `openagents#5219` is implemented in this change: `/tassadar` pins the updated
+  `@openagentsinc/three-effect`, passes the perspective/controller options into
+  the live training-run element, renders a small `Enter run` affordance before
+  the Three scene mounts, and exposes pointer-lock state through
+  `data-pointer-lock`.
+- Remaining work is verification and cleanup under `openagents#5220` and the
+  tracker closeout under `openagents#5221`.
 
 ## References Read
 
@@ -287,14 +304,14 @@ Browser smoke:
 
 ## Implementation Order
 
-1. Add `playerControllerPrimitives.ts` in `three-effect`.
-2. Export it from `packages/core/src/index.ts`.
-3. Add `cameraMode` / `controller` options to `trainingRun.ts`.
-4. Implement perspective-walk rendering as an additive mode.
-5. Add center-reticle raycasting for locked pointer mode.
-6. Consume the new options in `tassadarRunElement.ts`.
-7. Add the tiny `/tassadar` enter-world overlay.
-8. Run unit tests and a browser smoke.
+1. Done: add `playerControllerPrimitives.ts` in `three-effect`.
+2. Done: export it from `packages/core/src/index.ts`.
+3. Done: add `cameraMode` / `controller` options to `trainingRun.ts`.
+4. Done: implement perspective-walk rendering as an additive mode.
+5. Done: add center-reticle raycasting for locked pointer mode.
+6. Done: consume the new options in `tassadarRunElement.ts`.
+7. Done: add the tiny `/tassadar` enter-world overlay.
+8. Next: run the full deployment-facing checks and browser smoke.
 
 This keeps the reusable controller in `three-effect` while letting the
 OpenAgents page decide when the controller is enabled for the live run.

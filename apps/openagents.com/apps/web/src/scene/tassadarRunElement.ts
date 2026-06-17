@@ -13,7 +13,10 @@
 //
 // State machine: loading → ok (mount scene) | empty (idle honest scene) | error.
 // The data-state attribute is exposed for tests and styling. Dark-only.
-import type { TrainingRunNodeSelection } from '@openagentsinc/three-effect/core'
+import type {
+  TrainingRunNodeSelection,
+  TrainingRunVisualizationOptions,
+} from '@openagentsinc/three-effect/core'
 import {
   registerTrainingRunElement,
   trainingRunTagName,
@@ -29,6 +32,7 @@ import {
 
 export const TASSADAR_RUN_TAG = 'oa-tassadar-run'
 export const TASSADAR_RUN_SUMMARY_ENDPOINT = '/api/public/tassadar-run-summary'
+const TASSADAR_ENTER_WORLD_SELECTOR = '[data-tassadar-enter-world]'
 
 export type TassadarRunDataState = 'loading' | 'ok' | 'empty' | 'error'
 export type TassadarRunProofLink = Readonly<{
@@ -49,6 +53,13 @@ const HOST_STYLE =
   '.overlay p{margin:0;max-width:48ch;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.34);padding:0.8rem 1rem;font-size:0.95rem;line-height:1.6;color:rgba(241,239,232,0.64);backdrop-filter:blur(12px)}' +
   '.overlay .label{display:block;margin-bottom:0.4rem;font-size:0.7rem;letter-spacing:0.08em;' +
   'text-transform:uppercase;color:rgba(241,239,232,0.35)}' +
+  '.walk-controls{position:absolute;left:1rem;bottom:1rem;z-index:3;display:grid;max-width:min(14rem,calc(100% - 2rem));' +
+  'border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.28);padding:0.55rem 0.6rem;' +
+  'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(14px);box-shadow:0 0.75rem 2rem rgba(0,0,0,0.24);transition:opacity 140ms ease}' +
+  '.walk-controls button{min-height:2rem;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);padding:0 0.7rem;' +
+  'font:inherit;font-size:0.72rem;color:rgba(255,255,255,0.88);cursor:pointer;text-align:left}' +
+  '.walk-controls button:focus-visible{outline:2px solid rgba(114,191,255,0.9);outline-offset:2px}' +
+  ':host([data-pointer-lock="locked"]) .walk-controls{opacity:0.22;pointer-events:none}' +
   '.status{position:absolute;top:0.75rem;left:0.75rem;right:0.75rem;z-index:3;display:flex;align-items:flex-start;' +
   'justify-content:space-between;gap:0.75rem;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.34);' +
   'padding:0.65rem 0.75rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(14px);box-shadow:0 0.75rem 2rem rgba(0,0,0,0.24)}' +
@@ -460,14 +471,34 @@ const makeClass = (): CustomElementConstructor =>
       const base = this.#base()
       if (base === null) return
       this.setAttribute('data-state', dataStateForSummary(summary))
+      this.setAttribute('data-pointer-lock', 'released')
       registerTrainingRunElement()
+      this.#renderWalkControls(base.mount)
       const run = document.createElement(trainingRunTagName) as HTMLElement & {
         visualization?: unknown
       }
       run.style.position = 'absolute'
       run.style.inset = '0'
       // The training-run element reads its `visualization` property reactively.
-      run.visualization = tassadarRunVisualizationOptions(summary)
+      const visualization: TrainingRunVisualizationOptions = {
+        ...tassadarRunVisualizationOptions(summary),
+        cameraMode: 'perspective_walk',
+        controller: 'wasd_mouselook',
+        walkController: {
+          bounds: { minX: -8, maxX: 8, minZ: -8, maxZ: 8 },
+          eyeHeight: 1.65,
+          lockSelector: TASSADAR_ENTER_WORLD_SELECTOR,
+          movementSpeed: 4.5,
+          sprintMultiplier: 1.8,
+          onLockChange: locked => {
+            this.setAttribute(
+              'data-pointer-lock',
+              locked ? 'locked' : 'released',
+            )
+          },
+        },
+      }
+      run.visualization = visualization
       run.addEventListener('node-selected', event => {
         const detail = (event as CustomEvent<unknown>).detail
         if (!isTrainingRunNodeSelection(detail)) return
@@ -476,6 +507,19 @@ const makeClass = (): CustomElementConstructor =>
       })
       base.mount.append(run)
       this.#renderStatus(base.mount, summary)
+    }
+
+    #renderWalkControls(mount: HTMLDivElement): void {
+      mount.querySelector('.walk-controls')?.remove()
+      const panel = document.createElement('aside')
+      panel.className = 'walk-controls'
+      panel.setAttribute('aria-label', 'Tassadar run navigation')
+      const enter = document.createElement('button')
+      enter.type = 'button'
+      enter.setAttribute('data-tassadar-enter-world', '')
+      enter.textContent = 'Enter run'
+      panel.append(enter)
+      mount.append(panel)
     }
 
     #renderStatus(

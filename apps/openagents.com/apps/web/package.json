@@ -20,7 +20,7 @@
     "@openagentsinc/ui": "workspace:*",
     "@openagentsinc/sync-client": "workspace:*",
     "@openagentsinc/sync-schema": "workspace:*",
-    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#e15844f86458981ac3d9cafd1d637eca2f6b45ce",
+    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#7914994bb8d421573a39a44688591513f8883521",
     "@tailwindcss/vite": "^4.2.4",
     "clsx": "^2.1.1",
     "effect": "4.0.0-beta.70",
