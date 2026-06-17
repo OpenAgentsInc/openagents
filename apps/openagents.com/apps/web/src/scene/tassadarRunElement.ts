@@ -35,9 +35,9 @@ import {
   TASSADAR_ATTENTION_THROTTLE_MS,
   TASSADAR_AVATAR_POSITION_THROTTLE_MS,
   TASSADAR_REGION_BOUNDS,
-  type TassadarSpacetimeWorldSubscription,
   type TassadarLocalAvatarPosition,
   type TassadarPylonAttentionUpdate,
+  type TassadarSpacetimeWorldSubscription,
   spacetimeConfigFromElement,
   startTassadarSpacetimeWorldSubscription,
 } from './tassadarSpacetimeWorld'
@@ -91,7 +91,10 @@ const HOST_STYLE =
   '.status dl{display:grid;grid-template-columns:repeat(5,minmax(0,auto));gap:0.55rem 1rem;margin:0;min-width:0}' +
   '.status div{min-width:0;text-shadow:0 1px 8px rgba(0,0,0,0.85)}.status dt{margin:0 0 0.18rem;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.34)}' +
   '.status dd{margin:0;max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.72rem;color:rgba(255,255,255,0.76)}' +
-  '@media (max-width:720px){.status{display:grid}.status dl{grid-template-columns:repeat(2,minmax(0,1fr))}.status dd{max-width:none}}' +
+  '.status .legend{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:0.35rem 0.6rem;max-width:46rem;margin:0;padding:0;list-style:none;text-shadow:0 1px 8px rgba(0,0,0,0.85)}' +
+  '.status .legend li{display:inline-flex;gap:0.32rem;align-items:baseline;min-width:0;font-size:0.62rem;line-height:1.25;color:rgba(255,255,255,0.58)}' +
+  '.status .legend strong{font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.34)}.status .legend span{color:rgba(255,255,255,0.72)}' +
+  '@media (max-width:720px){.status{display:grid}.status dl{grid-template-columns:repeat(2,minmax(0,1fr))}.status dd{max-width:none}.status .legend{justify-content:flex-start;max-width:none}}' +
   '.selection{position:absolute;right:1rem;bottom:1rem;z-index:2;max-width:min(26rem,calc(100% - 2rem));' +
   'border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.42);padding:0.75rem 0.875rem;' +
   'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(14px);box-shadow:0 0.75rem 2rem rgba(0,0,0,0.28)}' +
@@ -168,6 +171,9 @@ const metricNumber = (
     ? metric.value
     : 0
 
+const finiteNonNegative = (value: number | undefined): number =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
+
 const textOrUnknown = (value: string | undefined): string => {
   const text = value?.trim()
   return text === undefined || text.length === 0 ? 'unknown' : text
@@ -196,12 +202,7 @@ const localViewerDisplayName = (): string => {
   }
 }
 
-type TassadarMovementKey =
-  | 'backward'
-  | 'forward'
-  | 'left'
-  | 'right'
-  | 'sprint'
+type TassadarMovementKey = 'backward' | 'forward' | 'left' | 'right' | 'sprint'
 
 type TassadarMovementKeyState = Record<TassadarMovementKey, boolean>
 
@@ -303,6 +304,55 @@ const regionBoundsFromSummary = (
   return bounds
 }
 
+export const tassadarSupportHudItems = (
+  summary: TassadarRunPublicSummary,
+): ReadonlyArray<readonly [string, string]> => {
+  const metrics = summary.metrics ?? {}
+  const gradient = summary.realGradient ?? {}
+  const observedDevices = finiteNonNegative(
+    gradient.deviceRequirement?.observedDistinctContributorDevices,
+  )
+  const requiredDevices = finiteNonNegative(
+    gradient.deviceRequirement?.requiredDistinctContributorDevices,
+  )
+  const registered = Math.max(
+    metricNumber(metrics.assignedContributorCount),
+    observedDevices,
+    summary.world?.pylonStations?.length ?? 0,
+  )
+  const qualified = metricNumber(metrics.qualifiedContributorCount)
+  const activeWindows = metricNumber(metrics.activeWindowCount)
+  const blockerCount = publicRefs(gradient.externalAsk?.blockerRefs).length
+  const receiptCount = Math.max(
+    metricNumber(metrics.receiptRefCount),
+    settlementRows(summary).filter(
+      row => settlementReceiptRef(row) !== undefined,
+    ).length,
+  )
+  const stationCount = summary.world?.pylonStations?.length ?? 0
+  const avatarCount = summary.world?.avatarPositions?.length ?? 0
+  const staleBound =
+    typeof summary.staleness?.maxStalenessSeconds === 'number' &&
+    Number.isFinite(summary.staleness.maxStalenessSeconds)
+      ? `<= ${summary.staleness.maxStalenessSeconds}s`
+      : 'unknown'
+
+  return [
+    ['registered', `${registered} pylons`],
+    [
+      'qualified',
+      requiredDevices > 0
+        ? `${observedDevices}/${requiredDevices} device gate`
+        : `${qualified} qualified`,
+    ],
+    ['state synced', staleBound],
+    ['active', `${activeWindows} windows`],
+    ['sync reentry', `${blockerCount} blockers`],
+    ['world rows', `${stationCount} stations / ${avatarCount} avatars`],
+    ['proof refs', `${receiptCount} receipts`],
+  ]
+}
+
 export const nextTassadarLocalAvatarPosition = (
   current: TassadarLocalAvatarPosition,
   keys: TassadarMovementKeyState,
@@ -316,7 +366,7 @@ export const nextTassadarLocalAvatarPosition = (
   const speed = keys.sprint
     ? TASSADAR_RUN_METERS_PER_SECOND
     : TASSADAR_WALK_METERS_PER_SECOND
-  const distance = Math.max(0, Math.min(deltaMs, 500)) / 1_000 * speed
+  const distance = (Math.max(0, Math.min(deltaMs, 500)) / 1_000) * speed
   const yaw = Number.isFinite(current.yaw) ? current.yaw : 0
   const forwardX = Math.sin(yaw)
   const forwardZ = -Math.cos(yaw)
@@ -331,11 +381,7 @@ export const nextTassadarLocalAvatarPosition = (
       bounds.minX,
       bounds.maxX,
     ),
-    positionY: clamp(
-      current.positionY,
-      bounds.minY,
-      bounds.maxY,
-    ),
+    positionY: clamp(current.positionY, bounds.minY, bounds.maxY),
     positionZ: clamp(
       current.positionZ +
         ((forward / length) * forwardZ + (strafe / length) * rightZ) * distance,
@@ -483,8 +529,9 @@ const worldPylonRefForSelection = (
     row => selection.id === `station.${row.pylonRef}`,
   )
   if (station !== undefined) return station.pylonRef
-  return summary.world?.agentAvatars?.find(row => row.avatarRef === selection.id)
-    ?.homePylonRef
+  return summary.world?.agentAvatars?.find(
+    row => row.avatarRef === selection.id,
+  )?.homePylonRef
 }
 
 const pylonRefForSelection = (
@@ -534,7 +581,8 @@ export const pylonAttentionForAvatar = (
   const distance = Math.max(candidate.distanceMeters, 0.0001)
   const looking =
     withinInteraction &&
-    (candidate.dx / distance) * forwardX + (candidate.dz / distance) * forwardZ >
+    (candidate.dx / distance) * forwardX +
+      (candidate.dz / distance) * forwardZ >
       0.82
   return {
     attentionKind: selected ? 'inspecting' : looking ? 'looking' : 'nearby',
@@ -794,7 +842,10 @@ const makeClass = (): CustomElementConstructor =>
       run.addEventListener('node-selected', event => {
         const detail = (event as CustomEvent<unknown>).detail
         if (!isTrainingRunNodeSelection(detail)) return
-        const proofLink = proofLinkForSelection(this.#summary ?? summary, detail)
+        const proofLink = proofLinkForSelection(
+          this.#summary ?? summary,
+          detail,
+        )
         const activeSummary = this.#summary ?? summary
         this.#selectedPylonRef =
           pylonRefForSelection(activeSummary, detail) ??
@@ -947,7 +998,10 @@ const makeClass = (): CustomElementConstructor =>
       movement.subscription.updateLocalAvatar(this.#localAvatarPosition)
       movement.lastSentAt = now
       movement.lastSentSignature = signature
-      this.setAttribute('data-avatar-sync', this.#localAvatarPosition.movementMode)
+      this.setAttribute(
+        'data-avatar-sync',
+        this.#localAvatarPosition.movementMode,
+      )
     }
 
     #syncPylonAttention(now: number, force: boolean): void {
@@ -964,10 +1018,7 @@ const makeClass = (): CustomElementConstructor =>
         this.#localAvatarPosition,
         this.#selectedPylonRef,
       )
-      if (
-        nextAttention === null &&
-        movement.activeAttentionPylonRef !== null
-      ) {
+      if (nextAttention === null && movement.activeAttentionPylonRef !== null) {
         movement.subscription.clearPylonFocus(movement.activeAttentionPylonRef)
         movement.activeAttentionPylonRef = null
         movement.lastAttentionAt = now
@@ -1009,19 +1060,17 @@ const makeClass = (): CustomElementConstructor =>
         sprintMultiplier: 1.8,
         debug: this.#recordMouselookDebug,
         onLockChange: locked => {
-          this.setAttribute(
-            'data-pointer-lock',
-            locked ? 'locked' : 'released',
-          )
+          this.setAttribute('data-pointer-lock', locked ? 'locked' : 'released')
         },
       }
     }
 
-    #recordMouselookDebug = (
-      snapshot: WasdMouseLookDebugSnapshot,
-    ): void => {
+    #recordMouselookDebug = (snapshot: WasdMouseLookDebugSnapshot): void => {
       this.#mouselookDebugCount += 1
-      this.setAttribute('data-mouselook-count', String(this.#mouselookDebugCount))
+      this.setAttribute(
+        'data-mouselook-count',
+        String(this.#mouselookDebugCount),
+      )
       this.setAttribute('data-mouselook-event', snapshot.event)
       this.setAttribute('data-mouselook-source', snapshot.source)
       this.setAttribute('data-mouselook-locked', String(snapshot.locked))
@@ -1067,8 +1116,8 @@ const makeClass = (): CustomElementConstructor =>
       summary: TassadarRunPublicSummary,
     ): void {
       const existingBody =
-        (mount.querySelector('.chat input') as HTMLInputElement | null)?.value ??
-        ''
+        (mount.querySelector('.chat input') as HTMLInputElement | null)
+          ?.value ?? ''
       mount.querySelector('.chat')?.remove()
       const messages = (summary.world?.localChatMessages ?? [])
         .filter(message => message.moderationState === 'visible')
@@ -1175,7 +1224,18 @@ const makeClass = (): CustomElementConstructor =>
         item.append(term, detail)
         list.append(item)
       }
-      panel.append(list)
+      const legend = document.createElement('ul')
+      legend.className = 'legend'
+      for (const [label, value] of tassadarSupportHudItems(summary)) {
+        const item = document.createElement('li')
+        const term = document.createElement('strong')
+        term.textContent = label
+        const detail = document.createElement('span')
+        detail.textContent = value
+        item.append(term, detail)
+        legend.append(item)
+      }
+      panel.append(list, legend)
       mount.append(panel)
     }
 

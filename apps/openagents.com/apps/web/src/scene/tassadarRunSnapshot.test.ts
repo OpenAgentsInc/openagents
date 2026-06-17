@@ -208,6 +208,17 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
         status: 'active',
       },
     ])
+    const spatialLifecycleIds = [
+      'registered',
+      'qualified',
+      'state_synced',
+      'warmup',
+      'active',
+      'sync_reentry',
+    ]
+    expect(
+      options.entities?.some(entity => spatialLifecycleIds.includes(entity.id)),
+    ).toBe(false)
     expect(options.sceneChrome).toEqual({
       contributorOrbit: 'hidden',
       lossPanel: 'hidden',
@@ -835,9 +846,11 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
       },
     })
 
-    expect(options.entities?.some(entity => entity.id === 'station.pylon.world.missing')).toBe(
-      true,
-    )
+    expect(
+      options.entities?.some(
+        entity => entity.id === 'station.pylon.world.missing',
+      ),
+    ).toBe(true)
     expect(
       options.entities?.some(
         entity => entity.id === 'avatar.pylon_agent.missing_position',

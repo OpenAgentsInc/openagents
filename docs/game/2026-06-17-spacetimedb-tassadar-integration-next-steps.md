@@ -246,6 +246,13 @@ the adjusted row-backed anchor positions. The `three-effect` renderer used by
 the page also resolves node/entity hits through the shared hit-target registry
 for both unlocked clicks and pointer-locked center-reticle clicks.
 
+Issue #5274 moves lifecycle/status categories fully out of world geography. The
+primary canvas keeps only the real run node and row/ref-backed world entities;
+registered/qualified/state-synced/active/sync-reentry counters render as a
+compact text HUD legend. Loss/chart chrome stays hidden until real public loss
+data is intentionally wired and product-ready, and the page still emits no
+transfer dots, beams, or bursts without evidence-backed source refs.
+
 This phase still does not render payout motion before row-backed settlement
 evidence exists, and it does not store private prompts, private runtime logs,
 wallet material, provider payloads, or fixture chatter.
@@ -288,6 +295,8 @@ Required checks before treating `/tassadar` as connected:
   Done in issue #5273 through focused web scene unit tests. The existing
   dependency-free live smoke remains HTTP/API/asset-level; pixel-level WebGL,
   WASD, mouselook, and canvas selection smoke still requires a browser runner.
+- Add web coverage proving lifecycle/status categories remain HUD text and do
+  not reappear as spatial node/entity IDs. Done in issue #5274.
 - Build the SpacetimeDB WASM module after reducer-boundary changes. Done in
   issue #5265.
 - Probe `https://spacetime.openagents.com/v1/database/openagents-world/subscribe`

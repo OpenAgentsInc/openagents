@@ -5,10 +5,11 @@ import {
   TASSADAR_RUN_TAG,
   dataStateForSummary,
   nextTassadarLocalAvatarPosition,
-  pylonAttentionForAvatar,
   proofLinkForSelection,
+  pylonAttentionForAvatar,
   sanitizeTassadarChatBody,
   tassadarRunView,
+  tassadarSupportHudItems,
 } from './tassadarRunElement'
 import {
   TASSADAR_SPACETIME_DATABASE_ATTRIBUTE,
@@ -327,6 +328,9 @@ describe('tassadarRunView page wiring', () => {
     )
     expect(status?.textContent ?? '').toContain('active')
     expect(status?.textContent ?? '').toContain('2026-06-17T16:39:20.270Z')
+    expect(status?.querySelector('.legend')).not.toBeNull()
+    expect(status?.textContent ?? '').toContain('registered')
+    expect(status?.textContent ?? '').toContain('world rows')
     expect(status?.textContent ?? '').not.toContain('Refresh snapshot')
     expect(el.shadowRoot?.querySelector('.status button')).toBeNull()
 
@@ -473,6 +477,49 @@ describe('dataStateForSummary', () => {
     expect(dataStateForSummary(idle)).toBe('empty')
     expect(dataStateForSummary(populated)).toBe('ok')
     expect(dataStateForSummary({})).toBe('ok')
+  })
+})
+
+describe('tassadarSupportHudItems', () => {
+  it('keeps lifecycle/status context as compact support text, not map nodes', () => {
+    expect(
+      tassadarSupportHudItems({
+        metrics: {
+          activeWindowCount: { value: 2 },
+          assignedContributorCount: { value: 4 },
+          qualifiedContributorCount: { value: 1 },
+          receiptRefCount: { value: 3 },
+        },
+        realGradient: {
+          deviceRequirement: {
+            observedDistinctContributorDevices: 6,
+            requiredDistinctContributorDevices: 2,
+          },
+          externalAsk: { blockerRefs: ['blocker.one'] },
+        },
+        settlementRows: [
+          {
+            receiptRef: 'receipt.nexus.tassadar.example',
+          },
+        ],
+        staleness: { maxStalenessSeconds: 5 },
+        world: {
+          avatarPositions: [{ avatarRef: 'avatar.one' } as never],
+          pylonStations: [
+            { pylonRef: 'pylon.one' } as never,
+            { pylonRef: 'pylon.two' } as never,
+          ],
+        },
+      }),
+    ).toEqual([
+      ['registered', '6 pylons'],
+      ['qualified', '6/2 device gate'],
+      ['state synced', '<= 5s'],
+      ['active', '2 windows'],
+      ['sync reentry', '1 blockers'],
+      ['world rows', '2 stations / 1 avatars'],
+      ['proof refs', '3 receipts'],
+    ])
   })
 })
 

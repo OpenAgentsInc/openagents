@@ -115,11 +115,14 @@ As of 2026-06-17:
   shared spatial hash/minimum-distance layout helper to row-backed stations and
   avatars, carry layout-adjusted chat bubbles with their anchor rows, and use
   the region row for movement/controller bounds.
+- OpenAgents issue #5274 enforces the real-entity-only canvas rule in
+  `/tassadar`: lifecycle/status categories stay in a compact text HUD, the
+  spatial graph keeps only the real run node plus authority-backed pylon,
+  station, avatar, proof, receipt, corpus, and chat entities, loss/chart chrome
+  remains hidden, and no beams/bursts or transfer dots are emitted without
+  evidence-backed rows.
 
-Remaining work starts at the real-entity-only cleanup pass: remove any remaining
-non-entity lifecycle spatial nodes from the primary canvas, keep them in a
-compact HUD/legend when needed, then continue through terrain prototype and
-owned asset provenance.
+Remaining work starts at the terrain prototype and owned asset provenance.
 
 ## Mechanics Inventory
 
