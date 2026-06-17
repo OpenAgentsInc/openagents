@@ -250,6 +250,29 @@ const publicTransaction = (record: TreasuryTransactionRecord) => ({
   state: record.state,
 })
 
+// A flat "most recent N" list gets dominated by outbound payouts during busy
+// periods, hiding settled inbound funding/donations entirely. Fetch a wider
+// slice and keep the most-recent public rows of EACH direction so inbound
+// transfers always surface alongside outbound.
+const RECENT_FETCH_LIMIT = 250
+
+const balancedRecentTransactions = (
+  records: ReadonlyArray<TreasuryTransactionRecord>,
+): ReadonlyArray<TreasuryTransactionRecord> => {
+  const visible = records.filter(isPublicTransaction)
+  const sortKey = (record: TreasuryTransactionRecord): string =>
+    record.settledAt ?? record.createdAt
+  const inbound = visible
+    .filter(record => record.direction === 'in')
+    .slice(0, TRANSACTION_LIST_LIMIT)
+  const outbound = visible
+    .filter(record => record.direction === 'out')
+    .slice(0, TRANSACTION_LIST_LIMIT)
+  return [...inbound, ...outbound].sort((a, b) =>
+    sortKey(b).localeCompare(sortKey(a)),
+  )
+}
+
 type TreasuryRailBalance = Readonly<{
   balanceSat: number | null
   maxSendableSat: number | null
@@ -500,7 +523,7 @@ export const handlePublicTreasuryApi = (
           try: () =>
             store === undefined
               ? Promise.resolve([] as ReadonlyArray<TreasuryTransactionRecord>)
-              : store.listRecent(TRANSACTION_LIST_LIMIT),
+              : store.listRecent(RECENT_FETCH_LIMIT),
         }).pipe(
           Effect.catch(() =>
             Effect.succeed([] as ReadonlyArray<TreasuryTransactionRecord>),
@@ -510,9 +533,9 @@ export const handlePublicTreasuryApi = (
           noStoreJsonResponse({
             balance,
             service: 'mdk_treasury',
-            transactions: transactions
-              .filter(isPublicTransaction)
-              .map(publicTransaction),
+            transactions: balancedRecentTransactions(transactions).map(
+              publicTransaction,
+            ),
           }),
       ),
   )
@@ -535,7 +558,7 @@ const treasuryIndexPage = (
           try: () =>
             store === undefined
               ? Promise.resolve([] as ReadonlyArray<TreasuryTransactionRecord>)
-              : store.listRecent(TRANSACTION_LIST_LIMIT),
+              : store.listRecent(RECENT_FETCH_LIMIT),
         }).pipe(
           Effect.catch(() =>
             Effect.succeed([] as ReadonlyArray<TreasuryTransactionRecord>),
@@ -554,7 +577,7 @@ ${
 }
 <a class="button" href="/treasury/donate">Donate</a>
 <h1 style="margin-top:32px">Recent transactions</h1>
-${transactionRows(transactions)}
+${transactionRows(balancedRecentTransactions(transactions))}
 <p class="muted">Updated live from the treasury node. JSON: <a href="/api/public/treasury">/api/public/treasury</a></p>`,
           ),
       ),
