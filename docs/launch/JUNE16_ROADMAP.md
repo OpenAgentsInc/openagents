@@ -151,11 +151,17 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   after `/pay` or `/payments/{paymentId}` observes them. The journal stores only
   terminal state and a public-safe `reasonRef`; it does not store raw daemon
   text, destinations, invoices, hashes, preimages, mnemonics, or tokens.
-  Follow-up Orrery retries bracketed the Spark Lightning Address rail: 25,000
-  sats succeeds, while 30,000 / 40,000 / 50,000 fail before dispatch with
-  sufficient `preflightMaxSendableSat`, no payment id, no treasury balance
-  movement, and the same MDK `GenericFailure` fingerprint. Until upstream is
-  fixed, split this rail at <=25,000 sats. Policy:
+  Follow-up Orrery retries bracketed the Spark Lightning Address rail. The
+  earlier post-#5173 run showed 25,000 sats succeeding while 30,000 / 40,000 /
+  50,000 failed before dispatch with sufficient `preflightMaxSendableSat`, no
+  payment id, no treasury balance movement, and the same MDK `GenericFailure`
+  fingerprint. A later post-diagnostics pass changed the live result: 5,000
+  sats succeeded, then 30,000 sats succeeded over the same Lightning Address
+  rail. That pass also exposed and fixed a false `treasury_depleted` refusal
+  when the sidecar briefly returned `maxSendableSat:null`; the Worker now
+  retries the no-spend sendability read before refusing. Remaining honest test:
+  refill treasury and retry full 40,000 / 50,000 single-invoice sends with the
+  new balance-delta diagnostics. Policy:
   `docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md`;
   payment status:
   `docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md`.
