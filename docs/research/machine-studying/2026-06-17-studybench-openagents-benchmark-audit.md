@@ -5,6 +5,14 @@ Status: audit / roadmap proposal, not a benchmark claim or product promise
 Scope: how the StudyBench dataset should inform the OpenAgents machine-studying,
 Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
 
+## Implementation Status
+
+- 2026-06-17: #5282 / MSB-MVP-00 complete. The machine-studying README now
+  freezes the MVP source boundaries, names the initial OpenAgents StudyBench
+  refs, and states the answer-mode, patch-mode, calibration, public-retained,
+  private validation, private holdout, Probe, Psionic, Tassadar, Blueprint, and
+  product-promise boundaries.
+
 ## Short Answer
 
 The prior machine-studying plan incorporated the StudyBench idea at the concept
