@@ -161,9 +161,9 @@ signed recut.
   records the first internal Customer #1 completion row, and the public
   projection reports 1/3 counted completions. **D3.14 (#5243) shipped:**
   production now records the second internal Customer #1 completion row, and
-  the public projection reports 2/3 counted completions. Remaining D3 tail:
-  record one more real cohort row and pass the public audit before closing
-  #5098/#5104.
+  the public projection reports 2/3 counted completions.
+  **Active D3.15 slice: #5244** record the third internal Customer #1
+  completion row and pass the public audit before closing #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
