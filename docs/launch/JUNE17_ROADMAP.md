@@ -164,8 +164,9 @@ signed recut.
   the public projection reports 2/3 counted completions.
   **D3.15 (#5244) shipped:** production now records the third internal
   Customer #1 completion row, the projection gate is ready with 3/3 counted
-  completions, and the public audit passes. D3 is complete; #5098/#5104 can
-  close after issue closeout comments land.
+  completions, and the public audit passes. D3 is complete, #5098/#5104 are
+  closed, and the closeout audit lives at
+  `docs/launch/2026-06-17-customer-one-dogfood-audit.md`.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
