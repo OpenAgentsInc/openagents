@@ -61,6 +61,6 @@ default port and cross-talk with the wrong wallet.
 ## Ledger
 
 `ledger.jsonl` is append-only and idempotent by `eventId`. The current
-implementation records public refs such as `wallet.receive.*`,
-`wallet.payment.*`, and settlement refs. Raw wallet/payment material is rejected
-by the public projection guard.
+implementation records public refs such as `wallet.mdk_receive_target.*`,
+`wallet.payment.*`, `wallet.spark_backup_transfer.*`, and settlement refs. Raw
+wallet/payment material is rejected by the public projection guard.

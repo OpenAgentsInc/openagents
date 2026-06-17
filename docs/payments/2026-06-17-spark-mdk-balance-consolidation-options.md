@@ -49,12 +49,13 @@ callers can display the aggregate without implying one spendable MDK balance.
    explicit.
 
 2. Consented Spark-to-MDK sweep.
-   This is the desired single-spendable-balance path. It needs the live
-   integration step that actually moves the node's own credited Spark backup
-   funds into the node's own MDK wallet, then records a public-safe reconcile
-   receipt. The existing `migrate-spark --confirm-sweep` path has the consent
-   and projection boundary, but the live transfer must be finished and proven
-   before any UI can call Spark funds MDK-spendable.
+   **Implemented in #5169.** `migrate-spark --confirm-sweep
+   --destination-ready` now creates a fresh local MDK receive target, pays it
+   from the node's own credited Spark backup balance through a private
+   sweep-only SDK adapter, then verifies the MDK balance increased before it
+   emits `receipt.pylon.spark_backup_reconcile.<digest>`. Until that verified
+   receipt exists, the projection stays `sweep-pending-mdk-credit` or
+   `sweep-failed` and the funds are not described as MDK-spendable.
 
 3. Spark send/withdraw support.
    This would make Spark an active spend rail again. It is a broader authority
@@ -71,6 +72,7 @@ callers can display the aggregate without implying one spendable MDK balance.
 
 ## Recommendation
 
-Ship option 1 immediately, then implement option 2 as the real consolidation
-path. Do not implement option 3 unless a separate owner-approved design decides
-that Spark should regain spend authority.
+Option 1 and option 2 are now the product path: show the unified view first,
+then use the consented sweep to consolidate credited Spark backup funds into
+MDK. Do not implement option 3 unless a separate owner-approved design decides
+that Spark should regain general spend authority.

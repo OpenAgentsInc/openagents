@@ -50,6 +50,14 @@ This compatibility command never asks users to paste a mnemonic into GitHub,
 support threads, logs, or issue comments. If a user has only the 12-word phrase,
 recovery must happen locally and privately on their machine.
 
+When the preflight passes and the command runs with explicit consent, Pylon uses
+the same #5169 sweep path as the Spark backup reconcile: create a fresh local
+MDK receive target, pay it from the recovered Spark balance, then verify the
+MDK balance increased before emitting
+`receipt.pylon.spark_backup_reconcile.<digest>`. If the transfer is sent but
+the MDK balance is not visible yet, the projection stays
+`sweep-pending-mdk-credit` and must not be described as spendable.
+
 If the old helper cannot initialize because the Breez/Spark credential is
 missing, and the user has the local 12-word mnemonic, they should run a local
 mnemonic recovery preflight:
@@ -125,6 +133,7 @@ numbers. It must not include:
 - raw SDK state;
 - raw invoices;
 - payment preimages or payment hashes;
+- raw Spark transfer targets;
 - wallet home paths.
 
 ## Verification

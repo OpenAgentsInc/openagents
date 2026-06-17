@@ -244,8 +244,8 @@ smaller form:
 - `classifyMdkWallet()` calls `@moneydevkit/agent-wallet balance`;
 - `receiveWithMdk(amount)` calls `@moneydevkit/agent-wallet receive`;
 - `sendWithMdk(destinationRef, amount)` calls `@moneydevkit/agent-wallet send`;
-- raw invoices and payment outputs become stable `wallet.receive.*` and
-  `wallet.payment.*` refs;
+- raw receive targets and payment outputs become stable
+  `wallet.mdk_receive_target.*` and `wallet.payment.*` refs;
 - public readiness posts include `wallet.public.mdk.*` refs and blocker refs,
   not raw payment material.
 
@@ -365,7 +365,7 @@ pylon wallet migrate-spark --destination-invoice-ready --yes --execute
 Behavior:
 
 1. `wallet receive --amount` tries MDK first.
-2. If MDK succeeds, return the current MDK `wallet.receive.*` ref.
+2. If MDK succeeds, return the current MDK `wallet.mdk_receive_target.*` ref.
 3. If MDK fails with a daemon/offline/init timeout class, check Spark backup
    readiness.
 4. If Spark backup is enabled and an address/request is available, return:

@@ -42,9 +42,10 @@ export type WalletCommandResult = {
 // ---------------------------------------------------------------------------
 // Spark backup receive (slice 1: testable, inert core).
 //
-// Spark is reintroduced ONLY as a receive-only backup rail when the primary
-// MDK rail is offline/unavailable AND the backup is explicitly opt-in enabled.
-// There is NO send/payout/settlement path here; PayoutTargetKind is unchanged.
+// Spark is reintroduced as a receive-only backup rail when the primary MDK rail
+// is offline/unavailable AND the backup is explicitly opt-in enabled. The only
+// Spark movement is the consented own-wallet backup -> MDK reconcile sweep;
+// there is NO public Spark payout/settlement path. PayoutTargetKind is unchanged.
 // Public projections expose only redacted refs + blocker refs, never raw
 // Spark address/invoice/preimage/mnemonic/key/path material.
 // ---------------------------------------------------------------------------
@@ -282,6 +283,9 @@ function parseMaybeJson(stdout: string) {
     return null
   }
 }
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 function envNumber(env: NodeJS.ProcessEnv, key: string) {
   const raw = env[key]
@@ -836,16 +840,41 @@ export async function requestPayoutTargetAdmission(
   })
 }
 
-export async function receiveWithMdk(amountSats: number, runner: WalletCommandRunner = defaultWalletCommandRunner) {
+async function createMdkReceiveTarget(
+  amountSats: number,
+  runner: WalletCommandRunner = defaultWalletCommandRunner,
+): Promise<
+  | {
+      ok: true
+      target: string
+      targetRef: string
+    }
+  | {
+      ok: false
+      failureRef: string
+    }
+> {
   const result = await runner(["receive", String(amountSats)])
   if (result.exitCode !== 0) {
-    return { ok: false, receiptRef: stableRef("wallet.receive_failure", result.stderr || result.stdout) }
+    return { ok: false, failureRef: stableRef("wallet.mdk_receive_request_failure", result.stderr || result.stdout) }
   }
   const data = parseJson(result.stdout)
   if (typeof data?.invoice !== "string") {
-    return { ok: false, receiptRef: "wallet.receive_failure.missing_invoice" }
+    return { ok: false, failureRef: "wallet.mdk_receive_request_failure.missing_target" }
   }
-  return { ok: true, receiptRef: stableRef("wallet.receive", data.invoice) }
+  return {
+    ok: true,
+    target: data.invoice,
+    targetRef: stableRef("wallet.mdk_receive_target", data.invoice),
+  }
+}
+
+export async function receiveWithMdk(amountSats: number, runner: WalletCommandRunner = defaultWalletCommandRunner) {
+  const target = await createMdkReceiveTarget(amountSats, runner)
+  if (!target.ok) {
+    return { ok: false, receiptRef: target.failureRef }
+  }
+  return { ok: true, receiptRef: target.targetRef }
 }
 
 /**
@@ -1255,8 +1284,17 @@ export type SparkBackupReconcileState =
   | "helper-unavailable"
   | "nothing-to-sweep"
   | "consent-required"
+  | "sweep-pending-mdk-credit"
   | "swept-to-mdk"
   | "sweep-failed"
+
+export type SparkBackupMdkCreditState =
+  | "not-requested"
+  | "receive-target-created"
+  | "transfer-sent"
+  | "verified"
+  | "pending"
+  | "failed"
 
 export type SparkBackupReconcileProjection = {
   schema: "openagents.pylon.spark_backup_reconcile.v0.1"
@@ -1266,14 +1304,47 @@ export type SparkBackupReconcileProjection = {
   consentRequired: boolean
   detectedBalanceSats: number | null
   unclaimedDepositCount: number | null
+  claimableHtlcCount: number | null
+  claimableHtlcSats: number | null
   claimedDepositCount: number | null
   destinationReady: boolean
   sweptAmountSats: number | null
+  transferFeeSats: number | null
+  mdkCreditState: SparkBackupMdkCreditState
+  mdkReceiveTargetRef: string | null
+  sparkTransferRef: string | null
+  mdkBalanceBeforeSats: number | null
+  mdkBalanceAfterSats: number | null
+  mdkCreditedSats: number | null
   blockerRefs: string[]
+  failureRefs: string[]
   nextActionRefs: string[]
   publicReceiptRefs: string[]
   contentRedacted: true
 }
+
+export type SparkBackupSweepTransferResult =
+  | {
+      ok: true
+      transferRef: string
+      amountSats: number | null
+      feeSats: number | null
+    }
+  | {
+      ok: false
+      failureRef: string
+    }
+
+export type SparkBackupSweepTransfer = (input: {
+  amountSats: number
+  destination: string
+  idempotencyKey: string
+}) => Promise<SparkBackupSweepTransferResult>
+
+export const unavailableSparkBackupSweepTransfer: SparkBackupSweepTransfer = async () => ({
+  ok: false,
+  failureRef: "wallet.spark_backup_transfer.unavailable",
+})
 
 export type SparkBackupSweepOptions = SparkBackupReceiveOptions & {
   // Explicit consent gate. Without `confirmSweep: true` the reconcile is a
@@ -1288,7 +1359,15 @@ export type SparkBackupSweepOptions = SparkBackupReceiveOptions & {
   // The live claim+send path requires this; the mock-backed path threads it
   // through so tests can assert the destination-readiness blocker.
   destinationReady?: boolean
+  // The node's own MDK wallet runner. Used only to create a local receive
+  // target and verify the balance increase after the Spark transfer.
+  mdkRunner?: WalletCommandRunner
+  // Private, sweep-only transfer seam. It pays the node's own MDK receive
+  // target from the node's own Spark backup wallet and returns public refs only.
+  transfer?: SparkBackupSweepTransfer
   now?: () => Date
+  verificationAttempts?: number
+  verificationDelayMs?: number
 }
 
 function safeSparkBackupReconcile(
@@ -1360,13 +1439,12 @@ export async function detectSparkBackupBalance(helper: SparkBackupHelper): Promi
  *   blockers, no fund movement.
  * - nothing detected -> `nothing-to-sweep`, no fund movement.
  * - detected balance but NO explicit consent -> `consent-required` (refuses).
- * - detected balance + explicit consent + destination ready -> the helper
- *   claims its unclaimed deposits and the swept amount is recorded with a
- *   redacted reconcile receipt ref. (The live on-chain claim + MDK transfer is
- *   the owner-gated integration step; the projection records the reconcile.)
+ * - detected credited balance + explicit consent + destination ready -> create
+ *   a local MDK receive target, transfer from Spark, then record a reconcile
+ *   receipt only after MDK balance verification.
  *
- * The actual claim/transfer is performed by the injected helper in live mode;
- * mock-backed tests inject a helper that reports detected balance and deposits.
+ * The actual transfer is performed by the injected sweep adapter in live mode;
+ * mock-backed tests inject balance/transfer seams and assert public redaction.
  */
 export async function sweepSparkBackupToMdk(
   options: SparkBackupSweepOptions = {},
@@ -1375,6 +1453,8 @@ export async function sweepSparkBackupToMdk(
   const enabled = isSparkBackupEnabled(options, env)
   const helper = options.helper ?? unavailableSparkBackupHelper
   const confirmSweep = options.confirmSweep === true
+  const mdkRunner = options.mdkRunner ?? defaultWalletCommandRunner
+  const transfer = options.transfer ?? unavailableSparkBackupSweepTransfer
 
   const base: SparkBackupReconcileProjection = {
     schema: "openagents.pylon.spark_backup_reconcile.v0.1",
@@ -1384,10 +1464,20 @@ export async function sweepSparkBackupToMdk(
     consentRequired: true,
     detectedBalanceSats: null,
     unclaimedDepositCount: null,
+    claimableHtlcCount: null,
+    claimableHtlcSats: null,
     claimedDepositCount: null,
     destinationReady: options.destinationReady === true,
     sweptAmountSats: null,
+    transferFeeSats: null,
+    mdkCreditState: "not-requested",
+    mdkReceiveTargetRef: null,
+    sparkTransferRef: null,
+    mdkBalanceBeforeSats: null,
+    mdkBalanceAfterSats: null,
+    mdkCreditedSats: null,
     blockerRefs: [],
+    failureRefs: [],
     nextActionRefs: [],
     publicReceiptRefs: [],
     contentRedacted: true,
@@ -1422,15 +1512,37 @@ export async function sweepSparkBackupToMdk(
 
   const detectedBalanceSats = detected.detectedBalanceSats
   const unclaimedDepositCount = detected.unclaimedDepositCount
+  const claimableHtlcCount = detected.claimableHtlcCount
+  const claimableHtlcSats = detected.claimableHtlcSats
   const hasBalance = detectedBalanceSats !== null && detectedBalanceSats > 0
   const hasDeposits = unclaimedDepositCount !== null && unclaimedDepositCount > 0
+  const hasClaimableHtlcs = claimableHtlcCount !== null && claimableHtlcCount > 0
 
-  if (!hasBalance && !hasDeposits) {
+  if (!hasBalance && !hasDeposits && !hasClaimableHtlcs) {
     return safeSparkBackupReconcile({
       ...base,
       state: "nothing-to-sweep",
       detectedBalanceSats,
       unclaimedDepositCount,
+      claimableHtlcCount,
+      claimableHtlcSats,
+    })
+  }
+
+  if (!hasBalance) {
+    return safeSparkBackupReconcile({
+      ...base,
+      state: "sweep-failed",
+      detectedBalanceSats,
+      unclaimedDepositCount,
+      claimableHtlcCount,
+      claimableHtlcSats,
+      blockerRefs: hasClaimableHtlcs
+        ? ["blocker.wallet.spark_backup.claim_required_before_sweep"]
+        : ["blocker.wallet.spark_backup.no_credited_balance_detected"],
+      nextActionRefs: hasClaimableHtlcs
+        ? ["action.wallet.spark_backup.run_backup_claim_before_sweep"]
+        : ["action.wallet.spark_backup.backup_status"],
     })
   }
 
@@ -1443,6 +1555,8 @@ export async function sweepSparkBackupToMdk(
       consentRequired: true,
       detectedBalanceSats,
       unclaimedDepositCount,
+      claimableHtlcCount,
+      claimableHtlcSats,
       blockerRefs: ["blocker.wallet.spark_backup.sweep_consent_required"],
       nextActionRefs: ["action.wallet.spark_backup.rerun_with_confirm_sweep"],
     })
@@ -1458,38 +1572,160 @@ export async function sweepSparkBackupToMdk(
       consentRequired: false,
       detectedBalanceSats,
       unclaimedDepositCount,
+      claimableHtlcCount,
+      claimableHtlcSats,
       destinationReady: false,
       blockerRefs: ["blocker.wallet.spark_backup.mdk_destination_not_ready"],
       nextActionRefs: ["action.wallet.spark_backup.prepare_mdk_destination"],
     })
   }
 
-  // Consent given + destination ready: the helper claims its unclaimed
-  // deposits and the node sweeps its OWN received funds to its OWN MDK wallet.
-  // The amount swept is the detected received balance; deposits claimed equals
-  // the detected unclaimed count. Live on-chain claim/transfer is the
-  // owner-gated integration step.
-  const claimedDepositCount = unclaimedDepositCount ?? 0
-  const sweptAmountSats = detectedBalanceSats ?? null
+  const mdkBefore = await classifyMdkWallet(mdkRunner, env)
+  const mdkBalanceBeforeSats = mdkBefore.balanceSats
+  if (mdkBalanceBeforeSats === null) {
+    return safeSparkBackupReconcile({
+      ...base,
+      state: "sweep-failed",
+      consentRequired: false,
+      detectedBalanceSats,
+      unclaimedDepositCount,
+      claimableHtlcCount,
+      claimableHtlcSats,
+      destinationReady: true,
+      blockerRefs: ["blocker.wallet.spark_backup.mdk_balance_unverified_before_sweep"],
+      nextActionRefs: ["action.wallet.mdk.restore_balance_status"],
+    })
+  }
+
+  const receiveTarget = await createMdkReceiveTarget(detectedBalanceSats, mdkRunner)
+  if (!receiveTarget.ok) {
+    return safeSparkBackupReconcile({
+      ...base,
+      state: "sweep-failed",
+      consentRequired: false,
+      detectedBalanceSats,
+      unclaimedDepositCount,
+      claimableHtlcCount,
+      claimableHtlcSats,
+      destinationReady: true,
+      mdkBalanceBeforeSats,
+      mdkCreditState: "failed",
+      blockerRefs: ["blocker.wallet.spark_backup.mdk_receive_target_failed"],
+      failureRefs: [receiveTarget.failureRef],
+      nextActionRefs: ["action.wallet.spark_backup.retry_after_mdk_receive_ready"],
+    })
+  }
+
   const now = options.now?.() ?? new Date()
+  const idempotencyKey = `pylon:spark-backup-sweep:${stableRef(
+    "sweep",
+    JSON.stringify({
+      amount: detectedBalanceSats,
+      target: receiveTarget.targetRef,
+      at: now.toISOString().slice(0, 10),
+    }),
+  ).split(".").pop()}`
+  const transferResult = await transfer({
+    amountSats: detectedBalanceSats,
+    destination: receiveTarget.target,
+    idempotencyKey,
+  })
+  if (!transferResult.ok) {
+    return safeSparkBackupReconcile({
+      ...base,
+      state: "sweep-failed",
+      consentRequired: false,
+      detectedBalanceSats,
+      unclaimedDepositCount,
+      claimableHtlcCount,
+      claimableHtlcSats,
+      destinationReady: true,
+      mdkBalanceBeforeSats,
+      mdkReceiveTargetRef: receiveTarget.targetRef,
+      mdkCreditState: "failed",
+      blockerRefs: [
+        transferResult.failureRef === "wallet.spark_backup_transfer.unavailable"
+          ? "blocker.wallet.spark_backup.transfer_unavailable"
+          : "blocker.wallet.spark_backup.transfer_failed",
+      ],
+      failureRefs: [transferResult.failureRef],
+      nextActionRefs: ["action.wallet.spark_backup.retry_after_transfer_ready"],
+    })
+  }
+
+  const attempts = Math.max(1, Math.floor(options.verificationAttempts ?? 3))
+  const delayMs = Math.max(0, Math.floor(options.verificationDelayMs ?? 1_000))
+  let mdkBalanceAfterSats: number | null = null
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const mdkAfter = await classifyMdkWallet(mdkRunner, env)
+    mdkBalanceAfterSats = mdkAfter.balanceSats
+    if (
+      mdkBalanceAfterSats !== null &&
+      mdkBalanceAfterSats >= mdkBalanceBeforeSats + detectedBalanceSats
+    ) {
+      break
+    }
+    if (attempt < attempts - 1 && delayMs > 0) {
+      await sleep(delayMs)
+    }
+  }
+
+  const mdkCreditedSats =
+    mdkBalanceAfterSats === null
+      ? null
+      : Math.max(0, mdkBalanceAfterSats - mdkBalanceBeforeSats)
+  const verified = mdkCreditedSats !== null && mdkCreditedSats >= detectedBalanceSats
+  const claimedDepositCount = 0
+  const sweptAmountSats = detectedBalanceSats
   const receiptDigest = stableRef(
     "reconcile",
-    JSON.stringify({ swept: sweptAmountSats, claimed: claimedDepositCount, at: now.toISOString() }),
+    JSON.stringify({
+      swept: sweptAmountSats,
+      transferRef: transferResult.transferRef,
+      targetRef: receiveTarget.targetRef,
+      before: mdkBalanceBeforeSats,
+      after: mdkBalanceAfterSats,
+      at: now.toISOString(),
+    }),
+  )
+    .split(".")
+    .pop()
+  const transferReceiptDigest = stableRef(
+    "transfer",
+    JSON.stringify({
+      swept: sweptAmountSats,
+      transferRef: transferResult.transferRef,
+      targetRef: receiveTarget.targetRef,
+      at: now.toISOString(),
+    }),
   )
     .split(".")
     .pop()
 
   return safeSparkBackupReconcile({
     ...base,
-    state: "swept-to-mdk",
+    state: verified ? "swept-to-mdk" : "sweep-pending-mdk-credit",
     consentRequired: false,
     detectedBalanceSats,
     unclaimedDepositCount,
+    claimableHtlcCount,
+    claimableHtlcSats,
     claimedDepositCount,
     destinationReady: true,
     sweptAmountSats,
-    nextActionRefs: ["action.wallet.spark_backup.confirm_mdk_balance_after_sweep"],
-    publicReceiptRefs: [`receipt.pylon.spark_backup_reconcile.${receiptDigest}`],
+    transferFeeSats: transferResult.feeSats,
+    mdkCreditState: verified ? "verified" : "pending",
+    mdkReceiveTargetRef: receiveTarget.targetRef,
+    sparkTransferRef: transferResult.transferRef,
+    mdkBalanceBeforeSats,
+    mdkBalanceAfterSats,
+    mdkCreditedSats,
+    nextActionRefs: verified
+      ? ["action.wallet.spark_backup.confirm_mdk_balance_after_sweep"]
+      : ["action.wallet.spark_backup.rerun_status_until_mdk_credit_visible"],
+    publicReceiptRefs: verified
+      ? [`receipt.pylon.spark_backup_reconcile.${receiptDigest}`]
+      : [`receipt.pylon.spark_backup_transfer.${transferReceiptDigest}`],
   })
 }
 

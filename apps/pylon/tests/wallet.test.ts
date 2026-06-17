@@ -24,7 +24,9 @@ import {
   sweepSparkBackupToMdk,
   withUnifiedWalletBalance,
   writeCachedSparkTarget,
+  type SparkBackupCommand,
   type SparkBackupHelper,
+  type SparkBackupSweepTransfer,
   type WalletCommandRunner,
 } from "../src/wallet"
 
@@ -416,7 +418,7 @@ describe("MDK wallet readiness and ledger", () => {
       const ledger = await readFile(state.paths.ledger, "utf8")
 
       expect(receive.ok).toBe(true)
-      expect(receive.receiptRef.startsWith("wallet.receive.")).toBe(true)
+      expect(receive.receiptRef.startsWith("wallet.mdk_receive_target.")).toBe(true)
       expect(send.ok).toBe(true)
       expect(send.receiptRef.startsWith("wallet.payment.")).toBe(true)
       expect(eventId).toBe(duplicate)
@@ -433,9 +435,10 @@ describe("MDK wallet readiness and ledger", () => {
 })
 
 const RAW_SPARK_ADDRESS = "sp1pgssy9raw7examplespark0address0material0that0must0never0leak0publicly00"
+const RAW_MDK_RECEIVE_TARGET = "lnbc42420n1rawmdkreceivetargetthatmustneverleakpublicly"
 
 const sparkHelper =
-  (responses: Partial<Record<"status" | "address" | "history" | "unclaimed-deposits" | "lightning-address", { exitCode?: number; stdout?: unknown; stderr?: string }>>): SparkBackupHelper =>
+  (responses: Partial<Record<SparkBackupCommand, { exitCode?: number; stdout?: unknown; stderr?: string }>>): SparkBackupHelper =>
   async (command) => {
     const response = responses[command] ?? { exitCode: 1, stderr: `unexpected spark command: ${command}` }
     return {
@@ -797,6 +800,42 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
 
 describe("Spark backup reconcile / sweep (slice 3: consented receive-side sweep, NOT payout)", () => {
   const enabledEnv = { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv
+  const mdkRunnerWithVerifiedCredit = (
+    beforeSats: number,
+    afterSats: number,
+    receiveTarget = RAW_MDK_RECEIVE_TARGET,
+  ): WalletCommandRunner => {
+    let balanceCalls = 0
+    return async (args) => {
+      const key = args.join(" ")
+      if (key === "balance") {
+        const balance = balanceCalls === 0 ? beforeSats : afterSats
+        balanceCalls += 1
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ balance_sats: balance, send_ready: true, outbound_capacity_sats: 21 }),
+          stderr: "",
+        }
+      }
+      if (key.startsWith("receive ")) {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ invoice: receiveTarget, payment_hash: "redacted-test-hash" }),
+          stderr: "",
+        }
+      }
+      return { exitCode: 1, stdout: "", stderr: `unexpected mdk command: ${key}` }
+    }
+  }
+  const successfulTransfer: SparkBackupSweepTransfer = async ({ amountSats, destination }) => {
+    expect(destination).toBe(RAW_MDK_RECEIVE_TARGET)
+    return {
+      ok: true,
+      transferRef: "wallet.spark_backup_transfer.deadbeefdeadbeefdeadbeef",
+      amountSats,
+      feeSats: 3,
+    }
+  }
 
   test("inert by default: opt-in off, stub helper -> disabled, no movement", async () => {
     const reconcile = await sweepSparkBackupToMdk({ env: {} as NodeJS.ProcessEnv })
@@ -878,6 +917,93 @@ describe("Spark backup reconcile / sweep (slice 3: consented receive-side sweep,
     assertPublicProjectionSafe(reconcile)
   })
 
+  test("claimable but uncredited HTLCs must be claimed before sweep", async () => {
+    const reconcile = await sweepSparkBackupToMdk({
+      enabled: true,
+      env: enabledEnv,
+      confirmSweep: true,
+      destinationReady: true,
+      helper: sparkHelper({
+        status: {
+          stdout: {
+            balance_sats: 0,
+            claimable_htlc_count: 1,
+            claimable_htlc_sats: 50_000,
+            unclaimed_deposit_count: 0,
+          },
+        },
+      }),
+    })
+    expect(reconcile.state).toBe("sweep-failed")
+    expect(reconcile.claimableHtlcCount).toBe(1)
+    expect(reconcile.claimableHtlcSats).toBe(50_000)
+    expect(reconcile.blockerRefs).toContain("blocker.wallet.spark_backup.claim_required_before_sweep")
+    expect(reconcile.nextActionRefs).toContain("action.wallet.spark_backup.run_backup_claim_before_sweep")
+    expect(reconcile.publicReceiptRefs).toEqual([])
+    assertPublicProjectionSafe(reconcile)
+  })
+
+  test("consent + destination ready still blocks when MDK cannot create a receive target", async () => {
+    const failingMdkRunner: WalletCommandRunner = async (args) => {
+      const key = args.join(" ")
+      if (key === "balance") {
+        return { exitCode: 0, stdout: JSON.stringify({ balance_sats: 100 }), stderr: "" }
+      }
+      if (key.startsWith("receive ")) {
+        return { exitCode: 1, stdout: "", stderr: "mdk receive unavailable" }
+      }
+      return { exitCode: 1, stdout: "", stderr: `unexpected mdk command: ${key}` }
+    }
+    const reconcile = await sweepSparkBackupToMdk({
+      enabled: true,
+      env: enabledEnv,
+      confirmSweep: true,
+      destinationReady: true,
+      helper: sparkHelper({ status: { stdout: { balance_sats: 4242, unclaimed_deposit_count: 0 } } }),
+      mdkRunner: failingMdkRunner,
+      transfer: successfulTransfer,
+    })
+    expect(reconcile.state).toBe("sweep-failed")
+    expect(reconcile.mdkCreditState).toBe("failed")
+    expect(reconcile.blockerRefs).toContain("blocker.wallet.spark_backup.mdk_receive_target_failed")
+    expect(reconcile.failureRefs[0]).toMatch(/^wallet\.mdk_receive_request_failure\.[a-f0-9]{24}$/)
+    assertPublicProjectionSafe(reconcile)
+  })
+
+  test("consent + destination ready still blocks when transfer adapter is unavailable", async () => {
+    const reconcile = await sweepSparkBackupToMdk({
+      enabled: true,
+      env: enabledEnv,
+      confirmSweep: true,
+      destinationReady: true,
+      helper: sparkHelper({ status: { stdout: { balance_sats: 4242, unclaimed_deposit_count: 0 } } }),
+      mdkRunner: mdkRunnerWithVerifiedCredit(100, 100),
+    })
+    expect(reconcile.state).toBe("sweep-failed")
+    expect(reconcile.mdkCreditState).toBe("failed")
+    expect(reconcile.blockerRefs).toContain("blocker.wallet.spark_backup.transfer_unavailable")
+    expect(reconcile.publicReceiptRefs).toEqual([])
+    assertPublicProjectionSafe(reconcile)
+  })
+
+  test("transfer sent but MDK balance not yet increased stays pending, not spendable", async () => {
+    const reconcile = await sweepSparkBackupToMdk({
+      enabled: true,
+      env: enabledEnv,
+      confirmSweep: true,
+      destinationReady: true,
+      helper: sparkHelper({ status: { stdout: { balance_sats: 4242, unclaimed_deposit_count: 0 } } }),
+      mdkRunner: mdkRunnerWithVerifiedCredit(100, 100),
+      transfer: successfulTransfer,
+      verificationAttempts: 1,
+    })
+    expect(reconcile.state).toBe("sweep-pending-mdk-credit")
+    expect(reconcile.mdkCreditState).toBe("pending")
+    expect(reconcile.mdkCreditedSats).toBe(0)
+    expect(reconcile.publicReceiptRefs[0]).toMatch(/^receipt\.pylon\.spark_backup_transfer\.[a-f0-9]{24}$/)
+    assertPublicProjectionSafe(reconcile)
+  })
+
   test("consent + destination ready sweeps mock-detected balance and emits a redacted reconcile receipt", async () => {
     const reconcile = await sweepSparkBackupToMdk({
       enabled: true,
@@ -888,14 +1014,24 @@ describe("Spark backup reconcile / sweep (slice 3: consented receive-side sweep,
         status: { stdout: { balance_sats: 4242, unclaimed_deposit_count: 2 } },
         "unclaimed-deposits": { stdout: { unclaimed_deposit_count: 2 } },
       }),
+      mdkRunner: mdkRunnerWithVerifiedCredit(100, 4242 + 100),
       now: () => new Date("2026-06-16T00:00:00.000Z"),
+      transfer: successfulTransfer,
     })
     expect(reconcile.state).toBe("swept-to-mdk")
     expect(reconcile.consentRequired).toBe(false)
     expect(reconcile.sweptAmountSats).toBe(4242)
-    expect(reconcile.claimedDepositCount).toBe(2)
+    expect(reconcile.claimedDepositCount).toBe(0)
+    expect(reconcile.transferFeeSats).toBe(3)
+    expect(reconcile.mdkCreditState).toBe("verified")
+    expect(reconcile.mdkBalanceBeforeSats).toBe(100)
+    expect(reconcile.mdkBalanceAfterSats).toBe(4242 + 100)
+    expect(reconcile.mdkCreditedSats).toBe(4242)
+    expect(reconcile.mdkReceiveTargetRef).toMatch(/^wallet\.mdk_receive_target\.[a-f0-9]{24}$/)
+    expect(reconcile.sparkTransferRef).toBe("wallet.spark_backup_transfer.deadbeefdeadbeefdeadbeef")
     expect(reconcile.publicReceiptRefs).toHaveLength(1)
     expect(reconcile.publicReceiptRefs[0]).toMatch(/^receipt\.pylon\.spark_backup_reconcile\.[a-f0-9]{24}$/)
+    expect(JSON.stringify(reconcile)).not.toContain(RAW_MDK_RECEIVE_TARGET)
     assertPublicProjectionSafe(reconcile)
   })
 
@@ -909,9 +1045,12 @@ describe("Spark backup reconcile / sweep (slice 3: consented receive-side sweep,
         status: { stdout: { balance_sats: 1000 } },
         "unclaimed-deposits": { stdout: { unclaimed_deposit_count: 3 } },
       }),
+      mdkRunner: mdkRunnerWithVerifiedCredit(0, 1000),
+      transfer: successfulTransfer,
     })
     expect(reconcile.state).toBe("swept-to-mdk")
-    expect(reconcile.claimedDepositCount).toBe(3)
+    expect(reconcile.claimedDepositCount).toBe(0)
+    expect(reconcile.unclaimedDepositCount).toBe(3)
     assertPublicProjectionSafe(reconcile)
   })
 
@@ -924,8 +1063,11 @@ describe("Spark backup reconcile / sweep (slice 3: consented receive-side sweep,
       helper: sparkHelper({
         status: { stdout: { balance_sats: 4242, unclaimed_deposit_count: 1, spark_address: RAW_SPARK_ADDRESS } },
       }),
+      mdkRunner: mdkRunnerWithVerifiedCredit(100, 4242 + 100),
+      transfer: successfulTransfer,
     })
     expect(JSON.stringify(reconcile)).not.toContain(RAW_SPARK_ADDRESS)
+    expect(JSON.stringify(reconcile)).not.toContain(RAW_MDK_RECEIVE_TARGET)
     expect(JSON.stringify(reconcile)).not.toContain("sp1")
     assertPublicProjectionSafe(reconcile)
   })

@@ -10,8 +10,9 @@ scoped product promise
 
 `payments.offline_receive_spark_fallback.v1`
 
-from blocked to green. The code (slices 1-3 of #5078) is landed; the only
-remaining step is the owner-gated live integration smoke described below.
+from blocked to green. The receive/claim/visible-backup-balance path is now
+green; the consolidation follow-up (#5169) adds the consented Spark-to-MDK
+sweep described in Step 4.
 
 Read alongside:
 
@@ -23,11 +24,13 @@ Read alongside:
 Spark is reintroduced ONLY as a **receive-only backup target** for when the
 primary MDK rail is offline and cannot create a receive request.
 
-- It is **receive-only**. There is NO Spark send/payout path.
+- It is **receive-only** for public/product purposes. There is no Spark
+  payout path or general Spark send command.
 - The `migrate-spark --confirm-sweep` reconcile moves the node's **OWN**
   received Spark backup funds into the node's **OWN** MDK wallet, under
-  explicit consent. It is a reconcile, **NOT** a payout, **NOT** a send to a
-  third party, and **NOT** accepted-work settlement.
+  explicit consent through a private sweep-only transfer adapter. It is a
+  reconcile, **NOT** a payout, **NOT** a send to a third party, and **NOT**
+  accepted-work settlement.
 - `PayoutTargetKind` and `admitPayoutTarget` are unchanged. Spark gains **no**
   public payout-target authority.
 - It is **inert by default**: nothing runs and no SDK code loads until the
@@ -129,8 +132,8 @@ redacted refs.
    pylon wallet receive --amount 1000
    ```
 
-   With MDK reachable this returns the MDK `wallet.receive.*` ref. With MDK in
-   an offline/unavailable class AND the backup enabled, it returns
+   With MDK reachable this returns the MDK `wallet.mdk_receive_target.*` ref.
+   With MDK in an offline/unavailable class AND the backup enabled, it returns
    `rail: "spark_backup"`, a redacted `wallet.backup_receive.<digest>`
    receipt, and `rawTargetAvailableLocally: true`. An MDK validation/user
    error does NOT switch rails.
@@ -166,11 +169,18 @@ backup funds into its OWN MDK wallet.
    ```
 
    `--confirm-sweep` is the required explicit consent flag. `--destination-ready`
-   asserts the MDK destination is ready. On success the helper claims the
-   node's unclaimed deposits and the swept amount is recorded with a redacted
-   reconcile receipt `receipt.pylon.spark_backup_reconcile.<digest>` (also
-   appended to the local ledger as `spark-backup-reconcile-swept`). State
-   becomes `swept-to-mdk`.
+   asserts the MDK destination is ready. The command creates a fresh local MDK
+   receive target, pays it from the node's own credited Spark backup balance,
+   then reads MDK balance again. Only after the balance increase is visible does
+   it emit the redacted reconcile receipt
+   `receipt.pylon.spark_backup_reconcile.<digest>` (also appended to the local
+   ledger as `spark-backup-reconcile-swept`). State becomes `swept-to-mdk`.
+
+   If Spark reports claimable HTLCs but no credited balance, run
+   `pylon wallet backup-claim` first. A transfer that was sent but not yet
+   visible in MDK returns `state: "sweep-pending-mdk-credit"` with
+   `receipt.pylon.spark_backup_transfer.<digest>` and must not be called
+   MDK-spendable yet.
 
    Without `--destination-ready` the sweep refuses with
    `state: "sweep-failed"` and `blocker.wallet.spark_backup.mdk_destination_not_ready`;
@@ -187,6 +197,9 @@ Allowed public refs only:
 
 - `wallet.backup.spark_address.<digest>`
 - `wallet.backup_receive.<digest>`
+- `wallet.mdk_receive_target.<digest>`
+- `wallet.spark_backup_transfer.<digest>`
+- `receipt.pylon.spark_backup_transfer.<digest>`
 - `receipt.pylon.spark_backup_reconcile.<digest>`
 - blocker refs such as `blocker.wallet.spark_backup.credential_missing`,
   `blocker.wallet.spark_backup.helper_unavailable`,
@@ -216,10 +229,10 @@ record; the wallet tests assert raw Spark material is rejected.
   unchanged; there is no public payout-target authority for Spark.
 - Funds remain non-settled until Spark sync plus the consented reconcile.
 
-## Remaining owner-gated item: live integration smoke
+## Live integration smoke
 
-All three code slices of #5078 are landed and covered by mock-backed tests.
-The remaining step is owner-gated and cannot run without a real credential:
+The #5078 receive path has been proven on real infrastructure. Re-run this
+smoke for any new RC that changes Spark, MDK, or the sweep adapter:
 
 1. Set a real Breez/Spark API key (Step 1) and `PYLON_SPARK_BACKUP_ENABLED=1`.
 2. Run the offline-recipient receive smoke (Step 3) against a real Spark
@@ -229,5 +242,5 @@ The remaining step is owner-gated and cannot run without a real credential:
 4. Confirm public output across the smoke contains only refs and
    blocker/action refs.
 
-Completing that live smoke is what flips
-`payments.offline_receive_spark_fallback.v1` green.
+The receive/claim/visible-backup-balance promise is already green. This smoke
+keeps the consented consolidation path honest across RCs.

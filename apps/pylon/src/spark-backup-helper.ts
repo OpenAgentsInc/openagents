@@ -1,8 +1,10 @@
 // ---------------------------------------------------------------------------
-// Spark backup receive helper adapter (slice 2 of #5078).
+// Spark backup receive helper adapter (slice 2 of #5078) plus the private
+// consented own-wallet sweep adapter (#5169).
 //
 // Backs the slice-1 `SparkBackupHelper` contract with the real Breez SDK Spark
-// JavaScript package (`@breeztech/breez-sdk-spark`). RECEIVE MODES ONLY.
+// JavaScript package (`@breeztech/breez-sdk-spark`). Public helper commands are
+// receive/status/claim only; the sweep adapter is private to `migrate-spark`.
 //
 // Feasibility (verified 2026-06-15): the package is WASM-based, not native
 // bindings. Its nodejs entry imports and initializes cleanly under the Pylon
@@ -28,10 +30,10 @@
 // helper stays unavailable.
 //
 // SAFETY: this module NEVER logs or emits Breez API keys, raw Spark
-// addresses/invoices/payment-requests, preimages, mnemonics, or SDK/wallet
-// storage paths. Raw material is returned only inside the `SparkBackupHelper`
-// JSON stdout that slice-1 code keeps out of public projections (and surfaces
-// locally only under `--show-local-target`).
+// addresses/invoices/payment-requests, preimages, mnemonics, raw MDK receive
+// targets, or SDK/wallet storage paths. Raw receive material is returned only
+// inside local helper stdout (for explicit local display) or kept inside the
+// private sweep closure; public projections get refs only.
 // ---------------------------------------------------------------------------
 
 import { createHash } from "node:crypto"
@@ -41,6 +43,7 @@ import type {
   LegacySparkCommandRunner,
   SparkBackupCommand,
   SparkBackupHelper,
+  SparkBackupSweepTransfer,
   WalletCommandResult,
 } from "./wallet"
 import { SparkBunStorage } from "./spark-bun-storage"
@@ -61,8 +64,8 @@ export const DEFAULT_OPENAGENTS_SPARK_API_KEY =
 /**
  * Minimal structural view of the Breez SDK Spark surface this adapter uses.
  * We intentionally do NOT depend on the SDK's type package at compile time
- * (it is an optional dependency loaded at runtime), so this is a narrow,
- * receive-only shape covering exactly the four helper commands.
+ * (it is an optional dependency loaded at runtime), so this is a narrow shape
+ * covering the receive helper commands plus the private consented sweep call.
  */
 type BreezSparkSdk = {
   getInfo(request: { ensureSynced?: boolean }): Promise<{ balanceSats?: number }>
@@ -83,6 +86,30 @@ type BreezSparkSdk = {
     description?: string
   }): Promise<{ lightningAddress?: string }>
   checkLightningAddressAvailable?(request: { username: string }): Promise<boolean>
+  prepareSendPayment?(request: {
+    paymentRequest: string
+    amount?: bigint
+  }): Promise<unknown>
+  sendPayment?(request: {
+    prepareResponse: unknown
+    options?: {
+      type: "bolt11Invoice"
+      preferSpark: boolean
+      completionTimeoutSecs?: number
+    }
+    idempotencyKey?: string
+  }): Promise<{
+    payment?: {
+      id?: unknown
+      amount?: unknown
+      fees?: unknown
+      status?: unknown
+    }
+    id?: unknown
+    amount?: unknown
+    fees?: unknown
+    status?: unknown
+  }>
   disconnect?(): Promise<void> | void
 }
 
@@ -144,6 +171,10 @@ function helperError(command: SparkBackupCommand, message: string): WalletComman
 
 function helperOk(payload: Record<string, unknown>): WalletCommandResult {
   return { exitCode: 0, stdout: JSON.stringify(payload), stderr: "" }
+}
+
+function publicRef(prefix: string, value: string) {
+  return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -473,6 +504,103 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
       const message = error instanceof Error ? error.message : String(error)
       // Surface missing-credential shape so slice-1 classification can map it.
       return helperError(command, message)
+    } finally {
+      if (sdk?.disconnect) {
+        try {
+          await sdk.disconnect()
+        } catch {
+          // best-effort cleanup; never throw from disconnect.
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Private transfer adapter for the consented Spark-backup -> MDK sweep.
+ *
+ * This is deliberately NOT exposed as a generic Spark send command. The caller
+ * must provide a fresh local MDK receive target and an idempotency key; this
+ * adapter pays exactly that target from the node's own Spark backup wallet and
+ * returns only public-safe refs/amounts. Raw BOLT11 targets stay inside this
+ * closure and are never emitted in helper JSON or projections.
+ */
+export function createSparkBackupSweepTransfer(config: SparkBackupAdapterConfig): SparkBackupSweepTransfer {
+  const loadModule = config.loadModule ?? loadBreezSparkModule
+  const network = config.network ?? "mainnet"
+  const timeoutMs = config.timeoutMs ?? DEFAULT_SPARK_TIMEOUT_MS
+
+  return async ({ amountSats, destination, idempotencyKey }) => {
+    if (!config.apiKey || config.apiKey.trim() === "") {
+      return { ok: false, failureRef: "wallet.spark_backup_transfer.missing_credential" }
+    }
+    if (!config.mnemonic || config.mnemonic.trim() === "") {
+      return { ok: false, failureRef: "wallet.spark_backup_transfer.missing_seed" }
+    }
+
+    let sdk: BreezSparkSdk | null = null
+    try {
+      const mod = await withTimeout(loadModule(), timeoutMs, "spark sdk load")
+      const sdkConfig = mod.defaultConfig(network)
+      sdkConfig.apiKey = config.apiKey
+      sdk = await buildSparkSdk(
+        mod,
+        sdkConfig,
+        { type: "mnemonic", mnemonic: config.mnemonic, passphrase: undefined },
+        config.storageDir,
+        timeoutMs,
+      )
+      if (typeof sdk.prepareSendPayment !== "function" || typeof sdk.sendPayment !== "function") {
+        return { ok: false, failureRef: "wallet.spark_backup_transfer.send_unsupported" }
+      }
+      const prepareResponse = await withTimeout(
+        sdk.prepareSendPayment({
+          paymentRequest: destination,
+          amount: BigInt(amountSats),
+        }),
+        timeoutMs,
+        "spark prepareSendPayment",
+      )
+      const sent = await withTimeout(
+        sdk.sendPayment({
+          prepareResponse,
+          options: {
+            type: "bolt11Invoice",
+            preferSpark: false,
+            completionTimeoutSecs: 60,
+          },
+          idempotencyKey,
+        }),
+        timeoutMs,
+        "spark sendPayment",
+      )
+      const payment = sent.payment ?? sent
+      const amount = toSatNumber(payment.amount) ?? amountSats
+      const fee = toSatNumber(payment.fees)
+      const transferRef = publicRef(
+        "wallet.spark_backup_transfer",
+        [
+          typeof payment.id === "string" ? payment.id : "id-redacted",
+          typeof payment.status === "string" ? payment.status : "status-redacted",
+          String(amount),
+          fee === null ? "fee-unknown" : String(fee),
+          idempotencyKey,
+        ].join(":"),
+      )
+      return {
+        ok: true,
+        transferRef,
+        amountSats: amount,
+        feeSats: fee,
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        failureRef: publicRef(
+          "wallet.spark_backup_transfer_failure",
+          error instanceof Error ? error.message : String(error),
+        ),
+      }
     } finally {
       if (sdk?.disconnect) {
         try {

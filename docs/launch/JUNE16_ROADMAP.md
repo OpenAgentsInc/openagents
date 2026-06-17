@@ -118,12 +118,12 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   `claimableHtlcCount/Sats`, WASM-embed + build guard. **Trigger recipient-
   confirmed the real 50,000-sat backup balance on rc.12**, so
   `payments.offline_receive_spark_fallback.v1` is now green for the scoped
-  receive/claim/visible-backup-balance promise (`2026-06-17.1`). This does **not**
-  claim one spendable MDK balance yet: Spark remains receive-only, and the
-  consolidation direction is documented at
-  `docs/payments/2026-06-17-spark-mdk-balance-consolidation-options.md`
-  (selected path: unified balance view first, then real consented Spark→MDK
-  sweep). Open integrity item: the green `training.monday` gate is backed by a
+  receive/claim/visible-backup-balance promise (`2026-06-17.1`). Follow-up
+  #5168 added the unified visible balance view, and #5169 implemented the real
+  consented Spark→MDK sweep: create local MDK receive target, pay from the
+  node's own credited Spark backup balance, and emit the reconcile receipt only
+  after MDK balance verification. Open integrity item: the green
+  `training.monday` gate is backed by a
   **simulation** settlement receipt (`realBitcoinMoved:false`) — owner's call
   (flagged, not flipped).
 

@@ -157,6 +157,7 @@ import {
 } from "./wallet"
 import {
   createSparkBackupHelper,
+  createSparkBackupSweepTransfer,
   legacySparkHelperRunner,
   resolveLegacySparkApiKey,
   resolveSparkBackupHelper,
@@ -999,15 +1000,26 @@ async function resolveSparkBackupOptions(
   input: { showLocalTarget?: boolean } = {},
 ) {
   const mnemonic = await readIdentityMnemonicOrNull(state)
+  const storageDir = `${state.paths.home}/wallet/spark-backup/sdk`
+  const network = Bun.env.PYLON_SPARK_BACKUP_NETWORK === "regtest" ? "regtest" : "mainnet"
   const helper = resolveSparkBackupHelper({
     env: Bun.env,
     mnemonic,
-    storageDir: `${state.paths.home}/wallet/spark-backup/sdk`,
+    storageDir,
   })
+  const transfer = mnemonic
+    ? createSparkBackupSweepTransfer({
+        apiKey: resolveLegacySparkApiKey(Bun.env),
+        mnemonic,
+        network,
+        storageDir,
+      })
+    : null
   const cachedAddress = await readCachedSparkTarget(state.paths)
   return {
     env: Bun.env,
     ...(helper ? { helper } : {}),
+    ...(transfer ? { transfer } : {}),
     cachedAddress,
     showLocalTarget: input.showLocalTarget === true,
     // The embedded owner-authorized default Breez key is always compiled in, so
@@ -2237,6 +2249,12 @@ async function main() {
             embeddedCredentialAvailable: true,
             env: Bun.env,
             helper: createSparkBackupHelper({
+              apiKey: resolveLegacySparkApiKey(Bun.env),
+              mnemonic: migrationMnemonic ?? "",
+              network: Bun.env.PYLON_SPARK_BACKUP_NETWORK === "regtest" ? "regtest" : "mainnet",
+              storageDir: legacyStorageDir,
+            }),
+            transfer: createSparkBackupSweepTransfer({
               apiKey: resolveLegacySparkApiKey(Bun.env),
               mnemonic: migrationMnemonic ?? "",
               network: Bun.env.PYLON_SPARK_BACKUP_NETWORK === "regtest" ? "regtest" : "mainnet",

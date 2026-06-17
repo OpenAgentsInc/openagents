@@ -4,7 +4,10 @@ import {
   preflightLegacySparkMigration,
   sweepSparkBackupToMdk,
   type LegacySparkCommandRunner,
+  type SparkBackupCommand,
   type SparkBackupHelper,
+  type SparkBackupSweepTransfer,
+  type WalletCommandRunner,
 } from "../src/wallet"
 import {
   DEFAULT_OPENAGENTS_SPARK_API_KEY,
@@ -26,7 +29,7 @@ const legacyRunner =
   }
 
 const sparkHelper =
-  (responses: Partial<Record<"status" | "address" | "history" | "unclaimed-deposits", { exitCode?: number; stdout?: unknown; stderr?: string }>>): SparkBackupHelper =>
+  (responses: Partial<Record<SparkBackupCommand, { exitCode?: number; stdout?: unknown; stderr?: string }>>): SparkBackupHelper =>
   async (command) => {
     const response = responses[command] ?? { exitCode: 1, stderr: `unexpected spark command: ${command}` }
     return {
@@ -38,6 +41,33 @@ const sparkHelper =
 
 const EMPTY_ENV = {} as NodeJS.ProcessEnv
 const TEST_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+const RAW_MDK_RECEIVE_TARGET = "lnbc42420n1rawmdkreceivetargetthatmustneverleakpublicly"
+
+const mdkRunnerWithVerifiedCredit = (beforeSats: number, afterSats: number): WalletCommandRunner => {
+  let balanceCalls = 0
+  return async (args) => {
+    const key = args.join(" ")
+    if (key === "balance") {
+      const balance = balanceCalls === 0 ? beforeSats : afterSats
+      balanceCalls += 1
+      return { exitCode: 0, stdout: JSON.stringify({ balance_sats: balance }), stderr: "" }
+    }
+    if (key.startsWith("receive ")) {
+      return { exitCode: 0, stdout: JSON.stringify({ invoice: RAW_MDK_RECEIVE_TARGET }), stderr: "" }
+    }
+    return { exitCode: 1, stdout: "", stderr: `unexpected mdk command: ${key}` }
+  }
+}
+
+const successfulTransfer: SparkBackupSweepTransfer = async ({ amountSats, destination }) => {
+  expect(destination).toBe(RAW_MDK_RECEIVE_TARGET)
+  return {
+    ok: true,
+    transferRef: "wallet.spark_backup_transfer.deadbeefdeadbeefdeadbeef",
+    amountSats,
+    feeSats: 1,
+  }
+}
 
 describe("#5085 legacy migrate-spark rewired to embedded-key Bun helper", () => {
   test("embedded credential + helper balance => migration recommended, NO breez_api_key_missing (no env key)", async () => {
@@ -103,12 +133,16 @@ describe("#5085 legacy migrate-spark rewired to embedded-key Bun helper", () => 
       }),
       confirmSweep: true,
       destinationReady: true,
+      mdkRunner: mdkRunnerWithVerifiedCredit(100, 4242 + 100),
       now: () => new Date("2026-06-16T00:00:00.000Z"),
+      transfer: successfulTransfer,
     })
 
     expect(reconcile.state).toBe("swept-to-mdk")
     expect(reconcile.sweptAmountSats).toBe(4242)
-    expect(reconcile.claimedDepositCount).toBe(1)
+    expect(reconcile.claimedDepositCount).toBe(0)
+    expect(reconcile.mdkCreditState).toBe("verified")
+    expect(JSON.stringify(reconcile)).not.toContain(RAW_MDK_RECEIVE_TARGET)
     expect(reconcile.publicReceiptRefs[0]).toMatch(/^receipt\.pylon\.spark_backup_reconcile\.[a-f0-9]{24}$/)
     assertPublicProjectionSafe(reconcile)
   })

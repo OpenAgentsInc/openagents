@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { classifySparkBackupReceive, prepareSparkBackupReceive } from "../src/wallet"
 import { assertPublicProjectionSafe } from "../src/state"
-import { createSparkBackupHelper, resolveSparkBackupHelper } from "../src/spark-backup-helper"
+import {
+  createSparkBackupHelper,
+  createSparkBackupSweepTransfer,
+  resolveSparkBackupHelper,
+} from "../src/spark-backup-helper"
 
 const RAW_SPARK_ADDRESS = "sp1pgssy9fakesparkaddressmaterialthatmustnotleakpublicly00000000000000"
 const TEST_MNEMONIC =
@@ -18,6 +22,8 @@ function fakeSparkModule(opts: {
   failConnect?: boolean
   failKind?: string
   onDisconnect?: () => void
+  onPrepareSend?: (request: { paymentRequest: string; amount?: bigint }) => void
+  onSend?: (request: { idempotencyKey?: string; options?: unknown; prepareResponse: unknown }) => void
 }) {
   let connected = false
   return {
@@ -37,6 +43,21 @@ function fakeSparkModule(opts: {
         listUnclaimedDeposits: async () => ({
           deposits: Array.from({ length: opts.unclaimed ?? 0 }, (_, i) => ({ txid: String(i), vout: 0 })),
         }),
+        prepareSendPayment: async (request: { paymentRequest: string; amount?: bigint }) => {
+          opts.onPrepareSend?.(request)
+          return { prepared: true, paymentRequest: request.paymentRequest }
+        },
+        sendPayment: async (request: { idempotencyKey?: string; options?: unknown; prepareResponse: unknown }) => {
+          opts.onSend?.(request)
+          return {
+            payment: {
+              id: "spark-payment-1",
+              amount: BigInt(opts.balanceSats ?? 4242),
+              fees: 3n,
+              status: "complete",
+            },
+          }
+        },
         disconnect: () => {
           if (!connected) return
           opts.onDisconnect?.()
@@ -148,6 +169,47 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
     await helper("address")
     await helper("status")
     expect(disconnects).toBe(2)
+  })
+
+  test("sweep transfer pays caller-provided MDK target and returns public refs only", async () => {
+    const rawReceiveTarget = "lnbc42420n1rawmdkreceivetargetthatmustneverleakpublicly"
+    let preparedTarget: string | null = null
+    let sentIdempotencyKey: string | null = null
+    const transfer = createSparkBackupSweepTransfer({
+      apiKey: "k",
+      mnemonic: TEST_MNEMONIC,
+      loadModule: async () =>
+        fakeSparkModule({
+          balanceSats: 4242,
+          onPrepareSend: (request) => {
+            preparedTarget = request.paymentRequest
+            expect(request.amount).toBe(4242n)
+          },
+          onSend: (request) => {
+            sentIdempotencyKey = request.idempotencyKey ?? null
+            expect(request.options).toMatchObject({
+              type: "bolt11Invoice",
+              preferSpark: false,
+            })
+          },
+        }),
+    })
+
+    const result = await transfer({
+      amountSats: 4242,
+      destination: rawReceiveTarget,
+      idempotencyKey: "test-sweep-key",
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("expected transfer success")
+    expect(preparedTarget).toBe(rawReceiveTarget)
+    expect(sentIdempotencyKey).toBe("test-sweep-key")
+    expect(result.transferRef).toMatch(/^wallet\.spark_backup_transfer\.[a-f0-9]{24}$/)
+    expect(result.amountSats).toBe(4242)
+    expect(result.feeSats).toBe(3)
+    expect(JSON.stringify(result)).not.toContain(rawReceiveTarget)
+    assertPublicProjectionSafe(result)
   })
 
   test("a missing-credential SDK error feeds slice-1 credential classification path", async () => {
