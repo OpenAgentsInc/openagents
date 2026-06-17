@@ -1586,6 +1586,12 @@ export type SparkBackupSendState =
   | "invalid-request"
   | "consent-required"
   | "send-failed"
+  // #5196: the wait window elapsed without a definitive settle/fail — the send
+  // may have gone through (slow/large Lightning send). The outcome is UNKNOWN, so
+  // the node must NOT retry until it confirms failure; it verifies the balance /
+  // re-reads status instead. Distinct from send-failed precisely to block a
+  // double-spend retry.
+  | "send-pending"
   | "sent"
 
 export type SparkBackupSendProjection = {
@@ -2089,6 +2095,20 @@ export async function sendWithSparkBackup(
   ).split(".").pop()}`
   const result = await transfer({ amountSats, destination, idempotencyKey })
   if (!result.ok) {
+    // #5196: a timed-out send is INDETERMINATE — it may have settled. Mark it
+    // pending and do NOT offer a retry action; the node must verify the balance /
+    // re-read status before any retry, or it risks sending twice.
+    const pending = result.failureRef.startsWith("wallet.spark_backup_send_indeterminate")
+    if (pending) {
+      return safe({
+        ...base,
+        state: "send-pending",
+        consentRequired: false,
+        blockerRefs: ["blocker.wallet.spark_backup.send_outcome_pending"],
+        failureRefs: [result.failureRef],
+        nextActionRefs: ["action.wallet.spark_backup.verify_balance_before_retry"],
+      })
+    }
     return safe({
       ...base,
       state: "send-failed",

@@ -186,6 +186,12 @@ export type SparkBackupAdapterConfig = {
 }
 
 const DEFAULT_SPARK_TIMEOUT_MS = 15_000
+// #5196: the SDK is given this long to confirm a Lightning send actually settles.
+// The send withTimeout (below) MUST outlast it, or a slow/large send is aborted
+// while it completes server-side — reporting send-failed AFTER the funds already
+// moved (a dangerous false-negative that invites a double-spend retry).
+const SEND_COMPLETION_TIMEOUT_SECS = 60
+const SEND_TIMEOUT_BUFFER_MS = 15_000
 
 function helperError(command: SparkBackupCommand, message: string): WalletCommandResult {
   // The message is helper stderr; slice-1 code keeps it out of public
@@ -371,16 +377,24 @@ async function sendSparkPaymentFromSdk(input: {
   )
   const paymentMethod = (prepareResponse as { paymentMethod?: { type?: string } })?.paymentMethod
   const isBolt11 = paymentMethod?.type === "bolt11Invoice"
+  // #5196: wait at least the SDK's completion window + a buffer for the send to
+  // settle — never the short read-timeout — so a slow/large send is not aborted
+  // while it completes server-side (false-negative). prepare/resolve above stay
+  // on the short timeout (they are fast).
+  const sendTimeoutMs = Math.max(
+    input.timeoutMs,
+    SEND_COMPLETION_TIMEOUT_SECS * 1000 + SEND_TIMEOUT_BUFFER_MS,
+  )
   const sendPrepared = (idempotency: string, preferSpark: boolean) =>
     withTimeout(
       input.sdk.sendPayment({
         prepareResponse,
         options: isBolt11
-          ? { type: "bolt11Invoice", preferSpark, completionTimeoutSecs: 60 }
+          ? { type: "bolt11Invoice", preferSpark, completionTimeoutSecs: SEND_COMPLETION_TIMEOUT_SECS }
           : undefined,
         idempotencyKey: idempotency,
       }),
-      input.timeoutMs,
+      sendTimeoutMs,
       "spark sendPayment",
     )
   const sent = isBolt11
@@ -929,9 +943,18 @@ export function createSparkBackupSendTransfer(config: SparkBackupAdapterConfig):
       if (process.env.PYLON_SPARK_DEBUG === "1") {
         console.error(`[spark-send] ${message}`)
       }
+      // #5196: a TIMEOUT is an INDETERMINATE outcome, not a clean failure — the
+      // payment may have settled server-side (a slow send completing after the
+      // wait window), so the caller must verify the balance before any retry to
+      // avoid a double-spend. Mark it with a distinct ref the projection maps to
+      // a "verify before retry" next action.
+      const timedOut = /timed out/i.test(message)
       return {
         ok: false,
-        failureRef: publicRef("wallet.spark_backup_send_failure", message),
+        failureRef: publicRef(
+          timedOut ? "wallet.spark_backup_send_indeterminate" : "wallet.spark_backup_send_failure",
+          message,
+        ),
       }
     } finally {
       if (sdk?.disconnect) {

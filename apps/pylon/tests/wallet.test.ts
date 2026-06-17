@@ -1060,6 +1060,30 @@ describe("Spark backup send / withdraw (#5177)", () => {
     assertPublicProjectionSafe(send)
   })
 
+  test("a timed-out (indeterminate) send is marked pending, not failed, and offers no retry (#5196)", async () => {
+    const send = await sendWithSparkBackup({
+      amountSats: 21000,
+      destination: RAW_SPARK_PAYMENT_REQUEST,
+      confirmSend: true,
+      env: enabledEnv,
+      transfer: async () => ({
+        ok: false,
+        failureRef: "wallet.spark_backup_send_indeterminate.deadbeefdeadbeefdeadbeef",
+      }),
+    })
+    expect(send.state).toBe("send-pending")
+    expect(send.blockerRefs).toContain("blocker.wallet.spark_backup.send_outcome_pending")
+    expect(send.nextActionRefs).toContain("action.wallet.spark_backup.verify_balance_before_retry")
+    // Must NOT invite a blind retry — the funds may have moved (double-spend risk).
+    expect(send.nextActionRefs).not.toContain(
+      "action.wallet.spark_backup.retry_send_after_fixing_transfer",
+    )
+    expect(send.state).not.toBe("send-failed")
+    expect(send.publicReceiptRefs).toEqual([])
+    expect(JSON.stringify(send)).not.toContain(RAW_SPARK_PAYMENT_REQUEST)
+    assertPublicProjectionSafe(send)
+  })
+
   test("invalid request returns blockers and no receipt", async () => {
     const send = await sendWithSparkBackup({
       amountSats: 0,
