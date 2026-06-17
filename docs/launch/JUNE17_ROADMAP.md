@@ -103,8 +103,9 @@ signed recut.
   readiness from `/api/public/customer-one-cohort` with public-safe row labels.
   **D3.8 (#5218) shipped:** `scripts/customer-one-cohort-recorder.mjs` can
   read the public projection and admin-list/upsert real public-safe rows.
-  Remaining D3 tail: record cohort rows and collect at least three real
-  loop-completion bundles before closing #5098/#5104.
+  **Active D3.9 slice: #5223** deploy the cohort route and smoke the production
+  public projection. Remaining D3 tail: record cohort rows and collect at least
+  three real loop-completion bundles before closing #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
