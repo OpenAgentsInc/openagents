@@ -98,6 +98,22 @@ const bitcoinAmount = (sats: number): NexusTreasuryPayoutAmount => ({
   denomination: 'bitcoin_millisatoshi',
 })
 
+/**
+ * Map a payout adapter to the public-projection `moneyMovement` label
+ * (openagents #5232). `simulation` moves nothing (`none`); the proven Spark
+ * treasury rail moves real sats (`real_bitcoin`), which is the only label the
+ * public `realBitcoinMoved` derivation in `nexus-pylon-visibility.ts` keys on;
+ * any other real adapter keeps the existing bounded-spend label. Pure.
+ */
+export const realSettlementMovementMode = (
+  adapterKind: NexusTreasuryPayoutAdapterKind,
+): 'none' | 'real_bitcoin' | 'treasury_mdk_bounded_spend' =>
+  adapterKind === 'simulation'
+    ? 'none'
+    : adapterKind === 'spark_treasury'
+      ? 'real_bitcoin'
+      : 'treasury_mdk_bounded_spend'
+
 const conflict = (reason: string): TassadarRunSettlementUnsafe =>
   new TassadarRunSettlementUnsafe({ kind: 'conflict', reason })
 
@@ -177,8 +193,7 @@ export const buildTassadarRunSettlement = (
   }
 
   const adapterKind = request.adapterKind ?? 'simulation'
-  const moneyMovement =
-    adapterKind === 'simulation' ? 'none' : 'treasury_mdk_bounded_spend'
+  const moneyMovement = realSettlementMovementMode(adapterKind)
   const suffix = stableSuffix(request.idempotencyRef)
   const windowRef = challenge.windowRef ?? lease.windowRef
   const amount = bitcoinAmount(request.amountSats)
