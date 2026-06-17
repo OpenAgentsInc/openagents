@@ -139,6 +139,16 @@ primitives.
   into the same public-summary visualization shape, so SpacetimeDB can update
   only public-ref-backed entities and timestamped projection transitions. If the
   WebSocket is disabled or unreachable, the Worker summary scene remains live.
+- 2026-06-17: Issue #5239 hardened the self-hosted SpacetimeDB operations
+  surface before production gameplay state. `/stdb` now lives on dedicated
+  persistent disk `spacetimedb-world-data-1`, with rollback snapshots
+  `spacetimedb-world-1-boot-20260617-pre-world-hardening` and
+  `spacetimedb-world-data-1-20260617-post-migration`. Cloud Monitoring now has
+  the `SpacetimeDB world identity 405` uptime check for
+  `https://spacetime.openagents.com/v1/identity`, enabled alert policies for
+  identity uptime failure, Nginx 5xx spikes, and `spacetimedb.service` restart
+  loops, and Ops Agent-backed Nginx/syslog ingestion. The project still needs
+  an external notification channel attached before alerts should page someone.
 
 ## Short answer
 

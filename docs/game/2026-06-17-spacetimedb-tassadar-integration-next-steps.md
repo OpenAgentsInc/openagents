@@ -1,7 +1,7 @@
 # SpacetimeDB To Tassadar Integration Next Steps
 
 Date: 2026-06-17
-Status: Phase 0, Phase 1, and Phase 2 implemented; inspector and ops hardening next
+Status: Phase 0, Phase 1, Phase 2, and base ops hardening implemented; inspector and presence next
 
 ## Current Boundary
 
@@ -124,6 +124,19 @@ timestamped live state transition. Counts can color labels or status, but counts
 alone cannot create fake traffic or spatial nodes.
 
 ## Phase 3: Inspector And Presence
+
+Issue #5239 completed the base GCP operations hardening before this phase:
+
+- uptime check for `https://spacetime.openagents.com/v1/identity` expecting
+  `405`;
+- enabled Cloud Monitoring policies for identity uptime failure, Nginx 5xx
+  spikes, and `spacetimedb.service` restart loops;
+- boot and data disk snapshots named in the admin runbook;
+- `/stdb` moved to dedicated persistent disk `spacetimedb-world-data-1`.
+
+The remaining ops follow-up is notification delivery, not signal definition:
+the project had no Cloud Monitoring notification channels when #5239 ran, so
+the policies currently create Monitoring incidents without external paging.
 
 After the base projection works, add subscriptions that are useful only when an
 entity is selected:

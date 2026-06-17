@@ -37,6 +37,7 @@ Subnet: oa-lightning-us-central1
 Internal IP: 10.42.0.52
 External static IP: 34.28.177.95
 Static IP resource: spacetimedb-world-ip
+Data disk: spacetimedb-world-data-1 (100 GB pd-balanced, /stdb)
 Service account: spacetimedb-world@openagentsgemini.iam.gserviceaccount.com
 Network tag: spacetimedb-world
 HTTP/S firewall rule: oa-allow-spacetimedb-world-http-https
@@ -47,6 +48,8 @@ SSH access: IAP TCP forwarding through the existing OpenAgents IAP SSH rule
 
 ```text
 SpacetimeDB root: /stdb
+Dedicated data disk: /dev/disk/by-id/google-spacetimedb-world-data-1
+Data disk UUID: 21a7f95e-9d61-4a42-a93f-268fc99ee557
 Standalone binary: /stdb/bin/2.6.0/spacetimedb-standalone
 CLI binary: /stdb/bin/2.6.0/spacetimedb-cli
 System user: spacetimedb
@@ -54,11 +57,20 @@ Systemd unit: spacetimedb.service
 Listen address: 127.0.0.1:3000
 Reverse proxy: nginx
 TLS renewal: certbot.timer
+Telemetry: google-cloud-ops-agent 2.68.0
 ```
 
 Do not use `/stdb/spacetime` in operator runbooks. The wrapper exists on the
 VM, but its HOME-relative `current` lookup was inconsistent under `sudo`. Use
 the versioned binaries above.
+
+`/stdb` was moved off the boot disk in issue #5239. The original boot-disk copy
+remains on the VM at `/stdb.boot-20260617-pre-data-disk` as a local rollback
+aid. The persistent mount is:
+
+```fstab
+UUID=21a7f95e-9d61-4a42-a93f-268fc99ee557 /stdb ext4 defaults,nofail 0 2
+```
 
 ## DNS And TLS
 
@@ -177,6 +189,95 @@ gcloud compute ssh spacetimedb-world-1 \
 ```
 
 Expected service states are three `active` lines.
+
+Check the data-disk mount:
+
+```bash
+gcloud compute ssh spacetimedb-world-1 \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --tunnel-through-iap \
+  --command='findmnt /stdb; df -h /stdb; grep " /stdb " /etc/fstab'
+```
+
+Expected mount:
+
+```text
+/stdb  /dev/sdb  ext4  rw,relatime
+UUID=21a7f95e-9d61-4a42-a93f-268fc99ee557 /stdb ext4 defaults,nofail 0 2
+```
+
+## Snapshots And Rollback Points
+
+Issue #5239 created these rollback points before production gameplay state:
+
+```text
+Boot disk snapshot: spacetimedb-world-1-boot-20260617-pre-world-hardening
+Data disk snapshot: spacetimedb-world-data-1-20260617-post-migration
+Storage location: us-central1
+```
+
+List them:
+
+```bash
+gcloud compute snapshots list \
+  --project openagentsgemini \
+  --filter='name=("spacetimedb-world-1-boot-20260617-pre-world-hardening","spacetimedb-world-data-1-20260617-post-migration")' \
+  --format='table(name,status,storageLocations,sourceDisk.basename(),creationTimestamp)'
+```
+
+Create a fresh data-disk snapshot before risky module or VM surgery:
+
+```bash
+gcloud compute snapshots create spacetimedb-world-data-1-$(date -u +%Y%m%d-%H%M%S) \
+  --project openagentsgemini \
+  --source-disk=spacetimedb-world-data-1 \
+  --source-disk-zone=us-central1-a \
+  --storage-location=us-central1 \
+  --labels=service=spacetimedb-world,purpose=world-data
+```
+
+Restore from the data-disk snapshot by stopping the VM, creating a replacement
+disk from the snapshot, attaching it as `spacetimedb-world-data-1`, and starting
+the VM:
+
+```bash
+gcloud compute instances stop spacetimedb-world-1 \
+  --project openagentsgemini \
+  --zone us-central1-a
+
+gcloud compute instances detach-disk spacetimedb-world-1 \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --disk=spacetimedb-world-data-1
+
+gcloud compute disks create spacetimedb-world-data-1-restored \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --source-snapshot=spacetimedb-world-data-1-20260617-post-migration \
+  --type=pd-balanced
+
+gcloud compute instances attach-disk spacetimedb-world-1 \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --disk=spacetimedb-world-data-1-restored \
+  --device-name=spacetimedb-world-data-1
+
+gcloud compute instances start spacetimedb-world-1 \
+  --project openagentsgemini \
+  --zone us-central1-a
+```
+
+If the data-disk mount itself is broken but the boot disk is healthy, the local
+pre-migration copy can recover the service quickly:
+
+```bash
+gcloud compute ssh spacetimedb-world-1 \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --tunnel-through-iap \
+  --command='sudo systemctl stop spacetimedb; sudo umount /stdb; sudo sed -i.bak "/ \\/stdb /s/^/#/" /etc/fstab; sudo rm -rf /stdb; sudo mv /stdb.boot-20260617-pre-data-disk /stdb; sudo systemctl start spacetimedb; sudo systemctl is-active spacetimedb'
+```
 
 ## Publishing A Module
 
@@ -355,6 +456,38 @@ adapter code typechecked.
 
 ## Logs
 
+Cloud Logging ingestion is enabled through `google-cloud-ops-agent`. The agent
+keeps the default syslog pipeline and adds parsed Nginx access/error log
+receivers.
+
+Check agent health:
+
+```bash
+gcloud compute ssh spacetimedb-world-1 \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --tunnel-through-iap \
+  --command='sudo systemctl is-active google-cloud-ops-agent google-cloud-ops-agent-fluent-bit google-cloud-ops-agent-opentelemetry-collector'
+```
+
+Cloud Logging queries:
+
+```bash
+gcloud logging read \
+  'resource.type="gce_instance" AND resource.labels.instance_id="1980115011797729631" AND log_id("nginx_access")' \
+  --project openagentsgemini \
+  --freshness=10m \
+  --limit=20 \
+  --format='table(timestamp,httpRequest.status,httpRequest.requestUrl,httpRequest.userAgent)'
+
+gcloud logging read \
+  'resource.type="gce_instance" AND resource.labels.instance_id="1980115011797729631" AND log_id("syslog") AND textPayload:"spacetimedb.service"' \
+  --project openagentsgemini \
+  --freshness=24h \
+  --limit=20 \
+  --format='table(timestamp,textPayload)'
+```
+
 SpacetimeDB logs:
 
 ```bash
@@ -373,6 +506,64 @@ gcloud compute ssh spacetimedb-world-1 \
   --zone us-central1-a \
   --tunnel-through-iap \
   --command='sudo tail -n 200 /var/log/nginx/access.log; sudo tail -n 200 /var/log/nginx/error.log'
+```
+
+## Monitoring And Alerting
+
+Uptime check:
+
+```text
+Name: SpacetimeDB world identity 405
+Resource: projects/openagentsgemini/uptimeCheckConfigs/spacetimedb-world-identity-405-ZXbnN1mTEVs
+URL: https://spacetime.openagents.com/v1/identity
+Expected status: 405
+Period: 60s
+Regions: usa-iowa, usa-oregon, usa-virginia
+TLS validation: enabled
+```
+
+Alert policies:
+
+```text
+SpacetimeDB world identity uptime failure
+projects/openagentsgemini/alertPolicies/10740697432845517968
+
+SpacetimeDB world nginx proxy 5xx spike
+projects/openagentsgemini/alertPolicies/10740697432845517398
+
+SpacetimeDB world service restart loop
+projects/openagentsgemini/alertPolicies/1795782802307036790
+```
+
+Log-based metrics:
+
+```text
+spacetime_nginx_proxy_5xx
+  resource.type="gce_instance" AND resource.labels.instance_id="1980115011797729631" AND log_id("nginx_access") AND httpRequest.status>=500
+
+spacetime_spacetimedb_service_restart
+  resource.type="gce_instance" AND resource.labels.instance_id="1980115011797729631" AND log_id("syslog") AND textPayload=~"spacetimedb\\.service: (Scheduled restart job|Main process exited|Failed with result|Start request repeated too quickly|Start operation timed out)"
+```
+
+The project had no configured Cloud Monitoring notification channels when issue
+#5239 ran. The policies are enabled and will create Cloud Monitoring incidents;
+attach an email, Slack, PagerDuty, or webhook notification channel before
+production gameplay state if external paging is required.
+
+Verify monitoring resources:
+
+```bash
+gcloud monitoring uptime list-configs \
+  --project openagentsgemini \
+  --format='table(name,displayName,httpCheck.path,httpCheck.acceptedResponseStatusCodes[0].statusValue,period)'
+
+gcloud logging metrics list \
+  --project openagentsgemini \
+  --format='table(name,filter)' | grep spacetime_
+
+gcloud monitoring policies list \
+  --project openagentsgemini \
+  --format='table(name,displayName,enabled,conditions[0].displayName)' | grep 'SpacetimeDB world'
 ```
 
 ## Restart And Recovery
@@ -418,12 +609,7 @@ publicly to recover.
 
 ## Hardening Backlog
 
-- Add a GCP uptime check for `https://spacetime.openagents.com/v1/identity`
-  expecting `405`.
-- Snapshot the boot disk before meaningful world data accumulates.
-- Move persistent SpacetimeDB data under a separate persistent disk before
-  production gameplay state exists.
-- Add log-based alerts for repeated `5xx` proxy errors and SpacetimeDB service
-  restarts.
+- Attach external notification channels to the enabled Cloud Monitoring alert
+  policies before production gameplay state requires paging.
 - Create a narrow Cloudflare DNS automation credential if future deploys should
   manage `spacetime.openagents.com` without owner intervention.

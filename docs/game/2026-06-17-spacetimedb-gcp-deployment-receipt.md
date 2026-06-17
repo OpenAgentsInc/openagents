@@ -37,6 +37,7 @@ Subnet: oa-lightning-us-central1
 Internal IP: 10.42.0.52
 External static IP: 34.28.177.95
 Static IP resource: spacetimedb-world-ip
+Data disk: spacetimedb-world-data-1 (100 GB pd-balanced, mounted at /stdb)
 Service account: spacetimedb-world@openagentsgemini.iam.gserviceaccount.com
 Network tag: spacetimedb-world
 HTTP firewall rule: oa-allow-spacetimedb-world-http-https
@@ -58,6 +59,7 @@ Certificate: Let's Encrypt lineage spacetime.34.28.177.95.sslip.io
 Certificate SANs: spacetime.openagents.com, spacetime.34.28.177.95.sslip.io
 Certificate path: /etc/letsencrypt/live/spacetime.34.28.177.95.sslip.io/fullchain.pem
 Certificate renewal: certbot.timer
+Telemetry: google-cloud-ops-agent 2.68.0
 ```
 
 The `/stdb/spacetime` wrapper was installed but should not be used in runbooks
@@ -184,12 +186,33 @@ The initial module source now lives at:
 apps/openagents-world-spacetimedb
 ```
 
+## Post-Deployment Hardening
+
+Issue #5239 added the first operational hardening layer on 2026-06-17:
+
+```text
+Boot disk snapshot: spacetimedb-world-1-boot-20260617-pre-world-hardening
+Data disk snapshot: spacetimedb-world-data-1-20260617-post-migration
+Data disk UUID: 21a7f95e-9d61-4a42-a93f-268fc99ee557
+Uptime check: projects/openagentsgemini/uptimeCheckConfigs/spacetimedb-world-identity-405-ZXbnN1mTEVs
+Alert policy: projects/openagentsgemini/alertPolicies/10740697432845517968 (identity uptime)
+Alert policy: projects/openagentsgemini/alertPolicies/10740697432845517398 (nginx 5xx spike)
+Alert policy: projects/openagentsgemini/alertPolicies/1795782802307036790 (spacetimedb service restart loop)
+Log metric: spacetime_nginx_proxy_5xx
+Log metric: spacetime_spacetimedb_service_restart
+```
+
+`/stdb` was moved from the boot disk to the dedicated data disk before
+production gameplay state. The original boot-disk copy remains on the VM at
+`/stdb.boot-20260617-pre-data-disk` as a local rollback aid.
+
 Runbook follow-up:
 
 - keep `spacetime.openagents.com` as the canonical public endpoint;
 - keep the published `openagents-world` module schema minimal until the bridge
   proves the row contract;
 - wire a service bridge from the public Tassadar projection to SpacetimeDB rows;
-- add uptime checks and snapshots before meaningful world data accumulates.
+- attach external notification channels to the enabled Cloud Monitoring alert
+  policies before production gameplay state requires paging.
 - add DNS automation only after a Cloudflare credential with the right zone
   scope is available.
