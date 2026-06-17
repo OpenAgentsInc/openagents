@@ -14,6 +14,18 @@ SIGNER="../oa-updates/scripts/sign-release.ts"
 VERIFIER="../oa-updates/scripts/verify-release.ts"
 mkdir -p "$OUT"
 
+# Version-sync guard (rc.13 incident): the compiled binary reports
+# src/version.ts PYLON_VERSION and the npm package ships package.json "version".
+# If either drifts from the version being cut, binaries self-report the wrong
+# version and auto-update-loop. Fail closed before building.
+SRC_VERSION="$(bun -e 'import { PYLON_VERSION } from "./src/version.ts"; console.log(PYLON_VERSION)')"
+PKG_VERSION="$(bun -e 'console.log(require("./package.json").version)')"
+if [ "$SRC_VERSION" != "$VERSION" ] || [ "$PKG_VERSION" != "$VERSION" ]; then
+  echo "FAIL: cutting $VERSION but src/version.ts=$SRC_VERSION, package.json=$PKG_VERSION — bump BOTH to $VERSION." >&2
+  exit 1
+fi
+echo "== version sync OK: $VERSION (src/version.ts + package.json) =="
+
 # bun --compile cross-targets. darwin-arm64 is native here; the rest cross-compile.
 TARGETS=(bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-linux-arm64)
 built=()
