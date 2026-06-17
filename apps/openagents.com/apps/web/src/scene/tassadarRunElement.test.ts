@@ -239,17 +239,43 @@ describe('tassadarRunView page wiring', () => {
       eyeHeight: 1.65,
       movementSpeed: 4.5,
       sprintMultiplier: 1.8,
-      debug: true,
     })
     expect(options.walkController).not.toHaveProperty('lockSelector')
     expect(
       el.shadowRoot?.querySelector('[data-tassadar-enter-world]'),
     ).toBeNull()
     const walkController = options.walkController as {
+      debug?: (snapshot: {
+        applied: boolean
+        event: 'mousemove'
+        locked: boolean
+        movementX: number
+        movementY: number
+        pitch: number
+        source: 'controller'
+        yaw: number
+      }) => void
       onLockChange?: (locked: boolean) => void
     }
+    expect(typeof walkController.debug).toBe('function')
     walkController.onLockChange?.(true)
     expect(el.getAttribute('data-pointer-lock')).toBe('locked')
+    walkController.debug?.({
+      applied: true,
+      event: 'mousemove',
+      locked: true,
+      movementX: 11,
+      movementY: -3,
+      pitch: 0.25,
+      source: 'controller',
+      yaw: -0.5,
+    })
+    expect(el.getAttribute('data-mouselook-count')).toBe('1')
+    expect(el.getAttribute('data-mouselook-event')).toBe('mousemove')
+    expect(el.getAttribute('data-mouselook-locked')).toBe('true')
+    expect(el.getAttribute('data-mouselook-applied')).toBe('true')
+    expect(el.getAttribute('data-mouselook-delta')).toBe('11,-3')
+    expect(el.getAttribute('data-mouselook-last-nonzero')).toBe('11,-3')
     walkController.onLockChange?.(false)
     expect(el.getAttribute('data-pointer-lock')).toBe('released')
     // The underlying renderer element was mounted.

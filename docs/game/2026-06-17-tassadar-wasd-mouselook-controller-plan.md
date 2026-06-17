@@ -47,6 +47,16 @@ proper 3D MMO world.
   `click` gesture rather than `pointerdown`, suppresses Three's default
   `pointerlockerror` console dump, catches rejected pointer-lock promises, and
   emits `lock_error` diagnostics through `[three-effect:wasd_mouselook]`.
+- `OpenAgentsInc/three-effect@d547c0e` hardens the still-failing movement path:
+  while pointer lock is active anywhere in the scene document, the controller
+  now accepts `mousemove`, `pointermove`, and `pointerrawupdate` deltas and logs
+  movement snapshots with `console.warn` instead of `console.info`.
+- `/tassadar` now passes the same page-owned debug callback through both the
+  initial Worker-summary render and the SpacetimeDB update render. The callback
+  writes `data-mouselook-*` attributes on `<oa-tassadar-run>` and emits
+  `[tassadar:mouselook]` warnings, so a locked cursor with no camera motion can
+  be diagnosed by checking whether the browser is emitting non-zero deltas and
+  whether those deltas were applied.
 
 ## References Read
 

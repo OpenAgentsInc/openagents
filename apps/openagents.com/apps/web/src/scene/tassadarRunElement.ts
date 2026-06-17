@@ -16,6 +16,8 @@
 import type {
   TrainingRunNodeSelection,
   TrainingRunVisualizationOptions,
+  WasdMouseLookControllerOptions,
+  WasdMouseLookDebugSnapshot,
 } from '@openagentsinc/three-effect/core'
 import {
   registerTrainingRunElement,
@@ -383,6 +385,7 @@ const makeClass = (): CustomElementConstructor =>
     #abort: AbortController | null = null
     #spacetimeWorld: TassadarSpacetimeWorldSubscription | null = null
     #summary: TassadarRunPublicSummary | null = null
+    #mouselookDebugCount = 0
 
     connectedCallback(): void {
       const shadow = this.shadowRoot ?? this.attachShadow({ mode: 'open' })
@@ -482,19 +485,7 @@ const makeClass = (): CustomElementConstructor =>
         ...tassadarRunVisualizationOptions(summary),
         cameraMode: 'perspective_walk',
         controller: 'wasd_mouselook',
-        walkController: {
-          bounds: { minX: -8, maxX: 8, minZ: -8, maxZ: 8 },
-          eyeHeight: 1.65,
-          movementSpeed: 4.5,
-          sprintMultiplier: 1.8,
-          debug: true,
-          onLockChange: locked => {
-            this.setAttribute(
-              'data-pointer-lock',
-              locked ? 'locked' : 'released',
-            )
-          },
-        },
+        walkController: this.#walkControllerOptions(),
       }
       run.visualization = visualization
       run.addEventListener('node-selected', event => {
@@ -538,18 +529,7 @@ const makeClass = (): CustomElementConstructor =>
             ...tassadarRunVisualizationOptions(nextSummary),
             cameraMode: 'perspective_walk',
             controller: 'wasd_mouselook',
-            walkController: {
-              bounds: { minX: -8, maxX: 8, minZ: -8, maxZ: 8 },
-              eyeHeight: 1.65,
-              movementSpeed: 4.5,
-              sprintMultiplier: 1.8,
-              onLockChange: (locked: boolean) => {
-                this.setAttribute(
-                  'data-pointer-lock',
-                  locked ? 'locked' : 'released',
-                )
-              },
-            },
+            walkController: this.#walkControllerOptions(),
           }
           this.#renderStatus(mount, nextSummary)
         },
@@ -565,6 +545,62 @@ const makeClass = (): CustomElementConstructor =>
           if (!this.isConnected || signal?.aborted === true) return
           this.setAttribute('data-spacetime-state', 'error')
         })
+    }
+
+    #walkControllerOptions(): WasdMouseLookControllerOptions {
+      return {
+        bounds: { minX: -8, maxX: 8, minZ: -8, maxZ: 8 },
+        eyeHeight: 1.65,
+        movementSpeed: 4.5,
+        sprintMultiplier: 1.8,
+        debug: this.#recordMouselookDebug,
+        onLockChange: locked => {
+          this.setAttribute(
+            'data-pointer-lock',
+            locked ? 'locked' : 'released',
+          )
+        },
+      }
+    }
+
+    #recordMouselookDebug = (
+      snapshot: WasdMouseLookDebugSnapshot,
+    ): void => {
+      this.#mouselookDebugCount += 1
+      this.setAttribute('data-mouselook-count', String(this.#mouselookDebugCount))
+      this.setAttribute('data-mouselook-event', snapshot.event)
+      this.setAttribute('data-mouselook-source', snapshot.source)
+      this.setAttribute('data-mouselook-locked', String(snapshot.locked))
+      this.setAttribute('data-mouselook-applied', String(snapshot.applied))
+      this.setAttribute(
+        'data-mouselook-delta',
+        `${snapshot.movementX},${snapshot.movementY}`,
+      )
+      this.setAttribute('data-mouselook-yaw', snapshot.yaw.toFixed(5))
+      this.setAttribute('data-mouselook-pitch', snapshot.pitch.toFixed(5))
+      if (snapshot.reason === undefined) {
+        this.removeAttribute('data-mouselook-reason')
+      } else {
+        this.setAttribute('data-mouselook-reason', snapshot.reason)
+      }
+      if (snapshot.movementX !== 0 || snapshot.movementY !== 0) {
+        this.setAttribute(
+          'data-mouselook-last-nonzero',
+          `${snapshot.movementX},${snapshot.movementY}`,
+        )
+      }
+      if (typeof console === 'undefined') return
+      const motionEvent =
+        snapshot.event === 'mousemove' ||
+        snapshot.event === 'pointermove' ||
+        snapshot.event === 'pointerrawupdate'
+      if (
+        !motionEvent ||
+        this.#mouselookDebugCount <= 60 ||
+        this.#mouselookDebugCount % 60 === 0
+      ) {
+        console.warn('[tassadar:mouselook]', snapshot)
+      }
     }
 
     #renderStatus(
