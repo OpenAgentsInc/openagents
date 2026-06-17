@@ -52,12 +52,14 @@ dependency wiring as its other operator actions.
    `amountSat` is the intended payout. The route applies the owner payout
    policy below and returns `{ intendedAmountSat, paidAmountSat,
    policyApplied, paymentId, status }` on success. On failure it returns a JSON
-   body with `error`, `policyApplied`, and a public-safe `reasonRef`; manual
-   operator calls must use `curl --fail-with-body` or omit `-f` so that body is
-   not suppressed. If the container reports a generic `treasury_pay_failed`
-   error plus a more specific daemon reason, the Worker classifies the specific
-   reason into the public-safe `reasonRef` while still refusing to store or
-   echo raw daemon text, destinations, invoices, payment hashes, or preimages.
+   body with `error`, `policyApplied`, a public-safe `reasonRef`, and safe
+   diagnostics when the treasury container can provide them (`destinationKind`,
+   `failureStage`, `preflightMaxSendableSat`, `reasonClass`, `timeoutSecs`);
+   manual operator calls must use `curl --fail-with-body` or omit `-f` so that
+   body is not suppressed. The container classifies known failures before the
+   Worker sees them, and the Worker falls back to its own classifier for older
+   or generic payloads, while still refusing to store or echo raw daemon text,
+   destinations, invoices, payment hashes, or preimages.
    A failure before a durable payment id means no sats have been proven to leave
    the treasury; confirm by re-reading `balanceSat` / `maxSendableSat`.
    Large Lightning Address sends may fail even while smaller sends to the same
@@ -150,8 +152,10 @@ every pre-dispatch payout failure, and every donation is recorded in the
 `treasury_transactions` D1 table (migrations 0159, 0197, 0198). Failed payout
 attempts without a durable MDK payment id store `payment_ref:null` and a
 public-safe `failure_reason_ref`; they never store raw destinations, BOLT11
-invoices, hashes, preimages, or daemon error text. The public page reads from
-that table but shows only time, direction, amount, and state. The container's
+invoices, hashes, preimages, or daemon error text. Operator failure responses
+may include the public-safe diagnostics listed above; the public page reads
+from the ledger but shows only time, direction, amount, and state. The
+container's
 in-memory receive tracking means a donation confirmed across a container
 restart may sit pending until expiry even though the sats arrived — balance is
 always authoritative.
