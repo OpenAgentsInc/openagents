@@ -7,6 +7,7 @@ import {
   nextTassadarLocalAvatarPosition,
   pylonAttentionForAvatar,
   proofLinkForSelection,
+  sanitizeTassadarChatBody,
   tassadarRunView,
 } from './tassadarRunElement'
 import {
@@ -573,6 +574,16 @@ describe('MVP avatar movement and pylon attention mapping', () => {
       pylonRef: 'pylon.worker.one',
       sourceEntityRef: 'pylon.worker.one',
     })
+  })
+})
+
+describe('local chat input constraints', () => {
+  it('keeps chat plain, non-empty, and bounded before reducer submission', () => {
+    expect(sanitizeTassadarChatBody('  hello\n\t nearby   agents  ')).toBe(
+      'hello nearby agents',
+    )
+    expect(sanitizeTassadarChatBody('   ')).toBeNull()
+    expect(sanitizeTassadarChatBody('x'.repeat(320))).toHaveLength(280)
   })
 })
 

@@ -70,10 +70,11 @@ Browser/user interaction reducers:
 The MVP world bounds are intentionally small and flat:
 `x=-8..8`, `y=0..4`, and `z=-6..6`. Position updates are throttled to at most
 10 Hz per avatar and reject jumps above the MVP movement limit. Local messages
-are plain text, capped at 280 characters, marked `moderation_state="visible"`,
-and paired with short-lived chat-bubble rows. `expire_interaction_rows` is a
-service reducer that removes stale avatar positions and expired attention,
-message, bubble, emote, and intent rows.
+are plain text, capped at 280 characters, rate-limited to one message per
+avatar per second, marked `moderation_state="visible"`, and paired with
+short-lived chat-bubble rows. `expire_interaction_rows` is a service reducer
+that removes stale avatar positions and expired attention, message, bubble,
+emote, and intent rows.
 
 ## Build
 

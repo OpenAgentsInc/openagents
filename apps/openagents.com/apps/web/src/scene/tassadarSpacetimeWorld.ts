@@ -1,6 +1,8 @@
 import type {
   AgentAvatar,
   AvatarPosition,
+  ChatBubble,
+  LocalChatMessage,
   ProofRef,
   PylonAttention,
   PylonStation,
@@ -54,6 +56,8 @@ export type TassadarSpacetimeWorldConfig = Readonly<{
 export type TassadarSpacetimeWorldRows = Readonly<{
   agentAvatars: ReadonlyArray<AgentAvatar>
   avatarPositions: ReadonlyArray<AvatarPosition>
+  chatBubbles: ReadonlyArray<ChatBubble>
+  localChatMessages: ReadonlyArray<LocalChatMessage>
   proofRefs: ReadonlyArray<ProofRef>
   pylonAttention: ReadonlyArray<PylonAttention>
   pylonStations: ReadonlyArray<PylonStation>
@@ -69,6 +73,8 @@ export type TassadarSpacetimeWorldSubscription = Readonly<{
   disconnect: () => void
   focusPylon: (input: TassadarPylonAttentionUpdate) => void
   regionRef: string
+  sendLocalMessage: (input: TassadarLocalChatInput) => void
+  sendPylonMessage: (input: TassadarPylonChatInput) => void
   updateLocalAvatar: (position: TassadarLocalAvatarPosition) => void
 }>
 
@@ -86,6 +92,17 @@ export type TassadarPylonAttentionUpdate = Readonly<{
   distanceMeters: number
   pylonRef: string
   sourceEntityRef?: string
+}>
+
+export type TassadarLocalChatInput = Readonly<{
+  body: string
+  radiusMeters: number
+  targetRef?: string
+}>
+
+export type TassadarPylonChatInput = Readonly<{
+  body: string
+  pylonRef: string
 }>
 
 const text = (value: string | null): string => value?.trim() ?? ''
@@ -145,6 +162,8 @@ const subscriptionQueries = (runRef: string): ReadonlyArray<string> => {
     'SELECT * FROM agent_avatar',
     `SELECT * FROM avatar_position WHERE region_ref = ${region}`,
     'SELECT * FROM pylon_attention',
+    `SELECT * FROM local_chat_message WHERE region_ref = ${region}`,
+    'SELECT * FROM chat_bubble',
   ]
 }
 
@@ -155,6 +174,12 @@ const rowsFromConnection = (conn: DbConnection): TassadarSpacetimeWorldRows => (
   avatarPositions: [
     ...conn.db.avatar_position.iter(),
   ] as unknown as ReadonlyArray<AvatarPosition>,
+  chatBubbles: [
+    ...conn.db.chat_bubble.iter(),
+  ] as unknown as ReadonlyArray<ChatBubble>,
+  localChatMessages: [
+    ...conn.db.local_chat_message.iter(),
+  ] as unknown as ReadonlyArray<LocalChatMessage>,
   proofRefs: [...conn.db.proof_ref.iter()] as unknown as ReadonlyArray<ProofRef>,
   pylonAttention: [
     ...conn.db.pylon_attention.iter(),
@@ -248,6 +273,8 @@ export const startTassadarSpacetimeWorldSubscription = async (
       observeTable(connection.db.agent_avatar, publish)
       observeTable(connection.db.avatar_position, publish)
       observeTable(connection.db.pylon_attention, publish)
+      observeTable(connection.db.local_chat_message, publish)
+      observeTable(connection.db.chat_bubble, publish)
       connected = true
       callReducer('joinRegion', {
         displayName: input.displayName,
@@ -293,6 +320,20 @@ export const startTassadarSpacetimeWorldSubscription = async (
       })
     },
     regionRef,
+    sendLocalMessage: message => {
+      callReducer('sendLocalMessage', {
+        body: message.body,
+        radiusMeters: message.radiusMeters,
+        regionRef,
+        targetRef: message.targetRef ?? null,
+      })
+    },
+    sendPylonMessage: message => {
+      callReducer('sendPylonMessage', {
+        body: message.body,
+        pylonRef: message.pylonRef,
+      })
+    },
     updateLocalAvatar: position => {
       callReducer('setAvatarPosition', {
         ...clampTassadarLocalAvatarPosition(position),

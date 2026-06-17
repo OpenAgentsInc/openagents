@@ -446,6 +446,44 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
           sourceEntityRef: undefined,
         } as never,
       ],
+      localChatMessages: [
+        {
+          body: 'hello nearby agents',
+          bodyFormat: 'plain_text',
+          channelKind: 'local',
+          messageRef: 'message.local.1',
+          moderationState: 'visible',
+          radiusMeters: 8,
+          regionRef: 'region.run.tassadar.executor.20260615.main',
+          speakerAvatarRef: 'avatar.viewer.one',
+          targetRef: undefined,
+        } as never,
+        {
+          body: 'checking your receipt',
+          bodyFormat: 'plain_text',
+          channelKind: 'pylon',
+          messageRef: 'message.pylon.1',
+          moderationState: 'visible',
+          radiusMeters: 8,
+          regionRef: 'region.run.tassadar.executor.20260615.main',
+          speakerAvatarRef: 'avatar.viewer.one',
+          targetRef: 'pylon.world.one',
+        } as never,
+      ],
+      chatBubbles: [
+        {
+          anchorEntityRef: 'avatar.viewer.one',
+          bubbleRef: 'bubble.message.local.1',
+          messageRef: 'message.local.1',
+          speakerAvatarRef: 'avatar.viewer.one',
+        } as never,
+        {
+          anchorEntityRef: 'pylon.world.one',
+          bubbleRef: 'bubble.message.pylon.1',
+          messageRef: 'message.pylon.1',
+          speakerAvatarRef: 'avatar.viewer.one',
+        } as never,
+      ],
       runEntities: [
         {
           entityKind: 'pylon',
@@ -615,6 +653,41 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
         pylonRef: 'pylon.world.one',
       },
     ])
+    expect(fromWorld.world?.localChatMessages).toEqual([
+      {
+        body: 'hello nearby agents',
+        channelKind: 'local',
+        messageRef: 'message.local.1',
+        moderationState: 'visible',
+        radiusMeters: 8,
+        regionRef: 'region.run.tassadar.executor.20260615.main',
+        speakerAvatarRef: 'avatar.viewer.one',
+      },
+      {
+        body: 'checking your receipt',
+        channelKind: 'pylon',
+        messageRef: 'message.pylon.1',
+        moderationState: 'visible',
+        radiusMeters: 8,
+        regionRef: 'region.run.tassadar.executor.20260615.main',
+        speakerAvatarRef: 'avatar.viewer.one',
+        targetRef: 'pylon.world.one',
+      },
+    ])
+    expect(fromWorld.world?.chatBubbles).toEqual([
+      {
+        anchorEntityRef: 'avatar.viewer.one',
+        bubbleRef: 'bubble.message.local.1',
+        messageRef: 'message.local.1',
+        speakerAvatarRef: 'avatar.viewer.one',
+      },
+      {
+        anchorEntityRef: 'pylon.world.one',
+        bubbleRef: 'bubble.message.pylon.1',
+        messageRef: 'message.pylon.1',
+        speakerAvatarRef: 'avatar.viewer.one',
+      },
+    ])
 
     const options = tassadarRunVisualizationOptions(fromWorld)
     expect(options.entities).toContainEqual({
@@ -640,6 +713,24 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
       label: 'Viewer one',
       position: [-2.1, 0.1, 0.28],
       status: 'walking',
+    })
+    expect(options.entities).toContainEqual({
+      id: 'bubble.message.local.1',
+      label: 'hello nearby agents',
+      position: [-2.1, 0.42, 0.38],
+      status: 'chat',
+    })
+    expect(options.entities).toContainEqual({
+      id: 'bubble.message.pylon.1.speaker',
+      label: 'checking your receipt',
+      position: [-2.1, 0.42, 0.38],
+      status: 'chat',
+    })
+    expect(options.entities).toContainEqual({
+      id: 'bubble.message.pylon.1',
+      label: 'checking your receipt',
+      position: [-2.67, 0.2, 0.38],
+      status: 'talking_to_pylon',
     })
     expect(options.entities).toContainEqual({
       id: 'worker.world.1',

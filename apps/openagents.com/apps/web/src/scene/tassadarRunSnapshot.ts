@@ -23,6 +23,8 @@ import {
 import type {
   AgentAvatar,
   AvatarPosition,
+  ChatBubble,
+  LocalChatMessage,
   ProofRef,
   PylonAttention,
   PylonStation,
@@ -124,6 +126,24 @@ export interface TassadarWorldPylonAttention {
   readonly sourceEntityRef?: string
 }
 
+export interface TassadarWorldLocalChatMessage {
+  readonly body: string
+  readonly channelKind: string
+  readonly messageRef: string
+  readonly moderationState: string
+  readonly radiusMeters: number
+  readonly regionRef: string
+  readonly speakerAvatarRef: string
+  readonly targetRef?: string
+}
+
+export interface TassadarWorldChatBubble {
+  readonly anchorEntityRef: string
+  readonly bubbleRef: string
+  readonly messageRef: string
+  readonly speakerAvatarRef: string
+}
+
 /** Narrow structural view of the worker's `TrainingRunPublicSummary` (public-safe). */
 export interface TassadarRunPublicSummary {
   readonly corpus?: {
@@ -187,6 +207,8 @@ export interface TassadarRunPublicSummary {
   readonly world?: {
     readonly agentAvatars?: ReadonlyArray<TassadarWorldAgentAvatar>
     readonly avatarPositions?: ReadonlyArray<TassadarWorldAvatarPosition>
+    readonly chatBubbles?: ReadonlyArray<TassadarWorldChatBubble>
+    readonly localChatMessages?: ReadonlyArray<TassadarWorldLocalChatMessage>
     readonly pylonAttention?: ReadonlyArray<TassadarWorldPylonAttention>
     readonly pylonStations?: ReadonlyArray<TassadarWorldPylonStation>
   }
@@ -279,6 +301,14 @@ const avatarEntityPosition = (
   coordinate(position?.position.x ?? (station?.position.x ?? -1.9) + 0.45),
   coordinate(position?.position.z ?? station?.position.z ?? 0),
   worldEntityZ + 0.08,
+]
+
+const chatBubbleEntityPosition = (
+  anchorPosition: TrainingRunVector | undefined,
+): TrainingRunVector => [
+  coordinate(anchorPosition?.[0] ?? 0),
+  coordinate((anchorPosition?.[1] ?? 0) + 0.32),
+  worldEntityZ + 0.18,
 ]
 
 const verifiedReplayEntityPosition = (
@@ -573,6 +603,72 @@ const pylonAgentAvatarEntities = (
   })
 }
 
+const truncateBubbleText = (body: string): string => {
+  const text = body.trim().replace(/\s+/g, ' ')
+  return text.length <= 48 ? text : `${text.slice(0, 45)}...`
+}
+
+const chatBubbleEntities = (
+  summary: TassadarRunPublicSummary,
+): ReadonlyArray<TrainingRunEntityDefinition> => {
+  const stations = new Map(
+    (summary.world?.pylonStations ?? []).map(station => [
+      station.pylonRef,
+      station,
+    ]),
+  )
+  const positions = new Map(
+    (summary.world?.avatarPositions ?? []).map(position => [
+      position.avatarRef,
+      position,
+    ]),
+  )
+  const messages = new Map(
+    (summary.world?.localChatMessages ?? [])
+      .filter(message => message.moderationState === 'visible')
+      .map(message => [message.messageRef, message]),
+  )
+  return (summary.world?.chatBubbles ?? []).flatMap(bubble => {
+    const message = messages.get(bubble.messageRef)
+    if (message === undefined) return []
+    const station = stations.get(bubble.anchorEntityRef)
+    const position = positions.get(bubble.anchorEntityRef)
+    const speakerPosition = positions.get(message.speakerAvatarRef)
+    const anchorPosition =
+      station === undefined
+        ? position === undefined
+          ? undefined
+          : avatarEntityPosition(position, undefined)
+        : stationEntityPosition(station)
+    const anchored = {
+      id: bubble.bubbleRef,
+      label: truncateBubbleText(message.body),
+      position: chatBubbleEntityPosition(anchorPosition),
+      status: message.channelKind === 'pylon' ? 'talking_to_pylon' : 'chat',
+    }
+    if (
+      message.channelKind !== 'pylon' ||
+      speakerPosition === undefined ||
+      bubble.anchorEntityRef === message.speakerAvatarRef
+    ) {
+      return [anchored]
+    }
+    return [
+      {
+        id: `${bubble.bubbleRef}.speaker`,
+        label: truncateBubbleText(message.body),
+        position: chatBubbleEntityPosition(
+          avatarEntityPosition(speakerPosition, undefined),
+        ),
+        status: 'chat',
+      },
+      {
+        ...anchored,
+      },
+    ]
+  })
+}
+
 const runNodeStatus = (
   state: string | undefined,
 ): TrainingRunNodeDefinition['status'] =>
@@ -601,6 +697,8 @@ const runNodeFromPublicSummary = (
 export interface TassadarSpacetimeWorldRows {
   readonly agentAvatars?: ReadonlyArray<AgentAvatar>
   readonly avatarPositions?: ReadonlyArray<AvatarPosition>
+  readonly chatBubbles?: ReadonlyArray<ChatBubble>
+  readonly localChatMessages?: ReadonlyArray<LocalChatMessage>
   readonly proofRefs?: ReadonlyArray<ProofRef>
   readonly pylonAttention?: ReadonlyArray<PylonAttention>
   readonly pylonStations?: ReadonlyArray<PylonStation>
@@ -747,6 +845,56 @@ const worldPylonAttentionFromRows = (
       ...(rowText(row.sourceEntityRef) === ''
         ? {}
         : { sourceEntityRef: rowText(row.sourceEntityRef) }),
+    }))
+
+const worldLocalChatMessagesFromRows = (
+  rows: ReadonlyArray<LocalChatMessage>,
+  regionRefs: ReadonlySet<string>,
+  avatarRefs: ReadonlySet<string>,
+): ReadonlyArray<TassadarWorldLocalChatMessage> =>
+  [...rows]
+    .filter(
+      row =>
+        regionRefs.has(row.regionRef) &&
+        avatarRefs.has(row.speakerAvatarRef) &&
+        rowText(row.body) !== '' &&
+        rowText(row.bodyFormat) === 'plain_text',
+    )
+    .sort((left, right) => left.messageRef.localeCompare(right.messageRef))
+    .slice(-8)
+    .map(row => ({
+      body: rowText(row.body).slice(0, 280),
+      channelKind: rowText(row.channelKind) || 'local',
+      messageRef: row.messageRef,
+      moderationState: rowText(row.moderationState) || 'visible',
+      radiusMeters: finiteOrZero(row.radiusMeters),
+      regionRef: row.regionRef,
+      speakerAvatarRef: row.speakerAvatarRef,
+      ...(rowText(row.targetRef) === ''
+        ? {}
+        : { targetRef: rowText(row.targetRef) }),
+    }))
+
+const worldChatBubblesFromRows = (
+  rows: ReadonlyArray<ChatBubble>,
+  messageRefs: ReadonlySet<string>,
+  avatarRefs: ReadonlySet<string>,
+  stationRefs: ReadonlySet<string>,
+): ReadonlyArray<TassadarWorldChatBubble> =>
+  [...rows]
+    .filter(
+      row =>
+        messageRefs.has(row.messageRef) &&
+        avatarRefs.has(row.speakerAvatarRef) &&
+        (avatarRefs.has(row.anchorEntityRef) ||
+          stationRefs.has(row.anchorEntityRef)),
+    )
+    .sort((left, right) => left.bubbleRef.localeCompare(right.bubbleRef))
+    .map(row => ({
+      anchorEntityRef: row.anchorEntityRef,
+      bubbleRef: row.bubbleRef,
+      messageRef: row.messageRef,
+      speakerAvatarRef: row.speakerAvatarRef,
     }))
 
 const pylonRowsFromWorld = (
@@ -910,6 +1058,18 @@ export const spacetimeWorldSummaryFromRows = (
     stationRefs,
     avatarRefs,
   )
+  const localChatMessages = worldLocalChatMessagesFromRows(
+    rows.localChatMessages ?? [],
+    regionRefs,
+    avatarRefs,
+  )
+  const messageRefs = new Set(localChatMessages.map(row => row.messageRef))
+  const chatBubbles = worldChatBubblesFromRows(
+    rows.chatBubbles ?? [],
+    messageRefs,
+    avatarRefs,
+    stationRefs,
+  )
 
   if (
     trainingRun === undefined &&
@@ -920,7 +1080,9 @@ export const spacetimeWorldSummaryFromRows = (
     pylonStations.length === 0 &&
     agentAvatars.length === 0 &&
     avatarPositions.length === 0 &&
-    pylonAttention.length === 0
+    pylonAttention.length === 0 &&
+    localChatMessages.length === 0 &&
+    chatBubbles.length === 0
   ) {
     return baseSummary
   }
@@ -987,13 +1149,17 @@ export const spacetimeWorldSummaryFromRows = (
     ...(pylonStations.length === 0 &&
     agentAvatars.length === 0 &&
     avatarPositions.length === 0 &&
-    pylonAttention.length === 0
+    pylonAttention.length === 0 &&
+    localChatMessages.length === 0 &&
+    chatBubbles.length === 0
       ? {}
       : {
           world: {
             ...baseSummary.world,
             ...(agentAvatars.length === 0 ? {} : { agentAvatars }),
             ...(avatarPositions.length === 0 ? {} : { avatarPositions }),
+            ...(chatBubbles.length === 0 ? {} : { chatBubbles }),
+            ...(localChatMessages.length === 0 ? {} : { localChatMessages }),
             ...(pylonAttention.length === 0 ? {} : { pylonAttention }),
             ...(pylonStations.length === 0 ? {} : { pylonStations }),
           },
@@ -1034,6 +1200,7 @@ export const trainingRunEntityLayerFromPublicSummary = (
     ...leaderboardEntities(rows, settlements),
     ...pylonStationEntities(summary),
     ...pylonAgentAvatarEntities(summary),
+    ...chatBubbleEntities(summary),
     ...verifiedReplayEntities(pairs),
     ...rejectedReplayEntities(rejectedPairs),
     ...settlementEntities(settlements),

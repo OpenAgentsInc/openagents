@@ -56,6 +56,8 @@ const TASSADAR_INITIAL_AVATAR_POSITION = {
 const TASSADAR_WALK_METERS_PER_SECOND = 3.2
 const TASSADAR_RUN_METERS_PER_SECOND = 5.6
 const TASSADAR_AVATAR_KEEPALIVE_MS = 5_000
+const TASSADAR_CHAT_MAX_CHARS = 280
+const TASSADAR_LOCAL_CHAT_RADIUS_METERS = 8
 
 export type TassadarRunDataState = 'loading' | 'ok' | 'empty' | 'error'
 export type TassadarRunProofLink = Readonly<{
@@ -90,7 +92,16 @@ const HOST_STYLE =
   '.selection dl{display:grid;gap:0.45rem;margin:0.55rem 0 0}.selection dt{margin:0 0 0.12rem;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.35)}' +
   '.selection dd{margin:0;overflow-wrap:anywhere;font-size:0.7rem;line-height:1.4;color:rgba(255,255,255,0.66)}' +
   '.selection a{display:inline-flex;margin-top:0.55rem;font-size:0.72rem;color:rgba(255,255,255,0.86);text-underline-offset:0.18rem}' +
-  '.selection a:hover{color:#fff}'
+  '.selection a:hover{color:#fff}' +
+  '.chat{position:absolute;left:1rem;bottom:1rem;z-index:2;width:min(24rem,calc(100% - 2rem));' +
+  'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;pointer-events:auto}' +
+  '.chat ol{display:grid;gap:0.35rem;max-height:9rem;overflow:hidden;margin:0 0 0.5rem;padding:0;list-style:none}' +
+  '.chat li{border-left:2px solid rgba(255,255,255,0.22);padding-left:0.5rem;font-size:0.68rem;line-height:1.35;color:rgba(255,255,255,0.62);text-shadow:0 1px 8px rgba(0,0,0,0.8)}' +
+  '.chat strong{display:inline;color:rgba(255,255,255,0.82);font-weight:600}.chat span{overflow-wrap:anywhere}' +
+  '.chat form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0.4rem;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.42);padding:0.45rem;backdrop-filter:blur(14px)}' +
+  '.chat input{min-width:0;border:0;background:transparent;color:#fff;font:inherit;font-size:0.72rem;outline:none}' +
+  '.chat input::placeholder{color:rgba(255,255,255,0.35)}.chat button{border:1px solid rgba(255,255,255,0.16);background:rgba(255,255,255,0.08);color:#fff;font:inherit;font-size:0.68rem;padding:0.28rem 0.5rem}' +
+  '.chat button:disabled,.chat input:disabled{opacity:0.45}'
 
 const isIdle = (summary: TassadarRunPublicSummary): boolean =>
   summary.emptyState?.idle === true
@@ -152,6 +163,14 @@ const metricNumber = (
 const textOrUnknown = (value: string | undefined): string => {
   const text = value?.trim()
   return text === undefined || text.length === 0 ? 'unknown' : text
+}
+
+export const sanitizeTassadarChatBody = (value: string): string | null => {
+  const body = value.trim().replace(/\s+/g, ' ')
+  if (body.length === 0) return null
+  return body.length <= TASSADAR_CHAT_MAX_CHARS
+    ? body
+    : body.slice(0, TASSADAR_CHAT_MAX_CHARS)
 }
 
 const localViewerDisplayName = (): string => {
@@ -752,9 +771,11 @@ const makeClass = (): CustomElementConstructor =>
           pylonRefFromProofLink(activeSummary, proofLink) ??
           null
         this.#renderSelection(base.mount, detail, proofLink)
+        this.#renderChat(base.mount, activeSummary)
       })
       base.mount.append(run)
       this.#renderStatus(base.mount, summary)
+      this.#renderChat(base.mount, summary)
       this.#connectSpacetimeWorld(summary, run, base.mount)
     }
 
@@ -793,6 +814,7 @@ const makeClass = (): CustomElementConstructor =>
             walkController: this.#walkControllerOptions(),
           }
           this.#renderStatus(mount, nextSummary)
+          this.#renderChat(mount, nextSummary)
         },
       })
         .then(subscription => {
@@ -802,6 +824,7 @@ const makeClass = (): CustomElementConstructor =>
           }
           this.#spacetimeWorld = subscription
           this.#startAvatarMovement(subscription)
+          this.#renderChat(mount, this.#summary ?? summary)
         })
         .catch(() => {
           if (!this.isConnected || signal?.aborted === true) return
@@ -1005,6 +1028,96 @@ const makeClass = (): CustomElementConstructor =>
       ) {
         console.warn('[tassadar:mouselook]', snapshot)
       }
+    }
+
+    #renderChat(
+      mount: HTMLDivElement,
+      summary: TassadarRunPublicSummary,
+    ): void {
+      const existingBody =
+        (mount.querySelector('.chat input') as HTMLInputElement | null)?.value ??
+        ''
+      mount.querySelector('.chat')?.remove()
+      const messages = (summary.world?.localChatMessages ?? [])
+        .filter(message => message.moderationState === 'visible')
+        .slice(-5)
+      if (this.#spacetimeWorld === null && messages.length === 0) return
+      const panel = document.createElement('aside')
+      panel.className = 'chat'
+      panel.setAttribute('aria-label', 'Nearby chat')
+
+      if (messages.length > 0) {
+        const names = new Map(
+          (summary.world?.agentAvatars ?? []).map(avatar => [
+            avatar.avatarRef,
+            avatar.displayName,
+          ]),
+        )
+        const list = document.createElement('ol')
+        messages.forEach(message => {
+          const item = document.createElement('li')
+          const speaker = document.createElement('strong')
+          speaker.textContent =
+            names.get(message.speakerAvatarRef) ??
+            message.speakerAvatarRef.split('.').slice(-1)[0] ??
+            'avatar'
+          const body = document.createElement('span')
+          body.textContent = ` ${message.body}`
+          item.append(speaker, body)
+          list.append(item)
+        })
+        panel.append(list)
+      }
+
+      const form = document.createElement('form')
+      const input = document.createElement('input')
+      input.name = 'body'
+      input.maxLength = TASSADAR_CHAT_MAX_CHARS
+      input.value = existingBody
+      input.placeholder =
+        this.#selectedPylonRef === null ? 'Nearby message' : 'Message pylon'
+      input.autocomplete = 'off'
+      input.disabled = this.#spacetimeWorld === null
+      const button = document.createElement('button')
+      button.type = 'submit'
+      button.textContent = 'Send'
+      button.disabled = this.#spacetimeWorld === null
+      form.addEventListener('submit', event => {
+        event.preventDefault()
+        this.#sendChatMessage(input)
+      })
+      form.append(input, button)
+      panel.append(form)
+      mount.append(panel)
+    }
+
+    #sendChatMessage(input: HTMLInputElement): void {
+      const subscription = this.#spacetimeWorld
+      if (subscription === null) {
+        this.setAttribute('data-chat-state', 'unavailable')
+        return
+      }
+      const body = sanitizeTassadarChatBody(input.value)
+      if (body === null) {
+        this.setAttribute('data-chat-state', 'empty')
+        return
+      }
+      if (this.#selectedPylonRef === null) {
+        subscription.sendLocalMessage({
+          body,
+          radiusMeters: TASSADAR_LOCAL_CHAT_RADIUS_METERS,
+        })
+      } else {
+        subscription.sendPylonMessage({
+          body,
+          pylonRef: this.#selectedPylonRef,
+        })
+      }
+      input.value = ''
+      this.setAttribute(
+        'data-chat-state',
+        this.#selectedPylonRef === null ? 'local_sent' : 'pylon_sent',
+      )
     }
 
     #renderStatus(

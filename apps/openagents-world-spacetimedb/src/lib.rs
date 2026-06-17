@@ -12,6 +12,7 @@ const STALE_AVATAR_POSITION_MS: i64 = 20_000;
 const ATTENTION_TTL_MS: i64 = 8_000;
 const CHAT_TTL_MS: i64 = 90_000;
 const CHAT_BUBBLE_TTL_MS: i64 = 8_000;
+const CHAT_MESSAGE_MIN_INTERVAL_MS: i64 = 1_000;
 const EMOTE_TTL_MS: i64 = 8_000;
 const INTENT_TTL_MS: i64 = 15_000;
 
@@ -1393,9 +1394,21 @@ fn insert_local_message(
 ) -> Result<(), String> {
     let channel_kind =
         validate_choice(channel_kind, "channel_kind", &["local", "pylon", "system"])?;
+    let now_ms = ctx_epoch_ms(ctx);
+    if ctx
+        .db
+        .local_chat_message()
+        .iter()
+        .any(|row| {
+            row.speaker_avatar_ref == speaker_avatar_ref
+                && row.expires_at_epoch_ms
+                    > now_ms + CHAT_TTL_MS - CHAT_MESSAGE_MIN_INTERVAL_MS
+        })
+    {
+        return Err("chat messages are rate limited".to_string());
+    }
     let message_ref = next_ref(ctx, "message");
     let bubble_ref = format!("bubble.{message_ref}");
-    let now_ms = ctx_epoch_ms(ctx);
     let anchor_entity_ref = target_ref
         .as_ref()
         .cloned()

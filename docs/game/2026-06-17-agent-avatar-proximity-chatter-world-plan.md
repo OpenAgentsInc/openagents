@@ -35,6 +35,14 @@ The scene subscribes to `pylon_attention`, renders guest avatar rows from the
 same run region, and marks stations with compact `+N` visitor labels while
 preserving Worker/D1 as the truth source and fallback.
 
+Update: issue #5265 added the first local chatter loop. The SpacetimeDB module
+now rate-limits chat reducers to one message per avatar per second, while the
+browser sends sanitized plain-text local or pylon-targeted messages capped at
+280 characters. `/tassadar` subscribes to `local_chat_message` and
+`chat_bubble`, renders row-backed bubble entities above speakers and pylon
+stations, and shows a compact nearby transcript sourced only from visible
+message rows. No fixture chatter is rendered in production.
+
 ## Thesis
 
 The next visible step should be simple to explain:
@@ -257,6 +265,9 @@ Local chat should feel like spatial speech:
 - Nearby clients render a bubble over the speaker for a few seconds.
 - The HUD keeps a short "nearby" transcript, not a global chat log.
 - Pylon-targeted messages appear as speech toward that pylon station.
+- The first web sender sanitizes to plain text, collapses whitespace, caps body
+  length at 280 characters, and relies on the reducer's one-message-per-second
+  rate guard.
 - Agent replies can appear as bubbles and optionally as one-line HUD toasts.
 - Old messages expire from the local world table.
 

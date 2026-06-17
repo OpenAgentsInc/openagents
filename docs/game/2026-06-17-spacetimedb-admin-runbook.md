@@ -190,6 +190,12 @@ It also enforces a minimum 100 ms interval between accepted
 position updates at most every 250 ms, sends a 5 second idle keepalive while
 connected, and emits pylon attention at most every 1 second.
 
+Chat reducers are also bounded. `send_local_message` and `send_pylon_message`
+accept plain text only, cap bodies at 280 characters, and reject writes from the
+same avatar inside a 1 second window. The first web HUD sends either a local
+8 meter message or a pylon-targeted message, depending on the current pylon
+selection.
+
 Cleanup is service-owned. Run `expire_interaction_rows` from an authorized
 service identity to remove:
 

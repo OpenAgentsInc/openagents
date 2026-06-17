@@ -1,7 +1,7 @@
 # SpacetimeDB To Tassadar Integration Next Steps
 
 Date: 2026-06-17
-Status: Phase 0, Phase 1, Phase 2, base ops hardening, MVP interaction schema, station/avatar projection, read-only station/avatar rendering, and browser movement/attention implemented; local chatter next
+Status: Phase 0, Phase 1, Phase 2, base ops hardening, MVP interaction schema, station/avatar projection, station/avatar rendering, browser movement/attention, and local chatter implemented
 
 ## Current Boundary
 
@@ -200,11 +200,20 @@ browser session appears as a row-backed avatar. Pylon stations show compact
 unreachable, the WASD/mouselook scene still works locally from the Worker/D1
 summary and no multiplayer reducers are called.
 
-This phase still does not render chat bubbles or payout motion before
-row-backed interaction writes exist.
+Issue #5265 adds public-safe local and pylon-targeted chatter over the same
+interaction boundary. The module now rejects chat writes from the same avatar
+inside a 1 second window, keeps body text plain, caps bodies at 280 characters,
+stores `moderation_state="visible"`, expires message rows after 90 seconds, and
+expires bubble rows after 8 seconds. The browser sanitizes form input before
+calling `send_local_message` or `send_pylon_message`, subscribes to
+`local_chat_message` and `chat_bubble`, renders row-backed bubble entities over
+speakers and pylon stations, and shows a compact nearby transcript HUD. Pylon
+messages render at both the speaker and station from the same public message and
+bubble rows.
 
-The next step is issue #5265: add public-safe local and pylon-targeted chatter,
-chat bubbles, and a nearby transcript over the same interaction boundary.
+This phase still does not render payout motion before row-backed settlement
+evidence exists, and it does not store private prompts, private runtime logs,
+wallet material, provider payloads, or fixture chatter.
 
 After the base projection works, add subscriptions that are useful only when an
 entity is selected:
@@ -235,6 +244,11 @@ Required checks before treating `/tassadar` as connected:
 - Add web coverage for bounded movement integration, SpacetimeDB-unavailable
   fallback, guest-avatar row mapping, and pylon-attention row mapping. Done in
   issue #5264.
+- Add web coverage for chat sanitization, chat row mapping, pylon-targeted
+  speaker/station bubble rendering, and fallback with no fixture chatter. Done
+  in issue #5265.
+- Build the SpacetimeDB WASM module after reducer-boundary changes. Done in
+  issue #5265.
 - Probe `https://spacetime.openagents.com/v1/database/openagents-world/subscribe`
   and expect `426` from a non-WebSocket curl. Done in issue #5238.
 - Manually verify the browser scene still contains no unbacked motion.

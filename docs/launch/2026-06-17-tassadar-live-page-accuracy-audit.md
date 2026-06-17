@@ -193,6 +193,21 @@ primitives.
   20 second stale-avatar TTL. Deploy version
   `5ca9e407-38ea-4887-b2b8-17345a9049b4` served hashed bundle
   `/assets/index-B9O9w_54.js`; the live `/tassadar` smoke passed after deploy.
+- 2026-06-17: Issue #5265 added the first local chatter loop for the inhabited
+  `/tassadar` world. The SpacetimeDB module now rate-limits local messages to
+  one message per avatar per second, stores only visible plain-text message rows
+  capped at 280 characters, and emits short-lived `chat_bubble` anchors for the
+  speaker or the targeted public pylon station. The browser subscribes to
+  `local_chat_message` and `chat_bubble`, sanitizes chat input before calling
+  local or pylon-targeted reducers, renders a nearby transcript, and places
+  bubbles over both the speaker and pylon station for pylon-channel messages.
+  The implementation deliberately adds no fake fixture chatter and does not
+  store private prompts, logs, wallet material, provider payloads, or
+  SpacetimeDB-only proof authority in chat rows. The live self-hosted
+  `openagents-world` module publish succeeded, and deploy version
+  `c4621e06-4d60-4a60-8133-41ee3c7ff4d5` served hashed bundle
+  `/assets/index-DQ9FGJ43.js`; live checks for `/`, `/tassadar`, the hashed
+  asset, and `smoke:tassadar:live-page` passed after deploy.
 
 ## Short answer
 
