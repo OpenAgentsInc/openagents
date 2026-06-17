@@ -47,17 +47,35 @@ const idleEnvelope = (runRef: string, generatedAt: string) =>
 
 const maxSettlementReceiptLookups = 128
 
+export type PublicTassadarSettlementRow = Readonly<{
+  amountSats: number
+  apiUrl: string
+  contributorRef: string | null
+  movementMode: 'real_bitcoin' | 'simulation'
+  realBitcoinMoved: boolean
+  receiptKind: string
+  receiptPageUrl: string
+  receiptRef: string
+  sourceRefs: ReadonlyArray<string>
+  state: string
+  trainingRunRef: string | null
+  verificationChallengeRef: string | null
+}>
+
 type RunSettlementInfo = Readonly<{
   contributorRef: string | null
+  row: PublicTassadarSettlementRow | null
   settledSats: number
 }>
 
 type RunSettlementResolution = Readonly<{
+  settlementRows: ReadonlyArray<PublicTassadarSettlementRow>
   settledSatsByReceiptRef: ReadonlyMap<string, number>
   settlementReceiptRefsByContributor: ReadonlyMap<string, ReadonlyArray<string>>
 }>
 
 const emptyRunSettlementResolution: RunSettlementResolution = {
+  settlementRows: [],
   settledSatsByReceiptRef: new Map<string, number>(),
   settlementReceiptRefsByContributor: new Map<string, ReadonlyArray<string>>(),
 }
@@ -65,27 +83,88 @@ const emptyRunSettlementResolution: RunSettlementResolution = {
 const uniqueRefs = (refs: ReadonlyArray<string>): ReadonlyArray<string> =>
   [...new Set(refs.map(ref => ref.trim()).filter(ref => ref !== ''))].sort()
 
+const optionalRef = (ref: string | null | undefined): ReadonlyArray<string> =>
+  typeof ref === 'string' && ref.trim() !== '' ? [ref] : []
+
 const settlementInfoFromReceipt = (
-  record: Readonly<{ publicProjectionJson: string; receiptKind: string }>,
+  input: Readonly<{
+    appUrl: string
+    eventStatus?: string | undefined
+    receiptRef: string
+    record: Readonly<{
+      eventRef?: string | null
+      payoutAttemptRef?: string | null
+      payoutIntentRef?: string | null
+      publicProjectionJson: string
+      receiptKind: string
+    }>
+  }>,
 ): RunSettlementInfo => {
-  const settledSats = settledSatsFromPaymentAuthorityReceipt(record)
-
-  if (settledSats <= 0) {
-    return { contributorRef: null, settledSats: 0 }
-  }
-
-  const projection = parseJsonRecord(record.publicProjectionJson)
+  const settledSats = settledSatsFromPaymentAuthorityReceipt(input.record)
+  const projection = parseJsonRecord(input.record.publicProjectionJson)
   const contributorRef =
     typeof projection?.contributorRef === 'string'
       ? projection.contributorRef
       : null
+  const amountSats =
+    typeof projection?.amountSats === 'number' &&
+    Number.isInteger(projection.amountSats) &&
+    projection.amountSats > 0
+      ? projection.amountSats
+      : settledSats
+  const movementMode =
+    projection?.movementMode === 'real_bitcoin' ||
+    projection?.moneyMovement === 'real_bitcoin'
+      ? 'real_bitcoin'
+      : 'simulation'
+  const state = typeof projection?.state === 'string' ? projection.state : 'unknown'
+  const trainingRunRef =
+    typeof projection?.trainingRunRef === 'string'
+      ? projection.trainingRunRef
+      : null
+  const verificationChallengeRef =
+    typeof projection?.verificationChallengeRef === 'string'
+      ? projection.verificationChallengeRef
+      : null
+  const realBitcoinMoved =
+    movementMode === 'real_bitcoin' &&
+    input.record.receiptKind === 'settlement_recorded' &&
+    (input.eventStatus === 'matched' ||
+      projection?.realBitcoinMoved === true)
+  const row: PublicTassadarSettlementRow = {
+    amountSats,
+    apiUrl: `${input.appUrl}/api/public/nexus-pylon/receipts/${encodeURIComponent(
+      input.receiptRef,
+    )}`,
+    contributorRef,
+    movementMode,
+    realBitcoinMoved,
+    receiptKind: input.record.receiptKind,
+    receiptPageUrl: `${input.appUrl}/nexus-pylon/receipts/${encodeURIComponent(
+      input.receiptRef,
+    )}`,
+    receiptRef: input.receiptRef,
+    sourceRefs: uniqueRefs([
+      input.receiptRef,
+      ...optionalRef(input.record.eventRef),
+      ...optionalRef(input.record.payoutAttemptRef),
+      ...optionalRef(input.record.payoutIntentRef),
+      ...optionalRef(contributorRef),
+      ...optionalRef(trainingRunRef),
+      ...optionalRef(verificationChallengeRef),
+    ]),
+    state,
+    trainingRunRef,
+    verificationChallengeRef,
+  }
 
-  return { contributorRef, settledSats }
+  return { contributorRef, row, settledSats }
 }
 
 const resolveRunSettlements = async (
   payoutLedgerStore: NexusTreasuryPayoutLedgerStore | undefined,
   receiptRefs: ReadonlyArray<string>,
+  appUrl: string,
 ): Promise<RunSettlementResolution> => {
   if (payoutLedgerStore === undefined) {
     return emptyRunSettlementResolution
@@ -101,18 +180,30 @@ const resolveRunSettlements = async (
     refs.map(async receiptRef => {
       const record =
         await payoutLedgerStore.readPaymentAuthorityReceiptByRef(receiptRef)
+      const event =
+        record?.eventRef === null || record?.eventRef === undefined
+          ? undefined
+          : await payoutLedgerStore.readReconciliationEventByRef(record.eventRef)
 
       return [
         receiptRef,
         record === undefined
-          ? { contributorRef: null, settledSats: 0 }
-          : settlementInfoFromReceipt(record),
+          ? { contributorRef: null, row: null, settledSats: 0 }
+          : settlementInfoFromReceipt({
+              appUrl,
+              eventStatus: event?.status,
+              receiptRef,
+              record,
+            }),
       ] as const
     }),
   )
   const settled = entries.filter(([, info]) => info.settledSats > 0)
 
   return {
+    settlementRows: entries.flatMap(([, info]) =>
+      info.row === null ? [] : [info.row],
+    ),
     settledSatsByReceiptRef: new Map<string, number>(
       settled.map(([receiptRef, info]) => [receiptRef, info.settledSats]),
     ),
@@ -144,6 +235,7 @@ export const buildPublicTassadarRunSummaryEnvelope = async (
   runRef: string,
   generatedAt: string,
   payoutLedgerStore?: NexusTreasuryPayoutLedgerStore,
+  appUrl = 'https://openagents.com',
 ): Promise<Record<string, unknown>> => {
   const run = await store.readRun(runRef)
   if (run === undefined) return { ...idleEnvelope(runRef, generatedAt) }
@@ -158,7 +250,7 @@ export const buildPublicTassadarRunSummaryEnvelope = async (
     ...windows.flatMap(window => window.receiptRefs),
     ...leases.flatMap(lease => lease.receiptRefs),
     ...challenges.flatMap(challenge => challenge.verdictRefs),
-  ])
+  ], appUrl)
   const summary = publicTrainingRunSummary({
     challenges,
     leases,
@@ -175,6 +267,7 @@ export const buildPublicTassadarRunSummaryEnvelope = async (
     runState: run.state,
     generatedAt,
     ...summary,
+    settlementRows: settlement.settlementRows,
     staleness: summary.run.staleness,
   }
 }
@@ -201,10 +294,12 @@ export const buildPublicTassadarRunSummaryEnvelopeForRequest = async (
   const runRef =
     new URL(request.url).searchParams.get('run')?.trim() ||
     DEFAULT_TASSADAR_RUN_REF
+  const appUrl = new URL(request.url).origin
   return buildPublicTassadarRunSummaryEnvelope(
     makeStore(env),
     runRef,
     generatedAt,
     makePayoutLedgerStore(env),
+    appUrl,
   )
 }

@@ -113,18 +113,45 @@ const verifiedChallenge: TrainingVerificationChallengeRecord = {
   windowRef,
 }
 
+const rejectedChallenge: TrainingVerificationChallengeRecord = {
+  ...verifiedChallenge,
+  challengeRef: 'training.verification.challenge.public_summary_rejected',
+  failureCodes: ['DigestMismatch'],
+  id: 'challenge-public-summary-rejected',
+  payloadJson: JSON.stringify({
+    pylonDeviceRef: 'pylon.public.rejected_worker',
+    validatorDeviceRef: 'pylon.public.validator',
+  }),
+  rejectedAt: '2026-06-16T10:04:00.000Z',
+  state: 'Rejected',
+  updatedAt: '2026-06-16T10:04:00.000Z',
+  verdictRefs: ['verdict.training.exact_trace_replay.public_summary_rejected'],
+  verifiedAt: null,
+}
+
 const fakePayoutLedgerStore = () =>
   ({
     readPaymentAuthorityReceiptByRef: async (receiptRef: string) =>
       receiptRef === settlementReceiptRef
         ? {
+            eventRef: 'reconciliation.tassadar.public_summary_test',
+            payoutAttemptRef: 'payout_attempt.tassadar.public_summary_test',
+            payoutIntentRef: 'payout_intent.tassadar.public_summary_test',
             publicProjectionJson: JSON.stringify({
               amountSats: 21,
               contributorRef: pylonRef,
+              moneyMovement: 'simulation',
               state: 'settled',
+              trainingRunRef: runRef,
+              verificationChallengeRef: verifiedChallenge.challengeRef,
             }),
             receiptKind: 'settlement_recorded',
+            receiptRef: settlementReceiptRef,
           }
+        : undefined,
+    readReconciliationEventByRef: async (eventRef: string) =>
+      eventRef === 'reconciliation.tassadar.public_summary_test'
+        ? { status: 'matched' }
         : undefined,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   }) as any
@@ -197,7 +224,10 @@ describe('buildPublicTassadarRunSummaryEnvelopeForRequest (public read, #5114)',
             readRun: async () => runRecord,
             listWindowsForRun: async () => [windowRecord],
             listWindowLeasesForRun: async () => [leaseRecord],
-            listVerificationChallengesForRun: async () => [verifiedChallenge],
+            listVerificationChallengesForRun: async () => [
+              verifiedChallenge,
+              rejectedChallenge,
+            ],
           }),
         now,
       },
@@ -216,5 +246,66 @@ describe('buildPublicTassadarRunSummaryEnvelopeForRequest (public read, #5114)',
     expect(metrics.qualifiedContributorCount.sourceRefs).toContain(
       settlementReceiptRef,
     )
+
+    const settlementRows = body.settlementRows as ReadonlyArray<{
+      amountSats: number
+      apiUrl: string
+      contributorRef: string
+      movementMode: string
+      realBitcoinMoved: boolean
+      receiptKind: string
+      receiptPageUrl: string
+      receiptRef: string
+      sourceRefs: ReadonlyArray<string>
+      state: string
+      trainingRunRef: string
+      verificationChallengeRef: string
+    }>
+    expect(settlementRows).toEqual([
+      expect.objectContaining({
+        amountSats: 21,
+        apiUrl: `https://openagents.com/api/public/nexus-pylon/receipts/${settlementReceiptRef}`,
+        contributorRef: pylonRef,
+        movementMode: 'simulation',
+        realBitcoinMoved: false,
+        receiptKind: 'settlement_recorded',
+        receiptPageUrl: `https://openagents.com/nexus-pylon/receipts/${settlementReceiptRef}`,
+        receiptRef: settlementReceiptRef,
+        state: 'settled',
+        trainingRunRef: runRef,
+        verificationChallengeRef: verifiedChallenge.challengeRef,
+      }),
+    ])
+    expect(settlementRows[0]?.sourceRefs).toContain(pylonRef)
+    expect(settlementRows[0]?.sourceRefs).toContain(
+      verifiedChallenge.challengeRef,
+    )
+
+    const realGradient = body.realGradient as {
+      rejectedReplayPairs: ReadonlyArray<{
+        challengeRef: string
+        failureCodes: ReadonlyArray<string>
+        validatorRef: string | null
+        verdictRefs: ReadonlyArray<string>
+        workerRef: string
+      }>
+      verifiedReplayPairs: ReadonlyArray<{ challengeRef: string }>
+    }
+    expect(realGradient.verifiedReplayPairs).toEqual([
+      expect.objectContaining({
+        challengeRef: verifiedChallenge.challengeRef,
+      }),
+    ])
+    expect(realGradient.rejectedReplayPairs).toEqual([
+      expect.objectContaining({
+        challengeRef: rejectedChallenge.challengeRef,
+        failureCodes: ['DigestMismatch'],
+        validatorRef: 'pylon.public.validator',
+        verdictRefs: [
+          'verdict.training.exact_trace_replay.public_summary_rejected',
+        ],
+        workerRef: 'pylon.public.rejected_worker',
+      }),
+    ])
   })
 })

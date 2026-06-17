@@ -13,6 +13,11 @@ primitives.
   live snapshot strip from the fetched public summary: run ref, run state,
   `generatedAt`, `projection_staleness.v1` composition, browser fetched time,
   and a manual refresh control. `/run` remains as the existing alias.
+- 2026-06-17: Issue #5187 extended the public Tassadar summary contract with
+  typed `settlementRows` and `realGradient.rejectedReplayPairs`. Settlement rows
+  carry receipt refs, contributor refs, challenge refs, amount sats,
+  `movementMode`, `realBitcoinMoved`, state, and public Nexus/Pylon proof URLs,
+  so later visual layers can stop inferring payout proof from aggregates.
 
 ## Short answer
 
