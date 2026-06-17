@@ -157,6 +157,79 @@ The launch docs make the copy and visual constraints unusually strict:
 The useful visual direction is therefore "operational proof instrument", not
 "sci-fi training page."
 
+## Evidence-bound motion contract
+
+This is the hard motion rule for Tassadar and any training-run scene derived
+from it:
+
+> If it moves, pulses, flows, or bursts, it must be tied to a real public ref or
+> a measurable live state transition. No decorative data motion.
+
+That means:
+
+- A moving pylon mark needs a `pylon.*` ref or an explicit live presence/ref
+  projection.
+- A replay pulse needs a `training.verification.challenge.*` ref, worker ref,
+  validator ref, and verdict/source refs.
+- A trace strand needs a submitted, queued, replayed, rejected, or accepted
+  trace/challenge ref. Counts alone are not enough to animate a trace.
+- A receipt or payout burst needs a settlement receipt row. A real-Bitcoin
+  payout burst also requires `realBitcoinMoved:true`.
+- A corpus animation needs accepted trace refs, not just accepted-trace count.
+- A counter roll needs the previous value, next value, timestamp, and source
+  projection. If the value is first load only, it can appear but should not
+  simulate ongoing flow.
+- A liveness heartbeat needs a current heartbeat/presence source and should age
+  out or freeze when the source is stale.
+
+Negative rule: do not render "data moving back and forth" merely because the
+graph has an edge. Fixed stage edges may exist as static structure. Their motion
+must be absent until the adapter supplies motion events with refs. An aggregate
+state like `verified work: 3` can color a stage node, but it cannot create three
+anonymous pulses.
+
+Every animated primitive should expose this metadata in code, test fixtures, and
+proof inspection:
+
+- `motionId`: stable ID for the animation instance.
+- `motionKind`: `presence`, `assignment`, `trace_submitted`, `replay_verified`,
+  `replay_rejected`, `settlement_recorded`, `real_bitcoin_moved`,
+  `corpus_accepted`, `counter_changed`, or another typed event.
+- `sourceRefs`: the public refs that authorize the motion.
+- `generatedAt`: projection timestamp.
+- `expiresAt` or stale policy for liveness/presence motion.
+- `simulated`: true only for explicitly labeled simulation evidence; simulated
+  motion must not share the real-settlement encoding.
+
+If any of that metadata is missing, the fallback is static state: show the node,
+show the count, show the proof drawer row, but do not animate it.
+
+## Motion roadmap
+
+1. Add a `three-effect` option to disable base edge flow pulses in
+   `oa-training-run`; `/tassadar` should use the disabled/static mode until
+   evidence-bound motion events exist.
+2. Replace anonymous renderer pulses with a typed motion-event layer. The
+   renderer should accept arrays such as `traceMotions`, `replayMotions`,
+   `settlementMotions`, and `presenceMotions`, each carrying the metadata above.
+3. Make the web adapter responsible for deriving motion events from
+   `/api/public/tassadar-run-summary`, `/api/public/product-promises`, and
+   `/api/public/pylon-stats`; the renderer must not invent them from graph
+   topology.
+4. Keep `/components/training` and `/animations` demos honest by labeling
+   unbound studies as static prototypes, or by feeding them fixture refs that
+   are visibly fixture-only. A demo can study form, but it must not train future
+   implementation habits around anonymous motion.
+5. Add regression coverage that `tassadarRunVisualizationOptions(summary)` does
+   not produce motion/burst/flow definitions without `sourceRefs`, and that
+   simulation settlement never produces a real-Bitcoin motion.
+6. Add a browser smoke or canvas-inspection check for `/tassadar` that fails if
+   base edge pulses are active while the live payload has no matching motion
+   events.
+7. Update the proof drawer to show the source refs for any selected animated
+   mark. The user should be able to ask "why did that move?" and get a public
+   answer immediately.
+
 ## Proposed compositional primitives
 
 ### 1. Run field
@@ -294,15 +367,19 @@ families.
 3. Let roles drive geometry:
    contributor nodes sit around the run, worker-validator pairs form replay
    beams, corpus sits as accumulation, settlement is a burst, blockers are gates.
-4. Use motion only for state changes or liveness:
-   flowing trace, replay pulse, receipt burst, slot-text counter roll. Static
-   proof should settle down.
+4. Use motion only when there is a bound public ref or measurable live state
+   transition:
+   flowing trace, replay pulse, receipt burst, slot-text counter roll, and
+   heartbeat/liveness motion all need source refs or timestamped projections.
+   Static proof should stay static.
 5. Never use one glow for multiple truths. Online, assigned, verified, settled,
    and recipient-confirmed need separate encodings.
 6. The first read should be visual; the second read should be inspectable refs.
    Every important visual element needs a data-display peer.
 7. Zero states are first-class. A run with no verified traces should still look
    like a real run, not an empty marketing failure.
+8. Anonymous edge pulses are banned for live training pages. If an edge does not
+   have a motion event, render it as static structure.
 
 ## Candidate scene grammar
 
@@ -329,14 +406,17 @@ For an idle or blocked run:
 
 1. Keep `/run` as the canonical live-run surface and extend
    `tassadarRunSnapshot.ts` instead of creating a parallel adapter.
-2. Move the named scene concepts into `three-effect` primitives where they are
+2. Disable anonymous base edge pulses for `/tassadar` before adding more motion.
+   The current abstract back-and-forth dots are not acceptable live-run language
+   unless each pulse can answer which public ref caused it.
+3. Move the named scene concepts into `three-effect` primitives where they are
    reusable: contributor entity, trace strand, replay beam, receipt burst, corpus
    ring, proof drawer events.
-3. Use `/animations` to prototype individual primitives, but promote only
-   primitives that bind to public-safe refs.
-4. Add a `/components` family or subfamily for "run evidence" only if the
+4. Use `/animations` to prototype individual primitives, but promote only
+   primitives that bind to public-safe refs and produce no anonymous motion.
+5. Add a `/components` family or subfamily for "run evidence" only if the
    existing data-display/workroom families become too repetitive.
-5. In Autopilot Desktop, keep the default Network pane broad and use Training
+6. In Autopilot Desktop, keep the default Network pane broad and use Training
    Live for the run-specific grammar. The Network pane answers "is the fleet
    alive?"; Training Live should answer "what happened to this run?"
 

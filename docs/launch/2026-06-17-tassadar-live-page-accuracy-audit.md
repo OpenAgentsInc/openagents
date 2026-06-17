@@ -71,13 +71,17 @@ primitives.
   verified replay beams, settlement receipt entity, accepted trace entities,
   promise registry marks, and aggregate stage-node labels/statuses described
   below.
+- 2026-06-17: Owner review tightened the motion rule. Abstract flow pulses are
+  no longer acceptable live-run language for `/tassadar`: every moving dot,
+  pulse, flow, beam, burst, or counter roll must be bound to a public ref or a
+  timestamped live state transition. Static aggregate graph structure is allowed;
+  anonymous motion is not.
 
 ## Short answer
 
-We have the right base, but not the full accurate page yet.
+We have the right live-page base, but the motion language is still too loose.
 
-The accurate path is to make `/tassadar` the public/friendly route over the
-existing live-run architecture:
+The accurate path is to keep `/tassadar` on the existing live-run architecture:
 
 - `GET /api/public/tassadar-run-summary`
 - `apps/openagents.com/apps/web/src/scene/tassadarRunSnapshot.ts`
@@ -89,35 +93,20 @@ Do not fork a second data adapter. Do not use the new
 public refs. Today those gallery primitives are useful visual grammar, but only
 `oa-training-run` is actually data-bound to the live Worker projection.
 
-The missing work is mostly about truthfulness, not raw visuals:
+The remaining work is mostly about motion truth, not raw visuals:
 
-1. `/tassadar` is not a route yet; live `https://openagents.com/tassadar`
-   redirects to `/`.
-2. The current `/run` element fetches once on mount. A page called live needs an
-   explicit refresh contract or visible "snapshot as of" state.
-3. Settlement is not visually accurate enough. The live run summary reports
-   `providerConfirmedSettledPayoutSats: 5`, but the linked receipt is
-   `movementMode: simulation` and `realBitcoinMoved: false`. The page must say
-   "settlement record" or "simulation-backed settlement proof", not real sats
-   paid.
-4. The run-level settlement join and the per-leaderboard rows disagree: the run
-   metric sees 5 settlement-recorded sats, while every current leaderboard row
-   reports `settledPayoutSats: 0`. Row-driven receipt bursts will therefore
-   miss the settlement event.
-5. Receipt proof links are not receipt-kind aware. The current scene helper sends
-   `receipt.*` refs to `/api/forum/receipts/{ref}`, but the Tassadar settlement
-   receipt resolves at `/api/public/nexus-pylon/receipts/{ref}` and its HTML
-   receipt page.
-6. The shared Three scene falls back to a default loss curve when no loss data
-   exists. That is wrong for an executor-trace run unless it is explicitly
-   labeled as a template or removed.
-7. Rejected work is only a count in the current scene. The live summary has 3
-   rejected exact-replay challenges, but the scene only draws verified replay
-   pairs.
-8. The product-promise state is not currently part of the `/run` page even
-   though it is essential context: the scoped Monday launch promise is green,
-   but the registry explicitly says the settlement receipt is simulation-backed
-   and real paid-settlement copy still requires `realBitcoinMoved:true`.
+1. The fixed graph edges in `three-effect` still create anonymous flow pulses.
+   Those moving dots are not live pylon/device/work records and should be
+   disabled for `/tassadar`.
+2. Any replacement motion must come from typed motion events derived from public
+   refs: replay challenge refs, trace refs, receipt refs, pylon refs, or
+   timestamped projection transitions.
+3. Counts can label or color aggregate stage nodes, but counts alone must not
+   create moving dots, fake strands, fake traffic, or fake payout effects.
+4. Simulation-backed settlement can render as a selectable receipt/proof state,
+   but it must not animate like real Bitcoin movement.
+5. `/components/training` and `/animations` should keep unbound studies static
+   or visibly fixture-only until they accept real refs.
 
 ## Sources reviewed
 
@@ -146,9 +135,12 @@ Web and Worker implementation:
   `github:OpenAgentsInc/three-effect#f1794af1165dbfdef2584372171b9fdd52ba46a9`
   `packages/core/src/trainingRun.ts`
 
-Live checks while writing:
+Live checks while writing and later updating:
 
-- `https://openagents.com/tassadar` returned `302` to `/`.
+- Initial `https://openagents.com/tassadar` checks returned `302` to `/` before
+  the route/startup fixes above.
+- Current evidence-bound motion guidance check on 2026-06-17 returned `200` for
+  `https://openagents.com/tassadar`.
 - `https://openagents.com/run` returned `200`.
 - `https://openagents.com/api/public/tassadar-run-summary` returned the live
   run summary at `generatedAt: 2026-06-17T16:20:10Z`.
@@ -156,6 +148,10 @@ Live checks while writing:
   `generatedAt: 2026-06-17T17:49:53.847Z` and resolved the browser scene to 6
   contributor dots, 22 ref-backed entities, 3 verified replay beams, 0 payout
   bursts, and 0 loss-curve points.
+- The evidence-bound motion guidance check returned
+  `generatedAt: 2026-06-17T18:17:09.548Z` with 6 leaderboard rows, 3 verified
+  replay pairs, 3 rejected replay pairs, 1 simulation settlement row, 0
+  loss-curve points, and 3 accepted trace refs.
 - `https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615`
   returned the canonical public run envelope at the same time.
 - `https://openagents.com/api/public/product-promises` returned the current
@@ -167,7 +163,7 @@ Live checks while writing:
 ## Live snapshot
 
 As of the live checks above, and rechecked at
-`generatedAt: 2026-06-17T17:49:53.847Z`, the run-specific projection says:
+`generatedAt: 2026-06-17T18:17:09.548Z`, the run-specific projection says:
 
 - `runRef`: `run.tassadar.executor.20260615`
 - `runState`: `active`
@@ -218,13 +214,18 @@ The promise registry says:
 - `training.public_distributed_training_run.v1`: red.
 - `pylon.first_real_model_training_run.v1`: yellow.
 
-## What the moving dots mean
+## Evidence-bound motion rule
 
 The moving white dots on the fixed graph edges are not real nodes. They are
 `@openagentsinc/three-effect` flow pulses created for every edge between the
-base training-stage nodes. They show liveness/state flow through the rendered
-grammar only. They do not correspond to a pylon, a device, a lease, a trace, a
-verification challenge, a receipt, a payout, or a training datum.
+base training-stage nodes. They do not correspond to a pylon, a device, a lease,
+a trace, a verification challenge, a receipt, a payout, or a training datum.
+
+That is now considered live-page design debt, not an allowed exception.
+`/tassadar` should not show data moving back and forth unless each moving mark is
+bound to a real public ref or a timestamped live state transition. Fixed graph
+edges may remain as static structure; their anonymous motion should be disabled
+or replaced with typed, evidence-bound motion events.
 
 The base stage nodes are also not individual records. They are aggregate grammar
 nodes whose label, status, and detail are derived from the public summary
@@ -238,8 +239,10 @@ metrics. Examples:
 - `receipt`: `32 receipts`
 - `settlement`: `5 sats`
 
-Those aggregate stage nodes are allowed only as summarized counters. They must
-not be read as "there are N hidden real nodes behind each moving pulse".
+Those aggregate stage nodes are allowed only as summarized counters. They can
+color or label the run state, but they must not create anonymous moving pulses.
+They must not be read as "there are N hidden real nodes behind each moving
+pulse".
 
 The data-bound marks in the current `/tassadar` scene are:
 
@@ -263,12 +266,26 @@ Current resolved visual layer from the live payload:
 - `bursts`: 0
 - `lossCurve`: 0 points
 
-Truth rule: every mark that looks like a pylon, contributor, worker, validator,
-trace, receipt, settlement, payout, beam, or proof must come from a public-safe
-ref. The base edge pulses are exempt only because they are not data marks; if
-the page makes them look like real pylon/device nodes, the visual language is
-too ambiguous and should be changed in `three-effect` or disabled for
-`/tassadar`.
+Truth rule: every animated mark must have a public reason to move. Every mark
+that looks like a pylon, contributor, worker, validator, trace, receipt,
+settlement, payout, beam, or proof must come from a public-safe ref. Every
+pulse, flow, burst, animated counter roll, or liveness heartbeat must be bound
+to one of those refs or to a timestamped projection transition. If there is no
+ref or live transition, the fallback is static state.
+
+The immediate roadmap is:
+
+1. Add a `three-effect` option to disable the base edge flow pulses in
+   `oa-training-run`.
+2. Use that disabled/static mode for `/tassadar`.
+3. Introduce typed motion events only when the public summary can supply
+   `motionId`, `motionKind`, `sourceRefs`, `generatedAt`, and stale/expiry
+   semantics.
+4. Add tests that fail if `tassadarRunVisualizationOptions(summary)` or the
+   `oa-training-run` default path produces anonymous live motion.
+5. Keep settlement bursts gated on settlement rows and `realBitcoinMoved:true`;
+   simulation settlement can be selected and inspected, but it must not move
+   like real Bitcoin.
 
 The fleet-wide pylon stats snapshot says:
 
@@ -301,18 +318,21 @@ A totally accurate page needs to satisfy these rules:
    proof drawer row must be backed by a public-safe ref, or must be visibly
    absent/unknown. Fixed stage nodes may summarize public metrics, but they must
    read as aggregate grammar, not hidden record nodes.
-4. "Assigned", "verified", "settlement recorded", "real bitcoin moved",
+4. Every moving mark must be evidence-bound. Anonymous edge pulses, decorative
+   flow fields, fixture-like particle motion, and count-derived fake motion are
+   banned from live training pages.
+5. "Assigned", "verified", "settlement recorded", "real bitcoin moved",
    "qualified", "accepted trace", "corpus growth", and "trained model" must
    remain separate.
-5. Simulation-backed settlement must never render as real paid Bitcoin.
-6. Pending, queued, rejected, or stale work must not visually count as accepted
+6. Simulation-backed settlement must never render as real paid Bitcoin.
+7. Pending, queued, rejected, or stale work must not visually count as accepted
    work.
-7. The page must tolerate zero and idle states without substituting demo curves,
+8. The page must tolerate zero and idle states without substituting demo curves,
    demo nodes, or optimistic copy.
-8. Product-promise state must be displayed or linked where it affects the
+9. Product-promise state must be displayed or linked where it affects the
    interpretation of the page.
-9. Proof links must resolve to the correct public route for the ref kind.
-10. Missing data must be an explicit state, not a default visual.
+10. Proof links must resolve to the correct public route for the ref kind.
+11. Missing data must be an explicit state, not a default visual.
 
 ## Data coverage by primitive
 
@@ -333,8 +353,9 @@ Needed for total accuracy:
 - Keep passing an empty `lossCurve` when no real loss evidence exists.
 - Keep product-promise signals adjacent to the scene where they affect claim
   interpretation.
-- Make the fixed edge flow pulses visually distinct from real pylon/entity
-  marks, or add a `three-effect` option to disable them for `/tassadar`.
+- Disable fixed edge flow pulses for `/tassadar`, or bind every pulse to a typed
+  motion event with public refs. Visual distinction is not enough; anonymous
+  motion should not appear on the live run page.
 
 ### Contributor node
 
@@ -557,6 +578,16 @@ run instrument.
 ### Three primitives
 
 - Keep `oa-training-run` as the main data-bound component.
+- Add a renderer-level switch that makes base graph edges static. Use it by
+  default for live run pages unless the adapter supplies evidence-bound motion
+  events.
+- Introduce a typed motion-event API before re-enabling pulses:
+  - `motionId`
+  - `motionKind`
+  - `sourceRefs`
+  - `generatedAt`
+  - stale/expiry policy
+  - explicit simulation flag when relevant
 - Promote the gallery-only grammar items only when each accepts data:
   - contributor node from contributor/ref status
   - trace strand from submitted/queued/rejected trace refs
@@ -566,6 +597,8 @@ run instrument.
   - proof drawer from selected public ref
 - Extend `TrainingRunBurstDefinition` if settlement bursts remain in the scene.
   `{ atId }` is not enough for accurate payout semantics.
+- Do not derive motion from graph topology alone. Edges can be structural; motion
+  requires evidence.
 
 ### Tests and smokes
 
@@ -583,11 +616,13 @@ run instrument.
   - receipt link resolver chooses the Nexus/Pylon route for Nexus receipts
   - proof drawer shows simulation caveat for the current receipt
   - row-zero/run-nonzero settlement state does not produce a misleading burst
+  - no anonymous motion definitions are emitted for `/tassadar`
 - Browser smoke:
   - `/tassadar` returns 200
   - exact hashed JS asset returns 200
   - the WebGL canvas is nonblank
   - the page displays generated-at/staleness text
+  - base edge pulses are absent unless backed by live motion events
   - selecting a settlement/proof node opens a drawer with a public route that
     returns 200 by GET
 - Copy gate:
