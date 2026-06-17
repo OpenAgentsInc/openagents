@@ -54,6 +54,26 @@ More specific invariant ledgers apply inside imported apps and packages.
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.
 
+## SpacetimeDB World Projection
+
+- `apps/openagents-world-spacetimedb/` is a projection and interaction module
+  for the self-hosted `openagents-world` database. It does not own settlement,
+  payout, training truth, product promises, receipt validation, accepted-work
+  authority, wallet state, provider credentials, private prompts, private repo
+  content, or customer-private data.
+- SpacetimeDB public tables may expose only public-safe refs, labels,
+  timestamps, staleness metadata, movement caveats, and dereferenceable proof
+  URLs that are already safe for public OpenAgents surfaces.
+- Reducers that create or mutate run, entity, edge, proof, settlement, event,
+  cursor, or bridge-health projection rows must require a private allowlisted
+  service identity. Browser/user reducers may update only explicitly modeled
+  interaction state and must not create proof, settlement, receipt, pylon, or
+  training truth.
+- `/tassadar` authority remains the Worker/D1 public summary path until a
+  later invariant change explicitly promotes a different authority. A
+  SpacetimeDB subscription may enrich or animate the scene only from rows that
+  preserve public refs or timestamped projection transitions.
+
 ## Public Projection Staleness
 
 - Every public projection in this workspace carries `generatedAt` (or an

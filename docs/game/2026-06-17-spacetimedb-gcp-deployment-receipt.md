@@ -178,10 +178,17 @@ sudo -u spacetimedb /stdb/bin/2.6.0/spacetimedb-cli publish \
   openagents-world
 ```
 
+The initial module source now lives at:
+
+```text
+apps/openagents-world-spacetimedb
+```
+
 Runbook follow-up:
 
 - keep `spacetime.openagents.com` as the canonical public endpoint;
-- publish the first `openagents-world` module once the schema is ready;
+- keep the published `openagents-world` module schema minimal until the bridge
+  proves the row contract;
 - wire a service bridge from the public Tassadar projection to SpacetimeDB rows;
 - add uptime checks and snapshots before meaningful world data accumulates.
 - add DNS automation only after a Cloudflare credential with the right zone

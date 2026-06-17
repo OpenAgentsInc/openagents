@@ -20,8 +20,9 @@ Worker/D1 authority. If SpacetimeDB is down, `/tassadar` must still render from
 
 ## Phase 0: Minimal Module
 
-Publish a minimal `openagents-world` module with only the rows needed to mirror
-the canonical Tassadar run:
+Issue #5236 published a minimal `openagents-world` module from
+`apps/openagents-world-spacetimedb` on 2026-06-17. It contains only the rows
+needed to mirror the canonical Tassadar run:
 
 | Table | Purpose |
 | --- | --- |

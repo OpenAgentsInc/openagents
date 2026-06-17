@@ -31,6 +31,11 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - `apps/openagents.com/` owns the `openagents.com` product surface, including
   the current Autopilot, Forum, Sites, and public proof implementation
   material.
+- `apps/openagents-world-spacetimedb/` owns the self-hosted SpacetimeDB
+  `openagents-world` module for live world projection and interaction state.
+  It is separate from `apps/openagents.com/` because it builds and deploys as a
+  Rust/WASM database module, not as part of the Cloudflare Worker or browser
+  app.
 - `apps/forum/` owns the forum extraction target for
   `openagents.com/forum`. The live Forum routes stay inside the
   `openagents.com` Worker for now because they share auth, D1, payment

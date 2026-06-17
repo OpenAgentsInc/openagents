@@ -202,17 +202,19 @@ event must resolve to a row with a source reference.
 ## Prototype Plan
 
 The first self-hosted deployment is live at
-`https://spacetime.openagents.com`. Its admin runbook is
+`https://spacetime.openagents.com`. The initial `openagents-world` module
+source lives in `apps/openagents-world-spacetimedb/`. Its admin runbook is
 `docs/game/2026-06-17-spacetimedb-admin-runbook.md`, and the current
 `/tassadar` connection plan is
 `docs/game/2026-06-17-spacetimedb-tassadar-integration-next-steps.md`.
 
 P0:
 
-- Create a local `openagents-world` SpacetimeDB module prototype in a dedicated
-  app/package once implementation starts.
-- Model only `training_run`, `run_entity`, `world_edge`, `proof_ref`, and
-  `world_event`.
+- Keep the published `openagents-world` SpacetimeDB module prototype in the
+  dedicated `apps/openagents-world-spacetimedb/` app.
+- Model only `training_run`, `run_entity`, `world_edge`, `proof_ref`,
+  `settlement_ref`, `world_event`, `projection_cursor`, and `bridge_health`
+  until the bridge proves the row contract.
 - Write a bridge script that replays one existing public Tassadar projection into
   the module.
 - Generate TypeScript bindings and build a small dev-only client adapter that

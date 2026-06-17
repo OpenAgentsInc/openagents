@@ -109,6 +109,15 @@ primitives.
   accepted trace refs on the right, and settlement receipt refs lower-left. This
   keeps labels from collapsing into clusters while preserving the "only real
   nodes" rule.
+- 2026-06-17: Issue #5236 published the first self-hosted SpacetimeDB
+  `openagents-world` module from the separate
+  `apps/openagents-world-spacetimedb` app. The module currently exposes only the
+  minimal public projection tables (`training_run`, `run_entity`, `world_edge`,
+  `proof_ref`, `settlement_ref`, `world_event`, `projection_cursor`, and
+  `bridge_health`) plus private `module_owner` and `service_identity` authority
+  tables. This does not change `/tassadar` authority: the Worker/D1 public
+  summary remains the source of truth until the bridge and browser subscription
+  adapter are implemented and verified.
 
 ## Short answer
 

@@ -22,3 +22,8 @@ direction.
 - `2026-06-17-tassadar-wasd-mouselook-controller-plan.md` - implementation plan
   for adding a reusable `three-effect` WASD + mouselook controller and enabling a
   2.5D first-person `/tassadar` navigation mode.
+
+## Implementation Homes
+
+- `apps/openagents-world-spacetimedb/` owns the Rust/WASM SpacetimeDB module
+  source for the live `openagents-world` database.

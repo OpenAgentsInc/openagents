@@ -180,15 +180,27 @@ Expected service states are three `active` lines.
 
 ## Publishing A Module
 
-Build the SpacetimeDB module locally, then copy the WASM to the VM. Use a
-versioned, explicit filename matching the database name:
+The source for the first world module lives in the separate top-level app:
+
+```text
+apps/openagents-world-spacetimedb
+```
+
+Build the SpacetimeDB module locally, then copy the WASM to the VM:
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo build --manifest-path apps/openagents-world-spacetimedb/Cargo.toml \
+  --target wasm32-unknown-unknown \
+  --release
+```
 
 ```bash
 gcloud compute scp \
   --project openagentsgemini \
   --zone us-central1-a \
   --tunnel-through-iap \
-  ./openagents-world.wasm \
+  apps/openagents-world-spacetimedb/target/wasm32-unknown-unknown/release/openagents_world.wasm \
   spacetimedb-world-1:/tmp/openagents-world.wasm
 ```
 
@@ -200,6 +212,13 @@ gcloud compute ssh spacetimedb-world-1 \
   --zone us-central1-a \
   --tunnel-through-iap \
   --command='sudo -u spacetimedb /stdb/bin/2.6.0/spacetimedb-cli publish -s local --bin-path /tmp/openagents-world.wasm openagents-world'
+```
+
+Issue #5236 published the initial module on 2026-06-17. The created database
+identity was:
+
+```text
+c2003001c2b7d8f00db5ba85210abfefc8f8dfea110207f85f917d41faa89847
 ```
 
 Only service identities should call reducers that create or mutate authority
