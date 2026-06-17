@@ -1,7 +1,34 @@
-# JUNE 16 ROADMAP — post-launch stability + finish the loops
+# JUNE 16 ROADMAP — CLOSED OUT (2026-06-17)
 
-Date: 2026-06-16. Carries forward from `JUNE15_LAUNCH_PLAN.md` (now a closed-out
-launch wrapup). June 15 shipped the launch; this is the remaining open work.
+> **Status: CLOSED OUT on 2026-06-17.** This is the historical record of the
+> June 16 post-launch stability push. Ongoing/open work has moved to
+> [`JUNE17_ROADMAP.md`](./JUNE17_ROADMAP.md). Carries forward from
+> `JUNE15_LAUNCH_PLAN.md` (closed-out launch wrapup).
+
+## What shipped — June 16 closeout summary
+
+- **Launch gate GREEN (#5012 closed):** both crucial promises live —
+  `training.monday_decentralized_training_launch.v1` (#5014) and
+  `pylon.install_without_wallet_knowledge.v1` (#5015). Announced; run showed
+  `providerConfirmedSettledPayoutSats=5`, `qualifiedContributorCount=1`.
+- **Spark offline-receive rail GREEN:**
+  `payments.offline_receive_spark_fallback.v1` flipped green on recipient-visible
+  rc.12 evidence (Trigger 50k + Whitefang 1k canary).
+- **Spark wallet unification (epic #5176) substantially shipped:** Spark
+  send/withdraw (#5177), Spark as the primary agent balance (#5178), chunked +
+  Spark-native treasury payouts (#5179/#5183), recipient-attributed +
+  confirmed-receipt ledger (#5180), MDK scoped to checkouts/treasury (#5181).
+  Reconciliation closeout (#5182) carried to June 17.
+- **Auto-update (Gate 3) PROVEN LIVE** end-to-end against the signed OTA feed.
+- **Forge product-surface wave** landed (Epic A `@openagentsinc/ui`, `/autopilot`,
+  `/forge`, `/business`, `/components` live-render, `/login`+OTP, `/animations`).
+- **Homepage pylon-stats** fixed + deployed: instant load, near-realtime,
+  multi-rail sats total, and real training-contributor count.
+
+> Open items from the sections below (recognition closeout #5182, the next RC
+> publish, the native-Spark-transfer fix, auto-payout Gate 2, the v1.0 cut, the
+> built-in agent, and the other active lanes) now live in `JUNE17_ROADMAP.md`.
+> The detailed June-16 record is preserved unchanged below.
 
 ## Where we are (verified 2026-06-16)
 
