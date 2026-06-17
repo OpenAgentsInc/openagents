@@ -1200,6 +1200,13 @@ async function runSparkBackupStatusForState(
       projection.unclaimedDepositCount = detected.unclaimedDepositCount
       projection.claimableHtlcCount = detected.claimableHtlcCount
       projection.claimableHtlcSats = detected.claimableHtlcSats
+      // #5194: if the status read failed, carry its bounded public-safe reason so
+      // a daemon-routed backup-status surfaces WHY (e.g. db_init_failed) instead
+      // of a silent helperReady:false. Prefer the status reason over the address
+      // classify reason when both are present (status is the read we just ran).
+      if (!detected.helperReady && detected.helperUnavailableReason) {
+        projection.helperUnavailableReason = detected.helperUnavailableReason
+      }
       if (detected.balanceRefreshing) {
         projection.balanceRefreshing = true
         if (!projection.blockerRefs.includes("blocker.wallet.spark_backup.balance_refreshing")) {
@@ -2832,8 +2839,12 @@ async function main() {
         })
         const prepared = await prepareSparkBackupReceive({ ...sparkBackupOptions, kind: "spark-address" })
         if (!prepared.ok || !prepared.localTarget) {
+          // #5194: include the bounded, public-safe reason (db_init_failed,
+          // network_unreachable, timeout, module_load_failed, ...) so the
+          // operator finally sees WHY the address could not be resolved instead
+          // of a bare `spark_address_unavailable`. Never the raw stderr.
           process.stdout.write(
-            `${JSON.stringify({ ok: false, error: "spark_address_unavailable", state: prepared.state, blockerRefs: prepared.blockerRefs }, null, 2)}\n`,
+            `${JSON.stringify({ ok: false, error: "spark_address_unavailable", state: prepared.state, reason: prepared.projection.helperUnavailableReason ?? null, blockerRefs: prepared.blockerRefs }, null, 2)}\n`,
           )
           process.exit(1)
         }

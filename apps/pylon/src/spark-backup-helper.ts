@@ -300,6 +300,72 @@ function helperError(command: SparkBackupCommand, message: string): WalletComman
   return { exitCode: 1, stdout: "", stderr: `spark backup helper ${command}: ${message}` }
 }
 
+// #5194: a fixed, public-safe enum that classifies WHY the Spark helper failed.
+// The raw helper stderr is private (it can contain a storage path or an SDK
+// internal message), so it is NEVER surfaced in a projection. This enum is the
+// ONLY failure detail any node — a one-shot CLI or a daemon-routed read — gets
+// to see, and it is a bounded set of constant strings with no payment material,
+// no paths, and no secrets.
+//
+// The root cause of #5194 was invisible: a helper read that degraded to
+// `helper-unavailable` carried NO reason at all, so a node operator could not
+// tell a corrupt local wallet DB from a blocked network or a missing dependency.
+// Worse, when the read is served by the long-lived daemon's warm session, the
+// daemon process owns the SDK and its `[spark-helper:*]` / `[spark-getinfo]`
+// debug lines (gated on PYLON_SPARK_DEBUG=1 in the DAEMON's env, not the CLI's)
+// never reach the CLI terminal — so the operator sees `helperReady:false` with
+// no explanation. This enum closes that gap.
+export type SparkHelperUnavailableReason =
+  // The wallet storage DB failed to initialize/migrate (e.g. a corrupt or
+  // incompatible `storage.sql` in a long-lived home). UPSTREAM of getInfo.
+  | "db_init_failed"
+  // An SDK call exceeded its timeout (a stuck build/connect/sync, often a
+  // blocked or very slow network egress to the Spark sync/LSP servers).
+  | "timeout"
+  // The Spark/Breez network could not be reached during build/connect/sync.
+  | "network_unreachable"
+  // The optional Breez SDK Spark package / WASM did not load in this runtime.
+  | "module_load_failed"
+  // The helper ran but produced no usable target/data (non-error empty result).
+  | "no_result"
+  // Any other helper failure whose shape we do not specifically recognize.
+  | "unknown"
+
+/**
+ * #5194: classify a (private) Spark helper stderr message into a bounded,
+ * public-safe failure reason. Pattern-matching here is deliberately deterministic
+ * and confined to a CLOSED enum output — it never echoes the raw message — so it
+ * is safe to place in a public projection. This is NOT user-intent routing; it
+ * is fixed diagnostic classification of our own SDK's error strings.
+ */
+export function classifySparkHelperFailureReason(stderr: string): SparkHelperUnavailableReason {
+  const message = (stderr ?? "").toLowerCase()
+  if (message === "") return "unknown"
+  // Storage init/migration failure — the #5194 corrupt-DB case (upstream of getInfo).
+  if (
+    /initialize database|migration failed|file is not a database|database disk image is malformed|storageerror/.test(
+      message,
+    )
+  ) {
+    return "db_init_failed"
+  }
+  // The module/WASM did not load (selftest-style failure or a missing optional dep).
+  if (/missing defaultconfig|missing sdkbuilder|cannot find module|sdk load|wasm/.test(message)) {
+    return "module_load_failed"
+  }
+  // Timeout from withTimeout(...) ("<label> timed out").
+  if (/timed out/.test(message)) return "timeout"
+  // Network/connect failure to the Spark/Breez sync or LSP servers.
+  if (
+    /unable to connect|connection refused|dns|getaddrinfo|econnrefused|enotfound|etimedout|certificate|unreachable|fetch failed|\bnetwork\b/.test(
+      message,
+    )
+  ) {
+    return "network_unreachable"
+  }
+  return "unknown"
+}
+
 function helperOk(payload: Record<string, unknown>): WalletCommandResult {
   return { exitCode: 0, stdout: JSON.stringify(payload), stderr: "" }
 }

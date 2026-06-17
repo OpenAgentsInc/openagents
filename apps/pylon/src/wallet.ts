@@ -58,6 +58,8 @@ export type WalletCommandResult = {
 // Spark address/invoice/preimage/mnemonic/key/path material.
 // ---------------------------------------------------------------------------
 
+import { classifySparkHelperFailureReason, type SparkHelperUnavailableReason } from "./spark-backup-helper"
+
 export type SparkBackupReceiveState =
   | "disabled"
   | "credential-missing"
@@ -98,6 +100,12 @@ export type SparkBackupReceiveProjection = {
   // claiming. Optional for back-compat with older projections.
   claimableHtlcCount?: number | null
   claimableHtlcSats?: number | null
+  // #5194: a bounded, public-safe enum explaining WHY the helper is unavailable
+  // when `helperReady` is false (db_init_failed | timeout | network_unreachable
+  // | module_load_failed | no_result | unknown). NEVER the raw stderr — that is
+  // private. Null when the helper is ready or the state is not a failure. This
+  // is the only failure detail a daemon-routed read can surface to the operator.
+  helperUnavailableReason?: SparkHelperUnavailableReason | null
   blockerRefs: string[]
   nextActionRefs: string[]
   publicReceiptRefs: string[]
@@ -1372,11 +1380,20 @@ export async function classifySparkBackupReceive(
     })
   }
 
+  // #5194: classify WHY the helper read failed (e.g. a corrupt local wallet DB
+  // that fails storage init UPSTREAM of getInfo, a blocked network, or a module
+  // that did not load) into a bounded, public-safe enum so the operator finally
+  // sees a reason instead of a bare `helper-unavailable`. `helperReady && rawTarget`
+  // was false above; a non-zero exit carries the (private) reason in stderr.
+  const helperUnavailableReason = helperReady
+    ? "no_result"
+    : classifySparkHelperFailureReason(helperResult.stderr)
   return assertSparkBackupProjectionSafe({
     ...base,
     state: "helper-unavailable",
     credentialReady: true,
     helperReady: false,
+    helperUnavailableReason,
     blockerRefs: ["blocker.wallet.spark_backup.helper_unavailable"],
     nextActionRefs: ["action.wallet.spark_backup.install_or_start_helper"],
   })
@@ -1776,6 +1793,9 @@ function safeSparkBackupReconcile(
 export async function detectSparkBackupBalance(helper: SparkBackupHelper): Promise<{
   helperReady: boolean
   detectedBalanceSats: number | null
+  // #5194: when helperReady is false, a bounded public-safe reason the status
+  // read failed (e.g. db_init_failed). Null when the helper is ready.
+  helperUnavailableReason: SparkHelperUnavailableReason | null
   // #5197: true when the balance came from a non-forced fallback read (the
   // authoritative ensureSynced read failed/timed out, e.g. a fresh post-restart
   // sync). The number is shown but is NOT a confirmed-spendable balance.
@@ -1798,6 +1818,9 @@ export async function detectSparkBackupBalance(helper: SparkBackupHelper): Promi
       unclaimedDepositCount: null,
       claimableHtlcCount: null,
       claimableHtlcSats: null,
+      // #5194: surface WHY the status read failed (upstream of getInfo on a
+      // corrupt-DB host) so a daemon-routed backup-status is no longer silent.
+      helperUnavailableReason: classifySparkHelperFailureReason(statusResult.stderr),
     }
   }
   const statusData = parseMaybeJson(statusResult.stdout)
@@ -1829,6 +1852,7 @@ export async function detectSparkBackupBalance(helper: SparkBackupHelper): Promi
     unclaimedDepositCount,
     claimableHtlcCount,
     claimableHtlcSats,
+    helperUnavailableReason: null,
   }
 }
 
