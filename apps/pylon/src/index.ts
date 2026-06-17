@@ -1133,7 +1133,15 @@ async function resolveSparkBackupOptions(
 // `sendWithSparkBackup` + the transfer closure and are unchanged.
 async function runSparkBackupSendForState(
   state: PylonLocalState,
-  input: { destination?: string; amountSats?: number; confirmSend: boolean; warmSession?: boolean },
+  input: {
+    destination?: string
+    amountSats?: number
+    confirmSend: boolean
+    warmSession?: boolean
+    // #5254: operator override (from `--max-fee <sats>`) that raises the
+    // pre-send fee-guard ceiling for a knowingly-expensive send.
+    maxFeeSats?: number
+  },
 ): Promise<SparkBackupSendProjection> {
   const sparkBackupOptions = await resolveSparkBackupOptions(state, {
     enabled: true,
@@ -1148,6 +1156,7 @@ async function runSparkBackupSendForState(
     amountSats: input.amountSats,
     destination: input.destination,
     confirmSend: input.confirmSend,
+    ...(input.maxFeeSats === undefined ? {} : { maxFeeSats: input.maxFeeSats }),
   })
   if (result.state === "sent") {
     for (const receiptRef of result.publicReceiptRefs) {
@@ -2745,14 +2754,35 @@ async function main() {
             optionString(options, "payment-request") ??
             optionString(options, "lightning-address")
           const confirmSend = options["confirm-send"] === true
+          // #5254: explicit operator fee-ceiling override (`--max-fee <sats>`)
+          // that RAISES the pre-send fee guard so a knowingly-expensive send can
+          // proceed. Only a finite, non-negative integer counts; anything else is
+          // ignored (the default bound + PYLON_SPARK_MAX_FEE_SATS still apply).
+          const maxFeeRaw = options["max-fee"]
+          const maxFeeParsed = maxFeeRaw === undefined ? undefined : Number(maxFeeRaw)
+          const maxFeeSats =
+            maxFeeParsed !== undefined && Number.isFinite(maxFeeParsed) && maxFeeParsed >= 0
+              ? Math.floor(maxFeeParsed)
+              : undefined
           // #5207: prefer a RUNNING daemon's warm Spark session (skips the ~4s
           // cold build + sync). Only route the actual send (confirmSend) and only
           // with a destination — dry-run / consent-prompt projections stay local
           // and free so they never depend on a daemon being up. The daemon
           // executes the identical `sendWithSparkBackup` + ledger append and
           // returns the same projection, so output is byte-identical.
+          //
+          // #5254: when an explicit `--max-fee` override is present, take the
+          // cold path so the per-call override is honored (the daemon-routed
+          // action does not yet carry the override; its own
+          // PYLON_SPARK_MAX_FEE_SATS env still applies). The default no-override
+          // path is unchanged.
           let result: SparkBackupSendProjection | null = null
-          if (confirmSend && typeof destination === "string" && destination.trim() !== "") {
+          if (
+            confirmSend &&
+            maxFeeSats === undefined &&
+            typeof destination === "string" &&
+            destination.trim() !== ""
+          ) {
             const routed = await routeWalletCommandThroughDaemon(state, {
               type: "wallet.spark_send",
               destination,
@@ -2767,6 +2797,7 @@ async function main() {
               destination,
               amountSats: amount,
               confirmSend,
+              ...(maxFeeSats === undefined ? {} : { maxFeeSats }),
             })
           }
           process.stdout.write(`${JSON.stringify({ ok: result.state === "sent", send: result }, null, 2)}\n`)

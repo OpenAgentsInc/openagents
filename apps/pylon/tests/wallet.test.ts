@@ -1217,6 +1217,50 @@ describe("Spark backup send / withdraw (#5177)", () => {
     assertPublicProjectionSafe(send)
   })
 
+  test("a fee-guard rejection surfaces a distinct send_fee_too_high blocker + raise-ceiling action (#5254)", async () => {
+    const send = await sendWithSparkBackup({
+      amountSats: 44,
+      destination: RAW_SPARK_PAYMENT_REQUEST,
+      confirmSend: true,
+      env: enabledEnv,
+      // Mirror the helper's pre-send fee-guard rejection: a public-safe,
+      // operator-legible failureRef carrying `fee_too_high` and integers only.
+      transfer: async () => ({
+        ok: false,
+        failureRef: "wallet.spark_backup_send.fee_too_high:prepared=4096:amount=44",
+      }),
+    })
+    expect(send.state).toBe("send-failed")
+    // Distinct blocker, NOT the generic send_failed.
+    expect(send.blockerRefs).toContain("blocker.wallet.spark_backup.send_fee_too_high")
+    expect(send.blockerRefs).not.toContain("blocker.wallet.spark_backup.send_failed")
+    // Next action points the operator at the override / amount adjustment.
+    expect(send.nextActionRefs).toContain("action.wallet.spark_backup.raise_max_fee_or_adjust_amount")
+    // The legible failureRef is carried through (numbers only, public-safe).
+    expect(send.failureRefs).toContain("wallet.spark_backup_send.fee_too_high:prepared=4096:amount=44")
+    expect(send.publicReceiptRefs).toEqual([])
+    assertPublicProjectionSafe(send)
+  })
+
+  test("maxFeeSats override is threaded to the transfer (#5254)", async () => {
+    let seenMaxFee: number | undefined = -1
+    const send = await sendWithSparkBackup({
+      amountSats: 44,
+      destination: RAW_SPARK_PAYMENT_REQUEST,
+      confirmSend: true,
+      env: enabledEnv,
+      maxFeeSats: 5000,
+      transfer: async (input) => {
+        seenMaxFee = input.maxFeeSats
+        return { ok: true, transferRef: "wallet.spark_backup_send.aaaaaaaaaaaaaaaaaaaaaaaa", sparkPaymentRef: "wallet.spark_backup_send_payment.bbbbbbbbbbbbbbbbbbbbbbbb", amountSats: 44, feeSats: 4096, feeFromPrepared: true, method: "payment_request", status: "complete" }
+      },
+      now: () => new Date("2026-06-17T00:00:00.000Z"),
+    })
+    expect(seenMaxFee).toBe(5000)
+    expect(send.state).toBe("sent")
+    assertPublicProjectionSafe(send)
+  })
+
   test("invalid request returns blockers and no receipt", async () => {
     const send = await sendWithSparkBackup({
       amountSats: 0,

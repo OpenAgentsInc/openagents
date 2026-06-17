@@ -1737,6 +1737,10 @@ export type SparkBackupSendTransfer = (input: {
   amountSats: number
   destination: string
   idempotencyKey: string
+  // #5254: explicit operator override that RAISES the pre-send fee-guard
+  // ceiling so a knowingly-expensive send can proceed. Undefined keeps the
+  // default bound (the env PYLON_SPARK_MAX_FEE_SATS override is also consulted).
+  maxFeeSats?: number
 }) => Promise<SparkBackupSendTransferResult>
 
 export const unavailableSparkBackupSendTransfer: SparkBackupSendTransfer = async () => ({
@@ -1751,6 +1755,10 @@ export type SparkBackupSendOptions = SparkBackupReceiveOptions & {
   embeddedCredentialAvailable?: boolean
   now?: () => Date
   transfer?: SparkBackupSendTransfer
+  // #5254: explicit operator override (from `--max-fee <sats>`) threaded to the
+  // transfer so the pre-send fee guard can be raised for a knowingly-expensive
+  // send. Default (undefined) keeps the guard at its computed bound.
+  maxFeeSats?: number
 }
 
 function safeSparkBackupReconcile(
@@ -2212,7 +2220,14 @@ export async function sendWithSparkBackup(
       at: now.toISOString().slice(0, 10),
     }),
   ).split(".").pop()}`
-  const result = await transfer({ amountSats, destination, idempotencyKey })
+  const result = await transfer({
+    amountSats,
+    destination,
+    idempotencyKey,
+    // #5254: thread the operator fee-ceiling override (from `--max-fee`) so a
+    // knowingly-expensive send can clear the pre-send fee guard.
+    ...(options.maxFeeSats === undefined ? {} : { maxFeeSats: options.maxFeeSats }),
+  })
   if (!result.ok) {
     // #5196: a timed-out send is INDETERMINATE — it may have settled. Mark it
     // pending and do NOT offer a retry action; the node must verify the balance /
@@ -2226,6 +2241,23 @@ export async function sendWithSparkBackup(
         blockerRefs: ["blocker.wallet.spark_backup.send_outcome_pending"],
         failureRefs: [result.failureRef],
         nextActionRefs: ["action.wallet.spark_backup.verify_balance_before_retry"],
+      })
+    }
+    // #5254: a pre-send fee-guard rejection surfaces a DISTINCT, operator-legible
+    // blocker + a raise-the-ceiling next action, rather than the generic
+    // "fix the transfer and retry" guidance. The failureRef is public-safe
+    // (integers only) and carries `fee_too_high`, so we key on it directly.
+    const feeTooHigh =
+      result.failureRef.startsWith("wallet.spark_backup_send") &&
+      result.failureRef.includes("fee_too_high")
+    if (feeTooHigh) {
+      return safe({
+        ...base,
+        state: "send-failed",
+        consentRequired: false,
+        blockerRefs: ["blocker.wallet.spark_backup.send_fee_too_high"],
+        failureRefs: [result.failureRef],
+        nextActionRefs: ["action.wallet.spark_backup.raise_max_fee_or_adjust_amount"],
       })
     }
     return safe({

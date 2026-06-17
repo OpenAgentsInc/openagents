@@ -571,6 +571,13 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
         amountSats: 44,
         destination: rawLightningAddress,
         idempotencyKey: "test-5250-lnurl-fee",
+        // #5254: this 44/4096 case is EXACTLY what the pre-send fee guard now
+        // rejects by default. To keep this test focused on #5250's prepared-fee
+        // RECONCILIATION (not the guard), raise the ceiling with an explicit
+        // operator override so the send proceeds and the fee reconciles. The
+        // default-guard rejection of this same case is covered by the dedicated
+        // #5254 test below.
+        maxFeeSats: 4096,
       })
 
       expect(result.ok).toBe(true)
@@ -645,6 +652,182 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
     expect(result.feeSats).toBe(7)
     expect(result.feeFromPrepared).toBe(false)
     assertPublicProjectionSafe(result)
+  })
+
+  // -------------------------------------------------------------------------
+  // #5254 — PRE-SEND FEE GUARD.
+  // -------------------------------------------------------------------------
+
+  test("REJECTS the 44-sat / 4096-fee send PRE-DISPATCH (fee_too_high), sendPayment NOT called, zero movement (#5254)", async () => {
+    // The rc.22 money-path bug: a 44-sat external send carried a REAL 4,096-sat
+    // prepared Lightning fee (>93x the amount). The guard must refuse it BEFORE
+    // sendPayment so zero sats move.
+    const rawPaymentRequest = "lnbc44n1rawpaymentrequestthatmustneverleakpublicly5254"
+    let sendCalls = 0
+    const transfer = createSparkBackupSendTransfer({
+      apiKey: "k",
+      mnemonic: TEST_MNEMONIC,
+      loadModule: async () =>
+        fakeSparkModule({
+          balanceSats: 44,
+          // Real computed fee surfaced on the prepared bolt11 method.
+          preparedLightningFeeSats: 4096,
+          onSend: () => {
+            sendCalls += 1
+          },
+        }),
+    })
+
+    const result = await transfer({
+      amountSats: 44,
+      destination: rawPaymentRequest,
+      idempotencyKey: "test-5254-reject",
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("expected fee-guard rejection")
+    // Operator-legible, public-safe failure ref: integers only, carries the reason.
+    expect(result.failureRef).toBe("wallet.spark_backup_send.fee_too_high:prepared=4096:amount=44")
+    // CRITICAL: the send was refused before dispatch — sendPayment never ran.
+    expect(sendCalls).toBe(0)
+    expect(JSON.stringify(result)).not.toContain(rawPaymentRequest)
+    assertPublicProjectionSafe(result)
+  })
+
+  test("PASSES a normal send with a sane fee and dispatches it (#5254)", async () => {
+    // amount 1000, prepared fee 16 → ceiling max(50, 500)=500 → 16 ≤ 500 → PASS.
+    const rawPaymentRequest = "lnbc1000n1rawpaymentrequestthatmustneverleakpublicly5254ok"
+    let sendCalls = 0
+    const transfer = createSparkBackupSendTransfer({
+      apiKey: "k",
+      mnemonic: TEST_MNEMONIC,
+      loadModule: async () =>
+        fakeSparkModule({
+          balanceSats: 1000,
+          preparedLightningFeeSats: 12,
+          preparedSparkTransferFeeSats: 4,
+          sendResultFees: null,
+          onSend: () => {
+            sendCalls += 1
+          },
+        }),
+    })
+
+    const result = await transfer({
+      amountSats: 1000,
+      destination: rawPaymentRequest,
+      idempotencyKey: "test-5254-pass",
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("expected normal send to pass")
+    expect(result.feeSats).toBe(16)
+    // The send actually dispatched (guard did not block a legitimate send).
+    expect(sendCalls).toBe(1)
+    assertPublicProjectionSafe(result)
+  })
+
+  test("PASSES a native spark_native send (fee 0) trivially — never rejected (#5254, #5225)", async () => {
+    let sendCalls = 0
+    const transfer = createSparkBackupSendTransfer({
+      apiKey: "k",
+      mnemonic: TEST_MNEMONIC,
+      loadModule: async () =>
+        fakeSparkModule({
+          balanceSats: 5000,
+          // No prepared fee fields → a native Spark send carries fee 0.
+          sendResultFees: 0n,
+          onSend: () => {
+            sendCalls += 1
+          },
+        }),
+    })
+
+    const result = await transfer({
+      amountSats: 1,
+      destination: RAW_SPARK_NATIVE_ADDRESS,
+      idempotencyKey: "test-5254-native",
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("expected native send to pass")
+    expect(result.method).toBe("spark_native")
+    // Fee 0 ≤ any ceiling: a 1-sat native send is never blocked by the guard.
+    expect(result.feeSats).toBe(0)
+    expect(sendCalls).toBe(1)
+    expect(JSON.stringify(result)).not.toContain(RAW_SPARK_NATIVE_ADDRESS)
+    assertPublicProjectionSafe(result)
+  })
+
+  test("OPERATOR OVERRIDE (maxFeeSats) forces the 44/4096 send through (#5254)", async () => {
+    // The same 44/4096 case the guard rejects by default proceeds when the
+    // operator explicitly raises the ceiling via the per-call maxFeeSats input.
+    const rawPaymentRequest = "lnbc44n1rawpaymentrequestthatmustneverleakpublicly5254ovr"
+    let sendCalls = 0
+    const transfer = createSparkBackupSendTransfer({
+      apiKey: "k",
+      mnemonic: TEST_MNEMONIC,
+      loadModule: async () =>
+        fakeSparkModule({
+          balanceSats: 44,
+          preparedLightningFeeSats: 4096,
+          sendResultFees: 0n,
+          onSend: () => {
+            sendCalls += 1
+          },
+        }),
+    })
+
+    const result = await transfer({
+      amountSats: 44,
+      destination: rawPaymentRequest,
+      idempotencyKey: "test-5254-override",
+      maxFeeSats: 5000,
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("expected override to force the send through")
+    // The expensive send dispatched and the fee reconciled from the prepared method.
+    expect(result.feeSats).toBe(4096)
+    expect(result.feeFromPrepared).toBe(true)
+    expect(sendCalls).toBe(1)
+    assertPublicProjectionSafe(result)
+  })
+
+  test("OPERATOR OVERRIDE via PYLON_SPARK_MAX_FEE_SATS env forces the 44/4096 send through (#5254)", async () => {
+    const rawPaymentRequest = "lnbc44n1rawpaymentrequestthatmustneverleakpublicly5254env"
+    let sendCalls = 0
+    const transfer = createSparkBackupSendTransfer({
+      apiKey: "k",
+      mnemonic: TEST_MNEMONIC,
+      loadModule: async () =>
+        fakeSparkModule({
+          balanceSats: 44,
+          preparedLightningFeeSats: 4096,
+          sendResultFees: 0n,
+          onSend: () => {
+            sendCalls += 1
+          },
+        }),
+    })
+
+    const priorEnv = process.env.PYLON_SPARK_MAX_FEE_SATS
+    process.env.PYLON_SPARK_MAX_FEE_SATS = "5000"
+    try {
+      const result = await transfer({
+        amountSats: 44,
+        destination: rawPaymentRequest,
+        idempotencyKey: "test-5254-env-override",
+      })
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected env override to force the send through")
+      expect(result.feeSats).toBe(4096)
+      expect(sendCalls).toBe(1)
+      assertPublicProjectionSafe(result)
+    } finally {
+      if (priorEnv === undefined) delete process.env.PYLON_SPARK_MAX_FEE_SATS
+      else process.env.PYLON_SPARK_MAX_FEE_SATS = priorEnv
+    }
   })
 
   test("send transfer reports a CLEAR lnurl_resolve failure (not send-pending) when an external LNURL host hangs (#5195 follow-up)", async () => {

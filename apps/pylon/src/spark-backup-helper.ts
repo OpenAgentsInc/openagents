@@ -193,6 +193,11 @@ export type SparkBackupAdapterConfig = {
   // env flag (also default-off). When off, the cold path is byte-for-byte
   // unchanged.
   warmSession?: boolean
+  // #5254: explicit operator override that RAISES the allowed-fee ceiling for
+  // the pre-send fee guard. Undefined keeps the default bound (the helper also
+  // consults PYLON_SPARK_MAX_FEE_SATS). A per-call `maxFeeSats` on the transfer
+  // input takes precedence over this adapter-level default.
+  maxFeeSats?: number
 }
 
 const DEFAULT_SPARK_TIMEOUT_MS = 15_000
@@ -216,6 +221,69 @@ const READ_SYNC_TIMEOUT_MS = 45_000
 // each individual fetch (below) so one hung host fails with a CLEAR reason.
 const LNURL_RESOLVE_TIMEOUT_MS = 30_000
 const LNURL_FETCH_TIMEOUT_MS = 12_000
+
+// #5254 — PRE-SEND FEE GUARD.
+//
+// A 44-sat external Lightning-Address send paid a REAL ~4,096-sat LSP routing
+// fee (#5250 confirmed the fee is real, on `prepareResponse.paymentMethod`, not
+// change). #5250 reconciles that fee onto the receipt AFTER the fact; #5254
+// REFUSES an insane send BEFORE it dispatches so zero sats move when the
+// computed cost is grossly disproportionate to the amount.
+//
+// The bound is `preparedFee > max(FEE_GUARD_FLOOR_SATS, FEE_GUARD_MAX_PCT *
+// amountSats)`. The floor lets tiny absolute fees through unconditionally
+// (e.g. a normal 3-sat Spark transfer fee on a 1-sat send is fine); above the
+// floor the fee may not exceed FEE_GUARD_MAX_PCT of the amount.
+//
+// Defaults are chosen to PASS normal sends and REJECT the 44/4096 case
+// decisively:
+//   - FEE_GUARD_FLOOR_SATS = 50: any send whose prepared fee is <= 50 sats
+//     always passes, regardless of amount. Real native Spark fees and small
+//     Lightning fees sit well under this.
+//   - FEE_GUARD_MAX_PCT = 0.5 (50%): above the floor, the fee may be at most
+//     half the amount. A healthy external Lightning send pays a routing fee
+//     that is a small fraction of the amount; paying >= 50% in fees is a
+//     red-flag tiny-amount / expensive-route case.
+//   Worked examples:
+//     amount 44,    fee 4096 -> ceiling max(50, 22)=50    -> 4096 > 50    -> REJECT.
+//     amount 1000,  fee 16   -> ceiling max(50, 500)=500  -> 16 <= 500    -> PASS.
+//     amount 100000, fee 200 -> ceiling max(50, 50000)    -> 200 <= 50000 -> PASS.
+//     amount X,     native fee 0 -> 0 <= any ceiling      -> PASS (always).
+// An operator can RAISE the ceiling explicitly (never silently) via the
+// `PYLON_SPARK_MAX_FEE_SATS` env var and/or a `--max-fee <sats>` input threaded
+// through to `sendSparkPaymentFromSdk` (see `resolveFeeCeilingSats`).
+export const FEE_GUARD_FLOOR_SATS = 50
+export const FEE_GUARD_MAX_PCT = 0.5
+
+/**
+ * Resolve the effective allowed-fee ceiling for a send (#5254).
+ *
+ * The default bound is `max(FEE_GUARD_FLOOR_SATS, FEE_GUARD_MAX_PCT *
+ * amountSats)`. An explicit operator override RAISES the ceiling: it is the
+ * MAX of the default bound and any provided override (a per-call `maxFeeSats`
+ * input and/or the `PYLON_SPARK_MAX_FEE_SATS` env var). Overrides can only
+ * loosen the guard, never tighten it below the default, and a malformed
+ * override is ignored (falls back to the default bound).
+ */
+export function resolveFeeCeilingSats(
+  amountSats: number,
+  override?: { maxFeeSats?: number; env?: NodeJS.ProcessEnv },
+): number {
+  const defaultBound = Math.max(FEE_GUARD_FLOOR_SATS, Math.floor(FEE_GUARD_MAX_PCT * amountSats))
+  const candidates = [defaultBound]
+  const inputOverride = override?.maxFeeSats
+  if (typeof inputOverride === "number" && Number.isFinite(inputOverride) && inputOverride >= 0) {
+    candidates.push(Math.floor(inputOverride))
+  }
+  const envRaw = (override?.env ?? process.env).PYLON_SPARK_MAX_FEE_SATS
+  if (typeof envRaw === "string" && envRaw.trim() !== "") {
+    const envOverride = Number(envRaw)
+    if (Number.isFinite(envOverride) && envOverride >= 0) {
+      candidates.push(Math.floor(envOverride))
+    }
+  }
+  return Math.max(...candidates)
+}
 
 // Send-latency audit: opt-in per-step timing (PYLON_SPARK_DEBUG=1) so the cold
 // per-command send pipeline cost is MEASURABLE on real infra. Monotonic clock,
@@ -392,6 +460,10 @@ async function sendSparkPaymentFromSdk(input: {
   sdk: BreezSparkSdk
   timeoutMs: number
   allowLnurlPay: boolean
+  // #5254: explicit operator override that RAISES the allowed-fee ceiling so a
+  // knowingly-expensive send can proceed. Undefined keeps the default bound
+  // (PYLON_SPARK_MAX_FEE_SATS is also consulted inside resolveFeeCeilingSats).
+  maxFeeSats?: number
 }): Promise<SparkBackupSendTransferResult> {
   let destination = input.destination.trim()
   if (destination === "") {
@@ -496,6 +568,50 @@ async function sendSparkPaymentFromSdk(input: {
   if (!isBolt11 && method !== "lnurl_pay") {
     method = "spark_native"
   }
+
+  // #5254 + #5250: extract the REAL prepared cost of this send from the prepared
+  // payment method (the SAME fields #5250 reconciles onto the receipt). This is
+  // computed HERE, BEFORE dispatch, so the fee guard below can refuse an insane
+  // send without moving any sats. The settled-fee reconciliation further down
+  // reuses `preparedFee` rather than recomputing it.
+  const preparedFeeFromMethod = toSatNumber(paymentMethod?.fee)
+  const preparedLightningFeeSats = toSatNumber(paymentMethod?.lightningFeeSats)
+  const preparedSparkTransferFeeSats = toSatNumber(paymentMethod?.sparkTransferFeeSats)
+  // Sum the bolt11 components (lightning + optional spark-transfer); the spark
+  // address/invoice case uses the flat `fee`. Any present component wins over a
+  // missing one; null only when nothing is reported.
+  const preparedFeeComponents = [
+    preparedFeeFromMethod,
+    preparedLightningFeeSats,
+    preparedSparkTransferFeeSats,
+  ].filter((value): value is number => value !== null)
+  const preparedFee =
+    preparedFeeComponents.length > 0
+      ? preparedFeeComponents.reduce((sum, value) => sum + value, 0)
+      : null
+
+  // #5254 — PRE-SEND FEE GUARD. Refuse a send whose prepared fee is grossly
+  // disproportionate to the amount BEFORE calling sendPayment, so zero sats
+  // move. A native Spark send (fee 0) and any send with a tiny absolute fee
+  // pass trivially. The ceiling can be RAISED (never silently) by the operator
+  // via PYLON_SPARK_MAX_FEE_SATS and/or the per-call `maxFeeSats` input. The
+  // failureRef is operator-legible and PUBLIC-SAFE — integers only, no payment
+  // material — so `sendWithSparkBackup` can surface a clear fee-too-high blocker.
+  if (preparedFee !== null && preparedFee > 0) {
+    const ceiling = resolveFeeCeilingSats(input.amountSats, { maxFeeSats: input.maxFeeSats })
+    if (preparedFee > ceiling) {
+      if (process.env.PYLON_SPARK_DEBUG === "1") {
+        console.error(
+          `[spark-send] fee_too_high prepared=${preparedFee} amount=${input.amountSats} ceiling=${ceiling}`,
+        )
+      }
+      return {
+        ok: false,
+        failureRef: `${input.prefix}.fee_too_high:prepared=${preparedFee}:amount=${input.amountSats}`,
+      }
+    }
+  }
+
   // #5196: wait at least the SDK's completion window + a buffer for the send to
   // settle — never the short read-timeout — so a slow/large send is not aborted
   // while it completes server-side (false-negative). prepare/resolve above stay
@@ -554,21 +670,8 @@ async function sendSparkPaymentFromSdk(input: {
   // "change"/leaf field in the SDK result — balance delta = amount + fees — so
   // a correctly-reported fee fully reconciles the delta with no residual.
   const sendResultFee = toSatNumber(payment.fees)
-  const preparedFeeFromMethod = toSatNumber(paymentMethod?.fee)
-  const preparedLightningFeeSats = toSatNumber(paymentMethod?.lightningFeeSats)
-  const preparedSparkTransferFeeSats = toSatNumber(paymentMethod?.sparkTransferFeeSats)
-  // Sum the bolt11 components (lightning + optional spark-transfer); the spark
-  // address/invoice case uses the flat `fee`. Any present component wins over a
-  // missing one; null only when nothing is reported.
-  const preparedFeeComponents = [
-    preparedFeeFromMethod,
-    preparedLightningFeeSats,
-    preparedSparkTransferFeeSats,
-  ].filter((value): value is number => value !== null)
-  const preparedFee =
-    preparedFeeComponents.length > 0
-      ? preparedFeeComponents.reduce((sum, value) => sum + value, 0)
-      : null
+  // #5254 hoisted `preparedFee` (and its components) above the dispatch so the
+  // pre-send fee guard could use it; reuse it here for the settled-fee fallback.
   // Trust a real, non-zero settled fee; otherwise use the prepared fee so the
   // receipt no longer claims feeSats:0 when sats were actually spent.
   const fee =
@@ -1273,6 +1376,10 @@ export function createSparkBackupSweepTransfer(config: SparkBackupAdapterConfig)
           sdk,
           timeoutMs,
           allowLnurlPay: false,
+          // #5254: adapter-level operator override (env PYLON_SPARK_MAX_FEE_SATS
+          // is also consulted inside the guard). The sweep input shape has no
+          // per-call knob, so only the config-level override applies here.
+          ...(config.maxFeeSats === undefined ? {} : { maxFeeSats: config.maxFeeSats }),
         })
       const result =
         acquired.warm && acquired.session
@@ -1312,10 +1419,15 @@ export function createSparkBackupSendTransfer(config: SparkBackupAdapterConfig):
     amountSats,
     destination,
     idempotencyKey,
+    maxFeeSats,
   }: {
     amountSats: number
     destination: string
     idempotencyKey: string
+    // #5254: per-call operator override that RAISES the allowed-fee ceiling.
+    // Falls back to the adapter-level `config.maxFeeSats`; the env override
+    // (PYLON_SPARK_MAX_FEE_SATS) is consulted inside the guard regardless.
+    maxFeeSats?: number
   }) => {
     if (!config.apiKey || config.apiKey.trim() === "") {
       return { ok: false, failureRef: "wallet.spark_backup_send.missing_credential" }
@@ -1323,6 +1435,8 @@ export function createSparkBackupSendTransfer(config: SparkBackupAdapterConfig):
     if (!config.mnemonic || config.mnemonic.trim() === "") {
       return { ok: false, failureRef: "wallet.spark_backup_send.missing_seed" }
     }
+    // Per-call override wins over the adapter-level default.
+    const effectiveMaxFeeSats = maxFeeSats ?? config.maxFeeSats
 
     let acquired: Awaited<ReturnType<typeof acquireSparkSession>> | null = null
     // Latency audit: process start -> reaching this send closure (cold binary
@@ -1375,6 +1489,8 @@ export function createSparkBackupSendTransfer(config: SparkBackupAdapterConfig):
           sdk,
           timeoutMs,
           allowLnurlPay: true,
+          // #5254: thread the operator fee-ceiling override into the guard.
+          ...(effectiveMaxFeeSats === undefined ? {} : { maxFeeSats: effectiveMaxFeeSats }),
         })
         sparkTiming("send_payment_step", performance.now() - tSend)
         return sendResult
