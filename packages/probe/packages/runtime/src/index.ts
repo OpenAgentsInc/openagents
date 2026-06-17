@@ -19,6 +19,7 @@ export * from "./benchmark/candidate-execution";
 export * from "./benchmark/fixtures";
 export * from "./benchmark/repo-corpus-manifest";
 export * from "./benchmark/studybench";
+export * from "./benchmark/studybench-answer-runner";
 export * from "./benchmark/studybench-external";
 export * from "./benchmark/studybench-score";
 export * from "./blueprint";

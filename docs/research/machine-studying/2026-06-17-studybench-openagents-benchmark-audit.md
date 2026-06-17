@@ -55,6 +55,12 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   Terminal-Bench closeouts, project StudyBench task/score/evidence-use refs
   into the GEPA live-runner gate as evidence only, and keep product, payout,
   and public-score authority disabled unless separate gates are supplied.
+- 2026-06-17: #5290 / MSB-MVP-08 complete. Probe runtime now exports an
+  answer-mode StudyBench runner that validates task/assignment split
+  compatibility, builds candidate-visible input with private gold/rubric
+  scorer material withheld, validates optional GEPA candidate manifests,
+  computes rubric scores from supplied claim scores, and emits normal Probe
+  closeout bundles with StudyBench score refs.
 
 ## Short Answer
 
