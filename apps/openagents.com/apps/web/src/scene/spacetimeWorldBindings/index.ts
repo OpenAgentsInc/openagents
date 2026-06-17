@@ -37,12 +37,25 @@ import {
 // Import all reducer arg schemas
 import AppendWorldEventReducer from "./append_world_event_reducer";
 import AuthorizeServiceIdentityReducer from "./authorize_service_identity_reducer";
+import ClearPylonFocusReducer from "./clear_pylon_focus_reducer";
+import EnsurePylonAgentAvatarReducer from "./ensure_pylon_agent_avatar_reducer";
+import ExpireInteractionRowsReducer from "./expire_interaction_rows_reducer";
+import FocusPylonReducer from "./focus_pylon_reducer";
+import JoinRegionReducer from "./join_region_reducer";
+import LeaveRegionReducer from "./leave_region_reducer";
 import RecordBridgeFailureReducer from "./record_bridge_failure_reducer";
 import RecordBridgeHealthReducer from "./record_bridge_health_reducer";
 import RecordBridgeSuccessReducer from "./record_bridge_success_reducer";
 import RecordProjectionCursorReducer from "./record_projection_cursor_reducer";
+import RecordSystemWorldMessageReducer from "./record_system_world_message_reducer";
 import RevokeServiceIdentityReducer from "./revoke_service_identity_reducer";
+import SendEmoteReducer from "./send_emote_reducer";
+import SendLocalMessageReducer from "./send_local_message_reducer";
+import SendPylonMessageReducer from "./send_pylon_message_reducer";
+import SetAgentIntentReducer from "./set_agent_intent_reducer";
+import SetAvatarPositionReducer from "./set_avatar_position_reducer";
 import UpsertProofRefReducer from "./upsert_proof_ref_reducer";
+import UpsertPylonStationFromProjectionReducer from "./upsert_pylon_station_from_projection_reducer";
 import UpsertRunEntityReducer from "./upsert_run_entity_reducer";
 import UpsertSettlementRefReducer from "./upsert_settlement_ref_reducer";
 import UpsertTrainingRunReducer from "./upsert_training_run_reducer";
@@ -51,9 +64,17 @@ import UpsertWorldEdgeReducer from "./upsert_world_edge_reducer";
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import AgentAvatarRow from "./agent_avatar_table";
+import AgentIntentRow from "./agent_intent_table";
+import AvatarPositionRow from "./avatar_position_table";
 import BridgeHealthRow from "./bridge_health_table";
+import ChatBubbleRow from "./chat_bubble_table";
+import LocalChatMessageRow from "./local_chat_message_table";
+import LocalEmoteRow from "./local_emote_table";
 import ProjectionCursorRow from "./projection_cursor_table";
 import ProofRefRow from "./proof_ref_table";
+import PylonAttentionRow from "./pylon_attention_table";
+import PylonStationRow from "./pylon_station_table";
 import RunEntityRow from "./run_entity_table";
 import SettlementRefRow from "./settlement_ref_table";
 import TrainingRunRow from "./training_run_table";
@@ -64,6 +85,39 @@ import WorldEventRow from "./world_event_table";
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  agent_avatar: __table({
+    name: 'agent_avatar',
+    indexes: [
+      { accessor: 'avatar_ref', name: 'agent_avatar_avatar_ref_idx_btree', algorithm: 'btree', columns: [
+        'avatarRef',
+      ] },
+    ],
+    constraints: [
+      { name: 'agent_avatar_avatar_ref_key', constraint: 'unique', columns: ['avatarRef'] },
+    ],
+  }, AgentAvatarRow),
+  agent_intent: __table({
+    name: 'agent_intent',
+    indexes: [
+      { accessor: 'avatar_ref', name: 'agent_intent_avatar_ref_idx_btree', algorithm: 'btree', columns: [
+        'avatarRef',
+      ] },
+    ],
+    constraints: [
+      { name: 'agent_intent_avatar_ref_key', constraint: 'unique', columns: ['avatarRef'] },
+    ],
+  }, AgentIntentRow),
+  avatar_position: __table({
+    name: 'avatar_position',
+    indexes: [
+      { accessor: 'avatar_ref', name: 'avatar_position_avatar_ref_idx_btree', algorithm: 'btree', columns: [
+        'avatarRef',
+      ] },
+    ],
+    constraints: [
+      { name: 'avatar_position_avatar_ref_key', constraint: 'unique', columns: ['avatarRef'] },
+    ],
+  }, AvatarPositionRow),
   bridge_health: __table({
     name: 'bridge_health',
     indexes: [
@@ -75,6 +129,39 @@ const tablesSchema = __schema({
       { name: 'bridge_health_bridge_ref_key', constraint: 'unique', columns: ['bridgeRef'] },
     ],
   }, BridgeHealthRow),
+  chat_bubble: __table({
+    name: 'chat_bubble',
+    indexes: [
+      { accessor: 'bubble_ref', name: 'chat_bubble_bubble_ref_idx_btree', algorithm: 'btree', columns: [
+        'bubbleRef',
+      ] },
+    ],
+    constraints: [
+      { name: 'chat_bubble_bubble_ref_key', constraint: 'unique', columns: ['bubbleRef'] },
+    ],
+  }, ChatBubbleRow),
+  local_chat_message: __table({
+    name: 'local_chat_message',
+    indexes: [
+      { accessor: 'message_ref', name: 'local_chat_message_message_ref_idx_btree', algorithm: 'btree', columns: [
+        'messageRef',
+      ] },
+    ],
+    constraints: [
+      { name: 'local_chat_message_message_ref_key', constraint: 'unique', columns: ['messageRef'] },
+    ],
+  }, LocalChatMessageRow),
+  local_emote: __table({
+    name: 'local_emote',
+    indexes: [
+      { accessor: 'emote_ref', name: 'local_emote_emote_ref_idx_btree', algorithm: 'btree', columns: [
+        'emoteRef',
+      ] },
+    ],
+    constraints: [
+      { name: 'local_emote_emote_ref_key', constraint: 'unique', columns: ['emoteRef'] },
+    ],
+  }, LocalEmoteRow),
   projection_cursor: __table({
     name: 'projection_cursor',
     indexes: [
@@ -97,6 +184,28 @@ const tablesSchema = __schema({
       { name: 'proof_ref_proof_ref_key', constraint: 'unique', columns: ['proofRef'] },
     ],
   }, ProofRefRow),
+  pylon_attention: __table({
+    name: 'pylon_attention',
+    indexes: [
+      { accessor: 'attention_ref', name: 'pylon_attention_attention_ref_idx_btree', algorithm: 'btree', columns: [
+        'attentionRef',
+      ] },
+    ],
+    constraints: [
+      { name: 'pylon_attention_attention_ref_key', constraint: 'unique', columns: ['attentionRef'] },
+    ],
+  }, PylonAttentionRow),
+  pylon_station: __table({
+    name: 'pylon_station',
+    indexes: [
+      { accessor: 'pylon_ref', name: 'pylon_station_pylon_ref_idx_btree', algorithm: 'btree', columns: [
+        'pylonRef',
+      ] },
+    ],
+    constraints: [
+      { name: 'pylon_station_pylon_ref_key', constraint: 'unique', columns: ['pylonRef'] },
+    ],
+  }, PylonStationRow),
   run_entity: __table({
     name: 'run_entity',
     indexes: [
@@ -158,12 +267,25 @@ const tablesSchema = __schema({
 const reducersSchema = __reducers(
   __reducerSchema("append_world_event", AppendWorldEventReducer),
   __reducerSchema("authorize_service_identity", AuthorizeServiceIdentityReducer),
+  __reducerSchema("clear_pylon_focus", ClearPylonFocusReducer),
+  __reducerSchema("ensure_pylon_agent_avatar", EnsurePylonAgentAvatarReducer),
+  __reducerSchema("expire_interaction_rows", ExpireInteractionRowsReducer),
+  __reducerSchema("focus_pylon", FocusPylonReducer),
+  __reducerSchema("join_region", JoinRegionReducer),
+  __reducerSchema("leave_region", LeaveRegionReducer),
   __reducerSchema("record_bridge_failure", RecordBridgeFailureReducer),
   __reducerSchema("record_bridge_health", RecordBridgeHealthReducer),
   __reducerSchema("record_bridge_success", RecordBridgeSuccessReducer),
   __reducerSchema("record_projection_cursor", RecordProjectionCursorReducer),
+  __reducerSchema("record_system_world_message", RecordSystemWorldMessageReducer),
   __reducerSchema("revoke_service_identity", RevokeServiceIdentityReducer),
+  __reducerSchema("send_emote", SendEmoteReducer),
+  __reducerSchema("send_local_message", SendLocalMessageReducer),
+  __reducerSchema("send_pylon_message", SendPylonMessageReducer),
+  __reducerSchema("set_agent_intent", SetAgentIntentReducer),
+  __reducerSchema("set_avatar_position", SetAvatarPositionReducer),
   __reducerSchema("upsert_proof_ref", UpsertProofRefReducer),
+  __reducerSchema("upsert_pylon_station_from_projection", UpsertPylonStationFromProjectionReducer),
   __reducerSchema("upsert_run_entity", UpsertRunEntityReducer),
   __reducerSchema("upsert_settlement_ref", UpsertSettlementRefReducer),
   __reducerSchema("upsert_training_run", UpsertTrainingRunReducer),

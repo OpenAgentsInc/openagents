@@ -1,5 +1,20 @@
 use spacetimedb::{Identity, ReducerContext, Table, Timestamp};
 
+const REGION_MIN_X: f64 = -8.0;
+const REGION_MAX_X: f64 = 8.0;
+const REGION_MIN_Y: f64 = 0.0;
+const REGION_MAX_Y: f64 = 4.0;
+const REGION_MIN_Z: f64 = -6.0;
+const REGION_MAX_Z: f64 = 6.0;
+const MAX_AVATAR_MOVE_METERS_PER_SECOND: f64 = 14.0;
+const AVATAR_POSITION_MIN_INTERVAL_MS: i64 = 100;
+const STALE_AVATAR_POSITION_MS: i64 = 20_000;
+const ATTENTION_TTL_MS: i64 = 8_000;
+const CHAT_TTL_MS: i64 = 90_000;
+const CHAT_BUBBLE_TTL_MS: i64 = 8_000;
+const EMOTE_TTL_MS: i64 = 8_000;
+const INTENT_TTL_MS: i64 = 15_000;
+
 #[spacetimedb::table(accessor = module_owner)]
 pub struct ModuleOwner {
     #[primary_key]
@@ -113,6 +128,114 @@ pub struct BridgeHealth {
     last_failure_at: Option<Timestamp>,
     last_failure_summary: Option<String>,
     heartbeat_at: Timestamp,
+}
+
+#[spacetimedb::table(accessor = pylon_station, public)]
+pub struct PylonStation {
+    #[primary_key]
+    pylon_ref: String,
+    run_ref: String,
+    region_ref: String,
+    label: String,
+    source_url: String,
+    position_x: f64,
+    position_y: f64,
+    position_z: f64,
+    heading_yaw: f64,
+    interaction_radius_meters: f64,
+    updated_at: Timestamp,
+}
+
+#[spacetimedb::table(accessor = agent_avatar, public)]
+pub struct AgentAvatar {
+    #[primary_key]
+    avatar_ref: String,
+    owner_identity: Identity,
+    actor_ref: String,
+    actor_kind: String,
+    display_name: String,
+    home_pylon_ref: Option<String>,
+    public_profile_url: Option<String>,
+    created_at: Timestamp,
+    last_seen_at: Timestamp,
+}
+
+#[spacetimedb::table(accessor = avatar_position, public)]
+pub struct AvatarPosition {
+    #[primary_key]
+    avatar_ref: String,
+    region_ref: String,
+    position_x: f64,
+    position_y: f64,
+    position_z: f64,
+    yaw: f64,
+    pitch: f64,
+    movement_mode: String,
+    last_seen_epoch_ms: i64,
+    updated_at: Timestamp,
+}
+
+#[spacetimedb::table(accessor = pylon_attention, public)]
+pub struct PylonAttention {
+    #[primary_key]
+    attention_ref: String,
+    pylon_ref: String,
+    avatar_ref: String,
+    attention_kind: String,
+    distance_meters: f64,
+    source_entity_ref: Option<String>,
+    first_seen_at: Timestamp,
+    last_seen_at: Timestamp,
+    expires_at_epoch_ms: i64,
+}
+
+#[spacetimedb::table(accessor = local_chat_message, public)]
+pub struct LocalChatMessage {
+    #[primary_key]
+    message_ref: String,
+    region_ref: String,
+    speaker_avatar_ref: String,
+    target_ref: Option<String>,
+    channel_kind: String,
+    radius_meters: f64,
+    body: String,
+    body_format: String,
+    created_at: Timestamp,
+    expires_at_epoch_ms: i64,
+    moderation_state: String,
+}
+
+#[spacetimedb::table(accessor = chat_bubble, public)]
+pub struct ChatBubble {
+    #[primary_key]
+    bubble_ref: String,
+    message_ref: String,
+    speaker_avatar_ref: String,
+    anchor_entity_ref: String,
+    created_at: Timestamp,
+    expires_at_epoch_ms: i64,
+}
+
+#[spacetimedb::table(accessor = local_emote, public)]
+pub struct LocalEmote {
+    #[primary_key]
+    emote_ref: String,
+    avatar_ref: String,
+    region_ref: String,
+    emote_kind: String,
+    target_ref: Option<String>,
+    created_at: Timestamp,
+    expires_at_epoch_ms: i64,
+}
+
+#[spacetimedb::table(accessor = agent_intent, public)]
+pub struct AgentIntent {
+    #[primary_key]
+    avatar_ref: String,
+    intent_kind: String,
+    target_ref: Option<String>,
+    updated_at: Timestamp,
+    expires_at_epoch_ms: i64,
 }
 
 #[spacetimedb::reducer(init)]
@@ -458,6 +581,535 @@ pub fn record_bridge_failure(
     Ok(())
 }
 
+#[spacetimedb::reducer]
+pub fn upsert_pylon_station_from_projection(
+    ctx: &ReducerContext,
+    pylon_ref: String,
+    run_ref: String,
+    region_ref: String,
+    label: String,
+    source_url: String,
+    position_x: f64,
+    position_y: f64,
+    position_z: f64,
+    heading_yaw: f64,
+    interaction_radius_meters: f64,
+) -> Result<(), String> {
+    ensure_service(ctx)?;
+    validate_position(position_x, position_y, position_z)?;
+    if !heading_yaw.is_finite() {
+        return Err("heading_yaw must be finite".to_string());
+    }
+    let interaction_radius_meters = validate_radius(interaction_radius_meters, 40.0)?;
+    upsert_pylon_station_row(
+        ctx,
+        PylonStation {
+            pylon_ref: clean_ref(pylon_ref, "pylon_ref", 160)?,
+            run_ref: clean_ref(run_ref, "run_ref", 160)?,
+            region_ref: clean_ref(region_ref, "region_ref", 160)?,
+            label: clean_text(label, "label", 80)?,
+            source_url: clean_optional_text(source_url, 512).unwrap_or_default(),
+            position_x,
+            position_y,
+            position_z,
+            heading_yaw,
+            interaction_radius_meters,
+            updated_at: ctx.timestamp,
+        },
+    );
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn ensure_pylon_agent_avatar(
+    ctx: &ReducerContext,
+    avatar_ref: String,
+    pylon_ref: String,
+    display_name: String,
+    region_ref: String,
+    position_x: f64,
+    position_y: f64,
+    position_z: f64,
+    yaw: f64,
+) -> Result<(), String> {
+    ensure_service(ctx)?;
+    validate_position(position_x, position_y, position_z)?;
+    if !yaw.is_finite() {
+        return Err("yaw must be finite".to_string());
+    }
+    let pylon_ref = clean_ref(pylon_ref, "pylon_ref", 160)?;
+    if ctx
+        .db
+        .pylon_station()
+        .pylon_ref()
+        .find(pylon_ref.clone())
+        .is_none()
+    {
+        return Err("pylon agent avatar requires an existing pylon_station".to_string());
+    }
+    let avatar_ref = clean_ref(avatar_ref, "avatar_ref", 160)?;
+    let existing = ctx.db.agent_avatar().avatar_ref().find(avatar_ref.clone());
+    upsert_agent_avatar_row(
+        ctx,
+        AgentAvatar {
+            avatar_ref: avatar_ref.clone(),
+            owner_identity: ctx.sender(),
+            actor_ref: format!("pylon_agent.{pylon_ref}"),
+            actor_kind: "pylon_agent".to_string(),
+            display_name: clean_text(display_name, "display_name", 64)?,
+            home_pylon_ref: Some(pylon_ref),
+            public_profile_url: None,
+            created_at: existing
+                .as_ref()
+                .map(|row| row.created_at)
+                .unwrap_or(ctx.timestamp),
+            last_seen_at: ctx.timestamp,
+        },
+    );
+    upsert_avatar_position_row(
+        ctx,
+        AvatarPosition {
+            avatar_ref,
+            region_ref: clean_ref(region_ref, "region_ref", 160)?,
+            position_x,
+            position_y,
+            position_z,
+            yaw,
+            pitch: 0.0,
+            movement_mode: "idle".to_string(),
+            last_seen_epoch_ms: ctx_epoch_ms(ctx),
+            updated_at: ctx.timestamp,
+        },
+    );
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn record_system_world_message(
+    ctx: &ReducerContext,
+    region_ref: String,
+    target_ref: Option<String>,
+    radius_meters: f64,
+    body: String,
+) -> Result<(), String> {
+    ensure_service(ctx)?;
+    let system_avatar_ref = ensure_system_avatar(ctx);
+    insert_local_message(
+        ctx,
+        clean_ref(region_ref, "region_ref", 160)?,
+        system_avatar_ref,
+        clean_optional_ref(target_ref, "target_ref", 160)?,
+        "system".to_string(),
+        validate_radius(radius_meters, 80.0)?,
+        body,
+    )?;
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn join_region(
+    ctx: &ReducerContext,
+    region_ref: String,
+    display_name: String,
+) -> Result<(), String> {
+    let avatar_ref = avatar_ref_for_sender(ctx);
+    let display_name = clean_optional_text(display_name, 64)
+        .unwrap_or_else(|| format!("agent {}", ctx.sender().to_abbreviated_hex()));
+    let existing = ctx.db.agent_avatar().avatar_ref().find(avatar_ref.clone());
+    upsert_agent_avatar_row(
+        ctx,
+        AgentAvatar {
+            avatar_ref: avatar_ref.clone(),
+            owner_identity: ctx.sender(),
+            actor_ref: format!("identity.{}", ctx.sender()),
+            actor_kind: existing
+                .as_ref()
+                .map(|row| row.actor_kind.clone())
+                .unwrap_or_else(|| "guest".to_string()),
+            display_name,
+            home_pylon_ref: existing.as_ref().and_then(|row| row.home_pylon_ref.clone()),
+            public_profile_url: existing.and_then(|row| row.public_profile_url),
+            created_at: ctx
+                .db
+                .agent_avatar()
+                .avatar_ref()
+                .find(avatar_ref.clone())
+                .map(|row| row.created_at)
+                .unwrap_or(ctx.timestamp),
+            last_seen_at: ctx.timestamp,
+        },
+    );
+    upsert_avatar_position_row(
+        ctx,
+        AvatarPosition {
+            avatar_ref,
+            region_ref: clean_ref(region_ref, "region_ref", 160)?,
+            position_x: 0.0,
+            position_y: 0.0,
+            position_z: 0.0,
+            yaw: 0.0,
+            pitch: 0.0,
+            movement_mode: "idle".to_string(),
+            last_seen_epoch_ms: ctx_epoch_ms(ctx),
+            updated_at: ctx.timestamp,
+        },
+    );
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn leave_region(ctx: &ReducerContext, region_ref: String) -> Result<(), String> {
+    let avatar_ref = avatar_ref_for_sender(ctx);
+    let region_ref = clean_ref(region_ref, "region_ref", 160)?;
+    if let Some(position) = ctx
+        .db
+        .avatar_position()
+        .avatar_ref()
+        .find(avatar_ref.clone())
+    {
+        if position.region_ref == region_ref {
+            ctx.db
+                .avatar_position()
+                .avatar_ref()
+                .delete(avatar_ref.clone());
+        }
+    }
+    ctx.db
+        .agent_intent()
+        .avatar_ref()
+        .delete(avatar_ref.clone());
+    let attention_refs: Vec<String> = ctx
+        .db
+        .pylon_attention()
+        .iter()
+        .filter(|row| row.avatar_ref == avatar_ref)
+        .map(|row| row.attention_ref)
+        .collect();
+    for attention_ref in attention_refs {
+        ctx.db
+            .pylon_attention()
+            .attention_ref()
+            .delete(attention_ref);
+    }
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn set_avatar_position(
+    ctx: &ReducerContext,
+    region_ref: String,
+    position_x: f64,
+    position_y: f64,
+    position_z: f64,
+    yaw: f64,
+    pitch: f64,
+    movement_mode: String,
+) -> Result<(), String> {
+    validate_position(position_x, position_y, position_z)?;
+    if !yaw.is_finite() || !pitch.is_finite() {
+        return Err("yaw and pitch must be finite".to_string());
+    }
+    let movement_mode = validate_choice(
+        movement_mode,
+        "movement_mode",
+        &["idle", "walking", "running", "ghost", "inspecting"],
+    )?;
+    let avatar_ref = avatar_ref_for_sender(ctx);
+    ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
+    let region_ref = clean_ref(region_ref, "region_ref", 160)?;
+    let now_ms = ctx_epoch_ms(ctx);
+    if let Some(existing) = ctx
+        .db
+        .avatar_position()
+        .avatar_ref()
+        .find(avatar_ref.clone())
+    {
+        if now_ms < existing.last_seen_epoch_ms + AVATAR_POSITION_MIN_INTERVAL_MS {
+            return Ok(());
+        }
+        validate_movement_delta(&existing, position_x, position_y, position_z, now_ms)?;
+    }
+    upsert_avatar_position_row(
+        ctx,
+        AvatarPosition {
+            avatar_ref,
+            region_ref,
+            position_x,
+            position_y,
+            position_z,
+            yaw,
+            pitch,
+            movement_mode,
+            last_seen_epoch_ms: now_ms,
+            updated_at: ctx.timestamp,
+        },
+    );
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn focus_pylon(
+    ctx: &ReducerContext,
+    pylon_ref: String,
+    attention_kind: String,
+    distance_meters: f64,
+    source_entity_ref: Option<String>,
+) -> Result<(), String> {
+    let pylon_ref = clean_ref(pylon_ref, "pylon_ref", 160)?;
+    if ctx
+        .db
+        .pylon_station()
+        .pylon_ref()
+        .find(pylon_ref.clone())
+        .is_none()
+    {
+        return Err("pylon attention requires an existing pylon_station".to_string());
+    }
+    let attention_kind = validate_choice(
+        attention_kind,
+        "attention_kind",
+        &["approaching", "nearby", "looking", "inspecting", "talking"],
+    )?;
+    let avatar_ref = avatar_ref_for_sender(ctx);
+    ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
+    let attention_ref = format!("attention.{pylon_ref}.{avatar_ref}");
+    let existing = ctx
+        .db
+        .pylon_attention()
+        .attention_ref()
+        .find(attention_ref.clone());
+    upsert_pylon_attention_row(
+        ctx,
+        PylonAttention {
+            attention_ref,
+            pylon_ref,
+            avatar_ref,
+            attention_kind,
+            distance_meters: validate_distance(distance_meters)?,
+            source_entity_ref: clean_optional_ref(source_entity_ref, "source_entity_ref", 160)?,
+            first_seen_at: existing
+                .as_ref()
+                .map(|row| row.first_seen_at)
+                .unwrap_or(ctx.timestamp),
+            last_seen_at: ctx.timestamp,
+            expires_at_epoch_ms: ctx_epoch_ms(ctx) + ATTENTION_TTL_MS,
+        },
+    );
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn clear_pylon_focus(ctx: &ReducerContext, pylon_ref: String) -> Result<(), String> {
+    let pylon_ref = clean_ref(pylon_ref, "pylon_ref", 160)?;
+    let avatar_ref = avatar_ref_for_sender(ctx);
+    ctx.db
+        .pylon_attention()
+        .attention_ref()
+        .delete(format!("attention.{pylon_ref}.{avatar_ref}"));
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn send_local_message(
+    ctx: &ReducerContext,
+    region_ref: String,
+    target_ref: Option<String>,
+    radius_meters: f64,
+    body: String,
+) -> Result<(), String> {
+    let avatar_ref = avatar_ref_for_sender(ctx);
+    ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
+    insert_local_message(
+        ctx,
+        clean_ref(region_ref, "region_ref", 160)?,
+        avatar_ref,
+        clean_optional_ref(target_ref, "target_ref", 160)?,
+        "local".to_string(),
+        validate_radius(radius_meters, 40.0)?,
+        body,
+    )?;
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn send_pylon_message(
+    ctx: &ReducerContext,
+    pylon_ref: String,
+    body: String,
+) -> Result<(), String> {
+    let pylon_ref = clean_ref(pylon_ref, "pylon_ref", 160)?;
+    let station = ctx
+        .db
+        .pylon_station()
+        .pylon_ref()
+        .find(pylon_ref.clone())
+        .ok_or_else(|| "pylon message requires an existing pylon_station".to_string())?;
+    let avatar_ref = avatar_ref_for_sender(ctx);
+    ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
+    insert_local_message(
+        ctx,
+        station.region_ref,
+        avatar_ref,
+        Some(pylon_ref),
+        "pylon".to_string(),
+        validate_radius(station.interaction_radius_meters.max(8.0), 40.0)?,
+        body,
+    )?;
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn send_emote(
+    ctx: &ReducerContext,
+    region_ref: String,
+    emote_kind: String,
+    target_ref: Option<String>,
+) -> Result<(), String> {
+    let avatar_ref = avatar_ref_for_sender(ctx);
+    ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
+    let emote_kind = validate_choice(
+        emote_kind,
+        "emote_kind",
+        &["wave", "ping", "point", "confused", "working"],
+    )?;
+    let emote_ref = next_ref(ctx, "emote");
+    ctx.db.local_emote().insert(LocalEmote {
+        emote_ref,
+        avatar_ref,
+        region_ref: clean_ref(region_ref, "region_ref", 160)?,
+        emote_kind,
+        target_ref: clean_optional_ref(target_ref, "target_ref", 160)?,
+        created_at: ctx.timestamp,
+        expires_at_epoch_ms: ctx_epoch_ms(ctx) + EMOTE_TTL_MS,
+    });
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn set_agent_intent(
+    ctx: &ReducerContext,
+    intent_kind: String,
+    target_ref: Option<String>,
+) -> Result<(), String> {
+    let avatar_ref = avatar_ref_for_sender(ctx);
+    ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
+    let intent_kind = validate_choice(
+        intent_kind,
+        "intent_kind",
+        &[
+            "idle",
+            "patrol",
+            "inspect_pylon",
+            "inspect_proof",
+            "talk",
+            "return_home",
+        ],
+    )?;
+    upsert_agent_intent_row(
+        ctx,
+        AgentIntent {
+            avatar_ref,
+            intent_kind,
+            target_ref: clean_optional_ref(target_ref, "target_ref", 160)?,
+            updated_at: ctx.timestamp,
+            expires_at_epoch_ms: ctx_epoch_ms(ctx) + INTENT_TTL_MS,
+        },
+    );
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn expire_interaction_rows(ctx: &ReducerContext) -> Result<(), String> {
+    ensure_service(ctx)?;
+    let now_ms = ctx_epoch_ms(ctx);
+    let stale_avatar_before_ms = now_ms - STALE_AVATAR_POSITION_MS;
+
+    let position_refs: Vec<String> = ctx
+        .db
+        .avatar_position()
+        .iter()
+        .filter(|row| {
+            row.last_seen_epoch_ms <= stale_avatar_before_ms
+                && ctx
+                    .db
+                    .agent_avatar()
+                    .avatar_ref()
+                    .find(row.avatar_ref.clone())
+                    .map(|avatar| {
+                        avatar.actor_kind != "pylon_agent" && avatar.actor_kind != "service_agent"
+                    })
+                    .unwrap_or(true)
+        })
+        .map(|row| row.avatar_ref)
+        .collect();
+    for avatar_ref in position_refs {
+        ctx.db.avatar_position().avatar_ref().delete(avatar_ref);
+    }
+
+    let attention_refs: Vec<String> = ctx
+        .db
+        .pylon_attention()
+        .iter()
+        .filter(|row| row.expires_at_epoch_ms <= now_ms)
+        .map(|row| row.attention_ref)
+        .collect();
+    for attention_ref in attention_refs {
+        ctx.db
+            .pylon_attention()
+            .attention_ref()
+            .delete(attention_ref);
+    }
+
+    let message_refs: Vec<String> = ctx
+        .db
+        .local_chat_message()
+        .iter()
+        .filter(|row| row.expires_at_epoch_ms <= now_ms)
+        .map(|row| row.message_ref)
+        .collect();
+    for message_ref in message_refs {
+        ctx.db
+            .local_chat_message()
+            .message_ref()
+            .delete(message_ref);
+    }
+
+    let bubble_refs: Vec<String> = ctx
+        .db
+        .chat_bubble()
+        .iter()
+        .filter(|row| row.expires_at_epoch_ms <= now_ms)
+        .map(|row| row.bubble_ref)
+        .collect();
+    for bubble_ref in bubble_refs {
+        ctx.db.chat_bubble().bubble_ref().delete(bubble_ref);
+    }
+
+    let emote_refs: Vec<String> = ctx
+        .db
+        .local_emote()
+        .iter()
+        .filter(|row| row.expires_at_epoch_ms <= now_ms)
+        .map(|row| row.emote_ref)
+        .collect();
+    for emote_ref in emote_refs {
+        ctx.db.local_emote().emote_ref().delete(emote_ref);
+    }
+
+    let intent_refs: Vec<String> = ctx
+        .db
+        .agent_intent()
+        .iter()
+        .filter(|row| row.expires_at_epoch_ms <= now_ms)
+        .map(|row| row.avatar_ref)
+        .collect();
+    for avatar_ref in intent_refs {
+        ctx.db.agent_intent().avatar_ref().delete(avatar_ref);
+    }
+
+    Ok(())
+}
+
 fn ensure_owner(ctx: &ReducerContext) -> Result<(), String> {
     if is_owner(ctx, ctx.sender()) {
         Ok(())
@@ -597,5 +1249,294 @@ fn upsert_bridge_health_row(ctx: &ReducerContext, row: BridgeHealth) {
         ctx.db.bridge_health().bridge_ref().update(row);
     } else {
         ctx.db.bridge_health().insert(row);
+    }
+}
+
+fn upsert_pylon_station_row(ctx: &ReducerContext, row: PylonStation) {
+    if ctx
+        .db
+        .pylon_station()
+        .pylon_ref()
+        .find(row.pylon_ref.clone())
+        .is_some()
+    {
+        ctx.db.pylon_station().pylon_ref().update(row);
+    } else {
+        ctx.db.pylon_station().insert(row);
+    }
+}
+
+fn upsert_agent_avatar_row(ctx: &ReducerContext, row: AgentAvatar) {
+    if ctx
+        .db
+        .agent_avatar()
+        .avatar_ref()
+        .find(row.avatar_ref.clone())
+        .is_some()
+    {
+        ctx.db.agent_avatar().avatar_ref().update(row);
+    } else {
+        ctx.db.agent_avatar().insert(row);
+    }
+}
+
+fn upsert_avatar_position_row(ctx: &ReducerContext, row: AvatarPosition) {
+    if ctx
+        .db
+        .avatar_position()
+        .avatar_ref()
+        .find(row.avatar_ref.clone())
+        .is_some()
+    {
+        ctx.db.avatar_position().avatar_ref().update(row);
+    } else {
+        ctx.db.avatar_position().insert(row);
+    }
+}
+
+fn upsert_pylon_attention_row(ctx: &ReducerContext, row: PylonAttention) {
+    if ctx
+        .db
+        .pylon_attention()
+        .attention_ref()
+        .find(row.attention_ref.clone())
+        .is_some()
+    {
+        ctx.db.pylon_attention().attention_ref().update(row);
+    } else {
+        ctx.db.pylon_attention().insert(row);
+    }
+}
+
+fn upsert_agent_intent_row(ctx: &ReducerContext, row: AgentIntent) {
+    if ctx
+        .db
+        .agent_intent()
+        .avatar_ref()
+        .find(row.avatar_ref.clone())
+        .is_some()
+    {
+        ctx.db.agent_intent().avatar_ref().update(row);
+    } else {
+        ctx.db.agent_intent().insert(row);
+    }
+}
+
+fn ensure_avatar_for_sender(
+    ctx: &ReducerContext,
+    avatar_ref: String,
+    display_name: Option<String>,
+) -> Result<(), String> {
+    let existing = ctx.db.agent_avatar().avatar_ref().find(avatar_ref.clone());
+    let display_name = display_name.unwrap_or_else(|| {
+        existing
+            .as_ref()
+            .map(|row| row.display_name.clone())
+            .unwrap_or_else(|| format!("agent {}", ctx.sender().to_abbreviated_hex()))
+    });
+    upsert_agent_avatar_row(
+        ctx,
+        AgentAvatar {
+            avatar_ref,
+            owner_identity: ctx.sender(),
+            actor_ref: format!("identity.{}", ctx.sender()),
+            actor_kind: existing
+                .as_ref()
+                .map(|row| row.actor_kind.clone())
+                .unwrap_or_else(|| "guest".to_string()),
+            display_name,
+            home_pylon_ref: existing.as_ref().and_then(|row| row.home_pylon_ref.clone()),
+            public_profile_url: existing
+                .as_ref()
+                .and_then(|row| row.public_profile_url.clone()),
+            created_at: existing
+                .as_ref()
+                .map(|row| row.created_at)
+                .unwrap_or(ctx.timestamp),
+            last_seen_at: ctx.timestamp,
+        },
+    );
+    Ok(())
+}
+
+fn ensure_system_avatar(ctx: &ReducerContext) -> String {
+    let avatar_ref = "avatar.system.openagents-world".to_string();
+    let existing = ctx.db.agent_avatar().avatar_ref().find(avatar_ref.clone());
+    upsert_agent_avatar_row(
+        ctx,
+        AgentAvatar {
+            avatar_ref: avatar_ref.clone(),
+            owner_identity: ctx.database_identity(),
+            actor_ref: "system.openagents-world".to_string(),
+            actor_kind: "service_agent".to_string(),
+            display_name: "OpenAgents world".to_string(),
+            home_pylon_ref: None,
+            public_profile_url: None,
+            created_at: existing
+                .as_ref()
+                .map(|row| row.created_at)
+                .unwrap_or(ctx.timestamp),
+            last_seen_at: ctx.timestamp,
+        },
+    );
+    avatar_ref
+}
+
+fn insert_local_message(
+    ctx: &ReducerContext,
+    region_ref: String,
+    speaker_avatar_ref: String,
+    target_ref: Option<String>,
+    channel_kind: String,
+    radius_meters: f64,
+    body: String,
+) -> Result<(), String> {
+    let channel_kind =
+        validate_choice(channel_kind, "channel_kind", &["local", "pylon", "system"])?;
+    let message_ref = next_ref(ctx, "message");
+    let bubble_ref = format!("bubble.{message_ref}");
+    let now_ms = ctx_epoch_ms(ctx);
+    let anchor_entity_ref = target_ref
+        .as_ref()
+        .cloned()
+        .unwrap_or_else(|| speaker_avatar_ref.clone());
+    ctx.db.local_chat_message().insert(LocalChatMessage {
+        message_ref: message_ref.clone(),
+        region_ref,
+        speaker_avatar_ref: speaker_avatar_ref.clone(),
+        target_ref,
+        channel_kind,
+        radius_meters,
+        body: clean_text(body, "body", 280)?,
+        body_format: "plain_text".to_string(),
+        created_at: ctx.timestamp,
+        expires_at_epoch_ms: now_ms + CHAT_TTL_MS,
+        moderation_state: "visible".to_string(),
+    });
+    ctx.db.chat_bubble().insert(ChatBubble {
+        bubble_ref,
+        message_ref,
+        speaker_avatar_ref,
+        anchor_entity_ref,
+        created_at: ctx.timestamp,
+        expires_at_epoch_ms: now_ms + CHAT_BUBBLE_TTL_MS,
+    });
+    Ok(())
+}
+
+fn avatar_ref_for_sender(ctx: &ReducerContext) -> String {
+    format!("avatar.identity.{}", ctx.sender())
+}
+
+fn ctx_epoch_ms(ctx: &ReducerContext) -> i64 {
+    ctx.timestamp.to_micros_since_unix_epoch() / 1_000
+}
+
+fn next_ref(ctx: &ReducerContext, prefix: &str) -> String {
+    let sequence = ctx.db.local_chat_message().count()
+        + ctx.db.chat_bubble().count()
+        + ctx.db.local_emote().count()
+        + ctx.db.pylon_attention().count();
+    format!(
+        "{prefix}.{}.{}.{}",
+        ctx.sender().to_abbreviated_hex(),
+        ctx.timestamp.to_micros_since_unix_epoch(),
+        sequence
+    )
+}
+
+fn validate_position(position_x: f64, position_y: f64, position_z: f64) -> Result<(), String> {
+    if !position_x.is_finite() || !position_y.is_finite() || !position_z.is_finite() {
+        return Err("position coordinates must be finite".to_string());
+    }
+    if !(REGION_MIN_X..=REGION_MAX_X).contains(&position_x)
+        || !(REGION_MIN_Y..=REGION_MAX_Y).contains(&position_y)
+        || !(REGION_MIN_Z..=REGION_MAX_Z).contains(&position_z)
+    {
+        return Err("position is outside the initial Tassadar run region bounds".to_string());
+    }
+    Ok(())
+}
+
+fn validate_movement_delta(
+    existing: &AvatarPosition,
+    position_x: f64,
+    position_y: f64,
+    position_z: f64,
+    now_ms: i64,
+) -> Result<(), String> {
+    let elapsed_ms = now_ms.saturating_sub(existing.last_seen_epoch_ms);
+    if elapsed_ms <= 0 {
+        return Ok(());
+    }
+    let dx = position_x - existing.position_x;
+    let dy = position_y - existing.position_y;
+    let dz = position_z - existing.position_z;
+    let distance = (dx * dx + dy * dy + dz * dz).sqrt();
+    let allowed_distance = MAX_AVATAR_MOVE_METERS_PER_SECOND * (elapsed_ms as f64 / 1_000.0) + 0.75;
+    if distance > allowed_distance {
+        return Err("position jump exceeds the MVP avatar movement limit".to_string());
+    }
+    Ok(())
+}
+
+fn validate_radius(radius_meters: f64, max_radius_meters: f64) -> Result<f64, String> {
+    if !radius_meters.is_finite() || radius_meters <= 0.0 || radius_meters > max_radius_meters {
+        return Err("radius_meters is outside the allowed range".to_string());
+    }
+    Ok(radius_meters)
+}
+
+fn validate_distance(distance_meters: f64) -> Result<f64, String> {
+    if !distance_meters.is_finite() || !(0.0..=100.0).contains(&distance_meters) {
+        return Err("distance_meters is outside the allowed range".to_string());
+    }
+    Ok(distance_meters)
+}
+
+fn validate_choice(value: String, field: &str, allowed: &[&str]) -> Result<String, String> {
+    let cleaned = clean_ref(value, field, 64)?;
+    if allowed.iter().any(|allowed| *allowed == cleaned) {
+        Ok(cleaned)
+    } else {
+        Err(format!("{field} is not an allowed value"))
+    }
+}
+
+fn clean_ref(value: String, field: &str, max_chars: usize) -> Result<String, String> {
+    let cleaned = clean_optional_text(value, max_chars)
+        .ok_or_else(|| format!("{field} must not be empty"))?;
+    if cleaned.chars().any(char::is_whitespace) {
+        return Err(format!("{field} must not contain whitespace"));
+    }
+    Ok(cleaned)
+}
+
+fn clean_optional_ref(
+    value: Option<String>,
+    field: &str,
+    max_chars: usize,
+) -> Result<Option<String>, String> {
+    match value {
+        Some(value) => clean_ref(value, field, max_chars).map(Some),
+        None => Ok(None),
+    }
+}
+
+fn clean_text(value: String, field: &str, max_chars: usize) -> Result<String, String> {
+    clean_optional_text(value, max_chars).ok_or_else(|| format!("{field} must not be empty"))
+}
+
+fn clean_optional_text(value: String, max_chars: usize) -> Option<String> {
+    let cleaned = value
+        .trim()
+        .chars()
+        .filter(|ch| !ch.is_control())
+        .take(max_chars)
+        .collect::<String>();
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned)
     }
 }

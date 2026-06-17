@@ -149,6 +149,17 @@ primitives.
   identity uptime failure, Nginx 5xx spikes, and `spacetimedb.service` restart
   loops, and Ops Agent-backed Nginx/syslog ingestion. The project still needs
   an external notification channel attached before alerts should page someone.
+- 2026-06-17: Issue #5261 added the MVP shared-world interaction schema in the
+  separate `apps/openagents-world-spacetimedb` app. The module now exposes
+  public interaction tables for `pylon_station`, `agent_avatar`,
+  `avatar_position`, `pylon_attention`, `local_chat_message`, `chat_bubble`,
+  `local_emote`, and `agent_intent`, plus generated TypeScript bindings for the
+  web adapter. Browser reducers are limited to joining/leaving, bounded and
+  throttled position updates, pylon focus, local or pylon-targeted plain-text
+  messages, emotes, and ephemeral intent. Service reducers own station/avatar
+  projection and expiry. This does not change `/tassadar` truth authority:
+  Worker/D1 remains canonical for run, pylon, proof, receipt, settlement, and
+  product-claim state.
 
 ## Short answer
 

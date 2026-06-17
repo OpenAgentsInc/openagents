@@ -1,7 +1,7 @@
 # SpacetimeDB To Tassadar Integration Next Steps
 
 Date: 2026-06-17
-Status: Phase 0, Phase 1, Phase 2, and base ops hardening implemented; inspector and presence next
+Status: Phase 0, Phase 1, Phase 2, base ops hardening, and MVP interaction schema implemented; station/avatar projection next
 
 ## Current Boundary
 
@@ -137,6 +137,31 @@ Issue #5239 completed the base GCP operations hardening before this phase:
 The remaining ops follow-up is notification delivery, not signal definition:
 the project had no Cloud Monitoring notification channels when #5239 ran, so
 the policies currently create Monitoring incidents without external paging.
+
+Issue #5261 added the first presence/gameplay schema without changing the
+authority boundary. The new public interaction tables are:
+
+| Table | Purpose |
+| --- | --- |
+| `pylon_station` | In-world station for a public pylon ref during a run. |
+| `agent_avatar` | Public avatar identity row for a guest, human, pylon agent, or service agent. |
+| `avatar_position` | Latest bounded position, yaw/pitch, movement mode, and freshness for one avatar. |
+| `pylon_attention` | Short-lived signal that an avatar is approaching, nearby, looking, inspecting, or talking to a pylon. |
+| `local_chat_message` | Public-safe plain-text spatial chat row with radius, channel, TTL, and moderation state. |
+| `chat_bubble` | Short-lived display row for a message bubble anchored to an avatar or target entity. |
+| `local_emote` | Short-lived non-verbal world signal such as wave, ping, point, confused, or working. |
+| `agent_intent` | Ephemeral public activity hint for an avatar. |
+
+The new browser reducers are limited to interaction state:
+`join_region`, `leave_region`, `set_avatar_position`, `focus_pylon`,
+`clear_pylon_focus`, `send_local_message`, `send_pylon_message`, `send_emote`,
+and `set_agent_intent`. The new service-only reducers are
+`upsert_pylon_station_from_projection`, `ensure_pylon_agent_avatar`,
+`record_system_world_message`, and `expire_interaction_rows`.
+
+These rows do not create proof, settlement, receipt, pylon, or training truth.
+The next step is issue #5262: derive pylon stations and one pylon-agent avatar
+per public pylon ref from the existing Tassadar summary bridge.
 
 After the base projection works, add subscriptions that are useful only when an
 entity is selected:

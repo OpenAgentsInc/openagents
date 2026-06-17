@@ -21,6 +21,17 @@ Public projection tables:
 - `projection_cursor`
 - `bridge_health`
 
+Public interaction tables:
+
+- `pylon_station`
+- `agent_avatar`
+- `avatar_position`
+- `pylon_attention`
+- `local_chat_message`
+- `chat_bubble`
+- `local_emote`
+- `agent_intent`
+
 Private authority tables:
 
 - `module_owner`
@@ -29,6 +40,40 @@ Private authority tables:
 Only allowlisted service identities may call projection reducers. The `init`
 reducer stores the publishing identity as owner and service identity. Future
 bridge identities can be added with `authorize_service_identity`.
+
+Interaction tables are public because they drive the shared world UI. They are
+still bounded interaction state, not product truth. Browser identities may only
+join or leave a region, update their own derived avatar position, focus a pylon
+station, send short local or pylon messages, emit an emote, and set their own
+ephemeral intent. Browser reducers cannot create run truth, pylon truth, proof
+refs, receipt refs, settlement refs, or product claims.
+
+Service-only interaction reducers:
+
+- `upsert_pylon_station_from_projection`
+- `ensure_pylon_agent_avatar`
+- `record_system_world_message`
+- `expire_interaction_rows`
+
+Browser/user interaction reducers:
+
+- `join_region`
+- `leave_region`
+- `set_avatar_position`
+- `focus_pylon`
+- `clear_pylon_focus`
+- `send_local_message`
+- `send_pylon_message`
+- `send_emote`
+- `set_agent_intent`
+
+The MVP world bounds are intentionally small and flat:
+`x=-8..8`, `y=0..4`, and `z=-6..6`. Position updates are throttled to at most
+10 Hz per avatar and reject jumps above the MVP movement limit. Local messages
+are plain text, capped at 280 characters, marked `moderation_state="visible"`,
+and paired with short-lived chat-bubble rows. `expire_interaction_rows` is a
+service reducer that removes stale avatar positions and expired attention,
+message, bubble, emote, and intent rows.
 
 ## Build
 
@@ -60,7 +105,7 @@ apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings
 Regenerate those bindings after public table or reducer schema changes:
 
 ```bash
-spacetime generate \
+~/.local/bin/spacetime generate \
   --lang typescript \
   --out-dir apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings \
   --module-path apps/openagents-world-spacetimedb

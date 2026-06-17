@@ -10,6 +10,42 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const AgentAvatar = __t.object("AgentAvatar", {
+  avatarRef: __t.string(),
+  ownerIdentity: __t.identity(),
+  actorRef: __t.string(),
+  actorKind: __t.string(),
+  displayName: __t.string(),
+  homePylonRef: __t.option(__t.string()),
+  publicProfileUrl: __t.option(__t.string()),
+  createdAt: __t.timestamp(),
+  lastSeenAt: __t.timestamp(),
+});
+export type AgentAvatar = __Infer<typeof AgentAvatar>;
+
+export const AgentIntent = __t.object("AgentIntent", {
+  avatarRef: __t.string(),
+  intentKind: __t.string(),
+  targetRef: __t.option(__t.string()),
+  updatedAt: __t.timestamp(),
+  expiresAtEpochMs: __t.i64(),
+});
+export type AgentIntent = __Infer<typeof AgentIntent>;
+
+export const AvatarPosition = __t.object("AvatarPosition", {
+  avatarRef: __t.string(),
+  regionRef: __t.string(),
+  positionX: __t.f64(),
+  positionY: __t.f64(),
+  positionZ: __t.f64(),
+  yaw: __t.f64(),
+  pitch: __t.f64(),
+  movementMode: __t.string(),
+  lastSeenEpochMs: __t.i64(),
+  updatedAt: __t.timestamp(),
+});
+export type AvatarPosition = __Infer<typeof AvatarPosition>;
+
 export const BridgeHealth = __t.object("BridgeHealth", {
   bridgeRef: __t.string(),
   sourceUrl: __t.string(),
@@ -19,6 +55,42 @@ export const BridgeHealth = __t.object("BridgeHealth", {
   heartbeatAt: __t.timestamp(),
 });
 export type BridgeHealth = __Infer<typeof BridgeHealth>;
+
+export const ChatBubble = __t.object("ChatBubble", {
+  bubbleRef: __t.string(),
+  messageRef: __t.string(),
+  speakerAvatarRef: __t.string(),
+  anchorEntityRef: __t.string(),
+  createdAt: __t.timestamp(),
+  expiresAtEpochMs: __t.i64(),
+});
+export type ChatBubble = __Infer<typeof ChatBubble>;
+
+export const LocalChatMessage = __t.object("LocalChatMessage", {
+  messageRef: __t.string(),
+  regionRef: __t.string(),
+  speakerAvatarRef: __t.string(),
+  targetRef: __t.option(__t.string()),
+  channelKind: __t.string(),
+  radiusMeters: __t.f64(),
+  body: __t.string(),
+  bodyFormat: __t.string(),
+  createdAt: __t.timestamp(),
+  expiresAtEpochMs: __t.i64(),
+  moderationState: __t.string(),
+});
+export type LocalChatMessage = __Infer<typeof LocalChatMessage>;
+
+export const LocalEmote = __t.object("LocalEmote", {
+  emoteRef: __t.string(),
+  avatarRef: __t.string(),
+  regionRef: __t.string(),
+  emoteKind: __t.string(),
+  targetRef: __t.option(__t.string()),
+  createdAt: __t.timestamp(),
+  expiresAtEpochMs: __t.i64(),
+});
+export type LocalEmote = __Infer<typeof LocalEmote>;
 
 export const ModuleOwner = __t.object("ModuleOwner", {
   ownerIdentity: __t.identity(),
@@ -46,6 +118,34 @@ export const ProofRef = __t.object("ProofRef", {
   updatedAt: __t.timestamp(),
 });
 export type ProofRef = __Infer<typeof ProofRef>;
+
+export const PylonAttention = __t.object("PylonAttention", {
+  attentionRef: __t.string(),
+  pylonRef: __t.string(),
+  avatarRef: __t.string(),
+  attentionKind: __t.string(),
+  distanceMeters: __t.f64(),
+  sourceEntityRef: __t.option(__t.string()),
+  firstSeenAt: __t.timestamp(),
+  lastSeenAt: __t.timestamp(),
+  expiresAtEpochMs: __t.i64(),
+});
+export type PylonAttention = __Infer<typeof PylonAttention>;
+
+export const PylonStation = __t.object("PylonStation", {
+  pylonRef: __t.string(),
+  runRef: __t.string(),
+  regionRef: __t.string(),
+  label: __t.string(),
+  sourceUrl: __t.string(),
+  positionX: __t.f64(),
+  positionY: __t.f64(),
+  positionZ: __t.f64(),
+  headingYaw: __t.f64(),
+  interactionRadiusMeters: __t.f64(),
+  updatedAt: __t.timestamp(),
+});
+export type PylonStation = __Infer<typeof PylonStation>;
 
 export const RunEntity = __t.object("RunEntity", {
   entityRef: __t.string(),

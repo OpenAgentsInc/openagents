@@ -405,6 +405,20 @@ gcloud compute ssh spacetimedb-world-1 \
   --command='set -e; for table in training_run run_entity world_edge proof_ref settlement_ref world_event projection_cursor bridge_health; do printf "\n%s\n" "$table"; sudo -u spacetimedb /stdb/bin/2.6.0/spacetimedb-cli sql -s local openagents-world "SELECT COUNT(*) AS count FROM $table"; done'
 ```
 
+Issue #5261 adds public interaction tables for the shared world layer. After a
+schema publish, verify those tables too:
+
+```bash
+gcloud compute ssh spacetimedb-world-1 \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --tunnel-through-iap \
+  --command='set -e; for table in pylon_station agent_avatar avatar_position pylon_attention local_chat_message chat_bubble local_emote agent_intent; do printf "\n%s\n" "$table"; sudo -u spacetimedb /stdb/bin/2.6.0/spacetimedb-cli sql -s local openagents-world "SELECT COUNT(*) AS count FROM $table"; done'
+```
+
+Until issue #5262 projects pylon stations and pylon-agent avatars, these
+interaction tables may legitimately be empty.
+
 ## Browser Subscription Adapter
 
 Issue #5238 added the feature-flagged `/tassadar` browser adapter. The page
@@ -433,6 +447,11 @@ settlement_ref
 world_event
 ```
 
+Issue #5261 generated bindings for the interaction tables, but the live
+browser adapter should not subscribe to them until the corresponding visual
+layers land. Issue #5263 is the first planned subscription/rendering step for
+`pylon_station`, `agent_avatar`, and `avatar_position`.
+
 The generated TypeScript bindings are checked into:
 
 ```text
@@ -443,7 +462,7 @@ Regenerate them after module schema changes with a SpacetimeDB CLI matching the
 module version:
 
 ```bash
-spacetime generate \
+~/.local/bin/spacetime generate \
   --lang typescript \
   --out-dir apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings \
   --module-path apps/openagents-world-spacetimedb
