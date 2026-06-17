@@ -138,21 +138,17 @@ import {
 import {
   admitPayoutTarget,
   appendLedgerEvent,
-  classifyMdkWallet,
   classifySparkBackupReceive,
   detectSparkBackupBalance,
+  mdkScopedAgentWalletStatus,
   prepareSparkBackupReceive,
   preflightLegacySparkMigration,
   readCachedSparkTarget,
-  receiveWithFallback,
-  receiveWithMdk,
   recommendSparkSweep,
   reportWalletReadiness,
   requestPayoutTargetAdmission,
-  sendWithMdk,
   sendWithSparkBackup,
   sweepSparkBackupToMdk,
-  unifiedWalletBalanceFromStatus,
   withSparkPrimaryWalletBalance,
   writeCachedSparkTarget,
 } from "./wallet"
@@ -279,8 +275,16 @@ const log = (message: string, level: PylonLogLevel = "verbose") =>
 // used by the control server (attach mode) and the headless node
 // (issue #4740).
 const nodeWalletActions: ControlCommandActions = {
-  walletSend: (destinationRef, amountSats) => sendWithMdk(destinationRef, amountSats),
-  walletReceive: (amountSats) => receiveWithMdk(amountSats),
+  walletSend: async () => ({
+    ok: false,
+    reason: "mdk_agent_wallet_scoped_to_checkouts_treasury",
+    nextActionRef: "action.wallet.spark_primary.send_with_local_destination",
+  }),
+  walletReceive: async () => ({
+    ok: false,
+    reason: "use_wallet_backup_receive_for_spark_lightning_address",
+    nextActionRef: "action.wallet.spark_primary.backup_receive_lightning_address",
+  }),
   walletAdmitPayoutTarget: (kind, ref) =>
     Promise.resolve(admitPayoutTarget({ kind: kind as Parameters<typeof admitPayoutTarget>[0]["kind"], ref })),
   // CL-23 read-only balance/earnings: project the live primary agent wallet
@@ -676,20 +680,7 @@ async function runHeadlessAssignmentWorkerLoop(
 // for Phase 0.
 function operatorTextFromInventory(inventory: Awaited<ReturnType<typeof discoverHostInventory>>) {
   const wallet = {
-    schema: "openagents.pylon.wallet_status.v0.3" as const,
-    configured: false,
-    daemonOnline: false,
-    balanceSats: null,
-    receiveReady: false,
-    sendReady: false,
-    readiness: "daemon-offline" as const,
-    blockerRefs: ["blocker.wallet.daemon_offline"],
-    payoutTargetRefs: [],
-    settlementRefs: [],
-    unifiedBalance: unifiedWalletBalanceFromStatus({
-      balanceSats: null,
-      sendReady: false,
-    }),
+    ...mdkScopedAgentWalletStatus(),
   }
   return formatOperatorSnapshotText(
     createOperatorSnapshot({ inventory, wallet: wallet as Parameters<typeof createOperatorSnapshot>[0]["wallet"] }),
@@ -1068,11 +1059,8 @@ async function readSparkBackupStatusProjection(
 }
 
 async function classifyPrimaryAgentWalletForState(state: PylonLocalState) {
-  const [mdkStatus, sparkBackup] = await Promise.all([
-    classifyMdkWallet(),
-    readSparkBackupStatusProjection(state, { enabled: true }),
-  ])
-  return withSparkPrimaryWalletBalance(mdkStatus, sparkBackup)
+  const sparkBackup = await readSparkBackupStatusProjection(state, { enabled: true })
+  return withSparkPrimaryWalletBalance(mdkScopedAgentWalletStatus(), sparkBackup)
 }
 
 async function classifyPrimaryAgentWallet() {
@@ -2371,35 +2359,24 @@ async function main() {
       if (command === "receive") {
         const amount = Number(options.amount)
         if (!Number.isFinite(amount) || amount <= 0) throw new Error("wallet receive requires --amount")
-        // MDK-first; Spark backup second, only on an MDK offline/unavailable
-        // class AND when the backup is opt-in enabled (slice 1 fallback).
-        const sparkBackupOptions = await resolveSparkBackupOptions(state)
-        const result = await receiveWithFallback(amount, { sparkBackup: sparkBackupOptions })
-        if (result.rail === "spark_backup" && result.ok && result.sparkBackup.localTarget) {
-          // Persist the freshly issued raw target to local private state only.
-          await writeCachedSparkTarget(state.paths, result.sparkBackup.localTarget)
-        }
-        if (result.rail === "spark_backup" && result.receiptRef) {
+        const sparkBackupOptions = await resolveSparkBackupOptions(state, { enabled: true })
+        const result = await prepareSparkBackupReceive({ ...sparkBackupOptions, kind: "lightning-address" })
+        if (result.receiptRef) {
           await appendLedgerEvent(state.paths, {
             kind: "backup-receive-selected",
             ref: result.receiptRef,
-            data: { receiptRef: result.receiptRef, rail: "spark_backup", mdkFailureRef: result.mdkFailureRef },
+            data: { receiptRef: result.receiptRef, rail: "spark_backup", state: result.state },
           })
         }
-        // Never emit the raw local target from `wallet receive`; redacted refs only.
-        const redacted =
-          result.rail === "spark_backup"
-            ? {
-                ok: result.ok,
-                rail: result.rail,
-                receiptRef: result.receiptRef,
-                mdkFailureRef: result.mdkFailureRef,
-                rawTargetAvailableLocally: result.rawTargetAvailableLocally,
-                state: result.sparkBackup.projection.state,
-                blockerRefs: result.sparkBackup.blockerRefs,
-                nextHint: "Run `pylon wallet backup-receive --kind spark-address --show-local-target` to view the local target.",
-              }
-            : result
+        const redacted = {
+          ok: result.ok,
+          rail: result.rail,
+          receiptRef: result.receiptRef,
+          rawTargetAvailableLocally: result.rawTargetAvailableLocally,
+          state: result.state,
+          blockerRefs: result.blockerRefs,
+          nextHint: "Run `pylon wallet backup-receive --kind lightning-address --show-local-target` to view the local Spark Lightning Address.",
+        }
         process.stdout.write(`${JSON.stringify(redacted, null, 2)}\n`)
         return
       }
@@ -2535,7 +2512,7 @@ async function main() {
         process.exit(selftest.moduleLoaded ? 0 : 1)
       }
       if (command === "send") {
-        const rail = optionString(options, "rail") ?? "mdk"
+        const rail = optionString(options, "rail") ?? "spark"
         const amount = options.amount === undefined ? undefined : Number(options.amount)
         if (rail === "spark" || rail === "spark_backup") {
           const destination =
@@ -2576,12 +2553,10 @@ async function main() {
           // Spark SDK sessions can keep background handles alive (#5162).
           process.exit(result.state === "sent" ? 0 : 1)
         }
-        if (rail !== "mdk") throw new Error("wallet send --rail supports mdk or spark")
-        const destinationRef = options["destination-ref"]
-        if (!destinationRef) throw new Error("wallet send requires --destination-ref")
-        const result = await sendWithMdk(destinationRef, amount)
-        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
-        return
+        if (rail === "mdk") {
+          throw new Error("wallet send --rail mdk is no longer supported for agent funds; MDK is scoped to checkouts and treasury. Use --rail spark --destination ... --confirm-send.")
+        }
+        throw new Error("wallet send --rail supports spark")
       }
       if (command === "admit-payout-target") {
         const kind = options.kind as any

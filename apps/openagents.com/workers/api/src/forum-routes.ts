@@ -382,8 +382,8 @@ const ForumPublicSafeRef = S.Trim.check(S.isNonEmpty(), S.isMaxLength(220))
 const ForumPublicSafeRefs = S.optionalKey(S.Array(ForumPublicSafeRef))
 const ForumBolt12Offer = S.Trim.check(S.isNonEmpty(), S.isMaxLength(4096))
 // Static Lightning Address (LNURL-pay) the recipient publishes, e.g. one
-// hosted by their offline Breez Spark backup wallet's LSP (#5078). A public
-// payment destination like bolt12Offer, kept on file as a payout fallback.
+// hosted by their Spark wallet's LSP. A public payment destination like
+// bolt12Offer, preferred for agent payout readiness after #5181.
 const ForumLightningAddress = S.Trim.check(S.isNonEmpty(), S.isMaxLength(512))
 
 const ForumTipRecipientWalletState = S.Literals([
@@ -416,7 +416,7 @@ const ForumTipRecipientClaimBody = S.Struct({
   claimPolicyRefs: ForumPublicSafeRefs,
   custodyPolicyRefs: ForumPublicSafeRefs,
   payoutTargetApprovalRef: S.optionalKey(S.NullOr(ForumPublicSafeRef)),
-  providerClass: S.optionalKey(S.Literal('mdk_agent_wallet')),
+  providerClass: S.optionalKey(ForumTipRecipientProviderClass),
   readinessRefs: ForumPublicSafeRefs,
   receiveCapabilityRef: ForumPublicSafeRef,
   sourceRef: S.optionalKey(ForumPublicSafeRef),
@@ -4019,6 +4019,15 @@ const tipRecipientWalletClaimResponse = (
       actorRef,
       'agent',
     )}.self_claim`
+    const providerClass =
+      body.providerClass ??
+      (body.lightningAddress !== undefined && body.lightningAddress !== null
+        ? 'external_lightning'
+        : 'mdk_agent_wallet')
+    const baseCustodyPolicyRef =
+      providerClass === 'mdk_agent_wallet'
+        ? 'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet'
+        : 'policy.public.forum_tip_recipient.spark_self_custody'
     const tipRecipientReadiness = yield* upsertForumTipRecipientWallet(
       db,
       {
@@ -4034,13 +4043,13 @@ const tipRecipientWalletClaimResponse = (
           ...(body.claimPolicyRefs ?? []),
         ],
         custodyPolicyRefs: [
-          'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet',
+          baseCustodyPolicyRef,
           ...(body.custodyPolicyRefs ?? []),
         ],
         disabledAt: null,
         id: walletId,
         payoutTargetApprovalRef: body.payoutTargetApprovalRef ?? null,
-        providerClass: body.providerClass ?? 'mdk_agent_wallet',
+        providerClass,
         readinessRefs: body.readinessRefs ?? [],
         receiveCapabilityRef: body.receiveCapabilityRef,
         sourceRef:
@@ -4479,7 +4488,7 @@ const tipLadderResponse = (
     }
 
     const readiness = postDetail.post.tipRecipientReadiness
-    const recipientHasRegisteredOffer =
+    const recipientHasPaymentDestination =
       readiness.state === 'ready' && readiness.directPayment !== null
 
     const makeId = dependencies.makeId ?? randomUuid
@@ -4498,7 +4507,12 @@ const tipLadderResponse = (
     const directPayment = readiness.directPayment as {
       bolt12Offer?: string
       lightningAddress?: string
+      kind?: string
     } | null
+    const recipientPaymentDestination =
+      directPayment?.kind === 'lightning_address'
+        ? directPayment.lightningAddress
+        : directPayment?.bolt12Offer
     const tipsBufferPay = dependencies.tipsBufferPay ?? null
 
     const result = yield* executeTipLadder(db, {
@@ -4509,9 +4523,8 @@ const tipLadderResponse = (
       payFromBuffer: tipsBufferPay,
       postId: postDetail.post.postId,
       publicReceiptRef,
-      recipientBolt12Offer: directPayment?.bolt12Offer ?? null,
-      recipientLightningAddress: directPayment?.lightningAddress ?? null,
-      recipientHasRegisteredOffer,
+      recipientHasPaymentDestination,
+      recipientPaymentDestination: recipientPaymentDestination ?? null,
       recipientRef: postDetail.post.author.actorRef,
       senderRef: actorRefForForumActor(actor),
       tipsBufferConfigured: tipsBufferPay !== null,

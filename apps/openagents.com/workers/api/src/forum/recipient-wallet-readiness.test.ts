@@ -57,34 +57,34 @@ describe('Forum tip recipient wallet readiness', () => {
     expect(serialized).not.toContain('approval.public.forum_tip_recipient')
   })
 
-  test('projects a static Lightning Address fallback alongside the BOLT 12 offer (#5078)', () => {
+  test('prefers a static Spark Lightning Address over a legacy BOLT 12 offer (#5181)', () => {
     const projection = projectForumTipRecipientReadiness(
       readyRecord({ lightningAddress: 'oab38ad12345abcd9@spark.money' }),
     )
 
     expect(projection.directPayment).toMatchObject({
-      bolt12Offer: 'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
       lightningAddress: 'oab38ad12345abcd9@spark.money',
-      kind: 'bolt12_offer',
+      kind: 'lightning_address',
       settlementAuthority: 'recipient_wallet_direct',
     })
     expect(forumTipRecipientReadinessIsSafe(projection)).toBe(true)
     expect(projection.tippingAvailable).toBe(true)
   })
 
-  test('a ready recipient with only a Lightning Address (no BOLT 12) projects no directPayment', () => {
+  test('a ready recipient with only a Spark Lightning Address projects directPayment', () => {
     const projection = projectForumTipRecipientReadiness(
       readyRecord({
         bolt12Offer: null,
         lightningAddress: 'oab38ad12345abcd9@spark.money',
       }),
     )
-    // directPayment is gated on the BOLT 12 online rail; the lightning address
-    // is a payout fallback held on file, not a standalone tip-payable rail.
-    expect(projection.directPayment).toBeNull()
-    // The raw lightning address never leaks into the public readiness when
-    // there is no directPayment to carry it.
-    expect(JSON.stringify(projection)).not.toContain('@spark.money')
+    expect(projection.directPayment).toMatchObject({
+      lightningAddress: 'oab38ad12345abcd9@spark.money',
+      kind: 'lightning_address',
+      settlementAuthority: 'recipient_wallet_direct',
+    })
+    expect(projection.tippingAvailable).toBe(true)
+    expect(JSON.stringify(projection)).toContain('@spark.money')
   })
 
   test('rejects a Lightning Address field carrying a raw invoice or wallet secret (#5078)', () => {
@@ -100,7 +100,7 @@ describe('Forum tip recipient wallet readiness', () => {
     ).toThrow(ForumTipRecipientWalletUnsafe)
   })
 
-  test('names the daemon-reachability constraint on every direct-payment projection', () => {
+  test('names the right reachability constraint for each direct-payment rail', () => {
     const withOffer = projectForumTipRecipientReadiness(readyRecord())
 
     expect(withOffer.directPayment?.kind).toBe('bolt12_offer')
@@ -108,13 +108,16 @@ describe('Forum tip recipient wallet readiness', () => {
       'caveat.public.forum_tip_recipient.daemon_reachability_required',
     )
 
-    const withoutOffer = projectForumTipRecipientReadiness(
-      readyRecord({ bolt12Offer: null }),
+    const withLightningAddress = projectForumTipRecipientReadiness(
+      readyRecord({
+        bolt12Offer: null,
+        lightningAddress: 'oab38ad12345abcd9@spark.money',
+      }),
     )
 
-    expect(withoutOffer.directPayment).toBeNull()
-    expect(withoutOffer.caveatRefs).not.toContain(
-      'caveat.public.forum_tip_recipient.daemon_reachability_required',
+    expect(withLightningAddress.directPayment?.kind).toBe('lightning_address')
+    expect(withLightningAddress.caveatRefs).toContain(
+      'caveat.public.forum_tip_recipient.spark_lightning_address_claim_required',
     )
   })
 

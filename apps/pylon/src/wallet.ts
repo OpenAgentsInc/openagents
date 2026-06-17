@@ -650,6 +650,36 @@ export function withSparkPrimaryWalletBalance(
   }
 }
 
+export function mdkScopedAgentWalletStatus(): WalletStatusProjection {
+  return {
+    schema: "openagents.pylon.wallet_status.v0.3",
+    configured: false,
+    daemonOnline: false,
+    balanceSats: null,
+    receiveReady: false,
+    sendReady: false,
+    readiness: "daemon-offline",
+    blockerRefs: ["blocker.wallet.spark_primary.status_unread"],
+    payoutTargetRefs: [],
+    sendReadinessPreflight: {
+      schema: "openagents.pylon.send_readiness_preflight.v0.3",
+      balanceKnown: false,
+      blockerRefs: ["blocker.wallet.mdk_scoped_to_checkouts_treasury"],
+      mode: "unknown",
+      outboundCapacityKnown: false,
+      outboundCapacityPositive: false,
+      portConfigured: false,
+      portIsolationRef: "mdk.port.default_possible_crosstalk",
+      sendReady: false,
+    },
+    settlementRefs: [],
+    unifiedBalance: sparkPrimaryWalletBalanceFromStatus({
+      balanceSats: null,
+      sendReady: false,
+    }),
+  }
+}
+
 async function postPylonEvent(
   options: WalletNetworkOptions,
   input: {

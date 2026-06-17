@@ -21,18 +21,23 @@ Read alongside:
 
 ## What this rail is (and is not)
 
-Spark is reintroduced ONLY as a **receive-only backup target** for when the
-primary MDK rail is offline and cannot create a receive request.
+2026-06-17 update: this document started as the receive-only fallback runbook.
+After #5177, #5178, and #5181, Spark is now the primary agent wallet balance
+and the preferred agent readiness destination. The backup-receive commands below
+still describe the safe receive/claim path, but MDK is no longer the primary
+agent-balance rail; it remains a checkout/treasury and explicit legacy
+consolidation rail.
 
-- It is **receive-only** for public/product purposes. There is no Spark
-  payout path or general Spark send command.
+- Spark receive remains public-safe and opt-in for target publication. Spark
+  send now exists behind explicit `wallet send --rail spark --confirm-send`.
 - The `migrate-spark --confirm-sweep` reconcile moves the node's **OWN**
   received Spark backup funds into the node's **OWN** MDK wallet, under
   explicit consent through a private sweep-only transfer adapter. It is a
   reconcile, **NOT** a payout, **NOT** a send to a third party, and **NOT**
   accepted-work settlement.
-- `PayoutTargetKind` and `admitPayoutTarget` are unchanged. Spark gains **no**
-  public payout-target authority.
+- `PayoutTargetKind` and `admitPayoutTarget` are unchanged. Spark Lightning
+  Address readiness is a public recipient destination, not private payout-target
+  authority.
 - It is **inert by default**: nothing runs and no SDK code loads until the
   backup is opt-in enabled AND a Breez/Spark credential plus a local wallet
   seed are present. With anything missing the node behaves exactly as before.

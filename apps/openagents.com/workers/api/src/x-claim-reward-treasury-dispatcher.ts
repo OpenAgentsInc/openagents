@@ -140,7 +140,7 @@ export type XClaimRewardTreasuryDispatcherDependencies = Readonly<{
   treasury: XClaimRewardTreasuryClient | null
   resolveRecipient: (
     reward: XClaimRewardRecord,
-  ) => Promise<{ bolt12Offer: string; destinationSourceRef: string } | null>
+  ) => Promise<{ destination: string; destinationSourceRef: string } | null>
 }>
 
 type DispatchAccumulator = Readonly<{
@@ -529,7 +529,7 @@ export const makeD1XClaimRewardRecipientResolver =
   (db: D1Database) =>
   async (
     reward: XClaimRewardRecord,
-  ): Promise<{ bolt12Offer: string; destinationSourceRef: string } | null> => {
+  ): Promise<{ destination: string; destinationSourceRef: string } | null> => {
     if (reward.agentUserId === null) {
       return null
     }
@@ -537,20 +537,25 @@ export const makeD1XClaimRewardRecipientResolver =
     const row = await db
       .prepare(
         `SELECT wallet_ref, bolt12_offer
+                , lightning_address
            FROM forum_tip_recipient_wallets
           WHERE actor_ref = ?
             AND state = 'ready'
             AND archived_at IS NULL
-            AND bolt12_offer IS NOT NULL
+            AND (lightning_address IS NOT NULL OR bolt12_offer IS NOT NULL)
           LIMIT 1`,
       )
       .bind(`agent:${reward.agentUserId}`)
-      .first<{ wallet_ref: string; bolt12_offer: string }>()
+      .first<{
+        wallet_ref: string
+        bolt12_offer: string | null
+        lightning_address: string | null
+      }>()
 
     return row === null
       ? null
       : {
-          bolt12Offer: row.bolt12_offer,
+          destination: row.lightning_address ?? row.bolt12_offer!,
           destinationSourceRef: row.wallet_ref,
         }
   }
@@ -678,7 +683,7 @@ const processDispatchRequestedReward = async (
 
   const payment = await dependencies.treasury.pay({
     amountSat: X_CLAIM_REWARD_AMOUNT_SATS,
-    destination: recipient.bolt12Offer,
+    destination: recipient.destination,
     timeoutSecs: dependencies.config.paymentTimeoutSecs,
   })
 

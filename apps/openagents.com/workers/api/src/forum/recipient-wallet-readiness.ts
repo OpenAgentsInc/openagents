@@ -262,15 +262,15 @@ export const projectForumTipRecipientReadiness = (
   const safe = assertForumTipRecipientWalletRecordSafe(record)
   const blocked = safe.state !== 'ready'
   const directPayment =
-    safe.state === 'ready' && safe.bolt12Offer !== null
+    safe.state === 'ready' && safe.lightningAddress !== null
+      ? {
+          lightningAddress: safe.lightningAddress,
+          kind: 'lightning_address' as const,
+          settlementAuthority: 'recipient_wallet_direct' as const,
+        }
+      : safe.state === 'ready' && safe.bolt12Offer !== null
       ? {
           bolt12Offer: safe.bolt12Offer,
-          // Project the static Lightning Address fallback alongside the BOLT 12
-          // offer when present (#5078). Both are public payment destinations the
-          // recipient publishes; the primary online rail stays bolt12Offer.
-          ...(safe.lightningAddress !== null
-            ? { lightningAddress: safe.lightningAddress }
-            : {}),
           kind: 'bolt12_offer' as const,
           settlementAuthority: 'recipient_wallet_direct' as const,
         }
@@ -287,7 +287,7 @@ export const projectForumTipRecipientReadiness = (
     blockerRef: blocked
       ? stateBlockerRef
       : missingDirectOffer
-        ? 'blocker.public.forum_tip_recipient.bolt12_offer_missing'
+        ? 'blocker.public.forum_tip_recipient.payment_instruction_missing'
         : null,
     caveatRefs: uniqueRefs([
       ...safe.caveatRefs,
@@ -297,11 +297,13 @@ export const projectForumTipRecipientReadiness = (
         ? ['caveat.public.forum_tip_recipient.payout_target_unapproved']
         : []),
       ...(missingDirectOffer
-        ? ['caveat.public.forum_tip_recipient.bolt12_offer_missing']
+        ? ['caveat.public.forum_tip_recipient.payment_instruction_missing']
         : []),
       ...(directPayment === null
         ? []
-        : ['caveat.public.forum_tip_recipient.daemon_reachability_required']),
+        : directPayment.kind === 'lightning_address'
+          ? ['caveat.public.forum_tip_recipient.spark_lightning_address_claim_required']
+          : ['caveat.public.forum_tip_recipient.daemon_reachability_required']),
     ]),
     directPayment,
     providerClass: safe.providerClass,
@@ -322,12 +324,15 @@ export const forumTipRecipientReadinessIsSafe = (
     !unsafeWalletMaterialPattern.test(JSON.stringify(genericProbe)) &&
     !rawTimestampPattern.test(JSON.stringify(genericProbe)) &&
     (directPayment === null ||
-      (directPayment.kind === 'bolt12_offer' &&
-        directPayment.settlementAuthority === 'recipient_wallet_direct' &&
-        bolt12OfferIsPublicReceiveInstruction(directPayment.bolt12Offer) &&
-        (directPayment.lightningAddress === undefined ||
-          lightningAddressIsPublicReceiveInstruction(
-            directPayment.lightningAddress,
-          ))))
+      (directPayment.settlementAuthority === 'recipient_wallet_direct' &&
+        (directPayment.kind === 'bolt12_offer'
+          ? bolt12OfferIsPublicReceiveInstruction(directPayment.bolt12Offer) &&
+            (directPayment.lightningAddress === undefined ||
+              lightningAddressIsPublicReceiveInstruction(
+                directPayment.lightningAddress,
+              ))
+          : lightningAddressIsPublicReceiveInstruction(
+              directPayment.lightningAddress,
+            ))))
   )
 }

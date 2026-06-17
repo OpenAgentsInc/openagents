@@ -17,9 +17,9 @@ import { verifyNip98Authorization } from "../src/nostr-identity"
 import { PYLON_NIP90_PROVIDER_CAPABILITY_REF, providerNip90LaneRefs } from "../src/provider-nip90"
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState } from "../src/state"
 
-// Inject a deterministic wallet probe so heartbeat tests don't spawn the MDK
-// CLI (`classifyMdkWallet` default). Offline by default; tests that exercise
-// the #5151 readiness path override it.
+// Inject a deterministic wallet probe for heartbeat tests that exercise the
+// #5151 readiness path. Without one, heartbeats omit wallet readiness instead
+// of spawning a local wallet backend.
 const offlineWalletProbe = async () => ({
   configured: false,
   daemonOnline: false,

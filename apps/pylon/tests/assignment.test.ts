@@ -543,7 +543,7 @@ describe("Pylon assignment lease flow", () => {
     })
   })
 
-  test("denies paused, stale, wrong-capability, unsupported-backend, paid-wallet-blocked, and expired leases", async () => {
+  test("denies paused, stale, wrong-capability, unsupported-backend, and expired leases without wallet gating", async () => {
     await withTempHome(async (home) => {
       const summary = await readySummary(home)
       const state = await ensurePylonLocalState(summary)
@@ -588,7 +588,6 @@ describe("Pylon assignment lease flow", () => {
         }),
         {
           now: () => new Date("2026-06-09T00:05:00.000Z"),
-          walletRunner: async () => ({ exitCode: 1, stdout: "", stderr: "offline" }),
         },
       )
 
@@ -597,7 +596,7 @@ describe("Pylon assignment lease flow", () => {
       expect(admission.blockerRefs).toContain("blocker.assignment.presence_stale")
       expect(admission.blockerRefs).toContain("blocker.assignment.wrong_capability")
       expect(admission.blockerRefs).toContain("blocker.assignment.unsupported_backend")
-      expect(admission.blockerRefs).toContain("blocker.assignment.wallet_blocked")
+      expect(admission.blockerRefs).not.toContain("blocker.assignment.wallet_blocked")
       expect(admission.blockerRefs).toContain("blocker.assignment.lease_expired")
     })
   })

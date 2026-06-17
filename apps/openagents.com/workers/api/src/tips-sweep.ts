@@ -13,7 +13,7 @@ import { epochMillisToIsoTimestamp } from './runtime-primitives'
 // The automated sweep worker (issue #4707; design:
 // docs/payments/reliable-tips.md §3). On the worker cron: for each
 // agent whose sweepable balance exceeds their threshold, attempt a
-// Lightning payout of the excess to their REGISTERED offer - fee caps,
+// Lightning payout of the excess to their registered destination - fee caps,
 // a minimum, pending-sweep dedup, recent-failure backoff. Failures cost
 // nothing: the funding debit refunds atomically and the next tick
 // retries. Only a settled sweep makes credited value settled bitcoin.
@@ -27,11 +27,11 @@ export type SweepCandidate = Readonly<{
   // Available balance, excluding escrow-held claims.
   balanceMsat: number
   sweepThresholdSat: number
-  // Registered source only: the wallet claim ref identifies the offer's
-  // provenance; the raw offer string is used for the payment and never
+  // Registered source only: the wallet claim ref identifies the destination's
+  // provenance; the raw destination string is used for payment and never
   // stored on ledger rows.
   walletClaimRef: string
-  bolt12Offer: string
+  payoutDestination: string
 }>
 
 export const sweepAmountSat = (
@@ -99,12 +99,8 @@ export type BufferPayResult =
 
 export type BufferPayFn = (
   input: Readonly<{
-    bolt12Offer: string
+    destination: string
     amountSat: number
-    // Optional payout fallback (e.g. the recipient's static Lightning Address).
-    // When the primary BOLT 12 send fails, the buffer retries once against this
-    // destination before reporting failure (#5078).
-    fallbackDestination?: string | null
   }>,
 ) => Promise<BufferPayResult>
 
@@ -129,13 +125,13 @@ export const selectSweepCandidates = async (
       `SELECT b.actor_ref,
               b.balance_msat - COALESCE(b.held_msat, 0) AS available_balance_msat,
               b.sweep_threshold_sat,
-              w.wallet_ref, w.bolt12_offer
+              w.wallet_ref, w.lightning_address, w.bolt12_offer
          FROM agent_balances b
          JOIN forum_tip_recipient_wallets w
            ON w.actor_ref = b.actor_ref
           AND w.state = 'ready'
           AND w.archived_at IS NULL
-          AND w.bolt12_offer IS NOT NULL
+          AND (w.lightning_address IS NOT NULL OR w.bolt12_offer IS NOT NULL)
         WHERE b.sweep_enabled = 1
           AND b.balance_msat - COALESCE(b.held_msat, 0)
                 >= (b.sweep_threshold_sat + ?) * 1000
@@ -154,15 +150,20 @@ export const selectSweepCandidates = async (
     .bind(TIPS_SWEEP_MIN_SAT, backoffCutoff, limit)
     .all()
 
-  return ((result.results ?? []) as Array<Record<string, unknown>>).map(
-    row => ({
+  return ((result.results ?? []) as Array<Record<string, unknown>>).map(row => {
+    const lightningAddress =
+      typeof row.lightning_address === 'string' &&
+      row.lightning_address.trim() !== ''
+        ? row.lightning_address.trim()
+        : null
+    return {
       actorRef: String(row.actor_ref),
       balanceMsat: Number(row.available_balance_msat ?? row.balance_msat),
-      bolt12Offer: String(row.bolt12_offer),
+      payoutDestination: lightningAddress ?? String(row.bolt12_offer),
       sweepThresholdSat: Number(row.sweep_threshold_sat),
       walletClaimRef: String(row.wallet_ref),
-    }),
-  )
+    }
+  })
 }
 
 export const runTipsSweepTick = async (
@@ -215,7 +216,7 @@ export const runTipsSweepTick = async (
 
     const payResult = await deps.payFromBuffer({
       amountSat,
-      bolt12Offer: candidate.bolt12Offer,
+      destination: candidate.payoutDestination,
     })
 
     if (payResult.ok) {

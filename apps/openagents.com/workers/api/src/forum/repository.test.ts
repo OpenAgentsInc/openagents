@@ -1421,7 +1421,7 @@ describe('Forum repository foundation', () => {
     )
   })
 
-  test('keeps ready recipient rows without BOLT 12 offers visible but not tip-payable', async () => {
+  test('keeps ready recipient rows without payment destinations visible but not tip-payable', async () => {
     const store = new ForumRepositoryStore()
     const readiness = await Effect.runPromise(
       upsertForumTipRecipientWallet(
@@ -1432,9 +1432,10 @@ describe('Forum repository foundation', () => {
     )
 
     expect(readiness).toMatchObject({
-      blockerRef: 'blocker.public.forum_tip_recipient.bolt12_offer_missing',
+      blockerRef:
+        'blocker.public.forum_tip_recipient.payment_instruction_missing',
       caveatRefs: expect.arrayContaining([
-        'caveat.public.forum_tip_recipient.bolt12_offer_missing',
+        'caveat.public.forum_tip_recipient.payment_instruction_missing',
       ]),
       directPayment: null,
       state: 'ready',

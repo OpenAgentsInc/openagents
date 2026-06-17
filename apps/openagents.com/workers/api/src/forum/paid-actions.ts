@@ -54,6 +54,7 @@ import {
   ForumTipSettlementClaimProjection as ForumTipSettlementClaimProjectionSchema,
   type ForumTipSettlementClaimResponse,
   ForumTipSettlementClaimResponse as ForumTipSettlementClaimResponseSchema,
+  type ForumTipRecipientDirectPaymentInstruction,
   type ForumTipSettlementProjection,
   type ForumWriteDenialKind,
   decodeForumPublicProjection,
@@ -184,11 +185,7 @@ export type ForumDirectTipSubmitInput = Readonly<{
     topicId: string
   }>
   recipientReadiness: Readonly<{
-    directPayment: null | Readonly<{
-      bolt12Offer: string
-      kind: 'bolt12_offer'
-      settlementAuthority: 'recipient_wallet_direct'
-    }>
+    directPayment: ForumTipRecipientDirectPaymentInstruction | null
     tippingAvailable: boolean
   }>
 }>
@@ -297,13 +294,17 @@ type TipLadderReceiptLookupRow = Readonly<{
   payout_external_ref: string | null
   recipient_actor_ref: string
   recipient_swept_msat?: number | null
-  rung: 'credited' | 'direct_bolt12' | null
+  rung: 'credited' | 'direct_bolt12' | 'direct_lightning' | null
   state: 'paid' | 'forwarding'
   state_changed_at: string
   target_forum_id: string | null
   target_post_id: string | null
   target_topic_id: string | null
 }>
+
+const tipLadderRungIsDirectWallet = (
+  rung: TipLadderReceiptLookupRow['rung'],
+): boolean => rung === 'direct_bolt12' || rung === 'direct_lightning'
 
 type PaymentEventRow = Readonly<{
   archived_at: string | null
@@ -1131,7 +1132,7 @@ const tipLadderPaymentEventFromRow = (
     challengeId: row.pay_in_id,
     createdAt: row.state_changed_at,
     externalRef:
-      row.rung === 'direct_bolt12'
+      tipLadderRungIsDirectWallet(row.rung)
         ? `payment.forum.tip_ladder.${row.pay_in_id}`
         : `ledger.forum.tip_ladder.${row.pay_in_id}`,
     payerActorRef: row.payer_ref,
@@ -1142,7 +1143,7 @@ const tipLadderPaymentEventFromRow = (
     recipientActorRef: row.recipient_actor_ref,
     redactedEvidenceRef: `evidence.forum.tip_ladder.${row.pay_in_id}`,
     settlementAuthority:
-      row.state === 'paid' && row.rung === 'direct_bolt12'
+      row.state === 'paid' && tipLadderRungIsDirectWallet(row.rung)
         ? 'recipient_wallet_direct'
         : row.state === 'paid' && row.rung === 'credited'
           ? 'openagents_ledger_credited'

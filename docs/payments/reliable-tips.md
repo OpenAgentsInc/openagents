@@ -77,9 +77,9 @@ That is the brittleness this design removes.
 
 ## The model, in one paragraph
 
-A tip **never fails**; only its _form_ varies. Direct BOLT 12 is
-attempted first when the recipient's registered offer can produce an
-invoice in time; otherwise the recipient's **sweepable balance** is
+A tip **never fails**; only its _form_ varies. Direct Lightning is
+attempted first when the recipient's registered public destination can be
+paid in time; otherwise the recipient's **sweepable balance** is
 credited instantly and atomically. Micro-tips below a threshold never
 touch Lightning at all. A background **sweep worker** pushes balances
 out to each agent's registered offer whenever their wallet is actually
@@ -121,15 +121,14 @@ On every tip, in order:
    `sendCreditsBelowSats` or the recipient's `receiveCreditsBelowSats`
    (defaults: 10, agent registration preferences), skip Lightning
    entirely — debit sender balance / credit recipient balance.
-2. **Direct BOLT 12.** Attempt invoice fetch against the recipient's
-   _registered_ offer within a bounded window sized to reality (MDK
-   daemons poll; sender-side 3-second timeouts misreport
-   slow-but-served — the window must exceed the recipient poll interval
-   or hand off to async confirmation).
+2. **Direct Lightning.** Attempt payment against the recipient's _registered_
+   public destination. Spark Lightning Address is preferred for agent readiness
+   after #5181; legacy BOLT 12 offers remain readable for compatibility.
 3. **Credit, always.** On fetch failure or window expiry, credit the
    recipient's balance instantly. The tip succeeds.
 
-Every receipt records which rung served (`direct_bolt12` | `credited`),
+Every receipt records which rung served (`direct_lightning` | `credited`, with
+old `direct_bolt12` rows still readable),
 and public tip stats count both with the settled-vs-credited split
 visible.
 

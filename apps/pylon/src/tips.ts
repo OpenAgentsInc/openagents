@@ -2,12 +2,9 @@
 // docs/pylon/2026-06-10-v03-sprint-agent-economy.md). The Pylon carries
 // the local user's registered agent identity and uses the platform's
 // reliable-tips ladder: tips never fail for a funded sender - the rung
-// (direct_bolt12 | credited) is rendered honestly, balances are
-// sweepable, and onboarding claims tip-recipient readiness so the
+// (direct_lightning | credited) is rendered honestly, balances are
+// sweepable, and onboarding claims Spark tip-recipient readiness so the
 // silent-untippable trap cannot happen to a Pylon user.
-
-import type { WalletCommandRunner } from "./wallet"
-import { defaultWalletCommandRunner } from "./wallet"
 
 export type TipsNetworkOptions = {
   baseUrl: string
@@ -94,46 +91,32 @@ export async function setTipPreferences(
 }
 
 // Onboarding auto-claim (the Kenobi/Comunero lesson, made structural):
-// generate a BOLT 12 offer from the local MDK wallet and claim Forum
-// tip-recipient readiness with it. Idempotent - re-claiming refreshes
-// the offer attachment.
+// claim Forum tip-recipient readiness with the node's Spark Lightning Address.
+// Idempotent - re-claiming refreshes the attachment.
 export async function claimTipReadiness(
   options: TipsNetworkOptions,
   input: { pylonRef: string; lightningAddress?: string | null },
-  runner: WalletCommandRunner = defaultWalletCommandRunner,
 ): Promise<Record<string, unknown>> {
-  const offerResult = await runner(["receive-bolt12"])
-  let offer: string | undefined
-  try {
-    const parsed = JSON.parse(offerResult.stdout.trim()) as { offer?: string }
-    offer = parsed.offer?.trim()
-  } catch {
-    offer = undefined
-  }
-  if (!offer || !offer.startsWith("lno1")) {
-    throw new Error("could not generate a BOLT 12 offer from the local wallet (is the daemon configured?)")
-  }
-
   const slug = input.pylonRef.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40)
-  // The static Spark-hosted Lightning Address (#5078) is published alongside the
-  // BOLT 12 offer when available, so the treasury can pay this recipient even
-  // while their node is offline (LNURL -> BOLT11, LSP-held, claimed on sync).
   const lightningAddress =
     typeof input.lightningAddress === "string" && input.lightningAddress.trim() !== ""
       ? input.lightningAddress.trim()
       : undefined
+  if (lightningAddress === undefined) {
+    throw new Error("Spark Lightning Address is required for tip-recipient readiness")
+  }
   return agentRequest(options, {
     idempotencyKey: `pylon-tip-claim:${slug}`,
     body: {
-      bolt12Offer: offer,
-      ...(lightningAddress ? { lightningAddress } : {}),
+      lightningAddress,
+      providerClass: "external_lightning",
       readinessRefs: [
-        "readiness.public.mdk_agent.daemon_running",
-        "readiness.public.mdk_agent.setup_present",
-        "readiness.public.mdk_agent.receive_ready",
+        "readiness.public.spark_lightning_address.receive_ready",
+        "readiness.public.spark_primary.agent_balance",
       ],
+      custodyPolicyRefs: ["policy.public.forum_tip_recipient.spark_self_custody"],
       receiveCapabilityRef: `receive_capability.public.${slug}.redacted`,
-      walletRef: `wallet.public.${slug}.redacted`,
+      walletRef: `wallet.public.spark.${slug}.redacted`,
     },
     method: "POST",
     path: "/api/forum/tip-recipient-wallets/claims",

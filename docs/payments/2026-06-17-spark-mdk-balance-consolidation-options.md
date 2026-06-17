@@ -108,6 +108,18 @@ when needed, `caveat.wallet.spark_claimable_htlcs_require_backup_claim`.
    balance evidence; it does not expose raw destination, invoice, preimage,
    payment hash, or wallet material.
 
+8. MDK scoped out of the agent-balance path.
+   **Implemented in #5181.** Pylon no longer probes MDK to decide the primary
+   agent wallet status, heartbeats do not spawn an MDK wallet probe by default,
+   paid assignment admission no longer gates on local MDK send readiness, and
+   tip-recipient self-claims publish a Spark Lightning Address without minting a
+   local MDK BOLT 12 offer. Forum readiness, tip ladder, sweeps, Artanis spend,
+   and x-claim dispatch now accept a registered Spark Lightning Address as the
+   preferred public recipient destination. Legacy BOLT 12 remains readable only
+   for rows that do not have a Spark Lightning Address; it is not a fallback once
+   a Spark destination exists. MDK remains intentionally alive for customer
+   checkouts and operator/treasury rails.
+
 ## Recommendation
 
 The product path is option 4: Spark is the single agent balance. Option 2 remains
@@ -116,4 +128,6 @@ Spark funds into MDK, and option 3 is the direct spend path for the primary Spar
 balance. Option 6 is the treasury delivery policy for larger agent payouts while
 Spark Lightning Address is the normal recipient endpoint. Option 7 is the
 operator accounting layer that distinguishes sent from recipient-confirmed
-received.
+received. Option 8 is the guardrail that keeps MDK out of contributor-facing
+balance/readiness decisions while preserving MDK where it belongs:
+checkouts and treasury.

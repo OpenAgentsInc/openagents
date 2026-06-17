@@ -17,12 +17,12 @@ import {
   type PylonRuntimeState,
   writePresenceState,
 } from "./state"
-import { classifyMdkWallet, type WalletStatusProjection } from "./wallet"
+import type { WalletStatusProjection } from "./wallet"
 
 // The fields of the local wallet probe the heartbeat needs to publish
 // receive-readiness (openagents #5151). A full WalletStatusProjection satisfies
-// this. Live Pylon entry points inject the Spark-primary probe; the MDK default
-// remains a back-compat fallback for direct library callers and tests.
+// this. Live Pylon entry points inject the Spark-primary probe. When no probe is
+// provided, heartbeat omits walletReady rather than spawning any wallet backend.
 export type HeartbeatWalletProbe = Pick<
   WalletStatusProjection,
   "configured" | "daemonOnline" | "receiveReady" | "sendReady"
@@ -36,8 +36,8 @@ export type PresenceClientOptions = {
   now?: () => Date
   // Local wallet probe used by `sendHeartbeat` to publish live receive-readiness
   // so an online, receive-ready node is not shown `walletReadyNow=false` until a
-  // separate `wallet report-readiness` (openagents #5151). Defaults to
-  // a legacy MDK probe; injected in tests to avoid spawning local wallet CLIs.
+  // separate `wallet report-readiness` (openagents #5151). The live node injects
+  // the Spark-primary probe; no default probe is run.
   walletProbe?: () => Promise<HeartbeatWalletProbe>
 }
 
@@ -273,18 +273,17 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
   // `walletReadyNow=false` until a separate `wallet report-readiness` (#5151).
   // Best-effort: a probe failure leaves `walletReadiness: "unknown"` and omits
   // `walletReady`, so the server keeps the last known value (no flap to false).
-  const walletProbe =
-    options.walletProbe ??
-    (() => classifyMdkWallet(undefined, options.env ?? process.env))
   let walletReadiness: PylonHeartbeatRequest["walletReadiness"] = "unknown"
   let walletReady: boolean | undefined
-  try {
-    const probe = heartbeatWalletReadiness(await walletProbe())
-    walletReadiness = probe.walletReadiness
-    walletReady = probe.walletReady
-  } catch {
-    walletReadiness = "unknown"
-    walletReady = undefined
+  if (options.walletProbe !== undefined) {
+    try {
+      const probe = heartbeatWalletReadiness(await options.walletProbe())
+      walletReadiness = probe.walletReadiness
+      walletReady = probe.walletReady
+    } catch {
+      walletReadiness = "unknown"
+      walletReady = undefined
+    }
   }
   const body: PylonHeartbeatRequest = {
     schema: "openagents.pylon.heartbeat.v0.3",

@@ -26,7 +26,11 @@ export const PayInState = S.Literals([
 ])
 export type PayInState = typeof PayInState.Type
 
-export const PayInRung = S.Literals(['credited', 'direct_bolt12'])
+export const PayInRung = S.Literals([
+  'credited',
+  'direct_bolt12',
+  'direct_lightning',
+])
 export type PayInRung = typeof PayInRung.Type
 
 export const PayInLegDirection = S.Literals(['in', 'out'])

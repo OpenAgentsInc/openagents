@@ -226,6 +226,15 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   confirmed-received totals, plus over-send detection when settled sent exceeds
   keyed owed. Added a recipient-confirmation endpoint for attaching public-safe
   balance/receipt evidence after the recipient proves the sats arrived.
+- **⚡ MDK scoped out of the agent path (#5181).** Spark Lightning Address is now
+  the preferred Forum tip-recipient readiness/payout destination for agents.
+  Pylon primary wallet status, heartbeat readiness, paid assignment admission,
+  and tip readiness no longer depend on a local MDK wallet; tip self-claim no
+  longer mints an MDK BOLT12 offer. Forum readiness, reliable-tip ladder, sweeps,
+  Artanis spend, and x-claim dispatch accept Spark Lightning Address first and
+  retain BOLT12 only for legacy rows without a Spark destination, not as a
+  fallback after Spark LA. MDK remains deliberately available for customer
+  checkouts and operator treasury rails.
 - **🧰 Pylon wallet self-recovery (#5167) fixed.** Field report: an unclean MDK
   agent-wallet shutdown could leave `~/.mdk-wallet/daemon.pid` pointing at a
   dead process, stranding `wallet report-readiness` until an operator manually

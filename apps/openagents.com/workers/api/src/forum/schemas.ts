@@ -249,16 +249,21 @@ export const ForumTipRecipientReadinessState = S.Literals([
 export type ForumTipRecipientReadinessState =
   typeof ForumTipRecipientReadinessState.Type
 
-export const ForumTipRecipientDirectPaymentInstruction = S.Struct({
+const ForumTipRecipientBolt12PaymentInstruction = S.Struct({
   bolt12Offer: S.String,
-  // Optional static Lightning Address (LNURL-pay) the recipient publishes as a
-  // payout fallback for when the BOLT 12 / online MDK rail fails — e.g. an
-  // address hosted by their offline Breez Spark backup wallet's LSP (#5078). A
-  // public payment destination, projected alongside bolt12Offer.
   lightningAddress: S.optionalKey(S.String),
   kind: S.Literal('bolt12_offer'),
   settlementAuthority: S.Literal('recipient_wallet_direct'),
 })
+const ForumTipRecipientLightningAddressPaymentInstruction = S.Struct({
+  lightningAddress: S.String,
+  kind: S.Literal('lightning_address'),
+  settlementAuthority: S.Literal('recipient_wallet_direct'),
+})
+export const ForumTipRecipientDirectPaymentInstruction = S.Union([
+  ForumTipRecipientBolt12PaymentInstruction,
+  ForumTipRecipientLightningAddressPaymentInstruction,
+])
 export type ForumTipRecipientDirectPaymentInstruction =
   typeof ForumTipRecipientDirectPaymentInstruction.Type
 

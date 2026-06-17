@@ -18,7 +18,7 @@ import type { BufferPayFn } from './tips-sweep'
 // varies. Rungs, in order:
 //   1. below-threshold or no reachable direct path -> credited (instant,
 //      atomic balance move on the #4705 ledger)
-//   2. direct BOLT 12 -> only when the recipient has a registered offer
+//   2. direct Lightning -> only when the recipient has a registered destination
 //      AND the tips buffer (issue #4708) is configured to pay it
 // The rung that served is recorded on the pay-in row and in the
 // response. Until #4708 lands, the direct rung reports
@@ -32,7 +32,7 @@ const tipLadderReceiptRefPattern =
   /^receipt\.forum\.tip_ladder\.[A-Za-z0-9_.:-]{8,180}$/
 const creditedFallbackSuffix = ':credited_fallback'
 
-export type TipLadderRung = 'credited' | 'direct_bolt12'
+export type TipLadderRung = 'credited' | 'direct_bolt12' | 'direct_lightning'
 
 export const tipLadderCanonicalIdempotencyKey = (
   idempotencyKey: string,
@@ -63,11 +63,11 @@ export type TipLadderDecision =
       reason:
         | 'below_send_threshold'
         | 'below_receive_threshold'
-        | 'recipient_offer_missing'
+        | 'recipient_destination_missing'
         | 'tips_buffer_unconfigured'
         | 'direct_attempt_failed'
     }>
-  | Readonly<{ kind: 'direct_bolt12' }>
+  | Readonly<{ kind: 'direct_lightning' }>
   | Readonly<{
       kind: 'refused'
       reason: 'insufficient_sender_balance' | 'self_tip' | 'invalid_amount'
@@ -81,7 +81,7 @@ export const tipLadderDecision = (
     senderBalanceMsat: number
     senderSendCreditsBelowSat: number
     recipientReceiveCreditsBelowSat: number
-    recipientHasRegisteredOffer: boolean
+    recipientHasPaymentDestination: boolean
     tipsBufferConfigured: boolean
   }>,
 ): TipLadderDecision => {
@@ -105,15 +105,15 @@ export const tipLadderDecision = (
     return { kind: 'credited', reason: 'below_receive_threshold' }
   }
 
-  if (!input.recipientHasRegisteredOffer) {
-    return { kind: 'credited', reason: 'recipient_offer_missing' }
+  if (!input.recipientHasPaymentDestination) {
+    return { kind: 'credited', reason: 'recipient_destination_missing' }
   }
 
   if (!input.tipsBufferConfigured) {
     return { kind: 'credited', reason: 'tips_buffer_unconfigured' }
   }
 
-  return { kind: 'direct_bolt12' }
+  return { kind: 'direct_lightning' }
 }
 
 export type CreditedTipPlanInput = Readonly<{
@@ -221,11 +221,8 @@ export const executeTipLadder = (
     amountSat: number
     senderRef: string
     recipientRef: string
-    recipientHasRegisteredOffer: boolean
-    recipientBolt12Offer: string | null
-    // Optional payout fallback: the recipient's static Lightning Address held
-    // on file, used only if the primary BOLT 12 buffer send fails (#5078).
-    recipientLightningAddress?: string | null
+    recipientHasPaymentDestination: boolean
+    recipientPaymentDestination: string | null
     payFromBuffer: BufferPayFn | null
     tipsBufferConfigured: boolean
     postId: string
@@ -255,7 +252,7 @@ export const executeTipLadder = (
     const senderBalanceMsat = senderBalance?.availableMsat ?? 0
     const decision = tipLadderDecision({
       amountSat: input.amountSat,
-      recipientHasRegisteredOffer: input.recipientHasRegisteredOffer,
+      recipientHasPaymentDestination: input.recipientHasPaymentDestination,
       recipientReceiveCreditsBelowSat:
         recipientBalance?.receiveCreditsBelowSat ??
         TIP_LADDER_DEFAULT_RECEIVE_CREDITS_BELOW_SAT,
@@ -277,13 +274,13 @@ export const executeTipLadder = (
     }
 
     // The direct rung: the sender's balance is debited and the tips
-    // buffer (#4708) pays the recipient's registered offer over BOLT 12.
+    // buffer (#4708) pays the recipient's registered Lightning destination.
     // A failed direct attempt refunds atomically and falls back to the
     // credited rung - the tip still never fails.
     if (
-      decision.kind === 'direct_bolt12' &&
+      decision.kind === 'direct_lightning' &&
       input.payFromBuffer !== null &&
-      input.recipientBolt12Offer !== null
+      input.recipientPaymentDestination !== null
     ) {
       const amountMsat = input.amountSat * 1000
       const directPayInId = input.makeId()
@@ -326,7 +323,7 @@ export const executeTipLadder = (
                 payInId: directPayInId,
                 payInType: 'tip',
                 payerRef: input.senderRef,
-                rung: 'direct_bolt12',
+                rung: 'direct_lightning',
               },
               input.nowIso,
             ),
@@ -337,8 +334,7 @@ export const executeTipLadder = (
       const payResult = yield* Effect.promise(() =>
         input.payFromBuffer!({
           amountSat: input.amountSat,
-          bolt12Offer: input.recipientBolt12Offer!,
-          fallbackDestination: input.recipientLightningAddress ?? null,
+          destination: input.recipientPaymentDestination!,
         }),
       )
 
@@ -368,7 +364,7 @@ export const executeTipLadder = (
           ladderReason: 'direct_forwarding',
           payInId: directPayInId,
           receiptRef: input.publicReceiptRef,
-          rung: 'direct_bolt12' as const,
+          rung: 'direct_lightning' as const,
           senderBalanceMsatAfter: senderBalanceMsat - amountMsat,
         }
       }
@@ -401,7 +397,7 @@ export const executeTipLadder = (
           ladderReason: 'direct_settled',
           payInId: directPayInId,
           receiptRef: input.publicReceiptRef,
-          rung: 'direct_bolt12' as const,
+          rung: 'direct_lightning' as const,
           senderBalanceMsatAfter: senderBalanceMsat - amountMsat,
         }
       }

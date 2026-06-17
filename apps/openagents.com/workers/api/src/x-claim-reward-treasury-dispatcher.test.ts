@@ -242,7 +242,7 @@ const runDispatch = (
       reward.agentUserId === null
         ? null
         : {
-            bolt12Offer: safeOffer,
+            destination: safeOffer,
             destinationSourceRef: `wallet.public.${reward.agentUserId}.redacted`,
           },
     store,

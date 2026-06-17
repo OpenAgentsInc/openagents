@@ -11,7 +11,7 @@ const ladderRow = {
   created_at: '2026-06-11T01:40:39.000Z',
   pay_in_id: 'payin_artanis_tip_1',
   payer_ref: 'agent:artanis',
-  payout_external_ref: 'ladder.recipient_offer_missing',
+  payout_external_ref: 'ladder.recipient_destination_missing',
   public_receipt_ref: receiptRef,
   recipient_actor_ref: 'agent:orrery',
   rung: 'credited',

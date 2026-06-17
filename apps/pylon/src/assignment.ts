@@ -26,7 +26,6 @@ import {
   loadOrCreatePresenceState,
   type PylonLocalState,
 } from "./state"
-import { classifyMdkWallet, type WalletCommandRunner } from "./wallet"
 import {
   admitGepaAssignmentToEnvelope,
   createDefaultGepaCapabilityEnvelope,
@@ -121,7 +120,6 @@ export type AssignmentClientOptions = {
   fetch?: typeof fetch
   now?: () => Date
   staleAfterMs?: number
-  walletRunner?: WalletCommandRunner
   gepaEnvelope?: PylonGepaCapabilityEnvelope
   psionicQwenAdmission?: PsionicQwenModelAdmission
   claudeAgentCheckoutRunner?: ClaudeAgentCheckoutRunner
@@ -792,7 +790,7 @@ function isExpired(lease: PylonAssignmentLease, now: Date) {
 export async function computeAssignmentAdmission(
   state: PylonLocalState,
   lease: PylonAssignmentLease,
-  options: Pick<AssignmentClientOptions, "now" | "staleAfterMs" | "walletRunner" | "psionicQwenAdmission"> = {},
+  options: Pick<AssignmentClientOptions, "now" | "staleAfterMs" | "psionicQwenAdmission"> = {},
 ) {
   const now = options.now?.() ?? new Date()
   const presence = await loadOrCreatePresenceState(state.paths, state.identity)
@@ -834,11 +832,6 @@ export async function computeAssignmentAdmission(
     }
   }
   if (isExpired(lease, now)) blockerRefs.add("blocker.assignment.lease_expired")
-  if (lease.paymentMode === "paid") {
-    const wallet = await classifyMdkWallet(options.walletRunner)
-    if (!wallet.sendReady) blockerRefs.add("blocker.assignment.wallet_blocked")
-  }
-
   return { admissible: blockerRefs.size === 0, blockerRefs: [...blockerRefs] }
 }
 

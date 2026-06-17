@@ -908,7 +908,7 @@ const tipsBufferPayFnForEnv = (environment: Env): BufferPayFn | null => {
     return null
   }
 
-  return async ({ amountSat, bolt12Offer, fallbackDestination }) => {
+  return async ({ amountSat, destination }) => {
     const attempt = async (destination: string) => {
       const response = await fetchBuffer('/pay', {
         body: JSON.stringify({ amountSat, destination }),
@@ -942,20 +942,7 @@ const tipsBufferPayFnForEnv = (environment: Env): BufferPayFn | null => {
     }
 
     try {
-      const primary = await attempt(bolt12Offer)
-      // Retry once against the recipient's payout fallback (e.g. their static
-      // Lightning Address) only on a hard failure — never on a pending hold,
-      // which the reconciliation pass owns. Still a normal Lightning send.
-      if (
-        !primary.ok &&
-        primary.pending !== true &&
-        typeof fallbackDestination === 'string' &&
-        fallbackDestination.trim() !== '' &&
-        fallbackDestination.trim() !== bolt12Offer.trim()
-      ) {
-        return await attempt(fallbackDestination.trim())
-      }
-      return primary
+      return await attempt(destination)
     } catch (error) {
       return {
         ok: false as const,
@@ -5740,35 +5727,53 @@ export const handleProgrammaticAgentRegistration = async (
       parsed,
     )
 
-    if (parsed.bolt12Offer !== undefined && parsed.bolt12Offer !== null) {
-      // Automatically register the tip wallet so the user doesn't have to call claim-tip-wallet
+    const autoClaimLightningAddress =
+      typeof parsed.lightningAddress === 'string' &&
+      parsed.lightningAddress.trim() !== ''
+        ? parsed.lightningAddress.trim()
+        : null
+    const autoClaimBolt12Offer =
+      typeof parsed.bolt12Offer === 'string' && parsed.bolt12Offer.trim() !== ''
+        ? parsed.bolt12Offer.trim()
+        : null
+
+    if (autoClaimLightningAddress !== null || autoClaimBolt12Offer !== null) {
+      // Automatically register the tip wallet so the user doesn't have to call
+      // claim-tip-wallet. Spark Lightning Address is the preferred agent path;
+      // BOLT 12 remains accepted for legacy registrations.
       const { upsertForumTipRecipientWallet } =
         await import('./forum/repository')
       const db = openAgentsDatabase(env)
+      const sparkPrimary = autoClaimLightningAddress !== null
 
       await Effect.runPromise(
         upsertForumTipRecipientWallet(db, {
           actorRef: `agent:${registration.user.id}`,
-          bolt12Offer: parsed.bolt12Offer,
-          lightningAddress: parsed.lightningAddress ?? null,
+          bolt12Offer: autoClaimBolt12Offer,
+          lightningAddress: autoClaimLightningAddress,
           caveatRefs: [
             'caveat.public.forum_tip_recipient.creator_settlement_pending',
           ],
           claimPolicyRefs: [
             'policy.public.forum_tip_recipient.agent_registration_auto_claimed',
           ],
-          custodyPolicyRefs: [
-            'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet',
-          ],
+          custodyPolicyRefs: sparkPrimary
+            ? ['policy.public.forum_tip_recipient.spark_self_custody']
+            : ['policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet'],
           disabledAt: null,
           id: `forum_tip_recipient_wallet.user_${registration.user.id}.auto_claim`,
           payoutTargetApprovalRef: null,
-          providerClass: 'mdk_agent_wallet',
-          readinessRefs: [
-            'readiness.public.mdk_agent.daemon_running',
-            'readiness.public.mdk_agent.receive_ready',
-            'readiness.public.mdk_agent.setup_present',
-          ],
+          providerClass: sparkPrimary ? 'external_lightning' : 'mdk_agent_wallet',
+          readinessRefs: sparkPrimary
+            ? [
+                'readiness.public.spark_lightning_address.receive_ready',
+                'readiness.public.spark_primary.agent_balance',
+              ]
+            : [
+                'readiness.public.mdk_agent.daemon_running',
+                'readiness.public.mdk_agent.receive_ready',
+                'readiness.public.mdk_agent.setup_present',
+              ],
           receiveCapabilityRef: `receive_capability.public.auto_${registration.user.id}.redacted`,
           sourceRef:
             'source.public.forum_tip_recipient.agent_registration_auto_claim',
@@ -7484,12 +7489,12 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
               .prepare(
                 `SELECT wallet_ref, bolt12_offer, lightning_address FROM forum_tip_recipient_wallets
                WHERE actor_ref = ? AND state = 'ready' AND archived_at IS NULL
-                 AND bolt12_offer IS NOT NULL`,
+                 AND (lightning_address IS NOT NULL OR bolt12_offer IS NOT NULL)`,
               )
               .bind(body.recipientActorRef)
               .first()) as {
               wallet_ref: string
-              bolt12_offer: string
+              bolt12_offer: string | null
               lightning_address: string | null
             } | null,
         )
@@ -7502,8 +7507,7 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         const outcome = yield* Effect.promise(() =>
           runArtanisSpendDecision(openAgentsDatabase(env), {
             candidate: {
-              bolt12Offer: wallet.bolt12_offer,
-              lightningAddress: wallet.lightning_address ?? null,
+              destination: wallet.lightning_address ?? wallet.bolt12_offer!,
               context: body.context!,
               destinationSourceRef: wallet.wallet_ref,
               recipientRef: body.recipientActorRef!,

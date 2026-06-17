@@ -63,12 +63,16 @@ type TipLadderEarningRow = Readonly<{
   recipient_actor_ref: string
   // Total settled sweep payout msat for this recipient.
   recipient_swept_msat: number | null
-  rung: 'credited' | 'direct_bolt12' | null
+  rung: 'credited' | 'direct_bolt12' | 'direct_lightning' | null
   state_changed_at: string
   target_forum_id: string | null
   target_post_id: string | null
   target_topic_id: string | null
 }>
+
+const tipLadderRungIsDirectWallet = (
+  rung: TipLadderEarningRow['rung'],
+): boolean => rung === 'direct_bolt12' || rung === 'direct_lightning'
 
 type CountRow = Readonly<{ count: number | null }>
 
@@ -246,7 +250,7 @@ const tipLadderPaymentEventFromRow = (
     challengeId: row.pay_in_id,
     createdAt: row.state_changed_at,
     externalRef:
-      row.rung === 'direct_bolt12'
+      tipLadderRungIsDirectWallet(row.rung)
         ? `payment.forum.tip_ladder.${row.pay_in_id}`
         : `ledger.forum.tip_ladder.${row.pay_in_id}`,
     payerActorRef: row.payer_ref,
@@ -257,7 +261,7 @@ const tipLadderPaymentEventFromRow = (
     recipientActorRef: row.recipient_actor_ref,
     redactedEvidenceRef: `evidence.forum.tip_ladder.${row.pay_in_id}`,
     settlementAuthority:
-      row.rung === 'direct_bolt12'
+      tipLadderRungIsDirectWallet(row.rung)
         ? 'recipient_wallet_direct'
         : 'openagents_ledger_credited',
     status: 'confirmed',

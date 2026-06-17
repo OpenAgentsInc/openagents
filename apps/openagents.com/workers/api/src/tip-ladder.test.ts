@@ -11,7 +11,7 @@ import {
 
 const baseDecisionInput = {
   amountSat: 50,
-  recipientHasRegisteredOffer: true,
+  recipientHasPaymentDestination: true,
   recipientReceiveCreditsBelowSat: 10,
   recipientRef: 'agent:recipient',
   senderBalanceMsat: 100_000,
@@ -51,13 +51,13 @@ describe('tip ladder decision', () => {
     ).toEqual({ kind: 'credited', reason: 'below_receive_threshold' })
   })
 
-  test('missing offer or unconfigured buffer land on credited, never fail', () => {
+  test('missing destination or unconfigured buffer land on credited, never fail', () => {
     expect(
       tipLadderDecision({
         ...baseDecisionInput,
-        recipientHasRegisteredOffer: false,
+        recipientHasPaymentDestination: false,
       }),
-    ).toEqual({ kind: 'credited', reason: 'recipient_offer_missing' })
+    ).toEqual({ kind: 'credited', reason: 'recipient_destination_missing' })
     expect(
       tipLadderDecision({
         ...baseDecisionInput,
@@ -66,9 +66,9 @@ describe('tip ladder decision', () => {
     ).toEqual({ kind: 'credited', reason: 'tips_buffer_unconfigured' })
   })
 
-  test('direct rung only when offer registered and buffer configured', () => {
+  test('direct rung only when a destination is registered and buffer configured', () => {
     expect(tipLadderDecision(baseDecisionInput)).toEqual({
-      kind: 'direct_bolt12',
+      kind: 'direct_lightning',
     })
   })
 })
@@ -82,7 +82,7 @@ describe('credited tip statements', () => {
         amountSat: 50,
         fundingLegId: 'leg_in',
         idempotencyKey: 'tip:post:sender:1',
-        ladderReason: 'recipient_offer_missing',
+        ladderReason: 'recipient_destination_missing',
         payInId: 'payin_1',
         payoutLegId: 'leg_out',
         postId: 'post_abc',

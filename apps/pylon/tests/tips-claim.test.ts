@@ -1,14 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
 import { claimTipReadiness } from "../src/tips"
-import type { WalletCommandResult } from "../src/wallet"
-
-// Returns a valid BOLT 12 offer for the `receive-bolt12` probe so the claim
-// proceeds to the readiness POST we want to inspect.
-const bolt12Runner = async (args: string[]): Promise<WalletCommandResult> =>
-  args[0] === "receive-bolt12"
-    ? { exitCode: 0, stdout: JSON.stringify({ offer: "lno1testoffer" }), stderr: "" }
-    : { exitCode: 1, stdout: "", stderr: "unexpected" }
 
 const captureFetch = (sink: { body: Record<string, unknown> | null }) =>
   (async (_url: unknown, init: { body: string }) => {
@@ -19,26 +11,30 @@ const captureFetch = (sink: { body: Record<string, unknown> | null }) =>
     })
   }) as unknown as typeof fetch
 
-describe("claimTipReadiness static Lightning Address (#5078)", () => {
-  test("publishes lightningAddress alongside bolt12Offer when provided", async () => {
+describe("claimTipReadiness Spark Lightning Address (#5181)", () => {
+  test("publishes Spark Lightning Address without minting an MDK BOLT 12 offer", async () => {
     const sink: { body: Record<string, unknown> | null } = { body: null }
     await claimTipReadiness(
       { baseUrl: "https://x.test", agentToken: "t", fetch: captureFetch(sink) },
       { pylonRef: "pylon.test.one", lightningAddress: "oa-abc123@spark.example" },
-      bolt12Runner,
     )
-    expect(sink.body?.bolt12Offer).toBe("lno1testoffer")
+    expect(sink.body && "bolt12Offer" in sink.body).toBe(false)
     expect(sink.body?.lightningAddress).toBe("oa-abc123@spark.example")
+    expect(sink.body?.providerClass).toBe("external_lightning")
+    expect(sink.body?.readinessRefs).toEqual([
+      "readiness.public.spark_lightning_address.receive_ready",
+      "readiness.public.spark_primary.agent_balance",
+    ])
   })
 
-  test("omits lightningAddress when the node has none (Spark backup off)", async () => {
+  test("requires a Spark Lightning Address", async () => {
     const sink: { body: Record<string, unknown> | null } = { body: null }
-    await claimTipReadiness(
-      { baseUrl: "https://x.test", agentToken: "t", fetch: captureFetch(sink) },
-      { pylonRef: "pylon.test.one" },
-      bolt12Runner,
-    )
-    expect(sink.body?.bolt12Offer).toBe("lno1testoffer")
-    expect(sink.body && "lightningAddress" in sink.body).toBe(false)
+    await expect(
+      claimTipReadiness(
+        { baseUrl: "https://x.test", agentToken: "t", fetch: captureFetch(sink) },
+        { pylonRef: "pylon.test.one" },
+      ),
+    ).rejects.toThrow("Spark Lightning Address is required")
+    expect(sink.body).toBeNull()
   })
 })

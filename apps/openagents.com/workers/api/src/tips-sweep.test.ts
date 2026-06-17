@@ -77,7 +77,8 @@ describe('sweep tick', () => {
       {
         actor_ref: 'agent:alice',
         balance_msat: 510_000,
-        bolt12_offer: 'lno1test',
+        bolt12_offer: null,
+        lightning_address: 'alice@spark.money',
         sweep_threshold_sat: 210,
         wallet_ref: 'wallet.public.alice.redacted',
       },
@@ -85,6 +86,7 @@ describe('sweep tick', () => {
         actor_ref: 'agent:bob',
         balance_msat: 1_210_000,
         bolt12_offer: 'lno1other',
+        lightning_address: null,
         sweep_threshold_sat: 210,
         wallet_ref: 'wallet.public.bob.redacted',
       },
@@ -110,7 +112,7 @@ describe('sweep tick', () => {
       makeId: () => `id_${++calls}_${Math.floor(calls / 100)}`,
       nowIso: '2026-06-10T21:00:00.000Z',
       payFromBuffer: async input =>
-        input.bolt12Offer === 'lno1test'
+        input.destination === 'alice@spark.money'
           ? { ok: true, paymentRef: 'payment.buffer.abc' }
           : { ok: false, reason: 'invoice_fetch_timeout' },
     })
@@ -138,6 +140,7 @@ describe('sweep tick', () => {
                   available_balance_msat: 510_000,
                   balance_msat: 710_000,
                   bolt12_offer: 'lno1test',
+                  lightning_address: 'alice@spark.money',
                   sweep_threshold_sat: 210,
                   wallet_ref: 'wallet.public.alice.redacted',
                 },
@@ -159,7 +162,7 @@ describe('sweep tick', () => {
       {
         actorRef: 'agent:alice',
         balanceMsat: 510_000,
-        bolt12Offer: 'lno1test',
+        payoutDestination: 'alice@spark.money',
         sweepThresholdSat: 210,
         walletClaimRef: 'wallet.public.alice.redacted',
       },

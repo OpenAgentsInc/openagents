@@ -219,7 +219,7 @@ const writeCreditedTip = (
         amountSat: input.amountSat,
         fundingLegId: `${input.payInId}_fund`,
         idempotencyKey: `tip:${input.payInId}`,
-        ladderReason: 'recipient_offer_missing',
+        ladderReason: 'recipient_destination_missing',
         payInId: input.payInId,
         payoutLegId: `${input.payInId}_payout`,
         postId: POST_ID,
