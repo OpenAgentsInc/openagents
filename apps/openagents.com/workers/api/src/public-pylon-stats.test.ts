@@ -908,6 +908,8 @@ describe('public pylon stats', () => {
       nexusAcceptedWorkPayoutReceiptRefs: ['receipt.nexus.public.counted'],
       nexusAcceptedWorkPayoutSatsPaid24h: 13,
       nexusAcceptedWorkPayoutSatsPaidTotal: 13,
+      publicRealSatsSettled24h: 13,
+      publicRealSatsSettledTotal: 13,
       nexusAcceptedWorkSettlementGate: {
         publicPaidWorkTotalsAllowed: true,
         state: 'ready',

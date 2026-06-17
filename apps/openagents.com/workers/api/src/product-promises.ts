@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-17.1'
+export const PublicProductPromisesVersion = '2026-06-17.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -28,6 +28,7 @@ const sourceRefs = [
   'docs/transcripts/199.md',
   'docs/transcripts/236.md',
   'docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
+  'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
   'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
   'docs/labor/2026-06-14-p5-backlog-faucet-closeout.md',
   'docs/labor/2026-06-14-p7-lane-c-fanout-closeout.md',
@@ -407,24 +408,25 @@ export const publicProductPromisesDocument = () => {
         audience: ['contributor', 'operator', 'public'],
         state: 'green',
         claim:
-          'OpenAgents/Pylon launched a decentralized training run where contributors install node software and earn Bitcoin for useful, verified training contribution.',
+          'OpenAgents/Pylon launched a scoped decentralized training run where contributors install node software, complete useful work, and have that work independently verified on public run rails.',
         safeCopy:
-          'Launched. The public run `run.tassadar.executor.20260615` is active, and the decentralized contribution loop is proven end-to-end in the open: an independent contributor installed Pylon, claimed a window lease, and submitted a Tassadar executor trace; an independent validator on a separate machine/identity replayed the pinned fixture and the verification challenge finalized `Verified`; and an operator-approved, provider-confirmed Bitcoin settlement receipt (settlement_recorded, state settled) is linked to the run for the worker. The public run summary reflects providerConfirmedSettledPayoutSats and a qualified contributor with verified work. This is the FIRST independent worker-validator pairing and settlement, not a large-scale or largest-run claim; the run remains open for more contributors.',
+          'Launched for the scoped proof. The public run `run.tassadar.executor.20260615` is active, and the decentralized contribution loop is proven end-to-end in the open: an independent contributor installed Pylon, claimed a window lease, and submitted a Tassadar executor trace; an independent validator on a separate machine/identity replayed the pinned fixture and the verification challenge finalized `Verified`. The linked Orrery settlement receipt is intentionally simulation-backed (`realBitcoinMoved:false`): it proves the operator-approved settlement-record/projection path for this launch gate, not real Bitcoin movement. Real payout settlement remains a separate gate and must use receipts with `realBitcoinMoved:true` before copy can say the contributor was actually paid.',
         unsafeCopy:
-          'Do not claim this is a network-scale, large, or the largest decentralized training run, that hundreds of contributors are paid, or that public gradients mutate a canonical model. Green here means one cross-owner Verified pairing earned a provider-confirmed Bitcoin settlement; scale, largest-run, and canonical-gradient claims have their own separate promises and remain bounded by their evidence.',
+          'Do not claim this is a network-scale, large, or the largest decentralized training run, that hundreds of contributors are paid, that public gradients mutate a canonical model, or that the Orrery receipt proves real sats moved. Green here means the scoped launch/run/verification/settlement-record path is live; real paid-settlement copy requires `realBitcoinMoved:true` evidence and remains bounded by separate payout/settlement gates.',
         evidenceRefs: [
           'https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615',
           'training.verification.challenge.59ba1f30-c2f0-40b0-b3ec-b9c5e1fb5316',
           'receipt.nexus.tassadar_run_settlement.idem.tassadar.settlement.59ba1f30.orrery.v2',
+          'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
           'docs/transcripts/236.md',
           'docs/launch/JUNE16_ROADMAP.md',
           'https://github.com/OpenAgentsInc/openagents/issues/4855',
         ],
         blockerRefs: [],
         verification:
-          'GET /api/public/training/runs/run.tassadar.executor.20260615: run state active, summary.metrics.qualifiedContributorCount >= 1, summary.metrics.providerConfirmedSettledPayoutSats > 0, and a Verified exact_trace_replay verification challenge with a settlement_recorded (state settled) receipt linked to the run. The number degrades to the receipts actually present; pending, offered, or claimed records never count as settled.',
+          'GET /api/public/training/runs/run.tassadar.executor.20260615: run state active, summary.metrics.qualifiedContributorCount >= 1, and a Verified exact_trace_replay verification challenge with a settlement_recorded receipt linked to the run. For this promise version, the Orrery receipt is accepted only as simulation-backed settlement-record evidence (`realBitcoinMoved:false`). It must not be counted as real Bitcoin movement, accepted-work sats settled, or spendable contributor payout. Real paid-settlement copy requires a linked receipt with `realBitcoinMoved:true` and no private payment material.',
         authorityBoundary:
-          'A launched, settled first pairing does not authorize network-scale training claims, contributor admission beyond the published rules, largest-run comparisons, canonical-checkpoint mutation from public gradients, or any spend beyond the operator-approved, capped run settlement.',
+          'A launched, verified first pairing plus a simulation-backed settlement record does not authorize network-scale training claims, contributor admission beyond the published rules, largest-run comparisons, canonical-checkpoint mutation from public gradients, real-payout claims, or any spend beyond a future operator-approved real settlement.',
       },
       {
         ...basePromiseFields,
@@ -699,17 +701,18 @@ export const publicProductPromisesDocument = () => {
         audience: ['contributor', 'public'],
         state: 'green',
         claim:
-          'Anyone can install Pylon without Bitcoin wallet knowledge, without loading bitcoin, and start turning a computer into bitcoin.',
+          'Anyone can install Pylon without Bitcoin wallet knowledge or preloading bitcoin, self-claim scoped training work, and have useful contribution verified on the public run rails.',
         safeCopy:
-          'Self-serve install→earn is live, with no operator staging of the contributor. A fresh non-owner install auto-provisions an MDK wallet and Nostr identity on first run (zero wallet knowledge, no bitcoin loaded by the user), then the contributor self-claims a window lease (pylon training claim), self-completes verified executor-trace work (submit-trace), and an independent validator on a distinct device auto-discovers and replays it (validate --auto) — and the contributor earns a provider-confirmed Bitcoin settlement. Proven on real non-owner machines against run.tassadar.executor.20260615: an independent worker (Orrery) reached a public, provider-confirmed settled settlement receipt validated by an independent validator (Whitefang) on challenge 59ba1f30, with a second fully-external Verified pair (Trigger worker / Orrery validator, 8fd8604a). The only operator touch left is payout APPROVAL, which stays operator-gated under bounded spend authority as a permanent treasury safety control — not participation staging.',
+          'Self-serve install→verified contribution is live, with no operator staging of the contributor. A fresh non-owner install auto-provisions an MDK wallet and Nostr identity on first run (zero wallet knowledge, no bitcoin loaded by the user), then the contributor self-claims a window lease (pylon training claim), self-completes verified executor-trace work (submit-trace), and an independent validator on a distinct device auto-discovers and replays it (validate --auto). Proven on real non-owner machines against run.tassadar.executor.20260615: an independent worker (Orrery) reached a public settlement_recorded receipt validated by an independent validator (Whitefang) on challenge 59ba1f30, and that receipt is explicitly simulation-backed (`realBitcoinMoved:false`). A second fully-external pair (Trigger worker / Orrery validator, 8fd8604a) proved the self-serve verification path. The only operator touch left is payout APPROVAL, which stays operator-gated under bounded spend authority as a permanent treasury safety control — not participation staging. Do not describe the Orrery receipt as real sats paid until a `realBitcoinMoved:true` receipt exists.',
         unsafeCopy:
-          'Do not claim the treasury self-spends, that payouts are unbounded or un-approved, or that earned sats always land in-wallet instantly — settled earning means a dereferenceable provider-confirmed settlement receipt; Lightning delivery into the contributor wallet can be in-flight and is covered by retry plus the Spark backup-receive path. Do not claim mnemonic-only restore is send-ready, or that receive readiness equals send readiness.',
+          'Do not claim the treasury self-spends, that payouts are unbounded or un-approved, that the Orrery simulation receipt proves real sats moved, or that earned sats always land in-wallet instantly. Real settled earning requires a dereferenceable receipt with `realBitcoinMoved:true`; Lightning delivery into the contributor wallet can still be in-flight and is covered by retry plus the Spark backup-receive path. Do not claim mnemonic-only restore is send-ready, or that receive readiness equals send readiness.',
         evidenceRefs: [
           'apps/openagents.com/docs/2026-06-16-pylon-self-serve-install-to-earn-proof.md',
           'https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615',
           'training.verification.challenge.59ba1f30-c2f0-40b0-b3ec-b9c5e1fb5316',
           'training.verification.challenge.8fd8604a-183a-43dc-b292-4364cf31e275',
           'receipt.nexus.tassadar_run_settlement.idem.tassadar.settlement.59ba1f30.orrery.v2',
+          'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
           'https://openagents.com/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9#post-0b31225d-4cb5-4c6e-ad10-26de550641e9',
           'apps/openagents.com/docs/2026-06-11-pylon-live-install-to-bitcoin-smoke-evidence.md',
           'route:/api/public/nexus-pylon/receipts/{receiptRef}',
@@ -718,9 +721,9 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [],
         verification:
-          'GET /api/public/training/runs/run.tassadar.executor.20260615 shows providerConfirmedSettledPayoutSats > 0 and qualifiedContributorCount >= 1 from a non-owner contributor whose wallet/identity were self-provisioned (not operator-funded), whose work was self-claimed (not operator-dispatched) and self-completed via worker submit-trace + independent validator auto-discovery (not operator closeout), and whose Verified exact_trace_replay challenge carries a settlement_recorded (state settled) receipt. The three operator-staging elements from the 2026-06-11 proof — operator-funded wallets, operator assignment dispatch, operator closeout — are removed. Payout APPROVAL remains operator-gated (requireAdmin, per-payout + run spend cap) as a deliberate, permanent bounded-spend safety control, not participation staging; this scoping is owner-approved. Settled earning is the dereferenceable provider-confirmed receipt; wallet-landed delivery may be in-flight and is covered by retry + the Spark backup-receive path.',
+          'GET /api/public/training/runs/run.tassadar.executor.20260615 shows qualifiedContributorCount >= 1 from a non-owner contributor whose wallet/identity were self-provisioned (not operator-funded), whose work was self-claimed (not operator-dispatched) and self-completed via worker submit-trace + independent validator auto-discovery (not operator closeout), and whose Verified exact_trace_replay challenge carries a settlement_recorded receipt. The three operator-staging elements from the 2026-06-11 proof — operator-funded wallets, operator assignment dispatch, operator closeout — are removed. Payout APPROVAL remains operator-gated (requireAdmin, per-payout + run spend cap) as a deliberate, permanent bounded-spend safety control, not participation staging; this scoping is owner-approved. The Orrery receipt is simulation-backed (`realBitcoinMoved:false`) and validates only the public settlement-record path; real settled earning requires a linked `realBitcoinMoved:true` receipt with no private payment material. Wallet-landed delivery may be in-flight and is covered by retry + the Spark backup-receive path.',
         authorityBoundary:
-          'Receive readiness and balance are not send readiness, payout dispatch, or settled earning. Self-serve participation does not grant self-serve treasury spend: payouts remain operator-approved under bounded spend authority.',
+          'Receive readiness, simulation-backed settlement records, and balance visibility are not send readiness, payout dispatch, or real settled earning. Self-serve participation does not grant self-serve treasury spend: payouts remain operator-approved under bounded spend authority.',
       },
       {
         ...basePromiseFields,

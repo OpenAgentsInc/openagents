@@ -127,10 +127,13 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   #5168 added the unified visible balance view, and #5169 implemented the real
   consented Spark→MDK sweep: create local MDK receive target, pay from the
   node's own credited Spark backup balance, and emit the reconcile receipt only
-  after MDK balance verification. Open integrity item: the green
-  `training.monday` gate is backed by a
-  **simulation** settlement receipt (`realBitcoinMoved:false`) — owner's call
-  (flagged, not flipped).
+  after MDK balance verification. **Resolved #5172:** the green
+  `training.monday` gate stays green only for the scoped launch/run/verification
+  + settlement-record path. The Orrery settlement receipt remains explicitly
+  **simulation-backed** (`realBitcoinMoved:false`) and does **not** count as real
+  Bitcoin movement, accepted-work sats settled, or contributor spendable payout.
+  Real payout copy requires a public-safe `realBitcoinMoved:true` receipt. Policy:
+  `docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md`.
 
 ## A. Short-term bug fixes — ✅ all closed (16th)
 

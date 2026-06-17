@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-17.1')
+    expect(decoded.version).toBe('2026-06-17.2')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -176,7 +176,13 @@ describe('public product promises document', () => {
           blockerRefs: [],
           evidenceRefs: expect.arrayContaining([
             'receipt.nexus.tassadar_run_settlement.idem.tassadar.settlement.59ba1f30.orrery.v2',
+            'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
           ]),
+          safeCopy: expect.stringContaining('realBitcoinMoved:false'),
+          unsafeCopy: expect.stringContaining('realBitcoinMoved:true'),
+          verification: expect.stringContaining(
+            'must not be counted as real Bitcoin movement',
+          ),
         }),
         expect.objectContaining({
           promiseId: 'pylon.largest_decentralized_training_claim.v1',
@@ -366,18 +372,46 @@ describe('public product promises document', () => {
     expect(localAppleFmPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.local_apple_fm_admitted_mac_smoke_missing',
     )
+    const mondayTrainingPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId ===
+        'training.monday_decentralized_training_launch.v1',
+    )
+    expect(mondayTrainingPromise).toMatchObject({
+      blockerRefs: [],
+      state: 'green',
+    })
+    expect(mondayTrainingPromise?.claim).not.toMatch(/earn Bitcoin|paid/i)
+    expect(mondayTrainingPromise?.safeCopy).toContain(
+      'not real Bitcoin movement',
+    )
+    expect(mondayTrainingPromise?.authorityBoundary).toContain(
+      'simulation-backed settlement record',
+    )
+    const pylonInstallPromise = decoded.promises.find(
+      promise => promise.promiseId === 'pylon.install_without_wallet_knowledge.v1',
+    )
+    expect(pylonInstallPromise).toMatchObject({
+      blockerRefs: [],
+      state: 'green',
+    })
+    expect(pylonInstallPromise?.safeCopy).toContain('realBitcoinMoved:false')
+    expect(pylonInstallPromise?.unsafeCopy).toContain('realBitcoinMoved:true')
+    expect(pylonInstallPromise?.evidenceRefs).toContain(
+      'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
+    )
   })
 
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-17.1', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-17.2', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-17.1',
+      expectedVersion: '2026-06-17.2',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-17.1',
+      servedVersion: '2026-06-17.2',
       status: 'ready',
     })
     expect(
@@ -387,7 +421,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-17.1',
+      servedVersion: '2026-06-17.2',
       status: 'blocked',
     })
   })
