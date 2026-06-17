@@ -1766,6 +1766,12 @@ describe('operator treasury payout', () => {
         preflightCoverageSat: number | null
         preflightMaxSendableSat: number | null
         preflightRouteAvailable: boolean | null
+        preparedAmountSat: number | null
+        preparedFeeSats: number | null
+        preparedLightningFeeSats: number | null
+        preparedPaymentMethodKind: string | null
+        preparedSparkTransferFeeSats: number | null
+        preferSparkForBolt11: boolean | null
         preimagePresent: boolean | null
         reasonClass: string | null
         resolvedDestinationKind: string | null
@@ -1800,6 +1806,12 @@ describe('operator treasury payout', () => {
       preflightCoverageSat: null,
       preflightMaxSendableSat: 94000,
       preflightRouteAvailable: null,
+      preparedAmountSat: null,
+      preparedFeeSats: null,
+      preparedLightningFeeSats: null,
+      preparedPaymentMethodKind: null,
+      preparedSparkTransferFeeSats: null,
+      preferSparkForBolt11: null,
       preimagePresent: null,
       reasonClass: 'no_route',
       resolvedDestinationKind: 'bolt11',

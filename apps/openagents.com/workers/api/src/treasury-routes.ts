@@ -1332,6 +1332,24 @@ const treasuryPayoutDiagnosticPayload = (
   preflightRouteAvailable: safeTreasuryPayoutDiagnosticBoolean(
     payResult.preflightRouteAvailable,
   ),
+  preparedAmountSat: safeTreasuryPayoutDiagnosticNumber(
+    payResult.preparedAmountSat,
+  ),
+  preparedFeeSats: safeTreasuryPayoutDiagnosticNumber(
+    payResult.preparedFeeSats,
+  ),
+  preparedLightningFeeSats: safeTreasuryPayoutDiagnosticNumber(
+    payResult.preparedLightningFeeSats,
+  ),
+  preparedPaymentMethodKind: safeTreasuryPayoutDiagnosticString(
+    payResult.preparedPaymentMethodKind,
+  ),
+  preparedSparkTransferFeeSats: safeTreasuryPayoutDiagnosticNumber(
+    payResult.preparedSparkTransferFeeSats,
+  ),
+  preferSparkForBolt11: safeTreasuryPayoutDiagnosticBoolean(
+    payResult.preferSparkForBolt11,
+  ),
   preimagePresent: safeTreasuryPayoutDiagnosticBoolean(
     payResult.preimagePresent,
   ),

@@ -325,6 +325,12 @@ export const sparkTreasuryPayPayload = async input => {
     ? 'lightning_address'
     : null
   let resolvedDestinationKind = null
+  let preparedAmountSat = null
+  let preparedFeeSats = null
+  let preparedLightningFeeSats = null
+  let preparedPaymentMethodKind = null
+  let preparedSparkTransferFeeSats = null
+  let preferSparkForBolt11 = null
 
   const send = async () => {
     if (
@@ -386,8 +392,18 @@ export const sparkTreasuryPayPayload = async input => {
       'spark prepareSendPayment',
     )
     const paymentMethod = prepareResponse?.paymentMethod
-    resolvedDestinationKind =
+    preparedPaymentMethodKind =
       typeof paymentMethod?.type === 'string' ? paymentMethod.type : null
+    preparedAmountSat = toSatNumber(prepareResponse?.amount) ?? amountSat
+    preparedFeeSats = toSatNumber(paymentMethod?.fee)
+    preparedLightningFeeSats = toSatNumber(
+      paymentMethod?.lightningFeeSats,
+    )
+    preparedSparkTransferFeeSats = toSatNumber(
+      paymentMethod?.sparkTransferFeeSats,
+    )
+    preferSparkForBolt11 = paymentMethod?.type === 'bolt11Invoice'
+    resolvedDestinationKind = preparedPaymentMethodKind
     failureStage = 'spark_send_payment'
     const sent = await withTimeout(
       sdk.sendPayment({
@@ -396,7 +412,7 @@ export const sparkTreasuryPayPayload = async input => {
           paymentMethod?.type === 'bolt11Invoice'
             ? {
                 completionTimeoutSecs: 60,
-                preferSpark: false,
+                preferSpark: true,
                 type: 'bolt11Invoice',
               }
             : undefined,
@@ -406,7 +422,16 @@ export const sparkTreasuryPayPayload = async input => {
       'spark sendPayment',
     )
 
-    return { method: 'payment_request', payment: paymentValue(sent) }
+    return {
+      method: 'payment_request',
+      payment: paymentValue(sent),
+      preparedAmountSat,
+      preparedFeeSats,
+      preparedLightningFeeSats,
+      preparedPaymentMethodKind,
+      preparedSparkTransferFeeSats,
+      preferSparkForBolt11,
+    }
   }
 
   let sent
@@ -422,6 +447,12 @@ export const sparkTreasuryPayPayload = async input => {
       errorName: errorName(error),
       failureStage,
       messageFingerprint: errorFingerprint(error),
+      preparedAmountSat,
+      preparedFeeSats,
+      preparedLightningFeeSats,
+      preparedPaymentMethodKind,
+      preparedSparkTransferFeeSats,
+      preferSparkForBolt11,
       reasonClass,
       reasonRef: reasonRefFromClass(reasonClass),
       resolvedDestinationKind,
