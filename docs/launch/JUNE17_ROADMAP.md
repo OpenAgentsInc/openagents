@@ -162,8 +162,10 @@ signed recut.
   projection reports 1/3 counted completions. **D3.14 (#5243) shipped:**
   production now records the second internal Customer #1 completion row, and
   the public projection reports 2/3 counted completions.
-  **Active D3.15 slice: #5244** record the third internal Customer #1
-  completion row and pass the public audit before closing #5098/#5104.
+  **D3.15 (#5244) shipped:** production now records the third internal
+  Customer #1 completion row, the projection gate is ready with 3/3 counted
+  completions, and the public audit passes. D3 is complete; #5098/#5104 can
+  close after issue closeout comments land.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
