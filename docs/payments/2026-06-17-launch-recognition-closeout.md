@@ -15,24 +15,32 @@ The recipient-attribution backfill in migration
 treasury rows to public-safe recipient refs so the existing operator
 recipient-report API can produce a per-recipient owed/sent/received view.
 
-Current production treasury balance after the #5183 deploy:
+Current production treasury balance after the #5183 deploy and live Spark rail
+smokes:
 
 | Rail | Balance | Spendable | State |
 | --- | ---: | ---: | --- |
-| MDK treasury | 92 sats | 82 sats | ok |
-| Spark treasury | 0 sats | 0 sats | ok |
-| **Aggregate** | **92 sats** | **82 sats** | ok |
+| MDK treasury | 15 sats | 5 sats | ok |
+| Spark treasury | 41 sats | 41 sats | ok |
+| **Aggregate** | **56 sats** | **46 sats** | ok |
 
-The Spark rail is configured and reachable, but it is not funded. Do not retry
-a 50,000-sat recognition payout until the Spark treasury rail is funded or the
-owner explicitly chooses a different funding source.
+The Spark rail is configured, reachable, and live-spend tested. The operator
+moved 75 sats from MDK treasury into Spark treasury, then sent two real
+Spark-treasury outbound smokes to Whitefang's Spark-backed Lightning Address:
+5 sats settled with a 7-sat Spark balance delta, and 25 sats settled with a
+27-sat Spark balance delta. Earlier Spark-preferred BOLT11 attempts failed
+before dispatch because the Breez Spark SDK returned
+`invalid_transferid_format`; the deployed container now retries that exact
+validation failure with `preferSpark:false`, so the treasury still spends from
+the Spark wallet while avoiding the broken Spark-preferred BOLT11 metadata
+path.
 
 ## Recipient table
 
 | Recipient | Owed | Settled sent | Pending sent | Failed attempts | Recipient-confirmed | Closeout state |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | Trigger | 50,000 | 50,000 | 0 | 0 | 50,000 | Closed. Recipient-side rc.12 Spark backup status reported 50,000 sats visible. |
-| Whitefang | 50,000 | 1,000 | 0 | 0 | 1,000 | Not closed. The 1,000-sat canary is confirmed, leaving 49,000 sats still owed unless the owner treats the canary as separate from the recognition debt. Treasury currently lacks the funded Spark balance required for the clean #5183 path. |
+| Whitefang | 50,000 | 1,030 | 0 | 0 | 1,000 | Not closed. The 1,000-sat canary is confirmed, and two Spark-treasury smokes totaling 30 sats settled after #5183. Remaining recognition closeout needs a funded Spark treasury balance. |
 | Orrery | 50,000 | 234,639 | 100,005 | 260,000 | 0 | Do not resend. Settled-sent exceeds owed by 184,639 sats; owner decision is that Orrery keeps the overage as hazard pay. Recipient confirmation is still pending on Orrery's Spark backup/MDK-side balance read. |
 
 ## Pending rows
@@ -63,8 +71,10 @@ No more recognition payouts should be sent from memory. For this incident:
 
 - Trigger is closed.
 - Orrery is over-sent on settled rows already; await recipient-side proof only.
-- Whitefang still needs the remaining recognition closeout, but the clean path
-  is #5183 Spark treasury -> recipient Spark wallet, and production Spark
-  treasury currently has 0 sats.
+- Whitefang still needs the remaining recognition closeout. The clean path is
+  now proven as #5183 Spark treasury -> Whitefang Spark-backed Lightning
+  Address; fund the Spark treasury rail first, then send the remaining
+  recognition amount plus expected routing fee under a fresh operator
+  idempotency key.
 - The three pending rows remain unresolved pending intent until the wallet
   surface returns a terminal status.

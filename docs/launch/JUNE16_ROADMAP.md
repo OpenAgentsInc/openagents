@@ -251,14 +251,22 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   Accepted-work settlement can select `adapterKind: "spark_treasury"` for a
   single size-agnostic Spark treasury payment instead of the older hosted-MDK
   chunk policy. Public `/treasury` now shows one top-line balance summed across
-  MDK + Spark rails, with the rail split kept as small secondary text.
+  MDK + Spark rails, with the rail split kept as small secondary text. Live
+  follow-up moved 75 sats from MDK treasury into Spark treasury and proved
+  repeatable Spark-origin sends to Whitefang's Spark-backed Lightning Address
+  (5 sats, then 25 sats, both settled). Spark-preferred BOLT11 dispatch exposed
+  a Breez SDK `invalid_transferid_format` pre-spend failure; the container now
+  retries that specific validation failure with `preferSpark:false`, so the
+  payment still spends from Spark treasury while avoiding the broken
+  Spark-preferred BOLT11 metadata path.
 - **🧾 Launch-recognition closeout (#5182) partially closed, funding-gated.**
   Migration `0200_launch_recognition_treasury_backfill.sql` backfills public-safe
   recipient refs / owed refs / confirmation refs for the known Trigger,
   Whitefang, and Orrery treasury rows so the operator recipient-report API can
   produce owed vs settled-sent vs pending vs confirmed-received. Trigger is
-  closed at 50k confirmed. Whitefang has a confirmed 1k canary and still needs
-  the remaining recognition closeout once the Spark treasury rail is funded.
+  closed at 50k confirmed. Whitefang has a confirmed 1k canary plus 30 sats of
+  settled Spark-treasury smoke sends, and still needs the remaining recognition
+  closeout once the Spark treasury rail is funded.
   Orrery is marked do-not-resend: settled-sent is 234,639 sats against a 50k
   debt, with the owner decision that the overage stays as hazard pay; recipient
   confirmation still awaits Orrery's wallet-side read. The three legacy pending
