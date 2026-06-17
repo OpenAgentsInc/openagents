@@ -157,10 +157,11 @@ signed recut.
   command that fails until the projection gate is ready and at least three
   counted completions exist. **D3.12 (#5233) shipped:** the cohort source
   contract now links a privacy-review checklist required before a completion
-  row can carry `privacyReviewRef`. **Active D3.13 slice: #5241** record the
-  first internal OpenAgents Customer #1 completion row. Remaining D3 tail:
-  record two more real cohort rows and collect at least three real
-  loop-completion bundles before closing #5098/#5104.
+  row can carry `privacyReviewRef`. **D3.13 (#5241) shipped:** production now
+  records the first internal Customer #1 completion row, and the public
+  projection reports 1/3 counted completions. Remaining D3 tail: record two
+  more real cohort rows and collect at least three real loop-completion bundles
+  before closing #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
