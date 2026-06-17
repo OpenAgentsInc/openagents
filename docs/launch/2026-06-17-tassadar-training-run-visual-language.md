@@ -1,0 +1,362 @@
+# Tassadar training-run visual language: initial primitives
+
+Date: 2026-06-17
+Status: initial design note
+Scope: `openagents.com` product surface, `/animations`, `/components`, `/`,
+`/run`, and the Autopilot Desktop first screen.
+
+This note is not product copy and does not flip any promise state. It records
+the first visual-language pass for the Tassadar run after reading the launch
+folder and reviewing the current web and desktop surfaces.
+
+## Source material reviewed
+
+- `docs/launch/JUNE15_LAUNCH_PLAN.md`
+- `docs/launch/JUNE16_ROADMAP.md`
+- `docs/launch/JUNE17_ROADMAP.md`
+- `docs/launch/2026-06-17-orrery-payout-accounting-and-spark-unification-audit.md`
+- `apps/openagents.com/DESIGN.md`
+- `apps/openagents.com/apps/web/src/page/animations.ts`
+- `apps/openagents.com/apps/web/src/page/components.ts`
+- `apps/openagents.com/apps/web/src/page/loggedOut/page/pylon.ts`
+- `apps/openagents.com/apps/web/src/page/run.ts`
+- `apps/openagents.com/apps/web/src/scene/pylonDiamonds.ts`
+- `apps/openagents.com/apps/web/src/scene/pylonBezierNetworkElement.ts`
+- `apps/openagents.com/apps/web/src/scene/pylonStatsElement.ts`
+- `apps/openagents.com/apps/web/src/scene/tassadarRunElement.ts`
+- `apps/openagents.com/apps/web/src/scene/tassadarRunSnapshot.ts`
+- `apps/autopilot-desktop/src/ui/model.ts`
+- `apps/autopilot-desktop/src/ui/view.ts`
+- `apps/autopilot-desktop/src/shared/pylon-network-scene.ts`
+- `apps/autopilot-desktop/src/ui/pylon-network-visualization.ts`
+
+Live snapshot checked while writing:
+
+- `/` serves the client shell plus an embedded `openagents-pylon-stats-snapshot`.
+- `/api/public/pylon-stats` was live with 9 pylons online, 2 wallet-ready, 2
+  assignment-ready, 6 training-progress contributors, and real settled treasury
+  outflow totals. These numbers are only a writing-time snapshot.
+- `/api/public/tassadar-run-summary` was live with the run active, 3 accepted
+  replay-verified traces, 3 verified work rows, 3 rejected rows, 6 assigned
+  contributors, 1 qualified contributor, and 5 provider-confirmed settled payout
+  sats. These numbers are also only a writing-time snapshot.
+
+## Current visual language
+
+### Homepage pylon layer
+
+The root route is the Pylon page. It is a full-viewport black field with these
+layers:
+
+- A top `Download Autopilot` CTA.
+- The refractive two-diamond pylon scene, using the shared Moksha diamond GLB,
+  backface/refraction shader passes, slow rotation, and live blue activity glow.
+- A live bezier network overlay, where pylons sit in a deterministic ring/spiral
+  and quadratic curves flow inward to the central pylon.
+- A live stats overlay with slot-text digit rolls: pylons online, work-ready now,
+  sats settled over 24h, and training contributors.
+- The post-launch live-copy gate.
+
+This is a good network-presence language. It says: "the fleet is alive, work is
+flowing toward the center, and the counters are not static marketing numbers."
+It is not yet a full training-run language because it does not distinguish
+worker, validator, replay, rejected trace, accepted trace, settlement, corpus, or
+proof link.
+
+### Autopilot Desktop first screen
+
+The desktop app opens on `pane: "network"`, not a sidebar app shell. The first
+screen is an immersive network view:
+
+- A full-screen `three-effect` network graph from live pylon stats.
+- The exact homepage pylon-diamond shader composited at the center with
+  transparent background.
+- An overlay headline such as "`N` pylons online", activity state
+  (`network dormant`, `online idle`, `work in flight`), install-readiness status,
+  and a `Go online` action.
+- A denser stats bank: working now, sellable online, wallet ready, assignment
+  ready, seen in 24h, registered, sats settled, training assigned, training
+  accepted, and training progress.
+
+This is the strongest current "operator cockpit" primitive. It makes the network
+feel like an instrument panel rather than a landing page. The visual-language
+constraint for Tassadar should be: keep this cockpit density, but make the
+training semantics more explicit when a user enters the run surface.
+
+### `/animations`
+
+The animations route is an internal three.js playground. The relevant families:
+
+- `oa-pylon-bezier-network`: the live pylon network overlay used by `/`.
+- Bezier graph permutations: ring, spiral, and web variants.
+- Constellation, instanced field, flow field, tube flow, glow knot, wobble
+  sphere, shader gradient, grid floor, wireframe, particles, light beams.
+- Blob-tracking data aesthetics: tracked centroids, hot cores, coordinate
+  readouts, connector splines, dust, and strand backgrounds.
+
+The useful direction here is not "add more abstract effects." It is to graduate
+specific animation grammars into named training primitives: trace paths, replay
+pairs, verifier beams, settlement bursts, corpus accretion, and quarantine
+windows.
+
+### `/components`
+
+The components workbench already provides the UI side of the language:
+
+- Primitives: surfaces, tones, badges, status dots, buttons, links.
+- Shared controls: heading blocks, buttons, link buttons, avatars, menus.
+- Forms: input groups, validated inputs, selects, toggles, radios, checkboxes.
+- Layout: sections, cards, drawers, modal surfaces, notification stacks.
+- Navigation: tabs, nav, breadcrumbs, vertical nav, command palette, progress
+  list.
+- Data display: tables, key/value rows, code blocks, stat grids, description
+  lists, stacked/feed/grid lists.
+- Feedback: alerts and empty states.
+- Workroom: panels, action docks, timelines, checklist, composer shape.
+- Public/page examples/v4/AI Elements for larger compositions.
+
+For Tassadar, this means the product surface should not invent a new chrome. Use
+the workroom/data-display families for evidence, proof links, and ledger state;
+use the scene layer only for spatial comprehension.
+
+### `/run`
+
+The live Tassadar run page is already the first dedicated training-run surface.
+It fetches `/api/public/tassadar-run-summary`, maps absent data to honest zeroes,
+and renders the `three-effect` training-run scene. The adapter already knows how
+to produce:
+
+- A run snapshot: active/planned/sealed/reconciled windows, assigned contributors,
+  verified/rejected work, pending payouts, receipt refs, settled sats, device
+  requirements, closeout state, Freivalds ref counts, and blocker counts.
+- Data-bound entities from leaderboard pylons.
+- Worker and validator entities from verified replay pairs.
+- Beams for verified worker-to-validator replay.
+- Bursts for settled payout rows.
+- Click-through proof links for run, window, proof, receipt, settlement, pylon
+  evidence, and verified replay challenge refs.
+
+This should become the base visual grammar for the run, not a side demo.
+
+## Product truth constraints
+
+The launch docs make the copy and visual constraints unusually strict:
+
+- Tassadar is the run that trains the model, not a trained model claim.
+- Exact replay is the main verification affordance. It is stronger and simpler
+  than vague "AI confidence" visuals.
+- Worker and validator are distinct roles. A single glowing node cannot stand for
+  the whole loop.
+- Accepted work, payout dispatch, settled payout, recipient-confirmed balance,
+  and corpus growth are different states.
+- Pending work must not look paid. Rejected traces must not look like progress.
+- Public counters must be live/provenance-labeled and must tolerate zero states.
+- Secrets, raw prompts, raw logs, invoices, hashes, preimages, wallet material,
+  and private paths must not leak into visual details or screenshots.
+
+The useful visual direction is therefore "operational proof instrument", not
+"sci-fi training page."
+
+## Proposed compositional primitives
+
+### 1. Run field
+
+A full-bleed spatial field for one training run. It should include the run node,
+active window, corpus target, proof gate, settlement gate, and contributor ring.
+This is the container primitive for `/run` and any desktop Training Live pane.
+
+Use when the user needs to understand the whole run state at a glance.
+Avoid when the surface is only showing one lease, one receipt, or one proof.
+
+### 2. Contributor node
+
+A pylon/person/machine entity with a compact role and state:
+
+- `registered`
+- `admitted`
+- `assigned`
+- `submitted`
+- `verified`
+- `rejected`
+- `settled`
+- `blocked`
+
+The current pylon network has online/working/offline tones. Tassadar needs these
+training-specific states, with proof refs driving the state rather than heartbeat
+presence alone.
+
+### 3. Trace strand
+
+A line from contributor to workload/window representing one submitted executor
+trace. It should be thin, digest-like, and directional. A trace strand is not
+accepted work by itself.
+
+Suggested states:
+
+- `claimed`: faint dashed strand.
+- `submitted`: solid faint strand.
+- `queued_for_replay`: strand with a waiting marker.
+- `replayed`: strand paired with a replay beam.
+- `rejected`: strand terminates in an explicit mismatch notch, not a red alarm
+  flood.
+
+### 4. Replay pair
+
+A worker-to-validator relation. This should be visually distinct from the pylon
+network's "work flowing inward" curves. The current `/run` beam is the right
+base: it names the verified pair and can open the challenge proof.
+
+Suggested composition:
+
+- Worker node.
+- Validator node.
+- A bidirectional or folded beam carrying the challenge ref.
+- A small digest-match marker when verified.
+- A compact mismatch marker when rejected.
+
+### 5. Verification gate
+
+A typed proof checkpoint that turns replay evidence into accepted work. The
+primitive should render exact replay as a concrete state machine:
+
+`trace submitted -> replay challenge -> digest match/mismatch -> verdict`.
+
+This belongs in both a spatial scene and a data-display companion panel. The
+panel should use `keyValueRows`, `progressList`, `badge`, and proof links from
+the component library.
+
+### 6. Receipt burst
+
+The existing settlement burst in `/run` is the seed. Keep it small and event-like:
+a payout or receipt is a pulse at the node, not a permanent halo that implies
+unbounded future earning.
+
+Differentiate:
+
+- `payment_attempted`
+- `settlement_recorded`
+- `recipient_confirmed`
+- `failed`
+- `expired`
+
+Spark/MDK unification work makes this especially important. A sender-side settled
+row and recipient-confirmed balance are different visual states.
+
+### 7. Corpus accretion
+
+A quiet accumulating layer for accepted traces. It should not look like model
+capability. Think "verified trace archive growing" rather than "neural network
+awakening."
+
+Potential forms:
+
+- Fine tick marks or strata added to a corpus ring.
+- Small digest tiles accumulating beside the run field.
+- A compact stat grid with accepted trace count, verdict refs, and source refs.
+
+### 8. Quarantine window
+
+For the future public-gradient lane, visually separate quarantined model updates
+from canonical model updates. The launch docs are explicit that public gradients
+must pass quarantine, verification, canary evaluation, and promotion gates before
+canonical optimizer entry.
+
+This primitive should be visibly off-mainline: adjacent lane, dim border, no
+canonical color until promoted.
+
+### 9. Energy/outcome meter
+
+AO/kWh should be a functional counter, not decorative analytics. Keep it in the
+same register language as other evidence counters: provenance label, modeled vs
+measured state, and repeat-datapoint status.
+
+### 10. Proof drawer
+
+Clicking any scene entity should open a compact proof drawer, not just a new tab.
+The current `/run` element already opens proof links directly. A drawer would let
+the visual stay spatial while the evidence remains inspectable:
+
+- Public ref.
+- Kind: run/window/trace/challenge/verdict/receipt.
+- State.
+- Caveats/blockers.
+- Link to the public endpoint.
+
+Use existing `drawerPanel`, `keyValueRows`, `badge`, `codeBlock`, and `textLink`
+families.
+
+## Composition rules
+
+1. Keep the scene full-bleed. Do not put the main run scene inside a decorative
+   card.
+2. Use black, off-white, thin borders, mono labels, and small blue/green/warning
+   accents. Do not introduce a separate Tassadar palette.
+3. Let roles drive geometry:
+   contributor nodes sit around the run, worker-validator pairs form replay
+   beams, corpus sits as accumulation, settlement is a burst, blockers are gates.
+4. Use motion only for state changes or liveness:
+   flowing trace, replay pulse, receipt burst, slot-text counter roll. Static
+   proof should settle down.
+5. Never use one glow for multiple truths. Online, assigned, verified, settled,
+   and recipient-confirmed need separate encodings.
+6. The first read should be visual; the second read should be inspectable refs.
+   Every important visual element needs a data-display peer.
+7. Zero states are first-class. A run with no verified traces should still look
+   like a real run, not an empty marketing failure.
+
+## Candidate scene grammar
+
+For a populated run:
+
+- Center: `Run field`, label + run ref.
+- Inner orbit: active training window and verification gate.
+- Middle orbit: worker submissions and validator devices.
+- Outer orbit: contributor pylons.
+- Beams: verified replay pairs only.
+- Faint strands: claimed/submitted traces that are not verified yet.
+- Bursts: settlement events, with recipient-confirmed state separate.
+- Corpus ring: accepted replay-verified traces only.
+- Side drawer: selected entity proof.
+
+For an idle or blocked run:
+
+- Center stays present with honest status.
+- Empty or blocked gates are visible.
+- Counters roll to zero or blocked, not hidden.
+- CTA points to install/go-online only when that action is actually available.
+
+## Implementation path
+
+1. Keep `/run` as the canonical live-run surface and extend
+   `tassadarRunSnapshot.ts` instead of creating a parallel adapter.
+2. Move the named scene concepts into `three-effect` primitives where they are
+   reusable: contributor entity, trace strand, replay beam, receipt burst, corpus
+   ring, proof drawer events.
+3. Use `/animations` to prototype individual primitives, but promote only
+   primitives that bind to public-safe refs.
+4. Add a `/components` family or subfamily for "run evidence" only if the
+   existing data-display/workroom families become too repetitive.
+5. In Autopilot Desktop, keep the default Network pane broad and use Training
+   Live for the run-specific grammar. The Network pane answers "is the fleet
+   alive?"; Training Live should answer "what happened to this run?"
+
+## Open questions
+
+- Should `Tassadar` remain the public run name across all chrome, or should some
+  operator views use the longer "Tassadar executor run" label consistently?
+- Should rejected replay pairs be spatially visible on `/run`, or kept in the
+  proof drawer to avoid rewarding failed work visually?
+- When recipient-confirmed payout data exists, should it become a distinct
+  burst layer or a receipt-drawer state only?
+- Do we need a compact mobile version of the run field, or should mobile default
+  to proof lists plus a small scene thumbnail?
+- Which `three-effect` primitives already cover the next increment, and which
+  must move from app-local experiments into the shared package first?
+
+## Initial stance
+
+The pylon visual language is already strong for network presence. Tassadar needs
+the next layer: exact-execution proof language. The primitives should make
+worker/validator replay, digest verdicts, receipt-backed settlement, and corpus
+growth legible without widening product claims. The main mistake to avoid is
+making the run look more successful than the public refs prove.
