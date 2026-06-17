@@ -11,7 +11,7 @@
 // payouts (#5176). Supersedes the rc.13 cut, which bumped package.json but NOT
 // this constant — so rc.13 binaries self-reported rc.12, auto-update-looped, and
 // showed the wrong version in /api/pylons. Keep BOTH in sync on every cut.
-export const PYLON_VERSION = "1.0.0-rc.27"
+export const PYLON_VERSION = "1.0.0-rc.28"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.
