@@ -213,8 +213,9 @@ export const runTassadarLivePageSmoke = async ({
   assertCheck(
     checks,
     'summary_has_staleness_contract',
-    typeof summary?.staleness?.composition === 'string' &&
-      typeof summary?.staleness?.state === 'string',
+    typeof summary?.staleness?.contractVersion === 'string' &&
+      typeof summary?.staleness?.composition === 'string' &&
+      typeof summary?.staleness?.maxStalenessSeconds === 'number',
     { staleness: summary?.staleness },
   )
   assertCheck(

@@ -50,6 +50,10 @@ primitives.
   endpoint is canonical for accepted-work and settlement numbers, while
   `/api/public/pylon-stats` supplies surrounding fleet context. The live smoke
   now also verifies the pylon stats fields used by that reconciliation block.
+- 2026-06-17: Deploy verification caught the remaining server-side route gap.
+  `/tassadar` is now in the Worker document-route allowlist, so direct browser
+  hits serve the app shell instead of redirecting home; the smoke's staleness
+  assertion now matches the public summary's `projection_staleness.v1` shape.
 
 ## Short answer
 

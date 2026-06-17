@@ -17,6 +17,9 @@ describe('Worker document route fallback', () => {
 
   test('keeps public training run document routes in the app shell', () => {
     expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/tassadar'), '/tassadar'),
+    ).toBe(false)
+    expect(
       shouldRedirectUnknownDocumentToHome(
         requestFor('/training/runs'),
         '/training/runs',

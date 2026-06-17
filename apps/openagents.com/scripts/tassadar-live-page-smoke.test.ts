@@ -49,6 +49,8 @@ describe('Tassadar live page smoke', () => {
           ],
           staleness: {
             composition: 'projection_staleness.v1',
+            contractVersion: 'projection_staleness.v1',
+            maxStalenessSeconds: 0,
             state: 'live_at_read',
           },
         })
