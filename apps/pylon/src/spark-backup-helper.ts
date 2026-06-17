@@ -183,6 +183,16 @@ export type SparkBackupAdapterConfig = {
   // Test seam / safety: cap how long an SDK call may run before we treat the
   // helper as unavailable (short-lived sidecar discipline from the audit).
   timeoutMs?: number
+  // #5207 warm session: when true, this adapter reuses a process-level singleton
+  // Spark SDK session (built once, KEPT ALIVE, NOT disconnected per op) keyed by
+  // (mnemonic+network+storageDir) instead of cold-building and disconnecting a
+  // fresh SDK per invocation. DEFAULTS OFF — the one-shot CLI keeps the cold,
+  // self-contained path (each command builds → syncs → sends → disconnects);
+  // only the long-lived daemon turns it on (so the warm SDK lives in the right
+  // process). When `undefined`, the adapter consults the PYLON_SPARK_WARM_SESSION
+  // env flag (also default-off). When off, the cold path is byte-for-byte
+  // unchanged.
+  warmSession?: boolean
 }
 
 const DEFAULT_SPARK_TIMEOUT_MS = 15_000
@@ -588,6 +598,249 @@ async function buildSparkSdk(
   throw new Error("breez sdk spark module exposes neither SdkBuilder nor connect")
 }
 
+// ---------------------------------------------------------------------------
+// #5207 warm, persistent Spark session.
+//
+// The audit (docs/2026-06-17-spark-send-latency-audit.md) measured ~3.5-4.4s of
+// every `wallet send --rail spark` as pure per-command overhead: a cold process
+// loads the WASM, builds a fresh SDK, runs a full `syncWallet`, sends, then
+// disconnects — redone from scratch on every command. The fix is a warm SDK
+// session kept alive for the life of the long-lived Pylon daemon, with sync
+// moved to a background timer, so the send path skips build + sync entirely.
+//
+// SAFETY (money path):
+// - The warm session is a process-level singleton keyed by
+//   (mnemonic-derived id + network + storageDir). Concurrent get-or-build
+//   callers dedupe to ONE in-flight build promise so we NEVER hold two SDKs for
+//   the same wallet (which could race sends).
+// - The SDK is assumed NOT safe for concurrent sends: every operation routed
+//   through the warm session is SERIALIZED on a per-session promise chain.
+// - The keying hashes the mnemonic (never stores it raw in the map key) and the
+//   session record never exposes payment material.
+// - When the warm flag is OFF (the default), none of this is touched: the cold
+//   build → sync → send → disconnect path is byte-for-byte unchanged.
+// ---------------------------------------------------------------------------
+
+type WarmSparkSession = {
+  // The built, connected SDK kept alive for the life of the process. `null`
+  // while the first build is still in flight.
+  sdk: BreezSparkSdk | null
+  // In-flight build promise: concurrent acquirers await the SAME build so only
+  // one SDK is ever constructed per (wallet+network+storageDir).
+  building: Promise<BreezSparkSdk> | null
+  // Serializes every op on this session (the SDK is treated as NOT concurrency
+  // safe for sends). Each op chains onto this; a failing op does not poison the
+  // chain (we swallow into a settled tail).
+  opChain: Promise<unknown>
+  // monotonic performance.now() of the last successful syncWallet, or null if
+  // never synced. Used by the send path's "synced within last N seconds" guard.
+  lastSyncMs: number | null
+}
+
+// Process-level registry. Keyed by a non-secret digest of network+storageDir+
+// a digest of the mnemonic (the raw seed is never used as a map key).
+const warmSparkSessions = new Map<string, WarmSparkSession>()
+
+function warmSessionKey(config: {
+  mnemonic: string
+  network: "mainnet" | "regtest"
+  storageDir?: string
+}): string {
+  const mnemonicDigest = createHash("sha256").update(config.mnemonic).digest("hex")
+  return createHash("sha256")
+    .update([config.network, config.storageDir ?? ":memory:", mnemonicDigest].join(" "))
+    .digest("hex")
+}
+
+/**
+ * Decide whether this adapter should use the warm singleton session. Explicit
+ * `config.warmSession` wins; otherwise consult the PYLON_SPARK_WARM_SESSION env
+ * flag. DEFAULTS OFF so the one-shot CLI keeps the cold, self-contained path.
+ */
+function resolveWarmSession(config: SparkBackupAdapterConfig, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (config.warmSession !== undefined) return config.warmSession
+  return env.PYLON_SPARK_WARM_SESSION === "1" || env.PYLON_SPARK_WARM_SESSION === "true"
+}
+
+/**
+ * Get-or-build the warm SDK session for this wallet. Concurrent callers await a
+ * single in-flight build so exactly one SDK is constructed. The returned SDK is
+ * KEPT ALIVE — callers must NOT disconnect it.
+ */
+async function getOrBuildWarmSparkSdk(
+  config: SparkBackupAdapterConfig,
+  network: "mainnet" | "regtest",
+  timeoutMs: number,
+): Promise<{ session: WarmSparkSession; sdk: BreezSparkSdk }> {
+  const key = warmSessionKey({ mnemonic: config.mnemonic, network, storageDir: config.storageDir })
+  let session = warmSparkSessions.get(key)
+  if (session === undefined) {
+    session = { sdk: null, building: null, opChain: Promise.resolve(), lastSyncMs: null }
+    warmSparkSessions.set(key, session)
+  }
+  if (session.sdk !== null) return { session, sdk: session.sdk }
+  if (session.building === null) {
+    const loadModule = config.loadModule ?? loadBreezSparkModule
+    session.building = (async () => {
+      const mod = await withTimeout(loadModule(), timeoutMs, "spark sdk load")
+      const sdkConfig = mod.defaultConfig(network)
+      sdkConfig.apiKey = config.apiKey
+      return buildSparkSdk(
+        mod,
+        sdkConfig,
+        { type: "mnemonic", mnemonic: config.mnemonic, passphrase: undefined },
+        config.storageDir,
+        timeoutMs,
+      )
+    })()
+    // If the build fails, clear the in-flight promise so a later acquirer can
+    // retry rather than awaiting a permanently-rejected promise.
+    session.building.catch(() => {
+      if (session && session.sdk === null) session!.building = null
+    })
+  }
+  const sdk = await session.building
+  session.sdk = sdk
+  session.building = null
+  return { session, sdk }
+}
+
+/**
+ * Serialize an operation on the warm session's op chain. The SDK is treated as
+ * NOT safe for concurrent sends, so every warm op runs one-at-a-time. A failing
+ * op rejects to its own caller but does NOT poison the chain for the next op.
+ */
+function runSerializedOnWarmSession<T>(session: WarmSparkSession, op: () => Promise<T>): Promise<T> {
+  const result = session.opChain.then(op, op)
+  // Keep the chain alive on a settled tail regardless of this op's outcome.
+  session.opChain = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  return result
+}
+
+/**
+ * Acquire an SDK for one logical operation.
+ *
+ * - Warm: returns the process-level singleton (kept alive), a `release` that is
+ *   a NO-OP (we never disconnect a warm session per op), the `session` for sync
+ *   bookkeeping/serialization, and `warm: true`.
+ * - Cold (default): builds a fresh short-lived SDK exactly as before; `release`
+ *   disconnects it. This path is byte-for-byte unchanged from the legacy code.
+ */
+async function acquireSparkSession(
+  config: SparkBackupAdapterConfig,
+  network: "mainnet" | "regtest",
+  timeoutMs: number,
+): Promise<{
+  sdk: BreezSparkSdk
+  warm: boolean
+  session: WarmSparkSession | null
+  release: () => Promise<void>
+}> {
+  if (resolveWarmSession(config)) {
+    const { session, sdk } = await getOrBuildWarmSparkSdk(config, network, timeoutMs)
+    return { sdk, warm: true, session, release: async () => undefined }
+  }
+  // Cold path (unchanged): load → build → caller op → disconnect in release().
+  const loadModule = config.loadModule ?? loadBreezSparkModule
+  const mod = await withTimeout(loadModule(), timeoutMs, "spark sdk load")
+  const sdkConfig = mod.defaultConfig(network)
+  sdkConfig.apiKey = config.apiKey
+  const sdk = await buildSparkSdk(
+    mod,
+    sdkConfig,
+    { type: "mnemonic", mnemonic: config.mnemonic, passphrase: undefined },
+    config.storageDir,
+    timeoutMs,
+  )
+  return {
+    sdk,
+    warm: false,
+    session: null,
+    release: async () => {
+      if (sdk.disconnect) {
+        try {
+          await sdk.disconnect()
+        } catch {
+          // best-effort cleanup; never throw from disconnect.
+        }
+      }
+    },
+  }
+}
+
+/**
+ * #5207: run a background `syncWallet` against the warm session so the wallet is
+ * already current when a send arrives. Builds the session if needed. Serialized
+ * on the session op chain (so it never races an in-flight send), records the
+ * sync time on success, and is best-effort: a failed/timed-out sync leaves the
+ * previous `lastSyncMs` untouched and resolves `{ synced: false }`. Returns
+ * quickly when the SDK build itself fails (e.g. no network), without throwing.
+ */
+export async function syncWarmSparkSession(
+  config: SparkBackupAdapterConfig,
+): Promise<{ synced: boolean; reason?: string }> {
+  const network = config.network ?? "mainnet"
+  const timeoutMs = config.timeoutMs ?? DEFAULT_SPARK_TIMEOUT_MS
+  let acquired: Awaited<ReturnType<typeof getOrBuildWarmSparkSdk>>
+  try {
+    acquired = await getOrBuildWarmSparkSdk(config, network, timeoutMs)
+  } catch (error) {
+    return { synced: false, reason: error instanceof Error ? error.message : String(error) }
+  }
+  const { session, sdk } = acquired
+  if (typeof sdk.syncWallet !== "function") return { synced: false, reason: "syncWallet unsupported" }
+  return runSerializedOnWarmSession(session, async () => {
+    const readSyncTimeoutMs = Math.max(timeoutMs, READ_SYNC_TIMEOUT_MS)
+    try {
+      await withTimeout(sdk.syncWallet!({}), readSyncTimeoutMs, "spark syncWallet (background)")
+      session.lastSyncMs = performance.now()
+      return { synced: true }
+    } catch (error) {
+      return { synced: false, reason: error instanceof Error ? error.message : String(error) }
+    }
+  })
+}
+
+/**
+ * #5207: how recently (ms) the warm session must have synced for a send to skip
+ * its own pre-send `syncWallet`. The daemon syncs on a ~20-30s timer, so a guard
+ * of ~60s means a steady-state send never re-syncs on the critical path while a
+ * stale/never-synced session still force-syncs once before sending.
+ */
+const WARM_SYNC_FRESH_WINDOW_MS = 60_000
+
+/**
+ * #5207: shut down all warm Spark sessions (daemon shutdown). Best-effort: each
+ * disconnect is guarded and never throws. After this the registry is empty so a
+ * later acquire rebuilds cleanly.
+ */
+export async function closeWarmSparkSession(): Promise<void> {
+  const sessions = Array.from(warmSparkSessions.values())
+  warmSparkSessions.clear()
+  for (const session of sessions) {
+    const sdk = session.sdk
+    if (sdk?.disconnect) {
+      try {
+        await sdk.disconnect()
+      } catch {
+        // best-effort cleanup; never throw from disconnect.
+      }
+    }
+  }
+}
+
+/**
+ * Test-only: reset the warm-session registry WITHOUT disconnecting (used to keep
+ * unit tests isolated from each other). Not part of the production shutdown path
+ * (use `closeWarmSparkSession` for that, which disconnects).
+ */
+export function __resetWarmSparkSessionsForTest(): void {
+  warmSparkSessions.clear()
+}
+
 /**
  * Build a real Spark backup helper backed by the Breez SDK Spark package.
  *
@@ -599,7 +852,8 @@ async function buildSparkSdk(
  * `createSparkBackupSendTransfer` / `createSparkBackupSweepTransfer` closures.
  */
 export function createSparkBackupHelper(config: SparkBackupAdapterConfig): SparkBackupHelper {
-  const loadModule = config.loadModule ?? loadBreezSparkModule
+  // #5207: SDK acquisition (cold build vs warm reuse) and module loading are now
+  // owned by `acquireSparkSession`, which reads `config.loadModule`.
   const network = config.network ?? "mainnet"
   const timeoutMs = config.timeoutMs ?? DEFAULT_SPARK_TIMEOUT_MS
 
@@ -611,19 +865,17 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
       return helperError(command, "missing wallet seed")
     }
 
-    let sdk: BreezSparkSdk | null = null
+    // #5207: acquire a session — warm (reused singleton, never disconnected per
+    // op) when enabled, else a cold short-lived SDK (disconnected in `release`).
+    // The command body is identical for both; only acquisition + teardown differ.
+    let acquired: Awaited<ReturnType<typeof acquireSparkSession>> | null = null
     try {
-      const mod = await withTimeout(loadModule(), timeoutMs, "spark sdk load")
-      const sdkConfig = mod.defaultConfig(network)
-      sdkConfig.apiKey = config.apiKey
-      sdk = await buildSparkSdk(
-        mod,
-        sdkConfig,
-        { type: "mnemonic", mnemonic: config.mnemonic, passphrase: undefined },
-        config.storageDir,
-        timeoutMs,
-      )
-
+      acquired = await acquireSparkSession(config, network, timeoutMs)
+      const sdk = acquired.sdk
+      // Run the command body. On a warm session, serialize it on the session op
+      // chain so it never races an in-flight send (the SDK is treated as NOT
+      // concurrency-safe). On the cold path it runs directly (its own SDK).
+      const runBody = async (): Promise<WalletCommandResult> => {
       switch (command) {
         case "address": {
           // Static Spark address (receive-only). The audit confirms Spark
@@ -842,6 +1094,10 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
         default:
           return helperError(command, "unsupported command")
       }
+      }
+      return acquired.warm && acquired.session
+        ? await runSerializedOnWarmSession(acquired.session, runBody)
+        : await runBody()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       // #5194: surface the raw helper failure (status/getInfo/sync/etc.) under
@@ -853,13 +1109,9 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
       // Surface missing-credential shape so slice-1 classification can map it.
       return helperError(command, message)
     } finally {
-      if (sdk?.disconnect) {
-        try {
-          await sdk.disconnect()
-        } catch {
-          // best-effort cleanup; never throw from disconnect.
-        }
-      }
+      // #5207: warm sessions are KEPT ALIVE (release is a no-op); cold sessions
+      // disconnect here exactly as before.
+      if (acquired) await acquired.release()
     }
   }
 }
@@ -884,7 +1136,7 @@ function narrowSweepResult(result: SparkBackupSendTransferResult): SparkBackupSw
 }
 
 export function createSparkBackupSweepTransfer(config: SparkBackupAdapterConfig): SparkBackupSweepTransfer {
-  const loadModule = config.loadModule ?? loadBreezSparkModule
+  // #5207: SDK acquisition is owned by `acquireSparkSession` (cold vs warm).
   const network = config.network ?? "mainnet"
   const timeoutMs = config.timeoutMs ?? DEFAULT_SPARK_TIMEOUT_MS
 
@@ -904,27 +1156,28 @@ export function createSparkBackupSweepTransfer(config: SparkBackupAdapterConfig)
       return { ok: false, failureRef: "wallet.spark_backup_transfer.missing_seed" }
     }
 
-    let sdk: BreezSparkSdk | null = null
+    let acquired: Awaited<ReturnType<typeof acquireSparkSession>> | null = null
     try {
-      const mod = await withTimeout(loadModule(), timeoutMs, "spark sdk load")
-      const sdkConfig = mod.defaultConfig(network)
-      sdkConfig.apiKey = config.apiKey
-      sdk = await buildSparkSdk(
-        mod,
-        sdkConfig,
-        { type: "mnemonic", mnemonic: config.mnemonic, passphrase: undefined },
-        config.storageDir,
-        timeoutMs,
-      )
-      return narrowSweepResult(await sendSparkPaymentFromSdk({
-        amountSats,
-        destination,
-        idempotencyKey,
-        prefix: "wallet.spark_backup_transfer",
-        sdk,
-        timeoutMs,
-        allowLnurlPay: false,
-      }))
+      acquired = await acquireSparkSession(config, network, timeoutMs)
+      const sdk = acquired.sdk
+      // The send itself is the only mutating op here; serialize it on the warm
+      // session so it never races a concurrent send/sync (the SDK is treated as
+      // NOT concurrency-safe). Cold path runs directly on its own SDK.
+      const doSend = () =>
+        sendSparkPaymentFromSdk({
+          amountSats,
+          destination,
+          idempotencyKey,
+          prefix: "wallet.spark_backup_transfer",
+          sdk,
+          timeoutMs,
+          allowLnurlPay: false,
+        })
+      const result =
+        acquired.warm && acquired.session
+          ? await runSerializedOnWarmSession(acquired.session, doSend)
+          : await doSend()
+      return narrowSweepResult(result)
     } catch (error) {
       return {
         ok: false,
@@ -934,13 +1187,9 @@ export function createSparkBackupSweepTransfer(config: SparkBackupAdapterConfig)
         ),
       }
     } finally {
-      if (sdk?.disconnect) {
-        try {
-          await sdk.disconnect()
-        } catch {
-          // best-effort cleanup; never throw from disconnect.
-        }
-      }
+      // #5207: warm sessions are KEPT ALIVE (no-op release); cold sessions
+      // disconnect here exactly as before.
+      if (acquired) await acquired.release()
     }
   }
 }
@@ -954,7 +1203,7 @@ export function createSparkBackupSweepTransfer(config: SparkBackupAdapterConfig)
  * closure. The returned refs are digests only.
  */
 export function createSparkBackupSendTransfer(config: SparkBackupAdapterConfig): SparkBackupSendTransfer {
-  const loadModule = config.loadModule ?? loadBreezSparkModule
+  // #5207: SDK acquisition is owned by `acquireSparkSession` (cold vs warm).
   const network = config.network ?? "mainnet"
   const timeoutMs = config.timeoutMs ?? DEFAULT_SPARK_TIMEOUT_MS
 
@@ -974,41 +1223,65 @@ export function createSparkBackupSendTransfer(config: SparkBackupAdapterConfig):
       return { ok: false, failureRef: "wallet.spark_backup_send.missing_seed" }
     }
 
-    let sdk: BreezSparkSdk | null = null
+    let acquired: Awaited<ReturnType<typeof acquireSparkSession>> | null = null
     // Latency audit: process start -> reaching this send closure (cold binary
     // start + CLI parse + option resolution). The rest are per-step deltas.
     sparkTiming("process_to_send_closure", process.uptime() * 1000)
     const tStart = performance.now()
     try {
-      const mod = await withTimeout(loadModule(), timeoutMs, "spark sdk load")
-      sparkTiming("module_load", performance.now() - tStart)
-      const sdkConfig = mod.defaultConfig(network)
-      sdkConfig.apiKey = config.apiKey
+      // #5207: warm → reuse the singleton (no module load / build / disconnect);
+      // cold → load + build a fresh SDK exactly as before. The build/connect
+      // timing labels stay so a regression is still measurable on either path.
       const tBuild = performance.now()
-      sdk = await buildSparkSdk(
-        mod,
-        sdkConfig,
-        { type: "mnemonic", mnemonic: config.mnemonic, passphrase: undefined },
-        config.storageDir,
-        timeoutMs,
-      )
-      sparkTiming("sdk_build_connect", performance.now() - tBuild)
-      if (typeof sdk.syncWallet === "function") {
-        const tSync = performance.now()
-        await withTimeout(sdk.syncWallet({}), timeoutMs, "spark syncWallet").catch(() => undefined)
-        sparkTiming("sync_wallet", performance.now() - tSync)
+      acquired = await acquireSparkSession(config, network, timeoutMs)
+      const sdk = acquired.sdk
+      if (!acquired.warm) {
+        sparkTiming("module_load", performance.now() - tStart)
+        sparkTiming("sdk_build_connect", performance.now() - tBuild)
       }
-      const tSend = performance.now()
-      const result = await sendSparkPaymentFromSdk({
-        amountSats,
-        destination,
-        idempotencyKey,
-        prefix: "wallet.spark_backup_send",
-        sdk,
-        timeoutMs,
-        allowLnurlPay: true,
-      })
-      sparkTiming("send_payment_step", performance.now() - tSend)
+
+      // The pre-send sync + the send are serialized together on the warm session
+      // so the background-sync timer can never interleave between them, and so
+      // two concurrent sends can never run against the same SDK.
+      const runSendWithSync = async (): Promise<SparkBackupSendTransferResult> => {
+        if (typeof sdk.syncWallet === "function") {
+          // #5207: on a warm session, SKIP the pre-send sync when the background
+          // timer synced within the freshness window — the wallet is already
+          // current, so the ~3s sync is off the critical path. A stale/never-synced
+          // warm session (or any cold session) still force-syncs once before
+          // sending, preserving the original safety posture.
+          const session = acquired!.session
+          const recentlySynced =
+            acquired!.warm &&
+            session?.lastSyncMs !== null &&
+            session?.lastSyncMs !== undefined &&
+            performance.now() - session.lastSyncMs < WARM_SYNC_FRESH_WINDOW_MS
+          if (recentlySynced) {
+            sparkTiming("sync_wallet_skipped_warm", 0)
+          } else {
+            const tSync = performance.now()
+            await withTimeout(sdk.syncWallet({}), timeoutMs, "spark syncWallet").catch(() => undefined)
+            sparkTiming("sync_wallet", performance.now() - tSync)
+            if (acquired!.warm && session) session.lastSyncMs = performance.now()
+          }
+        }
+        const tSend = performance.now()
+        const sendResult = await sendSparkPaymentFromSdk({
+          amountSats,
+          destination,
+          idempotencyKey,
+          prefix: "wallet.spark_backup_send",
+          sdk,
+          timeoutMs,
+          allowLnurlPay: true,
+        })
+        sparkTiming("send_payment_step", performance.now() - tSend)
+        return sendResult
+      }
+      const result =
+        acquired.warm && acquired.session
+          ? await runSerializedOnWarmSession(acquired.session, runSendWithSync)
+          : await runSendWithSync()
       sparkTiming("transfer_total_in_closure", performance.now() - tStart)
       return result
     } catch (error) {
@@ -1033,13 +1306,9 @@ export function createSparkBackupSendTransfer(config: SparkBackupAdapterConfig):
         ),
       }
     } finally {
-      if (sdk?.disconnect) {
-        try {
-          await sdk.disconnect()
-        } catch {
-          // best-effort cleanup; never throw from disconnect.
-        }
-      }
+      // #5207: warm sessions are KEPT ALIVE (no-op release); cold sessions
+      // disconnect here exactly as before.
+      if (acquired) await acquired.release()
     }
   }
 }
@@ -1058,6 +1327,10 @@ export function resolveSparkBackupHelper(input: {
   mnemonic?: string | null
   storageDir?: string
   loadModule?: () => Promise<BreezSparkModule>
+  // #5207: when the long-lived daemon resolves the helper it passes
+  // `warmSession: true` so reads reuse the warm session. Undefined keeps the
+  // adapter's default (PYLON_SPARK_WARM_SESSION env, default-off).
+  warmSession?: boolean
 }): SparkBackupHelper | null {
   const env = input.env ?? process.env
   const enabled = env.PYLON_SPARK_BACKUP_ENABLED === "1" || env.PYLON_SPARK_BACKUP_ENABLED === "true"
@@ -1079,6 +1352,7 @@ export function resolveSparkBackupHelper(input: {
     network,
     storageDir: input.storageDir,
     loadModule: input.loadModule,
+    ...(input.warmSession === undefined ? {} : { warmSession: input.warmSession }),
   })
 }
 

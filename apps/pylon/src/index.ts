@@ -64,6 +64,7 @@ import {
   controlTokenPath,
   startControlServer,
   type ControlCommandActions,
+  type ControlCommand,
 } from "./node/control-server"
 import { collectPylonAppleFmStatus } from "./node/apple-fm-status"
 import { createControlSessionActions } from "./node/control-sessions"
@@ -151,6 +152,7 @@ import {
   sweepSparkBackupToMdk,
   withSparkPrimaryWalletBalance,
   writeCachedSparkTarget,
+  type SparkBackupSendProjection,
 } from "./wallet"
 import {
   createSparkBackupHelper,
@@ -160,6 +162,9 @@ import {
   resolveLegacySparkApiKey,
   resolveSparkBackupHelper,
   sparkModuleSelftest,
+  // #5207 warm Spark session (daemon background sync + shutdown).
+  syncWarmSparkSession,
+  closeWarmSparkSession,
 } from "./spark-backup-helper"
 import { resolveNostrIdentityPath } from "./nostr-identity"
 import {
@@ -251,6 +256,46 @@ function startDiscoveryHeartbeat(opts: {
   }
   beat()
   const timer = setInterval(beat, 20_000)
+  timer.unref?.()
+}
+
+// #5207: keep the daemon's WARM Spark session current in the background so a
+// CLI send routed to the daemon skips its own ~3s pre-send `syncWallet`. Inert
+// unless the Spark backup is opt-in enabled (PYLON_SPARK_BACKUP_ENABLED) AND
+// this node has an identity mnemonic — otherwise there is nothing to sync and
+// we never build an SDK or touch the network. The ~20s cadence matches the
+// discovery heartbeat. Each sync is best-effort: a failure is swallowed (the
+// previous synced state stands). The timer is unref'd so it never holds the
+// process open. SAFETY: the mnemonic is read only to seed the warm-session
+// closure and is never logged or returned.
+function startWarmSparkBackgroundSync(
+  state: PylonLocalState,
+  log: (message: string, level?: PylonLogLevel) => void,
+): void {
+  const enabled =
+    Bun.env.PYLON_SPARK_BACKUP_ENABLED === "1" || Bun.env.PYLON_SPARK_BACKUP_ENABLED === "true"
+  if (!enabled) return
+  const storageDir = `${state.paths.home}/wallet/spark-backup/sdk`
+  const network = Bun.env.PYLON_SPARK_BACKUP_NETWORK === "regtest" ? "regtest" : "mainnet"
+  const beat = (): void => {
+    void (async () => {
+      const mnemonic = await readIdentityMnemonicOrNull(state)
+      if (!mnemonic || mnemonic.trim() === "") return
+      const result = await syncWarmSparkSession({
+        apiKey: resolveLegacySparkApiKey(Bun.env),
+        mnemonic,
+        network,
+        storageDir,
+        warmSession: true,
+      })
+      if (!result.synced && result.reason) {
+        // Verbose-only: never surfaced unless --verbose; no payment material.
+        log(`[spark-warm] background sync skipped: ${result.reason}`, "verbose")
+      }
+    })()
+  }
+  beat()
+  const timer = setInterval(beat, 25_000)
   timer.unref?.()
 }
 
@@ -697,6 +742,9 @@ const runHeadlessNode = Effect.gen(function* () {
   const shutdown = yield* Deferred.make<void>()
   const requestShutdown = () => {
     Effect.runFork(Deferred.succeed(shutdown, void 0))
+    // #5207: disconnect the warm Spark session on shutdown (best-effort; never
+    // throws, never blocks the exit — the 2s hard-exit below still wins).
+    void closeWarmSparkSession()
     // GPU/native teardown (3D scene, WebGPU buffers) can wedge; never hold
     // the terminal hostage on exit.
     setTimeout(() => process.exit(0), 2000)
@@ -738,10 +786,36 @@ const runHeadlessNode = Effect.gen(function* () {
   const headlessSessionsWithExternal = wrapSessionsWithExternal(headlessSessionActions, headlessExternalTailer)
   const headlessIntentQueue = createIntentQueue({ persistPath: `${bootstrapSummary.paths.home}/intents.json` })
   const headlessCoordinatorHolder: CoordinatorHolder = { rt: null }
+  // #5207: load local state BEFORE the control server so the warm-session Spark
+  // wallet actions (send + backup-status) can execute against this node's
+  // identity. The same state was already loaded a few lines below; we just hoist
+  // it so the control actions can close over it.
+  const localState = yield* Effect.tryPromise({
+    try: () => ensurePylonLocalState(bootstrapSummary),
+    catch: (error) => new Error(`failed to load Pylon Nostr identity: ${String(error)}`),
+  })
+  // #5207: the daemon hosts the WARM Spark session — the actions pass
+  // `warmSession: true` so the singleton SDK is built once and kept alive across
+  // commands, and the background-sync timer (below) keeps it current.
+  const headlessSparkWalletActions = {
+    walletSparkSend: (input: { destination: string; amountSats?: number; confirmSend?: boolean }) =>
+      runSparkBackupSendForState(localState, {
+        destination: input.destination,
+        ...(input.amountSats === undefined ? {} : { amountSats: input.amountSats }),
+        confirmSend: input.confirmSend === true,
+        warmSession: true,
+      }),
+    walletSparkBackupStatus: (input: { showLocalTarget?: boolean }) =>
+      runSparkBackupStatusForState(localState, {
+        ...(input.showLocalTarget === undefined ? {} : { showLocalTarget: input.showLocalTarget }),
+        warmSession: true,
+      }),
+  }
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
     actions: {
       ...nodeWalletActions,
+      ...headlessSparkWalletActions,
       ...(headlessAssignmentActions
         ? {
             assignmentsPoll: () => headlessAssignmentActions.poll(),
@@ -772,11 +846,15 @@ const runHeadlessNode = Effect.gen(function* () {
   // CL-36: close the self-driving loop on the headless node (the launchd path).
   headlessCoordinatorHolder.rt = startCoordinator(headlessIntentQueue, headlessSessionActions)
 
-  const localState = yield* Effect.tryPromise({
-    try: () => ensurePylonLocalState(bootstrapSummary),
-    catch: (error) => new Error(`failed to load Pylon Nostr identity: ${String(error)}`),
-  })
   yield* logMessage(runtime, "info", `[Identity] Pylon Nostr npub: ${localState.identity.npub}`, { transient: true })
+
+  // #5207: keep the warm Spark session current in the background so a CLI send
+  // routed through the daemon skips its own pre-send sync. Gated on the Spark
+  // backup being opt-in enabled AND this node having an identity mnemonic — when
+  // neither is true the timer is inert (no SDK build, no network). The ~20s
+  // cadence matches the discovery heartbeat. Best-effort: a failed sync is
+  // swallowed (it leaves the previous synced state intact).
+  yield* Effect.sync(() => startWarmSparkBackgroundSync(localState, (message, level) => logToUi(message, level)))
 
   const presenceBaseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
   const presenceClientOptions = presenceClientOptionsFromEnv({
@@ -995,15 +1073,21 @@ async function readIdentityMnemonicOrNull(state: PylonLocalState): Promise<strin
 
 async function resolveSparkBackupOptions(
   state: PylonLocalState,
-  input: { enabled?: boolean; showLocalTarget?: boolean } = {},
+  // #5207: `warmSession` lets the long-lived daemon build helper/transfer
+  // closures that REUSE the process-level warm Spark session (skip the cold
+  // build + per-op disconnect). Undefined keeps the cold path (one-shot CLI),
+  // which `createSparkBackup*` then resolves from PYLON_SPARK_WARM_SESSION.
+  input: { enabled?: boolean; showLocalTarget?: boolean; warmSession?: boolean } = {},
 ) {
   const mnemonic = await readIdentityMnemonicOrNull(state)
   const storageDir = `${state.paths.home}/wallet/spark-backup/sdk`
   const network = Bun.env.PYLON_SPARK_BACKUP_NETWORK === "regtest" ? "regtest" : "mainnet"
+  const warmSession = input.warmSession
   const helper = resolveSparkBackupHelper({
     env: Bun.env,
     mnemonic,
     storageDir,
+    ...(warmSession === undefined ? {} : { warmSession }),
   })
   const transfer = mnemonic
     ? createSparkBackupSweepTransfer({
@@ -1011,6 +1095,7 @@ async function resolveSparkBackupOptions(
         mnemonic,
         network,
         storageDir,
+        ...(warmSession === undefined ? {} : { warmSession }),
       })
     : null
   const sendTransfer = mnemonic
@@ -1019,6 +1104,7 @@ async function resolveSparkBackupOptions(
         mnemonic,
         network,
         storageDir,
+        ...(warmSession === undefined ? {} : { warmSession }),
       })
     : null
   const cachedAddress = await readCachedSparkTarget(state.paths)
@@ -1035,6 +1121,157 @@ async function resolveSparkBackupOptions(
     // (#5078) — the status path must reflect that, like the helper resolver and
     // legacy-migration path already do.
     embeddedCredentialAvailable: true,
+  }
+}
+
+// #5207: the core Spark send, extracted so BOTH the one-shot CLI (cold path)
+// and the daemon control action (warm path) run identical send + ledger logic.
+// Returns the `sendWithSparkBackup` projection; the only behavioral knob is
+// `warmSession`, which selects cold-build-per-op vs warm-session reuse. The
+// idempotency-key / TransferId / send-pending / indeterminate logic all live in
+// `sendWithSparkBackup` + the transfer closure and are unchanged.
+async function runSparkBackupSendForState(
+  state: PylonLocalState,
+  input: { destination?: string; amountSats?: number; confirmSend: boolean; warmSession?: boolean },
+): Promise<SparkBackupSendProjection> {
+  const sparkBackupOptions = await resolveSparkBackupOptions(state, {
+    enabled: true,
+    ...(input.warmSession === undefined ? {} : { warmSession: input.warmSession }),
+  })
+  const result = await sendWithSparkBackup({
+    env: sparkBackupOptions.env,
+    enabled: true,
+    embeddedCredentialAvailable: true,
+    helper: sparkBackupOptions.helper,
+    transfer: sparkBackupOptions.sendTransfer,
+    amountSats: input.amountSats,
+    destination: input.destination,
+    confirmSend: input.confirmSend,
+  })
+  if (result.state === "sent") {
+    for (const receiptRef of result.publicReceiptRefs) {
+      await appendLedgerEvent(state.paths, {
+        kind: "spark-wallet-send",
+        ref: receiptRef,
+        data: {
+          receiptRef,
+          rail: "spark_backup",
+          amountSats: result.amountSats,
+          feeSats: result.feeSats,
+          destinationRef: result.destinationRef,
+          sparkPaymentRef: result.sparkPaymentRef,
+          transferRef: result.transferRef,
+          method: result.method,
+          status: result.status,
+        },
+      })
+    }
+  }
+  return result
+}
+
+// #5207: the core backup-status read, extracted so BOTH the one-shot CLI (cold)
+// and the daemon control action (warm) build the identical public-safe body.
+async function runSparkBackupStatusForState(
+  state: PylonLocalState,
+  input: { showLocalTarget?: boolean; warmSession?: boolean },
+): Promise<Record<string, unknown>> {
+  const showLocalTarget = input.showLocalTarget === true
+  const sparkBackupOptions = await resolveSparkBackupOptions(state, {
+    enabled: true,
+    showLocalTarget,
+    ...(input.warmSession === undefined ? {} : { warmSession: input.warmSession }),
+  })
+  const projection = await classifySparkBackupReceive(sparkBackupOptions)
+  if (sparkBackupOptions.helper !== undefined) {
+    try {
+      const detected = await detectSparkBackupBalance(sparkBackupOptions.helper)
+      projection.detectedBalanceSats = detected.detectedBalanceSats
+      projection.unclaimedDepositCount = detected.unclaimedDepositCount
+      projection.claimableHtlcCount = detected.claimableHtlcCount
+      projection.claimableHtlcSats = detected.claimableHtlcSats
+      if (detected.balanceRefreshing) {
+        projection.balanceRefreshing = true
+        if (!projection.blockerRefs.includes("blocker.wallet.spark_backup.balance_refreshing")) {
+          projection.blockerRefs = [...projection.blockerRefs, "blocker.wallet.spark_backup.balance_refreshing"]
+        }
+      }
+    } catch {
+      // Best-effort: keep the classify projection as-is on any failure.
+    }
+  }
+  const sweep = recommendSparkSweep({
+    claimableHtlcCount: projection.claimableHtlcCount,
+    claimableHtlcSats: projection.claimableHtlcSats,
+    detectedBalanceSats: projection.detectedBalanceSats,
+    unclaimedDepositCount: projection.unclaimedDepositCount,
+  })
+  const body: Record<string, unknown> = {
+    ok: projection.state !== "credential-missing" && projection.state !== "helper-unavailable",
+    projection,
+    sweep,
+  }
+  if (showLocalTarget) {
+    const cached = await readCachedSparkTarget(state.paths)
+    if (cached) {
+      body.localTarget = cached
+      body.localTargetNote = "LOCAL/PRIVATE: do not share, log, or post this raw target."
+    }
+  }
+  return body
+}
+
+// #5207: best-effort route a one-shot CLI command through a RUNNING Pylon
+// daemon's loopback control server so it executes on the daemon's WARM Spark
+// session (skips the ~4s cold build + sync). Returns the command `result` on
+// success, or null when no daemon is reachable / the route fails — the caller
+// then falls back to the local cold path. Loopback + bearer-token gated, the
+// same trust boundary the daemon already uses for money commands.
+async function routeWalletCommandThroughDaemon(
+  state: PylonLocalState,
+  command: ControlCommand,
+): Promise<unknown | null> {
+  // Opt-out escape hatch for environments that must force the local path.
+  if (Bun.env.PYLON_DISABLE_DAEMON_ROUTING === "1") return null
+  let token: string
+  try {
+    const tokenPath = controlTokenPath(state.paths.home)
+    const file = Bun.file(tokenPath)
+    if (!(await file.exists())) return null
+    token = (await file.text()).trim()
+    if (token.length < 16) return null
+  } catch {
+    return null
+  }
+  const host = Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1"
+  const port = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
+  const base = `http://${host}:${port}`
+  // First confirm a daemon is actually listening (fast health probe). A send is
+  // long-running, so only the health probe is tightly bounded; the command
+  // itself is given the SDK's own generous completion budget.
+  try {
+    const health = await fetch(`${base}/health`, {
+      signal: AbortSignal.timeout(750),
+    })
+    if (!health.ok) return null
+  } catch {
+    return null
+  }
+  try {
+    const response = await fetch(`${base}/command`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(command),
+    })
+    const json = (await response.json()) as { ok?: boolean; result?: unknown; error?: string }
+    if (!response.ok || json.ok !== true) return null
+    return json.result ?? null
+  } catch {
+    // A transport failure mid-send is ambiguous, but the daemon owns the warm
+    // session and the send's own idempotency key; we return null so the caller
+    // falls back. (See risk note in the audit/report: a fallback re-send reuses
+    // the same daily idempotency key, so the SDK dedupes rather than double-pays.)
+    return null
   }
 }
 
@@ -2436,52 +2673,21 @@ async function main() {
       if (command === "backup-status") {
         const sparkOptions = parsePsionicOptions(walletArgs)
         const showLocalTarget = sparkOptions["show-local-target"] === true
-        const sparkBackupOptions = await resolveSparkBackupOptions(state, { enabled: true, showLocalTarget })
-        const projection = await classifySparkBackupReceive(sparkBackupOptions)
-        // #5166: classify only confirms the address; it never read the actual
-        // balance, so detectedBalanceSats was always null here. Read the real
-        // balance + pending-claimable HTLCs (read-only) and merge them in, so a
-        // cautious owner can SEE offline-received funds before claiming.
-        if (sparkBackupOptions.helper !== undefined) {
-          try {
-            const detected = await detectSparkBackupBalance(sparkBackupOptions.helper)
-            projection.detectedBalanceSats = detected.detectedBalanceSats
-            projection.unclaimedDepositCount = detected.unclaimedDepositCount
-            projection.claimableHtlcCount = detected.claimableHtlcCount
-            projection.claimableHtlcSats = detected.claimableHtlcSats
-            // #5197: flag a possibly-stale fallback balance as refreshing.
-            if (detected.balanceRefreshing) {
-              projection.balanceRefreshing = true
-              if (!projection.blockerRefs.includes("blocker.wallet.spark_backup.balance_refreshing")) {
-                projection.blockerRefs = [...projection.blockerRefs, "blocker.wallet.spark_backup.balance_refreshing"]
-              }
-            }
-          } catch {
-            // Best-effort: keep the classify projection as-is on any failure.
-          }
-        }
-        const sweep = recommendSparkSweep({
-          claimableHtlcCount: projection.claimableHtlcCount,
-          claimableHtlcSats: projection.claimableHtlcSats,
-          detectedBalanceSats: projection.detectedBalanceSats,
-          unclaimedDepositCount: projection.unclaimedDepositCount,
-        })
-        const body: Record<string, unknown> = {
-          ok: projection.state !== "credential-missing" && projection.state !== "helper-unavailable",
-          projection,
-          sweep,
-        }
-        if (showLocalTarget) {
-          const cached = await readCachedSparkTarget(state.paths)
-          if (cached) {
-            body.localTarget = cached
-            body.localTargetNote = "LOCAL/PRIVATE: do not share, log, or post this raw target."
-          }
+        // #5207: prefer a RUNNING daemon's warm session so the read skips the
+        // ~4s cold build + sync. The daemon builds the identical body. Falls
+        // back to the local cold read when no daemon is reachable.
+        let body =
+          ((await routeWalletCommandThroughDaemon(state, {
+            type: "wallet.spark_backup_status",
+            showLocalTarget,
+          })) as Record<string, unknown> | null) ?? null
+        if (body === null) {
+          body = await runSparkBackupStatusForState(state, { showLocalTarget })
         }
         process.stdout.write(`${JSON.stringify(body, null, 2)}\n`)
         // Exit explicitly: backup-status opens the Spark SDK,
         // which keeps a background connection alive (#5162).
-        process.exit(body.ok ? 0 : 1)
+        process.exit(body.ok === true ? 0 : 1)
       }
       if (command === "backup-claim") {
         // #5166 (the receive bug): a Lightning payment to this node's Spark
@@ -2537,35 +2743,30 @@ async function main() {
             optionString(options, "destination") ??
             optionString(options, "payment-request") ??
             optionString(options, "lightning-address")
-          const sparkBackupOptions = await resolveSparkBackupOptions(state, { enabled: true })
-          const result = await sendWithSparkBackup({
-            env: sparkBackupOptions.env,
-            enabled: true,
-            embeddedCredentialAvailable: true,
-            helper: sparkBackupOptions.helper,
-            transfer: sparkBackupOptions.sendTransfer,
-            amountSats: amount,
-            destination,
-            confirmSend: options["confirm-send"] === true,
-          })
-          if (result.state === "sent") {
-            for (const receiptRef of result.publicReceiptRefs) {
-              await appendLedgerEvent(state.paths, {
-                kind: "spark-wallet-send",
-                ref: receiptRef,
-                data: {
-                  receiptRef,
-                  rail: "spark_backup",
-                  amountSats: result.amountSats,
-                  feeSats: result.feeSats,
-                  destinationRef: result.destinationRef,
-                  sparkPaymentRef: result.sparkPaymentRef,
-                  transferRef: result.transferRef,
-                  method: result.method,
-                  status: result.status,
-                },
-              })
-            }
+          const confirmSend = options["confirm-send"] === true
+          // #5207: prefer a RUNNING daemon's warm Spark session (skips the ~4s
+          // cold build + sync). Only route the actual send (confirmSend) and only
+          // with a destination — dry-run / consent-prompt projections stay local
+          // and free so they never depend on a daemon being up. The daemon
+          // executes the identical `sendWithSparkBackup` + ledger append and
+          // returns the same projection, so output is byte-identical.
+          let result: SparkBackupSendProjection | null = null
+          if (confirmSend && typeof destination === "string" && destination.trim() !== "") {
+            const routed = await routeWalletCommandThroughDaemon(state, {
+              type: "wallet.spark_send",
+              destination,
+              ...(amount === undefined ? {} : { amountSats: amount }),
+              confirmSend,
+            })
+            if (routed !== null) result = routed as SparkBackupSendProjection
+          }
+          // Fallback (no daemon, or routing failed): the existing local cold path.
+          if (result === null) {
+            result = await runSparkBackupSendForState(state, {
+              destination,
+              amountSats: amount,
+              confirmSend,
+            })
           }
           process.stdout.write(`${JSON.stringify({ ok: result.state === "sent", send: result }, null, 2)}\n`)
           // Spark SDK sessions can keep background handles alive (#5162).

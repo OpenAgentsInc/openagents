@@ -274,6 +274,77 @@ describe("control protocol", () => {
     )
   })
 
+  test("#5207 wallet.spark_send / wallet.spark_backup_status route to the warm-session actions (and report unavailability)", async () => {
+    const calls: Array<Record<string, unknown>> = []
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: {
+              ...stubActions(calls),
+              walletSparkSend: async (input: { destination: string; amountSats?: number; confirmSend?: boolean }) => {
+                calls.push({ type: "spark_send", ...input })
+                return { ok: true, state: "sent" }
+              },
+              walletSparkBackupStatus: async (input: { showLocalTarget?: boolean }) => {
+                calls.push({ type: "spark_backup_status", ...input })
+                return { ok: true, projection: { state: "ready" } }
+              },
+            },
+            port: 0,
+          })
+
+          const sent = yield* Effect.promise(() =>
+            sendControlCommand(server.url, "test-token-0123456789abcdef", {
+              type: "wallet.spark_send",
+              destination: "lnbc100n1rawpaymentrequest",
+              amountSats: 100,
+              confirmSend: true,
+            }),
+          )
+          expect(sent).toEqual({ ok: true, state: "sent" })
+          expect(calls).toContainEqual({
+            type: "spark_send",
+            destination: "lnbc100n1rawpaymentrequest",
+            amountSats: 100,
+            confirmSend: true,
+          })
+
+          const status = yield* Effect.promise(() =>
+            sendControlCommand(server.url, "test-token-0123456789abcdef", {
+              type: "wallet.spark_backup_status",
+              showLocalTarget: false,
+            }),
+          )
+          expect(status).toEqual({ ok: true, projection: { state: "ready" } })
+          expect(calls).toContainEqual({ type: "spark_backup_status", showLocalTarget: false })
+
+          // A node without the warm-session actions reports unavailability (the
+          // CLI then falls back to its local cold path).
+          const bare = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: stubActions(calls),
+            port: 0,
+          })
+          const failure = yield* Effect.promise(() =>
+            sendControlCommand(bare.url, "test-token-0123456789abcdef", {
+              type: "wallet.spark_send",
+              destination: "lnbc100n1rawpaymentrequest",
+              amountSats: 100,
+              confirmSend: true,
+            }).then(
+              () => null,
+              (error: unknown) => (error instanceof Error ? error.message : String(error)),
+            ),
+          )
+          expect(failure).toMatch(/unavailable/)
+        }),
+      ),
+    )
+  })
+
   test("apple_fm.status advertises capability only after ready live health", async () => {
     let healthCalls = 0
     await Effect.runPromise(

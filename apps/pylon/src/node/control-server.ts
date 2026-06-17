@@ -55,6 +55,15 @@ export type ControlCommand =
   // CL-23 read-only balance/earnings: clients fetch the live MDK wallet status
   // (balance + readiness). No spend authority — strictly a projection.
   | { type: "wallet.status" }
+  // #5207 warm-session routing: the LOCAL one-shot CLI (`pylon wallet send
+  // --rail spark`) routes its Spark send through the running daemon's WARM
+  // session so it skips the ~4s cold build + sync. Loopback + token gated, same
+  // trust boundary as the other node-side money commands. `confirmSend` carries
+  // the explicit `--confirm-send` consent; the raw destination rides the
+  // loopback API (local only), exactly as the existing money commands do.
+  | { type: "wallet.spark_send"; destination: string; amountSats?: number; confirmSend?: boolean }
+  // #5207: route `pylon wallet backup-status` through the warm session too.
+  | { type: "wallet.spark_backup_status"; showLocalTarget?: boolean }
   | { type: "apple_fm.status" }
   | AppleFmSessionStartCommand
   | { type: "assignments.poll" }
@@ -94,6 +103,13 @@ export interface ControlCommandActions {
   // CL-23: read-only live wallet status (balance + readiness). Optional so
   // nodes without a wallet runner simply report it as unavailable.
   walletStatus?: () => Promise<unknown>
+  // #5207: execute a Spark send on the node's WARM session and append the
+  // ledger event node-side (so the CLI does not double-log). Returns the same
+  // projection the local cold path returns, so the CLI prints it byte-identical.
+  walletSparkSend?: (input: { destination: string; amountSats?: number; confirmSend?: boolean }) => Promise<unknown>
+  // #5207: read backup-status (balance + sweep recommendation) off the warm
+  // session, returning the same body shape the local cold path prints.
+  walletSparkBackupStatus?: (input: { showLocalTarget?: boolean }) => Promise<unknown>
   appleFmStatus?: () => Promise<unknown>
   assignmentsPoll?: () => Promise<unknown>
   assignmentsAccept?: (leaseRef: string) => Promise<unknown>
@@ -233,6 +249,18 @@ export const startControlServer = (
         case "wallet.status":
           if (!options.actions.walletStatus) throw new Error("wallet status unavailable on this node")
           return options.actions.walletStatus()
+        case "wallet.spark_send":
+          if (!options.actions.walletSparkSend) throw new Error("spark send unavailable on this node")
+          return options.actions.walletSparkSend({
+            destination: command.destination,
+            ...(command.amountSats === undefined ? {} : { amountSats: command.amountSats }),
+            ...(command.confirmSend === undefined ? {} : { confirmSend: command.confirmSend }),
+          })
+        case "wallet.spark_backup_status":
+          if (!options.actions.walletSparkBackupStatus) throw new Error("spark backup-status unavailable on this node")
+          return options.actions.walletSparkBackupStatus({
+            ...(command.showLocalTarget === undefined ? {} : { showLocalTarget: command.showLocalTarget }),
+          })
         case "apple_fm.status":
           if (!options.actions.appleFmStatus) throw new Error("Apple FM status unavailable on this node")
           return options.actions.appleFmStatus()
