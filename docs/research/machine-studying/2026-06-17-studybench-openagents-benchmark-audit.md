@@ -33,6 +33,13 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   `hf://jacobli/studybench/openclaw`, preserves CC-BY-4.0 and upstream MIT
   attribution refs, and rejects vendored upstream row payloads from calibration
   manifests.
+- 2026-06-17: #5286 / MSB-MVP-04 complete. The first public-retained
+  `openagents_studybench.v0` fixture package now has 10 launch-focused JSONL
+  rows covering launch claims, Tassadar projection truth, settlement truth,
+  Customer #1 evidence, Forge Coder repo memory, Blueprint/Probe/GEPA
+  boundaries, Pylon launch priority, schema adaptation, answer-versus-patch
+  mode, and product-promise/marketplace gates. Probe tests validate the rows as
+  an `openagents.studybench_dataset_package.v0`.
 
 ## Short Answer
 
