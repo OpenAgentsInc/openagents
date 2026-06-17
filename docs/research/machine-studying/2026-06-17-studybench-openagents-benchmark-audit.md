@@ -27,6 +27,12 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   `openagents.repo_corpus_evidence_span.v0` helpers for deterministic repo
   corpus manifests, exclusion-aware file admission, stable manifest and span
   hashes, and line-numbered StudyBench-style evidence-span extraction.
+- 2026-06-17: #5285 / MSB-MVP-03 complete. Probe runtime now exports an
+  external StudyBench calibration manifest for
+  `hf://jacobli/studybench/dspy` and
+  `hf://jacobli/studybench/openclaw`, preserves CC-BY-4.0 and upstream MIT
+  attribution refs, and rejects vendored upstream row payloads from calibration
+  manifests.
 
 ## Short Answer
 
