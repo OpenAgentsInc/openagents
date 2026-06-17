@@ -33,6 +33,15 @@ proper 3D MMO world.
   selection, and verified the linked proof drawer appears.
 - `openagents#5221` is the final tracker closeout for the completed issue
   sequence.
+- `OpenAgentsInc/three-effect@2c7b2ad` is the current camera-control audit fix:
+  the WASD controller now owns pointer-lock mouse deltas, uses
+  `document.pointerLockElement` as well as the Three control flag when deciding
+  whether mouselook is active, and emits throttled
+  `[three-effect:wasd_mouselook]` console samples for lock/unlock/mousemove.
+- `/tassadar` pins that commit and enables controller debug logging for the
+  live scene, so a locked cursor with no camera rotation can be diagnosed from
+  the browser console by checking whether mousemove samples arrive and whether
+  their `movementX` / `movementY` values are non-zero.
 
 ## References Read
 

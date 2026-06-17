@@ -487,6 +487,7 @@ const makeClass = (): CustomElementConstructor =>
           eyeHeight: 1.65,
           movementSpeed: 4.5,
           sprintMultiplier: 1.8,
+          debug: true,
           onLockChange: locked => {
             this.setAttribute(
               'data-pointer-lock',

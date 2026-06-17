@@ -239,6 +239,7 @@ describe('tassadarRunView page wiring', () => {
       eyeHeight: 1.65,
       movementSpeed: 4.5,
       sprintMultiplier: 1.8,
+      debug: true,
     })
     expect(options.walkController).not.toHaveProperty('lockSelector')
     expect(
