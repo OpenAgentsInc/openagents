@@ -159,6 +159,14 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   `docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md`;
   payment status:
   `docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md`.
+- **🧰 Pylon wallet self-recovery (#5167) fixed.** Field report: an unclean MDK
+  agent-wallet shutdown could leave `~/.mdk-wallet/daemon.pid` pointing at a
+  dead process, stranding `wallet report-readiness` until an operator manually
+  deleted the pidfile. Pylon now checks that pidfile before every MDK wallet
+  command: malformed/dead-PID files are reclaimed, live PIDs (including EPERM
+  cases) are honored, and no wallet/payment material is read or projected.
+  Regression coverage: `apps/pylon/tests/wallet.test.ts`
+  (`reclaimStaleMdkDaemonPidfile`). Full Pylon suite: 1199 pass / 3 skip.
 
 ## A. Short-term bug fixes — ✅ all closed (16th)
 

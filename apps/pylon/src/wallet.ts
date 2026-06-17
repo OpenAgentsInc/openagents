@@ -1,6 +1,8 @@
-import { readFile, writeFile } from "node:fs/promises"
+import { readFile, unlink, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { createHash, randomUUID } from "node:crypto"
+import { homedir } from "node:os"
+import { join } from "node:path"
 import type { PylonPaths } from "./state"
 import { assertPublicProjectionSafe, ensureStateDirectories } from "./state"
 import { toSatNumber } from "./sat-number"
@@ -205,6 +207,13 @@ export type WalletNetworkOptions = {
   pylonRef: string
 }
 
+export type MdkDaemonPidfileReclaimResult = {
+  pid: number | null
+  pidfilePath: string
+  reason: "absent" | "dead_pid" | "invalid_json" | "invalid_pid" | "live_pid" | "unlink_failed"
+  reclaimed: boolean
+}
+
 export type LedgerEvent = {
   eventId: string
   kind: string
@@ -214,6 +223,7 @@ export type LedgerEvent = {
 }
 
 export const defaultWalletCommandRunner: WalletCommandRunner = async (args) => {
+  await reclaimStaleMdkDaemonPidfile()
   const proc = Bun.spawn(["npx", "--yes", "@moneydevkit/agent-wallet@latest", ...args], {
     stdout: "pipe",
     stderr: "pipe",
@@ -233,6 +243,53 @@ export const defaultWalletCommandRunner: WalletCommandRunner = async (args) => {
     timeout,
   ])
   return { exitCode, stdout, stderr }
+}
+
+export async function reclaimStaleMdkDaemonPidfile(options: {
+  homeDir?: string
+  isProcessLive?: (pid: number) => boolean
+} = {}): Promise<MdkDaemonPidfileReclaimResult> {
+  const pidfilePath = join(options.homeDir ?? process.env.HOME ?? homedir(), ".mdk-wallet", "daemon.pid")
+
+  if (!existsSync(pidfilePath)) {
+    return { pid: null, pidfilePath, reason: "absent", reclaimed: false }
+  }
+
+  let pid: number | null = null
+  let reason: MdkDaemonPidfileReclaimResult["reason"] = "invalid_json"
+
+  try {
+    const parsed = JSON.parse(await readFile(pidfilePath, "utf8")) as { pid?: unknown }
+    if (typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && parsed.pid > 0) {
+      pid = parsed.pid
+      const isLive = options.isProcessLive ?? ((value: number) => {
+        try {
+          process.kill(value, 0)
+          return true
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code
+          return code === "EPERM"
+        }
+      })
+
+      if (isLive(pid)) {
+        return { pid, pidfilePath, reason: "live_pid", reclaimed: false }
+      }
+
+      reason = "dead_pid"
+    } else {
+      reason = "invalid_pid"
+    }
+  } catch {
+    reason = "invalid_json"
+  }
+
+  try {
+    await unlink(pidfilePath)
+    return { pid, pidfilePath, reason, reclaimed: true }
+  } catch {
+    return { pid, pidfilePath, reason: "unlink_failed", reclaimed: false }
+  }
 }
 
 export const defaultLegacySparkCommandRunner: LegacySparkCommandRunner = async (args) => {

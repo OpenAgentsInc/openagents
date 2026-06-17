@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { describe, expect, test } from "bun:test"
@@ -17,6 +17,7 @@ import {
   receiveWithFallback,
   receiveWithMdk,
   recommendSparkSweep,
+  reclaimStaleMdkDaemonPidfile,
   reportWalletReadiness,
   requestPayoutTargetAdmission,
   sendWithMdk,
@@ -52,6 +53,63 @@ const runner =
   }
 
 describe("MDK wallet readiness and ledger", () => {
+  test("reclaims stale MDK daemon pidfiles before wallet commands", async () => {
+    await withTempHome(async (home) => {
+      const pidfile = join(home, ".mdk-wallet", "daemon.pid")
+      await mkdir(join(home, ".mdk-wallet"), { recursive: true })
+      await Bun.write(pidfile, JSON.stringify({ pid: 424242, port: 3456 }))
+
+      const result = await reclaimStaleMdkDaemonPidfile({
+        homeDir: home,
+        isProcessLive: () => false,
+      })
+
+      expect(result).toMatchObject({
+        pid: 424242,
+        reason: "dead_pid",
+        reclaimed: true,
+      })
+      expect(await Bun.file(pidfile).exists()).toBe(false)
+    })
+  })
+
+  test("keeps MDK daemon pidfiles for live processes", async () => {
+    await withTempHome(async (home) => {
+      const pidfile = join(home, ".mdk-wallet", "daemon.pid")
+      await mkdir(join(home, ".mdk-wallet"), { recursive: true })
+      await Bun.write(pidfile, JSON.stringify({ pid: 424242, port: 3456 }))
+
+      const result = await reclaimStaleMdkDaemonPidfile({
+        homeDir: home,
+        isProcessLive: () => true,
+      })
+
+      expect(result).toMatchObject({
+        pid: 424242,
+        reason: "live_pid",
+        reclaimed: false,
+      })
+      expect(await Bun.file(pidfile).exists()).toBe(true)
+    })
+  })
+
+  test("reclaims malformed MDK daemon pidfiles", async () => {
+    await withTempHome(async (home) => {
+      const pidfile = join(home, ".mdk-wallet", "daemon.pid")
+      await mkdir(join(home, ".mdk-wallet"), { recursive: true })
+      await Bun.write(pidfile, "{not-json")
+
+      const result = await reclaimStaleMdkDaemonPidfile({ homeDir: home })
+
+      expect(result).toMatchObject({
+        pid: null,
+        reason: "invalid_json",
+        reclaimed: true,
+      })
+      expect(await Bun.file(pidfile).exists()).toBe(false)
+    })
+  })
+
   test("classifies daemon offline and unknown balance separately", async () => {
     const offline = await classifyMdkWallet(runner({ balance: { exitCode: 1, stderr: "daemon unavailable" } }))
     const unknown = await classifyMdkWallet(runner({ balance: { stdout: { ok: true } } }))

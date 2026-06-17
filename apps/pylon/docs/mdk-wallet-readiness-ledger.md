@@ -58,6 +58,25 @@ is known and positive, the wallet is not a mnemonic-only restore, and
 `blocker.wallet.mdk_port_unset` because MDK daemon restarts can fall back to the
 default port and cross-talk with the wrong wallet.
 
+## Daemon Pidfile Recovery
+
+Before invoking `@moneydevkit/agent-wallet`, Pylon now checks the local
+`~/.mdk-wallet/daemon.pid` file. A pidfile is honored only when it names a live
+process. If the file is malformed or points at a dead PID, Pylon removes it and
+lets the MDK wallet command start normally.
+
+This is deliberately narrow:
+
+- live PIDs are left untouched;
+- PIDs that exist but cannot be signaled because of permissions are treated as
+  live;
+- only the MDK agent-wallet pidfile path is reclaimed;
+- no wallet material, payment ids, invoices, hashes, preimages, or mnemonics are
+  read or projected.
+
+Regression coverage lives in `apps/pylon/tests/wallet.test.ts`
+(`reclaimStaleMdkDaemonPidfile`).
+
 ## Ledger
 
 `ledger.jsonl` is append-only and idempotent by `eventId`. The current
