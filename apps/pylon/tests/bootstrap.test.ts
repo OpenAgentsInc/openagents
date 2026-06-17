@@ -6,6 +6,7 @@ import {
   parseBootstrapArgs,
   resolvePylonHome,
 } from "../src/bootstrap"
+import { PYLON_VERSION } from "../src/version"
 
 describe("Pylon bootstrap release surface", () => {
   test("supports macOS and Linux only for v0.3", () => {
@@ -31,7 +32,9 @@ describe("Pylon bootstrap release surface", () => {
     const summary = createBootstrapSummary(options, { PYLON_HOME: "/tmp/pylon-test" }, "darwin")
 
     expect(summary.packageName).toBe("@openagentsinc/pylon")
-    expect(summary.version).toBe("1.0.0-rc.12")
+    // Track the authoritative version constant, not a hardcoded string that goes
+    // stale on every cut (the rc.13 drift trap).
+    expect(summary.version).toBe(PYLON_VERSION)
     expect(summary.bin).toBe("pylon")
     expect(summary.platform.supportedTargets).toEqual(["darwin", "linux"])
     expect(summary.bootstrap.registerOpenAgents).toBe(true)
