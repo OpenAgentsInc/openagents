@@ -1313,6 +1313,27 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   `workers/api/src/x-claim-reward-eligibility-routes.test.ts`, and the
   ledger/ratchet in `scripts/check-zero-debt-architecture.mjs`.
 
+## Customer #1 Cohort Public Projection
+
+- Customer #1 cohort source rows are private operator evidence by default.
+  Public surfaces may receive only an explicit projection that emits opaque
+  cohort refs, generic display labels, state, counts, blocker refs, caveat refs,
+  `generatedAt`, and the shared public-projection staleness contract.
+- The Customer #1 cohort projection must reject raw prompts, shell logs, private
+  repo or local filesystem refs, URLs, email addresses, provider payloads,
+  provider secrets, wallet material, payment hashes/preimages, invoices, and
+  customer private data before schema stripping can hide unknown fields.
+- A `loop_completed` cohort row counts toward D3 completion only when it has
+  both a completion-bundle ref and a privacy-review ref. Missing evidence must
+  emit blocker refs rather than silently count, and an empty or partial cohort
+  must not fabricate Customer #1 completion progress.
+- The projection is `evidence_only`. It must not grant runtime authority,
+  deployment authority, merge authority, accepted-work authority, payout or
+  settlement authority, provider authority, or a broad public customer-success
+  claim.
+- Regression coverage for this policy lives in
+  `workers/api/src/customer-one-cohort-projection.test.ts`.
+
 ## Mullet Simulation Runner Authority
 
 - The `/mullet` surface and `/api/mullet/*` routes are private operator-only

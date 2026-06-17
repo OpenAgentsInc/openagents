@@ -91,9 +91,12 @@ signed recut.
   evidence, and an explicit awaiting-source gate. **D3.3 (#5203) shipped:** the
   cohort-row source contract now lives at
   `docs/blitz/forge/2026-06-17-customer-one-cohort-source-contract.md`.
-  Remaining D3 tail: implement storage/projection wiring, record cohort rows,
-  and collect at least three real loop-completion bundles before closing
-  #5098/#5104.
+  **D3.4 (#5204) shipped:** `workers/api/src/customer-one-cohort-projection.ts`
+  now projects private/operator cohort rows into public-safe, evidence-only rows
+  with regression coverage in
+  `workers/api/src/customer-one-cohort-projection.test.ts`. Remaining D3 tail:
+  implement storage/route/UI wiring, record cohort rows, and collect at least
+  three real loop-completion bundles before closing #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
