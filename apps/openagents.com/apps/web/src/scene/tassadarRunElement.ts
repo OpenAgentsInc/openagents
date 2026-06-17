@@ -52,12 +52,11 @@ const HOST_STYLE =
   '.overlay p{margin:0;max-width:48ch;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.34);padding:0.8rem 1rem;font-size:0.95rem;line-height:1.6;color:rgba(241,239,232,0.64);backdrop-filter:blur(12px)}' +
   '.overlay .label{display:block;margin-bottom:0.4rem;font-size:0.7rem;letter-spacing:0.08em;' +
   'text-transform:uppercase;color:rgba(241,239,232,0.35)}' +
-  '.status{position:absolute;top:0.75rem;left:0.75rem;right:0.75rem;z-index:3;display:flex;align-items:flex-start;' +
-  'justify-content:space-between;gap:0.75rem;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.34);' +
-  'padding:0.65rem 0.75rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(14px);box-shadow:0 0.75rem 2rem rgba(0,0,0,0.24)}' +
+  '.status{position:absolute;top:0.9rem;left:1rem;right:1rem;z-index:3;display:flex;align-items:flex-start;' +
+  'justify-content:space-between;gap:0.75rem;padding:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;pointer-events:none}' +
   '.status dl{display:grid;grid-template-columns:repeat(5,minmax(0,auto));gap:0.55rem 1rem;margin:0;min-width:0}' +
-  '.status div{min-width:0}.status dt{margin:0 0 0.18rem;font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.35)}' +
-  '.status dd{margin:0;max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.72rem;color:rgba(255,255,255,0.78)}' +
+  '.status div{min-width:0;text-shadow:0 1px 8px rgba(0,0,0,0.85)}.status dt{margin:0 0 0.18rem;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.34)}' +
+  '.status dd{margin:0;max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.72rem;color:rgba(255,255,255,0.76)}' +
   '@media (max-width:720px){.status{display:grid}.status dl{grid-template-columns:repeat(2,minmax(0,1fr))}.status dd{max-width:none}}' +
   '.selection{position:absolute;right:1rem;bottom:1rem;z-index:2;max-width:min(26rem,calc(100% - 2rem));' +
   'border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.42);padding:0.75rem 0.875rem;' +
