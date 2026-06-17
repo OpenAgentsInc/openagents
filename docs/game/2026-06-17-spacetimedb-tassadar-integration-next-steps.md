@@ -143,6 +143,7 @@ authority boundary. The new public interaction tables are:
 
 | Table | Purpose |
 | --- | --- |
+| `world_region` | Public run-space envelope: bounds, proximity radius, avatar update cadence, and stale-position TTL. |
 | `pylon_station` | In-world station for a public pylon ref during a run. |
 | `agent_avatar` | Public avatar identity row for a guest, human, pylon agent, or service agent. |
 | `avatar_position` | Latest bounded position, yaw/pitch, movement mode, and freshness for one avatar. |
@@ -156,10 +157,31 @@ The new browser reducers are limited to interaction state:
 `join_region`, `leave_region`, `set_avatar_position`, `focus_pylon`,
 `clear_pylon_focus`, `send_local_message`, `send_pylon_message`, `send_emote`,
 and `set_agent_intent`. The new service-only reducers are
-`upsert_pylon_station_from_projection`, `ensure_pylon_agent_avatar`,
-`record_system_world_message`, and `expire_interaction_rows`.
+`upsert_world_region`, `upsert_pylon_station_from_projection`,
+`ensure_pylon_agent_avatar`, `record_system_world_message`, and
+`expire_interaction_rows`.
 
 These rows do not create proof, settlement, receipt, pylon, or training truth.
+
+Issue #5272 added the first explicit region/proximity contract. The Tassadar
+bridge now writes `world_region` before projecting pylon stations. Browser
+movement reducers validate against that region row, reject impossible jumps,
+and use the region's update interval. Stale avatar expiry uses the
+`world_region.stale_avatar_position_ms` value, with the previous 20 second
+constant only as a compatibility fallback for older rows. Local chat and emotes
+also require an existing region row, so a browser identity cannot mint
+arbitrary spatial namespaces.
+
+The intended subscription shape is:
+
+- `world_region` for the selected run region envelope;
+- `pylon_station` filtered by `region_ref`;
+- `avatar_position` filtered by `region_ref`, joined to `agent_avatar`;
+- ephemeral rows (`pylon_attention`, `local_chat_message`, `chat_bubble`,
+  `local_emote`, `agent_intent`) scoped to the active region or selected
+  public entity;
+- proof/run/settlement details still read by selected public refs, not by
+  proximity or animation.
 
 Issue #5262 now derives pylon stations and one pylon-agent avatar per visible
 public leaderboard pylon ref from the existing Tassadar summary bridge. The

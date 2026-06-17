@@ -1,11 +1,15 @@
 use spacetimedb::{Identity, ReducerContext, Table, Timestamp};
 
+const DEFAULT_TASSADAR_RUN_REF: &str = "run.tassadar.executor.20260615";
+const DEFAULT_TASSADAR_REGION_REF: &str = "region.run.tassadar.executor.20260615.main";
 const REGION_MIN_X: f64 = -8.0;
 const REGION_MAX_X: f64 = 8.0;
 const REGION_MIN_Y: f64 = 0.0;
 const REGION_MAX_Y: f64 = 4.0;
 const REGION_MIN_Z: f64 = -6.0;
 const REGION_MAX_Z: f64 = 6.0;
+const DEFAULT_REGION_PROXIMITY_RADIUS_METERS: f64 = 12.0;
+const MAX_REGION_PROXIMITY_RADIUS_METERS: f64 = 120.0;
 const MAX_AVATAR_MOVE_METERS_PER_SECOND: f64 = 14.0;
 const AVATAR_POSITION_MIN_INTERVAL_MS: i64 = 100;
 const STALE_AVATAR_POSITION_MS: i64 = 20_000;
@@ -129,6 +133,24 @@ pub struct BridgeHealth {
     last_failure_at: Option<Timestamp>,
     last_failure_summary: Option<String>,
     heartbeat_at: Timestamp,
+}
+
+#[spacetimedb::table(accessor = world_region, public)]
+pub struct WorldRegion {
+    #[primary_key]
+    region_ref: String,
+    run_ref: String,
+    label: String,
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    max_x: f64,
+    max_y: f64,
+    max_z: f64,
+    proximity_radius_meters: f64,
+    avatar_position_min_interval_ms: i64,
+    stale_avatar_position_ms: i64,
+    updated_at: Timestamp,
 }
 
 #[spacetimedb::table(accessor = pylon_station, public)]
@@ -281,6 +303,7 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
             added_at: ctx.timestamp,
         });
     }
+    upsert_world_region_row(ctx, default_tassadar_world_region(ctx.timestamp));
     Ok(())
 }
 
@@ -583,6 +606,57 @@ pub fn record_bridge_failure(
 }
 
 #[spacetimedb::reducer]
+pub fn upsert_world_region(
+    ctx: &ReducerContext,
+    region_ref: String,
+    run_ref: String,
+    label: String,
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    max_x: f64,
+    max_y: f64,
+    max_z: f64,
+    proximity_radius_meters: f64,
+    avatar_position_min_interval_ms: i64,
+    stale_avatar_position_ms: i64,
+) -> Result<(), String> {
+    ensure_service(ctx)?;
+    validate_region_bounds(min_x, min_y, min_z, max_x, max_y, max_z)?;
+    let proximity_radius_meters =
+        validate_radius(proximity_radius_meters, MAX_REGION_PROXIMITY_RADIUS_METERS)?;
+    upsert_world_region_row(
+        ctx,
+        WorldRegion {
+            region_ref: clean_ref(region_ref, "region_ref", 160)?,
+            run_ref: clean_ref(run_ref, "run_ref", 160)?,
+            label: clean_text(label, "label", 80)?,
+            min_x,
+            min_y,
+            min_z,
+            max_x,
+            max_y,
+            max_z,
+            proximity_radius_meters,
+            avatar_position_min_interval_ms: validate_ms_window(
+                avatar_position_min_interval_ms,
+                "avatar_position_min_interval_ms",
+                50,
+                1_000,
+            )?,
+            stale_avatar_position_ms: validate_ms_window(
+                stale_avatar_position_ms,
+                "stale_avatar_position_ms",
+                1_000,
+                120_000,
+            )?,
+            updated_at: ctx.timestamp,
+        },
+    );
+    Ok(())
+}
+
+#[spacetimedb::reducer]
 pub fn upsert_pylon_station_from_projection(
     ctx: &ReducerContext,
     pylon_ref: String,
@@ -597,7 +671,8 @@ pub fn upsert_pylon_station_from_projection(
     interaction_radius_meters: f64,
 ) -> Result<(), String> {
     ensure_service(ctx)?;
-    validate_position(position_x, position_y, position_z)?;
+    let region_ref = clean_ref(region_ref, "region_ref", 160)?;
+    validate_position_in_region(ctx, &region_ref, position_x, position_y, position_z)?;
     if !heading_yaw.is_finite() {
         return Err("heading_yaw must be finite".to_string());
     }
@@ -607,7 +682,7 @@ pub fn upsert_pylon_station_from_projection(
         PylonStation {
             pylon_ref: clean_ref(pylon_ref, "pylon_ref", 160)?,
             run_ref: clean_ref(run_ref, "run_ref", 160)?,
-            region_ref: clean_ref(region_ref, "region_ref", 160)?,
+            region_ref,
             label: clean_text(label, "label", 80)?,
             source_url: clean_optional_text(source_url, 512).unwrap_or_default(),
             position_x,
@@ -634,7 +709,8 @@ pub fn ensure_pylon_agent_avatar(
     yaw: f64,
 ) -> Result<(), String> {
     ensure_service(ctx)?;
-    validate_position(position_x, position_y, position_z)?;
+    let region_ref = clean_ref(region_ref, "region_ref", 160)?;
+    validate_position_in_region(ctx, &region_ref, position_x, position_y, position_z)?;
     if !yaw.is_finite() {
         return Err("yaw must be finite".to_string());
     }
@@ -671,7 +747,7 @@ pub fn ensure_pylon_agent_avatar(
         ctx,
         AvatarPosition {
             avatar_ref,
-            region_ref: clean_ref(region_ref, "region_ref", 160)?,
+            region_ref,
             position_x,
             position_y,
             position_z,
@@ -694,10 +770,12 @@ pub fn record_system_world_message(
     body: String,
 ) -> Result<(), String> {
     ensure_service(ctx)?;
+    let region_ref = clean_ref(region_ref, "region_ref", 160)?;
+    ensure_world_region(ctx, &region_ref)?;
     let system_avatar_ref = ensure_system_avatar(ctx);
     insert_local_message(
         ctx,
-        clean_ref(region_ref, "region_ref", 160)?,
+        region_ref,
         system_avatar_ref,
         clean_optional_ref(target_ref, "target_ref", 160)?,
         "system".to_string(),
@@ -713,6 +791,8 @@ pub fn join_region(
     region_ref: String,
     display_name: String,
 ) -> Result<(), String> {
+    let region_ref = clean_ref(region_ref, "region_ref", 160)?;
+    validate_position_in_region(ctx, &region_ref, 0.0, 0.0, 0.0)?;
     let avatar_ref = avatar_ref_for_sender(ctx);
     let display_name = clean_optional_text(display_name, 64)
         .unwrap_or_else(|| format!("agent {}", ctx.sender().to_abbreviated_hex()));
@@ -744,7 +824,7 @@ pub fn join_region(
         ctx,
         AvatarPosition {
             avatar_ref,
-            region_ref: clean_ref(region_ref, "region_ref", 160)?,
+            region_ref,
             position_x: 0.0,
             position_y: 0.0,
             position_z: 0.0,
@@ -806,7 +886,8 @@ pub fn set_avatar_position(
     pitch: f64,
     movement_mode: String,
 ) -> Result<(), String> {
-    validate_position(position_x, position_y, position_z)?;
+    let region_ref = clean_ref(region_ref, "region_ref", 160)?;
+    let region = validate_position_in_region(ctx, &region_ref, position_x, position_y, position_z)?;
     if !yaw.is_finite() || !pitch.is_finite() {
         return Err("yaw and pitch must be finite".to_string());
     }
@@ -817,7 +898,6 @@ pub fn set_avatar_position(
     )?;
     let avatar_ref = avatar_ref_for_sender(ctx);
     ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
-    let region_ref = clean_ref(region_ref, "region_ref", 160)?;
     let now_ms = ctx_epoch_ms(ctx);
     if let Some(existing) = ctx
         .db
@@ -825,8 +905,14 @@ pub fn set_avatar_position(
         .avatar_ref()
         .find(avatar_ref.clone())
     {
-        if now_ms < existing.last_seen_epoch_ms + AVATAR_POSITION_MIN_INTERVAL_MS {
+        if now_ms < existing.last_seen_epoch_ms + region.avatar_position_min_interval_ms {
             return Ok(());
+        }
+        if existing.region_ref != region_ref {
+            return Err(
+                "set_avatar_position cannot move between regions; call join_region first"
+                    .to_string(),
+            );
         }
         validate_movement_delta(&existing, position_x, position_y, position_z, now_ms)?;
     }
@@ -918,11 +1004,13 @@ pub fn send_local_message(
     radius_meters: f64,
     body: String,
 ) -> Result<(), String> {
+    let region_ref = clean_ref(region_ref, "region_ref", 160)?;
+    ensure_world_region(ctx, &region_ref)?;
     let avatar_ref = avatar_ref_for_sender(ctx);
     ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
     insert_local_message(
         ctx,
-        clean_ref(region_ref, "region_ref", 160)?,
+        region_ref,
         avatar_ref,
         clean_optional_ref(target_ref, "target_ref", 160)?,
         "local".to_string(),
@@ -966,6 +1054,8 @@ pub fn send_emote(
     emote_kind: String,
     target_ref: Option<String>,
 ) -> Result<(), String> {
+    let region_ref = clean_ref(region_ref, "region_ref", 160)?;
+    ensure_world_region(ctx, &region_ref)?;
     let avatar_ref = avatar_ref_for_sender(ctx);
     ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
     let emote_kind = validate_choice(
@@ -977,7 +1067,7 @@ pub fn send_emote(
     ctx.db.local_emote().insert(LocalEmote {
         emote_ref,
         avatar_ref,
-        region_ref: clean_ref(region_ref, "region_ref", 160)?,
+        region_ref,
         emote_kind,
         target_ref: clean_optional_ref(target_ref, "target_ref", 160)?,
         created_at: ctx.timestamp,
@@ -1023,14 +1113,20 @@ pub fn set_agent_intent(
 pub fn expire_interaction_rows(ctx: &ReducerContext) -> Result<(), String> {
     ensure_service(ctx)?;
     let now_ms = ctx_epoch_ms(ctx);
-    let stale_avatar_before_ms = now_ms - STALE_AVATAR_POSITION_MS;
 
     let position_refs: Vec<String> = ctx
         .db
         .avatar_position()
         .iter()
         .filter(|row| {
-            row.last_seen_epoch_ms <= stale_avatar_before_ms
+            let stale_avatar_position_ms = ctx
+                .db
+                .world_region()
+                .region_ref()
+                .find(row.region_ref.clone())
+                .map(|region| region.stale_avatar_position_ms)
+                .unwrap_or(STALE_AVATAR_POSITION_MS);
+            row.last_seen_epoch_ms + stale_avatar_position_ms <= now_ms
                 && ctx
                     .db
                     .agent_avatar()
@@ -1253,6 +1349,38 @@ fn upsert_bridge_health_row(ctx: &ReducerContext, row: BridgeHealth) {
     }
 }
 
+fn default_tassadar_world_region(updated_at: Timestamp) -> WorldRegion {
+    WorldRegion {
+        region_ref: DEFAULT_TASSADAR_REGION_REF.to_string(),
+        run_ref: DEFAULT_TASSADAR_RUN_REF.to_string(),
+        label: "Tassadar main run space".to_string(),
+        min_x: REGION_MIN_X,
+        min_y: REGION_MIN_Y,
+        min_z: REGION_MIN_Z,
+        max_x: REGION_MAX_X,
+        max_y: REGION_MAX_Y,
+        max_z: REGION_MAX_Z,
+        proximity_radius_meters: DEFAULT_REGION_PROXIMITY_RADIUS_METERS,
+        avatar_position_min_interval_ms: AVATAR_POSITION_MIN_INTERVAL_MS,
+        stale_avatar_position_ms: STALE_AVATAR_POSITION_MS,
+        updated_at,
+    }
+}
+
+fn upsert_world_region_row(ctx: &ReducerContext, row: WorldRegion) {
+    if ctx
+        .db
+        .world_region()
+        .region_ref()
+        .find(row.region_ref.clone())
+        .is_some()
+    {
+        ctx.db.world_region().region_ref().update(row);
+    } else {
+        ctx.db.world_region().insert(row);
+    }
+}
+
 fn upsert_pylon_station_row(ctx: &ReducerContext, row: PylonStation) {
     if ctx
         .db
@@ -1458,15 +1586,53 @@ fn next_ref(ctx: &ReducerContext, prefix: &str) -> String {
     )
 }
 
-fn validate_position(position_x: f64, position_y: f64, position_z: f64) -> Result<(), String> {
+fn ensure_world_region(ctx: &ReducerContext, region_ref: &str) -> Result<WorldRegion, String> {
+    ctx.db
+        .world_region()
+        .region_ref()
+        .find(region_ref.to_string())
+        .ok_or_else(|| "region_ref is not registered in world_region".to_string())
+}
+
+fn validate_position_in_region(
+    ctx: &ReducerContext,
+    region_ref: &str,
+    position_x: f64,
+    position_y: f64,
+    position_z: f64,
+) -> Result<WorldRegion, String> {
+    let region = ensure_world_region(ctx, region_ref)?;
     if !position_x.is_finite() || !position_y.is_finite() || !position_z.is_finite() {
         return Err("position coordinates must be finite".to_string());
     }
-    if !(REGION_MIN_X..=REGION_MAX_X).contains(&position_x)
-        || !(REGION_MIN_Y..=REGION_MAX_Y).contains(&position_y)
-        || !(REGION_MIN_Z..=REGION_MAX_Z).contains(&position_z)
+    if !(region.min_x..=region.max_x).contains(&position_x)
+        || !(region.min_y..=region.max_y).contains(&position_y)
+        || !(region.min_z..=region.max_z).contains(&position_z)
     {
-        return Err("position is outside the initial Tassadar run region bounds".to_string());
+        return Err("position is outside the registered world_region bounds".to_string());
+    }
+    Ok(region)
+}
+
+fn validate_region_bounds(
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    max_x: f64,
+    max_y: f64,
+    max_z: f64,
+) -> Result<(), String> {
+    if !min_x.is_finite()
+        || !min_y.is_finite()
+        || !min_z.is_finite()
+        || !max_x.is_finite()
+        || !max_y.is_finite()
+        || !max_z.is_finite()
+    {
+        return Err("world_region bounds must be finite".to_string());
+    }
+    if min_x >= max_x || min_y >= max_y || min_z >= max_z {
+        return Err("world_region min bounds must be lower than max bounds".to_string());
     }
     Ok(())
 }
@@ -1498,6 +1664,18 @@ fn validate_radius(radius_meters: f64, max_radius_meters: f64) -> Result<f64, St
         return Err("radius_meters is outside the allowed range".to_string());
     }
     Ok(radius_meters)
+}
+
+fn validate_ms_window(
+    value: i64,
+    field: &str,
+    min_value: i64,
+    max_value: i64,
+) -> Result<i64, String> {
+    if value < min_value || value > max_value {
+        return Err(format!("{field} is outside the allowed range"));
+    }
+    Ok(value)
 }
 
 fn validate_distance(distance_meters: f64) -> Result<f64, String> {

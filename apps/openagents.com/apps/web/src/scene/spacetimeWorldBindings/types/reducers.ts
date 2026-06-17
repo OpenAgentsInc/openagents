@@ -31,6 +31,7 @@ import UpsertRunEntityReducer from "../upsert_run_entity_reducer";
 import UpsertSettlementRefReducer from "../upsert_settlement_ref_reducer";
 import UpsertTrainingRunReducer from "../upsert_training_run_reducer";
 import UpsertWorldEdgeReducer from "../upsert_world_edge_reducer";
+import UpsertWorldRegionReducer from "../upsert_world_region_reducer";
 
 export type AppendWorldEventParams = __Infer<typeof AppendWorldEventReducer>;
 export type AuthorizeServiceIdentityParams = __Infer<typeof AuthorizeServiceIdentityReducer>;
@@ -57,4 +58,5 @@ export type UpsertRunEntityParams = __Infer<typeof UpsertRunEntityReducer>;
 export type UpsertSettlementRefParams = __Infer<typeof UpsertSettlementRefReducer>;
 export type UpsertTrainingRunParams = __Infer<typeof UpsertTrainingRunReducer>;
 export type UpsertWorldEdgeParams = __Infer<typeof UpsertWorldEdgeReducer>;
+export type UpsertWorldRegionParams = __Infer<typeof UpsertWorldRegionReducer>;
 

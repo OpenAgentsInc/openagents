@@ -74,6 +74,7 @@ describe('Tassadar SpacetimeDB projection transform', () => {
 
     expect(plan.runRef).toBe('run.tassadar.executor.20260615')
     expect(counts.upsert_training_run).toBe(1)
+    expect(counts.upsert_world_region).toBe(1)
     expect(counts.upsert_run_entity).toBeGreaterThanOrEqual(7)
     expect(counts.upsert_settlement_ref).toBe(1)
     expect(counts.upsert_pylon_station_from_projection).toBe(1)

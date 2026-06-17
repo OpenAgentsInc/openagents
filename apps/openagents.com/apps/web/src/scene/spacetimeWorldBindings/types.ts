@@ -215,3 +215,20 @@ export const WorldEvent = __t.object("WorldEvent", {
 });
 export type WorldEvent = __Infer<typeof WorldEvent>;
 
+export const WorldRegion = __t.object("WorldRegion", {
+  regionRef: __t.string(),
+  runRef: __t.string(),
+  label: __t.string(),
+  minX: __t.f64(),
+  minY: __t.f64(),
+  minZ: __t.f64(),
+  maxX: __t.f64(),
+  maxY: __t.f64(),
+  maxZ: __t.f64(),
+  proximityRadiusMeters: __t.f64(),
+  avatarPositionMinIntervalMs: __t.i64(),
+  staleAvatarPositionMs: __t.i64(),
+  updatedAt: __t.timestamp(),
+});
+export type WorldRegion = __Infer<typeof WorldRegion>;
+

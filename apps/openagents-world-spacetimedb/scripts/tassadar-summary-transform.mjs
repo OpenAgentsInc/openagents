@@ -6,6 +6,21 @@ export const DEFAULT_TASSADAR_RUN_REF = 'run.tassadar.executor.20260615'
 export const DEFAULT_DATABASE = 'openagents-world'
 export const DEFAULT_BRIDGE_REF = 'bridge.tassadar.public-summary'
 
+const DEFAULT_WORLD_REGION = {
+  avatarPositionMinIntervalMs: 100,
+  bounds: {
+    maxX: 8,
+    maxY: 4,
+    maxZ: 6,
+    minX: -8,
+    minY: 0,
+    minZ: -6,
+  },
+  label: 'Tassadar main run space',
+  proximityRadiusMeters: 12,
+  staleAvatarPositionMs: 20_000,
+}
+
 const text = value => (typeof value === 'string' ? value.trim() : '')
 
 const numberOrZero = value =>
@@ -178,6 +193,23 @@ const addWorldEvent = (calls, input) => {
   ])
 }
 
+const addWorldRegion = (calls, input) => {
+  addCall(calls, 'upsert_world_region', [
+    input.regionRef,
+    input.runRef,
+    input.label,
+    input.bounds.minX,
+    input.bounds.minY,
+    input.bounds.minZ,
+    input.bounds.maxX,
+    input.bounds.maxY,
+    input.bounds.maxZ,
+    input.proximityRadiusMeters,
+    input.avatarPositionMinIntervalMs,
+    input.staleAvatarPositionMs,
+  ])
+}
+
 const addProofsForEntity = (calls, runRef, entityRef, refs, proofKind) => {
   unique(refs).forEach(ref => {
     addProof(calls, {
@@ -257,6 +289,11 @@ export const buildTassadarProjectionPlan = (
     maxStalenessSeconds,
     sourceHash,
   ])
+  addWorldRegion(calls, {
+    ...DEFAULT_WORLD_REGION,
+    regionRef,
+    runRef,
+  })
 
   addEntity(calls, {
     entityKind: 'run',

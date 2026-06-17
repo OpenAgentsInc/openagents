@@ -23,6 +23,7 @@ Public projection tables:
 
 Public interaction tables:
 
+- `world_region`
 - `pylon_station`
 - `agent_avatar`
 - `avatar_position`
@@ -50,6 +51,7 @@ refs, receipt refs, settlement refs, or product claims.
 
 Service-only interaction reducers:
 
+- `upsert_world_region`
 - `upsert_pylon_station_from_projection`
 - `ensure_pylon_agent_avatar`
 - `record_system_world_message`
@@ -69,12 +71,26 @@ Browser/user interaction reducers:
 
 The MVP world bounds are intentionally small and flat:
 `x=-8..8`, `y=0..4`, and `z=-6..6`. Position updates are throttled to at most
-10 Hz per avatar and reject jumps above the MVP movement limit. Local messages
-are plain text, capped at 280 characters, rate-limited to one message per
-avatar per second, marked `moderation_state="visible"`, and paired with
-short-lived chat-bubble rows. `expire_interaction_rows` is a service reducer
-that removes stale avatar positions and expired attention, message, bubble,
+10 Hz per avatar and reject jumps above the MVP movement limit. The bounds,
+proximity radius, position cadence, and stale-avatar TTL are published through
+`world_region`; reducers validate station, avatar, chat, and emote writes
+against an existing region row. Local messages are plain text, capped at 280
+characters, rate-limited to one message per avatar per second, marked
+`moderation_state="visible"`, and paired with short-lived chat-bubble rows.
+`expire_interaction_rows` is a service reducer that removes stale avatar
+positions using the region TTL and removes expired attention, message, bubble,
 emote, and intent rows.
+
+The proximity subscription shape for clients is deliberately simple:
+
+- read `world_region` by `region_ref` for bounds, proximity radius, and TTL;
+- subscribe to `pylon_station` rows with the same `region_ref`;
+- subscribe to `avatar_position`, then join to `agent_avatar` by `avatar_ref`;
+- subscribe to `pylon_attention`, `local_chat_message`, `chat_bubble`,
+  `local_emote`, and `agent_intent` only for the active region or selected
+  entity;
+- read `world_event`, `proof_ref`, and `settlement_ref` by selected public
+  entity/run refs, not as anonymous motion.
 
 ## Build
 

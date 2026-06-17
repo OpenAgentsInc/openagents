@@ -60,6 +60,7 @@ import UpsertRunEntityReducer from "./upsert_run_entity_reducer";
 import UpsertSettlementRefReducer from "./upsert_settlement_ref_reducer";
 import UpsertTrainingRunReducer from "./upsert_training_run_reducer";
 import UpsertWorldEdgeReducer from "./upsert_world_edge_reducer";
+import UpsertWorldRegionReducer from "./upsert_world_region_reducer";
 
 // Import all procedure arg schemas
 
@@ -80,6 +81,7 @@ import SettlementRefRow from "./settlement_ref_table";
 import TrainingRunRow from "./training_run_table";
 import WorldEdgeRow from "./world_edge_table";
 import WorldEventRow from "./world_event_table";
+import WorldRegionRow from "./world_region_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -261,6 +263,17 @@ const tablesSchema = __schema({
       { name: 'world_event_event_ref_key', constraint: 'unique', columns: ['eventRef'] },
     ],
   }, WorldEventRow),
+  world_region: __table({
+    name: 'world_region',
+    indexes: [
+      { accessor: 'region_ref', name: 'world_region_region_ref_idx_btree', algorithm: 'btree', columns: [
+        'regionRef',
+      ] },
+    ],
+    constraints: [
+      { name: 'world_region_region_ref_key', constraint: 'unique', columns: ['regionRef'] },
+    ],
+  }, WorldRegionRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
@@ -290,6 +303,7 @@ const reducersSchema = __reducers(
   __reducerSchema("upsert_settlement_ref", UpsertSettlementRefReducer),
   __reducerSchema("upsert_training_run", UpsertTrainingRunReducer),
   __reducerSchema("upsert_world_edge", UpsertWorldEdgeReducer),
+  __reducerSchema("upsert_world_region", UpsertWorldRegionReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

@@ -83,6 +83,34 @@ The first OpenAgents harvest from this repo has already landed in
 
 That is phase one, not the full mechanics harvest.
 
+## Implementation Progress
+
+As of 2026-06-17:
+
+- `three-effect` issue #3 landed typed spatial hash grid, hit-target registry,
+  and minimum-distance layout helpers in
+  `packages/core/src/spatialPrimitives.ts`.
+- `three-effect` issue #4 landed row interpolation plus stale/despawn helpers
+  in `packages/core/src/mmoEntityPrimitives.ts`.
+- `three-effect` issue #5 landed animation FSM and locomotion transition
+  helpers in `packages/core/src/animationPrimitives.ts`.
+- `three-effect` issue #6 landed bone attachment, equipment attachment, and
+  disposal helpers in `packages/core/src/attachmentPrimitives.ts`.
+- `three-effect` issue #7 landed billboard name plate, status bar, speech
+  bubble, and combined entity overlay primitives in
+  `packages/core/src/billboardPrimitives.ts`.
+- `three-effect` issue #8 landed spline particle emitters and evidence-backed
+  event burst gating in `packages/core/src/eventBurstPrimitives.ts`.
+- OpenAgents issue #5272 landed a first-class SpacetimeDB `world_region`
+  contract, service-owned region upsert, region-bounded avatar/station/chat
+  writes, region-specific avatar cadence/stale expiry, updated bridge
+  projection, and regenerated web bindings.
+
+Remaining work starts at the `/tassadar` binding pass: replace page-local
+layout/picking helpers with the new `three-effect` spatial primitives, then
+continue through real-entity-only scene cleanup, terrain prototype, and owned
+asset provenance.
+
 ## Mechanics Inventory
 
 ### 1. Runtime Shell And ECS
