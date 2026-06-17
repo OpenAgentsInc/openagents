@@ -177,6 +177,32 @@ describe("Pylon presence registration and heartbeat", () => {
     })
   })
 
+  test("a server response whose reason contains a path does NOT fail-close presence (#5268)", async () => {
+    await withTempHome(async (home) => {
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs(["--display-name", "5268 inbound guard"]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      // Before #5268 the client ran its OUTBOUND public-projection guard against the
+      // INBOUND response; a server error envelope carrying a path-shaped `reason`
+      // (e.g. a filesystem path) made register/heartbeat throw and the node go offline.
+      // The node must now register successfully despite the path in the response.
+      const fetchImpl = (async () =>
+        Response.json({
+          registrationRef: "registration.pylon.5268",
+          reason: "/Users/someone/.cache/breez/spark/storage.sql",
+        })) as typeof fetch
+      const registered = await registerPylon(summary, {
+        agentToken: "test-agent-token",
+        baseUrl: "http://127.0.0.1:1/",
+        fetch: fetchImpl,
+        now: () => new Date("2026-06-17T22:00:00.000Z"),
+      })
+      expect(registered.registered).toBe(true)
+    })
+  })
+
   test("heartbeat publishes live wallet receive-readiness (#5151)", async () => {
     await withTempHome(async (home) => {
       const fake = fakePresenceServer()

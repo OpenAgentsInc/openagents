@@ -196,8 +196,14 @@ async function postJson(
   const responseText = await response.text()
   let json: JsonRecord = {}
   if (responseText.trim()) {
+    // #5268: parse the server response, but do NOT run the OUTBOUND public-projection
+    // guard against it. That guard's contract is "don't PUBLISH my private data" — it
+    // belongs on the outbound `body` only (above). Applying it to an INBOUND response
+    // fail-closes the node's own register/heartbeat whenever the server's error
+    // envelope carries a path-shaped `reason` (e.g. `/Users/<user>/.cache/...`): the
+    // node would reject data it merely received and stay offline indefinitely. We
+    // never re-publish this response, so it must never take the node offline.
     json = JSON.parse(responseText) as JsonRecord
-    assertPublicProjectionSafe(json)
   }
   if (!response.ok) {
     throw new Error(`OpenAgents presence request failed (${response.status}): ${responseText}`)
