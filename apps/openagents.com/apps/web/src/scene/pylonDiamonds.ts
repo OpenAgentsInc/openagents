@@ -1,8 +1,4 @@
-import {
-  createConditionalLineSegments,
-  defaultMokshaAssetUrls,
-  type ConditionalLineSegmentsHandle,
-} from '@openagentsinc/three-effect/core'
+import { defaultMokshaAssetUrls } from '@openagentsinc/three-effect/core'
 import * as Three from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
@@ -33,10 +29,6 @@ export type PylonDiamondsHandle = Readonly<{
   setActivity: (intensity: number) => void
 }>
 
-type DiamondEdgeView = Readonly<{
-  handle: ConditionalLineSegmentsHandle
-}>
-
 const DEFAULTS = {
   backgroundColor: 0x0c0f13,
   pixelRatio: 2,
@@ -53,7 +45,6 @@ const DIAMOND_HEIGHT = 1.1
 // gap apart, with the centered countdown overlay filling the space between.
 const STACK_GAP = 1.2
 const DIAMOND_LAYER = 1
-const DIAMOND_EDGE_LAYER = 2
 
 const backfaceVertexShader = `
   varying vec3 worldNormal;
@@ -107,9 +98,10 @@ const refractionFragmentShader = `
     vec2 uv = gl_FragCoord.xy / resolution;
     vec3 normal = worldNormal * 0.3 - texture2D(backfaceMap, uv).rgb * 0.7;
     vec4 color = texture2D(envMap, uv + refract(viewDirection, normal, 1.0 / 1.5).xy);
-    float glint = pow(max(dot(normalize(normal), normalize(lightDirection)), 0.0), 4.5) * lightPulse;
-    vec3 caustic = vec3(0.28, 0.62, 0.92) * glint;
-    gl_FragColor = vec4(mix(color.rgb + caustic, vec3(0.42), fresnelFunc(viewDirection, normal)), 1.0);
+    float activity = clamp(lightPulse, 0.0, 1.0);
+    vec3 body = mix(color.rgb, vec3(0.025, 0.07, 0.105), 0.52);
+    body += vec3(0.015, 0.055, 0.09) * activity;
+    gl_FragColor = vec4(body, 1.0);
   }
 `
 
@@ -239,44 +231,6 @@ export const mountPylonDiamonds = (
   diamondMesh.layers.set(DIAMOND_LAYER)
   scene.add(diamondMesh)
 
-  const diamondEdgeGroup = new Three.Group()
-  scene.add(diamondEdgeGroup)
-
-  let diamondEdgeViews: ReadonlyArray<DiamondEdgeView> = []
-
-  const disposeDiamondEdges = (): void => {
-    for (const view of diamondEdgeViews) {
-      diamondEdgeGroup.remove(view.handle.line)
-      view.handle.dispose()
-    }
-    diamondEdgeViews = []
-  }
-
-  const createDiamondEdges = (
-    geometry: Three.BufferGeometry,
-  ): ReadonlyArray<DiamondEdgeView> =>
-    Array.from({ length: 2 }, () => {
-      const handle = createConditionalLineSegments(geometry, {
-        color: 0xd8f4ff,
-        depthTest: false,
-        linewidth: 1.25,
-        opacity: 0.82,
-        resolution: [initialTarget.width, initialTarget.height],
-        transparent: true,
-      })
-      handle.line.layers.set(DIAMOND_EDGE_LAYER)
-      handle.line.renderOrder = 4
-      diamondEdgeGroup.add(handle.line)
-      return { handle }
-    })
-
-  const replaceDiamondEdges = (geometry: Three.BufferGeometry): void => {
-    disposeDiamondEdges()
-    diamondEdgeViews = createDiamondEdges(geometry)
-  }
-
-  replaceDiamondEdges(fallbackGeometry)
-
   const dummy = new Three.Object3D()
   const yAxis = new Three.Vector3(0, 1, 0)
   const flipQuat = new Three.Quaternion().setFromAxisAngle(
@@ -321,9 +275,6 @@ export const mountPylonDiamonds = (
     dummy.scale.setScalar(modelScale)
     dummy.updateMatrix()
     diamondMesh.setMatrixAt(0, dummy.matrix)
-    diamondEdgeViews[0]?.handle.line.position.copy(dummy.position)
-    diamondEdgeViews[0]?.handle.line.quaternion.copy(dummy.quaternion)
-    diamondEdgeViews[0]?.handle.line.scale.copy(dummy.scale)
 
     // Top diamond: flipped about X so its flat face points down to meet the
     // bottom diamond in the middle. Same world-Y spin direction.
@@ -332,9 +283,6 @@ export const mountPylonDiamonds = (
     dummy.scale.setScalar(modelScale)
     dummy.updateMatrix()
     diamondMesh.setMatrixAt(1, dummy.matrix)
-    diamondEdgeViews[1]?.handle.line.position.copy(dummy.position)
-    diamondEdgeViews[1]?.handle.line.quaternion.copy(dummy.quaternion)
-    diamondEdgeViews[1]?.handle.line.scale.copy(dummy.scale)
 
     diamondMesh.instanceMatrix.needsUpdate = true
   }
@@ -358,9 +306,6 @@ export const mountPylonDiamonds = (
     if (resolution instanceof Three.Vector2) {
       resolution.set(fbo.width, fbo.height)
     }
-    diamondEdgeViews.forEach(view =>
-      view.handle.setResolution(fbo.width, fbo.height),
-    )
   }
 
   let disposed = false
@@ -397,8 +342,6 @@ export const mountPylonDiamonds = (
     diamondMesh.material = refractionMaterial
     renderer.render(scene, camera)
 
-    camera.layers.set(DIAMOND_EDGE_LAYER)
-    renderer.render(scene, camera)
     camera.layers.set(0)
 
     frame = requestAnimationFrame(renderScene)
@@ -419,7 +362,6 @@ export const mountPylonDiamonds = (
       modelScale = normalizeDiamondGeometry(geometry)
       diamondMesh.geometry.dispose()
       diamondMesh.geometry = geometry
-      replaceDiamondEdges(geometry)
     },
     undefined,
     () => {},
@@ -434,7 +376,6 @@ export const mountPylonDiamonds = (
     disposed = true
     cancelAnimationFrame(frame)
     observer?.disconnect()
-    disposeDiamondEdges()
     diamondMesh.geometry.dispose()
     fallbackGeometry.dispose()
     backfaceMaterial.dispose()
