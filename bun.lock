@@ -16,7 +16,7 @@
       "dependencies": {
         "@openagentsinc/autopilot-control-protocol": "workspace:*",
         "@openagentsinc/autopilot-ui": "workspace:*",
-        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#d547c0ece30c27a700082d20fbafbb51d21c2b40",
+        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#7dc55658d6faf6d60e6b59a0d4003a4798bb12b2",
         "effect": "catalog:",
         "electrobun": "1.18.1",
         "foldkit": "^0.102.1",
@@ -84,7 +84,7 @@
         "@openagentsinc/provider-account-schema": "workspace:*",
         "@openagentsinc/sync-client": "workspace:*",
         "@openagentsinc/sync-schema": "workspace:*",
-        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#d547c0ece30c27a700082d20fbafbb51d21c2b40",
+        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#7dc55658d6faf6d60e6b59a0d4003a4798bb12b2",
         "@openagentsinc/ui": "workspace:*",
         "@tailwindcss/vite": "^4.2.4",
         "clsx": "^2.1.1",
@@ -213,7 +213,7 @@
     },
     "apps/pylon": {
       "name": "@openagentsinc/pylon",
-      "version": "1.0.0-rc.23",
+      "version": "1.0.0-rc.24",
       "bin": {
         "pylon": "src/index.ts",
         "pylon-foundation-bridge": "bin/foundation-bridge",
@@ -972,7 +972,7 @@
 
     "@openagentsinc/tassadar-executor": ["@openagentsinc/tassadar-executor@workspace:packages/tassadar-executor"],
 
-    "@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#d547c0e", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-d547c0e", "sha512-dI5VVrKHP5rZJpCD2ad3UlZ3N3jOTnr83Fcq6hPzPGJVgzvXGKgfz0wc06R3nxa4bTE+WM/ocTv1AKKXUgRuvg=="],
+    "@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#7dc5565", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-7dc5565", "sha512-2TPE3uKXQzx77IMbwdIbEUxkK9sTRnvVrDPP5xYVhLyr03wXUagE2ggNELOGcGsLFCa4XDb7VJykC4iZEJSt4w=="],
 
     "@openagentsinc/ui": ["@openagentsinc/ui@workspace:packages/ui"],
 
