@@ -674,6 +674,9 @@ const safeTreasuryPayoutDiagnosticString = (value: unknown): string | null =>
 const safeTreasuryPayoutDiagnosticNumber = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
 
+const safeTreasuryPayoutDiagnosticBoolean = (value: unknown): boolean | null =>
+  typeof value === 'boolean' ? value : null
+
 // Policy-applying payout core (issue #4703): the ONE path that moves
 // money out of the treasury, shared by the operator route and the
 // gated in-worker Artanis spend action. Applies the owner's
@@ -942,6 +945,10 @@ export const handleOperatorTreasuryPayoutApi = (
             ok: boolean
             payResult: Record<string, unknown>
           }> => {
+            const sourceDestinationKind = isLightningAddress(payDestination)
+              ? 'lightning_address'
+              : null
+            let resolvedDestinationKind: string | null = null
             // MDK pays BOLT11/BOLT12, not a Lightning Address. If the destination
             // is a lud16 address (e.g. a Spark-hosted offline-receive address),
             // resolve it to a BOLT11 for this amount via LNURL-pay first (#5078).
@@ -956,10 +963,13 @@ export const handleOperatorTreasuryPayoutApi = (
                   ok: false,
                   payResult: {
                     error: `lightning_address_resolution_failed:${resolved.reason}`,
+                    failureStage: 'lightning_address_resolution',
+                    sourceDestinationKind,
                   },
                 }
               }
               sendDestination = resolved.bolt11
+              resolvedDestinationKind = 'bolt11'
             }
             const payResponse = await fetchTreasury('/pay', {
               body: JSON.stringify({
@@ -968,11 +978,30 @@ export const handleOperatorTreasuryPayoutApi = (
               }),
               method: 'POST',
             })
-            const payResult = (await payResponse.json()) as Record<
-              string,
-              unknown
-            >
-            return { ok: payResponse.ok, payResult }
+            let payResult: Record<string, unknown>
+
+            try {
+              const parsed = await payResponse.json()
+              payResult =
+                typeof parsed === 'object' && parsed !== null ? parsed : {}
+            } catch {
+              payResult = {
+                error: 'treasury_pay_response_invalid_json',
+                failureStage: 'pay_response_invalid_json',
+              }
+            }
+
+            return {
+              ok: payResponse.ok,
+              payResult: {
+                ...payResult,
+                payResponseStatus: payResponse.status,
+                resolvedDestinationKind:
+                  resolvedDestinationKind ??
+                  safeTreasuryPayoutDiagnosticString(payResult.destinationKind),
+                sourceDestinationKind,
+              },
+            }
           }
 
           let paidVia: 'primary' | 'fallback' = 'primary'
@@ -1019,6 +1048,40 @@ export const handleOperatorTreasuryPayoutApi = (
             const messageFingerprint = safeTreasuryPayoutDiagnosticString(
               payResult.messageFingerprint,
             )
+            const sourceDestinationKind = safeTreasuryPayoutDiagnosticString(
+              payResult.sourceDestinationKind,
+            )
+            const resolvedDestinationKind = safeTreasuryPayoutDiagnosticString(
+              payResult.resolvedDestinationKind,
+            )
+            const payResponseStatus = safeTreasuryPayoutDiagnosticNumber(
+              payResult.payResponseStatus,
+            )
+            const balanceSatBefore = safeTreasuryPayoutDiagnosticNumber(
+              payResult.balanceSatBefore,
+            )
+            const balanceSatAfter = safeTreasuryPayoutDiagnosticNumber(
+              payResult.balanceSatAfter,
+            )
+            const balanceChanged = safeTreasuryPayoutDiagnosticBoolean(
+              payResult.balanceChanged,
+            )
+            const feeBudgetMsatBefore = safeTreasuryPayoutDiagnosticNumber(
+              payResult.feeBudgetMsatBefore,
+            )
+            const feeBudgetMsatAfter = safeTreasuryPayoutDiagnosticNumber(
+              payResult.feeBudgetMsatAfter,
+            )
+            const preflightBalanceMaxSendableSat =
+              safeTreasuryPayoutDiagnosticNumber(
+                payResult.preflightBalanceMaxSendableSat,
+              )
+            const resultReturned = safeTreasuryPayoutDiagnosticBoolean(
+              payResult.resultReturned,
+            )
+            const paymentIdPresent = safeTreasuryPayoutDiagnosticBoolean(
+              payResult.paymentIdPresent,
+            )
             const genericError =
               typeof payResult.error === 'string' &&
               payResult.error === 'treasury_pay_failed'
@@ -1061,13 +1124,24 @@ export const handleOperatorTreasuryPayoutApi = (
                 reason: failureReasonRef,
                 reasonRef: failureReasonRef,
                 diagnostics: {
+                  balanceChanged,
+                  balanceSatAfter,
+                  balanceSatBefore,
                   destinationKind,
                   errorCode,
                   errorName,
                   failureStage,
+                  feeBudgetMsatAfter,
+                  feeBudgetMsatBefore,
                   messageFingerprint,
+                  paymentIdPresent,
+                  payResponseStatus,
+                  preflightBalanceMaxSendableSat,
                   preflightMaxSendableSat,
                   reasonClass,
+                  resolvedDestinationKind,
+                  resultReturned,
+                  sourceDestinationKind,
                   timeoutSecs,
                 },
               },

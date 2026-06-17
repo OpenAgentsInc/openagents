@@ -894,17 +894,26 @@ describe('operator treasury payout', () => {
             if (path === '/pay' && init?.method === 'POST') {
               return Promise.resolve(
                 jsonResponse(502, {
+                  balanceChanged: false,
+                  balanceSatAfter: 100000,
+                  balanceSatBefore: 100000,
                   destinationKind: 'bolt11',
                   errorCode: 'err_private_route',
                   errorName: 'mdk_error',
                   error: 'treasury_pay_failed',
                   failureStage: 'pay_throws',
+                  feeBudgetMsatAfter: 42,
+                  feeBudgetMsatBefore: 42,
                   messageFingerprint:
                     '9aedda5a994a799337d6c5398271f2468702ee95b305d0d08f3a7c8f14eabf19',
+                  paymentIdPresent: false,
+                  payResponseStatus: 502,
+                  preflightBalanceMaxSendableSat: 99000,
                   preflightMaxSendableSat: 94000,
                   reason: 'raw private daemon route failure',
                   reasonClass: 'no_route',
                   reasonRef: 'reason.public.treasury_payout.no_route',
+                  resultReturned: false,
                   timeoutSecs: 50,
                 }),
               )
@@ -934,13 +943,24 @@ describe('operator treasury payout', () => {
     const bodyText = await response.text()
     const body = JSON.parse(bodyText) as {
       diagnostics: {
+        balanceChanged: boolean | null
+        balanceSatAfter: number | null
+        balanceSatBefore: number | null
         destinationKind: string | null
         errorCode: string | null
         errorName: string | null
         failureStage: string | null
+        feeBudgetMsatAfter: number | null
+        feeBudgetMsatBefore: number | null
         messageFingerprint: string | null
+        paymentIdPresent: boolean | null
+        payResponseStatus: number | null
+        preflightBalanceMaxSendableSat: number | null
         preflightMaxSendableSat: number | null
         reasonClass: string | null
+        resolvedDestinationKind: string | null
+        resultReturned: boolean | null
+        sourceDestinationKind: string | null
         timeoutSecs: number | null
       }
       reasonRef: string
@@ -949,14 +969,25 @@ describe('operator treasury payout', () => {
     expect(response.status).toBe(502)
     expect(body.reasonRef).toBe('reason.public.treasury_payout.no_route')
     expect(body.diagnostics).toEqual({
+      balanceChanged: false,
+      balanceSatAfter: 100000,
+      balanceSatBefore: 100000,
       destinationKind: 'bolt11',
       errorCode: 'err_private_route',
       errorName: 'mdk_error',
       failureStage: 'pay_throws',
+      feeBudgetMsatAfter: 42,
+      feeBudgetMsatBefore: 42,
       messageFingerprint:
         '9aedda5a994a799337d6c5398271f2468702ee95b305d0d08f3a7c8f14eabf19',
+      paymentIdPresent: false,
+      payResponseStatus: 502,
+      preflightBalanceMaxSendableSat: 99000,
       preflightMaxSendableSat: 94000,
       reasonClass: 'no_route',
+      resolvedDestinationKind: 'bolt11',
+      resultReturned: false,
+      sourceDestinationKind: 'lightning_address',
       timeoutSecs: 50,
     })
     expect(bodyText).not.toContain('raw private daemon route failure')
