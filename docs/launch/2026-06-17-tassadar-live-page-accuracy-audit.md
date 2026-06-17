@@ -23,6 +23,11 @@ primitives.
   resolve through `/api/public/nexus-pylon/receipts/{receiptRef}` while forum
   receipts retain `/api/forum/receipts/{receiptRef}`; settlement rows feed the
   drawer's movement-mode and simulation caveats.
+- 2026-06-17: Issue #5189 removed renderer fallback visuals from the web
+  adapter. The `/tassadar` scene now passes an empty `lossCurve` unless the
+  public summary provides real loss points, and contributor-ring marks are
+  derived from public leaderboard rows rather than the dependency's synthetic
+  placeholder contributors.
 
 ## Short answer
 

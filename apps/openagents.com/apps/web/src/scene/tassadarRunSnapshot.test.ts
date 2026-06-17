@@ -150,10 +150,25 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     expect(options).toBeTruthy()
     // the resolver always yields a renderable option object (nodes/contributors derived)
     expect(typeof options).toBe('object')
+    expect(options.lossCurve).toEqual([])
   })
 
-  it('adds data-bound pylon entities, verified replay beams, and settlement bursts', () => {
+  it('adds data-bound pylon contributors/entities, verified replay beams, and settlement bursts', () => {
     const layer = trainingRunEntityLayerFromPublicSummary(populated)
+    expect(layer.contributors).toEqual([
+      {
+        id: 'pylon.worker.one',
+        label: 'P1',
+        lifecycleState: 'active',
+        phase: 0,
+      },
+      {
+        id: 'pylon.worker.two',
+        label: 'P2',
+        lifecycleState: 'active',
+        phase: 0.5,
+      },
+    ])
     expect(layer.entities).toEqual([
       { id: 'pylon.worker.one', label: 'P1', status: 'verified' },
       { id: 'pylon.worker.two', label: 'P2', status: 'settled' },
@@ -167,25 +182,34 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
       },
     ])
     expect(layer.bursts).toEqual([{ atId: 'pylon.worker.two' }])
+    expect(layer.lossCurve).toEqual([])
   })
 
-  it('does not fabricate proof beams or payout bursts without public verified/settled refs', () => {
+  it('does not fabricate proof beams, payout bursts, contributors, or loss curves without public refs', () => {
     const layer = trainingRunEntityLayerFromPublicSummary({
       realGradient: {
-        leaderboardRows: [
-          {
-            pylonRef: 'pylon.seen.only',
-            rank: 1,
-            sourceRefs: ['training.lease.seen.only'],
-            verifiedWindowCount: 0,
-          },
+        leaderboardRows: [],
+      },
+    })
+    expect(layer.contributors).toEqual([])
+    expect(layer.entities).toEqual([])
+    expect(layer.beams).toEqual([])
+    expect(layer.bursts).toEqual([])
+    expect(layer.lossCurve).toEqual([])
+  })
+
+  it('passes through public loss curve points only when the summary supplies them', () => {
+    const options = tassadarRunVisualizationOptions({
+      realGradient: {
+        lossCurve: [
+          { step: 0, validationLoss: 3.2 },
+          { step: 1, validationLoss: 2.9 },
         ],
       },
     })
-    expect(layer.entities).toEqual([
-      { id: 'pylon.seen.only', label: 'P1', status: 'active' },
+    expect(options.lossCurve).toEqual([
+      { step: 0, validationLoss: 3.2 },
+      { step: 1, validationLoss: 2.9 },
     ])
-    expect(layer.beams).toEqual([])
-    expect(layer.bursts).toEqual([])
   })
 })

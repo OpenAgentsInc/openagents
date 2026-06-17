@@ -13,8 +13,10 @@
 // worker's internal types; this is a narrow structural view of the public summary.
 import {
   type TrainingRunBeamDefinition,
+  type TrainingRunContributorDefinition,
   type TrainingRunBurstDefinition,
   type TrainingRunEntityDefinition,
+  type TrainingRunLossPoint,
   type TrainingRunVisualizationOptions,
   type TrainingRunVisualizationSnapshot,
   trainingRunVisualizationOptionsFromSnapshot,
@@ -100,6 +102,10 @@ export interface TassadarRunPublicSummary {
       readonly maxValidationLoss?: number | null
       readonly satisfied?: boolean
     }
+    readonly lossCurve?: ReadonlyArray<{
+      readonly step?: number
+      readonly validationLoss?: number
+    }>
     readonly closeoutRequirement?: {
       readonly satisfied?: boolean
       readonly freivaldsCommitmentRefs?: ReadonlyArray<string>
@@ -219,9 +225,56 @@ const settlementBursts = (
       : [],
   )
 
+const contributorLifecycleState = (
+  row: PublicTrainingRunLeaderboardRow,
+): TrainingRunContributorDefinition['lifecycleState'] => {
+  if (finiteOrZero(row.settledPayoutSats) > 0) {
+    return 'active'
+  }
+  if (finiteOrZero(row.verifiedWindowCount) > 0) {
+    return 'active'
+  }
+  return publicRefs(row.sourceRefs).length > 0 ? 'warmup' : 'registered'
+}
+
+const contributorDefinitions = (
+  rows: ReadonlyArray<PublicTrainingRunLeaderboardRow> | undefined,
+): ReadonlyArray<TrainingRunContributorDefinition> => {
+  const validRows = (rows ?? []).filter(
+    row => row.pylonRef !== undefined && row.pylonRef.trim() !== '',
+  )
+  const divisor = Math.max(validRows.length, 1)
+
+  return validRows.map((row, index) => ({
+    id: row.pylonRef!,
+    label:
+      finiteOrZero(row.rank) > 0 ? `P${finiteOrZero(row.rank)}` : shortRef(row.pylonRef!),
+    lifecycleState: contributorLifecycleState(row),
+    phase: index / divisor,
+  }))
+}
+
+const lossCurveFromPublicSummary = (
+  summary: TassadarRunPublicSummary,
+): ReadonlyArray<TrainingRunLossPoint> =>
+  (summary.realGradient?.lossCurve ?? []).flatMap(point => {
+    if (
+      typeof point.step !== 'number' ||
+      typeof point.validationLoss !== 'number' ||
+      !Number.isFinite(point.step) ||
+      !Number.isFinite(point.validationLoss)
+    ) {
+      return []
+    }
+    return [{ step: point.step, validationLoss: point.validationLoss }]
+  })
+
 export const trainingRunEntityLayerFromPublicSummary = (
   summary: TassadarRunPublicSummary,
-): Pick<TrainingRunVisualizationOptions, 'beams' | 'bursts' | 'entities'> => {
+): Pick<
+  TrainingRunVisualizationOptions,
+  'beams' | 'bursts' | 'contributors' | 'entities' | 'lossCurve'
+> => {
   const rows = summary.realGradient?.leaderboardRows
   const pairs = summary.realGradient?.verifiedReplayPairs
   const entities = [
@@ -232,7 +285,9 @@ export const trainingRunEntityLayerFromPublicSummary = (
   return {
     beams: verifiedReplayBeams(pairs),
     bursts: settlementBursts(rows),
+    contributors: contributorDefinitions(rows),
     entities,
+    lossCurve: lossCurveFromPublicSummary(summary),
   }
 }
 
