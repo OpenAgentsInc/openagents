@@ -29,6 +29,11 @@ import {
   type TassadarRunPublicSummary,
   tassadarRunVisualizationOptions,
 } from './tassadarRunSnapshot'
+import {
+  type TassadarSpacetimeWorldSubscription,
+  spacetimeConfigFromElement,
+  startTassadarSpacetimeWorldSubscription,
+} from './tassadarSpacetimeWorld'
 
 export const TASSADAR_RUN_TAG = 'oa-tassadar-run'
 export const TASSADAR_RUN_SUMMARY_ENDPOINT = '/api/public/tassadar-run-summary'
@@ -376,6 +381,8 @@ const makeClass = (): CustomElementConstructor =>
   class extends HTMLElement {
     #shadow: ShadowRoot | null = null
     #abort: AbortController | null = null
+    #spacetimeWorld: TassadarSpacetimeWorldSubscription | null = null
+    #summary: TassadarRunPublicSummary | null = null
 
     connectedCallback(): void {
       const shadow = this.shadowRoot ?? this.attachShadow({ mode: 'open' })
@@ -386,11 +393,13 @@ const makeClass = (): CustomElementConstructor =>
     disconnectedCallback(): void {
       this.#abort?.abort()
       this.#abort = null
+      this.#disconnectSpacetimeWorld()
       this.#shadow?.replaceChildren()
     }
 
     #refresh(): void {
       this.#abort?.abort()
+      this.#disconnectSpacetimeWorld()
       this.#renderLoading()
       this.#abort = new AbortController()
       void this.#load(this.#abort.signal)
@@ -449,6 +458,7 @@ const makeClass = (): CustomElementConstructor =>
       const base = this.#base()
       if (base === null) return
       this.setAttribute('data-state', 'error')
+      this.removeAttribute('data-spacetime-state')
       base.mount.append(this.#overlay('Live data — error', message))
     }
 
@@ -458,6 +468,7 @@ const makeClass = (): CustomElementConstructor =>
     #renderScene(summary: TassadarRunPublicSummary): void {
       const base = this.#base()
       if (base === null) return
+      this.#summary = summary
       this.setAttribute('data-state', dataStateForSummary(summary))
       this.setAttribute('data-pointer-lock', 'released')
       registerTrainingRunElement()
@@ -488,17 +499,78 @@ const makeClass = (): CustomElementConstructor =>
       run.addEventListener('node-selected', event => {
         const detail = (event as CustomEvent<unknown>).detail
         if (!isTrainingRunNodeSelection(detail)) return
-        const proofLink = proofLinkForSelection(summary, detail)
+        const proofLink = proofLinkForSelection(this.#summary ?? summary, detail)
         this.#renderSelection(base.mount, detail, proofLink)
       })
       base.mount.append(run)
       this.#renderStatus(base.mount, summary)
+      this.#connectSpacetimeWorld(summary, run, base.mount)
+    }
+
+    #disconnectSpacetimeWorld(): void {
+      this.#spacetimeWorld?.disconnect()
+      this.#spacetimeWorld = null
+      this.removeAttribute('data-spacetime-state')
+    }
+
+    #connectSpacetimeWorld(
+      summary: TassadarRunPublicSummary,
+      run: HTMLElement & { visualization?: unknown },
+      mount: HTMLDivElement,
+    ): void {
+      const config = spacetimeConfigFromElement(this)
+      if (config === null) return
+      const signal = this.#abort?.signal
+      this.setAttribute('data-spacetime-state', 'connecting')
+      void startTassadarSpacetimeWorldSubscription({
+        baseSummary: summary,
+        config,
+        onError: () => {
+          if (!this.isConnected || signal?.aborted === true) return
+          this.setAttribute('data-spacetime-state', 'error')
+        },
+        onSummary: nextSummary => {
+          if (!this.isConnected || signal?.aborted === true) return
+          this.#summary = nextSummary
+          this.setAttribute('data-spacetime-state', 'connected')
+          run.visualization = {
+            ...tassadarRunVisualizationOptions(nextSummary),
+            cameraMode: 'perspective_walk',
+            controller: 'wasd_mouselook',
+            walkController: {
+              bounds: { minX: -8, maxX: 8, minZ: -8, maxZ: 8 },
+              eyeHeight: 1.65,
+              movementSpeed: 4.5,
+              sprintMultiplier: 1.8,
+              onLockChange: (locked: boolean) => {
+                this.setAttribute(
+                  'data-pointer-lock',
+                  locked ? 'locked' : 'released',
+                )
+              },
+            },
+          }
+          this.#renderStatus(mount, nextSummary)
+        },
+      })
+        .then(subscription => {
+          if (!this.isConnected || signal?.aborted === true) {
+            subscription.disconnect()
+            return
+          }
+          this.#spacetimeWorld = subscription
+        })
+        .catch(() => {
+          if (!this.isConnected || signal?.aborted === true) return
+          this.setAttribute('data-spacetime-state', 'error')
+        })
     }
 
     #renderStatus(
       mount: HTMLDivElement,
       summary: TassadarRunPublicSummary,
     ): void {
+      mount.querySelector('.status')?.remove()
       const panel = document.createElement('aside')
       panel.className = 'status'
       panel.setAttribute('aria-label', 'Live Tassadar snapshot status')

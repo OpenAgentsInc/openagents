@@ -304,6 +304,55 @@ gcloud compute ssh spacetimedb-world-1 \
   --command='set -e; for table in training_run run_entity world_edge proof_ref settlement_ref world_event projection_cursor bridge_health; do printf "\n%s\n" "$table"; sudo -u spacetimedb /stdb/bin/2.6.0/spacetimedb-cli sql -s local openagents-world "SELECT COUNT(*) AS count FROM $table"; done'
 ```
 
+## Browser Subscription Adapter
+
+Issue #5238 added the feature-flagged `/tassadar` browser adapter. The page
+still fetches `/api/public/tassadar-run-summary` first and treats that Worker/D1
+summary as the base snapshot. SpacetimeDB is an additive subscription layer
+only.
+
+The route enables the adapter by passing public data attributes to
+`oa-tassadar-run`:
+
+```text
+data-spacetime-world-url="https://spacetime.openagents.com"
+data-spacetime-database="openagents-world"
+```
+
+Omit those attributes to run the page in Worker-summary-only mode. No private
+tokens or service identities are passed to the browser. The browser subscribes
+only to these public tables for the canonical run:
+
+```text
+training_run
+run_entity
+world_edge
+proof_ref
+settlement_ref
+world_event
+```
+
+The generated TypeScript bindings are checked into:
+
+```text
+apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings
+```
+
+Regenerate them after module schema changes with a SpacetimeDB CLI matching the
+module version:
+
+```bash
+spacetime generate \
+  --lang typescript \
+  --out-dir apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings \
+  --module-path apps/openagents-world-spacetimedb
+```
+
+The generated `index.ts` carries a `// @ts-nocheck` header because
+`spacetimedb@2.6.0` generated schema generics currently conflict with this
+repo's `exactOptionalPropertyTypes` TypeScript setting. Keep hand-written
+adapter code typechecked.
+
 ## Logs
 
 SpacetimeDB logs:

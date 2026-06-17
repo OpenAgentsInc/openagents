@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   type TassadarRunPublicSummary,
+  spacetimeWorldSummaryFromRows,
   tassadarRunVisualizationOptions,
   trainingRunEntityLayerFromPublicSummary,
   trainingRunSnapshotFromPublicSummary,
@@ -367,5 +368,160 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     })
     expect(options.lossCurve).toEqual([])
     expect(options.sceneChrome?.lossPanel).toBe('hidden')
+  })
+
+  it('maps SpacetimeDB projection rows through the existing summary visualization shape', () => {
+    const fromWorld = spacetimeWorldSummaryFromRows(populated, {
+      proofRefs: [
+        {
+          entityRef: 'worker.world.1',
+          proofKind: 'verified_replay_ref',
+          proofRef: 'challenge.world.1',
+          runRef: 'run.tassadar.executor.20260615',
+          title: 'challenge world',
+          url: '/api/public/training/runs/run.tassadar.executor.20260615?focusRef=challenge.world.1',
+        } as never,
+      ],
+      runEntities: [
+        {
+          entityKind: 'pylon',
+          entityRef: 'pylon.world.one',
+          label: 'P1',
+          lane: 'pylon',
+          proofCount: 1,
+          runRef: 'run.tassadar.executor.20260615',
+          sourceRef: 'training.lease.world.one',
+          status: 'simulation_settled',
+        } as never,
+        {
+          entityKind: 'verified_replay_worker',
+          entityRef: 'worker.world.1',
+          label: 'W1',
+          lane: 'verified_replay',
+          proofCount: 1,
+          runRef: 'run.tassadar.executor.20260615',
+          sourceRef: 'challenge.world.1',
+          status: 'verified',
+        } as never,
+        {
+          entityKind: 'verified_replay_validator',
+          entityRef: 'validator.world.1',
+          label: 'V1',
+          lane: 'verified_replay',
+          proofCount: 1,
+          runRef: 'run.tassadar.executor.20260615',
+          sourceRef: 'challenge.world.1',
+          status: 'verified',
+        } as never,
+        {
+          entityKind: 'settlement_receipt',
+          entityRef: 'receipt.nexus.world.1',
+          label: '5s',
+          lane: 'settlement',
+          proofCount: 1,
+          runRef: 'run.tassadar.executor.20260615',
+          sourceRef: 'receipt.nexus.world.1',
+          status: 'simulation_settled',
+        } as never,
+        {
+          entityKind: 'accepted_trace',
+          entityRef: 'trace.world.1',
+          label: 'T1',
+          lane: 'trace',
+          proofCount: 1,
+          runRef: 'run.tassadar.executor.20260615',
+          sourceRef: 'trace.world.1',
+          status: 'accepted_trace',
+        } as never,
+      ],
+      settlementRefs: [
+        {
+          amountSats: 5,
+          entityRef: 'receipt.nexus.world.1',
+          movementMode: 'simulation',
+          realBitcoinMoved: false,
+          receiptRef: 'receipt.nexus.world.1',
+          runRef: 'run.tassadar.executor.20260615',
+          settlementRef: 'receipt.nexus.world.1',
+          url: '/api/public/nexus-pylon/receipts/receipt.nexus.world.1',
+        } as never,
+      ],
+      trainingRuns: [
+        {
+          maxStalenessSeconds: 0,
+          publicSummaryHash: 'hash.world',
+          runRef: 'run.tassadar.executor.20260615',
+          runState: 'active',
+          sourceGeneratedAt: '2026-06-17T20:43:06.789Z',
+          sourceUrl: 'https://openagents.com/api/public/tassadar-run-summary',
+          stalenessKind: 'live_at_read',
+        } as never,
+      ],
+      worldEdges: [
+        {
+          edgeKind: 'pylon_to_settlement',
+          edgeRef: 'edge.world.1',
+          fromEntityRef: 'pylon.world.one',
+          runRef: 'run.tassadar.executor.20260615',
+          sourceRef: 'receipt.nexus.world.1',
+          toEntityRef: 'receipt.nexus.world.1',
+        } as never,
+      ],
+      worldEvents: [
+        {
+          entityRef: 'worker.world.1',
+          eventKind: 'verified_replay_pair',
+          eventRef: 'world_event.world.1',
+          runRef: 'run.tassadar.executor.20260615',
+          sourceGeneratedAt: '2026-06-17T20:43:06.789Z',
+          sourceRef: 'challenge.world.1',
+          summary: 'Verified replay pair 1',
+        } as never,
+      ],
+    })
+
+    expect(fromWorld.generatedAt).toBe('2026-06-17T20:43:06.789Z')
+    expect(fromWorld.realGradient?.leaderboardRows?.[0]).toMatchObject({
+      pylonRef: 'pylon.world.one',
+      rank: 1,
+      verifiedWindowCount: 1,
+    })
+    expect(fromWorld.realGradient?.verifiedReplayPairs?.[0]).toMatchObject({
+      challengeRef: 'challenge.world.1',
+      validatorRef: 'validator.world.1',
+      workerRef: 'worker.world.1',
+    })
+    expect(fromWorld.settlementRows?.[0]).toMatchObject({
+      amountSats: 5,
+      contributorRef: 'pylon.world.one',
+      movementMode: 'simulation',
+      realBitcoinMoved: false,
+      receiptRef: 'receipt.nexus.world.1',
+      state: 'settled',
+    })
+    expect(fromWorld.corpus?.traceRefs).toEqual(['trace.world.1'])
+
+    const options = tassadarRunVisualizationOptions(fromWorld)
+    expect(options.entities).toContainEqual({
+      id: 'pylon.world.one',
+      label: 'P1',
+      position: [-2.35, 0, 0.12],
+      status: 'simulation_settled',
+    })
+    expect(options.entities).toContainEqual({
+      id: 'worker.world.1',
+      label: 'W1',
+      position: [0, 2.05, 0.12],
+      status: 'verified',
+    })
+    expect(options.entities).toContainEqual({
+      id: 'receipt.nexus.world.1',
+      label: '5s',
+      position: [-1.15, -2.2, 0.12],
+      status: 'simulation_settled',
+    })
+    expect(options.beams).toEqual([])
+    expect(options.bursts).toEqual([])
+    expect(options.contributors).toEqual([])
   })
 })

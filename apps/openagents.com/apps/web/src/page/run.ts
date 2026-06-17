@@ -9,10 +9,16 @@ import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 import { tassadarRunView } from '../scene/tassadarRunElement'
+import {
+  TASSADAR_SPACETIME_DATABASE_DATA_KEY,
+  TASSADAR_SPACETIME_WORLD_URL_DATA_KEY,
+} from '../scene/tassadarSpacetimeWorld'
 import * as Ui from '../ui'
 import type { PublicHeaderAuthState } from './publicHeader'
 
 const pageShellClass = 'relative h-dvh overflow-hidden bg-[#000] text-[#f1efe8]'
+const TASSADAR_SPACETIME_WORLD_URL = 'https://spacetime.openagents.com'
+const TASSADAR_SPACETIME_DATABASE = 'openagents-world'
 
 export const view = <Message>(
   authState: PublicHeaderAuthState<Message>,
@@ -35,6 +41,14 @@ export const view = <Message>(
           tassadarRunView<Message>([
             Ui.className<Message>(
               'absolute inset-0 block h-full min-h-full w-full',
+            ),
+            h.DataAttribute(
+              TASSADAR_SPACETIME_WORLD_URL_DATA_KEY,
+              TASSADAR_SPACETIME_WORLD_URL,
+            ),
+            h.DataAttribute(
+              TASSADAR_SPACETIME_DATABASE_DATA_KEY,
+              TASSADAR_SPACETIME_DATABASE,
             ),
           ]),
         ],

@@ -48,6 +48,24 @@ apps/openagents-world-spacetimedb/target/wasm32-unknown-unknown/release/openagen
 Publish through the VM-local SpacetimeDB CLI as documented in
 `docs/game/2026-06-17-spacetimedb-admin-runbook.md`.
 
+## Client Bindings
+
+The `/tassadar` browser adapter uses generated TypeScript bindings from this
+module. They live in:
+
+```text
+apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings
+```
+
+Regenerate those bindings after public table or reducer schema changes:
+
+```bash
+spacetime generate \
+  --lang typescript \
+  --out-dir apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings \
+  --module-path apps/openagents-world-spacetimedb
+```
+
 ## Tassadar Bridge
 
 The operator bridge projects the public Worker summary into the

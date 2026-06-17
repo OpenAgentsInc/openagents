@@ -20,6 +20,15 @@ import {
   trainingRunVisualizationOptionsFromSnapshot,
 } from '@openagentsinc/three-effect/core'
 
+import type {
+  ProofRef,
+  RunEntity,
+  SettlementRef,
+  TrainingRun,
+  WorldEdge,
+  WorldEvent,
+} from './spacetimeWorldBindings/types'
+
 /** One public metric value (`{ value, provenanceLabel, sourceRefs }` — we read `value`). */
 export interface PublicMetric {
   readonly sourceRefs?: ReadonlyArray<string>
@@ -153,6 +162,11 @@ const publicRefs = (
     ? refs.map(ref => ref.trim()).filter(ref => ref.length > 0)
     : []
 
+const uniquePublicRefs = (
+  refs: ReadonlyArray<string | undefined>,
+): ReadonlyArray<string> =>
+  [...new Set(refs.map(ref => ref?.trim() ?? '').filter(ref => ref !== ''))]
+
 const lossOrNull = (value: number | null | undefined): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
 
@@ -161,6 +175,9 @@ const shortRef = (ref: string): string => {
   const tail = pieces[pieces.length - 1] ?? ref
   return tail.length <= 10 ? tail : `${tail.slice(0, 4)}…${tail.slice(-4)}`
 }
+
+const runRefForSummary = (summary: TassadarRunPublicSummary): string =>
+  summary.runRef ?? 'run.tassadar.executor.20260615'
 
 const liveEntityZ = 0.12
 
@@ -445,6 +462,288 @@ const runNodeFromPublicSummary = (
   role: 'run',
   status: runNodeStatus(summary.runState),
 })
+
+export interface TassadarSpacetimeWorldRows {
+  readonly proofRefs?: ReadonlyArray<ProofRef>
+  readonly runEntities?: ReadonlyArray<RunEntity>
+  readonly settlementRefs?: ReadonlyArray<SettlementRef>
+  readonly trainingRuns?: ReadonlyArray<TrainingRun>
+  readonly worldEdges?: ReadonlyArray<WorldEdge>
+  readonly worldEvents?: ReadonlyArray<WorldEvent>
+}
+
+const rowText = (value: string | undefined): string => value?.trim() ?? ''
+
+const labelOrdinal = (label: string, prefix: string): number => {
+  const match = label.match(new RegExp(`^${prefix}(\\d+)$`))
+  return match?.[1] === undefined ? Number.POSITIVE_INFINITY : Number(match[1])
+}
+
+const rowSort = <Row extends { readonly label?: string; readonly entityRef: string }>(
+  prefix: string,
+) => (left: Row, right: Row): number => {
+  const labelCompare =
+    labelOrdinal(rowText(left.label), prefix) -
+    labelOrdinal(rowText(right.label), prefix)
+  return labelCompare === 0
+    ? left.entityRef.localeCompare(right.entityRef)
+    : labelCompare
+}
+
+const sortedRows = <Row extends { readonly label?: string; readonly entityRef: string }>(
+  rows: ReadonlyArray<Row>,
+  prefix: string,
+): ReadonlyArray<Row> => [...rows].sort(rowSort(prefix))
+
+const sourceRefsForEntity = (
+  entity: RunEntity,
+  proofs: ReadonlyArray<ProofRef>,
+  edges: ReadonlyArray<WorldEdge>,
+  events: ReadonlyArray<WorldEvent>,
+): ReadonlyArray<string> =>
+  uniquePublicRefs([
+    entity.sourceRef,
+    ...proofs
+      .filter(proof => proof.entityRef === entity.entityRef)
+      .flatMap(proof => [proof.proofRef, proof.url]),
+    ...edges
+      .filter(
+        edge =>
+          edge.fromEntityRef === entity.entityRef ||
+          edge.toEntityRef === entity.entityRef,
+      )
+      .map(edge => edge.sourceRef),
+    ...events
+      .filter(event => event.entityRef === entity.entityRef)
+      .map(event => event.sourceRef),
+  ])
+
+const numberFromU64 = (value: SettlementRef['amountSats']): number =>
+  typeof value === 'bigint'
+    ? Number(value)
+    : typeof value === 'number' && Number.isFinite(value)
+      ? value
+      : 0
+
+const pylonRowsFromWorld = (
+  entities: ReadonlyArray<RunEntity>,
+  proofs: ReadonlyArray<ProofRef>,
+  edges: ReadonlyArray<WorldEdge>,
+  events: ReadonlyArray<WorldEvent>,
+): ReadonlyArray<PublicTrainingRunLeaderboardRow> =>
+  sortedRows(
+    entities.filter(entity => entity.entityKind === 'pylon'),
+    'P',
+  ).map(entity => {
+    const rank = labelOrdinal(entity.label, 'P')
+    return {
+      pylonRef: entity.entityRef,
+      ...(Number.isFinite(rank) && rank > 0 ? { rank } : {}),
+      sourceRefs: sourceRefsForEntity(entity, proofs, edges, events),
+      verifiedWindowCount:
+        entity.status === 'verified' ||
+        entity.status === 'simulation_settled' ||
+        entity.status === 'real_settled'
+          ? 1
+          : 0,
+    }
+  })
+
+const pairRowsFromWorld = (
+  entities: ReadonlyArray<RunEntity>,
+  proofs: ReadonlyArray<ProofRef>,
+  edges: ReadonlyArray<WorldEdge>,
+  events: ReadonlyArray<WorldEvent>,
+  kind: 'verified' | 'rejected',
+):
+  | ReadonlyArray<PublicTrainingRunVerifiedReplayPair>
+  | ReadonlyArray<PublicTrainingRunRejectedReplayPair> => {
+  const workerKind =
+    kind === 'verified' ? 'verified_replay_worker' : 'rejected_replay_worker'
+  const validatorKind =
+    kind === 'verified'
+      ? 'verified_replay_validator'
+      : 'rejected_replay_validator'
+  const workerPrefix = kind === 'verified' ? 'W' : 'RW'
+  const validatorPrefix = kind === 'verified' ? 'V' : 'RV'
+  const workers = sortedRows(
+    entities.filter(entity => entity.entityKind === workerKind),
+    workerPrefix,
+  )
+  const validators = sortedRows(
+    entities.filter(entity => entity.entityKind === validatorKind),
+    validatorPrefix,
+  )
+
+  return workers.flatMap(worker => {
+    const index = labelOrdinal(worker.label, workerPrefix)
+    const validator = validators.find(
+      row => labelOrdinal(row.label, validatorPrefix) === index,
+    )
+    if (kind === 'verified' && validator === undefined) return []
+    const refs = sourceRefsForEntity(worker, proofs, edges, events)
+    const challengeRef = worker.sourceRef || validator?.sourceRef
+    return [
+      {
+        ...(challengeRef === undefined || challengeRef === ''
+          ? {}
+          : { challengeRef }),
+        sourceRefs: uniquePublicRefs([
+          ...refs,
+          ...(validator === undefined
+            ? []
+            : sourceRefsForEntity(validator, proofs, edges, events)),
+        ]),
+        ...(validator === undefined ? {} : { validatorRef: validator.entityRef }),
+        verdictRefs: proofs
+          .filter(
+            proof =>
+              proof.entityRef === worker.entityRef ||
+              proof.entityRef === validator?.entityRef,
+          )
+          .map(proof => proof.proofRef),
+        workerRef: worker.entityRef,
+      },
+    ]
+  })
+}
+
+const settlementRowsFromWorld = (
+  entities: ReadonlyArray<RunEntity>,
+  proofs: ReadonlyArray<ProofRef>,
+  edges: ReadonlyArray<WorldEdge>,
+  settlements: ReadonlyArray<SettlementRef>,
+  events: ReadonlyArray<WorldEvent>,
+): ReadonlyArray<PublicTassadarSettlementRow> =>
+  settlements.map(row => {
+    const entity =
+      entities.find(runEntity => runEntity.entityRef === row.entityRef) ??
+      entities.find(runEntity => runEntity.entityRef === row.receiptRef)
+    const sourceRefs =
+      entity === undefined
+        ? uniquePublicRefs([row.receiptRef])
+        : sourceRefsForEntity(entity, proofs, edges, events)
+    const contributorRef =
+      edges.find(
+        edge =>
+          edge.edgeKind === 'pylon_to_settlement' &&
+          edge.toEntityRef === row.entityRef,
+      )?.fromEntityRef ?? null
+    const settlementState =
+      entity?.status === 'simulation_settled' || entity?.status === 'real_settled'
+        ? 'settled'
+        : entity?.status === 'failed_or_expired'
+          ? 'failed'
+          : 'pending'
+
+    return {
+      amountSats: numberFromU64(row.amountSats),
+      apiUrl: row.url,
+      contributorRef,
+      movementMode: row.movementMode,
+      realBitcoinMoved: row.realBitcoinMoved,
+      receiptKind: 'settlement_recorded',
+      receiptRef: row.receiptRef,
+      sourceRefs,
+      state: settlementState,
+      trainingRunRef: row.runRef,
+    }
+  })
+
+export const spacetimeWorldSummaryFromRows = (
+  baseSummary: TassadarRunPublicSummary,
+  rows: TassadarSpacetimeWorldRows,
+): TassadarRunPublicSummary => {
+  const runRef = runRefForSummary(baseSummary)
+  const trainingRun = (rows.trainingRuns ?? []).find(row => row.runRef === runRef)
+  const entities = (rows.runEntities ?? []).filter(row => row.runRef === runRef)
+  const proofs = (rows.proofRefs ?? []).filter(row => row.runRef === runRef)
+  const edges = (rows.worldEdges ?? []).filter(row => row.runRef === runRef)
+  const settlements = (rows.settlementRefs ?? []).filter(
+    row => row.runRef === runRef,
+  )
+  const events = (rows.worldEvents ?? []).filter(row => row.runRef === runRef)
+
+  if (
+    trainingRun === undefined &&
+    entities.length === 0 &&
+    proofs.length === 0 &&
+    settlements.length === 0 &&
+    events.length === 0
+  ) {
+    return baseSummary
+  }
+
+  const leaderboardRows = pylonRowsFromWorld(entities, proofs, edges, events)
+  const verifiedReplayPairs = pairRowsFromWorld(
+    entities,
+    proofs,
+    edges,
+    events,
+    'verified',
+  ) as ReadonlyArray<PublicTrainingRunVerifiedReplayPair>
+  const rejectedReplayPairs = pairRowsFromWorld(
+    entities,
+    proofs,
+    edges,
+    events,
+    'rejected',
+  ) as ReadonlyArray<PublicTrainingRunRejectedReplayPair>
+  const settlementRows = settlementRowsFromWorld(
+    entities,
+    proofs,
+    edges,
+    settlements,
+    events,
+  )
+  const traceRefs = sortedRows(
+    entities.filter(entity => entity.entityKind === 'accepted_trace'),
+    'T',
+  ).map(entity => entity.entityRef)
+  const receiptRefs = uniquePublicRefs([
+    ...publicRefs(baseSummary.receiptRefs),
+    ...settlements.map(row => row.receiptRef),
+    ...proofs
+      .filter(proof => proof.proofRef.startsWith('receipt.'))
+      .map(proof => proof.proofRef),
+  ])
+
+  const generatedAt = trainingRun?.sourceGeneratedAt ?? baseSummary.generatedAt
+  const runState = trainingRun?.runState ?? baseSummary.runState
+
+  return {
+    ...baseSummary,
+    ...(traceRefs.length === 0
+      ? {}
+      : {
+          corpus: {
+            ...baseSummary.corpus,
+            acceptedTraceCount: traceRefs.length,
+            traceRefs,
+          },
+        }),
+    ...(generatedAt === undefined ? {} : { generatedAt }),
+    realGradient: {
+      ...baseSummary.realGradient,
+      ...(leaderboardRows.length > 0 ? { leaderboardRows } : {}),
+      ...(rejectedReplayPairs.length > 0 ? { rejectedReplayPairs } : {}),
+      ...(verifiedReplayPairs.length > 0 ? { verifiedReplayPairs } : {}),
+    },
+    receiptRefs,
+    runRef,
+    ...(runState === undefined ? {} : { runState }),
+    ...(settlementRows.length === 0 ? {} : { settlementRows }),
+    ...(trainingRun === undefined
+      ? {}
+      : {
+          staleness: {
+            ...baseSummary.staleness,
+            composition: trainingRun.stalenessKind,
+            maxStalenessSeconds: trainingRun.maxStalenessSeconds,
+          },
+        }),
+  }
+}
 
 export const trainingRunEntityLayerFromPublicSummary = (
   summary: TassadarRunPublicSummary,

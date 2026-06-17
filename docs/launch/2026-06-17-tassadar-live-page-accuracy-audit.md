@@ -128,6 +128,17 @@ primitives.
   one `projection_cursor`, and one `bridge_health` row. Replay left
   `world_event` at 17 rows. `/tassadar` still renders from the Worker/D1 public
   summary until the feature-flagged browser subscription adapter lands.
+- 2026-06-17: Issue #5238 added the feature-flagged browser subscription
+  adapter for `/tassadar`. The route now passes public
+  `data-spacetime-world-url="https://spacetime.openagents.com"` and
+  `data-spacetime-database="openagents-world"` attributes into
+  `oa-tassadar-run`; the custom element still fetches
+  `/api/public/tassadar-run-summary` first, then subscribes anonymously to the
+  public `training_run`, `run_entity`, `world_edge`, `proof_ref`,
+  `settlement_ref`, and `world_event` tables. Row callbacks are converted back
+  into the same public-summary visualization shape, so SpacetimeDB can update
+  only public-ref-backed entities and timestamped projection transitions. If the
+  WebSocket is disabled or unreachable, the Worker summary scene remains live.
 
 ## Short answer
 

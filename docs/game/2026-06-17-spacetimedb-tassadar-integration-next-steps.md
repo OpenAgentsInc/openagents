@@ -1,7 +1,7 @@
 # SpacetimeDB To Tassadar Integration Next Steps
 
 Date: 2026-06-17
-Status: Phase 0 and Phase 1 implemented; browser adapter and ops hardening next
+Status: Phase 0, Phase 1, and Phase 2 implemented; inspector and ops hardening next
 
 ## Current Boundary
 
@@ -88,29 +88,35 @@ key. The replay check left `world_event` at 17 rows.
 
 ## Phase 2: Browser Subscription Adapter
 
-Add the browser client behind an explicit feature flag or page attribute, for
-example:
+Issue #5238 added the browser client behind explicit page attributes:
 
 ```text
-TASSADAR_SPACETIME_WORLD_URL=https://spacetime.openagents.com
-TASSADAR_SPACETIME_DATABASE=openagents-world
+data-spacetime-world-url="https://spacetime.openagents.com"
+data-spacetime-database="openagents-world"
 ```
 
 Do not put private tokens in the browser. Browser access should be anonymous or
 public-row scoped until a modeled OpenAgents identity mapping exists.
 
-The first web adapter should not rewrite the scene. It should:
+The first web adapter does not rewrite the scene. It:
 
-- keep `tassadarRunElement.ts` fetching `/api/public/tassadar-run-summary` for
+- keeps `tassadarRunElement.ts` fetching `/api/public/tassadar-run-summary` for
   the base snapshot;
-- subscribe to `training_run`, `run_entity`, `world_edge`, `proof_ref`,
+- subscribes to `training_run`, `run_entity`, `world_edge`, `proof_ref`,
   `settlement_ref`, and `world_event` rows only when the flag is enabled;
-- convert row callbacks into the same `TrainingRunVisualizationSnapshot` shape
-  that `tassadarRunSnapshot.ts` already builds;
-- fall back to the Worker summary without blocking page startup if the
+- converts row callbacks into the same public-summary shape that
+  `tassadarRunSnapshot.ts` already builds;
+- falls back to the Worker summary without blocking page startup if the
   SpacetimeDB connection fails;
-- apply live updates only when they carry public refs or timestamped projection
+- applies live updates only when they carry public refs or timestamped projection
   transitions.
+
+Implementation paths:
+
+- `apps/openagents.com/apps/web/src/scene/tassadarSpacetimeWorld.ts`
+- `apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings/`
+- `apps/openagents.com/apps/web/src/scene/tassadarRunSnapshot.ts`
+- `apps/openagents.com/apps/web/src/scene/tassadarRunElement.ts`
 
 The visual contract from the live-page audit still applies: every moving dot,
 pulse, flow, beam, burst, or counter roll must be backed by a public ref or a
@@ -139,10 +145,11 @@ Required checks before treating `/tassadar` as connected:
 - Unit-test that replaying the same summary is idempotent and does not append
   duplicate `world_event` rows.
 - Add web adapter coverage for Worker-summary fallback when SpacetimeDB is
-  unavailable.
-- Run the existing `/tassadar` smoke.
+  unavailable. Done in issue #5238.
+- Run the existing `/tassadar` smoke. Done in issue #5238 against the current
+  production route.
 - Probe `https://spacetime.openagents.com/v1/database/openagents-world/subscribe`
-  and expect `426` from a non-WebSocket curl.
+  and expect `426` from a non-WebSocket curl. Done in issue #5238.
 - Manually verify the browser scene still contains no unbacked motion.
 
 ## Acceptance Criteria

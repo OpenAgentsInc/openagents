@@ -7,6 +7,10 @@ import {
   proofLinkForSelection,
   tassadarRunView,
 } from './tassadarRunElement'
+import {
+  TASSADAR_SPACETIME_DATABASE_ATTRIBUTE,
+  TASSADAR_SPACETIME_WORLD_URL_ATTRIBUTE,
+} from './tassadarSpacetimeWorld'
 
 // Page-wiring test for the live Tassadar run scene element (#5118). We stub
 // `fetch` to exercise the three honest states the page must handle — populated,
@@ -41,6 +45,32 @@ vi.mock('@openagentsinc/three-effect/foldkit', () => {
     registerTrainingRunElement: () => {},
   }
 })
+
+vi.mock('./spacetimeWorldBindings', () => ({
+  DbConnection: {
+    builder: () => {
+      let onConnectError: ((ctx: unknown, error: Error) => void) | undefined
+      const builder = {
+        build: () => {
+          queueMicrotask(() => {
+            onConnectError?.({}, new Error('spacetime unavailable'))
+          })
+          return { disconnect: () => {} }
+        },
+        onConnect: () => builder,
+        onConnectError: (callback: (ctx: unknown, error: Error) => void) => {
+          onConnectError = callback
+          return builder
+        },
+        onDisconnect: () => builder,
+        withCompression: () => builder,
+        withDatabaseName: () => builder,
+        withUri: () => builder,
+      }
+      return builder
+    },
+  },
+}))
 
 const populated = {
   generatedAt: '2026-06-17T16:39:20.270Z',
@@ -136,10 +166,13 @@ const jsonResponse = (body: unknown, status = 200): Response =>
 
 // Mount the element into the document and wait for its async fetch to settle by
 // polling the data-state off the loading state.
-const mountAndSettle = async (): Promise<HTMLElement> => {
+const mountAndSettle = async (
+  configure?: (element: HTMLElement) => void,
+): Promise<HTMLElement> => {
   // Force registration via the view helper, then create the element directly.
   tassadarRunView()
   const el = document.createElement(TASSADAR_RUN_TAG)
+  configure?.(el)
   document.body.append(el)
   await waitForSettled(el)
   return el
@@ -156,6 +189,20 @@ const waitForSettled = async (el: HTMLElement): Promise<void> => {
   }
 }
 
+const waitForSpacetimeState = async (
+  el: HTMLElement,
+  state: string,
+): Promise<void> => {
+  for (
+    let i = 0;
+    i < 50 && el.getAttribute('data-spacetime-state') !== state;
+    i += 1
+  ) {
+    await Promise.resolve()
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
+}
+
 describe('tassadarRunView page wiring', () => {
   beforeEach(() => {
     recordedVisualizations.length = 0
@@ -164,6 +211,7 @@ describe('tassadarRunView page wiring', () => {
   afterEach(() => {
     document.body.replaceChildren()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('fetches the public summary endpoint on connect', async () => {
@@ -204,6 +252,37 @@ describe('tassadarRunView page wiring', () => {
     walkController.onLockChange?.(false)
     expect(el.getAttribute('data-pointer-lock')).toBe('released')
     // The underlying renderer element was mounted.
+    expect(el.shadowRoot?.querySelector(STUB_TAG)).not.toBeNull()
+  })
+
+  it('keeps the Worker-summary scene when SpacetimeDB is disabled', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(populated))
+    const el = await mountAndSettle()
+
+    expect(el.getAttribute('data-state')).toBe('ok')
+    expect(el.getAttribute('data-spacetime-state')).toBeNull()
+    expect(recordedVisualizations).toHaveLength(1)
+    expect(el.shadowRoot?.querySelector(STUB_TAG)).not.toBeNull()
+  })
+
+  it('keeps the Worker-summary scene when the enabled SpacetimeDB subscription is unreachable', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(populated))
+
+    const el = await mountAndSettle(element => {
+      element.setAttribute(
+        TASSADAR_SPACETIME_WORLD_URL_ATTRIBUTE,
+        'https://spacetime.invalid',
+      )
+      element.setAttribute(
+        TASSADAR_SPACETIME_DATABASE_ATTRIBUTE,
+        'openagents-world',
+      )
+    })
+    await waitForSpacetimeState(el, 'error')
+
+    expect(el.getAttribute('data-state')).toBe('ok')
+    expect(el.getAttribute('data-spacetime-state')).toBe('error')
+    expect(recordedVisualizations).toHaveLength(1)
     expect(el.shadowRoot?.querySelector(STUB_TAG)).not.toBeNull()
   })
 
