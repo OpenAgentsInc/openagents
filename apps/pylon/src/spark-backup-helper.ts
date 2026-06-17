@@ -432,6 +432,14 @@ async function sendSparkPaymentFromSdk(input: {
       "lnurl-pay resolve",
     )
     if (!resolved.ok) {
+      // Surface the resolve reason under PYLON_SPARK_DEBUG. This is a RETURNED
+      // failure (not a thrown error), so the [spark-send] catch log never sees it;
+      // without this an operator only gets a hashed failureRef and can't tell a
+      // dead recipient endpoint (e.g. lnurlp_meta_timeout — bitnob unreachable)
+      // from a real bug. The reason is a fixed enum string, no payment material.
+      if (process.env.PYLON_SPARK_DEBUG === "1") {
+        console.error(`[spark-send] lnurl_resolve:${resolved.reason}`)
+      }
       return { ok: false, failureRef: publicRef(`${input.prefix}_failure`, `lnurl_resolve:${resolved.reason}`) }
     }
     destination = resolved.bolt11
