@@ -294,6 +294,24 @@ const sparkTiming = (label: string, ms: number) => {
   }
 }
 
+// #5194: strip absolute filesystem paths (which can carry a username) from a
+// debug string while keeping URLs/hosts/error types/messages visible. Same
+// sanitizer the rc.27 `[spark-helper:build_error]` line used; shared so every
+// new diagnostic line redacts identically.
+export function sanitizeSparkDebug(value: string): string {
+  return value.replace(/\/(?:Users|home|private|var|opt|tmp|Library)\/[^\s'"):]+/g, "<path>")
+}
+
+// #5194: emit a pre-build step marker so the LAST marker that fires on a
+// failing host pinpoints exactly where the in-process SDK build path bails
+// BEFORE `SdkBuilder.build()` (the point the rc.27 build_error line covered).
+// stderr-only, PYLON_SPARK_DEBUG-gated, never any seed/secret.
+const sparkPreBuild = (step: string, detail?: string) => {
+  if (process.env.PYLON_SPARK_DEBUG === "1") {
+    console.error(`[spark-helper:pre-build] ${step}${detail ? `: ${sanitizeSparkDebug(detail)}` : ""}`)
+  }
+}
+
 function helperError(command: SparkBackupCommand, message: string): WalletCommandResult {
   // The message is helper stderr; slice-1 code keeps it out of public
   // projections. We still avoid echoing any secret-shaped material here.
@@ -844,6 +862,7 @@ async function buildSparkSdk(
   timeoutMs: number,
 ): Promise<BreezSparkSdk> {
   if (typeof mod.SdkBuilder?.new === "function") {
+    sparkPreBuild("build:sdkbuilder-available")
     // Match the SDK's default storage location: a `storage.sql` file inside the
     // configured storage directory. With no storageDir we use an in-process,
     // ephemeral DB (":memory:") so a session still works without on-disk state.
@@ -854,10 +873,15 @@ async function buildSparkSdk(
       mkdirSync(storageDir, { recursive: true })
       dbPath = nodePath.join(storageDir, "storage.sql")
     }
+    sparkPreBuild("build:storage-dir-ready", `db=${dbPath === ":memory:" ? ":memory:" : "storage.sql"}`)
     const storage = new SparkBunStorage(dbPath)
+    sparkPreBuild("build:storage-constructed")
     const builder = mod.SdkBuilder.new(sdkConfig, seed).withStorage(storage)
+    sparkPreBuild("build:about-to-call-build")
     try {
-      return await withTimeout(builder.build(), timeoutMs, "spark sdk build")
+      const built = await withTimeout(builder.build(), timeoutMs, "spark sdk build")
+      sparkPreBuild("build:build-returned")
+      return built
     } catch (buildError) {
       // #5194: when SdkBuilder.build() throws for a reason outside
       // classifySparkHelperFailureReason()'s buckets (helperUnavailableReason
@@ -868,21 +892,21 @@ async function buildSparkSdk(
       if (process.env.PYLON_SPARK_DEBUG === "1") {
         const e = buildError as { name?: string; message?: string }
         const name = typeof e?.name === "string" && e.name ? e.name : "Error"
-        const msg = (typeof e?.message === "string" ? e.message : String(buildError))
-          .replace(/\/(?:Users|home|private|var|opt|tmp|Library)\/[^\s'"):]+/g, "<path>")
-          .slice(0, 400)
+        const msg = sanitizeSparkDebug(typeof e?.message === "string" ? e.message : String(buildError)).slice(0, 400)
         console.error(`[spark-helper:build_error] ${name}: ${msg}`)
       }
       throw buildError
     }
   }
   if (typeof mod.connect === "function") {
+    sparkPreBuild("build:connect-fallback")
     return await withTimeout(
       mod.connect({ config: sdkConfig, seed, storageDir }),
       timeoutMs,
       "spark sdk connect",
     )
   }
+  sparkPreBuild("build:no-constructor")
   throw new Error("breez sdk spark module exposes neither SdkBuilder nor connect")
 }
 
@@ -970,9 +994,12 @@ async function getOrBuildWarmSparkSdk(
   if (session.building === null) {
     const loadModule = config.loadModule ?? loadBreezSparkModule
     session.building = (async () => {
+      sparkPreBuild("warm:start", `network=${network}`)
       const mod = await withTimeout(loadModule(), timeoutMs, "spark sdk load")
+      sparkPreBuild("warm:module-loaded")
       const sdkConfig = mod.defaultConfig(network)
       sdkConfig.apiKey = config.apiKey
+      sparkPreBuild("warm:config-built")
       return buildSparkSdk(
         mod,
         sdkConfig,
@@ -1031,11 +1058,16 @@ async function acquireSparkSession(
     const { session, sdk } = await getOrBuildWarmSparkSdk(config, network, timeoutMs)
     return { sdk, warm: true, session, release: async () => undefined }
   }
-  // Cold path (unchanged): load → build → caller op → disconnect in release().
+  // Cold path (unchanged behavior): load → build → caller op → disconnect in
+  // release(). #5194: instrumented with pre-build step markers so a failing
+  // host shows exactly how far it got before `build()`.
+  sparkPreBuild("cold:start", `network=${network}`)
   const loadModule = config.loadModule ?? loadBreezSparkModule
   const mod = await withTimeout(loadModule(), timeoutMs, "spark sdk load")
+  sparkPreBuild("cold:module-loaded")
   const sdkConfig = mod.defaultConfig(network)
   sdkConfig.apiKey = config.apiKey
+  sparkPreBuild("cold:config-built")
   const sdk = await buildSparkSdk(
     mod,
     sdkConfig,
@@ -1043,6 +1075,7 @@ async function acquireSparkSession(
     config.storageDir,
     timeoutMs,
   )
+  sparkPreBuild("cold:sdk-built")
   return {
     sdk,
     warm: false,
@@ -1632,18 +1665,47 @@ export function resolveSparkBackupHelper(input: {
   // `warmSession: true` so reads reuse the warm session. Undefined keeps the
   // adapter's default (PYLON_SPARK_WARM_SESSION env, default-off).
   warmSession?: boolean
+  // #5194: explicit opt-in intent from the caller. The receive/status/payout
+  // CLI commands are ALREADY gated on opt-in upstream and always intend the
+  // helper to run, so they pass `enabled: true`. Previously this resolver only
+  // consulted `env.PYLON_SPARK_BACKUP_ENABLED`; if that var was not exported in
+  // the operator's shell it returned null, the gate silently substituted the
+  // inert `unavailableSparkBackupHelper` (whose stderr classifies to the
+  // useless `unknown` reason), and the in-process SDK build was NEVER attempted
+  // — exactly the silent `helper-unavailable`/`unknown` dead-end seen on
+  // deterministic-repro hosts. An explicit `enabled: true` now wires the
+  // in-process helper regardless of the env flag.
+  enabled?: boolean
 }): SparkBackupHelper | null {
   const env = input.env ?? process.env
-  const enabled = env.PYLON_SPARK_BACKUP_ENABLED === "1" || env.PYLON_SPARK_BACKUP_ENABLED === "true"
-  if (!enabled) return null
+  const enabled =
+    input.enabled === true ||
+    env.PYLON_SPARK_BACKUP_ENABLED === "1" ||
+    env.PYLON_SPARK_BACKUP_ENABLED === "true"
+  if (!enabled) {
+    if (process.env.PYLON_SPARK_DEBUG === "1") {
+      console.error("[spark-helper:resolve] helper not wired: opt-in disabled (no enabled flag/env)")
+    }
+    return null
+  }
 
   const apiKey = [env.OPENAGENTS_SPARK_API_KEY, env.BREEZ_API_KEY, env.PYLON_SPARK_BACKUP_API_KEY, DEFAULT_OPENAGENTS_SPARK_API_KEY].find(
     (value) => value !== undefined && value.trim() !== "",
   )
-  if (!apiKey) return null
+  if (!apiKey) {
+    if (process.env.PYLON_SPARK_DEBUG === "1") {
+      console.error("[spark-helper:resolve] helper not wired: no Breez/Spark api key (and embedded default missing)")
+    }
+    return null
+  }
 
   const mnemonic = input.mnemonic ?? null
-  if (!mnemonic || mnemonic.trim() === "") return null
+  if (!mnemonic || mnemonic.trim() === "") {
+    if (process.env.PYLON_SPARK_DEBUG === "1") {
+      console.error("[spark-helper:resolve] helper not wired: no wallet seed (identity mnemonic absent)")
+    }
+    return null
+  }
 
   const network = env.PYLON_SPARK_BACKUP_NETWORK === "regtest" ? "regtest" : "mainnet"
 

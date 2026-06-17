@@ -1084,10 +1084,21 @@ async function resolveSparkBackupOptions(
   const storageDir = `${state.paths.home}/wallet/spark-backup/sdk`
   const network = Bun.env.PYLON_SPARK_BACKUP_NETWORK === "regtest" ? "regtest" : "mainnet"
   const warmSession = input.warmSession
+  // #5194: the receive/status/payout CLI commands are ALREADY gated on opt-in
+  // upstream and always pass `enabled: true` here. Previously the helper
+  // resolver consulted ONLY `Bun.env.PYLON_SPARK_BACKUP_ENABLED`, so if that var
+  // was not exported in the operator's shell it returned null, the gate
+  // substituted the inert stub, and the in-process SDK build was NEVER
+  // attempted — a silent `helper-unavailable`/`unknown` with empty stderr. Pass
+  // the caller's explicit opt-in intent through so the in-process build runs
+  // when the command intends it (this is the disabled-daemon short-circuit fix:
+  // when daemon routing is off the read MUST attempt the in-process build, not
+  // dead-end on the stub).
   const helper = resolveSparkBackupHelper({
     env: Bun.env,
     mnemonic,
     storageDir,
+    ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
     ...(warmSession === undefined ? {} : { warmSession }),
   })
   const transfer = mnemonic

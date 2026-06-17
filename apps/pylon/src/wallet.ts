@@ -58,7 +58,38 @@ export type WalletCommandResult = {
 // Spark address/invoice/preimage/mnemonic/key/path material.
 // ---------------------------------------------------------------------------
 
-import { classifySparkHelperFailureReason, type SparkHelperUnavailableReason } from "./spark-backup-helper"
+import {
+  classifySparkHelperFailureReason,
+  sanitizeSparkDebug,
+  type SparkHelperUnavailableReason,
+} from "./spark-backup-helper"
+
+// #5194: dump a raw helper result to stderr (PYLON_SPARK_DEBUG=1 only) whenever
+// a read failed to become ready. The point: even when the stderr is EMPTY the
+// operator gets a `[spark-helper:gate]` line with `exitCode=<n> stderrLen=<n>`,
+// so an empty-stderr failure is itself diagnosable in ONE shot. Path-sanitized
+// (no $HOME/temp absolute paths) but the COMPLETE stderr text otherwise, plus
+// stdout, since this is stderr-only and NEVER enters a projection.
+function dumpSparkHelperGate(
+  context: string,
+  result: { exitCode: number; stdout: string; stderr: string },
+  extra?: string,
+) {
+  if (process.env.PYLON_SPARK_DEBUG !== "1") return
+  const stderr = result.stderr ?? ""
+  const stdout = result.stdout ?? ""
+  console.error(
+    `[spark-helper:gate] ${context} exitCode=${result.exitCode} stderrLen=${stderr.length} stdoutLen=${stdout.length}${
+      extra ? ` ${extra}` : ""
+    }`,
+  )
+  if (stderr.length > 0) {
+    console.error(`[spark-helper:gate] ${context} stderr=${sanitizeSparkDebug(stderr).slice(0, 800)}`)
+  }
+  if (stdout.length > 0) {
+    console.error(`[spark-helper:gate] ${context} stdout=${sanitizeSparkDebug(stdout).slice(0, 800)}`)
+  }
+}
 
 export type SparkBackupReceiveState =
   | "disabled"
@@ -1278,6 +1309,13 @@ export async function classifySparkBackupReceive(
 ): Promise<SparkBackupReceiveProjection> {
   const env = options.env ?? process.env
   const enabled = isSparkBackupEnabled(options, env)
+  // #5194: distinguish "no in-process helper was wired" (resolver returned null,
+  // so we fall back to the inert stub and NEVER attempt an SDK build) from "a
+  // real SDK helper ran and failed". When the read is enabled but no helper was
+  // injected, the operator was previously dead-ended on `helper-unavailable` /
+  // `unknown` with empty stderr and no build attempt — exactly the silent
+  // repro. Surface it explicitly under PYLON_SPARK_DEBUG so ONE run reveals it.
+  const helperWired = options.helper !== undefined
   const helper = options.helper ?? unavailableSparkBackupHelper
   const cachedAddress = options.cachedAddress ?? null
 
@@ -1330,6 +1368,18 @@ export async function classifySparkBackupReceive(
     helperResult = { exitCode: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) }
   }
   const helperReady = helperResult.exitCode === 0
+  if (!helperReady) {
+    // #5194: dump the raw result so an empty-stderr `unknown` is no longer a
+    // dead-end — the gate line carries exitCode + stderrLen, and the explicit
+    // `helperWired=false` note tells the operator the in-process SDK build was
+    // never even attempted (resolver returned null → inert stub) versus a real
+    // helper that ran and failed.
+    dumpSparkHelperGate(
+      `classify:${kind}`,
+      helperResult,
+      `helperWired=${helperWired}${helperWired ? "" : " (inert stub — no in-process SDK build attempted)"}`,
+    )
+  }
   const helperData = helperReady ? parseMaybeJson(helperResult.stdout) : null
   const rawTarget =
     kind === "lightning-address"
@@ -1811,6 +1861,10 @@ export async function detectSparkBackupBalance(helper: SparkBackupHelper): Promi
     statusResult = { exitCode: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) }
   }
   if (statusResult.exitCode !== 0) {
+    // #5194: same gate dump on the status path so a daemon-routed (or cold)
+    // backup-status surfaces exitCode + stderrLen + the complete sanitized
+    // stderr even when it is empty.
+    dumpSparkHelperGate("detect:status", statusResult)
     return {
       helperReady: false,
       detectedBalanceSats: null,
