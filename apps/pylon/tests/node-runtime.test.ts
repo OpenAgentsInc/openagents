@@ -89,7 +89,7 @@ describe("pylon node runtime", () => {
           expect(state.daemonOnline).toBe(false)
           expect(state.balanceSats).toBeNull()
           const feed = yield* SubscriptionRef.get(runtime.logFeed)
-          const unavailable = feed.find((entry) => entry.message.includes("MDK status unavailable"))
+          const unavailable = feed.find((entry) => entry.message.includes("Primary wallet status unavailable"))
           expect(unavailable?.level).toBe("verbose")
         }),
       ),

@@ -25,6 +25,7 @@ import {
   sparkBackupTargetPath,
   sweepSparkBackupToMdk,
   withUnifiedWalletBalance,
+  withSparkPrimaryWalletBalance,
   writeCachedSparkTarget,
   type SparkBackupCommand,
   type SparkBackupHelper,
@@ -454,6 +455,55 @@ describe("MDK wallet readiness and ledger", () => {
     expect(() => assertPublicProjectionSafe(requests[1]?.body ?? {})).not.toThrow()
   })
 
+  test("reports Spark-primary wallet readiness with Spark public refs (#5178)", async () => {
+    const requests: Array<{ body: Record<string, unknown>; headers: Headers; url: string }> = []
+    const fetchImpl: typeof fetch = async (input, init) => {
+      requests.push({
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        headers: new Headers(init?.headers),
+        url: input.toString(),
+      })
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    }
+    const mdkStatus = await classifyMdkWallet(
+      runner({ balance: { stdout: { balance_sats: 123, send_ready: true, outbound_capacity_sats: 21 } } }),
+      { MDK_WALLET_PORT: "3457" } as NodeJS.ProcessEnv,
+    )
+    const sparkStatus = withSparkPrimaryWalletBalance(mdkStatus, {
+      schema: "openagents.pylon.spark_backup_receive.v0.1",
+      enabled: true,
+      state: "address-ready",
+      selectedBecauseRefs: [],
+      receiveTargetRef: "wallet.backup.spark_address.redacted",
+      lightningAddressRef: null,
+      rawTargetAvailableLocally: true,
+      credentialReady: true,
+      helperReady: true,
+      detectedBalanceSats: 50_000,
+      unclaimedDepositCount: 0,
+      blockerRefs: [],
+      nextActionRefs: [],
+      publicReceiptRefs: [],
+      contentRedacted: true,
+    })
+
+    await reportWalletReadiness({ status: sparkStatus }, {
+      agentToken: "oa_agent_test",
+      baseUrl: "https://openagents.test",
+      fetch: fetchImpl,
+      now: () => new Date("2026-06-17T12:00:00.000Z"),
+      pylonRef: "pylon.test.spark",
+    })
+
+    expect(requests[0]?.body.walletReady).toBe(true)
+    expect(requests[0]?.body.walletRef).toStartWith("wallet.public.spark.")
+    expect(requests[0]?.body.balanceRefs).toEqual(["balance.public.spark.reported_redacted"])
+    expect(requests[0]?.body.liquidityRefs).toEqual(["liquidity.public.spark_send_ready_redacted"])
+    expect(JSON.stringify(requests[0]?.body)).not.toContain("50000")
+    expect(JSON.stringify(requests[0]?.body)).not.toContain("123")
+    expect(() => assertPublicProjectionSafe(requests[0]?.body ?? {})).not.toThrow()
+  })
+
   test("redacts receive and send receipts to refs and records settlement ledger idempotently", async () => {
     await withTempHome(async (home) => {
       const summary = createBootstrapSummary(parseBootstrapArgs([]), { PYLON_HOME: home }, "darwin")
@@ -750,6 +800,59 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
     expect(status.unifiedBalance.nextActionRefs).toContain(
       "action.wallet.spark_backup.review_consent_sweep",
     )
+    expect(JSON.stringify(status.unifiedBalance)).not.toContain(RAW_SPARK_ADDRESS)
+    assertPublicProjectionSafe(status.unifiedBalance)
+  })
+
+  test("Spark-primary wallet status exposes one agent balance and excludes MDK from totals (#5178)", async () => {
+    const mdkStatus = await classifyMdkWallet(
+      runner({ balance: { stdout: { balance_sats: 123, send_ready: true, outbound_capacity_sats: 21 } } }),
+      { MDK_WALLET_PORT: "3457" } as NodeJS.ProcessEnv,
+    )
+    const helper = sparkHelper({
+      address: { stdout: { spark_address: RAW_SPARK_ADDRESS } },
+      status: {
+        stdout: {
+          balance_sats: 50_000,
+          claimable_htlc_count: 1,
+          claimable_htlc_sats: 7_000,
+          unclaimed_deposit_count: 0,
+        },
+      },
+    })
+    const sparkBackup = await classifySparkBackupReceive({
+      enabled: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      helper,
+    })
+    const detected = await detectSparkBackupBalance(helper)
+    sparkBackup.detectedBalanceSats = detected.detectedBalanceSats
+    sparkBackup.claimableHtlcSats = detected.claimableHtlcSats
+    sparkBackup.claimableHtlcCount = detected.claimableHtlcCount
+    sparkBackup.unclaimedDepositCount = detected.unclaimedDepositCount
+
+    const status = withSparkPrimaryWalletBalance(mdkStatus, sparkBackup)
+
+    expect(status.balanceSats).toBe(50_000)
+    expect(status.receiveReady).toBe(true)
+    expect(status.sendReady).toBe(true)
+    expect(status.readiness).toBe("send-ready")
+    expect(status.blockerRefs).toContain("blocker.wallet.spark_primary.claim_pending")
+    expect(status.unifiedBalance).toMatchObject({
+      schema: "openagents.pylon.unified_wallet_balance.v0.2",
+      primaryRail: "spark",
+      primaryBalanceSats: 50_000,
+      primarySpendableSats: 50_000,
+      mdkSpendableSats: null,
+      sparkBackupClaimableSats: 7_000,
+      sparkBackupCreditedSats: 50_000,
+      sparkBackupPendingSweepSats: 0,
+      totalVisibleSats: 50_000,
+    })
+    expect(status.unifiedBalance.sourceRefs).toContain("source.wallet.spark_primary.balance")
+    expect(status.unifiedBalance.caveatRefs).toContain("caveat.wallet.mdk_excluded_from_agent_primary_balance")
+    expect(status.unifiedBalance.nextActionRefs).toContain("action.wallet.spark_backup.run_backup_claim")
+    expect(JSON.stringify(status.unifiedBalance)).not.toContain("123")
     expect(JSON.stringify(status.unifiedBalance)).not.toContain(RAW_SPARK_ADDRESS)
     assertPublicProjectionSafe(status.unifiedBalance)
   })

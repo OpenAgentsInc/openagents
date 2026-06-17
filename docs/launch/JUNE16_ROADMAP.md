@@ -138,7 +138,11 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   `pylon wallet send --rail spark --confirm-send` pays from the node's own Spark
   backup balance to a BOLT11/Spark payment request or Lightning Address while
   emitting public-safe digest refs only; this restores the old working Spark
-  send shape under the new consent/redaction boundary. **Resolved #5172:** the green
+  send shape under the new consent/redaction boundary. **#5178 makes Spark the
+  primary agent balance:** `pylon wallet status`, local control wallet-status,
+  heartbeat/readiness, and the operator snapshot now source the agent-facing
+  balance from Spark; MDK is excluded from that public balance and remains
+  auxiliary for treasury/checkouts/legacy paths. **Resolved #5172:** the green
   `training.monday` gate stays green only for the scoped launch/run/verification
   and settlement-record path. The Orrery settlement receipt remains explicitly
   **simulation-backed** (`realBitcoinMoved:false`) and does **not** count as real
@@ -405,7 +409,8 @@ is the **Spark backup-receive fallback** in
   proof. Whitefang and Orrery are no longer ambiguous; #5170 records them as
   documented blockers needing recipient Spark fallback target/proof collection.
 
-**Original goal — narrow, opt-in, receive-only Spark fallback:**
+**Original goal — narrow, opt-in, receive-only Spark fallback (historical,
+superseded by #5177/#5178 Spark-primary agent wallet):**
 
 - MDK stays the primary wallet rail. Spark is a **backup receive target** only —
   when MDK is offline or can't mint a receive request, Pylon can still hand out a

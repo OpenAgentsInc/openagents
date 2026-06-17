@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { projectHostInventoryFixture } from "../src/inventory"
 import { createOperatorSnapshot, formatOperatorSnapshotText } from "../src/operator"
 import { assertPublicProjectionSafe } from "../src/state"
-import { unifiedWalletBalanceFromStatus, type WalletStatusProjection } from "../src/wallet"
+import { sparkPrimaryWalletBalanceFromStatus, type WalletStatusProjection } from "../src/wallet"
 
 const inventory = projectHostInventoryFixture({
   platform: "darwin",
@@ -23,17 +23,25 @@ const wallet: WalletStatusProjection = {
   schema: "openagents.pylon.wallet_status.v0.3",
   configured: true,
   daemonOnline: true,
-  balanceSats: 21,
+  balanceSats: 50_000,
   receiveReady: true,
-  sendReady: false,
-  readiness: "send-ready-blocked",
-  blockerRefs: ["blocker.wallet.send_readiness_unproven"],
+  sendReady: true,
+  readiness: "send-ready",
+  blockerRefs: [],
   payoutTargetRefs: ["payout.bolt12.publicref"],
   settlementRefs: [],
-  unifiedBalance: unifiedWalletBalanceFromStatus({
-    balanceSats: 21,
-    sendReady: false,
-  }),
+  unifiedBalance: sparkPrimaryWalletBalanceFromStatus(
+    {
+      balanceSats: 21,
+      sendReady: true,
+    },
+    {
+      detectedBalanceSats: 50_000,
+      claimableHtlcSats: null,
+      nextActionRefs: [],
+      state: "credited",
+    },
+  ),
 }
 
 describe("Pylon operator snapshot", () => {
@@ -48,16 +56,17 @@ describe("Pylon operator snapshot", () => {
     const text = formatOperatorSnapshotText(snapshot)
 
     expect(snapshot.desiredMode).toBe("automated")
-    expect(snapshot.earningsState).toBe("no-spend")
+    expect(snapshot.earningsState).toBe("pending-settlement")
     expect(snapshot.wallet.balanceKnown).toBe(true)
-    expect(snapshot.wallet.unifiedBalance.totalVisibleSats).toBe(21)
+    expect(snapshot.wallet.unifiedBalance.totalVisibleSats).toBe(50_000)
     expect(snapshot.inspect.eligibleInventoryCount).toBe(1)
     expect(snapshot.recovery.operatorOptInRequired).toBe(true)
     expect(snapshot.recovery.sandboxProfileRequired).toBe(true)
     expect(snapshot.recovery.budgetRequired).toBe(true)
     expect(snapshot.recovery.noWalletSecretEvidenceRequired).toBe(true)
     expect(text).toContain("Operate: automated")
-    expect(text).toContain("Total visible: 21 sats")
+    expect(text).toContain("Agent balance: 50000 sats")
+    expect(text).not.toContain("Total visible:")
     expect(text).toContain("Recovery: opt-in gates")
     expect(JSON.stringify(snapshot)).not.toContain("lnbc")
     expect(JSON.stringify(snapshot)).not.toContain("mnemonic")

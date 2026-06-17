@@ -188,7 +188,10 @@ export type SendReadinessPreflight = {
 }
 
 export type UnifiedWalletBalanceProjection = {
-  schema: "openagents.pylon.unified_wallet_balance.v0.1"
+  schema: "openagents.pylon.unified_wallet_balance.v0.1" | "openagents.pylon.unified_wallet_balance.v0.2"
+  primaryRail?: "mdk" | "spark"
+  primaryBalanceSats?: number | null
+  primarySpendableSats?: number | null
   mdkSpendableSats: number | null
   sparkBackupCreditedSats: number | null
   sparkBackupClaimableSats: number | null
@@ -504,6 +507,9 @@ export function unifiedWalletBalanceFromStatus(
 
   return {
     schema: "openagents.pylon.unified_wallet_balance.v0.1",
+    primaryRail: "mdk",
+    primaryBalanceSats: mdkSpendableSats,
+    primarySpendableSats: status.sendReady ? mdkSpendableSats : null,
     mdkSpendableSats,
     sparkBackupCreditedSats,
     sparkBackupClaimableSats,
@@ -543,6 +549,104 @@ export function withUnifiedWalletBalance(
   return {
     ...status,
     unifiedBalance: unifiedWalletBalanceFromStatus(status, sparkBackup),
+  }
+}
+
+export function sparkPrimaryWalletBalanceFromStatus(
+  status: Pick<WalletStatusProjection, "balanceSats" | "sendReady">,
+  sparkBackup?: Pick<
+    SparkBackupReceiveProjection,
+    "claimableHtlcSats" | "detectedBalanceSats" | "nextActionRefs" | "state"
+  >,
+): UnifiedWalletBalanceProjection {
+  const sparkCreditedSats = nonNegativeSats(sparkBackup?.detectedBalanceSats)
+  const sparkClaimableSats = nonNegativeSats(sparkBackup?.claimableHtlcSats)
+  const hasClaimable = (sparkClaimableSats ?? 0) > 0
+  return {
+    schema: "openagents.pylon.unified_wallet_balance.v0.2",
+    primaryRail: "spark",
+    primaryBalanceSats: sparkCreditedSats,
+    primarySpendableSats: sparkCreditedSats,
+    // MDK is now a treasury/checkout rail, not part of the agent-facing
+    // balance. Keep the local MDK amount out of the public status shape.
+    mdkSpendableSats: null,
+    sparkBackupCreditedSats: sparkCreditedSats,
+    sparkBackupClaimableSats: sparkClaimableSats,
+    sparkBackupPendingSweepSats: 0,
+    totalVisibleSats: sparkCreditedSats,
+    sourceRefs: [
+      "source.wallet.spark_primary.balance",
+      ...(sparkBackup === undefined
+        ? []
+        : ["source.wallet.spark_backup.status"]),
+      ...(status.balanceSats === null
+        ? []
+        : ["source.wallet.mdk_agent_wallet.excluded_from_agent_primary_balance"]),
+    ],
+    caveatRefs: [
+      "caveat.wallet.mdk_excluded_from_agent_primary_balance",
+      ...(hasClaimable
+        ? ["caveat.wallet.spark_claimable_htlcs_require_backup_claim"]
+        : []),
+    ],
+    nextActionRefs: [
+      ...(hasClaimable ? ["action.wallet.spark_backup.run_backup_claim"] : []),
+      ...(sparkBackup?.nextActionRefs ?? []),
+    ],
+    contentRedacted: true,
+  }
+}
+
+export function withSparkPrimaryWalletBalance(
+  status: WalletStatusProjection,
+  sparkBackup?: SparkBackupReceiveProjection,
+): WalletStatusProjection {
+  const sparkBalanceSats = nonNegativeSats(sparkBackup?.detectedBalanceSats)
+  const sparkClaimableSats = nonNegativeSats(sparkBackup?.claimableHtlcSats)
+  const enabled = sparkBackup?.enabled === true
+  const credentialReady = sparkBackup?.credentialReady === true
+  const helperReady = sparkBackup?.helperReady === true
+  const receiveTargetReady =
+    sparkBackup !== undefined &&
+    (
+      sparkBackup.receiveTargetRef !== null ||
+      sparkBackup.lightningAddressRef !== null ||
+      sparkBackup.state === "address-ready" ||
+      sparkBackup.state === "cached-address-ready" ||
+      sparkBackup.state === "credited"
+    )
+  const configured = enabled && credentialReady
+  const daemonOnline = configured && helperReady
+  const receiveReady = daemonOnline && receiveTargetReady
+  const sendReady = receiveReady && sparkBalanceSats !== null && sparkBalanceSats > 0
+  const blockerRefs = [
+    ...(!enabled ? ["blocker.wallet.spark_primary.disabled"] : []),
+    ...(enabled && !credentialReady ? ["blocker.wallet.spark_primary.credential_missing"] : []),
+    ...(configured && !helperReady ? ["blocker.wallet.spark_primary.helper_unavailable"] : []),
+    ...(receiveReady && sparkBalanceSats === null ? ["blocker.wallet.spark_primary.balance_unknown"] : []),
+    ...(receiveReady && sparkBalanceSats === 0 ? ["blocker.wallet.spark_primary.balance_empty"] : []),
+    ...((sparkClaimableSats ?? 0) > 0 ? ["blocker.wallet.spark_primary.claim_pending"] : []),
+    ...(sparkBackup?.blockerRefs ?? []),
+  ]
+  const readiness: WalletReadiness =
+    !configured || !daemonOnline
+      ? "daemon-offline"
+      : sparkBalanceSats === null
+        ? "balance-unknown"
+        : sendReady
+          ? "send-ready"
+          : "receive-ready"
+
+  return {
+    ...status,
+    configured,
+    daemonOnline,
+    balanceSats: sparkBalanceSats,
+    receiveReady,
+    sendReady,
+    readiness,
+    blockerRefs: [...new Set(blockerRefs)],
+    unifiedBalance: sparkPrimaryWalletBalanceFromStatus(status, sparkBackup),
   }
 }
 
@@ -845,6 +949,7 @@ export async function reportWalletReadiness(
   },
   options: WalletNetworkOptions,
 ) {
+  const primaryRail = input.status.unifiedBalance.primaryRail ?? "mdk"
   const readinessRef = `readiness.public.pylon.${input.status.readiness.replace(/_/g, "-")}`
   const selftestRefs = input.sparkSelftest
     ? [
@@ -858,15 +963,25 @@ export async function reportWalletReadiness(
   const body = {
     balanceRefs: input.status.balanceSats === null
       ? ["balance.public.not_reported"]
-      : ["balance.public.reported_redacted"],
+      : primaryRail === "spark"
+        ? ["balance.public.spark.reported_redacted"]
+        : ["balance.public.reported_redacted"],
     liquidityRefs: input.status.sendReady
-      ? ["liquidity.public.send_ready_redacted"]
-      : ["liquidity.public.send_readiness_unproven"],
+      ? [
+          primaryRail === "spark"
+            ? "liquidity.public.spark_send_ready_redacted"
+            : "liquidity.public.send_ready_redacted",
+        ]
+      : [
+          primaryRail === "spark"
+            ? "liquidity.public.spark_send_readiness_unproven"
+            : "liquidity.public.send_readiness_unproven",
+        ],
     readinessRefs: [readinessRef, ...input.status.blockerRefs, ...selftestRefs],
     status: input.status.receiveReady ? "ready" : "blocked",
     walletReady: input.status.receiveReady,
     walletRef: input.status.configured
-      ? stableRef("wallet.public.mdk", options.pylonRef)
+      ? stableRef(`wallet.public.${primaryRail}`, options.pylonRef)
       : undefined,
   }
   assertPublicProjectionSafe(body)

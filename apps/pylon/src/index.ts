@@ -153,7 +153,7 @@ import {
   sendWithSparkBackup,
   sweepSparkBackupToMdk,
   unifiedWalletBalanceFromStatus,
-  withUnifiedWalletBalance,
+  withSparkPrimaryWalletBalance,
   writeCachedSparkTarget,
 } from "./wallet"
 import {
@@ -283,10 +283,11 @@ const nodeWalletActions: ControlCommandActions = {
   walletReceive: (amountSats) => receiveWithMdk(amountSats),
   walletAdmitPayoutTarget: (kind, ref) =>
     Promise.resolve(admitPayoutTarget({ kind: kind as Parameters<typeof admitPayoutTarget>[0]["kind"], ref })),
-  // CL-23 read-only balance/earnings: project the live MDK wallet status into a
-  // projection-safe subset (no offers/invoices/seed — just balance + readiness).
+  // CL-23 read-only balance/earnings: project the live primary agent wallet
+  // into a projection-safe subset (no offers/invoices/seed — just balance +
+  // readiness). Spark is the primary agent balance; MDK is auxiliary.
   walletStatus: async () => {
-    const w = await classifyMdkWallet()
+    const w = await classifyPrimaryAgentWallet()
     return {
       configured: w.configured,
       daemonOnline: w.daemonOnline,
@@ -792,7 +793,7 @@ const runHeadlessNode = Effect.gen(function* () {
     env: Bun.env,
   })
   yield* forkNodeServices(runtime, {
-    wallet: { classify: () => classifyMdkWallet() },
+    wallet: { classify: () => classifyPrimaryAgentWalletForState(localState) },
     telemetry: {
       discoverInventory: () => discoverHostInventory(),
       inspectPsionic: async () => {
@@ -804,7 +805,11 @@ const runHeadlessNode = Effect.gen(function* () {
     heartbeat: {
       baseUrl: presenceBaseUrl,
       register: () => registerPylon(bootstrapSummary, presenceClientOptions),
-      heartbeat: () => sendHeartbeat(bootstrapSummary, presenceClientOptions),
+      heartbeat: () =>
+        sendHeartbeat(bootstrapSummary, {
+          ...presenceClientOptions,
+          walletProbe: () => classifyPrimaryAgentWalletForState(localState),
+        }),
     },
   })
   if (presenceBaseUrl && Bun.env.PYLON_ASSIGNMENT_WORKER === "1") {
@@ -999,7 +1004,7 @@ async function readIdentityMnemonicOrNull(state: PylonLocalState): Promise<strin
 
 async function resolveSparkBackupOptions(
   state: PylonLocalState,
-  input: { showLocalTarget?: boolean } = {},
+  input: { enabled?: boolean; showLocalTarget?: boolean } = {},
 ) {
   const mnemonic = await readIdentityMnemonicOrNull(state)
   const storageDir = `${state.paths.home}/wallet/spark-backup/sdk`
@@ -1028,6 +1033,7 @@ async function resolveSparkBackupOptions(
   const cachedAddress = await readCachedSparkTarget(state.paths)
   return {
     env: Bun.env,
+    ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
     ...(helper ? { helper } : {}),
     ...(transfer ? { transfer } : {}),
     ...(sendTransfer ? { sendTransfer } : {}),
@@ -1041,8 +1047,11 @@ async function resolveSparkBackupOptions(
   }
 }
 
-async function readSparkBackupStatusProjection(state: PylonLocalState) {
-  const sparkBackupOptions = await resolveSparkBackupOptions(state)
+async function readSparkBackupStatusProjection(
+  state: PylonLocalState,
+  input: { enabled?: boolean } = {},
+) {
+  const sparkBackupOptions = await resolveSparkBackupOptions(state, input)
   const projection = await classifySparkBackupReceive(sparkBackupOptions)
   if (projection.enabled && sparkBackupOptions.helper !== undefined) {
     try {
@@ -1056,6 +1065,20 @@ async function readSparkBackupStatusProjection(state: PylonLocalState) {
     }
   }
   return projection
+}
+
+async function classifyPrimaryAgentWalletForState(state: PylonLocalState) {
+  const [mdkStatus, sparkBackup] = await Promise.all([
+    classifyMdkWallet(),
+    readSparkBackupStatusProjection(state, { enabled: true }),
+  ])
+  return withSparkPrimaryWalletBalance(mdkStatus, sparkBackup)
+}
+
+async function classifyPrimaryAgentWallet() {
+  const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+  const state = await ensurePylonLocalState(summary)
+  return classifyPrimaryAgentWalletForState(state)
 }
 
 // #5166 fleet diagnostic: load the Spark SDK with NO network and NO seed, and
@@ -1075,8 +1098,7 @@ async function computeSparkSelftest(state: PylonLocalState): Promise<SparkSelfte
   // `/$bunfs/` filesystem; a source/npm run resolves to a real path.
   const isCompiledBinary =
     typeof import.meta.url === "string" && import.meta.url.includes("/$bunfs/")
-  const enabled =
-    Bun.env.PYLON_SPARK_BACKUP_ENABLED === "1" || Bun.env.PYLON_SPARK_BACKUP_ENABLED === "true"
+  const enabled = true
   const idPath = resolveNostrIdentityPath(state.paths, Bun.env)
   const mnemonic = await readIdentityMnemonicOrNull(state)
   const moduleResult = await sparkModuleSelftest()
@@ -1098,7 +1120,7 @@ async function resolveLightningAddressForReadiness(
   state: PylonLocalState,
 ): Promise<string | undefined> {
   try {
-    const sparkOptions = await resolveSparkBackupOptions(state, { showLocalTarget: true })
+    const sparkOptions = await resolveSparkBackupOptions(state, { enabled: true, showLocalTarget: true })
     const result = await prepareSparkBackupReceive({ ...sparkOptions, kind: "lightning-address" })
     return result.ok &&
       typeof result.localTarget === "string" &&
@@ -1700,7 +1722,9 @@ async function main() {
 
   if (args[0] === "operator" && args[1] === "snapshot" && args.includes("--json")) {
     const inventory = await discoverHostInventory({ env: Bun.env })
-    const wallet = await classifyMdkWallet()
+    const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+    const state = await ensurePylonLocalState(summary)
+    const wallet = await classifyPrimaryAgentWalletForState(state)
     const snapshot = createOperatorSnapshot({ inventory, wallet })
     process.stdout.write(`${JSON.stringify(snapshot, null, 2)}\n`)
     return
@@ -1770,7 +1794,11 @@ async function main() {
         throw new Error("presence commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
       }
       const summary = await createPresenceBootstrapSummary(presenceArgs, Bun.env)
-      const clientOptions = presenceClientOptionsFromEnv({ baseUrl, env: Bun.env })
+      const state = await ensurePylonLocalState(summary)
+      const clientOptions = {
+        ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
+        walletProbe: () => classifyPrimaryAgentWalletForState(state),
+      }
       const result =
         command === "register"
           ? await registerPylon(summary, clientOptions)
@@ -2158,9 +2186,7 @@ async function main() {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const state = await ensurePylonLocalState(summary)
       if (command === "status") {
-        const mdkStatus = await classifyMdkWallet()
-        const sparkBackup = await readSparkBackupStatusProjection(state)
-        const status = withUnifiedWalletBalance(mdkStatus, sparkBackup)
+        const status = await classifyPrimaryAgentWalletForState(state)
         const legacySparkMigration = await preflightLegacySparkMigration({
           dryRun: true,
           env: Bun.env,
@@ -2180,7 +2206,7 @@ async function main() {
         const sweepBackup = sparkOptions["confirm-sweep"] === true || sparkOptions.sweep === true
         if (sweepBackup) {
           const showLocalTarget = sparkOptions["show-local-target"] === true
-          const sparkBackupOptions = await resolveSparkBackupOptions(state, { showLocalTarget })
+          const sparkBackupOptions = await resolveSparkBackupOptions(state, { enabled: true, showLocalTarget })
           const reconcile = await sweepSparkBackupToMdk({
             ...sparkBackupOptions,
             confirmSweep: sparkOptions["confirm-sweep"] === true,
@@ -2308,7 +2334,7 @@ async function main() {
       if (command === "report-readiness") {
         const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
         if (!baseUrl) throw new Error("wallet report-readiness requires --base-url or PYLON_OPENAGENTS_BASE_URL")
-        const status = await classifyMdkWallet()
+        const status = await classifyPrimaryAgentWalletForState(state)
         // #5166: attach a secret-free Spark selftest so the platform collects,
         // fleet-wide, which gate makes the offline-receive helper unavailable.
         const sparkSelftest = await computeSparkSelftest(state)
@@ -2337,8 +2363,8 @@ async function main() {
           }
         }
         process.stdout.write(`${JSON.stringify({ status, result, tipReadinessClaim: tipReadinessClaim === null ? null : "tipRecipientReadiness" in (tipReadinessClaim as Record<string, unknown>) ? "claimed" : tipReadinessClaim }, null, 2)}\n`)
-        // Exit explicitly: resolving the Lightning Address opens the opt-in Spark
-        // backup SDK, which keeps a background connection alive and would
+        // Exit explicitly: resolving the Lightning Address opens the Spark SDK,
+        // which keeps a background connection alive and would
         // otherwise hang this one-shot command after printing (#5162).
         process.exit(0)
       }
@@ -2384,7 +2410,7 @@ async function main() {
           throw new Error("wallet backup-receive supports --kind spark-address or lightning-address")
         }
         const showLocalTarget = sparkOptions["show-local-target"] === true
-        const sparkBackupOptions = await resolveSparkBackupOptions(state, { showLocalTarget })
+        const sparkBackupOptions = await resolveSparkBackupOptions(state, { enabled: true, showLocalTarget })
         const result = await prepareSparkBackupReceive({ ...sparkBackupOptions, kind })
         // Only the spark-address kind caches its raw target locally; the
         // lightning address is re-derivable from the wallet on demand.
@@ -2414,7 +2440,7 @@ async function main() {
           body.localTargetNote = "LOCAL/PRIVATE: do not share, log, or post this raw target."
         }
         process.stdout.write(`${JSON.stringify(body, null, 2)}\n`)
-        // Exit explicitly: the opt-in Spark backup SDK keeps a background
+        // Exit explicitly: the Spark SDK keeps a background
         // connection alive, so a one-shot command would otherwise hang after
         // printing (openagents #5162). Bun flushes stdout on exit.
         process.exit(result.ok ? 0 : 1)
@@ -2422,7 +2448,7 @@ async function main() {
       if (command === "backup-status") {
         const sparkOptions = parsePsionicOptions(walletArgs)
         const showLocalTarget = sparkOptions["show-local-target"] === true
-        const sparkBackupOptions = await resolveSparkBackupOptions(state, { showLocalTarget })
+        const sparkBackupOptions = await resolveSparkBackupOptions(state, { enabled: true, showLocalTarget })
         const projection = await classifySparkBackupReceive(sparkBackupOptions)
         // #5166: classify only confirms the address; it never read the actual
         // balance, so detectedBalanceSats was always null here. Read the real
@@ -2458,7 +2484,7 @@ async function main() {
           }
         }
         process.stdout.write(`${JSON.stringify(body, null, 2)}\n`)
-        // Exit explicitly: backup-status opens the opt-in Spark backup SDK,
+        // Exit explicitly: backup-status opens the Spark SDK,
         // which keeps a background connection alive (#5162).
         process.exit(body.ok ? 0 : 1)
       }
@@ -2468,11 +2494,11 @@ async function main() {
         // credits the wallet balance — it is invisible to backup-status until
         // then (not an on-chain "unclaimed deposit"). This command syncs and
         // claims all pending Lightning HTLCs whose preimage the wallet holds.
-        const sparkBackupOptions = await resolveSparkBackupOptions(state)
+        const sparkBackupOptions = await resolveSparkBackupOptions(state, { enabled: true })
         const helper = sparkBackupOptions.helper
         if (helper === undefined) {
           process.stdout.write(
-            `${JSON.stringify({ ok: false, error: "spark_backup_unavailable", hint: "enable PYLON_SPARK_BACKUP_ENABLED=1 and ensure an identity mnemonic exists" }, null, 2)}\n`,
+            `${JSON.stringify({ ok: false, error: "spark_primary_unavailable", hint: "ensure this Pylon has an identity mnemonic and Spark SDK support" }, null, 2)}\n`,
           )
           process.exit(1)
         }
@@ -2516,9 +2542,10 @@ async function main() {
             optionString(options, "destination") ??
             optionString(options, "payment-request") ??
             optionString(options, "lightning-address")
-          const sparkBackupOptions = await resolveSparkBackupOptions(state)
+          const sparkBackupOptions = await resolveSparkBackupOptions(state, { enabled: true })
           const result = await sendWithSparkBackup({
             env: sparkBackupOptions.env,
+            enabled: true,
             embeddedCredentialAvailable: true,
             helper: sparkBackupOptions.helper,
             transfer: sparkBackupOptions.sendTransfer,

@@ -73,10 +73,10 @@ export function walletTransitionMessage(
   const wasOnline = isWalletOnline(previous)
   const nowOnline = isWalletOnline(next)
   if (!wasOnline && nowOnline) {
-    return `[Wallet] MDK agent-wallet daemon connected. Readiness: ${next.readiness}.`
+    return `[Wallet] Primary agent wallet connected. Readiness: ${next.readiness}.`
   }
   if (wasOnline && !nowOnline) {
-    return "[Wallet] Local MDK wallet balance is unavailable. Operating in OFFLINE mode."
+    return "[Wallet] Primary agent wallet balance is unavailable. Operating in OFFLINE mode."
   }
   return null
 }

@@ -114,7 +114,7 @@ export const walletPollOnce = (
       }
     })
     if (status && "error" in status) {
-      yield* logMessage(runtime, "verbose", `[Wallet] MDK status unavailable: ${status.error}`)
+      yield* logMessage(runtime, "verbose", `[Wallet] Primary wallet status unavailable: ${status.error}`)
       yield* setWalletStatus(runtime, null)
       return
     }
@@ -126,7 +126,7 @@ export const walletServiceLoop = (
   deps: WalletServiceDeps,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
-    yield* logMessage(runtime, "verbose", "[Wallet] Connecting to local MDK agent-wallet daemon...")
+    yield* logMessage(runtime, "verbose", "[Wallet] Connecting to primary agent wallet...")
     while (true) {
       yield* walletPollOnce(runtime, deps.classify)
       yield* Effect.sleep(`${deps.intervalMs ?? 10_000} millis`)

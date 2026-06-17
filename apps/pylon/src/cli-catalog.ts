@@ -99,7 +99,7 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
   },
   {
     command: "wallet",
-    summary: "Wallet status/receive/send/payout-target (projection-safe status).",
+    summary: "Spark-primary wallet status plus legacy receive/send/payout-target commands.",
     mutates: true,
     spends: true,
     needsNetwork: false,
@@ -107,8 +107,8 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     args: [
       pos("status|receive|send|admit-payout-target|request-payout-target-admission|report-readiness|migrate-spark|backup-receive|backup-status|backup-claim|spark-selftest", "Subcommand."),
       opt("--amount", "send/receive amount in sats."),
-      opt("--rail", "send rail: mdk (default) or spark."),
-      opt("--destination-ref", "MDK send destination ref."),
+      opt("--rail", "send rail: mdk (legacy default) or spark."),
+      opt("--destination-ref", "Legacy MDK send destination ref."),
       opt("--destination", "Spark send raw BOLT11/Spark payment request or Lightning Address (LOCAL/PRIVATE input)."),
       opt("--payment-request", "Spark send raw payment request alias (LOCAL/PRIVATE input)."),
       opt("--lightning-address", "Spark send Lightning Address alias (LOCAL/PRIVATE input)."),

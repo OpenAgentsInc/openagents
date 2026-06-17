@@ -21,7 +21,8 @@ import { classifyMdkWallet, type WalletStatusProjection } from "./wallet"
 
 // The fields of the local wallet probe the heartbeat needs to publish
 // receive-readiness (openagents #5151). A full WalletStatusProjection satisfies
-// this, so `classifyMdkWallet` is the default probe.
+// this. Live Pylon entry points inject the Spark-primary probe; the MDK default
+// remains a back-compat fallback for direct library callers and tests.
 export type HeartbeatWalletProbe = Pick<
   WalletStatusProjection,
   "configured" | "daemonOnline" | "receiveReady" | "sendReady"
@@ -36,7 +37,7 @@ export type PresenceClientOptions = {
   // Local wallet probe used by `sendHeartbeat` to publish live receive-readiness
   // so an online, receive-ready node is not shown `walletReadyNow=false` until a
   // separate `wallet report-readiness` (openagents #5151). Defaults to
-  // `classifyMdkWallet`; injected in tests to avoid spawning the MDK CLI.
+  // a legacy MDK probe; injected in tests to avoid spawning local wallet CLIs.
   walletProbe?: () => Promise<HeartbeatWalletProbe>
 }
 

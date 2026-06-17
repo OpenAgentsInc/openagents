@@ -249,30 +249,34 @@ pylon presence link-complete --base-url https://openagents.com
 pylon presence link-refresh --base-url https://openagents.com
 ```
 
-Wallet readiness commands wrap MDK without exposing wallet secrets:
+Wallet readiness commands expose the primary Spark agent wallet without
+exposing wallet secrets:
 
 ```sh
 pylon wallet status
-pylon wallet receive --amount 1000
-pylon wallet send --destination-ref payout.bolt12.<hash> --amount 21
+pylon wallet backup-receive --kind lightning-address
+pylon wallet send --rail spark --payment-request <bolt11-or-spark-request> --amount 21 --confirm-send
 pylon wallet admit-payout-target --kind bolt12_offer --ref payout.bolt12.<hash>
 ```
 
-Wallet status uses MDK readiness evidence and records idempotent local ledger
-events. Send readiness remains blocked unless MDK returns explicit evidence;
-balance and receive readiness are not treated as spendable settlement.
+Wallet status reports one agent-facing balance, sourced from the deterministic
+Spark wallet derived from the Pylon identity mnemonic. MDK is auxiliary for
+treasury/checkouts and legacy compatibility; it is excluded from the displayed
+agent balance and public readiness refs. The older `wallet receive` and MDK
+control receive paths remain legacy compatibility until the MDK scope-down issue
+removes MDK from the agent receive path.
 
-Spark backup funds have a separate, explicit spend rail for owner-approved local
-withdrawals. It is inert unless Spark backup is enabled and requires raw payment
-material to stay local to the node:
+Spark funds have an explicit spend rail for owner-approved local withdrawals.
+Fund movement still requires `--confirm-send`, and raw payment material stays
+local to the node:
 
 ```sh
 pylon wallet send --rail spark --payment-request <bolt11-or-spark-request> --amount 2100 --confirm-send
 pylon wallet send --rail spark --lightning-address <name@example.com> --amount 2100 --confirm-send
 ```
 
-The command pays from the node's Spark backup wallet, not from MDK. Public output
-and local ledger records contain only digest refs, amount/fee, method, and status;
+The command pays from the node's Spark wallet, not from MDK. Public output and
+local ledger records contain only digest refs, amount/fee, method, and status;
 they never print the raw invoice, Lightning Address, mnemonic, API key, or Spark
 storage path.
 
@@ -392,7 +396,7 @@ Legacy Spark/Breez migration boundary: `pylon wallet migrate-spark` is a
 preflight-first compatibility path for old v0.2.x balances. It reports missing
 Breez/Spark credential material as an actionable blocker and only proceeds with
 explicit local consent. `pylon wallet send --rail spark --confirm-send` is the
-direct Spark spend/withdraw path for credited Spark backup funds; it is separate
+direct Spark spend/withdraw path for credited Spark wallet funds; it is separate
 from accepted-work payout authority and emits public-safe refs only. Users must
 never paste a 12-word mnemonic, raw invoice, Lightning Address, API key, or Spark
 storage path into GitHub, support threads, logs, or issue comments. See

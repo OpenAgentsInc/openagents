@@ -180,23 +180,24 @@ the two buckets.
    `prepareLnurlPay` -> `lnurlPay`. Raw destinations stay local and public output
    emits only digest refs, amount/fee, method, and status. #5169 separately wires
    the Spark→MDK sweep path for users who want a single MDK-spendable balance.
-2. **Solve large-single-payment delivery** (the 40k/50k pre-dispatch failures), or
+2. **Make Spark the single agent balance.** #5178 now makes `pylon wallet status`,
+   local control wallet-status, readiness/heartbeat, and the operator snapshot
+   report Spark as the one agent-facing balance. MDK is excluded from that public
+   agent balance and remains auxiliary for treasury/checkouts/legacy paths.
+3. **Solve large-single-payment delivery** (the 40k/50k pre-dispatch failures), or
    formalize chunked payout ≤25–30k as policy. Either way the treasury pays agents
    via their Spark Lightning Address.
-3. **Add recipient attribution + a confirmed-receipt step** to the payout ledger so
+4. **Add recipient attribution + a confirmed-receipt step** to the payout ledger so
    "sent" reconciles against "received" automatically (would have prevented the
    over-send going unnoticed).
-4. **One-time cleanup:** reconcile every agent's Spark (and residual MDK/BOLT12)
+5. **One-time cleanup:** reconcile every agent's Spark (and residual MDK/BOLT12)
    balance against what they are owed, starting with Orrery's overage.
 
 ### Options the owner weighed
-The owner's stated lean is the **unified balance view** (present one combined
-balance, route sends from whichever wallet has funds). That is the lightest-touch
-path and avoids a migration, but it is the **most ongoing complexity** (two wallets
-forever + reconciliation logic). #5177 removes the immediate Spark-can't-spend
-gap; the remaining decision is product/accounting simplicity: keep unified view as
-the interim, sweep to MDK when one MDK-spendable balance matters, or move the
-long-term agent wallet to Spark-single-wallet.
+The owner chose the Spark-single-wallet end state for agent balances. #5177
+removed the immediate Spark-can't-spend gap, and #5178 makes Spark the
+agent-facing primary balance. MDK remains available for treasury/checkouts and
+legacy recovery, but no longer contributes to the displayed agent balance.
 
 ---
 
@@ -206,14 +207,13 @@ long-term agent wallet to Spark-single-wallet.
    net against 50k, and reclaim/adjust the ~110k–185k overage.
 2. **Reconcile the 3 pending rows (100,005 sats)** — are they stuck-in-flight,
    refundable, or lost intent?
-3. **Use #5177/#5169 to make Spark funds useful** — direct Spark withdraw when
-   the user wants to spend from Spark, or consented Spark→MDK sweep when they want
-   one MDK-spendable balance.
+3. **Use #5177/#5178 to make Spark funds the primary agent balance and spend
+   path**; keep #5169 only as an explicit local recovery/compatibility sweep.
 4. **Add destination + confirmed-receipt to the payout ledger.**
 5. **Fix or formalize large-payment delivery** (chunk ≤25–30k, or solve the
    route/liquidity failure).
-6. **Decide the wallet end-state** (unified view interim vs Spark-single-wallet)
-   and sequence the migration.
+6. **Reconcile MDK leftovers out of the agent-balance UX** as part of the MDK
+   scope-down work.
 
 > Receipt-first note: this audit treats `settled` treasury rows as *sent*, not
 > *received*. No recipient amount here is "confirmed received" except Trigger's 50k

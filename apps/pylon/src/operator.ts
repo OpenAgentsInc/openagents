@@ -92,6 +92,7 @@ export function createOperatorSnapshot(input: {
 }
 
 export function formatOperatorSnapshotText(snapshot: PylonOperatorSnapshot) {
+  const sparkPrimary = snapshot.wallet.unifiedBalance.primaryRail === "spark"
   const walletBalance = snapshot.wallet.balanceKnown ? `${snapshot.wallet.balanceSats} sats` : "--"
   const totalVisible = snapshot.wallet.unifiedBalance.totalVisibleSats === null
     ? "--"
@@ -107,8 +108,8 @@ export function formatOperatorSnapshotText(snapshot: PylonOperatorSnapshot) {
     `Market: ${snapshot.marketActivityRefs.length}`,
     "",
     `Wallet: ${snapshot.wallet.readiness}`,
-    `Balance: ${walletBalance}`,
-    `Total visible: ${totalVisible}`,
+    sparkPrimary ? `Agent balance: ${walletBalance}` : `Balance: ${walletBalance}`,
+    ...(sparkPrimary ? [] : [`Total visible: ${totalVisible}`]),
     `Receipts: ${snapshot.receiptRefs.length}`,
     "",
     `Inspect: ${snapshot.inspect.inventoryFreshness}`,
