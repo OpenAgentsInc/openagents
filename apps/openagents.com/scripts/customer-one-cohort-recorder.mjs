@@ -58,6 +58,7 @@ const unsafeRowMarkers = [
 
 export const usage = () => `Usage:
   node scripts/customer-one-cohort-recorder.mjs public [--json]
+  node scripts/customer-one-cohort-recorder.mjs audit [--json]
   node scripts/customer-one-cohort-recorder.mjs check --row-file row.json [--json]
   node scripts/customer-one-cohort-recorder.mjs check --row-json '{"teamCohortRef":"cohort.team.alpha.v1",...}' [--json]
   node scripts/customer-one-cohort-recorder.mjs list [--json]
@@ -75,11 +76,13 @@ Environment:
   OPENAGENTS_BASE_URL          Optional base URL.
   OPENAGENTS_ADMIN_API_TOKEN   Required for list and upsert.
 
-This recorder posts public-safe refs only. The check and upsert commands refuse
-obvious raw prompts, private paths, URLs, emails, bearer/API tokens,
-wallet/payment material, provider payload markers, unresolved template
-placeholders, and completed rows missing completion/privacy review refs. It
-does not create fake cohort rows and does not complete #5098 by itself.`
+This recorder posts public-safe refs only. The audit command reads only the
+public projection and fails until that projection proves the D3 completion
+gate. The check and upsert commands refuse obvious raw prompts, private paths,
+URLs, emails, bearer/API tokens, wallet/payment material, provider payload
+markers, unresolved template placeholders, and completed rows missing
+completion/privacy review refs. It does not create fake cohort rows and does
+not complete #5098 by itself.`
 
 const canonicalFlagName = name =>
   ({
@@ -312,7 +315,7 @@ export const buildRecorderRequest = (
 ) => {
   const token = adminTokenFor(parsed.command, env)
 
-  if (parsed.command === 'public') {
+  if (parsed.command === 'public' || parsed.command === 'audit') {
     return {
       body: undefined,
       headers: { accept: 'application/json' },
@@ -369,8 +372,65 @@ const completedCount = payload =>
     ? payload.counts.loop_completed
     : 0
 
+const requiredCompletionCount = payload =>
+  typeof payload?.target?.minimumCompletedTeams === 'number'
+    ? Math.max(3, payload.target.minimumCompletedTeams)
+    : 3
+
+const countedCompletionRows = payload =>
+  Array.isArray(payload?.rows)
+    ? payload.rows.filter(row => row?.countsTowardD3Completion === true).length
+    : 0
+
+export const auditCohortProjection = payload => {
+  const requiredCompleted = requiredCompletionCount(payload)
+  const completedTeams = completedCount(payload)
+  const countedRows = countedCompletionRows(payload)
+  const gateState = payload?.gate?.state ?? 'unknown'
+  const reasonRefs = Array.isArray(payload?.gate?.reasonRefs)
+    ? payload.gate.reasonRefs
+    : []
+  const blockerRefs = Array.isArray(payload?.blockerRefs)
+    ? payload.blockerRefs
+    : []
+  const rowCount = Array.isArray(payload?.rows) ? payload.rows.length : 0
+  const blockers = [
+    ...(gateState === 'ready'
+      ? []
+      : [`customer-one-cohort-audit:gate-${gateState}`]),
+    ...(completedTeams >= requiredCompleted
+      ? []
+      : ['customer-one-cohort-audit:insufficient-completed-count']),
+    ...(countedRows >= requiredCompleted
+      ? []
+      : ['customer-one-cohort-audit:insufficient-counted-rows']),
+    ...reasonRefs,
+    ...blockerRefs,
+  ]
+
+  return {
+    blockerRefs: [...new Set(blockers)],
+    completedTeams,
+    countedRows,
+    gateState,
+    ok: blockers.length === 0,
+    requiredCompleted,
+    rowCount,
+  }
+}
+
 export const humanSummary = (command, result) => {
   const payload = result.payload
+
+  if (command === 'audit') {
+    return [
+      `Customer #1 cohort audit: ${payload?.ok === true ? 'ready' : 'blocked'}`,
+      `Completed teams: ${payload?.completedTeams ?? 0}/${payload?.requiredCompleted ?? 3}`,
+      `Counted completion rows: ${payload?.countedRows ?? 0}/${payload?.requiredCompleted ?? 3}`,
+      `Gate: ${payload?.gateState ?? 'unknown'}`,
+      `Rows: ${payload?.rowCount ?? 0}`,
+    ].join('\n')
+  }
 
   if (command === 'check') {
     return [
@@ -432,6 +492,35 @@ export const runRecorder = async (argv, env = process.env, io = {}) => {
     baseUrl: baseUrlFor(parsed, env),
     fetchImpl: io.fetchImpl,
   })
+
+  if (parsed.command === 'audit') {
+    const payload = auditCohortProjection(result.payload)
+
+    if (hasFlag(parsed, 'json')) {
+      stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
+    } else {
+      stdout.write(`${humanSummary(parsed.command, { payload })}\n`)
+    }
+
+    if (!result.ok) {
+      stderr.write(
+        `${redactSecrets(
+          `Customer #1 cohort audit failed: ${result.status} ${JSON.stringify(result.payload)}`,
+          [env.OPENAGENTS_ADMIN_API_TOKEN],
+        )}\n`,
+      )
+      return 1
+    }
+
+    if (!payload.ok) {
+      stderr.write(
+        `Customer #1 cohort audit blocked: ${payload.blockerRefs.join(', ')}\n`,
+      )
+      return 1
+    }
+
+    return 0
+  }
 
   if (hasFlag(parsed, 'json')) {
     stdout.write(`${JSON.stringify(result.payload, null, 2)}\n`)

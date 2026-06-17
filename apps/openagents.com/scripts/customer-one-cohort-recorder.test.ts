@@ -33,6 +33,32 @@ const completedRow = {
   workspaceRef: 'workspace.customer-one.team-1.v1',
 }
 
+const blockedProjection = {
+  blockerRefs: ['reason.customer_one.cohort_completion_bundles_missing'],
+  counts: { loop_completed: 0 },
+  gate: {
+    reasonRefs: ['reason.customer_one.cohort_completion_bundles_missing'],
+    state: 'blocked',
+  },
+  rows: [],
+  target: { minimumCompletedTeams: 3 },
+}
+
+const readyProjection = {
+  blockerRefs: [],
+  counts: { loop_completed: 3 },
+  gate: {
+    reasonRefs: [],
+    state: 'ready',
+  },
+  rows: [
+    { countsTowardD3Completion: true },
+    { countsTowardD3Completion: true },
+    { countsTowardD3Completion: true },
+  ],
+  target: { minimumCompletedTeams: 3 },
+}
+
 describe('customer one cohort recorder', () => {
   test('reads the public cohort projection without an admin token', async () => {
     const stdout = outputBuffer()
@@ -118,6 +144,64 @@ describe('customer one cohort recorder', () => {
     )
     expect(stdout.text()).toContain('Counts toward D3: yes')
     expect(stderr.text()).toBe('')
+  })
+
+  test('passes the public cohort audit when the projection gate is ready', async () => {
+    const stdout = outputBuffer()
+    const stderr = outputBuffer()
+    const fetchImpl = vi.fn(async (url: URL, init: RequestInit) => {
+      expect(url.href).toBe(
+        'https://example.test/api/public/customer-one-cohort',
+      )
+      expect(init.method).toBe('GET')
+      expect(init.headers).toEqual({ accept: 'application/json' })
+
+      return new Response(JSON.stringify(readyProjection), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      })
+    })
+
+    const exitCode = await recorder.runRecorder(
+      ['audit'],
+      { OPENAGENTS_BASE_URL: 'https://example.test' },
+      { fetchImpl, stderr: stderr.sink, stdout: stdout.sink },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(stdout.text()).toContain('Customer #1 cohort audit: ready')
+    expect(stdout.text()).toContain('Completed teams: 3/3')
+    expect(stdout.text()).toContain('Counted completion rows: 3/3')
+    expect(stderr.text()).toBe('')
+  })
+
+  test('fails the public cohort audit for the current zero-row blocked state', async () => {
+    const stdout = outputBuffer()
+    const stderr = outputBuffer()
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify(blockedProjection), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    )
+
+    const exitCode = await recorder.runRecorder(
+      ['audit'],
+      { OPENAGENTS_BASE_URL: 'https://example.test' },
+      { fetchImpl, stderr: stderr.sink, stdout: stdout.sink },
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stdout.text()).toContain('Customer #1 cohort audit: blocked')
+    expect(stdout.text()).toContain('Completed teams: 0/3')
+    expect(stdout.text()).toContain('Counted completion rows: 0/3')
+    expect(stderr.text()).toContain(
+      'customer-one-cohort-audit:gate-blocked',
+    )
+    expect(stderr.text()).toContain(
+      'customer-one-cohort-audit:insufficient-completed-count',
+    )
   })
 
   test('refuses obvious private material before upsert', () => {

@@ -73,6 +73,13 @@ and `loop_completed` rows missing either `completionBundleRef` or
 `privacyReviewRef`. The template and checker do not record a production row by
 themselves and do not close #5098/#5104 without real evidence.
 
+To audit closure readiness from public evidence, run
+`node scripts/customer-one-cohort-recorder.mjs audit` from
+`apps/openagents.com`. The audit command reads only
+`/api/public/customer-one-cohort` and exits successfully only when the public
+projection gate is `ready` and the projection proves at least the D3 minimum
+count of completed, privacy-reviewed rows.
+
 ## Public-Safe Projection Row
 
 Projection rows must be safe to render in the Forge cockpit:
