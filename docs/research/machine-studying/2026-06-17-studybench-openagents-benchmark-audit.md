@@ -21,6 +21,12 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   `probe.studybench_rubric_score.v0` contracts with validation for public
   safety, rubric weight totals, evidence-span resolution, and public package
   visibility boundaries.
+- 2026-06-17: #5284 / MSB-MVP-02 complete. Probe runtime now exports
+  `openagents.repo_corpus_manifest.v0`,
+  `openagents.repo_corpus_entry.v0`, and
+  `openagents.repo_corpus_evidence_span.v0` helpers for deterministic repo
+  corpus manifests, exclusion-aware file admission, stable manifest and span
+  hashes, and line-numbered StudyBench-style evidence-span extraction.
 
 ## Short Answer
 
