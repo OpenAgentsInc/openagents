@@ -58,6 +58,12 @@ dependency wiring as its other operator actions.
    error plus a more specific daemon reason, the Worker classifies the specific
    reason into the public-safe `reasonRef` while still refusing to store or
    echo raw daemon text, destinations, invoices, payment hashes, or preimages.
+   A failure before a durable payment id means no sats have been proven to leave
+   the treasury; confirm by re-reading `balanceSat` / `maxSendableSat`.
+   Large Lightning Address sends may fail even while smaller sends to the same
+   recipient settle. In that case, split an owner-approved obligation into
+   explicit smaller payouts and record each settled row, rather than retrying a
+   single large invoice from memory.
 5. Scheduled X-claim dispatcher — the Worker-internal path for already
    operator-approved `x_claim_reward_ledger` rows in `dispatch_requested`.
    It is controlled by `TREASURY_DISPATCH_ENABLED`, which defaults off. When

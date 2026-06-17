@@ -14,7 +14,7 @@ wallet paths.
 | --- | ---: | --- | --- | --- | --- |
 | Trigger | 50,000 sats | Recipient-side rc.12 proof reported a visible 50,000-sat Spark backup balance after `backup-claim` / `backup-status`; the scoped offline-receive promise is green. | Confirmed | None for the scoped receive/claim/visible-balance promise. | Optional follow-up is #5169-style consented Spark-to-MDK sweep if Trigger wants one spendable MDK balance. |
 | Whitefang | 50,000-sat recognition + 5-sat validator fee | Earlier treasury send failed while the primary MDK/Lightning target was not accepting inbound. No public-safe rc.12+ Spark-backed Lightning Address publish, treasury retry receipt, or recipient `backup-claim` / `backup-status` proof is captured in this repo yet. | Blocked, not invisible | Missing recipient-published Spark fallback target and recipient-side claim/status proof. This is not classified as "sent but invisible"; there is no completed Spark fallback payout receipt to reconcile yet. | Whitefang installs rc.12+, runs `pylon wallet backup-receive --kind lightning-address`, reports readiness, receives the operator-approved treasury retry, then runs `pylon wallet backup-claim` and `pylon wallet backup-status` and shares public-safe receipt refs/counts. |
-| Orrery | 50,000-sat recognition + 5-sat worker fee | Earlier BOLT12 recognition/worker payout was recorded as pending. No public-safe Spark-backed Lightning Address publish, fallback treasury send receipt, or recipient `backup-claim` / `backup-status` proof is captured in this repo yet. | Blocked, pending fallback confirmation | Pending BOLT12 is a separate unsettled payout state, and no recipient Spark fallback target/proof is captured. This is not classified as "sent but invisible"; the actionable blocker is target/proof collection. | Orrery installs rc.12+, publishes the Spark-backed Lightning Address through readiness, receives the operator-approved treasury retry or resolves the pending BOLT12, then runs `backup-claim` / `backup-status` and shares public-safe receipt refs/counts. |
+| Orrery | 50,000-sat recognition + 5-sat worker fee | 2026-06-17 live retry covered the 50,000-sat recognition amount through split Lightning Address payouts: 5,000 sats, 20,000 sats, and 25,000 sats all returned `status:succeeded`, `policyApplied:full`, and settled public treasury rows. Separate 250-sat smoke sends also settled. | Treasury-settled, recipient confirmation pending | A single full-sized Lightning Address retry is unreliable: one 50,000-sat attempt and one 40,000-sat attempt both failed before dispatch, with no treasury balance movement and no durable payment id. The daemon surfaced only the generic public-safe reason ref, so the precise upstream route/liquidity reason is still not proven. | Orrery runs `backup-claim` / `backup-status` and shares public-safe receipt refs/counts. Future retries for this rail should split intentionally below the live route threshold instead of repeatedly attempting one 50,000-sat invoice. |
 
 ## Treasury pending semantics
 
@@ -50,6 +50,26 @@ and a public-safe `failure_reason_ref`. The reason ref classifies the failure
 without storing or returning raw destinations, BOLT11 invoices, hashes,
 preimages, or daemon error strings. Use `--fail-with-body` or omit `curl -f`
 when manually calling payout routes so the JSON failure body is not hidden.
+
+## Orrery Lightning Address retry notes
+
+On 2026-06-17, the operator retried Orrery through the Spark-backed Lightning
+Address fallback using the admin payout route. The small-to-large sequence was:
+
+- 5,000 sats: succeeded and settled.
+- 40,000 sats: failed before dispatch; treasury balance and max-sendable were
+  unchanged afterward, proving no sats left the treasury on that attempt.
+- 20,000 sats: succeeded and settled.
+- 25,000 sats: succeeded and settled.
+
+This proves the Lightning Address fallback can resolve and receive real treasury
+payouts at meaningful sizes, and that the 50,000-sat recognition amount is
+covered by split settled sends. It does not prove the exact upstream cause of
+the single-invoice 40,000/50,000 failure. The best current explanation is
+single-payment route/liquidity fragility or a generic MDK send failure for that
+invoice size, not recipient readiness and not treasury insufficient balance.
+The treasury ended this sequence nearly depleted, so another full 50,000-sat
+retry requires funding first.
 
 ## Operator rule
 
