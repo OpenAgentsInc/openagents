@@ -429,6 +429,10 @@ reporting, retained failure examples, and future customer-facing product design.
 
 ## Concrete Next Steps
 
+The issue-level implementation plan lives in:
+
+- `docs/research/machine-studying/2026-06-17-openagents-studybench-mvp-issue-roadmap.md`
+
 1. Register StudyBench as an external calibration dataset by ref:
    `hf://jacobli/studybench/dspy`.
 2. Draft `openagents.studybench_task.v0` in docs before code.
