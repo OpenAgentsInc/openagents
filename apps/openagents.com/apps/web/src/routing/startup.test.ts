@@ -38,6 +38,7 @@ import {
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
   StatsRoute,
+  TassadarRoute,
   TeamChatRoute,
   TeamProjectChatRoute,
 } from '../route'
@@ -213,6 +214,26 @@ describe('startup route policy', () => {
       _tag: 'LoggedOutStartupRoute',
       redirect: Option.none(),
       route: pylonRoute,
+    })
+  })
+
+  test('keeps the live Tassadar run route available for every auth state', () => {
+    const tassadarRoute = TassadarRoute()
+
+    expect(startupRouteForLoggedOut(tassadarRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: tassadarRoute,
+    })
+    expect(startupRouteForLoggedIn(tassadarRoute, completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: tassadarRoute,
+    })
+    expect(startupRouteForLoggedIn(tassadarRoute, incompleteAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: tassadarRoute,
     })
   })
 
@@ -496,6 +517,7 @@ describe('startup route policy', () => {
     expect(routeRequiresAuthBootstrap(MokshaRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(Moksha2Route())).toBe(false)
     expect(routeRequiresAuthBootstrap(PylonRoute())).toBe(false)
+    expect(routeRequiresAuthBootstrap(TassadarRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(PublicStatsArchiveRoute())).toBe(false)
     expect(
       routeRequiresAuthBootstrap(

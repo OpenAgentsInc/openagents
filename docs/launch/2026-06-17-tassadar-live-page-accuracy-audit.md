@@ -54,6 +54,16 @@ primitives.
   `/tassadar` is now in the Worker document-route allowlist, so direct browser
   hits serve the app shell instead of redirecting home; the smoke's staleness
   assertion now matches the public summary's `projection_staleness.v1` shape.
+- 2026-06-17: A follow-up live check caught the client-side startup gap after
+  the server allowlist fix: `TassadarRoute` parsed, but
+  `routing/startup.ts` did not include `Tassadar` in the public startup
+  resolver lists where `/run` was already allowed. The app could therefore
+  serve the shell while the browser startup redirected or fell back before the
+  `oa-tassadar-run` scene mounted. The fix adds `Tassadar` to logged-out,
+  incomplete-onboarding, and complete-onboarding startup resolution, and adds
+  regression coverage that `/tassadar` skips auth bootstrap, initializes
+  without a session, and renders the `oa-tassadar-run` element through the
+  top-level view.
 
 ## Short answer
 
@@ -305,8 +315,8 @@ machine.
 
 Needed:
 
-- Drawer/panel rows for `trace submitted -> replay challenge -> digest
-  match/mismatch -> verdict`.
+- Drawer/panel rows for trace submitted -> replay challenge -> digest
+  match/mismatch -> verdict.
 - A distinction between exact-replay verification for Tassadar and the
   CS336/Psion real-gradient blocker set.
 
@@ -482,6 +492,8 @@ run instrument.
   - rejected replay projections include only public-safe mismatch refs
 - Web unit tests:
   - `/tassadar` routes correctly
+  - `/tassadar` startup stays public and renders `oa-tassadar-run` without an
+    auth session
   - no fallback loss curve without loss evidence
   - receipt link resolver chooses the Nexus/Pylon route for Nexus receipts
   - proof drawer shows simulation caveat for the current receipt

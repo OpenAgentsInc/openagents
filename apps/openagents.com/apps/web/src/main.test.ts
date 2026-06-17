@@ -159,6 +159,16 @@ describe('auth bootstrap flags', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
+  test('does not request the auth session on the Tassadar route', async () => {
+    window.history.replaceState({}, '', '/tassadar')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const loadedFlags = await Effect.runPromise(flags)
+
+    expect(loadedFlags.maybeAuth).toEqual(Option.none())
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   test('requests the auth session on application routes', async () => {
     window.history.replaceState({}, '', '/teams/openagents-core-team/chat')
     const fetchSpy = vi
@@ -310,6 +320,32 @@ describe('authenticated startup routing', () => {
       route: { _tag: 'Pylon' },
     })
     expect(commands).toHaveLength(0)
+  })
+
+  test('opens Tassadar without an auth session', () => {
+    const [model, commands] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/tassadar'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: { _tag: 'Tassadar' },
+    })
+    expect(commands).toHaveLength(0)
+  })
+
+  test('renders the Tassadar route through the top-level view', () => {
+    const [model] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/tassadar'),
+    )
+
+    Scene.scene(
+      { update, view },
+      Scene.with(model),
+      Scene.expect(Scene.selector('oa-tassadar-run')).toExist(),
+    )
   })
 
   test('renders the Pylon route through the top-level view', () => {
