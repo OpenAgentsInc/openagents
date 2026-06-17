@@ -34,6 +34,11 @@ primitives.
   states; rejected replay pairs, settlement receipts, and accepted trace corpus
   refs become selectable proof entities; payout bursts render only for
   `realBitcoinMoved:true` settlement rows.
+- 2026-06-17: Issue #5191 added a live product-promise copy gate to the
+  `/tassadar` scene. It reads `/api/public/product-promises`, displays the
+  launch/install/model/gradient/first-real-run states, links the registry, and
+  keeps the simulation-settlement caveat visible so the page does not claim real
+  sats paid, trained Tassadar, or accepted public gradients ahead of evidence.
 
 ## Short answer
 

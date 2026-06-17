@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  PRODUCT_PROMISES_ENDPOINT,
   TASSADAR_RUN_SUMMARY_ENDPOINT,
   TASSADAR_RUN_TAG,
   dataStateForSummary,
@@ -125,6 +126,34 @@ const idle = {
   emptyState: { idle: true, reason: 'no verified work yet' },
 }
 
+const promisesDocument = {
+  registryVersion: '2026-06-17.2',
+  promises: [
+    {
+      promiseId: 'training.monday_decentralized_training_launch.v1',
+      safeCopy: 'Scoped green with realBitcoinMoved:false caveat.',
+      state: 'green',
+    },
+    {
+      promiseId: 'pylon.install_without_wallet_knowledge.v1',
+      safeCopy: 'Install path green with realBitcoinMoved:false caveat.',
+      state: 'green',
+    },
+    {
+      promiseId: 'models.tassadar_percepta_executor.v1',
+      state: 'red',
+    },
+    {
+      promiseId: 'training.public_gradient_windows.v1',
+      state: 'planned',
+    },
+    {
+      promiseId: 'pylon.first_real_model_training_run.v1',
+      state: 'yellow',
+    },
+  ],
+}
+
 const jsonResponse = (body: unknown, status = 200): Response =>
   ({
     ok: status >= 200 && status < 300,
@@ -169,8 +198,9 @@ describe('tassadarRunView page wiring', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(jsonResponse(populated))
     await mountAndSettle()
-    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
     expect(fetchSpy.mock.calls[0]?.[0]).toBe(TASSADAR_RUN_SUMMARY_ENDPOINT)
+    expect(fetchSpy.mock.calls[1]?.[0]).toBe(PRODUCT_PROMISES_ENDPOINT)
   })
 
   it('(a) populated summary → ok state, mounts renderer with produced options', async () => {
@@ -192,10 +222,13 @@ describe('tassadarRunView page wiring', () => {
       generatedAt: '2026-06-17T16:40:20.270Z',
       runState: 'active',
     }
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(jsonResponse(populated))
-      .mockResolvedValueOnce(jsonResponse(refreshed))
+    let summaryCalls = 0
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async input =>
+        input === PRODUCT_PROMISES_ENDPOINT
+          ? jsonResponse(promisesDocument)
+          : jsonResponse(summaryCalls++ === 0 ? populated : refreshed),
+    )
 
     const el = await mountAndSettle()
     const status = el.shadowRoot?.querySelector('.status')
@@ -213,10 +246,32 @@ describe('tassadarRunView page wiring', () => {
     refresh?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await waitForSettled(el)
 
-    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchSpy).toHaveBeenCalledTimes(4)
     expect(el.shadowRoot?.querySelector('.status')?.textContent ?? '').toContain(
       '2026-06-17T16:40:20.270Z',
     )
+  })
+
+  it('renders product-promise copy gates from the public registry without changing run truth', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      if (input === PRODUCT_PROMISES_ENDPOINT) {
+        return jsonResponse(promisesDocument)
+      }
+      return jsonResponse(populated)
+    })
+
+    const el = await mountAndSettle()
+    const gate = el.shadowRoot?.querySelector('.promise-gate')
+    const text = gate?.textContent ?? ''
+    expect(text).toContain('Promise gates / 2026-06-17.2')
+    expect(text).toContain('Monday launch')
+    expect(text).toContain('green')
+    expect(text).toContain('Trained model')
+    expect(text).toContain('red')
+    expect(text).toContain('Gradient windows')
+    expect(text).toContain('planned')
+    expect(text).toContain('simulation-backed settlement caveat')
+    expect(text).toContain('Do not claim real sats paid')
   })
 
   it('(b) idle summary → empty state, still renders the honest (zeroed) scene — never faked', async () => {

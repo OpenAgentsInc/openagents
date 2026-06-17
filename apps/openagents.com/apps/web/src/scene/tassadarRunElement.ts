@@ -29,6 +29,7 @@ import {
 
 export const TASSADAR_RUN_TAG = 'oa-tassadar-run'
 export const TASSADAR_RUN_SUMMARY_ENDPOINT = '/api/public/tassadar-run-summary'
+export const PRODUCT_PROMISES_ENDPOINT = '/api/public/product-promises'
 
 export type TassadarRunDataState = 'loading' | 'ok' | 'empty' | 'error'
 export type TassadarRunProofLink = Readonly<{
@@ -39,6 +40,20 @@ export type TassadarRunProofLink = Readonly<{
   ref: string
   sourceRefs: ReadonlyArray<string>
   state: string
+}>
+
+export type ProductPromiseRecord = Readonly<{
+  promiseId?: string
+  safeCopy?: string
+  state?: string
+  unsafeCopy?: string
+}>
+
+export type ProductPromisesDocument = Readonly<{
+  generatedAt?: string
+  promises?: ReadonlyArray<ProductPromiseRecord>
+  registryVersion?: string
+  version?: string
 }>
 
 const HOST_STYLE =
@@ -59,6 +74,12 @@ const HOST_STYLE =
   'font:inherit;font-size:0.7rem;color:rgba(255,255,255,0.82);cursor:pointer}' +
   '.status button:focus-visible{outline:2px solid rgba(114,191,255,0.9);outline-offset:2px}' +
   '@media (max-width:720px){.status{display:grid}.status dl{grid-template-columns:repeat(2,minmax(0,1fr))}.status dd{max-width:none}.status button{justify-self:start}}' +
+  '.promise-gate{position:absolute;left:0.75rem;right:0.75rem;bottom:0.75rem;z-index:2;display:grid;gap:0.55rem;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.62);padding:0.7rem 0.8rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(10px)}' +
+  '.promise-gate header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.5rem}.promise-gate h2{margin:0;font-size:0.68rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.48)}' +
+  '.promise-gate a{font-size:0.68rem;color:rgba(255,255,255,0.78);text-underline-offset:0.18rem}.promise-gate a:hover{color:#fff}' +
+  '.promise-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0.45rem}.promise-item{min-width:0;border-top:1px solid rgba(255,255,255,0.12);padding-top:0.42rem}.promise-item strong{display:block;margin:0 0 0.16rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.68rem;font-weight:600;color:rgba(255,255,255,0.82)}' +
+  '.promise-item span{display:block;font-size:0.64rem;color:rgba(255,255,255,0.46)}.promise-copy{margin:0;font-size:0.68rem;line-height:1.45;color:rgba(255,255,255,0.55)}' +
+  '@media (max-width:900px){.promise-list{grid-template-columns:repeat(2,minmax(0,1fr))}.promise-gate{max-height:40%;overflow:auto}}' +
   '.selection{position:absolute;right:1rem;bottom:1rem;z-index:2;max-width:min(26rem,calc(100% - 2rem));' +
   'border:1px solid rgba(255,255,255,0.14);background:rgba(0,0,0,0.78);padding:0.75rem 0.875rem;' +
   'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(10px)}' +
@@ -145,6 +166,56 @@ const stalenessText = (summary: TassadarRunPublicSummary): string => {
       ? `${staleness.maxStalenessSeconds}s`
       : 'unknown'
   return `${contract} / ${composition} / max ${max}`
+}
+
+const trackedPromiseIds = [
+  'training.monday_decentralized_training_launch.v1',
+  'pylon.install_without_wallet_knowledge.v1',
+  'models.tassadar_percepta_executor.v1',
+  'training.public_gradient_windows.v1',
+  'pylon.first_real_model_training_run.v1',
+] as const
+
+const promiseLabels: Readonly<Record<(typeof trackedPromiseIds)[number], string>> =
+  {
+    'training.monday_decentralized_training_launch.v1': 'Monday launch',
+    'pylon.install_without_wallet_knowledge.v1': 'Install path',
+    'models.tassadar_percepta_executor.v1': 'Trained model',
+    'training.public_gradient_windows.v1': 'Gradient windows',
+    'pylon.first_real_model_training_run.v1': 'First real run',
+  }
+
+const promiseById = (
+  document: ProductPromisesDocument | null,
+  promiseId: string,
+): ProductPromiseRecord | undefined =>
+  Array.isArray(document?.promises)
+    ? document.promises.find(promise => promise.promiseId === promiseId)
+    : undefined
+
+const promiseState = (
+  document: ProductPromisesDocument | null,
+  promiseId: string,
+): string => textOrUnknown(promiseById(document, promiseId)?.state)
+
+const promiseGateCaveat = (
+  document: ProductPromisesDocument | null,
+): string => {
+  const monday = promiseById(
+    document,
+    'training.monday_decentralized_training_launch.v1',
+  )
+  const install = promiseById(
+    document,
+    'pylon.install_without_wallet_knowledge.v1',
+  )
+  const simulationCaveat =
+    monday?.safeCopy?.includes('realBitcoinMoved:false') === true ||
+    install?.safeCopy?.includes('realBitcoinMoved:false') === true
+
+  return simulationCaveat
+    ? 'Copy gate: current launch/install green states include a simulation-backed settlement caveat. Do not claim real sats paid, trained Tassadar, or public gradients accepted without matching green evidence.'
+    : 'Copy gate: claims must follow the live product-promise registry and dereferenceable receipts.'
 }
 
 const settlementReceiptRef = (
@@ -412,10 +483,13 @@ const makeClass = (): CustomElementConstructor =>
 
     async #load(signal: AbortSignal): Promise<void> {
       try {
-        const response = await fetch(TASSADAR_RUN_SUMMARY_ENDPOINT, {
-          headers: { accept: 'application/json' },
-          signal,
-        })
+        const [response, promisesDocument] = await Promise.all([
+          fetch(TASSADAR_RUN_SUMMARY_ENDPOINT, {
+            headers: { accept: 'application/json' },
+            signal,
+          }),
+          this.#loadProductPromises(signal),
+        ])
         if (signal.aborted) return
         if (!response.ok) {
           this.#renderError(
@@ -426,7 +500,7 @@ const makeClass = (): CustomElementConstructor =>
         }
         const summary = (await response.json()) as TassadarRunPublicSummary
         if (signal.aborted) return
-        this.#renderScene(summary, new Date())
+        this.#renderScene(summary, new Date(), promisesDocument)
       } catch (error) {
         if (signal.aborted) return
         this.#renderError(
@@ -435,6 +509,21 @@ const makeClass = (): CustomElementConstructor =>
         )
         // Keep the failure visible to operators without faking any metric.
         void error
+      }
+    }
+
+    async #loadProductPromises(
+      signal: AbortSignal,
+    ): Promise<ProductPromisesDocument | null> {
+      try {
+        const response = await fetch(PRODUCT_PROMISES_ENDPOINT, {
+          headers: { accept: 'application/json' },
+          signal,
+        })
+        if (signal.aborted || !response.ok) return null
+        return (await response.json()) as ProductPromisesDocument
+      } catch {
+        return null
       }
     }
 
@@ -469,7 +558,11 @@ const makeClass = (): CustomElementConstructor =>
     // Receipt-first: idle summaries still render the real (zeroed) scene; we do
     // not substitute placeholder numbers. Only the data-state differs so callers
     // and tests can distinguish a just-launched run from a populated one.
-    #renderScene(summary: TassadarRunPublicSummary, fetchedAt: Date): void {
+    #renderScene(
+      summary: TassadarRunPublicSummary,
+      fetchedAt: Date,
+      promisesDocument: ProductPromisesDocument | null,
+    ): void {
       const base = this.#base()
       if (base === null) return
       this.setAttribute('data-state', dataStateForSummary(summary))
@@ -489,6 +582,7 @@ const makeClass = (): CustomElementConstructor =>
       })
       base.mount.append(run)
       this.#renderStatus(base.mount, summary, fetchedAt)
+      this.#renderPromiseGate(base.mount, promisesDocument)
     }
 
     #renderStatus(
@@ -521,6 +615,43 @@ const makeClass = (): CustomElementConstructor =>
       refresh.textContent = 'Refresh snapshot'
       refresh.addEventListener('click', () => this.#refresh())
       panel.append(list, refresh)
+      mount.append(panel)
+    }
+
+    #renderPromiseGate(
+      mount: HTMLDivElement,
+      promisesDocument: ProductPromisesDocument | null,
+    ): void {
+      const panel = document.createElement('aside')
+      panel.className = 'promise-gate'
+      panel.setAttribute('aria-label', 'Tassadar product promise copy gate')
+      const header = document.createElement('header')
+      const title = document.createElement('h2')
+      const version =
+        promisesDocument?.registryVersion ?? promisesDocument?.version ?? 'unknown'
+      title.textContent = `Promise gates / ${version}`
+      const link = document.createElement('a')
+      link.href = PRODUCT_PROMISES_ENDPOINT
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      link.textContent = 'Open registry'
+      header.append(title, link)
+      const list = document.createElement('div')
+      list.className = 'promise-list'
+      for (const promiseId of trackedPromiseIds) {
+        const item = document.createElement('div')
+        item.className = 'promise-item'
+        const label = document.createElement('strong')
+        label.textContent = promiseLabels[promiseId]
+        const state = document.createElement('span')
+        state.textContent = promiseState(promisesDocument, promiseId)
+        item.append(label, state)
+        list.append(item)
+      }
+      const copy = document.createElement('p')
+      copy.className = 'promise-copy'
+      copy.textContent = promiseGateCaveat(promisesDocument)
+      panel.append(header, list, copy)
       mount.append(panel)
     }
 
