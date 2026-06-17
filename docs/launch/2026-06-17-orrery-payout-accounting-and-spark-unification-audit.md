@@ -143,11 +143,12 @@ timestamps + the forum narrative. **Fix:** record a redacted recipient ref
   unproven (single-large-invoice route/liquidity or MDK/Spark/LSP fragility).
 
 ### 3.3 Two wallets per agent, two rails per payment
-Each agent has an **MDK** wallet (BOLT12 offer, the spendable/checkout wallet) and
-a **Spark backup** wallet (Lightning Address, receive-only in Pylon). A payout can
-land in either depending on which rail resolved. There is **no unified balance**,
-and the Spark side cannot currently spend (see §4). This is the structural source
-of the confusion.
+Each agent has an **MDK** wallet (BOLT12 offer, the checkout/MDK spend wallet) and
+a **Spark backup** wallet (Lightning Address and Spark spend rail in Pylon). A
+payout can land in either depending on which rail resolved. This is no longer a
+hard "Spark funds are stuck" problem after #5177, but it is still a product and
+accounting split unless the user sweeps Spark into MDK or the UI clearly labels
+the two buckets.
 
 ---
 
@@ -173,13 +174,12 @@ of the confusion.
   removing it from the per-agent balance path.
 
 ### What this requires (and the open risks)
-1. **Wire Spark send/withdraw into Pylon.** Today the Spark helper is
-   **receive-only**; `sendPayment`/`lnurlPay` exist in the SDK but are not exposed,
-   and `migrate-spark` (Spark→MDK sweep) is a **stub** (records a reconcile
-   projection; no real transfer, and only looks at on-chain unclaimed deposits, not
-   the HTLC/Lightning balance). Until this lands, **agents can see Spark funds but
-   cannot spend them** — Trigger's open question (`b104b11a`). This is the gating
-   work item.
+1. **Spark send/withdraw into Pylon.** #5177 wires `wallet send --rail spark
+   --confirm-send` for credited Spark backup funds. BOLT11/Spark payment requests
+   use `prepareSendPayment` -> `sendPayment`; Lightning Addresses use `parse` ->
+   `prepareLnurlPay` -> `lnurlPay`. Raw destinations stay local and public output
+   emits only digest refs, amount/fee, method, and status. #5169 separately wires
+   the Spark→MDK sweep path for users who want a single MDK-spendable balance.
 2. **Solve large-single-payment delivery** (the 40k/50k pre-dispatch failures), or
    formalize chunked payout ≤25–30k as policy. Either way the treasury pays agents
    via their Spark Lightning Address.
@@ -193,9 +193,10 @@ of the confusion.
 The owner's stated lean is the **unified balance view** (present one combined
 balance, route sends from whichever wallet has funds). That is the lightest-touch
 path and avoids a migration, but it is the **most ongoing complexity** (two wallets
-forever + reconciliation logic) and does **not** by itself fix the Spark-can't-spend
-gap. The Spark-as-single-wallet end-state is cleaner long-term; the unified view is
-a reasonable interim that still needs item (1) above to make Spark funds spendable.
+forever + reconciliation logic). #5177 removes the immediate Spark-can't-spend
+gap; the remaining decision is product/accounting simplicity: keep unified view as
+the interim, sweep to MDK when one MDK-spendable balance matters, or move the
+long-term agent wallet to Spark-single-wallet.
 
 ---
 
@@ -205,9 +206,9 @@ a reasonable interim that still needs item (1) above to make Spark funds spendab
    net against 50k, and reclaim/adjust the ~110k–185k overage.
 2. **Reconcile the 3 pending rows (100,005 sats)** — are they stuck-in-flight,
    refundable, or lost intent?
-3. **Make Spark funds spendable** (expose Spark send OR implement a real
-   Spark→MDK/Spark→LN sweep) — unblocks Trigger's withdraw question and is the
-   precondition for any single-balance model.
+3. **Use #5177/#5169 to make Spark funds useful** — direct Spark withdraw when
+   the user wants to spend from Spark, or consented Spark→MDK sweep when they want
+   one MDK-spendable balance.
 4. **Add destination + confirmed-receipt to the payout ledger.**
 5. **Fix or formalize large-payment delivery** (chunk ≤25–30k, or solve the
    route/liquidity failure).

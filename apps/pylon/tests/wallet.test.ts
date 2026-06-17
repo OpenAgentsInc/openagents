@@ -21,12 +21,14 @@ import {
   reportWalletReadiness,
   requestPayoutTargetAdmission,
   sendWithMdk,
+  sendWithSparkBackup,
   sparkBackupTargetPath,
   sweepSparkBackupToMdk,
   withUnifiedWalletBalance,
   writeCachedSparkTarget,
   type SparkBackupCommand,
   type SparkBackupHelper,
+  type SparkBackupSendTransfer,
   type SparkBackupSweepTransfer,
   type WalletCommandRunner,
 } from "../src/wallet"
@@ -881,6 +883,93 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
       expect(JSON.stringify(projection)).not.toContain(RAW_SPARK_ADDRESS)
       assertPublicProjectionSafe(projection)
     })
+  })
+})
+
+describe("Spark backup send / withdraw (#5177)", () => {
+  const enabledEnv = { OPENAGENTS_SPARK_API_KEY: "k", PYLON_SPARK_BACKUP_ENABLED: "1" } as NodeJS.ProcessEnv
+  const RAW_SPARK_PAYMENT_REQUEST = "lnbc2100n1rawsparkpaymentrequestthatmustneverleakpublicly"
+  const successfulSend: SparkBackupSendTransfer = async ({ amountSats, destination }) => {
+    expect(destination).toBe(RAW_SPARK_PAYMENT_REQUEST)
+    return {
+      ok: true,
+      transferRef: "wallet.spark_backup_send.deadbeefdeadbeefdeadbeef",
+      sparkPaymentRef: "wallet.spark_backup_send_payment.deadbeefdeadbeefdeadbeef",
+      amountSats,
+      feeSats: 2,
+      method: "payment_request",
+      status: "complete",
+    }
+  }
+
+  test("inert by default: opt-in off, no spend", async () => {
+    const send = await sendWithSparkBackup({
+      amountSats: 2100,
+      destination: RAW_SPARK_PAYMENT_REQUEST,
+      confirmSend: true,
+      transfer: successfulSend,
+      env: {} as NodeJS.ProcessEnv,
+    })
+    expect(send.state).toBe("disabled")
+    expect(send.publicReceiptRefs).toEqual([])
+    assertPublicProjectionSafe(send)
+  })
+
+  test("requires explicit confirm-send before moving Spark funds", async () => {
+    let called = false
+    const send = await sendWithSparkBackup({
+      amountSats: 2100,
+      destination: RAW_SPARK_PAYMENT_REQUEST,
+      env: enabledEnv,
+      transfer: async () => {
+        called = true
+        return {
+          ok: false,
+          failureRef: "wallet.spark_backup_send.should_not_call",
+        }
+      },
+    })
+    expect(send.state).toBe("consent-required")
+    expect(send.blockerRefs).toContain("blocker.wallet.spark_backup.send_consent_required")
+    expect(called).toBe(false)
+    expect(JSON.stringify(send)).not.toContain(RAW_SPARK_PAYMENT_REQUEST)
+    assertPublicProjectionSafe(send)
+  })
+
+  test("confirm-send emits a dereferenceable public-safe receipt", async () => {
+    const send = await sendWithSparkBackup({
+      amountSats: 2100,
+      destination: RAW_SPARK_PAYMENT_REQUEST,
+      confirmSend: true,
+      env: enabledEnv,
+      transfer: successfulSend,
+      now: () => new Date("2026-06-17T00:00:00.000Z"),
+    })
+    expect(send.state).toBe("sent")
+    expect(send.amountSats).toBe(2100)
+    expect(send.feeSats).toBe(2)
+    expect(send.destinationRef).toMatch(/^wallet\.spark_backup_send\.destination\.[a-f0-9]{24}$/)
+    expect(send.transferRef).toBe("wallet.spark_backup_send.deadbeefdeadbeefdeadbeef")
+    expect(send.sparkPaymentRef).toBe("wallet.spark_backup_send_payment.deadbeefdeadbeefdeadbeef")
+    expect(send.publicReceiptRefs[0]).toMatch(/^receipt\.pylon\.spark_backup_send\.[a-f0-9]{24}$/)
+    expect(JSON.stringify(send)).not.toContain(RAW_SPARK_PAYMENT_REQUEST)
+    expect(JSON.stringify(send)).not.toContain("lnbc")
+    assertPublicProjectionSafe(send)
+  })
+
+  test("invalid request returns blockers and no receipt", async () => {
+    const send = await sendWithSparkBackup({
+      amountSats: 0,
+      destination: "",
+      confirmSend: true,
+      env: enabledEnv,
+      transfer: successfulSend,
+    })
+    expect(send.state).toBe("invalid-request")
+    expect(send.publicReceiptRefs).toEqual([])
+    expect(send.blockerRefs).toContain("blocker.wallet.spark_backup.send_destination_required")
+    expect(send.blockerRefs).toContain("blocker.wallet.spark_backup.send_amount_required")
+    assertPublicProjectionSafe(send)
   })
 })
 

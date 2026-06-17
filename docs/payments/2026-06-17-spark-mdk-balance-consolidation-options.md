@@ -13,8 +13,9 @@ That is not the same as one spendable MDK balance. Today the contributor can see
 two balances:
 
 - MDK primary wallet balance: the normal receive/spend rail.
-- Spark backup balance: receive-only backup funds, claimable/credited after
-  Spark sync/claim, not exposed as Spark send authority.
+- Spark backup balance: backup funds claimable/credited after Spark sync/claim;
+  now directly spendable only through the explicit consented Spark send rail
+  added in #5177.
 
 ## Implemented near-term path: unified balance view (#5168)
 
@@ -35,7 +36,8 @@ operator surfaces should preserve the existing caveats:
 - receive readiness is not send readiness;
 - Spark backup receive is not accepted-work settlement authority;
 - Spark backup balance is not MDK spendable until a real sweep/transfer receipt
-  exists.
+  exists;
+- direct Spark send is a separate spend rail, not an MDK balance merge.
 
 The summary carries `caveat.wallet.total_visible_is_not_single_spendable_balance`
 and `caveat.wallet.spark_backup_is_not_mdk_spendable_until_sweep_receipt` so
@@ -58,11 +60,14 @@ callers can display the aggregate without implying one spendable MDK balance.
    `sweep-failed` and the funds are not described as MDK-spendable.
 
 3. Spark send/withdraw support.
-   This would make Spark an active spend rail again. It is a broader authority
-   change and should not be the next move unless option 2 is blocked by SDK or
-   liquidity constraints. It would require a new promise gate, send-readiness
-   preflight, private-material redaction review, and tests proving it does not
-   widen accepted-work payout or public payout-target authority.
+   **Implemented in #5177.** `wallet send --rail spark --confirm-send` pays from
+   the node's own Spark backup wallet to a raw BOLT11/Spark payment request or
+   Lightning Address/LNURL-pay destination. The adapter follows the previously
+   working Spark flow (`prepareSendPayment` -> `sendPayment`) for payment
+   requests and the SDK LNURL flow (`parse` -> `prepareLnurlPay` -> `lnurlPay`)
+   for Lightning Addresses. Public output and ledger rows contain only digest
+   refs, amount/fee, method, and status. This does not widen accepted-work payout
+   authority and does not claim the Spark balance is MDK-spendable.
 
 4. Hosted/operator consolidation.
    The operator could receive or reimburse the backup balance into MDK through a
@@ -72,7 +77,8 @@ callers can display the aggregate without implying one spendable MDK balance.
 
 ## Recommendation
 
-Option 1 and option 2 are now the product path: show the unified view first,
-then use the consented sweep to consolidate credited Spark backup funds into
-MDK. Do not implement option 3 unless a separate owner-approved design decides
-that Spark should regain general spend authority.
+Option 1 and option 2 remain the low-confusion product path: show the unified
+view first, then use the consented sweep to consolidate credited Spark backup
+funds into MDK when the user wants one MDK-spendable balance. Option 3 is now
+available for direct Spark withdrawals when the user explicitly wants to spend
+from Spark without first sweeping to MDK.

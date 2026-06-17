@@ -262,6 +262,20 @@ Wallet status uses MDK readiness evidence and records idempotent local ledger
 events. Send readiness remains blocked unless MDK returns explicit evidence;
 balance and receive readiness are not treated as spendable settlement.
 
+Spark backup funds have a separate, explicit spend rail for owner-approved local
+withdrawals. It is inert unless Spark backup is enabled and requires raw payment
+material to stay local to the node:
+
+```sh
+pylon wallet send --rail spark --payment-request <bolt11-or-spark-request> --amount 2100 --confirm-send
+pylon wallet send --rail spark --lightning-address <name@example.com> --amount 2100 --confirm-send
+```
+
+The command pays from the node's Spark backup wallet, not from MDK. Public output
+and local ledger records contain only digest refs, amount/fee, method, and status;
+they never print the raw invoice, Lightning Address, mnemonic, API key, or Spark
+storage path.
+
 Assignment worker commands are available for signed fake-server and live API
 smokes:
 
@@ -377,8 +391,11 @@ carry public-safe receipt refs, amounts, event ids, and readiness refs. See
 Legacy Spark/Breez migration boundary: `pylon wallet migrate-spark` is a
 preflight-first compatibility path for old v0.2.x balances. It reports missing
 Breez/Spark credential material as an actionable blocker and only proceeds with
-explicit local consent. Users must never paste a 12-word mnemonic into GitHub,
-support threads, logs, or issue comments. See
+explicit local consent. `pylon wallet send --rail spark --confirm-send` is the
+direct Spark spend/withdraw path for credited Spark backup funds; it is separate
+from accepted-work payout authority and emits public-safe refs only. Users must
+never paste a 12-word mnemonic, raw invoice, Lightning Address, API key, or Spark
+storage path into GitHub, support threads, logs, or issue comments. See
 `docs/legacy-spark-wallet-migration.md`.
 
 Labor boundary: Pylon rejects labor requests that carry provider-auth-shaped

@@ -150,6 +150,7 @@ import {
   reportWalletReadiness,
   requestPayoutTargetAdmission,
   sendWithMdk,
+  sendWithSparkBackup,
   sweepSparkBackupToMdk,
   unifiedWalletBalanceFromStatus,
   withUnifiedWalletBalance,
@@ -157,6 +158,7 @@ import {
 } from "./wallet"
 import {
   createSparkBackupHelper,
+  createSparkBackupSendTransfer,
   createSparkBackupSweepTransfer,
   legacySparkHelperRunner,
   resolveLegacySparkApiKey,
@@ -1015,11 +1017,20 @@ async function resolveSparkBackupOptions(
         storageDir,
       })
     : null
+  const sendTransfer = mnemonic
+    ? createSparkBackupSendTransfer({
+        apiKey: resolveLegacySparkApiKey(Bun.env),
+        mnemonic,
+        network,
+        storageDir,
+      })
+    : null
   const cachedAddress = await readCachedSparkTarget(state.paths)
   return {
     env: Bun.env,
     ...(helper ? { helper } : {}),
     ...(transfer ? { transfer } : {}),
+    ...(sendTransfer ? { sendTransfer } : {}),
     cachedAddress,
     showLocalTarget: input.showLocalTarget === true,
     // The embedded owner-authorized default Breez key is always compiled in, so
@@ -2498,9 +2509,49 @@ async function main() {
         process.exit(selftest.moduleLoaded ? 0 : 1)
       }
       if (command === "send") {
+        const rail = optionString(options, "rail") ?? "mdk"
+        const amount = options.amount === undefined ? undefined : Number(options.amount)
+        if (rail === "spark" || rail === "spark_backup") {
+          const destination =
+            optionString(options, "destination") ??
+            optionString(options, "payment-request") ??
+            optionString(options, "lightning-address")
+          const sparkBackupOptions = await resolveSparkBackupOptions(state)
+          const result = await sendWithSparkBackup({
+            env: sparkBackupOptions.env,
+            embeddedCredentialAvailable: true,
+            helper: sparkBackupOptions.helper,
+            transfer: sparkBackupOptions.sendTransfer,
+            amountSats: amount,
+            destination,
+            confirmSend: options["confirm-send"] === true,
+          })
+          if (result.state === "sent") {
+            for (const receiptRef of result.publicReceiptRefs) {
+              await appendLedgerEvent(state.paths, {
+                kind: "spark-wallet-send",
+                ref: receiptRef,
+                data: {
+                  receiptRef,
+                  rail: "spark_backup",
+                  amountSats: result.amountSats,
+                  feeSats: result.feeSats,
+                  destinationRef: result.destinationRef,
+                  sparkPaymentRef: result.sparkPaymentRef,
+                  transferRef: result.transferRef,
+                  method: result.method,
+                  status: result.status,
+                },
+              })
+            }
+          }
+          process.stdout.write(`${JSON.stringify({ ok: result.state === "sent", send: result }, null, 2)}\n`)
+          // Spark SDK sessions can keep background handles alive (#5162).
+          process.exit(result.state === "sent" ? 0 : 1)
+        }
+        if (rail !== "mdk") throw new Error("wallet send --rail supports mdk or spark")
         const destinationRef = options["destination-ref"]
         if (!destinationRef) throw new Error("wallet send requires --destination-ref")
-        const amount = options.amount === undefined ? undefined : Number(options.amount)
         const result = await sendWithMdk(destinationRef, amount)
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return

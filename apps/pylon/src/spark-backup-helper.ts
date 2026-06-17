@@ -43,7 +43,10 @@ import type {
   LegacySparkCommandRunner,
   SparkBackupCommand,
   SparkBackupHelper,
+  SparkBackupSendTransfer,
+  SparkBackupSendTransferResult,
   SparkBackupSweepTransfer,
+  SparkBackupSweepTransferResult,
   WalletCommandResult,
 } from "./wallet"
 import { SparkBunStorage } from "./spark-bun-storage"
@@ -65,7 +68,7 @@ export const DEFAULT_OPENAGENTS_SPARK_API_KEY =
  * Minimal structural view of the Breez SDK Spark surface this adapter uses.
  * We intentionally do NOT depend on the SDK's type package at compile time
  * (it is an optional dependency loaded at runtime), so this is a narrow shape
- * covering the receive helper commands plus the private consented sweep call.
+ * covering the receive helper commands plus the consented send/sweep calls.
  */
 type BreezSparkSdk = {
   getInfo(request: { ensureSynced?: boolean }): Promise<{ balanceSats?: number }>
@@ -86,6 +89,27 @@ type BreezSparkSdk = {
     description?: string
   }): Promise<{ lightningAddress?: string }>
   checkLightningAddressAvailable?(request: { username: string }): Promise<boolean>
+  parse?(input: string): Promise<
+    | ({ type: "lightningAddress"; payRequest: unknown } & Record<string, unknown>)
+    | ({ type: "lnurlPay" } & Record<string, unknown>)
+    | ({ type: string } & Record<string, unknown>)
+  >
+  prepareLnurlPay?(request: {
+    amount: bigint
+    comment?: string
+    payRequest: unknown
+  }): Promise<unknown>
+  lnurlPay?(request: {
+    prepareResponse: unknown
+    idempotencyKey?: string
+  }): Promise<{
+    payment?: {
+      id?: unknown
+      amount?: unknown
+      fees?: unknown
+      status?: unknown
+    }
+  }>
   prepareSendPayment?(request: {
     paymentRequest: string
     amount?: bigint
@@ -175,6 +199,165 @@ function helperOk(payload: Record<string, unknown>): WalletCommandResult {
 
 function publicRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
+}
+
+function paymentValue(payload: unknown) {
+  const value = payload as {
+    payment?: { id?: unknown; amount?: unknown; fees?: unknown; status?: unknown }
+    id?: unknown
+    amount?: unknown
+    fees?: unknown
+    status?: unknown
+  }
+  return value.payment ?? value
+}
+
+function paymentRef(prefix: string, payment: { id?: unknown; status?: unknown }, idempotencyKey: string) {
+  return publicRef(
+    prefix,
+    [
+      typeof payment.id === "string" ? payment.id : "id-redacted",
+      typeof payment.status === "string" ? payment.status : "status-redacted",
+      idempotencyKey,
+    ].join(":"),
+  )
+}
+
+function looksLikeLnurlPayDestination(destination: string) {
+  const value = destination.trim()
+  if (/^lnurl/i.test(value)) return true
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)
+}
+
+function publicStatus(value: unknown) {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null
+}
+
+async function sendSparkPaymentFromSdk(input: {
+  amountSats: number
+  destination: string
+  idempotencyKey: string
+  prefix: string
+  sdk: BreezSparkSdk
+  timeoutMs: number
+  allowLnurlPay: boolean
+}): Promise<SparkBackupSendTransferResult> {
+  const destination = input.destination.trim()
+  if (destination === "") {
+    return { ok: false, failureRef: publicRef(`${input.prefix}_failure`, "empty destination") }
+  }
+  if (!Number.isInteger(input.amountSats) || input.amountSats <= 0) {
+    return { ok: false, failureRef: publicRef(`${input.prefix}_failure`, "invalid amount") }
+  }
+
+  if (
+    input.allowLnurlPay &&
+    looksLikeLnurlPayDestination(destination) &&
+    typeof input.sdk.parse === "function" &&
+    typeof input.sdk.prepareLnurlPay === "function" &&
+    typeof input.sdk.lnurlPay === "function"
+  ) {
+    const parsed = await withTimeout(input.sdk.parse(destination), input.timeoutMs, "spark parse")
+    const payRequest =
+      parsed.type === "lightningAddress"
+        ? (parsed as { payRequest?: unknown }).payRequest
+        : parsed.type === "lnurlPay"
+          ? parsed
+          : null
+    if (payRequest === null || payRequest === undefined) {
+      return { ok: false, failureRef: publicRef(`${input.prefix}_failure`, `unsupported parsed input:${parsed.type}`) }
+    }
+    const prepareResponse = await withTimeout(
+      input.sdk.prepareLnurlPay({
+        amount: BigInt(input.amountSats),
+        payRequest,
+      }),
+      input.timeoutMs,
+      "spark prepareLnurlPay",
+    )
+    const sent = await withTimeout(
+      input.sdk.lnurlPay({
+        prepareResponse,
+        idempotencyKey: input.idempotencyKey,
+      }),
+      input.timeoutMs,
+      "spark lnurlPay",
+    )
+    const payment = paymentValue(sent)
+    const amount = toSatNumber(payment.amount) ?? input.amountSats
+    const fee = toSatNumber(payment.fees)
+    return {
+      ok: true,
+      transferRef: publicRef(
+        input.prefix,
+        [
+          typeof payment.id === "string" ? payment.id : "id-redacted",
+          publicStatus(payment.status) ?? "status-redacted",
+          "lnurl_pay",
+          String(amount),
+          fee === null ? "fee-unknown" : String(fee),
+          input.idempotencyKey,
+        ].join(":"),
+      ),
+      sparkPaymentRef: paymentRef(`${input.prefix}_payment`, payment, input.idempotencyKey),
+      amountSats: amount,
+      feeSats: fee,
+      method: "lnurl_pay",
+      status: publicStatus(payment.status),
+    }
+  }
+
+  if (typeof input.sdk.prepareSendPayment !== "function" || typeof input.sdk.sendPayment !== "function") {
+    return { ok: false, failureRef: `${input.prefix}.send_unsupported` }
+  }
+
+  const prepareResponse = await withTimeout(
+    input.sdk.prepareSendPayment({
+      paymentRequest: destination,
+      amount: BigInt(input.amountSats),
+    }),
+    input.timeoutMs,
+    "spark prepareSendPayment",
+  )
+  const paymentMethod = (prepareResponse as { paymentMethod?: { type?: string } })?.paymentMethod
+  const sent = await withTimeout(
+    input.sdk.sendPayment({
+      prepareResponse,
+      options:
+        paymentMethod?.type === "bolt11Invoice"
+          ? {
+              type: "bolt11Invoice",
+              preferSpark: false,
+              completionTimeoutSecs: 60,
+            }
+          : undefined,
+      idempotencyKey: input.idempotencyKey,
+    }),
+    input.timeoutMs,
+    "spark sendPayment",
+  )
+  const payment = paymentValue(sent)
+  const amount = toSatNumber(payment.amount) ?? input.amountSats
+  const fee = toSatNumber(payment.fees)
+  return {
+    ok: true,
+    transferRef: publicRef(
+      input.prefix,
+      [
+        typeof payment.id === "string" ? payment.id : "id-redacted",
+        publicStatus(payment.status) ?? "status-redacted",
+        "payment_request",
+        String(amount),
+        fee === null ? "fee-unknown" : String(fee),
+        input.idempotencyKey,
+      ].join(":"),
+    ),
+    sparkPaymentRef: paymentRef(`${input.prefix}_payment`, payment, input.idempotencyKey),
+    amountSats: amount,
+    feeSats: fee,
+    method: "payment_request",
+    status: publicStatus(payment.status),
+  }
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -283,8 +466,9 @@ async function buildSparkSdk(
  * Each invocation connects a short-lived SDK session (audit "lifecycle
  * cleanup" lesson: initialize -> answer -> disconnect), maps the SDK result
  * into the slice-1 helper JSON contract, and disconnects. RECEIVE MODES ONLY:
- * the adapter exposes status/address/history/unclaimed-deposits and never a
- * send/pay path.
+ * the adapter exposes status/address/history/unclaimed-deposits/claim. Spend is
+ * deliberately outside this helper command contract; use the explicit
+ * `createSparkBackupSendTransfer` / `createSparkBackupSweepTransfer` closures.
  */
 export function createSparkBackupHelper(config: SparkBackupAdapterConfig): SparkBackupHelper {
   const loadModule = config.loadModule ?? loadBreezSparkModule
@@ -525,12 +709,30 @@ export function createSparkBackupHelper(config: SparkBackupAdapterConfig): Spark
  * returns only public-safe refs/amounts. Raw BOLT11 targets stay inside this
  * closure and are never emitted in helper JSON or projections.
  */
+function narrowSweepResult(result: SparkBackupSendTransferResult): SparkBackupSweepTransferResult {
+  if (!result.ok) return result
+  return {
+    ok: true,
+    transferRef: result.transferRef,
+    amountSats: result.amountSats,
+    feeSats: result.feeSats,
+  }
+}
+
 export function createSparkBackupSweepTransfer(config: SparkBackupAdapterConfig): SparkBackupSweepTransfer {
   const loadModule = config.loadModule ?? loadBreezSparkModule
   const network = config.network ?? "mainnet"
   const timeoutMs = config.timeoutMs ?? DEFAULT_SPARK_TIMEOUT_MS
 
-  return async ({ amountSats, destination, idempotencyKey }) => {
+  return async ({
+    amountSats,
+    destination,
+    idempotencyKey,
+  }: {
+    amountSats: number
+    destination: string
+    idempotencyKey: string
+  }) => {
     if (!config.apiKey || config.apiKey.trim() === "") {
       return { ok: false, failureRef: "wallet.spark_backup_transfer.missing_credential" }
     }
@@ -550,54 +752,93 @@ export function createSparkBackupSweepTransfer(config: SparkBackupAdapterConfig)
         config.storageDir,
         timeoutMs,
       )
-      if (typeof sdk.prepareSendPayment !== "function" || typeof sdk.sendPayment !== "function") {
-        return { ok: false, failureRef: "wallet.spark_backup_transfer.send_unsupported" }
-      }
-      const prepareResponse = await withTimeout(
-        sdk.prepareSendPayment({
-          paymentRequest: destination,
-          amount: BigInt(amountSats),
-        }),
+      return narrowSweepResult(await sendSparkPaymentFromSdk({
+        amountSats,
+        destination,
+        idempotencyKey,
+        prefix: "wallet.spark_backup_transfer",
+        sdk,
         timeoutMs,
-        "spark prepareSendPayment",
-      )
-      const sent = await withTimeout(
-        sdk.sendPayment({
-          prepareResponse,
-          options: {
-            type: "bolt11Invoice",
-            preferSpark: false,
-            completionTimeoutSecs: 60,
-          },
-          idempotencyKey,
-        }),
-        timeoutMs,
-        "spark sendPayment",
-      )
-      const payment = sent.payment ?? sent
-      const amount = toSatNumber(payment.amount) ?? amountSats
-      const fee = toSatNumber(payment.fees)
-      const transferRef = publicRef(
-        "wallet.spark_backup_transfer",
-        [
-          typeof payment.id === "string" ? payment.id : "id-redacted",
-          typeof payment.status === "string" ? payment.status : "status-redacted",
-          String(amount),
-          fee === null ? "fee-unknown" : String(fee),
-          idempotencyKey,
-        ].join(":"),
-      )
-      return {
-        ok: true,
-        transferRef,
-        amountSats: amount,
-        feeSats: fee,
-      }
+        allowLnurlPay: false,
+      }))
     } catch (error) {
       return {
         ok: false,
         failureRef: publicRef(
           "wallet.spark_backup_transfer_failure",
+          error instanceof Error ? error.message : String(error),
+        ),
+      }
+    } finally {
+      if (sdk?.disconnect) {
+        try {
+          await sdk.disconnect()
+        } catch {
+          // best-effort cleanup; never throw from disconnect.
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Explicit Spark spend adapter for `wallet send --rail spark --confirm-send`.
+ *
+ * Pays either a BOLT11/Spark payment request (`prepareSendPayment` →
+ * `sendPayment`) or a Lightning Address/LNURL-pay destination (`parse` →
+ * `prepareLnurlPay` → `lnurlPay`). Raw destination material stays inside this
+ * closure. The returned refs are digests only.
+ */
+export function createSparkBackupSendTransfer(config: SparkBackupAdapterConfig): SparkBackupSendTransfer {
+  const loadModule = config.loadModule ?? loadBreezSparkModule
+  const network = config.network ?? "mainnet"
+  const timeoutMs = config.timeoutMs ?? DEFAULT_SPARK_TIMEOUT_MS
+
+  return async ({
+    amountSats,
+    destination,
+    idempotencyKey,
+  }: {
+    amountSats: number
+    destination: string
+    idempotencyKey: string
+  }) => {
+    if (!config.apiKey || config.apiKey.trim() === "") {
+      return { ok: false, failureRef: "wallet.spark_backup_send.missing_credential" }
+    }
+    if (!config.mnemonic || config.mnemonic.trim() === "") {
+      return { ok: false, failureRef: "wallet.spark_backup_send.missing_seed" }
+    }
+
+    let sdk: BreezSparkSdk | null = null
+    try {
+      const mod = await withTimeout(loadModule(), timeoutMs, "spark sdk load")
+      const sdkConfig = mod.defaultConfig(network)
+      sdkConfig.apiKey = config.apiKey
+      sdk = await buildSparkSdk(
+        mod,
+        sdkConfig,
+        { type: "mnemonic", mnemonic: config.mnemonic, passphrase: undefined },
+        config.storageDir,
+        timeoutMs,
+      )
+      if (typeof sdk.syncWallet === "function") {
+        await withTimeout(sdk.syncWallet({}), timeoutMs, "spark syncWallet").catch(() => undefined)
+      }
+      return await sendSparkPaymentFromSdk({
+        amountSats,
+        destination,
+        idempotencyKey,
+        prefix: "wallet.spark_backup_send",
+        sdk,
+        timeoutMs,
+        allowLnurlPay: true,
+      })
+    } catch (error) {
+      return {
+        ok: false,
+        failureRef: publicRef(
+          "wallet.spark_backup_send_failure",
           error instanceof Error ? error.message : String(error),
         ),
       }

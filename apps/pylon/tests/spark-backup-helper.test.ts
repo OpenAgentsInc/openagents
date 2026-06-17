@@ -3,6 +3,7 @@ import { classifySparkBackupReceive, prepareSparkBackupReceive } from "../src/wa
 import { assertPublicProjectionSafe } from "../src/state"
 import {
   createSparkBackupHelper,
+  createSparkBackupSendTransfer,
   createSparkBackupSweepTransfer,
   resolveSparkBackupHelper,
 } from "../src/spark-backup-helper"
@@ -23,6 +24,9 @@ function fakeSparkModule(opts: {
   failConnect?: boolean
   failKind?: string
   onDisconnect?: () => void
+  onLnurlPay?: (request: { idempotencyKey?: string; prepareResponse: unknown }) => void
+  onParse?: (input: string) => void
+  onPrepareLnurlPay?: (request: { amount: bigint; payRequest: unknown }) => void
   onPrepareSend?: (request: { paymentRequest: string; amount?: bigint }) => void
   onSend?: (request: { idempotencyKey?: string; options?: unknown; prepareResponse: unknown }) => void
 }) {
@@ -48,9 +52,44 @@ function fakeSparkModule(opts: {
         listUnclaimedDeposits: async () => ({
           deposits: Array.from({ length: opts.unclaimed ?? 0 }, (_, i) => ({ txid: String(i), vout: 0 })),
         }),
+        parse: async (input: string) => {
+          opts.onParse?.(input)
+          if (input.includes("@")) {
+            return {
+              type: "lightningAddress",
+              address: input,
+              payRequest: {
+                callback: "https://spark.example/lnurl/callback",
+                minSendable: 1,
+                maxSendable: 100_000_000,
+                metadataStr: "[]",
+                commentAllowed: 0,
+                domain: "spark.example",
+                url: "https://spark.example/.well-known/lnurlp/test",
+                address: input,
+              },
+            }
+          }
+          return { type: "bolt11Invoice" }
+        },
+        prepareLnurlPay: async (request: { amount: bigint; payRequest: unknown }) => {
+          opts.onPrepareLnurlPay?.(request)
+          return { preparedLnurl: true, amountSats: Number(request.amount), payRequest: request.payRequest }
+        },
+        lnurlPay: async (request: { idempotencyKey?: string; prepareResponse: unknown }) => {
+          opts.onLnurlPay?.(request)
+          return {
+            payment: {
+              id: "spark-lnurl-payment-1",
+              amount: BigInt(opts.balanceSats ?? 4242),
+              fees: 4n,
+              status: "complete",
+            },
+          }
+        },
         prepareSendPayment: async (request: { paymentRequest: string; amount?: bigint }) => {
           opts.onPrepareSend?.(request)
-          return { prepared: true, paymentRequest: request.paymentRequest }
+          return { prepared: true, paymentMethod: { type: "bolt11Invoice" }, paymentRequest: request.paymentRequest }
         },
         sendPayment: async (request: { idempotencyKey?: string; options?: unknown; prepareResponse: unknown }) => {
           opts.onSend?.(request)
@@ -249,6 +288,92 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
     expect(result.amountSats).toBe(4242)
     expect(result.feeSats).toBe(3)
     expect(JSON.stringify(result)).not.toContain(rawReceiveTarget)
+    assertPublicProjectionSafe(result)
+  })
+
+  test("send transfer pays a BOLT11/payment request with public refs only", async () => {
+    const rawPaymentRequest = "lnbc42420n1rawpaymentrequestthatmustneverleakpublicly"
+    let preparedTarget: string | null = null
+    let sentIdempotencyKey: string | null = null
+    const transfer = createSparkBackupSendTransfer({
+      apiKey: "k",
+      mnemonic: TEST_MNEMONIC,
+      loadModule: async () =>
+        fakeSparkModule({
+          balanceSats: 2100,
+          onPrepareSend: (request) => {
+            preparedTarget = request.paymentRequest
+            expect(request.amount).toBe(2100n)
+          },
+          onSend: (request) => {
+            sentIdempotencyKey = request.idempotencyKey ?? null
+            expect(request.options).toMatchObject({
+              type: "bolt11Invoice",
+              preferSpark: false,
+            })
+          },
+        }),
+    })
+
+    const result = await transfer({
+      amountSats: 2100,
+      destination: rawPaymentRequest,
+      idempotencyKey: "test-send-key",
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("expected transfer success")
+    expect(preparedTarget).toBe(rawPaymentRequest)
+    expect(sentIdempotencyKey).toBe("test-send-key")
+    expect(result.transferRef).toMatch(/^wallet\.spark_backup_send\.[a-f0-9]{24}$/)
+    expect(result.sparkPaymentRef).toMatch(/^wallet\.spark_backup_send_payment\.[a-f0-9]{24}$/)
+    expect(result.amountSats).toBe(2100)
+    expect(result.feeSats).toBe(3)
+    expect(result.method).toBe("payment_request")
+    expect(JSON.stringify(result)).not.toContain(rawPaymentRequest)
+    assertPublicProjectionSafe(result)
+  })
+
+  test("send transfer pays a Lightning Address through the SDK LNURL path", async () => {
+    const rawLightningAddress = "oa12345@spark.example"
+    let parsedInput: string | null = null
+    let preparedAmount: bigint | null = null
+    let sentIdempotencyKey: string | null = null
+    const transfer = createSparkBackupSendTransfer({
+      apiKey: "k",
+      mnemonic: TEST_MNEMONIC,
+      loadModule: async () =>
+        fakeSparkModule({
+          balanceSats: 5000,
+          onParse: (input) => {
+            parsedInput = input
+          },
+          onPrepareLnurlPay: (request) => {
+            preparedAmount = request.amount
+          },
+          onLnurlPay: (request) => {
+            sentIdempotencyKey = request.idempotencyKey ?? null
+          },
+        }),
+    })
+
+    const result = await transfer({
+      amountSats: 5000,
+      destination: rawLightningAddress,
+      idempotencyKey: "test-lnurl-send-key",
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("expected transfer success")
+    expect(parsedInput).toBe(rawLightningAddress)
+    expect(preparedAmount).toBe(5000n)
+    expect(sentIdempotencyKey).toBe("test-lnurl-send-key")
+    expect(result.method).toBe("lnurl_pay")
+    expect(result.transferRef).toMatch(/^wallet\.spark_backup_send\.[a-f0-9]{24}$/)
+    expect(result.sparkPaymentRef).toMatch(/^wallet\.spark_backup_send_payment\.[a-f0-9]{24}$/)
+    expect(result.amountSats).toBe(5000)
+    expect(result.feeSats).toBe(4)
+    expect(JSON.stringify(result)).not.toContain(rawLightningAddress)
     assertPublicProjectionSafe(result)
   })
 

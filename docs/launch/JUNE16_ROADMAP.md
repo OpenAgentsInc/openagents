@@ -134,7 +134,11 @@ launch wrapup). June 15 shipped the launch; this is the remaining open work.
   #5168 added the unified visible balance view, and #5169 implemented the real
   consented Spark→MDK sweep: create local MDK receive target, pay from the
   node's own credited Spark backup balance, and emit the reconcile receipt only
-  after MDK balance verification. **Resolved #5172:** the green
+  after MDK balance verification. **#5177 now adds direct Spark spend/withdraw:**
+  `pylon wallet send --rail spark --confirm-send` pays from the node's own Spark
+  backup balance to a BOLT11/Spark payment request or Lightning Address while
+  emitting public-safe digest refs only; this restores the old working Spark
+  send shape under the new consent/redaction boundary. **Resolved #5172:** the green
   `training.monday` gate stays green only for the scoped launch/run/verification
   and settlement-record path. The Orrery settlement receipt remains explicitly
   **simulation-backed** (`realBitcoinMoved:false`) and does **not** count as real

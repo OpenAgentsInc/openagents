@@ -44,10 +44,11 @@ export type WalletCommandResult = {
 // ---------------------------------------------------------------------------
 // Spark backup receive (slice 1: testable, inert core).
 //
-// Spark is reintroduced as a receive-only backup rail when the primary MDK rail
-// is offline/unavailable AND the backup is explicitly opt-in enabled. The only
-// Spark movement is the consented own-wallet backup -> MDK reconcile sweep;
-// there is NO public Spark payout/settlement path. PayoutTargetKind is unchanged.
+// Spark is reintroduced as a backup rail when the primary MDK rail is
+// offline/unavailable AND the backup is explicitly opt-in enabled. Receive and
+// own-wallet reconcile paths are inert by default. General Spark spend is exposed
+// only through an explicit consent command (`wallet send --rail spark
+// --confirm-send`) and emits public-safe refs only.
 // Public projections expose only redacted refs + blocker refs, never raw
 // Spark address/invoice/preimage/mnemonic/key/path material.
 // ---------------------------------------------------------------------------
@@ -1434,6 +1435,69 @@ export type SparkBackupSweepOptions = SparkBackupReceiveOptions & {
   verificationDelayMs?: number
 }
 
+export type SparkBackupSendState =
+  | "disabled"
+  | "credential-missing"
+  | "invalid-request"
+  | "consent-required"
+  | "send-failed"
+  | "sent"
+
+export type SparkBackupSendProjection = {
+  schema: "openagents.pylon.spark_backup_send.v0.1"
+  enabled: boolean
+  state: SparkBackupSendState
+  confirmSend: boolean
+  consentRequired: boolean
+  amountSats: number | null
+  feeSats: number | null
+  destinationRef: string | null
+  sparkPaymentRef: string | null
+  transferRef: string | null
+  method: "payment_request" | "lnurl_pay" | null
+  status: string | null
+  blockerRefs: string[]
+  failureRefs: string[]
+  nextActionRefs: string[]
+  publicReceiptRefs: string[]
+  contentRedacted: true
+}
+
+export type SparkBackupSendTransferResult =
+  | {
+      ok: true
+      transferRef: string
+      sparkPaymentRef: string
+      amountSats: number | null
+      feeSats: number | null
+      method: "payment_request" | "lnurl_pay"
+      status: string | null
+    }
+  | {
+      ok: false
+      failureRef: string
+    }
+
+export type SparkBackupSendTransfer = (input: {
+  amountSats: number
+  destination: string
+  idempotencyKey: string
+}) => Promise<SparkBackupSendTransferResult>
+
+export const unavailableSparkBackupSendTransfer: SparkBackupSendTransfer = async () => ({
+  ok: false,
+  failureRef: "wallet.spark_backup_send.unavailable",
+})
+
+export type SparkBackupSendOptions = SparkBackupReceiveOptions & {
+  amountSats?: number
+  confirmSend?: boolean
+  destination?: string
+  embeddedCredentialAvailable?: boolean
+  now?: () => Date
+  transfer?: SparkBackupSendTransfer
+}
+
 function safeSparkBackupReconcile(
   projection: SparkBackupReconcileProjection,
 ): SparkBackupReconcileProjection {
@@ -1790,6 +1854,138 @@ export async function sweepSparkBackupToMdk(
     publicReceiptRefs: verified
       ? [`receipt.pylon.spark_backup_reconcile.${receiptDigest}`]
       : [`receipt.pylon.spark_backup_transfer.${transferReceiptDigest}`],
+  })
+}
+
+export async function sendWithSparkBackup(
+  options: SparkBackupSendOptions = {},
+): Promise<SparkBackupSendProjection> {
+  const env = options.env ?? process.env
+  const enabled = isSparkBackupEnabled(options, env)
+  const confirmSend = options.confirmSend === true
+  const destination = typeof options.destination === "string" ? options.destination.trim() : ""
+  const amountSats =
+    typeof options.amountSats === "number" && Number.isFinite(options.amountSats)
+      ? Math.floor(options.amountSats)
+      : null
+  const destinationRef = destination.length > 0 ? stableRef("wallet.spark_backup_send.destination", destination) : null
+  const base: SparkBackupSendProjection = {
+    schema: "openagents.pylon.spark_backup_send.v0.1",
+    enabled,
+    state: "disabled",
+    confirmSend,
+    consentRequired: true,
+    amountSats,
+    feeSats: null,
+    destinationRef,
+    sparkPaymentRef: null,
+    transferRef: null,
+    method: null,
+    status: null,
+    blockerRefs: [],
+    failureRefs: [],
+    nextActionRefs: [],
+    publicReceiptRefs: [],
+    contentRedacted: true,
+  }
+
+  const safe = (projection: SparkBackupSendProjection) => {
+    assertSparkBackupProjectionSafe(projection)
+    return projection
+  }
+
+  if (!enabled) {
+    return safe({
+      ...base,
+      state: "disabled",
+      nextActionRefs: ["action.wallet.spark_backup.enable_opt_in"],
+    })
+  }
+
+  if (!hasSparkBackupCredential(env, options.embeddedCredentialAvailable === true)) {
+    return safe({
+      ...base,
+      state: "credential-missing",
+      blockerRefs: ["blocker.wallet.spark_backup.credential_missing"],
+      nextActionRefs: ["action.wallet.spark_backup.configure_local_credential"],
+    })
+  }
+
+  if (destination.length === 0 || amountSats === null || amountSats <= 0) {
+    return safe({
+      ...base,
+      state: "invalid-request",
+      blockerRefs: [
+        ...(destination.length === 0 ? ["blocker.wallet.spark_backup.send_destination_required"] : []),
+        ...(amountSats === null || amountSats <= 0 ? ["blocker.wallet.spark_backup.send_amount_required"] : []),
+      ],
+      nextActionRefs: ["action.wallet.spark_backup.rerun_send_with_destination_and_amount"],
+    })
+  }
+
+  if (!confirmSend) {
+    return safe({
+      ...base,
+      state: "consent-required",
+      blockerRefs: ["blocker.wallet.spark_backup.send_consent_required"],
+      nextActionRefs: ["action.wallet.spark_backup.rerun_send_with_confirm_send"],
+    })
+  }
+
+  const now = options.now?.() ?? new Date()
+  const transfer = options.transfer ?? unavailableSparkBackupSendTransfer
+  const idempotencyKey = `pylon:spark-backup-send:${stableRef(
+    "send",
+    JSON.stringify({
+      amount: amountSats,
+      destination: destinationRef,
+      at: now.toISOString().slice(0, 10),
+    }),
+  ).split(".").pop()}`
+  const result = await transfer({ amountSats, destination, idempotencyKey })
+  if (!result.ok) {
+    return safe({
+      ...base,
+      state: "send-failed",
+      consentRequired: false,
+      blockerRefs: [
+        result.failureRef === "wallet.spark_backup_send.unavailable"
+          ? "blocker.wallet.spark_backup.send_transfer_unavailable"
+          : "blocker.wallet.spark_backup.send_failed",
+      ],
+      failureRefs: [result.failureRef],
+      nextActionRefs: ["action.wallet.spark_backup.retry_send_after_fixing_transfer"],
+    })
+  }
+
+  const receiptDigest = stableRef(
+    "spark-backup-send",
+    JSON.stringify({
+      amount: result.amountSats,
+      fee: result.feeSats,
+      destinationRef,
+      transferRef: result.transferRef,
+      paymentRef: result.sparkPaymentRef,
+      method: result.method,
+      status: result.status,
+      at: now.toISOString(),
+    }),
+  )
+    .split(".")
+    .pop()
+
+  return safe({
+    ...base,
+    state: "sent",
+    consentRequired: false,
+    amountSats: result.amountSats,
+    feeSats: result.feeSats,
+    sparkPaymentRef: result.sparkPaymentRef,
+    transferRef: result.transferRef,
+    method: result.method,
+    status: result.status,
+    nextActionRefs: ["action.wallet.spark_backup.check_backup_status"],
+    publicReceiptRefs: [`receipt.pylon.spark_backup_send.${receiptDigest}`],
   })
 }
 
