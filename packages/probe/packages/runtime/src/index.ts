@@ -21,6 +21,7 @@ export * from "./benchmark/repo-corpus-manifest";
 export * from "./benchmark/studybench";
 export * from "./benchmark/studybench-answer-runner";
 export * from "./benchmark/studybench-external";
+export * from "./benchmark/studybench-patch-runner";
 export * from "./benchmark/studybench-score";
 export * from "./blueprint";
 export * from "./cli";

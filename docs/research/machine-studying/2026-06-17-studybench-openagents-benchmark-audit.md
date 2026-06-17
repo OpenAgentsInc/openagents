@@ -61,6 +61,13 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   scorer material withheld, validates optional GEPA candidate manifests,
   computes rubric scores from supplied claim scores, and emits normal Probe
   closeout bundles with StudyBench score refs.
+- 2026-06-17: #5291 / MSB-MVP-09 complete. Probe runtime now exports a
+  patch-mode StudyBench runner for pre-recorded MVP agent transcripts over
+  pinned checkout refs, allowed tool menus, budget policies, test refs, patch
+  artifact refs, runner identity refs, and rubric scoring. The runner rejects
+  out-of-menu tools and max-tool-call violations, turns timeout overruns into
+  timed-out closeouts, withholds private gold/rubric/evidence material from
+  candidate input, and emits normal Probe closeout bundles.
 
 ## Short Answer
 
