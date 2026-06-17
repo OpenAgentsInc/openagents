@@ -12,6 +12,15 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   refs, and states the answer-mode, patch-mode, calibration, public-retained,
   private validation, private holdout, Probe, Psionic, Tassadar, Blueprint, and
   product-promise boundaries.
+- 2026-06-17: #5283 / MSB-MVP-01 complete. Probe runtime now exports
+  `openagents.studybench_task.v0`,
+  `openagents.studybench_rubric_claim.v0`,
+  `openagents.studybench_evidence_span.v0`,
+  `openagents.studybench_dataset_package.v0`,
+  `probe.studybench_claim_score.v0`, and
+  `probe.studybench_rubric_score.v0` contracts with validation for public
+  safety, rubric weight totals, evidence-span resolution, and public package
+  visibility boundaries.
 
 ## Short Answer
 
