@@ -9,52 +9,50 @@ Spark wallet unification; this file tracks what's left.
 - **Launch gate is GREEN and closed (#5012).** Both crucial promises live; the
   Spark offline-receive promise (`payments.offline_receive_spark_fallback.v1`) is
   green on recipient-visible rc.12 evidence.
-- **Spark wallet unification (epic #5176) is 6/7 done.** Closed: #5177 (Spark
+- **Spark wallet unification (epic #5176) — ALL children closed.** #5177 (Spark
   send/withdraw), #5178 (Spark = primary agent balance), #5179 (chunked treasury
   payouts), #5180 (recipient-attributed + confirmed-receipt ledger), #5181 (MDK
   scoped to checkouts/treasury), #5183 (Spark treasury balance + size-agnostic
-  payouts). **Open: #5182** (recognition closeout).
+  payouts), and **#5182 (recognition closeout — closed 2026-06-17)**. The epic
+  itself can close.
 - **Treasury holds both MDK + Spark rails** (owner decision: diversification).
-  `/api/public/treasury` shows an aggregate balance with the rail split. A
+  `/api/public/treasury` shows an aggregate balance + rail split, **and now
+  surfaces inbound transfers** (the page previously showed outbound only). A
   Spark-treasury BOLT11 funding-invoice endpoint exists (operator-gated) for when
   a funder's wallet can't pay a Spark address.
 - **A single 50,000-sat payout settled in one shot** from the Spark treasury to
-  Whitefang — first clean 50k in this saga, demonstrating no sat-size ceiling and
-  no chunking required. Treasury then back down to ~1.9k sats.
+  Whitefang — first clean 50k in this saga, no sat-size ceiling, no chunking — and
+  **Whitefang recipient-confirmed it** (`detectedBalanceSats: 51030`).
+- **Pylon rc.13 PUBLISHED** on all three channels: npm `rc` → `1.0.0-rc.13`
+  (`latest` stays `0.2.5`), the signed OTA feed (4 platforms, rollout 100, kid
+  `2dbe811d`), and GitHub prerelease `pylon-v1.0.0-rc.13`. This is the
+  `wallet send` / Spark-primary build the agents were waiting on.
+- **Ledger cleaned:** the 3 orphaned pending rows (100,005 sats, all Orrery's
+  never-dispatched attempts) are now `expired`; 0 pending outbound remain.
 
 ## Open work
 
-### 1. #5182 — launch-recognition closeout (the only open #5176 child)
+### 1. #5182 — launch-recognition closeout — ✅ CLOSED (2026-06-17)
 
-Per-recipient state (reconcile by recipient + amount + terminal recipient-confirmed
-receipt, per #5180 — not sender-side "succeeded"):
+All recognition recipients reconciled by recipient + amount + terminal
+recipient-confirmed receipt (#5180), not sender-side "succeeded":
 
-- **Trigger:** 50,000 owed, recipient-confirmed (`detectedBalanceSats: 50000`). **Closed.**
-- **Orrery:** 50,000 owed; settled-sent ~159,239–234,639 during the overnight
-  debugging over-send; recipient-confirmed `detectedBalanceSats: 159239`. Owner
-  decision: **keep the overage as hazard pay; do not resend.** Effectively closed.
-- **Whitefang:** 50,000 owed; **sent in one Spark-treasury payment** (`paidVia:
-  spark_treasury`, paymentRef `payment.redacted.spark_treasury.c909236d…`, row
-  `treasury_payout_a580eac0…`, owed `owed.launch_recognition.whitefang.2026-06-17`,
-  ~126-sat fee). `recipient_confirmation_state: unconfirmed` — **awaiting his
-  `backup-status` post** to flip to `confirmed_received` and close his line. 1k
-  canary already confirmed.
-- **3 pending rows (100,005 sats) — ACTIONABLE, not recipient-blocked.** All three
-  are Orrery's orphaned attempts (`16:21` 50k tips-buffer BOLT12 that never settled,
-  `18:21` 50k, `18:04` 5-sat), pending for 22h+ — impossible for a live Lightning
-  payment, so they never dispatched (no funds moved; Orrery is already over-paid via
-  settled rows). **Mark them `expired`** to clean the ledger. (Treasury money-state
-  change — coordinate with whoever owns the treasury-container lane to avoid a
-  collision; do not double-resolve.)
+- **Trigger:** 50,000 owed, recipient-confirmed (`detectedBalanceSats: 50000`). Closed.
+- **Whitefang:** 50,000 owed; sent in **one** Spark-treasury payment, recipient-confirmed
+  (`detectedBalanceSats: 51030` = 1k canary + 50k + 30-sat smokes). Closed.
+- **Orrery:** 50,000 owed; over-sent during the overnight debugging, recipient-confirmed
+  (`detectedBalanceSats: 159239`). Owner decision: **keep the overage as hazard pay;
+  do not resend.** Closed.
+- **3 pending rows (100,005 sats):** Orrery's orphaned never-dispatched attempts →
+  marked `expired`. 0 pending outbound remain.
 
-### 2. Publish the next Pylon RC (top unblock for the agents)
+### 2. Publish the next Pylon RC — ✅ DONE (rc.13, 2026-06-17)
 
-#5177/#5178/#5183 landed on `main`, but the npm `rc` dist-tag still resolves to
-`1.0.0-rc.12` (Whitefang verified). So `pylon wallet send` / withdraw and
-Spark-primary balance are **not yet usable by real nodes**. Cut + publish the next
-RC — signed standalone binaries on the OTA feed **and** npm `--tag rc` (keep
-`latest` at `0.2.5`) — then confirm the published build in the launch forum thread.
-This is what unblocks Trigger and Whitefang actually spending their balances.
+Published on all three channels: npm `rc` → `1.0.0-rc.13` (`latest` stays `0.2.5`),
+the signed OTA feed (`updates.openagents.com`, all 4 platforms, rollout 100, kid
+`2dbe811d`, artifacts verified downloadable), and GitHub prerelease
+`pylon-v1.0.0-rc.13`. `pylon wallet send` / withdraw and the Spark-primary balance
+are now usable by real nodes (npm immediately; binary/Desktop on next auto-update).
 
 ### 3. Fix the native Spark transfer path (`invalid_transferid_format`)
 

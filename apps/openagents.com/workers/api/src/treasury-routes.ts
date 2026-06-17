@@ -553,7 +553,6 @@ const readSparkTreasuryFundingInvoice = (
     try: async () => {
       const response = await fetchSparkTreasury('/spark/funding-invoice', {
         body: JSON.stringify({ amountSat }),
-        headers: { 'content-type': 'application/json' },
         method: 'POST',
       })
 
@@ -685,6 +684,7 @@ export const handleOperatorSparkTreasuryFundingInvoiceApi = (
         catch: () => null,
         try: () => request.json(),
       }).pipe(
+        Effect.catch(() => Effect.succeed(null)),
         Effect.flatMap(body => {
           const amountSat = Number(
             typeof body === 'object' && body !== null
@@ -2005,7 +2005,10 @@ export const handleOperatorTreasuryPayoutApi = (
                 balanceSatBefore: null,
                 containerStatus: null,
                 destinationKind: 'spark_treasury',
+                errorCauseMessageSummary: null,
                 errorCode: null,
+                errorKeySummary: null,
+                errorMessageSummary: null,
                 errorName: null,
                 eventOutcomeStatus: null,
                 failureStage: `spark_treasury_${sparkAttempt.reason}`,
@@ -2015,11 +2018,17 @@ export const handleOperatorTreasuryPayoutApi = (
                 paymentHashPresent: null,
                 paymentIdPresent: null,
                 payResponseStatus: null,
+                preferSparkForBolt11: null,
                 preflightBalanceMaxSendableSat: null,
                 preflightCoverageSat: null,
                 preflightMaxSendableSat: null,
                 preflightRouteAvailable: null,
                 preimagePresent: null,
+                preparedAmountSat: null,
+                preparedFeeSats: null,
+                preparedLightningFeeSats: null,
+                preparedPaymentMethodKind: null,
+                preparedSparkTransferFeeSats: null,
                 reasonClass: sparkAttempt.reason,
                 resolvedDestinationKind: null,
                 resultReturned: false,

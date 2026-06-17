@@ -704,8 +704,9 @@ export class MdkTreasuryContainer extends DurableMdkOutcomeContainer {
       return
     }
 
-    if (this.ctx.container.running) {
-      await this.ctx.container.destroy('openagents-mdk-treasury-generation-bump')
+    const container = this.ctx.container
+    if (container?.running) {
+      await container.destroy('openagents-mdk-treasury-generation-bump')
     }
 
     await this.ctx.storage.put(
