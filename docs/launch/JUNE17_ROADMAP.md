@@ -110,9 +110,10 @@ signed recut.
   command, and the source contract links a public-safe row packet template.
   **D3.11 (#5230) shipped:** the cohort recorder now has a public `audit`
   command that fails until the projection gate is ready and at least three
-  counted completions exist. Remaining D3 tail: record real cohort rows and
-  collect at least three real loop-completion bundles before closing
-  #5098/#5104.
+  counted completions exist. **Active D3.12 slice: #5233** add the
+  privacy-review checklist required before a completion row can carry a
+  `privacyReviewRef`. Remaining D3 tail: record real cohort rows and collect
+  at least three real loop-completion bundles before closing #5098/#5104.
 - **#5107** fold terminal-agent-systems into the Forge Autopilot Coder.
 - **Email strategy smoke:** onboard Cloudflare Email Sending, add the restricted
   staging `send_email` binding, send one verified-destination operator
