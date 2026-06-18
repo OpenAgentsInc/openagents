@@ -17,6 +17,7 @@ import type {
 import { renderCloudCard as cloudCardView } from "@openagentsinc/autopilot-control-protocol"
 import {
   AccountList,
+  DiffReview,
   SessionList,
   type AccountSummary,
 } from "@openagentsinc/autopilot-ui"
@@ -134,6 +135,8 @@ import {
   approvalLabel,
   artifactLineText,
   assignmentMeta,
+  diffReviewProvenance,
+  parseChangeSetFromEvents,
   composerCanReply,
   composerTurnSummary,
   connectionSummary,
@@ -4044,6 +4047,7 @@ const sessionDetailPane = (model: Model): Html => {
             ["Cancel session"],
           )
         : h.empty,
+      sessionDiffCard(events, stats?.editedFileCount),
       eventTimeline(model, events),
     ],
   )
@@ -4065,6 +4069,29 @@ const sessionDetailPane = (model: Model): Html => {
 // Reuses the shared spawn form fields, the event timeline, the approval row, and
 // the verify/artifact lines so it is a thin composition over surfaces that
 // already exist — not a parallel runtime.
+
+// ── CS-A3 (#5363): structured diff card ───────────────────────────────────────
+//
+// Renders the SHARED `DiffReview` component (the UI port of
+// apps/pylon/src/tas/diff-review.ts) over a ChangeSet derived from the session's
+// event tail (parseChangeSetFromEvents). Used by both the composer's active
+// session and the session-detail pane so a coding turn's file edits read as a
+// per-file +/- diff, not a flat transcript row. Hidden when no file changes were
+// reported (the diff would be empty / misleading).
+const sessionDiffCard = (
+  events: ReadonlyArray<SessionEventRow>,
+  artifactEditedFileCount: number | null | undefined,
+): Html => {
+  const changeSet = parseChangeSetFromEvents(events)
+  if (changeSet.files.length === 0) return h.empty
+  return card("Diff", [
+    DiffReview({
+      files: changeSet.files,
+      summary: changeSet.summary,
+      provenance: diffReviewProvenance(changeSet, artifactEditedFileCount),
+    }),
+  ])
+}
 
 // The composer's live transcript: prefer the agent's transcript-worthy events
 // (text / tool calls / file changes); fall back to the full timeline so a turn
@@ -4323,6 +4350,7 @@ const composerActiveSession = (model: Model): Html => {
       artifactLine,
       cancelBtn,
       approvalsBlock,
+      sessionDiffCard(events, stats?.editedFileCount),
       card("Transcript", [composerTranscript(model, events)]),
       composerReplyBar(model, canReply),
     ],

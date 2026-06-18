@@ -448,3 +448,208 @@ export function swarmSummaryLine(
   }
   return parts.join(" · ")
 }
+
+// ── CS-A3 (#5363): diff fidelity — structured diff from the event tail ────────
+//
+// The composer's coding turns surface file edits as bounded, public-safe
+// composer-event messages in the session event tail (the node never streams raw
+// patch bodies to a remote client). This derives a structured ChangeSet from
+// that tail so the desktop can render the SHARED `DiffReview` component (the UI
+// port of apps/pylon/src/tas/diff-review.ts) instead of a flat transcript row.
+//
+// This is NOT user-intent routing or retrieval — it parses already-selected
+// session events for bounded fields (a public-safe file ref, a +/- count, a
+// status keyword), which the routing rule explicitly allows after the
+// program/event has been selected. It recognizes the message shapes the real
+// codex/claude composers and the local Apple FM session emit:
+//   - "edited <ref> (+N −M)"          (explicit per-file counts; − or -)
+//   - "<status>: <kind> <ref>, …"     (codex file_change summaries)
+//   - "<kind> <ref>"                  (claude tool edits / bare file lines)
+// Each recognized file becomes a DiffReviewFile; unrecognized rows are ignored
+// so the diff view never invents changes the node did not report.
+
+import type {
+  DiffFileStatus,
+  DiffReviewFile,
+  DiffReviewSummary,
+} from "@openagentsinc/autopilot-ui"
+
+export type DesktopChangeSet = {
+  files: DiffReviewFile[]
+  summary: DiffReviewSummary
+  // How many events were inspected vs. recognized, for honest provenance.
+  parsedFromEventCount: number
+}
+
+// Map a status/kind keyword onto the three diff-review file statuses.
+function diffStatusFromKeyword(keyword: string): DiffFileStatus | null {
+  const k = keyword.toLowerCase()
+  if (k === "add" || k === "added" || k === "create" || k === "created" || k === "new") {
+    return "added"
+  }
+  if (
+    k === "delete" ||
+    k === "deleted" ||
+    k === "remove" ||
+    k === "removed" ||
+    k === "rm"
+  ) {
+    return "deleted"
+  }
+  if (
+    k === "edit" ||
+    k === "edited" ||
+    k === "update" ||
+    k === "updated" ||
+    k === "modify" ||
+    k === "modified" ||
+    k === "change" ||
+    k === "changed"
+  ) {
+    return "modified"
+  }
+  return null
+}
+
+// A path-ish token: at least one "/" or a dotted filename, no spaces. Public-safe
+// refs the node emits look like real relative paths; a bare prose word does not.
+function looksLikeFileRef(token: string): boolean {
+  const t = token.replace(/[.,;:)]+$/, "")
+  if (t.length === 0 || /\s/.test(t)) return false
+  return t.includes("/") || /^[\w.@-]+\.[\w.@-]+$/.test(t)
+}
+
+const COUNT_PATTERN = /\(\s*\+?\s*(\d+)\s*[−-]\s*(\d+)\s*\)/
+
+// Parse a single composer-event message into zero or more change entries.
+function parseDiffMessage(message: string): Array<{
+  path: string
+  status: DiffFileStatus
+  added: number
+  removed: number
+}> {
+  const text = message.trim()
+  if (text.length === 0) return []
+
+  // Strip a leading "<status>: " prefix (codex "completed: …" / "failed: …").
+  const afterStatus = text.includes(": ") ? text.slice(text.indexOf(": ") + 2) : text
+
+  // Per-file +/- counts: "edited src/x.ts (+12 −0)" or "src/x.ts (+1 -2)".
+  const countMatch = afterStatus.match(COUNT_PATTERN)
+  if (countMatch) {
+    const before = afterStatus.slice(0, countMatch.index).trim()
+    const tokens = before.split(/\s+/)
+    // Last path-ish token is the file; an earlier token may be the kind.
+    let path: string | null = null
+    let status: DiffFileStatus = "modified"
+    for (let i = tokens.length - 1; i >= 0; i--) {
+      const cleaned = tokens[i].replace(/[.,;:)]+$/, "")
+      if (path === null && looksLikeFileRef(cleaned)) {
+        path = cleaned
+        continue
+      }
+      if (path !== null) {
+        const kind = diffStatusFromKeyword(cleaned)
+        if (kind !== null) {
+          status = kind
+          break
+        }
+      }
+    }
+    if (path !== null) {
+      return [
+        {
+          path,
+          status,
+          added: Number(countMatch[1]),
+          removed: Number(countMatch[2]),
+        },
+      ]
+    }
+  }
+
+  // Codex file_change summaries: "update src/x.ts, add tests/x.test.ts".
+  // Comma-separated "<kind> <ref>" pairs.
+  const entries: Array<{ path: string; status: DiffFileStatus; added: number; removed: number }> = []
+  for (const part of afterStatus.split(",")) {
+    const tokens = part.trim().split(/\s+/)
+    if (tokens.length < 2) continue
+    const kind = diffStatusFromKeyword(tokens[0])
+    const ref = tokens[1].replace(/[.,;:)]+$/, "")
+    if (kind !== null && looksLikeFileRef(ref)) {
+      entries.push({ path: ref, status: kind, added: 0, removed: 0 })
+    }
+  }
+  return entries
+}
+
+// Build a structured ChangeSet from a session's event tail. Later events for the
+// same path win on counts (the latest reported +/- for a file), and the status
+// escalates sensibly (a file first added then edited stays "added").
+export function parseChangeSetFromEvents(
+  events: ReadonlyArray<{ detail: string; full?: string }> | undefined,
+): DesktopChangeSet {
+  const byPath = new Map<string, DiffReviewFile>()
+  let parsedFromEventCount = 0
+  for (const event of events ?? []) {
+    const source = event.full && event.full.trim().length > 0 ? event.full : event.detail
+    const parsed = parseDiffMessage(source)
+    if (parsed.length > 0) parsedFromEventCount += 1
+    for (const entry of parsed) {
+      const prior = byPath.get(entry.path)
+      if (prior === undefined) {
+        byPath.set(entry.path, {
+          path: entry.path,
+          status: entry.status,
+          added: entry.added,
+          removed: entry.removed,
+        })
+        continue
+      }
+      // Keep the strongest status: added beats modified; deleted is terminal.
+      const status: DiffFileStatus =
+        prior.status === "deleted" || entry.status === "deleted"
+          ? "deleted"
+          : prior.status === "added" || entry.status === "added"
+            ? "added"
+            : "modified"
+      byPath.set(entry.path, {
+        path: entry.path,
+        status,
+        // Prefer a non-zero count; later non-zero counts win.
+        added: entry.added > 0 ? entry.added : prior.added,
+        removed: entry.removed > 0 ? entry.removed : prior.removed,
+      })
+    }
+  }
+  const files = [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path))
+  const summary: DiffReviewSummary = files.reduce(
+    (acc, f) => ({
+      fileCount: acc.fileCount + 1,
+      totalAdded: acc.totalAdded + f.added,
+      totalRemoved: acc.totalRemoved + f.removed,
+    }),
+    { fileCount: 0, totalAdded: 0, totalRemoved: 0 },
+  )
+  return { files, summary, parsedFromEventCount }
+}
+
+// Honest provenance line for the diff view: the counts/files came from the
+// bounded event tail, optionally corroborated by the artifact's editedFileCount.
+export function diffReviewProvenance(
+  changeSet: DesktopChangeSet,
+  artifactEditedFileCount: number | null | undefined,
+): string {
+  const base = `derived from ${changeSet.parsedFromEventCount} session event${
+    changeSet.parsedFromEventCount === 1 ? "" : "s"
+  }`
+  if (
+    artifactEditedFileCount != null &&
+    artifactEditedFileCount !== changeSet.summary.fileCount
+  ) {
+    return `${base} · artifact reports ${artifactEditedFileCount} edited file${
+      artifactEditedFileCount === 1 ? "" : "s"
+    }`
+  }
+  return base
+}

@@ -8,6 +8,7 @@ import {
   superviseManagedNode,
 } from "./node-launcher"
 import { createNodeStatePoller } from "./node-state-poll"
+import { persistAndMergeTranscripts } from "./transcript-store"
 import {
   autoUpdateDisabledReason,
   autoUpdateIntervalMs,
@@ -730,7 +731,12 @@ managedNode = superviseManagedNode({
 
 const poller = createNodeStatePoller({
   intervalMs: Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 2000,
-  onState(message) {
+  onState(rawMessage) {
+    // CS-A3 (#5363): persist this poll's per-session event tail (keyed by
+    // sessionRef) under the node home and merge the durable transcript back in,
+    // so a coding session's transcript survives app restart / node restart /
+    // reconnection - not just the node's in-memory event tail.
+    const message = persistAndMergeTranscripts(resolveHome(), rawMessage)
     rpc.send.nodeState(message)
     rpc.send.notifications(notifier.ingest(message.sessions))
   },
