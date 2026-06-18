@@ -20,11 +20,15 @@ import {
   realSettlementMovementMode,
 } from './tassadar-run-settlement'
 import {
+  TassadarRunSettlementHardDailyCapSats,
+  decideTassadarDailyBudget,
   disabledTassadarRealSettlementGate,
   parseTassadarRealSettlementGate,
   readTassadarRealSettlementGate,
   resolveTassadarSettlementAdapter,
   type TassadarRealSettlementGate,
+  tassadarRealSettledSatsForDay,
+  tassadarRealSettlementUtcDayKey,
 } from './tassadar-run-settlement-gate'
 import {
   type TreasuryPaymentAuthorityAdapter,
@@ -464,5 +468,256 @@ describe('idempotency: a retry never double-pays (mocked Spark dispatch)', () =>
 
     expect(replay._tag).toBe('Failure')
     expect(spark.dispatchCalls).toBe(0)
+  })
+})
+
+describe('backward-compat: gate without the new optional fields (#5309)', () => {
+  it('decodes a gate value that has no maxDailyPayoutSats / runScopedStreaming', () => {
+    // This is the exact shape of an ALREADY-ARMED production gate value. It must
+    // still decode and behave exactly as before (per-payout-only, allowlist).
+    const gate = readTassadarRealSettlementGate({
+      OPENAGENTS_REAL_SETTLEMENT_GATE: JSON.stringify({
+        enabled: true,
+        allowedAdapterKind: 'spark_treasury',
+        allowedContributorRefs: ['pylon.contributor.orrery'],
+        allowedRunRefs: ['run.tassadar.executor.20260615'],
+        maxPayoutSats: 1000,
+      }),
+    })
+
+    expect(gate.enabled).toBe(true)
+    expect(gate.maxPayoutSats).toBe(1000)
+    expect(gate.maxDailyPayoutSats).toBeUndefined()
+    expect(gate.runScopedStreaming).toBeUndefined()
+  })
+
+  it('preserves per-payout-only behavior (always authorized at the daily layer) when no daily cap', () => {
+    const gate = parseTassadarRealSettlementGate(
+      JSON.stringify({
+        enabled: true,
+        allowedAdapterKind: 'spark_treasury',
+        allowedContributorRefs: ['pylon.contributor.orrery'],
+        allowedRunRefs: ['run.tassadar.executor.20260615'],
+        maxPayoutSats: 1000,
+      }),
+    )
+    const decision = decideTassadarDailyBudget({
+      alreadySettledTodaySats: 999_999,
+      amountSats: 5,
+      gate,
+    })
+
+    expect(decision.authorized).toBe(true)
+    expect(decision.effectiveDailyCapSats).toBeNull()
+    expect(decision.remainingDailyBudgetSats).toBeNull()
+  })
+
+  it('keeps allowlist-only eligibility when runScopedStreaming is absent', () => {
+    const gate = parseTassadarRealSettlementGate(
+      JSON.stringify({
+        enabled: true,
+        allowedAdapterKind: 'spark_treasury',
+        allowedContributorRefs: ['pylon.contributor.orrery'],
+        allowedRunRefs: ['run.tassadar.executor.20260615'],
+        maxPayoutSats: 1000,
+      }),
+    )
+    const decision = resolveTassadarSettlementAdapter({
+      amountSats: 5,
+      contributorRef: 'pylon.contributor.unlisted',
+      gate,
+      requestedAdapterKind: 'spark_treasury',
+      trainingRunRef: 'run.tassadar.executor.20260615',
+    })
+
+    expect(decision.realAuthorized).toBe(false)
+    expect(decision.blockedReason).toBe('contributor_not_allowlisted')
+  })
+})
+
+describe('run-scoped streaming eligibility (#5309/#5310)', () => {
+  const runScopedGate: TassadarRealSettlementGate = {
+    enabled: true,
+    allowedAdapterKind: 'spark_treasury',
+    allowedContributorRefs: [],
+    allowedRunRefs: ['run.tassadar.executor.20260615'],
+    maxPayoutSats: 100,
+    maxDailyPayoutSats: 50_000,
+    runScopedStreaming: true,
+  }
+
+  it('authorizes ANY contributor on an allowlisted run when run-scoped streaming is on', () => {
+    const decision = resolveTassadarSettlementAdapter({
+      amountSats: 5,
+      contributorRef: 'pylon.contributor.brand_new_node',
+      gate: runScopedGate,
+      requestedAdapterKind: 'spark_treasury',
+      trainingRunRef: 'run.tassadar.executor.20260615',
+    })
+
+    expect(decision.realAuthorized).toBe(true)
+    expect(decision.eligibilitySource).toBe('run_scoped_streaming')
+  })
+
+  it('still requires the run to be allowlisted even under run-scoped streaming', () => {
+    const decision = resolveTassadarSettlementAdapter({
+      amountSats: 5,
+      contributorRef: 'pylon.contributor.brand_new_node',
+      gate: runScopedGate,
+      requestedAdapterKind: 'spark_treasury',
+      trainingRunRef: 'run.tassadar.executor.NOT_ENROLLED',
+    })
+
+    expect(decision.realAuthorized).toBe(false)
+    expect(decision.blockedReason).toBe('run_not_allowlisted')
+  })
+
+  it('marks an explicitly allowlisted contributor as eligibilitySource:allowlisted', () => {
+    const decision = resolveTassadarSettlementAdapter({
+      amountSats: 5,
+      contributorRef: 'pylon.contributor.stranger',
+      gate: { ...enabledGate, runScopedStreaming: true },
+      requestedAdapterKind: 'spark_treasury',
+      trainingRunRef: 'run.tassadar.executor.20260615',
+    })
+
+    expect(decision.realAuthorized).toBe(true)
+    expect(decision.eligibilitySource).toBe('allowlisted')
+  })
+
+  it('still enforces the per-payout cap under run-scoped streaming', () => {
+    const decision = resolveTassadarSettlementAdapter({
+      amountSats: 101,
+      contributorRef: 'pylon.contributor.brand_new_node',
+      gate: runScopedGate,
+      requestedAdapterKind: 'spark_treasury',
+      trainingRunRef: 'run.tassadar.executor.20260615',
+    })
+
+    expect(decision.realAuthorized).toBe(false)
+    expect(decision.blockedReason).toBe('amount_over_gate_cap')
+  })
+})
+
+describe('cumulative daily budget cap (fail-closed at the ceiling) (#5309)', () => {
+  const dailyGate: TassadarRealSettlementGate = {
+    enabled: true,
+    allowedAdapterKind: 'spark_treasury',
+    allowedContributorRefs: ['pylon.contributor.stranger'],
+    allowedRunRefs: ['run.tassadar.executor.20260615'],
+    maxPayoutSats: 100,
+    maxDailyPayoutSats: 20,
+  }
+
+  it('authorizes while under the daily cap and reports remaining budget', () => {
+    const decision = decideTassadarDailyBudget({
+      alreadySettledTodaySats: 10,
+      amountSats: 5,
+      gate: dailyGate,
+    })
+
+    expect(decision.authorized).toBe(true)
+    expect(decision.effectiveDailyCapSats).toBe(20)
+    expect(decision.remainingDailyBudgetSats).toBe(5)
+  })
+
+  it('authorizes the exact payout that lands on the ceiling', () => {
+    const decision = decideTassadarDailyBudget({
+      alreadySettledTodaySats: 15,
+      amountSats: 5,
+      gate: dailyGate,
+    })
+
+    expect(decision.authorized).toBe(true)
+    expect(decision.remainingDailyBudgetSats).toBe(0)
+  })
+
+  it('FAILS CLOSED on the payout that would exceed the ceiling', () => {
+    const decision = decideTassadarDailyBudget({
+      alreadySettledTodaySats: 18,
+      amountSats: 5,
+      gate: dailyGate,
+    })
+
+    expect(decision.authorized).toBe(false)
+    // Remaining reflects the unspent budget; the over-cap payout is rejected.
+    expect(decision.remainingDailyBudgetSats).toBe(2)
+  })
+
+  it('clamps the declared daily cap to the module hard daily ceiling', () => {
+    const overGate = parseTassadarRealSettlementGate(
+      JSON.stringify({
+        ...dailyGate,
+        maxDailyPayoutSats: TassadarRunSettlementHardDailyCapSats + 1,
+      }),
+    )
+
+    // A cap above the hard ceiling fails the schema decode (fail-closed).
+    expect(overGate).toEqual(disabledTassadarRealSettlementGate)
+  })
+
+  it('resets across the UTC-day boundary', () => {
+    const receipts = [
+      {
+        createdAt: '2026-06-17T23:59:59.000Z',
+        publicProjectionJson: JSON.stringify({
+          amountSats: 5,
+          moneyMovement: 'real_bitcoin',
+          state: 'settled',
+        }),
+        receiptKind: 'settlement_recorded' as const,
+      },
+      {
+        createdAt: '2026-06-18T00:00:01.000Z',
+        publicProjectionJson: JSON.stringify({
+          amountSats: 5,
+          moneyMovement: 'real_bitcoin',
+          state: 'settled',
+        }),
+        receiptKind: 'settlement_recorded' as const,
+      },
+    ]
+
+    expect(tassadarRealSettlementUtcDayKey('2026-06-17T23:59:59.000Z')).toBe(
+      '2026-06-17',
+    )
+    expect(tassadarRealSettledSatsForDay(receipts, '2026-06-17')).toBe(5)
+    expect(tassadarRealSettledSatsForDay(receipts, '2026-06-18')).toBe(5)
+  })
+
+  it('only counts REAL settled receipts toward the daily total', () => {
+    const receipts = [
+      {
+        createdAt: '2026-06-17T10:00:00.000Z',
+        publicProjectionJson: JSON.stringify({
+          amountSats: 5,
+          moneyMovement: 'real_bitcoin',
+          state: 'settled',
+        }),
+        receiptKind: 'settlement_recorded' as const,
+      },
+      {
+        // simulation receipt — must NOT consume real budget
+        createdAt: '2026-06-17T10:05:00.000Z',
+        publicProjectionJson: JSON.stringify({
+          amountSats: 5000,
+          moneyMovement: 'none',
+          state: 'settled',
+        }),
+        receiptKind: 'settlement_recorded' as const,
+      },
+      {
+        // wrong receipt kind — ignored
+        createdAt: '2026-06-17T10:06:00.000Z',
+        publicProjectionJson: JSON.stringify({
+          amountSats: 9999,
+          moneyMovement: 'real_bitcoin',
+          state: 'settled',
+        }),
+        receiptKind: 'dispatch_recorded' as const,
+      },
+    ]
+
+    expect(tassadarRealSettledSatsForDay(receipts, '2026-06-17')).toBe(5)
   })
 })

@@ -1013,6 +1013,57 @@ This is the invariant ledger for `openagents`.
   the private D1 backing store starts in
   `workers/api/migrations/0202_pylon_spark_payout_targets.sql`.
 
+## Tassadar Auto-Stream Settlement And Daily Budget Cap
+
+- Auto-streaming real settlement (#5309/#5310) is hands-off: when the worker →
+  validator verdict path finalizes a `Verified` `exact_trace_replay` fixture
+  pair, BOTH legs settle automatically — the per-window rate of 5 sats to the
+  worker (`lease.pylonRef`) AND 5 sats to the validator (its registered Spark
+  payout target) — through the same proven #5232 `spark_treasury` rail, with NO
+  operator POST. The per-window rate is fixed at
+  `TassadarPerWindowWorkerRewardSats = 5` and
+  `TassadarPerWindowValidatorRewardSats = 5`.
+- Auto-settlement is INERT by default everywhere: every leg resolves to skip
+  while `OPENAGENTS_REAL_SETTLEMENT_GATE` is OFF (the default). It is gated by
+  the same gate as the admin path (enabled + `spark_treasury` adapter + run
+  allowlist + per-payout `maxPayoutSats`) PLUS the new cumulative daily cap.
+- Auto-settlement is RECEIPT-FIRST, IDEMPOTENT, and FAIL-SOFT. Each leg derives
+  a deterministic settlement receipt ref keyed by challenge + party, so a retry
+  of the same Verified pair pays AT MOST ONCE per challenge per party. A
+  blocked/failed/over-budget settlement NEVER breaks verification or the
+  heartbeat: the verdict route fires the hook fire-and-forget under a catch. No
+  real-settled receipt exists without a confirmed dispatch + matched
+  reconciliation, preserving every #5232 safety + redaction guard
+  (`assertPublicProjectionSafe`; no raw `spark1…`, invoice, preimage, or wallet
+  material in any projection).
+- The validator leg SKIPS cleanly (no error, `skipped: no_payout_destination`)
+  when the validator has no registered Spark payout target; the worker leg is
+  unaffected.
+- The optional gate field `maxDailyPayoutSats` is the cumulative daily real
+  budget. It is BACKWARD-COMPATIBLE: an existing armed gate value WITHOUT the
+  field still decodes and behaves exactly as before (per-payout-only, no
+  aggregate ceiling). When present it is the maximum real sats that may be
+  auto-settled per UTC calendar day, itself clamped to the module hard daily
+  ceiling `TassadarRunSettlementHardDailyCapSats`. The daily total is
+  RECEIPT-FIRST: it is the sum of `settlement_recorded` receipts whose
+  projection is `state: settled` and `moneyMovement: real_bitcoin` on the
+  current UTC day (simulation receipts never consume real budget). It FAILS
+  CLOSED: once a day's real total would exceed the cap, further auto-settlements
+  fall back to skip until 00:00:00Z resets the window. The boundary is UTC by
+  deliberate choice for deterministic reset.
+- The optional gate field `runScopedStreaming` widens eligibility so streaming
+  does not require a hand-maintained per-agent allowlist. When absent or false,
+  only `allowedContributorRefs` recipients are eligible (prior behavior). When
+  true, ANY contributor with a registered Spark payout target on an allowlisted
+  run is eligible — still bounded by the per-payout cap, the daily cap, and the
+  independent worker≠validator replay verification (the trust anchor). The run
+  must always be allowlisted even under run-scoped streaming; the explicit
+  `allowedContributorRefs` path keeps working alongside it. No adapter is
+  broadened and no existing guard is removed.
+- Regression coverage for this policy lives in
+  `workers/api/src/tassadar-auto-settlement.test.ts` and
+  `workers/api/src/tassadar-run-settlement-gate.test.ts`.
+
 ## Probe GEPA Campaign Public Projection
 
 - Artanis/Probe GEPA campaign projections are public-safe summaries of

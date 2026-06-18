@@ -453,8 +453,13 @@ import {
   TokenUsageLeaderboards,
 } from './token-usage'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
+import { autoSettleVerifiedPair } from './tassadar-auto-settlement'
+import { readTassadarRealSettlementGate } from './tassadar-run-settlement-gate'
 import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
-import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
+import {
+  dispatchRealRunSettlementCore,
+  makeTrainingRunWindowRoutes,
+} from './training-run-window-routes'
 import {
   buildTrainingVerificationChallengeRecord,
   finalizeTrainingVerificationChallengeRecord,
@@ -6989,6 +6994,82 @@ const tassadarTraceContributionRoutes =
     makeContributionStore: env =>
       makeD1TrainingTraceContributionStore(openAgentsDatabase(env)),
     makeStore: env => makeD1TrainingAuthorityStore(openAgentsDatabase(env)),
+    // Hands-off auto-stream of the real per-window reward on each Verified
+    // exact_trace_replay pair (openagents #5309 + #5310): worker 5 sats AND
+    // validator 5 sats, NO operator POST. INERT until the owner arms
+    // OPENAGENTS_REAL_SETTLEMENT_GATE — every leg resolves to skip while the
+    // gate is OFF (the default everywhere). FAIL-SOFT: the verdict route wraps
+    // this in catchAll so a blocked/failed settlement never breaks the verdict.
+    onVerifiedExactTraceReplayPair: async (env, input) => {
+      const db = openAgentsDatabase(env)
+      const ledger = makeD1NexusTreasuryPayoutLedgerStore(db)
+      const sparkTargetStore = makeD1PylonSparkPayoutTargetStore(db)
+      const run = await makeD1TrainingAuthorityStore(db).readRun(
+        input.lease.trainingRunRef,
+      )
+
+      if (run === undefined) {
+        return
+      }
+
+      await Effect.runPromise(
+        autoSettleVerifiedPair<WorkerBindings>(
+          {
+            dispatchRealSettlement: dispatchInput =>
+              dispatchRealRunSettlementCore<WorkerBindings>(
+                {
+                  env,
+                  makeSettlementPaymentAuthority: (authorityEnv, context) =>
+                    makeTreasuryPaymentAuthority({
+                      adapters: [
+                        makeSparkTreasuryPayoutAdapter({
+                          fetchTreasury: fetchMdkTreasuryPath(authorityEnv),
+                          providerRef: context.providerRef,
+                          resolveDestination: () =>
+                            Effect.succeed(context.privatePayoutDestination),
+                        }),
+                      ],
+                      ledgerStore: context.ledgerStore,
+                    }),
+                  readSettlementWalletReadiness: async authorityEnv => {
+                    const fetchTreasury = fetchMdkTreasuryPath(authorityEnv)
+
+                    if (fetchTreasury === undefined) {
+                      return 'absent'
+                    }
+
+                    try {
+                      const response = await fetchTreasury('/spark/balance')
+
+                      return response.ok ? 'ready' : 'absent'
+                    } catch {
+                      return 'absent'
+                    }
+                  },
+                  resolveSettlementPayoutDestination: (_authorityEnv, ref) =>
+                    resolveSparkPayoutDestination(sparkTargetStore, ref),
+                },
+                {
+                  contributorRef: dispatchInput.contributorRef,
+                  ledger,
+                  settlement: dispatchInput.settlement,
+                },
+              ),
+            ledger,
+            nowIso: currentIsoTimestamp(),
+            readGate: () => readTassadarRealSettlementGate(env),
+            resolvePayoutDestination: ref =>
+              resolveSparkPayoutDestination(sparkTargetStore, ref),
+            run,
+          },
+          {
+            challenge: input.challenge,
+            lease: input.lease,
+            validatorContributorRef: input.validatorContributorRef,
+          },
+        ),
+      )
+    },
     resolvePylonOwnerUserId: async (env, pylonRef) => {
       const registration = await makeD1PylonApiStore(
         openAgentsDatabase(env),

@@ -1,6 +1,7 @@
 import { Option, Schema as S } from 'effect'
 
-import { parseJsonUnknown } from './json-boundary'
+import { parseJsonRecord, parseJsonUnknown } from './json-boundary'
+import type { NexusPaymentAuthorityReceiptRecord } from './nexus-treasury-payout-ledger'
 import { NexusTreasuryPayoutAdapterKind } from './nexus-treasury-payout-ledger'
 import { TassadarRunSettlementHardPerPayoutCapSats } from './tassadar-run-settlement'
 
@@ -30,6 +31,12 @@ export type TassadarRealSettlementAllowedAdapterKind =
 export const TassadarRealSettlementGateEnvKey =
   'OPENAGENTS_REAL_SETTLEMENT_GATE'
 
+// Defense-in-depth ceiling on the cumulative daily real-settled budget,
+// independent of any owner-set value. Hands-off auto-streaming (openagents
+// #5309) must never let a misconfigured gate authorize more than this per UTC
+// day. The owner sets a smaller value (e.g. 50_000); this is the absolute roof.
+export const TassadarRunSettlementHardDailyCapSats = 1_000_000
+
 export const TassadarRealSettlementGate = S.Struct({
   // Explicit owner enable. Default OFF: a gate with `enabled: false` (or an
   // absent/malformed env value) keeps every settlement on `simulation`.
@@ -37,9 +44,10 @@ export const TassadarRealSettlementGate = S.Struct({
   // The single real adapter the gate authorizes. Must equal the adapter the
   // caller explicitly requests before the real branch is reachable.
   allowedAdapterKind: TassadarRealSettlementAllowedAdapterKind,
-  // One recipient (contributor pylon ref) allowed to receive real sats.
-  allowedContributorRefs: S.Array(S.String).check(S.isMaxLength(8)),
-  // One workload family (training run ref) allowed to settle for real.
+  // Recipients (contributor pylon refs) explicitly allowed to receive real
+  // sats. With `runScopedStreaming` off/absent, a recipient must appear here.
+  allowedContributorRefs: S.Array(S.String).check(S.isMaxLength(64)),
+  // Workload families (training run refs) allowed to settle for real.
   allowedRunRefs: S.Array(S.String).check(S.isMaxLength(8)),
   // Hard per-payout sat cap, itself clamped to the module hard ceiling below.
   maxPayoutSats: S.Number.check(
@@ -49,6 +57,30 @@ export const TassadarRealSettlementGate = S.Struct({
       minimum: 1,
     }),
   ),
+  // OPTIONAL cumulative daily real-settled budget (openagents #5309). When
+  // ABSENT the gate keeps its prior per-payout-only behavior byte-for-byte (no
+  // aggregate ceiling), so an already-armed gate value decodes and behaves
+  // exactly as before. When PRESENT it is the maximum real sats that may be
+  // auto-settled per UTC day; once a day's real total would exceed it, further
+  // auto-settlements fall back to simulation/skip until the next UTC day. Itself
+  // clamped to the module hard daily ceiling above.
+  maxDailyPayoutSats: S.optionalKey(
+    S.Number.check(
+      S.isInt(),
+      S.isBetween({
+        maximum: TassadarRunSettlementHardDailyCapSats,
+        minimum: 1,
+      }),
+    ),
+  ),
+  // OPTIONAL run-scoped streaming eligibility (openagents #5309/#5310). When
+  // ABSENT or false, only `allowedContributorRefs` recipients are eligible (the
+  // prior behavior, unchanged). When true, ANY contributor with a registered
+  // Spark payout target on an allowlisted run is eligible — still bounded by the
+  // per-payout cap, the daily cap, and the independent worker!=validator replay
+  // verification that produced the Verified pair. The explicit
+  // `allowedContributorRefs` path keeps working alongside it.
+  runScopedStreaming: S.optionalKey(S.Boolean),
 })
 export type TassadarRealSettlementGate =
   typeof TassadarRealSettlementGate.Type
@@ -130,6 +162,12 @@ export type TassadarSettlementAdapterDecision = Readonly<{
     | 'requested_adapter_mismatch'
     | 'run_not_allowlisted'
     | null
+  // How the recipient qualified for the real branch: `allowlisted` means the
+  // contributor appeared in `allowedContributorRefs`; `run_scoped_streaming`
+  // means it qualified via `runScopedStreaming` on an allowlisted run (still
+  // bounded by per-payout cap, daily cap, and the verification requirement);
+  // `null` when the real branch was not authorized.
+  eligibilitySource: 'allowlisted' | 'run_scoped_streaming' | null
   realAuthorized: boolean
 }>
 
@@ -146,6 +184,7 @@ export const resolveTassadarSettlementAdapter = (
   const simulation: TassadarSettlementAdapterDecision = {
     adapterKind: 'simulation',
     blockedReason: null,
+    eligibilitySource: null,
     realAuthorized: false,
   }
 
@@ -161,17 +200,165 @@ export const resolveTassadarSettlementAdapter = (
     return { ...simulation, blockedReason: 'amount_over_gate_cap' }
   }
 
-  if (!input.gate.allowedContributorRefs.includes(input.contributorRef)) {
-    return { ...simulation, blockedReason: 'contributor_not_allowlisted' }
-  }
-
+  // The run must always be allowlisted, even under run-scoped streaming: the
+  // run allowlist is the operator's enrollment boundary for which workloads may
+  // stream real sats at all.
   if (!input.gate.allowedRunRefs.includes(input.trainingRunRef)) {
     return { ...simulation, blockedReason: 'run_not_allowlisted' }
+  }
+
+  // Eligibility: an explicitly allowlisted contributor always qualifies. With
+  // run-scoped streaming on, ANY contributor on this allowlisted run qualifies
+  // (the registered-payout-target requirement is enforced downstream by the
+  // destination resolver, which fails closed/skips when absent). The trust
+  // anchor remains the independent worker!=validator replay verification.
+  const allowlisted = input.gate.allowedContributorRefs.includes(
+    input.contributorRef,
+  )
+  const eligibilitySource: 'allowlisted' | 'run_scoped_streaming' | null =
+    allowlisted
+      ? 'allowlisted'
+      : input.gate.runScopedStreaming === true
+        ? 'run_scoped_streaming'
+        : null
+
+  if (eligibilitySource === null) {
+    return { ...simulation, blockedReason: 'contributor_not_allowlisted' }
   }
 
   return {
     adapterKind: input.gate.allowedAdapterKind,
     blockedReason: null,
+    eligibilitySource,
     realAuthorized: true,
+  }
+}
+
+/**
+ * The cumulative daily real-settled budget (openagents #5309) is tracked durably
+ * by SUMMING existing `settlement_recorded` receipts that prove real bitcoin
+ * movement. There is no separate counter to drift out of sync: the receipt
+ * ledger is the source of truth, so the daily total is receipt-first by
+ * construction.
+ *
+ * The daily window is keyed by the UTC calendar day (`YYYY-MM-DD` from the
+ * receipt `createdAt`). UTC — not a local zone — is the deliberate boundary so
+ * the reset is deterministic across deployments and operator locations; an
+ * auto-settle at 23:59:59Z counts against that day and the budget resets at
+ * 00:00:00Z the next UTC day.
+ */
+export const tassadarRealSettlementUtcDayKey = (iso: string): string =>
+  iso.slice(0, 10)
+
+const realSettledSatsFromReceipt = (
+  record: Pick<
+    NexusPaymentAuthorityReceiptRecord,
+    'publicProjectionJson' | 'receiptKind'
+  >,
+): number => {
+  if (record.receiptKind !== 'settlement_recorded') {
+    return 0
+  }
+
+  const projection = parseJsonRecord(record.publicProjectionJson)
+
+  if (projection === undefined) {
+    return 0
+  }
+
+  // Only REAL bitcoin movement counts against the daily budget. Simulation
+  // receipts (moneyMovement:'none') and any non-settled state are ignored, so
+  // proofs/tests that record simulation chains never consume real budget.
+  const amountSats = projection.amountSats
+
+  return projection.state === 'settled' &&
+    projection.moneyMovement === 'real_bitcoin' &&
+    typeof amountSats === 'number' &&
+    Number.isInteger(amountSats) &&
+    amountSats > 0
+    ? amountSats
+    : 0
+}
+
+/**
+ * Sum the real-settled sats recorded on the given UTC day across a list of
+ * settlement receipts. Pure; the caller supplies the receipt list (read from
+ * the ledger) and the day key for "now".
+ */
+export const tassadarRealSettledSatsForDay = (
+  receipts: ReadonlyArray<
+    Pick<
+      NexusPaymentAuthorityReceiptRecord,
+      'createdAt' | 'publicProjectionJson' | 'receiptKind'
+    >
+  >,
+  utcDayKey: string,
+): number =>
+  receipts.reduce(
+    (total, receipt) =>
+      tassadarRealSettlementUtcDayKey(receipt.createdAt) === utcDayKey
+        ? total + realSettledSatsFromReceipt(receipt)
+        : total,
+    0,
+  )
+
+export type TassadarDailyBudgetDecision = Readonly<{
+  // Sats already settled for real on this UTC day, before this payout.
+  alreadySettledTodaySats: number
+  // Whether this payout of `amountSats` fits under the daily cap.
+  authorized: boolean
+  // The effective daily cap in force (the gate value clamped to the hard roof),
+  // or null when the gate declares no daily cap (per-payout-only mode).
+  effectiveDailyCapSats: number | null
+  // Public-safe remaining budget for observability AFTER reserving this payout
+  // when authorized, or the current remaining when blocked. Null in
+  // per-payout-only mode (no aggregate ceiling to report).
+  remainingDailyBudgetSats: number | null
+}>
+
+/**
+ * Decide whether one auto-settlement of `amountSats` may proceed under the
+ * cumulative daily budget (openagents #5309). Fails CLOSED: when a daily cap is
+ * present and this payout would push the day's real total over it, the payout
+ * is NOT authorized (the caller falls back to simulation/skip). When the gate
+ * declares no `maxDailyPayoutSats`, this preserves the prior per-payout-only
+ * behavior (always authorized at this layer; the per-payout cap still applies
+ * elsewhere). Pure.
+ */
+export const decideTassadarDailyBudget = (
+  input: Readonly<{
+    alreadySettledTodaySats: number
+    amountSats: number
+    gate: TassadarRealSettlementGate
+  }>,
+): TassadarDailyBudgetDecision => {
+  const declaredCap = input.gate.maxDailyPayoutSats
+
+  if (declaredCap === undefined) {
+    return {
+      alreadySettledTodaySats: input.alreadySettledTodaySats,
+      authorized: true,
+      effectiveDailyCapSats: null,
+      remainingDailyBudgetSats: null,
+    }
+  }
+
+  const effectiveDailyCapSats = Math.min(
+    declaredCap,
+    TassadarRunSettlementHardDailyCapSats,
+  )
+  const projectedTotal = input.alreadySettledTodaySats + input.amountSats
+  const authorized = projectedTotal <= effectiveDailyCapSats
+  const remainingDailyBudgetSats = Math.max(
+    0,
+    effectiveDailyCapSats -
+      (authorized ? projectedTotal : input.alreadySettledTodaySats),
+  )
+
+  return {
+    alreadySettledTodaySats: input.alreadySettledTodaySats,
+    authorized,
+    effectiveDailyCapSats,
+    remainingDailyBudgetSats,
   }
 }

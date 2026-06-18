@@ -584,35 +584,47 @@ const settlementErrorFromAuthority = (
  * On any payout failure no real-settled receipt is written and a typed error is
  * surfaced.
  */
-const dispatchRealRunSettlement = <Bindings extends TrainingRunWindowRouteEnv>(
-  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
-  env: Bindings,
+// Injected resolvers for the proven receipt-first Spark dispatch. Extracted so
+// both the admin settlement route and the hands-off auto-stream path
+// (openagents #5309/#5310) drive the SAME dispatch logic instead of two copies.
+export type RealRunSettlementDispatchResolvers<Bindings> = Readonly<{
+  env: Bindings
+  makeSettlementPaymentAuthority: NonNullable<
+    TrainingRunWindowRouteDependencies<Bindings>['makeSettlementPaymentAuthority']
+  >
+  readSettlementWalletReadiness: NonNullable<
+    TrainingRunWindowRouteDependencies<Bindings>['readSettlementWalletReadiness']
+  >
+  resolveSettlementPayoutDestination: NonNullable<
+    TrainingRunWindowRouteDependencies<Bindings>['resolveSettlementPayoutDestination']
+  >
+}>
+
+/**
+ * Receipt-first, idempotent Spark dispatch core (openagents #5232). Reused by
+ * the admin settlement route and the auto-stream path. Resolves wallet
+ * readiness + private destination, drives intent -> dispatch -> reconcile keyed
+ * by the builder's deterministic idempotency hashes (so a retry pays AT MOST
+ * ONCE), and persists the `settlement_recorded` receipt ONLY after a confirmed
+ * dispatch + matched reconciliation. Any failure surfaces a typed error and
+ * writes NO real-settled receipt — no "paid" claim without a confirmed payout.
+ */
+export const dispatchRealRunSettlementCore = <Bindings>(
+  resolvers: RealRunSettlementDispatchResolvers<Bindings>,
   input: Readonly<{
     contributorRef: string
     ledger: NexusTreasuryPayoutLedgerStore
-    nowIso: string
     settlement: ReturnType<typeof buildTassadarRunSettlement>
   }>,
 ): Effect.Effect<void, TrainingRunWindowRouteError> =>
   Effect.gen(function* () {
     const { contributorRef, ledger, settlement } = input
-    const makeAuthority = dependencies.makeSettlementPaymentAuthority
-    const readWalletReadiness = dependencies.readSettlementWalletReadiness
-    const resolveDestination = dependencies.resolveSettlementPayoutDestination
-
-    if (
-      makeAuthority === undefined ||
-      readWalletReadiness === undefined ||
-      resolveDestination === undefined
-    ) {
-      // The gate authorized a real payout but the live dispatch path is not
-      // wired in this deployment. Fail closed (no money, no receipt).
-      return yield* new TrainingAuthorityStoreError({
-        kind: 'storage_error',
-        reason:
-          'Real settlement is gate-authorized but the payout authority is not configured.',
-      })
-    }
+    const {
+      env,
+      makeSettlementPaymentAuthority: makeAuthority,
+      readSettlementWalletReadiness: readWalletReadiness,
+      resolveSettlementPayoutDestination: resolveDestination,
+    } = resolvers
 
     // Idempotent short-circuit: if the deterministic receipt already exists,
     // this run/window+recipient already settled. Do not dispatch again.
@@ -721,6 +733,50 @@ const dispatchRealRunSettlement = <Bindings extends TrainingRunWindowRouteEnv>(
       try: () =>
         ledger.createPaymentAuthorityReceipt(settlement.settlementReceipt),
     })
+  })
+
+const dispatchRealRunSettlement = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    contributorRef: string
+    ledger: NexusTreasuryPayoutLedgerStore
+    nowIso: string
+    settlement: ReturnType<typeof buildTassadarRunSettlement>
+  }>,
+): Effect.Effect<void, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const makeAuthority = dependencies.makeSettlementPaymentAuthority
+    const readWalletReadiness = dependencies.readSettlementWalletReadiness
+    const resolveDestination = dependencies.resolveSettlementPayoutDestination
+
+    if (
+      makeAuthority === undefined ||
+      readWalletReadiness === undefined ||
+      resolveDestination === undefined
+    ) {
+      // The gate authorized a real payout but the live dispatch path is not
+      // wired in this deployment. Fail closed (no money, no receipt).
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'storage_error',
+        reason:
+          'Real settlement is gate-authorized but the payout authority is not configured.',
+      })
+    }
+
+    yield* dispatchRealRunSettlementCore(
+      {
+        env,
+        makeSettlementPaymentAuthority: makeAuthority,
+        readSettlementWalletReadiness: readWalletReadiness,
+        resolveSettlementPayoutDestination: resolveDestination,
+      },
+      {
+        contributorRef: input.contributorRef,
+        ledger: input.ledger,
+        settlement: input.settlement,
+      },
+    )
   })
 
 /**

@@ -72,6 +72,20 @@ type TassadarTraceContributionRouteDependencies<Bindings> = Readonly<{
   makeId?: () => string
   makeStore: (env: Bindings) => TrainingAuthorityStore
   nowIso?: () => string
+  // Hands-off auto-stream hook (openagents #5309/#5310). Fired FIRE-AND-FORGET,
+  // FAIL-SOFT after a verdict finalizes a Verified exact_trace_replay pair, so
+  // both the worker (5 sats) and validator (5 sats) legs settle automatically
+  // through the gated real path with NO operator POST. It MUST NOT break the
+  // verdict response: any error inside it is swallowed by the caller. Inert
+  // (no-op) until wired + the owner arms OPENAGENTS_REAL_SETTLEMENT_GATE.
+  onVerifiedExactTraceReplayPair?: (
+    env: Bindings,
+    input: Readonly<{
+      challenge: TrainingVerificationChallengeRecord
+      lease: TrainingWindowLeaseRecord
+      validatorContributorRef: string
+    }>,
+  ) => Promise<void>
   // Resolves the owning agent user id for a Pylon ref (the lease pylon_ref).
   // Wired in index.ts to the Pylon registry; the lease ownership check compares
   // it against the authenticated session's user id.
@@ -406,6 +420,29 @@ const routeReplayVerdict = <Bindings extends TassadarTraceContributionRouteEnv>(
           verificationChallengeRef: challenge.challengeRef,
         }),
     })
+
+    // Hands-off auto-stream (openagents #5309/#5310): when this verdict
+    // finalized a Verified exact_trace_replay pair, settle BOTH the worker and
+    // validator legs automatically. FAIL-SOFT — wrapped in catchAll so a
+    // settlement block/failure NEVER breaks the verdict response. INERT until
+    // the owner arms the real-settlement gate; only Verified pairs are touched.
+    const onVerifiedPair = dependencies.onVerifiedExactTraceReplayPair
+
+    if (
+      onVerifiedPair !== undefined &&
+      challenge.state === 'Verified' &&
+      challenge.verificationClass === 'exact_trace_replay'
+    ) {
+      yield* Effect.tryPromise({
+        catch: () => undefined,
+        try: () =>
+          onVerifiedPair(env, {
+            challenge,
+            lease,
+            validatorContributorRef: body.validatorDeviceRef,
+          }),
+      }).pipe(Effect.catch(() => Effect.void))
+    }
 
     return noStoreJsonResponse({
       challenge: publicTrainingVerificationChallengeProjection(
