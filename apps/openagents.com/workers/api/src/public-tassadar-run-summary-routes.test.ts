@@ -240,7 +240,12 @@ describe('buildPublicTassadarRunSummaryEnvelopeForRequest (public read, #5114)',
       }
     }
 
-    expect(metrics.providerConfirmedSettledPayoutSats.value).toBe(21)
+    // The only settled receipt here is a SIMULATION (movementMode:simulation,
+    // realBitcoinMoved:false). The real-money settled total must exclude it
+    // (Orrery's sim-vs-real conflation fix) — so it is 0, even though the
+    // simulation row still appears below, flagged. A real_bitcoin receipt would
+    // count; a settled-state sim must not inflate the real total.
+    expect(metrics.providerConfirmedSettledPayoutSats.value).toBe(0)
     expect(metrics.qualifiedContributorCount.value).toBe(1)
     expect(metrics.qualifiedContributorCount.sourceRefs).toContain(pylonRef)
     expect(metrics.qualifiedContributorCount.sourceRefs).toContain(

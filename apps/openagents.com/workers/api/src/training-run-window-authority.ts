@@ -1307,7 +1307,7 @@ export const publicTrainingRunSummary = (
       ),
       providerConfirmedSettledPayoutSats: metric(
         providerConfirmedSettledPayoutSats,
-        'Sum of provider-confirmed settlement receipts (receiptKind settlement_recorded, state settled) linked to this run only; pending, offered, claimed, or wallet-side records are excluded.',
+        'Sum of provider-confirmed REAL-BITCOIN settlement receipts (receiptKind settlement_recorded, state settled, realBitcoinMoved true) linked to this run only; pending, offered, claimed, wallet-side, and settled-state SIMULATION receipts (realBitcoinMoved false) are excluded. This is real bitcoin actually moved, not a settled-state count.',
         payoutMetricRefs,
       ),
       qualifiedContributorCount: metric(
@@ -1363,7 +1363,7 @@ export const publicTrainingRunSummary = (
       launchManifestSettlementStateLabel:
         'Static owner launch-gate field seeded once in the run manifest (migration 0185); it is NOT the live settled status and does not recompute. Read `reconciledState`/`settledPayoutSats` for the live provider-confirmed settlement truth.',
       provenanceLabel:
-        'Reconciled from the same provider-confirmed settlement receipts (receiptKind settlement_recorded, state settled) linked to this run that feed metrics.providerConfirmedSettledPayoutSats: `none` when zero settled receipts, `settling` when one or more settled receipts exist. Evidence only; not a fully-settled or launch claim.',
+        'Reconciled from the same provider-confirmed REAL-BITCOIN settlement receipts (settlement_recorded, state settled, realBitcoinMoved true; settled-state simulation receipts excluded) that feed metrics.providerConfirmedSettledPayoutSats: `none` when zero real settled receipts, `settling` when one or more exist. Evidence only; not a fully-settled or launch claim.',
       reconciledState: reconciledSettlementState,
       settledPayoutSats: providerConfirmedSettledPayoutSats,
       settledReceiptCount,

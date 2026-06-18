@@ -430,7 +430,7 @@ describe('training run window routes', () => {
     expect(
       firstSummary.metrics.providerConfirmedSettledPayoutSats.provenanceLabel,
     ).toContain(
-      'pending, offered, claimed, or wallet-side records are excluded',
+      'settled-state SIMULATION receipts (realBitcoinMoved false) are excluded',
     )
 
     const leaderboardResponse = await runRoute(

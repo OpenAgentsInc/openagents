@@ -205,7 +205,14 @@ export const resolveRunSettlements = async (
       info.row === null ? [] : [info.row],
     ),
     settledSatsByReceiptRef: new Map<string, number>(
-      settled.map(([receiptRef, info]) => [receiptRef, info.settledSats]),
+      // Real-money settled total: count ONLY receipts where bitcoin actually
+      // moved. A settled-STATE simulation receipt (movementMode:simulation /
+      // realBitcoinMoved:false) must NOT inflate the real settled-sats total
+      // (it still appears in settlementRows, flagged). Fixes the sim-vs-real
+      // conflation Orrery dereferenced (1000+5 real = 1005, not 1010).
+      settled
+        .filter(([, info]) => info.row?.realBitcoinMoved === true)
+        .map(([receiptRef, info]) => [receiptRef, info.settledSats]),
     ),
     settlementReceiptRefsByContributor: settled.reduce(
       (byContributor, [receiptRef, info]) => {
