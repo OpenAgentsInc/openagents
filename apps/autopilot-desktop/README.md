@@ -146,16 +146,21 @@ writable repo root). Supervision, readiness, and stop/restart are identical to
 the dev path; `PYLON_HOME` is forced to the managed home so discovery + the
 poller pick the launched node up unchanged.
 
-Until the bundle is shipped, the packaged app resolves no entry and stays honest
-`unavailable` / offline (no false "online"). **Remaining dependency (Pylon-side
-follow-up, NOT done here):** the desktop build needs a bundled, headless Pylon
-node artifact to copy. Pylon's `src/index.ts` cannot be `bun build`-bundled today
-because `@opentui/core` pulls platform-native optional deps via cross-platform
-dynamic `import()` that the bundler cannot resolve. Pylon must publish a
-headless, no-OpenTUI bundle (e.g. a `bun build`-able `node`-mode entry with the
-TUI externalized, or a `bun build --compile` single binary). Once that exists,
-add a `build.copy` entry in `electrobun.config.ts` mapping it to `"pylon-node"`
-and the packaged path activates with no further desktop changes.
+The current build path creates that artifact before Electrobun packaging:
+
+```sh
+bun run --cwd apps/autopilot-desktop build:pylon-node
+```
+
+`electrobun.config.ts` copies `resources/pylon-node/index.js` to
+`pylon-node/index.js`, which lands in the runtime payload at
+`Resources/app/pylon-node/index.js`. `node-launcher.ts` resolves that path from
+`PATHS.RESOURCES_FOLDER` and launches it in headless `node` mode. If the bundle
+is absent or the runtime payload is not extracted, the packaged app still stays
+honest `unavailable` / offline (no false "online").
+
+CS-B1 proof for the signed/notarized packaged-node path is recorded at
+`docs/launch/2026-06-18-autopilot-desktop-cs-b1-proof.md`.
 
 ## Built-in Agent (#5063)
 
