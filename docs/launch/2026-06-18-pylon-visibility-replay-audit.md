@@ -659,6 +659,23 @@ of hand-authored builders.
    - Body summary: Add a public route or route mode that accepts
      `from/to/runRef/windowRef/actorRef/kind` filters and returns generated
      replay bundles with the input cursor/range/filter recorded in the manifest.
+   - Implementation status (2026-06-18, issue #5420): extended
+     `GET /api/public/proof-replays` with `mode=activity-timeline`. Generated
+     replay requests require bounded `from` and `to` ISO timestamps and accept
+     optional `runRef`, `windowRef`, `actorRef`, repeated/comma-separated
+     `kind`, repeated/comma-separated `source`, `since`, and `limit` filters.
+     The route builds the same public activity timeline projection used by
+     `/api/public/activity-timeline`, applies run/window/actor filtering,
+     generates a `proof_replay_bundle.v1` through
+     `@openagentsinc/proof-replay`, and returns a `generatedFrom` manifest with
+     the exact input range/filter, source-lag state, staleness contract, source
+     activity URL, and observation-only caveat refs. OpenAPI and the capability
+     manifest now advertise the generated mode, and the agent endpoint guide
+     includes a curl recipe. Worker tests cover bounded generation, filter
+     propagation, manifest fields, shipment-gated output, source refs, and the
+     400 response for unbounded generated requests. This remains
+     observation/projection/retrieval only and grants no settlement, payout,
+     accepted-work, deployment, provider, wallet, or public-claim authority.
 3. **Add fleet boot and Forum replay tracks**
    - Body summary: Convert pylon boot/readiness/capacity events and Forum
      topic/post events into replay tracks so replay is not limited to

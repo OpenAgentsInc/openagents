@@ -39,7 +39,7 @@ type ForumActivityRow = Readonly<{
   topic_ref: string
 }>
 
-const makeD1PublicActivityTimelineForumStore = (
+export const makeD1PublicActivityTimelineForumStore = (
   db: D1Database,
 ): PublicActivityTimelineForumStore => ({
   listRecentActivity: async limit => {
@@ -121,7 +121,7 @@ const makeD1PublicActivityTimelineForumStore = (
   },
 })
 
-const makeD1PublicActivityTimelineArtanisStore = (
+export const makeD1PublicActivityTimelineArtanisStore = (
   db: D1Database,
   nowIso: string,
 ): PublicActivityTimelineArtanisStore => ({
@@ -137,7 +137,7 @@ const makeD1PublicActivityTimelineArtanisStore = (
   },
 })
 
-const makeD1PublicActivityTimelineCapacityStore = (
+export const makeD1PublicActivityTimelineCapacityStore = (
   db: D1Database,
 ): PublicActivityTimelineCapacityStore => {
   const snapshotStore = makeD1PylonCapacityFunnelSnapshotStore(db)

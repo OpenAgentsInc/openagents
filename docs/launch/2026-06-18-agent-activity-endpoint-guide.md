@@ -32,7 +32,7 @@ The relevant public evidence endpoints are:
 | Run settlements | `GET /api/public/training/runs/{trainingRunRef}/settlements` | Receipt-backed per-run settlement rows; simulation and real Bitcoin rows stay distinct. |
 | Verification challenge | `GET /api/public/training/verification-challenges/{challengeRef}` | One public-safe verification challenge with digest/verdict refs and staleness metadata. |
 | Receipt detail | `GET /api/public/nexus-pylon/receipts/{receiptRef}` | Public-safe Nexus/Pylon receipt detail; no invoices, preimages, wallet material, or private payout targets. |
-| Proof replay | `GET /api/public/proof-replays?ref={replayRef}` | Deterministic public replay bundle for evidence presentation. |
+| Proof replay | `GET /api/public/proof-replays?ref={replayRef}` or `GET /api/public/proof-replays?mode=activity-timeline&from={iso}&to={iso}` | Deterministic public replay bundle for named stories or bounded generated activity timeline ranges. |
 | Product promises | `GET /api/public/product-promises` | Current claim registry. Use this before repeating product or world-first claims. |
 
 ## Activity Timeline
@@ -213,6 +213,19 @@ Replay a bounded evidence window:
 curl -s 'https://openagents.com/api/public/activity-timeline?from=2026-06-18T18:00:00.000Z&to=2026-06-18T18:05:00.000Z&kind=work_claimed,trace_submitted,verification_verified,settlement_recorded,real_bitcoin_moved&source=training_window,training_trace,training_verification,settlement_receipt&limit=100' \
   | jq '.events[] | {ts, kind, eventRef, runRef, windowRef, amountSats, realBitcoinMoved, sourceRefs}'
 ```
+
+Generate a replay bundle from that same bounded window:
+
+```sh
+curl -s 'https://openagents.com/api/public/proof-replays?mode=activity-timeline&from=2026-06-18T18:00:00.000Z&to=2026-06-18T18:05:00.000Z&kind=work_claimed,trace_submitted,verification_verified,settlement_recorded,real_bitcoin_moved&limit=100' \
+  | jq '{bundleRef, generatedFrom, events: [.events[] | {kind, eventRef, sourceRefs}], gaps}'
+```
+
+Generated activity replays require `from` and `to` bounds. Optional filters:
+`runRef`, `windowRef`, `actorRef`, repeated/comma-separated `kind`, repeated/
+comma-separated `source`, `since`, and `limit`. The response remains
+`proof_replay_bundle.v1` and includes `generatedFrom` with the input
+range/filter, source-lag state, and observation-only caveat refs.
 
 Find source gaps and stale legs:
 

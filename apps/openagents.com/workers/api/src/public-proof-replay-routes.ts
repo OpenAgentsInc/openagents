@@ -1,4 +1,22 @@
 import {
+  buildProofReplayBundleFromPublicActivityTimeline,
+  type ProofReplayBundle as SharedProofReplayBundle,
+} from '@openagentsinc/proof-replay'
+import type {
+  PublicActivityTimelineEnvelope,
+  PublicActivityTimelineEvent,
+} from '@openagentsinc/public-activity-timeline'
+import {
+  buildPublicActivityTimelineEnvelope,
+  publicActivityTimelineQueryFromUrl,
+  type PublicActivityTimelineQuery,
+} from './public-activity-timeline'
+import {
+  makeD1PublicActivityTimelineArtanisStore,
+  makeD1PublicActivityTimelineCapacityStore,
+  makeD1PublicActivityTimelineForumStore,
+} from './public-activity-timeline-routes'
+import {
   buildPublicTassadarRunSummaryEnvelope,
   DEFAULT_TASSADAR_RUN_REF,
   type PublicTassadarSettlementRow,
@@ -14,6 +32,7 @@ import {
   makeD1TrainingAuthorityStore,
   type TrainingAuthorityStore,
 } from './training-run-window-authority'
+import { makeD1PylonApiStore } from './pylon-api'
 import { noStoreJsonResponse } from './http/responses'
 
 export const ProofReplayBundleSchemaVersion = 'proof_replay_bundle.v1'
@@ -241,6 +260,11 @@ type PublicTassadarSummaryEnvelope = Readonly<{
 }>
 
 type Deps = Readonly<{
+  buildActivityTimelineEnvelope?: (
+    query: PublicActivityTimelineQuery,
+    request: Request,
+    generatedAt: string,
+  ) => Promise<PublicActivityTimelineEnvelope>
   makePayoutLedgerStore?: (
     env: Parameters<typeof openAgentsDatabase>[0],
   ) => NexusTreasuryPayoutLedgerStore
@@ -252,6 +276,18 @@ type Deps = Readonly<{
 
 class ProofReplayPublicProjectionUnsafe extends Error {
   override readonly name = 'ProofReplayPublicProjectionUnsafe'
+}
+
+class PublicProofReplayRequestError extends Error {
+  readonly payload: Record<string, unknown>
+  readonly status: number
+
+  constructor(status: number, payload: Record<string, unknown>) {
+    super(typeof payload.error === 'string' ? payload.error : 'bad_request')
+    this.name = 'PublicProofReplayRequestError'
+    this.payload = payload
+    this.status = status
+  }
 }
 
 const replayBundleStaleness = () =>
@@ -360,6 +396,219 @@ const requestedRefsFor = (request: Request): ReadonlyArray<string> => {
 const requestedRunRefFor = (request: Request): string => {
   const runRef = new URL(request.url).searchParams.get('run')?.trim()
   return runRef === undefined || runRef === '' ? DEFAULT_TASSADAR_RUN_REF : runRef
+}
+
+const valuesFromParams = (
+  searchParams: URLSearchParams,
+  key: string,
+): ReadonlyArray<string> =>
+  searchParams
+    .getAll(key)
+    .flatMap(value => value.split(','))
+    .map(value => value.trim())
+    .filter(value => value !== '')
+
+const isGeneratedActivityReplayRequest = (request: Request): boolean => {
+  const url = new URL(request.url)
+  const refs = valuesFromParams(url.searchParams, 'ref')
+  return (
+    url.searchParams.get('mode') === 'activity-timeline' ||
+    url.searchParams.get('generated') === 'activity-timeline' ||
+    refs.includes('activity-timeline') ||
+    refs.includes('public-activity-timeline') ||
+    url.searchParams.has('from') ||
+    url.searchParams.has('to') ||
+    url.searchParams.has('runRef') ||
+    url.searchParams.has('windowRef') ||
+    url.searchParams.has('actorRef') ||
+    url.searchParams.has('kind')
+  )
+}
+
+type GeneratedActivityReplayFilters = Readonly<{
+  actorRefs: ReadonlyArray<string>
+  runRefs: ReadonlyArray<string>
+  windowRefs: ReadonlyArray<string>
+}>
+
+const generatedActivityReplayFiltersFromUrl = (
+  url: URL,
+): GeneratedActivityReplayFilters => ({
+  actorRefs: valuesFromParams(url.searchParams, 'actorRef'),
+  runRefs: uniqueSorted([
+    ...valuesFromParams(url.searchParams, 'runRef'),
+    ...valuesFromParams(url.searchParams, 'run').filter(ref =>
+      ref.startsWith('run.') || ref.startsWith('training.run.'),
+    ),
+  ]),
+  windowRefs: valuesFromParams(url.searchParams, 'windowRef'),
+})
+
+const generatedActivityReplayFilterMatches = (
+  event: PublicActivityTimelineEvent,
+  filters: GeneratedActivityReplayFilters,
+): boolean => {
+  if (
+    filters.actorRefs.length > 0 &&
+    (event.actorRef === undefined || !filters.actorRefs.includes(event.actorRef))
+  ) {
+    return false
+  }
+  if (
+    filters.runRefs.length > 0 &&
+    (event.runRef === undefined || !filters.runRefs.includes(event.runRef))
+  ) {
+    return false
+  }
+  if (
+    filters.windowRefs.length > 0 &&
+    (event.windowRef === undefined ||
+      !filters.windowRefs.includes(event.windowRef))
+  ) {
+    return false
+  }
+  return true
+}
+
+const routeUrlWithQuery = (request: Request): string => {
+  const url = new URL(request.url)
+  url.pathname = '/api/public/activity-timeline'
+  return url.toString()
+}
+
+const generatedActivityReplayManifest = (input: {
+  envelope: PublicActivityTimelineEnvelope
+  filters: GeneratedActivityReplayFilters
+  request: Request
+  timelineQuery: PublicActivityTimelineQuery
+}) => ({
+  authority: 'evidence_presentation_only',
+  caveatRefs: [
+    'caveat.public.proof_replay.generated_from_activity_timeline_observation_only',
+  ],
+  input: {
+    actorRefs: input.filters.actorRefs,
+    filterKinds: input.timelineQuery.filterKinds,
+    filterSources: input.timelineQuery.filterSources,
+    from: input.timelineQuery.from ?? null,
+    limit: input.timelineQuery.limit,
+    runRefs: input.filters.runRefs,
+    since: input.timelineQuery.since ?? null,
+    to: input.timelineQuery.to ?? null,
+    windowRefs: input.filters.windowRefs,
+  },
+  route: '/api/public/proof-replays',
+  schemaVersion: 'openagents.public_activity_generated_replay.v1',
+  source: {
+    route: '/api/public/activity-timeline',
+    url: routeUrlWithQuery(input.request),
+  },
+  sourceLag: input.envelope.sourceLag,
+  staleness: input.envelope.staleness,
+})
+
+const buildActivityTimelineEnvelopeForReplay = async (
+  input: {
+    deps: Deps
+    env: Parameters<typeof openAgentsDatabase>[0]
+    generatedAt: string
+    query: PublicActivityTimelineQuery
+    request: Request
+  },
+): Promise<PublicActivityTimelineEnvelope> => {
+  if (input.deps.buildActivityTimelineEnvelope !== undefined) {
+    return input.deps.buildActivityTimelineEnvelope(
+      input.query,
+      input.request,
+      input.generatedAt,
+    )
+  }
+
+  const db = openAgentsDatabase(input.env)
+  return buildPublicActivityTimelineEnvelope({
+    artanisStore: makeD1PublicActivityTimelineArtanisStore(db, input.generatedAt),
+    capacityStore: makeD1PublicActivityTimelineCapacityStore(db),
+    forumStore: makeD1PublicActivityTimelineForumStore(db),
+    nowIso: () => input.generatedAt,
+    pylonStore: makeD1PylonApiStore(db),
+    query: input.query,
+    receiptStore: makeD1NexusTreasuryPayoutLedgerStore(db),
+    trainingStore: makeD1TrainingAuthorityStore(db),
+  })
+}
+
+const buildGeneratedActivityReplayBundleForRequest = async (
+  request: Request,
+  env: Parameters<typeof openAgentsDatabase>[0],
+  deps: Deps,
+  generatedAt: string,
+): Promise<ProofReplayBundle> => {
+  const url = new URL(request.url)
+  if (!url.searchParams.has('from') || !url.searchParams.has('to')) {
+    throw new PublicProofReplayRequestError(400, {
+      error: 'generated_replay_requires_bounded_range',
+      required: ['from', 'to'],
+    })
+  }
+  const parsedQuery = publicActivityTimelineQueryFromUrl(url)
+  if (parsedQuery instanceof Response) {
+    throw new PublicProofReplayRequestError(parsedQuery.status, {
+      error: 'invalid_activity_timeline_query',
+    })
+  }
+
+  const filters = generatedActivityReplayFiltersFromUrl(url)
+  const envelope = await buildActivityTimelineEnvelopeForReplay({
+    deps,
+    env,
+    generatedAt,
+    query: parsedQuery,
+    request,
+  })
+  const filteredEnvelope: PublicActivityTimelineEnvelope = {
+    ...envelope,
+    events: envelope.events.filter(event =>
+      generatedActivityReplayFilterMatches(event, filters),
+    ),
+  }
+  const sharedBundle: SharedProofReplayBundle =
+    buildProofReplayBundleFromPublicActivityTimeline(filteredEnvelope, {
+      bundleRef: `proof_replay_bundle.public_activity.${stableHash(
+        JSON.stringify({
+          filters,
+          from: parsedQuery.from,
+          kind: parsedQuery.filterKinds,
+          nextCursor: filteredEnvelope.nextCursor,
+          since: parsedQuery.since,
+          to: parsedQuery.to,
+        }),
+      )}`,
+      generatedAt,
+      origin: url.origin,
+      sourceAuthority: 'worker_d1_public',
+      title: 'Generated Public Activity Replay',
+    })
+  const manifest = generatedActivityReplayManifest({
+    envelope: filteredEnvelope,
+    filters,
+    request,
+    timelineQuery: parsedQuery,
+  })
+  const sourceRefs = [
+    ...sharedBundle.sourceRefs,
+    sourceRecord(routeUrlWithQuery(request), generatedAt),
+  ]
+  const bundle = {
+    ...sharedBundle,
+    generatedFrom: manifest,
+    socialDisplayTime: 'Generated from public activity timeline',
+    sourceAuthority: 'worker_d1_public',
+    sourceRefs,
+    staleness: filteredEnvelope.staleness,
+  } as unknown as ProofReplayBundle
+
+  assertPublicSafe(bundle)
+  return bundle
 }
 
 const isLaunchRecognitionReplayRequest = (
@@ -1385,6 +1634,15 @@ export const buildPublicProofReplayBundleForRequest = async (
   deps: Deps = {},
 ): Promise<ProofReplayBundle> => {
   const generatedAt = (deps.now ?? currentIsoTimestamp)()
+  if (isGeneratedActivityReplayRequest(request)) {
+    return buildGeneratedActivityReplayBundleForRequest(
+      request,
+      env,
+      deps,
+      generatedAt,
+    )
+  }
+
   const requestedRefs = requestedRefsFor(request)
   if (isLaunchRecognitionReplayRequest(requestedRefs)) {
     return buildLaunchRecognitionReplayBundle({
@@ -1428,6 +1686,13 @@ export const handlePublicProofReplayBundleRequest = async (
     return publicProofReplayMethodNotAllowedResponse()
   }
 
-  const bundle = await buildPublicProofReplayBundleForRequest(request, env, deps)
-  return publicProofReplayJsonResponse(bundle)
+  try {
+    const bundle = await buildPublicProofReplayBundleForRequest(request, env, deps)
+    return publicProofReplayJsonResponse(bundle)
+  } catch (error) {
+    if (error instanceof PublicProofReplayRequestError) {
+      return publicProofReplayJsonResponse(error.payload, { status: error.status })
+    }
+    throw error
+  }
 }

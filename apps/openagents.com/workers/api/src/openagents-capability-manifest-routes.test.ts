@@ -194,9 +194,9 @@ describe('OpenAgents capability manifest route', () => {
         }),
         expect.objectContaining({
           auth: 'public',
-          href: 'https://openagents.com/api/public/proof-replays?ref={replayRef}',
+          href: 'https://openagents.com/api/public/proof-replays?ref={replayRef}&mode=activity-timeline&from={fromIso}&to={toIso}',
           id: 'public_proof_replays',
-          description: expect.stringContaining('evidence presentations only'),
+          description: expect.stringContaining('bounded generated public-activity timeline replays'),
         }),
         expect.objectContaining({
           auth: 'public',

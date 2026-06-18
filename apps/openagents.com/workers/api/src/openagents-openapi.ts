@@ -442,7 +442,7 @@ const schemaComponents = (): JsonSchema => ({
     },
   },
   PublicProofReplayBundle: objectSummary(
-    'Public-safe proof replay bundle (`proof_replay_bundle.v1`) for deterministic 3D replay rendering. Carries generatedAt, a declared live_at_read staleness contract with maxStalenessSeconds 0, source refs, public authority metadata, actors, stages, replay events, flows, camera cues, captions, and explicit gaps. Confirmed payment-zap events require receipt-first real-bitcoin evidence such as realBitcoinMoved:true; simulation, pending, blocked, deferred, and failed-closed rows stay separate non-payment events. Raw wallet material, invoices, payment hashes/preimages, prompts, logs, provider payloads, service tokens, and operator-only notes are excluded. Read-only; grants no proof, settlement, payout, wallet, product-promise, or spend authority.',
+    'Public-safe proof replay bundle (`proof_replay_bundle.v1`) for deterministic 3D replay rendering. Carries generatedAt, a declared live_at_read staleness contract with maxStalenessSeconds 0, source refs, public authority metadata, actors, stages, replay events, flows, camera cues, captions, explicit gaps, and for generated activity replays a generatedFrom manifest recording the bounded input range and filters. Confirmed payment-zap events require receipt-first real-bitcoin evidence such as realBitcoinMoved:true; simulation, pending, blocked, deferred, and failed-closed rows stay separate non-payment events. Raw wallet material, invoices, payment hashes/preimages, prompts, logs, provider payloads, service tokens, and operator-only notes are excluded. Read-only; grants no proof, settlement, payout, wallet, product-promise, or spend authority.',
   ),
   TrainingRunListEnvelope: objectSummary(
     'Public-safe training-run index with active/recent run projections and provenance-labeled summaries, including A1 real-gradient loss/leaderboard status when evidence exists, the providerConfirmedSettledPayoutSats settlement metric, and the Tassadar verified-trace corpus block (acceptedTraceCount of accepted Verified exact_trace_replay closed ticks with public-safe trace/verdict refs and a live-at-read staleness contract, rebuilding on verification-challenge transitions). Empty runs stay visible as idle instead of being hidden.',
@@ -3948,7 +3948,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getPublicProofReplayBundle',
       summary: 'Read public proof replay bundle',
       description:
-        'Builds a deterministic public-safe proof_replay_bundle.v1 payload from explicit proof, run, pylon, receipt, settlement, recognition, or forum refs. The resolver currently supports the first real Tassadar settlement bundle and the June 17 launch-recognition payment replay (`ref=launch-recognition-payments`). It preserves receipt/confirmation-first payment classification: confirmed zaps require public real-bitcoin or recipient-confirmation evidence, while simulation, blocked, pending, timeout, and failed-closed rows render as non-payment replay events.',
+        'Builds a deterministic public-safe proof_replay_bundle.v1 payload from explicit proof, run, pylon, receipt, settlement, recognition, or forum refs. The resolver supports the first real Tassadar settlement bundle, the June 17 launch-recognition payment replay (`ref=launch-recognition-payments`), and generated activity timeline replays via `mode=activity-timeline` with required `from` and `to` bounds plus optional `runRef`, `windowRef`, `actorRef`, `kind`, `source`, `since`, and `limit` filters. Generated responses include a generatedFrom manifest with the exact input range/filter and source-lag state. It preserves receipt/confirmation-first payment classification: confirmed zaps require public real-bitcoin or recipient-confirmation evidence, while simulation, blocked, pending, timeout, and failed-closed rows render as non-payment replay events.',
       tags: ['Training'],
       security: publicRead,
       parameters: [
@@ -3956,6 +3956,16 @@ const paths = (): JsonSchema => ({
         queryParam('ref', 'Repeated public replay source ref.'),
         queryParam('receiptRef', 'Settlement receipt ref.'),
         queryParam('run', 'Training run ref override.'),
+        queryParam('mode', '`activity-timeline` to generate a replay from the public activity timeline.'),
+        queryParam('from', 'Generated activity replay inclusive ISO lower bound (required with mode=activity-timeline).'),
+        queryParam('to', 'Generated activity replay inclusive ISO upper bound (required with mode=activity-timeline).'),
+        queryParam('runRef', 'Generated activity replay training run ref filter.'),
+        queryParam('windowRef', 'Generated activity replay training window ref filter.'),
+        queryParam('actorRef', 'Generated activity replay actor ref filter.'),
+        queryParam('kind', 'Generated activity replay event-kind filter; repeat or comma-separate.'),
+        queryParam('source', 'Generated activity replay source-kind filter; repeat or comma-separate.'),
+        queryParam('since', 'Generated activity replay cursor resume bound.'),
+        queryParam('limit', 'Generated activity replay page limit.'),
       ],
       responses: {
         '200': okJson(

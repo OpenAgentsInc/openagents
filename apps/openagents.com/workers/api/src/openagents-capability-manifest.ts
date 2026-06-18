@@ -336,11 +336,11 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
       },
       {
         id: 'public_proof_replays',
-        href: 'https://openagents.com/api/public/proof-replays?ref={replayRef}',
+        href: 'https://openagents.com/api/public/proof-replays?ref={replayRef}&mode=activity-timeline&from={fromIso}&to={toIso}',
         method: 'GET',
         auth: 'public',
         description:
-          'Public-safe proof replay bundle endpoint for named replay refs. Bundles are evidence presentations only; they do not validate proofs, move sats, settle payouts, or promote product claims.',
+          'Public-safe proof replay bundle endpoint for named replay refs and bounded generated public-activity timeline replays. Generated bundles record input range/filter/source-lag metadata and remain evidence presentations only; they do not validate proofs, move sats, settle payouts, or promote product claims.',
       },
       {
         id: 'omni_api_sdk_seed',

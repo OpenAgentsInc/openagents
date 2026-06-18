@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  publicActivityTimelineCursorForEvent,
+  type PublicActivityTimelineEnvelope,
+  type PublicActivityTimelineEvent,
+} from '@openagentsinc/public-activity-timeline'
+import type { PublicActivityTimelineQuery } from './public-activity-timeline'
+import {
   FIRST_REAL_SETTLEMENT_CHALLENGE_REF,
   FIRST_REAL_SETTLEMENT_RECEIPT_REF,
   LAUNCH_RECOGNITION_BUNDLE_SLUG,
@@ -195,6 +201,128 @@ const eventByKind = (
   return event
 }
 
+const timelineEvent = (
+  input: Omit<PublicActivityTimelineEvent, 'cursor'>,
+): PublicActivityTimelineEvent => {
+  const event = {
+    ...input,
+    blockerRefs: [...input.blockerRefs],
+    caveatRefs: [...input.caveatRefs],
+    refs: [...input.refs],
+    sourceRefs: [...input.sourceRefs],
+  }
+  return {
+    ...event,
+    cursor: publicActivityTimelineCursorForEvent(event),
+  }
+}
+
+const generatedReplayTimelineEnvelope = (
+  query: PublicActivityTimelineQuery,
+): PublicActivityTimelineEnvelope => {
+  const allEvents = [
+    timelineEvent({
+      actorRef: contributorRef,
+      amountSats: 1_000,
+      blockerRefs: [],
+      caveatRefs: [],
+      eventRef: 'event.public.real_bitcoin_moved.generated.1',
+      kind: 'real_bitcoin_moved',
+      realBitcoinMoved: true,
+      refs: [FIRST_REAL_SETTLEMENT_RECEIPT_REF, runRef, windowRef],
+      runRef,
+      sourceKind: 'settlement_receipt',
+      sourceRefs: [
+        FIRST_REAL_SETTLEMENT_RECEIPT_REF,
+        `https://openagents.com/api/public/nexus-pylon/receipts/${FIRST_REAL_SETTLEMENT_RECEIPT_REF}`,
+      ],
+      state: 'matched',
+      targetRef: contributorRef,
+      text: 'Receipt-backed real Bitcoin movement confirmed.',
+      ts: '2026-06-18T12:00:00.000Z',
+      windowRef,
+    }),
+    timelineEvent({
+      actorRef: 'pylon.other',
+      blockerRefs: [],
+      caveatRefs: ['caveat.public.activity_timeline.forum_body_text_omitted'],
+      eventRef: 'event.public.forum_post.generated.1',
+      kind: 'forum_posted',
+      refs: ['forum.topic.generated'],
+      sourceKind: 'forum',
+      sourceRefs: ['forum.post.generated.1'],
+      state: 'visible',
+      targetRef: 'forum.post.generated.1',
+      text: 'Public Forum post created.',
+      ts: '2026-06-18T12:01:00.000Z',
+    }),
+    timelineEvent({
+      blockerRefs: ['blocker.public.activity_timeline.capacity_store_missing'],
+      caveatRefs: ['caveat.public.activity_timeline.projection_gap_no_guessing'],
+      eventRef: 'event.public.projection_gap.capacity.generated',
+      kind: 'projection_gap',
+      refs: ['source.capacity_funnel'],
+      sourceKind: 'projection_gap',
+      sourceRefs: [],
+      text: 'Capacity source unavailable at read time.',
+      ts: '2026-06-18T12:02:00.000Z',
+    }),
+  ]
+  const kindFilter = new Set(query.filterKinds)
+  const sourceFilter = new Set(query.filterSources)
+  const events = allEvents.filter(event => {
+    if (query.from !== undefined && event.ts < query.from) return false
+    if (query.to !== undefined && event.ts > query.to) return false
+    if (kindFilter.size > 0 && !kindFilter.has(event.kind)) return false
+    if (sourceFilter.size > 0 && !sourceFilter.has(event.sourceKind)) return false
+    return true
+  })
+
+  return {
+    events,
+    generatedAt: '2026-06-18T12:03:00.000Z',
+    nextCursor: null,
+    range: {
+      filterKinds: [...query.filterKinds],
+      from: query.from ?? '0000-01-01T00:00:00.000Z',
+      limit: query.limit,
+      since: query.since ?? null,
+      to: query.to ?? '2026-06-18T12:03:00.000Z',
+    },
+    schemaVersion: 'openagents.public_activity_timeline.v1',
+    sourceLag: [
+      {
+        blockerRefs: [],
+        caveatRefs: [],
+        lagSeconds: 0,
+        latestSourceEventAt: '2026-06-18T12:00:00.000Z',
+        maxStalenessSeconds: 0,
+        observedAt: '2026-06-18T12:03:00.000Z',
+        sourceKind: 'settlement_receipt',
+        sourceRefs: [FIRST_REAL_SETTLEMENT_RECEIPT_REF],
+        status: 'current',
+      },
+      {
+        blockerRefs: ['blocker.public.activity_timeline.capacity_store_missing'],
+        caveatRefs: ['caveat.public.activity_timeline.projection_gap_no_guessing'],
+        lagSeconds: null,
+        latestSourceEventAt: null,
+        maxStalenessSeconds: 3600,
+        observedAt: '2026-06-18T12:03:00.000Z',
+        sourceKind: 'capacity_funnel',
+        sourceRefs: [],
+        status: 'unavailable',
+      },
+    ],
+    staleness: {
+      composition: 'live_at_read',
+      contractVersion: 'projection_staleness.v1',
+      maxStalenessSeconds: 0,
+      rebuildsOn: ['public_activity_timeline_read'],
+    },
+  }
+}
+
 describe('public proof replay bundle resolver (#5298)', () => {
   it('allows desktop webview embeds on proof replay JSON responses', async () => {
     const response = await handlePublicProofReplayBundleRequest(
@@ -301,6 +429,84 @@ describe('public proof replay bundle resolver (#5298)', () => {
     expect(bundle.captions.every(caption => caption.sourceRefs.length > 0)).toBe(
       true,
     )
+  })
+
+  it('generates a public replay bundle from a bounded activity timeline range', async () => {
+    const seenQueries: PublicActivityTimelineQuery[] = []
+    const bundle = await buildPublicProofReplayBundleForRequest(
+      req(
+        `https://openagents.com/api/public/proof-replays?mode=activity-timeline&from=2026-06-18T12:00:00.000Z&to=2026-06-18T12:05:00.000Z&runRef=${runRef}&windowRef=${windowRef}&actorRef=${contributorRef}&kind=real_bitcoin_moved&limit=10`,
+      ),
+      {} as never,
+      {
+        buildActivityTimelineEnvelope: async query => {
+          seenQueries.push(query)
+          return generatedReplayTimelineEnvelope(query)
+        },
+        now: () => '2026-06-18T12:03:00.000Z',
+      },
+    )
+    const generatedFrom = (bundle as unknown as {
+      generatedFrom: {
+        input: {
+          actorRefs: string[]
+          filterKinds: string[]
+          from: string
+          limit: number
+          runRefs: string[]
+          to: string
+          windowRefs: string[]
+        }
+        source: { route: string; url: string }
+      }
+    }).generatedFrom
+
+    expect(seenQueries[0]).toEqual(
+      expect.objectContaining({
+        filterKinds: ['real_bitcoin_moved'],
+        from: '2026-06-18T12:00:00.000Z',
+        limit: 10,
+        to: '2026-06-18T12:05:00.000Z',
+      }),
+    )
+    expect(bundle.schemaVersion).toBe(ProofReplayBundleSchemaVersion)
+    expect(bundle.title).toBe('Generated Public Activity Replay')
+    expect(bundle.sourceAuthority).toBe('worker_d1_public')
+    expect(bundle.events.map(event => event.kind)).toEqual([
+      'payment_zap_confirmed',
+    ])
+    expect(bundle.events[0]?.sourceRefs).toContain(FIRST_REAL_SETTLEMENT_RECEIPT_REF)
+    expect(bundle.flows[0]?.sourceRefs).toContain(FIRST_REAL_SETTLEMENT_RECEIPT_REF)
+    expect(bundle.gaps.map(gap => gap.gapRef)).toContain(
+      'gap.source_lag.1.capacity_funnel',
+    )
+    expect(bundle.sourceRefs.map(ref => ref.ref)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('/api/public/activity-timeline'),
+      ]),
+    )
+    expect(generatedFrom.input.runRefs).toEqual([runRef])
+    expect(generatedFrom.input.windowRefs).toEqual([windowRef])
+    expect(generatedFrom.input.actorRefs).toEqual([contributorRef])
+    expect(generatedFrom.input.filterKinds).toEqual(['real_bitcoin_moved'])
+    expect(generatedFrom.source.route).toBe('/api/public/activity-timeline')
+  })
+
+  it('rejects generated activity replay requests without a bounded range', async () => {
+    const response = await handlePublicProofReplayBundleRequest(
+      req('https://openagents.com/api/public/proof-replays?mode=activity-timeline'),
+      {} as never,
+      {
+        buildActivityTimelineEnvelope: async query =>
+          generatedReplayTimelineEnvelope(query),
+        now: () => '2026-06-18T12:03:00.000Z',
+      },
+    )
+    const body = await response.json() as { error?: string; required?: string[] }
+
+    expect(response.status).toBe(400)
+    expect(body.error).toBe('generated_replay_requires_bounded_range')
+    expect(body.required).toEqual(['from', 'to'])
   })
 
   it('rejects private payment/operator material before returning a bundle', () => {
