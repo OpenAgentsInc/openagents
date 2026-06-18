@@ -919,3 +919,78 @@ Docs in this folder (the paradigm anchor):
 `2026-06-15-executor-trace-contributor-completion-design.md`,
 `2026-06-16-verified-work-payment-economics.md`; and
 `docs/research/machine-studying/` (StudyBench audit + studying roadmap).
+
+---
+
+## 6. Roadmap: building the system (issue index)
+
+The §3-§4 gap, the §4b edge-variance engine, and the §4c studying track are
+filed as a sequenced set of GitHub issues in `OpenAgentsInc/openagents`,
+grouped by track and tied back to the sections above. `openagents` owns
+execution / replay validation / settlement / projection / the labor market /
+the studying surfaces; the construction pipeline is implemented in the sibling
+**`psionic`** repo (those issues are tracked/coordinated here, marked
+`[psionic]`). Sequence: **S → C/V/E interleaved → H** (gradients enter only in
+H).
+
+- **EPIC #5313** — Build the Tassadar LLM-computer system (programs→weights,
+  edge variance, studying). Overview + the full sequenced checklist below.
+
+### Track S — Studying → Autopilot-coder (start here; §4c)
+
+- **#5314 — S1** Repo-knowledge substrate v1: study-packet ingest over the
+  `openagents` repo (current code + commit history + rationale + cross-links),
+  building on the #5284 repo-corpus manifest/entry/evidence-span primitives.
+- **#5315 — S2** Studied-knowledge graph: cross-link
+  code↔commit↔doc↔issue↔rationale↔invariant (incl. `backroom/` rejected
+  lineage) into a traversable graph.
+- **#5316 — S3** Studied-knowledge verification model: derived-trace replay
+  over link/span claims — closes the §4b/§4c data-correctness gap (the
+  data-trace gate has no correctness verdict today).
+- **#5317 — S4** StudyBench eval harness over `openagents`: hidden-edit exams +
+  retained-failure fixtures scoring studying completeness, wiring the shipped
+  StudyBench contracts.
+- **#5318 — S5** Autopilot-coder consumes studied knowledge: integrate the
+  substrate into the coding-agent context/plan path (Probe runtime / Autopilot
+  Coder plans / Forge cockpit) — the product payoff.
+- **#5319 — S6** Edge-agent studying contributions as paid work: Artanis tasks
+  agents to produce/verify study packets via the live labor market + escrow.
+- **#5320 — S7** Generalize studying to external repos (studying-roadmap Phase
+  6 customer product) — later.
+
+### Track C — LLM-computer construction substrate (§2-§4; psionic-heavy)
+
+- **#5321 — C1** Run work-unit = real compiled-program corpus (distinct
+  CALM/Wasm programs), not the single `loop_sum_v1` fixture — top-5 #1.
+- **#5322 — C2** Complete psionic E4 MILP scheduler (gate-graph→layer/phase
+  assignment). `[psionic]`
+- **#5323 — C3** Dense, loadable, digest-pinned weight-module materialization
+  (psionic W1.2) + wire one as a run artifact — top-5 #2. `[psionic + openagents]`
+- **#5324 — C4** Softmax-approximation bounds (psionic W1.4) + Wasm window
+  ladder (W1.1) to grow corpus diversity. `[psionic]`
+- **#5325 — C5** Module composition/linking (`tassadar_module_linker`) + the
+  compiled-weight-module marketplace listing — top-5 #3. `[psionic + openagents]`
+
+### Track V — Verification + settlement extensions (§3-§4, §4b)
+
+- **#5326 — V1** Extend exact-replay verification + settlement to PAY for
+  construction (a verified compiled-module contribution), not just one fixed
+  replay — top-5 #4.
+- **#5327 — V2** Module-composition verification (a linked module verified as a
+  composition of verified parts).
+- **#5328 — V3** Data-contribution correctness-verification model (provenance +
+  derived-trace replay + validator review) atop the data-trace marketplace gate.
+
+### Track E — Edge-agent variance engine (§4b)
+
+- **#5329 — E1** Artanis construction/data work-request directions (program
+  authorship, dataset curation, data-direction proposals) via the live labor
+  market.
+- **#5330 — E2** Demand-priced curation + module-library ranking/dedup.
+- **#5331 — E3** Adversarial-verification market: agents paid to find
+  module-divergence inputs.
+
+### Track H — Hybrid ring (later; gradients enter ONLY here; §2d, §4 item 5)
+
+- **#5332 — H1** Frozen compiled core + learned interface: gradient windows
+  under quarantine/canary/promotion (the subordinate hybrid ring). `[psionic + openagents]`
