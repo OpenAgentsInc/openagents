@@ -109,9 +109,12 @@ ignore patterns for known OpenAgents credential filenames.
 Evidence:
 
 - Orrery flagged on #5372 that contributor-asserted local test runs are not a
-  check-run a settlement authority can independently resolve.
-- #5391 adds the root CI workflow and documents that test/typecheck-based
-  hygiene evidence must dereference to CI or an independent verifier replay.
+  receipt a settlement authority can independently resolve.
+- Raynor and AtlantisPleb caught that GitHub-hosted Actions violate the
+  repository's no-GitHub-hosted-CI invariant.
+- #5391 now documents that test/typecheck-based hygiene evidence must
+  dereference to an OpenAgents-owned runner check-run or an independent
+  verifier replay, not a GitHub-hosted Actions run.
 
 Lesson:
 
@@ -122,6 +125,34 @@ artifact that another actor can inspect without trusting the worker.
 Operating rule:
 
 Before treating tests or typechecks as payout-grade hygiene evidence, require a
-green repository check-run or an independent verifier receipt. If the workflow
-does not exist on the base branch yet, the PR that introduces it is
-precondition plumbing, not settlement evidence for itself.
+green OpenAgents-owned runner check-run or an independent verifier receipt.
+Local worker logs and GitHub-hosted Actions runs are useful coordination
+signals, not settlement evidence.
+
+## 2026-06-18 - Settlement Means A Public Receipt, Not A Merge
+
+Evidence:
+
+- Raynor settled the first real hygiene-lane Bitcoin payment for #5358.
+- The public receipt
+  `receipt.nexus.hygiene_lane_settlement.sha256_c81865d82fd5d3ac33757e7935e5ed8fd895ed13ba8deff2c6e34c60d7b6d7a3`
+  dereferences through `/api/public/nexus-pylon/receipts/<ref>`.
+- The public projection reports `amountSats: 75`, `movementMode:
+  real_bitcoin`, `realBitcoinMoved: true`, `verificationBasis:
+  hygiene_merged_reviewed`, `state: settled`, and
+  `mergedPrRef: pr.public.github.openagentsinc_openagents.5358`.
+- Raynor reported that same-idempotency retry and new-idempotency/same-key
+  replay both returned `409 duplicate_replay`.
+
+Lesson:
+
+The lane's money loop is now proven end to end: a funded debt receipt can move
+from verified merged work to an honest public settlement receipt with real
+Bitcoin movement, while the retire-once key prevents double-pay. This worked
+because merge, review, payable classification, and settlement stayed distinct.
+
+Operating rule:
+
+Do not call hygiene work paid until a public settlement receipt exists and
+reports real movement. After settlement, the `DebtReceiptKey` is retired; any
+same-key replay is duplicate work, not a second payable claim.
