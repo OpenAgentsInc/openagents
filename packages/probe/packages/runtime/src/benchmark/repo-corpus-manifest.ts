@@ -89,6 +89,7 @@ const DEFAULT_EXCLUDED_PATH_PATTERNS = [
   "*.tmp",
   "*.zip",
   "public-unsafe-name/",
+  "*.study-artifact-index.json",
 ] as const;
 
 const DEFAULT_SOURCE_AUTHORITY_REFS = ["authority.openagents.repo_corpus.public_source"];
@@ -401,7 +402,8 @@ function pathIsExcluded(path: string): boolean {
     lower.endsWith(".tar") ||
     lower.endsWith(".tgz") ||
     lower.endsWith(".tmp") ||
-    lower.endsWith(".zip")
+    lower.endsWith(".zip") ||
+    lower.endsWith(".study-artifact-index.json")
   );
 }
 

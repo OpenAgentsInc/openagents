@@ -1,0 +1,31 @@
+{
+  "acceptedClaimCount": 191,
+  "commit": "d2ccc8064edd40b532fcaa456bc89b6cbbcb7dc3",
+  "commitHistoryLimit": 200,
+  "corpusEntryCount": 133,
+  "corpusManifestHash": "sha256:5acead9c68d3057db03ccdd8eb5713ad93f873b9c66637c326ac07b9ca9f4223",
+  "corpusManifestRef": "openagents_repo_corpus_manifest.5acead9c68d3057d",
+  "correctnessGatePassed": true,
+  "edgeCount": 179,
+  "evalLift": {
+    "firstDivergenceStepLift": 4,
+    "passRateLiftBps": 10000,
+    "rubricScoreLiftBps": 10000
+  },
+  "evalReportHash": "sha256:5b318a3bed47c15041eed0b311470e7e7c48420b866dd6fb5f10e05dad7e6343",
+  "evalReportRef": "openagents_studybench_eval_harness.5b318a3bed47c150",
+  "evidenceSpanCount": 12,
+  "graphHash": "sha256:ed78d55d3b82256d09aeaaf49201a97a79bdf26ae22b23f6cc3220d884510e22",
+  "graphRef": "openagents_repo_studied_knowledge_graph.ed78d55d3b82256d",
+  "indexHash": "sha256:0a45faea6b6dc258863824f3b449dfce8e1ad85b48b2131515f1b26a5836fa16",
+  "indexRef": "openagents_repo_study_artifact_index.0a45faea6b6dc258",
+  "nodeCount": 323,
+  "packetHash": "sha256:c1380451555450700c6d3f3e54263be79bc6ab80a7c8baad3762057596d0c987",
+  "packetRef": "openagents_repo_study_packet.c138045155545070",
+  "rejectedClaimCount": 0,
+  "repo": "OpenAgentsInc/openagents",
+  "schemaRef": "openagents.repo_study_artifact_index.v0",
+  "sourceBoundary": "public_refs_only",
+  "verificationHash": "sha256:657a150aa6f7d35934ade9fdfb9965e9ef681818ea820e5b6c81c3072400051c",
+  "verificationRef": "openagents_repo_studied_knowledge_verification.657a150aa6f7d359"
+}
