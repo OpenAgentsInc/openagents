@@ -85,7 +85,7 @@ type TassadarTraceContributionRouteDependencies<Bindings> = Readonly<{
       lease: TrainingWindowLeaseRecord
       validatorContributorRef: string
     }>,
-  ) => Promise<void>
+  ) => Effect.Effect<void>
   // Resolves the owning agent user id for a Pylon ref (the lease pylon_ref).
   // Wired in index.ts to the Pylon registry; the lease ownership check compares
   // it against the authenticated session's user id.
@@ -433,14 +433,10 @@ const routeReplayVerdict = <Bindings extends TassadarTraceContributionRouteEnv>(
       challenge.state === 'Verified' &&
       challenge.verificationClass === 'exact_trace_replay'
     ) {
-      yield* Effect.tryPromise({
-        catch: () => undefined,
-        try: () =>
-          onVerifiedPair(env, {
-            challenge,
-            lease,
-            validatorContributorRef: body.validatorDeviceRef,
-          }),
+      yield* onVerifiedPair(env, {
+        challenge,
+        lease,
+        validatorContributorRef: body.validatorDeviceRef,
       }).pipe(Effect.catch(() => Effect.void))
     }
 

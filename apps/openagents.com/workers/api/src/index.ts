@@ -7000,20 +7000,20 @@ const tassadarTraceContributionRoutes =
     // OPENAGENTS_REAL_SETTLEMENT_GATE — every leg resolves to skip while the
     // gate is OFF (the default everywhere). FAIL-SOFT: the verdict route wraps
     // this in catchAll so a blocked/failed settlement never breaks the verdict.
-    onVerifiedExactTraceReplayPair: async (env, input) => {
-      const db = openAgentsDatabase(env)
-      const ledger = makeD1NexusTreasuryPayoutLedgerStore(db)
-      const sparkTargetStore = makeD1PylonSparkPayoutTargetStore(db)
-      const run = await makeD1TrainingAuthorityStore(db).readRun(
-        input.lease.trainingRunRef,
-      )
+    onVerifiedExactTraceReplayPair: (env, input) =>
+      Effect.gen(function* () {
+        const db = openAgentsDatabase(env)
+        const ledger = makeD1NexusTreasuryPayoutLedgerStore(db)
+        const sparkTargetStore = makeD1PylonSparkPayoutTargetStore(db)
+        const run = yield* Effect.promise(() =>
+          makeD1TrainingAuthorityStore(db).readRun(input.lease.trainingRunRef),
+        )
 
-      if (run === undefined) {
-        return
-      }
+        if (run === undefined) {
+          return
+        }
 
-      await Effect.runPromise(
-        autoSettleVerifiedPair<WorkerBindings>(
+        yield* autoSettleVerifiedPair<WorkerBindings>(
           {
             dispatchRealSettlement: dispatchInput =>
               dispatchRealRunSettlementCore<WorkerBindings>(
@@ -7067,9 +7067,8 @@ const tassadarTraceContributionRoutes =
             lease: input.lease,
             validatorContributorRef: input.validatorContributorRef,
           },
-        ),
-      )
-    },
+        )
+      }),
     resolvePylonOwnerUserId: async (env, pylonRef) => {
       const registration = await makeD1PylonApiStore(
         openAgentsDatabase(env),
