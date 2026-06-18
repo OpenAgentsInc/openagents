@@ -611,6 +611,13 @@ This is the invariant ledger for `openagents`.
   that pass schema validation, the per-tick labor budget gate, and the seeded
   balance ceiling. Delivered Artanis-requested work releases escrow only on a
   passing validator re-execution; failing validator verdicts refund escrow.
+- Artanis studying contribution requests are data-direction labor, not compiled
+  module construction or settled-bitcoin evidence. Requests and deliveries carry
+  study-packet, graph, contribution, and S3 verification refs only; delivered
+  work may reach `accepted`/`settled` in the Forum work-request lifecycle only
+  after the S3 studied-knowledge correctness report passes. Rejected or
+  validator-review-required S3 verdicts must refund escrow and must not record
+  accepted or settled lifecycle states.
 - Release credits the provider balance and debits the requester held claim
   exactly once. Refund releases the hold without debiting the requester.
   Release-after-refund, refund-after-release, double-release, and
@@ -620,6 +627,7 @@ This is the invariant ledger for `openagents`.
   until the later payout path records settlement evidence.
 - Regression coverage for this policy lives in
   `workers/api/src/artanis-labor-requester.test.ts`,
+  `workers/api/src/artanis-studying-labor.test.ts`,
   `workers/api/src/forum-routes.test.ts`,
   `workers/api/src/labor-live-rehearsal.test.ts`,
   `workers/api/src/labor-escrow.test.ts`,
