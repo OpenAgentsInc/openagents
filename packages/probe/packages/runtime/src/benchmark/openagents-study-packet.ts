@@ -121,6 +121,7 @@ const DEFAULT_EVIDENCE_SPAN_PATHS = [
   "packages/probe/packages/runtime/src/benchmark/openagents-study-graph.ts",
   "packages/probe/packages/runtime/src/benchmark/openagents-study-packet.ts",
   "packages/probe/packages/runtime/src/benchmark/openagents-study-verification.ts",
+  "packages/probe/packages/runtime/src/benchmark/openagents-studybench-eval-harness.ts",
   "packages/probe/packages/runtime/src/benchmark/repo-corpus-manifest.ts",
   "packages/probe/packages/runtime/src/benchmark/studybench.ts",
 ] as const;
@@ -343,6 +344,7 @@ function buildStudyPacketSections(manifest: OpenAgentsRepoCorpusManifest): Reado
         "packages/probe/packages/runtime/src/benchmark/openagents-study-graph.ts",
         "packages/probe/packages/runtime/src/benchmark/openagents-study-packet.ts",
         "packages/probe/packages/runtime/src/benchmark/openagents-study-verification.ts",
+        "packages/probe/packages/runtime/src/benchmark/openagents-studybench-eval-harness.ts",
         "packages/probe/packages/runtime/src/benchmark/studybench.ts",
         "packages/probe/packages/runtime/src/benchmark/repo-corpus-manifest.ts",
       ]),

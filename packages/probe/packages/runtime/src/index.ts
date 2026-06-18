@@ -20,6 +20,7 @@ export * from "./benchmark/fixtures";
 export * from "./benchmark/openagents-study-graph";
 export * from "./benchmark/openagents-study-packet";
 export * from "./benchmark/openagents-study-verification";
+export * from "./benchmark/openagents-studybench-eval-harness";
 export * from "./benchmark/repo-corpus-manifest";
 export * from "./benchmark/studybench";
 export * from "./benchmark/studybench-answer-runner";
