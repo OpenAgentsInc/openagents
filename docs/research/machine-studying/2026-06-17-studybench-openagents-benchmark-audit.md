@@ -88,6 +88,15 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   map, invariant map, forbidden-claim trap catalog, test catalog, launch-edit
   playbooks, and a glossary while excluding private validation and holdout
   material.
+- 2026-06-17: #5295 / MSB-MVP-13 complete. Forge Autopilot Coder now exposes
+  StudyBench/study-packet repository memory as refs-only Context snapshot
+  state: study-packet, corpus-manifest, dataset, public-retained score,
+  private-validation trend, holdout-evaluation, freshness, and blocked-claim
+  refs. The projection labels the lane internal dogfood, carries an
+  evidence-only authority boundary with no mutation authority, and omits
+  hidden rubrics, hidden gold answers, raw repo archives, private customer
+  source refs, local paths, raw commands, and credential-shaped material before
+  rendering.
 
 ## Short Answer
 

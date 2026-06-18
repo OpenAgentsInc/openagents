@@ -450,6 +450,16 @@ latest freshness and changed profile kinds in `/autopilot`, and invalidates
 profiles on dirty worktrees, changed instruction refs, missing dev-doctor
 evidence, missing profile evidence, or unsafe material.
 
+Implementation status, 2026-06-17: #5295 extends the same
+`ForgeRepositoryMemoryProfile` projection with OpenAgents StudyBench and study
+packet refs for Forge Autopilot Coder. The Context snapshot now carries
+study-packet, corpus-manifest, dataset, public-retained score, private
+validation trend, holdout evaluation, freshness, and blocked-claim refs while
+labeling the lane as internal dogfood with an evidence-only authority boundary
+and no mutation authority. The sanitizer omits hidden rubrics, hidden gold
+answers, raw repo archives, private customer source refs, local paths, raw
+commands, and credential-shaped material before the UI can render it.
+
 Implementation status, 2026-06-16: #5149 adds the live-adapter builder for
 bounded file/doc/diagnostic retrieval. It keeps the retrieval plan as the only
 UI-facing contract, requires explicit source and workspace-boundary refs,

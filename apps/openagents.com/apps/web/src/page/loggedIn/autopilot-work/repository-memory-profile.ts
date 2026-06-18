@@ -14,44 +14,67 @@ export type ForgeRepositoryMemoryProfileStatus =
   | 'stale'
   | 'unknown'
 
+export type ForgeRepositoryMemoryStudyPacketLane = 'internal_dogfood'
+export type ForgeRepositoryMemoryAuthorityBoundary = 'evidence_only'
+
 export type ForgeRepositoryMemoryProfileInput = Readonly<{
   blockerRefs?: ReadonlyArray<string>
+  blockedClaimRefs?: ReadonlyArray<string>
   changedProfileKinds?: ReadonlyArray<ForgeRepositoryProfileKind>
   commandProfileRefs?: ReadonlyArray<string>
+  corpusManifestRef?: string | null
   currentInstructionRefs?: ReadonlyArray<string>
+  datasetRefs?: ReadonlyArray<string>
   devDoctorRefs?: ReadonlyArray<string>
   dirtyState?: ForgeRepositoryMemoryDirtyState
   freshness?: ForgeRepositoryProfileFreshness
   generatedAt: string
+  holdoutEvaluationRef?: string | null
   instructionRefs?: ReadonlyArray<string>
   invariantRefs?: ReadonlyArray<string>
+  privateValidationTrendRef?: string | null
   profileRef: string
+  publicRetainedScoreRef?: string | null
   refreshedAt?: string | null
   refreshEvents?: ReadonlyArray<ForgeRepositoryProfileRefreshInput>
   refreshReceiptRefs?: ReadonlyArray<string>
   repoIdentityRefs?: ReadonlyArray<string>
+  studyPacketFreshness?: ForgeRepositoryProfileFreshness
+  studyPacketRef?: string | null
   testProfileRefs?: ReadonlyArray<string>
   workOrderRef: string
 }>
 
 export type ForgeRepositoryMemoryProfile = Readonly<{
+  authorityBoundary: ForgeRepositoryMemoryAuthorityBoundary
   blockerRefs: ReadonlyArray<string>
+  blockedClaimRefs: ReadonlyArray<string>
   changedProfileKinds: ReadonlyArray<ForgeRepositoryProfileKind>
   commandProfileRefs: ReadonlyArray<string>
+  corpusManifestRef: string | null
   currentInstructionRefs: ReadonlyArray<string>
+  datasetRefs: ReadonlyArray<string>
   devDoctorRefs: ReadonlyArray<string>
   dirtyState: ForgeRepositoryMemoryDirtyState
   freshness: ForgeRepositoryProfileFreshness
   generatedAt: string
+  holdoutEvaluationRef: string | null
   instructionRefs: ReadonlyArray<string>
   invariantRefs: ReadonlyArray<string>
+  laneLabel: ForgeRepositoryMemoryStudyPacketLane
+  mutationAuthority: false
   omittedUnsafeRefCount: number
+  privateValidationTrendRef: string | null
+  productPromiseState: ForgeRepositoryMemoryStudyPacketLane
   profileRef: string
+  publicRetainedScoreRef: string | null
   refreshedAt: string | null
   refreshReceiptRefs: ReadonlyArray<string>
   refreshReceipts: ReadonlyArray<ForgeRepositoryProfileRefreshReceipt>
   repoIdentityRefs: ReadonlyArray<string>
   status: ForgeRepositoryMemoryProfileStatus
+  studyPacketFreshness: ForgeRepositoryProfileFreshness
+  studyPacketRef: string | null
   testProfileRefs: ReadonlyArray<string>
   workOrderRef: string
 }>
@@ -61,13 +84,22 @@ type RefBundle = Readonly<{
   refs: ReadonlyArray<string>
 }>
 
+type OptionalRefBundle = Readonly<{
+  omittedUnsafeRefCount: number
+  ref: string | null
+}>
+
 const SAFE_PROFILE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const PRIVATE_PROFILE_MARKERS: ReadonlyArray<RegExp> = [
   /diff --git/i,
   /^@@/m,
   /^[-+](?![-+])/m,
   /raw[-_ ](?:patch|file|source|shell|command|prompt|log|transcript|test)/i,
+  /raw[-_ ](?:repo[-_ ]archive|archive|dataset[-_ ]row|rubric|gold[-_ ]answer)/i,
   /private[-_ ](?:repo|content|source|transcript|instructions?)/i,
+  /private[-_ ]customer[-_ ]source/i,
+  /hidden[-_ ](?:rubrics?|gold[-_ ]answers?|gold|answers?|rows?|datasets?)/i,
+  /\bgold_answer\b/i,
   /provider[-_ ]payload/i,
   /wallet|payment[-_ ](?:material|preimage|hash)/i,
   /(?:^|\s)\/Users\//,
@@ -90,7 +122,9 @@ const safeRef = (value: string): string | null => {
 }
 
 const safeRefs = (refs: ReadonlyArray<string> | undefined): RefBundle => {
-  const sanitized = (refs ?? []).reduce<Readonly<{ omitted: number; refs: string[] }>>(
+  const sanitized = (refs ?? []).reduce<
+    Readonly<{ omitted: number; refs: string[] }>
+  >(
     (state, ref) => {
       const safe = safeRef(ref)
 
@@ -105,6 +139,27 @@ const safeRefs = (refs: ReadonlyArray<string> | undefined): RefBundle => {
     omittedUnsafeRefCount: sanitized.omitted,
     refs: Array.from(new Set(sanitized.refs)),
   }
+}
+
+const safeOptionalRef = (ref: string | null | undefined): OptionalRefBundle => {
+  if (ref === undefined || ref === null) {
+    return {
+      omittedUnsafeRefCount: 0,
+      ref: null,
+    }
+  }
+
+  const safe = safeRef(ref)
+
+  return safe === null
+    ? {
+        omittedUnsafeRefCount: 1,
+        ref: null,
+      }
+    : {
+        omittedUnsafeRefCount: 0,
+        ref: safe,
+      }
 }
 
 const blockerRef = (profileRef: string, suffix: string): string =>
@@ -125,7 +180,9 @@ const freshnessFromRefresh = (
     return 'unknown'
   }
 
-  return Math.max(0, generated - refreshed) > 24 * 60 * 60_000 ? 'stale' : 'fresh'
+  return Math.max(0, generated - refreshed) > 24 * 60 * 60_000
+    ? 'stale'
+    : 'fresh'
 }
 
 const uniqueProfileKinds = (
@@ -156,11 +213,13 @@ const sortReceipts = (
       left.receiptRef.localeCompare(right.receiptRef),
   )
 
-const statusForProfile = (input: Readonly<{
-  blockingRefs: ReadonlyArray<string>
-  freshness: ForgeRepositoryProfileFreshness
-  staleRefs: ReadonlyArray<string>
-}>): ForgeRepositoryMemoryProfileStatus => {
+const statusForProfile = (
+  input: Readonly<{
+    blockingRefs: ReadonlyArray<string>
+    freshness: ForgeRepositoryProfileFreshness
+    staleRefs: ReadonlyArray<string>
+  }>,
+): ForgeRepositoryMemoryProfileStatus => {
   if (input.blockingRefs.length > 0) {
     return 'blocked'
   }
@@ -175,8 +234,10 @@ const statusForProfile = (input: Readonly<{
 export const projectForgeRepositoryMemoryProfile = (
   input: ForgeRepositoryMemoryProfileInput,
 ): ForgeRepositoryMemoryProfile => {
-  const safeWorkOrderRef = safeRef(input.workOrderRef) ?? 'unsafe-work-order-ref-omitted'
-  const safeProfileRef = safeRef(input.profileRef) ?? 'unsafe-profile-ref-omitted'
+  const safeWorkOrderRef =
+    safeRef(input.workOrderRef) ?? 'unsafe-work-order-ref-omitted'
+  const safeProfileRef =
+    safeRef(input.profileRef) ?? 'unsafe-profile-ref-omitted'
   const refreshedAt = input.refreshedAt ?? null
   const repoIdentityRefs = safeRefs(input.repoIdentityRefs)
   const commandProfileRefs = safeRefs(input.commandProfileRefs)
@@ -186,9 +247,20 @@ export const projectForgeRepositoryMemoryProfile = (
   const invariantRefs = safeRefs(input.invariantRefs)
   const devDoctorRefs = safeRefs(input.devDoctorRefs)
   const inputBlockerRefs = safeRefs(input.blockerRefs)
+  const blockedClaimRefs = safeRefs(input.blockedClaimRefs)
+  const datasetRefs = safeRefs(input.datasetRefs)
+  const studyPacketRef = safeOptionalRef(input.studyPacketRef)
+  const corpusManifestRef = safeOptionalRef(input.corpusManifestRef)
+  const publicRetainedScoreRef = safeOptionalRef(input.publicRetainedScoreRef)
+  const privateValidationTrendRef = safeOptionalRef(
+    input.privateValidationTrendRef,
+  )
+  const holdoutEvaluationRef = safeOptionalRef(input.holdoutEvaluationRef)
   const explicitRefreshReceiptRefs = safeRefs(input.refreshReceiptRefs)
   const refreshReceipts = sortReceipts(
-    (input.refreshEvents ?? []).map(projectForgeRepositoryProfileRefreshReceipt),
+    (input.refreshEvents ?? []).map(
+      projectForgeRepositoryProfileRefreshReceipt,
+    ),
   )
   const changedProfileKinds = uniqueProfileKinds(input.changedProfileKinds)
   const freshness =
@@ -221,6 +293,13 @@ export const projectForgeRepositoryMemoryProfile = (
     invariantRefs.omittedUnsafeRefCount +
     devDoctorRefs.omittedUnsafeRefCount +
     inputBlockerRefs.omittedUnsafeRefCount +
+    blockedClaimRefs.omittedUnsafeRefCount +
+    datasetRefs.omittedUnsafeRefCount +
+    studyPacketRef.omittedUnsafeRefCount +
+    corpusManifestRef.omittedUnsafeRefCount +
+    publicRetainedScoreRef.omittedUnsafeRefCount +
+    privateValidationTrendRef.omittedUnsafeRefCount +
+    holdoutEvaluationRef.omittedUnsafeRefCount +
     explicitRefreshReceiptRefs.omittedUnsafeRefCount +
     refreshReceiptOmittedUnsafeRefCount +
     unsafeProfileRefCount +
@@ -248,6 +327,9 @@ export const projectForgeRepositoryMemoryProfile = (
     ...(freshness === 'unknown'
       ? [blockerRef(safeProfileRef, 'unknown-profile-freshness')]
       : []),
+    ...(studyPacketRef.ref !== null && corpusManifestRef.ref === null
+      ? [blockerRef(safeProfileRef, 'missing-studybench-corpus-manifest-ref')]
+      : []),
     ...(omittedUnsafeRefCount === 0
       ? []
       : [blockerRef(safeProfileRef, 'unsafe-profile-material-omitted')]),
@@ -255,23 +337,35 @@ export const projectForgeRepositoryMemoryProfile = (
   const blockerRefs = Array.from(new Set([...blockingRefs, ...staleRefs]))
 
   return {
+    authorityBoundary: 'evidence_only',
     blockerRefs,
+    blockedClaimRefs: blockedClaimRefs.refs,
     changedProfileKinds,
     commandProfileRefs: commandProfileRefs.refs,
+    corpusManifestRef: corpusManifestRef.ref,
     currentInstructionRefs: currentInstructionRefs.refs,
+    datasetRefs: datasetRefs.refs,
     devDoctorRefs: devDoctorRefs.refs,
     dirtyState,
     freshness,
     generatedAt: input.generatedAt,
+    holdoutEvaluationRef: holdoutEvaluationRef.ref,
     instructionRefs: instructionRefs.refs,
     invariantRefs: invariantRefs.refs,
+    laneLabel: 'internal_dogfood',
+    mutationAuthority: false,
     omittedUnsafeRefCount,
+    privateValidationTrendRef: privateValidationTrendRef.ref,
+    productPromiseState: 'internal_dogfood',
     profileRef: safeProfileRef,
+    publicRetainedScoreRef: publicRetainedScoreRef.ref,
     refreshedAt,
     refreshReceiptRefs,
     refreshReceipts,
     repoIdentityRefs: repoIdentityRefs.refs,
     status: statusForProfile({ blockingRefs, freshness, staleRefs }),
+    studyPacketFreshness: input.studyPacketFreshness ?? freshness,
+    studyPacketRef: studyPacketRef.ref,
     testProfileRefs: testProfileRefs.refs,
     workOrderRef: safeWorkOrderRef,
   }

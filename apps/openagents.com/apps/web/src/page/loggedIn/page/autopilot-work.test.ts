@@ -5453,13 +5453,27 @@ describe('autopilot work detail view', () => {
                 identityRefs: ['repo.github.OpenAgentsInc.openagents'],
               },
               repositoryMemoryProfile: {
+                blockedClaimRefs: [
+                  'claim.openagents_studybench.blueprint_authority.c7',
+                ],
                 changedProfileKinds: ['command', 'test'],
                 commandProfileRefs: [
                   'profile.command.public.package_scripts.sha256_abcd',
                 ],
+                corpusManifestRef: 'corpus_manifest.openagents.repo.sha256_abcd',
+                datasetRefs: [
+                  'dataset.openagents.studybench.public_retained.v0',
+                  'hf://jacobli/studybench/dspy',
+                ],
                 generatedAt: '2026-06-16T18:00:00.000Z',
+                holdoutEvaluationRef:
+                  'evaluation.openagents_studybench.holdout.sha256_abcd',
                 instructionRefs: ['profile.instruction.public.AGENTS.sha256_abcd'],
+                privateValidationTrendRef:
+                  'trend.openagents_studybench.private_validation.sha256_abcd',
                 profileRef: 'repository-profile.public.openagents.main',
+                publicRetainedScoreRef:
+                  'score.openagents_studybench.public_retained.sha256_abcd',
                 refreshedAt: '2026-06-16T17:59:00.000Z',
                 refreshEvents: [
                   {
@@ -5473,6 +5487,8 @@ describe('autopilot work detail view', () => {
                     workOrderRef: 'work_1',
                   },
                 ],
+                studyPacketFreshness: 'fresh',
+                studyPacketRef: 'study_packet.openagents.launch.v0',
                 testProfileRefs: ['profile.test.public.vitest.sha256_abcd'],
               },
             },
@@ -5483,6 +5499,24 @@ describe('autopilot work detail view', () => {
 
     expect(rendered).toContain('Repository memory profile')
     expect(rendered).toContain('repository-profile.public.openagents.main')
+    expect(rendered).toContain('Study packet memory')
+    expect(rendered).toContain('Internal dogfood')
+    expect(rendered).toContain('evidence_only')
+    expect(rendered).toContain('no mutation authority')
+    expect(rendered).toContain('study_packet.openagents.launch.v0')
+    expect(rendered).toContain('corpus_manifest.openagents.repo.sha256_abcd')
+    expect(rendered).toContain('dataset.openagents.studybench.public_retained.v0')
+    expect(rendered).toContain('hf://jacobli/studybench/dspy')
+    expect(rendered).toContain(
+      'score.openagents_studybench.public_retained.sha256_abcd',
+    )
+    expect(rendered).toContain(
+      'trend.openagents_studybench.private_validation.sha256_abcd',
+    )
+    expect(rendered).toContain(
+      'evaluation.openagents_studybench.holdout.sha256_abcd',
+    )
+    expect(rendered).toContain('claim.openagents_studybench.blueprint_authority.c7')
     expect(rendered).toContain('Changed kinds')
     expect(rendered).toContain('command, test')
     expect(rendered).toContain('profile.command.public.package_scripts.sha256_abcd')
@@ -5509,16 +5543,31 @@ describe('autopilot work detail view', () => {
                 identityRefs: ['repo.github.OpenAgentsInc.openagents'],
               },
               repositoryMemoryProfile: {
+                blockedClaimRefs: [
+                  'claim.openagents_studybench.safe',
+                  'hidden_rubric.openagents_studybench.private_holdout.c1',
+                ],
                 commandProfileRefs: [
                   'profile.command.public.safe',
                   'raw command /Users/christopher/private.sh',
                 ],
+                corpusManifestRef: 'raw_repo_archive.openagents.tar',
+                datasetRefs: [
+                  'dataset.openagents.studybench.public_retained.v0',
+                  'gold_answer.private_holdout.row_1',
+                ],
                 generatedAt: '2026-06-16T18:00:00.000Z',
+                holdoutEvaluationRef:
+                  'hidden_gold_answer.private_holdout.row_1',
                 instructionRefs: [
                   'profile.instruction.public.safe',
                   'raw prompt /Users/christopher/private.md',
                 ],
+                privateValidationTrendRef:
+                  'private_customer_source.repo_a.file_1',
                 profileRef: 'repository-profile.public.openagents.main',
+                publicRetainedScoreRef:
+                  'score.openagents_studybench.public_retained.safe',
                 refreshedAt: '2026-06-16T17:59:00.000Z',
                 repoIdentityRefs: [
                   'repo.github.OpenAgentsInc.openagents',
@@ -5534,12 +5583,20 @@ describe('autopilot work detail view', () => {
 
     expect(rendered).toContain('Repository memory profile')
     expect(rendered).toContain('profile.command.public.safe')
+    expect(rendered).toContain('Study packet memory')
+    expect(rendered).toContain('dataset.openagents.studybench.public_retained.v0')
+    expect(rendered).toContain('score.openagents_studybench.public_retained.safe')
     expect(rendered).toContain('unsafe-profile-material-omitted')
     expect(rendered).toContain('unsafe repository-memory ref(s) were omitted')
     expect(rendered).not.toContain('/Users/christopher')
     expect(rendered).not.toContain('raw command')
     expect(rendered).not.toContain('raw prompt')
     expect(rendered).not.toContain('raw test')
+    expect(rendered).not.toContain('hidden_rubric')
+    expect(rendered).not.toContain('gold_answer')
+    expect(rendered).not.toContain('raw_repo_archive')
+    expect(rendered).not.toContain('hidden_gold_answer')
+    expect(rendered).not.toContain('private_customer_source')
   })
 
   test('renders Session navigation lane with unavailable controls', () => {

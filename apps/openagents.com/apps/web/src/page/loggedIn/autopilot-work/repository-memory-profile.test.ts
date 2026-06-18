@@ -20,8 +20,12 @@ describe('Forge repository memory profile projection', () => {
   test('projects a ready durable repository profile with refresh receipts', () => {
     const profile = projectForgeRepositoryMemoryProfile(
       baseInput({
-        commandProfileRefs: ['profile.command.public.package_scripts.sha256_abcd'],
-        currentInstructionRefs: ['profile.instruction.public.AGENTS.sha256_abcd'],
+        commandProfileRefs: [
+          'profile.command.public.package_scripts.sha256_abcd',
+        ],
+        currentInstructionRefs: [
+          'profile.instruction.public.AGENTS.sha256_abcd',
+        ],
         instructionRefs: ['profile.instruction.public.AGENTS.sha256_abcd'],
         invariantRefs: ['profile.invariant.public.INVARIANTS.sha256_abcd'],
         refreshEvents: [
@@ -38,7 +42,10 @@ describe('Forge repository memory profile projection', () => {
           },
         ],
         refreshReceiptRefs: ['receipt.public.previous_profile_refresh'],
-        repoIdentityRefs: ['repo.github.OpenAgentsInc.openagents', 'branch.main'],
+        repoIdentityRefs: [
+          'repo.github.OpenAgentsInc.openagents',
+          'branch.main',
+        ],
         testProfileRefs: ['profile.test.public.vitest.sha256_abcd'],
       }),
     )
@@ -64,11 +71,72 @@ describe('Forge repository memory profile projection', () => {
     expect(profile.blockerRefs).toEqual([])
   })
 
+  test('projects StudyBench memory as evidence-only internal dogfood refs', () => {
+    const profile = projectForgeRepositoryMemoryProfile(
+      baseInput({
+        blockedClaimRefs: [
+          'claim.openagents_studybench.blueprint_authority.c7',
+        ],
+        commandProfileRefs: [
+          'profile.command.public.package_scripts.sha256_abcd',
+        ],
+        corpusManifestRef: 'corpus_manifest.openagents.repo.sha256_abcd',
+        currentInstructionRefs: [
+          'profile.instruction.public.AGENTS.sha256_abcd',
+        ],
+        datasetRefs: [
+          'dataset.openagents.studybench.public_retained.v0',
+          'hf://jacobli/studybench/dspy',
+        ],
+        holdoutEvaluationRef:
+          'evaluation.openagents_studybench.holdout.sha256_abcd',
+        instructionRefs: ['profile.instruction.public.AGENTS.sha256_abcd'],
+        privateValidationTrendRef:
+          'trend.openagents_studybench.private_validation.sha256_abcd',
+        publicRetainedScoreRef:
+          'score.openagents_studybench.public_retained.sha256_abcd',
+        repoIdentityRefs: ['repo.github.OpenAgentsInc.openagents'],
+        studyPacketFreshness: 'fresh',
+        studyPacketRef: 'study_packet.openagents.launch.v0',
+        testProfileRefs: ['profile.test.public.vitest.sha256_abcd'],
+      }),
+    )
+
+    expect(profile).toMatchObject({
+      authorityBoundary: 'evidence_only',
+      corpusManifestRef: 'corpus_manifest.openagents.repo.sha256_abcd',
+      holdoutEvaluationRef:
+        'evaluation.openagents_studybench.holdout.sha256_abcd',
+      laneLabel: 'internal_dogfood',
+      mutationAuthority: false,
+      privateValidationTrendRef:
+        'trend.openagents_studybench.private_validation.sha256_abcd',
+      productPromiseState: 'internal_dogfood',
+      publicRetainedScoreRef:
+        'score.openagents_studybench.public_retained.sha256_abcd',
+      status: 'ready',
+      studyPacketFreshness: 'fresh',
+      studyPacketRef: 'study_packet.openagents.launch.v0',
+    })
+    expect(profile.datasetRefs).toEqual([
+      'dataset.openagents.studybench.public_retained.v0',
+      'hf://jacobli/studybench/dspy',
+    ])
+    expect(profile.blockedClaimRefs).toEqual([
+      'claim.openagents_studybench.blueprint_authority.c7',
+    ])
+    expect(profile.blockerRefs).toEqual([])
+  })
+
   test('marks dirty or instruction-changed profiles stale until refreshed', () => {
     const profile = projectForgeRepositoryMemoryProfile(
       baseInput({
-        commandProfileRefs: ['profile.command.public.package_scripts.sha256_abcd'],
-        currentInstructionRefs: ['profile.instruction.public.AGENTS.sha256_new'],
+        commandProfileRefs: [
+          'profile.command.public.package_scripts.sha256_abcd',
+        ],
+        currentInstructionRefs: [
+          'profile.instruction.public.AGENTS.sha256_new',
+        ],
         dirtyState: 'dirty',
         instructionRefs: ['profile.instruction.public.AGENTS.sha256_old'],
         repoIdentityRefs: ['repo.github.OpenAgentsInc.openagents'],
@@ -103,18 +171,30 @@ describe('Forge repository memory profile projection', () => {
     const profile = projectForgeRepositoryMemoryProfile(
       baseInput({
         blockerRefs: ['private repo content /Users/christopher/src/openagents'],
+        blockedClaimRefs: [
+          'claim.openagents_studybench.safe',
+          'hidden_rubric.openagents_studybench.private_holdout.c1',
+        ],
         commandProfileRefs: [
           'profile.command.public.safe',
           'raw command $(cat ~/.ssh/id_rsa)',
         ],
+        corpusManifestRef: 'raw_repo_archive.openagents.tar',
         currentInstructionRefs: [
           'profile.instruction.public.safe',
           'raw prompt /Users/christopher/private.md',
         ],
+        datasetRefs: [
+          'dataset.openagents.studybench.public_retained.v0',
+          'gold_answer.private_holdout.row_1',
+        ],
+        holdoutEvaluationRef: 'hidden_gold_answer.private_holdout.row_1',
         instructionRefs: [
           'profile.instruction.public.safe',
           'raw prompt /Users/christopher/private.md',
         ],
+        privateValidationTrendRef: 'private_customer_source.repo_a.file_1',
+        publicRetainedScoreRef: 'score.openagents.public_retained.safe',
         refreshEvents: [
           {
             commandProfileRefs: [
@@ -155,5 +235,9 @@ describe('Forge repository memory profile projection', () => {
     expect(payload).not.toContain('raw command')
     expect(payload).not.toContain('raw prompt')
     expect(payload).not.toContain('raw test')
+    expect(payload).not.toContain('hidden_rubric')
+    expect(payload).not.toContain('gold_answer')
+    expect(payload).not.toContain('raw_repo_archive')
+    expect(payload).not.toContain('private_customer_source')
   })
 })

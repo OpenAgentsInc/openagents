@@ -2174,20 +2174,28 @@ export type AutopilotWorkRepositoryProfileRefreshEvent =
 
 export const AutopilotWorkRepositoryMemoryProfile = S.Struct({
   blockerRefs: S.optionalKey(S.Array(S.String)),
+  blockedClaimRefs: S.optionalKey(S.Array(S.String)),
   changedProfileKinds: S.optionalKey(S.Array(AutopilotWorkRepositoryProfileKind)),
   commandProfileRefs: S.optionalKey(S.Array(S.String)),
+  corpusManifestRef: S.optionalKey(S.NullOr(S.String)),
   currentInstructionRefs: S.optionalKey(S.Array(S.String)),
+  datasetRefs: S.optionalKey(S.Array(S.String)),
   devDoctorRefs: S.optionalKey(S.Array(S.String)),
   dirtyState: S.optionalKey(AutopilotWorkContextDirtyState),
   freshness: S.optionalKey(AutopilotWorkContextFreshness),
   generatedAt: S.String,
+  holdoutEvaluationRef: S.optionalKey(S.NullOr(S.String)),
   instructionRefs: S.optionalKey(S.Array(S.String)),
   invariantRefs: S.optionalKey(S.Array(S.String)),
+  privateValidationTrendRef: S.optionalKey(S.NullOr(S.String)),
   profileRef: S.String,
+  publicRetainedScoreRef: S.optionalKey(S.NullOr(S.String)),
   refreshedAt: S.optionalKey(S.NullOr(S.String)),
   refreshEvents: S.optionalKey(S.Array(AutopilotWorkRepositoryProfileRefreshEvent)),
   refreshReceiptRefs: S.optionalKey(S.Array(S.String)),
   repoIdentityRefs: S.optionalKey(S.Array(S.String)),
+  studyPacketFreshness: S.optionalKey(AutopilotWorkContextFreshness),
+  studyPacketRef: S.optionalKey(S.NullOr(S.String)),
   testProfileRefs: S.optionalKey(S.Array(S.String)),
 })
 export type AutopilotWorkRepositoryMemoryProfile =

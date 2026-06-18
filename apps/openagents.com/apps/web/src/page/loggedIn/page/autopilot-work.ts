@@ -6737,17 +6737,24 @@ const repositoryMemoryProfileInput = (
         ...(profile.blockerRefs === undefined
           ? {}
           : { blockerRefs: profile.blockerRefs }),
+        ...(profile.blockedClaimRefs === undefined
+          ? {}
+          : { blockedClaimRefs: profile.blockedClaimRefs }),
         ...(profile.changedProfileKinds === undefined
           ? {}
           : { changedProfileKinds: profile.changedProfileKinds }),
         ...(profile.commandProfileRefs === undefined
           ? {}
           : { commandProfileRefs: profile.commandProfileRefs }),
+        ...(profile.corpusManifestRef === undefined
+          ? {}
+          : { corpusManifestRef: profile.corpusManifestRef }),
         ...(profile.currentInstructionRefs !== undefined
           ? { currentInstructionRefs: profile.currentInstructionRefs }
           : source?.instructions?.refs === undefined
             ? {}
             : { currentInstructionRefs: source.instructions.refs }),
+        ...(profile.datasetRefs === undefined ? {} : { datasetRefs: profile.datasetRefs }),
         ...(profile.devDoctorRefs !== undefined
           ? { devDoctorRefs: profile.devDoctorRefs }
           : source?.devDoctor?.refs === undefined
@@ -6759,12 +6766,21 @@ const repositoryMemoryProfileInput = (
             ? {}
             : { dirtyState: source.repo.dirtyState }),
         ...(profile.freshness === undefined ? {} : { freshness: profile.freshness }),
+        ...(profile.holdoutEvaluationRef === undefined
+          ? {}
+          : { holdoutEvaluationRef: profile.holdoutEvaluationRef }),
         ...(profile.instructionRefs === undefined
           ? {}
           : { instructionRefs: profile.instructionRefs }),
         ...(profile.invariantRefs === undefined
           ? {}
           : { invariantRefs: profile.invariantRefs }),
+        ...(profile.privateValidationTrendRef === undefined
+          ? {}
+          : { privateValidationTrendRef: profile.privateValidationTrendRef }),
+        ...(profile.publicRetainedScoreRef === undefined
+          ? {}
+          : { publicRetainedScoreRef: profile.publicRetainedScoreRef }),
         ...(profile.refreshedAt === undefined
           ? {}
           : { refreshedAt: profile.refreshedAt }),
@@ -6779,6 +6795,12 @@ const repositoryMemoryProfileInput = (
           : source?.repo?.identityRefs === undefined
             ? {}
             : { repoIdentityRefs: source.repo.identityRefs }),
+        ...(profile.studyPacketFreshness === undefined
+          ? {}
+          : { studyPacketFreshness: profile.studyPacketFreshness }),
+        ...(profile.studyPacketRef === undefined
+          ? {}
+          : { studyPacketRef: profile.studyPacketRef }),
         ...(profile.testProfileRefs === undefined
           ? {}
           : { testProfileRefs: profile.testProfileRefs }),
@@ -6822,6 +6844,9 @@ const repositoryMemoryProfilePanel = (
     profile.changedProfileKinds.length === 0
       ? 'none'
       : profile.changedProfileKinds.join(', ')
+  const studyLaneText = profile.laneLabel.replace('_', ' ')
+  const studyLaneLabel = `${studyLaneText.charAt(0).toUpperCase()}${studyLaneText.slice(1)}`
+  const productPromiseLabel = profile.productPromiseState.replace('_', ' ')
 
   return h.div([Ui.className<Message>('grid gap-4 border border-[#222] p-4')], [
     h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-3')], [
@@ -6843,6 +6868,53 @@ const repositoryMemoryProfilePanel = (
       contextMetric('Profile status', profile.status),
       contextMetric('Profile freshness', profile.freshness),
       contextMetric('Changed kinds', changedKinds),
+      contextMetric('Study lane', studyLaneLabel),
+      contextMetric('Study freshness', profile.studyPacketFreshness),
+      contextMetric('Authority', profile.authorityBoundary),
+      contextMetric('Mutation authority', String(profile.mutationAuthority)),
+      contextMetric('Product promise', productPromiseLabel),
+    ]),
+    h.div([Ui.className<Message>('grid gap-3 border border-[#222] p-3')], [
+      h.div([Ui.className<Message>('flex flex-wrap items-center justify-between gap-2')], [
+        h.h4([Ui.className<Message>('m-0 text-xs font-medium text-white/70')], [
+          'Study packet memory',
+        ]),
+        h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+          badge(studyLaneLabel, 'accent'),
+          badge('evidence only', 'info'),
+          badge('no mutation authority', 'warning'),
+        ]),
+      ]),
+      h.div([Ui.className<Message>('grid gap-4 md:grid-cols-2')], [
+        refSection(
+          'Study packet ref',
+          profile.studyPacketRef === null ? [] : [profile.studyPacketRef],
+        ),
+        refSection(
+          'Corpus manifest ref',
+          profile.corpusManifestRef === null ? [] : [profile.corpusManifestRef],
+        ),
+        refSection('Dataset refs', profile.datasetRefs),
+        refSection(
+          'Public retained score ref',
+          profile.publicRetainedScoreRef === null
+            ? []
+            : [profile.publicRetainedScoreRef],
+        ),
+        refSection(
+          'Private validation trend ref',
+          profile.privateValidationTrendRef === null
+            ? []
+            : [profile.privateValidationTrendRef],
+        ),
+        refSection(
+          'Holdout evaluation ref',
+          profile.holdoutEvaluationRef === null
+            ? []
+            : [profile.holdoutEvaluationRef],
+        ),
+        refSection('Blocked claim refs', profile.blockedClaimRefs),
+      ]),
     ]),
     h.div(
       [Ui.className<Message>('grid gap-4 md:grid-cols-2')],
