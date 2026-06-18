@@ -4,16 +4,27 @@ import { describe, expect, test } from 'vitest'
 import { BLUEPRINT_DEVELOPER_PACKAGE_CONTRIBUTION_NO_AUTHORITY } from '../services/developer-package-contribution'
 import { BLUEPRINT_SIGNATURE_CONTRIBUTION_NO_AUTHORITY } from '../services/signature-contribution'
 import {
+  BLUEPRINT_STUDYBENCH_CONTRIBUTION_CAPABILITY_FAMILY,
   BlueprintProbeContributionValidationError,
+  isBlueprintStudybenchProbeContributionKind,
   listBlueprintProbeContributions,
   recordBlueprintProbeContribution,
 } from './probe-contributions'
+
+type ProbeContributionKind =
+  | 'developer_package_contribution'
+  | 'repo_study_packet.v0'
+  | 'signature_contribution'
+  | 'studybench.evidence_span_extraction.v0'
+  | 'studybench.rubric_authoring.v0'
+  | 'studybench.rubric_judging.v0'
+  | 'studybench.task_authoring.v0'
 
 type ProbeContributionRow = Readonly<{
   archived_at: string | null
   blocker_refs_json: string
   candidate_runtime_allowed: number
-  contribution_kind: 'developer_package_contribution' | 'signature_contribution'
+  contribution_kind: ProbeContributionKind
   created_at: string
   developer_package_contribution_json: string | null
   fixture_refs_json: string
@@ -81,9 +92,7 @@ class ProbeContributionStatement implements D1PreparedStatement {
           archived_at: null,
           blocker_refs_json: String(this.values[8]),
           candidate_runtime_allowed: Number(this.values[6]),
-          contribution_kind: this.values[2] as
-            | 'developer_package_contribution'
-            | 'signature_contribution',
+          contribution_kind: this.values[2] as ProbeContributionKind,
           created_at: String(this.values[17]),
           developer_package_contribution_json:
             this.values[14] === null ? null : String(this.values[14]),
@@ -202,6 +211,45 @@ const developerContribution = () => ({
   updatedAt: '2026-06-07T21:00:00.000Z',
 })
 
+const studybenchContribution = (
+  contributionKind: Exclude<
+    ProbeContributionKind,
+    'developer_package_contribution' | 'signature_contribution'
+  > = 'studybench.task_authoring.v0',
+) => ({
+  ...developerContribution(),
+  capabilityFamily:
+    BLUEPRINT_STUDYBENCH_CONTRIBUTION_CAPABILITY_FAMILY[contributionKind],
+  capabilitySummaryRef: `capability.openagents_studybench.${contributionKind}`,
+  contextPackageRefs:
+    BLUEPRINT_STUDYBENCH_CONTRIBUTION_CAPABILITY_FAMILY[contributionKind] ===
+    'context_package'
+      ? [`context_package.openagents_studybench.${contributionKind}`]
+      : [],
+  dogfoodScopeRef: 'dogfood.openagents_studybench.authoring.v0',
+  id: `probe_blueprint_contribution.${contributionKind}`,
+  intendedProgramFamily: 'research_policy' as const,
+  outcomeTemplateRefs:
+    BLUEPRINT_STUDYBENCH_CONTRIBUTION_CAPABILITY_FAMILY[contributionKind] ===
+    'outcome_template'
+      ? [`outcome_template.openagents_studybench.${contributionKind}`]
+      : [],
+  paymentAttributionRefs: [],
+  promotionRef: null,
+  releaseGateRefs: [`release_gate.openagents_studybench.${contributionKind}`],
+  requiredFixtureRefs: [`fixture.openagents_studybench.${contributionKind}`],
+  retainedFailureRefs: [
+    `failure.openagents_studybench.${contributionKind}.retained.v0`,
+  ],
+  sourceRefs: ['source_ref.openagents_studybench.public_retained.v0'],
+  status: 'approved_for_release_gate' as const,
+  toolPackageRefs:
+    BLUEPRINT_STUDYBENCH_CONTRIBUTION_CAPABILITY_FAMILY[contributionKind] ===
+    'retrieval_package'
+      ? [`tool_package.openagents_studybench.${contributionKind}`]
+      : [],
+})
+
 describe('Blueprint Probe contribution repository', () => {
   test('records idempotent signature contributions as release-gate ready candidate refs', async () => {
     const store = new ProbeContributionStore()
@@ -306,6 +354,148 @@ describe('Blueprint Probe contribution repository', () => {
               ...signatureContribution(),
               status: 'submitted',
             },
+          },
+          runtime,
+        ),
+      ),
+    ).rejects.toBeInstanceOf(BlueprintProbeContributionValidationError)
+  })
+
+  test('records StudyBench contribution kinds as evidence-only release-gate records', async () => {
+    const store = new ProbeContributionStore()
+    const contributionKind = 'studybench.rubric_judging.v0'
+    const contribution = await Effect.runPromise(
+      recordBlueprintProbeContribution(
+        db(store),
+        {
+          candidateRuntimeAllowed: false,
+          contributionKind,
+          developerPackageContribution: studybenchContribution(contributionKind),
+          id: 'probe_blueprint_contribution.studybench.rubric_judging.v0',
+          idempotencyKey:
+            'probe_blueprint_contribution:studybench:rubric_judging:v0',
+          productionRuntimeAllowed: false,
+          retainedFailureRefs: [
+            'failure.openagents_studybench.rubric_judging.retained.v0',
+          ],
+        },
+        runtime,
+      ),
+    )
+
+    expect(isBlueprintStudybenchProbeContributionKind(contributionKind)).toBe(
+      true,
+    )
+    expect(contribution).toMatchObject({
+      blockerRefs: [],
+      candidateRuntimeAllowed: false,
+      contributionKind,
+      productionRuntimeAllowed: false,
+      releaseGateReady: true,
+      retainedFailureRefs: [
+        'failure.openagents_studybench.rubric_judging.retained.v0',
+      ],
+      reviewStatus: 'approved',
+      status: 'approved_for_release_gate',
+    })
+    expect(contribution.projection).toMatchObject({
+      capabilityFamily: 'outcome_template',
+      nonAuthoritative: true,
+      noProductionRuntimeAuthority: true,
+      paymentAttributionRefs: [],
+      releaseGateReady: true,
+    })
+  })
+
+  test('rejects StudyBench release-gate readiness without retained failures', async () => {
+    const store = new ProbeContributionStore()
+
+    await expect(
+      Effect.runPromise(
+        recordBlueprintProbeContribution(
+          db(store),
+          {
+            candidateRuntimeAllowed: false,
+            contributionKind: 'studybench.task_authoring.v0',
+            developerPackageContribution: studybenchContribution(
+              'studybench.task_authoring.v0',
+            ),
+            idempotencyKey: 'probe_blueprint_contribution:studybench:blocked',
+            productionRuntimeAllowed: false,
+            retainedFailureRefs: [],
+          },
+          runtime,
+        ),
+      ),
+    ).rejects.toBeInstanceOf(BlueprintProbeContributionValidationError)
+  })
+
+  test('rejects StudyBench contribution runtime authority and unsafe refs', async () => {
+    const store = new ProbeContributionStore()
+
+    await expect(
+      Effect.runPromise(
+        recordBlueprintProbeContribution(
+          db(store),
+          {
+            candidateRuntimeAllowed: false,
+            contributionKind: 'studybench.task_authoring.v0',
+            developerPackageContribution: {
+              ...studybenchContribution('studybench.task_authoring.v0'),
+              authority: {
+                ...BLUEPRINT_DEVELOPER_PACKAGE_CONTRIBUTION_NO_AUTHORITY,
+                canDispatchRuntime: true,
+              },
+            },
+            idempotencyKey:
+              'probe_blueprint_contribution:studybench:runtime_authority',
+            productionRuntimeAllowed: false,
+            retainedFailureRefs: [
+              'failure.openagents_studybench.task_authoring.retained.v0',
+            ],
+          },
+          runtime,
+        ),
+      ),
+    ).rejects.toBeInstanceOf(BlueprintProbeContributionValidationError)
+
+    await expect(
+      Effect.runPromise(
+        recordBlueprintProbeContribution(
+          db(store),
+          {
+            candidateRuntimeAllowed: false,
+            contributionKind: 'studybench.task_authoring.v0',
+            developerPackageContribution: studybenchContribution(
+              'studybench.task_authoring.v0',
+            ),
+            idempotencyKey:
+              'probe_blueprint_contribution:studybench:raw_source',
+            productionRuntimeAllowed: false,
+            retainedFailureRefs: ['raw_source_archive.openagents.private'],
+          },
+          runtime,
+        ),
+      ),
+    ).rejects.toBeInstanceOf(BlueprintProbeContributionValidationError)
+
+    await expect(
+      Effect.runPromise(
+        recordBlueprintProbeContribution(
+          db(store),
+          {
+            candidateRuntimeAllowed: false,
+            contributionKind: 'studybench.task_authoring.v0',
+            developerPackageContribution: {
+              ...studybenchContribution('studybench.task_authoring.v0'),
+              paymentAttributionRefs: ['payment_attribution.not_allowed'],
+            },
+            idempotencyKey:
+              'probe_blueprint_contribution:studybench:payment_attribution',
+            productionRuntimeAllowed: false,
+            retainedFailureRefs: [
+              'failure.openagents_studybench.task_authoring.retained.v0',
+            ],
           },
           runtime,
         ),

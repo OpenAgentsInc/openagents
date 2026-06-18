@@ -8,8 +8,24 @@ import {
 export const ProbeBlueprintContributionKind = S.Literals([
   "signature_contribution",
   "developer_package_contribution",
+  "studybench.task_authoring.v0",
+  "studybench.evidence_span_extraction.v0",
+  "studybench.rubric_authoring.v0",
+  "studybench.rubric_judging.v0",
+  "repo_study_packet.v0",
 ]);
-export type ProbeBlueprintContributionKind = typeof ProbeBlueprintContributionKind.Type;
+export type ProbeBlueprintContributionKind =
+  typeof ProbeBlueprintContributionKind.Type;
+
+export const ProbeStudybenchBlueprintContributionKind = S.Literals([
+  "studybench.task_authoring.v0",
+  "studybench.evidence_span_extraction.v0",
+  "studybench.rubric_authoring.v0",
+  "studybench.rubric_judging.v0",
+  "repo_study_packet.v0",
+]);
+export type ProbeStudybenchBlueprintContributionKind =
+  typeof ProbeStudybenchBlueprintContributionKind.Type;
 
 export const ProbeBlueprintContributionStatus = S.Literals([
   "draft",
@@ -21,7 +37,8 @@ export const ProbeBlueprintContributionStatus = S.Literals([
   "promoted",
   "archived",
 ]);
-export type ProbeBlueprintContributionStatus = typeof ProbeBlueprintContributionStatus.Type;
+export type ProbeBlueprintContributionStatus =
+  typeof ProbeBlueprintContributionStatus.Type;
 
 export const ProbeBlueprintContributionReviewStatus = S.Literals([
   "not_requested",
@@ -30,7 +47,8 @@ export const ProbeBlueprintContributionReviewStatus = S.Literals([
   "approved",
   "rejected",
 ]);
-export type ProbeBlueprintContributionReviewStatus = typeof ProbeBlueprintContributionReviewStatus.Type;
+export type ProbeBlueprintContributionReviewStatus =
+  typeof ProbeBlueprintContributionReviewStatus.Type;
 
 export const ProbeBlueprintContributionCapabilityFamily = S.Literals([
   "agent_tool",
@@ -47,6 +65,17 @@ export const ProbeBlueprintContributionCapabilityFamily = S.Literals([
 export type ProbeBlueprintContributionCapabilityFamily =
   typeof ProbeBlueprintContributionCapabilityFamily.Type;
 
+export const PROBE_STUDYBENCH_CONTRIBUTION_CAPABILITY_FAMILY: Record<
+  ProbeStudybenchBlueprintContributionKind,
+  ProbeBlueprintContributionCapabilityFamily
+> = {
+  "repo_study_packet.v0": "context_package",
+  "studybench.evidence_span_extraction.v0": "retrieval_package",
+  "studybench.rubric_authoring.v0": "outcome_template",
+  "studybench.rubric_judging.v0": "outcome_template",
+  "studybench.task_authoring.v0": "context_package",
+};
+
 export const ProbeBlueprintContributionAuthority = S.Struct({
   canChangePublicClaims: S.Boolean,
   canCreateSite: S.Boolean,
@@ -59,30 +88,32 @@ export const ProbeBlueprintContributionAuthority = S.Struct({
   canSpend: S.Boolean,
   deniedEffectRefs: S.Array(S.String),
 });
-export type ProbeBlueprintContributionAuthority = typeof ProbeBlueprintContributionAuthority.Type;
+export type ProbeBlueprintContributionAuthority =
+  typeof ProbeBlueprintContributionAuthority.Type;
 
-export const PROBE_BLUEPRINT_CONTRIBUTION_NO_AUTHORITY: ProbeBlueprintContributionAuthority = {
-  canChangePublicClaims: false,
-  canCreateSite: false,
-  canDeploy: false,
-  canDispatchRuntime: false,
-  canExecute: false,
-  canMutateRepository: false,
-  canPostPublicly: false,
-  canSendEmail: false,
-  canSpend: false,
-  deniedEffectRefs: [
-    "effect.execute",
-    "effect.dispatch_runtime",
-    "effect.deploy",
-    "effect.spend",
-    "effect.send_email",
-    "effect.mutate_repository",
-    "effect.post_publicly",
-    "effect.create_site",
-    "effect.change_public_claims",
-  ],
-};
+export const PROBE_BLUEPRINT_CONTRIBUTION_NO_AUTHORITY: ProbeBlueprintContributionAuthority =
+  {
+    canChangePublicClaims: false,
+    canCreateSite: false,
+    canDeploy: false,
+    canDispatchRuntime: false,
+    canExecute: false,
+    canMutateRepository: false,
+    canPostPublicly: false,
+    canSendEmail: false,
+    canSpend: false,
+    deniedEffectRefs: [
+      "effect.execute",
+      "effect.dispatch_runtime",
+      "effect.deploy",
+      "effect.spend",
+      "effect.send_email",
+      "effect.mutate_repository",
+      "effect.post_publicly",
+      "effect.create_site",
+      "effect.change_public_claims",
+    ],
+  };
 
 export const ProbeBlueprintContributionDraft = S.Struct({
   authority: ProbeBlueprintContributionAuthority,
@@ -115,7 +146,8 @@ export const ProbeBlueprintContributionDraft = S.Struct({
   toolPackageRefs: S.Array(S.String),
   uiBindingRefs: S.Array(S.String),
 });
-export type ProbeBlueprintContributionDraft = typeof ProbeBlueprintContributionDraft.Type;
+export type ProbeBlueprintContributionDraft =
+  typeof ProbeBlueprintContributionDraft.Type;
 
 export const ProbeBlueprintContributionRuntimeEligibility = S.Struct({
   candidateRuntimeAllowed: S.Boolean,
@@ -151,6 +183,12 @@ export function probeBlueprintContributionHasRuntimeAuthority(
   );
 }
 
+export function isProbeStudybenchBlueprintContributionKind(
+  kind: ProbeBlueprintContributionKind,
+): kind is ProbeStudybenchBlueprintContributionKind {
+  return kind in PROBE_STUDYBENCH_CONTRIBUTION_CAPABILITY_FAMILY;
+}
+
 export function probeBlueprintContributionTargetRefs(
   contribution: ProbeBlueprintContributionDraft,
 ): ReadonlyArray<string> {
@@ -178,6 +216,7 @@ export function probeBlueprintContributionCanEnterReleaseGate(
     contribution.promotionRef === null &&
     contribution.fixtureRefs.length > 0 &&
     contribution.releaseGateRefs.length > 0 &&
+    contribution.retainedFailureRefs.length > 0 &&
     probeBlueprintContributionTargetRefs(contribution).length > 0
   );
 }
@@ -198,15 +237,24 @@ export function probeBlueprintContributionBlockerRefs(
     ...(contribution.status !== "approved_for_release_gate"
       ? ["blocker.probe_blueprint_contribution.not_release_gate_ready"]
       : []),
-    ...(contribution.fixtureRefs.length === 0 ? ["blocker.probe_blueprint_contribution.fixture_refs_missing"] : []),
+    ...(contribution.fixtureRefs.length === 0
+      ? ["blocker.probe_blueprint_contribution.fixture_refs_missing"]
+      : []),
     ...(contribution.releaseGateRefs.length === 0
       ? ["blocker.probe_blueprint_contribution.release_gate_refs_missing"]
+      : []),
+    ...(contribution.retainedFailureRefs.length === 0
+      ? ["blocker.probe_blueprint_contribution.retained_failure_refs_missing"]
       : []),
     ...(probeBlueprintContributionTargetRefs(contribution).length === 0
       ? ["blocker.probe_blueprint_contribution.target_ref_missing"]
       : []),
-    ...(contribution.rejectionRef !== null ? ["blocker.probe_blueprint_contribution.rejected"] : []),
-    ...(contribution.promotionRef !== null ? ["blocker.probe_blueprint_contribution.already_promoted"] : []),
+    ...(contribution.rejectionRef !== null
+      ? ["blocker.probe_blueprint_contribution.rejected"]
+      : []),
+    ...(contribution.promotionRef !== null
+      ? ["blocker.probe_blueprint_contribution.already_promoted"]
+      : []),
   ]);
 }
 
@@ -232,10 +280,16 @@ export function probeBlueprintContributionRuntimeEligibility(
     candidateRuntimeAllowed: safeForCandidate,
     productionRuntimeAllowed: safeForProduction,
     reasonRefs: uniqueStrings([
-      ...(safeForCandidate ? ["reason.probe_blueprint_contribution.candidate_dogfood_allowed"] : []),
-      ...(safeForProduction ? ["reason.probe_blueprint_contribution.promoted_runtime_allowed"] : []),
+      ...(safeForCandidate
+        ? ["reason.probe_blueprint_contribution.candidate_dogfood_allowed"]
+        : []),
+      ...(safeForProduction
+        ? ["reason.probe_blueprint_contribution.promoted_runtime_allowed"]
+        : []),
       ...(!safeForCandidate && !safeForProduction
-        ? ["reason.probe_blueprint_contribution.runtime_blocked_until_release_gate"]
+        ? [
+            "reason.probe_blueprint_contribution.runtime_blocked_until_release_gate",
+          ]
         : []),
     ]),
   };
@@ -243,13 +297,17 @@ export function probeBlueprintContributionRuntimeEligibility(
 
 export function validateProbeBlueprintContributionDraft(
   contribution: ProbeBlueprintContributionDraft,
-): Effect.Effect<ProbeBlueprintContributionDraft, ProbeBlueprintContributionUnsafe> {
+): Effect.Effect<
+  ProbeBlueprintContributionDraft,
+  ProbeBlueprintContributionUnsafe
+> {
   return Effect.gen(function* () {
     if (probeBlueprintContributionHasRuntimeAuthority(contribution)) {
       return yield* Effect.fail(
         new ProbeBlueprintContributionUnsafe({
           path: "authority",
-          reason: "Probe Blueprint contributions cannot carry runtime authority",
+          reason:
+            "Probe Blueprint contributions cannot carry runtime authority",
         }),
       );
     }
@@ -263,13 +321,35 @@ export function validateProbeBlueprintContributionDraft(
       );
     }
 
+    if (
+      isProbeStudybenchBlueprintContributionKind(
+        contribution.contributionKind,
+      ) &&
+      contribution.capabilityFamily !==
+        PROBE_STUDYBENCH_CONTRIBUTION_CAPABILITY_FAMILY[
+          contribution.contributionKind
+        ]
+    ) {
+      return yield* Effect.fail(
+        new ProbeBlueprintContributionUnsafe({
+          path: "capabilityFamily",
+          reason:
+            "StudyBench Blueprint contribution kind must match its mapped capability family",
+        }),
+      );
+    }
+
     const serialized = JSON.stringify(contribution);
 
-    if (!isBlueprintProjectionPrivateDataSafe(contribution) || RAW_TIMESTAMP_PATTERN.test(serialized)) {
+    if (
+      !isBlueprintProjectionPrivateDataSafe(contribution) ||
+      RAW_TIMESTAMP_PATTERN.test(serialized)
+    ) {
       return yield* Effect.fail(
         new ProbeBlueprintContributionUnsafe({
           path: "contribution",
-          reason: "Probe Blueprint contribution contains private-data-shaped material",
+          reason:
+            "Probe Blueprint contribution contains private-data-shaped material",
         }),
       );
     }

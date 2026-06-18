@@ -4,6 +4,7 @@ import { Effect, Schema as S } from 'effect'
 import { parseJsonRecord, parseJsonStringArray } from '../../json-boundary'
 import { compactRandomId, currentIsoTimestamp } from '../../runtime-primitives'
 import type {
+  BlueprintDeveloperPackageContributionCapabilityFamily,
   BlueprintDeveloperPackageContributionProjection,
   BlueprintDeveloperPackageContributionRecord,
 } from '../schemas/developer-package-contribution'
@@ -26,10 +27,36 @@ import {
 
 export const BlueprintProbeContributionKind = S.Literals([
   'developer_package_contribution',
+  'repo_study_packet.v0',
   'signature_contribution',
+  'studybench.evidence_span_extraction.v0',
+  'studybench.rubric_authoring.v0',
+  'studybench.rubric_judging.v0',
+  'studybench.task_authoring.v0',
 ])
 export type BlueprintProbeContributionKind =
   typeof BlueprintProbeContributionKind.Type
+
+export const BlueprintStudybenchProbeContributionKind = S.Literals([
+  'repo_study_packet.v0',
+  'studybench.evidence_span_extraction.v0',
+  'studybench.rubric_authoring.v0',
+  'studybench.rubric_judging.v0',
+  'studybench.task_authoring.v0',
+])
+export type BlueprintStudybenchProbeContributionKind =
+  typeof BlueprintStudybenchProbeContributionKind.Type
+
+export const BLUEPRINT_STUDYBENCH_CONTRIBUTION_CAPABILITY_FAMILY: Record<
+  BlueprintStudybenchProbeContributionKind,
+  BlueprintDeveloperPackageContributionCapabilityFamily
+> = {
+  'repo_study_packet.v0': 'context_package',
+  'studybench.evidence_span_extraction.v0': 'retrieval_package',
+  'studybench.rubric_authoring.v0': 'outcome_template',
+  'studybench.rubric_judging.v0': 'outcome_template',
+  'studybench.task_authoring.v0': 'context_package',
+}
 
 export const BlueprintProbeContributionRecord = S.Struct({
   blockerRefs: S.Array(S.String),
@@ -126,7 +153,7 @@ export type BlueprintProbeContributionError =
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const PROHIBITED_TEXT_PATTERN =
-  /\b(access_token|bearer|callback[_ -]?(token|url)|checkout_id|cookie|customer[_ -]?(email|name|value)|email[_ -]?body|gho_[a-z0-9_]+|ghp_[a-z0-9_]+|invoice|lnbc[0-9a-z]*|lntb[0-9a-z]*|lnbcrt[0-9a-z]*|lno1[0-9a-z]*|mdk[_ -]?(access[_ -]?token|mnemonic|webhook[_ -]?secret)|mnemonic|oauth|payment[_ -]?(hash|id|preimage)|payout[_ -]?(address|destination|target)|preimage|private[_ -]?(key|repo)|provider[_ -]?(grant|payload|token)|raw[_ -]?(email|payload|prompt|runner|run[_ -]?log|source[_ -]?archive|webhook)|runner[_ -]?log|secret|sk-[a-z0-9]+|source[_ -]?archive|token|wallet|webhook[_ -]?secret|xprv)\b|@/i
+  /\b(access_token|bearer|callback[_. -]?(token|url)|checkout_id|cookie|customer[_. -]?(email|name|value)|email[_. -]?body|gho_[a-z0-9_]+|ghp_[a-z0-9_]+|invoice|lnbc[0-9a-z]*|lntb[0-9a-z]*|lnbcrt[0-9a-z]*|lno1[0-9a-z]*|mdk[_. -]?(access[_. -]?token|mnemonic|webhook[_. -]?secret)|mnemonic|oauth|payment[_. -]?(hash|id|preimage)|payout[_. -]?(address|destination|target)|preimage|private[_. -]?(key|repo)|provider[_. -]?(grant|payload|token)|raw[_. -]?(email|payload|prompt|runner|run[_. -]?log|source[_. -]?archive|webhook)|runner[_. -]?log|secret|sk-[a-z0-9]+|source[_. -]?archive|token|wallet|webhook[_. -]?secret|xprv)\b|@/i
 const RAW_TIMESTAMP_PATTERN = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
 
 const uniqueStrings = (
@@ -281,14 +308,15 @@ const contributionHasRuntimeAuthority = (
 const contributionReleaseGateReady = (
   input: RecordBlueprintProbeContributionInput,
 ): boolean =>
-  input.signatureContribution !== undefined
+  input.retainedFailureRefs.length > 0 &&
+  (input.signatureContribution !== undefined
     ? blueprintSignatureContributionDraftCanEnterReleaseGate(
         input.signatureContribution,
       )
     : input.developerPackageContribution !== undefined &&
       blueprintDeveloperPackageContributionCanEnterReleaseGate(
         input.developerPackageContribution,
-      )
+      ))
 
 const contributionProductionRuntimeReady = (
   input: RecordBlueprintProbeContributionInput,
@@ -333,6 +361,9 @@ const contributionBlockerRefs = (
     !contributionProductionRuntimeReady(input)
       ? ['blocker.probe_contribution.production_runtime_without_promotion']
       : []),
+    ...(input.retainedFailureRefs.length === 0
+      ? ['blocker.probe_contribution.retained_failure_refs_missing']
+      : []),
   ])
 }
 
@@ -371,6 +402,43 @@ const assertValidInput = (
       reason:
         'Developer package contributions require a normalized developer package contribution record.',
     })
+  }
+
+  if (
+    blueprintProbeContributionKindUsesDeveloperPackage(input.contributionKind) &&
+    input.developerPackageContribution === undefined
+  ) {
+    throw new BlueprintProbeContributionValidationError({
+      reason:
+        'StudyBench contribution kinds require a normalized developer package contribution record.',
+    })
+  }
+
+  if (
+    input.developerPackageContribution !== undefined &&
+    isBlueprintStudybenchProbeContributionKind(input.contributionKind)
+  ) {
+    const expectedCapabilityFamily =
+      BLUEPRINT_STUDYBENCH_CONTRIBUTION_CAPABILITY_FAMILY[
+        input.contributionKind
+      ]
+
+    if (
+      input.developerPackageContribution.capabilityFamily !==
+      expectedCapabilityFamily
+    ) {
+      throw new BlueprintProbeContributionValidationError({
+        reason:
+          'StudyBench contribution kind must match its mapped Blueprint capability family.',
+      })
+    }
+
+    if (input.developerPackageContribution.paymentAttributionRefs.length > 0) {
+      throw new BlueprintProbeContributionValidationError({
+        reason:
+          'StudyBench contributions are evidence-only and cannot carry payment attribution refs.',
+      })
+    }
   }
 
   if (contributionHasRuntimeAuthority(input)) {
@@ -416,6 +484,17 @@ const assertValidInput = (
     }
   }
 }
+
+export const isBlueprintStudybenchProbeContributionKind = (
+  kind: BlueprintProbeContributionKind,
+): kind is BlueprintStudybenchProbeContributionKind =>
+  kind in BLUEPRINT_STUDYBENCH_CONTRIBUTION_CAPABILITY_FAMILY
+
+const blueprintProbeContributionKindUsesDeveloperPackage = (
+  kind: BlueprintProbeContributionKind,
+): boolean =>
+  kind === 'developer_package_contribution' ||
+  isBlueprintStudybenchProbeContributionKind(kind)
 
 const probeContributionFromRow = (
   row: ProbeContributionRow,

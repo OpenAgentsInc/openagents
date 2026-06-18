@@ -74,6 +74,13 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   forbidden claim refs, skipped tests, wrong files, and budget failures while
   keeping optimizer acceptance separate from runtime promotion, public claims,
   and payout authority.
+- 2026-06-17: #5293 / MSB-MVP-11 complete. Blueprint contribution gates now
+  recognize the StudyBench task-authoring, evidence-span extraction, rubric
+  authoring, rubric judging, and repo-study-packet contribution kinds, map them
+  onto existing evidence-only capability families, require retained failure
+  refs before release-gate readiness, and allow Action Submission proposals to
+  cite StudyBench closeout and study-packet refs as evidence while staying
+  pending approval with no direct execution authority.
 
 ## Short Answer
 

@@ -7,6 +7,7 @@ import {
 } from '../schemas/action-submission'
 import {
   BlueprintActionSubmissionValidationError,
+  blueprintActionSubmissionStudybenchEvidenceRefs,
   listBlueprintActionSubmissions,
   readBlueprintActionSubmissionById,
   recordBlueprintActionSubmissionProposal,
@@ -287,5 +288,60 @@ describe('Blueprint Action Submission repository', () => {
         metadata: { provider_payload: 'raw' },
       }),
     ).rejects.toBeInstanceOf(BlueprintActionSubmissionValidationError)
+  })
+
+  test('allows StudyBench closeout and study packet refs as pending proposal evidence', async () => {
+    const store = new ActionSubmissionStore()
+    const evidenceRefs = [
+      'probe_closeout.probe_run.studybench_patch.openagents_launch_0006.sha',
+      'rubric_score.probe.studybench_patch.openagents_launch_0006.sha',
+      'study_packet.openagents_launch.v0',
+    ]
+    const submission = await recordSubmission(store, {
+      evidenceRefs,
+      id: 'action_submission.probe.studybench.closeout_ref',
+      idempotencyKey: 'action-submission:probe:studybench:closeout-ref',
+      metadata: { studyPacketRef: 'study_packet.openagents_launch.v0' },
+      proposedByProgramRunId:
+        'blueprint_program_run.probe.studybench_patch.openagents_launch_0006',
+      proposedEffectRef: 'effect.probe.create_pull_request.studybench_patch',
+      summaryRef: 'summary.probe.studybench.patch.closeout_ref',
+    })
+
+    expect(blueprintActionSubmissionStudybenchEvidenceRefs(evidenceRefs)).toEqual(
+      evidenceRefs,
+    )
+    expect(submission).toMatchObject({
+      approvalState: 'pending',
+      directExecution: false,
+      directProgramRunExecutionAllowed: false,
+      evidenceRefs,
+      programRunAuthorityBoundary: 'evidence_only',
+      proposalOnly: true,
+      status: 'pending_approval',
+    })
+    expect(blueprintActionSubmissionCanExecute(submission)).toBe(false)
+  })
+
+  test('rejects unsafe StudyBench evidence refs with raw or private material', async () => {
+    const store = new ActionSubmissionStore()
+    const unsafeEvidenceRefs = [
+      'raw.source.archive.openagents',
+      'raw.run.log.openagents',
+      'payment.preimage.openagents',
+      'wallet.secret.openagents',
+      'provider.payload.openagents',
+      'customer.email.openagents',
+      'private.repo.openagents',
+    ]
+
+    for (const evidenceRef of unsafeEvidenceRefs) {
+      await expect(
+        recordSubmission(store, {
+          evidenceRefs: [evidenceRef],
+          idempotencyKey: `action-submission:probe:unsafe:${evidenceRef}`,
+        }),
+      ).rejects.toBeInstanceOf(BlueprintActionSubmissionValidationError)
+    }
   })
 })

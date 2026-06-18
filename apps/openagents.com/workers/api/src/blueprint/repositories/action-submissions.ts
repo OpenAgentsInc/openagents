@@ -89,7 +89,7 @@ export type BlueprintActionSubmissionError =
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const PROHIBITED_TEXT_PATTERN =
-  /\b(access_token|auth[_ -]?grant|callback[_ -]?(token|url)|callbackToken|callbackUrl|contact[_ -]?email|customer[_ -]?(email|name)|customerEmail|customerName|email[_ -]?body|gho_[a-z0-9_]+|ghp_[a-z0-9_]+|lnbc[0-9a-z]*|lntb[0-9a-z]*|lnbcrt[0-9a-z]*|lno1[0-9a-z]*|mdk_access_token|mnemonic|payment[_ -]?(preimage|secret)|private[_ -]?(file|key|repo)|provider[_ -]?(account|payload|token)|raw[_ -]?(email|file|prompt|run[_ -]?log|source)|refresh_token|sk-[a-z0-9]+|source[_ -]?archive|wallet[_ -]?secret|webhook[_ -]?secret|xprv)\b|@/i
+  /\b(access_token|auth[_. -]?grant|callback[_. -]?(token|url)|callbackToken|callbackUrl|contact[_. -]?email|customer[_. -]?(email|name)|customerEmail|customerName|email[_. -]?body|gho_[a-z0-9_]+|ghp_[a-z0-9_]+|lnbc[0-9a-z]*|lntb[0-9a-z]*|lnbcrt[0-9a-z]*|lno1[0-9a-z]*|mdk_access_token|mnemonic|payment[_. -]?(hash|id|preimage|secret)|private[_. -]?(file|key|repo)|provider[_. -]?(account|payload|token)|raw[_. -]?(email|file|prompt|run[_. -]?log|source)|refresh_token|sk-[a-z0-9]+|source[_. -]?archive|wallet|wallet[_. -]?secret|webhook[_. -]?secret|xprv)\b|@/i
 const PROHIBITED_FRAGMENTS = [
   'direct_execution',
   'email_sent',
@@ -104,6 +104,12 @@ const PROHIBITED_FRAGMENTS = [
   'raw_run_log',
   'source_mutated',
 ]
+export const BLUEPRINT_ACTION_SUBMISSION_STUDYBENCH_EVIDENCE_PREFIXES = [
+  'probe_closeout.probe_run.studybench_',
+  'rubric_score.probe.studybench',
+  'study_packet.',
+  'studybench_task.',
+] as const
 
 const textIsSafe = (value: string): boolean =>
   !containsProviderSecretMaterial(value) &&
@@ -151,6 +157,20 @@ const assertSafeRecord = (
 const uniqueStrings = (
   values: ReadonlyArray<string>,
 ): ReadonlyArray<string> => [...new Set(values)]
+
+export const blueprintActionSubmissionEvidenceRefIsStudybench = (
+  ref: string,
+): boolean =>
+  BLUEPRINT_ACTION_SUBMISSION_STUDYBENCH_EVIDENCE_PREFIXES.some(prefix =>
+    ref.startsWith(prefix),
+  )
+
+export const blueprintActionSubmissionStudybenchEvidenceRefs = (
+  evidenceRefs: ReadonlyArray<string>,
+): ReadonlyArray<string> =>
+  evidenceRefs.filter(ref =>
+    blueprintActionSubmissionEvidenceRefIsStudybench(ref),
+  )
 
 const receiptRefsForProposal = (
   input: RecordBlueprintActionSubmissionProposalInput,
