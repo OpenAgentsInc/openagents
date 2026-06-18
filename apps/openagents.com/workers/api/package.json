@@ -36,6 +36,7 @@
     "@openagentsinc/nip90": "workspace:*",
     "@openagentsinc/proof-replay": "workspace:*",
     "@openagentsinc/public-activity-timeline": "workspace:*",
+    "@openagentsinc/replay-clips": "workspace:*",
     "@openagentsinc/email-templates": "workspace:*",
     "@openagentsinc/mullet-schema": "workspace:*",
     "@openagentsinc/mullet-sim": "workspace:*",

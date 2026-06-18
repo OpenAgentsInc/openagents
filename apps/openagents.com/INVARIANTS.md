@@ -1682,6 +1682,18 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     proof/payment refs, failed-closed markers, simulation-vs-real payment
     distinction, and no wallet material, raw logs, service tokens, payment
     preimages, or private operator payloads).
+  - `POST|GET /api/public/replay-clips` and
+    `GET /api/public/replay-clips/{jobRef}` — live at read over the
+    `replay_clip_jobs` D1 store (EPIC #5411, issue #5432) — compliant
+    (`generatedAt`, top-level `projection_staleness.v1` `live_at_read`
+    contract, public-safe job projection with claim scope
+    `evidence_presentation_only`, public source/caveat/blocker refs, and the
+    finished manifest URL only). The Worker creates `queued` jobs and reads
+    records only; it never renders frames or runs native binaries (rendering
+    is the owned render box's job, issue #5431). Grants no settlement, payout,
+    deployment, accepted-work, provider, wallet, or public-claim authority.
+    Regression coverage:
+    `workers/api/src/replay-clip-job-routes.test.ts`.
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no

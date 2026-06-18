@@ -203,6 +203,7 @@
         "@openagentsinc/nip90": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
         "@openagentsinc/public-activity-timeline": "workspace:*",
+        "@openagentsinc/replay-clips": "workspace:*",
         "@openagentsinc/sync-schema": "workspace:*",
         "@openagentsinc/sync-worker": "workspace:*",
         "@openagentsinc/tassadar-executor": "workspace:*",
@@ -361,6 +362,17 @@
     },
     "packages/public-activity-timeline": {
       "name": "@openagentsinc/public-activity-timeline",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/replay-clips": {
+      "name": "@openagentsinc/replay-clips",
       "version": "0.1.0",
       "dependencies": {
         "effect": "catalog:",
@@ -991,6 +1003,8 @@
     "@openagentsinc/pylon": ["@openagentsinc/pylon@workspace:apps/pylon"],
 
     "@openagentsinc/pylon-runtime": ["@openagentsinc/pylon-runtime@workspace:apps/pylon/packages/runtime"],
+
+    "@openagentsinc/replay-clips": ["@openagentsinc/replay-clips@workspace:packages/replay-clips"],
 
     "@openagentsinc/sync-client": ["@openagentsinc/sync-client@workspace:apps/openagents.com/packages/sync-client"],
 

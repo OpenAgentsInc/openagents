@@ -538,6 +538,16 @@ const publicProjectionSurfaces = [
     route: '/api/public/tassadar-replays/first-real-settlement',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/replay-clip-job-routes.ts',
+    route: '/api/public/replay-clips',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/replay-clip-job-routes.ts',
+    route: '/api/public/replay-clips/{jobRef}',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',
