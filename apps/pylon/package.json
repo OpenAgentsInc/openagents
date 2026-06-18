@@ -1,6 +1,6 @@
 {
   "name": "@openagentsinc/pylon",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Headless, CLI-only Pylon contributor node built on Bun and Effect",
   "private": false,
   "main": "src/index.ts",

@@ -72,7 +72,11 @@
 // read-only (and accept `--remote`/`--connect`) instead of trying to bind the
 // control port and crashing when the GUI node already holds it. Observable
 // behavior change, so the version bumps.
-export const PYLON_VERSION = "1.0.3"
+// v1.0.4: fix npx install on Linux without bun. nostr-effect (a transitive git
+// dep via nip90) ran a bun-requiring prepare hook on consumer npm install,
+// crashing npx with code 127 when bun was absent; now a Node-only guard no-ops.
+// Republished with nip90 0.1.1 carrying the fixed nostr-effect pin.
+export const PYLON_VERSION = "1.0.4"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.
