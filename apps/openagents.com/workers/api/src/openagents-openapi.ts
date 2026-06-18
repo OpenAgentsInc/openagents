@@ -416,31 +416,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicActivityTimelineEnvelope: objectSummary(
     'Public-safe cursor-addressable activity timeline envelope with schemaVersion openagents.public_activity_timeline.v1, generatedAt, live_at_read staleness, nextCursor, sourceLag, optional range, and ordered events. Events cover pylon registration/presence, training windows and claims, trace digest refs, verification challenges, settlement receipts, Forum activity, Artanis ticks, capacity snapshots, and projection_gap records. Source lag rows expose current, stale, unavailable, or projection_gap states with source refs or blocker refs; a fresh generatedAt never hides stale source families. Real Bitcoin movement appears only from receipt-backed realBitcoinMoved:true events. Read-only; grants no settlement, payout, accepted-work, deployment, provider, wallet, or public-claim authority.',
   ),
-  TrainingRunSettlementsEnvelope: {
-    type: 'object',
-    description:
-      'Public-safe, live-at-read enumerable settled feed keyed by run (openagents #5316). Carries generatedAt, runRef, schemaVersion openagents.training_run_settlements.v1, a live_at_read staleness contract with maxStalenessSeconds 0, sourceRefs, and settlementRows: the run-linked provider-confirmed settlement rows drawn from the SAME settlement receipts that feed metrics.providerConfirmedSettledPayoutSats. Each row distinguishes movementMode and realBitcoinMoved; simulation-backed records never count as real Bitcoin movement. Empty array when no settled receipts exist. Refs and digests only: no raw spark addresses, invoices, preimages, wallet material, private logs, or admin controls. Read-only; grants no assignment, payout, or settlement authority.',
-    additionalProperties: true,
-    required: [
-      'generatedAt',
-      'runRef',
-      'schemaVersion',
-      'staleness',
-      'settlementRows',
-      'sourceRefs',
-    ],
-    properties: {
-      generatedAt: { type: 'string' },
-      runRef: { type: 'string' },
-      schemaVersion: { type: 'string' },
-      staleness: { type: 'object', additionalProperties: true },
-      settlementRows: {
-        type: 'array',
-        items: { type: 'object', additionalProperties: true },
-      },
-      sourceRefs: { type: 'array', items: { type: 'string' } },
-    },
-  },
+  TrainingRunSettlementsEnvelope: objectSummary(
+    'Public-safe, live-at-read enumerable settled feed keyed by run (openagents #5316, #5403). Carries generatedAt, runRef, schemaVersion openagents.training_run_settlements.v1, a live_at_read projection_staleness.v1 contract with maxStalenessSeconds 0, sourceRefs, and settlementRows: the run-linked provider-confirmed settlement rows drawn from the SAME settlement receipts that feed metrics.providerConfirmedSettledPayoutSats. Each row distinguishes movementMode and realBitcoinMoved; simulation-backed records never count as real Bitcoin movement. Empty array when no settled receipts exist. Refs and digests only: no raw spark addresses, invoices, preimages, wallet material, private logs, or admin controls. Read-only; grants no assignment, payout, or settlement authority.',
+  ),
   PublicProofReplayBundle: objectSummary(
     'Public-safe proof replay bundle (`proof_replay_bundle.v1`) for deterministic 3D replay rendering. Carries generatedAt, a declared live_at_read staleness contract with maxStalenessSeconds 0, source refs, public authority metadata, actors, stages, replay events, flows, camera cues, captions, explicit gaps, and for generated activity replays a generatedFrom manifest recording the bounded input range and filters. Confirmed payment-zap events require receipt-first real-bitcoin evidence such as realBitcoinMoved:true; simulation, pending, blocked, deferred, and failed-closed rows stay separate non-payment events. Raw wallet material, invoices, payment hashes/preimages, prompts, logs, provider payloads, service tokens, and operator-only notes are excluded. Read-only; grants no proof, settlement, payout, wallet, product-promise, or spend authority.',
   ),
@@ -502,7 +480,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe training-window lease claim projection with leaseRef, pylonRef, windowRef, trainingRunRef, receiptRefs, state, and lease expiry seconds. It grants bounded work authority only, not payout or settlement authority.',
   ),
   TrainingVerificationChallengeEnvelope: objectSummary(
-    'Public-safe training verification challenge projection with challengeRef, trainingRunRef, optional window/contribution refs, verificationClass, samplingPolicy, queue state, commitment refs, typed failure codes, verdict refs, lease expiry seconds, and display timestamps only. It grants no payout, settlement, wallet, or model-publication authority.',
+    'Public-safe training verification challenge projection (openagents #5403) with challengeRef, trainingRunRef, optional window/contribution refs, verificationClass, samplingPolicy, queue state, commitment refs, typed failure codes, verdict refs, lease expiry seconds, and display timestamps only. Carries generatedAt and a live_at_read projection_staleness.v1 contract with maxStalenessSeconds 0, dereferencing the same Worker-authoritative challenge row exposed inside the run summary. It grants no payout, settlement, wallet, or model-publication authority.',
   ),
   PublicLaunchDashboard: objectSummary(
     'Public-safe red/yellow/green launch dashboard for every transcript promise. Rows include promise text, status, evidence refs, blocker refs, safe copy, and unsafe copy boundaries.',
