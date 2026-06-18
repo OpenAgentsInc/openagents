@@ -40,7 +40,13 @@ architecture and execution plans. They are not public benchmark claims.
    initial retained evidence only, not a public benchmark score, paid work, or
    production promotion.
 
-6. `2026-06-08-artanis-gepa-benchmark-pylon-focus.md`
+6. `2026-06-17-openagents-studybench-mvp-14-comparison.md`
+   First recorded OpenAgents StudyBench comparison across baseline, study
+   packet, and GEPA packet candidate arms. It covers 10 public-retained rows, 5
+   private-validation refs, 2 patch-mode rows, and Probe closeout coverage. It
+   is internal dogfood evidence only.
+
+7. `2026-06-08-artanis-gepa-benchmark-pylon-focus.md`
    Artanis refocus audit. It compares the current Artanis mission, public
    Forum readback, posting runbook, and proof trail against the Probe
    benchmark docs, then defines how Artanis should become the public overseer
@@ -48,25 +54,25 @@ architecture and execution plans. They are not public benchmark claims.
    leaving execution, scoring, payment, training, and promotion authority in
    the owning systems.
 
-7. `2026-06-08-probe-continual-benchmark-learning-apparatus.md`
+8. `2026-06-08-probe-continual-benchmark-learning-apparatus.md`
    End-state plan for Probe's continual improvement loop. It defines how Probe,
    public benchmark-cloud, Psionic, Pylon, and OpenAgents product surface should turn
    benchmark failures into prompt, Blueprint, tool-menu, loop-policy, and LoRA
    candidates with explicit promotion gates.
 
-8. `2026-06-08-pylon-gepa-coding-agent-benchmark-run.md`
+9. `2026-06-08-pylon-gepa-coding-agent-benchmark-run.md`
    First executable optimizer plan. It narrows the initial benchmark-climbing
    work to a GEPA-only text-candidate campaign, using Pylon as the parallel
    rollout engine across retained Terminal-Bench failures, validation splits,
    and frozen holdout tasks.
 
-9. `../probe-benchmark-contracts.md`
+10. `../probe-benchmark-contracts.md`
    Implementation note for the first Probe runtime contract slice from issue
    #182. It records the benchmark assignment, run, closeout, decision trace,
    candidate, evidence-only promotion decision schemas, and normalized
    closeout bundle writer now exported by the Bun/Effect runtime package.
 
-10. `../probe-retained-terminal-bench-fixtures.md`
+11. `../probe-retained-terminal-bench-fixtures.md`
    Implementation note for the retained Terminal-Bench fixture package from
    issue #184. It records the public-ref-only failure-family fixtures that
    Probe and GEPA Stage 0/1 can load without hidden task material or private

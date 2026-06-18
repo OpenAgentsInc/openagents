@@ -15,6 +15,10 @@ pinned public `openagents` source snapshot.
   docs may carry split refs and checksums only.
 - `private/`: ignored local authoring path for private rows and local scorer
   artifacts. Only `private/.gitignore` is committed.
+- `runs/`: public-safe run summaries and refs-only aggregate comparison
+  reports. These may include private validation refs and checksums, but not
+  private row bodies, hidden rubrics, hidden gold answers, or private evidence
+  spans.
 
 See `private-boundary.md` for evaluator access, leak response, GEPA/study-packet
 limits, and refs-only public projection rules.

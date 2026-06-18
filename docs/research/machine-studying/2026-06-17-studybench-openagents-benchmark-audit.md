@@ -97,6 +97,15 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   hidden rubrics, hidden gold answers, raw repo archives, private customer
   source refs, local paths, raw commands, and credential-shaped material before
   rendering.
+- 2026-06-17: #5296 / MSB-MVP-14 complete. The first recorded public-safe
+  comparison now covers baseline, study-packet, and GEPA-packet candidate arms
+  across 10 public-retained rows, 5 private-validation refs, and 2 patch-mode
+  rows. Probe docs now carry a machine-readable summary with 45 derived
+  closeout attempts, answer-mode versus patch-mode metrics, closeout/rubric
+  score ref coverage, and blocked product-promise/marketplace authority. The
+  machine-studying run report mirrors the result without committing private
+  validation row bodies, hidden rubrics, hidden gold answers, private evidence
+  spans, or raw repo archives.
 
 ## Short Answer
 
