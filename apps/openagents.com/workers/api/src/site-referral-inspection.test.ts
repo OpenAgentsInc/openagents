@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import {
   readOperatorSiteReferralInspection,
@@ -260,7 +260,10 @@ const siteReferralInspectionDb = (
   },
 })
 
-const makeRoutes = (session: TestSession | null) =>
+const makeRoutes = (
+  session: TestSession | null,
+  requireBrowserSession = () => Promise.resolve(session ?? undefined),
+) =>
   makeSiteReferralInspectionRoutes({
     appendRefreshedSessionCookies: response => {
       response.headers.set('x-session-refreshed', 'true')
@@ -268,7 +271,7 @@ const makeRoutes = (session: TestSession | null) =>
       return response
     },
     isOpenAgentsAdminEmail: email => email === 'admin@openagents.com',
-    requireBrowserSession: () => Promise.resolve(session ?? undefined),
+    requireBrowserSession,
   })
 
 const runRoute = (
@@ -368,6 +371,37 @@ describe('Site referral inspection projections', () => {
 })
 
 describe('Site referral inspection routes', () => {
+  test('rejects unsupported methods before session lookup', async () => {
+    const requireBrowserSession = vi.fn(() =>
+      Promise.resolve({
+        user: {
+          email: 'admin@openagents.com',
+          userId: 'github:admin',
+        },
+      }),
+    )
+    const response = await Effect.runPromise(
+      makeRoutes(null, requireBrowserSession).routeSiteReferralInspectionRequest(
+        new Request('https://openagents.com/api/sites/referrals/overview', {
+          method: 'POST',
+        }),
+        {
+          OPENAGENTS_DB: siteReferralInspectionDb(
+            new SiteReferralInspectionStore(),
+          ),
+        },
+        executionContext(),
+      )!,
+    )
+
+    expect(response.status).toBe(405)
+    expect(response.headers.get('allow')).toBe('GET')
+    await expect(response.json()).resolves.toEqual({
+      error: 'method_not_allowed',
+    })
+    expect(requireBrowserSession).not.toHaveBeenCalled()
+  })
+
   test('requires a browser session for owner overview', async () => {
     const response = await runRoute(
       new Request('https://openagents.com/api/sites/referrals/overview'),

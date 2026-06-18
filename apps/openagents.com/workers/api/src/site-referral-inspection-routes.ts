@@ -141,11 +141,15 @@ const readLimit = (request: Request): number => {
 }
 
 const runRoute = (
+  request: Request,
+  allowedMethods: readonly string[],
   effect: Effect.Effect<HttpResponse, SiteReferralInspectionRouteError>,
 ): Effect.Effect<HttpResponse> =>
-  effect.pipe(
-    Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
-  )
+  allowedMethods.includes(request.method)
+    ? effect.pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    : Effect.succeed(methodNotAllowed([...allowedMethods]))
 
 export const makeSiteReferralInspectionRoutes = <
   Session extends SiteReferralInspectionSession,
@@ -159,11 +163,9 @@ export const makeSiteReferralInspectionRoutes = <
     ctx: ExecutionContext,
   ) =>
     runRoute(
+      request,
+      ['GET'],
       Effect.gen(function* () {
-        if (request.method !== 'GET') {
-          return methodNotAllowed(['GET'])
-        }
-
         const session = yield* requireSession(dependencies, request, env, ctx)
         const overview = yield* Effect.tryPromise({
           catch: error =>
@@ -194,11 +196,9 @@ export const makeSiteReferralInspectionRoutes = <
     ctx: ExecutionContext,
   ) =>
     runRoute(
+      request,
+      ['GET'],
       Effect.gen(function* () {
-        if (request.method !== 'GET') {
-          return methodNotAllowed(['GET'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -233,11 +233,9 @@ export const makeSiteReferralInspectionRoutes = <
     ctx: ExecutionContext,
   ) =>
     runRoute(
+      request,
+      ['GET'],
       Effect.gen(function* () {
-        if (request.method !== 'GET') {
-          return methodNotAllowed(['GET'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
