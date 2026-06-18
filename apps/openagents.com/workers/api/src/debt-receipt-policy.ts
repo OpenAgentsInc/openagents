@@ -27,6 +27,7 @@ export const DebtReceiptSettlementState = S.Literals([
   'fundable',
   'funded',
   'verified',
+  'credit_class',
   'payable',
   'retired',
   'duplicate_replay',
@@ -34,6 +35,12 @@ export const DebtReceiptSettlementState = S.Literals([
 ])
 export type DebtReceiptSettlementState =
   typeof DebtReceiptSettlementState.Type
+
+export const DebtReceiptWorkClass = S.Literals([
+  'code_hygiene',
+  'documentation_or_journal',
+])
+export type DebtReceiptWorkClass = typeof DebtReceiptWorkClass.Type
 
 export const DebtReceiptStudiedKnowledgeVerificationSchemaRef =
   'openagents.repo_studied_knowledge_verification.v0' as const
@@ -94,6 +101,7 @@ export const DebtReceiptSettlementProjection = S.Struct({
   studiedKnowledgeSourceRefs: S.Array(S.String),
   targetMetricRefs: S.Array(S.String),
   verificationCommandRefs: S.Array(S.String),
+  workClass: DebtReceiptWorkClass,
   workerPayoutEligible: S.Boolean,
 })
 export type DebtReceiptSettlementProjection =
@@ -132,6 +140,7 @@ export type DebtReceiptSettlementInput = Readonly<{
   studiedKnowledgeSource?: DebtReceiptStudiedKnowledgeSource | null | undefined
   targetMetricRefs?: ReadonlyArray<string> | undefined
   verificationCommandRefs?: ReadonlyArray<string> | undefined
+  workClass?: DebtReceiptWorkClass | undefined
   workerActorRef?: string | null | undefined
 }>
 
@@ -216,6 +225,10 @@ const safeNonNegativeInteger = (
 
   return normalized
 }
+
+const safeWorkClass = (
+  value: DebtReceiptWorkClass | undefined,
+): DebtReceiptWorkClass => value ?? 'code_hygiene'
 
 const safeStudiedKnowledgeSource = (
   source: DebtReceiptStudiedKnowledgeSource | null | undefined,
@@ -440,11 +453,17 @@ export const projectDebtReceiptSettlement = (
     'budgetCapSats',
     input.budgetCapSats,
   )
+  const workClass = safeWorkClass(input.workClass)
+  const documentationCreditOnly = workClass === 'documentation_or_journal'
   const maxRevisionAttempts = safeNonNegativeInteger(
     'maxRevisionAttempts',
     input.maxRevisionAttempts ?? 3,
   )
-  const payableSats = safeNonNegativeInteger('payableSats', input.payableSats)
+  const requestedPayableSats = safeNonNegativeInteger(
+    'payableSats',
+    input.payableSats,
+  )
+  const payableSats = documentationCreditOnly ? 0 : requestedPayableSats
   const revisionAttemptCount = safeNonNegativeInteger(
     'revisionAttemptCount',
     input.revisionAttemptCount,
@@ -513,7 +532,7 @@ export const projectDebtReceiptSettlement = (
     studiedKnowledgeRequired,
   )
 
-  if (payableSats > budgetCapSats) {
+  if (requestedPayableSats > budgetCapSats) {
     throw new DebtReceiptPolicyUnsafe({
       reason: 'Debt receipt payable sats cannot exceed the budget cap.',
     })
@@ -571,11 +590,17 @@ export const projectDebtReceiptSettlement = (
     hasRefs(settlementApprovalRefs) &&
     payableSats > 0 &&
     !duplicateReplay &&
-    !manualReviewOnly
+    !manualReviewOnly &&
+    !documentationCreditOnly
   const retired =
     payable &&
     hasRefs(settlementReceiptRefs) &&
     settledSats === payableSats
+  const creditClass =
+    documentationCreditOnly &&
+    verified &&
+    !duplicateReplay &&
+    !manualReviewOnly
   const state: DebtReceiptSettlementState = duplicateReplay
     ? 'duplicate_replay'
     : manualReviewOnly
@@ -584,13 +609,15 @@ export const projectDebtReceiptSettlement = (
         ? 'retired'
         : payable
           ? 'payable'
-          : verified
-            ? 'verified'
-            : funded
-              ? 'funded'
-              : defined
-                ? 'fundable'
-                : 'blocked'
+          : creditClass
+            ? 'credit_class'
+            : verified
+              ? 'verified'
+              : funded
+                ? 'funded'
+                : defined
+                  ? 'fundable'
+                  : 'blocked'
 
   const duplicateBlockerRefs = duplicateReplay
     ? [
@@ -604,37 +631,54 @@ export const projectDebtReceiptSettlement = (
           : []),
       ]
     : []
+  const creditClassBlockerRefs = documentationCreditOnly
+    ? ['blocker.public.debt_receipt.documentation_or_journal_credit_not_payable']
+    : []
+  const missingBlockerRefs = missingEvidenceBlockers({
+    acceptedWorkRefs,
+    baselineMetricRefs,
+    budgetCapSats,
+    fundingApprovalRefs,
+    fundingAuthorityRefs,
+    hygieneDeltaRefs,
+    noNewEqualOrWorseDebtRefs,
+    reviewDecisionRefs,
+    scopeRefs,
+    settlementApprovalRefs,
+    settlementReceiptRefs,
+    sourceRefs,
+    stopConditionRefs,
+    targetMetricRefs,
+    verificationCommandRefs,
+  }).filter(
+    ref =>
+      !documentationCreditOnly ||
+      (ref !== 'blocker.public.debt_receipt.settlement_approval_missing' &&
+        ref !== 'blocker.public.debt_receipt.settlement_receipt_missing'),
+  )
 
   return decodeProjection({
     acceptedWorkRefs,
     baselineMetricRefs,
     blockerRefs: [
-      ...missingEvidenceBlockers({
-        acceptedWorkRefs,
-        baselineMetricRefs,
-        budgetCapSats,
-        fundingApprovalRefs,
-        fundingAuthorityRefs,
-        hygieneDeltaRefs,
-        noNewEqualOrWorseDebtRefs,
-        reviewDecisionRefs,
-        scopeRefs,
-        settlementApprovalRefs,
-        settlementReceiptRefs,
-        sourceRefs,
-        stopConditionRefs,
-        targetMetricRefs,
-        verificationCommandRefs,
-      }),
+      ...missingBlockerRefs,
       ...roleBlockers,
       ...studiedKnowledgeBlockerRefs,
       ...duplicateBlockerRefs,
+      ...creditClassBlockerRefs,
       ...(manualReviewOnly
         ? ['blocker.public.debt_receipt.manual_review_only']
         : []),
     ].sort(),
     budgetCapSats,
-    caveatRefs: baseCaveatRefs,
+    caveatRefs: [
+      ...baseCaveatRefs,
+      ...(documentationCreditOnly
+        ? [
+            'caveat.public.debt_receipt.documentation_or_journal_not_size_scaled',
+          ]
+        : []),
+    ],
     debtReceiptKey,
     duplicateFingerprintRefs,
     duplicateReplay,
@@ -645,13 +689,15 @@ export const projectDebtReceiptSettlement = (
     noNewEqualOrWorseDebtRefs,
     patchNoveltyKey,
     payableSats,
-    publicCopyRefs: retired
-      ? ['copy.public.debt_receipt.retired_with_settlement_receipt']
-      : payable
-        ? ['copy.public.debt_receipt.payable_pending_settlement']
-        : defined
-          ? ['copy.public.debt_receipt.defined_not_settled']
-          : ['copy.public.debt_receipt.blocked'],
+    publicCopyRefs: creditClass
+      ? ['copy.public.debt_receipt.credit_class_not_payable']
+      : retired
+        ? ['copy.public.debt_receipt.retired_with_settlement_receipt']
+        : payable
+          ? ['copy.public.debt_receipt.payable_pending_settlement']
+          : defined
+            ? ['copy.public.debt_receipt.defined_not_settled']
+            : ['copy.public.debt_receipt.blocked'],
     quarantineReasonRefs,
     retiredReceiptRefs,
     reviewDecisionRefs,
@@ -671,6 +717,7 @@ export const projectDebtReceiptSettlement = (
     studiedKnowledgeSourceRefs,
     targetMetricRefs,
     verificationCommandRefs,
+    workClass,
     workerPayoutEligible: payable || retired,
   })
 }
@@ -680,6 +727,7 @@ export const debtReceiptSettlementHasPrivateMaterial = (
 ): boolean => {
   const publicValues = [
     projection.state,
+    projection.workClass,
     ...(projection.debtReceiptKey === null ? [] : [projection.debtReceiptKey]),
     ...(projection.patchNoveltyKey === null ? [] : [projection.patchNoveltyKey]),
     ...projection.acceptedWorkRefs,

@@ -313,6 +313,22 @@ describe('POST /api/hygiene-lane/debt-receipts (create payable receipt, #5335 st
     expect(store.rows.size).toBe(0)
   })
 
+  it('refuses documentation or journal credit before it can become payable', async () => {
+    const { routes, store } = makeRoutes()
+
+    const response = await runRoute(
+      routes.routeHygieneLaneSettlementRequest(
+        createRequest(createBody({ workClass: 'documentation_or_journal' })),
+        {},
+      ),
+    )
+
+    expect(response.status).toBe(400)
+    const json = (await response.json()) as { reason: string }
+    expect(json.reason).toContain('not_payable:credit_class')
+    expect(store.rows.size).toBe(0)
+  })
+
   it('rejects an unsafe ref (payment/wallet material) before persisting', async () => {
     const { routes, store } = makeRoutes()
 

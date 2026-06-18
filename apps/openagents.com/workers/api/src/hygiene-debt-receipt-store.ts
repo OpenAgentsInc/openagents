@@ -152,8 +152,9 @@ export const buildHygieneDebtReceiptRecord = (
   }
 
   // A funded, payable receipt is the unit. Anything that does not reach the
-  // `payable` state (blocked / fundable / funded / verified / retired /
-  // duplicate_replay / quarantined) is NOT a payable receipt and is refused.
+  // `payable` state (blocked / fundable / funded / verified / credit_class /
+  // retired / duplicate_replay / quarantined) is NOT a payable receipt and is
+  // refused.
   if (projection.state !== 'payable') {
     throw new HygieneDebtReceiptStoreError({
       kind: 'not_payable',
