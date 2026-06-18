@@ -1,4 +1,5 @@
 import { Schema as S } from "effect";
+import { redactReceiptUrl } from "../../receipt-redaction";
 import {
   APPLE_FM_BACKEND_KIND,
   type AppleFmUnavailableReason,
@@ -66,7 +67,7 @@ export function makeAppleFmAvailabilityReceipt(
     backendKind: APPLE_FM_BACKEND_KIND,
     profileId: input.profileId,
     model: input.model,
-    baseUrl: redactUrl(input.baseUrl),
+    baseUrl: redactReceiptUrl(input.baseUrl),
     ready: input.ready,
     unavailableReason: input.unavailableReason,
     message: input.message,
@@ -88,7 +89,7 @@ export function makeAppleFmFailureReceipt(input: {
     backendKind: APPLE_FM_BACKEND_KIND,
     profileId: input.profileId,
     model: input.model,
-    baseUrl: redactUrl(input.baseUrl),
+    baseUrl: redactReceiptUrl(input.baseUrl),
     failureClass: input.failureClass,
     message: input.message,
     observedAt: input.observedAt ?? new Date().toISOString(),
@@ -113,15 +114,4 @@ export function makeAppleFmTranscriptReceipt(input: {
   };
 }
 
-export function redactUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    url.username = "";
-    url.password = "";
-    url.search = "";
-    url.hash = "";
-    return url.toString().replace(/\/$/, "");
-  } catch {
-    return "[redacted-invalid-url]";
-  }
-}
+export { redactReceiptUrl as redactUrl };
