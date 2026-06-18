@@ -29,6 +29,9 @@ direction.
 - `2026-06-17-openagents-world-asset-catalog.md` - owned OpenAgents world asset
   catalog and provenance policy for avatars, stations, props, materials,
   adornments, and Quick 3D MMORPG reference-asset eligibility.
+- `2026-06-17-proof-replay-theater-system-plan.md` - audit and implementation
+  plan for turning public proof sets into deterministic 3D replays with agent
+  avatars, proof gates, camera tracks, and receipt-backed sats zaps.
 
 ## Implementation Homes
 
