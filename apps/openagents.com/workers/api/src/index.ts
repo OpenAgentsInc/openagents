@@ -472,6 +472,7 @@ import {
   tassadarRealSettlementUtcDayKey,
 } from './tassadar-run-settlement-gate'
 import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
+import { makeD1HygieneDebtReceiptStore } from './hygiene-debt-receipt-store'
 import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
 import {
   dispatchRealRunSettlementCore,
@@ -6988,10 +6989,15 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
 // settle resolves to the simulation chain. The real branch is unreachable until
 // the owner arms OPENAGENTS_REAL_SETTLEMENT_GATE with the hygiene run-ref.
 //
-// `resolveDebtReceiptProjection` is the source of truth for payability; an
-// operator cannot assert payability through the request body. It is fail-closed:
-// until a durable debt-receipt projection source is wired here it returns
-// undefined, so the route reports `debt_receipt_not_found` and never pays.
+// Create-side (#5335 process step 1): POST /api/hygiene-lane/debt-receipts is
+// admin-only and persists a PAYABLE funded debt receipt in the durable D1 store
+// (one row per DebtReceiptKey, #5340). `resolveDebtReceiptProjection` reads that
+// store as the single source of truth for payability — an operator cannot assert
+// payability through the settle request body. It is fail-closed: no row, or a
+// retired row, yields a non-payable projection so the route reports
+// `debt_receipt_not_found` / `duplicate_replay` and never pays. Once real bitcoin
+// moves, the settle route marks the key retired, so a second settle on the same
+// key is `duplicate_replay`.
 const hygieneLaneSettlementRoutes =
   makeHygieneLaneSettlementRoutes<WorkerBindings>({
     makePayoutLedgerStore: env =>
@@ -7035,11 +7041,20 @@ const hygieneLaneSettlementRoutes =
             .readRegistration(pylonRef)
             .then(registration => registration?.ownerAgentUserId),
       ),
-    // Fail-closed debt-receipt projection source. No durable debt-receipt store
-    // exists yet; until one is wired, this returns undefined and the route never
-    // settles. The decision/build/dispatch/redaction wiring is complete and
-    // tested; only this source-of-truth lookup remains to be connected.
-    resolveDebtReceiptProjection: async () => undefined,
+    // Durable, payable debt-receipt store (#5335 process step 1, #5372). The
+    // admin create endpoint (POST /api/hygiene-lane/debt-receipts) persists a
+    // payable funded receipt here; the settle route reads payability from it
+    // and marks it retired once real bitcoin moves, so a second settle on the
+    // same DebtReceiptKey reprojects to duplicate_replay.
+    makeDebtReceiptStore: env =>
+      makeD1HygieneDebtReceiptStore(openAgentsDatabase(env)),
+    // The settle route's source of truth for payability: the durable store.
+    // Fail-closed — no row (or a retired row) yields a non-payable projection,
+    // so the operator cannot assert payability through the request body.
+    resolveDebtReceiptProjection: (env, debtReceiptKeyRef) =>
+      makeD1HygieneDebtReceiptStore(openAgentsDatabase(env)).resolveProjection(
+        debtReceiptKeyRef,
+      ),
     requireAdminApiToken,
   })
 

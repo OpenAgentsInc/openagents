@@ -1,6 +1,16 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
-import { type DebtReceiptSettlementProjection } from './debt-receipt-policy'
+import { DebtReceiptKeyInput } from './debt-receipt-key'
+import {
+  type DebtReceiptSettlementInput,
+  type DebtReceiptSettlementProjection,
+  DebtReceiptPolicyUnsafe,
+} from './debt-receipt-policy'
+import {
+  type HygieneDebtReceiptCreateResult,
+  type HygieneDebtReceiptStore,
+  HygieneDebtReceiptStoreError,
+} from './hygiene-debt-receipt-store'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
@@ -8,6 +18,7 @@ import {
 } from './http/responses'
 import {
   HygieneLaneSettlementRequest,
+  HygieneLaneSettlementRequestRef,
   HygieneLaneVerificationClass,
   buildHygieneLaneSettlement,
   decideHygieneLaneSettlement,
@@ -84,6 +95,13 @@ export type HygieneLaneSettlementRouteDependencies<Bindings> = Readonly<{
     env: Bindings,
     debtReceiptKeyRef: string,
   ) => Promise<DebtReceiptSettlementProjection | undefined>
+  // The durable, payable debt-receipt store (#5335 process step 1). The admin
+  // create endpoint persists a payable receipt here; the settle route marks it
+  // retired once it has settled, so a second settle on the same key reprojects
+  // to `duplicate_replay`. Optional: when absent, the create endpoint is
+  // unavailable and the settle route never retires (it stays fail-closed on the
+  // separate `resolveDebtReceiptProjection` source).
+  makeDebtReceiptStore?: (env: Bindings) => HygieneDebtReceiptStore
   // REAL-settlement dispatch wiring (openagents #5232). All optional: the real
   // branch is unreachable unless the owner arms the gate, and then it requires
   // these to be wired. INERT by default.
@@ -122,6 +140,89 @@ const routeErrorResponse = (
     }),
     M.exhaustive,
   )
+
+// Public-safe ref array. Each entry is the shared bounded, trimmed, non-secret
+// hygiene request ref. The debt-receipt policy re-validates ref safety when it
+// projects, so this is the first boundary guard; the policy is the authority.
+const DebtReceiptRefArray = S.Array(HygieneLaneSettlementRequestRef)
+
+const NonNegativeInteger = S.Number.check(
+  S.isInt(),
+  S.isGreaterThanOrEqualTo(0),
+)
+
+/**
+ * Admin request to CREATE a payable funded debt receipt (#5372, EPIC #5335,
+ * process step 1). The requester / settlement-authority supplies the full,
+ * public-safe debt-receipt evidence (the same vocabulary the policy projects)
+ * for a merged + reviewed PR. The endpoint reprojects it: only an input that
+ * reaches the `payable` state is persisted, keyed by its `DebtReceiptKey`
+ * (#5340). Idempotent on the key.
+ *
+ * No raw diffs, PR bodies, wallet/payment material, addresses, or timestamps
+ * may enter the request — every field is a public-safe ref or a bounded
+ * integer, and the policy rejects anything secret-shaped on projection.
+ */
+export const HygieneDebtReceiptCreateRequest = S.Struct({
+  // The DebtReceiptKey input components (#5340): debtReceiptRef, repoBaselineRef,
+  // scopeDigest, objectiveDigest. Computes the key the receipt is stored under.
+  debtReceiptKeyInput: DebtReceiptKeyInput,
+  // The merged-PR + reviewer-acceptance refs this receipt funds.
+  mergedPrRef: HygieneLaneSettlementRequestRef,
+  reviewerAcceptanceRef: HygieneLaneSettlementRequestRef,
+  // The funded budget cap and the payable amount (sats). payableSats must be a
+  // positive integer <= budgetCap (the policy enforces this).
+  budgetCapSats: NonNegativeInteger,
+  payableSats: NonNegativeInteger,
+  // The evidence refs the policy needs to reach `payable`.
+  sourceRefs: DebtReceiptRefArray,
+  baselineMetricRefs: DebtReceiptRefArray,
+  targetMetricRefs: DebtReceiptRefArray,
+  scopeRefs: DebtReceiptRefArray,
+  stopConditionRefs: DebtReceiptRefArray,
+  fundingApprovalRefs: DebtReceiptRefArray,
+  fundingAuthorityRefs: DebtReceiptRefArray,
+  verificationCommandRefs: DebtReceiptRefArray,
+  acceptedWorkRefs: DebtReceiptRefArray,
+  reviewDecisionRefs: DebtReceiptRefArray,
+  hygieneDeltaRefs: DebtReceiptRefArray,
+  noNewEqualOrWorseDebtRefs: DebtReceiptRefArray,
+  settlementApprovalRefs: DebtReceiptRefArray,
+  // The role actors (kept distinct by the policy).
+  proposerActorRef: S.optionalKey(HygieneLaneSettlementRequestRef),
+  workerActorRef: S.optionalKey(HygieneLaneSettlementRequestRef),
+  reviewerActorRef: S.optionalKey(HygieneLaneSettlementRequestRef),
+  fundingAuthorityActorRef: S.optionalKey(HygieneLaneSettlementRequestRef),
+  settlementAuthorityActorRef: S.optionalKey(HygieneLaneSettlementRequestRef),
+})
+export type HygieneDebtReceiptCreateRequest =
+  typeof HygieneDebtReceiptCreateRequest.Type
+
+const settlementInputFromCreateRequest = (
+  body: HygieneDebtReceiptCreateRequest,
+): DebtReceiptSettlementInput => ({
+  acceptedWorkRefs: body.acceptedWorkRefs,
+  baselineMetricRefs: body.baselineMetricRefs,
+  budgetCapSats: body.budgetCapSats,
+  debtReceiptKeyInput: body.debtReceiptKeyInput,
+  fundingApprovalRefs: body.fundingApprovalRefs,
+  fundingAuthorityActorRef: body.fundingAuthorityActorRef,
+  fundingAuthorityRefs: body.fundingAuthorityRefs,
+  hygieneDeltaRefs: body.hygieneDeltaRefs,
+  noNewEqualOrWorseDebtRefs: body.noNewEqualOrWorseDebtRefs,
+  payableSats: body.payableSats,
+  proposerActorRef: body.proposerActorRef,
+  reviewDecisionRefs: body.reviewDecisionRefs,
+  reviewerActorRef: body.reviewerActorRef,
+  scopeRefs: body.scopeRefs,
+  settlementApprovalRefs: body.settlementApprovalRefs,
+  settlementAuthorityActorRef: body.settlementAuthorityActorRef,
+  sourceRefs: body.sourceRefs,
+  stopConditionRefs: body.stopConditionRefs,
+  targetMetricRefs: body.targetMetricRefs,
+  verificationCommandRefs: body.verificationCommandRefs,
+  workerActorRef: body.workerActorRef,
+})
 
 const requireAdmin = <Bindings extends HygieneLaneSettlementRouteEnv>(
   dependencies: HygieneLaneSettlementRouteDependencies<Bindings>,
@@ -326,6 +427,29 @@ const routeHygieneLaneSettlement = <
       })
     }
 
+    // Retire the durable debt receipt ONCE real bitcoin actually moved, so a
+    // second settle on the same DebtReceiptKey reprojects to `duplicate_replay`.
+    // The simulation chain (gate OFF) does NOT retire: nothing was paid, so the
+    // receipt must stay payable for the real settle once the gate is armed.
+    // markRetired is idempotent (a retried real settle re-marks a no-op), and it
+    // resolves the key from the durable store, not from the request body.
+    if (
+      decision.realAuthorized &&
+      dependencies.makeDebtReceiptStore !== undefined
+    ) {
+      const debtReceiptStore = dependencies.makeDebtReceiptStore(env)
+
+      yield* Effect.tryPromise({
+        catch: trainingAuthorityStoreErrorFromUnknown,
+        try: () =>
+          debtReceiptStore.markRetired(
+            body.debtReceiptKeyRef,
+            settlement.settlementReceiptRef,
+            nowIso,
+          ),
+      })
+    }
+
     return noStoreJsonResponse({
       settlement: {
         amountSats: settlement.amountSats,
@@ -340,6 +464,116 @@ const routeHygieneLaneSettlement = <
     })
   })
 
+/**
+ * Admin CREATE handler for a payable funded debt receipt (#5372, EPIC #5335,
+ * process step 1). Validates the request, reprojects it through the debt-receipt
+ * policy (which proves payability + ref safety + computes the DebtReceiptKey),
+ * and persists it. Idempotent on the key; a retired key cannot be re-created.
+ * Fail-closed: a non-payable input is refused and nothing is stored.
+ */
+const routeHygieneDebtReceiptCreate = <
+  Bindings extends HygieneLaneSettlementRouteEnv,
+>(
+  dependencies: HygieneLaneSettlementRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Effect.Effect<HttpResponse, HygieneLaneSettlementRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+
+    if (dependencies.makeDebtReceiptStore === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'storage_error',
+        reason: 'hygiene_debt_receipt_create_blocked:store_not_configured',
+      })
+    }
+
+    const body = yield* Effect.tryPromise({
+      catch: error =>
+        new TrainingAuthorityStoreError({
+          kind: 'validation_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: async () =>
+        decodeUnknownWithSchema(
+          HygieneDebtReceiptCreateRequest,
+          await readJsonObject(request),
+        ),
+    })
+
+    const nowIso = dependencies.nowIso?.() ?? currentIsoTimestamp()
+    const store = dependencies.makeDebtReceiptStore(env)
+    const settlementInput = settlementInputFromCreateRequest(body)
+
+    // Persist. The store reprojects the input: any non-payable state or unsafe
+    // ref throws (HygieneDebtReceiptStoreError / DebtReceiptPolicyUnsafe), which
+    // we normalize to a typed store error below. Idempotent on the key.
+    const result: HygieneDebtReceiptCreateResult = yield* Effect.tryPromise({
+      catch: error => {
+        if (error instanceof HygieneDebtReceiptStoreError) {
+          return new TrainingAuthorityStoreError({
+            kind:
+              error.kind === 'not_payable'
+                ? 'validation_error'
+                : error.kind === 'conflict'
+                  ? 'conflict'
+                  : error.kind,
+            reason: `hygiene_debt_receipt_create_blocked:${error.reason}`,
+          })
+        }
+
+        // DebtReceiptPolicyUnsafe (unsafe ref) or any other failure: reject as a
+        // validation error. The policy reason is public-safe (a description, not
+        // the offending value), so it is safe to surface.
+        if (error instanceof DebtReceiptPolicyUnsafe) {
+          return new TrainingAuthorityStoreError({
+            kind: 'validation_error',
+            reason: `hygiene_debt_receipt_create_blocked:unsafe_ref:${error.reason}`,
+          })
+        }
+
+        return new TrainingAuthorityStoreError({
+          kind: 'validation_error',
+          reason: 'hygiene_debt_receipt_create_blocked:invalid_input',
+        })
+      },
+      try: () =>
+        store.create({
+          mergedPrRef: body.mergedPrRef,
+          nowIso,
+          reviewerAcceptanceRef: body.reviewerAcceptanceRef,
+          settlementInput,
+        }),
+    })
+
+    // A retired key cannot be re-created (it has already settled): that is a
+    // duplicate replay, fail closed.
+    if (result.kind === 'retired') {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'conflict',
+        reason: 'hygiene_debt_receipt_create_blocked:duplicate_replay_retired',
+      })
+    }
+
+    return noStoreJsonResponse(
+      {
+        debtReceipt: {
+          // Public-safe only: the typed key, state, payable amount, and the
+          // refs that identify the receipt. No raw input echoes back.
+          budgetCapSats: result.record.budgetCapSats,
+          debtReceiptKey: result.record.debtReceiptKey,
+          debtReceiptRef: result.record.debtReceiptRef,
+          idempotent: result.kind === 'already_payable',
+          mergedPrRef: result.record.mergedPrRef,
+          payableSats: result.record.payableSats,
+          reviewerAcceptanceRef: result.record.reviewerAcceptanceRef,
+          state: result.record.state,
+        },
+      },
+      { status: result.kind === 'created' ? 201 : 200 },
+    )
+  })
+
 export const makeHygieneLaneSettlementRoutes = <
   Bindings extends HygieneLaneSettlementRouteEnv,
 >(
@@ -351,6 +585,18 @@ export const makeHygieneLaneSettlementRoutes = <
   ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
 
+    // Create-side: persist a payable funded debt receipt (#5335 step 1).
+    if (url.pathname === '/api/hygiene-lane/debt-receipts') {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeHygieneDebtReceiptCreate(dependencies, request, env).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
+    // Settle-side: settle ONE payable debt receipt (the existing #5372 route).
     if (url.pathname !== '/api/hygiene-lane/settlement-receipt') {
       return undefined
     }

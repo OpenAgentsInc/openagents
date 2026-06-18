@@ -1109,14 +1109,33 @@ This is the invariant ledger for `openagents`.
   destination means no send. Receipt projections remain public-projection-safe
   (redacted `payout.spark.<digest>`-style refs only; no raw `spark1…`,
   preimages, invoices, or payout targets).
+- A payable debt receipt must exist in a durable store before it can settle.
+  The requester / settlement-authority creates it through the admin-only
+  create endpoint (`POST /api/hygiene-lane/debt-receipts`), which reprojects the
+  supplied public-safe evidence through the debt-receipt policy and persists it
+  ONLY when it reaches the `payable` state, keyed by its `DebtReceiptKey`
+  (`hygiene_debt_receipts` D1 table, one row per key). Create is idempotent on
+  the key. The settle route resolves payability ONLY from this store: an absent
+  row fails closed (`debt_receipt_not_found`), and a retired row reprojects to
+  `duplicate_replay`. Once real Bitcoin moves, the settle route marks the key
+  `retired` (recording the settlement receipt ref), so a second settle on the
+  same key is a duplicate replay and never re-pays; a retired key also cannot be
+  re-created. The simulation chain (gate OFF) does NOT retire the receipt, since
+  nothing was paid. Every stored column is a public-safe ref or a bounded
+  integer, and the policy re-validates ref safety on every reprojection, so the
+  store never relies on itself to keep secrets out.
 - Regression coverage for this policy lives in
   `workers/api/src/debt-receipt-key.test.ts`,
   `workers/api/src/debt-receipt-policy.test.ts`,
   `workers/api/src/debt-receipt-work-request.test.ts`,
   `workers/api/src/hygiene-lane-settlement.test.ts`,
-  `workers/api/src/hygiene-lane-settlement-routes.test.ts`, and
-  `workers/api/src/artanis-studying-labor.test.ts`; the buyer-facing lane packet
-  lives in `docs/labor/2026-06-18-debt-receipt-hygiene-lane.md`.
+  `workers/api/src/hygiene-lane-settlement-routes.test.ts`,
+  `workers/api/src/hygiene-debt-receipt-store.test.ts`,
+  `workers/api/src/hygiene-lane-debt-receipt-create-routes.test.ts`, and
+  `workers/api/src/artanis-studying-labor.test.ts`; the durable backing store
+  starts in `workers/api/migrations/0207_hygiene_debt_receipts.sql`, and the
+  buyer-facing lane packet lives in
+  `docs/labor/2026-06-18-debt-receipt-hygiene-lane.md`.
 
 ## User-Facing Live Data Integrity
 
