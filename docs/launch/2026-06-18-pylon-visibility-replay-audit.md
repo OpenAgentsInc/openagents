@@ -681,6 +681,20 @@ of hand-authored builders.
      topic/post events into replay tracks so replay is not limited to
      proof->verify->settle. Preserve caveats for aggregate snapshots and stale
      sources.
+   - Implementation status (2026-06-18, issue #5421): expanded the generated
+     proof-replay builder so public activity timeline fleet boot,
+     heartbeat/readiness, Forum discussion, and capacity snapshot rows become
+     explicit replay tracks. Fleet boot/readiness emits
+     `fleet_readiness_track` flows, Forum topic/post rows emit
+     `discussion_track` flows, capacity snapshots emit
+     `capacity_snapshot_track` flows and preserve aggregate snapshot caveats
+     and state labels, and all remain sequenced alongside work, verification,
+     settlement, and payment events. Tests now cover boot/readiness + Forum +
+     capacity mixed with payment events, shipment gate/render-plan source
+     coverage, and rejection of private Forum text/author material before any
+     replay bundle is emitted. This remains observation/projection/retrieval
+     only and grants no settlement, payout, accepted-work, deployment,
+     provider, wallet, or public-claim authority.
 4. **Add `pylon replay` over generated bundles**
    - Body summary: Extend CLI replay to fetch generated bundles and render a
      text/JSON event track for agents. The command should be useful without

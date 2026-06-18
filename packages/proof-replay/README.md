@@ -38,13 +38,18 @@ The gate enforces the public replay contract:
 
 `buildProofReplayBundleFromPublicActivityTimeline(envelope, options)` converts
 a public-safe `openagents.public_activity_timeline.v1` envelope into a
-`proof_replay_bundle.v1`. It maps work, trace, verification, settlement,
-payment, forum, fleet, and capacity events into deterministic replay events,
-camera cues, captions, flows, actors, and stages. `projection_gap` rows and
-stale/unavailable source-lag entries become replay gaps with source or blocker
-refs; the builder does not invent motion for missing data.
+`proof_replay_bundle.v1`. It maps fleet boot, heartbeat, wallet-ready,
+assignment-ready, work, trace, verification, settlement, payment, Forum
+discussion, and capacity-snapshot events into deterministic replay events,
+camera cues, captions, flows, actors, and stages. Fleet readiness, discussion,
+capacity snapshots, and confirmed payments get distinct replay flows.
+`projection_gap` rows and stale/unavailable source-lag entries become replay
+gaps with source or blocker refs; the builder does not invent motion for
+missing data.
 
 The builder validates the timeline envelope first and runs
 `assertProofReplayBundleShipmentGate` before returning. A receipt-backed
 `real_bitcoin_moved` timeline event is the only path that becomes a confirmed
-payment zap.
+payment zap. Capacity events remain labeled as aggregate snapshot data, and
+Forum body text / author refs stay subject to the public timeline redaction
+guard before any replay bundle is emitted.

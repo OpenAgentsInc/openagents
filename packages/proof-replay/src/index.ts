@@ -663,18 +663,55 @@ const cameraCueForReplayEvent = (event: ReplayEvent): ReplayCameraCue => ({
   startSecond: event.timelineSecond,
 })
 
-const paymentFlowForReplayEvent = (event: ReplayEvent): ReplayFlow | null =>
-  event.kind === 'payment_zap_confirmed'
-    ? {
-        flowKind: 'payment_movement',
-        flowRef: `flow.${event.eventRef}`,
-        fromRef: 'actor.openagents.settlement',
-        sourceRefs: event.sourceRefs,
-        toRef: event.actorRefs[0] ?? 'actor.openagents.network',
-        ...(event.amountSats === undefined ? {} : { amountSats: event.amountSats }),
-        ...(event.rail === undefined ? {} : { rail: event.rail }),
-      }
-    : null
+const flowForReplayEvent = (event: ReplayEvent): ReplayFlow | null => {
+  if (event.kind === 'payment_zap_confirmed') {
+    return {
+      flowKind: 'payment_movement',
+      flowRef: `flow.${event.eventRef}`,
+      fromRef: 'actor.openagents.settlement',
+      sourceRefs: event.sourceRefs,
+      toRef: event.actorRefs[0] ?? 'actor.openagents.network',
+      ...(event.amountSats === undefined ? {} : { amountSats: event.amountSats }),
+      ...(event.rail === undefined ? {} : { rail: event.rail }),
+    }
+  }
+
+  if (
+    event.kind === 'actor_entered_region' ||
+    event.kind === 'actor_moved' ||
+    event.kind === 'actor_focused_pylon'
+  ) {
+    return {
+      flowKind: 'fleet_readiness_track',
+      flowRef: `flow.${event.eventRef}`,
+      fromRef: event.actorRefs[0] ?? 'actor.openagents.network',
+      sourceRefs: event.sourceRefs,
+      toRef: 'stage.timeline.fleet',
+    }
+  }
+
+  if (event.kind === 'forum_announcement_posted') {
+    return {
+      flowKind: 'discussion_track',
+      flowRef: `flow.${event.eventRef}`,
+      fromRef: event.actorRefs[0] ?? 'actor.openagents.forum',
+      sourceRefs: event.sourceRefs,
+      toRef: 'stage.timeline.forum',
+    }
+  }
+
+  if (event.kind === 'artifact_opened') {
+    return {
+      flowKind: 'capacity_snapshot_track',
+      flowRef: `flow.${event.eventRef}`,
+      fromRef: event.actorRefs[0] ?? 'actor.openagents.network',
+      sourceRefs: event.sourceRefs,
+      toRef: 'stage.timeline.capacity',
+    }
+  }
+
+  return null
+}
 
 export const buildProofReplayBundleFromPublicActivityTimeline = (
   input: PublicActivityTimelineEnvelope | unknown,
@@ -746,7 +783,7 @@ export const buildProofReplayBundleFromPublicActivityTimeline = (
     claimScope: 'evidence_presentation_only',
     events: replayEvents,
     flows: replayEvents
-      .map(paymentFlowForReplayEvent)
+      .map(flowForReplayEvent)
       .filter((flow): flow is ReplayFlow => flow !== null),
     gaps: [...projectionGaps, ...sourceLagGaps],
     generatedAt,
