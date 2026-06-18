@@ -26,6 +26,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   Pylon assignment, or product-promise authority. The current isolated
   exception is `apps/nostr-relay` through `nostr-effect@0.0.12` only.
 
+## No GitHub-Hosted CI / Cloud Actions
+
+- Never add GitHub Actions workflows or any GitHub-hosted CI to this
+  repository. `.github/workflows/` must contain no workflow files
+  (no `on: push`, `on: schedule`, `on: pull_request`, or any other
+  GitHub-runner automation).
+- CI, scheduled jobs, freshness re-runs (e.g. study-packet restudy), and any
+  recurring automation run on OpenAgents-owned infrastructure (our GCE / cloud
+  runners and cron), not on GitHub-hosted compute.
+- Rationale: keep build, test, scheduling, and automation on owned infra —
+  consistent with the no-Expo/EAS-cloud mobile policy — and avoid handing repo
+  automation, secrets, or scheduling to third-party GitHub-hosted runners.
+
 ## Product Surface Ownership
 
 - `apps/openagents.com/` owns the `openagents.com` product surface and retains
