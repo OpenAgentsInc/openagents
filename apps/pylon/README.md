@@ -169,6 +169,15 @@ payout target`) run from the palette and always end in an explicit
   default provider home; registered account refs still target their configured
   homes. `--refresh` is explicit because it runs one minimal bounded
   inference per selected account and may consume paid provider tokens.
+- Public activity evidence is available without a local node:
+  `pylon activity --json [--since CURSOR] [--filter work,verify,settle]`,
+  `pylon timeline --from <iso> --to <iso> --json`,
+  `pylon receipts --run <trainingRunRef> --json`, and
+  `pylon evidence-pack --run <trainingRunRef> --json`. These commands read the
+  documented public OpenAgents APIs only, return dereferenceable source/blocker
+  refs, and are observation-only: they do not spend, settle, deploy, claim
+  work, mutate provider state, or expose local wallet/node status. Use
+  `--base-url` or `PYLON_OPENAGENTS_BASE_URL` to target another public API.
 - `pylon dev check --json`, `pylon dev apply --json`, and
   `pylon dev reload --json` provide the local supervised check/apply/reload
   loop. `check` emits changed file refs, dirty-state counts, command refs, exit

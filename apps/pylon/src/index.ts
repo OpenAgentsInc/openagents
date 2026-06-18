@@ -128,6 +128,11 @@ import {
   projectCommandCatalog,
 } from "./cli-catalog"
 import {
+  formatPublicActivityCliText,
+  runPublicActivityCliCommand,
+  type PublicActivityCliCommand,
+} from "./public-activity-cli"
+import {
   activateTrainingWindow,
   admitTrainingEvidence,
   claimTrainingLease,
@@ -2138,6 +2143,31 @@ async function main() {
     )
     process.exitCode = 1
     return
+  }
+
+  if (
+    args[0] === "activity" ||
+    args[0] === "timeline" ||
+    args[0] === "receipts" ||
+    args[0] === "evidence-pack"
+  ) {
+    const command = args[0] as PublicActivityCliCommand
+    try {
+      const result = await runPublicActivityCliCommand(command, args.slice(1), { env: Bun.env })
+      process.stdout.write(
+        result.json
+          ? `${JSON.stringify(result, null, 2)}\n`
+          : formatPublicActivityCliText(result),
+      )
+      if (!result.ok) process.exitCode = 1
+      return
+    } catch (error) {
+      process.stdout.write(
+        `${JSON.stringify({ ok: false, command, error: error instanceof Error ? error.message : String(error) }, null, 2)}\n`,
+      )
+      process.exitCode = 1
+      return
+    }
   }
 
   // CL-5035 sessions: first-class headless wrappers over the control-server

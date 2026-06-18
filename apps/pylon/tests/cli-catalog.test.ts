@@ -50,6 +50,18 @@ describe("pylon command catalog", () => {
     expect(spenders).toEqual(["tip", "wallet", "work"])
   })
 
+  test("public activity evidence commands are read-only network-backed", () => {
+    for (const name of ["activity", "timeline", "receipts", "evidence-pack"]) {
+      const entry = findCommandEntry(name)!
+      expect(entry, `missing ${name}`).toBeDefined()
+      expect(entry.needsNetwork).toBe(true)
+      expect(entry.needsNode).toBeUndefined()
+      expect(entry.mutates).toBe(false)
+      expect(entry.spends).toBe(false)
+      expect(entry.json).toBe(true)
+    }
+  })
+
   test("every entry has a non-empty summary and unique command name", () => {
     const seen = new Set<string>()
     for (const entry of PYLON_COMMAND_CATALOG) {

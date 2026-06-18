@@ -609,6 +609,23 @@ generation, and clips.
      `pylon receipts --run`, and `pylon evidence-pack --run`. Keep own-node
      status commands separate from public fleet commands. Acceptance: a fresh
      agent can answer the current-state questions from CLI JSON only.
+   - Implementation status (2026-06-18, issue #5418): added the Pylon CLI as
+     the first programmatic consumer of the public activity spine. The new
+     `activity`, `timeline`, `receipts`, and `evidence-pack` commands are
+     cataloged as read-only network-backed verbs, default to
+     `https://openagents.com`, honor `--base-url` /
+     `PYLON_OPENAGENTS_BASE_URL`, and emit JSON envelopes with
+     `authority:"observation_only"`, request URLs, caveat refs, blocker refs,
+     and dereferenceable receipt / challenge / evidence URLs. `activity` and
+     `timeline` require every event to carry source refs or blocker refs;
+     `receipts` maps public receipt refs to public receipt URLs; and
+     `evidence-pack` gathers run summary, settlements, product promises,
+     proof-replay, and optional verification challenge documents for agents.
+     Focused tests cover filter expansion, bounded watch cursor resume,
+     required args, text formatting, public-projection safety, and command
+     catalog authority flags. This remains retrieval/projection only and grants
+     no settlement, payout, accepted-work, deployment, provider, wallet,
+     own-node status, or public-claim authority.
 
 #### EPIC 2 — General replay from the public timeline
 
