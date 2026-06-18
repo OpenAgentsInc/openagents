@@ -11,7 +11,13 @@
 // payouts (#5176). Supersedes the rc.13 cut, which bumped package.json but NOT
 // this constant — so rc.13 binaries self-reported rc.12, auto-update-looped, and
 // showed the wrong version in /api/pylons. Keep BOTH in sync on every cut.
-export const PYLON_VERSION = "1.0.0-rc.32"
+// rc.33: install the Breez SDK stdout guard as a TOP-LEVEL side effect of the
+// first entry import (src/breez-stdout-guard.ts) so the SDK's "Node.js storage
+// automatically enabled" banner cannot reach stdout before the guard is in
+// place in the compiled binary. The rc.32 runtime guard fixed backup-status but
+// not status --json, because the bundled binary could eval the SDK before main()
+// installed it. Breez stays lazily imported.
+export const PYLON_VERSION = "1.0.0-rc.33"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.

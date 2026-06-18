@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 
+// MUST be the FIRST import: installs the Breez stdout guard as a top-level
+// side effect before any sibling module (or eagerly-evaluated bundled Breez SDK
+// module in the compiled binary) can print its storage banner to stdout. rc.33.
+import { installBreezStdoutGuard } from "./breez-stdout-guard"
 import { readFile } from "node:fs/promises"
 import {
   PYLON_TASSADAR_SELF_TEST_FAILED_BLOCKER_REF,
@@ -1788,49 +1792,6 @@ function formatNodeStartupError(error: unknown): string {
     ].join("\n")
   }
   return `Pylon ${PYLON_VERSION} crashed on startup: ${message}`
-}
-
-// The bundled Breez Spark SDK (@breeztech/breez-sdk-spark) prints a storage
-// banner to STDOUT at module-eval time:
-//   "Breez SDK: Node.js storage automatically enabled"
-// That single uncontrolled line corrupts every machine-readable `--json`
-// command that loads the wallet (`wallet status --json`,
-// `wallet backup-status --json`, …) — the first stdout line is no longer valid
-// JSON, so any consumer parser fails. We cannot edit the third-party package,
-// so install a narrow stdout guard that drops ONLY this exact known banner
-// (and its sibling storage warnings) while leaving all other output intact.
-function installBreezStdoutGuard(): void {
-  const isBreezBanner = (text: string): boolean =>
-    /^Breez SDK: (Node\.js storage automatically enabled|Failed to load Node\.js storage:|Storage operations may not work)/.test(
-      text.trimStart(),
-    )
-
-  // The SDK calls `console.log(...)` at module-eval time. Bun's `console.log`
-  // does NOT route through `process.stdout.write` (it writes the fd directly),
-  // so guarding only `process.stdout.write` misses it. Override `console.log`
-  // itself and re-route just the known Breez banner lines to stderr.
-  const originalConsoleLog = console.log.bind(console)
-  console.log = ((...parts: unknown[]) => {
-    const first = parts[0]
-    if (typeof first === "string" && isBreezBanner(first)) {
-      console.error(...parts)
-      return
-    }
-    originalConsoleLog(...parts)
-  }) as typeof console.log
-
-  // Belt-and-suspenders: also drop it if it ever arrives via stdout.write.
-  const originalWrite = process.stdout.write.bind(process.stdout)
-  process.stdout.write = ((chunk: any, ...rest: any[]) => {
-    const text = typeof chunk === "string" ? chunk : chunk instanceof Uint8Array ? Buffer.from(chunk).toString("utf8") : ""
-    if (text && isBreezBanner(text)) {
-      process.stderr.write(chunk)
-      const cb = rest.find((a) => typeof a === "function")
-      if (cb) cb()
-      return true
-    }
-    return (originalWrite as any)(chunk, ...rest)
-  }) as typeof process.stdout.write
 }
 
 async function main() {
