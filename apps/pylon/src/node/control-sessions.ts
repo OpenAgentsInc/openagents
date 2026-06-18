@@ -91,6 +91,12 @@ export type ControlSessionListCommand = { type: "session.list" }
 export type ControlSessionEventsCommand = { type: "session.events"; sessionRef: string }
 export type ControlSessionCancelCommand = { type: "session.cancel"; sessionRef: string }
 export type ControlSessionArtifactCommand = { type: "session.artifact"; sessionRef: string }
+export type ControlSessionReplyCommand = {
+  type: "session.reply"
+  sessionRef: string
+  objective: string
+  timeoutSeconds?: number
+}
 export type AppleFmSessionStartCommand = {
   type: "apple_fm.session.start"
   prompt: string
@@ -114,6 +120,7 @@ export type ControlSessionCommand =
   | ControlSessionEventsCommand
   | ControlSessionCancelCommand
   | ControlSessionArtifactCommand
+  | ControlSessionReplyCommand
 
 export type ControlSessionState = "queued" | "running" | "completed" | "failed" | "cancelled"
 export type ControlSessionEventPhase =
@@ -151,6 +158,7 @@ export type ControlSessionEvent = {
 
 export type ControlSessionProjection = {
   sessionRef: string
+  parentSessionRef: string | null
   adapter: ControlSessionAdapter
   // Requested execution lane (#4998), surfaced for "running on Google GCE / SHC
   // / local" provenance. `auto`/`local` execute locally today; cloud lanes are
@@ -183,6 +191,11 @@ export type ControlSessionProjection = {
 
 export type ControlSessionActions = {
   spawn: (command: ControlSessionSpawnCommand) => Promise<{ sessionRef: string; state: ControlSessionState }>
+  reply: (command: ControlSessionReplyCommand) => Promise<{
+    sessionRef: string
+    parentSessionRef: string
+    state: ControlSessionState
+  }>
   startAppleFm: (command: AppleFmSessionStartCommand) => Promise<AppleFmSessionStartResult>
   list: () => Promise<ControlSessionProjection[]>
   cancel: (sessionRef: string) => Promise<ControlSessionProjection>
@@ -282,6 +295,7 @@ export function codexControlSessionExecutionSettings(
 
 type SessionRecord = {
   sessionRef: string
+  parentSessionRef: string | null
   adapter: ControlSessionAdapter
   lane: ControlSessionLane
   account: ResolvedPylonAccountSelection | null
@@ -408,6 +422,38 @@ function parseSpawnCommand(raw: ControlSessionSpawnCommand): ControlSessionSpawn
   }
 }
 
+function parseReplyCommand(raw: ControlSessionReplyCommand): ControlSessionReplyCommand {
+  const record = raw as Record<string, unknown>
+  rejectDangerFields(record)
+  if (typeof raw.sessionRef !== "string" || raw.sessionRef.trim().length === 0) {
+    throw new Error("session.reply requires --session-ref")
+  }
+  if (typeof raw.objective !== "string" || raw.objective.trim().length === 0) {
+    throw new Error("session.reply requires a non-empty objective")
+  }
+  return {
+    type: "session.reply",
+    sessionRef: raw.sessionRef.trim(),
+    objective: raw.objective,
+    ...(typeof raw.timeoutSeconds === "number" && Number.isFinite(raw.timeoutSeconds)
+      ? { timeoutSeconds: Math.max(1, Math.min(1200, Math.floor(raw.timeoutSeconds))) }
+      : {}),
+  }
+}
+
+function buildContinuationObjective(priorObjective: string, followUp: string): string {
+  const trimmedFollowUp = followUp.trim()
+  const prior = priorObjective.trim()
+  if (prior.length === 0) return trimmedFollowUp
+  return [
+    "Continue the current coding session. Earlier turns in this thread:",
+    `1. ${prior}`,
+    "",
+    "Next instruction:",
+    trimmedFollowUp,
+  ].join("\n")
+}
+
 function parseAppleFmStartCommand(raw: AppleFmSessionStartCommand): AppleFmSessionStartCommand {
   const record = raw as Record<string, unknown>
   rejectDangerFields(record)
@@ -431,6 +477,7 @@ function projectionFor(record: SessionRecord): ControlSessionProjection {
   const account = publicPylonAccountSelection(record.account)
   return {
     sessionRef: record.sessionRef,
+    parentSessionRef: record.parentSessionRef,
     adapter: record.adapter,
     lane: record.lane,
     account,
@@ -1023,6 +1070,7 @@ export function createControlSessionActions(options: {
       )
       const record: SessionRecord = {
         sessionRef,
+        parentSessionRef: null,
         adapter: command.adapter,
         lane: command.lane ?? DEFAULT_CONTROL_SESSION_LANE,
         account,
@@ -1049,6 +1097,46 @@ export function createControlSessionActions(options: {
       emit(record, { phase: "queued" })
       void runSession(record)
       return { sessionRef, state: record.state }
+    },
+    reply: async (raw) => {
+      const command = parseReplyCommand(raw)
+      const parent = records.get(command.sessionRef)
+      if (!parent) throw new Error("session.reply parent session not found")
+      const runRef = randomBytes(12).toString("hex")
+      const objective = buildContinuationObjective(parent.objective, command.objective)
+      const sessionRef = stableRef(
+        "session.pylon.control",
+        `${runRef}:${parent.adapter}:${parent.sessionRef}:${objective}:${parent.workspace.workspaceRef}`,
+      )
+      const record: SessionRecord = {
+        sessionRef,
+        parentSessionRef: parent.sessionRef,
+        adapter: parent.adapter,
+        lane: parent.lane,
+        account: parent.account,
+        workspace: parent.workspace,
+        objective,
+        objectiveDigestRef: stableRef("digest.pylon.control_session.objective", objective),
+        verify: [...parent.verify],
+        verifyRef: parent.verifyRef,
+        timeoutMs: (command.timeoutSeconds ?? Math.ceil(parent.timeoutMs / 1000)) * 1000,
+        state: "queued",
+        abort: new AbortController(),
+        createdAt: nowIso(),
+        startedAt: null,
+        completedAt: null,
+        artifactRef: null,
+        resultRef: null,
+        errorClass: null,
+        errorDigestRef: null,
+        events: [],
+        cloudRunner: null,
+        resourceUsageReceiptRef: null,
+      }
+      records.set(sessionRef, record)
+      emit(record, { phase: "queued", messageText: "Continuation session queued" })
+      void runSession(record)
+      return { sessionRef, parentSessionRef: parent.sessionRef, state: record.state }
     },
     startAppleFm: async (raw) => {
       const command = parseAppleFmStartCommand(raw)
@@ -1083,6 +1171,7 @@ export function createControlSessionActions(options: {
       )
       const record: SessionRecord = {
         sessionRef,
+        parentSessionRef: null,
         adapter: "apple_fm",
         lane: "local",
         account: null,

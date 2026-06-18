@@ -72,7 +72,10 @@ import {
   type ControlCommand,
 } from "./node/control-server"
 import { collectPylonAppleFmStatus } from "./node/apple-fm-status"
-import { createControlSessionActions } from "./node/control-sessions"
+import {
+  createControlSessionActions,
+  type ControlSessionProjection,
+} from "./node/control-sessions"
 import { resolveCloudControlConfig } from "./cloud-control-client"
 import { makeCloudControlSessionExecutor } from "./openagents-cloud-provider"
 import { collectPylonContextProjection } from "./context-projection"
@@ -1882,6 +1885,65 @@ function optionString(options: Record<string, string | true>, key: string): stri
   return typeof value === "string" ? value : undefined
 }
 
+function optionFlag(options: Record<string, string | true>, key: string): boolean {
+  const value = options[key]
+  return value === true || value === "true"
+}
+
+function positiveIntegerOption(options: Record<string, string | true>, key: string, label: string): number | undefined {
+  const raw = optionString(options, key)
+  if (raw === undefined) return undefined
+  if (!/^[1-9][0-9]*$/.test(raw.trim())) throw new Error(`${label} must be a positive integer`)
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${label} must be a positive integer`)
+  return parsed
+}
+
+const isTerminalSessionState = (state: unknown): boolean =>
+  state === "completed" || state === "failed" || state === "cancelled"
+
+async function waitForControlSessionTerminal(sessionRef: string, timeoutSeconds: number | undefined) {
+  const startedAt = Date.now()
+  const deadlineMs = (timeoutSeconds ?? 600) * 1000 + 30_000
+  let polls = 0
+  let session: ControlSessionProjection | null = null
+  for (;;) {
+    polls += 1
+    const { result } = await runControlCommand({ type: "session.list" }, Bun.env)
+    const sessions = Array.isArray(result) ? (result as ControlSessionProjection[]) : []
+    session = sessions.find((entry) => entry.sessionRef === sessionRef) ?? null
+    if (session !== null && isTerminalSessionState(session.state)) break
+    if (Date.now() - startedAt >= deadlineMs) {
+      return {
+        session,
+        events: null,
+        artifact: null,
+        driver: { elapsedMs: Date.now() - startedAt, polls, timedOut: true },
+      }
+    }
+    await Bun.sleep(250)
+  }
+
+  let events: unknown = null
+  try {
+    events = (await runControlCommand({ type: "session.events", sessionRef }, Bun.env)).result
+  } catch {
+    events = null
+  }
+  let artifact: unknown = null
+  try {
+    artifact = (await runControlCommand({ type: "session.artifact", sessionRef }, Bun.env)).result
+  } catch {
+    artifact = null
+  }
+  return {
+    session,
+    events,
+    artifact,
+    driver: { elapsedMs: Date.now() - startedAt, polls, timedOut: false },
+  }
+}
+
 // Emit a clean JSON error + nonzero exit on the steering control surfaces, so
 // an agent always gets parseable output even when no node is running.
 function emitControlError(command: string, error: unknown): void {
@@ -2002,7 +2064,7 @@ async function main() {
   }
 
   // CL-5035 sessions: first-class headless wrappers over the control-server
-  // session verbs (session.list/spawn/cancel) the Autopilot desktop drives.
+  // session verbs (session.list/spawn/reply/cancel) the Autopilot desktop drives.
   if (args[0] === "sessions") {
     const command = args[1]
     const options = parseCliOptions(args.slice(2))
@@ -2045,6 +2107,36 @@ async function main() {
           Bun.env,
         )
         process.stdout.write(`${JSON.stringify({ ok: true, session: result }, null, 2)}\n`)
+        return
+      }
+      if (command === "reply") {
+        const sessionRef = optionString(options, "session-ref")
+        const objective = optionString(options, "objective")
+        if (!sessionRef || sessionRef.trim().length === 0) {
+          throw new Error("sessions reply requires --session-ref <ref>")
+        }
+        if (!objective || objective.trim().length === 0) {
+          throw new Error("sessions reply requires --objective")
+        }
+        const timeoutSeconds = positiveIntegerOption(options, "timeout-seconds", "sessions reply --timeout-seconds")
+        const { result } = await runControlCommand(
+          {
+            type: "session.reply",
+            sessionRef,
+            objective,
+            ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }),
+          },
+          Bun.env,
+        )
+        const reply = result as { sessionRef: string; parentSessionRef: string; state: string }
+        if (!optionFlag(options, "wait")) {
+          process.stdout.write(`${JSON.stringify({ ok: true, reply }, null, 2)}\n`)
+          return
+        }
+        const waited = await waitForControlSessionTerminal(reply.sessionRef, timeoutSeconds)
+        const ok = !waited.driver.timedOut && waited.session?.state === "completed"
+        process.stdout.write(`${JSON.stringify({ ok, reply, ...waited }, null, 2)}\n`)
+        if (!ok) process.exitCode = 1
         return
       }
       if (command === "cancel") {
@@ -2193,7 +2285,7 @@ async function main() {
         if (!result.ok) process.exitCode = 1
         return
       }
-      throw new Error("usage: pylon sessions list|spawn|exec|cancel ...")
+      throw new Error("usage: pylon sessions list|spawn|reply|exec|cancel ...")
     } catch (error) {
       emitControlError("sessions", error)
       return

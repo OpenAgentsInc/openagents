@@ -20,6 +20,7 @@ import type {
   ControlSessionCancelCommand,
   ControlSessionEventsCommand,
   ControlSessionListCommand,
+  ControlSessionReplyCommand,
   ControlSessionSpawnCommand,
 } from "./control-sessions"
 
@@ -73,6 +74,7 @@ export type ControlCommand =
   | ControlSessionEventsCommand
   | ControlSessionCancelCommand
   | ControlSessionArtifactCommand
+  | ControlSessionReplyCommand
   | { type: "intent.submit"; title: string; body: string; scopeHint?: string; submittedByClientRef?: string }
   | { type: "intent.list"; sinceCursor?: string }
   | { type: "accounts.list" }
@@ -305,6 +307,9 @@ export const startControlServer = (
         case "session.spawn":
           if (!options.actions.sessions) throw new Error("sessions unavailable on this node")
           return options.actions.sessions.spawn(command)
+        case "session.reply":
+          if (!options.actions.sessions) throw new Error("sessions unavailable on this node")
+          return options.actions.sessions.reply(command)
         case "session.list":
           if (!options.actions.sessions) throw new Error("sessions unavailable on this node")
           return options.actions.sessions.list()

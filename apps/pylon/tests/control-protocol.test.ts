@@ -615,6 +615,111 @@ describe("control protocol", () => {
     })
   })
 
+  test("session.reply spawns a continuation session with parent context and safe projections", async () => {
+    await withControlSessionFixture(async ({ accountHome, proofDir, summary, worktree }) => {
+      const calls: Array<{
+        accountRefHash: string | null | undefined
+        cwd: string
+        objective: string
+        sessionRef: string
+        verify: string[]
+      }> = []
+      const executor: ControlSessionExecutor = async (input) => {
+        calls.push({
+          accountRefHash: input.account?.accountRefHash,
+          cwd: input.cwd,
+          objective: input.objective,
+          sessionRef: input.sessionRef,
+          verify: input.verify,
+        })
+        return {
+          commandCount: 1,
+          devCheck: fakeDevCheck("passed"),
+          editedFileCount: 1,
+          eventCount: 1,
+          externalSessionRef: null,
+          responseDigestRef: null,
+          totalTokens: 1,
+        }
+      }
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const runtime = yield* makePylonNodeRuntime
+            const server = yield* startControlServer(runtime, {
+              token: "test-token-0123456789abcdef",
+              actions: {
+                ...stubActions([]),
+                sessions: createControlSessionActions({
+                  executor,
+                  proofsDir: proofDir,
+                  summary,
+                }),
+              },
+              port: 0,
+            })
+
+            const parent = (yield* Effect.promise(() =>
+              sendControlCommand(server.url, "test-token-0123456789abcdef", {
+                type: "session.spawn",
+                adapter: "codex",
+                accountRef: "codex-a",
+                worktreePath: worktree,
+                objective: "add a health route",
+                verify: ["bun", "--version"],
+              }),
+            )) as { sessionRef: string; state: string }
+            for (let attempt = 0; attempt < 20; attempt += 1) {
+              const list = (yield* Effect.promise(() =>
+                sendControlCommand(server.url, "test-token-0123456789abcdef", { type: "session.list" }),
+              )) as Array<{ sessionRef: string; state: string }>
+              if (list.find((entry) => entry.sessionRef === parent.sessionRef)?.state === "completed") break
+              yield* Effect.sleep("10 millis")
+            }
+
+            const reply = (yield* Effect.promise(() =>
+              sendControlCommand(server.url, "test-token-0123456789abcdef", {
+                type: "session.reply",
+                sessionRef: parent.sessionRef,
+                objective: "now add a regression test",
+                timeoutSeconds: 5,
+              }),
+            )) as { sessionRef: string; parentSessionRef: string; state: string }
+            expect(reply.sessionRef).toStartWith("session.pylon.control.")
+            expect(reply.sessionRef).not.toBe(parent.sessionRef)
+            expect(reply.parentSessionRef).toBe(parent.sessionRef)
+
+            let list = [] as Array<{
+              sessionRef: string
+              parentSessionRef: string | null
+              state: string
+            }>
+            for (let attempt = 0; attempt < 20; attempt += 1) {
+              list = (yield* Effect.promise(() =>
+                sendControlCommand(server.url, "test-token-0123456789abcdef", { type: "session.list" }),
+              )) as typeof list
+              if (list.find((entry) => entry.sessionRef === reply.sessionRef)?.state === "completed") break
+              yield* Effect.sleep("10 millis")
+            }
+            const child = list.find((entry) => entry.sessionRef === reply.sessionRef)
+            expect(child?.state).toBe("completed")
+            expect(child?.parentSessionRef).toBe(parent.sessionRef)
+            expect(JSON.stringify(list)).not.toContain(accountHome)
+            expect(JSON.stringify(list)).not.toContain(worktree)
+
+            expect(calls).toHaveLength(2)
+            expect(calls[1]?.cwd).toBe(worktree)
+            expect(calls[1]?.verify).toEqual(["bun", "--version"])
+            expect(calls[1]?.accountRefHash).toBe(calls[0]?.accountRefHash)
+            expect(calls[1]?.objective).toContain("Continue the current coding session")
+            expect(calls[1]?.objective).toContain("add a health route")
+            expect(calls[1]?.objective).toContain("now add a regression test")
+          }),
+        ),
+      )
+    })
+  })
+
   test("session.cancel aborts a running fake executor and records cancelled state", async () => {
     await withControlSessionFixture(async ({ proofDir, summary, worktree }) => {
       let started!: () => void

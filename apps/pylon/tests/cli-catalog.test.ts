@@ -31,6 +31,14 @@ describe("pylon command catalog", () => {
     }
   })
 
+  test("sessions catalog advertises reply continuation controls", () => {
+    const entry = findCommandEntry("sessions")!
+    expect(entry.summary).toContain("reply")
+    expect(entry.args[0]?.name).toContain("reply")
+    expect(entry.args.some((arg) => arg.name === "--session-ref" && arg.description.includes("reply"))).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--wait" && arg.kind === "flag")).toBe(true)
+  })
+
   test("only the wallet/work/tip verbs are flagged as spending", () => {
     const spenders = PYLON_COMMAND_CATALOG.filter((c) => c.spends).map((c) => c.command).sort()
     expect(spenders).toEqual(["tip", "wallet", "work"])
