@@ -77,6 +77,31 @@ Every payable receipt needs these public-safe refs:
 - settlement approval: separate from the worker;
 - settlement receipt: required before calling it paid or settled.
 
+## Acceptance And Settlement States
+
+Use distinct labels for the lane state. Collapsing them makes workers think a
+merged cleanup is already money, and makes reviewers look like settlement
+authorities.
+
+- `discovery`: a worker, churn probe, buyer, or reviewer found debt. This is
+  inventory, not spend.
+- `accepted_verified`: a reviewer or verifier accepted the patch and evidence.
+  A merged PR can be accepted-work evidence, but it is not payout authority.
+- `credit_class`: accepted and credited work where no owner-funded hygiene-lane
+  settlement path has been armed. This is recognition, not a pending Bitcoin
+  payout.
+- `payable_class`: accepted work against an owner-approved funded receipt or
+  batch. The receipt has a budget cap, verifier, and settlement authority, but
+  the worker still must not call it paid.
+- `payable_pending_settlement`: settlement authority has approved release or
+  escrow/payout processing, and settlement refs are expected but not complete.
+- `settled`: settlement refs exist. Only this state may be described as paid
+  or settled.
+
+Funding may be per receipt, or a named batch such as
+`#5335 hygiene batch N`. A batch still needs an approved target list, budget
+cap, verifier command, per-PR acceptance evidence, and one settlement closeout.
+
 ## Typed Fingerprint Keys
 
 Invariant #6 of the debt-receipt invariants (dup/novelty fingerprint) is made
