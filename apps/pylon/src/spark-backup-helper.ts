@@ -49,6 +49,10 @@ import type {
   SparkBackupSweepTransferResult,
   WalletCommandResult,
 } from "./wallet"
+// #5304: the single canonical "is the Spark backup ON?" resolver (default-ON
+// unless an explicit OFF override). Used so the helper resolver enables by
+// default instead of requiring PYLON_SPARK_BACKUP_ENABLED.
+import { isSparkBackupDefaultEnabled } from "./wallet"
 import { SparkBunStorage } from "./spark-bun-storage"
 import { toSatNumber } from "./sat-number"
 import { ensureSparkWasmAvailable } from "./spark-wasm-runtime"
@@ -1861,13 +1865,15 @@ export function resolveSparkBackupHelper(input: {
   enabled?: boolean
 }): SparkBackupHelper | null {
   const env = input.env ?? process.env
-  const enabled =
-    input.enabled === true ||
-    env.PYLON_SPARK_BACKUP_ENABLED === "1" ||
-    env.PYLON_SPARK_BACKUP_ENABLED === "true"
+  // #5304: enabled BY DEFAULT. An explicit caller `enabled: true` always wires
+  // the helper (the receive/status/payout CLI paths pass this). Otherwise we
+  // consult the canonical default-ON resolver, which is ON unless the operator
+  // set an explicit OFF override (PYLON_SPARK_BACKUP_DISABLED=1 or
+  // PYLON_SPARK_BACKUP_ENABLED=0/false).
+  const enabled = input.enabled === true || isSparkBackupDefaultEnabled(env)
   if (!enabled) {
     if (process.env.PYLON_SPARK_DEBUG === "1") {
-      console.error("[spark-helper:resolve] helper not wired: opt-in disabled (no enabled flag/env)")
+      console.error("[spark-helper:resolve] helper not wired: opt-out override set (PYLON_SPARK_BACKUP_DISABLED / PYLON_SPARK_BACKUP_ENABLED=0)")
     }
     return null
   }

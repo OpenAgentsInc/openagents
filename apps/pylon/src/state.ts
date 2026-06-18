@@ -62,6 +62,12 @@ export type PylonPresenceState = {
   lastHeartbeatAt: string | null
   heartbeatSequence: number
   blockerRefs: string[]
+  // #5305: the redacted `payout.spark.<digest>` ref of this node's OWN Spark
+  // address once it has been auto-registered as a payout target. Null until the
+  // first successful auto-register. This is a digest (public-safe), NEVER the
+  // raw `spark1…` address — that only ever rides the authenticated private
+  // request body. Persisted so the auto-register is idempotent across reboots.
+  sparkPayoutTargetRef: string | null
   updatedAt: string
 }
 
@@ -234,6 +240,7 @@ export async function loadOrCreatePresenceState(paths: PylonPaths, identity: Pyl
     lastHeartbeatAt: existing?.lastHeartbeatAt ?? null,
     heartbeatSequence: existing?.heartbeatSequence ?? 0,
     blockerRefs: existing?.blockerRefs ?? [],
+    sparkPayoutTargetRef: existing?.sparkPayoutTargetRef ?? null,
     updatedAt: new Date().toISOString(),
   }
   await writeFile(paths.presenceState, `${JSON.stringify(state, null, 2)}\n`)

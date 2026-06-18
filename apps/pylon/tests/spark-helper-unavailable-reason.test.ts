@@ -136,15 +136,24 @@ describe("#5194 resolver opt-in short-circuit fix", () => {
     expect(typeof helper).toBe("function")
   })
 
-  test("still null when not enabled by flag or explicit intent (inert-by-default preserved)", () => {
-    const { result, lines } = withSparkDebug(() =>
+  test("null only when the OFF override is set (#5304 default-ON)", () => {
+    // #5304: the backup is ON by default. A node with a seed + credential and NO
+    // flag now resolves a helper; the resolver is null ONLY when the operator
+    // sets an explicit OFF override.
+    expect(
       resolveSparkBackupHelper({
         env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
         mnemonic: TEST_MNEMONIC,
       }),
+    ).not.toBeNull()
+    const { result, lines } = withSparkDebug(() =>
+      resolveSparkBackupHelper({
+        env: { OPENAGENTS_SPARK_API_KEY: "k", PYLON_SPARK_BACKUP_DISABLED: "1" } as NodeJS.ProcessEnv,
+        mnemonic: TEST_MNEMONIC,
+      }),
     )
     expect(result).toBeNull()
-    expect(lines.some((l) => l.includes("[spark-helper:resolve]") && l.includes("opt-in disabled"))).toBe(true)
+    expect(lines.some((l) => l.includes("[spark-helper:resolve]") && l.includes("opt-out override"))).toBe(true)
   })
 
   test("env flag alone still wires the helper (back-compat)", () => {

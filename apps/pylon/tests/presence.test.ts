@@ -15,7 +15,8 @@ import {
 } from "../src/presence"
 import { verifyNip98Authorization } from "../src/nostr-identity"
 import { PYLON_NIP90_PROVIDER_CAPABILITY_REF, providerNip90LaneRefs } from "../src/provider-nip90"
-import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState } from "../src/state"
+import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, writePresenceState } from "../src/state"
+import { registerSparkPayoutTarget, sparkPayoutTargetRef } from "../src/wallet"
 
 // Inject a deterministic wallet probe for heartbeat tests that exercise the
 // #5151 readiness path. Without one, heartbeats omit wallet readiness instead
@@ -382,5 +383,82 @@ describe("Pylon presence registration and heartbeat", () => {
         },
       }),
     ).not.toThrow()
+  })
+})
+
+
+describe("auto-register Spark payout target idempotency + redaction (#5305)", () => {
+  test("presence state round-trips sparkPayoutTargetRef and defaults to null", async () => {
+    await withTempHome(async (home) => {
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs(["--display-name", "Payout Target Idempotency"]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      const state = await ensurePylonLocalState(summary)
+      const fresh = await loadOrCreatePresenceState(state.paths, state.identity)
+      // A fresh node has not registered a payout target yet.
+      expect(fresh.sparkPayoutTargetRef).toBeNull()
+
+      const rawSparkAddress = "spark1qpqqqqqq000000000000000000000000autoregister"
+      const digestRef = sparkPayoutTargetRef(rawSparkAddress)
+      await writePresenceState(state.paths, { ...fresh, sparkPayoutTargetRef: digestRef })
+
+      // The digest persists, so a later boot SKIPS re-registration (idempotent).
+      const reloaded = await loadOrCreatePresenceState(state.paths, state.identity)
+      expect(reloaded.sparkPayoutTargetRef).toBe(digestRef)
+
+      // Redaction: the persisted presence state holds ONLY the digest ref, never
+      // the raw spark1… address.
+      expect(JSON.stringify(reloaded)).not.toContain(rawSparkAddress)
+      expect(JSON.stringify(reloaded)).not.toContain("spark1")
+      // The persisted presence state is public-projection safe.
+      expect(() => assertPublicProjectionSafe(reloaded)).not.toThrow()
+    })
+  })
+
+  test("idempotent register: once sparkPayoutTargetRef is set, the register call is skipped", async () => {
+    await withTempHome(async (home) => {
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs(["--display-name", "Payout Target Skip"]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      const state = await ensurePylonLocalState(summary)
+      const rawSparkAddress = "spark1qpqqqqqq000000000000000000000000skipsecond"
+      const digestRef = sparkPayoutTargetRef(rawSparkAddress)
+
+      // Simulate the idempotent guard the auto-register closure uses: register
+      // only when the presence state has no recorded digest yet.
+      let registerCalls = 0
+      const fetchImpl: typeof fetch = async () => {
+        registerCalls += 1
+        return new Response(JSON.stringify({ ok: true, payoutTargetRef: digestRef }), { status: 200 })
+      }
+      const maybeRegister = async () => {
+        const presence = await loadOrCreatePresenceState(state.paths, state.identity)
+        if (presence.sparkPayoutTargetRef && presence.sparkPayoutTargetRef.trim() !== "") return
+        const result = await registerSparkPayoutTarget(
+          { rawSparkAddress },
+          {
+            agentToken: "oa_agent_test",
+            baseUrl: "https://openagents.test",
+            fetch: fetchImpl,
+            pylonRef: state.identity.pylonRef,
+          },
+        )
+        const next = await loadOrCreatePresenceState(state.paths, state.identity)
+        await writePresenceState(state.paths, { ...next, sparkPayoutTargetRef: result.payoutTargetRef })
+      }
+
+      await maybeRegister() // first online -> registers
+      await maybeRegister() // second boot -> skipped (idempotent)
+      expect(registerCalls).toBe(1)
+
+      const finalState = await loadOrCreatePresenceState(state.paths, state.identity)
+      expect(finalState.sparkPayoutTargetRef).toBe(digestRef)
+      // Redaction holds end-to-end.
+      expect(JSON.stringify(finalState)).not.toContain("spark1")
+    })
   })
 })

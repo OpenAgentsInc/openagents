@@ -1284,10 +1284,36 @@ function hasSparkBackupCredential(env: NodeJS.ProcessEnv, embeddedCredentialAvai
   ].some((value) => value !== undefined && value.trim() !== "")
 }
 
+/**
+ * #5304: the Spark backup wallet is provisioned and ENABLED BY DEFAULT so a
+ * fresh node is natively payable out of the box with zero manual commands. This
+ * is the single canonical resolver for "is the Spark backup ON for this node?".
+ *
+ * Default: ON. An operator can still explicitly turn it OFF with either:
+ *   - `PYLON_SPARK_BACKUP_DISABLED=1` (or `true`), or
+ *   - `PYLON_SPARK_BACKUP_ENABLED=0` (or `false`).
+ *
+ * Any other value (unset, `1`, `true`, garbage) leaves it ON. The legacy
+ * `PYLON_SPARK_BACKUP_ENABLED=1`/`true` opt-in is still honored (it just no
+ * longer GATES the feature — it is now a no-op that confirms the default).
+ *
+ * NOTE: enabling the FEATURE is independent of whether a credential + seed are
+ * present; those are checked downstream (`hasSparkBackupCredential`,
+ * `resolveSparkBackupHelper`) so the projection still degrades to
+ * `credential-missing` / `helper-unavailable` rather than crashing.
+ */
+export function isSparkBackupDefaultEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const disabledFlag = env.PYLON_SPARK_BACKUP_DISABLED
+  if (disabledFlag === "1" || disabledFlag === "true") return false
+  const enabledFlag = env.PYLON_SPARK_BACKUP_ENABLED
+  if (enabledFlag === "0" || enabledFlag === "false") return false
+  return true
+}
+
 function isSparkBackupEnabled(options: SparkBackupReceiveOptions, env: NodeJS.ProcessEnv) {
   if (options.enabled !== undefined) return options.enabled
-  const raw = env.PYLON_SPARK_BACKUP_ENABLED
-  return raw === "1" || raw === "true"
+  // #5304: default-ON unless an explicit OFF override is set.
+  return isSparkBackupDefaultEnabled(env)
 }
 
 /**

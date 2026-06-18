@@ -128,7 +128,7 @@ import {
   parseBootstrapArgs,
   writeBootstrapFiles,
 } from "./bootstrap"
-import { ensurePylonLocalState, projectPublicStatus, writeRuntimeState, type PylonLocalState } from "./state"
+import { ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState } from "./state"
 import {
   completePylonLink,
   presenceClientOptionsFromEnv,
@@ -153,6 +153,7 @@ import {
   sweepSparkBackupToMdk,
   withSparkPrimaryWalletBalance,
   writeCachedSparkTarget,
+  isSparkBackupDefaultEnabled,
   type SparkBackupSendProjection,
 } from "./wallet"
 import {
@@ -273,8 +274,9 @@ function startWarmSparkBackgroundSync(
   state: PylonLocalState,
   log: (message: string, level?: PylonLogLevel) => void,
 ): void {
-  const enabled =
-    Bun.env.PYLON_SPARK_BACKUP_ENABLED === "1" || Bun.env.PYLON_SPARK_BACKUP_ENABLED === "true"
+  // #5304: the warm background sync follows the Spark backup default-ON policy.
+  // Inert only when the operator set an explicit OFF override.
+  const enabled = isSparkBackupDefaultEnabled(Bun.env)
   if (!enabled) return
   const storageDir = `${state.paths.home}/wallet/spark-backup/sdk`
   const network = Bun.env.PYLON_SPARK_BACKUP_NETWORK === "regtest" ? "regtest" : "mainnet"
@@ -298,6 +300,126 @@ function startWarmSparkBackgroundSync(
   beat()
   const timer = setInterval(beat, 25_000)
   timer.unref?.()
+}
+
+// #5304: resolve this node's OWN raw Spark address locally, best-effort. The raw
+// `spark1…` is PAYMENT MATERIAL: callers must keep it out of every projection /
+// log and hand it ONLY to the authenticated private payout-target request body.
+// Returns null (and never throws) when the backup is OFF-overridden, no seed is
+// present, or the helper cannot reach the Spark network this attempt.
+async function resolveOwnSparkAddressOrNull(state: PylonLocalState): Promise<string | null> {
+  try {
+    if (!isSparkBackupDefaultEnabled(Bun.env)) return null
+    const sparkOptions = await resolveSparkBackupOptions(state, {
+      enabled: true,
+      showLocalTarget: true,
+    })
+    const result = await prepareSparkBackupReceive({ ...sparkOptions, kind: "spark-address" })
+    return result.ok && typeof result.localTarget === "string" && result.localTarget.trim() !== ""
+      ? result.localTarget.trim()
+      : null
+  } catch {
+    return null
+  }
+}
+
+// #5304: provision the Spark backup wallet on startup so a fresh node is payable
+// out of the box with ZERO manual commands. Best-effort + idempotent + never
+// blocks startup: it derives the node's Spark address from the seed and caches
+// it in mode-0600 private state so `backup-status` resolves `address-ready` /
+// (offline) `cached-address-ready`. A failure (SDK briefly unavailable) is
+// logged and retried; it never crashes the node. Inert under the OFF override.
+function startSparkBackupProvisioning(
+  state: PylonLocalState,
+  log: (message: string, level?: PylonLogLevel) => void,
+): void {
+  if (!isSparkBackupDefaultEnabled(Bun.env)) return
+  let provisioned = false
+  let attempts = 0
+  const beat = (): void => {
+    void (async () => {
+      if (provisioned) return
+      attempts += 1
+      // Idempotent: if a raw target is already cached, we are done.
+      const cached = await readCachedSparkTarget(state.paths).catch(() => null)
+      if (cached && cached.trim() !== "") {
+        provisioned = true
+        return
+      }
+      const raw = await resolveOwnSparkAddressOrNull(state)
+      if (raw) {
+        try {
+          await writeCachedSparkTarget(state.paths, raw)
+          provisioned = true
+          // Redacted log only: never the raw spark1… address.
+          log("[spark-provision] Spark backup wallet provisioned (address cached).", "verbose")
+        } catch {
+          // keep retrying on the next beat
+        }
+        return
+      }
+      // SDK briefly unavailable / no seed yet — retry on the next beat. Verbose
+      // only; carries no payment material.
+      log(`[spark-provision] provisioning deferred (attempt ${attempts}); will retry.`, "verbose")
+    })()
+  }
+  beat()
+  const timer = setInterval(beat, 30_000)
+  timer.unref?.()
+}
+
+// #5305: auto-register this node's OWN Spark address as a `spark_address` payout
+// target via the existing private register route. Idempotent (skips when the
+// presence state already records the digest ref; the server upsert is also
+// idempotent) and fail-soft (NEVER throws — a failure is logged and retried on
+// the next heartbeat cycle). The raw `spark1…` rides ONLY the authenticated
+// private request body; only the redacted `payout.spark.<digest>` ref is ever
+// persisted, projected, or logged. Auth reuses the node's own agent token /
+// NIP-98 registration context (same as presence-register).
+async function ensureSparkPayoutTargetRegistered(input: {
+  state: PylonLocalState
+  baseUrl: string | undefined
+  agentToken?: string
+  log: (message: string, level?: PylonLogLevel) => void
+}): Promise<void> {
+  try {
+    if (!isSparkBackupDefaultEnabled(Bun.env)) return
+    if (!input.baseUrl || input.baseUrl.trim() === "") return
+    const presence = await loadOrCreatePresenceState(input.state.paths, input.state.identity)
+    // Idempotent: already registered → skip (no network call, no re-register).
+    if (presence.sparkPayoutTargetRef && presence.sparkPayoutTargetRef.trim() !== "") return
+    const raw = await resolveOwnSparkAddressOrNull(input.state)
+    if (!raw) {
+      // Address not resolvable yet (helper warming up); retry next cycle.
+      return
+    }
+    const result = await registerSparkPayoutTarget(
+      { rawSparkAddress: raw },
+      {
+        ...(input.agentToken ? { agentToken: input.agentToken } : {}),
+        baseUrl: input.baseUrl,
+        pylonRef: input.state.identity.pylonRef,
+      },
+    )
+    if (result.ok) {
+      const next = await loadOrCreatePresenceState(input.state.paths, input.state.identity)
+      await writePresenceState(input.state.paths, {
+        ...next,
+        // Public-safe digest ref only — never the raw spark1… address.
+        sparkPayoutTargetRef: result.payoutTargetRef,
+      })
+      input.log(
+        `[spark-payout] auto-registered Spark payout target (${result.payoutTargetRef}).`,
+        "info",
+      )
+    }
+  } catch (error) {
+    // Fail-soft: never propagate. Verbose only; carries no payment material.
+    input.log(
+      `[spark-payout] auto-register deferred: ${error instanceof Error ? error.message : String(error)}`,
+      "verbose",
+    )
+  }
 }
 
 // Routes a log message into the node runtime (which owns the feed and the
@@ -857,6 +979,11 @@ const runHeadlessNode = Effect.gen(function* () {
   // swallowed (it leaves the previous synced state intact).
   yield* Effect.sync(() => startWarmSparkBackgroundSync(localState, (message, level) => logToUi(message, level)))
 
+  // #5304: provision the Spark backup wallet on startup (default-ON; inert only
+  // under an explicit OFF override) so a fresh node is payable out of the box
+  // with no manual command. Best-effort, non-blocking, idempotent across reboots.
+  yield* Effect.sync(() => startSparkBackupProvisioning(localState, (message, level) => logToUi(message, level)))
+
   const presenceBaseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
   const presenceClientOptions = presenceClientOptionsFromEnv({
     baseUrl: presenceBaseUrl ?? "",
@@ -879,6 +1006,15 @@ const runHeadlessNode = Effect.gen(function* () {
         sendHeartbeat(bootstrapSummary, {
           ...presenceClientOptions,
           walletProbe: () => classifyPrimaryAgentWalletForState(localState),
+        }),
+      // #5305: auto-register this node's own Spark address as a payout target,
+      // hands-off. Idempotent + fail-soft (never blocks/fails the heartbeat).
+      ensurePayoutTarget: () =>
+        ensureSparkPayoutTargetRegistered({
+          state: localState,
+          baseUrl: presenceBaseUrl,
+          ...(presenceClientOptions.agentToken ? { agentToken: presenceClientOptions.agentToken } : {}),
+          log: (message, level) => logToUi(message, level),
         }),
     },
   })

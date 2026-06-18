@@ -11,6 +11,7 @@ import {
   classifyMdkWallet,
   classifySparkBackupReceive,
   detectSparkBackupBalance,
+  isSparkBackupDefaultEnabled,
   preflightLegacySparkMigration,
   prepareSparkBackupReceive,
   readCachedSparkTarget,
@@ -712,10 +713,12 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
     expect(classifyMdkReceiveFailure({ exitCode: 1, stdout: "", stderr: "init timed out" }).class).toBe("offline")
   })
 
-  test("offline failure with backup disabled stays on MDK (inert default)", async () => {
+  test("offline failure with the OFF override stays on MDK (#5304)", async () => {
+    // #5304: the Spark backup is ON by default, so "stays on MDK" now hinges on
+    // the explicit OFF override (no Spark fallback is attempted when disabled).
     const result = await receiveWithFallback(1000, {
       runner: runner({ "receive 1000": { exitCode: 1, stderr: "MDK daemon offline" } }),
-      sparkBackup: { env: {} as NodeJS.ProcessEnv },
+      sparkBackup: { env: { PYLON_SPARK_BACKUP_DISABLED: "1" } as NodeJS.ProcessEnv },
     })
     expect(result.rail).toBe("mdk")
     expect(result.ok).toBe(false)
@@ -1042,12 +1045,59 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
     ])
   })
 
-  test("backup receive is inert by default (opt-in off, stub helper)", async () => {
-    const projection = await classifySparkBackupReceive({ env: {} as NodeJS.ProcessEnv })
+  test("#5304: enabled BY DEFAULT (no env flag) — provisions an address-ready projection", async () => {
+    // A fresh node with NO env flags: the Spark backup is ON by default and,
+    // with the embedded credential + a ready helper, resolves a redacted
+    // address-ready receive target. helperReady:true, no flag required.
+    const projection = await classifySparkBackupReceive({
+      env: {} as NodeJS.ProcessEnv,
+      embeddedCredentialAvailable: true,
+      helper: sparkHelper({ address: { stdout: { spark_address: RAW_SPARK_ADDRESS } } }),
+    })
+    expect(projection.enabled).toBe(true)
+    expect(projection.state).toBe("address-ready")
+    expect(projection.helperReady).toBe(true)
+    expect(projection.credentialReady).toBe(true)
+    expect(projection.receiveTargetRef).toMatch(/^wallet\.backup\.spark_address\.[a-f0-9]{24}$/)
+    // Redaction: the raw spark1… address never appears in the projection.
+    expect(JSON.stringify(projection)).not.toContain(RAW_SPARK_ADDRESS)
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("#5304: the OFF override (PYLON_SPARK_BACKUP_DISABLED=1) keeps it disabled", async () => {
+    const projection = await classifySparkBackupReceive({
+      env: { PYLON_SPARK_BACKUP_DISABLED: "1" } as NodeJS.ProcessEnv,
+      embeddedCredentialAvailable: true,
+      helper: sparkHelper({ address: { stdout: { spark_address: RAW_SPARK_ADDRESS } } }),
+    })
     expect(projection.enabled).toBe(false)
     expect(projection.state).toBe("disabled")
     expect(projection.receiveTargetRef).toBeNull()
+    expect(JSON.stringify(projection)).not.toContain(RAW_SPARK_ADDRESS)
     assertPublicProjectionSafe(projection)
+  })
+
+  test("#5304: the OFF override (PYLON_SPARK_BACKUP_ENABLED=0) keeps it disabled", async () => {
+    const projection = await classifySparkBackupReceive({
+      env: { PYLON_SPARK_BACKUP_ENABLED: "0" } as NodeJS.ProcessEnv,
+      embeddedCredentialAvailable: true,
+      helper: sparkHelper({ address: { stdout: { spark_address: RAW_SPARK_ADDRESS } } }),
+    })
+    expect(projection.enabled).toBe(false)
+    expect(projection.state).toBe("disabled")
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("#5304: isSparkBackupDefaultEnabled is ON by default, OFF only on explicit override", () => {
+    expect(isSparkBackupDefaultEnabled({} as NodeJS.ProcessEnv)).toBe(true)
+    expect(isSparkBackupDefaultEnabled({ PYLON_SPARK_BACKUP_ENABLED: "1" } as NodeJS.ProcessEnv)).toBe(true)
+    expect(isSparkBackupDefaultEnabled({ PYLON_SPARK_BACKUP_ENABLED: "true" } as NodeJS.ProcessEnv)).toBe(true)
+    // garbage / unknown values still leave it ON
+    expect(isSparkBackupDefaultEnabled({ PYLON_SPARK_BACKUP_ENABLED: "yes" } as NodeJS.ProcessEnv)).toBe(true)
+    expect(isSparkBackupDefaultEnabled({ PYLON_SPARK_BACKUP_DISABLED: "1" } as NodeJS.ProcessEnv)).toBe(false)
+    expect(isSparkBackupDefaultEnabled({ PYLON_SPARK_BACKUP_DISABLED: "true" } as NodeJS.ProcessEnv)).toBe(false)
+    expect(isSparkBackupDefaultEnabled({ PYLON_SPARK_BACKUP_ENABLED: "0" } as NodeJS.ProcessEnv)).toBe(false)
+    expect(isSparkBackupDefaultEnabled({ PYLON_SPARK_BACKUP_ENABLED: "false" } as NodeJS.ProcessEnv)).toBe(false)
   })
 
   test("caches the raw Spark target only in mode-0600 local private state", async () => {
@@ -1106,15 +1156,23 @@ describe("Spark backup send / withdraw (#5177)", () => {
     }
   }
 
-  test("inert by default: opt-in off, no spend", async () => {
+  test("OFF override (PYLON_SPARK_BACKUP_DISABLED=1): no spend (#5304)", async () => {
+    // #5304: the backup is ON by default, so "no spend" now hinges on the
+    // explicit OFF override rather than the absence of an opt-in flag. With the
+    // override set, the send is disabled and the transfer is never invoked.
+    let called = false
     const send = await sendWithSparkBackup({
       amountSats: 2100,
       destination: RAW_SPARK_PAYMENT_REQUEST,
       confirmSend: true,
-      transfer: successfulSend,
-      env: {} as NodeJS.ProcessEnv,
+      transfer: async () => {
+        called = true
+        return { ok: false, failureRef: "wallet.spark_backup_send.should_not_call" }
+      },
+      env: { OPENAGENTS_SPARK_API_KEY: "k", PYLON_SPARK_BACKUP_DISABLED: "1" } as NodeJS.ProcessEnv,
     })
     expect(send.state).toBe("disabled")
+    expect(called).toBe(false)
     expect(send.publicReceiptRefs).toEqual([])
     assertPublicProjectionSafe(send)
   })
@@ -1381,8 +1439,11 @@ describe("Spark backup reconcile / sweep (slice 3: consented receive-side sweep,
     }
   }
 
-  test("inert by default: opt-in off, stub helper -> disabled, no movement", async () => {
-    const reconcile = await sweepSparkBackupToMdk({ env: {} as NodeJS.ProcessEnv })
+  test("OFF override -> disabled, no movement (#5304)", async () => {
+    // #5304: ON by default; the OFF override is what now keeps a sweep inert.
+    const reconcile = await sweepSparkBackupToMdk({
+      env: { PYLON_SPARK_BACKUP_DISABLED: "1" } as NodeJS.ProcessEnv,
+    })
     expect(reconcile.enabled).toBe(false)
     expect(reconcile.state).toBe("disabled")
     expect(reconcile.sweptAmountSats).toBeNull()

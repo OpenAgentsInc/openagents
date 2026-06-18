@@ -1257,18 +1257,58 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
   })
 })
 
-describe("resolveSparkBackupHelper (inert-by-default gate)", () => {
-  test("returns null when not opt-in enabled", () => {
+describe("resolveSparkBackupHelper (default-ON with OFF override, #5304)", () => {
+  test("enabled BY DEFAULT: resolves a helper with a seed + credential and NO env flag", () => {
+    // #5304: the Spark backup wallet is provisioned + enabled by default so a
+    // fresh node is payable out of the box. With a seed present (and the
+    // embedded default Breez key as final fallback) the helper resolves with no
+    // PYLON_SPARK_BACKUP_ENABLED flag at all.
     expect(
       resolveSparkBackupHelper({ env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv, mnemonic: TEST_MNEMONIC }),
+    ).not.toBeNull()
+  })
+
+  test("default-ON with NO env at all (embedded key + seed)", () => {
+    expect(
+      resolveSparkBackupHelper({ env: {} as NodeJS.ProcessEnv, mnemonic: TEST_MNEMONIC }),
+    ).not.toBeNull()
+  })
+
+  test("OFF override (PYLON_SPARK_BACKUP_DISABLED=1) returns null even with seed + credential", () => {
+    expect(
+      resolveSparkBackupHelper({
+        env: { OPENAGENTS_SPARK_API_KEY: "k", PYLON_SPARK_BACKUP_DISABLED: "1" } as NodeJS.ProcessEnv,
+        mnemonic: TEST_MNEMONIC,
+      }),
     ).toBeNull()
+  })
+
+  test("OFF override (PYLON_SPARK_BACKUP_ENABLED=0) returns null even with seed + credential", () => {
+    expect(
+      resolveSparkBackupHelper({
+        env: { OPENAGENTS_SPARK_API_KEY: "k", PYLON_SPARK_BACKUP_ENABLED: "0" } as NodeJS.ProcessEnv,
+        mnemonic: TEST_MNEMONIC,
+      }),
+    ).toBeNull()
+  })
+
+  test("explicit enabled:true wires the helper regardless of env override", () => {
+    // The receive/status/payout CLI paths pass enabled:true and must always
+    // wire the in-process helper (the #5194 read-path fix), even if someone set
+    // an OFF override in the shell.
+    expect(
+      resolveSparkBackupHelper({
+        env: { OPENAGENTS_SPARK_API_KEY: "k", PYLON_SPARK_BACKUP_DISABLED: "1" } as NodeJS.ProcessEnv,
+        mnemonic: TEST_MNEMONIC,
+        enabled: true,
+      }),
+    ).not.toBeNull()
   })
 
   test("uses the embedded default Breez key when enabled with no env credential", () => {
     // The embedded DEFAULT_OPENAGENTS_SPARK_API_KEY (committed historically,
     // owner-authorized) is the final fallback, so an enabled node with a seed
-    // resolves a helper even with no env key. Inert-by-default now rests on the
-    // PYLON_SPARK_BACKUP_ENABLED flag, NOT on key presence.
+    // resolves a helper even with no env key.
     expect(
       resolveSparkBackupHelper({ env: { PYLON_SPARK_BACKUP_ENABLED: "1" } as NodeJS.ProcessEnv, mnemonic: TEST_MNEMONIC }),
     ).not.toBeNull()

@@ -185,6 +185,12 @@ export interface HeartbeatServiceDeps {
   baseUrl: string | undefined
   register: () => Promise<unknown>
   heartbeat: () => Promise<unknown>
+  // #5305: best-effort, idempotent, fail-soft auto-registration of this node's
+  // OWN Spark address as a payout target. Invoked once after a successful
+  // presence-register (first-online) and then re-attempted each heartbeat cycle
+  // until it succeeds (it self-skips once registered). It MUST NOT throw — a
+  // failure here can never block or fail presence/heartbeat.
+  ensurePayoutTarget?: () => Promise<void>
   intervalMs?: number
 }
 
@@ -213,6 +219,21 @@ export const heartbeatServiceLoop = (
     if (registered !== true) {
       yield* logMessage(runtime, "info", `[Heartbeat] Registration blocked: ${registered}`)
     }
+    // #5305: auto-register this node's own Spark address as a payout target once
+    // it is online. Fail-soft + idempotent: a failure never blocks the loop and
+    // a later heartbeat cycle re-attempts until it succeeds.
+    if (registered === true && deps.ensurePayoutTarget) {
+      // Fail-soft at BOTH layers: the closure swallows its own errors, AND we
+      // swallow any accidental rejection here so a payout-target failure can
+      // never take the presence/heartbeat loop down.
+      yield* Effect.promise(async () => {
+        try {
+          await deps.ensurePayoutTarget!()
+        } catch {
+          // ignore — retried next cycle
+        }
+      })
+    }
     while (true) {
       const sent = yield* Effect.promise(async () => {
         try {
@@ -224,6 +245,18 @@ export const heartbeatServiceLoop = (
       })
       if (sent !== true) {
         yield* logMessage(runtime, "verbose", `[Heartbeat] Heartbeat blocked: ${sent}`)
+      }
+      // #5305: re-attempt the fail-soft payout-target auto-register every cycle
+      // until it lands (the closure self-skips once the presence state records
+      // the digest ref). Never throws, so it cannot take the heartbeat down.
+      if (deps.ensurePayoutTarget) {
+        yield* Effect.promise(async () => {
+          try {
+            await deps.ensurePayoutTarget!()
+          } catch {
+            // ignore — retried next cycle
+          }
+        })
       }
       yield* Effect.sleep(`${deps.intervalMs ?? 30_000} millis`)
     }

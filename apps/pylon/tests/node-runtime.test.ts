@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, PubSub, SubscriptionRef } from "effect"
+import { Fiber } from "effect"
 import {
+  heartbeatServiceLoop,
   logMessage,
   makePylonNodeRuntime,
   setTelemetry,
@@ -136,6 +138,117 @@ describe("pylon node runtime", () => {
           expect(telemetry.state).toBe("UNAVAILABLE")
           const feed = yield* SubscriptionRef.get(runtime.logFeed)
           expect(feed.some((entry) => entry.message.includes("Inventory unavailable"))).toBe(true)
+        }),
+      ),
+    )
+  })
+})
+
+describe("heartbeat auto-register payout target (#5305)", () => {
+  test("invokes ensurePayoutTarget after a successful register, then again each cycle (idempotent closure)", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          let registerCalls = 0
+          let heartbeatCalls = 0
+          let ensureCalls = 0
+          // The closure is self-idempotent: it "registers" only once and then
+          // self-skips on later cycles (mirroring the presence-state check).
+          let alreadyRegistered = false
+          let actualRegistrations = 0
+          const fiber = yield* Effect.forkScoped(
+            heartbeatServiceLoop(runtime, {
+              baseUrl: "https://openagents.test",
+              register: async () => {
+                registerCalls += 1
+                return { ok: true }
+              },
+              heartbeat: async () => {
+                heartbeatCalls += 1
+                return { ok: true }
+              },
+              ensurePayoutTarget: async () => {
+                ensureCalls += 1
+                if (!alreadyRegistered) {
+                  actualRegistrations += 1
+                  alreadyRegistered = true
+                }
+              },
+              intervalMs: 5,
+            }),
+          )
+          // Let the loop run a few cycles, then interrupt.
+          yield* Effect.sleep("40 millis")
+          yield* Fiber.interrupt(fiber)
+          expect(registerCalls).toBe(1)
+          // ensurePayoutTarget runs post-register AND every heartbeat cycle.
+          expect(ensureCalls).toBeGreaterThanOrEqual(2)
+          // ...but the idempotent closure only registers ONCE (second boot /
+          // later cycle does not re-register).
+          expect(actualRegistrations).toBe(1)
+          expect(heartbeatCalls).toBeGreaterThanOrEqual(1)
+        }),
+      ),
+    )
+  })
+
+  test("a throwing ensurePayoutTarget is fail-soft — heartbeat keeps beating", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          let heartbeatCalls = 0
+          const fiber = yield* Effect.forkScoped(
+            heartbeatServiceLoop(runtime, {
+              baseUrl: "https://openagents.test",
+              register: async () => ({ ok: true }),
+              heartbeat: async () => {
+                heartbeatCalls += 1
+                return { ok: true }
+              },
+              // Contract: this closure NEVER throws. But even if a bug made it
+              // throw, Effect.promise turns it into a defect; the heartbeat must
+              // still beat. We simulate the worst case here.
+              ensurePayoutTarget: async () => {
+                throw new Error("register endpoint down")
+              },
+              intervalMs: 5,
+            }),
+          )
+          // Let the loop run several cycles; a throwing hook each cycle must
+          // not crash the loop.
+          yield* Effect.sleep("40 millis")
+          const beatsBefore = heartbeatCalls
+          yield* Fiber.interrupt(fiber)
+          // The loop survived the throwing hook across multiple cycles: more
+          // than one heartbeat fired despite ensurePayoutTarget throwing.
+          expect(beatsBefore).toBeGreaterThanOrEqual(2)
+        }),
+      ),
+    )
+  })
+
+  test("no ensurePayoutTarget hook leaves the loop unchanged", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          let heartbeatCalls = 0
+          const fiber = yield* Effect.forkScoped(
+            heartbeatServiceLoop(runtime, {
+              baseUrl: "https://openagents.test",
+              register: async () => ({ ok: true }),
+              heartbeat: async () => {
+                heartbeatCalls += 1
+                return { ok: true }
+              },
+              intervalMs: 5,
+            }),
+          )
+          yield* Effect.sleep("20 millis")
+          yield* Fiber.interrupt(fiber)
+          expect(heartbeatCalls).toBeGreaterThanOrEqual(1)
         }),
       ),
     )
