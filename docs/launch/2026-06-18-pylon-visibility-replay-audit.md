@@ -8,7 +8,7 @@ folder, this document was expanded from a gap audit into the launch roadmap for
 bringing Pylon visibility/replay fully live. The companion launch docs update a
 few baselines: stable `npx @openagentsinc/pylon` v1.0.0 is now the default
 install, the evidence pack is live enough for the honest-scoped video, product
-promises are served at `2026-06-18.6`, and the remaining launch/product blockers
+promises are served at `2026-06-18.7`, and the remaining launch/product blockers
 are autonomous self-serve settlement, visibility/replay productization, Windows,
 Spark-helper auto-start, and owner-signed claim upgrades.
 
@@ -226,13 +226,15 @@ after that, and proof gates.
 Close the small evidence-surface gaps before building new presentation on top:
 
 - Add or alias the public settlements route so both the evidence pack and the
-  operator UI can cite a stable public URL. Today the working route is
-  `/api/training/runs/{runRef}/settlements`; the mistaken
-  `/api/public/training/runs/{runRef}/settlements` shape should either resolve
-  or disappear from docs.
+  operator UI can cite a stable public URL. Implemented on 2026-06-18: the
+  canonical agent-facing route is now
+  `/api/public/training/runs/{runRef}/settlements`, with the legacy
+  non-`/public/` route retained for compatibility.
 - Add a focused public verification-challenge read route (or a documented
   `focusRef` route) so `training.verification.challenge.*` can be dereferenced
-  directly, not only as embedded run-summary data.
+  directly, not only as embedded run-summary data. Implemented on 2026-06-18:
+  `/api/public/training/verification-challenges/{challengeRef}` is the public
+  challenge dereference path.
 - Reconcile every public aggregate that can still show simulation rows as real
   settled sats. The run summary is reconciled at 1,005 real sats; any remaining
   `/api/public/pylon-stats` 1,010-style aggregate must exclude
@@ -530,6 +532,16 @@ generation, and clips.
      dereference, and keep simulation rows excluded from real-settled
      aggregates. Acceptance is a one-screen `curl` recipe that resolves every
      evidence ref without UI.
+   - Implementation status (2026-06-18, issue #5414): normalized agent-facing
+     evidence refs around the public route set. The settlements envelope now
+     advertises the `/api/public/training/runs/{runRef}/settlements` alias in
+     `sourceRefs`; the capability manifest lists the run summary, public
+     settlements, public verification-challenge, and proof-replay endpoints;
+     the product-promise registry is bumped to `2026-06-18.7` with public URL
+     evidence; and the evidence pack now includes a one-screen curl recipe for
+     run, settlement, verification, receipt, proof replay, promise, and install
+     refs. This is dereference/discovery cleanup only and grants no settlement,
+     payout, accepted-work, deployment, or claim-upgrade authority.
 3. **Implement `GET /api/public/activity-timeline`**
    - Body summary: Union public-safe pylon, training, verification, settlement,
      Forum, Artanis, and capacity-funnel source events into the v1 timeline
@@ -710,7 +722,7 @@ Grounded against live `https://openagents.com` on 2026-06-18:
   `pylonsWalletReadyNow=1`, `pylonsAssignmentReadyNow=1`, `recentPylons` length
   11. Capacity funnel + history both **HTTP 200**.
 - **Web, money loop:** `GET /api/public/tassadar-run-summary` → **200**,
-  `runState=active`, 3 settlement rows. `GET /api/training/runs/run.tassadar.executor.20260615/settlements`
+  `runState=active`, 3 settlement rows. `GET /api/public/training/runs/run.tassadar.executor.20260615/settlements`
   → **200**, `openagents.training_run_settlements.v1`, 3 rows: `[simulation 5,
   real_bitcoin 1000, real_bitcoin 5]` (matches the roadmap's 1,005-real-sats /
   1,010-with-sim reconciliation note). Artanis admin-ticks **200**.

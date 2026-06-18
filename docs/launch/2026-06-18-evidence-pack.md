@@ -18,8 +18,8 @@ records:
 3. the honest status — **settled-live**, **mechanism-proven**, or **gated**.
 
 A skeptic — human or agent — can verify every claim below by dereferencing the
-listed refs. Every public endpoint here was curl-checked on 2026-06-18; any ref
-that did not resolve is flagged as a gap in §9 rather than papered over.
+listed refs. Every public endpoint here was curl-checked on 2026-06-18; route
+normalization notes are recorded in §9 rather than papered over.
 
 > Honest-scope note: this document is public-safe. It contains no secrets, no
 > wallet seeds, no payment hashes, no raw Lightning/Bitcoin addresses, and no
@@ -41,12 +41,14 @@ that did not resolve is flagged as a gap in §9 rather than papered over.
 | Ref | URL | Status |
 |---|---|---|
 | Live run summary (machine-readable) | `https://openagents.com/api/public/tassadar-run-summary` | resolves (HTTP 200) |
-| Per-run settlements feed | `https://openagents.com/api/training/runs/run.tassadar.executor.20260615/settlements` | resolves (HTTP 200) |
+| Per-run settlements feed | `https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615/settlements` | resolves (HTTP 200) |
 | Run status API | `https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615` | resolves (HTTP 200) |
+| Verification challenge API | `https://openagents.com/api/public/training/verification-challenges/training.verification.challenge.071445c5-6ad6-4136-87e3-253b01914b4c` | resolves (HTTP 200) |
+| Proof replay bundle | `https://openagents.com/api/public/proof-replays?ref=first-real-settlement` | resolves (HTTP 200) |
 | Public run page | `https://openagents.com/tassadar` and `https://openagents.com/training/runs/run.tassadar.executor.20260615` | resolves (HTTP 200) |
 | Agent front door | `https://openagents.com/AGENTS.md` | resolves (HTTP 200) |
 | Install + test guide | `https://openagents.com/INSTALL.md` | resolves (HTTP 200) |
-| Product-promise registry | `https://openagents.com/api/public/product-promises` | resolves (HTTP 200), version `2026-06-18.6` |
+| Product-promise registry | `https://openagents.com/api/public/product-promises` | resolves (HTTP 200), version `2026-06-18.7` |
 | Product-promise page | `https://openagents.com/docs/product-promises` | resolves (HTTP 200) |
 
 The run summary is the spine of the pack: it is a single live projection
@@ -99,7 +101,7 @@ network-scale earning.
   `summary.settlement.settledReceiptCount: 2`,
   `summary.metrics.qualifiedContributorCount: 2`.
 - Per-run settlements feed
-  `https://openagents.com/api/training/runs/run.tassadar.executor.20260615/settlements`
+  `https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615/settlements`
   (`schemaVersion: openagents.training_run_settlements.v1`).
 
 **The three settlement rows (real vs simulation distinguished honestly):**
@@ -274,7 +276,7 @@ promises: `agents.one_instruction_sheet.v1` (green),
 > sourced by evidence."
 
 **Proof:** `https://openagents.com/api/public/product-promises`, served live,
-version `2026-06-18.6`. The relevant records and their honest states (verified
+version `2026-06-18.7`. The relevant records and their honest states (verified
 live):
 
 | promiseId | state | meaning for this launch |
@@ -351,51 +353,49 @@ curl -s https://openagents.com/api/public/tassadar-run-summary \
 #   -> 1005 sats / 2 receipts / settling
 
 # 3. Per-settlement real-vs-sim breakdown
-curl -s https://openagents.com/api/training/runs/run.tassadar.executor.20260615/settlements \
+curl -s https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615/settlements \
   | python3 -c 'import sys,json;[print(r["amountSats"],r["movementMode"],r["realBitcoinMoved"]) for r in json.load(sys.stdin)["settlementRows"]]'
 
-# 4. A real-Bitcoin receipt (5-sat self-serve)
+# 4. Direct verification challenge dereference
+curl -s https://openagents.com/api/public/training/verification-challenges/training.verification.challenge.071445c5-6ad6-4136-87e3-253b01914b4c \
+  | grep -o '"state":"[^"]*"'
+#   -> "state":"Verified"
+
+# 5. A real-Bitcoin receipt (5-sat self-serve)
 curl -s https://openagents.com/api/public/nexus-pylon/receipts/receipt.nexus.tassadar_run_settlement.settlement.tassadar.retro.10c3b01b.trigger.v1 | grep -o '"realBitcoinMoved":[a-z]*'
 
-# 5. Honest promise states (world-firsts are RED, not green)
+# 6. Proof replay bundle
+curl -s 'https://openagents.com/api/public/proof-replays?ref=first-real-settlement' \
+  | grep -o '"schemaVersion":"[^"]*"'
+#   -> "schemaVersion":"proof_replay_bundle.v1"
+
+# 7. Honest promise states (world-firsts are RED, not green)
 curl -s https://openagents.com/api/public/product-promises | grep -o '"registryVersion":"[^"]*"'
 
-# 6. Install the node
+# 8. Install the node
 npx @openagentsinc/pylon   # latest = stable 1.0.0
 ```
 
 ---
 
-## 9. Gaps found (curl-checked 2026-06-18) — fix, don't fake
+## 9. Route normalization notes (curl-checked 2026-06-18)
 
-- **Settlements feed path in the L-6 brief is wrong.**
+- **Settlements feed public alias is the canonical agent URL.**
   `https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615/settlements`
-  (with `/public/`) returns **HTTP 404**. The working feed is
-  `https://openagents.com/api/training/runs/run.tassadar.executor.20260615/settlements`
-  (no `/public/`, HTTP 200). The individual receipt endpoints **do** use
-  `/api/public/nexus-pylon/receipts/<ref>`. This doc cites the working paths.
-  Recommend either aliasing the `/api/public/training/runs/.../settlements`
-  route or updating the brief; until then, cite the non-`/public/` settlements
-  path. (The full settlement rows are also embedded in the run-summary's
-  `settlementRows`, which IS under `/api/public/`, so the data is reachable
-  publicly either way.)
-- **No standalone public verification-challenge endpoint.** Neither
-  `/api/public/training/verification-challenges/<ref>` nor
-  `/api/training/verification-challenges/<ref>` resolves (both 404). The
-  verification model is instead dereferenceable inside the run summary
-  (`realGradient.verifiedReplayPairs` / `rejectedReplayPairs`, each with worker,
-  validator, challenge, and verdict refs) and via each settlement's
-  `verificationChallengeRef`. Adequate for the pack, but a per-challenge public
-  endpoint would let a skeptic dereference a single verdict directly; recommend
-  adding one.
-- **Run-summary `settledPayoutSats` vs the 24h aggregate.** The reconciled
-  per-run real truth is `1,005` (settlement feed + `summary.settlement`). The
-  launch-readiness audit noted `/api/public/pylon-stats` and a run-summary field
-  previously read `1,010` (not yet excluding the simulation row). As of this
-  check the run-summary `settledPayoutSats`/`providerConfirmedSettledPayoutSats`
-  read `1,005` (reconciled). Cite `1,005` and the per-run settlements feed as
-  the authoritative real total; if `/api/public/pylon-stats` still shows `1,010`,
-  reconcile it before using that aggregate on camera.
+  resolves and returns `openagents.training_run_settlements.v1`. The legacy
+  non-`/public/` route still resolves for compatibility, but launch evidence
+  should cite the public alias.
+- **Verification challenges are directly dereferenceable.**
+  `https://openagents.com/api/public/training/verification-challenges/<ref>`
+  resolves and returns public-safe challenge, run, window, verifier, state,
+  digest/verdict refs, and staleness metadata. Raw traces, prompts, payment
+  material, wallet material, and provider payloads stay out of the projection.
+- **Simulation rows remain excluded from real Bitcoin totals.** The reconciled
+  per-run real truth is `1,005` sats (settlement feed +
+  `summary.settlement`). The settlement feed returns the historical 5-sat
+  simulation row with `realBitcoinMoved:false`; the run summary and receipt-
+  backed public aggregate code count only settled real-Bitcoin receipts for
+  real movement totals.
 
 ---
 

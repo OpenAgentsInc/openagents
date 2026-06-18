@@ -161,6 +161,30 @@ describe('OpenAgents capability manifest route', () => {
         }),
         expect.objectContaining({
           auth: 'public',
+          href: 'https://openagents.com/api/public/tassadar-run-summary',
+          id: 'public_tassadar_run_summary',
+          description: expect.stringContaining('real-vs-simulation'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
+          href: 'https://openagents.com/api/public/training/runs/{trainingRunRef}/settlements',
+          id: 'public_training_run_settlements',
+          description: expect.stringContaining('realBitcoinMoved'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
+          href: 'https://openagents.com/api/public/training/verification-challenges/{challengeRef}',
+          id: 'public_training_verification_challenge',
+          description: expect.stringContaining('single training verification challenge'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
+          href: 'https://openagents.com/api/public/proof-replays?ref={replayRef}',
+          id: 'public_proof_replays',
+          description: expect.stringContaining('evidence presentations only'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
           href: 'https://openagents.com/api/omni/sdk-seed',
           id: 'omni_api_sdk_seed',
           description: expect.stringContaining('generated SDKs'),

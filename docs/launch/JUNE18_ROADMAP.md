@@ -493,7 +493,7 @@ No scope widened; codebase-contribution paid work ("soon") remains a future clai
 and was not added.
 
 Dereferenceable evidence used:
-- `GET /api/training/runs/run.tassadar.executor.20260615/settlements` — three rows:
+- `GET /api/public/training/runs/run.tassadar.executor.20260615/settlements` — three rows:
   1,000-sat **real** (canary, `pylon.448ba824…`), 5-sat **real** (self-serve,
   `pylon.81f0facfe…`, `…retro.10c3b01b.trigger.v1`), 5-sat **simulation**
   (`realBitcoinMoved:false`, excluded). Real total = **1,005**.

@@ -292,6 +292,38 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Versioned public product-promise registry for agents and users. Reports should include the registry version and promiseId so mismatches are tied to the current claim state.',
       },
       {
+        id: 'public_tassadar_run_summary',
+        href: 'https://openagents.com/api/public/tassadar-run-summary',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Public-safe live-at-read Tassadar run projection with run state, real-vs-simulation settlement rows, verification refs, generatedAt, and staleness metadata. Read-only; grants no assignment, payout, settlement, or model-publication authority.',
+      },
+      {
+        id: 'public_training_run_settlements',
+        href: 'https://openagents.com/api/public/training/runs/{trainingRunRef}/settlements',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Public-safe per-run settlements feed. Rows distinguish movementMode and realBitcoinMoved, include receipt refs, and exclude simulation rows from real Bitcoin totals. Read-only evidence; grants no payout or settlement authority.',
+      },
+      {
+        id: 'public_training_verification_challenge',
+        href: 'https://openagents.com/api/public/training/verification-challenges/{challengeRef}',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Public-safe single training verification challenge projection with challenge, run, window, class, state, public digest/verdict refs, generatedAt, and staleness metadata. Raw traces, prompts, payment material, wallet material, and provider payloads are excluded.',
+      },
+      {
+        id: 'public_proof_replays',
+        href: 'https://openagents.com/api/public/proof-replays?ref={replayRef}',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Public-safe proof replay bundle endpoint for named replay refs. Bundles are evidence presentations only; they do not validate proofs, move sats, settle payouts, or promote product claims.',
+      },
+      {
         id: 'omni_api_sdk_seed',
         href: 'https://openagents.com/api/omni/sdk-seed',
         method: 'GET',

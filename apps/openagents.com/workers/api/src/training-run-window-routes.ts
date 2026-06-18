@@ -1198,6 +1198,7 @@ const routeReadRunSettlements = <Bindings extends TrainingRunWindowRouteEnv>(
       ]),
       settlementRows,
       sourceRefs: [
+        `route:/api/public/training/runs/${record.trainingRunRef}/settlements`,
         `route:/api/training/runs/${record.trainingRunRef}/settlements`,
         'route:/api/training/runs',
       ],

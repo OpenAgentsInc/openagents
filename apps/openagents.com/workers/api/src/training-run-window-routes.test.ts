@@ -1567,6 +1567,7 @@ describe('training run window routes', () => {
             realBitcoinMoved: boolean
             receiptRef: string
           }>
+          sourceRefs: ReadonlyArray<string>
           staleness: { maxStalenessSeconds: number }
         },
         status: response.status,
@@ -1593,6 +1594,12 @@ describe('training run window routes', () => {
       'real_bitcoin',
     )
     expect(publicAlias.body.settlementRows[0]?.realBitcoinMoved).toBe(true)
+    expect(publicAlias.body.sourceRefs).toEqual(
+      expect.arrayContaining([
+        `route:/api/public/training/runs/${runRef}/settlements`,
+        `route:/api/training/runs/${runRef}/settlements`,
+      ]),
+    )
   })
 
   it('returns 404 for the /public/ settlements alias when the run is not found (#5403)', async () => {

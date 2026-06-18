@@ -185,7 +185,7 @@ actually yields an earning-capable node end to end.
 **Finding: NOT MET.** No fully-autonomous (operator-free) settlement exists yet.
 
 Verified via the live per-run settlements feed
-`GET /api/training/runs/run.tassadar.executor.20260615/settlements` (3 rows):
+`GET /api/public/training/runs/run.tassadar.executor.20260615/settlements` (3 rows):
 
 | amountSats | realBitcoinMoved | movementMode | contributor | nature |
 |---|---|---|---|---|
