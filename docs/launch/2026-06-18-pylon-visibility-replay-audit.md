@@ -196,7 +196,8 @@ already in place: stable Pylon install (`@openagentsinc/pylon@1.0.0`), public ru
 summary, reconciled settlement rows, public receipts, pylon-stats, capacity
 funnel + history, proof-replay bundles, SpacetimeDB world projection, Forum
 feeds, and a render-box clip pipeline. The remaining work is status cleanup,
-one keystone timeline API, product surfaces, and proof gates.
+one keystone timeline API, **agent/CLI retrievability first**, product surfaces
+after that, and proof gates.
 
 ### Authority / projection-safety invariants (apply to every phase)
 
@@ -289,13 +290,62 @@ Rules:
 
 Exit: the timeline can answer "what happened since cursor X?" and "what happened
 between time A and B?" across boot-ups, work, verification, settlement, Forum,
-and operator ticks using one public-safe schema.
+and operator ticks using one public-safe schema. It is not done until it has a
+documented machine-readable contract, example `curl` commands, and fixture JSON
+that agents can consume without scraping UI.
 
-### Phase 2 — Web live-activity surface (visible win)
+### Phase 2 — Agent/CLI programmatic access first
 
-Ship a Foldkit page that first composes existing endpoints, then swaps to the
-Phase-1 timeline without changing the UI model. Candidate routes:
-`/activity`, `/tassadar/activity`, or an admin-linked "Pylon Live" page.
+Before building the live UI, make the data easy for agents and scripts to fetch,
+page, filter, replay, and cite. This is the first acceptance surface for the
+timeline.
+
+API/docs:
+
+- Publish agent-readable endpoint docs for
+  `/api/public/activity-timeline`, including cursor semantics, supported
+  filters, staleness fields, event-kind enum, example responses, and private-
+  material redaction guarantees.
+- Add an endpoint index or manifest entry so agents can discover the timeline,
+  settlement, verification, receipt, proof-replay, and product-promise routes
+  without reading launch prose.
+- Provide "one-screen verification" recipes mirroring the evidence pack:
+  `curl` timeline tail, bounded range replay, per-run settlement rows, one
+  verification challenge, one receipt, and product-promise states.
+- Add JSON fixtures for empty, active, stale, replay-range, simulation-only, and
+  real-Bitcoin event sequences.
+
+CLI:
+
+- `pylon activity --watch [--json] [--since CURSOR] [--filter work,verify,...]`
+  tails public-safe fleet activity.
+- `pylon timeline --from ... --to ... --json` fetches bounded historical events.
+- `pylon replay --run ...|--window ...|--range ... --format text|json` fetches
+  generated replay bundles and prints an ASCII/JSON event track.
+- `pylon receipts --run ... --json` summarizes settlement rows and links receipt
+  URLs.
+- `pylon evidence-pack --run ... --json` prints the machine-readable refs an
+  agent needs to verify the run, receipts, promises, and current blockers.
+- Keep own-node commands (`status`, `presence`, `wallet status`) separate from
+  public fleet commands so users do not confuse self state with network state.
+
+Agent acceptance:
+
+- A fresh coding agent can answer, from JSON only, "who came online, who claimed,
+  what got verified/rejected, what settled, what was simulation, what Forum
+  posts happened, and what is still blocked?"
+- The CLI and endpoint docs must make every displayed event dereferenceable via
+  public URLs or explicit blocker refs.
+- No browser, DOM, canvas, localStorage, or visual route may be required for the
+  agent to reconstruct the evidence sequence.
+
+Exit: programmatic retrieval is the source of truth for the UI build, not a
+follow-on convenience after the UI.
+
+### Phase 3 — Web live-activity surface (after programmatic access)
+
+Ship a Foldkit page that consumes the Phase-1/2 programmatic contract. Candidate
+routes: `/activity`, `/tassadar/activity`, or an admin-linked "Pylon Live" page.
 
 Required panes:
 
@@ -314,12 +364,13 @@ Required panes:
   world projection has matching refs.
 
 Start with 3-5 second polling. Do not wait for push to get the operator view
-online.
+online, but do not let the page consume private or undocumented shapes.
 
 Exit: an operator no longer needs five tabs to answer "are people booting,
-working, getting verified, getting paid, and talking?"
+working, getting verified, getting paid, and talking?", and an agent can
+reproduce the same answer from the API/CLI without seeing the page.
 
-### Phase 3 — Live push + world projection
+### Phase 4 — Live push + world projection
 
 Once the timeline endpoint exists, add a live tail:
 
@@ -336,7 +387,7 @@ Exit: boot/claim/verify/settle/forum events appear live without refresh, but the
 Worker/D1 timeline remains the source projection and SpacetimeDB remains a
 projection.
 
-### Phase 4 — General replay generator
+### Phase 5 — General replay generator
 
 Generalize proof replay from hand-authored named stories to generated bundles:
 
@@ -356,7 +407,7 @@ Generalize proof replay from hand-authored named stories to generated bundles:
 Exit: a caller can replay any run/window/pair/time-range without writing a new
 builder.
 
-### Phase 5 — Replay clips as a production service
+### Phase 6 — Replay clips as a production service
 
 The render-box pipeline already exists: Playwright/headless Chromium drives the
 three-effect proof-replay scene and `ffmpeg` emits mp4. Productize it without
@@ -379,11 +430,11 @@ Build:
 Exit: "pick this moment, move the camera here, generate a clip" is one command
 or API call, with a public-safe manifest and no interactive widget dependency.
 
-### Phase 6 — Fan out to desktop and CLI
+### Phase 7 — Desktop fan-out and UI parity
 
 Use the same timeline and replay endpoints; do not create per-surface backends.
-
-Desktop:
+CLI parity already starts in Phase 2. Desktop/UI work comes after the agent
+contract is stable.
 
 - Add a live activity strip or pane to the Network/Training surfaces so the app
   is not just an immersive scene when a local node is unavailable.
@@ -393,21 +444,14 @@ Desktop:
   ship before the full in-window coding composer or signed packaged-node CS-B1
   gate, but downloaded builds still need the packaged node/signing path for a
   normal-user "fully live" experience.
+- Desktop must not introduce page-only fields that are absent from the
+  public/CLI contract. Any extra UI convenience must still point back to the
+  same event refs.
 
-CLI:
+Exit: web, desktop, and CLI answer the same questions from the same refs, with
+the CLI/agent contract remaining the canonical consumption contract.
 
-- `pylon activity --watch [--json] [--since CURSOR] [--filter work,verify,...]`
-  tails public-safe fleet activity.
-- `pylon timeline --from ... --to ... --json` fetches bounded historical events.
-- `pylon replay --run ...|--window ...|--range ... --format text|json` fetches
-  generated replay bundles and prints an ASCII/JSON event track.
-- `pylon receipts --run ...` summarizes settlement rows and links receipt URLs.
-- Keep own-node commands (`status`, `presence`, `wallet status`) separate from
-  public fleet commands so users do not confuse self state with network state.
-
-Exit: web, desktop, and CLI can all answer the same questions from the same refs.
-
-### Phase 7 — Ops, smokes, and owned-infra automation
+### Phase 8 — Ops, smokes, and owned-infra automation
 
 Make the visibility system operational:
 
@@ -425,7 +469,7 @@ Make the visibility system operational:
 Exit: a stale or broken visibility surface is detected as an operations problem,
 not discovered by the owner manually refreshing tabs.
 
-### Phase 8 — Product-promise and launch gates
+### Phase 9 — Product-promise and launch gates
 
 The visibility/replay system is "fully live" only after the evidence and copy
 gates agree:
@@ -457,10 +501,12 @@ If only one thing ships: **Phase 1 — the unified public activity timeline
 endpoint.** It is the keystone that unblocks live ticker, arbitrary replay,
 desktop/CLI parity, SpacetimeDB event projection, and generated replay clips.
 
-The fastest visible win is Phase 2 in parallel: a polling web live-activity page
-that composes today's endpoints. But do not let that page become a second
-aggregation authority; its job is to prove the operator workflow while Phase 1
-becomes the shared event contract.
+The first productization step after that is **Phase 2 — agent/CLI programmatic
+access**. A browser UI should not be the first consumer. Agents need stable JSON,
+cursoring, examples, fixtures, and CLI commands before the UI layer starts
+polishing the same data. The web live-activity page can follow quickly, but it
+must consume the same public contract and remain reproducible from API/CLI
+evidence.
 
 ---
 
