@@ -6,6 +6,7 @@
 // the deleted cl-47..cl-58 tests covered, without a DOM.
 
 import { describe, expect, test } from "bun:test"
+import { LAUNCH_RECOGNITION_REPLAY_SLUG } from "@openagentsinc/proof-replay"
 import type {
   AssignmentRow,
   NodeStateMessage,
@@ -34,6 +35,7 @@ import {
   modelBuiltInAgentReadiness,
   modelInstallReadiness,
   modelNode,
+  modelProofReplay,
   modelPromiseSurfacingReadiness,
   modelPromiseSurfacingResult,
   modelTrainingBootstrap,
@@ -56,6 +58,7 @@ import {
   ClickedRefreshBuiltInAgent,
   ClickedRefreshInstallReadiness,
   ClickedRefreshPromiseSurfacing,
+  ClickedRefreshProofReplay,
   ClickedRefreshTrainingRuns,
   ClickedSurfacePromiseGap,
   ChangedPromiseSurfacingPromiseId,
@@ -75,6 +78,7 @@ import {
   GotInstallReadiness,
   GotPromiseSurfacingReadiness,
   GotPromiseSurfacingResult,
+  GotProofReplayBundle,
   GotTrainingDashboard,
   GotTrainingEvidencePacketSummary,
   GotTrainingOperatorReadiness,
@@ -84,6 +88,7 @@ import {
   GotNodeLaunchStatus,
   NavigatedTo,
   SelectedAgentMode,
+  SelectedProofReplay,
   SelectedSession,
   SelectedTrainingSceneNode,
   SettledActivateTrainingWindow,
@@ -280,7 +285,7 @@ describe("update reducer (CL-53)", () => {
     expect(model.trainingPromiseGatesPending).toBe(true)
     expect(model.trainingOperatorReadinessPending).toBe(true)
     expect(model.trainingEvidencePacketSummaryPending).toBe(true)
-    expect(commands).toHaveLength(5)
+    expect(commands).toHaveLength(6)
   })
 
   test("SelectedTrainingSceneNode stores the selected scene node id", () => {
@@ -639,7 +644,7 @@ describe("update reducer (CL-53)", () => {
       trainingRunRef: "training.run.desktop.r1.test",
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(5)
+    expect(followups).toHaveLength(6)
   })
 
   test("training run projection records first observation after planning", () => {
@@ -725,14 +730,74 @@ describe("update reducer (CL-53)", () => {
     )
   })
 
-  test("training refresh loads run, dashboard, promise, readiness, and packet projections", () => {
+  test("training refresh loads run, dashboard, promise, readiness, packet, and proof replay projections", () => {
     const [pending, commands] = update(initialModel, ClickedRefreshTrainingRuns())
     expect(pending.trainingRunsPending).toBe(true)
     expect(pending.trainingDashboardPending).toBe(true)
     expect(pending.trainingPromiseGatesPending).toBe(true)
     expect(pending.trainingOperatorReadinessPending).toBe(true)
     expect(pending.trainingEvidencePacketSummaryPending).toBe(true)
-    expect(commands).toHaveLength(5)
+    expect(pending.proofReplayPending).toBe(true)
+    expect(commands).toHaveLength(6)
+  })
+
+  test("proof replay selection and refresh dispatch public bundle loads", () => {
+    const [selected, selectedCommands] = update(
+      initialModel,
+      SelectedProofReplay({ slug: LAUNCH_RECOGNITION_REPLAY_SLUG }),
+    )
+    expect(selected.selectedProofReplaySlug).toBe(LAUNCH_RECOGNITION_REPLAY_SLUG)
+    expect(selected.proofReplayPending).toBe(true)
+    expect(selected.proofReplayStatus.tone).toBe("info")
+    expect(selectedCommands).toHaveLength(1)
+
+    const [refreshing, refreshCommands] = update(
+      selected,
+      ClickedRefreshProofReplay(),
+    )
+    expect(refreshing.proofReplayPending).toBe(true)
+    expect(refreshCommands).toHaveLength(1)
+  })
+
+  test("proof replay bundle projection is stored with replay status", () => {
+    const [settled] = update(
+      initialModel,
+      GotProofReplayBundle({
+        projection: {
+          ok: true,
+          fetchedAt: "2026-06-18T02:38:00.000Z",
+          sourceUrl:
+            "https://openagents.com/api/public/tassadar-replays/first-real-settlement",
+          entry: {
+            bundleEndpoint:
+              "https://openagents.com/api/public/tassadar-replays/first-real-settlement",
+            primarySourceRefs: ["receipt.real"],
+            slug: "first-real-settlement",
+            summary: "receipt-backed replay",
+            title: "Tassadar Run 1: First Real Bitcoin Settlement",
+            websitePath:
+              "https://openagents.com/tassadar/replay/first-real-settlement",
+          },
+          bundle: null,
+          summary: {
+            actorCount: 4,
+            confirmedZapSats: 1000,
+            durationSecond: 60,
+            eventCount: 12,
+            gapCount: 1,
+            sourceRefCount: 6,
+          },
+          blockerRefs: [],
+          cacheState: "live_https",
+          cacheLabel: "live HTTPS read from openagents.com; no offline snapshot",
+        },
+      }),
+    )
+
+    expect(settled.proofReplayPending).toBe(false)
+    expect(settled.proofReplayStatus.tone).toBe("success")
+    expect(settled.proofReplayStatus.text).toContain("1,000 sats")
+    expect(modelProofReplay(settled)?.summary?.eventCount).toBe(12)
   })
 
   test("training dashboard projection is stored with a lane summary", () => {
@@ -954,7 +1019,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingActivation).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(5)
+    expect(followups).toHaveLength(6)
   })
 
   test("training lease claim action dispatches and stores the public-safe result", () => {
@@ -992,7 +1057,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingLease).toMatchObject({
       lease: { leaseRef: "training.lease.1" },
     })
-    expect(followups).toHaveLength(5)
+    expect(followups).toHaveLength(6)
   })
 
   test("training bootstrap action dispatches and stores the public-safe result", () => {
@@ -1038,7 +1103,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingBootstrapPending).toBe(false)
     expect(settled.trainingBootstrapStatus.tone).toBe("success")
     expect(modelTrainingBootstrap(settled)?.outcome?.kind).toBe("granted")
-    expect(followups).toHaveLength(5)
+    expect(followups).toHaveLength(6)
   })
 
   test("training bootstrap queue feedback refreshes public projections", () => {
@@ -1070,7 +1135,7 @@ describe("update reducer (CL-53)", () => {
       tone: "info",
     })
     expect(modelTrainingBootstrap(settled)?.outcome?.kind).toBe("queued")
-    expect(followups).toHaveLength(5)
+    expect(followups).toHaveLength(6)
   })
 
   test("training closeout packet action dispatches and stores local queue feedback", () => {
@@ -1100,7 +1165,7 @@ describe("update reducer (CL-53)", () => {
       text: "queued · accepted",
       tone: "success",
     })
-    expect(followups).toHaveLength(5)
+    expect(followups).toHaveLength(6)
   })
 
   test("training evidence packet build action dispatches and refreshes packet summary", () => {
@@ -1141,7 +1206,7 @@ describe("update reducer (CL-53)", () => {
     expect(modelTrainingEvidencePacketBuild(settled)?.reason).toBe(
       "packet_blocked",
     )
-    expect(followups).toHaveLength(5)
+    expect(followups).toHaveLength(6)
   })
 
   test("training evidence admission action dispatches and refreshes projections on success", () => {
@@ -1181,7 +1246,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingEvidenceAdmissionPending).toBe(false)
     expect(settled.trainingEvidenceAdmissionStatus.tone).toBe("success")
     expect(modelTrainingEvidenceAdmission(settled)?.receiptRefCount).toBe(3)
-    expect(followups).toHaveLength(5)
+    expect(followups).toHaveLength(6)
   })
 
   test("training reconcile action dispatches and stores the public-safe result", () => {
@@ -1216,6 +1281,6 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingReconcile).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(5)
+    expect(followups).toHaveLength(6)
   })
 })

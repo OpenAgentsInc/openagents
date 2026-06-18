@@ -10,9 +10,17 @@
 
 import { Schema as S } from "effect"
 import { ts } from "foldkit/schema"
+import {
+  FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
+  LAUNCH_RECOGNITION_REPLAY_SLUG,
+} from "@openagentsinc/proof-replay"
 
 import type { NotificationCenterView } from "@openagentsinc/autopilot-control-protocol"
 import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
+import type { DesktopProofReplayProjection } from "../shared/proof-replays"
+import {
+  DEFAULT_DESKTOP_PROOF_REPLAY_SLUG as DefaultDesktopProofReplaySlug,
+} from "../shared/proof-replays"
 import type {
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
@@ -116,6 +124,18 @@ export const TrainingRunsStatus = S.Struct({
   tone: S.Literals(["error", "info", "success", "idle"]),
 })
 export type TrainingRunsStatus = typeof TrainingRunsStatus.Type
+
+export const ProofReplaySlug = S.Literals([
+  FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
+  LAUNCH_RECOGNITION_REPLAY_SLUG,
+])
+export type ProofReplaySlug = typeof ProofReplaySlug.Type
+
+export const ProofReplayStatus = S.Struct({
+  text: S.String,
+  tone: S.Literals(["error", "info", "success", "idle"]),
+})
+export type ProofReplayStatus = typeof ProofReplayStatus.Type
 
 export const TrainingPlanStatus = S.Struct({
   text: S.String,
@@ -265,6 +285,10 @@ export const Model = ts("AutopilotDesktop", {
   trainingLaunchPending: S.Boolean,
   trainingCloseoutStatus: TrainingLaunchStatus,
   trainingCloseoutPending: S.Boolean,
+  selectedProofReplaySlug: ProofReplaySlug,
+  proofReplay: S.NullOr(S.Unknown),
+  proofReplayStatus: ProofReplayStatus,
+  proofReplayPending: S.Boolean,
 
   // Deploy feedback (null until the card has been interacted with or a deploy
   // projection has landed).
@@ -368,6 +392,11 @@ export const modelTrainingEvidenceAdmission = (
 ): TrainingEvidenceAdmissionResponse | null =>
   model.trainingEvidenceAdmission as TrainingEvidenceAdmissionResponse | null
 
+export const modelProofReplay = (
+  model: Model,
+): DesktopProofReplayProjection | null =>
+  model.proofReplay as DesktopProofReplayProjection | null
+
 export const initialModel: Model = Model.make({
   node: null,
   notifications: null,
@@ -454,5 +483,9 @@ export const initialModel: Model = Model.make({
   trainingLaunchPending: false,
   trainingCloseoutStatus: { text: "", tone: "idle" },
   trainingCloseoutPending: false,
+  selectedProofReplaySlug: DefaultDesktopProofReplaySlug,
+  proofReplay: null,
+  proofReplayStatus: { text: "not loaded", tone: "idle" },
+  proofReplayPending: false,
   deployFeedback: null,
 })

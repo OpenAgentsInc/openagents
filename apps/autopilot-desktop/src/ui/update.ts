@@ -20,6 +20,7 @@ import {
   LoadBuiltInAgentReadiness,
   LoadInstallReadiness,
   LoadPromiseSurfacingReadiness,
+  LoadProofReplayBundle,
   LoadTrainingDashboard,
   LoadTrainingEvidencePacketSummary,
   LoadTrainingOperatorReadiness,
@@ -41,6 +42,7 @@ import {
 import { parseVerifyLines } from "./helpers"
 import type { Message } from "./message"
 import { Model, type PaneId } from "./model"
+import type { DesktopProofReplayProjection } from "../shared/proof-replays"
 import { validatePromiseSurfacingInput } from "../shared/promise-surfacing"
 import type {
   AppleFmReadinessResponse,
@@ -65,12 +67,15 @@ type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
 const noCommands: ReadonlyArray<Command.Command<Message>> = []
 
-const loadTrainingProjectionCommands = (): ReadonlyArray<Command.Command<Message>> => [
+const loadTrainingProjectionCommands = (
+  model: Model,
+): ReadonlyArray<Command.Command<Message>> => [
   LoadTrainingRuns(),
   LoadTrainingDashboard(),
   LoadTrainingPromiseGates(),
   LoadTrainingOperatorReadiness(),
   LoadTrainingEvidencePacketSummary(),
+  LoadProofReplayBundle({ slug: model.selectedProofReplaySlug }),
 ]
 
 const trainingBootstrapShouldRefresh = (
@@ -177,11 +182,16 @@ export const update = (model: Model, message: Message): Result => {
                   text: "checking evidence packet...",
                   tone: "info" as const,
                 },
+                proofReplayPending: true,
+                proofReplayStatus: {
+                  text: "loading public replay bundle...",
+                  tone: "info" as const,
+                },
               }
             : {}),
         }),
         isTrainingPane(message.pane)
-          ? loadTrainingProjectionCommands()
+          ? loadTrainingProjectionCommands(model)
           : isBuiltInAgentPane(message.pane)
             ? [LoadBuiltInAgentReadiness(), LoadAppleFmReadiness(), LoadPromiseSurfacingReadiness()]
             : isSettingsPane(message.pane)
@@ -678,8 +688,13 @@ export const update = (model: Model, message: Message): Result => {
             text: "refreshing evidence packet...",
             tone: "info",
           },
+          proofReplayPending: true,
+          proofReplayStatus: {
+            text: "refreshing proof replay bundle...",
+            tone: "info",
+          },
         }),
-        loadTrainingProjectionCommands(),
+        loadTrainingProjectionCommands(model),
       ]
     case "SelectedTrainingSceneNode":
       return [
@@ -804,6 +819,57 @@ export const update = (model: Model, message: Message): Result => {
         noCommands,
       ]
     }
+    case "SelectedProofReplay":
+      return [
+        Model.make({
+          ...model,
+          selectedProofReplaySlug: message.slug,
+          proofReplay: null,
+          proofReplayPending: true,
+          proofReplayStatus: {
+            text: "loading public replay bundle...",
+            tone: "info",
+          },
+        }),
+        [LoadProofReplayBundle({ slug: message.slug })],
+      ]
+    case "ClickedRefreshProofReplay":
+      return [
+        Model.make({
+          ...model,
+          proofReplayPending: true,
+          proofReplayStatus: {
+            text: "refreshing proof replay bundle...",
+            tone: "info",
+          },
+        }),
+        [LoadProofReplayBundle({ slug: model.selectedProofReplaySlug })],
+      ]
+    case "GotProofReplayBundle": {
+      const projection = message.projection as DesktopProofReplayProjection
+      const sourceLabel = projection.entry?.title ?? projection.sourceUrl
+      const amount = projection.summary?.confirmedZapSats ?? 0
+      return [
+        Model.make({
+          ...model,
+          proofReplay: projection,
+          proofReplayPending: false,
+          proofReplayStatus: projection.ok
+            ? {
+                text: `${sourceLabel} · ${projection.summary?.eventCount ?? 0} events · ${amount.toLocaleString()} sats`,
+                tone: "success",
+              }
+            : {
+                text:
+                  projection.error ??
+                  projection.blockerRefs[0] ??
+                  "proof replay unavailable",
+                tone: projection.error ? "error" : "info",
+              },
+        }),
+        noCommands,
+      ]
+    }
     case "ClickedPlanTrainingWindow":
       return [
         Model.make({
@@ -833,7 +899,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },
         }),
-        projection.ok ? loadTrainingProjectionCommands() : noCommands,
+        projection.ok ? loadTrainingProjectionCommands(model) : noCommands,
       ]
     }
     case "ClickedActivateTrainingWindow":
@@ -875,7 +941,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },
         }),
-        projection.ok ? loadTrainingProjectionCommands() : noCommands,
+        projection.ok ? loadTrainingProjectionCommands(model) : noCommands,
       ]
     }
     case "ClickedReconcileTrainingWindow":
@@ -917,7 +983,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },
         }),
-        projection.ok ? loadTrainingProjectionCommands() : noCommands,
+        projection.ok ? loadTrainingProjectionCommands(model) : noCommands,
       ]
     }
     case "ClickedClaimTrainingLease":
@@ -947,7 +1013,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },
         }),
-        projection.ok ? loadTrainingProjectionCommands() : noCommands,
+        projection.ok ? loadTrainingProjectionCommands(model) : noCommands,
       ]
     }
     case "ClickedRequestTrainingBootstrap":
@@ -996,7 +1062,7 @@ export const update = (model: Model, message: Message): Result => {
           },
         }),
         trainingBootstrapShouldRefresh(projection)
-          ? loadTrainingProjectionCommands()
+          ? loadTrainingProjectionCommands(model)
           : noCommands,
       ]
     }
@@ -1048,7 +1114,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: projection.ok ? "success" : infoReason ? "info" : "error",
           },
         }),
-        shouldRefresh ? loadTrainingProjectionCommands() : noCommands,
+        shouldRefresh ? loadTrainingProjectionCommands(model) : noCommands,
       ]
     }
     case "ClickedAdmitTrainingEvidence":
@@ -1095,7 +1161,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: projection.ok ? "success" : inactiveReason ? "info" : "error",
           },
         }),
-        projection.ok ? loadTrainingProjectionCommands() : noCommands,
+        projection.ok ? loadTrainingProjectionCommands(model) : noCommands,
       ]
     }
     case "ClickedQueueTrainingLaunch":
@@ -1120,7 +1186,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: message.ok ? "success" : "error",
           },
         }),
-        message.ok ? loadTrainingProjectionCommands() : noCommands,
+        message.ok ? loadTrainingProjectionCommands(model) : noCommands,
       ]
     case "ClickedQueueTrainingCloseout":
       if (message.trainingRunRef.trim() === "") {
@@ -1163,7 +1229,7 @@ export const update = (model: Model, message: Message): Result => {
             tone: message.ok ? "success" : "error",
           },
         }),
-        message.ok ? loadTrainingProjectionCommands() : noCommands,
+        message.ok ? loadTrainingProjectionCommands(model) : noCommands,
       ]
 
     // ── Spawn ──────────────────────────────────────────────────────────────────

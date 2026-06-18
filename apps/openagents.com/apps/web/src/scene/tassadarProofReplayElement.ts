@@ -4,8 +4,10 @@ import {
   assertReplayPlanSourceCoverage,
   buildReplayRenderPlan,
   cameraPoseFor,
+  FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
   initialReplayPlaybackState,
   interpolateActorPosition,
+  proofReplayBundleEndpointForSlug,
   reduceReplayClock,
   type ProofReplayBundle,
   type ReplayCameraMode,
@@ -22,9 +24,7 @@ import { currentUnixMs } from '../time-format'
 
 export const TASSADAR_PROOF_REPLAY_TAG = 'oa-tassadar-proof-replay'
 export const TASSADAR_REPLAY_SLUG_DATA_KEY = 'replay-slug'
-export const FIRST_REAL_SETTLEMENT_REPLAY_SLUG = 'first-real-settlement'
-export const TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT =
-  '/api/public/tassadar-replays/first-real-settlement'
+export { FIRST_REAL_SETTLEMENT_REPLAY_SLUG }
 
 type ReplayDataState = 'loading' | 'ok' | 'error'
 type ReplayPresentationMode = 'interactive' | 'social'
@@ -159,11 +159,6 @@ const activeOverpaymentEvent = (
 ): ReplayEvent | undefined =>
   [...events].reverse().find(event => event.kind === 'overpayment_detected')
 
-const replayEndpointForSlug = (slug: string): string =>
-  slug === FIRST_REAL_SETTLEMENT_REPLAY_SLUG
-    ? TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT
-    : `/api/public/proof-replays?ref=${encodeURIComponent(slug)}`
-
 const queryParamsFromLocation = (): URLSearchParams => {
   if (typeof window === 'undefined') return new URLSearchParams()
   return new URLSearchParams(window.location.search)
@@ -257,10 +252,13 @@ const makeClass = (): CustomElementConstructor =>
 
     async #load(signal: AbortSignal): Promise<void> {
       try {
-        const response = await fetch(replayEndpointForSlug(this.#replaySlug()), {
-          headers: { accept: 'application/json' },
-          signal,
-        })
+        const response = await fetch(
+          proofReplayBundleEndpointForSlug(this.#replaySlug()),
+          {
+            headers: { accept: 'application/json' },
+            signal,
+          },
+        )
         if (signal.aborted) return
         if (!response.ok) {
           this.#renderError(`Replay bundle unavailable (HTTP ${response.status}).`)

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT } from '@openagentsinc/proof-replay'
 
 import {
-  TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT,
   TASSADAR_PROOF_REPLAY_TAG,
   tassadarProofReplayView,
 } from './tassadarProofReplayElement'

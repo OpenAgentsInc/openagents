@@ -35,6 +35,10 @@ import {
 } from "@openagentsinc/three-effect/core"
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
+import {
+  desktopProofReplayCatalog,
+  type DesktopProofReplayProjection,
+} from "../shared/proof-replays"
 
 import type {
   AccountRow,
@@ -83,6 +87,7 @@ import {
   ClickedPlanTrainingWindow,
   ClickedQueueTrainingCloseout,
   ClickedReconcileTrainingWindow,
+  ClickedRefreshProofReplay,
   ClickedRefreshInstallReadiness,
   ClickedRefreshPromiseSurfacing,
   ClickedRefreshBuiltInAgent,
@@ -97,6 +102,7 @@ import {
   ClickedSubmitIntent,
   ClickedSurfacePromiseGap,
   SelectedAgentMode,
+  SelectedProofReplay,
   SelectedTrainingSceneNode,
   type Message,
   NavigatedTo,
@@ -130,6 +136,7 @@ import {
   modelTrainingEvidencePacketBuild,
   modelTrainingEvidencePacketSummary,
   modelTrainingLease,
+  modelProofReplay,
   modelAppleFmReadiness,
   modelBuiltInAgentReadiness,
   modelInstallReadiness,
@@ -1542,6 +1549,141 @@ const liveTrainingProjectionPanel = (model: Model): Html => {
   ])
 }
 
+const replaySatsLabel = (amount: number): string =>
+  `${amount.toLocaleString()} sats`
+
+const proofReplayEventRows = (
+  projection: DesktopProofReplayProjection | null,
+): ReadonlyArray<Html> => {
+  const events = projection?.bundle?.events ?? []
+  return events
+    .filter(event =>
+      event.kind === "payment_zap_confirmed" ||
+      event.kind === "settlement_blocked_closed" ||
+      event.kind === "payment_zap_simulated" ||
+      event.kind === "recognition_reward_recorded" ||
+      event.kind === "recipient_confirmation_recorded" ||
+      event.kind === "overpayment_detected",
+    )
+    .slice(0, 6)
+    .map(event =>
+      trainingGate(
+        event.kind,
+        event.amountSats === undefined
+          ? event.displayText
+          : `${replaySatsLabel(event.amountSats)} · ${event.displayText}`,
+        event.kind === "payment_zap_confirmed" ||
+          event.kind === "recipient_confirmation_recorded"
+          ? "ready"
+          : event.kind === "settlement_blocked_closed"
+            ? "blocked"
+            : "watch",
+      ),
+    )
+}
+
+const proofReplaySourceRows = (
+  projection: DesktopProofReplayProjection | null,
+): ReadonlyArray<Html> => {
+  const sources = projection?.bundle?.sourceRefs ?? []
+  return sources.slice(0, 5).map(source =>
+    h.li([], [
+      source.url === undefined
+        ? h.code([], [source.ref])
+        : h.a([h.Href(source.url)], [source.ref]),
+      source.kind === undefined ? "" : ` · ${source.kind}`,
+    ]),
+  )
+}
+
+const proofReplayPanel = (model: Model): Html => {
+  const projection = modelProofReplay(model)
+  const entries = desktopProofReplayCatalog()
+  const selectedEntry =
+    entries.find(entry => entry.slug === model.selectedProofReplaySlug) ?? entries[0]
+  const summary = projection?.summary ?? null
+  const sourceRows = proofReplaySourceRows(projection)
+  const eventRows = proofReplayEventRows(projection)
+
+  return h.section([cls("training-panel training-proof-replay-panel")], [
+    h.div([cls("training-panel-heading")], [
+      h.h2([cls("training-panel-title")], ["Proof Replays"]),
+      h.button(
+        [
+          cls("training-refresh-button"),
+          h.Type("button"),
+          h.Disabled(model.proofReplayPending),
+          h.OnClick(ClickedRefreshProofReplay()),
+        ],
+        [model.proofReplayPending ? "Refreshing..." : "Refresh"],
+      ),
+    ]),
+    h.p(
+      [cls(`training-panel-copy training-${model.proofReplayStatus.tone}`)],
+      [model.proofReplayStatus.text],
+    ),
+    h.div(
+      [cls("training-action-row training-replay-selector")],
+      entries.map(entry =>
+        h.button(
+          [
+            cls(
+              `training-action-button secondary${entry.slug === model.selectedProofReplaySlug ? " active" : ""}`,
+            ),
+            h.Type("button"),
+            h.Disabled(model.proofReplayPending),
+            h.OnClick(SelectedProofReplay({ slug: entry.slug })),
+          ],
+          [entry.slug === "first-real-settlement" ? "First settlement" : "Recognition"],
+        ),
+      ),
+    ),
+    h.p([cls("training-panel-copy")], [
+      selectedEntry?.summary ?? "Receipt-backed replay shelf.",
+    ]),
+    summary === null
+      ? emptyLine("Open Training or refresh to load the selected public replay bundle.")
+      : h.div([cls("training-metrics")], [
+          trainingMetric("actors", String(summary.actorCount), "ready"),
+          trainingMetric("events", String(summary.eventCount), "ready"),
+          trainingMetric(
+            "confirmed",
+            replaySatsLabel(summary.confirmedZapSats),
+            summary.confirmedZapSats > 0 ? "ready" : "watch",
+          ),
+          trainingMetric(
+            "gaps",
+            String(summary.gapCount),
+            summary.gapCount > 0 ? "watch" : "ready",
+          ),
+        ]),
+    h.ul(
+      [cls("training-gates training-proof-replay-events")],
+      eventRows.length === 0
+        ? [trainingGate("events", "not loaded", "watch")]
+        : eventRows,
+    ),
+    h.div([cls("training-replay-links")], [
+      selectedEntry === undefined
+        ? h.empty
+        : h.a([h.Href(selectedEntry.websitePath)], ["Open web replay"]),
+      selectedEntry?.socialPath === undefined
+        ? h.empty
+        : h.a([h.Href(selectedEntry.socialPath)], ["Open social cut"]),
+      projection === null
+        ? h.empty
+        : h.a([h.Href(projection.sourceUrl)], ["Open bundle API"]),
+    ]),
+    h.p([cls("training-panel-copy")], [
+      projection?.cacheLabel ??
+        "No offline snapshot is cached; the desktop shelf waits for the live public bundle.",
+    ]),
+    sourceRows.length === 0
+      ? h.empty
+      : h.ul([cls("training-api-list training-replay-sources")], sourceRows),
+  ])
+}
+
 const selectedTrainingEvidencePanel = (
   projection: TrainingRunsResponse | null,
 ): Html => {
@@ -2792,6 +2934,7 @@ const trainingPane = (model: Model): Html => {
       ]),
       h.div([cls("training-grid")], [
         liveTrainingProjectionPanel(model),
+        proofReplayPanel(model),
         selectedTrainingLifecyclePanel(projection),
         trainingDashboardPanel(model),
         trainingPromiseGatesPanel(model),

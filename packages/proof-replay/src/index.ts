@@ -126,6 +126,59 @@ export type ProofReplayBundle = Readonly<{
   gaps: ReadonlyArray<ReplayGap>
 }>
 
+export const OPENAGENTS_PUBLIC_ORIGIN = 'https://openagents.com'
+export const FIRST_REAL_SETTLEMENT_REPLAY_SLUG = 'first-real-settlement'
+export const LAUNCH_RECOGNITION_REPLAY_SLUG = 'launch-recognition-payments'
+export const TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT =
+  '/api/public/tassadar-replays/first-real-settlement'
+
+export type ProofReplayCatalogSlug =
+  | typeof FIRST_REAL_SETTLEMENT_REPLAY_SLUG
+  | typeof LAUNCH_RECOGNITION_REPLAY_SLUG
+
+export type ProofReplayCatalogEntry = Readonly<{
+  slug: ProofReplayCatalogSlug
+  title: string
+  summary: string
+  bundleEndpoint: string
+  websitePath: string
+  socialPath?: string
+  primarySourceRefs: ReadonlyArray<string>
+}>
+
+const proofReplayCatalogEntries: ReadonlyArray<ProofReplayCatalogEntry> = [
+  {
+    bundleEndpoint: TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT,
+    primarySourceRefs: [
+      'run.tassadar.executor.20260615',
+      'training.verification.challenge.071445c5-6ad6-4136-87e3-253b01914b4c',
+      'receipt.nexus.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618',
+    ],
+    slug: FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
+    socialPath:
+      '/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social',
+    summary:
+      'Tassadar Run 1 proof replay with failed-closed settlement blockers, owner gate, and the first receipt-backed 1,000-sat Spark zap.',
+    title: 'Tassadar Run 1: First Real Bitcoin Settlement',
+    websitePath: '/tassadar/replay/first-real-settlement',
+  },
+  {
+    bundleEndpoint: `/api/public/proof-replays?ref=${encodeURIComponent(
+      LAUNCH_RECOGNITION_REPLAY_SLUG,
+    )}`,
+    primarySourceRefs: [
+      'docs/launch/JUNE17_ROADMAP.md',
+      'docs/payments/2026-06-17-launch-recognition-closeout.md',
+      'docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md',
+    ],
+    slug: LAUNCH_RECOGNITION_REPLAY_SLUG,
+    summary:
+      'Launch recognition replay for Trigger, Whitefang, and Orrery with intended 50,000-sat lanes, confirmed public receipts, gaps, and overpayment accounting.',
+    title: 'Launch Recognition Payment Replay',
+    websitePath: '/tassadar/replay/launch-recognition-payments',
+  },
+]
+
 export type ReplayPlaybackState = Readonly<{
   durationSecond: number
   isPlaying: boolean
@@ -251,6 +304,47 @@ const clamp = (value: number, min: number, max: number): number =>
 
 const unique = (values: ReadonlyArray<string>): ReadonlyArray<string> =>
   [...new Set(values.map(value => value.trim()).filter(value => value !== ''))]
+
+const originPrefix = (origin: string | undefined): string => {
+  const value = origin?.trim()
+  return value === undefined || value === '' ? '' : value.replace(/\/+$/, '')
+}
+
+const withOrigin = (path: string, origin?: string): string => {
+  if (/^https?:\/\//i.test(path)) return path
+  return `${originPrefix(origin)}${path}`
+}
+
+export const proofReplayCatalog = (
+  origin?: string,
+): ReadonlyArray<ProofReplayCatalogEntry> =>
+  proofReplayCatalogEntries.map(entry => {
+    const base = {
+      ...entry,
+      bundleEndpoint: withOrigin(entry.bundleEndpoint, origin),
+      websitePath: withOrigin(entry.websitePath, origin),
+    }
+    return entry.socialPath === undefined
+      ? base
+      : { ...base, socialPath: withOrigin(entry.socialPath, origin) }
+  })
+
+export const proofReplayCatalogEntryForSlug = (
+  slug: string,
+  origin?: string,
+): ProofReplayCatalogEntry | undefined =>
+  proofReplayCatalog(origin).find(entry => entry.slug === slug)
+
+export const proofReplayBundleEndpointForSlug = (
+  slug: string,
+  origin?: string,
+): string =>
+  slug === FIRST_REAL_SETTLEMENT_REPLAY_SLUG
+    ? withOrigin(TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT, origin)
+    : withOrigin(
+        `/api/public/proof-replays?ref=${encodeURIComponent(slug)}`,
+        origin,
+      )
 
 const unsafeReplayMaterialPatterns = [
   /\b(?:lnbc|lntb|lnbcrt|lno1)[a-z0-9]{12,}/i,

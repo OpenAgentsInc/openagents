@@ -7,12 +7,18 @@ import {
   buildReplayRenderPlan,
   cameraPoseFor,
   createReplayDisposalRegistry,
+  FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
   initialReplayPlaybackState,
   interpolateActorPosition,
+  LAUNCH_RECOGNITION_REPLAY_SLUG,
   orderedReplayEvents,
   paymentVisualForEvent,
+  proofReplayBundleEndpointForSlug,
+  proofReplayCatalog,
+  proofReplayCatalogEntryForSlug,
   reduceReplayClock,
   ReplayBundleShipmentGateError,
+  TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT,
   type ProofReplayBundle,
   type ReplayEvent,
 } from './index'
@@ -170,6 +176,44 @@ const bundle = {
 } satisfies ProofReplayBundle
 
 describe('@openagentsinc/proof-replay', () => {
+  test('exports one replay catalog for web and desktop surfaces', () => {
+    const catalog = proofReplayCatalog('https://openagents.com/')
+
+    expect(catalog.map(entry => entry.slug)).toEqual([
+      FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
+      LAUNCH_RECOGNITION_REPLAY_SLUG,
+    ])
+    expect(catalog[0]?.bundleEndpoint).toBe(
+      `https://openagents.com${TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT}`,
+    )
+    expect(catalog[0]?.websitePath).toBe(
+      'https://openagents.com/tassadar/replay/first-real-settlement',
+    )
+    expect(catalog[0]?.socialPath).toBe(
+      'https://openagents.com/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social',
+    )
+    expect(catalog[1]?.bundleEndpoint).toBe(
+      'https://openagents.com/api/public/proof-replays?ref=launch-recognition-payments',
+    )
+    expect(
+      proofReplayCatalogEntryForSlug(LAUNCH_RECOGNITION_REPLAY_SLUG)?.websitePath,
+    ).toBe('/tassadar/replay/launch-recognition-payments')
+  })
+
+  test('resolves first replay through its compatibility endpoint and generic refs through proof-replays', () => {
+    expect(proofReplayBundleEndpointForSlug(FIRST_REAL_SETTLEMENT_REPLAY_SLUG)).toBe(
+      TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT,
+    )
+    expect(
+      proofReplayBundleEndpointForSlug(
+        LAUNCH_RECOGNITION_REPLAY_SLUG,
+        'https://openagents.com',
+      ),
+    ).toBe(
+      'https://openagents.com/api/public/proof-replays?ref=launch-recognition-payments',
+    )
+  })
+
   test('builds a deterministic render plan with stable event ordering and hit targets', () => {
     const first = buildReplayRenderPlan(bundle)
     const second = buildReplayRenderPlan(bundle)

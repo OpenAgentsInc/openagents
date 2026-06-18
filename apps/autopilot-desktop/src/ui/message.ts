@@ -8,7 +8,7 @@
 import { Schema as S } from "effect"
 import { m } from "foldkit/message"
 
-import { PaneId, SessionFilter } from "./model"
+import { PaneId, ProofReplaySlug, SessionFilter } from "./model"
 
 // ── Inbound (Electrobun → runtime), pushed by the subscription stream ──────
 export const GotNodeState = m("GotNodeState", { node: S.Unknown })
@@ -223,6 +223,13 @@ export const SettledQueueTrainingCloseout = m("SettledQueueTrainingCloseout", {
   ok: S.Boolean,
   text: S.String,
 })
+export const SelectedProofReplay = m("SelectedProofReplay", {
+  slug: ProofReplaySlug,
+})
+export const ClickedRefreshProofReplay = m("ClickedRefreshProofReplay")
+export const GotProofReplayBundle = m("GotProofReplayBundle", {
+  projection: S.Unknown,
+})
 
 // ── Spawn ──────────────────────────────────────────────────────────────────
 export const ChangedSpawnAdapter = m("ChangedSpawnAdapter", {
@@ -317,6 +324,9 @@ export const Message = S.Union([
   SettledQueueTrainingLaunch,
   ClickedQueueTrainingCloseout,
   SettledQueueTrainingCloseout,
+  SelectedProofReplay,
+  ClickedRefreshProofReplay,
+  GotProofReplayBundle,
   ChangedSpawnAdapter,
   ChangedSpawnObjective,
   ChangedSpawnVerify,

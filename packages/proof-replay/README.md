@@ -8,6 +8,20 @@ plans, camera cue plans, hit targets, and payment visual classifications.
 The package is presentation-only. It does not validate proofs, authorize
 settlement, dispatch payments, read wallet state, or promote product claims.
 
+## Replay catalog
+
+The package exports the shared replay catalog used by both
+`apps/openagents.com` and `apps/autopilot-desktop`:
+
+- `first-real-settlement`
+- `launch-recognition-payments`
+
+Use `proofReplayCatalog(origin)` or `proofReplayBundleEndpointForSlug(slug,
+origin)` instead of hard-coding replay URLs in individual surfaces. The first
+settlement replay keeps its compatibility endpoint at
+`/api/public/tassadar-replays/first-real-settlement`; generic replays resolve
+through `/api/public/proof-replays?ref=...`.
+
 Before rendering a bundle, call `assertProofReplayBundleShipmentGate(bundle)`.
 The gate enforces the public replay contract:
 

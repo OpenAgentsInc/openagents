@@ -398,6 +398,17 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)
   })
 
+  test("training pane includes the proof replay shelf for web and desktop parity", () => {
+    const document = view({ ...initialModel, pane: "training" })
+    expect(treeContainsClass(document.body, "training-proof-replay-panel")).toBe(true)
+    expect(treeContainsText(document.body, "Proof Replays")).toBe(true)
+    expect(treeContainsText(document.body, "First settlement")).toBe(true)
+    expect(treeContainsText(document.body, "Recognition")).toBe(true)
+    expect(treeContainsText(document.body, "Open social cut")).toBe(true)
+    expect(treeContainsText(document.body, "/Users/")).toBe(false)
+    expect(treeContainsText(document.body, ".secrets")).toBe(false)
+  })
+
   test("fullscreen training pane keeps sidebar and overlays stats on the scene", () => {
     const document = view({
       ...initialModel,

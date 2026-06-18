@@ -61,6 +61,17 @@ and `docs/launch/JUNE17_ROADMAP.md`.
   settlement non-payment semantics, and simulation-vs-real copy boundaries. The
   Worker resolver redaction patterns were also expanded to catch raw
   Lightning/Spark/on-chain address-looking material.
+- 2026-06-17: #5308 made the replay catalog shared across web and Autopilot
+  Desktop. `@openagentsinc/proof-replay` now exports the canonical replay slugs,
+  website paths, social-cut path, and public bundle endpoints. The website
+  replay element consumes that helper instead of hard-coding endpoint routing.
+  `apps/autopilot-desktop` now has an in-app Training pane replay shelf that
+  fetches the same public `proof_replay_bundle.v1` payloads over HTTPS from
+  `https://openagents.com`, runs the shared shipment gate before display, shows
+  first-settlement and launch-recognition bundle stats/source refs inside the
+  desktop app, and labels the current cache state as a live HTTPS read with no
+  offline snapshot. The social cut is available from desktop as a clear website
+  handoff while the replay bundle remains inspectable in-app.
 
 ## Thesis
 
@@ -805,12 +816,33 @@ CI-safe replay gates:
 ```text
 bun run --cwd packages/proof-replay test
 bun run --cwd packages/proof-replay typecheck
+bun test tests/proof-replays.test.ts tests/cl-53-foldkit.test.ts tests/cl-53-sanitize.test.ts
+# from apps/autopilot-desktop, uses its bunfig preload
+bun build src/ui/main.ts --outdir /tmp/autopilot-desktop-ui-build --target browser
+bun build src/bun/index.ts --outdir /tmp/autopilot-desktop-bun-build --target bun
 bun run --cwd apps/openagents.com/workers/api test -- src/public-proof-replay-routes.test.ts
 bun run --cwd apps/openagents.com/workers/api typecheck
 bun run --cwd apps/openagents.com/apps/web test -- src/scene/tassadarProofReplayElement.test.ts
 bun run --cwd apps/openagents.com/apps/web typecheck
 bun run --cwd apps/openagents.com check:deploy
 ```
+
+Cross-surface replay checks:
+
+1. Website first replay:
+   `/tassadar/replay/first-real-settlement`.
+2. Website social cut:
+   `/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social`.
+3. Website recognition replay:
+   `/tassadar/replay/launch-recognition-payments`.
+4. Autopilot Desktop: open `Training`, use `Proof Replays`, select `First
+   settlement` and `Recognition`, and confirm the panel loads bundle metrics,
+   source refs, payment/gap rows, `Open web replay`, `Open social cut` for the
+   first settlement replay, and `Open bundle API`.
+5. Desktop cache label must read as live HTTPS/no offline snapshot unless a
+   future explicit snapshot system is implemented. A failed load must say no
+   offline snapshot is available rather than implying current settlement or
+   wallet state.
 
 The shared shipment gate must pass before browser rendering. It rejects:
 

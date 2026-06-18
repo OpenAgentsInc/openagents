@@ -11,6 +11,11 @@ import { Command } from "foldkit"
 import { getRequest } from "./bridge"
 import { commandErrorText } from "./helpers"
 import {
+  blockedDesktopProofReplayProjection,
+  loadDesktopProofReplayProjection,
+} from "../shared/proof-replays"
+import { ProofReplaySlug } from "./model"
+import {
   FailedCoordinatorToggle,
   FailedBuiltInAgent,
   FailedAppleFmSession,
@@ -20,6 +25,7 @@ import {
   GotInstallReadiness,
   GotPromiseSurfacingReadiness,
   GotPromiseSurfacingResult,
+  GotProofReplayBundle,
   GotTrainingDashboard,
   GotTrainingEvidencePacketSummary,
   GotTrainingOperatorReadiness,
@@ -615,6 +621,26 @@ export const LoadTrainingEvidencePacketSummary = Command.define(
       Effect.succeed(
         GotTrainingEvidencePacketSummary({
           projection: emptyTrainingEvidencePacketSummaryProjection(
+            errorText(error),
+          ),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadProofReplayBundle = Command.define(
+  "LoadProofReplayBundle",
+  { slug: ProofReplaySlug },
+  GotProofReplayBundle,
+)(({ slug }) =>
+  Effect.tryPromise(() => loadDesktopProofReplayProjection(slug)).pipe(
+    Effect.map((projection) => GotProofReplayBundle({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotProofReplayBundle({
+          projection: blockedDesktopProofReplayProjection(
+            slug,
             errorText(error),
           ),
         }),
