@@ -243,6 +243,13 @@ class MemorySparkPayoutTargetStore implements PylonSparkPayoutTargetStore {
   }
 
   read = async (pylonRef: string) => this.records.get(pylonRef)
+
+  // #5252 owner-scoped fallback: most-recently-updated target for the owner,
+  // across ANY of that owner's pylonRefs. Bound to the owning agent only.
+  readByOwner = async (ownerAgentUserId: string) =>
+    [...this.records.values()]
+      .filter(record => record.ownerAgentUserId === ownerAgentUserId)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
 }
 
 type D1InsertShape = Readonly<{
@@ -1565,11 +1572,143 @@ describe('Pylon API routes', () => {
   test('settlement resolver fails closed (undefined) when the store read throws (#5252)', async () => {
     const throwingStore: PylonSparkPayoutTargetStore = {
       read: () => Promise.reject(new Error('store unavailable')),
+      readByOwner: () => Promise.reject(new Error('store unavailable')),
       upsert: record => Promise.resolve(record),
     }
 
     expect(
       await resolveSparkPayoutDestination(throwingStore, 'pylon.test.one'),
+    ).toBeUndefined()
+  })
+
+  // #5252 owner-scoped canonical fallback. INVARIANTS for
+  // resolveSparkPayoutDestination: a contributor whose registered Pylon shows
+  // `sparkPayoutTargetReady: true` MUST resolve a destination even when the
+  // training-window lease was claimed under a DIFFERENT pylonRef owned by the
+  // SAME agent (e.g. a device-ref). The fallback is bound to the owning agent
+  // and fails closed everywhere else (no resolver, no owner, no target, throw).
+  test('settlement resolver resolves an owner-registered target by a DIFFERENT lease pylonRef of the same agent (#5252)', async () => {
+    // Real shape from the bug: target registered under pylon.81f0... but the
+    // lease that did the work was claimed under a device-ref.
+    const registeredPylonRef = 'pylon.81f0facfe7971870f685'
+    const leaseDeviceRef = 'pylon_45b58c56783cbedf2d113a0c'
+    const rawSparkAddress =
+      'spark1pqqqqq0000000000000000000000000000ownerfallback'
+
+    const sparkStore = new MemorySparkPayoutTargetStore()
+    await sparkStore.upsert({
+      pylonRef: registeredPylonRef,
+      ownerAgentUserId: 'agent_trigger',
+      payoutTargetRef: 'payout.spark.deadbeef',
+      rawSparkAddress,
+      createdAt: '2026-06-16T00:00:00.000Z',
+      updatedAt: '2026-06-16T00:00:00.000Z',
+    })
+
+    // The lease's device-ref has NO direct target; owner-resolver maps it to
+    // the same owning agent that registered the target above.
+    const resolveOwner = (pylonRef: string) =>
+      Promise.resolve(
+        pylonRef === leaseDeviceRef ? 'agent_trigger' : undefined,
+      )
+
+    const resolved = await resolveSparkPayoutDestination(
+      sparkStore,
+      leaseDeviceRef,
+      resolveOwner,
+    )
+    expect(resolved).toBe(rawSparkAddress)
+  })
+
+  test('settlement resolver still fails closed (undefined) with NO owner-resolver and no direct target (#5252)', async () => {
+    const sparkStore = new MemorySparkPayoutTargetStore()
+
+    expect(
+      await resolveSparkPayoutDestination(sparkStore, 'pylon_45b58c56783cbedf2d113a0c'),
+    ).toBeUndefined()
+  })
+
+  test('settlement resolver fails closed when the resolved owner has NO target anywhere (#5252)', async () => {
+    const sparkStore = new MemorySparkPayoutTargetStore()
+    const resolveOwner = () => Promise.resolve<string | undefined>('agent_trigger')
+
+    expect(
+      await resolveSparkPayoutDestination(
+        sparkStore,
+        'pylon_45b58c56783cbedf2d113a0c',
+        resolveOwner,
+      ),
+    ).toBeUndefined()
+  })
+
+  test('settlement resolver fails closed when the owner-resolver returns undefined (unknown pylonRef) (#5252)', async () => {
+    const sparkStore = new MemorySparkPayoutTargetStore()
+    await sparkStore.upsert({
+      pylonRef: 'pylon.81f0facfe7971870f685',
+      ownerAgentUserId: 'agent_trigger',
+      payoutTargetRef: 'payout.spark.deadbeef',
+      rawSparkAddress: 'spark1pqqqqq0000000000000000000000000000unknownowner',
+      createdAt: '2026-06-16T00:00:00.000Z',
+      updatedAt: '2026-06-16T00:00:00.000Z',
+    })
+    const resolveOwner = () => Promise.resolve<string | undefined>(undefined)
+
+    expect(
+      await resolveSparkPayoutDestination(
+        sparkStore,
+        'pylon_unknown_device_ref',
+        resolveOwner,
+      ),
+    ).toBeUndefined()
+  })
+
+  test('settlement resolver: a direct exact-ref match still wins without using the owner fallback (#5252)', async () => {
+    const rawSparkAddress =
+      'spark1pqqqqq0000000000000000000000000000directwins'
+    const sparkStore = new MemorySparkPayoutTargetStore()
+    await sparkStore.upsert({
+      pylonRef: 'pylon.test.one',
+      ownerAgentUserId: 'agent_trigger',
+      payoutTargetRef: 'payout.spark.cafebabe',
+      rawSparkAddress,
+      createdAt: '2026-06-16T00:00:00.000Z',
+      updatedAt: '2026-06-16T00:00:00.000Z',
+    })
+
+    // Owner-resolver would throw if consulted; the direct match must short-circuit.
+    const resolveOwner = () =>
+      Promise.reject<string | undefined>(
+        new Error('owner-resolver must not be consulted on a direct hit'),
+      )
+
+    expect(
+      await resolveSparkPayoutDestination(
+        sparkStore,
+        'pylon.test.one',
+        resolveOwner,
+      ),
+    ).toBe(rawSparkAddress)
+  })
+
+  test('settlement resolver never crosses agent ownership: a different owner with no target stays undefined (#5252)', async () => {
+    // agent_a owns a target; the lease resolves to agent_b who has none.
+    const sparkStore = new MemorySparkPayoutTargetStore()
+    await sparkStore.upsert({
+      pylonRef: 'pylon.agent_a',
+      ownerAgentUserId: 'agent_a',
+      payoutTargetRef: 'payout.spark.aaaa',
+      rawSparkAddress: 'spark1pqqqqq0000000000000000000000000000agentaonly',
+      createdAt: '2026-06-16T00:00:00.000Z',
+      updatedAt: '2026-06-16T00:00:00.000Z',
+    })
+    const resolveOwner = () => Promise.resolve<string | undefined>('agent_b')
+
+    expect(
+      await resolveSparkPayoutDestination(
+        sparkStore,
+        'pylon_device_of_agent_b',
+        resolveOwner,
+      ),
     ).toBeUndefined()
   })
 
@@ -1709,6 +1848,7 @@ describe('Pylon API routes', () => {
   test('readiness resolver fails closed (not ready) when the store read throws (#5306)', async () => {
     const throwingStore: PylonSparkPayoutTargetStore = {
       read: () => Promise.reject(new Error('store unavailable')),
+      readByOwner: () => Promise.reject(new Error('store unavailable')),
       upsert: record => Promise.resolve(record),
     }
 
