@@ -90,6 +90,7 @@ import {
   updateForumReportStatus,
   updateForumTopicModerationState,
   updateForumTopicPinState,
+  updateForumTopicTitle,
   upsertForumTipRecipientWallet,
   watchForumTarget,
 } from './forum'
@@ -342,6 +343,10 @@ const EditForumPostBody = S.Struct({
     S.isMaxLength(ForumPostBodyTextMaxLength),
   ),
   parentPostId: S.optionalKey(S.NullOr(S.String)),
+})
+
+const EditForumTopicBody = S.Struct({
+  title: S.Trim.check(S.isMinLength(3), S.isMaxLength(160)),
 })
 
 const TombstoneForumPostBody = S.Struct({
@@ -3662,6 +3667,88 @@ const editPostResponse = (
     )
   }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
 
+const readTopicControlTarget = (db: D1Database, topicId: string) =>
+  Effect.gen(function* () {
+    const topic = yield* readForumTopicById(db, topicId)
+
+    if (
+      topic === null ||
+      topic.state === 'hidden' ||
+      topic.state === 'archived'
+    ) {
+      return null
+    }
+
+    const forum = yield* readForumSummaryByRef(db, topic.forumId, {
+      allowUnlisted: true,
+    })
+
+    if (forum === null) {
+      return null
+    }
+
+    return { forum, topic }
+  })
+
+const editTopicResponse = (
+  request: Request,
+  db: D1Database,
+  topicId: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(EditForumTopicBody),
+    )
+    const target = yield* readTopicControlTarget(db, topicId)
+
+    if (target === null) {
+      return notFound()
+    }
+
+    if (target.topic.state === 'locked') {
+      return locked('topic is locked')
+    }
+
+    if (target.forum.locked) {
+      return locked('forum is locked')
+    }
+
+    const writer = yield* writerForForumResponse(request, dependencies, {
+      forumId: target.forum.forumId,
+      forumSlug: target.forum.slug,
+    })
+
+    if (writer.actor.actorRef !== target.topic.author.actorRef) {
+      return forbidden('only the topic author can rename this topic')
+    }
+
+    const topic = yield* updateForumTopicTitle(db, {
+      title: body.title,
+      topicId: target.topic.topicId,
+    })
+
+    if (topic === null) {
+      return notFound()
+    }
+
+    return noStoreJsonResponse(
+      {
+        action: 'rename',
+        idempotent: false,
+        topic,
+      },
+      { status: 200 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
 const tombstonePostResponse = (
   request: Request,
   db: D1Database,
@@ -6258,8 +6345,12 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         return Effect.succeed(badRequest('topicId is malformed'))
       }
 
+      if (request.method === 'PATCH') {
+        return editTopicResponse(request, db, topicId, requestDependencies)
+      }
+
       if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
+        return Effect.succeed(methodNotAllowed(['GET', 'PATCH']))
       }
 
       const postSortDirection = forumTopicPostSortDirectionFromUrl(url)

@@ -2931,9 +2931,13 @@ class ForumRouteStatement implements D1PreparedStatement {
             ? existing.post_count + 1
             : existing.post_count,
           state: this.query.includes('latest_post_id') ||
-            this.query.includes('SET pin_state')
+            this.query.includes('SET pin_state') ||
+            this.query.includes('SET title')
             ? existing.state
             : (this.values[0] as 'open' | 'locked' | 'archived' | 'hidden'),
+          title: this.query.includes('SET title')
+            ? String(this.values[0])
+            : existing.title,
           updated_at: String(this.values[1]),
         }
       }
@@ -8282,6 +8286,141 @@ describe('Forum routes', () => {
       'tombstone',
     ])
     expect(store.reports).toHaveLength(1)
+  })
+
+  test('renames owned topics and refuses non-author, missing, or invalid renames', async () => {
+    const topicId = '55555555-5555-4555-8555-555555555555'
+
+    const ownedStore = new ForumRouteStore()
+    ownedStore.topics[0] = {
+      ...ownedStore.topics[0]!,
+      actor_json: authenticatedAgentActorJson,
+    }
+
+    const renameResponse = await route(
+      ownedStore,
+      `/api/forum/topics/${topicId}`,
+      {
+        body: { title: 'Renamed by the topic author' },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'rename-owned-topic-1',
+        },
+        method: 'PATCH',
+      },
+    )
+
+    expect(renameResponse.status).toBe(200)
+    await expect(renameResponse.json()).resolves.toMatchObject({
+      action: 'rename',
+      idempotent: false,
+      topic: { title: 'Renamed by the topic author' },
+    })
+
+    const renamedTopicResponse = await route(
+      ownedStore,
+      `/api/forum/topics/${topicId}`,
+    )
+    await expect(renamedTopicResponse.json()).resolves.toMatchObject({
+      topic: { title: 'Renamed by the topic author' },
+    })
+
+    const shortTitleResponse = await route(
+      ownedStore,
+      `/api/forum/topics/${topicId}`,
+      {
+        body: { title: 'ab' },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'rename-owned-topic-short-1',
+        },
+        method: 'PATCH',
+      },
+    )
+
+    expect(shortTitleResponse.status).toBe(400)
+    await expect(shortTitleResponse.json()).resolves.toMatchObject({
+      error: 'bad_request',
+    })
+
+    const longTitleResponse = await route(
+      ownedStore,
+      `/api/forum/topics/${topicId}`,
+      {
+        body: { title: 'x'.repeat(161) },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'rename-owned-topic-long-1',
+        },
+        method: 'PATCH',
+      },
+    )
+
+    expect(longTitleResponse.status).toBe(400)
+    await expect(longTitleResponse.json()).resolves.toMatchObject({
+      error: 'bad_request',
+    })
+
+    const missingIdempotencyResponse = await route(
+      ownedStore,
+      `/api/forum/topics/${topicId}`,
+      {
+        body: { title: 'Rename without an idempotency key' },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+        },
+        method: 'PATCH',
+      },
+    )
+
+    expect(missingIdempotencyResponse.status).toBe(400)
+    await expect(missingIdempotencyResponse.json()).resolves.toMatchObject({
+      error: 'bad_request',
+      reason: 'Idempotency-Key header is required',
+    })
+
+    const foreignStore = new ForumRouteStore()
+    const forbiddenResponse = await route(
+      foreignStore,
+      `/api/forum/topics/${topicId}`,
+      {
+        body: { title: 'Rename attempt by a non-author' },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'rename-foreign-topic-1',
+        },
+        method: 'PATCH',
+      },
+    )
+
+    expect(forbiddenResponse.status).toBe(403)
+    await expect(forbiddenResponse.json()).resolves.toMatchObject({
+      error: 'forbidden',
+      reason: 'only the topic author can rename this topic',
+    })
+
+    const missingStore = new ForumRouteStore()
+    missingStore.topics[0] = {
+      ...missingStore.topics[0]!,
+      actor_json: authenticatedAgentActorJson,
+    }
+    const missingResponse = await route(
+      missingStore,
+      '/api/forum/topics/00000000-0000-4000-8000-000000000000',
+      {
+        body: { title: 'Rename a topic that does not exist' },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'rename-missing-topic-1',
+        },
+        method: 'PATCH',
+      },
+    )
+
+    expect(missingResponse.status).toBe(404)
+    await expect(missingResponse.json()).resolves.toMatchObject({
+      error: 'not_found',
+    })
   })
 
   test('validates reply parentPostId against same-topic visible posts', async () => {

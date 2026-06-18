@@ -160,6 +160,7 @@ export {
   updateForumReportStatus,
   updateForumTopicModerationState,
   updateForumTopicPinState,
+  updateForumTopicTitle,
   type ForumBookmarkInput,
   type ForumContextLinkRecordInput,
   type ForumCreateReplyPostRecordInput,
