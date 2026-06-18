@@ -1,7 +1,6 @@
 import { Effect, Schema as S } from "effect";
 import { makeAppleFmClient } from "../backends/apple-fm/client";
 import { APPLE_FM_BACKEND_KIND } from "../backends/apple-fm/contract";
-import { redactUrl } from "../backends/apple-fm/receipts";
 import { resolveGeminiApiKey } from "../backends/gemini/auth";
 import {
   GEMINI_API_PROFILE_ID,
@@ -18,6 +17,7 @@ import {
   type BlueprintProgramRegistryProjection as BlueprintProgramRegistryProjectionType,
 } from "../blueprint/contracts";
 import { STATIC_BLUEPRINT_PROGRAM_REGISTRY, STATIC_BLUEPRINT_REGISTRY_VERSION_REF } from "../blueprint/fixtures";
+import { redactReceiptUrl } from "../receipt-redaction";
 import { PROBE_APPLE_FM_BACKEND_CAPABILITY, type ProbeRunnerIdentity } from "../runner/identity";
 
 const APPLE_FM_BLUEPRINT_TOOL_PROJECTION_ADAPTER = "adapter.probe.apple_fm.blueprint_tools.v1" as const;
@@ -181,7 +181,7 @@ export function reportAppleFmBackendCapability(
           advertisedCapabilities,
           available: blueprintRunnable,
           status: readiness.ready && !blueprintRunnable ? "malformed" : readiness.status,
-          baseUrl: redactUrl(client.profile.baseUrl),
+          baseUrl: redactReceiptUrl(client.profile.baseUrl),
           platform: readiness.health?.platform,
           version: readiness.health?.version,
           unavailableReason:
@@ -303,7 +303,7 @@ export function reportGeminiBackendCapability(
           advertisedCapabilities: [PROBE_GEMINI_BACKEND_CAPABILITY],
           available: true,
           status: "ready" as const,
-          baseUrl: redactUrl(profile.baseUrl),
+          baseUrl: redactReceiptUrl(profile.baseUrl),
           requirements: {
             apiKey: "required" as const,
             liveHealth: "not_required" as const,
@@ -336,7 +336,7 @@ export function reportGeminiBackendCapability(
             advertisedCapabilities: [],
             available: false,
             status: "unavailable" as const,
-            baseUrl: redactUrl(profile.baseUrl),
+            baseUrl: redactReceiptUrl(profile.baseUrl),
             unavailableReason: "missing_credential",
             message: error.reason,
             requirements: {
@@ -375,7 +375,7 @@ export function reportGeminiBackendCapability(
         advertisedCapabilities: [],
         available: false,
         status: "malformed" as const,
-        baseUrl: redactUrl(GEMINI_DEFAULT_BASE_URL),
+        baseUrl: redactReceiptUrl(GEMINI_DEFAULT_BASE_URL),
         unavailableReason: "malformed_backend_profile",
         message: "Gemini backend capability profile could not be resolved",
         requirements: {

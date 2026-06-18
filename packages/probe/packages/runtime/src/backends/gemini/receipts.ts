@@ -1,5 +1,6 @@
 import { Schema as S } from "effect";
 import { ProbeLlmUsage } from "../../llm/usage";
+import { redactReceiptUrl } from "../../receipt-redaction";
 import { GEMINI_BACKEND_KIND } from "./contract";
 
 export const GeminiBackendAvailabilityReceipt = S.Struct({
@@ -71,7 +72,7 @@ export function makeGeminiAvailabilityReceipt(input: {
     backendKind: GEMINI_BACKEND_KIND,
     profileId: input.profileId,
     model: input.model,
-    baseUrl: redactUrl(input.baseUrl),
+    baseUrl: redactReceiptUrl(input.baseUrl),
     ready: input.ready,
     apiKeySource: input.apiKeySource,
     apiKeyRedacted: true,
@@ -95,7 +96,7 @@ export function makeGeminiFailureReceipt(input: {
     backendKind: GEMINI_BACKEND_KIND,
     profileId: input.profileId,
     model: input.model,
-    baseUrl: redactUrl(input.baseUrl),
+    baseUrl: redactReceiptUrl(input.baseUrl),
     failureClass: input.failureClass,
     message: input.message,
     observedAt: input.observedAt ?? new Date().toISOString(),
@@ -143,15 +144,4 @@ export function makeGeminiToolCallReceipt(input: {
   };
 }
 
-export function redactUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    url.username = "";
-    url.password = "";
-    url.search = "";
-    url.hash = "";
-    return url.toString().replace(/\/$/, "");
-  } catch {
-    return "[redacted-invalid-url]";
-  }
-}
+export { redactReceiptUrl as redactUrl };
