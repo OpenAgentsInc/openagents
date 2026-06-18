@@ -52,7 +52,12 @@
 // `npx @openagentsinc/pylon` installs the Bun/Effect earning-capable node
 // instead of the deprecated 0.2.5 GitHub-asset launcher. No code change vs
 // rc.37; this is the release-version promotion only. Keep package.json in sync.
-export const PYLON_VERSION = "1.0.0"
+// v1.0.1: first post-launch patch from the v1.0 self-serve shakeout. Carries
+// the `balance --json` fix (reads the local wallet projection, not the empty
+// network earnings ledger) and Gap #2 (surfaces an unregistered Spark payout
+// target in `wallet status` + warns on `training claim` so a contributor never
+// earns to nothing). Observable CLI behavior change, so the version bumps.
+export const PYLON_VERSION = "1.0.1"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.
