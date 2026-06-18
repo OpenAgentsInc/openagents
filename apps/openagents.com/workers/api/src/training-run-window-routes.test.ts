@@ -1503,6 +1503,119 @@ describe('training run window routes', () => {
     expect(feed.status).toBe(404)
   })
 
+  // #5403 gap 2: the public-LOOKING settlements path (with `/public/`) used to
+  // 404; a skeptic curling it got nothing even though the data is public. The
+  // public alias must serve the IDENTICAL public-safe handler as the
+  // non-`/public/` feed.
+  it('serves the per-run settlements feed under the /public/ alias path (#5403)', async () => {
+    const store = makeMemoryStore()
+    const runRef = 'run.tassadar.executor.alias'
+    const linkedReceiptRef = 'receipt.nexus.tassadar_run_settlement.alias.real5'
+    const ledgerStore = makeLedgerStoreStub([
+      [
+        linkedReceiptRef,
+        {
+          publicProjectionJson: JSON.stringify({
+            amountSats: 5,
+            contributorRef: 'pylon.public.worker_alias',
+            moneyMovement: 'real_bitcoin',
+            movementMode: 'real_bitcoin',
+            realBitcoinMoved: true,
+            state: 'settled',
+            trainingRunRef: runRef,
+          }),
+          receiptKind: 'settlement_recorded',
+        },
+      ],
+    ])
+    const planned = buildTrainingRunRecord({
+      makeId: () => 'run5403alias',
+      nowIso: '2026-06-16T10:00:00.000Z',
+      request: {
+        promiseRef: 'training.decentralized_training_launch.v1',
+        trainingRunRef: runRef,
+      },
+    })
+    store._testSeedRun({
+      ...planned,
+      receiptRefs: [linkedReceiptRef],
+      state: 'active',
+    })
+
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => 'id5403alias',
+      makePayoutLedgerStore: () => ledgerStore,
+      makeStore: () => store,
+      nowIso: () => '2026-06-16T10:05:00.000Z',
+      requireAdminApiToken: async () => true,
+    })
+
+    const readFeed = async (path: string) => {
+      const response = await runRoute(
+        routes.routeTrainingRunWindowRequest(
+          new Request(`https://openagents.test${path}`),
+          {},
+        ),
+      )
+      return {
+        body: (await response.json()) as {
+          runRef: string
+          schemaVersion: string
+          settlementRows: ReadonlyArray<{
+            amountSats: number
+            movementMode: string
+            realBitcoinMoved: boolean
+            receiptRef: string
+          }>
+          staleness: { maxStalenessSeconds: number }
+        },
+        status: response.status,
+      }
+    }
+
+    const canonical = await readFeed(
+      `/api/training/runs/${runRef}/settlements`,
+    )
+    const publicAlias = await readFeed(
+      `/api/public/training/runs/${runRef}/settlements`,
+    )
+
+    expect(canonical.status).toBe(200)
+    expect(publicAlias.status).toBe(200)
+    // The alias returns byte-for-byte the same public-safe payload.
+    expect(publicAlias.body).toEqual(canonical.body)
+    expect(publicAlias.body.schemaVersion).toBe(
+      'openagents.training_run_settlements.v1',
+    )
+    expect(publicAlias.body.staleness.maxStalenessSeconds).toBe(0)
+    expect(publicAlias.body.settlementRows).toHaveLength(1)
+    expect(publicAlias.body.settlementRows[0]?.movementMode).toBe(
+      'real_bitcoin',
+    )
+    expect(publicAlias.body.settlementRows[0]?.realBitcoinMoved).toBe(true)
+  })
+
+  it('returns 404 for the /public/ settlements alias when the run is not found (#5403)', async () => {
+    const store = makeMemoryStore()
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => 'id5403aliasmissing',
+      makeStore: () => store,
+      nowIso: () => '2026-06-16T10:05:00.000Z',
+      requireAdminApiToken: async () => true,
+    })
+
+    const feed = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request(
+          'https://openagents.test/api/public/training/runs/run.does.not.exist/settlements',
+        ),
+        {},
+      ),
+    )
+
+    expect(feed.status).toBe(404)
+  })
+
   it('admits receipted scaling-sweep evidence through the admin route and rejects unreceipted cells', async () => {
     const store = makeMemoryStore()
     let counter = 0

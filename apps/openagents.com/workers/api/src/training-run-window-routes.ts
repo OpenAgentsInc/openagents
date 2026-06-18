@@ -2145,6 +2145,29 @@ export const makeTrainingRunWindowRoutes = <
       )
     }
 
+    // Public alias for the per-run settlements feed (#5403 gap 2). The data is
+    // already public — it lives in the run-summary `settlementRows` under
+    // `/api/public/` and the non-`/public/` settlements feed serves the same
+    // resolution. A skeptic who curls the public-LOOKING path (with `/public/`)
+    // got a 404; serve the identical public-safe handler here so both paths
+    // resolve. Matched BEFORE the public run read so the trailing
+    // `/settlements` segment is not swallowed by the single-segment run match.
+    const publicRunSettlementsListMatch =
+      /^\/api\/public\/training\/runs\/([^/]+)\/settlements$/.exec(url.pathname)
+
+    if (publicRunSettlementsListMatch !== null) {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeReadRunSettlements(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(publicRunSettlementsListMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
     const publicRunReadMatch = /^\/api\/public\/training\/runs\/([^/]+)$/.exec(
       url.pathname,
     )

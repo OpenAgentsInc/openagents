@@ -1628,6 +1628,21 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     top-level contract, public-safe run projection, source refs, and
     provenance-labeled summary metrics only; no admin token, private logs,
     wallet material, pending-as-paid payout, or write authority).
+  - `GET /api/public/training/runs/{trainingRunRef}/settlements` — public alias
+    for the per-run settlements feed (#5403), serving the identical public-safe
+    `routeReadRunSettlements` handler as the non-`/public/` path over
+    provider-confirmed settlement receipts — compliant (`generatedAt`,
+    top-level contract, public-safe settlement rows with `movementMode` and
+    `realBitcoinMoved` flagged so simulation rows never count as real Bitcoin;
+    no seeds, raw addresses, payment hashes, or write authority).
+  - `GET /api/public/training/verification-challenges/{challengeRef}` — live at
+    read standalone per-challenge dereference (#5403) over the
+    Worker-authoritative verification challenge row, serving the same
+    public-safe `publicTrainingVerificationChallengeProjection` (worker,
+    validator, verdict, and challenge refs; the two compared sha256 digests;
+    public-safe failure codes) exposed inside the run summary — compliant
+    (`generatedAt`, top-level contract; no payloads, seeds, payment material,
+    raw traces, or write authority).
   - `GET /api/public/tassadar-run-summary` — live at read compatibility feed
     for the live Tassadar spatial view over the same Worker-authoritative
     training run/window/lease/challenge rows — compliant (`generatedAt`,

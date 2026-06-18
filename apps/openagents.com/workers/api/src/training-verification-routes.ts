@@ -6,6 +6,7 @@ import {
   unauthorized,
 } from './http/responses'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
+import { liveAtReadStaleness } from './public-projection-staleness'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 import {
   type TrainingVerificationChallengeRecord,
@@ -345,6 +346,54 @@ const routeReadChallenge = <Bindings extends TrainingVerificationRouteEnv>(
     })
   })
 
+export const PublicTrainingVerificationChallengeSchemaVersion =
+  'openagents.public_training_verification_challenge.v1'
+
+// Public per-challenge read (#5403 gap 3). The verification model is already
+// dereferenceable inside the run summary (`realGradient.verifiedReplayPairs` /
+// `rejectedReplayPairs`) and via each settlement's `verificationChallengeRef`,
+// but a skeptic could not dereference ONE worker->validator replay pair
+// directly. This standalone public read serves the SAME public-safe
+// projection (`publicTrainingVerificationChallengeProjection`: challenge,
+// worker/validator/verdict refs, the two compared sha256 digests, public-safe
+// failure codes — never seeds, payloads, payment hashes, or raw traces) and,
+// because it is a public projection, carries `generatedAt` plus the shared
+// staleness contract per the projection-staleness invariant. Live at read: the
+// challenge row is the source of truth, so the payload can never be older than
+// the request; it rebuilds on the verification challenge transitions.
+const publicTrainingVerificationChallengeStaleness = () =>
+  liveAtReadStaleness([
+    'training_verification_challenge_created',
+    'training_verification_challenge_leased',
+    'training_verification_challenge_finalized',
+    'training_verification_challenge_timed_out',
+  ])
+
+const routeReadPublicChallenge = <Bindings extends TrainingVerificationRouteEnv>(
+  dependencies: TrainingVerificationRouteDependencies<Bindings>,
+  env: Bindings,
+  challengeRef: string,
+): Effect.Effect<HttpResponse, TrainingVerificationRouteError> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const challenge = yield* readChallenge(dependencies, env, challengeRef)
+
+    return noStoreJsonResponse({
+      challenge: publicTrainingVerificationChallengeProjection(
+        challenge,
+        nowIso,
+      ),
+      generatedAt: nowIso,
+      schemaVersion: PublicTrainingVerificationChallengeSchemaVersion,
+      sourceRefs: [
+        `route:/api/public/training/verification-challenges/${challengeRef}`,
+        `route:/api/public/training/runs/${challenge.trainingRunRef}/settlements`,
+        'route:/api/public/tassadar-run-summary',
+      ],
+      staleness: publicTrainingVerificationChallengeStaleness(),
+    })
+  })
+
 export const makeTrainingVerificationRoutes = <
   Bindings extends TrainingVerificationRouteEnv,
 >(
@@ -416,6 +465,23 @@ export const makeTrainingVerificationRoutes = <
         request,
         env,
         challengeRef,
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const publicReadMatch =
+      /^\/api\/public\/training\/verification-challenges\/([^/]+)$/.exec(
+        url.pathname,
+      )
+
+    if (publicReadMatch !== null) {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeReadPublicChallenge(
+        dependencies,
+        env,
+        decodeURIComponent(publicReadMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 

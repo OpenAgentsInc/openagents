@@ -313,4 +313,134 @@ describe('buildPublicTassadarRunSummaryEnvelopeForRequest (public read, #5114)',
       }),
     ])
   })
+
+  // #5403 gap 1 (honesty): the real settled total must be the sum of ONLY the
+  // real_bitcoin receipts, with the settled-state simulation row excluded — so
+  // 1000 + 5 = 1005, NOT 1010. The simulation row still appears in
+  // settlementRows, flagged movementMode:simulation / realBitcoinMoved:false,
+  // so a skeptic can see it was not counted. This locks the per-run truth that
+  // /api/public/tassadar-run-summary reports (1005 / 2 real receipts) and that
+  // the per-run settlements feed mirrors.
+  it('real settled total excludes the simulation row (1005 real, not 1010, with the sim row still flagged)', async () => {
+    const canaryReceiptRef =
+      'receipt.nexus.tassadar_run_settlement.mixed_test.canary1k'
+    const selfServeReceiptRef =
+      'receipt.nexus.tassadar_run_settlement.mixed_test.selfserve5'
+    const simReceiptRef =
+      'receipt.nexus.tassadar_run_settlement.mixed_test.sim5'
+    const mixedRunRecord: TrainingRunRecord = {
+      ...runRecord,
+      receiptRefs: [canaryReceiptRef, selfServeReceiptRef, simReceiptRef],
+    }
+    const receiptRecords: Record<
+      string,
+      {
+        amountSats: number
+        contributorRef: string
+        movementMode: 'real_bitcoin' | 'simulation'
+        realBitcoinMoved: boolean
+      }
+    > = {
+      [canaryReceiptRef]: {
+        amountSats: 1000,
+        contributorRef: 'pylon.public.worker_canary',
+        movementMode: 'real_bitcoin',
+        realBitcoinMoved: true,
+      },
+      [selfServeReceiptRef]: {
+        amountSats: 5,
+        contributorRef: 'pylon.public.worker_selfserve',
+        movementMode: 'real_bitcoin',
+        realBitcoinMoved: true,
+      },
+      [simReceiptRef]: {
+        amountSats: 5,
+        contributorRef: 'pylon.public.worker_sim',
+        movementMode: 'simulation',
+        realBitcoinMoved: false,
+      },
+    }
+    const mixedPayoutLedgerStore = () =>
+      ({
+        readPaymentAuthorityReceiptByRef: async (receiptRef: string) => {
+          const spec = receiptRecords[receiptRef]
+          if (spec === undefined) return undefined
+          return {
+            eventRef: `reconciliation.${receiptRef}`,
+            payoutAttemptRef: `payout_attempt.${receiptRef}`,
+            payoutIntentRef: `payout_intent.${receiptRef}`,
+            publicProjectionJson: JSON.stringify({
+              amountSats: spec.amountSats,
+              contributorRef: spec.contributorRef,
+              moneyMovement: spec.movementMode,
+              movementMode: spec.movementMode,
+              realBitcoinMoved: spec.realBitcoinMoved,
+              state: 'settled',
+              trainingRunRef: runRef,
+            }),
+            receiptKind: 'settlement_recorded',
+            receiptRef,
+          }
+        },
+        readReconciliationEventByRef: async () => ({ status: 'matched' }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any
+
+    const body = await buildPublicTassadarRunSummaryEnvelopeForRequest(
+      req(),
+      {} as never,
+      {
+        makePayoutLedgerStore: mixedPayoutLedgerStore,
+        makeStore: () =>
+          fakeStore({
+            readRun: async () => mixedRunRecord,
+            listWindowsForRun: async () => [windowRecord],
+            listWindowLeasesForRun: async () => [leaseRecord],
+            listVerificationChallengesForRun: async () => [verifiedChallenge],
+          }),
+        now,
+      },
+    )
+
+    const metrics = body.metrics as {
+      providerConfirmedSettledPayoutSats: { value: number }
+      qualifiedContributorCount: { value: number }
+    }
+    // 1000 + 5 real = 1005; the 5-sat simulation row is excluded.
+    expect(metrics.providerConfirmedSettledPayoutSats.value).toBe(1005)
+
+    const settlement = body.settlement as {
+      reconciledState: string
+      settledPayoutSats: number
+      settledReceiptCount: number
+    }
+    expect(settlement.settledPayoutSats).toBe(1005)
+    expect(settlement.settledReceiptCount).toBe(2)
+    expect(settlement.reconciledState).toBe('settling')
+
+    const settlementRows = body.settlementRows as ReadonlyArray<{
+      amountSats: number
+      movementMode: string
+      realBitcoinMoved: boolean
+      receiptRef: string
+    }>
+    // All three rows are present (the sim row is flagged, not hidden).
+    expect(settlementRows).toHaveLength(3)
+    const realSatsFromRows = settlementRows
+      .filter(row => row.realBitcoinMoved)
+      .reduce((total, row) => total + row.amountSats, 0)
+    expect(realSatsFromRows).toBe(1005)
+    const simRow = settlementRows.find(row => row.receiptRef === simReceiptRef)
+    expect(simRow?.movementMode).toBe('simulation')
+    expect(simRow?.realBitcoinMoved).toBe(false)
+    // The sim row's 5 sats must NOT push the real total to 1010.
+    const allRowsSats = settlementRows.reduce(
+      (total, row) => total + row.amountSats,
+      0,
+    )
+    expect(allRowsSats).toBe(1010)
+    expect(metrics.providerConfirmedSettledPayoutSats.value).not.toBe(
+      allRowsSats,
+    )
+  })
 })
