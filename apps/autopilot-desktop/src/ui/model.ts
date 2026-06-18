@@ -52,6 +52,11 @@ export const PaneId = S.Literals([
   "sessions",
   "decisions",
   "spawn",
+  // #5355: the interactive coding composer — the foreground "code in the app"
+  // loop (objective → live transcript → inline approvals → reply/continue →
+  // cancel) built on the existing control protocol (session.spawn/events/cancel
+  // + approvals). The day-to-day Claude-Code/Codex replacement surface.
+  "composer",
   "settings",
   "session-detail",
 ])
@@ -75,6 +80,13 @@ export const SpawnStatus = S.Struct({
   tone: S.Literals(["error", "info", "idle"]),
 })
 export type SpawnStatus = typeof SpawnStatus.Type
+
+// #5355: transient status for the coding composer (spawn/reply/cancel feedback).
+export const ComposerStatus = S.Struct({
+  text: S.String,
+  tone: S.Literals(["error", "info", "success", "idle"]),
+})
+export type ComposerStatus = typeof ComposerStatus.Type
 
 // Transient status for the Ask-Autopilot card.
 export const AskStatus = S.Struct({
@@ -236,6 +248,24 @@ export const Model = ts("AutopilotDesktop", {
   spawnLane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
   spawnStatus: SpawnStatus,
   spawnPending: S.Boolean,
+
+  // #5355: coding composer state. The composer reuses the spawn form fields
+  // (adapter/objective/verify/lane) for the FIRST turn, then drives the
+  // iterative loop with its own state:
+  //   - composerSessionRef: the active session the composer is tailing (null
+  //     before the first spawn / after a fresh-thread reset).
+  //   - composerRepoPath: the repo / worktree path the coding turns run in
+  //     (passed through session.spawn's worktreePath — no new contract).
+  //   - composerReply: the follow-up turn text the owner is composing.
+  //   - composerTurns: the human-readable objectives sent so far, so the in-pane
+  //     transcript shows the conversation across continuation turns even though
+  //     each turn is its own bounded control session.
+  composerSessionRef: S.NullOr(S.String),
+  composerRepoPath: S.String,
+  composerReply: S.String,
+  composerTurns: S.Array(S.String),
+  composerStatus: ComposerStatus,
+  composerPending: S.Boolean,
 
   // Ask-Autopilot form fields + transient status.
   askTitle: S.String,
@@ -438,6 +468,12 @@ export const initialModel: Model = Model.make({
   spawnLane: "auto",
   spawnStatus: { text: "", tone: "idle" },
   spawnPending: false,
+  composerSessionRef: null,
+  composerRepoPath: "",
+  composerReply: "",
+  composerTurns: [],
+  composerStatus: { text: "", tone: "idle" },
+  composerPending: false,
   askTitle: "",
   askBody: "",
   askStatus: { text: "", tone: "idle" },

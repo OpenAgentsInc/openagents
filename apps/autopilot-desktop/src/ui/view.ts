@@ -78,11 +78,16 @@ import {
   ChangedAskBody,
   ChangedAskTitle,
   ChangedSessionFilter,
+  ChangedComposerRepoPath,
+  ChangedComposerReply,
   ChangedSpawnAdapter,
   ChangedSpawnObjective,
   ChangedSpawnVerify,
   ChangedSpawnLane,
   ClickedCancelSession,
+  ClickedComposerNewThread,
+  ClickedComposerReply,
+  ClickedComposerSpawn,
   ClickedActivateTrainingWindow,
   ClickedAdmitTrainingEvidence,
   ClickedBuildTrainingEvidencePacket,
@@ -118,10 +123,13 @@ import {
   approvalLabel,
   artifactLineText,
   assignmentMeta,
+  composerCanReply,
+  composerTurnSummary,
   connectionSummary,
   coordinatorToggleLabel,
   eventExpandable,
   eventRowText,
+  isComposerTranscriptEvent,
   nodeStatusLine,
   sessionCancellable,
   shipStatusLine,
@@ -185,6 +193,9 @@ const paneTitle = (text: string): Html => h.h1([cls("pane-title")], [text])
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
 const NAV: ReadonlyArray<{ id: PaneId; label: string }> = [
+  // #5355: Composer is the foreground "code in the app" surface — listed first
+  // so the day-to-day coding loop is the primary entry, not a buried tab.
+  { id: "composer", label: "Composer" },
   { id: "network", label: "Network" },
   { id: "builtin-agent", label: "Agent" },
   { id: "nodes", label: "Nodes" },
@@ -3860,6 +3871,238 @@ const sessionDetailPane = (model: Model): Html => {
   )
 }
 
+// ── #5355: coding composer pane ──────────────────────────────────────────────
+//
+// The interactive day-to-day coding loop in one foreground surface, on the
+// EXISTING control protocol (session.spawn / events / cancel + approvals):
+//   - objective + repo/worktree + adapter/lane → spawn the first coding turn;
+//   - live streamed transcript: the polled session-event tail rendered as a
+//     readable turn/diff view (the same `/events` content the node emits);
+//   - inline approvals: the node's pending exactly-once decisions, approve/deny
+//     in-pane (wired to the existing resolveApproval flow);
+//   - reply / continue: a follow-up turn (a continuation spawn carrying prior
+//     turn context — no new verb) once the active turn is terminal;
+//   - cancel: session.cancel on the active turn.
+//
+// Reuses the shared spawn form fields, the event timeline, the approval row, and
+// the verify/artifact lines so it is a thin composition over surfaces that
+// already exist — not a parallel runtime.
+
+// The composer's live transcript: prefer the agent's transcript-worthy events
+// (text / tool calls / file changes); fall back to the full timeline so a turn
+// that has only lifecycle events still shows progress.
+const composerTranscript = (
+  model: Model,
+  events: ReadonlyArray<SessionEventRow>,
+): Html => {
+  if (events.length === 0) return emptyLine("Waiting for the agent's first turn…")
+  const transcriptEvents = events.filter(isComposerTranscriptEvent)
+  const shown = transcriptEvents.length > 0 ? transcriptEvents : events
+  return eventTimeline(model, shown)
+}
+
+const composerSpawnForm = (model: Model): Html =>
+  card("Start a coding session", [
+    h.label([cls("field-label")], ["Runtime"]),
+    h.div(
+      [cls("adapter-toggle")],
+      (["codex", "claude_agent"] as const).map((adapter) =>
+        h.button(
+          [
+            cls(`adapter-btn${model.spawnAdapter === adapter ? " active" : ""}`),
+            h.Type("button"),
+            h.OnClick(ChangedSpawnAdapter({ adapter })),
+          ],
+          [adapter],
+        ),
+      ),
+    ),
+    h.label([cls("field-label")], ["Execution lane"]),
+    h.div(
+      [cls("adapter-toggle")],
+      (["auto", "local", "cloud-gcp", "cloud-shc"] as const).map((lane) =>
+        h.button(
+          [
+            cls(`adapter-btn${model.spawnLane === lane ? " active" : ""}`),
+            h.Type("button"),
+            h.OnClick(ChangedSpawnLane({ lane })),
+          ],
+          [spawnLaneLabel(lane)],
+        ),
+      ),
+    ),
+    h.label([cls("field-label")], ["Repo / worktree path (optional)"]),
+    h.input([
+      cls("text-input mono"),
+      h.Type("text"),
+      h.Placeholder("/Users/you/code/your-repo"),
+      h.Value(model.composerRepoPath),
+      h.OnInput((value: string) => ChangedComposerRepoPath({ value })),
+    ]),
+    h.label([cls("field-label")], ["What should the agent do?"]),
+    h.textarea(
+      [
+        cls("text-area"),
+        h.Rows(5),
+        h.Placeholder("Describe the change — e.g. add a /health route and a test for it…"),
+        h.Value(model.spawnObjective),
+        h.OnInput((value: string) => ChangedSpawnObjective({ value })),
+      ],
+      [],
+    ),
+    h.label([cls("field-label")], ["Verify commands (optional — one per line)"]),
+    h.textarea(
+      [
+        cls("text-area mono"),
+        h.Rows(2),
+        h.Placeholder("bun test\nbun run typecheck"),
+        h.Value(model.spawnVerify),
+        h.OnInput((value: string) => ChangedSpawnVerify({ value })),
+      ],
+      [],
+    ),
+    model.composerStatus.tone !== "idle"
+      ? h.p([cls(`spawn-status spawn-${model.composerStatus.tone}`)], [
+          model.composerStatus.text,
+        ])
+      : h.p([cls("spawn-status")], [" "]),
+    h.button(
+      [
+        cls("primary-button"),
+        h.Type("button"),
+        h.Disabled(model.composerPending),
+        h.OnClick(ClickedComposerSpawn()),
+      ],
+      [model.composerPending ? "Starting…" : "Start coding"],
+    ),
+  ])
+
+const composerReplyBar = (model: Model, canReply: boolean): Html =>
+  card("Reply / continue", [
+    h.textarea(
+      [
+        cls("text-area"),
+        h.Rows(3),
+        h.Placeholder(
+          canReply
+            ? "Send a follow-up turn into this thread…"
+            : "Reply unlocks when the current turn finishes…",
+        ),
+        h.Value(model.composerReply),
+        h.OnInput((value: string) => ChangedComposerReply({ value })),
+      ],
+      [],
+    ),
+    h.div(
+      [cls("composer-reply-actions")],
+      [
+        h.button(
+          [
+            cls("primary-button"),
+            h.Type("button"),
+            h.Disabled(model.composerPending || !canReply),
+            h.OnClick(ClickedComposerReply()),
+          ],
+          [model.composerPending ? "Sending…" : "Send follow-up"],
+        ),
+        h.button(
+          [
+            cls("link-button"),
+            h.Type("button"),
+            h.OnClick(ClickedComposerNewThread()),
+          ],
+          ["New thread"],
+        ),
+      ],
+    ),
+  ])
+
+const composerActiveSession = (model: Model): Html => {
+  const node = modelNode(model)
+  const ref = model.composerSessionRef
+  const session = ref ? (node?.sessions.find((s) => s.sessionRef === ref) ?? null) : null
+  const events = ref ? (node?.events?.[ref] ?? []) : []
+  const stats = ref ? node?.artifacts?.[ref] : undefined
+  const state = session?.state ?? null
+  const canReply = composerCanReply(state)
+
+  const header = h.div(
+    [cls("composer-active-header")],
+    [
+      h.p([cls("detail-ref")], [ref ?? ""]),
+      h.p([cls("composer-turn-summary")], [
+        composerTurnSummary(state, model.composerTurns.length),
+      ]),
+      (() => {
+        const provenance = session ? sessionLaneProvenance(session.lane) : null
+        return provenance === null
+          ? h.empty
+          : h.p([cls("session-lane-provenance")], [provenance])
+      })(),
+    ],
+  )
+
+  const verifyLine = session
+    ? (() => {
+        const { text, toneClass } = verifyLineText(session)
+        return h.p([cls(`verify-line ${toneClass}`)], [text])
+      })()
+    : h.empty
+
+  const artText = artifactLineText(stats)
+  const artifactLine = artText.length > 0 ? h.p([cls("artifact-line")], [artText]) : h.empty
+
+  const cancelBtn =
+    session && sessionCancellable(session.state)
+      ? h.button(
+          [
+            cls("cancel-button"),
+            h.Type("button"),
+            h.OnClick(ClickedCancelSession({ sessionRef: ref ?? "" })),
+          ],
+          ["Cancel turn"],
+        )
+      : h.empty
+
+  // Inline approvals — the node's pending exactly-once decisions, surfaced in
+  // the composer so the owner approves/denies without leaving the loop.
+  const approvals = pendingApprovals(model)
+  const approvalsBlock =
+    approvals.length === 0
+      ? h.empty
+      : card(`Needs you (${approvals.length})`, approvals.map(approvalRowView))
+
+  return h.div(
+    [cls("composer-active")],
+    [
+      header,
+      verifyLine,
+      artifactLine,
+      cancelBtn,
+      approvalsBlock,
+      card("Transcript", [composerTranscript(model, events)]),
+      composerReplyBar(model, canReply),
+    ],
+  )
+}
+
+const composerPane = (model: Model): Html => {
+  const node = modelNode(model)
+  const hasActive = model.composerSessionRef !== null
+  return h.div(
+    [cls("composer-pane")],
+    [
+      paneTitle("Composer"),
+      node === null
+        ? h.p([cls("node-status")], [
+            "Connecting to your local node… Start it with `pylon dev` to code in the app.",
+          ])
+        : h.empty,
+      hasActive ? composerActiveSession(model) : composerSpawnForm(model),
+    ],
+  )
+}
+
 // ── Pane router + top-level view ────────────────────────────────────────────────
 
 // ── Network home ─────────────────────────────────────────────────────────
@@ -3905,6 +4148,8 @@ const paneView = (model: Model): Html => {
       return decisionsPane(model)
     case "spawn":
       return spawnPane(model)
+    case "composer":
+      return composerPane(model)
     case "settings":
       return settingsPane(model)
     case "session-detail":

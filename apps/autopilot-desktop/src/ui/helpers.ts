@@ -216,3 +216,83 @@ export function eventRowText(
   if (expandable) meta += expanded ? " · tap to collapse" : " · tap to expand"
   return { label, meta }
 }
+
+// ── #5355: coding composer ────────────────────────────────────────────────────
+//
+// The control protocol exposes only bounded `session.spawn`/`events`/`cancel`
+// (+ approvals); there is no `session.reply` verb. So the composer's reply /
+// continue turn is realized as a CONTINUATION spawn: a new bounded session whose
+// objective carries the prior turn context, run in the same repo/worktree. This
+// keeps the iterative loop on the EXISTING contract (no new wire schema). These
+// pure helpers build the continuation objective and decide turn affordances, so
+// the loop stays unit-testable without a runtime or a DOM.
+
+// A coding event is "interesting" transcript content (the agent's text, tool
+// call, or file change) — used to render a readable turn view rather than the
+// raw lifecycle-only timeline.
+export function isComposerTranscriptEvent(event: SessionEventRow): boolean {
+  return event.detail.trim().length > 0 || (event.full != null && event.full.trim().length > 0)
+}
+
+// Build the objective for a continuation turn. The agent gets the prior turns
+// as context plus the new follow-up so the conversation is coherent across the
+// bounded-session boundary. Bounded so the objective stays a sane size.
+export function buildComposerContinuationObjective(
+  priorTurns: ReadonlyArray<string>,
+  followUp: string,
+): string {
+  const trimmedFollowUp = followUp.trim()
+  const recent = priorTurns
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0)
+    .slice(-4)
+  if (recent.length === 0) return trimmedFollowUp
+  const context = recent
+    .map((t, i) => `${i + 1}. ${t}`)
+    .join("\n")
+  return [
+    "Continue the current coding session. Earlier turns in this thread:",
+    context,
+    "",
+    "Next instruction:",
+    trimmedFollowUp,
+  ].join("\n")
+}
+
+// Is the composer thread accepting a follow-up turn yet? A reply is allowed
+// once the active turn reaches a terminal state (the bounded session finished),
+// so continuation turns don't stomp a still-running session.
+export function composerCanReply(activeSessionState: string | null): boolean {
+  if (activeSessionState === null) return false
+  return (
+    activeSessionState === "completed" ||
+    activeSessionState === "failed" ||
+    activeSessionState === "cancelled"
+  )
+}
+
+// One-line status for the composer's active turn, for the pane header.
+export function composerTurnSummary(
+  activeSessionState: string | null,
+  turnCount: number,
+): string {
+  if (activeSessionState === null) {
+    return turnCount === 0 ? "no session yet" : "thread reset"
+  }
+  const turnLabel = turnCount === 1 ? "1 turn" : `${turnCount} turns`
+  switch (activeSessionState) {
+    case "queued":
+      return `queued · ${turnLabel}`
+    case "running":
+    case "started":
+      return `running · ${turnLabel}`
+    case "completed":
+      return `done · ${turnLabel} · reply to continue`
+    case "failed":
+      return `failed · ${turnLabel} · reply to retry`
+    case "cancelled":
+      return `cancelled · ${turnLabel} · reply to continue`
+    default:
+      return `${activeSessionState} · ${turnLabel}`
+  }
+}

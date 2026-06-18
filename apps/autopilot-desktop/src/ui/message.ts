@@ -253,6 +253,29 @@ export const ClickedCancelSession = m("ClickedCancelSession", {
 })
 export const SettledCancelSession = m("SettledCancelSession")
 
+// ── #5355: coding composer (the day-to-day CLI replacement loop) ────────────
+// The composer reuses ChangedSpawnAdapter/Objective/Verify/Lane for the first
+// turn's form fields, and adds repo-path + reply-turn inputs plus its own
+// spawn/reply/new-thread verbs so the iterative loop stays a pure reducer.
+export const ChangedComposerRepoPath = m("ChangedComposerRepoPath", {
+  value: S.String,
+})
+export const ChangedComposerReply = m("ChangedComposerReply", {
+  value: S.String,
+})
+// First coding turn: spawn a fresh session from the composer objective.
+export const ClickedComposerSpawn = m("ClickedComposerSpawn")
+// Follow-up turn: continue the active composer thread with a new objective
+// (a continuation session.spawn carrying the prior turn context — no new verb).
+export const ClickedComposerReply = m("ClickedComposerReply")
+// Start a brand-new composer thread (clear the active session + turn history).
+export const ClickedComposerNewThread = m("ClickedComposerNewThread")
+// Composer turn settled (shared by first-turn + reply-turn spawns).
+export const SucceededComposerTurn = m("SucceededComposerTurn", {
+  sessionRef: S.String,
+})
+export const FailedComposerTurn = m("FailedComposerTurn", { error: S.String })
+
 export const Message = S.Union([
   GotNodeState,
   GotPylonStats,
@@ -336,5 +359,12 @@ export const Message = S.Union([
   FailedSpawn,
   ClickedCancelSession,
   SettledCancelSession,
+  ChangedComposerRepoPath,
+  ChangedComposerReply,
+  ClickedComposerSpawn,
+  ClickedComposerReply,
+  ClickedComposerNewThread,
+  SucceededComposerTurn,
+  FailedComposerTurn,
 ])
 export type Message = typeof Message.Type

@@ -12,6 +12,7 @@
     "build:stable": "bun run build:css && bun run build:pylon-node && electrobun build --env=stable",
     "smoke:training-scene": "bun scripts/training-scene-canvas-smoke.ts",
     "smoke:apple-fm-local": "bun scripts/apple-fm-live-smoke.ts",
+    "proof:composer": "bun scripts/composer-loop-proof.ts",
     "verify:training": "bun test tests/cl-53-foldkit.test.ts tests/cl-53-sanitize.test.ts && bun run build:css && bun build src/ui/main.ts --outdir /tmp/autopilot-desktop-ui-build --target browser && bun build src/bun/index.ts --outdir /tmp/autopilot-desktop-bun-build --target bun && bun run smoke:training-scene",
     "verify:deploy": "bun test tests/electrobun-config.test.ts && bun run verify:training && bun run build && test -s \"build/dev-macos-arm64/Autopilot-dev.app/Contents/Resources/app/views/autopilot-desktop/assets/moksha/diamond.glb\"",
     "test": "bash scripts/run-tests.sh",

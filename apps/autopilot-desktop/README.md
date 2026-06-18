@@ -9,6 +9,47 @@ The UI is intended to reuse the same Effect and Foldkit stack as
 `apps/openagents.com`, with typed bun<->webview RPC as the boundary between
 credentialed local control and public-safe projections.
 
+## Composer Pane (the day-to-day coding loop, #5355)
+
+The **Composer** pane is the foreground "code in the app" surface — the
+Claude-Code / Codex-CLI replacement loop — built on the EXISTING control
+protocol (`session.spawn` / `session.events` / `session.cancel` + the approvals
+queue), with no new wire contract:
+
+1. **Start a coding session** — pick a runtime (`codex` / `claude_agent`) and an
+   execution lane, optionally a repo/worktree path, type an objective, and spawn
+   the first turn via the desktop's `spawnSession` Bun function.
+2. **Live streamed transcript** — the polled per-session event tail (the same
+   `/events` content the node emits) renders as a readable turn/diff view; the
+   agent's tool calls and file edits appear as transcript rows.
+3. **Inline approvals** — the node's pending exactly-once decisions surface in
+   the pane (Approve / Deny) wired to the existing `resolveApproval` flow.
+4. **Reply / continue** — once a turn is terminal, a follow-up turn continues the
+   thread. Because the protocol has no `session.reply` verb, a follow-up is a
+   continuation `session.spawn` whose objective carries the prior turns as
+   context (same repo/worktree). No new contract.
+5. **Cancel** — `session.cancel` on the active turn.
+
+When a local node is reachable, this pane is a usable coding loop; without a
+node it shows a "start `pylon dev`" hint rather than hiding.
+
+Scope: this is the first surface only (see
+`docs/launch/2026-06-18-autopilot-desktop-coding-surface-audit.md`). Multi-account
+management, a provider/Apple-FM spawn picker, and a swarm/multi-session view are
+later phases. It sits inside the yellow, local-only promise
+`autopilot.desktop_gui_client.v1`.
+
+Prove the loop against a real loopback control server (a `pylon dev`-equivalent
+node, no paid provider accounts required):
+
+```sh
+bun run --cwd apps/autopilot-desktop proof:composer
+```
+
+It drives spawn → live session-event tail (incl. a tool/diff line) → approval
+projection → continuation (reply) spawn → cancel through the desktop's own Bun
+control functions.
+
 ## Training Pane Verification
 
 Run the focused Training cockpit gate from the repo root with:

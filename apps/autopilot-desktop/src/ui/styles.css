@@ -265,3 +265,32 @@ body {
     overflow: hidden;
   }
 }
+
+/* #5355: coding composer pane. Reuses card / detail-ref / verify-line /
+ * session-timeline / primary-button / link-button / spawn-status; only the
+ * thread-summary line and the reply action row are net-new cosmetics. */
+.composer-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.composer-active {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.composer-active-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.composer-turn-summary {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+.composer-reply-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}

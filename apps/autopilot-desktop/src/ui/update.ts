@@ -33,13 +33,17 @@ import {
   RequestTrainingBootstrapGrant,
   ResolveApproval,
   SetCoordinatorPaused,
+  SpawnComposerTurn,
   StartAppleFmSession,
   StartBuiltInAgent,
   SurfacePromiseGap,
   SpawnSession,
   SubmitIntent,
 } from "./commands"
-import { parseVerifyLines } from "./helpers"
+import {
+  buildComposerContinuationObjective,
+  parseVerifyLines,
+} from "./helpers"
 import type { Message } from "./message"
 import { Model, type PaneId } from "./model"
 import type { DesktopProofReplayProjection } from "../shared/proof-replays"
@@ -1305,5 +1309,125 @@ export const update = (model: Model, message: Message): Result => {
     case "SettledCancelSession":
       // The next node-state poll carries the authoritative session state.
       return [model, noCommands]
+
+    // ── #5355: coding composer ──────────────────────────────────────────────────
+    case "ChangedComposerRepoPath":
+      return [Model.make({ ...model, composerRepoPath: message.value }), noCommands]
+    case "ChangedComposerReply":
+      return [Model.make({ ...model, composerReply: message.value }), noCommands]
+    case "ClickedComposerSpawn": {
+      // First coding turn — reuse the shared spawn validation/fields.
+      const validation = validateSpawnRequest({
+        adapter: model.spawnAdapter,
+        objective: model.spawnObjective,
+      })
+      if (!validation.ok || validation.adapter === null) {
+        return [
+          Model.make({
+            ...model,
+            composerStatus: {
+              text: validation.errors[0] ?? "invalid request",
+              tone: "error",
+            },
+          }),
+          noCommands,
+        ]
+      }
+      const verify = parseVerifyLines(model.spawnVerify)
+      const objective = validation.objective
+      return [
+        Model.make({
+          ...model,
+          composerPending: true,
+          composerStatus: { text: "starting coding session…", tone: "info" },
+          composerTurns: [objective],
+        }),
+        [
+          SpawnComposerTurn({
+            adapter: validation.adapter,
+            objective,
+            verify,
+            lane: model.spawnLane,
+            worktreePath:
+              model.composerRepoPath.trim() === ""
+                ? null
+                : model.composerRepoPath.trim(),
+          }),
+        ],
+      ]
+    }
+    case "ClickedComposerReply": {
+      // Follow-up turn — a continuation session.spawn carrying the prior turns.
+      const followUp = model.composerReply.trim()
+      if (followUp === "") {
+        return [
+          Model.make({
+            ...model,
+            composerStatus: { text: "type a follow-up first", tone: "error" },
+          }),
+          noCommands,
+        ]
+      }
+      const objective = buildComposerContinuationObjective(
+        model.composerTurns,
+        followUp,
+      )
+      const verify = parseVerifyLines(model.spawnVerify)
+      return [
+        Model.make({
+          ...model,
+          composerPending: true,
+          composerReply: "",
+          composerStatus: { text: "continuing the thread…", tone: "info" },
+          composerTurns: [...model.composerTurns, followUp],
+        }),
+        [
+          SpawnComposerTurn({
+            adapter: model.spawnAdapter,
+            objective,
+            verify,
+            lane: model.spawnLane,
+            worktreePath:
+              model.composerRepoPath.trim() === ""
+                ? null
+                : model.composerRepoPath.trim(),
+          }),
+        ],
+      ]
+    }
+    case "ClickedComposerNewThread":
+      return [
+        Model.make({
+          ...model,
+          composerSessionRef: null,
+          composerReply: "",
+          composerTurns: [],
+          composerStatus: { text: "", tone: "idle" },
+          composerPending: false,
+          spawnObjective: "",
+        }),
+        noCommands,
+      ]
+    case "SucceededComposerTurn":
+      return [
+        Model.make({
+          ...model,
+          composerPending: false,
+          composerSessionRef: message.sessionRef,
+          composerStatus: { text: "running — streaming transcript", tone: "success" },
+          // First turn clears the objective box so the form is reply-ready.
+          spawnObjective: "",
+        }),
+        noCommands,
+      ]
+    case "FailedComposerTurn":
+      return [
+        Model.make({
+          ...model,
+          composerPending: false,
+          composerStatus: { text: message.error, tone: "error" },
+        }),
+        noCommands,
+      ]
   }
 }

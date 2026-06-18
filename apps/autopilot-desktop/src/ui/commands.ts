@@ -19,6 +19,7 @@ import {
   FailedCoordinatorToggle,
   FailedBuiltInAgent,
   FailedAppleFmSession,
+  FailedComposerTurn,
   FailedSpawn,
   GotAppleFmReadiness,
   GotBuiltInAgentReadiness,
@@ -46,6 +47,7 @@ import {
   SettledSubmitIntent,
   SucceededBuiltInAgent,
   SucceededAppleFmSession,
+  SucceededComposerTurn,
   SucceededDeploy,
   SucceededSpawn,
 } from "./message"
@@ -954,5 +956,44 @@ export const CancelSession = Command.define(
   Effect.tryPromise(() => getRequest().cancelSession({ sessionRef })).pipe(
     Effect.as(SettledCancelSession()),
     Effect.catch(() => Effect.succeed(SettledCancelSession())),
+  ),
+)
+
+// #5355: spawn one coding-composer turn. Same `session.spawn` verb as the Spawn
+// pane (no new contract), but it carries the composer's repo/worktree path and
+// maps to the composer-specific settled/failed messages so the iterative loop's
+// state (active session ref + turn history) updates distinctly. Reply/continue
+// turns reuse this command with a continuation objective (see helpers).
+export const SpawnComposerTurn = Command.define(
+  "SpawnComposerTurn",
+  {
+    adapter: S.Literals(["codex", "claude_agent"]),
+    objective: S.String,
+    verify: S.Array(S.String),
+    lane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
+    worktreePath: S.NullOr(S.String),
+  },
+  SucceededComposerTurn,
+  FailedComposerTurn,
+)(({ adapter, objective, verify, lane, worktreePath }) =>
+  Effect.tryPromise(() =>
+    getRequest().spawnSession({
+      adapter,
+      objective,
+      verify: verify.length > 0 ? [...verify] : undefined,
+      lane,
+      ...(worktreePath !== null && worktreePath.trim() !== ""
+        ? { worktreePath: worktreePath.trim() }
+        : {}),
+    }),
+  ).pipe(
+    Effect.map((r) =>
+      r.ok
+        ? SucceededComposerTurn({ sessionRef: r.sessionRef })
+        : FailedComposerTurn({ error: r.error ?? "spawn failed" }),
+    ),
+    Effect.catch((error) =>
+      Effect.succeed(FailedComposerTurn({ error: errorText(error) })),
+    ),
   ),
 )
