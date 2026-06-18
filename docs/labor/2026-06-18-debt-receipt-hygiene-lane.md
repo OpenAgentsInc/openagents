@@ -87,6 +87,9 @@ authorities.
   inventory, not spend.
 - `accepted_verified`: a reviewer or verifier accepted the patch and evidence.
   A merged PR can be accepted-work evidence, but it is not payout authority.
+  When the verifier is a test or typecheck command, the accepted-work evidence
+  should dereference to an OpenAgents-owned runner check-run or independent
+  verifier replay, not a worker-authored comment or GitHub-hosted Actions run.
 - `credit_class`: accepted and credited work where no owner-funded hygiene-lane
   settlement path has been armed. This is recognition, not a pending Bitcoin
   payout.

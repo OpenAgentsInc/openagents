@@ -171,6 +171,7 @@ describe('email template package', () => {
       'drip.signup_day_2.v1',
       'autopilot_decisions.decision_required.v1',
       'autopilot_decisions.work_delivered.v1',
+      'team_workspace_invite.v1',
     ])
   })
 })
