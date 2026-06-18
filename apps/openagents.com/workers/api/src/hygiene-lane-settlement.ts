@@ -26,9 +26,9 @@ import {
  *   - One settlement per `DebtReceiptKey`: a payable hygiene receipt becomes
  *     settleable exactly once. A debt receipt in any non-payable state, or a
  *     duplicate replay, is fail-closed here.
- *   - The amount helper below is the INTERIM size/depth formula. It is
- *     superseded by `churn_tax.v0.backtest` (#5369) once that lands; the two
- *     share the same input vocabulary so the swap is mechanical.
+ *   - The amount helper below is `churn_tax.v0.backtest` (#5369): a
+ *     deterministic, replayable formula fixture set that pays verified debt
+ *     reduction and zeroes duplicate replay / behavior-red / no-debt churn.
  *
  * Pure decision surface. It does not move money, dispatch, read wallets, or
  * write receipts. The live settle endpoint
@@ -37,18 +37,19 @@ import {
 
 // Per-PR caps for the hygiene lane (#5372, owner-authorized 2026-06-18). The
 // average is ~100 sats; tiny hygiene → a few sats; multi-file / deep analysis →
-// up to 100. These are the INTERIM ceiling, not the gate's authority: the gate's
+// up to 100. These are the formula ceiling, not the gate's authority: the gate's
 // own `maxPayoutSats` is the binding cap at settle time, and these never exceed
 // it. Not final numbers.
 export const HygieneLaneMaxPayoutSats = 100
 export const HygieneLaneMinPayoutSats = 1
 
-// Marks the interim formula. When #5369 lands, the production formula ref becomes
-// `churn_tax.v0.backtest` and this module's heuristic is replaced (not extended).
-export const HygieneLaneSettlementFormulaRef =
-  'formula.public.hygiene_lane.size_depth.v0_interim' as const
-export const HygieneLaneSettlementChurnTaxSupersedesRef =
+// `churn_tax.v0.backtest` (#5369): deterministic, reviewable, and replayed by
+// `HygieneLaneChurnTaxBacktestCases` below. This replaces the earlier interim
+// size/depth copy while keeping the same owner-authorized 100-sat cap.
+export const HygieneLaneChurnTaxBacktestRef =
   'formula.public.hygiene_lane.churn_tax.v0.backtest.5369' as const
+export const HygieneLaneSettlementFormulaRef =
+  HygieneLaneChurnTaxBacktestRef
 
 // The single real adapter the hygiene lane may use is the proven Spark treasury
 // rail — identical to the Tassadar run-settlement gate's allowed adapter.
@@ -70,9 +71,8 @@ export const isHygieneLaneRunRef = (
 ): value is HygieneLaneRunRef => HygieneLaneRunRefPattern.test(value)
 
 /**
- * Size/depth signals for one merged hygiene PR. These are the inputs the interim
- * formula scores; they intentionally mirror the `churn_tax.v0.backtest` (#5369)
- * input vocabulary so the later backtested formula is a drop-in replacement.
+ * Size/depth signals for one merged hygiene PR. These are the inputs the
+ * `churn_tax.v0.backtest` (#5369) formula scores.
  *
  * All counts are non-negative integers (public-safe magnitudes, never raw diffs
  * or file contents). `behaviorReceiptGreen` is the benchmark-as-receipt gate:
@@ -84,6 +84,10 @@ export const HygieneSizeDepthSignals = S.Struct({
   behaviorReceiptGreen: S.Boolean,
   // Churn-weighted changed lines (added + removed, weighted). Drives size.
   changedWeightedLines: S.Number.check(S.isInt(), S.isGreaterThanOrEqualTo(0)),
+  // Reviewer/settlement-authority public refs that explain intentional
+  // conflict/debt overrides. Empty by default; refs are projected but never
+  // treated as worker authority.
+  conflictOverrideRefs: S.optionalKey(S.Array(S.String)),
   // Measured debt reduction (weighted units). The signal that earns sats; a
   // diff that reduces no measured debt is behavior-neutral churn and pays the
   // floor (or zero when not even behavior-green).
@@ -117,8 +121,12 @@ export type HygieneLaneAmountDenialReason =
 export type HygieneLaneAmount = Readonly<{
   // Why a payable amount was denied (amount 0), or null when payable.
   denialReason: HygieneLaneAmountDenialReason | null
-  // The interim formula ref used to produce this amount.
+  // The churn-tax formula ref used to produce this amount.
   formulaRef: typeof HygieneLaneSettlementFormulaRef
+  // The deterministic payout multiplier in basis points of
+  // `HygieneLaneMaxPayoutSats` (0..10000). This is the reviewable multiplier
+  // #5369 requires; `payoutSats` is the rounded capped amount.
+  payoutMultiplierBps: number
   // The settleable amount in sats, in [0, HygieneLaneMaxPayoutSats]. 0 means
   // "do not settle" (a denial), never "settle zero".
   payoutSats: number
@@ -130,8 +138,18 @@ const clampToHygieneCap = (value: number): number =>
     Math.min(HygieneLaneMaxPayoutSats, Math.round(value)),
   )
 
+const multiplierBpsForPayout = (payoutSats: number): number =>
+  Math.round((payoutSats / HygieneLaneMaxPayoutSats) * 10_000)
+
+const payableAmount = (payoutSats: number): HygieneLaneAmount => ({
+  denialReason: null,
+  formulaRef: HygieneLaneSettlementFormulaRef,
+  payoutMultiplierBps: multiplierBpsForPayout(payoutSats),
+  payoutSats,
+})
+
 /**
- * The interim size/depth payout formula (#5372). Deterministic and pure.
+ * The churn-tax payout formula (#5369/#5372). Deterministic and pure.
  *
  * Denials (return 0 sats, with a typed reason):
  *   - a duplicate replay of an already-settled DebtReceiptKey,
@@ -153,6 +171,7 @@ export const computeHygieneLaneSettlementSats = (
   ): HygieneLaneAmount => ({
     denialReason,
     formulaRef: HygieneLaneSettlementFormulaRef,
+    payoutMultiplierBps: 0,
     payoutSats: 0,
   })
 
@@ -178,11 +197,7 @@ export const computeHygieneLaneSettlementSats = (
 
   if (netDebtReduced === 0) {
     // All measured reduction was offset by new debt: pay only the floor.
-    return {
-      denialReason: null,
-      formulaRef: HygieneLaneSettlementFormulaRef,
-      payoutSats: HygieneLaneMinPayoutSats,
-    }
+    return payableAmount(HygieneLaneMinPayoutSats)
   }
 
   const debtComponent = netDebtReduced * 6
@@ -193,12 +208,129 @@ export const computeHygieneLaneSettlementSats = (
   // earns a little more, also capped.
   const breadthBonus = Math.min(20, signals.filesTouched * 3)
 
-  return {
-    denialReason: null,
-    formulaRef: HygieneLaneSettlementFormulaRef,
-    payoutSats: clampToHygieneCap(debtComponent + sizeBonus + breadthBonus),
-  }
+  return payableAmount(
+    clampToHygieneCap(debtComponent + sizeBonus + breadthBonus),
+  )
 }
+
+export type HygieneLaneChurnTaxBacktestCase = Readonly<{
+  caseRef: string
+  expectedDenialReason: HygieneLaneAmountDenialReason | null
+  expectedPayoutMultiplierBps: number
+  expectedPayoutSats: number
+  signals: HygieneSizeDepthSignals
+}>
+
+export const HygieneLaneChurnTaxBacktestCases: ReadonlyArray<HygieneLaneChurnTaxBacktestCase> =
+  [
+    {
+      caseRef: 'case.public.hygiene_lane.churn_tax.large_generation_dedup_pays',
+      expectedDenialReason: null,
+      expectedPayoutMultiplierBps: 10_000,
+      expectedPayoutSats: 100,
+      signals: {
+        behaviorReceiptGreen: true,
+        changedWeightedLines: 4_000,
+        debtReducedWeightedUnits: 40,
+        duplicateReplay: false,
+        filesTouched: 12,
+        newDebtWeightedUnits: 0,
+      },
+    },
+    {
+      caseRef:
+        'case.public.hygiene_lane.churn_tax.small_targeted_simplification_pays',
+      expectedDenialReason: null,
+      expectedPayoutMultiplierBps: 900,
+      expectedPayoutSats: 9,
+      signals: {
+        behaviorReceiptGreen: true,
+        changedWeightedLines: 12,
+        debtReducedWeightedUnits: 1,
+        duplicateReplay: false,
+        filesTouched: 1,
+        newDebtWeightedUnits: 0,
+      },
+    },
+    {
+      caseRef: 'case.public.hygiene_lane.churn_tax.large_churn_no_debt_zeroed',
+      expectedDenialReason: 'no_measured_debt_reduction',
+      expectedPayoutMultiplierBps: 0,
+      expectedPayoutSats: 0,
+      signals: {
+        behaviorReceiptGreen: true,
+        changedWeightedLines: 50_000,
+        debtReducedWeightedUnits: 0,
+        duplicateReplay: false,
+        filesTouched: 80,
+        newDebtWeightedUnits: 0,
+      },
+    },
+    {
+      caseRef: 'case.public.hygiene_lane.churn_tax.behavior_red_zeroed',
+      expectedDenialReason: 'behavior_receipt_not_green',
+      expectedPayoutMultiplierBps: 0,
+      expectedPayoutSats: 0,
+      signals: {
+        behaviorReceiptGreen: false,
+        changedWeightedLines: 500,
+        debtReducedWeightedUnits: 10,
+        duplicateReplay: false,
+        filesTouched: 4,
+        newDebtWeightedUnits: 0,
+      },
+    },
+    {
+      caseRef: 'case.public.hygiene_lane.churn_tax.duplicate_replay_zeroed',
+      expectedDenialReason: 'duplicate_replay',
+      expectedPayoutMultiplierBps: 0,
+      expectedPayoutSats: 0,
+      signals: {
+        behaviorReceiptGreen: true,
+        changedWeightedLines: 1_000,
+        debtReducedWeightedUnits: 20,
+        duplicateReplay: true,
+        filesTouched: 6,
+        newDebtWeightedUnits: 0,
+      },
+    },
+  ]
+
+export type HygieneLaneChurnTaxBacktestResult = Readonly<{
+  caseRef: string
+  expectedDenialReason: HygieneLaneAmountDenialReason | null
+  expectedPayoutMultiplierBps: number
+  expectedPayoutSats: number
+  formulaRef: typeof HygieneLaneSettlementFormulaRef
+  passed: boolean
+  projectedDenialReason: HygieneLaneAmountDenialReason | null
+  projectedPayoutMultiplierBps: number
+  projectedPayoutSats: number
+}>
+
+export const replayHygieneLaneChurnTaxBacktest = (
+  cases: ReadonlyArray<HygieneLaneChurnTaxBacktestCase> =
+    HygieneLaneChurnTaxBacktestCases,
+): ReadonlyArray<HygieneLaneChurnTaxBacktestResult> =>
+  cases.map(testCase => {
+    const projected = computeHygieneLaneSettlementSats(testCase.signals)
+
+    return {
+      caseRef: testCase.caseRef,
+      expectedDenialReason: testCase.expectedDenialReason,
+      expectedPayoutMultiplierBps: testCase.expectedPayoutMultiplierBps,
+      expectedPayoutSats: testCase.expectedPayoutSats,
+      formulaRef: projected.formulaRef,
+      passed:
+        projected.denialReason === testCase.expectedDenialReason &&
+        projected.payoutMultiplierBps ===
+          testCase.expectedPayoutMultiplierBps &&
+        projected.payoutSats === testCase.expectedPayoutSats,
+      projectedDenialReason: projected.denialReason,
+      projectedPayoutMultiplierBps: projected.payoutMultiplierBps,
+      projectedPayoutSats: projected.payoutSats,
+    }
+  })
 
 const safeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/#-]{0,260}$/
 const rawTimestampPattern = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
@@ -233,7 +365,7 @@ export type HygieneLaneSettlementBlockedReason =
   | 'not_hygiene_lane_run_ref'
 
 export type HygieneLaneSettlementDecision = Readonly<{
-  // The amount the interim formula produced (sats + denial reason).
+  // The amount the churn-tax formula produced (sats + denial reason).
   amount: HygieneLaneAmount
   // Why settlement is not authorized, or null when authorized.
   blockedReason: HygieneLaneSettlementBlockedReason | null
@@ -258,7 +390,7 @@ export type HygieneLaneSettlementDecision = Readonly<{
  * the SAME owner-gated rail. Pure and fail-closed:
  *   - the run-ref must be a hygiene-lane run-ref,
  *   - the debt-receipt projection must be `payable` (not blocked/duplicate/etc.),
- *   - the interim amount must be payable (> 0; not a denial),
+ *   - the churn-tax amount must be payable (> 0; not a denial),
  *   - the owner gate must authorize the real branch for this run + contributor +
  *     amount (the gate's own per-payout and daily caps still bind).
  * Any failing condition yields `realAuthorized: false` with a typed reason; the
@@ -271,11 +403,12 @@ export const decideHygieneLaneSettlement = (
     'POST /api/training/runs/{run}/settlement-receipt' as const
   const amount = computeHygieneLaneSettlementSats(input.signals)
   const debtReceiptKey = input.debtReceiptProjection.debtReceiptKey ?? null
+  const conflictOverrideRefs = input.signals.conflictOverrideRefs ?? []
 
   const publicProjectionRefs = [
     amount.formulaRef,
-    HygieneLaneSettlementChurnTaxSupersedesRef,
     ...(debtReceiptKey === null ? [] : [debtReceiptKey]),
+    ...conflictOverrideRefs,
     ...(amount.denialReason === null
       ? []
       : [`denial.public.hygiene_lane.${amount.denialReason}`]),

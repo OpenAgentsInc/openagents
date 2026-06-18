@@ -6,6 +6,8 @@ import {
   projectDebtReceiptSettlement,
 } from './debt-receipt-policy'
 import {
+  HygieneLaneChurnTaxBacktestCases,
+  HygieneLaneChurnTaxBacktestRef,
   HygieneLaneMaxPayoutSats,
   HygieneLaneMinPayoutSats,
   HygieneLaneSettlementUnsafe,
@@ -13,6 +15,7 @@ import {
   computeHygieneLaneSettlementSats,
   decideHygieneLaneSettlement,
   isHygieneLaneRunRef,
+  replayHygieneLaneChurnTaxBacktest,
 } from './hygiene-lane-settlement'
 import {
   type TassadarRealSettlementGate,
@@ -87,7 +90,7 @@ describe('hygiene-lane run-ref shape', () => {
   })
 })
 
-describe('computeHygieneLaneSettlementSats (interim size/depth formula, #5372)', () => {
+describe('computeHygieneLaneSettlementSats (churn_tax.v0.backtest, #5369/#5372)', () => {
   test('a tiny targeted simplification pays a few sats (well under the cap)', () => {
     const result = computeHygieneLaneSettlementSats({
       ...baseSignals,
@@ -97,6 +100,9 @@ describe('computeHygieneLaneSettlementSats (interim size/depth formula, #5372)',
     })
 
     expect(result.denialReason).toBeNull()
+    expect(result.formulaRef).toBe(HygieneLaneChurnTaxBacktestRef)
+    expect(result.payoutMultiplierBps).toBe(900)
+    expect(result.payoutSats).toBe(9)
     expect(result.payoutSats).toBeGreaterThanOrEqual(HygieneLaneMinPayoutSats)
     expect(result.payoutSats).toBeLessThan(20)
   })
@@ -110,7 +116,34 @@ describe('computeHygieneLaneSettlementSats (interim size/depth formula, #5372)',
     })
 
     expect(result.denialReason).toBeNull()
+    expect(result.formulaRef).toBe(HygieneLaneChurnTaxBacktestRef)
+    expect(result.payoutMultiplierBps).toBe(10_000)
     expect(result.payoutSats).toBe(HygieneLaneMaxPayoutSats)
+  })
+
+  test('replays the public churn-tax fixture set', () => {
+    const results = replayHygieneLaneChurnTaxBacktest()
+
+    expect(HygieneLaneChurnTaxBacktestCases.length).toBeGreaterThanOrEqual(3)
+    expect(results.every(result => result.passed)).toBe(true)
+    expect(results.map(result => result.caseRef)).toEqual(
+      expect.arrayContaining([
+        'case.public.hygiene_lane.churn_tax.large_generation_dedup_pays',
+        'case.public.hygiene_lane.churn_tax.small_targeted_simplification_pays',
+        'case.public.hygiene_lane.churn_tax.large_churn_no_debt_zeroed',
+      ]),
+    )
+    expect(results).toContainEqual(
+      expect.objectContaining({
+        caseRef: 'case.public.hygiene_lane.churn_tax.large_generation_dedup_pays',
+        expectedPayoutMultiplierBps: 10_000,
+        expectedPayoutSats: 100,
+        formulaRef: HygieneLaneChurnTaxBacktestRef,
+        projectedDenialReason: null,
+        projectedPayoutMultiplierBps: 10_000,
+        projectedPayoutSats: 100,
+      }),
+    )
   })
 
   test('is deterministic', () => {
@@ -134,6 +167,7 @@ describe('computeHygieneLaneSettlementSats (interim size/depth formula, #5372)',
     })
 
     expect(result.payoutSats).toBe(0)
+    expect(result.payoutMultiplierBps).toBe(0)
     expect(result.denialReason).toBe('no_measured_debt_reduction')
   })
 
@@ -147,6 +181,7 @@ describe('computeHygieneLaneSettlementSats (interim size/depth formula, #5372)',
     })
 
     expect(result.payoutSats).toBe(0)
+    expect(result.payoutMultiplierBps).toBe(0)
     expect(result.denialReason).toBe('behavior_receipt_not_green')
   })
 
@@ -160,6 +195,7 @@ describe('computeHygieneLaneSettlementSats (interim size/depth formula, #5372)',
     })
 
     expect(result.payoutSats).toBe(0)
+    expect(result.payoutMultiplierBps).toBe(0)
     expect(result.denialReason).toBe('duplicate_replay')
   })
 
@@ -173,6 +209,7 @@ describe('computeHygieneLaneSettlementSats (interim size/depth formula, #5372)',
     })
 
     expect(result.denialReason).toBeNull()
+    expect(result.payoutMultiplierBps).toBe(100)
     expect(result.payoutSats).toBe(HygieneLaneMinPayoutSats)
   })
 
@@ -184,6 +221,7 @@ describe('computeHygieneLaneSettlementSats (interim size/depth formula, #5372)',
       filesTouched: 1_000,
     })
     expect(result.payoutSats).toBeLessThanOrEqual(HygieneLaneMaxPayoutSats)
+    expect(result.payoutMultiplierBps).toBeLessThanOrEqual(10_000)
   })
 })
 
@@ -332,26 +370,43 @@ describe('decideHygieneLaneSettlement (gate + debt-receipt bridge)', () => {
     expect(decision.gateDecision?.blockedReason).toBe('amount_over_gate_cap')
   })
 
-  test('public projection refs are secret-free and include the supersede ref', () => {
+  test('public projection refs are secret-free and include formula + override refs', () => {
+    const conflictOverrideRef = 'override.public.hygiene_lane.conflict_reviewed'
     const decision = decideHygieneLaneSettlement({
       contributorRef: CONTRIBUTOR_REF,
       debtReceiptProjection: payableProjection,
       gate: armedHygieneGate,
       requestedAdapterKind: 'spark_treasury',
-      signals: goodSignals,
+      signals: {
+        ...goodSignals,
+        conflictOverrideRefs: [conflictOverrideRef],
+      },
       trainingRunRef: HYGIENE_RUN_REF,
     })
 
-    expect(decision.publicProjectionRefs).toContain(
-      'formula.public.hygiene_lane.churn_tax.v0.backtest.5369',
-    )
+    expect(decision.publicProjectionRefs).toContain(HygieneLaneChurnTaxBacktestRef)
+    expect(decision.publicProjectionRefs).toContain(conflictOverrideRef)
     for (const ref of decision.publicProjectionRefs) {
       expect(ref).not.toMatch(/spark1|lnbc|preimage|mnemonic|sk-|bearer/i)
       expect(ref).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
     }
   })
 
-  test('throws HygieneLaneSettlementUnsafe is exported for the projection-safety guard', () => {
-    expect(HygieneLaneSettlementUnsafe).toBeTypeOf('function')
+  test('unsafe conflict override refs fail the public projection guard', () => {
+    expect(() =>
+      decideHygieneLaneSettlement({
+        contributorRef: CONTRIBUTOR_REF,
+        debtReceiptProjection: payableProjection,
+        gate: armedHygieneGate,
+        requestedAdapterKind: 'spark_treasury',
+        signals: {
+          ...goodSignals,
+          conflictOverrideRefs: [
+            'override.public.hygiene_lane.2026-06-18T18:00:00',
+          ],
+        },
+        trainingRunRef: HYGIENE_RUN_REF,
+      }),
+    ).toThrow(HygieneLaneSettlementUnsafe)
   })
 })
