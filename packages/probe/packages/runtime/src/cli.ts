@@ -36,6 +36,11 @@ import {
   planProbeToolMenu,
 } from "./blueprint";
 import {
+  applyOpenAgentsAutopilotCoderStudiedRuntimeContextToToolMenuInput,
+  loadOpenAgentsAutopilotCoderStudiedRuntimeContext,
+  type OpenAgentsAutopilotCoderStudiedRuntimeContext,
+} from "./benchmark/openagents-autopilot-coder-studied-runtime";
+import {
   defineProbeLlmTool,
   makeProbeLlmMessage,
   makeProbeLlmRequest,
@@ -133,12 +138,98 @@ function handleProbeCli(
       return yield* appleFmToolStreamDemo(options, deps);
     }
 
+    if (namespace === "studied-coder" && command === "context") {
+      return yield* studiedCoderContext(options, deps);
+    }
+
     return {
       exitCode: 1,
       stdout: usage(),
       stderr: "",
     };
   });
+}
+
+function studiedCoderContext(
+  options: Record<string, string | true>,
+  deps: ProbeCliDeps,
+): Effect.Effect<ProbeCliResult, ProbeCliError> {
+  return Effect.gen(function* () {
+    const rootDir = resolve(stringOption(options, "root") ?? deps.env?.PROBE_STUDIED_CODER_ROOT ?? process.cwd());
+    const editSitePath = stringOption(options, "edit-site");
+    const commitHistoryLimit = numberOption(options, "commit-history-limit");
+    const runtimeContext = yield* loadOpenAgentsAutopilotCoderStudiedRuntimeContext({
+      commitHistoryLimit,
+      editSitePath,
+      rootDir,
+    }).pipe(Effect.mapError((error) => new ProbeCliError({ message: `studied-coder context failed: ${String(error)}` })));
+
+    const registryView = yield* loadBlueprintSignatureRegistry({ sourceKind: "staticFixture" }).pipe(
+      Effect.mapError((error) => new ProbeCliError({ message: error.reason })),
+    );
+    const lookup = yield* lookupBlueprintSignatures({
+      backendCapabilityRefs: [PROBE_APPLE_FM_BACKEND_CAPABILITY, "probe.blueprint.tool_menu"],
+      lookupId: "blueprint_signature_lookup.openagents.studied_coder_context",
+      registryView,
+      request: {
+        actorRef: "actor.openagents.autopilot_coder",
+        allowedSurfaces: ["agent_api"],
+        backendKind: "apple_fm_bridge",
+        contextPackRef: runtimeContext.contextPackRef,
+        programSignatureIds: ["program_signature.probe.tool_menu.project.v1"],
+        riskCeiling: "medium",
+      },
+    }).pipe(Effect.mapError((error) => new ProbeCliError({ message: error.reason })));
+
+    const menuInput = applyOpenAgentsAutopilotCoderStudiedRuntimeContextToToolMenuInput(
+      {
+        backendKind: "apple_fm_bridge",
+        contextPackRefs: [lookup.contextPackRef ?? "context_pack.probe.assignment.base"],
+        deniedToolRefs: [],
+        lookup,
+        menuId: "probe_tool_menu.openagents.studied_coder_context",
+        sourceAuthorityRefs: ["source_authority.probe.assignment"],
+        supportedToolRefs: ["tool.probe.read_file", "tool.probe.code_search", "tool.probe.record_evidence"],
+      },
+      runtimeContext,
+    );
+    const menu = yield* planProbeToolMenu(menuInput).pipe(
+      Effect.mapError((error) => new ProbeCliError({ message: error.reason })),
+    );
+
+    return {
+      exitCode: runtimeContext.correctnessGatePassed && runtimeContext.dogfoodLift.studiedBeatsBaseline ? 0 : 1,
+      stdout: formatStudiedCoderContext(runtimeContext, menu.tools.length),
+      stderr: "",
+    };
+  });
+}
+
+function formatStudiedCoderContext(
+  runtimeContext: OpenAgentsAutopilotCoderStudiedRuntimeContext,
+  studiedToolCount: number,
+): string {
+  const lift = runtimeContext.dogfoodLift;
+  return [
+    "OpenAgents Autopilot-coder studied runtime context (internal dogfood only)",
+    `repo: ${runtimeContext.repo}`,
+    `commit: ${runtimeContext.commit}`,
+    `editSite: ${runtimeContext.editSitePath}`,
+    `contextPackRef: ${runtimeContext.contextPackRef}`,
+    `planContextRef: ${runtimeContext.planContextRef}`,
+    `runtimeContextRef: ${runtimeContext.runtimeContextRef}`,
+    `correctnessGatePassed: ${runtimeContext.correctnessGatePassed}`,
+    `studiedToolsInjected: ${studiedToolCount}`,
+    "dogfood lift vs no-studied baseline:",
+    `  studiedBeatsBaseline: ${lift.studiedBeatsBaseline}`,
+    `  passRateLiftBps: ${lift.passRateLiftBps}`,
+    `  rubricScoreLiftBps: ${lift.rubricScoreLiftBps}`,
+    `  firstDivergenceStepLift: ${lift.firstDivergenceStepLift}`,
+    `  wrongFileReadReduction: ${lift.wrongFileReadReduction}`,
+    `  evalReportRef: ${lift.evalReportRef}`,
+    `  scope: ${lift.scope}`,
+    `  customerPublicClaimAllowed: ${lift.customerPublicClaimAllowed}`,
+  ].join("\n") + "\n";
 }
 
 function geminiSmoke(
@@ -588,6 +679,7 @@ function usage(): string {
     "  probe apple-fm status [--base-url URL] [--profile apple-fm-local]",
     "  probe apple-fm smoke [--base-url URL] [--profile apple-fm-local] [--prompt TEXT]",
     "  probe apple-fm tool-stream-demo [--base-url URL] [--path FILE] [--prompt TEXT]",
+    "  probe studied-coder context [--root DIR] [--edit-site FILE] [--commit-history-limit N]",
   ].join("\n") + "\n";
 }
 

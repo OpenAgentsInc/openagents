@@ -19,6 +19,7 @@ export * from "./benchmark/candidate-execution";
 export * from "./benchmark/fixtures";
 export * from "./benchmark/external-repo-studying-product";
 export * from "./benchmark/openagents-autopilot-coder-studied-context";
+export * from "./benchmark/openagents-autopilot-coder-studied-runtime";
 export * from "./benchmark/openagents-study-artifact";
 export * from "./benchmark/openagents-study-graph";
 export * from "./benchmark/openagents-study-packet";
