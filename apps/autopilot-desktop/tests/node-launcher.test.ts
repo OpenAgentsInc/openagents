@@ -29,7 +29,7 @@ describe("findDevPylonEntry", () => {
 })
 
 describe("findPackagedPylonEntry", () => {
-  const resourcesDir = "/Applications/Autopilot Desktop.app/Contents/Resources"
+  const resourcesDir = "/Applications/Autopilot.app/Contents/Resources"
   const bundleDir = join(resourcesDir, "app", "pylon-node")
   const jsEntry = join(bundleDir, "index.js")
   const tsEntry = join(bundleDir, "index.ts")
@@ -100,7 +100,7 @@ describe("findPackagedPylonEntry against a real packaged layout", () => {
     "..",
     "build",
     "canary-macos-arm64",
-    "Autopilot Desktop-canary.app",
+    "Autopilot-canary.app",
     "Contents",
     "Resources",
   )
@@ -137,7 +137,7 @@ describe("findPackagedPylonEntry against a real packaged layout", () => {
       ])
       const resourcesDir = join(
         extractDir,
-        "Autopilot Desktop-canary.app",
+        "Autopilot-canary.app",
         "Contents",
         "Resources",
       )
@@ -228,7 +228,7 @@ describe("ensureManagedNode", () => {
   })
 
   it("#5027: launches the bundled headless node in a packaged build (no repo entry)", async () => {
-    const resourcesDir = "/Applications/Autopilot Desktop.app/Contents/Resources"
+    const resourcesDir = "/Applications/Autopilot.app/Contents/Resources"
     const bundleDir = join(resourcesDir, "app", "pylon-node")
     const bundledEntry = join(bundleDir, "index.js")
     const homeDir = "/Users/contributor"
@@ -243,8 +243,8 @@ describe("ensureManagedNode", () => {
     const node = await ensureManagedNode({
       ...baseOptions,
       // The bundled-Bun path inside the .app.
-      bunBin: "/Applications/Autopilot Desktop.app/Contents/MacOS/bun",
-      cwd: "/Applications/Autopilot Desktop.app",
+      bunBin: "/Applications/Autopilot.app/Contents/MacOS/bun",
+      cwd: "/Applications/Autopilot.app",
       // No repo entry; only the bundled entry exists.
       fileExists: (path: string) => path === bundledEntry,
       resourcesDir,
@@ -263,7 +263,7 @@ describe("ensureManagedNode", () => {
     expect(spawnCalls).toHaveLength(1)
     // Launched with the bundled Bun, the bundled entry, in headless `node` mode.
     expect(spawnCalls[0]!.command).toEqual([
-      "/Applications/Autopilot Desktop.app/Contents/MacOS/bun",
+      "/Applications/Autopilot.app/Contents/MacOS/bun",
       bundledEntry,
       "node",
     ])

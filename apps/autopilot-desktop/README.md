@@ -1,6 +1,6 @@
-# Autopilot Desktop
+# Autopilot
 
-Autopilot Desktop is the Electrobun desktop shell for the Autopilot Coder GUI.
+Autopilot is the Electrobun desktop shell for the Autopilot Coder GUI.
 It is planned as a Bun-native sibling to the Pylon TUI: the Bun main process
 will own local Pylon control access over loopback, while the webview renders the
 operator interface.
@@ -168,7 +168,7 @@ issue only if the report becomes a concrete reproducible bug.
 Sign and notarize a built (`build:stable`) `.app` with Apple Developer ID:
 
 ```sh
-OA_DESKTOP_APP_PATH="/path/to/Autopilot Desktop.app" \
+OA_DESKTOP_APP_PATH="/path/to/Autopilot.app" \
 OA_DEVELOPER_ID_APPLICATION="Developer ID Application: OpenAgents, Inc. (...)" \
 bun run --cwd apps/autopilot-desktop notarize:macos
 ```

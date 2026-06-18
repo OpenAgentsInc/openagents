@@ -39,7 +39,7 @@ const ch = html<never>()
 // Must return a Document ({ title, body }) — the runtime renders `.body`. A bare
 // Html here left the crash overlay's body undefined (blank crash screen).
 const crashView = (error: Error): Document => ({
-  title: "Autopilot Desktop — error",
+  title: "Autopilot — error",
   body: ch.div(
     [
       ch.Style({
@@ -58,7 +58,7 @@ const crashView = (error: Error): Document => ({
     [
       ch.h1(
         [ch.Style({ color: "#ff6b6b", fontSize: "16px", margin: "0 0 8px" })],
-        ["⚠ Autopilot Desktop — render error"],
+        ["⚠ Autopilot — render error"],
       ),
       ch.p(
         [ch.Style({ color: "#8b93a7", margin: "0 0 12px" })],

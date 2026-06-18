@@ -29,7 +29,7 @@ IDENTITY="${OA_DEVELOPER_ID_APPLICATION:-${APPLE_DEVELOPER_ID_APPLICATION:-}}"
 ARCHIVE="${OA_DESKTOP_ARCHIVE:-/tmp/autopilot-desktop-notary.zip}"
 
 if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
-  echo "OA_DESKTOP_APP_PATH must point to the built Autopilot Desktop .app" >&2
+  echo "OA_DESKTOP_APP_PATH must point to the built Autopilot .app" >&2
   exit 1
 fi
 

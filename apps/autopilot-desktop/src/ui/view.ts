@@ -3777,7 +3777,7 @@ const settingsPane = (model: Model): Html => {
         ),
       ]),
       card("About", [
-        h.p([cls("card-body")], ["Autopilot Desktop"]),
+        h.p([cls("card-body")], ["Autopilot"]),
         h.p([cls("card-body")], ["Protocol schema: ", h.code([], [node?.schema ?? "not connected"])]),
       ]),
     ],
@@ -3975,6 +3975,6 @@ export const sanitizeTree = (node: unknown): unknown => {
 // `.body` undefined, so nothing ever mounted (blank screen). The body is the
 // sanitized app shell.
 export const view = (model: Model): Document => ({
-  title: "Autopilot Desktop",
+  title: "Autopilot",
   body: sanitizeTree(rootView(model)) as Html,
 })

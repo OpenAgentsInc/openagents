@@ -247,7 +247,7 @@ const smokeHtml = `
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Autopilot Desktop Training Scene Smoke</title>
+    <title>Autopilot Training Scene Smoke</title>
     <style>
       :root { color-scheme: dark; background: #050505; }
       body {

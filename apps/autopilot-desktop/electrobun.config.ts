@@ -1,6 +1,6 @@
 export default {
   app: {
-    name: "Autopilot Desktop",
+    name: "Autopilot",
     identifier: "com.openagents.autopilot.desktop",
     // #5046: Autopilot v1.0 release candidate (RC channel only until owner GA).
     version: "1.0.0-rc.3"

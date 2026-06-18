@@ -11,7 +11,7 @@ import {
 
 const report: PromiseSurfacingInput = {
   promiseId: "autopilot.builtin_compute_agent.v1",
-  surface: "Autopilot Desktop",
+  surface: "Autopilot",
   claimText: "Click Go online without a user API key.",
   expectedBehavior: "A hosted agent starts.",
   observedBehavior: "The app reports hosted compute is unconfigured.",

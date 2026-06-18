@@ -8,6 +8,10 @@ const mokshaAssetSource =
   "node_modules/@openagentsinc/three-effect/packages/core/src/assets/moksha"
 
 describe("ElectroBun packaging", () => {
+  test("uses the concise Autopilot app title", () => {
+    expect(config.app.name).toBe("Autopilot")
+  })
+
   test("copies shared three-effect Moksha assets into the desktop view bundle", () => {
     expect(config.build.copy[mokshaAssetSource]).toBe(
       "views/autopilot-desktop/assets/moksha",

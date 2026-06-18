@@ -588,7 +588,7 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
 })
 
 const window = new BrowserWindow({
-  title: "Autopilot Desktop",
+  title: "Autopilot",
   url: "views://autopilot-desktop/index.html",
   // Open large by default (Electrobun defaults to 800×600, too small for the
   // sidebar + dashboard). A roomy 1400×900 window with a small offset.
