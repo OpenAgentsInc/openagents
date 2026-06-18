@@ -43,8 +43,10 @@ import {
   SettledQueueTrainingLaunch,
   SettledReconcileTrainingWindow,
   SettledRequestTrainingBootstrap,
+  SettledManagedAccountMutation,
   SettledResolveApproval,
   SettledSubmitIntent,
+  GotManagedAccounts,
   SucceededBuiltInAgent,
   SucceededAppleFmSession,
   SucceededComposerTurn,
@@ -926,16 +928,21 @@ export const SpawnSession = Command.define(
     verify: S.Array(S.String),
     // #4998: requested execution lane (auto|local|cloud-gcp|cloud-shc).
     lane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
+    // CS-A1: per-session provider account (null = node default selection).
+    accountRef: S.NullOr(S.String),
   },
   SucceededSpawn,
   FailedSpawn,
-)(({ adapter, objective, verify, lane }) =>
+)(({ adapter, objective, verify, lane, accountRef }) =>
   Effect.tryPromise(() =>
     getRequest().spawnSession({
       adapter,
       objective,
       verify: verify.length > 0 ? [...verify] : undefined,
       lane,
+      ...(accountRef !== null && accountRef.trim() !== ""
+        ? { accountRef: accountRef.trim() }
+        : {}),
     }),
   ).pipe(
     Effect.map((r) =>
@@ -972,10 +979,12 @@ export const SpawnComposerTurn = Command.define(
     verify: S.Array(S.String),
     lane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
     worktreePath: S.NullOr(S.String),
+    // CS-A1: per-session provider account (null = node default selection).
+    accountRef: S.NullOr(S.String),
   },
   SucceededComposerTurn,
   FailedComposerTurn,
-)(({ adapter, objective, verify, lane, worktreePath }) =>
+)(({ adapter, objective, verify, lane, worktreePath, accountRef }) =>
   Effect.tryPromise(() =>
     getRequest().spawnSession({
       adapter,
@@ -984,6 +993,9 @@ export const SpawnComposerTurn = Command.define(
       lane,
       ...(worktreePath !== null && worktreePath.trim() !== ""
         ? { worktreePath: worktreePath.trim() }
+        : {}),
+      ...(accountRef !== null && accountRef.trim() !== ""
+        ? { accountRef: accountRef.trim() }
         : {}),
     }),
   ).pipe(
@@ -994,6 +1006,132 @@ export const SpawnComposerTurn = Command.define(
     ),
     Effect.catch((error) =>
       Effect.succeed(FailedComposerTurn({ error: errorText(error) })),
+    ),
+  ),
+)
+
+// CS-A1: spawn a composer coding turn under the LOCAL Apple FM runtime. Apple FM
+// has its own control verb (apple_fm.session.start), so it is a separate command
+// from SpawnComposerTurn (which uses session.spawn). It still returns a
+// sessionRef the composer tails the same way, so it maps to the shared
+// Succeeded/Failed composer-turn messages.
+export const SpawnAppleFmComposerTurn = Command.define(
+  "SpawnAppleFmComposerTurn",
+  {
+    objective: S.String,
+    worktreePath: S.NullOr(S.String),
+  },
+  SucceededComposerTurn,
+  FailedComposerTurn,
+)(({ objective, worktreePath }) =>
+  Effect.tryPromise(() =>
+    getRequest().spawnAppleFmSession({
+      objective,
+      ...(worktreePath !== null && worktreePath.trim() !== ""
+        ? { worktreePath: worktreePath.trim() }
+        : {}),
+    }),
+  ).pipe(
+    Effect.map((r) =>
+      r.ok
+        ? SucceededComposerTurn({ sessionRef: r.sessionRef })
+        : FailedComposerTurn({
+            error:
+              r.error ??
+              r.blockerRefs[0] ??
+              r.readiness.blockerRefs[0] ??
+              "local Apple FM unavailable",
+          }),
+    ),
+    Effect.catch((error) =>
+      Effect.succeed(FailedComposerTurn({ error: errorText(error) })),
+    ),
+  ),
+)
+
+// ── CS-A1: account-management commands (node-local dev.accounts config) ──────
+export const LoadManagedAccounts = Command.define(
+  "LoadManagedAccounts",
+  {},
+  GotManagedAccounts,
+)(() =>
+  Effect.tryPromise(() => getRequest().listManagedAccounts({})).pipe(
+    Effect.map((projection) => GotManagedAccounts({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotManagedAccounts({
+          projection: { ok: false, accounts: [], error: errorText(error) },
+        }),
+      ),
+    ),
+  ),
+)
+
+export const AddManagedAccount = Command.define(
+  "AddManagedAccount",
+  {
+    ref: S.String,
+    provider: S.Literals(["codex", "claude_agent"]),
+    home: S.String,
+    priority: S.NullOr(S.Number),
+  },
+  SettledManagedAccountMutation,
+)(({ ref, provider, home, priority }) =>
+  Effect.tryPromise(() =>
+    getRequest().addManagedAccount({
+      ref,
+      provider,
+      home,
+      ...(priority !== null ? { priority } : {}),
+    }),
+  ).pipe(
+    Effect.map((projection) => SettledManagedAccountMutation({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledManagedAccountMutation({
+          projection: { ok: false, accounts: [], error: errorText(error) },
+        }),
+      ),
+    ),
+  ),
+)
+
+export const RemoveManagedAccount = Command.define(
+  "RemoveManagedAccount",
+  { ref: S.String, provider: S.Literals(["codex", "claude_agent"]) },
+  SettledManagedAccountMutation,
+)(({ ref, provider }) =>
+  Effect.tryPromise(() => getRequest().removeManagedAccount({ ref, provider })).pipe(
+    Effect.map((projection) => SettledManagedAccountMutation({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledManagedAccountMutation({
+          projection: { ok: false, accounts: [], error: errorText(error) },
+        }),
+      ),
+    ),
+  ),
+)
+
+export const SetManagedAccountPriority = Command.define(
+  "SetManagedAccountPriority",
+  {
+    ref: S.String,
+    provider: S.Literals(["codex", "claude_agent"]),
+    priority: S.Number,
+  },
+  SettledManagedAccountMutation,
+)(({ ref, provider, priority }) =>
+  Effect.tryPromise(() =>
+    getRequest().setManagedAccountPriority({ ref, provider, priority }),
+  ).pipe(
+    Effect.map((projection) => SettledManagedAccountMutation({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledManagedAccountMutation({
+          projection: { ok: false, accounts: [], error: errorText(error) },
+        }),
+      ),
     ),
   ),
 )

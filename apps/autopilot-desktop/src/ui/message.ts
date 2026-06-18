@@ -232,8 +232,9 @@ export const GotProofReplayBundle = m("GotProofReplayBundle", {
 })
 
 // ── Spawn ──────────────────────────────────────────────────────────────────
+// CS-A1: `apple_fm` joins the runtime toggle as a spawn-adapter option.
 export const ChangedSpawnAdapter = m("ChangedSpawnAdapter", {
-  adapter: S.Literals(["codex", "claude_agent"]),
+  adapter: S.Literals(["codex", "claude_agent", "apple_fm"]),
 })
 export const ChangedSpawnObjective = m("ChangedSpawnObjective", {
   value: S.String,
@@ -275,6 +276,41 @@ export const SucceededComposerTurn = m("SucceededComposerTurn", {
   sessionRef: S.String,
 })
 export const FailedComposerTurn = m("FailedComposerTurn", { error: S.String })
+
+// ── CS-A1: per-session account picker + multi-account management ────────────
+// Which provider account the composer's coding turns run under (null = default).
+export const SelectedComposerAccount = m("SelectedComposerAccount", {
+  accountRef: S.NullOr(S.String),
+})
+// Account-management surface (add/select/priority over the node's local
+// dev.accounts config the runtime reads). Bun owns the home + config path.
+export const ClickedRefreshManagedAccounts = m("ClickedRefreshManagedAccounts")
+export const GotManagedAccounts = m("GotManagedAccounts", { projection: S.Unknown })
+export const ChangedAddAccountRef = m("ChangedAddAccountRef", { value: S.String })
+export const ChangedAddAccountProvider = m("ChangedAddAccountProvider", {
+  provider: S.Literals(["codex", "claude_agent"]),
+})
+export const ChangedAddAccountHome = m("ChangedAddAccountHome", { value: S.String })
+export const ChangedAddAccountPriority = m("ChangedAddAccountPriority", {
+  value: S.String,
+})
+export const ClickedAddManagedAccount = m("ClickedAddManagedAccount")
+export const ClickedRemoveManagedAccount = m("ClickedRemoveManagedAccount", {
+  ref: S.String,
+  provider: S.Literals(["codex", "claude_agent"]),
+})
+export const ClickedBumpManagedAccountPriority = m(
+  "ClickedBumpManagedAccountPriority",
+  {
+    ref: S.String,
+    provider: S.Literals(["codex", "claude_agent"]),
+    priority: S.Number,
+  },
+)
+// Settled (shared by add/remove/set-priority). Carries the refreshed list.
+export const SettledManagedAccountMutation = m("SettledManagedAccountMutation", {
+  projection: S.Unknown,
+})
 
 export const Message = S.Union([
   GotNodeState,
@@ -366,5 +402,16 @@ export const Message = S.Union([
   ClickedComposerNewThread,
   SucceededComposerTurn,
   FailedComposerTurn,
+  SelectedComposerAccount,
+  ClickedRefreshManagedAccounts,
+  GotManagedAccounts,
+  ChangedAddAccountRef,
+  ChangedAddAccountProvider,
+  ChangedAddAccountHome,
+  ChangedAddAccountPriority,
+  ClickedAddManagedAccount,
+  ClickedRemoveManagedAccount,
+  ClickedBumpManagedAccountPriority,
+  SettledManagedAccountMutation,
 ])
 export type Message = typeof Message.Type

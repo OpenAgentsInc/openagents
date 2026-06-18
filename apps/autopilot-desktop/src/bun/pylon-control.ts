@@ -168,6 +168,21 @@ async function fetchAccountRows(input: {
       provider: String(a.provider ?? "?"),
       homeState: String(a.homeState ?? "?"),
       ready: Array.isArray(a.blockerRefs) ? a.blockerRefs.length === 0 : false,
+      // CS-A1: surface the account ref/hash/selector/blockers so the per-session
+      // picker can thread `accountRef` through spawn and the management UI can
+      // key on a stable ref. Priority lives in the node's local config and is
+      // surfaced through listManagedAccounts, so it is null on this live
+      // readiness projection.
+      accountRef:
+        typeof a.accountRef === "string" && a.accountRef.length > 0 ? a.accountRef : null,
+      accountRefHash: String(
+        a.accountRefHash ?? `${String(a.provider ?? "?")}:${String(a.homeState ?? "?")}`,
+      ),
+      selector: String(a.selector ?? "default_home"),
+      blockerRefs: Array.isArray(a.blockerRefs)
+        ? a.blockerRefs.map((b: unknown) => String(b))
+        : [],
+      priority: null,
     }))
   } catch {
     return []
@@ -765,6 +780,9 @@ export async function spawnSession(input: {
   lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
   timeoutSeconds?: number
   worktreePath?: string
+  // CS-A1: run under a specific provider account (resolved against the node's
+  // registry). Omitted means the node's default account selection.
+  accountRef?: string
   fetchFn?: typeof fetch
 }): Promise<{ ok: boolean; sessionRef: string; error?: string }> {
   const fetchFn = input.fetchFn ?? fetch
@@ -781,6 +799,7 @@ export async function spawnSession(input: {
         ...(input.lane ? { lane: input.lane } : {}),
         ...(input.timeoutSeconds ? { timeoutSeconds: input.timeoutSeconds } : {}),
         ...(input.worktreePath ? { worktreePath: input.worktreePath } : {}),
+        ...(input.accountRef ? { accountRef: input.accountRef } : {}),
       }),
     })
     if (!res.ok) return { ok: false, sessionRef: "", error: `control ${res.status}` }

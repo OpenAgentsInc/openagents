@@ -23,6 +23,43 @@ export type AccountRow = {
   readonly provider: string
   readonly homeState: string
   readonly ready: boolean
+  // CS-A1: the registry/sibling account ref (null for a provider's default
+  // home, which has no explicit ref). Threaded through session.spawn as
+  // `accountRef` for the per-session account picker — no new control contract.
+  readonly accountRef: string | null
+  // Stable per-account public ref hash (refs only; never a raw path/secret).
+  readonly accountRefHash: string
+  // "registry_ref" (an explicit `dev.accounts` entry / discovered sibling home)
+  // or "default_home" (the provider's default ~/.codex / ~/.claude home).
+  readonly selector: string
+  // Public-safe readiness blocker refs (e.g. home missing, login required).
+  readonly blockerRefs: readonly string[]
+  // CS-A1: operator-assigned dispatch priority (lower = preferred). Surfaced
+  // and editable through the desktop account-management UI; persisted in the
+  // node's local `dev.accounts` config. Null when the account has no explicit
+  // entry (default homes / discovered siblings without a priority set).
+  readonly priority: number | null
+}
+
+// CS-A1: a managed local account registry entry (read-only projection of the
+// node's `dev.accounts` config the desktop account-management UI edits).
+export type ManagedAccountRow = {
+  readonly ref: string
+  readonly provider: "codex" | "claude_agent"
+  readonly homePresent: boolean
+  readonly priority: number | null
+}
+
+export type ManagedAccountsResponse = {
+  readonly ok: boolean
+  readonly accounts: readonly ManagedAccountRow[]
+  readonly error?: string
+}
+
+export type ManagedAccountMutationResponse = {
+  readonly ok: boolean
+  readonly accounts: readonly ManagedAccountRow[]
+  readonly error?: string
 }
 
 export type SessionArtifactStats = {
@@ -757,8 +794,50 @@ export type DesktopRPCSchema = {
           lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
           timeoutSeconds?: number
           worktreePath?: string
+          // CS-A1: run this session under a specific provider account. The
+          // node resolves it against its registry and rejects an unknown ref;
+          // omitted means the node's default account selection. No new wire
+          // contract — `session.spawn` already accepts `accountRef` (#4868).
+          accountRef?: string
         }
         readonly response: { ok: boolean; sessionRef: string; error?: string }
+      }
+      // CS-A1: spawn a bounded local Apple Foundation Models coding session,
+      // exposed as a spawn-adapter option alongside codex/claude. The webview
+      // supplies an objective + optional worktree; Bun/Pylon own the prompt
+      // policy, control token, and bridge details (the existing
+      // apple_fm.session.start verb — no new contract).
+      readonly spawnAppleFmSession: {
+        readonly params: { objective: string; worktreePath?: string }
+        readonly response: AppleFmSessionStartResponse
+      }
+      // CS-A1 account management — read/add/remove/set-priority against the
+      // node's local `dev.accounts` config the runtime already reads. Bun owns
+      // the node home + config path; the webview only sees public-safe refs.
+      readonly listManagedAccounts: {
+        readonly params: Record<string, never>
+        readonly response: ManagedAccountsResponse
+      }
+      readonly addManagedAccount: {
+        readonly params: {
+          ref: string
+          provider: "codex" | "claude_agent"
+          home: string
+          priority?: number
+        }
+        readonly response: ManagedAccountMutationResponse
+      }
+      readonly removeManagedAccount: {
+        readonly params: { ref: string; provider: "codex" | "claude_agent" }
+        readonly response: ManagedAccountMutationResponse
+      }
+      readonly setManagedAccountPriority: {
+        readonly params: {
+          ref: string
+          provider: "codex" | "claude_agent"
+          priority: number
+        }
+        readonly response: ManagedAccountMutationResponse
       }
     }
     readonly messages: Record<string, never>

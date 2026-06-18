@@ -214,10 +214,13 @@ describe("composer reducer (#5355)", () => {
     expect(withReply.composerReply).toBe("hi")
   })
 
-  test("NavigatedTo composer does not require any load command", () => {
+  test("NavigatedTo composer loads the managed-account registry (CS-A1)", () => {
     const [model, commands] = update(initialModel, NavigatedTo({ pane: "composer" }))
     expect(model.pane).toBe("composer")
-    expect(commands).toHaveLength(0)
+    // CS-A1: the composer hosts the per-session account picker + management UI,
+    // so opening it refreshes the node's managed accounts.
+    expect(commands).toHaveLength(1)
+    expect(model.managedAccountsPending).toBe(true)
   })
 
   test("full loop: spawn → succeeded → live transcript via node poll → reply", () => {

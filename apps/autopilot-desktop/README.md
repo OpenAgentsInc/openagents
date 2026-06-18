@@ -16,9 +16,10 @@ Claude-Code / Codex-CLI replacement loop — built on the EXISTING control
 protocol (`session.spawn` / `session.events` / `session.cancel` + the approvals
 queue), with no new wire contract:
 
-1. **Start a coding session** — pick a runtime (`codex` / `claude_agent`) and an
-   execution lane, optionally a repo/worktree path, type an objective, and spawn
-   the first turn via the desktop's `spawnSession` Bun function.
+1. **Start a coding session** — pick a runtime (`codex` / `claude_agent` /
+   `apple_fm`), the provider account to run under (CS-A1, below), an execution
+   lane, optionally a repo/worktree path, type an objective, and spawn the first
+   turn via the desktop's `spawnSession` Bun function.
 2. **Live streamed transcript** — the polled per-session event tail (the same
    `/events` content the node emits) renders as a readable turn/diff view; the
    agent's tool calls and file edits appear as transcript rows.
@@ -33,12 +34,6 @@ queue), with no new wire contract:
 When a local node is reachable, this pane is a usable coding loop; without a
 node it shows a "start `pylon dev`" hint rather than hiding.
 
-Scope: this is the first surface only (see
-`docs/launch/2026-06-18-autopilot-desktop-coding-surface-audit.md`). Multi-account
-management, a provider/Apple-FM spawn picker, and a swarm/multi-session view are
-later phases. It sits inside the yellow, local-only promise
-`autopilot.desktop_gui_client.v1`.
-
 Prove the loop against a real loopback control server (a `pylon dev`-equivalent
 node, no paid provider accounts required):
 
@@ -49,6 +44,43 @@ bun run --cwd apps/autopilot-desktop proof:composer
 It drives spawn → live session-event tail (incl. a tool/diff line) → approval
 projection → continuation (reply) spawn → cancel through the desktop's own Bun
 control functions.
+
+## Provider / account picker + multi-account management (CS-A1, #5361)
+
+The Composer is account-aware on the EXISTING control protocol (no new wire
+verb):
+
+1. **Per-session account picker** — when a codex/claude account is registered on
+   the node, the composer spawn form lists it; selecting it threads
+   `accountRef` through `session.spawn` (the runtime already accepts it, #4868),
+   so the coding turn runs under that account. "Default" leaves the node's own
+   account selection.
+2. **Apple FM as a spawn adapter** — `apple_fm` joins the runtime toggle
+   alongside codex/claude. It uses its own control verb
+   (`apple_fm.session.start`), so it is its own bounded spawn path (local-only,
+   no per-account selection), not a separate Agent-pane card.
+3. **Account management** — the Composer's **Accounts** card turns the old
+   read-only list into add / select / set-priority / remove against the node's
+   local `dev.accounts` config — the exact file the runtime reads
+   (`loadPylonAccountRegistry`). The Bun host owns the home/config path; the
+   webview only sees public-safe refs. Live readiness/quota still comes from the
+   `accounts.list` projection (shared `AccountList` component). Priority orders
+   dispatch (lower runs first).
+
+Prove the picker + management end-to-end against a real loopback control server:
+
+```sh
+bun run --cwd apps/autopilot-desktop proof:account-picker
+```
+
+It drives accounts.list populating → a session spawning under a SELECTED account
+(asserted by the session's `accountRefHash`) → add / set-priority / remove
+mutations round-tripping through the node's `dev.accounts` config.
+
+Scope: this sits inside the yellow, local-only promise
+`autopilot.desktop_gui_client.v1`; a swarm/multi-session view and a richer
+diff/transcript are later phases (see
+`docs/launch/2026-06-18-autopilot-desktop-coding-surface-audit.md`).
 
 ## Training Pane Verification
 

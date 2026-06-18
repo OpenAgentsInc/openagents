@@ -21,6 +21,8 @@ import type {
   BuiltInAgentReadinessResponse,
   BuiltInAgentStartResponse,
   InstallReadinessResponse,
+  ManagedAccountMutationResponse,
+  ManagedAccountsResponse,
   PromiseSurfacingInput,
   PromiseSurfacingReadinessResponse,
   PromiseSurfacingResponse,
@@ -117,7 +119,31 @@ export type DesktopRequests = {
     lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
     timeoutSeconds?: number
     worktreePath?: string
+    // CS-A1: per-session provider account.
+    accountRef?: string
   }): Promise<{ ok: boolean; sessionRef: string; error?: string }>
+  // CS-A1: spawn a bounded local Apple FM coding session (its own control verb).
+  spawnAppleFmSession(p: {
+    objective: string
+    worktreePath?: string
+  }): Promise<AppleFmSessionStartResponse>
+  // CS-A1 account management against the node's local dev.accounts config.
+  listManagedAccounts(p: Record<string, never>): Promise<ManagedAccountsResponse>
+  addManagedAccount(p: {
+    ref: string
+    provider: "codex" | "claude_agent"
+    home: string
+    priority?: number
+  }): Promise<ManagedAccountMutationResponse>
+  removeManagedAccount(p: {
+    ref: string
+    provider: "codex" | "claude_agent"
+  }): Promise<ManagedAccountMutationResponse>
+  setManagedAccountPriority(p: {
+    ref: string
+    provider: "codex" | "claude_agent"
+    priority: number
+  }): Promise<ManagedAccountMutationResponse>
 }
 
 let request: DesktopRequests | null = null

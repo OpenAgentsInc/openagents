@@ -25,6 +25,7 @@ import type {
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
   InstallReadinessResponse,
+  ManagedAccountsResponse,
   NodeStateMessage,
   PromiseSurfacingReadinessResponse,
   PromiseSurfacingResponse,
@@ -240,7 +241,9 @@ export const Model = ts("AutopilotDesktop", {
   resolvedApprovals: S.Array(S.String),
 
   // Spawn form fields + transient status.
-  spawnAdapter: S.Literals(["codex", "claude_agent"]),
+  // CS-A1: `apple_fm` joins the runtime toggle as a spawn-adapter option
+  // alongside codex/claude (it routes through the local Apple FM control verb).
+  spawnAdapter: S.Literals(["codex", "claude_agent", "apple_fm"]),
   spawnObjective: S.String,
   spawnVerify: S.String,
   // #4998: requested execution lane for the spawn form. Default `auto`
@@ -266,6 +269,23 @@ export const Model = ts("AutopilotDesktop", {
   composerTurns: S.Array(S.String),
   composerStatus: ComposerStatus,
   composerPending: S.Boolean,
+  // CS-A1: which provider account the composer's coding turns run under. Null
+  // = the node's default account selection. Threaded through session.spawn's
+  // `accountRef` (codex/claude) — no new control contract. Ignored for the
+  // apple_fm adapter, which has no per-account selection.
+  composerAccountRef: S.NullOr(S.String),
+
+  // CS-A1: account-management surface state (add/select/priority over the
+  // node's local dev.accounts config). `managedAccounts` holds the last
+  // ManagedAccountsResponse projection (opaque, read via the typed accessor);
+  // the rest are the add-account form fields + transient status.
+  managedAccounts: S.NullOr(S.Unknown),
+  managedAccountsPending: S.Boolean,
+  managedAccountsStatus: ComposerStatus,
+  addAccountRef: S.String,
+  addAccountProvider: S.Literals(["codex", "claude_agent"]),
+  addAccountHome: S.String,
+  addAccountPriority: S.String,
 
   // Ask-Autopilot form fields + transient status.
   askTitle: S.String,
@@ -334,6 +354,11 @@ export type Model = typeof Model.Type
 
 export const modelNode = (model: Model): NodeStateMessage | null =>
   model.node as NodeStateMessage | null
+
+export const modelManagedAccounts = (
+  model: Model,
+): ManagedAccountsResponse | null =>
+  model.managedAccounts as ManagedAccountsResponse | null
 
 export const modelPylonStats = (model: Model): PylonStatsSnapshot | null =>
   model.pylonStats as PylonStatsSnapshot | null
@@ -474,6 +499,14 @@ export const initialModel: Model = Model.make({
   composerTurns: [],
   composerStatus: { text: "", tone: "idle" },
   composerPending: false,
+  composerAccountRef: null,
+  managedAccounts: null,
+  managedAccountsPending: false,
+  managedAccountsStatus: { text: "", tone: "idle" },
+  addAccountRef: "",
+  addAccountProvider: "codex",
+  addAccountHome: "",
+  addAccountPriority: "",
   askTitle: "",
   askBody: "",
   askStatus: { text: "", tone: "idle" },

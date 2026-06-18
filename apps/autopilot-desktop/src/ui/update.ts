@@ -11,6 +11,7 @@ import { Command } from "foldkit"
 
 import {
   ActivateTrainingWindow,
+  AddManagedAccount,
   AdmitTrainingRealGradientEvidence,
   BuildTrainingEvidencePacket,
   CancelSession,
@@ -19,6 +20,7 @@ import {
   LoadAppleFmReadiness,
   LoadBuiltInAgentReadiness,
   LoadInstallReadiness,
+  LoadManagedAccounts,
   LoadPromiseSurfacingReadiness,
   LoadProofReplayBundle,
   LoadTrainingDashboard,
@@ -30,9 +32,12 @@ import {
   QueueTrainingCloseout,
   QueueTrainingLaunch,
   ReconcileTrainingWindow,
+  RemoveManagedAccount,
   RequestTrainingBootstrapGrant,
   ResolveApproval,
   SetCoordinatorPaused,
+  SetManagedAccountPriority,
+  SpawnAppleFmComposerTurn,
   SpawnComposerTurn,
   StartAppleFmSession,
   StartBuiltInAgent,
@@ -94,6 +99,11 @@ const isTrainingPane = (pane: PaneId): boolean =>
 
 const isBuiltInAgentPane = (pane: PaneId): boolean => pane === "builtin-agent"
 const isSettingsPane = (pane: PaneId): boolean => pane === "settings"
+// CS-A1: the composer pane hosts the per-session account picker, so opening it
+// (and the Spawn pane / Settings, which also surface accounts) refreshes the
+// managed-account registry from the node's local config.
+const isAccountManagingPane = (pane: PaneId): boolean =>
+  pane === "composer" || pane === "spawn" || pane === "settings"
 
 const plannedRunFirstObservedAt = (
   model: Model,
@@ -193,14 +203,26 @@ export const update = (model: Model, message: Message): Result => {
                 },
               }
             : {}),
+          ...(isAccountManagingPane(message.pane)
+            ? {
+                managedAccountsPending: true,
+                managedAccountsStatus: {
+                  text: "loading accounts...",
+                  tone: "info" as const,
+                },
+              }
+            : {}),
         }),
-        isTrainingPane(message.pane)
-          ? loadTrainingProjectionCommands(model)
-          : isBuiltInAgentPane(message.pane)
-            ? [LoadBuiltInAgentReadiness(), LoadAppleFmReadiness(), LoadPromiseSurfacingReadiness()]
-            : isSettingsPane(message.pane)
-              ? [LoadInstallReadiness()]
-            : noCommands,
+        [
+          ...(isTrainingPane(message.pane)
+            ? loadTrainingProjectionCommands(model)
+            : isBuiltInAgentPane(message.pane)
+              ? [LoadBuiltInAgentReadiness(), LoadAppleFmReadiness(), LoadPromiseSurfacingReadiness()]
+              : isSettingsPane(message.pane)
+                ? [LoadInstallReadiness()]
+                : noCommands),
+          ...(isAccountManagingPane(message.pane) ? [LoadManagedAccounts()] : noCommands),
+        ],
       ]
     case "SelectedSession":
       return [
@@ -1275,6 +1297,9 @@ export const update = (model: Model, message: Message): Result => {
             objective: validation.objective,
             verify,
             lane: model.spawnLane,
+            // CS-A1: the legacy Spawn pane has no per-account picker; the
+            // composer pane is the account-aware spawn surface.
+            accountRef: null,
           }),
         ],
       ]
@@ -1315,7 +1340,38 @@ export const update = (model: Model, message: Message): Result => {
       return [Model.make({ ...model, composerRepoPath: message.value }), noCommands]
     case "ChangedComposerReply":
       return [Model.make({ ...model, composerReply: message.value }), noCommands]
+    case "SelectedComposerAccount":
+      return [
+        Model.make({ ...model, composerAccountRef: message.accountRef }),
+        noCommands,
+      ]
     case "ClickedComposerSpawn": {
+      const worktreePath =
+        model.composerRepoPath.trim() === "" ? null : model.composerRepoPath.trim()
+      // CS-A1: Apple FM is a spawn-adapter option but uses its own control verb
+      // (apple_fm.session.start), so it validates the objective directly and
+      // routes through the Apple FM command rather than session.spawn.
+      if (model.spawnAdapter === "apple_fm") {
+        const objective = model.spawnObjective.trim()
+        if (objective === "") {
+          return [
+            Model.make({
+              ...model,
+              composerStatus: { text: "objective must be non-empty", tone: "error" },
+            }),
+            noCommands,
+          ]
+        }
+        return [
+          Model.make({
+            ...model,
+            composerPending: true,
+            composerStatus: { text: "starting local Apple FM session…", tone: "info" },
+            composerTurns: [objective],
+          }),
+          [SpawnAppleFmComposerTurn({ objective, worktreePath })],
+        ]
+      }
       // First coding turn — reuse the shared spawn validation/fields.
       const validation = validateSpawnRequest({
         adapter: model.spawnAdapter,
@@ -1348,10 +1404,8 @@ export const update = (model: Model, message: Message): Result => {
             objective,
             verify,
             lane: model.spawnLane,
-            worktreePath:
-              model.composerRepoPath.trim() === ""
-                ? null
-                : model.composerRepoPath.trim(),
+            worktreePath,
+            accountRef: model.composerAccountRef,
           }),
         ],
       ]
@@ -1373,24 +1427,29 @@ export const update = (model: Model, message: Message): Result => {
         followUp,
       )
       const verify = parseVerifyLines(model.spawnVerify)
+      const worktreePath =
+        model.composerRepoPath.trim() === "" ? null : model.composerRepoPath.trim()
+      const continuing = Model.make({
+        ...model,
+        composerPending: true,
+        composerReply: "",
+        composerStatus: { text: "continuing the thread…", tone: "info" },
+        composerTurns: [...model.composerTurns, followUp],
+      })
+      // CS-A1: continuation turns honor the selected runtime, including Apple FM.
+      if (model.spawnAdapter === "apple_fm") {
+        return [continuing, [SpawnAppleFmComposerTurn({ objective, worktreePath })]]
+      }
       return [
-        Model.make({
-          ...model,
-          composerPending: true,
-          composerReply: "",
-          composerStatus: { text: "continuing the thread…", tone: "info" },
-          composerTurns: [...model.composerTurns, followUp],
-        }),
+        continuing,
         [
           SpawnComposerTurn({
             adapter: model.spawnAdapter,
             objective,
             verify,
             lane: model.spawnLane,
-            worktreePath:
-              model.composerRepoPath.trim() === ""
-                ? null
-                : model.composerRepoPath.trim(),
+            worktreePath,
+            accountRef: model.composerAccountRef,
           }),
         ],
       ]
@@ -1406,7 +1465,9 @@ export const update = (model: Model, message: Message): Result => {
           composerPending: false,
           spawnObjective: "",
         }),
-        noCommands,
+        // CS-A1: a fresh thread reloads the account list so a newly added
+        // account is pickable without re-navigating.
+        [LoadManagedAccounts()],
       ]
     case "SucceededComposerTurn":
       return [
@@ -1429,5 +1490,128 @@ export const update = (model: Model, message: Message): Result => {
         }),
         noCommands,
       ]
+
+    // ── CS-A1: account management (node-local dev.accounts) ─────────────────────
+    case "ClickedRefreshManagedAccounts":
+      return [
+        Model.make({
+          ...model,
+          managedAccountsPending: true,
+          managedAccountsStatus: { text: "loading accounts...", tone: "info" },
+        }),
+        [LoadManagedAccounts()],
+      ]
+    case "GotManagedAccounts": {
+      const projection = message.projection as {
+        ok: boolean
+        accounts: ReadonlyArray<unknown>
+        error?: string
+      }
+      return [
+        Model.make({
+          ...model,
+          managedAccounts: message.projection,
+          managedAccountsPending: false,
+          managedAccountsStatus: projection.ok
+            ? { text: "", tone: "idle" }
+            : { text: projection.error ?? "could not load accounts", tone: "error" },
+        }),
+        noCommands,
+      ]
+    }
+    case "ChangedAddAccountRef":
+      return [Model.make({ ...model, addAccountRef: message.value }), noCommands]
+    case "ChangedAddAccountProvider":
+      return [Model.make({ ...model, addAccountProvider: message.provider }), noCommands]
+    case "ChangedAddAccountHome":
+      return [Model.make({ ...model, addAccountHome: message.value }), noCommands]
+    case "ChangedAddAccountPriority":
+      return [Model.make({ ...model, addAccountPriority: message.value }), noCommands]
+    case "ClickedAddManagedAccount": {
+      const ref = model.addAccountRef.trim()
+      const home = model.addAccountHome.trim()
+      if (ref === "" || home === "") {
+        return [
+          Model.make({
+            ...model,
+            managedAccountsStatus: { text: "ref and home are required", tone: "error" },
+          }),
+          noCommands,
+        ]
+      }
+      const priorityRaw = model.addAccountPriority.trim()
+      const priorityParsed = priorityRaw === "" ? null : Number(priorityRaw)
+      if (priorityParsed !== null && !Number.isFinite(priorityParsed)) {
+        return [
+          Model.make({
+            ...model,
+            managedAccountsStatus: { text: "priority must be a number", tone: "error" },
+          }),
+          noCommands,
+        ]
+      }
+      return [
+        Model.make({
+          ...model,
+          managedAccountsPending: true,
+          managedAccountsStatus: { text: "adding account...", tone: "info" },
+        }),
+        [
+          AddManagedAccount({
+            ref,
+            provider: model.addAccountProvider,
+            home,
+            priority: priorityParsed,
+          }),
+        ],
+      ]
+    }
+    case "ClickedRemoveManagedAccount":
+      return [
+        Model.make({
+          ...model,
+          managedAccountsPending: true,
+          managedAccountsStatus: { text: "removing account...", tone: "info" },
+        }),
+        [RemoveManagedAccount({ ref: message.ref, provider: message.provider })],
+      ]
+    case "ClickedBumpManagedAccountPriority":
+      return [
+        Model.make({
+          ...model,
+          managedAccountsPending: true,
+          managedAccountsStatus: { text: "updating priority...", tone: "info" },
+        }),
+        [
+          SetManagedAccountPriority({
+            ref: message.ref,
+            provider: message.provider,
+            priority: message.priority,
+          }),
+        ],
+      ]
+    case "SettledManagedAccountMutation": {
+      const projection = message.projection as {
+        ok: boolean
+        accounts: ReadonlyArray<unknown>
+        error?: string
+      }
+      // A successful mutation returns the refreshed list; clear the add-form on
+      // success so the surface is ready for the next entry.
+      return [
+        Model.make({
+          ...model,
+          managedAccounts: message.projection,
+          managedAccountsPending: false,
+          managedAccountsStatus: projection.ok
+            ? { text: "saved", tone: "success" }
+            : { text: projection.error ?? "account update failed", tone: "error" },
+          ...(projection.ok
+            ? { addAccountRef: "", addAccountHome: "", addAccountPriority: "" }
+            : {}),
+        }),
+        noCommands,
+      ]
+    }
   }
 }

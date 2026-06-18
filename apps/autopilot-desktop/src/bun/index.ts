@@ -27,6 +27,12 @@ import {
 } from "../shared/builtin-agent"
 import { projectInstallReadiness } from "../shared/install-readiness"
 import {
+  addManagedAccount,
+  listManagedAccounts,
+  removeManagedAccount,
+  setManagedAccountPriority,
+} from "./account-management"
+import {
   cancelSession,
   deployToCloud,
   fetchAppleFmReadiness,
@@ -425,6 +431,57 @@ async function startLocalAppleFmSession(): Promise<AppleFmSessionStartResponse> 
   }
 }
 
+// CS-A1: start a bounded local Apple FM coding session from the composer. Like
+// startLocalAppleFmSession, but carries the composer's objective as the prompt
+// and an optional repo/worktree path. Bun still owns the control token and the
+// safety policy is appended to the prompt (refuse shell/network/out-of-workspace),
+// keeping local Apple FM bounded the same way the Agent-pane card does.
+async function startComposerAppleFmSession(input: {
+  objective: string
+  worktreePath?: string
+}): Promise<AppleFmSessionStartResponse> {
+  const readiness = await appleFmReadinessProjection()
+  const token = tokenForCommand()
+  const worktreePath =
+    input.worktreePath && input.worktreePath.trim() !== ""
+      ? input.worktreePath.trim()
+      : builtInAgentWorktreePath()
+  const objective = input.objective.trim()
+  if (!readiness.ok || token === null || worktreePath === null || objective.length === 0) {
+    return {
+      ok: false,
+      sessionRef: "",
+      readiness,
+      blockerRefs:
+        objective.length === 0
+          ? ["blocker.autopilot.apple_fm.objective_empty"]
+          : readiness.blockerRefs.length > 0
+            ? readiness.blockerRefs
+            : ["blocker.autopilot.apple_fm.worktree_unavailable"],
+      error:
+        objective.length === 0
+          ? "objective is required"
+          : readiness.message ?? readiness.unavailableReason ?? "local Apple FM unavailable",
+    }
+  }
+  const prompt = [
+    objective,
+    "",
+    "Run entirely locally through Apple Foundation Models, scoped to the workspace. Refuse shell, write outside the workspace, network, and deployment requests.",
+  ].join("\n")
+  const result = await startAppleFmControlSession({
+    baseUrl: controlBaseUrl,
+    token,
+    prompt,
+    timeoutSeconds: 300,
+    worktreePath,
+  })
+  return {
+    ...result,
+    readiness,
+  }
+}
+
 const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
   handlers: {
     requests: {
@@ -580,6 +637,41 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           ...(params.lane ? { lane: params.lane } : {}),
           ...(params.timeoutSeconds ? { timeoutSeconds: params.timeoutSeconds } : {}),
           ...(params.worktreePath ? { worktreePath: params.worktreePath } : {}),
+          // CS-A1: per-session provider account. The node resolves it against
+          // its registry and rejects an unknown ref.
+          ...(params.accountRef ? { accountRef: params.accountRef } : {}),
+        })
+      },
+      // CS-A1: spawn a bounded local Apple FM coding session from the composer.
+      // Apple FM uses its own control verb (apple_fm.session.start), so it is
+      // its own spawn-adapter path rather than a session.spawn adapter.
+      async spawnAppleFmSession(params) {
+        return startComposerAppleFmSession(params)
+      },
+      // CS-A1 account management — read/add/remove/set-priority against the
+      // node's local dev.accounts config. Bun owns the home + config path.
+      async listManagedAccounts() {
+        return listManagedAccounts(resolveHome())
+      },
+      async addManagedAccount(params) {
+        return addManagedAccount(resolveHome(), {
+          ref: params.ref,
+          provider: params.provider,
+          home: params.home,
+          ...(typeof params.priority === "number" ? { priority: params.priority } : {}),
+        })
+      },
+      async removeManagedAccount(params) {
+        return removeManagedAccount(resolveHome(), {
+          ref: params.ref,
+          provider: params.provider,
+        })
+      },
+      async setManagedAccountPriority(params) {
+        return setManagedAccountPriority(resolveHome(), {
+          ref: params.ref,
+          provider: params.provider,
+          priority: params.priority,
         })
       },
     },

@@ -282,7 +282,10 @@ describe("update reducer (CL-53)", () => {
     expect(model.pane).toBe("settings")
     expect(model.expandedEvents).toEqual([])
     expect(model.installReadinessPending).toBe(true)
-    expect(commands).toHaveLength(1)
+    // CS-A1: Settings also surfaces accounts, so it loads install readiness +
+    // the managed-account registry.
+    expect(model.managedAccountsPending).toBe(true)
+    expect(commands).toHaveLength(2)
   })
 
   test("NavigatedTo fullscreen training pane refreshes training projections", () => {

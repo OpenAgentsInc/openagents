@@ -53,6 +53,7 @@ import type {
   IntentRow,
   BuiltInAgentReadinessResponse,
   InstallReadinessResponse,
+  ManagedAccountRow,
   NodeStateMessage,
   PromiseSurfacingReadinessResponse,
   PromiseSurfacingResponse,
@@ -84,6 +85,15 @@ import {
   ChangedSpawnObjective,
   ChangedSpawnVerify,
   ChangedSpawnLane,
+  ChangedAddAccountHome,
+  ChangedAddAccountPriority,
+  ChangedAddAccountProvider,
+  ChangedAddAccountRef,
+  ClickedAddManagedAccount,
+  ClickedBumpManagedAccountPriority,
+  ClickedRefreshManagedAccounts,
+  ClickedRemoveManagedAccount,
+  SelectedComposerAccount,
   ClickedCancelSession,
   ClickedComposerNewThread,
   ClickedComposerReply,
@@ -153,6 +163,7 @@ import {
   modelAppleFmReadiness,
   modelBuiltInAgentReadiness,
   modelInstallReadiness,
+  modelManagedAccounts,
   modelPromiseSurfacingReadiness,
   modelPromiseSurfacingResult,
   modelNode,
@@ -442,12 +453,23 @@ const cloudCard = (model: Model): Html => {
 }
 
 // AccountRow (rpc.ts) → AccountSummary (autopilot-ui). Read-only display via the
-// shared AccountList component.
+// shared AccountList component. CS-A1: use the node's stable accountRefHash and
+// keep readiness state honest (ready vs blocked).
 const toAccountSummary = (row: AccountRow): AccountSummary => ({
-  accountRefHash: `${row.provider}:${row.homeState}`,
+  accountRefHash: row.accountRefHash,
   provider: row.provider,
   state: row.ready ? "ready" : "quota_blocked",
 })
+
+// CS-A1: a short, public-safe label for an account in the per-session picker.
+// Prefer the explicit registry ref; fall back to provider + default-home note.
+const accountPickerLabel = (row: AccountRow): string => {
+  const base =
+    row.accountRef !== null
+      ? `${row.provider} · ${row.accountRef}`
+      : `${row.provider} · default home`
+  return row.ready ? base : `${base} (blocked)`
+}
 
 const accountsSection = (node: NodeStateMessage): Html => {
   const accounts = node.accounts ?? []
@@ -3901,36 +3923,101 @@ const composerTranscript = (
   return eventTimeline(model, shown)
 }
 
+// CS-A1: short label for a spawn-adapter runtime option.
+const SPAWN_ADAPTER_LABEL: Record<"codex" | "claude_agent" | "apple_fm", string> = {
+  codex: "codex",
+  claude_agent: "claude",
+  apple_fm: "Apple FM",
+}
+
+// CS-A1: per-session account picker. Lists the node's codex/claude accounts
+// (from the live accounts.list projection) for the selected runtime so a
+// coding turn can run under a specific provider account (threaded through
+// session.spawn's accountRef). Hidden for Apple FM (no per-account selection).
+const composerAccountPicker = (model: Model): Html => {
+  if (model.spawnAdapter === "apple_fm") return h.empty
+  const node = modelNode(model)
+  const accounts = (node?.accounts ?? []).filter(
+    (row) => row.provider === model.spawnAdapter && row.accountRef !== null,
+  )
+  if (accounts.length === 0) return h.empty
+  const defaultActive = model.composerAccountRef === null
+  return h.div(
+    [],
+    [
+      h.label([cls("field-label")], ["Account"]),
+      h.div(
+        [cls("adapter-toggle"), h.DataAttribute("autopilot-composer-account-picker", "")],
+        [
+          h.button(
+            [
+              cls(`adapter-btn${defaultActive ? " active" : ""}`),
+              h.Type("button"),
+              h.OnClick(SelectedComposerAccount({ accountRef: null })),
+            ],
+            ["Default"],
+          ),
+          ...accounts.map((row) =>
+            h.button(
+              [
+                cls(
+                  `adapter-btn${model.composerAccountRef === row.accountRef ? " active" : ""}`,
+                ),
+                h.Type("button"),
+                h.DataAttribute("autopilot-composer-account-ref", row.accountRef ?? ""),
+                h.OnClick(
+                  SelectedComposerAccount({ accountRef: row.accountRef }),
+                ),
+              ],
+              [accountPickerLabel(row)],
+            ),
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 const composerSpawnForm = (model: Model): Html =>
   card("Start a coding session", [
     h.label([cls("field-label")], ["Runtime"]),
     h.div(
       [cls("adapter-toggle")],
-      (["codex", "claude_agent"] as const).map((adapter) =>
+      (["codex", "claude_agent", "apple_fm"] as const).map((adapter) =>
         h.button(
           [
             cls(`adapter-btn${model.spawnAdapter === adapter ? " active" : ""}`),
             h.Type("button"),
             h.OnClick(ChangedSpawnAdapter({ adapter })),
           ],
-          [adapter],
+          [SPAWN_ADAPTER_LABEL[adapter]],
         ),
       ),
     ),
-    h.label([cls("field-label")], ["Execution lane"]),
-    h.div(
-      [cls("adapter-toggle")],
-      (["auto", "local", "cloud-gcp", "cloud-shc"] as const).map((lane) =>
-        h.button(
+    composerAccountPicker(model),
+    // Apple FM runs locally only — the execution-lane selector applies to the
+    // codex/claude session.spawn path.
+    model.spawnAdapter === "apple_fm"
+      ? h.empty
+      : h.div(
+          [],
           [
-            cls(`adapter-btn${model.spawnLane === lane ? " active" : ""}`),
-            h.Type("button"),
-            h.OnClick(ChangedSpawnLane({ lane })),
+            h.label([cls("field-label")], ["Execution lane"]),
+            h.div(
+              [cls("adapter-toggle")],
+              (["auto", "local", "cloud-gcp", "cloud-shc"] as const).map((lane) =>
+                h.button(
+                  [
+                    cls(`adapter-btn${model.spawnLane === lane ? " active" : ""}`),
+                    h.Type("button"),
+                    h.OnClick(ChangedSpawnLane({ lane })),
+                  ],
+                  [spawnLaneLabel(lane)],
+                ),
+              ),
+            ),
           ],
-          [spawnLaneLabel(lane)],
         ),
-      ),
-    ),
     h.label([cls("field-label")], ["Repo / worktree path (optional)"]),
     h.input([
       cls("text-input mono"),
@@ -4086,6 +4173,164 @@ const composerActiveSession = (model: Model): Html => {
   )
 }
 
+// CS-A1: one row in the account-management table — ref, provider, home health,
+// priority (with bump/lower), and a remove action. Edits the node's local
+// dev.accounts config through the management RPC verbs.
+const managedAccountRowView = (row: ManagedAccountRow): Html =>
+  h.div(
+    [
+      cls("managed-account-row"),
+      h.DataAttribute("autopilot-managed-account-ref", row.ref),
+    ],
+    [
+      h.code([cls("managed-account-ref mono")], [row.ref]),
+      h.span([cls("managed-account-provider")], [row.provider]),
+      h.span(
+        [cls(`managed-account-home ${row.homePresent ? "present" : "missing"}`)],
+        [row.homePresent ? "home present" : "home missing"],
+      ),
+      h.span(
+        [cls("managed-account-priority")],
+        [row.priority === null ? "priority: —" : `priority: ${row.priority}`],
+      ),
+      h.div(
+        [cls("managed-account-actions")],
+        [
+          h.button(
+            [
+              cls("link-button"),
+              h.Type("button"),
+              h.OnClick(
+                ClickedBumpManagedAccountPriority({
+                  ref: row.ref,
+                  provider: row.provider,
+                  priority: (row.priority ?? 0) - 1,
+                }),
+              ),
+            ],
+            ["▲ priority"],
+          ),
+          h.button(
+            [
+              cls("link-button"),
+              h.Type("button"),
+              h.OnClick(
+                ClickedBumpManagedAccountPriority({
+                  ref: row.ref,
+                  provider: row.provider,
+                  priority: (row.priority ?? 0) + 1,
+                }),
+              ),
+            ],
+            ["▼ priority"],
+          ),
+          h.button(
+            [
+              cls("cancel-button"),
+              h.Type("button"),
+              h.OnClick(
+                ClickedRemoveManagedAccount({ ref: row.ref, provider: row.provider }),
+              ),
+            ],
+            ["Remove"],
+          ),
+        ],
+      ),
+    ],
+  )
+
+// CS-A1: account-management surface — add / select / priority / quota over the
+// node's local dev.accounts config. Turns the read-only AccountList into a
+// managed registry (audit gap #2). Readiness/quota stays the live accounts.list
+// projection (rendered via the shared AccountList); the managed table here owns
+// add/remove/priority.
+const accountManagementCard = (model: Model): Html => {
+  const managed = modelManagedAccounts(model)
+  const rows = managed?.accounts ?? []
+  const node = modelNode(model)
+  const liveAccounts = node?.accounts ?? []
+  return card("Accounts", [
+    h.p([cls("card-body")], [
+      "Manage which provider accounts this node can run coding sessions under. Priority orders dispatch (lower runs first).",
+    ]),
+    model.managedAccountsStatus.tone !== "idle"
+      ? h.p(
+          [cls(`spawn-status spawn-${model.managedAccountsStatus.tone}`)],
+          [model.managedAccountsStatus.text],
+        )
+      : h.empty,
+    // Live readiness/quota for every discovered account (shared component).
+    liveAccounts.length > 0
+      ? h.div(
+          [cls("managed-account-readiness")],
+          [AccountList({ accounts: liveAccounts.map(toAccountSummary) })],
+        )
+      : h.empty,
+    // Managed registry rows (editable).
+    rows.length === 0
+      ? emptyLine("No managed accounts yet. Add one below.")
+      : h.div([cls("managed-account-list")], rows.map(managedAccountRowView)),
+    // Add-account form.
+    h.label([cls("field-label")], ["Add account"]),
+    h.div(
+      [cls("adapter-toggle")],
+      (["codex", "claude_agent"] as const).map((provider) =>
+        h.button(
+          [
+            cls(`adapter-btn${model.addAccountProvider === provider ? " active" : ""}`),
+            h.Type("button"),
+            h.OnClick(ChangedAddAccountProvider({ provider })),
+          ],
+          [provider === "claude_agent" ? "claude" : provider],
+        ),
+      ),
+    ),
+    h.input([
+      cls("text-input mono"),
+      h.Type("text"),
+      h.Placeholder("account ref — e.g. work, personal"),
+      h.Value(model.addAccountRef),
+      h.OnInput((value: string) => ChangedAddAccountRef({ value })),
+    ]),
+    h.input([
+      cls("text-input mono"),
+      h.Type("text"),
+      h.Placeholder("home path — e.g. ~/.codex-work"),
+      h.Value(model.addAccountHome),
+      h.OnInput((value: string) => ChangedAddAccountHome({ value })),
+    ]),
+    h.input([
+      cls("text-input mono"),
+      h.Type("text"),
+      h.Placeholder("priority (optional, lower runs first)"),
+      h.Value(model.addAccountPriority),
+      h.OnInput((value: string) => ChangedAddAccountPriority({ value })),
+    ]),
+    h.div(
+      [cls("composer-reply-actions")],
+      [
+        h.button(
+          [
+            cls("primary-button"),
+            h.Type("button"),
+            h.Disabled(model.managedAccountsPending),
+            h.OnClick(ClickedAddManagedAccount()),
+          ],
+          [model.managedAccountsPending ? "Saving…" : "Add account"],
+        ),
+        h.button(
+          [
+            cls("link-button"),
+            h.Type("button"),
+            h.OnClick(ClickedRefreshManagedAccounts()),
+          ],
+          ["Refresh"],
+        ),
+      ],
+    ),
+  ])
+}
+
 const composerPane = (model: Model): Html => {
   const node = modelNode(model)
   const hasActive = model.composerSessionRef !== null
@@ -4099,6 +4344,9 @@ const composerPane = (model: Model): Html => {
           ])
         : h.empty,
       hasActive ? composerActiveSession(model) : composerSpawnForm(model),
+      // CS-A1: account management lives alongside the composer's spawn form so
+      // the per-session picker and the managed registry are one surface.
+      hasActive ? h.empty : accountManagementCard(model),
     ],
   )
 }
