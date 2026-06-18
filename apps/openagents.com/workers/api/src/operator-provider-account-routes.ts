@@ -1805,16 +1805,30 @@ export const makeOperatorProviderAccountRoutes = <
 >(
   dependencies: OperatorProviderAccountDependencies<Bindings>,
 ) => {
-  const startDeviceLogin = async (
+  const rejectUnlessOperatorAdminRoute = async (
     request: Request,
     env: Bindings,
-  ): Promise<HttpResponse> => {
-    if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
+    allowedMethod: string,
+  ): Promise<HttpResponse | undefined> => {
+    if (request.method !== allowedMethod) {
+      return methodNotAllowed([allowedMethod])
     }
 
     if (!(await dependencies.requireAdminApiToken(request, env))) {
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    return undefined
+  }
+
+  const startDeviceLogin = async (
+    request: Request,
+    env: Bindings,
+  ): Promise<HttpResponse> => {
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
+
+    if (rejected !== undefined) {
+      return rejected
     }
 
     const body = await readJsonObject(request).catch(
@@ -1888,12 +1902,10 @@ export const makeOperatorProviderAccountRoutes = <
     env: Bindings,
     attemptId: string,
   ): Promise<HttpResponse> => {
-    if (request.method !== 'GET') {
-      return methodNotAllowed(['GET'])
-    }
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'GET')
 
-    if (!(await dependencies.requireAdminApiToken(request, env))) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    if (rejected !== undefined) {
+      return rejected
     }
 
     const repository = repositoryFor(env, dependencies)
@@ -2089,12 +2101,10 @@ export const makeOperatorProviderAccountRoutes = <
     request: Request,
     env: Bindings,
   ): Promise<HttpResponse> => {
-    if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
-    }
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
 
-    if (!(await dependencies.requireAdminApiToken(request, env))) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    if (rejected !== undefined) {
+      return rejected
     }
 
     const body = await readJsonObject(request).catch(
@@ -2191,12 +2201,10 @@ export const makeOperatorProviderAccountRoutes = <
     request: Request,
     env: Bindings,
   ): Promise<HttpResponse> => {
-    if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
-    }
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
 
-    if (!(await dependencies.requireAdminApiToken(request, env))) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    if (rejected !== undefined) {
+      return rejected
     }
 
     const body = await readJsonObject(request).catch(
@@ -2296,12 +2304,10 @@ export const makeOperatorProviderAccountRoutes = <
     request: Request,
     env: Bindings,
   ): Promise<HttpResponse> => {
-    if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
-    }
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
 
-    if (!(await dependencies.requireAdminApiToken(request, env))) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    if (rejected !== undefined) {
+      return rejected
     }
 
     const body = await readJsonObject(request).catch(
@@ -2419,12 +2425,10 @@ export const makeOperatorProviderAccountRoutes = <
     request: Request,
     env: Bindings,
   ): Promise<HttpResponse> => {
-    if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
-    }
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
 
-    if (!(await dependencies.requireAdminApiToken(request, env))) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    if (rejected !== undefined) {
+      return rejected
     }
 
     const body = await readJsonObject(request).catch(
@@ -2547,12 +2551,10 @@ export const makeOperatorProviderAccountRoutes = <
     request: Request,
     env: Bindings,
   ): Promise<HttpResponse> => {
-    if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
-    }
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
 
-    if (!(await dependencies.requireAdminApiToken(request, env))) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    if (rejected !== undefined) {
+      return rejected
     }
 
     const body = await readJsonObject(request).catch(
@@ -2585,12 +2587,10 @@ export const makeOperatorProviderAccountRoutes = <
     request: Request,
     env: Bindings,
   ): Promise<HttpResponse> => {
-    if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
-    }
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
 
-    if (!(await dependencies.requireAdminApiToken(request, env))) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    if (rejected !== undefined) {
+      return rejected
     }
 
     const body = await readJsonObject(request).catch(
@@ -2621,12 +2621,10 @@ export const makeOperatorProviderAccountRoutes = <
     request: Request,
     env: Bindings,
   ): Promise<HttpResponse> => {
-    if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
-    }
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
 
-    if (!(await dependencies.requireAdminApiToken(request, env))) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    if (rejected !== undefined) {
+      return rejected
     }
 
     const body = await readJsonObject(request).catch(
@@ -2657,12 +2655,10 @@ export const makeOperatorProviderAccountRoutes = <
     request: Request,
     env: Bindings,
   ): Promise<HttpResponse> => {
-    if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
-    }
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
 
-    if (!(await dependencies.requireAdminApiToken(request, env))) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    if (rejected !== undefined) {
+      return rejected
     }
 
     const body = await readJsonObject(request).catch(
@@ -2693,12 +2689,10 @@ export const makeOperatorProviderAccountRoutes = <
     request: Request,
     env: Bindings,
   ): Promise<HttpResponse> => {
-    if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
-    }
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
 
-    if (!(await dependencies.requireAdminApiToken(request, env))) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    if (rejected !== undefined) {
+      return rejected
     }
 
     const body = await readJsonObject(request).catch(
@@ -2732,12 +2726,10 @@ export const makeOperatorProviderAccountRoutes = <
     request: Request,
     env: Bindings,
   ): Promise<HttpResponse> => {
-    if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
-    }
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
 
-    if (!(await dependencies.requireAdminApiToken(request, env))) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    if (rejected !== undefined) {
+      return rejected
     }
 
     const body = await readJsonObject(request).catch(
