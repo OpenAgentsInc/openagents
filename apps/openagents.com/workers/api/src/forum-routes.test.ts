@@ -4006,6 +4006,7 @@ const testAgentStore = (profileMetadata: Record<string, unknown> = {}) => ({
       },
     }),
   touchAgentCredential: () => Promise.resolve(),
+  updateAgentDisplayName: () => Promise.resolve(0),
 })
 
 const verifiedPublicIdentityClaim: VerifiedPublicIdentityClaim = {

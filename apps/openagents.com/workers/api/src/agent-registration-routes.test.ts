@@ -30,6 +30,10 @@ class MemoryAgentRegistrationStore implements AgentRegistrationStore {
   ): Promise<void> {
     return Promise.resolve()
   }
+
+  updateAgentDisplayName(): Promise<number> {
+    return Promise.resolve(0)
+  }
 }
 
 describe('programmatic agent registration route', () => {

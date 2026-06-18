@@ -269,6 +269,9 @@ class MemoryAgentStore implements AgentRegistrationStore {
       : undefined
 
   touchAgentCredential = async () => {}
+
+
+  updateAgentDisplayName = async () => 0
 }
 
 const agentLookup = (

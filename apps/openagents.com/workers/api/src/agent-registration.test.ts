@@ -42,6 +42,10 @@ class MemoryAgentRegistrationStore implements AgentRegistrationStore {
 
     return Promise.resolve()
   }
+
+  updateAgentDisplayName(): Promise<number> {
+    return Promise.resolve(0)
+  }
 }
 
 const makeUuidFactory = (values: ReadonlyArray<string>) => {

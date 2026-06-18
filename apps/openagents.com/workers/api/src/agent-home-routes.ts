@@ -11,10 +11,13 @@ import {
 } from './agent-rate-limit-recovery'
 import {
   AGENT_TOKEN_PREFIX,
+  AgentDisplayName,
   type AgentRegistrationStore,
+  type AgentUserRecord,
   type ProgrammaticAgentSession,
   authenticateProgrammaticAgent,
   makeD1AgentRegistrationStore,
+  sha256Hex,
 } from './agent-registration'
 import {
   AGENT_SEARCH_ENDPOINT,
@@ -31,7 +34,7 @@ import {
   noStoreJsonResponse,
   unauthorized,
 } from './http/responses'
-import { parseJsonRecord } from './json-boundary'
+import { parseJsonRecord, readJsonObject } from './json-boundary'
 import {
   OpenAgentsAgentOnboardingCanonicalUrl,
   OpenAgentsAgentOnboardingSha256,
@@ -39,7 +42,7 @@ import {
 } from './openagents-agent-onboarding'
 import { OpenAgentsCapabilityManifestEndpoint } from './openagents-capability-manifest'
 import { OpenAgentsOpenApiEndpoint } from './openagents-openapi'
-import { currentIsoTimestamp } from './runtime-primitives'
+import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 
 const decodeCustomerOrderGrant = S.decodeUnknownOption(CustomerOrderAgentGrant)
 
@@ -853,6 +856,164 @@ export const handleProgrammaticAgentHome = async (
   return withAgentRateLimitHeaders(
     noStoreJsonResponse({
       home: buildProgrammaticAgentHome(session, nowIso, forumNotifications),
+    }),
+  )
+}
+
+const decodeDisplayName = S.decodeUnknownOption(AgentDisplayName)
+
+// #5333: public-safe agent profile projection for the self-serve rename
+// response. Mirrors `GET /api/agents/me` (user row + credential prefix). It
+// must never carry the bearer token, token hash, wallet material, or private
+// metadata.
+const publicSafeAgentProfile = (
+  user: AgentUserRecord,
+  credential: ProgrammaticAgentSession['credential'],
+) => ({
+  credential: {
+    id: credential.id,
+    lastUsedAt: credential.lastUsedAt,
+    tokenPrefix: credential.tokenPrefix,
+  },
+  user,
+})
+
+// #5333: self-serve agent displayName rename.
+//
+// Authenticates the same way `GET /api/agents/me` does (agent bearer token) and
+// updates ONLY the authenticated agent's own `users.display_name`. That row is
+// the source `session.user.displayName` reads from, so the new name propagates
+// to `GET /api/agents/me`, Pylon registration/heartbeat projections
+// (`pylon-api-routes` builds the projection displayName from
+// `session.user.displayName`), and Forum actor context for NEW posts. Existing
+// Forum posts snapshot the author displayName into `actor_json` at write time,
+// so they keep the old name; that is reported, not bulk-backfilled here.
+//
+// Typed errors: 401 (no/invalid token), 400 (missing Idempotency-Key or invalid
+// name), 404 (agent user row not updatable). The update is self-only because the
+// userId comes from the authenticated session, never from the request body.
+export const handleProgrammaticAgentSelfUpdate = async (
+  request: Request,
+  db: D1Database,
+  input: Readonly<{
+    agentStore?: AgentRegistrationStore
+    nowIso?: () => string
+    makeReceiptNonce?: () => string
+  }> = {},
+) => {
+  if (request.method !== 'PATCH') {
+    return methodNotAllowed(['GET', 'PATCH'])
+  }
+
+  const bearerToken = bearerTokenFromRequest(request)
+
+  if (bearerToken === undefined) {
+    return withAgentRateLimitHeaders(unauthorized())
+  }
+
+  const store = input.agentStore ?? makeD1AgentRegistrationStore(db)
+  const session = await authenticateProgrammaticAgent(
+    store,
+    bearerToken,
+    input.nowIso,
+  )
+
+  if (session === undefined) {
+    return withAgentRateLimitHeaders(unauthorized())
+  }
+
+  // Match the write-idempotency contract used by every other agent/pylon write.
+  const idempotencyKey = request.headers.get('Idempotency-Key')?.trim()
+
+  if (idempotencyKey === undefined || idempotencyKey === '') {
+    return withAgentRateLimitHeaders(
+      noStoreJsonResponse(
+        {
+          error: 'idempotency_key_required',
+          reason: 'Idempotency-Key header is required.',
+        },
+        { status: 400 },
+      ),
+    )
+  }
+
+  const body = await readJsonObject(request).catch(
+    (): Record<string, unknown> => ({}),
+  )
+  const displayName = Option.getOrUndefined(decodeDisplayName(body.displayName))
+
+  if (displayName === undefined) {
+    return withAgentRateLimitHeaders(
+      noStoreJsonResponse(
+        {
+          error: 'invalid_display_name',
+          reason:
+            'displayName must be a non-empty trimmed string of at most 120 characters.',
+        },
+        { status: 400 },
+      ),
+    )
+  }
+
+  const nowIso = input.nowIso?.() ?? currentIsoTimestamp()
+
+  // Idempotent repeat / no-op rename: the row already holds this name. Report
+  // success without a spurious write so retries are safe.
+  if (session.user.displayName === displayName) {
+    return withAgentRateLimitHeaders(
+      noStoreJsonResponse({
+        agent: publicSafeAgentProfile(
+          { ...session.user, displayName, updatedAt: session.user.updatedAt },
+          session.credential,
+        ),
+        receipt: {
+          changed: false,
+          ref: `agent_display_name_update.${session.user.id}.noop`,
+        },
+        updated: true,
+      }),
+    )
+  }
+
+  const changes = await store.updateAgentDisplayName(
+    session.user.id,
+    displayName,
+    nowIso,
+  )
+
+  if (changes < 1) {
+    return withAgentRateLimitHeaders(
+      noStoreJsonResponse(
+        {
+          error: 'agent_not_found',
+          reason: 'No updatable active agent user row was found.',
+        },
+        { status: 404 },
+      ),
+    )
+  }
+
+  const updatedUser: AgentUserRecord = {
+    ...session.user,
+    displayName,
+    updatedAt: nowIso,
+  }
+  // Public-safe audit receipt ref: a SHA-256 digest over self userId, new name,
+  // timestamp, and a random nonce. Traceable without leaking the token, hash,
+  // or any private material.
+  const receiptNonce = input.makeReceiptNonce?.() ?? randomUuid()
+  const receiptDigest = await sha256Hex(
+    `agent_display_name_update.${session.user.id}.${displayName}.${nowIso}.${receiptNonce}`,
+  )
+
+  return withAgentRateLimitHeaders(
+    noStoreJsonResponse({
+      agent: publicSafeAgentProfile(updatedUser, session.credential),
+      receipt: {
+        changed: true,
+        ref: `agent_display_name_update.${receiptDigest.slice(0, 32)}`,
+      },
+      updated: true,
     }),
   )
 }

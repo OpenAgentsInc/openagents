@@ -908,6 +908,10 @@ class CustomerOrderAgentStore implements AgentRegistrationStore {
 
     return Promise.resolve()
   }
+
+  updateAgentDisplayName(): Promise<number> {
+    return Promise.resolve(0)
+  }
 }
 
 const agentStoreForOwner = (

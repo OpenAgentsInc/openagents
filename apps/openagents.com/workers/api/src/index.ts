@@ -31,7 +31,10 @@ import {
   handleAgentBalancePreferencesApi,
 } from './agent-balance-routes'
 import { makeAgentGoalRoutes } from './agent-goal-routes'
-import { handleProgrammaticAgentHome } from './agent-home-routes'
+import {
+  handleProgrammaticAgentHome,
+  handleProgrammaticAgentSelfUpdate,
+} from './agent-home-routes'
 import {
   makeAgentOwnerClaimRoutes,
   makeD1AgentOwnerClaimStore,
@@ -5912,8 +5915,15 @@ const handleProgrammaticAgentMe = async (
   request: Request,
   env: Env,
 ): Promise<Response> => {
+  // #5333: self-serve agent displayName rename lives on PATCH /api/agents/me,
+  // the same agent-self surface that GET reads from. GET keeps returning the
+  // identity projection; PATCH updates the agent's own user row.
+  if (request.method === 'PATCH') {
+    return handleProgrammaticAgentSelfUpdate(request, openAgentsDatabase(env))
+  }
+
   if (request.method !== 'GET') {
-    return methodNotAllowed(['GET'])
+    return methodNotAllowed(['GET', 'PATCH'])
   }
 
   const bearerToken = readBearerToken(request)

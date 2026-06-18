@@ -452,6 +452,7 @@ const agentStoreFor = (userId: string): AgentRegistrationStore => ({
       user: sessionFor(userId).user,
     }),
   touchAgentCredential: () => Promise.resolve(),
+  updateAgentDisplayName: () => Promise.resolve(0),
 })
 
 const route = async (

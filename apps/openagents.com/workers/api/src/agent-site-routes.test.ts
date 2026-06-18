@@ -638,6 +638,9 @@ class MemoryAgentSiteStore implements AgentRegistrationStore {
       : undefined
 
   touchAgentCredential = async () => {}
+
+
+  updateAgentDisplayName = async () => 0
 }
 
 describe('agent Site routes', () => {

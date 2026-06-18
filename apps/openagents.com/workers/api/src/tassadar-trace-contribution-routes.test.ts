@@ -72,6 +72,7 @@ const makeAgentStore = (
           },
     ),
   touchAgentCredential: () => Promise.resolve(),
+  updateAgentDisplayName: () => Promise.resolve(0),
 })
 
 const leaseRecord = (

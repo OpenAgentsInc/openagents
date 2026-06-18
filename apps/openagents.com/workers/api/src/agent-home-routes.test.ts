@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   buildProgrammaticAgentHome,
   handleProgrammaticAgentHome,
+  handleProgrammaticAgentSelfUpdate,
 } from './agent-home-routes'
 import {
   AGENT_TOKEN_PREFIX,
@@ -10,6 +11,10 @@ import {
   type AgentRegistrationStore,
   sha256Hex,
 } from './agent-registration'
+import {
+  buildPylonApiRegistrationRecord,
+  publicPylonApiRegistrationProjection,
+} from './pylon-api'
 
 const agentLookup = (
   metadata: Record<string, unknown> = {},
@@ -31,23 +36,56 @@ const agentLookup = (
 
 class MemoryAgentStore implements AgentRegistrationStore {
   readonly touched: Array<string> = []
+  readonly displayNameUpdates: Array<{
+    displayName: string
+    updatedAt: string
+    userId: string
+  }> = []
+
+  private lookup: AgentCredentialLookup | undefined
 
   constructor(
     private readonly input: Readonly<{
       lookup?: AgentCredentialLookup
       token: string
+      // When false, updateAgentDisplayName reports 0 rows changed so the route
+      // can be exercised against a missing/non-updatable agent row (404 path).
+      updatable?: boolean
     }>,
-  ) {}
+  ) {
+    this.lookup = input.lookup
+  }
 
   createAgentRegistration = async () => {}
 
   findAgentByTokenHash = async (tokenHash: string) =>
-    tokenHash === (await sha256Hex(this.input.token))
-      ? this.input.lookup
-      : undefined
+    tokenHash === (await sha256Hex(this.input.token)) ? this.lookup : undefined
 
   touchAgentCredential = async (credentialId: string) => {
     this.touched.push(credentialId)
+  }
+
+  updateAgentDisplayName = async (
+    userId: string,
+    displayName: string,
+    updatedAt: string,
+  ) => {
+    if (this.input.updatable === false) {
+      return 0
+    }
+
+    this.displayNameUpdates.push({ displayName, updatedAt, userId })
+
+    // Mutate the in-memory lookup so a follow-up authenticated read reflects
+    // the rename, mirroring the live user-row source of truth.
+    if (this.lookup !== undefined) {
+      this.lookup = {
+        ...this.lookup,
+        user: { ...this.lookup.user, displayName, updatedAt },
+      }
+    }
+
+    return 1
   }
 }
 
@@ -445,5 +483,220 @@ describe('programmatic agent home', () => {
         {} as D1Database,
       ),
     ).resolves.toMatchObject({ status: 401 })
+  })
+})
+
+describe('programmatic agent self displayName update (#5333)', () => {
+  const token = `${AGENT_TOKEN_PREFIX}rename_token`
+
+  const renameRequest = (
+    body: unknown,
+    headers: Record<string, string> = {},
+  ): Request =>
+    new Request('https://openagents.com/api/agents/me', {
+      body: JSON.stringify(body),
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'rename-key-1',
+        ...headers,
+      },
+      method: 'PATCH',
+    })
+
+  test('renames self and propagates to GET /api/agents/me and pylon projection', async () => {
+    const store = new MemoryAgentStore({ lookup: agentLookup(), token })
+
+    const response = await handleProgrammaticAgentSelfUpdate(
+      renameRequest({ displayName: '  Trigger Pylon#1  ' }),
+      {} as D1Database,
+      {
+        agentStore: store,
+        makeReceiptNonce: () => 'fixed-nonce',
+        nowIso: () => '2026-06-18T00:00:00.000Z',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    const payload = (await response.json()) as {
+      agent: { user: { displayName: string; updatedAt: string } }
+      receipt: { changed: boolean; ref: string }
+      updated: boolean
+    }
+    // Trimmed by the shared AgentDisplayName constraint.
+    expect(payload.agent.user.displayName).toBe('Trigger Pylon#1')
+    expect(payload.agent.user.updatedAt).toBe('2026-06-18T00:00:00.000Z')
+    expect(payload.updated).toBe(true)
+    expect(payload.receipt.changed).toBe(true)
+    expect(payload.receipt.ref).toMatch(/^agent_display_name_update\.[a-f0-9]{32}$/)
+
+    // Self-only: the store recorded an update for the authenticated user id.
+    expect(store.displayNameUpdates).toEqual([
+      {
+        displayName: 'Trigger Pylon#1',
+        updatedAt: '2026-06-18T00:00:00.000Z',
+        userId: 'agent_home_user',
+      },
+    ])
+
+    // GET /api/agents/me reflects the renamed user row (it reads the same
+    // source the rename wrote to).
+    const meResponse = await handleProgrammaticAgentHome(
+      new Request('https://openagents.com/api/agents/home', {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      {} as D1Database,
+      { agentStore: store, nowIso: () => '2026-06-18T00:01:00.000Z' },
+    )
+    const mePayload = (await meResponse.json()) as {
+      home: { agent: { user: { displayName: string } } }
+    }
+    expect(mePayload.home.agent.user.displayName).toBe('Trigger Pylon#1')
+
+    // A Pylon registration projection built from the renamed session
+    // displayName carries the new name (pylon-api-routes builds the projection
+    // displayName from session.user.displayName).
+    const session = await store.findAgentByTokenHash(await sha256Hex(token))
+    const registration = buildPylonApiRegistrationRecord({
+      credentialId: 'agent_credential_home',
+      displayName: session?.user.displayName ?? '',
+      makeId: () => 'reg1',
+      nowIso: '2026-06-18T00:02:00.000Z',
+      ownerAgentTokenPrefix: `${AGENT_TOKEN_PREFIX}home`,
+      ownerAgentUserId: 'agent_home_user',
+      request: {},
+    })
+    const projection = publicPylonApiRegistrationProjection(
+      registration,
+      '2026-06-18T00:02:00.000Z',
+    )
+    expect(projection.displayName).toBe('Trigger Pylon#1')
+  })
+
+  test('repeated identical rename is idempotent and is a no-op write', async () => {
+    const store = new MemoryAgentStore({ lookup: agentLookup(), token })
+
+    const first = await handleProgrammaticAgentSelfUpdate(
+      renameRequest({ displayName: 'Renamed Agent' }),
+      {} as D1Database,
+      { agentStore: store, nowIso: () => '2026-06-18T00:00:00.000Z' },
+    )
+    expect(first.status).toBe(200)
+    expect(store.displayNameUpdates).toHaveLength(1)
+
+    const second = await handleProgrammaticAgentSelfUpdate(
+      renameRequest({ displayName: 'Renamed Agent' }),
+      {} as D1Database,
+      { agentStore: store, nowIso: () => '2026-06-18T00:05:00.000Z' },
+    )
+    expect(second.status).toBe(200)
+    const secondPayload = (await second.json()) as {
+      receipt: { changed: boolean; ref: string }
+      updated: boolean
+    }
+    expect(secondPayload.updated).toBe(true)
+    expect(secondPayload.receipt.changed).toBe(false)
+    expect(secondPayload.receipt.ref).toMatch(/\.noop$/)
+    // No second write was issued because the name already matched.
+    expect(store.displayNameUpdates).toHaveLength(1)
+  })
+
+  test('rejects an unauthenticated / non-self caller with 401', async () => {
+    const store = new MemoryAgentStore({ lookup: agentLookup(), token })
+
+    const response = await handleProgrammaticAgentSelfUpdate(
+      new Request('https://openagents.com/api/agents/me', {
+        body: JSON.stringify({ displayName: 'Hijack' }),
+        headers: {
+          Authorization: `Bearer ${AGENT_TOKEN_PREFIX}wrong_token`,
+          'Idempotency-Key': 'rename-key-1',
+        },
+        method: 'PATCH',
+      }),
+      {} as D1Database,
+      { agentStore: store },
+    )
+
+    expect(response.status).toBe(401)
+    expect(store.displayNameUpdates).toHaveLength(0)
+  })
+
+  test('rejects an invalid displayName with 400', async () => {
+    const store = new MemoryAgentStore({ lookup: agentLookup(), token })
+
+    const empty = await handleProgrammaticAgentSelfUpdate(
+      renameRequest({ displayName: '   ' }),
+      {} as D1Database,
+      { agentStore: store },
+    )
+    expect(empty.status).toBe(400)
+    await expect(empty.json()).resolves.toMatchObject({
+      error: 'invalid_display_name',
+    })
+
+    const tooLong = await handleProgrammaticAgentSelfUpdate(
+      renameRequest({ displayName: 'x'.repeat(121) }),
+      {} as D1Database,
+      { agentStore: store },
+    )
+    expect(tooLong.status).toBe(400)
+
+    expect(store.displayNameUpdates).toHaveLength(0)
+  })
+
+  test('rejects a missing Idempotency-Key with the standard 400', async () => {
+    const store = new MemoryAgentStore({ lookup: agentLookup(), token })
+
+    const response = await handleProgrammaticAgentSelfUpdate(
+      new Request('https://openagents.com/api/agents/me', {
+        body: JSON.stringify({ displayName: 'Renamed Agent' }),
+        headers: { Authorization: `Bearer ${token}` },
+        method: 'PATCH',
+      }),
+      {} as D1Database,
+      { agentStore: store },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'idempotency_key_required',
+    })
+    expect(store.displayNameUpdates).toHaveLength(0)
+  })
+
+  test('returns 404 when the agent user row is not updatable', async () => {
+    const store = new MemoryAgentStore({
+      lookup: agentLookup(),
+      token,
+      updatable: false,
+    })
+
+    const response = await handleProgrammaticAgentSelfUpdate(
+      renameRequest({ displayName: 'Renamed Agent' }),
+      {} as D1Database,
+      { agentStore: store, nowIso: () => '2026-06-18T00:00:00.000Z' },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'agent_not_found',
+    })
+  })
+
+  test('rejects non-PATCH methods with 405 advertising GET and PATCH', async () => {
+    const store = new MemoryAgentStore({ lookup: agentLookup(), token })
+
+    const response = await handleProgrammaticAgentSelfUpdate(
+      new Request('https://openagents.com/api/agents/me', {
+        headers: { Authorization: `Bearer ${token}` },
+        method: 'PUT',
+      }),
+      {} as D1Database,
+      { agentStore: store },
+    )
+
+    expect(response.status).toBe(405)
+    expect(response.headers.get('allow')).toBe('GET, PATCH')
   })
 })

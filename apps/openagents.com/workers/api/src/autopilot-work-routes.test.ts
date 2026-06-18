@@ -633,6 +633,7 @@ const agentStoreForScopes = (
       },
     }),
   touchAgentCredential: () => Promise.resolve(),
+  updateAgentDisplayName: () => Promise.resolve(0),
 })
 
 const pylonRegistration = (

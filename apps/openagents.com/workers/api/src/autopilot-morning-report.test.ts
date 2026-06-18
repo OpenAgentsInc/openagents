@@ -178,6 +178,7 @@ describe('Autopilot morning report route (M6)', () => {
         createAgentRegistration: () => Promise.resolve(),
         findAgentByTokenHash: () => Promise.resolve(undefined),
         touchAgentCredential: () => Promise.resolve(),
+        updateAgentDisplayName: () => Promise.resolve(0),
       }),
       makeContinuationStore: () => ({
         claimContinuationAttempt: async () => ({ claimed: false }),

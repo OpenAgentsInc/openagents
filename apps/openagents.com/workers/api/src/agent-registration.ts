@@ -7,8 +7,13 @@ const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const TrimmedString = S.Trim
 const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
 
+// Single source of truth for an agent user displayName constraint. Registration
+// and the self-serve rename endpoint (#5333) must validate identically so a
+// rename can never persist a name registration would have rejected.
+export const AgentDisplayName = NonEmptyTrimmedString.check(S.isMaxLength(120))
+
 export const ProgrammaticAgentRegistrationRequest = S.Struct({
-  displayName: NonEmptyTrimmedString.check(S.isMaxLength(120)),
+  displayName: AgentDisplayName,
   slug: S.optionalKey(
     TrimmedString.check(
       S.isMinLength(3),
@@ -106,6 +111,16 @@ export type AgentRegistrationStore = Readonly<{
     credentialId: string,
     lastUsedAt: string,
   ) => Promise<void>
+  // #5333: self-serve agent displayName rename. Updates the agent user row that
+  // `session.user.displayName` reads from, which Pylon registration/heartbeat
+  // projections and Forum actor context derive from. Self-only: the caller
+  // passes its own authenticated userId. Returns the number of rows updated so
+  // callers can distinguish a real self-update from a no-op/missing row.
+  updateAgentDisplayName: (
+    userId: string,
+    displayName: string,
+    updatedAt: string,
+  ) => Promise<number>
 }>
 
 export type ProgrammaticAgentRegistration = Readonly<{
@@ -322,6 +337,24 @@ export const makeD1AgentRegistrationStore = (
       )
       .bind(lastUsedAt, credentialId)
       .run()
+  },
+
+  updateAgentDisplayName: async (userId, displayName, updatedAt) => {
+    const result = await db
+      .prepare(
+        `UPDATE users
+         SET display_name = ?, updated_at = ?
+         WHERE id = ?
+           AND kind = 'agent'
+           AND status = 'active'
+           AND deleted_at IS NULL`,
+      )
+      .bind(displayName, updatedAt, userId)
+      .run()
+
+    const changes = result.meta?.changes
+
+    return typeof changes === 'number' ? changes : 0
   },
 })
 

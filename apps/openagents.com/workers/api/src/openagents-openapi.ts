@@ -506,6 +506,23 @@ const schemaComponents = (): JsonSchema => ({
   ProgrammaticAgentMe: objectSummary(
     'Authenticated programmatic agent profile and credential-prefix projection.',
   ),
+  ProgrammaticAgentDisplayNameUpdateRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['displayName'],
+    properties: {
+      displayName: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 120,
+        description:
+          'New display name for the authenticated agent. Trimmed; must be non-empty and at most 120 characters (same constraint as agent registration).',
+      },
+    },
+  },
+  ProgrammaticAgentDisplayNameUpdateResponse: objectSummary(
+    'Self-serve agent display-name update result: the updated public-safe agent profile (user row + credential prefix) and a public-safe audit receipt ref. No token, token hash, wallet material, or private metadata is returned.',
+  ),
   ProgrammaticAgentHome: objectSummary(
     'Authenticated programmatic agent home summary with identity, authorized resources, live scoped actions, rate-limit policy, planned gaps, and safe next actions.',
   ),
@@ -4559,6 +4576,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Authenticated programmatic agent.',
           '#/components/schemas/ProgrammaticAgentMe',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    patch: operation({
+      operationId: 'updateProgrammaticAgentDisplayName',
+      summary: 'Rename authenticated programmatic agent',
+      description:
+        'Self-serve update of the authenticated agent display name. Updates only the caller own agent user row (self-only; the user id comes from the bearer token, never the body). The new name is the source Pylon registration/heartbeat projections and Forum actor context for new posts derive from, so it propagates to GET /api/agents/me and Pylon projections. Existing Forum posts keep the display name snapshotted at post time. Requires an Idempotency-Key; returns a public-safe profile and audit receipt ref with no token or wallet material.',
+      tags: ['Agents'],
+      security: agentBearer,
+      parameters: [
+        requiredIdempotencyHeader(
+          'Required idempotency key for the rename write, matching other agent/pylon writes.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/ProgrammaticAgentDisplayNameUpdateRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Updated agent display name.',
+          '#/components/schemas/ProgrammaticAgentDisplayNameUpdateResponse',
         ),
         ...errorResponses(),
       },

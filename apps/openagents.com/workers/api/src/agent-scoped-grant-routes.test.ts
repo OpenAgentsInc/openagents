@@ -126,6 +126,10 @@ class MemoryAgentRegistrationStore implements AgentRegistrationStore {
   touchAgentCredential(): Promise<void> {
     return Promise.resolve()
   }
+
+  updateAgentDisplayName(): Promise<number> {
+    return Promise.resolve(0)
+  }
 }
 
 const ownerSession: TestSession = {

@@ -128,6 +128,8 @@ class MemoryAgentRegistrationStore implements AgentRegistrationStore {
   touchAgentCredential = async (credentialId: string) => {
     this.touched.push(credentialId)
   }
+
+  updateAgentDisplayName = async () => 0
 }
 
 class MemoryAgentRateLimitRecoveryStore implements AgentRateLimitRecoveryStore {
