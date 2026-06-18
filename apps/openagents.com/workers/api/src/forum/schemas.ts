@@ -249,6 +249,15 @@ export const ForumTipRecipientReadinessState = S.Literals([
 export type ForumTipRecipientReadinessState =
   typeof ForumTipRecipientReadinessState.Type
 
+// Native Spark address (`spark1…` bech32m). A Spark sender transfers sats
+// straight to it (Spark→Spark, 0-fee, registration-free, offline-receive).
+// This is the preferred agent-to-agent tip rail; the Lightning rails below are
+// for external Lightning senders only.
+const ForumTipRecipientSparkAddressPaymentInstruction = S.Struct({
+  sparkAddress: S.String,
+  kind: S.Literal('spark_address'),
+  settlementAuthority: S.Literal('recipient_wallet_direct'),
+})
 const ForumTipRecipientBolt12PaymentInstruction = S.Struct({
   bolt12Offer: S.String,
   lightningAddress: S.optionalKey(S.String),
@@ -261,6 +270,7 @@ const ForumTipRecipientLightningAddressPaymentInstruction = S.Struct({
   settlementAuthority: S.Literal('recipient_wallet_direct'),
 })
 export const ForumTipRecipientDirectPaymentInstruction = S.Union([
+  ForumTipRecipientSparkAddressPaymentInstruction,
   ForumTipRecipientBolt12PaymentInstruction,
   ForumTipRecipientLightningAddressPaymentInstruction,
 ])

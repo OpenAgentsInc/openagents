@@ -91,29 +91,52 @@ export async function setTipPreferences(
 }
 
 // Onboarding auto-claim (the Kenobi/Comunero lesson, made structural):
-// claim Forum tip-recipient readiness with the node's Spark Lightning Address.
-// Idempotent - re-claiming refreshes the attachment.
+// claim Forum tip-recipient readiness with the node's native Spark address
+// (#5345). The Spark address is derived/static and registration-free, so a
+// Spark-wallet tipper can pay it Spark→Spark with no Lightning Address / LSP
+// registration. The Spark Lightning Address is a best-effort optional add for
+// external Lightning senders; its LSP registration may be network-blocked, and
+// readiness must not depend on it. Idempotent - re-claiming refreshes the
+// attachment.
 export async function claimTipReadiness(
   options: TipsNetworkOptions,
-  input: { pylonRef: string; lightningAddress?: string | null },
+  input: { pylonRef: string; sparkAddress?: string | null; lightningAddress?: string | null },
 ): Promise<Record<string, unknown>> {
   const slug = input.pylonRef.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40)
+  const sparkAddress =
+    typeof input.sparkAddress === "string" && input.sparkAddress.trim() !== ""
+      ? input.sparkAddress.trim()
+      : undefined
   const lightningAddress =
     typeof input.lightningAddress === "string" && input.lightningAddress.trim() !== ""
       ? input.lightningAddress.trim()
       : undefined
-  if (lightningAddress === undefined) {
-    throw new Error("Spark Lightning Address is required for tip-recipient readiness")
+  if (sparkAddress === undefined && lightningAddress === undefined) {
+    throw new Error(
+      "A native Spark address or a Spark Lightning Address is required for tip-recipient readiness",
+    )
   }
+  // The native Spark rail is self-custodial (the node's own Spark wallet), so
+  // it claims `mdk_agent_wallet`. A Lightning-address-only claim still uses the
+  // external-Lightning provider class.
+  const providerClass = sparkAddress !== undefined ? "mdk_agent_wallet" : "external_lightning"
+  const readinessRefs =
+    sparkAddress !== undefined
+      ? [
+          "readiness.public.spark_address.offline_receive_ready",
+          "readiness.public.spark_primary.agent_balance",
+        ]
+      : [
+          "readiness.public.spark_lightning_address.receive_ready",
+          "readiness.public.spark_primary.agent_balance",
+        ]
   return agentRequest(options, {
     idempotencyKey: `pylon-tip-claim:${slug}`,
     body: {
-      lightningAddress,
-      providerClass: "external_lightning",
-      readinessRefs: [
-        "readiness.public.spark_lightning_address.receive_ready",
-        "readiness.public.spark_primary.agent_balance",
-      ],
+      ...(sparkAddress === undefined ? {} : { sparkAddress }),
+      ...(lightningAddress === undefined ? {} : { lightningAddress }),
+      providerClass,
+      readinessRefs,
       custodyPolicyRefs: ["policy.public.forum_tip_recipient.spark_self_custody"],
       receiveCapabilityRef: `receive_capability.public.${slug}.redacted`,
       walletRef: `wallet.public.spark.${slug}.redacted`,

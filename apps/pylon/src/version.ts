@@ -17,7 +17,12 @@
 // place in the compiled binary. The rc.32 runtime guard fixed backup-status but
 // not status --json, because the bundled binary could eval the SDK before main()
 // installed it. Breez stays lazily imported.
-export const PYLON_VERSION = "1.0.0-rc.33"
+// rc.34: claim tip-recipient readiness with the node's native, derived/static
+// Spark address (Spark→Spark, registration-free) as the primary tip destination
+// (#5345). The Spark Lightning Address becomes a best-effort optional add for
+// external Lightning senders and no longer blocks readiness when its LSP is
+// unreachable.
+export const PYLON_VERSION = "1.0.0-rc.34"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.

@@ -391,6 +391,11 @@ const ForumBolt12Offer = S.Trim.check(S.isNonEmpty(), S.isMaxLength(4096))
 // hosted by their Spark wallet's LSP. A public payment destination like
 // bolt12Offer, preferred for agent payout readiness after #5181.
 const ForumLightningAddress = S.Trim.check(S.isNonEmpty(), S.isMaxLength(512))
+// Native Spark address (`spark1…` bech32m) the recipient publishes as a public
+// tip destination. A Spark sender pays it Spark→Spark (0-fee, registration-free,
+// offline-receive) with no Lightning Address / LSP registration (#5345). Shape
+// is validated against the Spark HRP set in the tip-recipient readiness module.
+const ForumSparkAddress = S.Trim.check(S.isNonEmpty(), S.isMaxLength(600))
 
 const ForumTipRecipientWalletState = S.Literals([
   'blocked',
@@ -400,6 +405,7 @@ const ForumTipRecipientWalletState = S.Literals([
 
 const ForumTipRecipientAdmissionBody = S.Struct({
   actorRef: ForumPublicSafeRef,
+  sparkAddress: S.optionalKey(S.NullOr(ForumSparkAddress)),
   bolt12Offer: S.optionalKey(S.NullOr(ForumBolt12Offer)),
   lightningAddress: S.optionalKey(S.NullOr(ForumLightningAddress)),
   caveatRefs: ForumPublicSafeRefs,
@@ -416,6 +422,7 @@ const ForumTipRecipientAdmissionBody = S.Struct({
 })
 
 const ForumTipRecipientClaimBody = S.Struct({
+  sparkAddress: S.optionalKey(S.NullOr(ForumSparkAddress)),
   bolt12Offer: S.optionalKey(S.NullOr(ForumBolt12Offer)),
   lightningAddress: S.optionalKey(S.NullOr(ForumLightningAddress)),
   caveatRefs: ForumPublicSafeRefs,
@@ -4055,6 +4062,7 @@ const tipRecipientAdmissionResponse = (
       db,
       {
         actorRef: body.actorRef,
+        sparkAddress: body.sparkAddress ?? null,
         bolt12Offer: body.bolt12Offer ?? null,
         lightningAddress: body.lightningAddress ?? null,
         caveatRefs: body.caveatRefs ?? [],
@@ -4120,6 +4128,7 @@ const tipRecipientWalletClaimResponse = (
       db,
       {
         actorRef,
+        sparkAddress: body.sparkAddress ?? null,
         bolt12Offer: body.bolt12Offer ?? null,
         lightningAddress: body.lightningAddress ?? null,
         caveatRefs: [
@@ -4593,12 +4602,19 @@ const tipLadderResponse = (
     }
 
     const directPayment = readiness.directPayment as {
+      sparkAddress?: string
       bolt12Offer?: string
       lightningAddress?: string
       kind?: string
     } | null
+    // Native Spark address is the preferred rail (Spark→Spark, 0-fee). The
+    // buffer-pay adapter receives the destination string and routes it to a
+    // `ReceivePaymentMethod::SparkAddress` transfer; Lightning rails fall back
+    // for external Lightning senders.
     const recipientPaymentDestination =
-      directPayment?.kind === 'lightning_address'
+      directPayment?.kind === 'spark_address'
+        ? directPayment.sparkAddress
+        : directPayment?.kind === 'lightning_address'
         ? directPayment.lightningAddress
         : directPayment?.bolt12Offer
     const tipsBufferPay = dependencies.tipsBufferPay ?? null

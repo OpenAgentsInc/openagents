@@ -498,6 +498,7 @@ type AgentProfileXChallengeRow = Readonly<{
 type ForumTipRecipientWalletRow = Readonly<{
   actor_ref: string
   archived_at: string | null
+  spark_address: string | null
   bolt12_offer: string | null
   lightning_address: string | null
   caveat_refs_json: string
@@ -697,6 +698,7 @@ export type ForumRepositoryError =
 
 export type ForumTipRecipientWalletInput = Readonly<{
   actorRef: string
+  sparkAddress?: string | null | undefined
   bolt12Offer?: string | null | undefined
   lightningAddress?: string | null | undefined
   caveatRefs?: ReadonlyArray<string> | undefined
@@ -859,6 +861,7 @@ const tipRecipientWalletRecordFromRow = (
   row: ForumTipRecipientWalletRow,
 ): ForumTipRecipientWalletRecord => ({
   actorRef: row.actor_ref,
+  sparkAddress: row.spark_address,
   bolt12Offer: row.bolt12_offer,
   lightningAddress: row.lightning_address,
   caveatRefs: parseJsonStringArray(row.caveat_refs_json),
@@ -879,6 +882,7 @@ const tipRecipientWalletInputToRecord = (
   input: ForumTipRecipientWalletInput,
 ): ForumTipRecipientWalletRecord => ({
   actorRef: input.actorRef,
+  sparkAddress: input.sparkAddress ?? null,
   bolt12Offer: input.bolt12Offer ?? null,
   lightningAddress: input.lightningAddress ?? null,
   caveatRefs: input.caveatRefs ?? [],
@@ -2187,6 +2191,7 @@ export const upsertForumTipRecipientWallet = (
              provider_class,
              wallet_ref,
              receive_capability_ref,
+             spark_address,
              bolt12_offer,
              lightning_address,
              payout_target_approval_ref,
@@ -2202,11 +2207,12 @@ export const upsertForumTipRecipientWallet = (
              disabled_at,
              archived_at
            )
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
            ON CONFLICT(actor_ref) DO UPDATE SET
              provider_class = excluded.provider_class,
              wallet_ref = excluded.wallet_ref,
              receive_capability_ref = excluded.receive_capability_ref,
+             spark_address = excluded.spark_address,
              bolt12_offer = excluded.bolt12_offer,
              lightning_address = excluded.lightning_address,
              payout_target_approval_ref = excluded.payout_target_approval_ref,
@@ -2227,6 +2233,7 @@ export const upsertForumTipRecipientWallet = (
           record.providerClass,
           record.walletRef,
           record.receiveCapabilityRef,
+          record.sparkAddress,
           record.bolt12Offer,
           record.lightningAddress,
           record.payoutTargetApprovalRef,

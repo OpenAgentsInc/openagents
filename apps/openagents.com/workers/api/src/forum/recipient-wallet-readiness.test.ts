@@ -10,10 +10,14 @@ import {
   projectForumTipRecipientReadiness,
 } from './recipient-wallet-readiness'
 
+const SPARK_ADDRESS =
+  'spark1pgssyuuuhnrrdjswal5c3s3rafw9w3y5dd4cjy3duxlf7hjzkp0rqx6dj6mrhu'
+
 const readyRecord = (
   overrides: Partial<ForumTipRecipientWalletRecord> = {},
 ): ForumTipRecipientWalletRecord => ({
   actorRef: 'agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  sparkAddress: null,
   bolt12Offer: 'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
   lightningAddress: null,
   caveatRefs: ['caveat.public.forum_tip_recipient.claim_required'],
@@ -55,6 +59,91 @@ describe('Forum tip recipient wallet readiness', () => {
     expect(serialized).not.toContain('wallet.public.forum_tip_recipient')
     expect(serialized).not.toContain('receive_capability.public')
     expect(serialized).not.toContain('approval.public.forum_tip_recipient')
+  })
+
+  test('a ready recipient with only a native Spark address is tippable Spark→Spark (#5345)', () => {
+    const projection = projectForumTipRecipientReadiness(
+      readyRecord({
+        bolt12Offer: null,
+        lightningAddress: null,
+        sparkAddress: SPARK_ADDRESS,
+      }),
+    )
+
+    expect(projection.directPayment).toMatchObject({
+      sparkAddress: SPARK_ADDRESS,
+      kind: 'spark_address',
+      settlementAuthority: 'recipient_wallet_direct',
+    })
+    expect(projection.tippingAvailable).toBe(true)
+    expect(projection.blockerRef).toBe(null)
+    // The Spark rail is offline-receive: no LSP, no LN-address claim required.
+    expect(projection.caveatRefs).toContain(
+      'caveat.public.forum_tip_recipient.spark_offline_receive',
+    )
+    expect(projection.caveatRefs).not.toContain(
+      'caveat.public.forum_tip_recipient.spark_lightning_address_claim_required',
+    )
+    expect(forumTipRecipientReadinessIsSafe(projection)).toBe(true)
+  })
+
+  test('prefers the native Spark address over Lightning rails (#5345)', () => {
+    const projection = projectForumTipRecipientReadiness(
+      readyRecord({
+        bolt12Offer: 'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
+        lightningAddress: 'oab38ad12345abcd9@spark.money',
+        sparkAddress: SPARK_ADDRESS,
+      }),
+    )
+
+    expect(projection.directPayment?.kind).toBe('spark_address')
+    expect(projection.tippingAvailable).toBe(true)
+  })
+
+  test('rejects a Spark-address field carrying a raw invoice or wallet secret (#5345)', () => {
+    expect(() =>
+      assertForumTipRecipientWalletRecordSafe(
+        readyRecord({ sparkAddress: 'lnbc1privateinvoice' }),
+      ),
+    ).toThrow(ForumTipRecipientWalletUnsafe)
+    expect(() =>
+      assertForumTipRecipientWalletRecordSafe(
+        readyRecord({ sparkAddress: 'not a spark address' }),
+      ),
+    ).toThrow(ForumTipRecipientWalletUnsafe)
+    // A Lightning Address must not be accepted as a native Spark address.
+    expect(() =>
+      assertForumTipRecipientWalletRecordSafe(
+        readyRecord({
+          bolt12Offer: null,
+          sparkAddress: 'oab38ad12345abcd9@spark.money',
+        }),
+      ),
+    ).toThrow(ForumTipRecipientWalletUnsafe)
+  })
+
+  test('keeps the native Spark address out of generic public refs (redaction, #5345)', () => {
+    const projection = projectForumTipRecipientReadiness(
+      readyRecord({
+        bolt12Offer: null,
+        sparkAddress: SPARK_ADDRESS,
+      }),
+    )
+    const serialized = JSON.stringify(projection)
+
+    // The Spark address is a public tip destination: it appears only inside the
+    // typed directPayment instruction, never smuggled into refs, and no seed or
+    // wallet material leaks.
+    expect(serialized).toContain(SPARK_ADDRESS)
+    expect(projection.directPayment).toMatchObject({ kind: 'spark_address' })
+    expect(serialized).not.toContain('wallet.public.forum_tip_recipient')
+    expect(serialized).not.toContain('mnemonic')
+    expect(serialized).not.toContain('seed')
+    expect(
+      forumTipRecipientWalletRecordHasPrivateMaterial(
+        readyRecord({ bolt12Offer: null, sparkAddress: SPARK_ADDRESS }),
+      ),
+    ).toBe(false)
   })
 
   test('prefers a static Spark Lightning Address over a legacy BOLT 12 offer (#5181)', () => {

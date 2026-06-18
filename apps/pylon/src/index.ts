@@ -1608,6 +1608,28 @@ async function resolveLightningAddressForReadiness(
   }
 }
 
+// Resolve this node's native, derived/static Spark address (`spark1…`) for
+// tip-recipient readiness (#5345). Unlike the Lightning Address, this needs no
+// LSP registration: the address exists the moment the Spark wallet is
+// provisioned, and a Spark sender pays it Spark→Spark. Returns undefined (and
+// costs nothing) when the Spark backup is not opt-in enabled, or when the
+// helper cannot reach the Spark network. Never throws.
+async function resolveSparkAddressForReadiness(
+  state: PylonLocalState,
+): Promise<string | undefined> {
+  try {
+    const sparkOptions = await resolveSparkBackupOptions(state, { enabled: true, showLocalTarget: true })
+    const result = await prepareSparkBackupReceive({ ...sparkOptions, kind: "spark-address" })
+    return result.ok &&
+      typeof result.localTarget === "string" &&
+      result.localTarget.trim() !== ""
+      ? result.localTarget.trim()
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 function parseDevLoopOptions(args: string[]) {
   const options: { allowDirty: boolean; command?: string; json: boolean } = {
     allowDirty: false,
@@ -2475,9 +2497,15 @@ async function main() {
       }
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const state = await ensurePylonLocalState(summary)
+      // Native Spark address is the primary, registration-free tip destination
+      // (#5345). The Lightning Address is a best-effort optional add for
+      // external Lightning senders and must not block readiness when its LSP
+      // registration is unreachable.
+      const sparkAddress = await resolveSparkAddressForReadiness(state)
       const lightningAddress = await resolveLightningAddressForReadiness(state)
       const result = await claimTipReadiness(networkOptions, {
         pylonRef: state.identity.pylonRef,
+        sparkAddress,
         lightningAddress,
       })
       process.stdout.write(`${JSON.stringify({ claimed: true, tipRecipientReadiness: (result as { tipRecipientReadiness?: unknown }).tipRecipientReadiness ?? null }, null, 2)}\n`)

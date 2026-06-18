@@ -181,6 +181,7 @@ type ReceiptRow = Readonly<{
 type TipRecipientWalletRow = Readonly<{
   actor_ref: string
   archived_at: string | null
+  spark_address: string | null
   bolt12_offer: string | null
   lightning_address: string | null
   caveat_refs_json: string
@@ -465,27 +466,28 @@ class ForumRepositoryStatement implements D1PreparedStatement {
       const row: TipRecipientWalletRow = {
         actor_ref: actorRef,
         archived_at: null,
-        bolt12_offer: this.values[5] === null ? null : String(this.values[5]),
+        spark_address: this.values[5] === null ? null : String(this.values[5]),
+        bolt12_offer: this.values[6] === null ? null : String(this.values[6]),
         lightning_address:
-          this.values[6] === null ? null : String(this.values[6]),
-        caveat_refs_json: String(this.values[9]),
-        claim_policy_refs_json: String(this.values[11]),
-        created_at: String(this.values[15]),
-        custody_policy_refs_json: String(this.values[10]),
-        disabled_at: this.values[17] === null ? null : String(this.values[17]),
+          this.values[7] === null ? null : String(this.values[7]),
+        caveat_refs_json: String(this.values[10]),
+        claim_policy_refs_json: String(this.values[12]),
+        created_at: String(this.values[16]),
+        custody_policy_refs_json: String(this.values[11]),
+        disabled_at: this.values[18] === null ? null : String(this.values[18]),
         id: String(this.values[0]),
         payout_target_approval_ref:
-          this.values[7] === null ? null : String(this.values[7]),
+          this.values[8] === null ? null : String(this.values[8]),
         provider_class: this.values[2] as
           | 'external_lightning'
           | 'hosted_mdk'
           | 'mdk_agent_wallet',
-        public_projection_json: String(this.values[14]),
-        readiness_refs_json: String(this.values[8]),
+        public_projection_json: String(this.values[15]),
+        readiness_refs_json: String(this.values[9]),
         receive_capability_ref: String(this.values[4]),
-        source_ref: String(this.values[12]),
-        state: this.values[13] as 'ready' | 'disabled' | 'blocked',
-        updated_at: String(this.values[16]),
+        source_ref: String(this.values[13]),
+        state: this.values[14] as 'ready' | 'disabled' | 'blocked',
+        updated_at: String(this.values[17]),
         wallet_ref: String(this.values[3]),
       }
       const existingIndex = this.store.tipRecipientWallets.findIndex(

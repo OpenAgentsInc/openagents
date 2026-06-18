@@ -80,10 +80,32 @@ type NexusPylonVisibilityPylonStore = Pick<
   | 'readRegistration'
 >
 
+// This deprecated Nexus visibility route only needs to read a Lightning
+// Address from the recipient readiness, but the canonical readiness now carries
+// a discriminated direct-payment union (spark_address | bolt12_offer |
+// lightning_address, #5345). Mirror that union structurally so the full
+// readiness reader stays assignable; only the lightning_address variant
+// exposes a Lightning Address.
+type NexusPylonVisibilityDirectPayment =
+  | Readonly<{
+      sparkAddress: string
+      kind: 'spark_address'
+      settlementAuthority: 'recipient_wallet_direct'
+    }>
+  | Readonly<{
+      bolt12Offer: string
+      lightningAddress?: string | undefined
+      kind: 'bolt12_offer'
+      settlementAuthority: 'recipient_wallet_direct'
+    }>
+  | Readonly<{
+      lightningAddress: string
+      kind: 'lightning_address'
+      settlementAuthority: 'recipient_wallet_direct'
+    }>
+
 type NexusPylonVisibilityTipRecipientReadiness = Readonly<{
-  directPayment: null | Readonly<{
-    lightningAddress?: string | undefined
-  }>
+  directPayment: null | NexusPylonVisibilityDirectPayment
   state: string
 }>
 
@@ -495,7 +517,11 @@ const lightningAddressFromTipRecipientReadiness = (
     return undefined
   }
 
-  const lightningAddress = readiness.directPayment?.lightningAddress?.trim()
+  const directPayment = readiness.directPayment
+  const lightningAddress =
+    directPayment !== null && directPayment.kind !== 'spark_address'
+      ? directPayment.lightningAddress?.trim()
+      : undefined
 
   return lightningAddress === '' ? undefined : lightningAddress
 }
