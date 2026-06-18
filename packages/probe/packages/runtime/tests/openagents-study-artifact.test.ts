@@ -100,6 +100,10 @@ describe("OpenAgents repo study artifact", () => {
       expect(artifact.index.packetHash).toBe(artifact.packet.packetHash);
       expect(artifact.index.graphHash).toBe(artifact.graph.graphHash);
       expect(artifact.index.corpusManifestHash).toBe(artifact.packet.corpusManifestHash);
+      expect(artifact.index.corpusContentHash.startsWith("sha256:")).toBe(true);
+      // The content hash is commit-independent: distinct from the commit-embedding
+      // manifest hash (so it can stay stable across pure commit drift).
+      expect(artifact.index.corpusContentHash).not.toBe(artifact.index.corpusManifestHash);
       expect(artifact.index.verificationHash).toBe(artifact.verification.verificationHash);
       expect(artifact.index.evalReportHash).toBe(artifact.evalReport.reportHash);
 

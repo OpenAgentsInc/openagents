@@ -24,6 +24,10 @@ import {
   OpenAgentsStudybenchEvalHarnessReport,
   runOpenAgentsStudybenchEvalHarness,
 } from "./openagents-studybench-eval-harness";
+import {
+  buildOpenAgentsRepoCorpusManifest,
+  openAgentsRepoCorpusContentHash,
+} from "./repo-corpus-manifest";
 
 export const OPENAGENTS_REPO_STUDY_ARTIFACT_INDEX_SCHEMA_REF =
   "openagents.repo_study_artifact_index.v0" as const;
@@ -43,6 +47,10 @@ export const OpenAgentsRepoStudyArtifactIndex = S.Struct({
   acceptedClaimCount: S.Number,
   commit: S.String,
   commitHistoryLimit: S.Number,
+  // Commit-INDEPENDENT digest of the admitted file content. Stable across pure
+  // commit drift; changes only when an admitted file actually changes. This is
+  // the field the SA-4 standing-freshness "content drift" signal compares.
+  corpusContentHash: S.String,
   corpusEntryCount: S.Number,
   corpusManifestHash: S.String,
   corpusManifestRef: S.String,
@@ -111,10 +119,14 @@ export function generateOpenAgentsRepoStudyArtifact(
     const commit = input.commit ?? commitHistory[0]!.commit;
     const backroomRootDir = input.backroomRootDir ?? resolve(rootDir, "..", "backroom");
 
+    const manifest = yield* buildOpenAgentsRepoCorpusManifest({ commit, repo, rootDir });
+    const corpusContentHash = openAgentsRepoCorpusContentHash(manifest);
+
     const packet = yield* buildOpenAgentsRepoStudyPacket({
       backroomRootDir,
       commit,
       commitHistory,
+      manifest,
       repo,
       rootDir,
     });
@@ -124,6 +136,7 @@ export function generateOpenAgentsRepoStudyArtifact(
 
     const index = yield* buildOpenAgentsRepoStudyArtifactIndex({
       commitHistoryLimit,
+      corpusContentHash,
       corpusEntryCount: packet.sections.reduce((total, section) => total + section.corpusEntryPaths.length, 0),
       evalReport,
       graph,
@@ -138,6 +151,7 @@ export function generateOpenAgentsRepoStudyArtifact(
 
 export function buildOpenAgentsRepoStudyArtifactIndex(input: {
   readonly commitHistoryLimit: number;
+  readonly corpusContentHash: string;
   readonly corpusEntryCount: number;
   readonly evalReport: OpenAgentsStudybenchEvalHarnessReport;
   readonly graph: OpenAgentsRepoStudiedKnowledgeGraph;
@@ -150,6 +164,7 @@ export function buildOpenAgentsRepoStudyArtifactIndex(input: {
       acceptedClaimCount: input.verification.acceptedCount,
       commit: input.packet.commit,
       commitHistoryLimit: input.commitHistoryLimit,
+      corpusContentHash: input.corpusContentHash,
       corpusEntryCount: input.corpusEntryCount,
       corpusManifestHash: input.packet.corpusManifestHash,
       corpusManifestRef: input.packet.corpusManifestRef,
@@ -215,6 +230,7 @@ function validateOpenAgentsRepoStudyArtifactIndex(
     yield* requireSha256(index.packetHash, "studyArtifactIndex.packetHash");
     yield* requireSha256(index.graphHash, "studyArtifactIndex.graphHash");
     yield* requireSha256(index.corpusManifestHash, "studyArtifactIndex.corpusManifestHash");
+    yield* requireSha256(index.corpusContentHash, "studyArtifactIndex.corpusContentHash");
     yield* requireSha256(index.verificationHash, "studyArtifactIndex.verificationHash");
     yield* requireSha256(index.evalReportHash, "studyArtifactIndex.evalReportHash");
 

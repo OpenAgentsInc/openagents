@@ -202,6 +202,23 @@ export function openAgentsRepoCorpusManifestHash(manifest: OpenAgentsRepoCorpusM
   return sha256Ref(stableJson(stable));
 }
 
+// A commit-INDEPENDENT digest over the admitted file content (entries + exclusion
+// rules + visibility/repo), excluding `commit` and the derived/timestamp fields.
+// `manifestHash` embeds the HEAD `commit`, so it changes on every commit even when
+// no admitted file changed. This content hash is stable across pure commit drift
+// and changes only when an admitted file's content actually changes — the basis
+// for the SA-4 standing-freshness "content drift" signal.
+export function openAgentsRepoCorpusContentHash(manifest: OpenAgentsRepoCorpusManifest): string {
+  const {
+    commit: _commit,
+    generatedAt: _generatedAt,
+    manifestHash: _manifestHash,
+    manifestRef: _manifestRef,
+    ...stable
+  } = manifest;
+  return sha256Ref(stableJson(stable));
+}
+
 export function openAgentsRepoCorpusEvidenceSpanHash(
   corpusRef: string,
   evidence: typeof OpenAgentsStudybenchEvidenceSpan.Type,
