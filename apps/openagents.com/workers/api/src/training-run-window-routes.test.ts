@@ -594,6 +594,11 @@ describe('training run window routes', () => {
     expect(leaderboards.schemaVersion).toBe(
       'openagents.training.leaderboards.v1',
     )
+    // The a2 measurement receipt is `state: settled` but carries NO real-bitcoin
+    // movement (no movementMode/moneyMovement/realBitcoinMoved), so it is a
+    // settled-STATE simulation receipt. The leaderboard reads the SAME real-only
+    // settlement resolution as the run summary metric (which is 0 above), so its
+    // settled payout is 0 — settled-state sim does not inflate leaderboard sats.
     expect(
       leaderboards.lanes.find(lane => lane.lane === 'a2_throughput')?.rows,
     ).toEqual([
@@ -601,7 +606,7 @@ describe('training run window routes', () => {
         contributorRef: 'device_class.apple_silicon.m3_pro_18gb',
         rank: 1,
         score: 2025,
-        settledPayoutSats: 10,
+        settledPayoutSats: 0,
       }),
     ])
     expect(
@@ -1028,16 +1033,23 @@ describe('training run window routes', () => {
     expect(settledBody.settlement.settlementReceiptRef).toMatch(
       /^receipt\.nexus\.tassadar_run_settlement\./,
     )
+    // Gate OFF (default) => this settlement is a settled-STATE SIMULATION
+    // receipt (movementMode:simulation / realBitcoinMoved:false; asserted on the
+    // settlements-feed row below). The run-endpoint real-money settled total must
+    // EXCLUDE it: no bitcoin moved, so providerConfirmedSettledPayoutSats is 0,
+    // not 21. The receipt still surfaces (flagged) in the /settlements feed.
     expect(
       settledBody.summary.metrics.providerConfirmedSettledPayoutSats.value,
-    ).toBe(21)
+    ).toBe(0)
     expect(settledBody.summary.metrics.qualifiedContributorCount.value).toBe(1)
     expect(
       settledBody.summary.metrics.qualifiedContributorCount.provenanceLabel,
     ).toContain('raw registrations and stale heartbeats never count')
 
-    // The settlement receipt is provider-confirmed (settlement_recorded, settled)
-    // and linked onto the run, so a fresh GET reflects it from the ledger.
+    // The settlement receipt is linked onto the run, so a fresh GET reflects the
+    // SAME real-only resolution from the ledger: a settled-state simulation
+    // receipt contributes 0 real settled sats (sim excluded), matching the
+    // settlement-receipt response and the public summary endpoint.
     const detail = await runRoute(
       routes.routeTrainingRunWindowRequest(
         new Request(
@@ -1051,7 +1063,7 @@ describe('training run window routes', () => {
     expect(detail.status).toBe(200)
     expect(
       detailBody.summary.metrics.providerConfirmedSettledPayoutSats.value,
-    ).toBe(21)
+    ).toBe(0)
     expect(detailBody.run.manifest?.participantCountRule).toContain(
       'never raw registrations or stale heartbeats',
     )
@@ -1124,6 +1136,153 @@ describe('training run window routes', () => {
       ),
     )
     expect(overCap.status).toBe(400)
+  })
+
+  it('run endpoints read the real-only settled total (1005 not 1010): settled-state simulation is excluded from the metric/settlement total but still enumerated in the feed', async () => {
+    const store = makeMemoryStore()
+    // Two REAL-bitcoin settled receipts (1000-sat canary + Trigger's 5) and one
+    // settled-STATE SIMULATION receipt (5 sats, realBitcoinMoved:false). The
+    // real-only total must be 1005, not 1010 — the duplicate real-blind resolver
+    // used to count the sim row. All three are run-linked, so all appear in the
+    // /settlements feed (the sim flagged), but only the two real ones count.
+    const ledgerStore = makeLedgerStoreStub([
+      [
+        'receipt.tassadar.real.canary.1000',
+        {
+          publicProjectionJson: JSON.stringify({
+            amountSats: 1000,
+            contributorRef: 'pylon.canary',
+            moneyMovement: 'real_bitcoin',
+            movementMode: 'real_bitcoin',
+            realBitcoinMoved: true,
+            state: 'settled',
+            trainingRunRef: 'run.tassadar.executor.20260615',
+          }),
+          receiptKind: 'settlement_recorded',
+        },
+      ],
+      [
+        'receipt.tassadar.real.trigger.5',
+        {
+          publicProjectionJson: JSON.stringify({
+            amountSats: 5,
+            contributorRef: 'pylon.trigger',
+            moneyMovement: 'real_bitcoin',
+            movementMode: 'real_bitcoin',
+            realBitcoinMoved: true,
+            state: 'settled',
+            trainingRunRef: 'run.tassadar.executor.20260615',
+          }),
+          receiptKind: 'settlement_recorded',
+        },
+      ],
+      [
+        'receipt.tassadar.sim.5',
+        {
+          publicProjectionJson: JSON.stringify({
+            amountSats: 5,
+            contributorRef: 'pylon.sim',
+            movementMode: 'simulation',
+            realBitcoinMoved: false,
+            state: 'settled',
+            trainingRunRef: 'run.tassadar.executor.20260615',
+          }),
+          receiptKind: 'settlement_recorded',
+        },
+      ],
+    ])
+    store._testSeedRun({
+      ...buildTrainingRunRecord({
+        makeId: () => 'run1005',
+        nowIso: '2026-06-15T10:00:00.000Z',
+        request: {
+          promiseRef: 'training.decentralized_training_launch.v1',
+          trainingRunRef: 'run.tassadar.executor.20260615',
+        },
+      }),
+      receiptRefs: [
+        'receipt.tassadar.real.canary.1000',
+        'receipt.tassadar.real.trigger.5',
+        'receipt.tassadar.sim.5',
+      ],
+      state: 'active',
+    })
+
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => 'id1005',
+      makePayoutLedgerStore: () => ledgerStore,
+      makeStore: () => store,
+      nowIso: () => '2026-06-15T10:05:00.000Z',
+      requireAdminApiToken: async () => true,
+    })
+
+    const detail = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request(
+          'https://openagents.test/api/training/runs/run.tassadar.executor.20260615',
+        ),
+        {},
+      ),
+    )
+    const detailBody = (await detail.json()) as TrainingRunDetailJson & {
+      summary: TrainingRunPublicSummary & {
+        settlement: { settledPayoutSats: number; settledReceiptCount: number }
+      }
+    }
+
+    expect(detail.status).toBe(200)
+    // Real-only: 1000 + 5 = 1005 (the sim 5 is excluded). Both the metric and
+    // the settlement reconciliation total read the same real-only resolution.
+    expect(
+      detailBody.summary.metrics.providerConfirmedSettledPayoutSats.value,
+    ).toBe(1005)
+    expect(detailBody.summary.settlement.settledPayoutSats).toBe(1005)
+    expect(detailBody.summary.settlement.settledReceiptCount).toBe(2)
+
+    // The list endpoint reads the SAME real-only total.
+    const list = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request('https://openagents.test/api/training/runs'),
+        {},
+      ),
+    )
+    const listBody = (await list.json()) as TrainingRunListJson
+    const summary = listBody.summaries.find(
+      candidate =>
+        candidate.run.trainingRunRef === 'run.tassadar.executor.20260615',
+    )!
+    expect(summary.metrics.providerConfirmedSettledPayoutSats.value).toBe(1005)
+
+    // The settled-state SIMULATION receipt is still ENUMERATED in the feed,
+    // flagged realBitcoinMoved:false, alongside the two real receipts.
+    const feed = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request(
+          'https://openagents.test/api/training/runs/run.tassadar.executor.20260615/settlements',
+        ),
+        {},
+      ),
+    )
+    const feedBody = (await feed.json()) as {
+      settlementRows: ReadonlyArray<{
+        amountSats: number
+        movementMode: string
+        realBitcoinMoved: boolean
+        receiptRef: string
+      }>
+    }
+    expect(feed.status).toBe(200)
+    expect(feedBody.settlementRows).toHaveLength(3)
+    const simRow = feedBody.settlementRows.find(
+      row => row.receiptRef === 'receipt.tassadar.sim.5',
+    )!
+    expect(simRow.movementMode).toBe('simulation')
+    expect(simRow.realBitcoinMoved).toBe(false)
+    expect(
+      feedBody.settlementRows
+        .filter(row => row.realBitcoinMoved === true)
+        .reduce((total, row) => total + row.amountSats, 0),
+    ).toBe(1005)
   })
 
   it('projects only Verified exact_trace_replay closed ticks as the Tassadar verified-trace corpus, rebuilding on verdict transitions (#5010)', async () => {

@@ -7,7 +7,6 @@ import {
   unauthorized,
 } from './http/responses'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
-import { parseJsonRecord } from './json-boundary'
 import type { NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
 import { liveAtReadStaleness } from './public-projection-staleness'
 import {
@@ -51,7 +50,6 @@ import {
 import {
   TrainingLeaderboardLanes,
   buildTrainingLeaderboardsProjection,
-  settledSatsFromPaymentAuthorityReceipt,
 } from './training-leaderboards'
 import {
   Cs336A1RealGradientEvidenceRequest,
@@ -1351,107 +1349,45 @@ const routeA1Leaderboard = <Bindings extends TrainingRunWindowRouteEnv>(
     })
   })
 
-const maxSettlementReceiptLookups = 128
-
-type RunSettlementInfo = Readonly<{
-  contributorRef: string | null
-  settledSats: number
-}>
-
-type RunSettlementResolution = Readonly<{
-  settledSatsByReceiptRef: ReadonlyMap<string, number>
-  settlementReceiptRefsByContributor: ReadonlyMap<string, ReadonlyArray<string>>
-}>
-
-const emptyRunSettlementResolution: RunSettlementResolution = {
-  settledSatsByReceiptRef: new Map<string, number>(),
-  settlementReceiptRefsByContributor: new Map<string, ReadonlyArray<string>>(),
-}
-
-const settlementInfoFromReceipt = (
-  record: Readonly<{ publicProjectionJson: string; receiptKind: string }>,
-): RunSettlementInfo => {
-  const settledSats = settledSatsFromPaymentAuthorityReceipt(record)
-
-  if (settledSats <= 0) {
-    return { contributorRef: null, settledSats: 0 }
-  }
-
-  const projection = parseJsonRecord(record.publicProjectionJson)
-  const contributorRef =
-    typeof projection?.contributorRef === 'string'
-      ? projection.contributorRef
-      : null
-
-  return { contributorRef, settledSats }
-}
-
 /**
  * Resolve provider-confirmed settlement for a set of run-linked receipt refs
  * (openagents #5009). Returns settled sats keyed by receipt ref (for the run
  * summary metric and leaderboard sums) plus the settlement receipt refs grouped
  * by contributor (so per-contributor leaderboard rows can surface their settled
- * sats). Only `settlement_recorded` receipts whose projection is `state:
- * 'settled'` with a positive integer `amountSats` count; everything else is 0.
+ * sats).
+ *
+ * Delegates to the single exported `resolveRunSettlementRows` (alias of the
+ * exported `resolveRunSettlements` in public-tassadar-run-summary-routes) so
+ * EVERY run/leaderboard endpoint shares one real-only settlement projection:
+ * the real settled-sats total counts ONLY receipts where bitcoin actually moved
+ * (`realBitcoinMoved === true`, derived from `movementMode/moneyMovement ===
+ * 'real_bitcoin'` + `receiptKind === 'settlement_recorded'` + matched
+ * reconciliation eventStatus or `realBitcoinMoved` in the projection). A
+ * settled-STATE simulation receipt does NOT inflate the total (1000 + 5 real =
+ * 1005, not 1010). This removes the duplicate, real-blind local resolver that
+ * produced the sim-vs-real conflation Orrery dereferenced.
+ *
+ * The async exported resolver is wrapped in `Effect.tryPromise` so it composes
+ * inside the route generators. `settlementRows` from the resolution is unused by
+ * these call sites (the public summary + settlements feed consume it directly),
+ * so `appUrl` only affects discarded row URLs and uses the production default.
  */
 const resolveRunSettlements = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
   receiptRefs: ReadonlyArray<string>,
-): Effect.Effect<RunSettlementResolution, TrainingRunWindowRouteError> =>
-  Effect.gen(function* () {
-    const makePayoutLedgerStore = dependencies.makePayoutLedgerStore
-
-    if (makePayoutLedgerStore === undefined) {
-      return emptyRunSettlementResolution
-    }
-
-    const refs = [...new Set(receiptRefs)]
-      .sort()
-      .slice(0, maxSettlementReceiptLookups)
-
-    if (refs.length === 0) {
-      return emptyRunSettlementResolution
-    }
-
-    const ledger = makePayoutLedgerStore(env)
-    const entries = yield* Effect.forEach(refs, receiptRef =>
-      Effect.tryPromise({
-        catch: trainingAuthorityStoreErrorFromUnknown,
-        try: async () => {
-          const record =
-            await ledger.readPaymentAuthorityReceiptByRef(receiptRef)
-
-          return [
-            receiptRef,
-            record === undefined
-              ? { contributorRef: null, settledSats: 0 }
-              : settlementInfoFromReceipt(record),
-          ] as const
-        },
-      }),
-    )
-    const settled = entries.filter(([, info]) => info.settledSats > 0)
-    const settledSatsByReceiptRef = new Map<string, number>(
-      settled.map(([receiptRef, info]) => [receiptRef, info.settledSats]),
-    )
-    const settlementReceiptRefsByContributor = new Map<
-      string,
-      ReadonlyArray<string>
-    >()
-
-    for (const [receiptRef, info] of settled) {
-      if (info.contributorRef === null) {
-        continue
-      }
-
-      settlementReceiptRefsByContributor.set(info.contributorRef, [
-        ...(settlementReceiptRefsByContributor.get(info.contributorRef) ?? []),
-        receiptRef,
-      ])
-    }
-
-    return { settledSatsByReceiptRef, settlementReceiptRefsByContributor }
+): Effect.Effect<
+  Awaited<ReturnType<typeof resolveRunSettlementRows>>,
+  TrainingRunWindowRouteError
+> =>
+  Effect.tryPromise({
+    catch: trainingAuthorityStoreErrorFromUnknown,
+    try: () =>
+      resolveRunSettlementRows(
+        dependencies.makePayoutLedgerStore?.(env),
+        receiptRefs,
+        'https://openagents.com',
+      ),
   })
 
 const routeTrainingLeaderboards = <Bindings extends TrainingRunWindowRouteEnv>(
