@@ -8,6 +8,10 @@ This package defines the schema only. It does not read D1, validate work,
 authorize settlement, move sats, post to the Forum, dispatch assignments, or
 promote product claims.
 
+Agent-facing route docs, curl recipes, stale/error states, and the public
+evidence endpoint index live in
+`docs/launch/2026-06-18-agent-activity-endpoint-guide.md`.
+
 ## Envelope
 
 Timeline responses use this shape:

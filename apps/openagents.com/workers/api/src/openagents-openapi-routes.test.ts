@@ -147,9 +147,25 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(body, '/api/public/tassadar-run-summary', 'get').operationId,
     ).toBe('getPublicTassadarRunSummary')
+    const activityTimelineOperation = operationAt(
+      body,
+      '/api/public/activity-timeline',
+      'get',
+    )
+    expect(activityTimelineOperation.operationId).toBe(
+      'getPublicActivityTimeline',
+    )
+    expect(activityTimelineOperation.description).toEqual(
+      expect.stringContaining('Source lag'),
+    )
+    expect(activityTimelineOperation.description).toEqual(
+      expect.stringContaining('invalid_event_kind'),
+    )
     expect(
-      operationAt(body, '/api/public/activity-timeline', 'get').operationId,
-    ).toBe('getPublicActivityTimeline')
+      activityTimelineOperation.parameters?.map(parameter => parameter.name),
+    ).toEqual(
+      expect.arrayContaining(['since', 'from', 'to', 'limit', 'kind', 'source']),
+    )
     expect(operationAt(body, '/api/training/evals/a5', 'get').operationId).toBe(
       'readTrainingA5EvalDashboard',
     )

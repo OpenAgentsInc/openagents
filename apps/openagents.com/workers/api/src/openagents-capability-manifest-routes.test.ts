@@ -46,6 +46,9 @@ describe('OpenAgents capability manifest route', () => {
     expect(body.docs.productPromisesApi).toBe(
       'https://openagents.com/api/public/product-promises',
     )
+    expect(body.docs.activityEvidence).toBe(
+      'https://github.com/OpenAgentsInc/openagents/blob/main/docs/launch/2026-06-18-agent-activity-endpoint-guide.md',
+    )
     expect(body.docs.sourceCode).toBe(
       'https://github.com/OpenAgentsInc/openagents',
     )
@@ -152,6 +155,12 @@ describe('OpenAgents capability manifest route', () => {
           href: 'https://openagents.com/api/public/home',
           id: 'public_home_json',
           description: expect.stringContaining('homepage'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
+          href: 'https://github.com/OpenAgentsInc/openagents/blob/main/docs/launch/2026-06-18-agent-activity-endpoint-guide.md',
+          id: 'public_activity_evidence_spine',
+          description: expect.stringContaining('activity timeline'),
         }),
         expect.objectContaining({
           auth: 'public',

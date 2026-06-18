@@ -33,6 +33,7 @@ export const OpenAgentsCapabilityManifest = S.Struct({
     sitesPlan: S.String,
     productPromises: S.String,
     productPromisesApi: S.String,
+    activityEvidence: S.String,
     sourceCode: S.String,
     liveSiteSource: S.String,
     workerSource: S.String,
@@ -132,6 +133,8 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/sites-plan.md',
       productPromises: 'https://openagents.com/docs/product-promises',
       productPromisesApi: 'https://openagents.com/api/public/product-promises',
+      activityEvidence:
+        'https://github.com/OpenAgentsInc/openagents/blob/main/docs/launch/2026-06-18-agent-activity-endpoint-guide.md',
       sourceCode: 'https://github.com/OpenAgentsInc/openagents',
       liveSiteSource:
         'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com',
@@ -282,6 +285,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'public',
         description:
           'Agent-discoverable JSON index for the public homepage, including the live data endpoint refs behind the page.',
+      },
+      {
+        id: 'public_activity_evidence_spine',
+        href: 'https://github.com/OpenAgentsInc/openagents/blob/main/docs/launch/2026-06-18-agent-activity-endpoint-guide.md',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Agent-readable endpoint guide covering the activity timeline, per-run settlements, verification challenges, Nexus/Pylon receipts, proof replays, and product-promise registry. Includes curl recipes, event-kind and source-lag semantics, stale/error states, redaction boundaries, and the observation-only authority boundary.',
       },
       {
         id: 'product_promises',

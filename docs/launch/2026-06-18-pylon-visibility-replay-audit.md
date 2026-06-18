@@ -589,6 +589,20 @@ generation, and clips.
      can discover the timeline, settlements, verification, receipt, proof-replay,
      and product-promise routes. Include example responses, event-kind meanings,
      staleness semantics, filters, and safe copy boundaries.
+   - Implementation status (2026-06-18, issue #5417): added
+     `docs/launch/2026-06-18-agent-activity-endpoint-guide.md` as the
+     programmatic evidence-spine guide for agents. It documents
+     `/api/public/activity-timeline` parameters, cursor ordering, envelope
+     fields, event/source enums, source-lag stale/unavailable/projection-gap
+     states, error responses, example response shape, curl recipes for tailing,
+     bounded replay, gap detection, settlements, verification, receipts,
+     proof-replay, and product promises, plus redaction and safe-copy
+     boundaries. The capability manifest now exposes
+     `docs.activityEvidence` and a `public_activity_evidence_spine` resource,
+     OpenAPI timeline text calls out source lag and invalid-filter errors, and
+     the shared timeline package README points implementers to the guide. This
+     is discovery/documentation only and grants no settlement, payout,
+     accepted-work, deployment, provider, wallet, or claim authority.
 6. **Add Pylon CLI `activity`, `timeline`, `receipts`, and `evidence-pack`**
    - Body summary: Add JSON-first CLI commands over the public APIs:
      `pylon activity --watch`, `pylon timeline --from/--to`,
