@@ -13,6 +13,7 @@ import {
   runSessionsExec,
   type SessionsExecControl,
 } from "../src/node/sessions-exec"
+import { createBoundedAutoApprovalPolicy } from "../src/node/auto-approval-policy"
 import { PYLON_DEV_CHECK_SCHEMA, type PylonDevCheckProjection } from "../src/dev-loop"
 
 // W-1 (#5377): exercise the blocking run-to-completion driver against a loopback
@@ -313,6 +314,151 @@ describe("pylon sessions exec (W-1 run-to-completion)", () => {
       // An approve does NOT pause: the session is allowed to reach its terminal.
       expect(result.outcome).toBe("completed")
       expect(result.ok).toBe(true)
+    })
+  })
+
+  // W-3 (#5379): the BOUNDED auto-approve policy driven through the real W-1
+  // driver. An in-allow-list, in-scope approval auto-approves and the session
+  // reaches its terminal; the audit lands in result.autoApprovals[].
+  test("W-3 auto: an allow-listed in-scope approval auto-approves and is audited; session completes", async () => {
+    await withFixture(async ({ proofDir, summary, worktree }) => {
+      const executor: ControlSessionExecutor = async () => executorResult("passed")
+      const actions = createControlSessionActions({ executor, proofsDir: proofDir, summary })
+      let calls = 0
+      const control: SessionsExecControl = {
+        ...controlFrom(actions),
+        approvalsList: async () => {
+          calls += 1
+          return calls === 1
+            ? { approvals: [{ approvalRef: "approval.edit", kind: "file_edit", paths: [`${worktree}/src/x.ts`] }] }
+            : { approvals: [] }
+        },
+      }
+      const auto = createBoundedAutoApprovalPolicy({ scopeRoot: worktree })
+      const result = await runSessionsExec(control, {
+        adapter: "codex",
+        objective: "bounded auto-approved edit",
+        verify: ["bun", "--version"],
+        worktreePath: worktree,
+        pollIntervalMs: 10,
+        deadlineMs: 5000,
+        onApproval: "auto",
+        approvalPolicy: auto.policy,
+        approvalAudit: auto.audit,
+      })
+
+      expect(result.outcome).toBe("completed")
+      expect(result.ok).toBe(true)
+      expect(result.pendingApprovals).toEqual([
+        { approvalRef: "approval.edit", kind: "file_edit", decision: "approve" },
+      ])
+      expect(result.autoApprovals).toEqual([
+        {
+          approvalRef: "approval.edit",
+          kind: "file_edit",
+          category: "allow",
+          decision: "approve",
+          reason: "auto.allow.allow_listed_kind",
+        },
+      ])
+    })
+  })
+
+  // W-3: an out-of-bounds approval (spend) is NOT auto-approved. It denies, the
+  // driver stops, and the audit records the deny with a reason. No blanket bypass.
+  test("W-3 auto: a spend approval is denied (deny beats allow), audited, and stops the run", async () => {
+    await withFixture(async ({ proofDir, summary, worktree }) => {
+      const executor: ControlSessionExecutor = async (input) =>
+        await new Promise<never>((_resolve, reject) => {
+          input.abortSignal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true })
+        })
+      const actions = createControlSessionActions({ executor, proofsDir: proofDir, summary })
+      const control: SessionsExecControl = {
+        ...controlFrom(actions),
+        approvalsList: async () => ({
+          approvals: [{ approvalRef: "approval.spend", kind: "spend_gate", prompt: "pay 1000 sats" }],
+        }),
+      }
+      const auto = createBoundedAutoApprovalPolicy({ scopeRoot: worktree })
+      const result = await runSessionsExec(control, {
+        adapter: "codex",
+        objective: "out-of-bounds spend must not auto-approve",
+        verify: ["bun", "--version"],
+        worktreePath: worktree,
+        pollIntervalMs: 10,
+        deadlineMs: 5000,
+        onApproval: "auto",
+        approvalPolicy: auto.policy,
+        approvalAudit: auto.audit,
+      })
+
+      expect(result.ok).toBe(false)
+      expect(result.pendingApprovals[0]?.decision).toBe("deny")
+      expect(result.autoApprovals[0]).toMatchObject({
+        approvalRef: "approval.spend",
+        category: "deny",
+        decision: "deny",
+        reason: "auto.deny.spend_or_secret",
+      })
+      // Audit is projection-safe — no raw prompt text.
+      expect(JSON.stringify(result.autoApprovals)).not.toContain("pay 1000 sats")
+      await actions.cancel(result.sessionRef)
+    })
+  })
+
+  // W-3: an out-of-scope path escalates (pause) — the autonomous run stops and
+  // reports approval_required rather than touching paths outside the worktree.
+  test("W-3 auto: an out-of-scope path escalates to approval_required, audited as escalate", async () => {
+    await withFixture(async ({ proofDir, summary, worktree }) => {
+      const executor: ControlSessionExecutor = async (input) =>
+        await new Promise<never>((_resolve, reject) => {
+          input.abortSignal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true })
+        })
+      const actions = createControlSessionActions({ executor, proofsDir: proofDir, summary })
+      const control: SessionsExecControl = {
+        ...controlFrom(actions),
+        approvalsList: async () => ({
+          approvals: [{ approvalRef: "approval.oos", kind: "file_edit", paths: ["/etc/hosts"] }],
+        }),
+      }
+      const auto = createBoundedAutoApprovalPolicy({ scopeRoot: worktree })
+      const result = await runSessionsExec(control, {
+        adapter: "codex",
+        objective: "out-of-scope edit must escalate",
+        verify: ["bun", "--version"],
+        worktreePath: worktree,
+        pollIntervalMs: 10,
+        deadlineMs: 5000,
+        onApproval: "auto",
+        approvalPolicy: auto.policy,
+        approvalAudit: auto.audit,
+      })
+
+      expect(result.outcome).toBe("approval_required")
+      expect(result.autoApprovals[0]).toMatchObject({
+        category: "escalate",
+        decision: "pause",
+        reason: "auto.escalate.out_of_scope_path",
+      })
+      await actions.cancel(result.sessionRef)
+    })
+  })
+
+  // W-3: default (no --on-approval auto) is unchanged — manual still pauses and
+  // autoApprovals[] stays empty.
+  test("W-3: default manual path is unchanged and autoApprovals[] is empty", async () => {
+    await withFixture(async ({ proofDir, summary, worktree }) => {
+      const executor: ControlSessionExecutor = async () => executorResult("passed")
+      const actions = createControlSessionActions({ executor, proofsDir: proofDir, summary })
+      const result = await runSessionsExec(controlFrom(actions), {
+        adapter: "codex",
+        objective: "default manual unchanged",
+        verify: ["bun", "--version"],
+        worktreePath: worktree,
+        pollIntervalMs: 25,
+      })
+      expect(result.outcome).toBe("completed")
+      expect(result.autoApprovals).toEqual([])
     })
   })
 })

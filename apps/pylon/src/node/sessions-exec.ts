@@ -61,9 +61,12 @@ export type PendingApprovalSummary = {
 
 // W-3 (#5379) plug point. The driver consults this policy whenever it observes
 // a pending approval. Default `manual` pauses and reports; `deny` records a
-// blocked outcome. A future bounded auto-approve policy returns `approve` for
-// the cases W-3 deems safe — WITHOUT this driver gaining any blanket bypass.
-export type ApprovalPolicy = "manual" | "deny"
+// blocked outcome; `auto` plugs the bounded auto-approve policy
+// (`createBoundedAutoApprovalPolicy`) into the `approvalPolicy` callback below,
+// which returns `approve` ONLY for allow-listed, in-scope, in-bounds approvals
+// and escalates/denies everything else — WITHOUT this driver gaining any
+// blanket bypass. The `auto` lane is owner-local / headless-OA dogfood only.
+export type ApprovalPolicy = "manual" | "deny" | "auto"
 export type ApprovalDecision = "pause" | "deny" | "approve"
 export type ApprovalPolicyCallback = (
   approval: PendingApprovalSummary,
@@ -76,9 +79,14 @@ export type SessionsExecOptions = {
   worktreePath?: string
   timeoutSeconds?: number
   onApproval?: ApprovalPolicy
-  // W-3 plug point: an explicit callback overrides `onApproval`. Left undefined
-  // here; W-3 wires a bounded auto-approve callback through this field.
+  // W-3 plug point: an explicit callback overrides `onApproval`. W-3 wires a
+  // bounded auto-approve callback through this field.
   approvalPolicy?: ApprovalPolicyCallback
+  // W-3 audit accessor: when the auto policy is in use, the driver reads this
+  // after the loop to attach the full per-approval audit trail
+  // (`autoApprovals[]`) to the result. The records are refs + stable reasons
+  // only — projection-safe, no raw command/path/prompt text.
+  approvalAudit?: () => SessionsExecResult["autoApprovals"]
   // Polling cadence + wall-clock bound for the whole exec. `timeoutSeconds` is
   // forwarded to the session itself (the executor's own timeout); `deadlineMs`
   // bounds the DRIVER's polling so a wedged node cannot hang the CLI forever.
@@ -126,9 +134,23 @@ export type SessionsExecResult = {
   errorClass: string | null
   errorDigestRef: string | null
   // Pending approvals observed while driving the loop, plus the policy decision
-  // taken. Empty unless the node surfaced an approval. W-3 turns selected
-  // entries into `approve`.
+  // taken. Empty unless the node surfaced an approval. W-3's `auto` policy turns
+  // selected (allow-listed, in-scope, in-bounds) entries into `approve`.
   pendingApprovals: Array<{ approvalRef: string; kind: string; decision: ApprovalDecision }>
+  // W-3 (#5379) audit trail for the BOUNDED auto-approve policy. One entry per
+  // approval the auto policy decided on, carrying the approval ref, kind, the
+  // resolved bounded category (`allow`/`escalate`/`deny`), the decision, and a
+  // stable reason ref. Empty unless `--on-approval auto` (or an equivalent
+  // `--approval-policy`) is selected. Receipt-first: the autonomous run leaves a
+  // dereferenceable approval trail here and in the session record. Refs + reason
+  // enums only — never raw command/path/prompt text.
+  autoApprovals: Array<{
+    approvalRef: string
+    kind: string
+    category: "allow" | "escalate" | "deny"
+    decision: ApprovalDecision
+    reason: string
+  }>
   startedAt: string | null
   completedAt: string | null
   // Diagnostics: how long the driver waited and how many polls it took.
@@ -342,6 +364,7 @@ export async function runSessionsExec(
     errorClass: projection?.errorClass ?? null,
     errorDigestRef: projection?.errorDigestRef ?? null,
     pendingApprovals,
+    autoApprovals: options.approvalAudit ? options.approvalAudit() : [],
     startedAt: projection?.startedAt ?? null,
     completedAt: projection?.completedAt ?? null,
     driver: { elapsedMs: now() - startedWall, polls, timedOut },

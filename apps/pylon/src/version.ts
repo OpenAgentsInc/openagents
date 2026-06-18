@@ -28,7 +28,17 @@
 // returning a structured JSON result (final state, summary, changeset, verify
 // outcome, refs). Exit 0 on success-terminal, nonzero on failure/timeout. New CLI
 // surface, so the version bumps.
-export const PYLON_VERSION = "1.0.0-rc.35"
+// rc.36: add `pylon sessions exec --on-approval auto` (W-3, #5379) — a BOUNDED
+// autonomous approval policy so a coding task runs to completion without manual
+// per-step approval, within safety bounds and fully audited. Auto-approves only
+// allow-listed, in-scope, in-bounds actions; escalates/denies spend/secret,
+// destructive (rm -rf / force-push / history rewrite), network/exfil, and
+// out-of-scope-path approvals; caps auto-approvals per session + a wall-clock
+// window. Every decision lands in the result `autoApprovals[]` audit trail with
+// the approval ref + a stable reason. NOT a blanket bypass and NOT the supervised
+// danger-mode. New CLI surface (--approval-policy, --max-auto-approvals,
+// --auto-window-seconds, --auto-out-of-bounds), so the version bumps.
+export const PYLON_VERSION = "1.0.0-rc.36"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.

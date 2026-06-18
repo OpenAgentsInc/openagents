@@ -109,6 +109,7 @@ import {
   type ApprovalPolicy,
   type SessionsExecControl,
 } from "./node/sessions-exec"
+import { createBoundedAutoApprovalPolicy } from "./node/auto-approval-policy"
 import {
   PYLON_COMMAND_CATALOG,
   findCommandEntry,
@@ -1944,11 +1945,43 @@ async function main() {
               ? verifies[0]
               : ["bash", "-lc", verifies.map((cmd) => cmd.join(" ")).join(" && ")]
         const worktree = optionString(options, "worktree")
-        const onApprovalRaw = optionString(options, "on-approval")
-        if (onApprovalRaw !== undefined && onApprovalRaw !== "manual" && onApprovalRaw !== "deny") {
-          throw new Error("sessions exec --on-approval must be manual or deny")
+        // W-3 (#5379): `--on-approval` gains `auto`, the BOUNDED auto-approve
+        // policy. `--approval-policy <name>` is an explicit alias for the same
+        // selection. Default stays `manual` (pause + report) — unchanged.
+        const onApprovalRaw = optionString(options, "on-approval") ?? optionString(options, "approval-policy")
+        if (
+          onApprovalRaw !== undefined &&
+          onApprovalRaw !== "manual" &&
+          onApprovalRaw !== "deny" &&
+          onApprovalRaw !== "auto"
+        ) {
+          throw new Error("sessions exec --on-approval must be manual, deny, or auto")
         }
-        const onApproval: ApprovalPolicy = onApprovalRaw === "deny" ? "deny" : "manual"
+        const onApproval: ApprovalPolicy =
+          onApprovalRaw === "deny" ? "deny" : onApprovalRaw === "auto" ? "auto" : "manual"
+        // W-3 caps for the bounded auto policy. These are only consulted when
+        // onApproval === "auto"; they bound how many approvals the policy may
+        // auto-approve and for how long, after which it escalates.
+        const maxAutoApprovalsRaw = optionString(options, "max-auto-approvals")
+        const maxAutoApprovals =
+          maxAutoApprovalsRaw === undefined ? undefined : Number.parseInt(maxAutoApprovalsRaw, 10)
+        if (maxAutoApprovals !== undefined && (!Number.isFinite(maxAutoApprovals) || maxAutoApprovals <= 0)) {
+          throw new Error("sessions exec --max-auto-approvals must be a positive integer")
+        }
+        const autoWindowSecondsRaw = optionString(options, "auto-window-seconds")
+        const autoWindowSeconds =
+          autoWindowSecondsRaw === undefined ? undefined : Number.parseInt(autoWindowSecondsRaw, 10)
+        if (autoWindowSeconds !== undefined && (!Number.isFinite(autoWindowSeconds) || autoWindowSeconds <= 0)) {
+          throw new Error("sessions exec --auto-window-seconds must be a positive integer")
+        }
+        const outOfBoundsRaw = optionString(options, "auto-out-of-bounds")
+        if (outOfBoundsRaw !== undefined && outOfBoundsRaw !== "escalate" && outOfBoundsRaw !== "deny") {
+          throw new Error("sessions exec --auto-out-of-bounds must be escalate or deny")
+        }
+        const outOfBounds: "escalate" | "deny" | undefined = outOfBoundsRaw as
+          | "escalate"
+          | "deny"
+          | undefined
         const timeoutSecondsRaw = optionString(options, "timeout-seconds")
         const timeoutSeconds =
           timeoutSecondsRaw === undefined ? undefined : Number.parseInt(timeoutSecondsRaw, 10)
@@ -1979,6 +2012,21 @@ async function main() {
             return result as { approvals: Array<{ approvalRef: string; kind: string }> }
           },
         }
+        // W-3: when `auto` is selected, build the BOUNDED auto-approve policy and
+        // pass its callback + audit accessor. The policy is scoped to the
+        // declared worktree, so out-of-scope paths escalate/deny. Default
+        // manual/deny keep the W-1 mapping (no callback, empty autoApprovals[]).
+        const auto =
+          onApproval === "auto"
+            ? createBoundedAutoApprovalPolicy({
+                ...(worktree ? { scopeRoot: worktree } : {}),
+                config: {
+                  ...(maxAutoApprovals === undefined ? {} : { maxAutoApprovals }),
+                  ...(autoWindowSeconds === undefined ? {} : { windowMs: autoWindowSeconds * 1000 }),
+                  ...(outOfBounds === undefined ? {} : { outOfBounds }),
+                },
+              })
+            : undefined
         const result = await runSessionsExec(control, {
           adapter,
           objective,
@@ -1986,6 +2034,7 @@ async function main() {
           ...(worktree ? { worktreePath: worktree } : {}),
           ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }),
           onApproval,
+          ...(auto ? { approvalPolicy: auto.policy, approvalAudit: auto.audit } : {}),
         })
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         if (!result.ok) process.exitCode = 1
