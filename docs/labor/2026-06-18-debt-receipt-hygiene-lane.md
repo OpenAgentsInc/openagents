@@ -71,6 +71,21 @@ Every payable receipt needs these public-safe refs:
 - settlement approval: separate from the worker;
 - settlement receipt: required before calling it paid or settled.
 
+For receipts that require studied-codebase evidence, the receipt also carries
+a studied-knowledge source:
+
+- study packet ref;
+- studied-knowledge graph ref;
+- studied-knowledge verification ref;
+- `sourceBoundary: public_refs_only`;
+- correctness gate state, rejected-claim count, and validator-review refs.
+
+Passing studied knowledge is evidence, not authority. It can unblock a required
+understanding gate for a hygiene receipt, but it does not grant write, spend,
+settlement, deployment, or self-review authority. Missing, rejected, or
+validator-review-required studied knowledge keeps the receipt out of payable
+state until the verifier or reviewer closes the gate.
+
 Workers may propose findings, but a separate allocator has to fund them.
 Workers do not receive spend authority, deployment authority, settlement
 authority, or authority to mint payable follow-ups.

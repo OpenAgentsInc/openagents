@@ -45,6 +45,18 @@ const verifiedReceiptInput = {
   ],
 }
 
+const studiedKnowledgeSource = {
+  correctnessGatePassed: true,
+  graphRef: 'openagents_repo_studied_knowledge_graph.5335',
+  packetRef: 'openagents_repo_study_packet.5335',
+  rejectedCount: 0,
+  schemaRef: 'openagents.repo_studied_knowledge_verification.v0' as const,
+  sourceBoundary: 'public_refs_only' as const,
+  validatorReviewRefs: [],
+  validatorReviewRequired: false,
+  verificationRef: 'openagents_repo_studied_knowledge_verification.5335',
+}
+
 describe('Debt receipt settlement policy', () => {
   test('treats discovered debt as fundable inventory, not spend or payout authority', () => {
     const projection = projectDebtReceiptSettlement(definedReceiptInput)
@@ -106,6 +118,79 @@ describe('Debt receipt settlement policy', () => {
     expect(projection.blockerRefs).toEqual([
       'blocker.public.debt_receipt.settlement_receipt_missing',
     ])
+  })
+
+  test('uses studied knowledge as evidence for hygiene receipts without granting authority', () => {
+    const projection = projectDebtReceiptSettlement({
+      ...verifiedReceiptInput,
+      payableSats: 50_000,
+      settlementApprovalRefs: [
+        'approval.public.debt_receipt.5335.settlement',
+      ],
+      studiedKnowledgeRequired: true,
+      studiedKnowledgeSource,
+    })
+
+    expect(projection).toMatchObject({
+      spendAuthorityDelegatedToWorker: false,
+      state: 'payable',
+      studiedKnowledgeGatePassed: true,
+      studiedKnowledgeRequired: true,
+      workerPayoutEligible: true,
+    })
+    expect(projection.studiedKnowledgeSourceRefs).toEqual([
+      'openagents_repo_studied_knowledge_graph.5335',
+      'openagents_repo_studied_knowledge_verification.5335',
+      'openagents_repo_study_packet.5335',
+    ])
+  })
+
+  test('blocks payable state when required studied knowledge is missing or rejected', () => {
+    const missing = projectDebtReceiptSettlement({
+      ...verifiedReceiptInput,
+      payableSats: 50_000,
+      settlementApprovalRefs: [
+        'approval.public.debt_receipt.5335.settlement',
+      ],
+      studiedKnowledgeRequired: true,
+    })
+
+    expect(missing).toMatchObject({
+      state: 'funded',
+      studiedKnowledgeGatePassed: false,
+      workerPayoutEligible: false,
+    })
+    expect(missing.blockerRefs).toContain(
+      'blocker.public.debt_receipt.studied_knowledge_source_missing',
+    )
+
+    const rejected = projectDebtReceiptSettlement({
+      ...verifiedReceiptInput,
+      payableSats: 50_000,
+      settlementApprovalRefs: [
+        'approval.public.debt_receipt.5335.settlement',
+      ],
+      studiedKnowledgeRequired: true,
+      studiedKnowledgeSource: {
+        ...studiedKnowledgeSource,
+        correctnessGatePassed: false,
+        rejectedCount: 1,
+        verificationRef:
+          'openagents_repo_studied_knowledge_verification.5335_rejected',
+      },
+    })
+
+    expect(rejected).toMatchObject({
+      state: 'funded',
+      studiedKnowledgeGatePassed: false,
+      workerPayoutEligible: false,
+    })
+    expect(rejected.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.public.debt_receipt.studied_knowledge_correctness_failed',
+        'blocker.public.debt_receipt.studied_knowledge_rejected_claims',
+      ]),
+    )
   })
 
   test('retires a receipt once settlement evidence exactly matches the payable amount', () => {

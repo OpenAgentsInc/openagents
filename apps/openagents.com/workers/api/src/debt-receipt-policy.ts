@@ -14,6 +14,23 @@ export const DebtReceiptSettlementState = S.Literals([
 export type DebtReceiptSettlementState =
   typeof DebtReceiptSettlementState.Type
 
+export const DebtReceiptStudiedKnowledgeVerificationSchemaRef =
+  'openagents.repo_studied_knowledge_verification.v0' as const
+
+export const DebtReceiptStudiedKnowledgeSource = S.Struct({
+  correctnessGatePassed: S.Boolean,
+  graphRef: S.String,
+  packetRef: S.String,
+  rejectedCount: S.Number,
+  schemaRef: S.Literal(DebtReceiptStudiedKnowledgeVerificationSchemaRef),
+  sourceBoundary: S.Literal('public_refs_only'),
+  validatorReviewRefs: S.Array(S.String),
+  validatorReviewRequired: S.Boolean,
+  verificationRef: S.String,
+})
+export type DebtReceiptStudiedKnowledgeSource =
+  typeof DebtReceiptStudiedKnowledgeSource.Type
+
 export const DebtReceiptSettlementProjection = S.Struct({
   acceptedWorkRefs: S.Array(S.String),
   baselineMetricRefs: S.Array(S.String),
@@ -48,6 +65,10 @@ export const DebtReceiptSettlementProjection = S.Struct({
   spendAuthorityDelegatedToWorker: S.Boolean,
   state: DebtReceiptSettlementState,
   stopConditionRefs: S.Array(S.String),
+  studiedKnowledgeGatePassed: S.Boolean,
+  studiedKnowledgeRequired: S.Boolean,
+  studiedKnowledgeSource: S.NullOr(DebtReceiptStudiedKnowledgeSource),
+  studiedKnowledgeSourceRefs: S.Array(S.String),
   targetMetricRefs: S.Array(S.String),
   verificationCommandRefs: S.Array(S.String),
   workerPayoutEligible: S.Boolean,
@@ -79,6 +100,8 @@ export type DebtReceiptSettlementInput = Readonly<{
   settledSats?: number | undefined
   sourceRefs?: ReadonlyArray<string> | undefined
   stopConditionRefs?: ReadonlyArray<string> | undefined
+  studiedKnowledgeRequired?: boolean | undefined
+  studiedKnowledgeSource?: DebtReceiptStudiedKnowledgeSource | null | undefined
   targetMetricRefs?: ReadonlyArray<string> | undefined
   verificationCommandRefs?: ReadonlyArray<string> | undefined
   workerActorRef?: string | null | undefined
@@ -92,6 +115,9 @@ export class DebtReceiptPolicyUnsafe extends S.TaggedErrorClass<DebtReceiptPolic
 ) {}
 
 const decodeProjection = S.decodeUnknownSync(DebtReceiptSettlementProjection)
+const decodeStudiedKnowledgeSource = S.decodeUnknownSync(
+  DebtReceiptStudiedKnowledgeSource,
+)
 
 const safeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/#-]{0,260}$/
 const unsafeDebtReceiptRefPattern =
@@ -162,6 +188,60 @@ const safeNonNegativeInteger = (
 
   return normalized
 }
+
+const safeStudiedKnowledgeSource = (
+  source: DebtReceiptStudiedKnowledgeSource | null | undefined,
+): DebtReceiptStudiedKnowledgeSource | null => {
+  if (source === null || source === undefined) {
+    return null
+  }
+
+  const decoded = decodeStudiedKnowledgeSource(source)
+  const packetRef = safeRefs('Debt receipt studied packet ref', [
+    decoded.packetRef,
+  ])[0]!
+  const graphRef = safeRefs('Debt receipt studied graph ref', [
+    decoded.graphRef,
+  ])[0]!
+  const verificationRef = safeRefs('Debt receipt studied verification ref', [
+    decoded.verificationRef,
+  ])[0]!
+  const validatorReviewRefs = safeRefs(
+    'Debt receipt studied validator review refs',
+    decoded.validatorReviewRefs,
+  )
+  const rejectedCount = safeNonNegativeInteger(
+    'studiedKnowledgeSource.rejectedCount',
+    decoded.rejectedCount,
+  )
+
+  return {
+    ...decoded,
+    graphRef,
+    packetRef,
+    rejectedCount,
+    validatorReviewRefs,
+    verificationRef,
+  }
+}
+
+const studiedKnowledgeBlockers = (
+  source: DebtReceiptStudiedKnowledgeSource | null,
+  required: boolean,
+): ReadonlyArray<string> => [
+  ...(required && source === null
+    ? ['blocker.public.debt_receipt.studied_knowledge_source_missing']
+    : []),
+  ...(source !== null && !source.correctnessGatePassed
+    ? ['blocker.public.debt_receipt.studied_knowledge_correctness_failed']
+    : []),
+  ...(source !== null && source.rejectedCount > 0
+    ? ['blocker.public.debt_receipt.studied_knowledge_rejected_claims']
+    : []),
+  ...(source !== null && source.validatorReviewRequired
+    ? ['blocker.public.debt_receipt.studied_knowledge_validator_review_required']
+    : []),
+]
 
 const distinctPresentActors = (
   refs: ReadonlyArray<Readonly<[string, string | null]>>,
@@ -353,6 +433,29 @@ export const projectDebtReceiptSettlement = (
       input.workerActorRef,
     ),
   }
+  const studiedKnowledgeRequired = input.studiedKnowledgeRequired ?? false
+  const studiedKnowledgeSource = safeStudiedKnowledgeSource(
+    input.studiedKnowledgeSource,
+  )
+  const studiedKnowledgeSourceRefs =
+    studiedKnowledgeSource === null
+      ? []
+      : [
+          studiedKnowledgeSource.graphRef,
+          studiedKnowledgeSource.packetRef,
+          studiedKnowledgeSource.verificationRef,
+          ...studiedKnowledgeSource.validatorReviewRefs,
+        ].sort()
+  const studiedKnowledgeGatePassed =
+    !studiedKnowledgeRequired ||
+    (studiedKnowledgeSource !== null &&
+      studiedKnowledgeSource.correctnessGatePassed &&
+      studiedKnowledgeSource.rejectedCount === 0 &&
+      !studiedKnowledgeSource.validatorReviewRequired)
+  const studiedKnowledgeBlockerRefs = studiedKnowledgeBlockers(
+    studiedKnowledgeSource,
+    studiedKnowledgeRequired,
+  )
 
   if (payableSats > budgetCapSats) {
     throw new DebtReceiptPolicyUnsafe({
@@ -398,7 +501,8 @@ export const projectDebtReceiptSettlement = (
     hasRefs(acceptedWorkRefs) &&
     hasRefs(reviewDecisionRefs) &&
     hasRefs(hygieneDeltaRefs) &&
-    hasRefs(noNewEqualOrWorseDebtRefs)
+    hasRefs(noNewEqualOrWorseDebtRefs) &&
+    studiedKnowledgeGatePassed
   const payable =
     verified &&
     hasRefs(settlementApprovalRefs) &&
@@ -447,6 +551,7 @@ export const projectDebtReceiptSettlement = (
         verificationCommandRefs,
       }),
       ...roleBlockers,
+      ...studiedKnowledgeBlockerRefs,
       ...(duplicateReplay
         ? ['blocker.public.debt_receipt.duplicate_replay']
         : []),
@@ -484,6 +589,10 @@ export const projectDebtReceiptSettlement = (
     spendAuthorityDelegatedToWorker: false,
     state,
     stopConditionRefs,
+    studiedKnowledgeGatePassed,
+    studiedKnowledgeRequired,
+    studiedKnowledgeSource,
+    studiedKnowledgeSourceRefs,
     targetMetricRefs,
     verificationCommandRefs,
     workerPayoutEligible: payable || retired,
@@ -513,6 +622,7 @@ export const debtReceiptSettlementHasPrivateMaterial = (
     ...projection.settlementReceiptRefs,
     ...projection.sourceRefs,
     ...projection.stopConditionRefs,
+    ...projection.studiedKnowledgeSourceRefs,
     ...projection.targetMetricRefs,
     ...projection.verificationCommandRefs,
     ...Object.values(projection.roleRefs).filter(ref => ref !== null),

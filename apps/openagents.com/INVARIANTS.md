@@ -1057,6 +1057,12 @@ This is the invariant ledger for `openagents`.
 - Payment follows verified delta, not churn: behavior or benchmark parity must
   be green, the named hygiene metric must improve, and no equal-or-worse debt
   may be introduced elsewhere in the scoped receipt.
+- When a debt receipt requires studied-codebase evidence, the cited study
+  packet, studied-knowledge graph, and studied-knowledge verification refs are
+  an evidence-only gate. The gate must use public refs only and pass correctness
+  with zero rejected claims and no pending validator review before the receipt
+  can become verified/payable. Studied knowledge does not grant mutation, spend,
+  deployment, settlement, or self-review authority.
 - A debt receipt settles once and then retires. Near-duplicate work against a
   retired receipt fingerprint is duplicate replay, not payable work.
 - After repeated rejected or revision-required attempts on the same
