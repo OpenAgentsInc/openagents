@@ -24,6 +24,8 @@ export type DataTracePlannerMode = typeof DataTracePlannerMode.Type
 export const DataTraceMarketplaceGate = S.Struct({
   blockerRefs: S.Array(S.String),
   caveatRefs: S.Array(S.String),
+  correctnessGatePassed: S.Boolean,
+  correctnessReceiptRefs: S.Array(S.String),
   dataRevenueCopyAllowed: S.Boolean,
   entitlementRefs: S.Array(S.String),
   payoutContractRefs: S.Array(S.String),
@@ -39,10 +41,13 @@ export const DataTraceMarketplaceGate = S.Struct({
   traceSubmissionRefs: S.Array(S.String),
   valuationRefs: S.Array(S.String),
   valuationPayoutClaimAllowed: S.Boolean,
+  validatorReviewRefs: S.Array(S.String),
+  validatorReviewRequired: S.Boolean,
 })
 export type DataTraceMarketplaceGate = typeof DataTraceMarketplaceGate.Type
 
 export type DataTraceMarketplaceGateInput = Readonly<{
+  correctnessReceiptRefs?: ReadonlyArray<string> | undefined
   entitlementRefs?: ReadonlyArray<string> | undefined
   payoutContractRefs?: ReadonlyArray<string> | undefined
   plannerMode: DataTracePlannerMode
@@ -52,6 +57,7 @@ export type DataTraceMarketplaceGateInput = Readonly<{
   settlementReceiptRefs?: ReadonlyArray<string> | undefined
   traceSubmissionRefs?: ReadonlyArray<string> | undefined
   valuationRefs?: ReadonlyArray<string> | undefined
+  validatorReviewRefs?: ReadonlyArray<string> | undefined
 }>
 
 export class DataTraceMarketplaceGateUnsafe extends S.TaggedErrorClass<DataTraceMarketplaceGateUnsafe>()(
@@ -102,6 +108,7 @@ const hasRefs = (refs: ReadonlyArray<string>): boolean =>
 
 const blockerRefsForMissingEvidence = (
   input: Readonly<{
+    correctnessReceiptRefs: ReadonlyArray<string>
     entitlementRefs: ReadonlyArray<string>
     payoutContractRefs: ReadonlyArray<string>
     purchaseReceiptRefs: ReadonlyArray<string>
@@ -120,6 +127,9 @@ const blockerRefsForMissingEvidence = (
     : []),
   ...(!hasRefs(input.semanticPlannerRefs)
     ? ['blocker.public.data_market.semantic_planner_missing']
+    : []),
+  ...(!hasRefs(input.correctnessReceiptRefs)
+    ? ['blocker.public.data_market.correctness_verdict_missing']
     : []),
   ...(!hasRefs(input.valuationRefs)
     ? ['blocker.public.data_market.valuation_missing']
@@ -140,6 +150,8 @@ const blockerRefsForMissingEvidence = (
 
 const baseCaveatRefs = [
   'caveat.public.data_market.trace_material_requires_redaction',
+  'caveat.public.data_market.correctness_verdict_required',
+  'caveat.public.data_market.validator_review_for_nondeterministic_remainder',
   'caveat.public.data_market.valuation_is_not_payout',
   'caveat.public.data_market.purchase_is_not_settlement',
   'caveat.public.data_market.semantic_planner_required',
@@ -148,6 +160,10 @@ const baseCaveatRefs = [
 export const projectDataTraceMarketplaceGate = (
   input: DataTraceMarketplaceGateInput,
 ): DataTraceMarketplaceGate => {
+  const correctnessReceiptRefs = safeRefs(
+    'Data market correctness receipt refs',
+    input.correctnessReceiptRefs,
+  )
   const entitlementRefs = safeRefs(
     'Data market entitlement refs',
     input.entitlementRefs,
@@ -180,8 +196,16 @@ export const projectDataTraceMarketplaceGate = (
     'Data market valuation refs',
     input.valuationRefs,
   )
+  const validatorReviewRefs = safeRefs(
+    'Data market validator review refs',
+    input.validatorReviewRefs,
+  )
   const keywordRoutingBlocked = input.plannerMode === 'keyword_route'
+  const correctnessGatePassed = hasRefs(correctnessReceiptRefs)
+  const validatorReviewRequired =
+    hasRefs(validatorReviewRefs) && !correctnessGatePassed
   const missingBlockerRefs = blockerRefsForMissingEvidence({
+    correctnessReceiptRefs,
     entitlementRefs,
     payoutContractRefs,
     purchaseReceiptRefs,
@@ -196,6 +220,7 @@ export const projectDataTraceMarketplaceGate = (
   const valued =
     redacted &&
     !keywordRoutingBlocked &&
+    correctnessGatePassed &&
     hasRefs(semanticPlannerRefs) &&
     hasRefs(valuationRefs)
   const purchased = valued && hasRefs(purchaseReceiptRefs)
@@ -230,6 +255,8 @@ export const projectDataTraceMarketplaceGate = (
   return decodeGate({
     blockerRefs,
     caveatRefs: baseCaveatRefs,
+    correctnessGatePassed,
+    correctnessReceiptRefs,
     dataRevenueCopyAllowed: publicSafeDataSaleSmokePassed,
     entitlementRefs,
     payoutContractRefs,
@@ -247,6 +274,8 @@ export const projectDataTraceMarketplaceGate = (
     traceSubmissionRefs,
     valuationRefs,
     valuationPayoutClaimAllowed: false,
+    validatorReviewRefs,
+    validatorReviewRequired,
   })
 }
 
@@ -258,6 +287,7 @@ export const dataTraceMarketplaceGateHasPrivateMaterial = (
     gate.state,
     ...gate.blockerRefs,
     ...gate.caveatRefs,
+    ...gate.correctnessReceiptRefs,
     ...gate.entitlementRefs,
     ...gate.payoutContractRefs,
     ...gate.publicCopyRefs,
@@ -267,6 +297,7 @@ export const dataTraceMarketplaceGateHasPrivateMaterial = (
     ...gate.settlementReceiptRefs,
     ...gate.traceSubmissionRefs,
     ...gate.valuationRefs,
+    ...gate.validatorReviewRefs,
   ]
 
   return publicValues.some(

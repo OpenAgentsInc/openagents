@@ -7,6 +7,7 @@ import {
 } from './data-trace-marketplace-gate'
 
 const publicSaleSmokeInput = {
+  correctnessReceiptRefs: ['correctness.public.data_market.trace_sale_001'],
   entitlementRefs: ['entitlement.public.data_market.trace_sale_001'],
   payoutContractRefs: ['payout_contract.public.data_market.trace_sale_001'],
   plannerMode: 'typed_semantic_selector' as const,
@@ -38,6 +39,9 @@ describe('Data trace marketplace gate', () => {
     expect(gate.blockerRefs).toContain(
       'blocker.public.data_market.semantic_planner_missing',
     )
+    expect(gate.blockerRefs).toContain(
+      'blocker.public.data_market.correctness_verdict_missing',
+    )
   })
 
   test('blocks keyword routing and requires a semantic planner ref', () => {
@@ -58,7 +62,7 @@ describe('Data trace marketplace gate', () => {
     )
   })
 
-  test('keeps valuation separate from payout', () => {
+  test('keeps correctness separate from valuation', () => {
     const gate = projectDataTraceMarketplaceGate({
       plannerMode: 'structured_query_planner',
       redactionReceiptRefs: ['redaction.public.data_market.trace_sale_001'],
@@ -68,6 +72,32 @@ describe('Data trace marketplace gate', () => {
     })
 
     expect(gate).toMatchObject({
+      correctnessGatePassed: false,
+      dataRevenueCopyAllowed: false,
+      publicSafeDataSaleSmokePassed: false,
+      state: 'redacted',
+      valuationPayoutClaimAllowed: false,
+    })
+    expect(gate.blockerRefs).toContain(
+      'blocker.public.data_market.correctness_verdict_missing',
+    )
+    expect(gate.caveatRefs).toContain(
+      'caveat.public.data_market.correctness_verdict_required',
+    )
+  })
+
+  test('keeps valuation separate from payout after correctness passes', () => {
+    const gate = projectDataTraceMarketplaceGate({
+      correctnessReceiptRefs: ['correctness.public.data_market.trace_sale_001'],
+      plannerMode: 'structured_query_planner',
+      redactionReceiptRefs: ['redaction.public.data_market.trace_sale_001'],
+      semanticPlannerRefs: ['planner.public.data_market.structured_001'],
+      traceSubmissionRefs: ['trace.public.data_market.submission_001'],
+      valuationRefs: ['valuation.public.data_market.trace_sale_001'],
+    })
+
+    expect(gate).toMatchObject({
+      correctnessGatePassed: true,
       dataRevenueCopyAllowed: false,
       publicSafeDataSaleSmokePassed: false,
       state: 'valued',
@@ -75,6 +105,30 @@ describe('Data trace marketplace gate', () => {
     })
     expect(gate.caveatRefs).toContain(
       'caveat.public.data_market.valuation_is_not_payout',
+    )
+  })
+
+  test('routes non-deterministic correctness remainder to validator review', () => {
+    const gate = projectDataTraceMarketplaceGate({
+      plannerMode: 'typed_semantic_selector',
+      redactionReceiptRefs: ['redaction.public.data_market.trace_sale_001'],
+      semanticPlannerRefs: ['planner.public.data_market.semantic_selector_001'],
+      traceSubmissionRefs: ['trace.public.data_market.submission_001'],
+      valuationRefs: ['valuation.public.data_market.trace_sale_001'],
+      validatorReviewRefs: ['validator_review.public.data_market.study_001'],
+    })
+
+    expect(gate).toMatchObject({
+      correctnessGatePassed: false,
+      state: 'redacted',
+      validatorReviewRequired: true,
+      validatorReviewRefs: ['validator_review.public.data_market.study_001'],
+    })
+    expect(gate.blockerRefs).toContain(
+      'blocker.public.data_market.correctness_verdict_missing',
+    )
+    expect(gate.caveatRefs).toContain(
+      'caveat.public.data_market.validator_review_for_nondeterministic_remainder',
     )
   })
 

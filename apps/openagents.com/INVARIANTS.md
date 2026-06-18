@@ -34,6 +34,22 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/redirect-policy.test.ts`.
 
+## Data Trace Correctness Gate
+
+- Data-trace marketplace projections must keep submission, redaction,
+  semantic planning, correctness, valuation, purchase, entitlement, payout
+  contract, and settlement evidence as distinct refs.
+- Valuation evidence must not advance a data trace to `valued` unless a
+  public-safe correctness receipt is present. Correctness receipts are separate
+  from valuation refs and settlement refs.
+- Studied-knowledge verification reports may provide correctness receipts for
+  deterministic link/span replay. Non-deterministic remainder must surface as
+  validator-review refs and must not pass the correctness gate until review
+  produces a correctness receipt.
+- Regression coverage for this policy lives in
+  `workers/api/src/data-trace-marketplace-gate.test.ts` and
+  `packages/probe/packages/runtime/tests/openagents-study-verification.test.ts`.
+
 ## Foldkit-Owned Browser Navigation
 
 - Production browser app code must not call raw History APIs such as
