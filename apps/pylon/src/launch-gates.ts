@@ -26,7 +26,7 @@ export const launchClaimGates: LaunchClaimGate[] = [
   },
   {
     claimRef: "claim.pylon.assignment_ready_network",
-    publicPhrase: "Pylon v0.3 is assignment-ready across the network",
+    publicPhrase: "Pylon v1.0 is assignment-ready across the network",
     state: "blocked",
     requiredEvidenceRefs: ["evidence.live.assignment.multi_host", "evidence.fresh.heartbeat.inventory.wallet"],
     blockerRefs: ["blocker.copy.live_network_assignment_not_proven"],
@@ -81,6 +81,7 @@ export const launchClaimGates: LaunchClaimGate[] = [
 
 const unsafePhrasePatterns = [
   /pylon v0\.3\.0 is stable/i,
+  /pylon v1\.0(?:\.0)? is assignment-ready across the network/i,
   /assignment-ready across the network/i,
   /paid pylon work settles bitcoin/i,
   /qwen .*training on people/i,
