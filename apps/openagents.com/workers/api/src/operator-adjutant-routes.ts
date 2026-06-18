@@ -1216,18 +1216,33 @@ const readOperatorGitHubIdentityToken = async (
   }
 }
 
+const rejectUnlessMethod = (
+  request: Request,
+  allowedMethods: readonly string[],
+): HttpResponse | null =>
+  allowedMethods.includes(request.method)
+    ? null
+    : methodNotAllowed([...allowedMethods])
+
 const runRoute = (
   env: OperatorAdjutantEnv,
+  request: Request,
+  allowedMethods: readonly string[],
   effect: Effect.Effect<
     HttpResponse,
     OperatorAdjutantRouteError,
     AdjutantAssignmentService
   >,
-): Effect.Effect<HttpResponse> =>
-  effect.pipe(
-    Effect.provide(AdjutantAssignmentService.layer(env)),
-    Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
-  )
+): Effect.Effect<HttpResponse> => {
+  const methodRejection = rejectUnlessMethod(request, allowedMethods)
+
+  return methodRejection === null
+    ? effect.pipe(
+        Effect.provide(AdjutantAssignmentService.layer(env)),
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    : Effect.succeed(methodRejection)
+}
 
 const preflightD1Effect = <A>(
   operation: string,
@@ -4488,11 +4503,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -4527,11 +4540,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -4561,11 +4572,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['GET'],
       Effect.gen(function* () {
-        if (request.method !== 'GET') {
-          return methodNotAllowed(['GET'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -4590,11 +4599,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['GET'],
       Effect.gen(function* () {
-        if (request.method !== 'GET') {
-          return methodNotAllowed(['GET'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -4625,11 +4632,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['GET'],
       Effect.gen(function* () {
-        if (request.method !== 'GET') {
-          return methodNotAllowed(['GET'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -4660,11 +4665,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -4752,11 +4755,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['GET', 'POST'],
       Effect.gen(function* () {
-        if (request.method !== 'GET' && request.method !== 'POST') {
-          return methodNotAllowed(['GET', 'POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -4823,11 +4824,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -4867,11 +4866,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -5066,11 +5063,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -5123,11 +5118,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -5177,11 +5170,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -5265,11 +5256,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -5388,11 +5377,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -5501,11 +5488,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -5624,11 +5609,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -5684,11 +5667,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -5798,11 +5779,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,
@@ -6093,11 +6072,9 @@ export const makeOperatorAdjutantRoutes = <
   ) =>
     runRoute(
       env,
+      request,
+      ['POST'],
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const session = yield* requireAdminSession(
           dependencies,
           request,

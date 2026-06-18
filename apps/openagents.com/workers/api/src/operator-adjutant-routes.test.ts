@@ -2327,6 +2327,49 @@ const attachApprovedOtecResearch = (
 }
 
 describe('operator Adjutant assignment API routes', () => {
+  test('rejects unsupported methods before session work', async () => {
+    const store = new OperatorAdjutantDbStore()
+    const assignGetResponse = await runRoute(
+      null,
+      store,
+      new Request(
+        'https://openagents.com/api/operator/adjutant/orders/software_order_otec/assign',
+        { method: 'GET' },
+      ),
+    )
+    const listPostResponse = await runRoute(
+      adminSession,
+      store,
+      new Request('https://openagents.com/api/operator/adjutant/assignments', {
+        method: 'POST',
+      }),
+    )
+    const researchPatchResponse = await runRoute(
+      null,
+      store,
+      new Request(
+        'https://openagents.com/api/operator/adjutant/assignments/assignment_otec/research-policy',
+        { method: 'PATCH' },
+      ),
+    )
+
+    expect(assignGetResponse.status).toBe(405)
+    expect(assignGetResponse.headers.get('allow')).toBe('POST')
+    await expect(assignGetResponse.json()).resolves.toEqual({
+      error: 'method_not_allowed',
+    })
+    expect(listPostResponse.status).toBe(405)
+    expect(listPostResponse.headers.get('allow')).toBe('GET')
+    await expect(listPostResponse.json()).resolves.toEqual({
+      error: 'method_not_allowed',
+    })
+    expect(researchPatchResponse.status).toBe(405)
+    expect(researchPatchResponse.headers.get('allow')).toBe('GET, POST')
+    await expect(researchPatchResponse.json()).resolves.toEqual({
+      error: 'method_not_allowed',
+    })
+  })
+
   test('returns unauthorized without a browser session', async () => {
     const response = await runRoute(
       null,
