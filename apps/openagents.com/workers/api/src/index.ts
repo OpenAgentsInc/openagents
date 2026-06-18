@@ -332,7 +332,7 @@ import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-rout
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
-import { buildPublicProofReplayBundleForRequest } from './public-proof-replay-routes'
+import { handlePublicProofReplayBundleRequest } from './public-proof-replay-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
 import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
 import {
@@ -7308,16 +7308,12 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: '/api/public/tassadar-replays/first-real-settlement',
     handler: (request, env) =>
-      Effect.promise(() =>
-        buildPublicProofReplayBundleForRequest(request, env),
-      ).pipe(Effect.map(bundle => noStoreJsonResponse(bundle))),
+      Effect.promise(() => handlePublicProofReplayBundleRequest(request, env)),
   },
   {
     path: '/api/public/proof-replays',
     handler: (request, env) =>
-      Effect.promise(() =>
-        buildPublicProofReplayBundleForRequest(request, env),
-      ).pipe(Effect.map(bundle => noStoreJsonResponse(bundle))),
+      Effect.promise(() => handlePublicProofReplayBundleRequest(request, env)),
   },
   {
     path: '/api/public/product-promises',

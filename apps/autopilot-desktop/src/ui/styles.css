@@ -63,6 +63,51 @@ body {
 .desktop-tassadar-replay {
   display: block;
 }
+.network-replay-status,
+.training-proof-replay-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  text-align: center;
+  background:
+    radial-gradient(circle at 50% 48%, rgb(42 181 161 / 0.16), transparent 34%),
+    #000;
+}
+.network-replay-status {
+  color: rgb(241 239 232 / 0.78);
+}
+.proof-replay-status-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.42);
+}
+.proof-replay-status-copy {
+  max-width: 34rem;
+  margin: 0;
+  color: rgb(255 255 255 / 0.72);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+.proof-replay-status-retry {
+  border: 1px solid rgb(255 255 255 / 0.16);
+  background: rgb(255 255 255 / 0.08);
+  color: #f1efe8;
+  padding: 0.48rem 0.8rem;
+  font: inherit;
+  font-size: 0.75rem;
+}
+.proof-replay-status-retry:disabled {
+  opacity: 0.48;
+}
+.proof-replay-status-error .proof-replay-status-label {
+  color: rgb(255 112 112 / 0.82);
+}
 .three-effect-network {
   z-index: 0;
 }

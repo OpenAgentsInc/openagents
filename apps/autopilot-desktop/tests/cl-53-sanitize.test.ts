@@ -226,10 +226,60 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsText(failed.body, "Local node failed to start")).toBe(true)
   })
 
-  test("network home is the controlled Tassadar proof replay, no stale pylon overlay", () => {
+  test("network home waits on the typed desktop proof replay bundle, no stale pylon overlay", () => {
     const document = view(initialModel) // default pane is "network"
+    expect(treeContainsSelector(document.body, "oa-tassadar-proof-replay")).toBe(false)
+    expect(treeContainsClass(document.body, "network-replay-status")).toBe(true)
+    expect(treeContainsText(document.body, "Loading Tassadar replay")).toBe(true)
+    expect(treeContainsSelector(document.body, "oa-training-run")).toBe(false)
+    expect(treeContainsSelector(document.body, "oa-desktop-pylon-diamonds")).toBe(false)
+    expect(treeContainsClass(document.body, "network-overlay")).toBe(false)
+    expect(treeContainsClass(document.body, "app-shell-network")).toBe(true)
+    // immersive: no sidebar chrome on the home
+    expect(treeContainsClass(document.body, "sidebar")).toBe(false)
+  })
+
+  test("network home renders the controlled Tassadar proof replay after Bun loads the bundle", () => {
+    const document = view({
+      ...initialModel,
+      proofReplay: {
+        ok: true,
+        fetchedAt: "2026-06-18T02:38:00.000Z",
+        sourceUrl:
+          "https://openagents.com/api/public/tassadar-replays/first-real-settlement",
+        entry: {
+          bundleEndpoint:
+            "https://openagents.com/api/public/tassadar-replays/first-real-settlement",
+          primarySourceRefs: ["receipt.real"],
+          slug: "first-real-settlement",
+          summary: "receipt-backed replay",
+          title: "Tassadar Run 1: First Real Bitcoin Settlement",
+          websitePath:
+            "https://openagents.com/tassadar/replay/first-real-settlement",
+        },
+        bundle: { title: "Tassadar Run 1: First Real Bitcoin Settlement" },
+        summary: {
+          actorCount: 4,
+          confirmedZapSats: 1000,
+          durationSecond: 60,
+          eventCount: 12,
+          gapCount: 1,
+          sourceRefCount: 6,
+        },
+        blockerRefs: [],
+        cacheState: "live_https",
+        cacheLabel: "live HTTPS read from openagents.com; no offline snapshot",
+      },
+      proofReplayStatus: {
+        text: "Tassadar Run 1: First Real Bitcoin Settlement · 12 events · 1,000 sats",
+        tone: "success",
+      },
+    })
     const replay = findSelectorNode(document.body, "oa-tassadar-proof-replay") as {
-      data?: { attrs?: Record<string, string> }
+      data?: {
+        attrs?: Record<string, string>
+        props?: { bundle?: unknown }
+      }
     } | null
     expect(replay?.data?.attrs?.["data-replay-slug"]).toBe(
       "first-real-settlement",
@@ -237,6 +287,9 @@ describe("CL-53 sanitizeTree", () => {
     expect(replay?.data?.attrs?.["data-replay-origin"]).toBe(
       "https://openagents.com",
     )
+    expect(replay?.data?.props?.bundle).toEqual({
+      title: "Tassadar Run 1: First Real Bitcoin Settlement",
+    })
     expect(treeContainsSelector(document.body, "oa-training-run")).toBe(false)
     expect(treeContainsSelector(document.body, "oa-desktop-pylon-diamonds")).toBe(false)
     expect(treeContainsClass(document.body, "network-overlay")).toBe(false)
@@ -452,7 +505,8 @@ describe("CL-53 sanitizeTree", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsClass(document.body, "training-proof-replay-panel")).toBe(true)
     expect(treeContainsClass(document.body, "training-proof-replay-viewport")).toBe(true)
-    expect(treeContainsSelector(document.body, "oa-tassadar-proof-replay")).toBe(true)
+    expect(treeContainsSelector(document.body, "oa-tassadar-proof-replay")).toBe(false)
+    expect(treeContainsClass(document.body, "training-proof-replay-placeholder")).toBe(true)
     expect(treeContainsText(document.body, "Proof Replays")).toBe(true)
     expect(treeContainsText(document.body, "First settlement")).toBe(true)
     expect(treeContainsText(document.body, "Recognition")).toBe(true)

@@ -20,6 +20,7 @@ import {
   SessionList,
   type AccountSummary,
 } from "@openagentsinc/autopilot-ui"
+import type { ProofReplayBundle } from "@openagentsinc/proof-replay"
 import { trainingRunView } from "@openagentsinc/three-effect/foldkit"
 import {
   defaultTrainingRunNodes,
@@ -161,12 +162,16 @@ const cls = (value: string): Attribute<Message> => h.Class(value)
 const tassadarProofReplayScene = (
   className: string,
   slug: string = DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
+  bundle?: ProofReplayBundle | null,
 ): Html =>
-  tassadarProofReplayView<Message>([
-    cls(className),
-    h.DataAttribute(TASSADAR_REPLAY_SLUG_DATA_KEY, slug),
-    h.DataAttribute(TASSADAR_REPLAY_ORIGIN_DATA_KEY, OPENAGENTS_PUBLIC_ORIGIN),
-  ])
+  tassadarProofReplayView<Message>(
+    [
+      cls(className),
+      h.DataAttribute(TASSADAR_REPLAY_SLUG_DATA_KEY, slug),
+      h.DataAttribute(TASSADAR_REPLAY_ORIGIN_DATA_KEY, OPENAGENTS_PUBLIC_ORIGIN),
+    ],
+    bundle,
+  )
 
 // ── Small shared building blocks (own h.* — no hand DOM) ─────────────────────
 
@@ -1609,14 +1614,65 @@ const proofReplaySourceRows = (
   )
 }
 
+const proofReplayUnavailableText = (
+  projection: DesktopProofReplayProjection | null,
+  fallback: string,
+): string =>
+  projection?.error ??
+  projection?.blockerRefs[0] ??
+  projection?.cacheLabel ??
+  fallback
+
+const proofReplayLoadingPanel = (
+  model: Model,
+  projection: DesktopProofReplayProjection | null,
+  className: string,
+): Html => {
+  const blocked = projection !== null && projection.ok === false
+  return h.div(
+    [
+      cls(
+        `${className} ${blocked ? "proof-replay-status-error" : "proof-replay-status-loading"}`,
+      ),
+    ],
+    [
+      h.span([cls("proof-replay-status-label")], [
+        blocked ? "Proof replay unavailable" : "Loading Tassadar replay",
+      ]),
+      h.p([cls("proof-replay-status-copy")], [
+        blocked
+          ? proofReplayUnavailableText(
+              projection,
+              "The public proof replay bundle is unavailable.",
+            )
+          : model.proofReplayStatus.text,
+      ]),
+      blocked
+        ? h.button(
+            [
+              cls("proof-replay-status-retry"),
+              h.Type("button"),
+              h.Disabled(model.proofReplayPending),
+              h.OnClick(ClickedRefreshProofReplay()),
+            ],
+            [model.proofReplayPending ? "Retrying..." : "Retry"],
+          )
+        : h.empty,
+    ],
+  )
+}
+
 const proofReplayPanel = (model: Model): Html => {
   const projection = modelProofReplay(model)
   const entries = desktopProofReplayCatalog()
   const selectedEntry =
     entries.find(entry => entry.slug === model.selectedProofReplaySlug) ?? entries[0]
-  const summary = projection?.summary ?? null
-  const sourceRows = proofReplaySourceRows(projection)
-  const eventRows = proofReplayEventRows(projection)
+  const selectedProjection =
+    projection?.entry?.slug === selectedEntry?.slug ? projection : null
+  const summary = selectedProjection?.summary ?? null
+  const sourceRows = proofReplaySourceRows(selectedProjection)
+  const eventRows = proofReplayEventRows(selectedProjection)
+  const selectedBundle = selectedProjection?.bundle ?? null
 
   return h.section([cls("training-panel training-proof-replay-panel")], [
     h.div([cls("training-panel-heading")], [
@@ -1655,10 +1711,17 @@ const proofReplayPanel = (model: Model): Html => {
       selectedEntry?.summary ?? "Receipt-backed replay shelf.",
     ]),
     h.div([cls("training-proof-replay-viewport")], [
-      tassadarProofReplayScene(
-        "training-proof-replay-scene",
-        selectedEntry?.slug ?? DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
-      ),
+      selectedBundle === null
+        ? proofReplayLoadingPanel(
+            model,
+            selectedProjection,
+            "training-proof-replay-placeholder",
+          )
+        : tassadarProofReplayScene(
+            "training-proof-replay-scene",
+            selectedEntry?.slug ?? DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
+            selectedBundle,
+          ),
     ]),
     summary === null
       ? emptyLine("Open Training or refresh to load the selected public replay bundle.")
@@ -1689,12 +1752,12 @@ const proofReplayPanel = (model: Model): Html => {
       selectedEntry?.socialPath === undefined
         ? h.empty
         : h.a([h.Href(selectedEntry.socialPath)], ["Open social cut"]),
-      projection === null
+      selectedProjection === null
         ? h.empty
-        : h.a([h.Href(projection.sourceUrl)], ["Open bundle API"]),
+        : h.a([h.Href(selectedProjection.sourceUrl)], ["Open bundle API"]),
     ]),
     h.p([cls("training-panel-copy")], [
-      projection?.cacheLabel ??
+      selectedProjection?.cacheLabel ??
         "No offline snapshot is cached; the desktop shelf waits for the live public bundle.",
     ]),
     sourceRows.length === 0
@@ -3800,16 +3863,29 @@ const sessionDetailPane = (model: Model): Html => {
 // ── Pane router + top-level view ────────────────────────────────────────────────
 
 // ── Network home ─────────────────────────────────────────────────────────
-// The desktop landing scene mirrors `/tassadar/replay/first-real-settlement`:
-// one full-screen, self-fetching proof replay with its native play/scrub/camera
-// controls. The old pylon-network stats scene still feeds lower-level panes,
-// but it is not the first thing the operator sees.
-const networkPane = (_model: Model): Html =>
-  h.div([cls("network-page")], [
+// The desktop landing scene mirrors `/tassadar/replay/first-real-settlement`.
+// Bun loads the public bundle through the typed desktop path, then the webview
+// renders the same controlled replay element without depending on a browser
+// cross-origin fetch during first paint.
+const networkPane = (model: Model): Html => {
+  const projection = modelProofReplay(model)
+  const bundle = projection?.bundle ?? null
+  return h.div([cls("network-page")], [
     h.div([cls("network-scene")], [
-      tassadarProofReplayScene("desktop-tassadar-replay"),
+      bundle === null
+        ? proofReplayLoadingPanel(
+            model,
+            projection,
+            "network-replay-status",
+          )
+        : tassadarProofReplayScene(
+            "desktop-tassadar-replay",
+            model.selectedProofReplaySlug,
+            bundle,
+          ),
     ]),
   ])
+}
 
 const paneView = (model: Model): Html => {
   switch (model.pane) {

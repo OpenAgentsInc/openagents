@@ -185,7 +185,7 @@ const replayBundle = {
     rebuildsOn: ['training_verification_challenge_recorded'],
   },
   title: 'Tassadar Run 1: First Real Bitcoin Settlement',
-}
+} as const
 
 const recognitionReplayBundle = {
   ...replayBundle,
@@ -368,6 +368,24 @@ describe('tassadar proof replay element', () => {
       'The first real Tassadar settlement replay begins.',
     )
     expect(el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')).toBeNull()
+  })
+
+  it('renders a provided bundle without a browser fetch', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('must not fetch'))
+    tassadarProofReplayView([], replayBundle)
+    const el = document.createElement(TASSADAR_PROOF_REPLAY_TAG) as HTMLElement & {
+      bundle?: unknown
+    }
+    el.bundle = replayBundle
+    document.body.append(el)
+    await waitForSettled(el)
+
+    expect(el.getAttribute('data-state')).toBe('ok')
+    expect(el.shadowRoot?.textContent ?? '').toContain('Tassadar Run 1')
+    expect(el.shadowRoot?.textContent ?? '').toContain('1,000 sats')
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('can load replay bundles from an explicit public origin for desktop embeds', async () => {

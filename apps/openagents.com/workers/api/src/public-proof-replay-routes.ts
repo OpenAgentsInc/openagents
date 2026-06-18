@@ -14,6 +14,7 @@ import {
   makeD1TrainingAuthorityStore,
   type TrainingAuthorityStore,
 } from './training-run-window-authority'
+import { noStoreJsonResponse } from './http/responses'
 
 export const ProofReplayBundleSchemaVersion = 'proof_replay_bundle.v1'
 export const FIRST_REAL_SETTLEMENT_BUNDLE_SLUG = 'first-real-settlement'
@@ -44,6 +45,43 @@ export const LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL =
   'https://github.com/OpenAgentsInc/openagents/blob/main/docs/payments/2026-06-17-launch-recognition-closeout.md'
 export const LAUNCH_RECOGNITION_SPARK_STATUS_DOC_URL =
   'https://github.com/OpenAgentsInc/openagents/blob/main/docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md'
+
+const PUBLIC_PROOF_REPLAY_METHODS = ['GET', 'HEAD', 'OPTIONS'] as const
+
+const publicProofReplayCorsHeaders = (headers: Headers): Headers => {
+  headers.set('access-control-allow-origin', '*')
+  headers.set(
+    'access-control-allow-methods',
+    PUBLIC_PROOF_REPLAY_METHODS.join(', '),
+  )
+  headers.set('access-control-allow-headers', 'accept, content-type')
+  headers.set('access-control-max-age', '86400')
+  return headers
+}
+
+export const publicProofReplayJsonResponse = (
+  value: unknown,
+  init: ResponseInit = {},
+) => {
+  const headers = publicProofReplayCorsHeaders(new Headers(init.headers))
+  return noStoreJsonResponse(value, { ...init, headers })
+}
+
+export const publicProofReplayOptionsResponse = () => {
+  const headers = publicProofReplayCorsHeaders(
+    new Headers({ 'cache-control': 'no-store' }),
+  )
+  return new Response(null, { headers, status: 204 })
+}
+
+const publicProofReplayMethodNotAllowedResponse = () =>
+  publicProofReplayJsonResponse(
+    { error: 'method_not_allowed' },
+    {
+      headers: { allow: PUBLIC_PROOF_REPLAY_METHODS.join(', ') },
+      status: 405,
+    },
+  )
 
 type SourceKind =
   | 'api'
@@ -1377,4 +1415,19 @@ export const buildPublicProofReplayBundleForRequest = async (
     requestedRefs,
     summary,
   })
+}
+
+export const handlePublicProofReplayBundleRequest = async (
+  request: Request,
+  env: Parameters<typeof openAgentsDatabase>[0],
+  deps: Deps = {},
+) => {
+  const method = request.method.toUpperCase()
+  if (method === 'OPTIONS') return publicProofReplayOptionsResponse()
+  if (method !== 'GET' && method !== 'HEAD') {
+    return publicProofReplayMethodNotAllowedResponse()
+  }
+
+  const bundle = await buildPublicProofReplayBundleForRequest(request, env, deps)
+  return publicProofReplayJsonResponse(bundle)
 }

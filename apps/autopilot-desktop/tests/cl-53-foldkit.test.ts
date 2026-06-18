@@ -28,6 +28,7 @@ import {
   verifyLineText,
   walletSummary,
 } from "../src/ui/helpers"
+import { initialRuntimeState } from "../src/ui/initial-state"
 import {
   initialModel,
   Model,
@@ -118,6 +119,18 @@ const session = (sessionRef: string, state: string) =>
   }) as never
 
 describe("helpers (CL-47..CL-58 parity, pure)", () => {
+  test("desktop startup loads install readiness and the first proof replay bundle", () => {
+    const [model, commands] = initialRuntimeState()
+
+    expect(model.proofReplayPending).toBe(true)
+    expect(model.proofReplayStatus.text).toBe("loading public replay bundle...")
+    expect(commands.map(command => command.name)).toEqual([
+      "LoadInstallReadiness",
+      "LoadProofReplayBundle",
+    ])
+    expect(commands[1]?.args).toEqual({ slug: "first-real-settlement" })
+  })
+
   test("commandErrorText unwraps Effect.tryPromise causes", () => {
     const wrapped = Object.assign(
       new Error("An error occurred in Effect.tryPromise"),

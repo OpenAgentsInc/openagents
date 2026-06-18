@@ -8,6 +8,8 @@ import {
   buildFirstRealSettlementReplayBundle,
   buildLaunchRecognitionReplayBundle,
   buildPublicProofReplayBundleForRequest,
+  handlePublicProofReplayBundleRequest,
+  publicProofReplayOptionsResponse,
   type ReplayEvent,
 } from './public-proof-replay-routes'
 import type {
@@ -194,6 +196,43 @@ const eventByKind = (
 }
 
 describe('public proof replay bundle resolver (#5298)', () => {
+  it('allows desktop webview embeds on proof replay JSON responses', async () => {
+    const response = await handlePublicProofReplayBundleRequest(
+      new Request(req().url, {
+        headers: { origin: 'views://autopilot-desktop' },
+      }),
+      {} as never,
+      {
+        makePayoutLedgerStore: fakePayoutLedgerStore,
+        makeStore: fakeTrainingStore,
+        now: () => '2026-06-18T02:00:00.000Z',
+      },
+    )
+    const body = await response.json() as { title?: string }
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('access-control-allow-origin')).toBe('*')
+    expect(response.headers.get('access-control-allow-methods')).toBe(
+      'GET, HEAD, OPTIONS',
+    )
+    expect(response.headers.get('access-control-allow-headers')).toContain(
+      'accept',
+    )
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(body.title).toBe('Tassadar Run 1: First Real Bitcoin Settlement')
+  })
+
+  it('answers proof replay preflight without touching replay authority stores', () => {
+    const response = publicProofReplayOptionsResponse()
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get('access-control-allow-origin')).toBe('*')
+    expect(response.headers.get('access-control-allow-methods')).toBe(
+      'GET, HEAD, OPTIONS',
+    )
+    expect(response.headers.get('cache-control')).toBe('no-store')
+  })
+
   it('returns a deterministic public-safe bundle for the first real settlement receipt', async () => {
     const first = await buildPublicProofReplayBundleForRequest(req(), {} as never, {
       makePayoutLedgerStore: fakePayoutLedgerStore,

@@ -18,6 +18,7 @@ import {
   type ReplaySourceRef,
   type ReplayVector3,
 } from '@openagentsinc/proof-replay'
+import { Schema as S } from 'effect'
 import { define as defineCustomElement } from 'foldkit/customElement'
 import type { Attribute, Html } from 'foldkit/html'
 
@@ -225,15 +226,37 @@ const makeClass = (): CustomElementConstructor =>
     #abort: AbortController | null = null
     #bundle: ProofReplayBundle | null = null
     #cameraMode: ReplayCameraMode = 'director_track'
+    #hasProvidedBundle = false
     #lastTickAt = 0
     #playback: ReplayPlaybackState | null = null
     #plan: ReplayRenderPlan | null = null
+    #providedBundle: ProofReplayBundle | null = null
     #selectedRef: string | null = null
     #shadow: ShadowRoot | null = null
     #timer: number | null = null
 
+    get bundle(): ProofReplayBundle | null {
+      return this.#providedBundle
+    }
+
+    set bundle(value: unknown) {
+      if (value === undefined || value === null) {
+        this.#providedBundle = null
+        this.#hasProvidedBundle = false
+        return
+      }
+
+      this.#providedBundle = value as ProofReplayBundle
+      this.#hasProvidedBundle = true
+      this.#abort?.abort()
+      this.#abort = null
+      this.#stopTimer()
+      if (this.isConnected) this.#renderProvidedBundle()
+    }
+
     connectedCallback(): void {
       this.#shadow = this.shadowRoot ?? this.attachShadow({ mode: 'open' })
+      if (this.#renderProvidedBundle()) return
       this.#refresh()
     }
 
@@ -276,6 +299,18 @@ const makeClass = (): CustomElementConstructor =>
         if (signal.aborted) return
         this.#renderError('Could not load the public proof replay bundle.')
       }
+    }
+
+    #renderProvidedBundle(): boolean {
+      if (!this.#hasProvidedBundle || this.#providedBundle === null) return false
+      try {
+        this.#renderBundle(this.#providedBundle)
+      } catch {
+        this.#renderError(
+          'Loaded proof replay bundle failed the public-safe replay gate.',
+        )
+      }
+      return true
     }
 
     #replaySlug(): string {
@@ -974,13 +1009,22 @@ const register = (): void => {
 
 const element = defineCustomElement({
   events: {},
-  properties: {},
+  properties: {
+    bundle: S.Unknown,
+  },
   tag: TASSADAR_PROOF_REPLAY_TAG,
 })
 
 export const tassadarProofReplayView = <Message>(
   attributes: ReadonlyArray<Attribute<Message>> = [],
+  bundle?: ProofReplayBundle | null,
 ): Html => {
   register()
-  return element.withMessage<Message>()(attributes, [])
+  const replayElement = element.withMessage<Message>()
+  return replayElement(
+    bundle === undefined || bundle === null
+      ? attributes
+      : [...attributes, replayElement.Bundle(bundle)],
+    [],
+  )
 }
