@@ -4,6 +4,154 @@ Date: 2026-06-18, 07:18 CT. Carries forward the still-live launch/test work
 from [`JUNE17_ROADMAP.md`](./JUNE17_ROADMAP.md), now that the Tassadar
 LLM-computer roadmap is implemented on `main`.
 
+## END-OF-DAY UPDATE 2 (2026-06-18, late) — launch-readiness program + first hygiene Bitcoin — AUTHORITATIVE
+
+> Latest whole-day picture, layered on top of the FULL-DAY STATUS and the
+> earlier END-OF-DAY UPDATE below (both remain accurate for their lanes). Honest
+> split throughout: **shipped** vs **in flight** vs **owner-gated / not-yet**.
+> No green claim without dereferenceable receipts.
+
+### A. Launch-readiness program — EPIC `#5392` (OPEN)
+
+The "anybody plugs in consumer compute → gets paid Bitcoin" launch
+(`docs/transcripts/238.md`, "The Tassadar Run is Live") is now a tracked program
+with six explicit launch blockers. Audit:
+[`docs/launch/2026-06-18-pylon-v1-launch-readiness-audit.md`](./2026-06-18-pylon-v1-launch-readiness-audit.md).
+V1.0 = the contributor earning path only (NOT the five revenue streams, the
+module marketplace, or our headless coding workflow).
+
+- **L-1 — working default install — IN FLIGHT.** `npx @openagentsinc/pylon` must
+  install a node that can join the run and earn. The npm dist-tag was stale
+  (`latest = 0.2.5` bootstrap stub vs the working in-repo build); the **stable
+  v1.0 cut landed in-repo** (`e738443e1`, `release(pylon): cut stable v1.0.0 —
+  fix Launch L-1 npx install`) and the **v1.0 npm publish is landing now** (the
+  publish + Worker deploy are owned by the concurrent v1.0-publish lane). Until
+  `latest` resolves the v1.0 node on npm, treat L-1 as not-fully-closed.
+- **L-2 — fully-autonomous self-serve settlement — done (code), live-receipt
+  still pending.** The validator-leg payout-target bug is **fixed and proven**
+  (`24cb8f30a`, `fix(settlement): resolve validator-leg payout target by
+  device-ref for autonomous auto-stream`, `#5394`/`#5310`/`#5306`): the validator
+  submitted its verdict under a device-ref (not a pylonRef), so the owner-scoped
+  Spark resolver never found its target and forced an operator retro-settle. The
+  fix adds a device-ref → most-recent-worker-pylonRef backstop, fails closed,
+  crosses no ownership, and arms no new authority. A real test
+  (`tassadar-auto-settlement-validator-resolution.test.ts`) exercises the actual
+  resolver chain and proves **both legs (worker + validator) auto-settle
+  hands-off** to the correct private destinations. `#5310` (validator per-window
+  5 sats) and `#5306` (default Spark payout target) are CLOSED. **Honest caveat:**
+  the L-2 issue `#5394` stays OPEN because no fully-autonomous live receipt
+  (gate firing at verdict, no operator) has been dereferenced yet — flag the
+  first one explicitly when it lands.
+- **L-3 — world-firsts independently verified — DONE, `#5395` CLOSED.** An
+  independent prior-art / competing-claim review landed
+  ([`docs/launch/2026-06-18-world-firsts-verification.md`](./2026-06-18-world-firsts-verification.md),
+  `d354361ff`); prior art checked includes Spirit of Satoshi, Bittensor/Templar,
+  Gensyn, Prime Intellect, Nous/Psyche, Salad, Percepta, Tracr. Verdict: both
+  claims are defensible **only with their full qualifiers** — (1) first as
+  "Bitcoin + replay-verified training compute + own consumer devices" together;
+  (2) first as "public/open-contributor LLM-computer training run," crediting
+  Percepta as the paradigm originator. The verification work is finalized and
+  `#5395` is CLOSED. **Honest caveat:** the matching registry promises
+  (`claims.world_first_*`) stay **RED** pending an evidence pack + owner-signed
+  receipt-first upgrade; any public use must carry the full qualifiers, not bare
+  "world first" phrasing.
+- **L-4 — define + cut Pylon v1.0 — done (stable cut `e738443e1`);** npm publish
+  landing now (concurrent lane).
+- **L-5 — contributor onboarding path end-to-end** (agents.md front door → join
+  run → install → claim → earn): **in flight** — this docs update flips the live
+  AGENTS.md + INSTALL.md to Pylon-first; homepage is already Pylon-only.
+- **L-6 — public evidence pack** (run summary, settled receipts, verification,
+  promise registry, all linkable): partially present (settled feed +
+  verification challenges + registry are live); consolidation in flight.
+
+### B. First real hygiene-lane Bitcoin — hygiene canary SETTLED (75 sats)
+
+The hygiene/refactoring lane (EPIC `#5335`, `#5372`) produced its **first real
+Bitcoin settlement**: a **75-sat** payout to a contributor for a merged,
+benchmark-verified hygiene debt receipt, settled native over the proven
+`#5232` Spark treasury rail. Verified `realBitcoinMoved:true`, **idempotent**,
+with **duplicate-replay rejection** (one settlement per receipt). Honest
+verification basis: **`hygiene_merged_reviewed`** — hygiene PRs are verified by
+tests + reviewer acceptance + the merged debt receipt, **not** by exact trace
+replay, so this path never emits an `exact_trace_replay` verdict or a
+`verificationChallengeRef`. The churn-tax formula (size/depth-scaled, ≤100 sats)
+and idempotency-ref hashing landed (`#5385`, `#5388` — both MERGED;
+`ae515ee9f`, `2f1586eee`). This is distinct from the Tassadar run settlements:
+it is the **first paid hygiene-lane outcome**. EPIC `#5335` and `#5372` stay
+OPEN (the lane keeps producing).
+
+### C. World-firsts — VERIFIED + finalized
+
+See L-3 above. The two world-first claims are independently verified with
+defensible narrowed wording (Bitcoin + replay-verified + own consumer devices;
+public/open-contributor LLM-computer run, crediting Percepta). `#5395` CLOSED.
+Registry promises remain RED until an owner-signed receipt-first upgrade — the
+qualified wording is the only safe public form.
+
+### D. Product-promises registry → `2026-06-18.5`
+
+`apps/openagents.com/workers/api/src/product-promises.ts` is at
+**`2026-06-18.5`**, adding four honest records (no green, no flip of existing
+promises):
+
+- `claims.world_first_ai_training_paid_bitcoin.v1` — **RED**
+  (gated-pending-verification; independent search cited; needs evidence pack +
+  owner-signed upgrade; full qualifiers only).
+- `claims.world_first_public_llm_computer_training_run.v1` — **RED** (same gate;
+  credits Percepta; plus the "no gradient descent" / executor-PoC accuracy
+  boundary).
+- `pylon.consumer_compute_earns_bitcoin_self_serve.v1` — **RED** (the video's
+  core promise; gated on a proven fully-autonomous self-serve settlement (L-2)
+  AND a working default install (L-1)).
+- `marketplace.agentic_npm_module_registry.v1` — **PLANNED** (the transcript's
+  "upcoming video" module-marketplace reboot; roadmap language only, not live).
+
+**Worker redeploy required** to serve `2026-06-18.5` at
+`/api/public/product-promises`; that deploy is owner-gated and is owned by the
+concurrent v1.0-publish lane.
+
+### E. Headless coding-workflow program — EPIC `#5376` (OPEN)
+
+Running OpenAgents' own coding workflow headlessly through Pylon is the real
+operational bar (it gates distributable downloaded apps).
+
+- **W-1 `#5377` — SHIPPED** — headless run-to-completion task primitive
+  (`sessions exec` / `spawn --wait --json`) (`b9694b311`); the W-1 verify-CWD bug
+  `#5389` is CLOSED (`7354c4f42`).
+- **W-3 `#5379` — SHIPPED** — bounded autonomous approval policy for headless
+  `sessions exec` runs (`cd75c94ae`).
+- **W-7 `#5383` — mechanism proven (issue OPEN)** — the end-to-end dogfood (run a
+  real OpenAgents coding task as a Pylon-managed session) mechanism is proven;
+  the dogfood-proof issue stays OPEN pending the recorded end-to-end pass.
+
+### F. Homepage — Pylon-only
+
+The homepage install surface is **Pylon-only**: the Autopilot Desktop DMG was
+removed and the install focus is Pylon (`b85391e2b`, `feat(web): focus homepage
+install on Pylon, remove Autopilot DMG`). This docs update brings the live
+AGENTS.md and INSTALL.md into line (Pylon-first; Autopilot Desktop secondary).
+
+### Honest shipped / in-flight / owner-gated split
+
+- **Shipped:** validator-leg auto-settle fix with both-legs-proven test
+  (`#5310`/`#5306` closed); world-first independent verification (`#5395`
+  closed); first real hygiene-lane Bitcoin (75-sat canary, idempotent,
+  duplicate-replay-rejected, `hygiene_merged_reviewed` basis); hygiene churn-tax
+  backtest + idempotency-ref hashing (`#5385`, `#5388`); W-1 + W-3 headless
+  primitives (`#5377`, `#5379`); stable Pylon v1.0 cut (`e738443e1`);
+  homepage Pylon-only; registry `2026-06-18.5` (source).
+- **In flight:** L-1 npm v1.0 publish (concurrent lane); L-5 onboarding path
+  (this docs flip); L-6 evidence-pack consolidation; W-7 recorded dogfood pass;
+  EPIC `#5335` / `#5372` hygiene lane keeps producing.
+- **Owner-gated / not-yet:** first fully-autonomous auto-stream live settlement
+  (L-2 issue `#5394` still open — flag the first when it lands); world-first
+  green flips (need owner-signed receipt-first upgrade; RED until then);
+  `pylon.consumer_compute_earns_bitcoin_self_serve.v1` (RED, needs L-1 + L-2);
+  Worker redeploy to serve `2026-06-18.5` and the updated AGENTS.md/INSTALL.md
+  (owner-gated; owned by the concurrent v1.0-publish lane).
+
+---
+
 ## FULL-DAY STATUS (2026-06-18, end of day) — authoritative
 
 > This is the consolidated end-of-day picture across every lane that moved
