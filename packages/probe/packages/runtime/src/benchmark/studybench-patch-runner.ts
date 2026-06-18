@@ -29,6 +29,7 @@ import {
   buildProbeStudybenchRubricScore,
   type ProbeStudybenchScoringMode,
 } from "./studybench-score";
+import { shortHash } from "./stable-hash";
 
 export const PROBE_STUDYBENCH_PATCH_CANDIDATE_INPUT_SCHEMA_REF =
   "probe.studybench_patch_candidate_input.v0" as const;
@@ -425,10 +426,6 @@ function requireNonEmptyRefs(
   return blankIndex === -1
     ? Effect.void
     : patchRunnerError(`${path}[${blankIndex}]`, "must be a non-empty ref");
-}
-
-function shortHash(value: string): string {
-  return value.replace(/^sha256:/, "").slice(0, 16);
 }
 
 function patchRunnerError(path: string, reason: string): Effect.Effect<never, ProbeStudybenchPatchRunnerError> {
