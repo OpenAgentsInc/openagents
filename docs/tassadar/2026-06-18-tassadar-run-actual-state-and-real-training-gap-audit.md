@@ -973,6 +973,17 @@ marketplace packaging, pricing, payout, and settlement claims remain blocked.
   modules, composition, marketplace listing, or paid construction yet.
 - **#5322 — C2** Complete psionic E4 MILP scheduler (gate-graph→layer/phase
   assignment). `[psionic]`
+  Status 2026-06-18: landed in psionic at `ec2bfe9c`. The default ALM backend
+  compiler identity is now `tassadar_alm_backend_e4_milp_schedule`/`v2`,
+  the legacy greedy scheduler remains callable for comparisons, and C2 tests
+  assert E4 `slot_count <=` greedy over the E1 workloads plus the four-program
+  run-facing corpus. The E4-regenerated corpus digest is
+  `1b7babcd0c3ce63e43212f3e4f07480969a7a9612a237b117f8de7fb8a828d6a`
+  (60 slots / 6 layers per corpus program), and the OpenAgents executor fixture
+  plus TypeScript corpus constant are updated to replay that E4-scheduled
+  artifact. This does not claim dense loadable modules, softmax bounds,
+  Wasm-window expansion, composition, marketplace listing, or paid
+  construction yet.
 - **#5323 — C3** Dense, loadable, digest-pinned weight-module materialization
   (psionic W1.2) + wire one as a run artifact — top-5 #2. `[psionic + openagents]`
 - **#5324 — C4** Softmax-approximation bounds (psionic W1.4) + Wasm window

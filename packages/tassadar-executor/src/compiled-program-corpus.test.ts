@@ -28,7 +28,7 @@ describe("Tassadar compiled-program corpus", () => {
       "tassadar_alm.numeric_program_corpus.v1",
     )
     expect(tassadarCompiledProgramCorpus.corpusDigest).toBe(
-      "386799dbe6f6bd73093a546be16070fed0598e4d568378facccc4c6046ddad83",
+      "1b7babcd0c3ce63e43212f3e4f07480969a7a9612a237b117f8de7fb8a828d6a",
     )
     expect(tassadarCompiledProgramCorpus).toEqual(fixtureFile)
     expect(tassadarCompiledProgramCorpusSize).toBe(4)
