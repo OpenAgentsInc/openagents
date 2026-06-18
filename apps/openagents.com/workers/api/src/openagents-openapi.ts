@@ -538,7 +538,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe projection of a goal whose visibility is public: objective, status, budget/usage summary, and public event entries. Private goals are not served. Read-only; grants no authority.',
   ),
   PylonApiRegistrationProjection: objectSummary(
-    'Public-safe Pylon registration projection with owner agent ref, resource mode, capability refs, wallet readiness, and friendly time labels. Raw wallet material, payment material, payout targets, private machine telemetry, and raw timestamps are excluded.',
+    'Public-safe Pylon registration projection with owner agent ref, resource mode, capability refs, wallet readiness, Spark payout-target readiness (sparkPayoutTargetReady plus the redacted payout.spark.<digest> sparkPayoutTargetRef when present), and friendly time labels. sparkPayoutTargetReady is recomputed from the private operator store on every register/heartbeat/read and fails closed to false; the raw spark1… address is never projected. Raw wallet material, payment material, raw payout targets, private machine telemetry, and raw timestamps are excluded.',
   ),
   PylonApiEventProjection: objectSummary(
     'Public-safe Pylon event projection for registration, heartbeat, wallet readiness, payout-target admission requests, assignment progress, artifact proof metadata, payment receipt refs, and settlement status. Event bodies are stored server-side as bounded refs only.',

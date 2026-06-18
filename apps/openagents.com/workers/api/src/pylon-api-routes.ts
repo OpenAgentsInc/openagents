@@ -38,7 +38,9 @@ import {
   type PylonApiStore,
   PylonApiStoreError,
   PylonApiWalletReadinessRequest,
+  type PylonSparkPayoutTargetReadiness,
   type PylonSparkPayoutTargetStore,
+  SPARK_PAYOUT_TARGET_NOT_READY,
   buildPylonApiAssignmentRecord,
   buildPylonApiEventRecord,
   buildPylonApiRegistrationRecord,
@@ -50,6 +52,7 @@ import {
   publicPylonApiRegistrationProjection,
   pylonApiStoreErrorFromUnknown,
   pylonClientVersionMeetsMinimum,
+  resolveSparkPayoutTargetReadiness,
 } from './pylon-api'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 import {
@@ -212,6 +215,29 @@ const routeAgentStore = <Bindings extends PylonApiRouteEnv>(
   dependencies: PylonApiRouteDependencies<Bindings>,
   env: Bindings,
 ): AgentRegistrationStore => dependencies.agentStore(env)
+
+// #5306 onboarding backstop: resolve the node's Spark payout-target readiness
+// from the private operator store keyed by pylonRef. Fails closed — when the
+// store dependency is not wired or the read errors, readiness is not-ready, so
+// the public projection shows a visible, self-healing gap rather than a
+// fabricated target. Because this is recomputed on every register/heartbeat/read,
+// the flag flips to ready with no manual step once the node (#5305) auto-registers.
+const resolveRouteSparkPayoutTargetReadiness = <
+  Bindings extends PylonApiRouteEnv,
+>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  env: Bindings,
+  pylonRef: string,
+): Effect.Effect<PylonSparkPayoutTargetReadiness> => {
+  const makeSparkStore = dependencies.makeSparkPayoutTargetStore
+  if (makeSparkStore === undefined) {
+    return Effect.succeed(SPARK_PAYOUT_TARGET_NOT_READY)
+  }
+
+  return Effect.promise(() =>
+    resolveSparkPayoutTargetReadiness(makeSparkStore(env), pylonRef),
+  )
+}
 
 const routeNowIso = <Bindings>(
   dependencies: PylonApiRouteDependencies<Bindings>,
@@ -664,6 +690,13 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
         )
       }
 
+      const existingSparkReadiness =
+        yield* resolveRouteSparkPayoutTargetReadiness(
+          dependencies,
+          env,
+          existingRegistration.pylonRef,
+        )
+
       return noStoreJsonResponse(
         {
           event: publicPylonApiEventProjection(existingEvent, nowIso),
@@ -671,6 +704,7 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
           pylon: publicPylonApiRegistrationProjection(
             existingRegistration,
             nowIso,
+            existingSparkReadiness,
           ),
         },
         { status: 200 },
@@ -734,12 +768,21 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
       catch: pylonApiStoreErrorFromUnknown,
       try: () => store.createEvent(event),
     })
+    const sparkReadiness = yield* resolveRouteSparkPayoutTargetReadiness(
+      dependencies,
+      env,
+      storedRegistration.pylonRef,
+    )
 
     return noStoreJsonResponse(
       {
         event: publicPylonApiEventProjection(eventResult.record, nowIso),
         idempotent: eventResult.idempotent,
-        pylon: publicPylonApiRegistrationProjection(storedRegistration, nowIso),
+        pylon: publicPylonApiRegistrationProjection(
+          storedRegistration,
+          nowIso,
+          sparkReadiness,
+        ),
         tassadarCapabilityAdmission: {
           refusalRefs: tassadarAdmission.refusalRefs,
           selfTestReceiptRefs: tassadarAdmission.selfTestReceiptRefs,
@@ -1031,6 +1074,12 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
         session,
       )
       const replayNowIso = routeNowIso(dependencies)
+      const replaySparkReadiness =
+        yield* resolveRouteSparkPayoutTargetReadiness(
+          dependencies,
+          env,
+          existingRegistration.pylonRef,
+        )
 
       return noStoreJsonResponse(
         {
@@ -1039,6 +1088,7 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
           pylon: publicPylonApiRegistrationProjection(
             existingRegistration,
             replayNowIso,
+            replaySparkReadiness,
           ),
         },
         { status: 200 },
@@ -1138,6 +1188,11 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
       catch: pylonApiStoreErrorFromUnknown,
       try: () => store.upsertRegistration(nextRegistration),
     })
+    const sparkReadiness = yield* resolveRouteSparkPayoutTargetReadiness(
+      dependencies,
+      env,
+      storedRegistration.pylonRef,
+    )
 
     return noStoreJsonResponse(
       {
@@ -1151,7 +1206,11 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
             }),
         event: publicPylonApiEventProjection(eventResult.record, nowIso),
         idempotent: eventResult.idempotent,
-        pylon: publicPylonApiRegistrationProjection(storedRegistration, nowIso),
+        pylon: publicPylonApiRegistrationProjection(
+          storedRegistration,
+          nowIso,
+          sparkReadiness,
+        ),
       },
       { status: eventResult.idempotent ? 200 : 201 },
     )
@@ -1238,6 +1297,12 @@ const routeRegisterSparkPayoutTarget = <Bindings extends PylonApiRouteEnv>(
         session,
       )
       const replayNowIso = routeNowIso(dependencies)
+      const replaySparkReadiness = yield* Effect.promise(() =>
+        resolveSparkPayoutTargetReadiness(
+          sparkStore,
+          existingRegistration.pylonRef,
+        ),
+      )
 
       return noStoreJsonResponse(
         {
@@ -1246,6 +1311,7 @@ const routeRegisterSparkPayoutTarget = <Bindings extends PylonApiRouteEnv>(
           pylon: publicPylonApiRegistrationProjection(
             existingRegistration,
             replayNowIso,
+            replaySparkReadiness,
           ),
         },
         { status: 200 },
@@ -1332,12 +1398,21 @@ const routeRegisterSparkPayoutTarget = <Bindings extends PylonApiRouteEnv>(
       catch: pylonApiStoreErrorFromUnknown,
       try: () => store.upsertRegistration(nextRegistration),
     })
+    // Recompute readiness from the private store right after the upsert: this
+    // is the moment a node-registered target becomes visible as ready (#5306).
+    const sparkReadiness = yield* Effect.promise(() =>
+      resolveSparkPayoutTargetReadiness(sparkStore, storedRegistration.pylonRef),
+    )
 
     return noStoreJsonResponse(
       {
         event: publicPylonApiEventProjection(eventResult.record, nowIso),
         idempotent: eventResult.idempotent,
-        pylon: publicPylonApiRegistrationProjection(storedRegistration, nowIso),
+        pylon: publicPylonApiRegistrationProjection(
+          storedRegistration,
+          nowIso,
+          sparkReadiness,
+        ),
       },
       { status: eventResult.idempotent ? 200 : 201 },
     )
@@ -1354,11 +1429,26 @@ const routeList = <Bindings extends PylonApiRouteEnv>(
       try: () => routeStore(dependencies, env).listRegistrations(100),
     })
 
-    return noStoreJsonResponse({
-      pylons: registrations.map(registration =>
-        publicPylonApiRegistrationProjection(registration, nowIso),
-      ),
-    })
+    const pylons = yield* Effect.forEach(
+      registrations,
+      registration =>
+        resolveRouteSparkPayoutTargetReadiness(
+          dependencies,
+          env,
+          registration.pylonRef,
+        ).pipe(
+          Effect.map(readiness =>
+            publicPylonApiRegistrationProjection(
+              registration,
+              nowIso,
+              readiness,
+            ),
+          ),
+        ),
+      { concurrency: 8 },
+    )
+
+    return noStoreJsonResponse({ pylons })
   })
 
 const routeRead = <Bindings extends PylonApiRouteEnv>(
@@ -1382,9 +1472,19 @@ const routeRead = <Bindings extends PylonApiRouteEnv>(
       try: () => routeStore(dependencies, env).listEventsForPylon(pylonRef, 25),
     })
 
+    const sparkReadiness = yield* resolveRouteSparkPayoutTargetReadiness(
+      dependencies,
+      env,
+      registration.pylonRef,
+    )
+
     return noStoreJsonResponse({
       events: events.map(event => publicPylonApiEventProjection(event, nowIso)),
-      pylon: publicPylonApiRegistrationProjection(registration, nowIso),
+      pylon: publicPylonApiRegistrationProjection(
+        registration,
+        nowIso,
+        sparkReadiness,
+      ),
     })
   })
 

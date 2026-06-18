@@ -25,6 +25,7 @@ import {
   pylonApiPayloadHasPrivateMaterial,
   pylonClientVersionMeetsMinimum,
   resolveSparkPayoutDestination,
+  resolveSparkPayoutTargetReadiness,
 } from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
 
@@ -76,6 +77,8 @@ type PylonRouteJson = Readonly<{
     providerNostrNpub?: string | null
     providerNostrPubkey?: string | null
     pylonRef?: string
+    sparkPayoutTargetReady?: boolean
+    sparkPayoutTargetRef?: string | null
     walletReady?: boolean
   }>
   pylons?: ReadonlyArray<
@@ -86,6 +89,8 @@ type PylonRouteJson = Readonly<{
       providerNostrNpub?: string | null
       providerNostrPubkey?: string | null
       pylonRef?: string
+      sparkPayoutTargetReady?: boolean
+      sparkPayoutTargetRef?: string | null
     }>
   >
   tassadarCapabilityAdmission?: Readonly<{
@@ -1581,6 +1586,189 @@ describe('Pylon API routes', () => {
         payoutTargetRef: 'payout.spark.deadbeefdeadbeefdeadbeef',
       }),
     ).toBe(false)
+  })
+
+  test('agent/pylon projection exposes sparkPayoutTargetReady:false with a null ref when no target is registered (#5306)', async () => {
+    const store = new MemoryPylonApiStore()
+    const sparkStore = new MemorySparkPayoutTargetStore()
+    await registerPylon(store)
+
+    const detail = await responseJson<PylonRouteJson>(
+      await sparkRoute(store, sparkStore, '/api/pylons/pylon.test.one', {
+        method: 'GET',
+      }),
+    )
+
+    expect(detail.pylon?.sparkPayoutTargetReady).toBe(false)
+    expect(detail.pylon?.sparkPayoutTargetRef).toBeNull()
+
+    const list = await responseJson<PylonRouteJson>(
+      await sparkRoute(store, sparkStore, '/api/pylons', { method: 'GET' }),
+    )
+    expect(list.pylons?.[0]?.sparkPayoutTargetReady).toBe(false)
+    expect(list.pylons?.[0]?.sparkPayoutTargetRef).toBeNull()
+  })
+
+  test('agent/pylon projection flips sparkPayoutTargetReady:true with the redacted digest ref once a node registers a target — self-heals with no manual step (#5306)', async () => {
+    const store = new MemoryPylonApiStore()
+    const sparkStore = new MemorySparkPayoutTargetStore()
+    await registerPylon(store)
+
+    // Before the node registers, readiness is a visible, self-healing gap.
+    const before = await responseJson<PylonRouteJson>(
+      await sparkRoute(store, sparkStore, '/api/pylons/pylon.test.one', {
+        method: 'GET',
+      }),
+    )
+    expect(before.pylon?.sparkPayoutTargetReady).toBe(false)
+
+    // The node (#5305) auto-registers its OWN raw Spark address.
+    const rawSparkAddress =
+      'spark1pqqqqq0000000000000000000000000000readyflip'
+    const payoutTargetRef = await sparkDigestRef(rawSparkAddress)
+    await sparkRoute(
+      store,
+      sparkStore,
+      '/api/pylons/pylon.test.one/spark-payout-target',
+      {
+        body: {
+          payoutTargetRef,
+          policyRefs: ['policy.public.pylon.redacted_payout_target_only'],
+          rawSparkAddress,
+          status: 'registered',
+        },
+        idempotencyKey: 'spark-register-readyflip',
+        tokenUserId: 'agent-one',
+      },
+    )
+
+    // Backstop: the next read recomputes readiness from the live store and the
+    // flag flips to ready, carrying only the redacted digest ref.
+    const after = await responseJson<PylonRouteJson>(
+      await sparkRoute(store, sparkStore, '/api/pylons/pylon.test.one', {
+        method: 'GET',
+      }),
+    )
+    expect(after.pylon?.sparkPayoutTargetReady).toBe(true)
+    expect(after.pylon?.sparkPayoutTargetRef).toBe(payoutTargetRef)
+
+    // The list projection reflects the same readiness, and never the raw address.
+    const list = await responseJson<PylonRouteJson>(
+      await sparkRoute(store, sparkStore, '/api/pylons', { method: 'GET' }),
+    )
+    expect(list.pylons?.[0]?.sparkPayoutTargetReady).toBe(true)
+    expect(list.pylons?.[0]?.sparkPayoutTargetRef).toBe(payoutTargetRef)
+    expect(JSON.stringify(list)).not.toContain('spark1')
+  })
+
+  test('the spark-payout-target register response projects sparkPayoutTargetReady:true without leaking the raw address (#5306)', async () => {
+    const store = new MemoryPylonApiStore()
+    const sparkStore = new MemorySparkPayoutTargetStore()
+    await registerPylon(store)
+
+    const rawSparkAddress =
+      'spark1pqqqqq0000000000000000000000000000registerresp'
+    const payoutTargetRef = await sparkDigestRef(rawSparkAddress)
+    const body = await responseJson<PylonRouteJson>(
+      await sparkRoute(
+        store,
+        sparkStore,
+        '/api/pylons/pylon.test.one/spark-payout-target',
+        {
+          body: {
+            payoutTargetRef,
+            policyRefs: ['policy.public.pylon.redacted_payout_target_only'],
+            rawSparkAddress,
+            status: 'registered',
+          },
+          idempotencyKey: 'spark-register-resp-ready',
+          tokenUserId: 'agent-one',
+        },
+      ),
+    )
+
+    expect(body.pylon?.sparkPayoutTargetReady).toBe(true)
+    expect(body.pylon?.sparkPayoutTargetRef).toBe(payoutTargetRef)
+    expect(JSON.stringify(body)).not.toContain('spark1')
+  })
+
+  test('readiness fails closed to false when the spark store dependency is not wired (#5306)', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+
+    // No spark store wired: readiness must be a visible gap, not an error.
+    const detail = await responseJson<PylonRouteJson>(
+      await sparkRoute(store, undefined, '/api/pylons/pylon.test.one', {
+        method: 'GET',
+      }),
+    )
+    expect(detail.pylon?.sparkPayoutTargetReady).toBe(false)
+    expect(detail.pylon?.sparkPayoutTargetRef).toBeNull()
+  })
+
+  test('readiness resolver fails closed (not ready) when the store read throws (#5306)', async () => {
+    const throwingStore: PylonSparkPayoutTargetStore = {
+      read: () => Promise.reject(new Error('store unavailable')),
+      upsert: record => Promise.resolve(record),
+    }
+
+    expect(
+      await resolveSparkPayoutTargetReadiness(throwingStore, 'pylon.test.one'),
+    ).toEqual({ ready: false, ref: null })
+  })
+
+  test('readiness resolver fails closed (not ready) when a stored row has a malformed digest ref or empty raw address (#5306)', async () => {
+    const sparkStore = new MemorySparkPayoutTargetStore()
+
+    // Malformed (non payout.spark.* shaped) ref must never project as ready.
+    await sparkStore.upsert({
+      pylonRef: 'pylon.malformed',
+      ownerAgentUserId: 'agent-one',
+      payoutTargetRef: 'not-a-spark-digest',
+      rawSparkAddress: 'spark1pqqqqq0000000000000000000000000000malformed',
+      createdAt: '2026-06-07T00:00:00.000Z',
+      updatedAt: '2026-06-07T00:00:00.000Z',
+    })
+    expect(
+      await resolveSparkPayoutTargetReadiness(sparkStore, 'pylon.malformed'),
+    ).toEqual({ ready: false, ref: null })
+
+    // A row with an empty raw address (no node-registered target) is not ready.
+    await sparkStore.upsert({
+      pylonRef: 'pylon.emptyraw',
+      ownerAgentUserId: 'agent-one',
+      payoutTargetRef: 'payout.spark.deadbeefdeadbeefdeadbeef',
+      rawSparkAddress: '   ',
+      createdAt: '2026-06-07T00:00:00.000Z',
+      updatedAt: '2026-06-07T00:00:00.000Z',
+    })
+    expect(
+      await resolveSparkPayoutTargetReadiness(sparkStore, 'pylon.emptyraw'),
+    ).toEqual({ ready: false, ref: null })
+  })
+
+  test('readiness resolver returns ready with the redacted digest ref for a properly registered target (#5306)', async () => {
+    const sparkStore = new MemorySparkPayoutTargetStore()
+    const rawSparkAddress =
+      'spark1pqqqqq0000000000000000000000000000resolverok'
+    const payoutTargetRef = await sparkDigestRef(rawSparkAddress)
+    await sparkStore.upsert({
+      pylonRef: 'pylon.ready',
+      ownerAgentUserId: 'agent-one',
+      payoutTargetRef,
+      rawSparkAddress,
+      createdAt: '2026-06-07T00:00:00.000Z',
+      updatedAt: '2026-06-07T00:00:00.000Z',
+    })
+
+    const readiness = await resolveSparkPayoutTargetReadiness(
+      sparkStore,
+      'pylon.ready',
+    )
+    expect(readiness.ready).toBe(true)
+    expect(readiness.ref).toBe(payoutTargetRef)
+    // The redacted ref is a digest, never the raw spark1… address.
+    expect(readiness.ref).not.toContain('spark1')
   })
 
   test('blocks controlled assignment dispatch to missing or offline Pylons', async () => {

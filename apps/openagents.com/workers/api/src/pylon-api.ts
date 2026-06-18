@@ -359,6 +359,56 @@ export const resolveSparkPayoutDestination = async (
   }
 }
 
+// Public-safe Spark payout-target readiness (#5306). `ready` reflects whether a
+// node has auto-registered (#5305) a Spark payout target for this pylonRef; the
+// `ref` is the redacted `payout.spark.<digest>` ref the store already holds —
+// NEVER the raw `spark1…` address. This is the onboarding backstop: readiness is
+// recomputed from the live private store on every register/heartbeat/read, so a
+// missing target self-heals to `ready` the moment the node next comes online and
+// registers, with no manual step. It fails closed: a missing target, an empty or
+// malformed stored ref, or any store read error all yield `ready: false` and a
+// `null` ref. The server never fabricates a target — the raw address must come
+// from the node and stays node-owned + private-store-only.
+export type PylonSparkPayoutTargetReadiness = Readonly<{
+  ready: boolean
+  ref: string | null
+}>
+
+export const SPARK_PAYOUT_TARGET_NOT_READY: PylonSparkPayoutTargetReadiness = {
+  ready: false,
+  ref: null,
+}
+
+const isSparkPayoutTargetRef = S.is(SparkPayoutTargetRef)
+
+export const resolveSparkPayoutTargetReadiness = async (
+  store: PylonSparkPayoutTargetStore,
+  pylonRef: string,
+): Promise<PylonSparkPayoutTargetReadiness> => {
+  try {
+    const record = await store.read(pylonRef)
+
+    if (record === undefined) {
+      return SPARK_PAYOUT_TARGET_NOT_READY
+    }
+
+    const ref = record.payoutTargetRef.trim()
+    const rawRegistered = record.rawSparkAddress.trim() !== ''
+
+    // Fail closed unless a node-registered raw address exists AND the stored
+    // digest ref is the expected redacted shape. The ref is public-safe (a
+    // digest, not the address), but re-checking the shape keeps a malformed or
+    // tampered row from ever projecting as ready.
+    if (!rawRegistered || !isSparkPayoutTargetRef(ref)) {
+      return SPARK_PAYOUT_TARGET_NOT_READY
+    }
+
+    return { ready: true, ref }
+  } catch {
+    return SPARK_PAYOUT_TARGET_NOT_READY
+  }
+}
+
 export const PylonApiAssignmentAcceptanceRequest = S.Struct({
   acceptanceRefs: PublicSafeRefs,
   accepted: S.Boolean,
@@ -559,6 +609,12 @@ export type PylonApiRegistrationProjection = Readonly<{
   providerNostrPubkey: string | null
   pylonRef: string
   resourceMode: typeof PylonResourceMode.Type
+  // #5306: public-safe onboarding readiness for the node's native Spark payout
+  // target. `true` once a node auto-registers (#5305); `false` is a visible,
+  // self-healing gap, never a fabricated target. `sparkPayoutTargetRef` is the
+  // redacted `payout.spark.<digest>` ref when present — never the raw address.
+  sparkPayoutTargetReady: boolean
+  sparkPayoutTargetRef: string | null
   status: PylonApiRegistrationStatus
   updatedAtDisplay: string
   walletReady: boolean
@@ -844,6 +900,12 @@ export const pylonApiStoreErrorFromUnknown = (
 export const publicPylonApiRegistrationProjection = (
   record: PylonApiRegistrationRecord,
   nowIso: string,
+  // #5306: Spark payout-target readiness, resolved from the private operator
+  // store keyed by pylonRef. Defaults fail-closed to not-ready so any caller
+  // that has not (or could not) read the store projects a visible gap rather
+  // than a fabricated target. The raw `spark1…` never reaches this function.
+  sparkPayoutTargetReadiness: PylonSparkPayoutTargetReadiness =
+    SPARK_PAYOUT_TARGET_NOT_READY,
 ): PylonApiRegistrationProjection => ({
   capabilityRefs: publicScannerSafeRefs(
     'capability.public.pylon',
@@ -892,6 +954,8 @@ export const publicPylonApiRegistrationProjection = (
   providerNostrPubkey: record.providerNostrPubkey,
   pylonRef: record.pylonRef,
   resourceMode: record.resourceMode,
+  sparkPayoutTargetReady: sparkPayoutTargetReadiness.ready,
+  sparkPayoutTargetRef: sparkPayoutTargetReadiness.ref,
   status: record.status,
   updatedAtDisplay: friendlyBlueprintMissionBriefingTime(
     record.updatedAt,
