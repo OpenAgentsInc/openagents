@@ -142,10 +142,13 @@ proof_verified
 proof_rejected
 trace_linked
 receipt_recorded
+settlement_blocked_closed
+payout_intent_persisted
 settlement_recorded
 payment_zap_confirmed
 payment_zap_simulated
 artifact_opened
+forum_announcement_posted
 claim_boundary_shown
 ```
 
@@ -386,6 +389,178 @@ public summary:
 
 This would make a proof set visible as a world event without weakening the
 current authority model.
+
+## First Replay: Run 1 Real Settlement
+
+The first replay should be the first confirmed real Bitcoin Tassadar
+run-settlement. This is the first example worth building toward because it has
+the entire story shape the replay system exists to show:
+
+- independent exact-trace verification;
+- owner-gated settlement authorization;
+- two failed-closed real-dispatch bugs that moved no sats;
+- durable payout intent, Spark treasury dispatch, reconciliation, and public
+  receipt;
+- a public Forum announcement asking the recipient pylon operator to verify the
+  wallet-side arrival.
+
+The replay title should be direct and historical:
+
+```text
+Tassadar Run 1: First Real Bitcoin Settlement
+```
+
+### Public Source Refs
+
+The first replay bundle should be built only from public-safe refs:
+
+| Kind | Ref |
+| --- | --- |
+| Run | `run.tassadar.executor.20260615` |
+| Window | `training.window.tassadar.executor.20260615.w1` |
+| Verified challenge | `training.verification.challenge.071445c5-6ad6-4136-87e3-253b01914b4c` |
+| Contributor pylon | `pylon.448ba824b5fc879f3a59` |
+| Real settlement receipt | `receipt.nexus.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618` |
+| Payout intent | `payout_intent.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618` |
+| Payout attempt | `payout_attempt.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618` |
+| Reconciliation | `reconciliation.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618` |
+| External event | `external_event.tassadar_run_settlement.spark_treasury.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618` |
+| Failed-closed Forum update | `https://openagents.com/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9#post-1dce5715-ec37-4850-a484-e7fe329417aa` |
+| Settled Forum update | `https://openagents.com/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9#post-a8df2265-547a-4a18-9398-3e7412a6859a` |
+
+The receipt API is already public and dereferenceable:
+
+```text
+https://openagents.com/api/public/nexus-pylon/receipts/receipt.nexus.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618
+```
+
+Its public projection currently shows:
+
+```text
+realBitcoinMoved: true
+movementMode: real_bitcoin
+moneyMovement: real_bitcoin
+state: settled
+amountSats: 1000
+adapter: spark_treasury
+contributorRef: pylon.448ba824b5fc879f3a59
+```
+
+The public run summary currently carries this real row in `settlementRows`,
+alongside the older 5-sat simulation row. The replay resolver must select the
+real row by receipt ref or by `realBitcoinMoved:true`; it must not turn the
+simulation row into a zap.
+
+### Code Surfaces Already In Place
+
+The first replay should use existing code paths rather than scrape Forum text:
+
+- `apps/openagents.com/workers/api/src/public-tassadar-run-summary-routes.ts`
+  exposes `settlementRows`, `movementMode`, `realBitcoinMoved`, receipt URLs,
+  contributor refs, and source refs for `/api/public/tassadar-run-summary`.
+- `apps/openagents-world-spacetimedb/scripts/tassadar-summary-transform.mjs`
+  maps settlement rows into `settlement_ref` rows, `settlement_receipt`
+  entities, `pylon_to_settlement` edges, and `settlement_projected` world
+  events. Its `settlementStatus` already returns `real_settled` when
+  `realBitcoinMoved` is true.
+- `apps/openagents.com/workers/api/src/tassadar-run-settlement.ts` builds the
+  public ledger chain and maps `spark_treasury` to `moneyMovement:
+  real_bitcoin`.
+- `apps/openagents.com/workers/api/src/training-run-window-routes.ts` drives
+  the real settlement dispatch only after the owner gate authorizes the
+  `spark_treasury` adapter, wallet readiness is ready, the destination resolves,
+  payout intent is durable, dispatch succeeds, reconciliation matches, and a
+  `settlement_recorded` receipt can be persisted.
+- `apps/openagents.com/workers/api/src/nexus-treasury-payout-ledger.ts`
+  now verifies that `INSERT OR IGNORE` did not silently drop the payout intent.
+  This is part of the replay story because the first real attempt exposed that
+  failure mode and it failed closed.
+- `apps/openagents.com/workers/api/migrations/0203_nexus_payout_adapter_kind_spark_treasury.sql`
+  adds `spark_treasury` to the payment-authority ledger CHECK constraints.
+- `apps/openagents.com/workers/api/migrations/0204_nexus_payment_authority_receipts_fk_repair.sql`
+  repairs the receipt table FK target after the 0203 table rebuild.
+
+### Cinematic Timeline
+
+The first replay should not start at the zap. It should show why the zap
+matters.
+
+1. **Cold open:** camera faces the glowing `Tassadar` run core in replay mode.
+   A compact top HUD says `Replay`, the bundle ref, and the public source
+   freshness. The center world contains only the run core, pylon stations,
+   avatars, proof gate, and settlement terminal.
+2. **Contributor and validator enter:** the contributor pylon avatar walks from
+   its station to the proof gate. The validator avatar is already at the gate or
+   enters from the opposite side. The stage labels the run and window refs.
+3. **Exact replay verification:** the proof gate projects the verified challenge
+   ref. The validator checks it; a short verification burst fires only because
+   the challenge is `Verified` and `exact_trace_replay`.
+4. **Owner gate opens:** a narrow gate or seal appears above the settlement
+   terminal for the bounded approval. It should say the branch is authorized,
+   not that money has moved.
+5. **Failed-closed preface:** two muted red/amber gap markers appear before the
+   final payment:
+   - `payout_intent_not_found`: payout intent persistence/lookup failed, no
+     dispatch, no sats moved, no settled receipt.
+   - `adapter_unavailable`: treasury adapter was not ready, no sats moved, no
+     settled receipt.
+   These are important parts of the first replay because they prove the rail
+   failed closed under real pressure.
+6. **Infra repair markers:** small non-payment markers show the durable intent
+   fix and the `spark_treasury` ledger/migration repair. These markers link to
+   code refs or release refs when available, but they do not become payment
+   effects.
+7. **Real settlement:** the settlement terminal receives the
+   `settlement_recorded` receipt. The payment zap fires only now:
+   `spark_treasury -> pylon.448ba824b5fc879f3a59`, `1000 sats`,
+   `realBitcoinMoved:true`.
+8. **Forum announcement:** the settled Forum post appears as a public-safe
+   speech bubble or transcript card anchored to a service/announcer avatar. It
+   links to the exact post permalink and asks for recipient-side wallet
+   confirmation.
+9. **End frame:** camera pulls back to show the run core, contributor pylon,
+   proof gate, settlement terminal, and a settled receipt link. The event list
+   remains clickable so the viewer can open the public receipt and Forum post.
+
+### First Bundle Event Sketch
+
+The first generated bundle should be able to emit a compact timeline like this:
+
+```text
+00:00 actor_entered_region contributor=pylon.448ba824b5fc879f3a59
+00:05 proof_submitted source=training.verification.challenge.071445c5-...
+00:10 proof_verified source=training.verification.challenge.071445c5-...
+00:15 claim_boundary_shown source=owner_gate_public_refs
+00:20 settlement_blocked_closed reason=payout_intent_not_found
+00:25 payout_intent_persisted source=payout_intent.tassadar_run_settlement...
+00:30 settlement_blocked_closed reason=adapter_unavailable
+00:35 settlement_recorded source=receipt.nexus.tassadar_run_settlement...v6.20260618
+00:36 payment_zap_confirmed amountSats=1000 rail=spark adapter=spark_treasury
+00:42 forum_announcement_posted source=post-a8df2265-...
+```
+
+If the bundle cannot prove a timestamp for an intermediate failed-closed
+marker, it should use explicit `sequenceIndex` and label that segment as
+Forum-announced operational history. The real zap still uses the receipt as the
+source of truth, not the Forum text.
+
+### First Replay Acceptance Criteria
+
+The first replay is not complete until it proves these behaviors:
+
+- It can be launched from the real receipt row, the selected pylon, or the run.
+- It opens the real public receipt URL from the zap and the exact Forum post URL
+  from the announcement bubble.
+- It renders the older simulation settlement row as simulation, not as a zap.
+- It renders the two failed-closed steps as non-payment blockers, not failures
+  after money moved.
+- It shows no raw recipient address, preimage, payment hash, mnemonic, Spark API
+  key, service token, provider payload, private log, or private operator note.
+- It keeps `Tassadar` or the run core in the center and leaves metadata in HUD
+  controls, matching the current `/tassadar` canvas rule.
+- It passes a browser smoke where the scene is nonblank, the camera track plays,
+  scrub/pause works, the proof gate and zap are selectable, and the public
+  receipt inspector opens.
 
 ## Open Decisions
 
