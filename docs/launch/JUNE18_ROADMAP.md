@@ -4,6 +4,153 @@ Date: 2026-06-18, 07:18 CT. Carries forward the still-live launch/test work
 from [`JUNE17_ROADMAP.md`](./JUNE17_ROADMAP.md), now that the Tassadar
 LLM-computer roadmap is implemented on `main`.
 
+## FULL-DAY STATUS (2026-06-18, end of day) — authoritative
+
+> This is the consolidated end-of-day picture across every lane that moved
+> today. The **END-OF-DAY UPDATE** section below it is the detailed RC +
+> settlement record from earlier in the day and remains accurate for that lane;
+> read this section first for the whole-day view. Honest split throughout:
+> **shipped** vs **in flight** vs **owner-gated**.
+
+### 1. Forum tipping — native Spark-address destinations — SHIPPED, `#5345` CLOSED
+
+- **Shipped:** native Spark-address (Spark→Spark) forum tip destinations
+  (`268f50601`, `feat(forum): accept native Spark-address tip destinations`).
+  Worker deployed (version `34def6d2`, D1 migration `0206`).
+- Raynor's tip wallet is registered: `tippingAvailable=true`,
+  `directPayment.kind=spark_address`, Spark offline-receive.
+- **Root cause of the earlier "pending" tip** was Tailscale MagicDNS failing to
+  resolve the Spark backend — an environment/DNS issue, **not** a code bug. The
+  payment rail itself was correct.
+- **`#5345` is CLOSED.**
+
+### 2. Studying activation — EPIC `#5337` CLOSED (complete)
+
+The studying capability is now wired end-to-end into the live agent loop, not
+just benchmarked. EPIC `#5337` and SA-1 through SA-4 are closed; SA-5 remains
+open and owner-gated.
+
+- **SA-1 `#5338` (CLOSED)** — live, current `openagents` study packet artifact +
+  regenerate CLI (`fd1ba44414`).
+- **SA-2 `#5339` (CLOSED)** — the Autopilot-coder consumes the study artifact in
+  the **live tool-menu plan path**, with measured lift (`7823e83f5`).
+- **SA-3 `#5340` (CLOSED)** — studied-knowledge wired into the
+  hygiene/refactoring lane (typed debt-receipt key model + studied-knowledge
+  wiring, `a2f3fc428`; follow-on hygiene commits across the
+  `ffccc6f4..f15d8332e` range).
+- **SA-4 `#5341` (CLOSED)** — standing freshness signal (fresh / stale /
+  gate-failed) + automatic study-index refresh on change (`8a8339304`,
+  `f15d8332e`).
+- **SA-5 `#5342` — OPEN and OWNER-GATED.** Advancing
+  `autopilot.repo_study_packets.v1` toward its gated capabilities
+  (customer-repo studying, marketplace packaging, payout) is **held**; those
+  gates (privacy / metering / pricing / payout) are not cleared.
+
+### 3. Debt-receipt model + hygiene lane — EPIC `#5335` OPEN, lane producing
+
+The hygiene/refactoring lane is now a funded, benchmarked, verified-contributor
+lane with a typed receipt model and an explicit production/verification role
+split.
+
+- **Typed model (shipped):** `DebtReceiptKey` / `PatchNoveltyKey` — **one
+  settlement per receipt**, with duplicate-replay rejection. Plus a fail-closed
+  fix to an optional gate and a new **"Debt Receipt Hygiene Settlement"**
+  invariant.
+- **Role split adopted:** **Trigger = production** (hygiene patches),
+  **Orrery = verification / churn-probe** (independent verification + scanning
+  for churn classes).
+- **`#5334` retired** via **PR `#5336` (MERGED)** — the first verified
+  contributor pass (de-dup dual-format Tassadar generated fix).
+- **Merged Trigger hygiene PRs:** `#5352`, `#5354`, `#5356` (canary receipt
+  test fixed), `#5357`, `#5358`, `#5359`, `#5365` — all **MERGED**.
+- **In review:** PR `#5366` (forum work-request route contract) and PR `#5367`
+  (reuse stable hash helpers in StudyBench) — both **OPEN**.
+- **Closed-as-incorporated (Trigger credited):** PRs `#5343`, `#5344`, `#5355`
+  — **CLOSED**, work folded into the merged set.
+- **New churn-probe scan class banked:** "dual-source-of-truth divergence" is
+  now an enumerable churn-probe scan class.
+- **Verification:** Orrery verified the **1,005-sat settled-total reconciliation
+  is clean across all three endpoints** (resolving the earlier 1,005-vs-1,010
+  watch item — the simulation row is now correctly excluded in the reconciled
+  view).
+- **EPIC `#5335` stays OPEN** (the lane keeps producing).
+
+### 4. Autopilot Desktop coding service — NEW EPIC `#5360` — CURRENT TOP PRIORITY
+
+Making Autopilot Desktop an operational day-to-day coding surface is **today's
+top priority** going forward.
+
+- **SHIPPED — interactive coding composer pane (`4587b9c82`):** foreground
+  spawn → streamed transcript → inline approvals → reply / continue → cancel.
+  Proven against `pylon dev`.
+- **Audit doc (`9bc8b1563`):**
+  [`docs/launch/2026-06-18-autopilot-desktop-coding-surface-audit.md`](./2026-06-18-autopilot-desktop-coding-surface-audit.md).
+- **Bucket A (make the surface good):**
+  - **CS-A1 `#5361` — IN FLIGHT** — provider / account picker + multi-account.
+  - **CS-A2 `#5362` — OPEN** — swarm / multi-session view.
+  - **CS-A3 `#5363` — OPEN** — diff / turn fidelity + transcript.
+- **Bucket B (make it shippable):**
+  - **CS-B1 `#5364` — OPEN** — packaged headless node + signing / notarization.
+    This is **the operational gate** for downloaded apps; until it lands, the
+    coding surface is dev-proven but not distributable as a signed app.
+- **EPIC `#5360` is OPEN.**
+
+### 5. Replay clips — NEW EPIC `#5346` — pipeline shipped, true-3D port closed, more in flight
+
+- **R-1 headless-render spike (`a90b1cf28`, `#5347` OPEN):** proved headless
+  rendering works (one-frame Playwright render spike).
+- **Pipeline R-3 / R-4 / R-5 — DONE (`60a5e640a`):** headless clip pipeline,
+  `render-clip.mjs` → mp4.
+- **Remotion port audit (`docs/launch/2026-06-18-remotion-port-audit-for-replay-clips.md`):**
+  verdict **PORT THE PATTERN, do not fork or take a runtime dependency** — the
+  Remotion license forbids fork-to-sell. Cross-reference:
+  [`2026-06-18-remotion-port-audit-for-replay-clips.md`](./2026-06-18-remotion-port-audit-for-replay-clips.md).
+- **R-1a `#5353` — CLOSED** — true-3D `three-effect` port of the proof-replay
+  scene.
+- **R-2 `#5348` — CLOSED** — programmatic camera-path input (call-time camera
+  control). (Both R-1a and R-2 were driven by a separate agent and have since
+  landed/closed.)
+- **Replay gap-analysis doc landed (`f5fb994c2`).**
+- **EPIC `#5346` is OPEN** (clip-generation productization continues).
+
+### 6. Platform
+
+- **Social-preview cards LIVE:** OG / Twitter cards for forum thread pages are
+  live (`f3461c7d0`, `feat(forum): social preview cards for forum thread
+  pages`).
+- **Product-promises registry bumped to `2026-06-18.4`**
+  (`apps/openagents.com/workers/api/src/product-promises.ts`):
+  - the **paid-work promise copy was corrected** (the two-contributor / 1,005
+    real-sats accuracy upgrade, no gate flip), and
+  - a new **`compute.agentic_kernel_optimization_at_scale.v1` record was added
+    as RED** — coding agents continuously writing and optimizing inference
+    kernels across open models/devices, scored on **both** throughput **and**
+    output-parity (exact-replay verified), dispatched/paid through the
+    verified-work market. Direction, not a shipped network capability; the only
+    demonstrated piece is a historical single-machine dev result, so it stays
+    red.
+- **New INVARIANT — "No GitHub-Hosted CI / Cloud Actions":** removed
+  `.github/workflows/restudy-openagents.yml` and banned GitHub-hosted CI
+  (`c43992567`). CI / cron / study-freshness now runs on **owned GCE infra**,
+  consistent with the "our cloud = OpenAgents GCE" posture.
+
+### 7. Launch video series — IN PREP (recording today)
+
+- **Two launch videos are in prep**, recording today:
+  - **Video 1 — "The Tassadar run is live"** (reframed to the **learning-engine
+    narrative** with precise, verifiable world-firsts):
+    - **first open contributor network for the exact-execution / Percepta-class
+      paradigm**, and
+    - **first training run paying contributors in Bitcoin for verified
+      training-compute on consumer devices** (distinct from Spirit of Satoshi).
+  - **Video 2 — referral / revenue-share** planning.
+- **Note on location:** the launch-video *planning docs* live in the **private
+  root workspace**, not in this public repo. This roadmap references the
+  **launch-video effort and the public-safe Video 1 framing above** only; it
+  does **not** reproduce private planning-doc contents or paths.
+
+---
+
 ## END-OF-DAY UPDATE (2026-06-18) — what shipped (authoritative current state)
 
 The morning plan (launch the RC, self-test, invite testers) is **done**, and the
@@ -77,6 +224,11 @@ enumerable REST settled-feed endpoint keyed by run, and **fix the real-vs-sim
 total so the run reads 1,005 real, not 1,010** — all per Orrery's reconciliation
 asks. On deploy, post the corrected numbers + the feed URL for re-dereference.
 
+> **Resolved later in the day (see FULL-DAY STATUS §3):** Orrery verified the
+> **1,005-sat settled-total reconciliation is clean across all three
+> endpoints** — the simulation row is excluded in the reconciled view. The
+> "1,010 vs 1,005" discrepancy was a not-yet-filtered aggregate, now reconciled.
+
 **Monitoring:** all-day forum-reply + GitHub-issue watchers armed; regular
 public-safe progress updates posted as Raynor as each fix lands. Two independent
 contributors are actively stress-testing — Trigger (client + settlement path),
@@ -99,6 +251,12 @@ section). The remaining reconciliation fix is tracked above.
 Audit of the product-promises registry (`apps/openagents.com/workers/api/src/product-promises.ts`)
 and `docs/promises/` against today's dereferenceable receipts. Registry bumped
 `2026-06-18.2 → 2026-06-18.3` (copy/evidence accuracy upgrade only — no gate flip).
+
+> **Later in the day the registry advanced again to `2026-06-18.4`** (see
+> FULL-DAY STATUS §6): the paid-work promise copy correction landed and a new
+> **`compute.agentic_kernel_optimization_at_scale.v1`** record was added as
+> **RED** (direction, not a shipped capability — no gate flip). The analysis
+> below remains accurate for the `.3` copy upgrade and the no-flip verdict.
 
 ### Q1 — is "paying people for verified work" fully + accurately reflected?
 
