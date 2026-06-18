@@ -103,3 +103,25 @@ Operating rule:
 
 Keep credentials in local-only files, never print or commit them, and add narrow
 ignore patterns for known OpenAgents credential filenames.
+
+## 2026-06-18 - Verification Must Dereference Before Settlement
+
+Evidence:
+
+- Orrery flagged on #5372 that contributor-asserted local test runs are not a
+  check-run a settlement authority can independently resolve.
+- #5391 adds the root CI workflow and documents that test/typecheck-based
+  hygiene evidence must dereference to CI or an independent verifier replay.
+
+Lesson:
+
+The payout gate should not depend on a worker saying "tests passed." Local runs
+are useful while developing, but real settlement needs a public verification
+artifact that another actor can inspect without trusting the worker.
+
+Operating rule:
+
+Before treating tests or typechecks as payout-grade hygiene evidence, require a
+green repository check-run or an independent verifier receipt. If the workflow
+does not exist on the base branch yet, the PR that introduces it is
+precondition plumbing, not settlement evidence for itself.
