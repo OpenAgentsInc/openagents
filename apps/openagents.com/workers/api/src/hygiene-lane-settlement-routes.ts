@@ -1,7 +1,6 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import { sha256Hex } from './agent-registration'
-import { DebtReceiptKeyInput } from './debt-receipt-key'
 import {
   type DebtReceiptSettlementInput,
   type DebtReceiptSettlementProjection,
@@ -152,6 +151,13 @@ const NonNegativeInteger = S.Number.check(
   S.isGreaterThanOrEqualTo(0),
 )
 
+const HygieneDebtReceiptKeyInput = S.Struct({
+  debtReceiptRef: HygieneLaneSettlementRequestRef,
+  objectiveDigest: HygieneLaneSettlementRequestRef,
+  repoBaselineRef: HygieneLaneSettlementRequestRef,
+  scopeDigest: HygieneLaneSettlementRequestRef,
+})
+
 /**
  * Admin request to CREATE a payable funded debt receipt (#5372, EPIC #5335,
  * process step 1). The requester / settlement-authority supplies the full,
@@ -167,7 +173,7 @@ const NonNegativeInteger = S.Number.check(
 export const HygieneDebtReceiptCreateRequest = S.Struct({
   // The DebtReceiptKey input components (#5340): debtReceiptRef, repoBaselineRef,
   // scopeDigest, objectiveDigest. Computes the key the receipt is stored under.
-  debtReceiptKeyInput: DebtReceiptKeyInput,
+  debtReceiptKeyInput: HygieneDebtReceiptKeyInput,
   // The merged-PR + reviewer-acceptance refs this receipt funds.
   mergedPrRef: HygieneLaneSettlementRequestRef,
   reviewerAcceptanceRef: HygieneLaneSettlementRequestRef,
