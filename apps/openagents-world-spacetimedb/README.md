@@ -161,3 +161,48 @@ and records `bridge_health` with `record_bridge_success`. It also projects one
 public leaderboard pylon ref. Replaying the same summary is deterministic, and
 `append_world_event` ignores existing event refs so live replay does not create
 duplicate events.
+
+## Public Activity Timeline Bridge
+
+The public activity bridge projects the agent-readable activity timeline into
+`world_event` rows only. It reads the same public-safe envelope served at:
+
+```text
+https://openagents.com/api/public/activity-timeline?limit=50
+```
+
+Dry-run the transform without writing rows:
+
+```bash
+bun apps/openagents-world-spacetimedb/scripts/project-activity-timeline.mjs
+```
+
+Resume from a cursor or inspect the exact reducer call plan:
+
+```bash
+bun apps/openagents-world-spacetimedb/scripts/project-activity-timeline.mjs \
+  --since "2026-06-18T18:00:08.000Z:projection_gap:event.public.gap.1" \
+  --json
+```
+
+Run the bridge checks:
+
+```bash
+bun test \
+  apps/openagents-world-spacetimedb/scripts/tassadar-summary-transform.test.mjs \
+  apps/openagents-world-spacetimedb/scripts/activity-timeline-transform.test.mjs
+```
+
+Apply the projection through IAP SSH and the VM-local SpacetimeDB CLI:
+
+```bash
+bun apps/openagents-world-spacetimedb/scripts/project-activity-timeline.mjs \
+  --apply-vm
+```
+
+This bridge preserves the timeline event cursor, public source refs, blocker
+refs, caveat refs, source lag status, generated time, and expiry in each
+`world_event.summary`. The Worker/D1 timeline remains the source projection;
+SpacetimeDB is only the replay-safe live world projection. Replaying the same
+timeline envelope is deterministic, and existing `world_event` refs are ignored
+by the reducer so bridge retries do not create duplicate motion.

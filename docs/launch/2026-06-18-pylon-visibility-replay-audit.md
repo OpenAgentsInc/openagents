@@ -78,6 +78,7 @@ W = web app, D = desktop app, C = CLI.
 | --- | --- | --- | --- | --- | --- | --- |
 | SpacetimeDB live world module (projection + interaction tables: run/entity/edge/proof/settlement/world_event + avatars/chat/emotes) | `apps/openagents-world-spacetimedb/` (Rust/WASM); deployed `spacetime.openagents.com` | Live | ✅ | ❌ | ❌ | **Built** (web only) |
 | Tassadar→world projection bridge | `apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs` (reads `/api/public/tassadar-run-summary`) | Live (deterministic, replay-safe) | — | — | — | **Built** |
+| Public activity timeline→world event bridge | `apps/openagents-world-spacetimedb/scripts/project-activity-timeline.mjs` (reads `/api/public/activity-timeline`) | Live (deterministic, replay-safe) | — | — | — | **Built** |
 | Web `/tassadar` live scene (`oa-tassadar-run`, three-effect) | `apps/web/src/page/run.ts`, `scene/tassadarRunElement.ts`; route `/tassadar` | Live | ✅ | ❌ | ❌ | **Built** |
 | three-effect scenes (pylon network graph, diamonds) | `apps/web/src/scene/pylonBezierNetworkElement.ts`, `pylonDiamonds.ts` | Live | ✅ | ❌ | ❌ | **Built** (embedded per-page; no unified dashboard) |
 
@@ -383,7 +384,9 @@ Once the timeline endpoint exists, add a live tail:
   because it is the least invasive way to tail the same public event shape.
 - Second layer: bridge the same event shape into `openagents-world` as
   public-safe `world_event` rows so `/tassadar` can animate live events through
-  the existing SpacetimeDB subscription path.
+  the existing SpacetimeDB subscription path. Implemented on 2026-06-18 for
+  deterministic `world_event` projection from
+  `/api/public/activity-timeline`; visual motion consumption remains follow-on.
 - Keep polling as a fallback and expose reconnect/stale state.
 - Preserve the June 17 motion contract: the world may animate only events with
   `sourceRefs`, `generatedAt`, and expiry/staleness metadata.
@@ -750,6 +753,20 @@ SSE and SpacetimeDB are delivery/projection layers only.
      rows through the existing service-identity bridge. Keep D1/Worker as the
      authority and enforce public-safe refs, generated-at, and replay-safe
      deterministic projection.
+   - Implementation status (2026-06-18, issue #5424): added
+     `project-activity-timeline.mjs` and its shared transform for projecting
+     `openagents.public_activity_timeline.v1` envelopes into service-only
+     `append_world_event` reducer calls plus a `record_projection_cursor` call.
+     The bridge preserves each event cursor, event ref, run ref when present,
+     public source refs, blocker refs, caveat refs, source-lag status,
+     generated time, and expiry in a stable JSON `world_event.summary`, and it
+     derives deterministic `world_event.public_activity.*` refs so retries and
+     replays are idempotent. The transform rejects private material before an
+     apply plan can be emitted, validates that every world event is sourced,
+     and keeps the Worker/D1 timeline as the source projection while
+     SpacetimeDB remains observation/projection/retrieval only. Validation:
+     `bun test apps/openagents-world-spacetimedb/scripts/tassadar-summary-transform.test.mjs apps/openagents-world-spacetimedb/scripts/activity-timeline-transform.test.mjs`
+     and `cargo test --manifest-path apps/openagents-world-spacetimedb/Cargo.toml`.
 3. **Render evidence-bound live activity motion on `/tassadar`**
    - Body summary: Subscribe to timeline-backed world events and animate only
      events with source refs, generated-at, and stale/expiry metadata. Preserve
