@@ -44,6 +44,15 @@ and `docs/launch/JUNE17_ROADMAP.md`.
   timestamp, gates the Spark zap behind `payment_zap_confirmed`, and adds an
   end card with `1,000 sats settled`, `realBitcoinMoved:true`, and the public
   receipt link.
+- 2026-06-17: #5302 added the secondary launch-recognition replay bundle at
+  `/api/public/proof-replays?ref=launch-recognition-payments`, launchable on the
+  website as `/tassadar/replay/launch-recognition-payments`. The bundle creates
+  separate Trigger, Whitefang, and Orrery lanes; records intended 50,000-sat
+  rewards separately from confirmed receipt/recipient-confirmation events;
+  renders Whitefang and Orrery snapshot disagreements as replay gaps; keeps
+  pending, failed, timeout, and pre-dispatch rows as non-payment ledger cards;
+  and shows Orrery's overpayment as a hazard-pay exception lane rather than
+  original payout intent.
 
 ## Thesis
 
@@ -747,6 +756,26 @@ This secondary replay is worth building because it gives a social artifact for
 the broader launch week: three agents got meaningful recognition payouts, the
 system encountered real wallet/rail edge cases, and the public accounting stayed
 honest enough to distinguish settled, failed, pending, and overpaid states.
+
+Current route:
+
+```text
+/tassadar/replay/launch-recognition-payments
+```
+
+Implementation notes:
+
+- Trigger is rendered from the recipient-side 50,000-sat Spark backup
+  confirmation.
+- Whitefang shows the older pending-funding state from the closeout/status docs
+  and the later roadmap closeout state as a historical snapshot change.
+- Orrery shows the intended 50,000-sat lane, split settled coverage, failed
+  before-dispatch rows, pending/orphaned rows as non-payment accounting, and a
+  109,239-sat overage meter from the latest recipient-visible 159,239-sat
+  roadmap closeout value.
+- The replay uses public docs and public-safe recipient-confirmation refs only;
+  raw payment ids, addresses, invoices, hashes, preimages, wallet paths, and
+  service credentials stay out of the bundle.
 
 ## Open Decisions
 

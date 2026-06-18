@@ -3667,7 +3667,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getPublicProofReplayBundle',
       summary: 'Read public proof replay bundle',
       description:
-        'Builds a deterministic public-safe proof_replay_bundle.v1 payload from explicit proof, run, pylon, receipt, settlement, or forum refs. The initial implementation resolves the first real Tassadar settlement bundle and preserves receipt-first payment classification: confirmed zaps require public real-bitcoin evidence, while simulation, blocked, pending, and failed-closed rows render as non-payment replay events.',
+        'Builds a deterministic public-safe proof_replay_bundle.v1 payload from explicit proof, run, pylon, receipt, settlement, recognition, or forum refs. The resolver currently supports the first real Tassadar settlement bundle and the June 17 launch-recognition payment replay (`ref=launch-recognition-payments`). It preserves receipt/confirmation-first payment classification: confirmed zaps require public real-bitcoin or recipient-confirmation evidence, while simulation, blocked, pending, timeout, and failed-closed rows render as non-payment replay events.',
       tags: ['Training'],
       security: publicRead,
       parameters: [

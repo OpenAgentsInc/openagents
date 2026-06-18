@@ -186,6 +186,119 @@ const replayBundle = {
   title: 'Tassadar Run 1: First Real Bitcoin Settlement',
 }
 
+const recognitionReplayBundle = {
+  ...replayBundle,
+  actors: [
+    {
+      actorRef: 'actor.launch_recognition_terminal',
+      avatarRole: 'recognition_terminal',
+      displayName: 'Launch recognition terminal',
+      fallbackAssetId: 'procedural.recognition_terminal.v1',
+    },
+    {
+      actorRef: 'actor.orrery',
+      avatarRole: 'recipient',
+      displayName: 'Orrery',
+      fallbackAssetId: 'procedural.pylon_avatar.recipient.orrery.v1',
+    },
+  ],
+  bundleRef: 'proof_replay_bundle.launch_recognition.test',
+  cameraCues: [
+    {
+      cueRef: 'camera.recognition',
+      durationSecond: 18,
+      focusRefs: ['stage.launch_recognition.orrery_overpayment'],
+      mode: 'zap_focus',
+      sourceRefs: ['doc.launch_recognition.test'],
+      startSecond: 0,
+    },
+  ],
+  captions: [
+    {
+      captionRef: 'caption.recognition',
+      sequenceIndex: 0,
+      sourceRefs: ['doc.launch_recognition.test'],
+      text: 'Orrery overpayment is an exception lane.',
+      timelineSecond: 12,
+    },
+  ],
+  events: [
+    {
+      actorRefs: ['actor.orrery'],
+      amountSats: 50_000,
+      caveat: 'Intended recognition amount.',
+      displayText: 'Orrery intended 50,000-sat recognition reward.',
+      eventRef: 'event.recognition.intent',
+      kind: 'recognition_reward_recorded',
+      rail: 'split_lightning_address',
+      sequenceIndex: 0,
+      sourceRefs: ['doc.launch_recognition.test'],
+      targetRefs: ['stage.launch_recognition.orrery'],
+      timelineSecond: 2,
+    },
+    {
+      actorRefs: ['actor.launch_recognition_terminal', 'actor.orrery'],
+      amountSats: 50_000,
+      displayText: 'Orrery recognition amount is covered by settled sends.',
+      eventRef: 'event.recognition.zap',
+      kind: 'payment_zap_confirmed',
+      rail: 'split_lightning_address',
+      sequenceIndex: 1,
+      sourceRefs: ['recipient_confirmation.launch_recognition.orrery.test'],
+      targetRefs: ['actor.orrery', 'stage.launch_recognition.orrery'],
+      timelineSecond: 8,
+    },
+    {
+      actorRefs: ['actor.launch_recognition_terminal', 'actor.orrery'],
+      amountSats: 109_239,
+      caveat: 'Overage documented as hazard pay.',
+      displayText: 'Orrery overpayment detected.',
+      eventRef: 'event.recognition.overpayment',
+      kind: 'overpayment_detected',
+      rail: 'split_lightning_address',
+      sequenceIndex: 2,
+      sourceRefs: ['recognition_ledger.launch_recognition.orrery.hazard_pay'],
+      targetRefs: ['stage.launch_recognition.orrery_overpayment'],
+      timelineSecond: 12,
+    },
+  ],
+  flows: [],
+  gaps: [],
+  socialDisplayTime: 'June 17 closeout',
+  sourceRefs: [
+    { kind: 'doc', ref: 'doc.launch_recognition.test' },
+    {
+      kind: 'recipient_confirmation',
+      ref: 'recipient_confirmation.launch_recognition.orrery.test',
+    },
+    {
+      kind: 'payment_authority',
+      ref: 'recognition_ledger.launch_recognition.orrery.hazard_pay',
+    },
+  ],
+  stages: [
+    {
+      label: 'Launch recognition ledger',
+      sourceRefs: ['doc.launch_recognition.test'],
+      stageKind: 'recognition_terminal',
+      stageRef: 'stage.launch_recognition.terminal',
+    },
+    {
+      label: 'Orrery lane',
+      sourceRefs: ['recipient_confirmation.launch_recognition.orrery.test'],
+      stageKind: 'recognition_lane',
+      stageRef: 'stage.launch_recognition.orrery',
+    },
+    {
+      label: 'Orrery overpayment branch',
+      sourceRefs: ['recognition_ledger.launch_recognition.orrery.hazard_pay'],
+      stageKind: 'overpayment_branch',
+      stageRef: 'stage.launch_recognition.orrery_overpayment',
+    },
+  ],
+  title: 'Launch Recognition Payments: Trigger, Whitefang, Orrery',
+}
+
 const jsonResponse = (body: unknown, status = 200): Response =>
   ({
     ok: status >= 200 && status < 300,
@@ -206,10 +319,14 @@ const waitForSettled = async (el: HTMLElement): Promise<void> => {
 
 const mountAndSettle = async (
   path = '/tassadar/replay/first-real-settlement',
+  replaySlug?: string,
 ): Promise<HTMLElement> => {
   tassadarProofReplayView()
   window.history.replaceState({}, '', path)
   const el = document.createElement(TASSADAR_PROOF_REPLAY_TAG)
+  if (replaySlug !== undefined) {
+    el.setAttribute('data-replay-slug', replaySlug)
+  }
   document.body.append(el)
   await waitForSettled(el)
   return el
@@ -246,6 +363,49 @@ describe('tassadar proof replay element', () => {
       'The first real Tassadar settlement replay begins.',
     )
     expect(el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')).toBeNull()
+  })
+
+  it('loads non-first replay slugs from the generic proof replay resolver', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse(replayBundle))
+
+    await mountAndSettle(
+      '/tassadar/replay/launch-recognition-payments',
+      'launch-recognition-payments',
+    )
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/public/proof-replays?ref=launch-recognition-payments',
+      expect.objectContaining({
+        headers: { accept: 'application/json' },
+      }),
+    )
+  })
+
+  it('renders recognition zaps and overpayment markers from a launch-recognition bundle', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(recognitionReplayBundle),
+    )
+    const el = await mountAndSettle(
+      '/tassadar/replay/launch-recognition-payments',
+      'launch-recognition-payments',
+    )
+
+    const scrub = el.shadowRoot?.querySelector(
+      '[data-replay-control="scrub"]',
+    ) as HTMLInputElement | null
+    expect(scrub).not.toBeNull()
+    scrub!.value = '13'
+    scrub!.dispatchEvent(new Event('input', { bubbles: true }))
+
+    expect(el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')).not.toBeNull()
+    const overpayment = el.shadowRoot?.querySelector(
+      '[data-replay-marker="overpayment"]',
+    )
+    expect(overpayment?.textContent ?? '').toContain(
+      '109239 sats overage documented as hazard pay',
+    )
   })
 
   it('does not render the real sats zap until the confirmed payment event', async () => {

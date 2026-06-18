@@ -70,6 +70,7 @@ const HOST_STYLE =
   '.actor strong{display:block;overflow:hidden;text-overflow:ellipsis;font-size:0.64rem;font-weight:600;color:rgba(255,255,255,0.86)}.actor em{display:block;margin-top:0.12rem;font-style:normal;font-size:0.55rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.42)}' +
   '.zap{z-index:1;left:50%;top:50%;width:min(42rem,70%);height:0.2rem;background:linear-gradient(90deg,transparent,rgba(255,241,151,0.18),rgba(255,241,151,0.92),rgba(255,241,151,0.18),transparent);box-shadow:0 0 1.4rem rgba(255,241,151,0.72);animation:zapPulse 1.2s infinite}.zap span{position:absolute;left:50%;top:-1.5rem;transform:translateX(-50%);white-space:nowrap;font-size:0.76rem;color:#fff;text-shadow:0 0 1rem rgba(255,241,151,0.9)}' +
   '.marker{z-index:3;right:8%;top:28%;left:auto;transform:none;max-width:16rem;border-left:2px solid rgba(255,112,112,0.75);padding-left:0.6rem;text-align:left;font-size:0.66rem;line-height:1.35;color:rgba(255,205,205,0.84);text-shadow:0 1px 8px rgba(0,0,0,0.9)}.marker.simulation{top:40%;border-left-color:rgba(255,255,255,0.42);color:rgba(255,255,255,0.68)}' +
+  '.marker.recognition{top:16%;border-left-color:rgba(125,211,252,0.72);color:rgba(214,240,255,0.84)}.marker.overpayment{top:52%;border-left-color:rgba(255,193,83,0.78);color:rgba(255,234,190,0.88)}' +
   '.caption{position:absolute;left:50%;bottom:1rem;z-index:4;max-width:min(52rem,calc(100% - 2rem));transform:translateX(-50%);padding:0.5rem 0.75rem;background:rgba(0,0,0,0.44);border:1px solid rgba(255,255,255,0.1);backdrop-filter:blur(12px);font-size:0.78rem;line-height:1.45;color:rgba(255,255,255,0.82);text-align:center}' +
   '.social-hud{position:absolute;inset:0;z-index:5;pointer-events:none;color:#fff;text-shadow:0 1px 16px rgba(0,0,0,0.88)}.social-title{position:absolute;left:4.2%;top:6.8%;max-width:56rem}.social-title h1{margin:0;font-size:4rem;line-height:1.02;font-weight:760;letter-spacing:0;color:#fff}.social-title p{margin:0.52rem 0 0;font-size:1.16rem;line-height:1.3;color:rgba(255,255,255,0.78)}.social-time{position:absolute;right:4.2%;top:7.2%;font-size:1.05rem;color:rgba(255,255,255,0.82)}.social-beat{position:absolute;left:4.2%;right:4.2%;bottom:6.2%;display:flex;align-items:flex-end;justify-content:space-between;gap:1.2rem}.social-beat p{max-width:52rem;margin:0;font-size:1.18rem;line-height:1.36;color:rgba(255,255,255,0.84)}.social-progress{width:min(16rem,26vw);height:0.18rem;background:rgba(255,255,255,0.22);overflow:hidden}.social-progress span{display:block;height:100%;background:#fff;box-shadow:0 0 1rem rgba(255,255,255,0.78)}.end-card{position:absolute;right:4.2%;bottom:13%;width:min(30rem,38vw);border:1px solid rgba(255,255,255,0.16);background:rgba(0,0,0,0.52);padding:0.78rem 0.92rem;backdrop-filter:blur(14px)}.end-card strong{display:block;margin-bottom:0.38rem;font-size:1.58rem;line-height:1.08;color:#fff}.end-card span,.end-card a{display:block;overflow-wrap:anywhere;font-size:0.82rem;line-height:1.35;color:rgba(255,255,255,0.78);pointer-events:auto}.end-card a{margin-top:0.42rem;text-underline-offset:0.2rem;color:rgba(255,255,255,0.92)}' +
   '.bottom{z-index:4;display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,28rem);gap:0.8rem;padding:0.75rem 1rem 1rem;min-height:12rem;max-height:36vh}.controls{display:grid;grid-template-columns:auto minmax(8rem,1fr) auto auto;gap:0.5rem;align-items:center;margin-bottom:0.55rem}.controls button,.controls select,.events button{border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.07);color:#f1efe8;font:inherit;font-size:0.72rem}.controls button{min-width:4.2rem;padding:0.42rem 0.58rem}.controls select{padding:0.38rem 0.46rem}.controls input{min-width:0;accent-color:#f1efe8}' +
@@ -143,6 +144,19 @@ const activeSimulationEvent = (
   events: ReadonlyArray<ReplayEvent>,
 ): ReplayEvent | undefined =>
   [...events].reverse().find(event => event.kind === 'payment_zap_simulated')
+
+const activeRecognitionEvent = (
+  events: ReadonlyArray<ReplayEvent>,
+): ReplayEvent | undefined =>
+  [...events].reverse().find(event =>
+    event.kind === 'recognition_reward_recorded' ||
+    event.kind === 'recipient_confirmation_recorded',
+  )
+
+const activeOverpaymentEvent = (
+  events: ReadonlyArray<ReplayEvent>,
+): ReplayEvent | undefined =>
+  [...events].reverse().find(event => event.kind === 'overpayment_detected')
 
 const replayEndpointForSlug = (slug: string): string =>
   slug === FIRST_REAL_SETTLEMENT_REPLAY_SLUG
@@ -467,6 +481,24 @@ const makeClass = (): CustomElementConstructor =>
         marker.className = 'marker simulation'
         marker.setAttribute('data-replay-marker', 'simulation')
         marker.textContent = `${simulation.amountSats ?? 0} sats simulation, not payment`
+        plane.append(marker)
+      }
+
+      const recognition = activeRecognitionEvent(activeEvents)
+      if (recognition !== undefined) {
+        const marker = document.createElement('div')
+        marker.className = 'marker recognition'
+        marker.setAttribute('data-replay-marker', 'recognition')
+        marker.textContent = recognition.displayText
+        plane.append(marker)
+      }
+
+      const overpayment = activeOverpaymentEvent(activeEvents)
+      if (overpayment !== undefined) {
+        const marker = document.createElement('div')
+        marker.className = 'marker overpayment'
+        marker.setAttribute('data-replay-marker', 'overpayment')
+        marker.textContent = `${overpayment.amountSats ?? 0} sats overage documented as hazard pay`
         plane.append(marker)
       }
 

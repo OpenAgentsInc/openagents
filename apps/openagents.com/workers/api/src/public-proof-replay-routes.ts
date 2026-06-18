@@ -34,9 +34,20 @@ export const FIRST_REAL_SETTLEMENT_FAILED_FORUM_URL =
   'https://openagents.com/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9#post-1dce5715-ec37-4850-a484-e7fe329417aa'
 export const FIRST_REAL_SETTLEMENT_SETTLED_FORUM_URL =
   'https://openagents.com/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9#post-a8df2265-547a-4a18-9398-3e7412a6859a'
+export const LAUNCH_RECOGNITION_BUNDLE_SLUG = 'launch-recognition-payments'
+export const LAUNCH_RECOGNITION_TITLE =
+  'Launch Recognition Payments: Trigger, Whitefang, Orrery'
+export const LAUNCH_RECOGNITION_LOCAL_DISPLAY_TIME = 'June 17 closeout'
+export const LAUNCH_ROADMAP_DOC_URL =
+  'https://github.com/OpenAgentsInc/openagents/blob/main/docs/launch/JUNE17_ROADMAP.md'
+export const LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL =
+  'https://github.com/OpenAgentsInc/openagents/blob/main/docs/payments/2026-06-17-launch-recognition-closeout.md'
+export const LAUNCH_RECOGNITION_SPARK_STATUS_DOC_URL =
+  'https://github.com/OpenAgentsInc/openagents/blob/main/docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md'
 
 type SourceKind =
   | 'api'
+  | 'doc'
   | 'forum_post'
   | 'pylon'
   | 'receipt'
@@ -44,6 +55,7 @@ type SourceKind =
   | 'window'
   | 'verification_challenge'
   | 'payment_authority'
+  | 'recipient_confirmation'
   | 'operator_context'
 
 type ReplayEventKind =
@@ -56,6 +68,9 @@ type ReplayEventKind =
   | 'settlement_recorded'
   | 'payment_zap_confirmed'
   | 'payment_zap_simulated'
+  | 'recognition_reward_recorded'
+  | 'recipient_confirmation_recorded'
+  | 'overpayment_detected'
   | 'forum_announcement_posted'
 
 type ReplaySourceRef = Readonly<{
@@ -71,8 +86,12 @@ type ReplayActor = Readonly<{
     | 'contributor'
     | 'validator'
     | 'settlement_terminal'
+    | 'recognition_terminal'
+    | 'recognition_lane'
+    | 'overpayment_branch'
     | 'operator_gate'
     | 'announcer'
+    | 'recipient'
   displayName: string
   pylonRef?: string
   fallbackAssetId: string
@@ -85,6 +104,9 @@ type ReplayStage = Readonly<{
     | 'pylon_station'
     | 'proof_gate'
     | 'settlement_terminal'
+    | 'recognition_terminal'
+    | 'recognition_lane'
+    | 'overpayment_branch'
     | 'registry_marker'
     | 'replay_gap'
   label: string
@@ -115,6 +137,9 @@ type ReplayFlow = Readonly<{
     | 'verification_check'
     | 'receipt_emission'
     | 'payment_movement'
+    | 'recognition_reward'
+    | 'overpayment_branch'
+    | 'pending_marker'
     | 'simulation_marker'
   fromRef: string
   toRef: string
@@ -216,15 +241,26 @@ const sourceKindForRef = (ref: string): SourceKind => {
     return 'api'
   }
 
+  if (
+    ref.startsWith('https://github.com/OpenAgentsInc/openagents/blob/main/docs/')
+  ) {
+    return 'doc'
+  }
+
   if (ref.startsWith('receipt.')) {
     return 'receipt'
+  }
+
+  if (ref.startsWith('recipient_confirmation.')) {
+    return 'recipient_confirmation'
   }
 
   if (
     ref.startsWith('payout_intent.') ||
     ref.startsWith('payout_attempt.') ||
     ref.startsWith('reconciliation.') ||
-    ref.startsWith('external_event.')
+    ref.startsWith('external_event.') ||
+    ref.startsWith('recognition_ledger.')
   ) {
     return 'payment_authority'
   }
@@ -287,6 +323,17 @@ const requestedRunRefFor = (request: Request): string => {
   const runRef = new URL(request.url).searchParams.get('run')?.trim()
   return runRef === undefined || runRef === '' ? DEFAULT_TASSADAR_RUN_REF : runRef
 }
+
+const isLaunchRecognitionReplayRequest = (
+  refs: ReadonlyArray<string>,
+): boolean =>
+  refs.some(
+    ref =>
+      ref === LAUNCH_RECOGNITION_BUNDLE_SLUG ||
+      ref === 'launch-recognition' ||
+      ref === 'recognition-payments' ||
+      ref === 'recognition_ledger.launch.june17.closeout.v1',
+  )
 
 const selectRealSettlementRow = (
   rows: ReadonlyArray<PublicTassadarSettlementRow>,
@@ -351,6 +398,521 @@ const makeEvent = (
   ...input,
   eventRef: `proof_replay_event.tassadar.first_real_settlement.${String(input.sequenceIndex).padStart(2, '0')}.${input.kind}`,
 })
+
+const makeLaunchRecognitionEvent = (
+  input: Omit<ReplayEvent, 'eventRef'>,
+): ReplayEvent => ({
+  ...input,
+  eventRef: `proof_replay_event.launch_recognition.${String(input.sequenceIndex).padStart(2, '0')}.${input.kind}`,
+})
+
+export const buildLaunchRecognitionReplayBundle = (
+  input: Readonly<{
+    appUrl: string
+    generatedAt: string
+    requestedRefs: ReadonlyArray<string>
+  }>,
+): ProofReplayBundle => {
+  void input.appUrl
+  const docs = [
+    LAUNCH_ROADMAP_DOC_URL,
+    LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL,
+    LAUNCH_RECOGNITION_SPARK_STATUS_DOC_URL,
+  ] as const
+  const recognitionLedgerRef = 'recognition_ledger.launch.june17.closeout.v1'
+  const triggerConfirmationRef =
+    'recipient_confirmation.launch_recognition.trigger.visible_50000_sats'
+  const whitefangConfirmationRef =
+    'recipient_confirmation.launch_recognition.whitefang.visible_51030_sats'
+  const orreryConfirmationRef =
+    'recipient_confirmation.launch_recognition.orrery.visible_159239_sats'
+  const hazardPayDecisionRef =
+    'recognition_ledger.launch_recognition.orrery.hazard_pay_owner_decision'
+  const whitefangHistoricalPendingRef =
+    'recognition_ledger.launch_recognition.whitefang.historical_pending_snapshot'
+  const orreryPendingRowsRef =
+    'recognition_ledger.launch_recognition.orrery.pending_rows_expired'
+  const orreryFailedRowsRef =
+    'recognition_ledger.launch_recognition.orrery.failed_before_dispatch_rows'
+
+  const actors: ReadonlyArray<ReplayActor> = [
+    {
+      actorRef: 'actor.launch_recognition_terminal',
+      avatarRole: 'recognition_terminal',
+      displayName: 'Launch recognition terminal',
+      fallbackAssetId: 'procedural.recognition_terminal.v1',
+    },
+    {
+      actorRef: 'actor.trigger',
+      avatarRole: 'recipient',
+      displayName: 'Trigger',
+      fallbackAssetId: 'procedural.pylon_avatar.recipient.trigger.v1',
+    },
+    {
+      actorRef: 'actor.whitefang',
+      avatarRole: 'recipient',
+      displayName: 'Whitefang',
+      fallbackAssetId: 'procedural.pylon_avatar.recipient.whitefang.v1',
+    },
+    {
+      actorRef: 'actor.orrery',
+      avatarRole: 'recipient',
+      displayName: 'Orrery',
+      fallbackAssetId: 'procedural.pylon_avatar.recipient.orrery.v1',
+    },
+    {
+      actorRef: 'actor.owner_decision',
+      avatarRole: 'operator_gate',
+      displayName: 'Owner decision',
+      fallbackAssetId: 'procedural.operator_gate.v1',
+    },
+  ]
+  const stages: ReadonlyArray<ReplayStage> = [
+    {
+      label: 'Launch recognition ledger',
+      sourceRefs: [recognitionLedgerRef, LAUNCH_ROADMAP_DOC_URL],
+      stageKind: 'recognition_terminal',
+      stageRef: 'stage.launch_recognition.terminal',
+    },
+    {
+      label: 'Trigger lane',
+      sourceRefs: [triggerConfirmationRef, LAUNCH_ROADMAP_DOC_URL],
+      stageKind: 'recognition_lane',
+      stageRef: 'stage.launch_recognition.trigger',
+    },
+    {
+      label: 'Whitefang lane',
+      sourceRefs: [
+        whitefangConfirmationRef,
+        whitefangHistoricalPendingRef,
+        LAUNCH_ROADMAP_DOC_URL,
+        LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL,
+      ],
+      stageKind: 'recognition_lane',
+      stageRef: 'stage.launch_recognition.whitefang',
+    },
+    {
+      label: 'Orrery lane',
+      sourceRefs: [
+        orreryConfirmationRef,
+        hazardPayDecisionRef,
+        LAUNCH_ROADMAP_DOC_URL,
+      ],
+      stageKind: 'recognition_lane',
+      stageRef: 'stage.launch_recognition.orrery',
+    },
+    {
+      label: 'Orrery overpayment branch',
+      sourceRefs: [
+        hazardPayDecisionRef,
+        orreryPendingRowsRef,
+        orreryFailedRowsRef,
+        LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL,
+        LAUNCH_RECOGNITION_SPARK_STATUS_DOC_URL,
+      ],
+      stageKind: 'overpayment_branch',
+      stageRef: 'stage.launch_recognition.orrery_overpayment',
+    },
+  ]
+  const events: ReadonlyArray<ReplayEvent> = [
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.launch_recognition_terminal'],
+      displayText:
+        'Recognition ledger opens with three intended 50,000-sat lanes.',
+      kind: 'actor_entered_region',
+      sequenceIndex: 0,
+      sourceRefs: [recognitionLedgerRef, LAUNCH_ROADMAP_DOC_URL],
+      targetRefs: ['stage.launch_recognition.terminal'],
+      timelineSecond: 0,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.trigger'],
+      amountSats: 50_000,
+      caveat: 'Intended recognition amount; not a payment by itself.',
+      displayText: 'Trigger lane records the intended 50,000-sat recognition reward.',
+      kind: 'recognition_reward_recorded',
+      rail: 'spark_backup_recipient_confirmation',
+      sequenceIndex: 1,
+      sourceRefs: [recognitionLedgerRef, LAUNCH_ROADMAP_DOC_URL],
+      stateAfter: 'intended_reward_recorded',
+      targetRefs: ['stage.launch_recognition.trigger'],
+      timelineSecond: 4,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.trigger'],
+      amountSats: 50_000,
+      displayText:
+        'Trigger recipient-side Spark backup status confirms 50,000 sats visible.',
+      kind: 'recipient_confirmation_recorded',
+      rail: 'spark_backup',
+      sequenceIndex: 2,
+      sourceRefs: [
+        triggerConfirmationRef,
+        LAUNCH_ROADMAP_DOC_URL,
+        LAUNCH_RECOGNITION_SPARK_STATUS_DOC_URL,
+      ],
+      stateAfter: 'recipient_confirmed',
+      targetRefs: ['stage.launch_recognition.trigger'],
+      timelineSecond: 8,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.launch_recognition_terminal', 'actor.trigger'],
+      amountSats: 50_000,
+      displayText:
+        'Trigger recognition ribbon animates from recipient-confirmed public evidence.',
+      kind: 'payment_zap_confirmed',
+      rail: 'spark_backup_recipient_confirmation',
+      sequenceIndex: 3,
+      sourceRefs: [triggerConfirmationRef, LAUNCH_ROADMAP_DOC_URL],
+      stateAfter: 'recipient_confirmed',
+      targetRefs: ['actor.trigger', 'stage.launch_recognition.trigger'],
+      timelineSecond: 10,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.whitefang'],
+      amountSats: 50_000,
+      caveat: 'Intended recognition amount; older snapshots still showed blockers.',
+      displayText:
+        'Whitefang lane records the intended 50,000-sat recognition reward.',
+      kind: 'recognition_reward_recorded',
+      rail: 'spark_treasury',
+      sequenceIndex: 4,
+      sourceRefs: [recognitionLedgerRef, LAUNCH_ROADMAP_DOC_URL],
+      stateAfter: 'intended_reward_recorded',
+      targetRefs: ['stage.launch_recognition.whitefang'],
+      timelineSecond: 14,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.launch_recognition_terminal'],
+      caveat:
+        'Historical snapshot only: failed before a full-size recognition dispatch.',
+      displayText:
+        'Whitefang earlier closeout snapshot stays blocked: full recognition was still pending funding.',
+      kind: 'settlement_blocked_closed',
+      sequenceIndex: 5,
+      sourceRefs: [
+        whitefangHistoricalPendingRef,
+        LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL,
+        LAUNCH_RECOGNITION_SPARK_STATUS_DOC_URL,
+      ],
+      stateAfter: 'historical_pending_snapshot',
+      targetRefs: ['stage.launch_recognition.whitefang'],
+      timelineSecond: 18,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.launch_recognition_terminal', 'actor.whitefang'],
+      amountSats: 50_000,
+      displayText:
+        'Whitefang recognition settles later as one Spark-treasury payment.',
+      kind: 'payment_zap_confirmed',
+      rail: 'spark_treasury',
+      sequenceIndex: 6,
+      sourceRefs: [whitefangConfirmationRef, LAUNCH_ROADMAP_DOC_URL],
+      stateAfter: 'recipient_confirmed',
+      targetRefs: ['actor.whitefang', 'stage.launch_recognition.whitefang'],
+      timelineSecond: 22,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.whitefang'],
+      amountSats: 51_030,
+      caveat:
+        'Recipient-visible total includes the 1,000-sat canary plus 30-sat smokes.',
+      displayText:
+        'Whitefang recipient-side status reports 51,030 sats visible.',
+      kind: 'recipient_confirmation_recorded',
+      rail: 'spark_backup',
+      sequenceIndex: 7,
+      sourceRefs: [whitefangConfirmationRef, LAUNCH_ROADMAP_DOC_URL],
+      stateAfter: 'recipient_confirmed',
+      targetRefs: ['stage.launch_recognition.whitefang'],
+      timelineSecond: 26,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.orrery'],
+      amountSats: 50_000,
+      caveat: 'Intended recognition amount before the overpayment incident.',
+      displayText: 'Orrery lane records the intended 50,000-sat recognition reward.',
+      kind: 'recognition_reward_recorded',
+      rail: 'split_lightning_address',
+      sequenceIndex: 8,
+      sourceRefs: [recognitionLedgerRef, LAUNCH_ROADMAP_DOC_URL],
+      stateAfter: 'intended_reward_recorded',
+      targetRefs: ['stage.launch_recognition.orrery'],
+      timelineSecond: 30,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.launch_recognition_terminal', 'actor.orrery'],
+      amountSats: 50_000,
+      caveat:
+        'Recognition amount covered by documented split settled sends, not a single clean full-size send.',
+      displayText:
+        'Orrery intended recognition amount is covered by split settled sends.',
+      kind: 'payment_zap_confirmed',
+      rail: 'split_lightning_address',
+      sequenceIndex: 9,
+      sourceRefs: [
+        orreryConfirmationRef,
+        LAUNCH_ROADMAP_DOC_URL,
+        LAUNCH_RECOGNITION_SPARK_STATUS_DOC_URL,
+      ],
+      stateAfter: 'recognition_amount_covered',
+      targetRefs: ['actor.orrery', 'stage.launch_recognition.orrery'],
+      timelineSecond: 34,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.launch_recognition_terminal'],
+      caveat:
+        'The failed retry rows had no durable payment id and no settled row; they are not received money.',
+      displayText:
+        'Orrery large retry failures stay failed-before-dispatch: 0 sats moved for those rows.',
+      kind: 'settlement_blocked_closed',
+      sequenceIndex: 10,
+      sourceRefs: [
+        orreryFailedRowsRef,
+        LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL,
+        LAUNCH_RECOGNITION_SPARK_STATUS_DOC_URL,
+      ],
+      stateAfter: 'failed_before_dispatch',
+      targetRefs: ['stage.launch_recognition.orrery_overpayment'],
+      timelineSecond: 38,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.launch_recognition_terminal'],
+      caveat:
+        'Pending/orphaned local rows are not recipient receipts; final roadmap says they were expired.',
+      displayText:
+        'Orrery orphaned pending rows render as accounting cards, not moving sats.',
+      kind: 'settlement_blocked_closed',
+      sequenceIndex: 11,
+      sourceRefs: [
+        orreryPendingRowsRef,
+        LAUNCH_ROADMAP_DOC_URL,
+        LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL,
+      ],
+      stateAfter: 'expired_or_pending_snapshot',
+      targetRefs: ['stage.launch_recognition.orrery_overpayment'],
+      timelineSecond: 42,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.launch_recognition_terminal', 'actor.orrery'],
+      amountSats: 109_239,
+      caveat:
+        'Overage uses the latest roadmap recipient-confirmed 159,239-sat balance minus the intended 50,000-sat reward.',
+      displayText:
+        'Orrery overpayment detected: 109,239 sats above the intended reward.',
+      kind: 'overpayment_detected',
+      rail: 'split_lightning_address',
+      sequenceIndex: 12,
+      sourceRefs: [
+        hazardPayDecisionRef,
+        orreryConfirmationRef,
+        LAUNCH_ROADMAP_DOC_URL,
+        LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL,
+      ],
+      stateAfter: 'overpayment_detected',
+      targetRefs: ['stage.launch_recognition.orrery_overpayment'],
+      timelineSecond: 46,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.orrery'],
+      amountSats: 159_239,
+      caveat:
+        'Recipient-visible total is shown as closeout evidence, not as the originally intended amount.',
+      displayText:
+        'Orrery recipient-side status confirms 159,239 sats visible.',
+      kind: 'recipient_confirmation_recorded',
+      rail: 'spark_backup',
+      sequenceIndex: 13,
+      sourceRefs: [orreryConfirmationRef, LAUNCH_ROADMAP_DOC_URL],
+      stateAfter: 'recipient_confirmed',
+      targetRefs: ['stage.launch_recognition.orrery'],
+      timelineSecond: 50,
+    }),
+    makeLaunchRecognitionEvent({
+      actorRefs: ['actor.owner_decision'],
+      caveat:
+        'This is a documented owner decision after the incident, not original payout intent.',
+      displayText:
+        'Owner decision: Orrery keeps the overage as hazard pay; do not resend.',
+      kind: 'claim_boundary_shown',
+      sequenceIndex: 14,
+      sourceRefs: [hazardPayDecisionRef, LAUNCH_ROADMAP_DOC_URL],
+      stateAfter: 'closed_do_not_resend',
+      targetRefs: ['stage.launch_recognition.orrery_overpayment'],
+      timelineSecond: 55,
+    }),
+  ]
+  const flows: ReadonlyArray<ReplayFlow> = [
+    ...(['trigger', 'whitefang', 'orrery'] as const).map(
+      (recipient): ReplayFlow => ({
+        amountSats: 50_000,
+        flowKind: 'recognition_reward',
+        flowRef: `proof_replay_flow.launch_recognition.${recipient}.intended_reward`,
+        fromRef: 'actor.launch_recognition_terminal',
+        rail:
+          recipient === 'whitefang'
+            ? 'spark_treasury'
+            : recipient === 'orrery'
+              ? 'split_lightning_address'
+              : 'spark_backup_recipient_confirmation',
+        sourceRefs: [recognitionLedgerRef, LAUNCH_ROADMAP_DOC_URL],
+        toRef: `actor.${recipient}`,
+      }),
+    ),
+    {
+      amountSats: 109_239,
+      flowKind: 'overpayment_branch',
+      flowRef: 'proof_replay_flow.launch_recognition.orrery.overpayment',
+      fromRef: 'actor.launch_recognition_terminal',
+      rail: 'split_lightning_address',
+      sourceRefs: [hazardPayDecisionRef, orreryConfirmationRef, LAUNCH_ROADMAP_DOC_URL],
+      toRef: 'stage.launch_recognition.orrery_overpayment',
+    },
+    {
+      flowKind: 'pending_marker',
+      flowRef: 'proof_replay_flow.launch_recognition.orrery.pending_not_payment',
+      fromRef: 'actor.launch_recognition_terminal',
+      sourceRefs: [orreryPendingRowsRef, LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL],
+      toRef: 'stage.launch_recognition.orrery_overpayment',
+    },
+  ]
+  const cameraCues: ReadonlyArray<ReplayCameraCue> = [
+    {
+      cueRef: 'proof_replay_camera.launch_recognition.open',
+      durationSecond: 10,
+      focusRefs: ['stage.launch_recognition.terminal'],
+      mode: 'overview',
+      sourceRefs: [LAUNCH_ROADMAP_DOC_URL],
+      startSecond: 0,
+    },
+    {
+      cueRef: 'proof_replay_camera.launch_recognition.lanes',
+      durationSecond: 22,
+      focusRefs: [
+        'stage.launch_recognition.trigger',
+        'stage.launch_recognition.whitefang',
+        'stage.launch_recognition.orrery',
+      ],
+      mode: 'director_track',
+      sourceRefs: [recognitionLedgerRef],
+      startSecond: 10,
+    },
+    {
+      cueRef: 'proof_replay_camera.launch_recognition.overpayment',
+      durationSecond: 20,
+      focusRefs: ['stage.launch_recognition.orrery_overpayment'],
+      mode: 'zap_focus',
+      sourceRefs: [hazardPayDecisionRef, LAUNCH_ROADMAP_DOC_URL],
+      startSecond: 34,
+    },
+    {
+      cueRef: 'proof_replay_camera.launch_recognition.final',
+      durationSecond: 8,
+      focusRefs: ['stage.launch_recognition.terminal'],
+      mode: 'overview',
+      sourceRefs: docs,
+      startSecond: 55,
+    },
+  ]
+  const captions: ReadonlyArray<ReplayCaption> = [
+    {
+      captionRef: 'proof_replay_caption.launch_recognition.title',
+      sequenceIndex: 0,
+      sourceRefs: [LAUNCH_ROADMAP_DOC_URL],
+      text: LAUNCH_RECOGNITION_TITLE,
+      timelineSecond: 0,
+    },
+    {
+      captionRef: 'proof_replay_caption.launch_recognition.intent',
+      sequenceIndex: 1,
+      sourceRefs: [recognitionLedgerRef, LAUNCH_ROADMAP_DOC_URL],
+      text: 'Each lane starts at the intended 50,000-sat recognition reward.',
+      timelineSecond: 4,
+    },
+    {
+      captionRef: 'proof_replay_caption.launch_recognition.blockers',
+      sequenceIndex: 2,
+      sourceRefs: [LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL],
+      text: 'Pending, failed, and timeout rows stay ledger cards, not received money.',
+      timelineSecond: 18,
+    },
+    {
+      captionRef: 'proof_replay_caption.launch_recognition.overpayment',
+      sequenceIndex: 3,
+      sourceRefs: [hazardPayDecisionRef, LAUNCH_ROADMAP_DOC_URL],
+      text: 'Orrery overpayment is an exception lane: hazard pay, not original intent.',
+      timelineSecond: 46,
+    },
+  ]
+  const gaps: ReadonlyArray<ReplayGap> = [
+    {
+      affectedRefs: [whitefangHistoricalPendingRef, whitefangConfirmationRef],
+      gapRef: 'proof_replay_gap.launch_recognition.whitefang_snapshot_change',
+      reason:
+        'Earlier payment docs showed Whitefang full recognition pending; the roadmap end-of-day update supersedes that with a closed, recipient-confirmed state.',
+      sourceRefs: [
+        LAUNCH_ROADMAP_DOC_URL,
+        LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL,
+        LAUNCH_RECOGNITION_SPARK_STATUS_DOC_URL,
+      ],
+    },
+    {
+      affectedRefs: [orreryConfirmationRef, hazardPayDecisionRef],
+      gapRef: 'proof_replay_gap.launch_recognition.orrery_accounting_snapshot_change',
+      reason:
+        'Orrery sender-side closeout snapshots and later recipient-visible closeout differ; the replay renders both as historical accounting states instead of rewriting them.',
+      sourceRefs: [
+        LAUNCH_ROADMAP_DOC_URL,
+        LAUNCH_RECOGNITION_CLOSEOUT_DOC_URL,
+        LAUNCH_RECOGNITION_SPARK_STATUS_DOC_URL,
+      ],
+    },
+  ]
+  const allSourceRefs = uniqueSorted([
+    ...docs,
+    ...stages.flatMap(stage => stage.sourceRefs),
+    ...events.flatMap(event => event.sourceRefs),
+    ...flows.flatMap(flow => flow.sourceRefs),
+    ...captions.flatMap(caption => caption.sourceRefs),
+    ...gaps.flatMap(gap => gap.sourceRefs),
+  ])
+  const bundleWithoutRef: Omit<ProofReplayBundle, 'bundleRef'> = {
+    actors,
+    cameraCues,
+    captions,
+    claimScope: 'evidence_presentation_only',
+    events,
+    flows,
+    gaps,
+    generatedAt: input.generatedAt,
+    privacyLevel: 'public_safe',
+    schemaVersion: ProofReplayBundleSchemaVersion,
+    socialDisplayTime: LAUNCH_RECOGNITION_LOCAL_DISPLAY_TIME,
+    sourceAuthority: 'worker_d1_public',
+    sourceRefs: allSourceRefs.map(ref => sourceRecord(ref)),
+    stages,
+    staleness: replayBundleStaleness(),
+    title: LAUNCH_RECOGNITION_TITLE,
+  }
+  assertPublicSafe(bundleWithoutRef)
+
+  const deterministicRefSeed = JSON.stringify({
+    events: bundleWithoutRef.events.map(event => ({
+      kind: event.kind,
+      sequenceIndex: event.sequenceIndex,
+      sourceRefs: event.sourceRefs,
+    })),
+    sourceRefs: allSourceRefs,
+    title: bundleWithoutRef.title,
+  })
+
+  return {
+    ...bundleWithoutRef,
+    bundleRef: `proof_replay_bundle.launch_recognition.${stableHash(
+      deterministicRefSeed,
+    )}`,
+  }
+}
 
 export const buildFirstRealSettlementReplayBundle = (
   input: Readonly<{
@@ -780,6 +1342,15 @@ export const buildPublicProofReplayBundleForRequest = async (
   deps: Deps = {},
 ): Promise<ProofReplayBundle> => {
   const generatedAt = (deps.now ?? currentIsoTimestamp)()
+  const requestedRefs = requestedRefsFor(request)
+  if (isLaunchRecognitionReplayRequest(requestedRefs)) {
+    return buildLaunchRecognitionReplayBundle({
+      appUrl: new URL(request.url).origin,
+      generatedAt,
+      requestedRefs,
+    })
+  }
+
   const makeStore =
     deps.makeStore ?? (e => makeD1TrainingAuthorityStore(openAgentsDatabase(e)))
   const makePayoutLedgerStore =
@@ -798,7 +1369,7 @@ export const buildPublicProofReplayBundleForRequest = async (
   return buildFirstRealSettlementReplayBundle({
     appUrl,
     generatedAt,
-    requestedRefs: requestedRefsFor(request),
+    requestedRefs,
     summary,
   })
 }

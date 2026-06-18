@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   FIRST_REAL_SETTLEMENT_CHALLENGE_REF,
   FIRST_REAL_SETTLEMENT_RECEIPT_REF,
+  LAUNCH_RECOGNITION_BUNDLE_SLUG,
   ProofReplayBundleSchemaVersion,
   buildFirstRealSettlementReplayBundle,
+  buildLaunchRecognitionReplayBundle,
   buildPublicProofReplayBundleForRequest,
   type ReplayEvent,
 } from './public-proof-replay-routes'
@@ -292,5 +294,89 @@ describe('public proof replay bundle resolver (#5298)', () => {
         },
       }),
     ).toThrow(/private material/)
+  })
+
+  it('builds a launch-recognition replay with separate recipient lanes and overpayment accounting', async () => {
+    const bundle = await buildPublicProofReplayBundleForRequest(
+      req(`https://openagents.com/api/public/proof-replays?ref=${LAUNCH_RECOGNITION_BUNDLE_SLUG}`),
+      {} as never,
+      {
+        now: () => '2026-06-18T03:00:00.000Z',
+      },
+    )
+
+    expect(bundle.schemaVersion).toBe(ProofReplayBundleSchemaVersion)
+    expect(bundle.title).toContain('Launch Recognition Payments')
+    expect(bundle.bundleRef).toMatch(/^proof_replay_bundle\.launch_recognition\./)
+    expect(bundle.actors.map(actor => actor.displayName)).toEqual(
+      expect.arrayContaining(['Trigger', 'Whitefang', 'Orrery']),
+    )
+
+    const intendedRewards = bundle.events.filter(
+      event => event.kind === 'recognition_reward_recorded',
+    )
+    expect(intendedRewards).toHaveLength(3)
+    expect(intendedRewards.every(event => event.amountSats === 50_000)).toBe(true)
+    expect(intendedRewards.every(event => event.caveat?.includes('Intended'))).toBe(
+      true,
+    )
+
+    const confirmedZaps = bundle.events.filter(
+      event => event.kind === 'payment_zap_confirmed',
+    )
+    expect(confirmedZaps).toHaveLength(3)
+    expect(
+      confirmedZaps.every(event =>
+        event.sourceRefs.some(ref => ref.startsWith('recipient_confirmation.')) ||
+        event.sourceRefs.some(ref => ref.includes('JUNE17_ROADMAP.md')),
+      ),
+    ).toBe(true)
+
+    const blocked = bundle.events.filter(
+      event => event.kind === 'settlement_blocked_closed',
+    )
+    expect(blocked).toHaveLength(3)
+    expect(blocked.every(event => event.amountSats === undefined)).toBe(true)
+    expect(blocked.map(event => event.stateAfter)).toEqual(
+      expect.arrayContaining([
+        'historical_pending_snapshot',
+        'failed_before_dispatch',
+        'expired_or_pending_snapshot',
+      ]),
+    )
+
+    const overpayment = eventByKind(bundle.events, 'overpayment_detected')
+    expect(overpayment.amountSats).toBe(109_239)
+    expect(overpayment.caveat).toContain('159,239')
+    expect(overpayment.sourceRefs).toEqual(
+      expect.arrayContaining([
+        'recipient_confirmation.launch_recognition.orrery.visible_159239_sats',
+        'recognition_ledger.launch_recognition.orrery.hazard_pay_owner_decision',
+      ]),
+    )
+    expect(bundle.gaps.map(gap => gap.gapRef)).toEqual(
+      expect.arrayContaining([
+        'proof_replay_gap.launch_recognition.whitefang_snapshot_change',
+        'proof_replay_gap.launch_recognition.orrery_accounting_snapshot_change',
+      ]),
+    )
+  })
+
+  it('does not echo unsafe requested refs into the launch-recognition replay', () => {
+    const bundle = buildLaunchRecognitionReplayBundle({
+      appUrl: 'https://openagents.com',
+      generatedAt: '2026-06-18T03:00:00.000Z',
+      requestedRefs: [
+        LAUNCH_RECOGNITION_BUNDLE_SLUG,
+        'bolt11 private invoice should be ignored',
+      ],
+    })
+
+    expect(JSON.stringify(bundle)).not.toMatch(
+      /bolt11|preimage|payment_hash|mnemonic|service[_ -]?token|spark[_ -]?api[_ -]?key/i,
+    )
+    expect(bundle.sourceRefs.map(source => source.ref)).not.toContain(
+      'bolt11 private invoice should be ignored',
+    )
   })
 })
