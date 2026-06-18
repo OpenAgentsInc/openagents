@@ -2,7 +2,12 @@ import { ServerMessage, SyncPatch } from '@openagentsinc/sync-schema'
 import { Duration, Effect, Exit, Queue, Schema as S, Stream } from 'effect'
 import { Subscription } from 'foldkit'
 
-import { GotDemoMessage, GotLoggedInMessage, type Message } from './message'
+import {
+  GotDemoMessage,
+  GotLoggedInMessage,
+  GotLoggedOutMessage,
+  type Message,
+} from './message'
 import type { Model } from './model'
 import { Demo } from './model'
 import {
@@ -13,6 +18,14 @@ import {
   ReceivedSyncPatch,
   RequestedPollAutopilotRun,
 } from './page/loggedIn/message'
+import {
+  ClosedSettledFeedStream,
+  FailedSettledFeedStream,
+  OpenedSettledFeedStream,
+  ReceivedSettledFeedCursorGap,
+  ReceivedSettledFeedPatch,
+} from './page/loggedOut/message'
+import { SETTLED_FEED_SCOPE } from './page/loggedOut/settled-feed'
 import {
   syncAgentRunScope,
   syncTeamScope,
@@ -183,6 +196,128 @@ export const workspaceSyncDependenciesForModel = (model: Model) => {
         scope: target.scope,
         streamHref: target.streamHref,
       }
+}
+
+// Live settled feed (openagents #5311). The logged-out homepage / stats
+// surfaces subscribe to ONE public, read-only sync room scope so settled totals
+// render live as real Bitcoin settlements stream. Reuses the exact same
+// WebSocket + cursor-replay plumbing as the logged-in workspace stream; falls
+// back to the non-realtime snapshot fetch when the socket is unavailable.
+const inactiveSettledFeed: {
+  readonly cursor: number
+  readonly isActive: boolean
+  readonly scope: string
+  readonly streamHref: string
+} = {
+  cursor: 0,
+  isActive: false,
+  scope: '',
+  streamHref: '',
+}
+
+type SettledFeedDependencies = typeof inactiveSettledFeed
+
+const settledFeedRouteIsLive = (
+  model: Extract<Model, { _tag: 'LoggedOut' }>,
+): boolean =>
+  model.route._tag === 'Home' ||
+  model.route._tag === 'Stats' ||
+  model.route._tag === 'PublicStatsArchive'
+
+export const settledFeedDependenciesForModel = (
+  model: Model,
+): SettledFeedDependencies => {
+  if (model._tag !== 'LoggedOut' || !settledFeedRouteIsLive(model)) {
+    return inactiveSettledFeed
+  }
+
+  const cursor = model.settledFeed.cursor
+
+  return {
+    cursor,
+    isActive: true,
+    scope: SETTLED_FEED_SCOPE,
+    streamHref: syncStreamHref(SETTLED_FEED_SCOPE, cursor),
+  }
+}
+
+const settledFeedStream = (
+  dependencies: SettledFeedDependencies,
+): Stream.Stream<Message> => {
+  if (!dependencies.isActive) {
+    return Stream.empty
+  }
+
+  const { streamHref } = dependencies
+
+  return Stream.callback<Message>(queue =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        const socket = new WebSocket(webSocketUrl(streamHref))
+        const resource = { released: false, socket }
+        socket.addEventListener('open', () => {
+          if (resource.released) {
+            socket.close()
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedOutMessage({ message: OpenedSettledFeedStream() }),
+          )
+        })
+        socket.addEventListener('message', event => {
+          const decoded = syncMessageFromPayload(String(event.data))
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedOutMessage({
+              message:
+                decoded._tag === 'ReceivedSyncPatch'
+                  ? ReceivedSettledFeedPatch({ patch: decoded.patch })
+                  : decoded._tag === 'ReceivedSyncCursorGap'
+                    ? ReceivedSettledFeedCursorGap({ gap: decoded.gap })
+                    : FailedSettledFeedStream({ error: decoded.error }),
+            }),
+          )
+        })
+        socket.addEventListener('close', () => {
+          if (resource.released) {
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedOutMessage({ message: ClosedSettledFeedStream() }),
+          )
+        })
+        socket.addEventListener('error', () => {
+          if (resource.released) {
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedOutMessage({
+              message: FailedSettledFeedStream({
+                error: 'Settled feed stream connection failed.',
+              }),
+            }),
+          )
+        })
+
+        return resource
+      }),
+      resource =>
+        Effect.sync(() => {
+          resource.released = true
+
+          if (resource.socket.readyState === WebSocket.OPEN) {
+            resource.socket.close()
+          }
+        }),
+    ).pipe(Effect.flatMap(() => Effect.never)),
+  )
 }
 
 const webSocketUrl = (href: string): string => {
@@ -395,6 +530,20 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
       keepAliveEquivalence: (left, right) =>
         left.isActive === right.isActive && left.scopeKey === right.scopeKey,
       dependenciesToStream: syncStreams,
+    },
+  ),
+  settledFeed: entry(
+    {
+      cursor: S.Number,
+      isActive: S.Boolean,
+      scope: S.String,
+      streamHref: S.String,
+    },
+    {
+      modelToDependencies: settledFeedDependenciesForModel,
+      keepAliveEquivalence: (left, right) =>
+        left.isActive === right.isActive && left.scope === right.scope,
+      dependenciesToStream: settledFeedStream,
     },
   ),
   demoPlayback: entry(

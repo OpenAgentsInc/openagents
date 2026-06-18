@@ -10,12 +10,14 @@ import type {
   PublicForumTipLeaderboardsModel,
   PublicPylonStats,
   PublicPylonStatsModel,
+  SettledFeedModel,
 } from '../model'
 
 export type HomeViewInput = {
   forumLaunchStatus: PublicForumLaunchStatusModel
   forumTipLeaderboards: PublicForumTipLeaderboardsModel
   publicPylonStats: PublicPylonStatsModel
+  settledFeed: SettledFeedModel
 }
 
 type RowTone = 'good' | 'muted' | 'warn'
@@ -376,6 +378,59 @@ export const nostrRelayPanel = (model: PublicPylonStatsModel): Html | null => {
           ),
         ],
       ),
+    ],
+  )
+}
+
+const settledFeedConnectionLabel = (
+  connection: SettledFeedModel['connection'],
+): { label: string; tone: RowTone } =>
+  connection === 'open'
+    ? { label: 'Live', tone: 'good' }
+    : connection === 'connecting'
+      ? { label: 'Connecting', tone: 'muted' }
+      : connection === 'failed' || connection === 'closed'
+        ? { label: 'Offline', tone: 'warn' }
+        : { label: 'Idle', tone: 'muted' }
+
+// Live settled feed (openagents #5311). Renders the public-safe settled total /
+// count / latest settlement straight from the streamed sync model, so the panel
+// updates in real-time as real Bitcoin settlements stream — no reload. When the
+// socket is offline this still shows the last-known totals from the snapshot
+// fetch (graceful fallback).
+export const liveSettledFeedPanel = (model: SettledFeedModel): Html => {
+  const connection = settledFeedConnectionLabel(model.connection)
+  const latest = model.events[0]
+
+  return html<Message>().section(
+    [Ui.className<Message>(panelClass)],
+    [
+      panelHeader({
+        meta: 'Public-safe settled events streamed over the sync engine.',
+        status: connection.label,
+        title: 'Live Settled Feed',
+        tone: connection.tone,
+      }),
+      metricRow({
+        detail: 'Receipt-backed real Bitcoin settlements, updated live.',
+        label: 'Settled total',
+        tone: model.totalSettledSats > 0 ? 'good' : 'muted',
+        value: formatSats(model.totalSettledSats),
+      }),
+      metricRow({
+        detail: 'Number of settled events on the live feed.',
+        label: 'Settled count',
+        value: formatNumber(model.totalSettledCount),
+      }),
+      metricRow({
+        detail:
+          latest === undefined
+            ? 'No settlement streamed yet this session.'
+            : `${latest.party} · ${latest.contributorRef}`,
+        label: 'Latest settlement',
+        tone: latest === undefined ? 'muted' : 'good',
+        value: latest === undefined ? '—' : formatSats(latest.amountSats),
+      }),
     ],
   )
 }
@@ -956,6 +1011,7 @@ export const view = (input: HomeViewInput): Html => {
               ],
             ),
             topStatsStrip(input),
+            liveSettledFeedPanel(input.settledFeed),
           ],
         ),
       ],

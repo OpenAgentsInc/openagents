@@ -11,6 +11,7 @@ import {
   publicAgentRunScope,
   publicAgentScope,
   publicGoalScope,
+  publicSettledFeedScope,
   threadScope as syncThreadScope,
   teamScope,
 } from '@openagentsinc/sync-worker'
@@ -31,6 +32,7 @@ type SyncScopeKind =
   | 'public-agent'
   | 'public-agent-run'
   | 'public-goal'
+  | 'public-settled-feed'
   | 'team'
   | 'thread'
   | 'workspace'
@@ -142,6 +144,10 @@ const syncScopeForPath = (
     return publicAgentRunScope(id)
   }
 
+  if (kind === 'public-settled-feed') {
+    return publicSettledFeedScope(id)
+  }
+
   return undefined
 }
 
@@ -152,7 +158,8 @@ const optionalSyncScopeKind = (value: string): SyncScopeKind | undefined =>
   value === 'agent-run' ||
   value === 'public-agent' ||
   value === 'public-goal' ||
-  value === 'public-agent-run'
+  value === 'public-agent-run' ||
+  value === 'public-settled-feed'
     ? value
     : undefined
 
@@ -294,7 +301,8 @@ const handleMutation = (request: Request, scope: string, actorId: string) =>
 const isPublicSyncPath = (syncPath: ParsedSyncPath): boolean =>
   syncPath.kind === 'public-agent' ||
   syncPath.kind === 'public-goal' ||
-  syncPath.kind === 'public-agent-run'
+  syncPath.kind === 'public-agent-run' ||
+  syncPath.kind === 'public-settled-feed'
 
 const handlePublicSyncRequest = (
   request: Request,

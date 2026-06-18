@@ -582,6 +582,7 @@ describe('authenticated startup routing', () => {
       'LoadPublicPylonStats',
       'LoadPublicForumLaunchStatus',
       'LoadPublicForumTipLeaderboards',
+      'LoadSettledFeedSnapshot',
     ])
   })
 

@@ -1069,6 +1069,55 @@ export const ShareProjectionModel = S.Union([
 ])
 export type ShareProjectionModel = typeof ShareProjectionModel.Type
 
+// Live settled feed (openagents #5311): public-safe settlement events streamed
+// over the OpenAgents sync engine so the homepage updates in real-time as real
+// Bitcoin settlements stream. Public-safe fields only — refs + integer amounts.
+export const PublicSettledFeedEvent = S.Struct({
+  amountSats: S.Number,
+  challengeRef: S.String,
+  contributorRef: S.String,
+  eventRef: S.String,
+  party: S.Literals(['worker', 'validator']),
+  runRef: S.String,
+  settledAt: S.String,
+  totalSettledCount: S.Number,
+  totalSettledSats: S.Number,
+  windowRef: S.NullOr(S.String),
+})
+export type PublicSettledFeedEvent = typeof PublicSettledFeedEvent.Type
+
+export const SettledFeedConnection = S.Literals([
+  'idle',
+  'connecting',
+  'open',
+  'closed',
+  'failed',
+])
+export type SettledFeedConnection = typeof SettledFeedConnection.Type
+
+// The settled feed renders live from the streamed events: a running settled
+// total, a settled count, and the latest event. `cursor` tracks the last seq
+// applied so reconnects can replay missed changes. When the socket is
+// unavailable the homepage still renders the non-realtime totals it already
+// fetches; this slice is purely additive live data.
+export const SettledFeedModel = ts('LoggedOutSettledFeed', {
+  connection: SettledFeedConnection,
+  cursor: S.Number,
+  events: S.Array(PublicSettledFeedEvent),
+  totalSettledCount: S.Number,
+  totalSettledSats: S.Number,
+})
+export type SettledFeedModel = typeof SettledFeedModel.Type
+
+export const initSettledFeedModel = (): SettledFeedModel =>
+  SettledFeedModel({
+    connection: 'idle',
+    cursor: 0,
+    events: [],
+    totalSettledCount: 0,
+    totalSettledSats: 0,
+  })
+
 export const Model = ts('LoggedOut', {
   route: LoggedOutRoute,
   onboarding: OnboardingModel,
@@ -1080,6 +1129,7 @@ export const Model = ts('LoggedOut', {
   publicForumTipLeaderboards: PublicForumTipLeaderboardsModel,
   publicProductPromises: PublicProductPromisesModel,
   publicTrainingRuns: PublicTrainingRunsModel,
+  settledFeed: SettledFeedModel,
   shareProjection: ShareProjectionModel,
 })
 
@@ -1132,6 +1182,7 @@ export const init = (route: LoggedOutRoute): Model =>
         : route._tag === 'PublicTrainingRun'
           ? LoadingPublicTrainingRuns({ runId: route.runId })
           : IdlePublicTrainingRuns(),
+    settledFeed: initSettledFeedModel(),
     shareProjection:
       route._tag === 'Share'
         ? LoadingShareProjection({ shareId: route.shareId })

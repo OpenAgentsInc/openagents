@@ -12,6 +12,7 @@ import {
   FailedLoadPublicProductPromises,
   FailedLoadPublicPylonStats,
   FailedLoadPublicTrainingRuns,
+  FailedLoadSettledFeedSnapshot,
   FailedLoadShareProjection,
   Message,
   SucceededLoadPublicAdjutantActivity,
@@ -22,6 +23,7 @@ import {
   SucceededLoadPublicProductPromises,
   SucceededLoadPublicPylonStats,
   SucceededLoadPublicTrainingRuns,
+  SucceededLoadSettledFeedSnapshot,
   SucceededLoadShareProjection,
 } from './message'
 import {
@@ -55,6 +57,15 @@ import {
   PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
+import {
+  SETTLED_FEED_SCOPE,
+  applySettledFeedPatch,
+  settledFeedAfterCursorGap,
+  settledFeedAfterSnapshot,
+  settledFeedClosed,
+  settledFeedFailed,
+  settledFeedOpen,
+} from './settled-feed'
 
 type UpdateReturn = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 const withUpdateReturn = M.withReturnType<UpdateReturn>()
@@ -272,6 +283,75 @@ export const LoadPublicPylonStats = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadPublicPylonStats({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+class SettledFeedSnapshotLoadError extends S.TaggedErrorClass<SettledFeedSnapshotLoadError>()(
+  'SettledFeedSnapshotLoadError',
+  {
+    error: S.Defect,
+  },
+) {}
+
+const SettledFeedSnapshotPayload = S.Struct({
+  collections: S.Record(S.String, S.Record(S.String, S.Unknown)),
+  cursor: S.Number,
+})
+
+const SettledFeedSnapshotSummary = S.Struct({
+  totalSettledCount: S.Number,
+  totalSettledSats: S.Number,
+})
+
+// Non-realtime cold read of the public settled-feed scope. Seeds the running
+// totals + cursor before the WebSocket attaches, and is the graceful fallback
+// when the socket is unavailable (the homepage still renders these totals).
+export const LoadSettledFeedSnapshot = Command.define(
+  'LoadSettledFeedSnapshot',
+  SucceededLoadSettledFeedSnapshot,
+  FailedLoadSettledFeedSnapshot,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(`/api/sync/${SETTLED_FEED_SCOPE.replace(':', '/')}/snapshot`, {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new SettledFeedSnapshotLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new SettledFeedSnapshotLoadError({
+        error: `Settled feed snapshot returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new SettledFeedSnapshotLoadError({ error }),
+    })
+    const decoded =
+      yield* S.decodeUnknownEffect(SettledFeedSnapshotPayload)(payload)
+    const rawSummary = decoded.collections['settled_summary']?.['summary']
+    const summary = rawSummary === undefined
+      ? null
+      : yield* S.decodeUnknownEffect(SettledFeedSnapshotSummary)(
+          rawSummary,
+        ).pipe(Effect.orElseSucceed(() => null))
+
+    return SucceededLoadSettledFeedSnapshot({
+      cursor: decoded.cursor,
+      summary,
+    })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadSettledFeedSnapshot({
           error: error instanceof Error ? error.message : String(error),
         }),
       ),
@@ -557,6 +637,7 @@ export const initialCommands = (
           LoadPublicPylonStats(),
           LoadPublicForumLaunchStatus(),
           LoadPublicForumTipLeaderboards(),
+          LoadSettledFeedSnapshot(),
         ]
       : model.route._tag === 'ProductPromises'
         ? [LoadPublicProductPromises()]
@@ -780,5 +861,36 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         [],
       ],
       CompletedCopyShareLink: () => [model, []],
+      SucceededLoadSettledFeedSnapshot: ({ cursor, summary }) => [
+        evo(model, {
+          settledFeed: feed => settledFeedAfterSnapshot(feed, { cursor, summary }),
+        }),
+        [],
+      ],
+      FailedLoadSettledFeedSnapshot: () => [model, []],
+      OpenedSettledFeedStream: () => [
+        evo(model, { settledFeed: settledFeedOpen }),
+        [],
+      ],
+      ClosedSettledFeedStream: () => [
+        evo(model, { settledFeed: settledFeedClosed }),
+        [],
+      ],
+      FailedSettledFeedStream: () => [
+        evo(model, { settledFeed: settledFeedFailed }),
+        [],
+      ],
+      ReceivedSettledFeedPatch: ({ patch }) => [
+        evo(model, {
+          settledFeed: feed => applySettledFeedPatch(feed, patch),
+        }),
+        [],
+      ],
+      ReceivedSettledFeedCursorGap: ({ gap }) => [
+        evo(model, {
+          settledFeed: feed => settledFeedAfterCursorGap(feed, gap),
+        }),
+        [],
+      ],
     }),
   )

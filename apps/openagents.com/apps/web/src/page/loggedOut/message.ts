@@ -1,3 +1,4 @@
+import { CursorGap, SyncPatch } from '@openagentsinc/sync-schema'
 import { Schema as S } from 'effect'
 import { m } from 'foldkit/message'
 
@@ -134,6 +135,36 @@ export const FailedLoadShareProjection = m('FailedLoadShareProjection', {
 export const CompletedCopyShareLink = m('CompletedCopyShareLink', {
   url: S.String,
 })
+// Live settled feed stream (openagents #5311).
+export const SucceededLoadSettledFeedSnapshot = m(
+  'SucceededLoadSettledFeedSnapshot',
+  {
+    cursor: S.Number,
+    summary: S.NullOr(
+      S.Struct({
+        totalSettledCount: S.Number,
+        totalSettledSats: S.Number,
+      }),
+    ),
+  },
+)
+export const FailedLoadSettledFeedSnapshot = m(
+  'FailedLoadSettledFeedSnapshot',
+  {
+    error: S.String,
+  },
+)
+export const OpenedSettledFeedStream = m('OpenedSettledFeedStream')
+export const ClosedSettledFeedStream = m('ClosedSettledFeedStream')
+export const FailedSettledFeedStream = m('FailedSettledFeedStream', {
+  error: S.String,
+})
+export const ReceivedSettledFeedPatch = m('ReceivedSettledFeedPatch', {
+  patch: SyncPatch,
+})
+export const ReceivedSettledFeedCursorGap = m('ReceivedSettledFeedCursorGap', {
+  gap: CursorGap,
+})
 export const Message = S.Union([
   ClickedCopyShareLink,
   ClickedOnboardingStep,
@@ -161,5 +192,12 @@ export const Message = S.Union([
   SucceededLoadShareProjection,
   FailedLoadShareProjection,
   CompletedCopyShareLink,
+  SucceededLoadSettledFeedSnapshot,
+  FailedLoadSettledFeedSnapshot,
+  OpenedSettledFeedStream,
+  ClosedSettledFeedStream,
+  FailedSettledFeedStream,
+  ReceivedSettledFeedPatch,
+  ReceivedSettledFeedCursorGap,
 ])
 export type Message = typeof Message.Type

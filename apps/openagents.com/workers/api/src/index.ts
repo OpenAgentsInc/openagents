@@ -454,7 +454,15 @@ import {
 } from './token-usage'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
 import { autoSettleVerifiedPair } from './tassadar-auto-settlement'
-import { readTassadarRealSettlementGate } from './tassadar-run-settlement-gate'
+import {
+  buildSettledFeedEvents,
+  publishSettledFeedEvents,
+} from './tassadar-settled-feed-sync'
+import {
+  readTassadarRealSettlementGate,
+  tassadarRealSettledSatsForDay,
+  tassadarRealSettlementUtcDayKey,
+} from './tassadar-run-settlement-gate'
 import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
 import {
   dispatchRealRunSettlementCore,
@@ -7013,7 +7021,7 @@ const tassadarTraceContributionRoutes =
           return
         }
 
-        yield* autoSettleVerifiedPair<WorkerBindings>(
+        const settlementOutcome = yield* autoSettleVerifiedPair<WorkerBindings>(
           {
             dispatchRealSettlement: dispatchInput =>
               dispatchRealRunSettlementCore<WorkerBindings>(
@@ -7068,6 +7076,48 @@ const tassadarTraceContributionRoutes =
             validatorContributorRef: input.validatorContributorRef,
           },
         )
+
+        // ADDITIVE + FAIL-SOFT live settled feed (openagents #5311): broadcast
+        // ONE public-safe event per actually-settled leg onto the public sync
+        // room so the homepage updates in real-time as sats stream. This never
+        // touches the settlement dispatch above; any failure is swallowed so a
+        // broadcast problem can never break or slow settlement.
+        const settledLegs = settlementOutcome.legs.filter(leg => leg.settled)
+
+        if (settledLegs.length > 0) {
+          const settledAt = currentIsoTimestamp()
+          const workerContributorRef = input.lease.pylonRef.trim()
+          const contributorRefForParty = (party: 'validator' | 'worker') =>
+            party === 'worker'
+              ? workerContributorRef
+              : input.validatorContributorRef.trim()
+          const dayReceipts = yield* Effect.tryPromise({
+            catch: () => [],
+            try: () => ledger.listPaymentAuthorityReceipts(5000),
+          }).pipe(Effect.orElseSucceed(() => []))
+          const priorSettledSats =
+            tassadarRealSettledSatsForDay(
+              dayReceipts,
+              tassadarRealSettlementUtcDayKey(settledAt),
+            ) - settledLegs.reduce((sum, leg) => sum + leg.amountSats, 0)
+          const events = buildSettledFeedEvents({
+            legs: settledLegs.map(leg => ({
+              amountSats: leg.amountSats,
+              challengeRef: input.challenge.challengeRef,
+              contributorRef: contributorRefForParty(leg.party),
+              party: leg.party,
+              runRef: run.trainingRunRef,
+              windowRef: input.lease.windowRef,
+            })),
+            priorCount: 0,
+            priorSettledSats: Math.max(0, priorSettledSats),
+            settledAt,
+          })
+
+          yield* Effect.promise(() =>
+            publishSettledFeedEvents(env, events).catch(() => undefined),
+          )
+        }
       }),
     resolvePylonOwnerUserId: async (env, pylonRef) => {
       const registration = await makeD1PylonApiStore(

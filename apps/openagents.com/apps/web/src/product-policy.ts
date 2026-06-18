@@ -315,6 +315,7 @@ export const browserCommandProductIntents = {
   LoadPublicProductPromises: 'public.product-promises.load',
   LoadPublicPylonStats: 'public.pylon.stats.load',
   LoadPublicTrainingRuns: 'public.training.runs.load',
+  LoadSettledFeedSnapshot: 'public.settled-feed.snapshot.load',
   LoadShareProjection: 'share.projection.load',
   LoadSyncSnapshot: 'sync.workspace.snapshot.load',
   LoadTeamChatMessages: 'workroom.chat.team.messages.load',

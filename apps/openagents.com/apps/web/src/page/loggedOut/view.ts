@@ -81,18 +81,21 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                   forumLaunchStatus: model.publicForumLaunchStatus,
                   forumTipLeaderboards: model.publicForumTipLeaderboards,
                   publicPylonStats: model.publicPylonStats,
+                  settledFeed: model.settledFeed,
                 }),
               Stats: () =>
                 Home.view({
                   forumLaunchStatus: model.publicForumLaunchStatus,
                   forumTipLeaderboards: model.publicForumTipLeaderboards,
                   publicPylonStats: model.publicPylonStats,
+                  settledFeed: model.settledFeed,
                 }),
               PublicStatsArchive: () =>
                 Stats.view({
                   forumLaunchStatus: model.publicForumLaunchStatus,
                   forumTipLeaderboards: model.publicForumTipLeaderboards,
                   publicPylonStats: model.publicPylonStats,
+                  settledFeed: model.settledFeed,
                 }),
               Invite: () => notFoundView('/invite', homeRouter(), 'Go Home'),
               Onboarding: () => Onboarding.view(model.onboarding),
