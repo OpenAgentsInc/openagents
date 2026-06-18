@@ -17,6 +17,7 @@ export * from "./backends/registry";
 export * from "./benchmark/closeout-writer";
 export * from "./benchmark/candidate-execution";
 export * from "./benchmark/fixtures";
+export * from "./benchmark/openagents-study-graph";
 export * from "./benchmark/openagents-study-packet";
 export * from "./benchmark/repo-corpus-manifest";
 export * from "./benchmark/studybench";

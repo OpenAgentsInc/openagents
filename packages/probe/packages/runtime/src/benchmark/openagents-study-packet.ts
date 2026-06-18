@@ -118,6 +118,8 @@ const DEFAULT_EVIDENCE_SPAN_PATHS = [
   "docs/promises/README.md",
   "docs/tassadar/2026-06-18-tassadar-run-actual-state-and-real-training-gap-audit.md",
   "docs/research/machine-studying/2026-06-17-tassadar-openagents-repo-studying-roadmap.md",
+  "packages/probe/packages/runtime/src/benchmark/openagents-study-graph.ts",
+  "packages/probe/packages/runtime/src/benchmark/openagents-study-packet.ts",
   "packages/probe/packages/runtime/src/benchmark/repo-corpus-manifest.ts",
   "packages/probe/packages/runtime/src/benchmark/studybench.ts",
 ] as const;
@@ -337,6 +339,8 @@ function buildStudyPacketSections(manifest: OpenAgentsRepoCorpusManifest): Reado
       corpusEntryPaths: selectManifestPaths(manifest, [
         "docs/promises/README.md",
         "docs/tassadar/README.md",
+        "packages/probe/packages/runtime/src/benchmark/openagents-study-graph.ts",
+        "packages/probe/packages/runtime/src/benchmark/openagents-study-packet.ts",
         "packages/probe/packages/runtime/src/benchmark/studybench.ts",
         "packages/probe/packages/runtime/src/benchmark/repo-corpus-manifest.ts",
       ]),
