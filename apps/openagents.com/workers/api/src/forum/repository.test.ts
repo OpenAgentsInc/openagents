@@ -421,6 +421,18 @@ class ForumRepositoryStatement implements D1PreparedStatement {
       return Promise.resolve(row as T | null)
     }
 
+    if (this.query.includes('COUNT(*) AS live_count')) {
+      const topicId = String(this.values[0])
+      const count = this.store.posts.filter(
+        item =>
+          item.topic_id === topicId &&
+          item.archived_at === null &&
+          (item.state === 'visible' || item.state === 'edited'),
+      ).length
+
+      return Promise.resolve({ live_count: count } as T)
+    }
+
     if (this.query.includes('FROM forum_posts')) {
       const postId = String(this.values[0])
       const row =
@@ -574,40 +586,57 @@ class ForumRepositoryStatement implements D1PreparedStatement {
     }
 
     if (this.query.includes('UPDATE forum_forums')) {
-      const forumId = String(this.values[3])
+      const isDecrement = this.query.includes(
+        'post_count = MAX(0, post_count - 1)',
+      )
+      const forumId = isDecrement
+        ? String(this.values[0])
+        : String(this.values[3])
       const existing = this.store.forums.find(item => item.id === forumId)
 
       if (existing !== undefined) {
-        const forum = {
-          ...existing,
-          latest_post_id: String(this.values[1]),
-          latest_topic_id: String(this.values[0]),
-          post_count: existing.post_count + 1,
-          topic_count: this.query.includes('topic_count = topic_count + 1')
-            ? existing.topic_count + 1
-            : existing.topic_count,
-        }
         const index = this.store.forums.findIndex(item => item.id === forumId)
-
-        this.store.forums[index] = forum
+        this.store.forums[index] = isDecrement
+          ? {
+              ...existing,
+              post_count: Math.max(0, existing.post_count - 1),
+            }
+          : {
+              ...existing,
+              latest_post_id: String(this.values[1]),
+              latest_topic_id: String(this.values[0]),
+              post_count: existing.post_count + 1,
+              topic_count: this.query.includes('topic_count = topic_count + 1')
+                ? existing.topic_count + 1
+                : existing.topic_count,
+            }
       }
 
       return Promise.resolve({ success: true } as D1Result<T>)
     }
 
     if (this.query.includes('UPDATE forum_topics')) {
-      const topicId = String(this.values[2])
+      const isDecrement = this.query.includes(
+        'post_count = MAX(0, post_count - 1)',
+      )
+      const topicId = String(this.values[isDecrement ? 1 : 2])
       const existing = this.store.topics.find(item => item.id === topicId)
 
       if (existing !== undefined) {
         const index = this.store.topics.findIndex(item => item.id === topicId)
 
-        this.store.topics[index] = {
-          ...existing,
-          latest_post_id: String(this.values[0]),
-          post_count: existing.post_count + 1,
-          updated_at: String(this.values[1]),
-        }
+        this.store.topics[index] = isDecrement
+          ? {
+              ...existing,
+              post_count: Math.max(0, existing.post_count - 1),
+              updated_at: String(this.values[0]),
+            }
+          : {
+              ...existing,
+              latest_post_id: String(this.values[0]),
+              post_count: existing.post_count + 1,
+              updated_at: String(this.values[1]),
+            }
       }
 
       return Promise.resolve({ success: true } as D1Result<T>)
@@ -1008,6 +1037,9 @@ class ForumRepositoryStatement implements D1PreparedStatement {
       const descending = this.query.includes(
         'ORDER BY forum_posts.post_number DESC',
       )
+      // Mirror production: the topic-detail projection excludes tombstoned
+      // (deleted) posts so a deleted post never renders in the thread.
+      const includeTombstoned = this.query.includes("'tombstoned'")
       const rows = this.store.posts
         .filter(
           item =>
@@ -1015,7 +1047,7 @@ class ForumRepositoryStatement implements D1PreparedStatement {
             item.archived_at === null &&
             (item.state === 'visible' ||
               item.state === 'edited' ||
-              item.state === 'tombstoned'),
+              (includeTombstoned && item.state === 'tombstoned')),
         )
         .sort((left, right) =>
           descending
@@ -1241,6 +1273,60 @@ describe('Forum repository foundation', () => {
         },
       },
     })
+  })
+
+  test('excludes tombstoned posts from the topic-detail projection and reports live counts', async () => {
+    const store = new ForumRepositoryStore()
+    const { firstPost, topic } = await createTopic(store)
+    const reply = await Effect.runPromise(
+      createForumReplyPost(
+        forumRepositoryDb(store),
+        {
+          actor,
+          bodyText: 'Surviving child reply.',
+          contentRef: 'content.forum.topic.reply_survivor',
+          forumId: topic.forumId,
+          idempotencyKey:
+            'forum:reply:44444444-4444-4444-8444-444444444444:actor.ben:survivor',
+          parentPostId: firstPost.postId,
+          postId: '66666666-6666-4666-8666-666666666666',
+          publicProjection,
+          quotePostId: null,
+          topicId: topic.topicId,
+        },
+        runtime,
+      ),
+    )
+
+    // Simulate a deleted (tombstoned) PARENT row that survives for audit.
+    const parentIndex = store.posts.findIndex(
+      item => item.id === firstPost.postId,
+    )
+    store.posts[parentIndex] = {
+      ...store.posts[parentIndex]!,
+      body_text: null,
+      state: 'tombstoned',
+    }
+
+    const topicDetail = await Effect.runPromise(
+      readForumTopicDetail(forumRepositoryDb(store), topic.topicId),
+    )
+
+    // The deleted parent is absent from the thread; only the live child shows.
+    expect(topicDetail?.posts.map(post => post.postId)).toStrictEqual([
+      reply.postId,
+    ])
+    expect(
+      topicDetail?.posts.some(post => post.state === 'tombstoned'),
+    ).toBe(false)
+    // No surviving post carries a null body (which would force the broken
+    // `content.forum.post.<id>` placeholder on the client).
+    expect(topicDetail?.posts.some(post => post.bodyText === null)).toBe(false)
+    // The surviving child still references its (now hidden) parent: no orphan.
+    expect(topicDetail?.posts[0]?.parentPostId).toBe(firstPost.postId)
+    // Counts reflect exactly one live post.
+    expect(topicDetail?.topic.postCount).toBe(1)
+    expect(topicDetail?.topic.replyCount).toBe(0)
   })
 
   test('orders forum topic lists by newest visible post activity before pin state', async () => {

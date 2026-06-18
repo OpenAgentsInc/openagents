@@ -1293,6 +1293,18 @@ class ForumRouteStatement implements D1PreparedStatement {
       return Promise.resolve((entitlement ?? null) as T | null)
     }
 
+    if (this.query.includes('COUNT(*) AS live_count')) {
+      const topicId = String(this.values[0])
+      const count = this.store.posts.filter(
+        item =>
+          item.topic_id === topicId &&
+          item.archived_at === null &&
+          (item.state === 'visible' || item.state === 'edited'),
+      ).length
+
+      return Promise.resolve({ live_count: count } as T)
+    }
+
     if (this.query.includes('SELECT COUNT(*) AS count')) {
       const actorRef = String(this.values[0])
       let count = 0
@@ -2848,21 +2860,33 @@ class ForumRouteStatement implements D1PreparedStatement {
     }
 
     if (this.query.includes('UPDATE forum_forums')) {
-      const forumId = String(this.values[3])
+      const isDecrement = this.query.includes(
+        'post_count = MAX(0, post_count - 1)',
+      )
+      // The decrement (post tombstone) binds only [forumId]; the increment
+      // binds [latestTopicId, latestPostId, ..., forumId] with forumId last.
+      const forumId = isDecrement
+        ? String(this.values[0])
+        : String(this.values[3])
       const existing = this.store.forums.find(item => item.id === forumId)
 
       if (existing !== undefined) {
         const index = this.store.forums.findIndex(item => item.id === forumId)
 
-        this.store.forums[index] = {
-          ...existing,
-          latest_post_id: String(this.values[1]),
-          latest_topic_id: String(this.values[0]),
-          post_count: existing.post_count + 1,
-          topic_count: this.query.includes('topic_count = topic_count + 1')
-            ? existing.topic_count + 1
-            : existing.topic_count,
-        }
+        this.store.forums[index] = isDecrement
+          ? {
+              ...existing,
+              post_count: Math.max(0, existing.post_count - 1),
+            }
+          : {
+              ...existing,
+              latest_post_id: String(this.values[1]),
+              latest_topic_id: String(this.values[0]),
+              post_count: existing.post_count + 1,
+              topic_count: this.query.includes('topic_count = topic_count + 1')
+                ? existing.topic_count + 1
+                : existing.topic_count,
+            }
       }
 
       return Promise.resolve({ success: true } as D1Result<T>)
@@ -2913,7 +2937,7 @@ class ForumRouteStatement implements D1PreparedStatement {
     }
 
     if (this.query.includes('UPDATE forum_topics')) {
-      const topicId = String(this.values[2])
+      const topicId = String(this.values[this.values.length - 1])
       const existing = this.store.topics.find(item => item.id === topicId)
 
       if (existing !== undefined) {
@@ -2929,16 +2953,23 @@ class ForumRouteStatement implements D1PreparedStatement {
             : existing.pin_state,
           post_count: this.query.includes('post_count = post_count + 1')
             ? existing.post_count + 1
-            : existing.post_count,
+            : this.query.includes('post_count = MAX(0, post_count - 1)')
+              ? Math.max(0, existing.post_count - 1)
+              : existing.post_count,
           state: this.query.includes('latest_post_id') ||
             this.query.includes('SET pin_state') ||
-            this.query.includes('SET title')
+            this.query.includes('SET title') ||
+            this.query.includes('post_count = MAX(0, post_count - 1)')
             ? existing.state
             : (this.values[0] as 'open' | 'locked' | 'archived' | 'hidden'),
           title: this.query.includes('SET title')
             ? String(this.values[0])
             : existing.title,
-          updated_at: String(this.values[1]),
+          // The post-tombstone decrement binds [now, topicId]; its timestamp is
+          // values[0]. Other updates bind the timestamp at values[1].
+          updated_at: this.query.includes('post_count = MAX(0, post_count - 1)')
+            ? String(this.values[0])
+            : String(this.values[1]),
         }
       }
 
@@ -3858,6 +3889,10 @@ class ForumRouteStatement implements D1PreparedStatement {
       const descending = this.query.includes(
         'ORDER BY forum_posts.post_number DESC',
       )
+      // Mirror production: the topic-detail projection only includes live
+      // (visible/edited) posts. Tombstoned posts are excluded so a deleted
+      // post never renders in the thread.
+      const includeTombstoned = this.query.includes("'tombstoned'")
       const rows = this.store.posts
         .filter(
           item =>
@@ -3865,7 +3900,7 @@ class ForumRouteStatement implements D1PreparedStatement {
             item.archived_at === null &&
             (item.state === 'visible' ||
               item.state === 'edited' ||
-              item.state === 'tombstoned'),
+              (includeTombstoned && item.state === 'tombstoned')),
         )
         .sort((left, right) =>
           descending
@@ -8267,25 +8302,203 @@ describe('Forum routes', () => {
         state: 'tombstoned',
       },
     })
-    await expect(topicResponse.json()).resolves.toMatchObject({
-      posts: [
-        {
-          bodyText: null,
-          postNumber: 1,
-          state: 'tombstoned',
-        },
-        {
-          bodyText: 'Reply that quotes the seed post.',
-          postNumber: 2,
-          state: 'visible',
-        },
-      ],
-    })
+    // A deleted (tombstoned) post must NOT appear in the thread at all: no
+    // placeholder, no empty shell. Only the surviving visible reply remains,
+    // and the topic counts drop to reflect the single live post.
+    const topicBody = (await topicResponse.json()) as {
+      posts: ReadonlyArray<{
+        bodyText: string | null
+        postNumber: number
+        state: string
+      }>
+      topic: { postCount: number; replyCount: number }
+    }
+    expect(topicBody.posts).toHaveLength(1)
+    expect(topicBody.posts).toEqual([
+      expect.objectContaining({
+        bodyText: 'Reply that quotes the seed post.',
+        postNumber: 2,
+        state: 'visible',
+      }),
+    ])
+    expect(
+      topicBody.posts.some(post => post.state === 'tombstoned'),
+    ).toBe(false)
+    expect(topicBody.topic.postCount).toBe(1)
+    expect(topicBody.topic.replyCount).toBe(0)
     expect(store.postRevisions.map(revision => revision.action_kind)).toEqual([
       'edit',
       'tombstone',
     ])
     expect(store.reports).toHaveLength(1)
+  })
+
+  test('deleting a parent post removes it from the thread without orphaning its surviving child reply', async () => {
+    const store = new ForumRouteStore()
+    store.topics[0] = {
+      ...store.topics[0]!,
+      actor_json: authenticatedAgentActorJson,
+    }
+    store.posts[0] = {
+      ...store.posts[0]!,
+      actor_json: authenticatedAgentActorJson,
+    }
+
+    const parentPostId = '66666666-6666-4666-8666-666666666666'
+    const topicId = '55555555-5555-4555-8555-555555555555'
+
+    // A child reply threaded under the (soon-to-be-deleted) parent.
+    const childResponse = await route(
+      store,
+      `/api/forum/topics/${topicId}/posts`,
+      {
+        body: {
+          bodyText: 'Child reply under the parent post.',
+          parentPostId,
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'thread-child-1',
+        },
+        method: 'POST',
+      },
+    )
+    expect(childResponse.status).toBe(201)
+    const childBody = (await childResponse.json()) as {
+      post: { parentPostId: string | null; postId: string; postNumber: number }
+    }
+    expect(childBody.post.parentPostId).toBe(parentPostId)
+    const childPostId = childBody.post.postId
+
+    // Author deletes the PARENT.
+    const deleteResponse = await route(
+      store,
+      `/api/forum/posts/${parentPostId}`,
+      {
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'thread-delete-parent-1',
+        },
+        method: 'DELETE',
+      },
+    )
+    expect(deleteResponse.status).toBe(200)
+    await expect(deleteResponse.json()).resolves.toMatchObject({
+      action: 'tombstone',
+      post: { state: 'tombstoned' },
+    })
+
+    // Idempotent repeat with the SAME key returns the prior result, not a
+    // second tombstone (counts must not be decremented twice).
+    const idempotentRepeat = await route(
+      store,
+      `/api/forum/posts/${parentPostId}`,
+      {
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'thread-delete-parent-1',
+        },
+        method: 'DELETE',
+      },
+    )
+    expect(idempotentRepeat.status).toBe(200)
+    await expect(idempotentRepeat.json()).resolves.toMatchObject({
+      idempotent: true,
+      post: { state: 'tombstoned' },
+    })
+
+    const topicResponse = await route(store, `/api/forum/topics/${topicId}`)
+    const topicBody = (await topicResponse.json()) as {
+      posts: ReadonlyArray<{
+        bodyText: string | null
+        contentRef: string
+        parentPostId: string | null
+        postId: string
+        state: string
+      }>
+      topic: { postCount: number; replyCount: number }
+    }
+
+    // The deleted parent is GONE from the thread (no placeholder, no shell).
+    expect(topicBody.posts.map(post => post.postId)).toEqual([childPostId])
+    expect(
+      topicBody.posts.some(post => post.postId === parentPostId),
+    ).toBe(false)
+    // No post renders the unresolved `content.forum.post.<id>` placeholder.
+    expect(topicBody.posts.some(post => post.bodyText === null)).toBe(false)
+    // The surviving child still carries its parent ref (no orphan/crash) and
+    // its own body, and counts reflect exactly one live post.
+    expect(topicBody.posts[0]?.parentPostId).toBe(parentPostId)
+    expect(topicBody.posts[0]?.bodyText).toBe(
+      'Child reply under the parent post.',
+    )
+    expect(topicBody.topic.postCount).toBe(1)
+    expect(topicBody.topic.replyCount).toBe(0)
+  })
+
+  test('forum post deletion is author-only and returns typed 403/404 errors', async () => {
+    const postId = '66666666-6666-4666-8666-666666666666'
+
+    // Non-author cannot delete: the seed post is NOT owned by the route-test
+    // agent in a default store, so a DELETE is forbidden.
+    const foreignStore = new ForumRouteStore()
+    const forbiddenResponse = await route(
+      foreignStore,
+      `/api/forum/posts/${postId}`,
+      {
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'delete-foreign-post-1',
+        },
+        method: 'DELETE',
+      },
+    )
+    expect(forbiddenResponse.status).toBe(403)
+    await expect(forbiddenResponse.json()).resolves.toMatchObject({
+      error: 'forbidden',
+      reason: 'only the post author can tombstone this post',
+    })
+
+    // Missing post: 404.
+    const missingStore = new ForumRouteStore()
+    missingStore.topics[0] = {
+      ...missingStore.topics[0]!,
+      actor_json: authenticatedAgentActorJson,
+    }
+    missingStore.posts[0] = {
+      ...missingStore.posts[0]!,
+      actor_json: authenticatedAgentActorJson,
+    }
+    const missingResponse = await route(
+      missingStore,
+      '/api/forum/posts/00000000-0000-4000-8000-000000000000',
+      {
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'delete-missing-post-1',
+        },
+        method: 'DELETE',
+      },
+    )
+    expect(missingResponse.status).toBe(404)
+    await expect(missingResponse.json()).resolves.toMatchObject({
+      error: 'not_found',
+    })
+
+    // Missing Idempotency-Key: 400.
+    const noKeyResponse = await route(
+      missingStore,
+      `/api/forum/posts/${postId}`,
+      {
+        headers: { authorization: 'Bearer oa_agent_route_test' },
+        method: 'DELETE',
+      },
+    )
+    expect(noKeyResponse.status).toBe(400)
+    await expect(noKeyResponse.json()).resolves.toMatchObject({
+      error: 'bad_request',
+      reason: 'Idempotency-Key header is required',
+    })
   })
 
   test('renames owned topics and refuses non-author, missing, or invalid renames', async () => {

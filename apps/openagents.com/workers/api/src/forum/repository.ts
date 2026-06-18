@@ -2643,6 +2643,15 @@ export const readForumTopicDetail = (
     const limit = options.limit ?? 500
     const postOrderDirection =
       options.postSortDirection === 'desc' ? 'DESC' : 'ASC'
+    // Deleted (tombstoned) posts must NOT appear in the thread. A tombstoned
+    // row carries a null body, so including it here forced the client to fall
+    // back to rendering the raw `content.forum.post.<id>` contentRef as a
+    // broken placeholder. The tombstone row stays in the table for audit
+    // (revision history + idempotent-repeat lookup); it is simply excluded
+    // from every public read projection. Threading is unaffected: surviving
+    // child replies are rendered flat by post_number and keep their own
+    // bodies, and their `parentPostId` still resolves to the real (now hidden)
+    // row, so a deleted parent never orphans or crashes the thread.
     const posts = yield* d1Effect('forum.readTopicDetail.posts', () =>
       db
         .prepare(
@@ -2653,7 +2662,7 @@ export const readForumTopicDetail = (
               AND forum_post_bodies.archived_at IS NULL
             WHERE forum_posts.topic_id = ?
               AND forum_posts.archived_at IS NULL
-              AND forum_posts.state IN ('visible', 'edited', 'tombstoned')
+              AND forum_posts.state IN ('visible', 'edited')
             ORDER BY forum_posts.post_number ${postOrderDirection}
             LIMIT ?`,
         )
@@ -2685,6 +2694,29 @@ export const readForumTopicDetail = (
       latestTopicId: topic.topicId,
     })
 
+    // Live post count excludes tombstoned (deleted) posts so postCount /
+    // replyCount stay honest even for threads whose stored post_count was not
+    // decremented when older posts were tombstoned. Counted independently of
+    // the rendered page limit so a long thread still reports a true total.
+    const liveCount = yield* d1Effect('forum.readTopicDetail.liveCount', () =>
+      db
+        .prepare(
+          `SELECT COUNT(*) AS live_count
+             FROM forum_posts
+            WHERE forum_posts.topic_id = ?
+              AND forum_posts.archived_at IS NULL
+              AND forum_posts.state IN ('visible', 'edited')`,
+        )
+        .bind(topic.topicId)
+        .first<{ live_count: number }>(),
+    )
+    const livePostCount = Math.max(0, Number(liveCount?.live_count ?? 0))
+    const topicWithLiveCounts = decodeForumTopicSummary({
+      ...topic,
+      postCount: livePostCount,
+      replyCount: Math.max(0, livePostCount - 1),
+    })
+
     // Honest pagination: hasMore only if the query actually hit the limit (a
     // thread larger than `limit`). Never claim "no more" while truncating.
     const cappedAtLimit = (posts.results ?? []).length >= limit
@@ -2696,7 +2728,7 @@ export const readForumTopicDetail = (
         nextCursor: null,
       },
       posts: postsWithTipStats(topicPosts, tipStats),
-      topic: topicWithLastPost(topic, lastPost),
+      topic: topicWithLastPost(topicWithLiveCounts, lastPost),
     })
   })
 
@@ -3939,6 +3971,39 @@ export const tombstoneForumPost = (
         .bind(input.id, now, input.postId)
         .run(),
     )
+
+    // A tombstoned post no longer counts toward the public thread. Decrement
+    // the topic and forum post counts so topic-list replyCount (derived as
+    // post_count - 1) and forum totals stay honest. Clamped at zero so a count
+    // can never go negative. The topic-detail read derives its own live count
+    // independently, which also covers older tombstoned rows that predate this
+    // decrement.
+    const containingTopic = yield* readForumTopicById(db, existing.topicId)
+    yield* d1Effect('forum.decrementTopicPostCountAfterTombstone', () =>
+      db
+        .prepare(
+          `UPDATE forum_topics
+              SET post_count = MAX(0, post_count - 1),
+                  updated_at = ?
+            WHERE id = ?
+              AND archived_at IS NULL`,
+        )
+        .bind(now, existing.topicId)
+        .run(),
+    )
+    if (containingTopic !== null) {
+      yield* d1Effect('forum.decrementForumPostCountAfterTombstone', () =>
+        db
+          .prepare(
+            `UPDATE forum_forums
+                SET post_count = MAX(0, post_count - 1)
+              WHERE id = ?
+                AND archived_at IS NULL`,
+          )
+          .bind(containingTopic.forumId)
+          .run(),
+      )
+    }
 
     const updated = yield* readForumPostById(db, input.postId)
 
