@@ -14,7 +14,14 @@ export const PUBLIC_ACTIVITY_TIMELINE_ENDPOINT =
 export const PUBLIC_ACTIVITY_TIMELINE_REFRESH_MS = 15_000
 
 type ActivityPaneId = 'fleet' | 'forum' | 'money' | 'proof' | 'timeline'
+type ActivityFilter = 'all' | 'boot' | 'forum' | 'operator' | 'settle' | 'verify' | 'work'
 type ActivityTimelineDataState = 'loading' | 'ok' | 'empty' | 'error'
+
+export type PublicActivityEventUrl = Readonly<{
+  href: string
+  label: string
+  ref: string
+}>
 
 export type PublicActivityTimelineHandle = Readonly<{
   dispose: () => void
@@ -29,6 +36,7 @@ export type PublicActivityTimelineMountOptions = Readonly<{
 }>
 
 type PublicActivityTimelineRenderState = {
+  activeFilter: ActivityFilter
   endpoint: string
   selectedCursor: string | null
 }
@@ -221,10 +229,28 @@ h3 {
 .timeline-row:first-child {
   border-top: 0;
 }
-.event-item {
+.event-button {
+  width: 100%;
   display: grid;
   gap: 8px;
+  min-width: 0;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
   padding: 12px;
+  text-align: left;
+}
+.event-button:hover,
+.event-button:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  outline: none;
+}
+.event-button[aria-pressed="true"] {
+  border-left-color: #8dd3c7;
+  background: rgba(141, 211, 199, 0.08);
 }
 .event-head,
 .event-meta,
@@ -271,28 +297,38 @@ time,
   flex-wrap: wrap;
   gap: 5px;
 }
-.timeline-button {
-  width: 100%;
-  display: grid;
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
   gap: 7px;
-  min-width: 0;
-  border: 0;
-  border-left: 3px solid transparent;
-  background: transparent;
-  color: inherit;
+  border-bottom: 1px solid rgba(244, 242, 234, 0.08);
+  padding: 10px 12px;
+}
+.filter-button {
+  min-height: 30px;
+  border: 1px solid rgba(244, 242, 234, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(244, 242, 234, 0.72);
   cursor: pointer;
   font: inherit;
-  padding: 11px 12px;
-  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 720;
+  padding: 5px 10px;
 }
-.timeline-button:hover,
-.timeline-button:focus-visible {
-  background: rgba(255, 255, 255, 0.05);
+.filter-button:hover,
+.filter-button:focus-visible {
+  border-color: rgba(141, 211, 199, 0.44);
+  color: #f4f2ea;
   outline: none;
 }
-.timeline-button[aria-pressed="true"] {
-  border-left-color: #8dd3c7;
-  background: rgba(141, 211, 199, 0.08);
+.filter-button[aria-pressed="true"] {
+  border-color: rgba(141, 211, 199, 0.62);
+  background: rgba(141, 211, 199, 0.12);
+  color: #fff8e6;
+}
+.timeline-button {
+  padding: 11px 12px;
 }
 .proof-drawer {
   position: sticky;
@@ -339,6 +375,24 @@ time,
   padding: 10px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.url-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.proof-link {
+  min-width: 0;
+  color: #8dd3c7;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  text-underline-offset: 0.18rem;
+}
+.proof-link:hover,
+.proof-link:focus-visible {
+  color: #fff8e6;
+  outline: none;
 }
 .empty,
 .error {
@@ -411,6 +465,83 @@ const forumKinds = new Set<PublicActivityTimelineEvent['kind']>([
   'forum_posted',
   'forum_topic_created',
 ])
+
+const workKinds = new Set<PublicActivityTimelineEvent['kind']>([
+  'trace_submitted',
+  'window_closed',
+  'window_opened',
+  'work_claimed',
+])
+
+const verifyKinds = new Set<PublicActivityTimelineEvent['kind']>([
+  'verification_queued',
+  'verification_rejected',
+  'verification_verified',
+])
+
+const operatorKinds = new Set<PublicActivityTimelineEvent['kind']>([
+  'artanis_tick',
+  'projection_gap',
+])
+
+const activityFilters: ReadonlyArray<Readonly<{ id: ActivityFilter; label: string }>> = [
+  { id: 'all', label: 'All' },
+  { id: 'boot', label: 'Boot' },
+  { id: 'work', label: 'Work' },
+  { id: 'verify', label: 'Verify' },
+  { id: 'settle', label: 'Settle' },
+  { id: 'forum', label: 'Forum' },
+  { id: 'operator', label: 'Operator' },
+]
+
+const filterForEvent = (event: PublicActivityTimelineEvent): ActivityFilter => {
+  if (
+    fleetKinds.has(event.kind) ||
+    event.sourceKind === 'pylon_api' ||
+    event.sourceKind === 'pylon_presence' ||
+    event.sourceKind === 'capacity_funnel'
+  ) {
+    return 'boot'
+  }
+
+  if (
+    workKinds.has(event.kind) ||
+    event.sourceKind === 'training_window' ||
+    event.sourceKind === 'training_trace'
+  ) {
+    return 'work'
+  }
+
+  if (verifyKinds.has(event.kind) || event.sourceKind === 'training_verification') {
+    return 'verify'
+  }
+
+  if (moneyKinds.has(event.kind) || event.sourceKind === 'settlement_receipt') {
+    return 'settle'
+  }
+
+  if (forumKinds.has(event.kind) || event.sourceKind === 'forum') {
+    return 'forum'
+  }
+
+  if (
+    operatorKinds.has(event.kind) ||
+    event.sourceKind === 'artanis' ||
+    event.sourceKind === 'projection_gap'
+  ) {
+    return 'operator'
+  }
+
+  return 'operator'
+}
+
+const filterMatchesEvent = (
+  filter: ActivityFilter,
+  event: PublicActivityTimelineEvent,
+): boolean => filter === 'all' || filterForEvent(event) === filter
+
+const filterLabel = (filter: ActivityFilter): string =>
+  activityFilters.find(item => item.id === filter)?.label ?? displayLabel(filter)
 
 const create = <Tag extends keyof HTMLElementTagNameMap>(
   tag: Tag,
@@ -515,6 +646,7 @@ const eventMetaItems = (
   event: PublicActivityTimelineEvent,
 ): ReadonlyArray<string> =>
   [
+    filterLabel(filterForEvent(event)),
     displayLabel(event.sourceKind),
     event.state,
     eventAmountLabel(event),
@@ -525,14 +657,132 @@ const eventMetaItems = (
         : null,
   ].filter((item): item is string => item !== null && item !== undefined)
 
-const eventItem = (
+const safePublicPath = (href: string): string | null => {
+  const trimmed = href.trim()
+  if (
+    trimmed.length === 0 ||
+    !trimmed.startsWith('/') ||
+    trimmed.startsWith('//') ||
+    publicActivityTimelineHasUnsafeMaterial(trimmed)
+  ) {
+    return null
+  }
+
+  return trimmed
+}
+
+const publicHrefForRef = (
+  ref: string,
+  event: PublicActivityTimelineEvent,
+): string | null => {
+  const trimmed = ref.trim()
+  if (trimmed.startsWith('route:')) {
+    return safePublicPath(trimmed.slice('route:'.length))
+  }
+
+  if (trimmed.startsWith('/')) {
+    return safePublicPath(trimmed)
+  }
+
+  if (/^receipt\./i.test(trimmed)) {
+    return safePublicPath(
+      trimmed.startsWith('receipt.forum.')
+        ? `/api/forum/receipts/${encodeURIComponent(trimmed)}`
+        : `/api/public/nexus-pylon/receipts/${encodeURIComponent(trimmed)}`,
+    )
+  }
+
+  if (/^training\.verification\.challenge\./i.test(trimmed)) {
+    return safePublicPath(
+      `/api/public/training/verification-challenges/${encodeURIComponent(
+        trimmed,
+      )}`,
+    )
+  }
+
+  if (
+    /^training\.window\./i.test(trimmed) ||
+    /^trace\.public\./i.test(trimmed)
+  ) {
+    const runRef = event.runRef?.trim()
+    if (runRef !== undefined && runRef.length > 0) {
+      return safePublicPath(
+        `/api/public/training/runs/${encodeURIComponent(
+          runRef,
+        )}?focusRef=${encodeURIComponent(trimmed)}`,
+      )
+    }
+  }
+
+  if (/^run\./i.test(trimmed)) {
+    return safePublicPath(
+      `/api/public/training/runs/${encodeURIComponent(trimmed)}`,
+    )
+  }
+
+  if (/^pylon\.|^pylon_/i.test(trimmed)) {
+    return safePublicPath('/api/public/pylon-stats')
+  }
+
+  if (/^forum\./i.test(trimmed)) {
+    return safePublicPath('/forum')
+  }
+
+  if (/^artanis\./i.test(trimmed)) {
+    return safePublicPath('/api/public/artanis/admin-ticks')
+  }
+
+  if (/capacity/i.test(trimmed)) {
+    return safePublicPath('/api/public/pylon-capacity-funnel/history')
+  }
+
+  return null
+}
+
+export const publicActivityEventUrls = (
+  event: PublicActivityTimelineEvent,
+): ReadonlyArray<PublicActivityEventUrl> => {
+  const seen = new Set<string>()
+  const urls: PublicActivityEventUrl[] = []
+  for (const ref of [
+    ...event.sourceRefs,
+    ...event.refs,
+    ...event.blockerRefs,
+    ...event.caveatRefs,
+  ]) {
+    const href = publicHrefForRef(ref, event)
+    if (href === null || seen.has(href)) continue
+    seen.add(href)
+    urls.push({ href, label: href, ref })
+  }
+
+  return urls
+}
+
+const productPromiseBlockerRefsFor = (
+  event: PublicActivityTimelineEvent,
+  lag: PublicActivityTimelineSourceLag | null,
+): ReadonlyArray<string> => {
+  const seen = new Set<string>()
+  const refs = [
+    ...event.blockerRefs,
+    ...event.caveatRefs,
+    ...event.refs,
+    ...(lag?.blockerRefs ?? []),
+    ...(lag?.caveatRefs ?? []),
+  ].filter(ref => /product[-_.]?promise|promise/i.test(ref))
+
+  return refs.filter(ref => {
+    if (seen.has(ref)) return false
+    seen.add(ref)
+    return true
+  })
+}
+
+const eventContent = (
   event: PublicActivityTimelineEvent,
   options: Readonly<{ refLimit?: number }> = {},
-): HTMLElement => {
-  const item = create('li', 'event-item')
-  item.dataset.eventKind = event.kind
-  item.dataset.eventSource = event.sourceKind
-
+): ReadonlyArray<HTMLElement> => {
   const head = create('div', 'event-head')
   head.append(
     create('span', 'kind', displayLabel(event.kind)),
@@ -544,13 +794,50 @@ const eventItem = (
     meta.append(create('span', 'tag', metaItem))
   }
 
-  item.append(
+  return [
     head,
     create('p', 'event-text', event.text),
     meta,
     refsView(event.refs.length > 0 ? event.refs : event.sourceRefs, options.refLimit ?? 3),
+  ]
+}
+
+const selectableEventItem = (
+  input: Readonly<{
+    envelope: PublicActivityTimelineEnvelope
+    event: PublicActivityTimelineEvent
+    refLimit?: number
+    root: HTMLElement
+    state: PublicActivityTimelineRenderState
+    timeline?: boolean
+  }>,
+): HTMLElement => {
+  const item = create('li', input.timeline === true ? 'timeline-row' : 'event-item')
+  item.dataset.eventKind = input.event.kind
+  item.dataset.eventSource = input.event.sourceKind
+
+  const button = create(
+    'button',
+    input.timeline === true ? 'event-button timeline-button' : 'event-button',
+  ) as HTMLButtonElement
+  button.type = 'button'
+  button.dataset.activityEvent = input.event.cursor
+  button.setAttribute(
+    'aria-pressed',
+    String(input.event.cursor === selectedEventFor(input.envelope, input.state.selectedCursor)?.cursor),
+  )
+  button.addEventListener('click', () => {
+    input.state.selectedCursor = input.event.cursor
+    renderEnvelope(input.root, input.state, input.envelope)
+  })
+  button.append(
+    ...eventContent(
+      input.event,
+      input.refLimit === undefined ? {} : { refLimit: input.refLimit },
+    ),
   )
 
+  item.append(button)
   return item
 }
 
@@ -589,8 +876,11 @@ const renderPane = (
   input: Readonly<{
     countLabel: string
     emptyText: string
+    envelope: PublicActivityTimelineEnvelope
     events: ReadonlyArray<PublicActivityTimelineEvent>
     pane: Exclude<ActivityPaneId, 'proof' | 'timeline'>
+    root: HTMLElement
+    state: PublicActivityTimelineRenderState
     title: string
   }>,
 ): HTMLElement => {
@@ -608,7 +898,15 @@ const renderPane = (
 
   const list = create('ol', 'event-list')
   for (const event of input.events.slice(0, 5)) {
-    list.append(eventItem(event))
+    list.append(
+      selectableEventItem({
+        envelope: input.envelope,
+        event,
+        refLimit: 3,
+        root: input.root,
+        state: input.state,
+      }),
+    )
   }
   section.append(list)
   return section
@@ -627,6 +925,12 @@ const sourceLagFor = (
   event: PublicActivityTimelineEvent,
 ): PublicActivityTimelineSourceLag | null =>
   envelope.sourceLag.find(lag => lag.sourceKind === event.sourceKind) ?? null
+
+const eventsForFilter = (
+  envelope: PublicActivityTimelineEnvelope,
+  filter: ActivityFilter,
+): ReadonlyArray<PublicActivityTimelineEvent> =>
+  latestFirst(envelope.events).filter(event => filterMatchesEvent(filter, event))
 
 const publicEventProofPayload = (
   event: PublicActivityTimelineEvent,
@@ -671,6 +975,27 @@ const proofRefsSection = (
   return section
 }
 
+const proofUrlsSection = (
+  urls: ReadonlyArray<PublicActivityEventUrl>,
+): HTMLElement => {
+  const section = create('div', 'proof-section')
+  section.append(create('h3', undefined, 'Public URLs'))
+  if (urls.length === 0) {
+    section.append(create('p', 'muted', 'none'))
+    return section
+  }
+
+  const list = create('div', 'url-list')
+  for (const url of urls) {
+    const link = create('a', 'proof-link', url.label) as HTMLAnchorElement
+    link.href = url.href
+    link.dataset.proofUrl = url.ref
+    list.append(link)
+  }
+  section.append(list)
+  return section
+}
+
 const renderProofDrawer = (
   envelope: PublicActivityTimelineEnvelope,
   state: PublicActivityTimelineRenderState,
@@ -690,11 +1015,13 @@ const renderProofDrawer = (
   }
 
   const lag = sourceLagFor(envelope, selected)
+  const productPromiseBlockers = productPromiseBlockerRefsFor(selected, lag)
   const body = create('div', 'proof-body')
   const fields = create('dl', 'proof-fields')
   appendField(fields, 'Event', selected.eventRef)
   appendField(fields, 'Cursor', selected.cursor)
   appendField(fields, 'Source API', state.endpoint, 'data-proof-source-api')
+  appendField(fields, 'Category', filterLabel(filterForEvent(selected)))
   appendField(fields, 'Kind', displayLabel(selected.kind))
   appendField(fields, 'Source', displayLabel(selected.sourceKind))
   appendField(fields, 'Observed', formatTime(selected.ts))
@@ -722,6 +1049,8 @@ const renderProofDrawer = (
     proofRefsSection('Source refs', selected.sourceRefs),
     proofRefsSection('Blocker refs', selected.blockerRefs),
     proofRefsSection('Caveat refs', selected.caveatRefs),
+    proofRefsSection('Product-promise blockers', productPromiseBlockers),
+    proofUrlsSection(publicActivityEventUrls(selected)),
   )
 
   const lagSection = create('div', 'proof-section')
@@ -771,54 +1100,62 @@ const renderTimelinePane = (
   const section = create('section', 'pane')
   section.dataset.activityPane = 'timeline'
 
-  const events = latestFirst(envelope.events)
+  const events = eventsForFilter(envelope, state.activeFilter)
   const head = create('div', 'pane-head')
   head.append(
     create('h2', undefined, 'Timeline'),
-    create('span', 'count', `${formatCount(events.length)} events`),
+    create(
+      'span',
+      'count',
+      `${formatCount(events.length)} of ${formatCount(envelope.events.length)} events`,
+    ),
   )
   section.append(head)
 
+  const filterBar = create('div', 'filter-bar')
+  for (const filter of activityFilters) {
+    const button = create('button', 'filter-button', filter.label) as HTMLButtonElement
+    button.type = 'button'
+    button.dataset.activityFilter = filter.id
+    button.setAttribute('aria-pressed', String(state.activeFilter === filter.id))
+    button.addEventListener('click', () => {
+      state.activeFilter = filter.id
+      const nextEvents = eventsForFilter(envelope, state.activeFilter)
+      if (
+        state.selectedCursor !== null &&
+        !nextEvents.some(event => event.cursor === state.selectedCursor)
+      ) {
+        state.selectedCursor = nextEvents[0]?.cursor ?? null
+      }
+      renderEnvelope(root, state, envelope)
+    })
+    filterBar.append(button)
+  }
+  section.append(filterBar)
+
   if (events.length === 0) {
-    section.append(create('p', 'empty', 'No public activity events in range.'))
+    section.append(
+      create(
+        'p',
+        'empty',
+        `No public ${filterLabel(state.activeFilter).toLowerCase()} events in range.`,
+      ),
+    )
     return section
   }
 
   const list = create('ol', 'timeline-list')
   for (const event of events) {
-    const row = create('li', 'timeline-row')
-    const button = create('button', 'timeline-button') as HTMLButtonElement
-    button.type = 'button'
-    button.dataset.activityEvent = event.cursor
-    button.setAttribute(
-      'aria-pressed',
-      String(
-        event.cursor ===
-          (state.selectedCursor ?? selectedEventFor(envelope, null)?.cursor),
-      ),
+    list.append(
+      selectableEventItem({
+        envelope,
+        event,
+        refLimit: 4,
+        root,
+        state,
+        timeline: true,
+      }),
     )
-    button.addEventListener('click', () => {
-      state.selectedCursor = event.cursor
-      renderEnvelope(root, state, envelope)
-    })
-
-    const headRow = create('div', 'event-head')
-    headRow.append(
-      create('span', 'kind', displayLabel(event.kind)),
-      create('time', undefined, formatTime(event.ts)),
-    )
-    const meta = create('div', 'event-meta')
-    for (const metaItem of eventMetaItems(event)) {
-      meta.append(create('span', 'tag', metaItem))
-    }
-    button.append(
-      headRow,
-      create('p', 'event-text', event.text),
-      meta,
-      refsView(event.refs.length > 0 ? event.refs : event.sourceRefs, 4),
-    )
-    row.append(button)
-    list.append(row)
   }
 
   section.append(list)
@@ -898,22 +1235,31 @@ const renderEnvelope = (
     renderPane({
       countLabel: `${formatCount(fleetEvents.length)} events`,
       emptyText: 'No public fleet events in range.',
+      envelope,
       events: fleetEvents,
       pane: 'fleet',
+      root,
+      state,
       title: 'Fleet',
     }),
     renderPane({
       countLabel: `${formatCount(moneyEvents.length)} events`,
       emptyText: 'No public money-loop events in range.',
+      envelope,
       events: moneyEvents,
       pane: 'money',
+      root,
+      state,
       title: 'Money Loop',
     }),
     renderPane({
       countLabel: `${formatCount(forumEvents.length)} events`,
       emptyText: 'No public Forum events in range.',
+      envelope,
       events: forumEvents,
       pane: 'forum',
+      root,
+      state,
       title: 'Forum',
     }),
     renderTimelinePane(envelope, state, root),
@@ -978,6 +1324,7 @@ export const mountPublicActivityTimeline = (
   const endpoint = options.endpoint ?? PUBLIC_ACTIVITY_TIMELINE_ENDPOINT
   const fetchFn = options.fetchFn ?? fetch
   const state: PublicActivityTimelineRenderState = {
+    activeFilter: 'all',
     endpoint,
     selectedCursor: null,
   }

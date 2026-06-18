@@ -813,6 +813,19 @@ contract; every visible event links back to timeline refs and proof URLs.
    - Body summary: Add event filters (`boot`, `work`, `verify`, `settle`,
      `forum`, `operator`) and a proof drawer that shows source refs, public URLs,
      caveats, staleness, and product-promise blockers for the selected event.
+   - Implementation status (2026-06-18, issue #5427): extended the `/activity`
+     page timeline with `all`, `boot`, `work`, `verify`, `settle`, `forum`, and
+     `operator` filter buttons while leaving source-lag warnings outside the
+     filter path. Fleet, Money Loop, Forum, and Timeline rows are now selectable
+     proof-opening controls; the proof drawer includes event category, kind,
+     source, state, staleness, source refs, blocker refs, caveats, derived public
+     URLs, product-promise blocker refs, and decoded public event JSON. Public
+     URL derivation stays bounded to public route/ref patterns and private raw
+     payload material is still rejected before render. Validation:
+     `bun run --cwd apps/openagents.com/apps/web test
+     src/scene/publicActivityTimelineElement.test.ts src/main.test.ts`,
+     `bun run --cwd apps/openagents.com/apps/web typecheck`, and
+     `git diff --check`.
 3. **Add Autopilot Desktop activity pane/strip**
    - Body summary: Add a live activity pane or strip to Network/Training so
      downloaded users can see fleet/work/money/forum activity even when the

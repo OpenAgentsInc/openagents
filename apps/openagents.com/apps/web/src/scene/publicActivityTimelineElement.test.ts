@@ -13,6 +13,7 @@ import {
   PUBLIC_ACTIVITY_TIMELINE_ENDPOINT,
   PUBLIC_ACTIVITY_TIMELINE_TAG,
   mountPublicActivityTimeline,
+  publicActivityEventUrls,
   publicActivityTimelineView,
 } from './publicActivityTimelineElement'
 
@@ -48,6 +49,25 @@ const dashboardEnvelope = (): PublicActivityTimelineEnvelope => ({
     ...staleTimelineFixture.events,
   ]),
 })
+
+const dashboardEnvelopeWithPromiseBlocker =
+  (): PublicActivityTimelineEnvelope => {
+    const envelope = dashboardEnvelope()
+    return {
+      ...envelope,
+      events: envelope.events.map(event =>
+        event.kind === 'real_bitcoin_moved'
+          ? {
+              ...event,
+              blockerRefs: [
+                ...event.blockerRefs,
+                'product-promise.blocker.public.settlement_claim_review',
+              ],
+            }
+          : event,
+      ),
+    }
+  }
 
 const waitForState = async (
   root: HTMLElement,
@@ -112,7 +132,9 @@ describe('public activity timeline element', () => {
   })
 
   test('selects an event and renders reproducible public proof details', async () => {
-    const { handle, root } = await mountWithPayload(dashboardEnvelope())
+    const { handle, root } = await mountWithPayload(
+      dashboardEnvelopeWithPromiseBlocker(),
+    )
 
     await waitForState(root, 'ok')
     const realBitcoinButton = Array.from(
@@ -127,6 +149,13 @@ describe('public activity timeline element', () => {
     const proof = root.querySelector('[data-proof-drawer]')
     expect(proof?.textContent).toContain('receipt.public.real.1')
     expect(proof?.textContent).toContain('settlement receipt')
+    expect(proof?.textContent).toContain('Settle')
+    expect(proof?.textContent).toContain(
+      'product-promise.blocker.public.settlement_claim_review',
+    )
+    expect(proof?.textContent).toContain(
+      '/api/public/nexus-pylon/receipts/receipt.public.real.1',
+    )
     expect(proof?.querySelector('[data-proof-source-api]')?.textContent).toBe(
       PUBLIC_ACTIVITY_TIMELINE_ENDPOINT,
     )
@@ -135,6 +164,81 @@ describe('public activity timeline element', () => {
     )
 
     handle.dispose()
+  })
+
+  test('filters timeline categories without hiding stale source warnings', async () => {
+    const { handle, root } = await mountWithPayload(dashboardEnvelope())
+
+    await waitForState(root, 'ok')
+    const settleFilter = root.querySelector<HTMLButtonElement>(
+      '[data-activity-filter="settle"]',
+    )
+    expect(settleFilter).not.toBeNull()
+
+    settleFilter?.click()
+
+    const settleTimeline = root.querySelector('[data-activity-pane="timeline"]')
+    expect(settleTimeline?.textContent).toContain(
+      'Receipt-backed real Bitcoin movement confirmed.',
+    )
+    expect(settleTimeline?.textContent).not.toContain('Pylon heartbeat observed.')
+    expect(root.querySelector('[data-source-status="stale"]')?.textContent).toContain(
+      'forum',
+    )
+
+    const forumFilter = root.querySelector<HTMLButtonElement>(
+      '[data-activity-filter="forum"]',
+    )
+    forumFilter?.click()
+    const forumTimeline = root.querySelector('[data-activity-pane="timeline"]')
+    expect(forumTimeline?.textContent).toContain('Public Forum topic created.')
+    expect(forumTimeline?.textContent).not.toContain('real Bitcoin movement')
+
+    handle.dispose()
+  })
+
+  test('opens proof details from summary-pane events', async () => {
+    const { handle, root } = await mountWithPayload(dashboardEnvelope())
+
+    await waitForState(root, 'ok')
+    const fleetEvent = Array.from(
+      root.querySelectorAll<HTMLButtonElement>(
+        '[data-activity-pane="fleet"] [data-activity-event]',
+      ),
+    ).find(button => button.textContent?.includes('Pylon heartbeat observed.'))
+    expect(fleetEvent).not.toBeNull()
+
+    fleetEvent?.click()
+
+    const proof = root.querySelector('[data-proof-drawer]')
+    expect(proof?.textContent).toContain('Pylon')
+    expect(proof?.textContent).toContain('Boot')
+    expect(proof?.textContent).toContain('/api/public/pylon-stats')
+
+    handle.dispose()
+  })
+
+  test('smokes generated public proof URLs as public 200 routes', async () => {
+    const event = realBitcoinTimelineFixture.events.find(
+      item => item.kind === 'real_bitcoin_moved',
+    )
+    expect(event).toBeDefined()
+
+    const urls = publicActivityEventUrls(event!)
+    expect(urls.map(url => url.href)).toContain(
+      '/api/public/nexus-pylon/receipts/receipt.public.real.1',
+    )
+
+    const fetchMock = vi.fn(async (href: string) =>
+      jsonResponse({ href, ok: true }),
+    )
+    for (const url of urls) {
+      const response = await fetchMock(url.href)
+      expect(response.ok).toBe(true)
+    }
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/public/nexus-pylon/receipts/receipt.public.real.1',
+    )
   })
 
   test('does not render private material from unsafe raw payload fields', async () => {
@@ -166,6 +270,7 @@ describe('public activity timeline element', () => {
     expect(element.shadowRoot?.querySelector('div')).not.toBeNull()
     expect(styleText).toContain('overflow-wrap: anywhere')
     expect(styleText).toContain('@media (max-width: 640px)')
-    expect(styleText).toContain('.timeline-button:hover')
+    expect(styleText).toContain('.event-button:hover')
+    expect(styleText).toContain('.filter-button:hover')
   })
 })
