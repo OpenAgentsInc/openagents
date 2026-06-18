@@ -9,7 +9,13 @@ import {
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
 import { parseJsonRecord } from './json-boundary'
 import type { NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
+import { liveAtReadStaleness } from './public-projection-staleness'
+import {
+  type PublicTassadarSettlementRow,
+  resolveRunSettlements as resolveRunSettlementRows,
+} from './public-tassadar-run-summary-routes'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import { assertSettledFeedPayloadPublicSafe } from './tassadar-settled-feed-sync'
 import {
   TassadarExecutorTraceCloseoutEvidenceSchema,
   tassadarExecutorTraceVerificationChallengeRequest,
@@ -1102,6 +1108,103 @@ const routeReadRun = <Bindings extends TrainingRunWindowRouteEnv>(
   readRunPublicEnvelope(dependencies, env, trainingRunRef, publicRouteRef).pipe(
     Effect.map(envelope => noStoreJsonResponse(envelope)),
   )
+
+export const TrainingRunSettlementsSchemaVersion =
+  'openagents.training_run_settlements.v1'
+
+// Public-safe, enumerable settled feed keyed by run (openagents #5316). Reuses
+// the SAME provider-confirmed settled-receipt resolution path that feeds
+// metrics.providerConfirmedSettledPayoutSats (the exported resolveRunSettlements
+// from public-tassadar-run-summary-routes), so any contributor can enumerate and
+// dereference their own run-linked payout without trusting a forum post. Every
+// row is run through the public-safe guard before it leaves the Worker; a row
+// that ever scans unsafe surfaces as a generic storage error rather than leaking
+// raw payment material.
+const routeReadRunSettlements = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const record = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(trainingRunRef),
+    })
+
+    if (record === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const windows = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowsForRun(trainingRunRef, 100),
+    })
+    const leases = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowLeasesForRun(trainingRunRef, 1000),
+    })
+    const challenges = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listVerificationChallengesForRun(trainingRunRef, 1000),
+    })
+
+    const receiptRefs = [
+      ...record.receiptRefs,
+      ...windows.flatMap(window => window.receiptRefs),
+      ...leases.flatMap(lease => lease.receiptRefs),
+      ...challenges.flatMap(challenge => challenge.verdictRefs),
+    ]
+    const appUrl = new URL(request.url).origin
+    const payoutLedgerStore = dependencies.makePayoutLedgerStore?.(env)
+    const resolution = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () =>
+        resolveRunSettlementRows(payoutLedgerStore, receiptRefs, appUrl),
+    })
+    const settlementRows: ReadonlyArray<PublicTassadarSettlementRow> =
+      resolution.settlementRows
+
+    // Server-side public-safe guarantee: never let a settlement row leave the
+    // Worker if it scans for raw payment material. Surfaces as a generic typed
+    // storage error (no raw material in the reason).
+    yield* Effect.try({
+      catch: () =>
+        new TrainingAuthorityStoreError({
+          kind: 'storage_error',
+          reason: 'Settlement row failed the public-safe guard.',
+        }),
+      try: () => {
+        for (const row of settlementRows) {
+          assertSettledFeedPayloadPublicSafe(
+            'Training run settlements row',
+            row,
+          )
+        }
+      },
+    })
+
+    return noStoreJsonResponse({
+      generatedAt: nowIso,
+      runRef: record.trainingRunRef,
+      schemaVersion: TrainingRunSettlementsSchemaVersion,
+      staleness: liveAtReadStaleness([
+        'training_run_state_transition_recorded',
+        'training_window_state_transition_recorded',
+        'training_run_evidence_attached',
+      ]),
+      settlementRows,
+      sourceRefs: [
+        `route:/api/training/runs/${record.trainingRunRef}/settlements`,
+        'route:/api/training/runs',
+      ],
+    })
+  })
 
 const routeReadPublicRun = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
@@ -2363,6 +2466,22 @@ export const makeTrainingRunWindowRoutes = <
         request,
         env,
         decodeURIComponent(runSettlementMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const runSettlementsListMatch =
+      /^\/api\/training\/runs\/([^/]+)\/settlements$/.exec(url.pathname)
+
+    if (runSettlementsListMatch !== null) {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeReadRunSettlements(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(runSettlementsListMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 

@@ -324,6 +324,7 @@ export type TrainingRunProjection = Readonly<{
   createdAtDisplay: string
   generatedAt: string
   manifest: TrainingRunManifest | null
+  manifestSettlementStateNote: string | null
   maxAllowedStale: number
   maxStalenessSeconds: number
   promiseRef: string
@@ -366,6 +367,37 @@ export type TrainingRunPublicMetric = Readonly<{
   provenanceLabel: string
   sourceRefs: ReadonlyArray<string>
   value: number
+}>
+
+/**
+ * Run-level reconciled settlement status (openagents #5316, the public
+ * reconciliation gap an independent contributor found). The static
+ * `manifest.settlementState` is a one-time owner launch-gate seed (migration
+ * `0185`) and never recomputes; if it stays `pending` while real settled
+ * receipts exist, a contributor reading the run projection sees `pending` next
+ * to a real settled total. This computed status reconciles the live truth from
+ * the SAME provider-confirmed settled-receipt source that feeds
+ * `metrics.providerConfirmedSettledPayoutSats`:
+ *  - `none`     -> zero settled sats / zero settled receipts for this run.
+ *  - `settling` -> at least one provider-confirmed settled receipt is linked to
+ *                  this run. Honest mid-state, NOT a "fully settled" / launch
+ *                  claim (that judgment stays the owner's launch-gate field).
+ *
+ * `launchManifestSettlementState` carries the static manifest value verbatim,
+ * explicitly labeled so the two can never be confused. Evidence only: grants no
+ * payout, settlement, accepted-work, or public-claim authority; never mutates
+ * the manifest.
+ */
+export type TrainingRunReconciledSettlementState = 'none' | 'settling'
+
+export type TrainingRunSettlementReconciliation = Readonly<{
+  launchManifestSettlementState: string | null
+  launchManifestSettlementStateLabel: string
+  provenanceLabel: string
+  reconciledState: TrainingRunReconciledSettlementState
+  settledPayoutSats: number
+  settledReceiptCount: number
+  sourceRefs: ReadonlyArray<string>
 }>
 
 /**
@@ -485,6 +517,7 @@ export type TrainingRunPublicSummary = Readonly<{
   realGradient: TrainingRunRealGradientStatus
   receiptRefs: ReadonlyArray<string>
   run: TrainingRunProjection
+  settlement: TrainingRunSettlementReconciliation
   sourceRefs: ReadonlyArray<string>
   windows: ReadonlyArray<TrainingWindowProjection>
 }>
@@ -700,6 +733,10 @@ export const publicTrainingRunProjection = (
     ),
     generatedAt: nowIso,
     manifest: record.manifest,
+    manifestSettlementStateNote:
+      typeof record.manifest?.settlementState === 'string'
+        ? 'manifest.settlementState is the static owner launch-gate field (seeded once in migration 0185); it is NOT the live settled status. See summary.settlement.reconciledState and summary.metrics.providerConfirmedSettledPayoutSats for the live provider-confirmed settlement truth.'
+        : null,
     maxAllowedStale: record.maxAllowedStale,
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     promiseRef: record.promiseRef,
@@ -1221,6 +1258,18 @@ export const publicTrainingRunSummary = (
     input.windows.length === 0 &&
     input.leases.length === 0 &&
     input.challenges.length === 0
+  const settledReceiptCount = receiptRefs.reduce(
+    (count, ref) => count + ((settledSatsByReceiptRef?.get(ref) ?? 0) > 0 ? 1 : 0),
+    0,
+  )
+  const reconciledSettlementState: TrainingRunReconciledSettlementState =
+    providerConfirmedSettledPayoutSats > 0 && settledReceiptCount > 0
+      ? 'settling'
+      : 'none'
+  const launchManifestSettlementState =
+    typeof input.run.manifest?.settlementState === 'string'
+      ? input.run.manifest.settlementState
+      : null
 
   return {
     copyBoundaryRefs: [
@@ -1309,6 +1358,17 @@ export const publicTrainingRunSummary = (
         ? [TrainingRunPlannedWithReconciledWindowsBlocker]
         : [],
     ),
+    settlement: {
+      launchManifestSettlementState,
+      launchManifestSettlementStateLabel:
+        'Static owner launch-gate field seeded once in the run manifest (migration 0185); it is NOT the live settled status and does not recompute. Read `reconciledState`/`settledPayoutSats` for the live provider-confirmed settlement truth.',
+      provenanceLabel:
+        'Reconciled from the same provider-confirmed settlement receipts (receiptKind settlement_recorded, state settled) linked to this run that feed metrics.providerConfirmedSettledPayoutSats: `none` when zero settled receipts, `settling` when one or more settled receipts exist. Evidence only; not a fully-settled or launch claim.',
+      reconciledState: reconciledSettlementState,
+      settledPayoutSats: providerConfirmedSettledPayoutSats,
+      settledReceiptCount,
+      sourceRefs: payoutMetricRefs,
+    },
     sourceRefs,
     windows: windowProjections,
   }

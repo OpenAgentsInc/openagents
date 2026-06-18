@@ -635,4 +635,86 @@ describe('training run window authority', () => {
       },
     ])
   })
+
+  it('reconciles run-level settlement state from the same settled-receipt source (#5316)', () => {
+    const runBase = buildTrainingRunRecord({
+      makeId: () => 'recon',
+      nowIso: '2026-06-16T10:00:00.000Z',
+      request: {
+        promiseRef: 'pylon.first_real_model_training_run.v1',
+        receiptRefs: ['receipt.settlement.recon.1'],
+        trainingRunRef: 'training.run.recon',
+      },
+    })
+    // Static owner launch-gate seed (migration 0185 shape): pending.
+    const run = {
+      ...runBase,
+      manifest: { settlementState: 'pending' },
+    }
+
+    const idleSummary = publicTrainingRunSummary({
+      challenges: [],
+      leases: [],
+      nowIso: '2026-06-16T10:05:00.000Z',
+      run,
+      windows: [],
+    })
+
+    expect(idleSummary.settlement.reconciledState).toBe('none')
+    expect(idleSummary.settlement.settledPayoutSats).toBe(0)
+    expect(idleSummary.settlement.settledReceiptCount).toBe(0)
+    expect(idleSummary.settlement.launchManifestSettlementState).toBe('pending')
+
+    const settledSummary = publicTrainingRunSummary({
+      challenges: [],
+      leases: [],
+      nowIso: '2026-06-16T10:05:00.000Z',
+      run,
+      settledSatsByReceiptRef: new Map([['receipt.settlement.recon.1', 1010]]),
+      windows: [],
+    })
+
+    expect(settledSummary.settlement.reconciledState).toBe('settling')
+    expect(settledSummary.settlement.settledPayoutSats).toBe(1010)
+    expect(settledSummary.settlement.settledReceiptCount).toBe(1)
+    // The live reconciled status diverges from the stale static manifest seed.
+    expect(settledSummary.settlement.launchManifestSettlementState).toBe(
+      'pending',
+    )
+    expect(settledSummary.settlement.launchManifestSettlementState).not.toBe(
+      settledSummary.settlement.reconciledState,
+    )
+    expect(settledSummary.metrics.providerConfirmedSettledPayoutSats.value).toBe(
+      1010,
+    )
+  })
+
+  it('emits a manifest settlement-state note only when the manifest carries a static settlementState', () => {
+    const runBase = buildTrainingRunRecord({
+      makeId: () => 'note',
+      nowIso: '2026-06-16T10:00:00.000Z',
+      request: {
+        promiseRef: 'pylon.first_real_model_training_run.v1',
+        trainingRunRef: 'training.run.note',
+      },
+    })
+    const withManifest = {
+      ...runBase,
+      manifest: { settlementState: 'pending' },
+    }
+    const withoutManifest = { ...runBase, manifest: null }
+
+    const noted = publicTrainingRunProjection(
+      withManifest,
+      '2026-06-16T10:05:00.000Z',
+    )
+    const unnoted = publicTrainingRunProjection(
+      withoutManifest,
+      '2026-06-16T10:05:00.000Z',
+    )
+
+    expect(noted.manifestSettlementStateNote).not.toBeNull()
+    expect(noted.manifestSettlementStateNote).toContain('migration 0185')
+    expect(unnoted.manifestSettlementStateNote).toBeNull()
+  })
 })

@@ -95,7 +95,7 @@ const makeLedgerStoreStub = (
     readPayoutIntentByIdempotencyKeyHash: notImplemented,
     readPayoutIntentByRef: async payoutIntentRef =>
       intents.get(payoutIntentRef),
-    readReconciliationEventByRef: notImplemented,
+    readReconciliationEventByRef: async eventRef => events.get(eventRef),
     receipts,
   }
 }
@@ -1057,6 +1057,54 @@ describe('training run window routes', () => {
     )
     expect(detailBody.summary.metrics.qualifiedContributorCount.value).toBe(1)
 
+    // Enumerable settled feed keyed by run (#5316): a contributor can list and
+    // dereference the run-linked settled receipt without trusting a forum post.
+    const settlementsFeed = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request(
+          'https://openagents.test/api/training/runs/run.tassadar.executor.20260615/settlements',
+        ),
+        {},
+      ),
+    )
+    const settlementsBody = (await settlementsFeed.json()) as {
+      runRef: string
+      schemaVersion: string
+      settlementRows: ReadonlyArray<{
+        amountSats: number
+        contributorRef: string | null
+        movementMode: string
+        realBitcoinMoved: boolean
+        receiptRef: string
+        state: string
+        trainingRunRef: string | null
+        verificationChallengeRef: string | null
+      }>
+      sourceRefs: ReadonlyArray<string>
+      staleness: { maxStalenessSeconds: number }
+    }
+
+    expect(settlementsFeed.status).toBe(200)
+    expect(settlementsBody.runRef).toBe('run.tassadar.executor.20260615')
+    expect(settlementsBody.schemaVersion).toBe(
+      'openagents.training_run_settlements.v1',
+    )
+    expect(settlementsBody.staleness.maxStalenessSeconds).toBe(0)
+    expect(settlementsBody.settlementRows).toHaveLength(1)
+    const row = settlementsBody.settlementRows[0]!
+    expect(row.amountSats).toBe(21)
+    expect(row.state).toBe('settled')
+    expect(row.contributorRef).toBe('pylon.contributor.stranger')
+    expect(row.verificationChallengeRef).toBe(verified.challengeRef)
+    expect(row.trainingRunRef).toBe('run.tassadar.executor.20260615')
+    expect(row.movementMode).toBe('simulation')
+    expect(row.realBitcoinMoved).toBe(false)
+    expect(row.receiptRef).toMatch(
+      /^receipt\.nexus\.tassadar_run_settlement\./,
+    )
+    // Redaction: no raw spark address, invoice, or preimage in the body.
+    expect(JSON.stringify(settlementsBody)).not.toMatch(/spark1|lnbc|preimage/i)
+
     // Over the run spend cap -> rejected, no money-shaped projection leaks.
     const overCap = await runRoute(
       routes.routeTrainingRunWindowRequest(
@@ -1219,6 +1267,81 @@ describe('training run window routes', () => {
         verifiedWorkCount: { value: 0 },
       },
     })
+  })
+
+  it('returns an empty settlements feed and never enumerates receipts not linked to the run (#5316)', async () => {
+    const store = makeMemoryStore()
+    // A settled receipt that exists in the ledger but is NOT linked to the run.
+    const ledgerStore = makeLedgerStoreStub([
+      [
+        'receipt.unrelated.run.settled',
+        {
+          publicProjectionJson: JSON.stringify({
+            amountSats: 777,
+            contributorRef: 'pylon.unrelated',
+            state: 'settled',
+            trainingRunRef: 'run.some.other.run',
+          }),
+          receiptKind: 'settlement_recorded',
+        },
+      ],
+    ])
+    const planned = buildTrainingRunRecord({
+      makeId: () => 'run5316empty',
+      nowIso: '2026-06-16T10:00:00.000Z',
+      request: {
+        promiseRef: 'training.decentralized_training_launch.v1',
+        trainingRunRef: 'run.tassadar.executor.empty',
+      },
+    })
+    store._testSeedRun({ ...planned, state: 'active' })
+
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => 'id5316empty',
+      makePayoutLedgerStore: () => ledgerStore,
+      makeStore: () => store,
+      nowIso: () => '2026-06-16T10:05:00.000Z',
+      requireAdminApiToken: async () => true,
+    })
+
+    const feed = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request(
+          'https://openagents.test/api/training/runs/run.tassadar.executor.empty/settlements',
+        ),
+        {},
+      ),
+    )
+    const body = (await feed.json()) as {
+      runRef: string
+      settlementRows: ReadonlyArray<unknown>
+    }
+
+    expect(feed.status).toBe(200)
+    expect(body.runRef).toBe('run.tassadar.executor.empty')
+    // The unrelated settled receipt is not a run-linked ref, so it never appears.
+    expect(body.settlementRows).toEqual([])
+  })
+
+  it('returns 404 for the settlements feed when the run is not found (#5316)', async () => {
+    const store = makeMemoryStore()
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => 'id5316missing',
+      makeStore: () => store,
+      nowIso: () => '2026-06-16T10:05:00.000Z',
+      requireAdminApiToken: async () => true,
+    })
+
+    const feed = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request(
+          'https://openagents.test/api/training/runs/run.does.not.exist/settlements',
+        ),
+        {},
+      ),
+    )
+
+    expect(feed.status).toBe(404)
   })
 
   it('admits receipted scaling-sweep evidence through the admin route and rejects unreceipted cells', async () => {

@@ -161,7 +161,7 @@ const settlementInfoFromReceipt = (
   return { contributorRef, row, settledSats }
 }
 
-const resolveRunSettlements = async (
+export const resolveRunSettlements = async (
   payoutLedgerStore: NexusTreasuryPayoutLedgerStore | undefined,
   receiptRefs: ReadonlyArray<string>,
   appUrl: string,

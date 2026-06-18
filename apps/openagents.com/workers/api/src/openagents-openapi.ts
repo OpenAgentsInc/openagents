@@ -392,6 +392,31 @@ const schemaComponents = (): JsonSchema => ({
   PublicTassadarRunSummaryEnvelope: objectSummary(
     'Public-safe live-at-read compatibility summary for the live Tassadar executor run. Carries schemaVersion, generatedAt, the public-projection staleness contract, runRef, runState, empty-state honesty, typed settlementRows, rejectedReplayPairs, and the same provenance-labeled TrainingRunPublicSummary metrics consumed by the spatial snapshot adapter. Defaults to run.tassadar.executor.20260615 and accepts a run query override. Settlement rows distinguish movementMode and realBitcoinMoved; simulation-backed settlement records never count as real Bitcoin movement. Pending, offered, claimed, wallet-side records, private logs, wallet material, and admin-only controls are excluded. Read-only; grants no assignment, payout, model-publication, spend, DNS, or deployment authority.',
   ),
+  TrainingRunSettlementsEnvelope: {
+    type: 'object',
+    description:
+      'Public-safe, live-at-read enumerable settled feed keyed by run (openagents #5316). Carries generatedAt, runRef, schemaVersion openagents.training_run_settlements.v1, a live_at_read staleness contract with maxStalenessSeconds 0, sourceRefs, and settlementRows: the run-linked provider-confirmed settlement rows drawn from the SAME settlement receipts that feed metrics.providerConfirmedSettledPayoutSats. Each row distinguishes movementMode and realBitcoinMoved; simulation-backed records never count as real Bitcoin movement. Empty array when no settled receipts exist. Refs and digests only: no raw spark addresses, invoices, preimages, wallet material, private logs, or admin controls. Read-only; grants no assignment, payout, or settlement authority.',
+    additionalProperties: true,
+    required: [
+      'generatedAt',
+      'runRef',
+      'schemaVersion',
+      'staleness',
+      'settlementRows',
+      'sourceRefs',
+    ],
+    properties: {
+      generatedAt: { type: 'string' },
+      runRef: { type: 'string' },
+      schemaVersion: { type: 'string' },
+      staleness: { type: 'object', additionalProperties: true },
+      settlementRows: {
+        type: 'array',
+        items: { type: 'object', additionalProperties: true },
+      },
+      sourceRefs: { type: 'array', items: { type: 'string' } },
+    },
+  },
   PublicProofReplayBundle: objectSummary(
     'Public-safe proof replay bundle (`proof_replay_bundle.v1`) for deterministic 3D replay rendering. Carries generatedAt, a declared live_at_read staleness contract with maxStalenessSeconds 0, source refs, public authority metadata, actors, stages, replay events, flows, camera cues, captions, and explicit gaps. Confirmed payment-zap events require receipt-first real-bitcoin evidence such as realBitcoinMoved:true; simulation, pending, blocked, deferred, and failed-closed rows stay separate non-payment events. Raw wallet material, invoices, payment hashes/preimages, prompts, logs, provider payloads, service tokens, and operator-only notes are excluded. Read-only; grants no proof, settlement, payout, wallet, product-promise, or spend authority.',
   ),
@@ -3635,6 +3660,24 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Training run projection.',
           '#/components/schemas/TrainingRunEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/settlements': {
+    get: operation({
+      operationId: 'listTrainingRunSettlements',
+      summary: 'Enumerate run-linked provider-confirmed settled receipts',
+      description:
+        'Public-safe, live-at-read enumerable settled feed keyed by run (openagents #5316). Returns the run-linked settlement rows (challengeRef, public contributor digest ref, amountSats, state, movementMode, realBitcoinMoved, receiptRef, settledAt) from the SAME provider-confirmed settlement receipts that feed metrics.providerConfirmedSettledPayoutSats, so any contributor can enumerate and dereference their own payout without trusting a forum post. Empty when no settled receipts exist. Refs and digests only: no raw spark addresses, invoices, preimages, wallet material, private logs, or admin controls. Read-only; grants no assignment, payout, or settlement authority.',
+      tags: ['Training', 'Pylon'],
+      security: publicRead,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      responses: {
+        '200': okJson(
+          'Public-safe run-linked settled receipt rows.',
+          '#/components/schemas/TrainingRunSettlementsEnvelope',
         ),
         ...errorResponses(),
       },
