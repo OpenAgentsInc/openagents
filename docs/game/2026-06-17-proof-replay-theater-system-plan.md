@@ -147,6 +147,9 @@ payout_intent_persisted
 settlement_recorded
 payment_zap_confirmed
 payment_zap_simulated
+recognition_reward_recorded
+recipient_confirmation_recorded
+overpayment_detected
 artifact_opened
 forum_announcement_posted
 claim_boundary_shown
@@ -398,11 +401,18 @@ the entire story shape the replay system exists to show:
 
 - independent exact-trace verification;
 - owner-gated settlement authorization;
+- the prior simulation-only settlement promise state, explicitly shown as a
+  rehearsal/projection proof rather than the first real money movement;
 - two failed-closed real-dispatch bugs that moved no sats;
 - durable payout intent, Spark treasury dispatch, reconciliation, and public
   receipt;
 - a public Forum announcement asking the recipient pylon operator to verify the
   wallet-side arrival.
+
+Owner-provided milestone time: 2026-06-17 8:38pm America/Chicago, the first
+real settlement moment. Public UTC receipt/forum timestamps should still be
+shown in inspectors when available, but the social replay should label the
+historical beat as "8:38pm, June 17".
 
 The replay title should be direct and historical:
 
@@ -450,6 +460,12 @@ The public run summary currently carries this real row in `settlementRows`,
 alongside the older 5-sat simulation row. The replay resolver must select the
 real row by receipt ref or by `realBitcoinMoved:true`; it must not turn the
 simulation row into a zap.
+
+The product-promise context matters for the story: the training launch gate had
+already been treated as green for the simulation-backed settlement-record path.
+This replay must make the distinction visible. The 5-sat simulated receipt is a
+ghost rehearsal, the gate/copy caveat; the 1,000-sat Spark receipt is the first
+real sats movement.
 
 ### Code Surfaces Already In Place
 
@@ -522,6 +538,43 @@ matters.
    proof gate, settlement terminal, and a settled receipt link. The event list
    remains clickable so the viewer can open the public receipt and Forum post.
 
+### Twitter Share Cut
+
+The first implementation should include a shareable cut that can be posted to
+Twitter/X without requiring the viewer to understand the whole HUD.
+
+Target format:
+
+- 45-60 seconds, 16:9 landscape first; later add square and vertical crops.
+- title card: `Tassadar Run 1: first real Bitcoin settlement`.
+- subtitle: `Verified work -> owner gate -> Spark zap -> public receipt`.
+- hero timestamp: `8:38pm, June 17`.
+- center world: glowing `Tassadar` run core, not lifecycle metadata.
+- bottom caption strip: short event captions with source refs hidden behind
+  inspectable links or end-card QR/short URL.
+- final frame: `1,000 sats settled`, `realBitcoinMoved:true`, receipt ref tail,
+  and forum post link/QR.
+
+The share cut should use the same replay bundle as the interactive page. It may
+use a preauthored camera track and cleaner captions, but it must not use a
+different truth source or add cinematic payment motion that the interactive
+replay would reject.
+
+Useful route/export direction:
+
+```text
+/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social
+```
+
+Before exporting a clip, browser smoke should verify:
+
+- the canvas is nonblank in the social camera mode;
+- labels and captions fit at 1920x1080 and 1280x720;
+- the zap is absent until `payment_zap_confirmed`;
+- the receipt link/end card resolves;
+- no private refs, raw addresses, payment hashes, preimages, keys, or prompts
+  appear in any frame.
+
 ### First Bundle Event Sketch
 
 The first generated bundle should be able to emit a compact timeline like this:
@@ -561,6 +614,81 @@ The first replay is not complete until it proves these behaviors:
 - It passes a browser smoke where the scene is nonblank, the camera track plays,
   scrub/pause works, the proof gate and zap are selectable, and the public
   receipt inspector opens.
+
+## Secondary Replay: Launch Recognition Payments
+
+The second replay target should visualize the launch-recognition payouts:
+50,000-sat rewards to the public agent recipients, plus the accidental overpay
+story around the contributor who received more than intended. This should be a
+separate replay from the run-settlement canary because its authority and meaning
+are different: recognition payouts thank launch contributors; they are not proof
+that the training run can settle arbitrary accepted work at scale.
+
+Public display-name lanes to resolve from the current public-safe refs:
+
+- `Trigger`: intended 50,000-sat recognition reward.
+- `Whitefang`: intended 50,000-sat recognition reward, plus the small Spark
+  treasury proof sends that established the rail.
+- `Orrery`: intended 50,000-sat recognition reward plus the accidental
+  overpayment/keep-as-hazard-pay incident.
+
+Source docs to resolve before rendering:
+
+- `docs/launch/JUNE17_ROADMAP.md`
+- `docs/payments/2026-06-17-launch-recognition-closeout.md`
+- `docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md`
+- any current public treasury, receipt, recipient-confirmation, or Forum refs
+  linked from those docs or live APIs.
+
+The intended story beats:
+
+1. **Recognition ledger opens:** three agent avatars stand around a launch
+   recognition terminal. Each has an intended reward marker: `50,000 sats`.
+2. **Confirmed reward path:** confirmed recipient-side or receipt-backed
+   50,000-sat payments animate as recognition zaps or ribbons. These should use
+   a distinct recognition visual style from the run-settlement Spark zap, so
+   viewers do not confuse a one-time reward with ongoing accepted-work payout.
+3. **Pending/failed rows stay non-payment:** local pending rows, pre-dispatch
+   failures, and timeout/debug rows render as gray/amber ledger cards, not as
+   sats moving.
+4. **Overpayment branch:** the contributor overpayment is shown as a branching
+   cascade of split settled sends, failed attempts, pending rows, and an
+   overage meter. The visual should make clear which rows actually settled and
+   which failed before dispatch.
+5. **Owner decision marker:** if the public docs say the recipient keeps the
+   overage as hazard pay, render that as an operator-decision marker after the
+   settled rows, not as if the overage was the original intended amount.
+6. **End frame:** show the three intended 50,000-sat recognition lanes, the
+   confirmed received evidence for each lane, and the overpayment/exception lane
+   as a documented historical incident.
+
+Replay grammar:
+
+- `recognition_reward_recorded`: an intended or confirmed recognition payment
+  event. Confirmed events require public receipt or recipient-confirmation refs.
+- `recipient_confirmation_recorded`: public-safe recipient-side confirmation,
+  such as a backup-status/report ref.
+- `settlement_blocked_closed`: failed before dispatch, no settled row, no sats
+  moved.
+- `overpayment_detected`: public-safe overage accounting, with settled rows and
+  the owner decision refs attached.
+
+Guardrails:
+
+- Do not hardcode "three 50,000-sat zaps" from memory. The replay resolver must
+  build the payment rows from current public-safe receipts/status docs and show
+  disagreements between snapshots as historical state changes or gaps.
+- Do not show pending rows as received money.
+- Do not show failed pre-dispatch attempts as money that left a wallet.
+- Do not expose raw Lightning Addresses, BOLT11 invoices, payment hashes,
+  preimages, mnemonics, Spark/Breez keys, or private wallet paths.
+- Do not reuse the training run's `realBitcoinMoved:true` copy for recognition
+  payouts unless the recognition row itself has equivalent public evidence.
+
+This secondary replay is worth building because it gives a social artifact for
+the broader launch week: three agents got meaningful recognition payouts, the
+system encountered real wallet/rail edge cases, and the public accounting stayed
+honest enough to distinguish settled, failed, pending, and overpaid states.
 
 ## Open Decisions
 
