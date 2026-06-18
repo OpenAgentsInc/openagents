@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { Effect, Schema as S } from "effect";
 import {
   ProbeBenchmarkContractError,
@@ -10,6 +9,7 @@ import {
   OpenAgentsRepoStudyPacketRationaleKind,
   openAgentsRepoStudyPacketHash,
 } from "./openagents-study-packet";
+import { sha256Ref, shortHash, stableJson } from "./stable-hash";
 
 export const OPENAGENTS_REPO_STUDIED_KNOWLEDGE_GRAPH_SCHEMA_REF =
   "openagents.repo_studied_knowledge_graph.v0" as const;
@@ -950,29 +950,6 @@ function requireNonEmptyRefs(
 
 function requireSha256(value: string, path: string): Effect.Effect<void, ProbeBenchmarkContractError> {
   return value.startsWith("sha256:") ? Effect.void : studyGraphError(path, "must be a sha256 ref");
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableJson(entry)).join(",")}]`;
-  }
-
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
-      .join(",")}}`;
-  }
-
-  return JSON.stringify(value);
-}
-
-function sha256Ref(value: string | Uint8Array): string {
-  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
-}
-
-function shortHash(hash: string): string {
-  return hash.replace(/^sha256:/, "").slice(0, 16);
 }
 
 function studyGraphError(path: string, reason: string): Effect.Effect<never, ProbeBenchmarkContractError> {

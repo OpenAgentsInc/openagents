@@ -26,7 +26,6 @@
 // verdict is `stale`, which is the cheap-incremental property: we only re-write
 // the small index when content actually moved.
 
-import { createHash } from "node:crypto";
 import { execFile as execFileCallback } from "node:child_process";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
@@ -39,6 +38,7 @@ import { type ProbePublicProjectionUnsafe } from "../contracts/provider-account"
 import {
   OpenAgentsRepoStudyArtifactIndex,
 } from "./openagents-study-artifact";
+import { sha256Ref, shortHash, stableJson } from "./stable-hash";
 
 const execFile = promisify(execFileCallback);
 
@@ -230,27 +230,4 @@ export function readOpenAgentsRepoHeadCommit(rootDir: string): Effect.Effect<str
 
 function freshnessError(path: string, reason: string): Effect.Effect<never, ProbeBenchmarkContractError> {
   return Effect.fail(new ProbeBenchmarkContractError({ path, reason }));
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableJson(entry)).join(",")}]`;
-  }
-
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
-      .join(",")}}`;
-  }
-
-  return JSON.stringify(value);
-}
-
-function sha256Ref(value: string): string {
-  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
-}
-
-function shortHash(hash: string): string {
-  return hash.replace(/^sha256:/, "").slice(0, 16);
 }

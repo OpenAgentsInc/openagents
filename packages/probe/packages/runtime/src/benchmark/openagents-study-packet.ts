@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { execFile as execFileCallback } from "node:child_process";
 import { lstat, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -17,6 +16,7 @@ import {
   openAgentsRepoCorpusEvidenceSpanHash,
   openAgentsRepoCorpusManifestHash,
 } from "./repo-corpus-manifest";
+import { sha256Ref, shortHash, stableJson } from "./stable-hash";
 
 const execFile = promisify(execFileCallback);
 
@@ -659,29 +659,6 @@ function requireNonEmptyRefs(
 
 function requireSha256(value: string, path: string): Effect.Effect<void, ProbeBenchmarkContractError> {
   return value.startsWith("sha256:") ? Effect.void : studyPacketError(path, "must be a sha256 ref");
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableJson(entry)).join(",")}]`;
-  }
-
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
-      .join(",")}}`;
-  }
-
-  return JSON.stringify(value);
-}
-
-function sha256Ref(value: string | Uint8Array): string {
-  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
-}
-
-function shortHash(hash: string): string {
-  return hash.replace(/^sha256:/, "").slice(0, 16);
 }
 
 function slugPath(path: string): string {
