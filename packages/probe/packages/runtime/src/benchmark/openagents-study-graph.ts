@@ -136,6 +136,7 @@ export interface BuildOpenAgentsRepoStudiedKnowledgeGraphInput {
   readonly graphRef?: string;
   readonly issueRefs?: ReadonlyArray<OpenAgentsRepoStudiedKnowledgeIssueRef>;
   readonly packet: OpenAgentsRepoStudyPacket;
+  readonly trackingIssueNumber?: number;
 }
 
 export interface OpenAgentsRepoStudiedKnowledgeIssueRef {
@@ -212,6 +213,7 @@ export function buildOpenAgentsRepoStudiedKnowledgeGraph(
       editSitePaths: input.editSitePaths ?? DEFAULT_EDIT_SITE_PATHS,
       nodeBuilder,
       packet,
+      trackingIssueNumber: input.trackingIssueNumber ?? 5315,
     });
 
     const baseGraph: OpenAgentsRepoStudiedKnowledgeGraph = {
@@ -512,6 +514,7 @@ function buildStudiedKnowledgeEdges(input: {
   readonly editSitePaths: ReadonlyArray<string>;
   readonly nodeBuilder: StudyGraphNodeBuilder;
   readonly packet: OpenAgentsRepoStudyPacket;
+  readonly trackingIssueNumber: number;
 }): ReadonlyArray<OpenAgentsRepoStudiedKnowledgeEdge> {
   const edges: OpenAgentsRepoStudiedKnowledgeEdge[] = [];
   const latestCommit = input.packet.commitHistory[0];
@@ -519,7 +522,7 @@ function buildStudiedKnowledgeEdges(input: {
   const auditNode = input.nodeBuilder.byRationaleKind("tassadar_audit");
   const roadmapNode = input.nodeBuilder.byRationaleKind("machine_studying_roadmap");
   const backroomNode = input.nodeBuilder.byRationaleKind("backroom_archive");
-  const s2IssueNode = input.nodeBuilder.byIssueNumber(5315);
+  const s2IssueNode = input.nodeBuilder.byIssueNumber(input.trackingIssueNumber);
   const invariantNodes = input.nodeBuilder.nodes().filter((node) => node.kind === "invariant");
   const auditEvidence = input.nodeBuilder.evidenceByPath(
     "docs/tassadar/2026-06-18-tassadar-run-actual-state-and-real-training-gap-audit.md",

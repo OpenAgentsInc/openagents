@@ -108,8 +108,10 @@ export interface BuildOpenAgentsRepoStudyPacketInput {
   readonly generatedAt?: string;
   readonly manifest?: OpenAgentsRepoCorpusManifest;
   readonly packetRef?: string;
+  readonly rationaleSources?: ReadonlyArray<OpenAgentsRepoStudyPacketRationaleSource>;
   readonly repo: string;
   readonly rootDir: string;
+  readonly sections?: ReadonlyArray<OpenAgentsRepoStudyPacketSection>;
 }
 
 const DEFAULT_EVIDENCE_SPAN_PATHS = [
@@ -154,14 +156,17 @@ export function buildOpenAgentsRepoStudyPacket(
       paths: input.evidenceSpanPaths ?? DEFAULT_EVIDENCE_SPAN_PATHS,
       rootDir,
     });
-    const rationaleSources = yield* buildStudyPacketRationaleSources({
-      backroomRepo: input.backroomRepo ?? "OpenAgentsInc/backroom",
-      backroomRootDir: input.backroomRootDir ?? resolve(rootDir, "..", "backroom"),
-      commit: input.commit,
-      manifest,
-      repo: input.repo,
-    });
-    const sections = buildStudyPacketSections(manifest);
+    const rationaleSources =
+      input.rationaleSources === undefined
+        ? yield* buildStudyPacketRationaleSources({
+            backroomRepo: input.backroomRepo ?? "OpenAgentsInc/backroom",
+            backroomRootDir: input.backroomRootDir ?? resolve(rootDir, "..", "backroom"),
+            commit: input.commit,
+            manifest,
+            repo: input.repo,
+          })
+        : [...input.rationaleSources];
+    const sections = input.sections === undefined ? buildStudyPacketSections(manifest) : [...input.sections];
     const basePacket: OpenAgentsRepoStudyPacket = {
       commit: input.commit,
       commitHistory,

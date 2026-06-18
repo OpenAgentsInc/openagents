@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-17.6'
+export const PublicProductPromisesVersion = '2026-06-18.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -42,6 +42,8 @@ const sourceRefs = [
   'docs/research/machine-studying/openagents-studybench/runs/2026-06-17-mvp-14-baseline-packet-gepa-comparison.md',
   'docs/research/machine-studying/openagents-studybench/study-packets/openagents-launch-study-packet-v0.md',
   'packages/probe/docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json',
+  'packages/probe/packages/runtime/src/benchmark/external-repo-studying-product.ts',
+  'packages/probe/packages/runtime/tests/external-repo-studying-product.test.ts',
 ]
 
 const basePromiseFields = {
@@ -97,7 +99,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-06-17',
+    lastUpdated: '2026-06-18',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -161,6 +163,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-17.4 adds autopilot.repo_study_packets.v1 as a yellow internal-dogfood claim only. The public StudyBench MVP shows source-grounded lift on OpenAgents refs, but customer repo studying, trained repo expert language, marketplace packages, payout eligibility, and paid-work status remain blocked by separate validation, privacy, metering, pricing, payout, and settlement gates.',
         'Registry 2026-06-17.5: the real paid-settlement gate on training.monday_decentralized_training_launch.v1 is now MET for a bounded scope. A 1,000-sat real Bitcoin run-settlement settled, native over Spark, to an independent contributor (Orrery, pylon.448ba824…), evidenced by public receipt receipt.nexus.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618 (realBitcoinMoved:true, moneyMovement:real_bitcoin, state:settled, adapter:spark_treasury), backed by Verified challenge training.verification.challenge.071445c5-6ad6-4136-87e3-253b01914b4c (independent validator replay on a distinct device, digests matched). #5232 closed and the public settled feed moved 0 → 1, with no raw address in the projection. The promise stays green; this is an evidence/copy upgrade from simulation-record-path-only to one real paid settlement. The earlier simulation-backed Orrery receipt (realBitcoinMoved:false) is retained as historical projection-path context only. This proof is exactly one 1,000-sat canary: it does not authorize network-scale, paid-at-scale, hundreds-paid, largest-run, canonical-model-mutation, or unbounded-payout copy. training.public_distributed_training_run.v1 drops its public_training_settlement_receipts_missing blocker but stays red on public_distributed_training_run_receipts_missing plus network-scale/participant criteria. The decision record is docs/promises/2026-06-18-training-monday-real-settlement-gate-met.md, and the matching promise_transition exception receipt promise_transition_5be9bf3e-4784-41c4-a861-b23f5da61552 was recorded against the deployed registry via the operator route (from-state equals to-state, both green), dereferenceable at /api/public/product-promises/transitions.',
         'Registry 2026-06-17.6: the training launch promise was renamed from training.monday_decentralized_training_launch.v1 to training.decentralized_training_launch.v1 ("Monday" dropped — it is just the decentralized training launch now). This is a forward-looking identifier rename only: the promise state stays green, the real-settlement evidence (receipt.nexus.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618, realBitcoinMoved:true) is unchanged, and no scope is widened. Earlier registry notes and promise_transition receipts recorded under the old training.monday_decentralized_training_launch.v1 id are retained as accurate history of the prior registry states.',
+        'Registry 2026-06-18.1 adds autopilot.external_repo_studying_pilot.v1 as a yellow, refs-only pilot surface. The Probe pipeline can run corpus manifesting, study-packet sectioning, graph traversal, S3 verification, S4-style lift scoring, and coder-context projection on a non-OpenAgents fixture repo, but customer-private ingestion, self-serve upload, marketplace packaging, pricing, payout eligibility, settlement, and green public copy remain blocked.',
       ],
     },
     promises: [
@@ -226,6 +229,37 @@ export const publicProductPromisesDocument = () => {
           'Yellow is limited to the recorded MVP-14 OpenAgents public-safe comparison plus docs review. Green or external copy requires customer-data privacy review, private validation/holdout discipline, marketplace package policy, usage metering, pricing, payout eligibility, settlement receipts, and product-promise preflight. Public score summaries must keep productPromiseBoundary.publicProductClaimAllowed false until those gates pass.',
         authorityBoundary:
           'A StudyBench row or study packet is evidence and repository-memory input only. It grants no runtime mutation, customer repository ingestion, marketplace listing, billing, payout eligibility, settlement, training promotion, or public green-claim authority, and it is not paid work.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot.external_repo_studying_pilot.v1',
+        productArea: 'Autopilot repo studying',
+        audience: ['agent', 'operator', 'developer'],
+        state: 'yellow',
+        claim:
+          'OpenAgents exposes a refs-only external-repo studying pilot surface that runs the study-packet, graph, verification, eval, and coder-context pipeline on a non-OpenAgents fixture repository.',
+        safeCopy:
+          'External-repo studying is available as a gated pilot projection with refs and hashes only. It is not self-serve customer repo ingestion and it does not make marketplace, payout, settlement, or trained repo-expert claims.',
+        unsafeCopy:
+          'Do not say customer repo studying is live, any private customer repo can be uploaded, OpenAgents has a trained repo expert, study packets are marketplace packages, or external-repo studying is payout eligible.',
+        evidenceRefs: [
+          'packages/probe/packages/runtime/src/benchmark/external-repo-studying-product.ts',
+          'packages/probe/packages/runtime/tests/external-repo-studying-product.test.ts',
+          'docs/research/machine-studying/2026-06-17-tassadar-openagents-repo-studying-roadmap.md#phase-6',
+          'promise:autopilot.repo_study_packets.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.external_repo_studying_customer_private_admission_missing',
+          'blocker.product_promises.external_repo_studying_privacy_policy_missing',
+          'blocker.product_promises.external_repo_studying_self_serve_upload_missing',
+          'blocker.product_promises.external_repo_studying_marketplace_metering_missing',
+          'blocker.product_promises.external_repo_studying_pricing_package_policy_missing',
+          'blocker.product_promises.external_repo_studying_payout_settlement_gates_missing',
+        ],
+        verification:
+          'Yellow is limited to the S7 non-OpenAgents fixture pipeline: corpus manifest, study packet, graph, S3 verdict, S4-style eval lift, and coder context. Any real customer-private repo product requires admission policy, privacy review, customer review, self-serve controls, usage metering, pricing, payout eligibility, settlement evidence, and product-promise copy preflight.',
+        authorityBoundary:
+          'The external-repo studying pilot is repository-memory evidence only. It grants no private repo ingestion authority, write authority, runtime mutation, marketplace listing, billing, payout eligibility, settlement, training promotion, or green public customer claim.',
       },
       {
         ...basePromiseFields,

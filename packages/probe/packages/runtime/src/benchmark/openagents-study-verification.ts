@@ -96,12 +96,14 @@ export type OpenAgentsRepoStudiedKnowledgeVerificationReport =
 
 export interface VerifyOpenAgentsRepoStudiedKnowledgeClaimsInput {
   readonly claims?: ReadonlyArray<OpenAgentsRepoStudiedKnowledgeVerificationClaim>;
+  readonly editSitePaths?: ReadonlyArray<string>;
   readonly generatedAt?: string;
   readonly graph: OpenAgentsRepoStudiedKnowledgeGraph;
   readonly issueRefs?: ReadonlyArray<OpenAgentsRepoStudiedKnowledgeIssueRef>;
   readonly manifest?: OpenAgentsRepoCorpusManifest;
   readonly packet: OpenAgentsRepoStudyPacket;
   readonly rootDir?: string;
+  readonly trackingIssueNumber?: number;
   readonly verificationRef?: string;
 }
 
@@ -125,9 +127,11 @@ export function verifyOpenAgentsRepoStudiedKnowledgeClaims(
     }
 
     const derivedGraph = yield* buildOpenAgentsRepoStudiedKnowledgeGraph({
+      editSitePaths: input.editSitePaths,
       generatedAt: input.generatedAt,
       issueRefs: input.issueRefs,
       packet: input.packet,
+      trackingIssueNumber: input.trackingIssueNumber,
     });
 
     if (graph.graphHash !== derivedGraph.graphHash) {

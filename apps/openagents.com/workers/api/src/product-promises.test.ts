@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-17.6')
+    expect(decoded.version).toBe('2026-06-18.1')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -437,18 +437,41 @@ describe('public product promises document', () => {
     expect(repoStudyPacketPromise?.authorityBoundary).toContain(
       'not paid work',
     )
+    const externalRepoStudyPromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.external_repo_studying_pilot.v1',
+    )
+    expect(externalRepoStudyPromise).toMatchObject({
+      state: 'yellow',
+    })
+    expect(
+      `${externalRepoStudyPromise?.claim} ${externalRepoStudyPromise?.safeCopy}`,
+    ).not.toMatch(
+      /customer repo studying is live|private customer repo can be uploaded|trained repo expert|marketplace package|payout eligible/i,
+    )
+    expect(externalRepoStudyPromise?.unsafeCopy).toContain(
+      'customer repo studying is live',
+    )
+    expect(externalRepoStudyPromise?.unsafeCopy).toContain(
+      'private customer repo can be uploaded',
+    )
+    expect(externalRepoStudyPromise?.unsafeCopy).toContain(
+      'trained repo expert',
+    )
+    expect(externalRepoStudyPromise?.authorityBoundary).toContain(
+      'no private repo ingestion authority',
+    )
   })
 
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-17.6', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-18.1', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-17.6',
+      expectedVersion: '2026-06-18.1',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-17.6',
+      servedVersion: '2026-06-18.1',
       status: 'ready',
     })
     expect(
@@ -458,7 +481,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-17.6',
+      servedVersion: '2026-06-18.1',
       status: 'blocked',
     })
   })
