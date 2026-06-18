@@ -6,6 +6,7 @@ import {
   assertPylonGepaMetricCallPublicRefs,
   pylonGepaMetricCallAcceptedWorkClaimAllowed,
 } from './pylon-gepa-metric-call-assignments'
+import { publicRefSegment, uniqueRefs } from './public-ref-format'
 
 export const ProbeGepaSettlementReadinessSchemaVersion =
   'omega.probe_gepa_settlement_readiness.v1'
@@ -99,21 +100,6 @@ export class ProbeGepaSettlementReadinessUnsafe extends S.TaggedErrorClass<Probe
     reason: S.String,
   },
 ) {}
-
-const uniqueRefs = (
-  refs: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> =>
-  [
-    ...new Set((refs ?? []).map(ref => ref.trim()).filter(ref => ref !== '')),
-  ].sort()
-
-const publicRefSegment = (value: string): string =>
-  value
-    .trim()
-    .replaceAll(/[^A-Za-z0-9_.-]+/g, '_')
-    .replaceAll(/_{2,}/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 120) || 'batch'
 
 const publicClaimRank = (
   publicClaimState: ProbeGepaSettlementPublicClaimState,
@@ -253,6 +239,7 @@ const accountingEvidenceBlockers = (
     return [
       `blocker.probe_gepa.settlement.accounting_missing.${publicRefSegment(
         assignment.assignmentRef,
+        'batch',
       )}`,
     ]
   }
@@ -265,6 +252,7 @@ const accountingEvidenceBlockers = (
       ? [
           `blocker.probe_gepa.settlement.closeout_accounting_missing.${publicRefSegment(
             assignment.assignmentRef,
+            'batch',
           )}`,
         ]
       : []),
@@ -272,6 +260,7 @@ const accountingEvidenceBlockers = (
       ? [
           `blocker.probe_gepa.settlement.proof_accounting_missing.${publicRefSegment(
             assignment.assignmentRef,
+            'batch',
           )}`,
         ]
       : []),
@@ -282,6 +271,7 @@ const accountingEvidenceBlockers = (
       ? [
           `blocker.probe_gepa.settlement.resource_accounting_missing.${publicRefSegment(
             assignment.assignmentRef,
+            'batch',
           )}`,
         ]
       : []),
@@ -292,6 +282,7 @@ const accountingEvidenceBlockers = (
       ? [
           `blocker.probe_gepa.settlement.verifier_accounting_missing.${publicRefSegment(
             assignment.assignmentRef,
+            'batch',
           )}`,
         ]
       : []),
@@ -319,6 +310,7 @@ const receiptBlockers = (
       ? [
           `blocker.probe_gepa.settlement.payment_receipt_missing.${publicRefSegment(
             assignment.assignmentRef,
+            'batch',
           )}`,
         ]
       : []),
@@ -326,6 +318,7 @@ const receiptBlockers = (
       ? [
           `blocker.probe_gepa.settlement.settlement_receipt_missing.${publicRefSegment(
             assignment.assignmentRef,
+            'batch',
           )}`,
         ]
       : []),
@@ -446,6 +439,7 @@ export const evaluateProbeGepaSettlementReadiness = (
     publicSummaryLabel: publicSummaryLabelFor(readinessState),
     readinessDecisionRef: `settlement_readiness.probe_gepa.${publicRefSegment(
       normalized.batchRef,
+      'batch',
     )}.${readinessState}`,
     readinessState,
     requestedPaymentMode: normalized.requestedPaymentMode,

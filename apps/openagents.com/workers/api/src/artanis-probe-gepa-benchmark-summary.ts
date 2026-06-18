@@ -6,6 +6,7 @@ import {
   probeGepaCampaignPublicSummary,
 } from './probe-gepa-campaign-projection'
 import { ProbeGepaStage1ShadowPromotionResult } from './probe-gepa-stage1-shadow-promotion-gate'
+import { publicRefSegment, uniqueRefs } from './public-ref-format'
 
 export const ArtanisProbeGepaBenchmarkSummarySchemaVersion =
   'omega.artanis_probe_gepa_benchmark_summary.v1'
@@ -71,21 +72,6 @@ const safeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const unsafeRefPattern =
   /(@|\/Users\/|\/home\/|access[_-]?token|auth\.json|bearer|callback[_-]?token|cookie|credential|customer[_-]?(email|name|value)|email[_-]?(address|body)|fixture[_-]?body|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|opencode_auth_content|payment[_-]?(hash|id|preimage|proof)|payout[_-]?(address|destination|target)|preimage|private[_-]?(channel|key|repo)|provider[_-]?(account|grant|payload|secret|token)|raw[_-]?(auth|benchmark|email|fixture|invoice|payment|payload|prompt|provider|runner|run[_-]?log|source[_-]?archive|trace|traces)|runner[_-]?log|secret|sk-[a-z0-9]|source[_-]?archive|token|wallet)/i
 const rawTimestampPattern = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
-
-const uniqueRefs = (
-  refs: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> =>
-  [
-    ...new Set((refs ?? []).map(ref => ref.trim()).filter(ref => ref !== '')),
-  ].sort()
-
-const publicRefSegment = (value: string): string =>
-  value
-    .trim()
-    .replaceAll(/[^A-Za-z0-9_.-]+/g, '_')
-    .replaceAll(/_{2,}/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 120) || 'summary'
 
 const assertSafeRefs = (label: string, refs: ReadonlyArray<string>): void => {
   const unsafe = uniqueRefs(refs).find(
@@ -281,7 +267,7 @@ export const buildArtanisProbeGepaBenchmarkSummary = (
       forumTopicRef: decoded.forumTopicRef,
       idempotencyKey: [
         'forum-artanis-probe-gepa',
-        publicRefSegment(projection.campaignRef),
+        publicRefSegment(projection.campaignRef, 'summary'),
         evidenceLabel,
       ].join('-'),
       noDistributedTrainingOverclaim: true,
@@ -296,6 +282,7 @@ export const buildArtanisProbeGepaBenchmarkSummary = (
       sourceEvidenceRefs,
       summaryRef: `summary.artanis.probe_gepa.${publicRefSegment(
         projection.campaignRef,
+        'summary',
       )}.${evidenceLabel}`,
       title: titleFor(evidenceLabel),
     }),
