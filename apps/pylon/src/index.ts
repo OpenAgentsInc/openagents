@@ -1880,11 +1880,14 @@ async function main() {
         const verify = (() => {
           const raw = options.verify
           if (typeof raw !== "string" || raw.trim().length === 0) return []
-          // The control protocol's verify is an argv array (e.g. ["test","-f",
-          // "x"]); a `--verify "test -f x"` string must be tokenized, else the
-          // node tries to exec a single program literally named "test -f x" and
-          // the verify errors (spawn failure) even when the work succeeded.
-          return raw.trim().split(/\s+/)
+          // The control protocol's verify is an argv array. #5389: a
+          // `--verify "test -f x"` string must be run SHELL-PARSED in the
+          // session's worktree CWD. Naive whitespace-splitting mangled quoted
+          // args and, in the single-element edge case, made the node try to
+          // exec a program literally named "test -f x" — reporting a false
+          // `verification_failed` even when the work succeeded. `sh -c` gives
+          // correct shell semantics and the dev-check runs it in the worktree.
+          return ["sh", "-c", raw.trim()]
         })()
         const worktree = optionString(options, "worktree")
         const { result } = await runControlCommand(
@@ -1921,29 +1924,35 @@ async function main() {
           throw new Error("sessions exec requires --objective")
         }
         // `--verify` is REPEATABLE (each is a whole command). parseCliOptions
-        // collapses repeats, so collect every occurrence from the raw argv. A
-        // single `--verify "test -f x"` is tokenized like `spawn` does.
+        // collapses repeats, so collect every occurrence (as the RAW string)
+        // from the argv. #5389: a `--verify "test -f x"` string must be run
+        // SHELL-PARSED in the session's worktree CWD. The old behavior
+        // whitespace-split the string into an argv (`["test","-f","x"]`); that
+        // mangles any quoted/multi-word arg and, in the single-element edge
+        // case, made the node try to exec a program literally named
+        // "test -f x" — so a TRUE condition reported `verification_failed`
+        // (a false negative) even when the work succeeded. Wrapping in `sh -c`
+        // gives correct shell semantics (quoting, globs, operators) and the
+        // dev-check already runs it in `input.cwd` (the worktree).
         const verifyArgs = args.slice(2)
-        const verifies: string[][] = []
+        const verifies: string[] = []
         for (let i = 0; i < verifyArgs.length; i += 1) {
           if (verifyArgs[i] === "--verify") {
             const value = verifyArgs[i + 1]
             if (typeof value === "string" && !value.startsWith("--") && value.trim().length > 0) {
-              verifies.push(value.trim().split(/\s+/))
+              verifies.push(value.trim())
               i += 1
             }
           }
         }
-        // The control session takes ONE verify argv. With multiple `--verify`
-        // commands, chain them with `&&` via a shell so all must pass; a single
-        // command runs directly (no shell wrap). Default to `bun --version` when
-        // none given so the session still produces a verify outcome.
+        // The control session takes ONE verify argv. Run the verify command(s)
+        // shell-parsed via `sh -c`. With multiple `--verify` commands, chain
+        // them with `&&` so all must pass. Default to `bun --version` when none
+        // given so the session still produces a verify outcome.
         const verify =
           verifies.length === 0
             ? ["bun", "--version"]
-            : verifies.length === 1
-              ? verifies[0]
-              : ["bash", "-lc", verifies.map((cmd) => cmd.join(" ")).join(" && ")]
+            : ["sh", "-c", verifies.join(" && ")]
         const worktree = optionString(options, "worktree")
         // W-3 (#5379): `--on-approval` gains `auto`, the BOUNDED auto-approve
         // policy. `--approval-policy <name>` is an explicit alias for the same

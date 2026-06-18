@@ -38,7 +38,16 @@
 // the approval ref + a stable reason. NOT a blanket bypass and NOT the supervised
 // danger-mode. New CLI surface (--approval-policy, --max-auto-approvals,
 // --auto-window-seconds, --auto-out-of-bounds), so the version bumps.
-export const PYLON_VERSION = "1.0.0-rc.36"
+// rc.37: fix `pylon sessions exec --verify` (and `sessions spawn --verify`)
+// reporting `verification_failed` even when the work succeeded (#5389, EPIC
+// #5376). The verify string was whitespace-split into an argv, so the node
+// tried to exec a program literally named like the whole command (a spawn
+// error) and quoted/multi-word args were mangled — a TRUE condition could
+// report failed. Verify now runs shell-parsed (`sh -c "<cmd>"`) in the
+// session's worktree cwd, so the real exit code (0 → passed, nonzero → failed,
+// distinct from a spawn error) drives the verify outcome. Observable behavior
+// change to an existing CLI flag, so the version bumps.
+export const PYLON_VERSION = "1.0.0-rc.37"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.

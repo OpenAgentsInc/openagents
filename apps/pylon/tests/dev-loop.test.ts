@@ -220,4 +220,115 @@ describe("pylon dev loop", () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  // #5389 (EPIC #5376): `--verify` runs shell-parsed (`sh -c "<cmd>"`) in the
+  // session's worktree CWD via the REAL default command runner (no injected
+  // runner). These regressions pin the verify outcome to the genuine exit code:
+  // a true condition passes, a false condition fails (clean nonzero, distinct
+  // from a spawn error), multi-command chains require all to pass, and the
+  // command runs relative to the worktree.
+  describe("verify is shell-parsed in the worktree cwd (#5389)", () => {
+    test("a known-TRUE verify against a session-created file passes", async () => {
+      const { repo, root } = await createRepoFixture()
+      try {
+        await writeFile(join(repo, "HELLO.md"), "hi\n")
+        const projection = await runPylonDevCheck({
+          allowDetached: true,
+          allowDirty: true,
+          commands: [{ argv: ["sh", "-c", "test -f HELLO.md"], cwd: repo, reasonRef: "check.verify" }],
+          cwd: repo,
+        })
+        expect(projection.state).toBe("passed")
+        expect(projection.commandResults[0]?.exitCode).toBe(0)
+        expect(projection.commandResults[0]?.status).toBe("passed")
+        assertPublicProjectionSafe(projection)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    })
+
+    test("a known-FALSE verify fails with a clean nonzero exit (not a spawn error)", async () => {
+      const { repo, root } = await createRepoFixture()
+      try {
+        const projection = await runPylonDevCheck({
+          allowDetached: true,
+          allowDirty: true,
+          commands: [{ argv: ["sh", "-c", "test -f /nonexistent"], cwd: repo, reasonRef: "check.verify" }],
+          cwd: repo,
+        })
+        expect(projection.state).toBe("failed")
+        expect(projection.commandResults[0]?.exitCode).toBe(1)
+        // A real nonzero exit is `failed`, not `error` (error == spawn failure).
+        expect(projection.commandResults[0]?.status).toBe("failed")
+        assertPublicProjectionSafe(projection)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    })
+
+    test("a multi-command verify chain passes only when every command passes", async () => {
+      const { repo, root } = await createRepoFixture()
+      try {
+        await writeFile(join(repo, "HELLO.md"), "hi\n")
+        const allTrue = await runPylonDevCheck({
+          allowDetached: true,
+          allowDirty: true,
+          commands: [
+            { argv: ["sh", "-c", "test -f HELLO.md && test -d ."], cwd: repo, reasonRef: "check.verify" },
+          ],
+          cwd: repo,
+        })
+        expect(allTrue.state).toBe("passed")
+        expect(allTrue.commandResults[0]?.exitCode).toBe(0)
+
+        const oneFalse = await runPylonDevCheck({
+          allowDetached: true,
+          allowDirty: true,
+          commands: [
+            { argv: ["sh", "-c", "test -f HELLO.md && test -f /nonexistent"], cwd: repo, reasonRef: "check.verify" },
+          ],
+          cwd: repo,
+        })
+        expect(oneFalse.state).toBe("failed")
+        expect(oneFalse.commandResults[0]?.exitCode).not.toBe(0)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    })
+
+    test("verify runs relative to the verify command cwd, not the process cwd", async () => {
+      const { repo, root } = await createRepoFixture()
+      try {
+        // Marker only at the worktree root; `nested/` is a sibling subdir with
+        // no marker. The verify uses a RELATIVE path, so it can only pass when
+        // the command's own cwd is the worktree root — proving the verify honors
+        // its command cwd rather than the process cwd. Both runs keep the
+        // dev-check's `cwd` on the git repo so neither trips the git preflight.
+        await writeFile(join(repo, "ONLY_AT_ROOT.md"), "marker\n")
+        await mkdir(join(repo, "nested"), { recursive: true })
+        const atRoot = await runPylonDevCheck({
+          allowDetached: true,
+          allowDirty: true,
+          commands: [{ argv: ["sh", "-c", "test -f ONLY_AT_ROOT.md"], cwd: repo, reasonRef: "check.verify" }],
+          cwd: repo,
+        })
+        expect(atRoot.state).toBe("passed")
+        expect(atRoot.commandResults[0]?.exitCode).toBe(0)
+
+        // Same relative path, but the verify command runs from `nested/`, where
+        // the marker does not exist. A correct cwd-honoring runner reports a
+        // clean nonzero (the work-area cwd really moved).
+        const fromNested = await runPylonDevCheck({
+          allowDetached: true,
+          allowDirty: true,
+          commands: [{ argv: ["sh", "-c", "test -f ONLY_AT_ROOT.md"], cwd: join(repo, "nested"), reasonRef: "check.verify" }],
+          cwd: repo,
+        })
+        expect(fromNested.state).toBe("failed")
+        expect(fromNested.commandResults[0]?.exitCode).toBe(1)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    })
+  })
 })
