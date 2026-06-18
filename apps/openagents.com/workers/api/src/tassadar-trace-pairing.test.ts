@@ -103,6 +103,11 @@ const makeStore = (
 
       return paired
     },
+    readMostRecentPylonRefByDeviceRef: async pylonDeviceRef =>
+      [...records.values()]
+        .filter(record => record.pylonDeviceRef === pylonDeviceRef)
+        .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))[0]
+        ?.pylonRef,
     readWorkerContribution: async (leaseRef, workloadFamily) =>
       [...records.values()].find(
         record =>

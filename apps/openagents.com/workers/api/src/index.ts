@@ -7114,12 +7114,51 @@ const tassadarTraceContributionRoutes =
         const db = openAgentsDatabase(env)
         const ledger = makeD1NexusTreasuryPayoutLedgerStore(db)
         const sparkTargetStore = makeD1PylonSparkPayoutTargetStore(db)
+        const contributionStore = makeD1TrainingTraceContributionStore(db)
         const run = yield* Effect.promise(() =>
           makeD1TrainingAuthorityStore(db).readRun(input.lease.trainingRunRef),
         )
 
         if (run === undefined) {
           return
+        }
+
+        // Owner resolver for the Spark payout destination (#5306/#5310). The
+        // WORKER leg's contributorRef is the verified registered `pylonRef`, so
+        // the direct registration lookup resolves its owner. The VALIDATOR leg's
+        // contributorRef is the validator's device-ref (its nodeId) — NOT a
+        // `pylonRef` — so the direct lookup misses; we then map that device-ref
+        // to the most recent `pylon_ref` it acted as a worker under and resolve
+        // THAT pylon's owner. This binds the validator strictly to its own
+        // owning agent (its own historical worker pylon), never crosses agent
+        // ownership, and arms no new authority — it only lets the owner-scoped
+        // `readByOwner` fallback in resolveSparkPayoutDestination find the
+        // validator's OWN registered Spark target so the autostream pays it with
+        // NO operator step.
+        const resolveContributorOwnerAgentUserId = async (
+          contributorRef: string,
+        ): Promise<string | undefined> => {
+          const pylonApiStore = makeD1PylonApiStore(db)
+          const direct = await pylonApiStore
+            .readRegistration(contributorRef)
+            .then(registration => registration?.ownerAgentUserId)
+
+          if (direct !== undefined && direct.trim() !== '') {
+            return direct
+          }
+
+          const pylonRefForDevice =
+            await contributionStore.readMostRecentPylonRefByDeviceRef(
+              contributorRef,
+            )
+
+          if (pylonRefForDevice === undefined) {
+            return undefined
+          }
+
+          return pylonApiStore
+            .readRegistration(pylonRefForDevice)
+            .then(registration => registration?.ownerAgentUserId)
         }
 
         const settlementOutcome = yield* autoSettleVerifiedPair<WorkerBindings>(
@@ -7159,10 +7198,7 @@ const tassadarTraceContributionRoutes =
                     resolveSparkPayoutDestination(
                       sparkTargetStore,
                       ref,
-                      pylonRef =>
-                        makeD1PylonApiStore(db)
-                          .readRegistration(pylonRef)
-                          .then(registration => registration?.ownerAgentUserId),
+                      resolveContributorOwnerAgentUserId,
                     ),
                 },
                 {
@@ -7178,10 +7214,7 @@ const tassadarTraceContributionRoutes =
               resolveSparkPayoutDestination(
                 sparkTargetStore,
                 ref,
-                pylonRef =>
-                  makeD1PylonApiStore(db)
-                    .readRegistration(pylonRef)
-                    .then(registration => registration?.ownerAgentUserId),
+                resolveContributorOwnerAgentUserId,
               ),
             run,
           },

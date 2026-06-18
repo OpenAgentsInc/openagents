@@ -1259,6 +1259,21 @@ This is the invariant ledger for `openagents`.
 - The validator leg SKIPS cleanly (no error, `skipped: no_payout_destination`)
   when the validator has no registered Spark payout target; the worker leg is
   unaffected.
+- The validator-leg payout destination MUST resolve from the validator's OWN
+  registered Spark target with NO operator step (#5310/#5306/#5394). The worker
+  leg's contributorRef is the verified registered `pylonRef` (so it resolves
+  directly), but the validator submits its verdict with its DEVICE-ref (its
+  nodeId, `pylon_<hash>`), which is NOT a `pylonRef` and matches no registration
+  directly. The owner resolver MUST therefore map a device-ref to the most
+  recent `pylon_ref` that device acted as a WORKER under (from
+  `training_trace_contributions`), then resolve THAT pylon's owner, then use the
+  owner-scoped `readByOwner` Spark target. This binding is to the device's own
+  historical worker pylon and its own owning agent only; it MUST NOT cross agent
+  ownership, MUST fail closed (device never recorded a worker contribution, or
+  the resolved owner has no target → `no_payout_destination`), and grants no new
+  authority. Without this backstop the validator leg always skipped and the
+  worker/validator pair could not auto-settle hands-off. Regression coverage:
+  `workers/api/src/tassadar-auto-settlement-validator-resolution.test.ts`.
 - The optional gate field `maxDailyPayoutSats` is the cumulative daily real
   budget. It is BACKWARD-COMPATIBLE: an existing armed gate value WITHOUT the
   field still decodes and behaves exactly as before (per-payout-only, no

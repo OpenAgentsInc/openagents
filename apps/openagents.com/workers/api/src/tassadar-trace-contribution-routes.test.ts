@@ -143,6 +143,11 @@ const makeContributionStore = (): MemoryContributionStore => {
               record.trainingRunRef === trainingRunRef),
         )
         .slice(0, Math.max(1, limit)),
+    readMostRecentPylonRefByDeviceRef: async pylonDeviceRef =>
+      [...records.values()]
+        .filter(record => record.pylonDeviceRef === pylonDeviceRef)
+        .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))[0]
+        ?.pylonRef,
     readWorkerContribution: async (leaseRef, workloadFamily) =>
       records.get(key(leaseRef, workloadFamily)),
     recordWorkerContribution: async record => {

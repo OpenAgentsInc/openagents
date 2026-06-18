@@ -143,6 +143,19 @@ export type TrainingTraceContributionStore = Readonly<{
       trainingRunRef?: string
     }>,
   ) => Promise<ReadonlyArray<TrainingTraceContributionRecord>>
+  // Validator-leg payout resolution backstop (#5310/#5306): map a participant's
+  // device-ref to the most recent `pylon_ref` that device acted as a WORKER
+  // under. A validator submits its verdict with its device-ref (its nodeId),
+  // which is NOT a `pylon_ref` and so resolves to no registration directly; but
+  // the same node also acts as a worker on other windows, binding its device-ref
+  // to its owning `pylon_ref` here. Returns the newest such `pylon_ref` (or
+  // undefined when this device never recorded a worker contribution), so the
+  // owner-scoped Spark payout resolver can find the validator's OWN registered
+  // target. Bound to the device's own historical worker pylon only; it never
+  // crosses agent ownership and grants no authority.
+  readMostRecentPylonRefByDeviceRef: (
+    pylonDeviceRef: string,
+  ) => Promise<string | undefined>
   // Pairs the pending worker contribution with a validator's replay digest and
   // the resulting verification-challenge ref. Conditional on the row still
   // being `pending` so a second validator cannot re-pair an already-paired
@@ -395,7 +408,32 @@ export const makeD1TrainingTraceContributionStore = (
     return (result.results ?? []).map(rowToTrainingTraceContribution)
   }
 
+  const readMostRecentPylonRefByDeviceRef = async (
+    pylonDeviceRef: string,
+  ): Promise<string | undefined> => {
+    const trimmed = pylonDeviceRef.trim()
+
+    if (trimmed === '') {
+      return undefined
+    }
+
+    const row = await db
+      .prepare(
+        `SELECT pylon_ref
+           FROM training_trace_contributions
+          WHERE pylon_device_ref = ?
+            AND archived_at IS NULL
+          ORDER BY submitted_at DESC
+          LIMIT 1`,
+      )
+      .bind(trimmed)
+      .first<{ pylon_ref: string }>()
+
+    return row === null ? undefined : row.pylon_ref
+  }
+
   return {
+    readMostRecentPylonRefByDeviceRef,
     listPendingContributions: listPending,
     readWorkerContribution: readByLeaseWorkload,
     recordWorkerContribution: async record => {
