@@ -64,6 +64,25 @@ Operating rule:
 Poll regularly, post publicly when it helps coordination, and notify Trigger
 only for material changes or approval needs.
 
+## 2026-06-18 - Receipt Identity Should Be Digest-Bound
+
+Evidence:
+
+- #5372 added the hygiene-lane settlement dispatch route.
+- #5388 hardens the route so `idempotencyRef` is SHA-256 hashed before ledger
+  receipt refs and idempotency hashes are derived.
+
+Lesson:
+
+Readable refs are useful, but truncation should not be the collision boundary
+for settlement-adjacent records. The readable part can be public and stable; the
+identity boundary should come from a digest.
+
+Operating rule:
+
+For receipt-first money paths, derive idempotency keys and settlement refs from
+hashed request material, then expose only a public-safe digest suffix.
+
 ## 2026-06-18 - Local Secrets Need Two Layers Of Protection
 
 Evidence:
