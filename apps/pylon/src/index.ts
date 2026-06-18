@@ -310,9 +310,21 @@ function startWarmSparkBackgroundSync(
 async function resolveOwnSparkAddressOrNull(state: PylonLocalState): Promise<string | null> {
   try {
     if (!isSparkBackupDefaultEnabled(Bun.env)) return null
+    // #5312: route this DAEMON-side read through the WARM Spark session. Both
+    // callers (startup provisioning + heartbeat payout-register) run inside the
+    // long-lived daemon, which also keeps the warm session current via the
+    // background sync timer. Building a fresh COLD SDK here opened a SECOND
+    // connection on the SAME `<HOME>/wallet/spark-backup/sdk/storage.sql`, which
+    // contended with the warm session AND with a concurrent one-shot
+    // `backup-status` cold read on the same storage — the SQLite/SDK lock
+    // contention is what made that one-shot read stall past its external alarm.
+    // Reusing the warm session collapses all daemon-side Spark work onto ONE
+    // serialized SDK (`runSerializedOnWarmSession`), so it never opens a
+    // competing connection. (The cold one-shot CLI path is unchanged.)
     const sparkOptions = await resolveSparkBackupOptions(state, {
       enabled: true,
       showLocalTarget: true,
+      warmSession: true,
     })
     const result = await prepareSparkBackupReceive({ ...sparkOptions, kind: "spark-address" })
     return result.ok && typeof result.localTarget === "string" && result.localTarget.trim() !== ""
@@ -1325,6 +1337,68 @@ async function runSparkBackupSendForState(
     }
   }
   return result
+}
+
+// #5312: a HARD wall-clock bound for the one-shot `wallet backup-status --json`
+// read. rc.30 made the Spark backup default-ON (#5304), so the long-lived daemon
+// now keeps a warm Spark session AND runs background provisioning + payout
+// auto-register, all touching `<HOME>/wallet/spark-backup/sdk/storage.sql`. A
+// concurrent one-shot `backup-status` builds its OWN cold SDK on that same
+// storage; under SQLite/SDK lock contention the cold read's internal step
+// timeouts (`withTimeout` is a Promise.race that does NOT cancel the underlying
+// SDK op) can sum past the operator's external alarm — AND a still-open SDK
+// connection holds the event loop so the process never exits even after a step
+// rejects. Trigger's report: backup-status emitted no JSON and was killed at
+// 30s/45s (exit 142). The contract is: backup-status ALWAYS returns bounded
+// public-safe JSON within a short bound and the process EXITS promptly, even if
+// it can only report a read blocker.
+const ONE_SHOT_BACKUP_STATUS_TIMEOUT_MS = 12_000
+
+// #5312: build the bounded public-safe blocker body the one-shot emits when the
+// live read does not complete within the wall-clock bound. NO SDK is touched —
+// this reads only the locally-cached raw target (mode-0600 private state) so it
+// can never hang. When a target is cached the node is still payable, so we
+// report `cached-address-ready`; otherwise we report `helper-unavailable` with a
+// public-safe `timeout` reason (reusing the #5194 reason enum). The raw cached
+// target rides in `localTarget` ONLY when `--show-local-target` was set (local
+// terminal output only); the projection itself never carries it.
+async function buildBoundedBackupStatusTimeoutBody(
+  state: PylonLocalState,
+  input: { showLocalTarget?: boolean },
+): Promise<Record<string, unknown>> {
+  const showLocalTarget = input.showLocalTarget === true
+  const cached = await readCachedSparkTarget(state.paths).catch(() => null)
+  // Reuse the VETTED classifier with NO helper wired so it cannot hang or touch
+  // the SDK/storage: it derives `cached-address-ready` (node still payable) when
+  // a target is cached, else `helper-unavailable`, through the same
+  // `assertSparkBackupProjectionSafe` projection the live read uses (no drift,
+  // no raw target in the projection).
+  const projection = await classifySparkBackupReceive({
+    enabled: true,
+    embeddedCredentialAvailable: true,
+    ...(cached ? { cachedAddress: cached } : {}),
+  })
+  // #5312: surface a public-safe `timeout` read reason (reusing the #5194 enum)
+  // so the operator sees WHY the live read did not complete, and tag the bounded
+  // blocker so a daemon/CLI consumer can distinguish a genuine timeout from a
+  // resolved helper-unavailable.
+  projection.helperUnavailableReason = "timeout"
+  if (!projection.blockerRefs.includes("blocker.wallet.spark_backup.read_timed_out")) {
+    projection.blockerRefs = [...projection.blockerRefs, "blocker.wallet.spark_backup.read_timed_out"]
+  }
+  const body: Record<string, unknown> = {
+    // `ok:false` — the live read did not complete in the bound; the body reports WHY.
+    ok: false,
+    timedOut: true,
+    projection,
+    sweep: null,
+  }
+  if (showLocalTarget && cached) {
+    // Local terminal output ONLY. Marked local/private.
+    body.localTarget = cached
+    body.localTargetNote = "LOCAL/PRIVATE: do not share, log, or post this raw target."
+  }
+  return body
 }
 
 // #5207: the core backup-status read, extracted so BOTH the one-shot CLI (cold)
@@ -2837,21 +2911,81 @@ async function main() {
       if (command === "backup-status") {
         const sparkOptions = parsePsionicOptions(walletArgs)
         const showLocalTarget = sparkOptions["show-local-target"] === true
-        // #5207: prefer a RUNNING daemon's warm session so the read skips the
-        // ~4s cold build + sync. The daemon builds the identical body. Falls
-        // back to the local cold read when no daemon is reachable.
-        let body =
-          ((await routeWalletCommandThroughDaemon(state, {
-            type: "wallet.spark_backup_status",
-            showLocalTarget,
-          })) as Record<string, unknown> | null) ?? null
-        if (body === null) {
-          body = await runSparkBackupStatusForState(state, { showLocalTarget })
-        }
+        // #5312: the live read (daemon route OR cold SDK read) is raced against a
+        // HARD wall-clock bound. rc.30's default-ON Spark backup (#5304) means a
+        // concurrent daemon (warm session + background provisioning + payout
+        // auto-register) can contend with this one-shot's cold read on the SAME
+        // `storage.sql`; the read's internal step timeouts do NOT cancel the
+        // underlying SDK ops, so a contended read could stall past the operator's
+        // external alarm AND a still-open SDK connection would hold the event loop
+        // so the process never exits. We therefore (1) bound the whole read, (2)
+        // ALWAYS emit bounded public-safe JSON, and (3) FORCE an exit even if a
+        // dangling SDK handle would otherwise keep the loop alive (#5162/#5312).
+        // #5312 test seam: deterministically exercise the hard-bound timeout +
+        // forced-exit path (a contended read that never completes) WITHOUT a real
+        // SDK or a multi-second wait. Inert unless explicitly set; production
+        // never sets it. The override bound lets the regression run in ms.
+        const boundMs = (() => {
+          const raw = Bun.env.PYLON_SPARK_BACKUP_STATUS_TIMEOUT_MS
+          const n = raw === undefined ? NaN : Number(raw)
+          return Number.isFinite(n) && n > 0 ? n : ONE_SHOT_BACKUP_STATUS_TIMEOUT_MS
+        })()
+        const liveRead = (async (): Promise<Record<string, unknown>> => {
+          if (Bun.env.PYLON_SPARK_BACKUP_STATUS_TEST_HANG === "1") {
+            // Simulate a read whose underlying SDK op never resolves (held lock /
+            // open connection) — the outer race + forced exit must still win.
+            return new Promise<Record<string, unknown>>(() => {})
+          }
+          // #5207: prefer a RUNNING daemon's warm session so the read skips the
+          // ~4s cold build + sync. The daemon builds the identical body. Falls
+          // back to the local cold read when no daemon is reachable.
+          const routed =
+            ((await routeWalletCommandThroughDaemon(state, {
+              type: "wallet.spark_backup_status",
+              showLocalTarget,
+            })) as Record<string, unknown> | null) ?? null
+          if (routed !== null) return routed
+          return runSparkBackupStatusForState(state, { showLocalTarget })
+        })()
+        let timedOut = false
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const body = await Promise.race([
+          liveRead,
+          new Promise<Record<string, unknown>>((resolve) => {
+            timer = setTimeout(() => {
+              timedOut = true
+              void buildBoundedBackupStatusTimeoutBody(state, { showLocalTarget })
+                .then(resolve)
+                // The fallback only reads local cached state; if even that fails
+                // we still emit a minimal bounded blocker rather than hang.
+                .catch(() =>
+                  resolve({
+                    ok: false,
+                    timedOut: true,
+                    projection: {
+                      schema: "openagents.pylon.spark_backup_receive.v0.1",
+                      rail: "spark_backup",
+                      enabled: true,
+                      state: "helper-unavailable",
+                      helperReady: false,
+                      helperUnavailableReason: "timeout",
+                      blockerRefs: ["blocker.wallet.spark_backup.read_timed_out"],
+                    },
+                    sweep: null,
+                  }),
+                )
+            }, boundMs)
+            timer.unref?.()
+          }),
+        ])
+        if (timer !== undefined) clearTimeout(timer)
         process.stdout.write(`${JSON.stringify(body, null, 2)}\n`)
-        // Exit explicitly: backup-status opens the Spark SDK,
-        // which keeps a background connection alive (#5162).
-        process.exit(body.ok === true ? 0 : 1)
+        // Exit explicitly + promptly. backup-status opens the Spark SDK, which
+        // keeps a background connection alive (#5162); on a timeout the still-open
+        // (contended) connection would otherwise keep the loop alive forever, so
+        // the exit here is what guarantees the one-shot terminates after emitting
+        // the bounded JSON (#5312). A timed-out read is reported as non-ok.
+        process.exit(!timedOut && body.ok === true ? 0 : 1)
       }
       if (command === "backup-claim") {
         // #5166 (the receive bug): a Lightning payment to this node's Spark

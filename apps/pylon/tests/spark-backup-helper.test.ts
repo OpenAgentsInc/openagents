@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { classifySparkBackupReceive, prepareSparkBackupReceive } from "../src/wallet"
+import { classifySparkBackupReceive, detectSparkBackupBalance, prepareSparkBackupReceive } from "../src/wallet"
 import { assertPublicProjectionSafe } from "../src/state"
 import {
   createSparkBackupHelper,
@@ -1341,5 +1341,83 @@ describe("resolveSparkBackupHelper (default-ON with OFF override, #5304)", () =>
     expect(helper).not.toBeNull()
     const result = await helper!("address")
     expect(JSON.parse(result.stdout)).toEqual({ spark_address: RAW_SPARK_ADDRESS })
+  })
+})
+
+
+// A fake Breez SDK Spark module whose SDK *connect* (build) NEVER resolves, to
+// simulate the rc.30 contention/stall where opening the SDK blocks on a held
+// SQLite/SDK connection on `storage.sql`. The adapter's `withTimeout(build,
+// timeoutMs)` MUST bound it so the read returns a classified `timeout` instead
+// of hanging forever (#5312). (We hang at connect rather than at a read op so
+// the bound is the configurable `timeoutMs`, keeping the test fast; the #5197
+// 45s read-sync floor only applies AFTER the SDK is open.)
+function hangingConnectSparkModule() {
+  const never = <T>(): Promise<T> => new Promise<T>(() => {})
+  return {
+    defaultConfig: (network: string) => ({ network, apiKey: undefined as string | undefined }),
+    // Opening the SDK never completes — exactly the contended/locked-storage case.
+    connect: (_req: { config: { apiKey?: string }; seed: { mnemonic: string } }) =>
+      never<Record<string, unknown>>(),
+  }
+}
+
+describe("#5312 backup-status read is hard-bounded under SDK/storage contention", () => {
+  test("a hanging SDK open times out (bounded) and classifies a public-safe `timeout` reason", async () => {
+    const started = Date.now()
+    const helper = createSparkBackupHelper({
+      apiKey: "k",
+      mnemonic: TEST_MNEMONIC,
+      // Small bound so the regression runs fast; production bounds the SDK build
+      // at DEFAULT_SPARK_TIMEOUT_MS (15s) and the one-shot CLI wraps the whole
+      // read in its own 12s hard wall-clock bound + forced exit.
+      timeoutMs: 80,
+      loadModule: async () => hangingConnectSparkModule(),
+    })
+    const detected = await detectSparkBackupBalance(helper)
+    const elapsed = Date.now() - started
+    // BOUNDED: the read returned far inside any external alarm rather than hanging.
+    expect(elapsed).toBeLessThan(5_000)
+    expect(detected.helperReady).toBe(false)
+    // #5194 reason surfacing reused: the stall is classified as a timeout.
+    expect(detected.helperUnavailableReason).toBe("timeout")
+    expect(detected.detectedBalanceSats).toBeNull()
+  })
+
+  test("a hanging SDK open in classify stays bounded and reports helper-unavailable, not a hang", async () => {
+    const started = Date.now()
+    const projection = await classifySparkBackupReceive({
+      enabled: true,
+      embeddedCredentialAvailable: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      helper: createSparkBackupHelper({
+        apiKey: "k",
+        mnemonic: TEST_MNEMONIC,
+        timeoutMs: 80,
+        loadModule: async () => hangingConnectSparkModule(),
+      }),
+    })
+    const elapsed = Date.now() - started
+    expect(elapsed).toBeLessThan(5_000)
+    expect(projection.state).toBe("helper-unavailable")
+    expect(projection.helperReady).toBe(false)
+    // Public-safe: no raw spark material leaked in the bounded projection.
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("with a cached address, the bounded fallback yields a public-safe cached-address-ready projection (node stays payable)", async () => {
+    // This mirrors the bounded one-shot timeout fallback
+    // (`buildBoundedBackupStatusTimeoutBody`): classify with NO helper wired
+    // (cannot hang) but WITH a cached target -> cached-address-ready.
+    const projection = await classifySparkBackupReceive({
+      enabled: true,
+      embeddedCredentialAvailable: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      cachedAddress: RAW_SPARK_NATIVE_ADDRESS,
+    })
+    expect(projection.state).toBe("cached-address-ready")
+    // The redacted ref is present; the raw spark1… target is NOT in the projection.
+    expect(projection.receiveTargetRef).toBeTruthy()
+    assertPublicProjectionSafe(projection)
   })
 })
