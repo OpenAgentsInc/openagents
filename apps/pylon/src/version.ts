@@ -47,7 +47,12 @@
 // session's worktree cwd, so the real exit code (0 → passed, nonzero → failed,
 // distinct from a spawn error) drives the verify outcome. Observable behavior
 // change to an existing CLI flag, so the version bumps.
-export const PYLON_VERSION = "1.0.0-rc.37"
+// v1.0.0: owner-authorized stable cut from the rc.37 line (#5393, Launch L-1).
+// Promotes the rc line to the stable `latest` npm dist-tag so a fresh
+// `npx @openagentsinc/pylon` installs the Bun/Effect earning-capable node
+// instead of the deprecated 0.2.5 GitHub-asset launcher. No code change vs
+// rc.37; this is the release-version promotion only. Keep package.json in sync.
+export const PYLON_VERSION = "1.0.0"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.

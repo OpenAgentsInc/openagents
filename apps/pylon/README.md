@@ -10,32 +10,34 @@
 
 ## Launch Package And Version Truth
 
-**The source release line is now v1.0.** `apps/pylon/package.json` and
-`apps/pylon/src/version.ts` are `1.0.0-rc.5` — the current release candidate.
+**Stable v1.0 is cut.** `apps/pylon/package.json` and
+`apps/pylon/src/version.ts` are `1.0.0` (kept in sync; the version-sync test
+guards both).
 
-**The default published Pylon is `@openagentsinc/pylon@0.2.5`** — the
-`latest` dist-tag — and that launcher remains the supported operator path
-AGENTS.md tells agents about.
+**The default published Pylon is now `@openagentsinc/pylon@1.0.0`** — the
+`latest` dist-tag. A fresh `npx @openagentsinc/pylon` installs the Bun/Effect
+earning-capable node directly from npm. The old `0.2.5` GitHub-asset launcher
+(previously `latest`) is superseded; it predated the Tassadar earning path and
+could no longer resolve a runnable release asset on a clean machine (Launch
+L-1, #5393).
 
-**The v1.0 release candidate is published under the `rc` dist-tag.** As of
-2026-06-16 the live dist-tags are `latest: 0.2.5, rc: 1.0.0-rc.5`
-(`npm view @openagentsinc/pylon dist-tags`). `1.0.0-rc.5` is the corrective
-RC after the immutable npm `1.0.0-rc.4` tarball shipped with
-`src/version.ts` still reporting `1.0.0-rc.3`; every future release cut must
-bump both `package.json` and `src/version.ts`. Install the RC with
-`npm install -g @openagentsinc/pylon@rc`. (`0.3.0-rc2` was the prior v0.3 RC,
-published 2026-06-12.) **Stable v1.0 is not tagged `latest`**; `latest`
-remains 0.2.5, and public copy must not describe the v1.0 RC as the default
-install until a stable tag exists. The publish flow is documented in
+**The v1.0 stable package is published on the `latest` dist-tag.** The owner
+authorized the stable cut on 2026-06-18 (#5393), promoting the rc line
+(`1.0.0-rc.37`, no code change) to `1.0.0`. Install with
+`npm install -g @openagentsinc/pylon` or run directly via
+`npx @openagentsinc/pylon`. Verify the live dist-tags with
+`npm view @openagentsinc/pylon dist-tags`. Every future release cut must bump
+both `package.json` and `src/version.ts`. The publish flow is documented in
 `docs/npm-publishing-runbook.md`.
 
-The npm RC and the signed standalone auto-update feed are separate release
-surfaces. `npm publish --tag rc` does not update
-`updates.openagents.com/pylon/rc/.../feed.json`; that feed only moves when the
+The npm package and the signed standalone auto-update feed are separate
+release surfaces. The `1.0.0` npm publish does NOT update
+`updates.openagents.com/pylon/.../feed.json`; that feed only moves when the
 signed binary flow in `apps/pylon/scripts/build-rc-binaries.sh` and the
-`oa-updates` publish path are run.
+`oa-updates` publish path are run. The npm package ships the Bun/Effect source
+that runs directly, so the npm publish alone fixes `npx`.
 
-### Running the v1.0 RC from source (testing only)
+### Running v1.0 from source (testing only)
 
 ```sh
 git clone https://github.com/OpenAgentsInc/openagents

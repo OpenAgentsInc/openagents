@@ -4,19 +4,18 @@ import { assertPublicProjectionSafe } from "../src/state"
 import { PYLON_VERSION } from "../src/version"
 
 describe("Pylon launch gate copy guards", () => {
-  test("allows rc package copy and exposes evidence refs", () => {
+  test("allows stable package copy and exposes evidence refs", () => {
     const matrix = projectLaunchGateMatrix()
 
     expect(matrix.version).toBe(PYLON_VERSION)
-    expect(matrix.gates.find((gate) => gate.claimRef === "claim.pylon.v1_0.rc_package")?.state).toBe("allowed")
+    expect(matrix.gates.find((gate) => gate.claimRef === "claim.pylon.v1_0.stable_package")?.state).toBe("allowed")
     expect(matrix.gates.find((gate) => gate.claimRef === "claim.pylon.optional_local_qwen_inference")?.state).toBe("allowed")
     expect(matrix.gates.find((gate) => gate.claimRef === "claim.pylon.paid_qwen_inference")?.state).toBe("blocked")
     expect(matrix.gates.find((gate) => gate.claimRef === "claim.pylon.psionic_training_boundary")?.state).toBe(
       "blocked",
     )
     expect(matrix.supportsTraining).toBe(false)
-    expect(matrix.gates.find((gate) => gate.claimRef === "claim.pylon.v0_3.stable")?.state).toBe("blocked")
-    assertLaunchCopyAllowed(`@openagentsinc/pylon@${PYLON_VERSION} is the v1.0 release candidate.`)
+    assertLaunchCopyAllowed(`@openagentsinc/pylon@${PYLON_VERSION} is the v1.0 stable release.`)
     assertPublicProjectionSafe(matrix)
   })
 

@@ -14,8 +14,8 @@ export type LaunchClaimGate = {
 
 export const launchClaimGates: LaunchClaimGate[] = [
   {
-    claimRef: "claim.pylon.v1_0.rc_package",
-    publicPhrase: `${PYLON_CLIENT_VERSION} is the v1.0 release candidate`,
+    claimRef: "claim.pylon.v1_0.stable_package",
+    publicPhrase: `${PYLON_CLIENT_VERSION} is the v1.0 stable release`,
     state: "allowed",
     requiredEvidenceRefs: [
       "evidence.package.dry_run",
@@ -23,13 +23,6 @@ export const launchClaimGates: LaunchClaimGate[] = [
       "evidence.node.startup_smoke",
     ],
     blockerRefs: [],
-  },
-  {
-    claimRef: "claim.pylon.v0_3.stable",
-    publicPhrase: "Pylon v0.3.0 is stable",
-    state: "blocked",
-    requiredEvidenceRefs: ["evidence.release.full_gate_matrix"],
-    blockerRefs: ["blocker.copy.stable_release_not_cut"],
   },
   {
     claimRef: "claim.pylon.assignment_ready_network",
