@@ -85,7 +85,7 @@ type TassadarTraceContributionRouteDependencies<Bindings> = Readonly<{
       lease: TrainingWindowLeaseRecord
       validatorContributorRef: string
     }>,
-  ) => Effect.Effect<void>
+  ) => Effect.Effect<void, unknown>
   // Resolves the owning agent user id for a Pylon ref (the lease pylon_ref).
   // Wired in index.ts to the Pylon registry; the lease ownership check compares
   // it against the authenticated session's user id.
