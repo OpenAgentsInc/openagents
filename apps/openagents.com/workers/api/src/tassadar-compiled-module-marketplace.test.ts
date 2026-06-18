@@ -18,10 +18,33 @@ describe('Tassadar compiled module marketplace projection', () => {
     }
     expect(envelope.staleness.maxStalenessSeconds).toBe(0)
     expect(envelope.authority).toEqual({
+      demandPriceMutationAuthority: false,
       listingMutationAuthority: false,
       purchaseMutationAuthority: false,
+      rankingMutationAuthority: false,
+      requestBudgetMutationAuthority: false,
       realSettlementEnabled: false,
       settlementMutationAuthority: false,
+    })
+    expect(envelope.demandSignals[0]).toMatchObject({
+      capabilityRef: 'capability.openagents.tassadar.linked_dense_module',
+      demandCount: 7,
+      directionRef: 'direction.public.tassadar.linked_dense_module_library',
+    })
+    expect(envelope.demandSignals[0]!.recommendedBudgetSats).toBeGreaterThan(
+      envelope.demandSignals[0]!.baselineBudgetSats,
+    )
+    expect(envelope.moduleLibrary).toMatchObject({
+      collapsedDuplicateCount: 0,
+      duplicateGroupCount: 0,
+      generatedBy: 'tassadar_module_library_ranker.v1',
+      libraryRef: 'library.public.tassadar_compiled_modules.demand_ranked.v1',
+    })
+    expect(envelope.moduleLibrary.entries[0]).toMatchObject({
+      canonical: true,
+      demandRank: 1,
+      dedupeKey: 'spec.public.tassadar.linked_dense.w3_100m',
+      entryRef: 'entry.public.tassadar_compiled_module.linked_dense_canonical',
     })
     expect(listing).toMatchObject({
       compositionVerificationCleared: true,

@@ -73,6 +73,24 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/artanis-work-directions.test.ts`.
 
+## Tassadar Module Library Demand Ranking
+
+- Demand-price signals, module-library ranking, and dedupe projections are
+  read-only economic evidence. They must not mutate marketplace listings,
+  request budgets, payout state, ranking state, or settlement state by
+  themselves.
+- Near-duplicate compiled-module entries must collapse by typed dedupe keys to
+  a verified canonical entry. Unverified duplicates may be recorded as collapsed
+  refs but must not displace the replay/composition/link-verified canonical
+  module.
+- Artanis requester surfaces may consume a demand-price signal only as a
+  public-safe request budget/source-ref input and only through the existing
+  operator-enabled work-direction gate. Do not infer demand or module direction
+  from keywords in Forum text.
+- Regression coverage for this policy lives in
+  `workers/api/src/tassadar-module-library.test.ts` and
+  `workers/api/src/tassadar-compiled-module-marketplace.test.ts`.
+
 ## Foldkit-Owned Browser Navigation
 
 - Production browser app code must not call raw History APIs such as

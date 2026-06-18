@@ -1136,6 +1136,19 @@ marketplace packaging, pricing, payout, and settlement claims remain blocked.
   infer work directions from Forum keywords, or store raw/private source
   material in public projections.
 - **#5330 — E2** Demand-priced curation + module-library ranking/dedup.
+  Landed in `openagents`: `tassadar-module-library.ts` now builds a typed
+  demand-price signal from demand, usage, marketplace-margin memory, and
+  data-trace valuation refs; the signal raises recommended request budget and
+  listing value for wanted directions and is consumable by the Artanis requester
+  surface only as public-safe source refs plus a budget floor. The compiled
+  module marketplace projection now includes `demandSignals` and a
+  demand-ranked `moduleLibrary` view. Library entries rank by demand/value/usage
+  while collapsing near-duplicate authored modules by typed `dedupeKey` to the
+  replay/composition/link-verified canonical entry; unverified duplicates are
+  recorded as collapsed refs and cannot displace the verified canonical. This is
+  a read-only projection: it does not mutate listings, rankings, request budgets,
+  payouts, settlements, trained weights, or serving paths, and it does not infer
+  work demand from Forum keywords or publish raw/private material.
 - **#5331 — E3** Adversarial-verification market: agents paid to find
   module-divergence inputs.
 
