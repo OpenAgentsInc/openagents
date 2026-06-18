@@ -163,6 +163,7 @@ const DEFAULT_STUDIED_KNOWLEDGE_ISSUE_REFS = [
 ] as const;
 
 const DEFAULT_EDIT_SITE_PATHS = [
+  "packages/probe/packages/runtime/src/benchmark/openagents-autopilot-coder-studied-context.ts",
   "packages/probe/packages/runtime/src/benchmark/openagents-studybench-eval-harness.ts",
   "packages/probe/packages/runtime/src/benchmark/openagents-study-packet.ts",
   "packages/probe/packages/runtime/src/benchmark/repo-corpus-manifest.ts",

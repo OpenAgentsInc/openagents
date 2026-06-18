@@ -121,6 +121,7 @@ const DEFAULT_EVIDENCE_SPAN_PATHS = [
   "packages/probe/packages/runtime/src/benchmark/openagents-study-graph.ts",
   "packages/probe/packages/runtime/src/benchmark/openagents-study-packet.ts",
   "packages/probe/packages/runtime/src/benchmark/openagents-study-verification.ts",
+  "packages/probe/packages/runtime/src/benchmark/openagents-autopilot-coder-studied-context.ts",
   "packages/probe/packages/runtime/src/benchmark/openagents-studybench-eval-harness.ts",
   "packages/probe/packages/runtime/src/benchmark/repo-corpus-manifest.ts",
   "packages/probe/packages/runtime/src/benchmark/studybench.ts",
@@ -341,6 +342,7 @@ function buildStudyPacketSections(manifest: OpenAgentsRepoCorpusManifest): Reado
       corpusEntryPaths: selectManifestPaths(manifest, [
         "docs/promises/README.md",
         "docs/tassadar/README.md",
+        "packages/probe/packages/runtime/src/benchmark/openagents-autopilot-coder-studied-context.ts",
         "packages/probe/packages/runtime/src/benchmark/openagents-study-graph.ts",
         "packages/probe/packages/runtime/src/benchmark/openagents-study-packet.ts",
         "packages/probe/packages/runtime/src/benchmark/openagents-study-verification.ts",
