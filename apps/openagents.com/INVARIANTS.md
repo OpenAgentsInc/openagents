@@ -1054,6 +1054,12 @@ This is the invariant ledger for `openagents`.
   convert it into a funded receipt before payout eligibility exists.
 - Workers must not receive spend authority, settlement authority, deployment
   authority, or authority to mint payable follow-up debt from their own work.
+- Merged PRs, review approvals, and verifier passes are accepted-work evidence
+  only. Without an owner-funded receipt or approved batch plus settlement
+  authority, accepted hygiene work is recognition/credit-class work, not a
+  pending Bitcoin payout. `payable_pending_settlement` requires settlement
+  approval or escrow/payout processing evidence, and `settled_bitcoin` requires
+  settlement receipt refs.
 - Payment follows verified delta, not churn: behavior or benchmark parity must
   be green, the named hygiene metric must improve, and no equal-or-worse debt
   may be introduced elsewhere in the scoped receipt.
