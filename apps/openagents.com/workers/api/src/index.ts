@@ -473,7 +473,11 @@ import {
 } from './tassadar-run-settlement-gate'
 import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
 import { makeD1HygieneDebtReceiptStore } from './hygiene-debt-receipt-store'
-import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
+import {
+  buildTrainingWindowRecord,
+  makeD1TrainingAuthorityStore,
+  transitionTrainingWindowRecord,
+} from './training-run-window-authority'
 import {
   dispatchRealRunSettlementCore,
   makeTrainingRunWindowRoutes,
@@ -5577,6 +5581,70 @@ const runRelayHealthProbeScheduled = (
     Effect.catch(() => Effect.void),
   )
 
+// Self-serve open-window producer (#5396). Keeps a small, hard-capped pool of
+// openly-claimable `auto_starter` windows on the live Tassadar run so a fresh
+// contributor's `pylon training claim` finds work instead of "no claimable
+// window". listClaimableWindows applies the exact active+unleased claimability
+// filter, so we only ever top up to TARGET claimable windows — bounding spend:
+// each window can settle at most one verified worker+validator pair (5+5 sats)
+// within the armed settlement-gate caps before it is consumed and replenished.
+const SELF_SERVE_WINDOW_RUN_REF = 'run.tassadar.executor.20260615'
+const SELF_SERVE_WINDOW_TARGET = 2
+
+const runSelfServeWindowProducerScheduled = (
+  env: Env,
+  scheduledTime: number,
+): Effect.Effect<void, never> =>
+  Effect.tryPromise({
+    catch: () => 'self_serve_window_producer_failed' as const,
+    try: async () => {
+      const store = makeD1TrainingAuthorityStore(openAgentsDatabase(env))
+      const nowIso = epochMillisToIsoTimestamp(scheduledTime)
+      const claimable = await store.listClaimableWindows(nowIso, 50)
+      const openSelfServe = claimable.filter(
+        window =>
+          window.trainingRunRef === SELF_SERVE_WINDOW_RUN_REF &&
+          window.homeworkKind === 'auto_starter',
+      )
+      const toCreate = Math.max(
+        0,
+        SELF_SERVE_WINDOW_TARGET - openSelfServe.length,
+      )
+
+      for (let index = 0; index < toCreate; index += 1) {
+        const planned = await store.planWindow(
+          buildTrainingWindowRecord({
+            makeId: randomUuid,
+            nowIso,
+            request: {
+              datasetRefs: ['dataset.public.tassadar.kernel_trace'],
+              homeworkKind: 'auto_starter',
+              priority: 1,
+              receiptRefs: [
+                'receipt.public.tassadar.window.self_serve_open.producer.plan',
+              ],
+              sourceRefs: ['source.public.tassadar.executor.self_serve_open'],
+              trainingRunRef: SELF_SERVE_WINDOW_RUN_REF,
+            },
+          }),
+        )
+        const transitioned = transitionTrainingWindowRecord({
+          actorRef: 'operator.openagents.self_serve_window_producer',
+          eventId: randomUuid(),
+          nextState: 'active',
+          nowIso,
+          receiptRef: `receipt.public.tassadar.window.self_serve_open.producer.activate.${planned.id}`,
+          transitionKind: 'window_activate',
+          window: planned,
+        })
+        await store.transitionWindow(transitioned.window, transitioned.event)
+      }
+    },
+  }).pipe(
+    Effect.asVoid,
+    Effect.catch(() => Effect.void),
+  )
+
 const readTokenUsageLeaderboardsForUser = (
   env: Env,
   userId: string,
@@ -8764,6 +8832,10 @@ export default {
       observedEffect(
         'RelayHealth.probeTick',
         runRelayHealthProbeScheduled(env, event.scheduledTime),
+      ),
+      observedEffect(
+        'SelfServeWindowProducer.topUp',
+        runSelfServeWindowProducerScheduled(env, event.scheduledTime),
       ),
       observedEffect(
         'EmailCampaignDispatcher.dispatchDue',
