@@ -39,26 +39,29 @@ body {
 }
 
 /*
- * #5049 — the immersive network home. One fullscreen three-effect canvas with a
- * stats overlay and nothing else. Visual language:
- * docs/autopilot-coder/2026-06-15-autopilot-home-network-visual-language.md
+ * The immersive desktop home mirrors the public Tassadar proof replay: one
+ * fullscreen controlled replay scene, no stale pylon-network overlay.
  */
 .app-shell-network {
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #0c0f13; /* matches the pylon scene background */
+  background: #000;
 }
 .network-page {
   position: absolute;
   inset: 0;
 }
 .network-scene,
+.desktop-tassadar-replay,
 .three-effect-network {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+}
+.desktop-tassadar-replay {
+  display: block;
 }
 .three-effect-network {
   z-index: 0;
@@ -77,6 +80,22 @@ body {
   filter:
     drop-shadow(0 0 calc(18px + (var(--network-activity, 0) * 28px)) rgb(41 121 255 / 0.45))
     drop-shadow(0 0 52px rgb(214 246 255 / 0.12));
+}
+
+.training-proof-replay-viewport {
+  position: relative;
+  min-height: clamp(24rem, 46vh, 38rem);
+  overflow: hidden;
+  border: 1px solid var(--outline, #525458);
+  background: #000;
+}
+
+.training-proof-replay-scene {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .network-overlay {
   position: absolute;

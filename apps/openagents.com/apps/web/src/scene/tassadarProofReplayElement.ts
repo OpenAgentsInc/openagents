@@ -6,6 +6,7 @@ import {
   cameraPoseFor,
   FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
   initialReplayPlaybackState,
+  OPENAGENTS_PUBLIC_ORIGIN,
   interpolateActorPosition,
   proofReplayBundleEndpointForSlug,
   reduceReplayClock,
@@ -23,8 +24,9 @@ import type { Attribute, Html } from 'foldkit/html'
 import { currentUnixMs } from '../time-format'
 
 export const TASSADAR_PROOF_REPLAY_TAG = 'oa-tassadar-proof-replay'
+export const TASSADAR_REPLAY_ORIGIN_DATA_KEY = 'replay-origin'
 export const TASSADAR_REPLAY_SLUG_DATA_KEY = 'replay-slug'
-export { FIRST_REAL_SETTLEMENT_REPLAY_SLUG }
+export { FIRST_REAL_SETTLEMENT_REPLAY_SLUG, OPENAGENTS_PUBLIC_ORIGIN }
 
 type ReplayDataState = 'loading' | 'ok' | 'error'
 type ReplayPresentationMode = 'interactive' | 'social'
@@ -253,7 +255,10 @@ const makeClass = (): CustomElementConstructor =>
     async #load(signal: AbortSignal): Promise<void> {
       try {
         const response = await fetch(
-          proofReplayBundleEndpointForSlug(this.#replaySlug()),
+          proofReplayBundleEndpointForSlug(
+            this.#replaySlug(),
+            this.#replayOrigin(),
+          ),
           {
             headers: { accept: 'application/json' },
             signal,
@@ -278,6 +283,13 @@ const makeClass = (): CustomElementConstructor =>
         this.getAttribute(`data-${TASSADAR_REPLAY_SLUG_DATA_KEY}`)?.trim() ??
         FIRST_REAL_SETTLEMENT_REPLAY_SLUG
       )
+    }
+
+    #replayOrigin(): string | undefined {
+      const origin = this.getAttribute(
+        `data-${TASSADAR_REPLAY_ORIGIN_DATA_KEY}`,
+      )?.trim()
+      return origin === undefined || origin === '' ? undefined : origin
     }
 
     #base(): HTMLDivElement | null {

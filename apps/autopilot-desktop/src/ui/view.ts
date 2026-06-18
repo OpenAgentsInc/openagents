@@ -21,9 +21,6 @@ import {
   type AccountSummary,
 } from "@openagentsinc/autopilot-ui"
 import { trainingRunView } from "@openagentsinc/three-effect/foldkit"
-import { projectPylonNetworkScene } from "../shared/pylon-network-scene"
-import { pylonDiamondsView } from "./pylon-diamonds-element"
-import { pylonNetworkVisualizationOptions } from "./pylon-network-visualization"
 import {
   defaultTrainingRunNodes,
   trainingRunVisualizationOptionsFromSnapshot,
@@ -36,6 +33,13 @@ import {
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 import {
+  OPENAGENTS_PUBLIC_ORIGIN,
+  TASSADAR_REPLAY_ORIGIN_DATA_KEY,
+  TASSADAR_REPLAY_SLUG_DATA_KEY,
+  tassadarProofReplayView,
+} from "../../../openagents.com/apps/web/src/scene/tassadarProofReplayElement"
+import {
+  DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
   desktopProofReplayCatalog,
   type DesktopProofReplayProjection,
 } from "../shared/proof-replays"
@@ -143,7 +147,6 @@ import {
   modelPromiseSurfacingReadiness,
   modelPromiseSurfacingResult,
   modelNode,
-  modelPylonStats,
   modelNotifications,
   modelTrainingOperatorReadiness,
   modelTrainingPlan,
@@ -154,6 +157,16 @@ import {
 
 const h = html<Message>()
 const cls = (value: string): Attribute<Message> => h.Class(value)
+
+const tassadarProofReplayScene = (
+  className: string,
+  slug: string = DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
+): Html =>
+  tassadarProofReplayView<Message>([
+    cls(className),
+    h.DataAttribute(TASSADAR_REPLAY_SLUG_DATA_KEY, slug),
+    h.DataAttribute(TASSADAR_REPLAY_ORIGIN_DATA_KEY, OPENAGENTS_PUBLIC_ORIGIN),
+  ])
 
 // ── Small shared building blocks (own h.* — no hand DOM) ─────────────────────
 
@@ -1640,6 +1653,12 @@ const proofReplayPanel = (model: Model): Html => {
     ),
     h.p([cls("training-panel-copy")], [
       selectedEntry?.summary ?? "Receipt-backed replay shelf.",
+    ]),
+    h.div([cls("training-proof-replay-viewport")], [
+      tassadarProofReplayScene(
+        "training-proof-replay-scene",
+        selectedEntry?.slug ?? DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
+      ),
     ]),
     summary === null
       ? emptyLine("Open Training or refresh to load the selected public replay bundle.")
@@ -3780,107 +3799,17 @@ const sessionDetailPane = (model: Model): Html => {
 
 // ── Pane router + top-level view ────────────────────────────────────────────────
 
-// ── Network home (#5049) ──────────────────────────────────────────────────
-// The fullscreen pylon-network visualization: the bezier graph (adapted to the
-// live network) with stats overlaid. The center pylon's pulse / node tones are
-// driven by live activity. Visual language:
-// docs/autopilot-coder/2026-06-15-autopilot-home-network-visual-language.md
-const networkStatNumber = (value: number): string => {
-  const safe = Math.max(0, Math.floor(value))
-  return safe.toLocaleString("en-US")
-}
-
-const networkRollText = (value: string): Html =>
-  h.span([cls("stat-roll slot-text"), h.Key(value)], [
-    ...Array.from(value).map((char, index) =>
-      h.span([cls("char-slot"), h.Key(`${index}-${char}`)], [
-        h.span([cls("char-sizer")], [char]),
-        h.span([cls("char-face")], [char]),
-      ]),
-    ),
-  ])
-
-// A single overlaid stat. Values carry the homepage slot-text structure so
-// updating numbers animate with the same digit-roll visual language (§5).
-const networkStat = (label: string, value: string, hero = false): Html =>
-  h.div([cls(hero ? "network-stat network-stat-hero" : "network-stat")], [
-    h.span([cls("network-stat-value")], [networkRollText(value)]),
-    h.span([cls("network-stat-label")], [label]),
-  ])
-
-const networkPane = (model: Model): Html => {
-  const scene = projectPylonNetworkScene(modelPylonStats(model))
-  const options = pylonNetworkVisualizationOptions(scene)
-  const installReadiness = modelInstallReadiness(model)
-  const canGoOnline = installReadiness?.builtInAgentReady ?? true
-
-  const activityLabel = scene.dormant
-    ? "network dormant"
-    : scene.activityIntensity > 0.05
-      ? "work in flight"
-      : "online · idle"
-
-  return h.div([cls("network-page")], [
+// ── Network home ─────────────────────────────────────────────────────────
+// The desktop landing scene mirrors `/tassadar/replay/first-real-settlement`:
+// one full-screen, self-fetching proof replay with its native play/scrub/camera
+// controls. The old pylon-network stats scene still feeds lower-level panes,
+// but it is not the first thing the operator sees.
+const networkPane = (_model: Model): Html =>
+  h.div([cls("network-page")], [
     h.div([cls("network-scene")], [
-      trainingRunView<Message>([cls("three-effect-network")], options),
-      pylonDiamondsView<Message>(
-        [
-          cls("network-pylon-diamonds"),
-          h.Style({ "--network-activity": scene.activityIntensity.toFixed(3) }),
-        ],
-        scene.activityIntensity,
-      ),
-    ]),
-    h.div([cls("network-overlay")], [
-      h.section([cls("network-title")], [
-        h.span([cls("network-eyebrow")], [activityLabel]),
-        h.h1([cls("network-headline")], [
-          networkRollText(networkStatNumber(scene.onlineNow)),
-          " pylons online",
-        ]),
-        h.p([cls("network-subhead")], [
-          scene.asOfLabel ? `as of ${scene.asOfLabel}` : "live network",
-        ]),
-        h.p([cls("network-health")], [
-          installReadinessSummary(installReadiness),
-        ]),
-        h.button(
-          [
-            cls(
-              "pointer-events-auto mt-4 w-fit border border-[var(--outline)] bg-black px-4 py-2 font-mono text-xs font-semibold uppercase tracking-[0.08em] text-[var(--primary)] hover:border-[var(--primary)] disabled:cursor-wait disabled:opacity-60",
-            ),
-            h.Type("button"),
-            h.Disabled(model.builtInAgentPending || !canGoOnline),
-            h.OnClick(ClickedStartBuiltInAgent()),
-          ],
-          [model.builtInAgentPending ? "Going online..." : "Go online"],
-        ),
-      ]),
-      h.section([cls("network-stats")], [
-        networkStat("working now", networkStatNumber(scene.sessionsOnlineNow), true),
-        networkStat("sellable online", networkStatNumber(scene.sellableOnlineNow)),
-        networkStat("wallet ready", networkStatNumber(scene.walletReadyNow)),
-        networkStat("assignment ready", networkStatNumber(scene.assignmentReadyNow)),
-        networkStat("seen · 24h", networkStatNumber(scene.seen24h)),
-        networkStat("registered", networkStatNumber(scene.registeredTotal)),
-        networkStat("sats settled · 24h", networkStatNumber(scene.satsSettled24h)),
-        networkStat("sats settled · total", networkStatNumber(scene.satsSettledTotal)),
-        networkStat(
-          "training assigned",
-          networkStatNumber(scene.trainingAssignedContributors),
-        ),
-        networkStat(
-          "training accepted",
-          networkStatNumber(scene.trainingAcceptedContributors),
-        ),
-        networkStat(
-          "training progress",
-          networkStatNumber(scene.trainingProgressContributors),
-        ),
-      ]),
+      tassadarProofReplayScene("desktop-tassadar-replay"),
     ]),
   ])
-}
 
 const paneView = (model: Model): Html => {
   switch (model.pane) {

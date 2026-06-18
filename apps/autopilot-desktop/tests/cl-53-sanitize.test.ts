@@ -226,14 +226,20 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsText(failed.body, "Local node failed to start")).toBe(true)
   })
 
-  test("network home is immersive: the scene canvas, no sidebar (#5049)", () => {
+  test("network home is the controlled Tassadar proof replay, no stale pylon overlay", () => {
     const document = view(initialModel) // default pane is "network"
-    expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)
-    expect(treeContainsSelector(document.body, "oa-desktop-pylon-diamonds")).toBe(true)
-    expect(treeContainsClass(document.body, "network-overlay")).toBe(true)
-    expect(treeContainsClass(document.body, "slot-text")).toBe(true)
-    expect(treeContainsText(document.body, "sellable online")).toBe(true)
-    expect(treeContainsText(document.body, "training accepted")).toBe(true)
+    const replay = findSelectorNode(document.body, "oa-tassadar-proof-replay") as {
+      data?: { attrs?: Record<string, string> }
+    } | null
+    expect(replay?.data?.attrs?.["data-replay-slug"]).toBe(
+      "first-real-settlement",
+    )
+    expect(replay?.data?.attrs?.["data-replay-origin"]).toBe(
+      "https://openagents.com",
+    )
+    expect(treeContainsSelector(document.body, "oa-training-run")).toBe(false)
+    expect(treeContainsSelector(document.body, "oa-desktop-pylon-diamonds")).toBe(false)
+    expect(treeContainsClass(document.body, "network-overlay")).toBe(false)
     expect(treeContainsClass(document.body, "app-shell-network")).toBe(true)
     // immersive: no sidebar chrome on the home
     expect(treeContainsClass(document.body, "sidebar")).toBe(false)
@@ -445,6 +451,8 @@ describe("CL-53 sanitizeTree", () => {
   test("training pane includes the proof replay shelf for web and desktop parity", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsClass(document.body, "training-proof-replay-panel")).toBe(true)
+    expect(treeContainsClass(document.body, "training-proof-replay-viewport")).toBe(true)
+    expect(treeContainsSelector(document.body, "oa-tassadar-proof-replay")).toBe(true)
     expect(treeContainsText(document.body, "Proof Replays")).toBe(true)
     expect(treeContainsText(document.body, "First settlement")).toBe(true)
     expect(treeContainsText(document.body, "Recognition")).toBe(true)

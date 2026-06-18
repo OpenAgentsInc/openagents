@@ -3,6 +3,7 @@ import { TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT } from '@openagentsinc/p
 
 import {
   TASSADAR_PROOF_REPLAY_TAG,
+  TASSADAR_REPLAY_ORIGIN_DATA_KEY,
   tassadarProofReplayView,
 } from './tassadarProofReplayElement'
 
@@ -320,12 +321,16 @@ const waitForSettled = async (el: HTMLElement): Promise<void> => {
 const mountAndSettle = async (
   path = '/tassadar/replay/first-real-settlement',
   replaySlug?: string,
+  replayOrigin?: string,
 ): Promise<HTMLElement> => {
   tassadarProofReplayView()
   window.history.replaceState({}, '', path)
   const el = document.createElement(TASSADAR_PROOF_REPLAY_TAG)
   if (replaySlug !== undefined) {
     el.setAttribute('data-replay-slug', replaySlug)
+  }
+  if (replayOrigin !== undefined) {
+    el.setAttribute(`data-${TASSADAR_REPLAY_ORIGIN_DATA_KEY}`, replayOrigin)
   }
   document.body.append(el)
   await waitForSettled(el)
@@ -363,6 +368,25 @@ describe('tassadar proof replay element', () => {
       'The first real Tassadar settlement replay begins.',
     )
     expect(el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')).toBeNull()
+  })
+
+  it('can load replay bundles from an explicit public origin for desktop embeds', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse(replayBundle))
+
+    await mountAndSettle(
+      '/desktop/autopilot',
+      undefined,
+      'https://openagents.com',
+    )
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `https://openagents.com${TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT}`,
+      expect.objectContaining({
+        headers: { accept: 'application/json' },
+      }),
+    )
   })
 
   it('loads non-first replay slugs from the generic proof replay resolver', async () => {
