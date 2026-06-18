@@ -29,6 +29,7 @@ async function withFixture<A>(run: (root: string) => Promise<A>): Promise<A> {
     await writeFile(join(root, "node_modules", "left-pad", "index.js"), "module.exports = '';\n", "utf8");
     await writeFile(join(root, "dist", "bundle.js"), "console.log('bundle');\n", "utf8");
     await writeFile(join(root, "release.dmg"), "binary-ish\n", "utf8");
+    await writeFile(join(root, "docs", "launch", "provider-secret-boundary.md"), "Public-safe title only.\n", "utf8");
 
     return await run(root);
   } finally {
@@ -59,6 +60,7 @@ describe("OpenAgents repo corpus manifest", () => {
       expect(paths.some((path) => path.includes(".secrets"))).toBe(false);
       expect(paths.some((path) => path.includes("node_modules"))).toBe(false);
       expect(paths.some((path) => path.includes("release.dmg"))).toBe(false);
+      expect(paths.some((path) => path.includes("provider-secret"))).toBe(false);
       expect(first.entries[0]?.sha256.startsWith("sha256:")).toBe(true);
     });
   });

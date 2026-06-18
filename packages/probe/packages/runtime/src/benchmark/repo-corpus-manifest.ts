@@ -88,6 +88,7 @@ const DEFAULT_EXCLUDED_PATH_PATTERNS = [
   "*.tgz",
   "*.tmp",
   "*.zip",
+  "public-unsafe-name/",
 ] as const;
 
 const DEFAULT_SOURCE_AUTHORITY_REFS = ["authority.openagents.repo_corpus.public_source"];
@@ -394,12 +395,19 @@ function pathIsExcluded(path: string): boolean {
   }
 
   return (
+    publicUnsafePathName(lower) ||
     lower.endsWith(".dmg") ||
     lower.endsWith(".log") ||
     lower.endsWith(".tar") ||
     lower.endsWith(".tgz") ||
     lower.endsWith(".tmp") ||
     lower.endsWith(".zip")
+  );
+}
+
+function publicUnsafePathName(lower: string): boolean {
+  return /(^|[/_.-])(raw[-_]?access[-_]?token|access[-_]?token|provider[-_]?secret|bearer|sk-[a-z0-9]|wallet[-_]?mnemonic|payment[-_]?preimage)([/_.-]|$)/i.test(
+    lower,
   );
 }
 
