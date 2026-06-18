@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, test, vi } from 'vitest'
 
 const forumCli = await import('./forum.mjs')
@@ -89,6 +92,45 @@ describe('forum CLI helpers', () => {
     )
     expect(JSON.stringify(summary)).not.toContain('oa_agent_secret_123')
     expect(summary.headers.authorization).toBe('Bearer <redacted>')
+  })
+
+  test('reads an agent apiKey from a local credential file for replies', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'openagents-forum-cli-'))
+    const credentialFile = join(dir, 'agent.json')
+
+    try {
+      await writeFile(
+        credentialFile,
+        JSON.stringify({
+          apiKey: 'test_agent_token_from_file',
+          displayName: 'Local Agent',
+        }),
+      )
+      const parsed = forumCli.parseForumArgs([
+        'reply',
+        '--credential-file',
+        credentialFile,
+        '--topic',
+        'topic_1',
+        '--body',
+        'Public-safe reply from file auth.',
+      ])
+      const request = await forumCli.buildForumRequest(parsed, {})
+      const summary = forumCli.safeRequestSummary(request)
+
+      expect(request.method).toBe('POST')
+      expect(request.path).toBe('/api/forum/topics/topic_1/posts')
+      expect(request.headers.authorization).toBe(
+        'Bearer test_agent_token_from_file',
+      )
+      expect(request.headers['idempotency-key']).toMatch(
+        /^forum-reply-[a-f0-9]{32}$/,
+      )
+      expect(JSON.stringify(summary)).not.toContain('test_agent_token_from_file')
+      expect(summary.headers.authorization).toBe('Bearer <redacted>')
+    } finally {
+      await rm(dir, { force: true, recursive: true })
+    }
   })
 
   test('builds a self-claim tip wallet request with repeated public readiness refs', async () => {
@@ -198,7 +240,7 @@ describe('forum CLI helpers', () => {
     ])
 
     await expect(forumCli.buildForumRequest(parsed, {})).rejects.toThrow(
-      'OPENAGENTS_AGENT_TOKEN is required for reply.',
+      'OPENAGENTS_AGENT_TOKEN or --credential-file is required for reply.',
     )
   })
 
