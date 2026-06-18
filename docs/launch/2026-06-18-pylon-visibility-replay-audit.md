@@ -70,7 +70,7 @@ W = web app, D = desktop app, C = CLI.
 | Desktop replay pane | `apps/autopilot-desktop/src/shared/proof-replays.ts`, `src/ui/view.ts` | Replay | — | ✅ | — | **Built** |
 | Headless clip render → mp4 (camera path, time window, fps) | `apps/web/spike/replay-r1/render-clip.mjs`; EPIC `#5346` (R-1a/R-2/R-3/R-4/R-5 done) | Replay → video | (offline) | (offline) | (offline) | **Built** (render-box / CI, not edge) |
 | Exact-trace-replay verifier (worker digest vs validator re-execution) | `workers/api/src/tassadar-replay-validator.ts`; `apps/pylon/src/tassadar-trace-client.ts`; migration `0188_training_trace_contributions.sql` | Replay (verification) | — | — | C (`validate --auto`) | **Built** |
-| **Unified cross-domain event timeline / cursor / stream** | `packages/public-activity-timeline`; `workers/api/src/public-activity-timeline-routes.ts`; `GET /api/public/activity-timeline`; `GET /api/public/activity-timeline/stream`; `apps/pylon/src/public-activity-cli.ts` (`activity`, `timeline`) | Live + Replay source | ⚠️ | ❌ | ✅ | **Partial** (endpoint + CLI + SSE; UI pending) |
+| **Unified cross-domain event timeline / cursor / stream** | `packages/public-activity-timeline`; `workers/api/src/public-activity-timeline-routes.ts`; `GET /api/public/activity-timeline`; `GET /api/public/activity-timeline/stream`; `apps/web/src/page/activity.ts` (`/activity`); `apps/pylon/src/public-activity-cli.ts` (`activity`, `timeline`) | Live + Replay source | ✅ | ❌ | ✅ | **Built** (endpoint + CLI + SSE + web page; desktop pending) |
 
 ### D. World projection / 3D scene
 
@@ -120,10 +120,10 @@ What's **built and live** (the data is there):
 - Forum topic/post feeds (live read).
 
 What's **not fully built** for the live picture:
-1. **No single live operator surface that combines the three signals**
-   (boot-ups + forum + money loop). Today an operator must hit
-   `pylon-stats`, `tassadar-run-summary`, `/settlements`, `forum/posts`, and
-   `/tassadar` *separately*. There is no "what is happening right now" dashboard.
+1. **Single live operator surface is web-only so far.** The `/activity` page now
+   combines boot-ups, forum activity, and the money loop over the public
+   activity timeline, but desktop still lacks the same "what is happening right
+   now" dashboard.
 2. **No real-time push.** Everything web-side is **polling**: pylon-stats has a
    4s isolate cache and the client polls; forum UI polls with a 10-min
    stale-while-revalidate cache. The one live-push channel that exists
@@ -796,6 +796,19 @@ contract; every visible event links back to timeline refs and proof URLs.
    - Body summary: Build `/activity` or `/tassadar/activity` with Fleet, Money
      Loop, Forum, Timeline, and Proof Drawer panes. Start with polling if needed,
      but consume only documented public shapes and show stale-source state.
+   - Implementation status (2026-06-18, issue #5426): added `/activity` as a
+     public logged-out route backed by the shared
+     `@openagentsinc/public-activity-timeline` decoder. The page polls
+     `/api/public/activity-timeline?limit=100`, rejects unsafe raw payloads
+     before rendering, and exposes Fleet, Money Loop, Forum, Timeline, Source
+     lag, and Proof Drawer sections from documented event/source-lag fields
+     only. The proof drawer renders event cursor, source API, public refs,
+     source refs, blocker refs, caveats, source-lag status, and the decoded
+     public event JSON so an agent can reproduce the answer from API/CLI
+     output. Validation: `bun run --cwd apps/openagents.com/apps/web test
+     src/scene/publicActivityTimelineElement.test.ts src/main.test.ts`,
+     `bun run --cwd apps/openagents.com/apps/web typecheck`, and
+     `git diff --check`.
 2. **Add proof drawer and filters for activity events**
    - Body summary: Add event filters (`boot`, `work`, `verify`, `settle`,
      `forum`, `operator`) and a proof drawer that shows source refs, public URLs,
@@ -881,9 +894,8 @@ desktop/CLI parity, SpacetimeDB event projection, and generated replay clips.
 The first productization step after that is **Phase 2 — agent/CLI programmatic
 access**. A browser UI should not be the first consumer. Agents need stable JSON,
 cursoring, examples, fixtures, and CLI commands before the UI layer starts
-polishing the same data. The web live-activity page can follow quickly, but it
-must consume the same public contract and remain reproducible from API/CLI
-evidence.
+polishing the same data. The web `/activity` page now follows that contract and
+remains reproducible from API/CLI evidence; desktop parity is still pending.
 
 ---
 

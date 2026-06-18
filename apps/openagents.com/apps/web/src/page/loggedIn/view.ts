@@ -7,6 +7,7 @@ import { notFoundView } from '../../notFoundView'
 import { browserRouteIsEnabled } from '../../product-policy'
 import {
   adminRouter,
+  activityRouter,
   animationsRouter,
   autopilotWorkDetailRouter,
   autopilotWorkRouter,
@@ -56,6 +57,7 @@ import {
   workspaceRouter,
 } from '../../route'
 import * as Ui from '../../ui'
+import * as Activity from '../activity'
 import * as ClientsPreview from '../clientsPreview'
 import * as Forum from '../forum'
 import * as SiteCheckoutDemo from '../siteCheckoutDemo'
@@ -119,6 +121,7 @@ const currentHref = (model: Model): string =>
       ComponentsFamily: ({ family }) => componentsFamilyRouter({ family }),
       Business: () => businessRouter(),
       Animations: () => animationsRouter(),
+      Activity: () => activityRouter(),
       DemoLegal: () => demoLegalRouter(),
       Run: () => runRouter(),
       Tassadar: () => tassadarRouter(),
@@ -180,6 +183,7 @@ const routeKey = (model: Model): string =>
       ComponentsFamily: () => 'Components',
       Business: () => 'Business',
       Animations: () => 'Animations',
+      Activity: () => 'Activity',
       DemoLegal: () => 'DemoLegal',
       Run: () => 'Run',
       Tassadar: () => 'Tassadar',
@@ -537,6 +541,13 @@ const routeView = (model: Model): Html => {
           Animations: () =>
             Ui.workroomScrollableRoute<Message>([
               notFoundView('/animations', chatRouter(), 'Go to Chat'),
+            ]),
+          Activity: () =>
+            Ui.workroomScrollableRoute<Message>([
+              Activity.view({
+                _tag: 'LoggedIn',
+                onLogout: ClickedLogout(),
+              }),
             ]),
           DemoLegal: () =>
             Ui.workroomScrollableRoute<Message>([

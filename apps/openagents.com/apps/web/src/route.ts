@@ -55,6 +55,7 @@ export const ComponentsFamilyRoute = r('ComponentsFamily', {
 })
 export const BusinessRoute = r('Business')
 export const AnimationsRoute = r('Animations')
+export const ActivityRoute = r('Activity')
 export const RunRoute = r('Run')
 export const TassadarRoute = r('Tassadar')
 export const TassadarReplayRoute = r('TassadarReplay', {
@@ -141,6 +142,7 @@ export type ComponentsRoute = typeof ComponentsRoute.Type
 export type ComponentsFamilyRoute = typeof ComponentsFamilyRoute.Type
 export type BusinessRoute = typeof BusinessRoute.Type
 export type AnimationsRoute = typeof AnimationsRoute.Type
+export type ActivityRoute = typeof ActivityRoute.Type
 export type RunRoute = typeof RunRoute.Type
 export type TassadarRoute = typeof TassadarRoute.Type
 export type TassadarReplayRoute = typeof TassadarReplayRoute.Type
@@ -199,6 +201,7 @@ export const LoggedOutRoute = S.Union([
   ComponentsFamilyRoute,
   BusinessRoute,
   AnimationsRoute,
+  ActivityRoute,
   RunRoute,
   TassadarRoute,
   TassadarReplayRoute,
@@ -248,6 +251,7 @@ export const LoggedInRoute = S.Union([
   ComponentsFamilyRoute,
   BusinessRoute,
   AnimationsRoute,
+  ActivityRoute,
   RunRoute,
   TassadarRoute,
   TassadarReplayRoute,
@@ -303,6 +307,7 @@ export const AppRoute = S.Union([
   ComponentsFamilyRoute,
   BusinessRoute,
   AnimationsRoute,
+  ActivityRoute,
   RunRoute,
   TassadarRoute,
   TassadarReplayRoute,
@@ -498,6 +503,10 @@ export const animationsRouter = pipe(
   literal('animations'),
   Route.mapTo(AnimationsRoute),
 )
+export const activityRouter = pipe(
+  literal('activity'),
+  Route.mapTo(ActivityRoute),
+)
 export const runRouter = pipe(literal('run'), Route.mapTo(RunRoute))
 export const tassadarRouter = pipe(
   literal('tassadar'),
@@ -651,6 +660,7 @@ const routeParser = Route.oneOf(
   componentsRouter,
   businessRouter,
   animationsRouter,
+  activityRouter,
   tassadarReplayRouter,
   tassadarRouter,
   runRouter,

@@ -9,6 +9,7 @@ import {
 } from './message'
 import type { Model } from './model'
 import { Demo, LoggedIn, LoggedOut } from './model'
+import * as Activity from './page/activity'
 import * as Animations from './page/animations'
 import * as Blog from './page/blog'
 import * as Business from './page/business'
@@ -374,6 +375,8 @@ const title = (model: Model): string => {
       return 'For your business - OpenAgents'
     case 'Animations':
       return 'Animations - OpenAgents'
+    case 'Activity':
+      return 'Activity - OpenAgents'
     case 'DemoLegal':
       return 'Legal demo - OpenAgents'
     case 'Run':
@@ -498,6 +501,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'ComponentsFamily' &&
       model.route._tag !== 'Business' &&
       model.route._tag !== 'Animations' &&
+      model.route._tag !== 'Activity' &&
       model.route._tag !== 'DemoLegal' &&
       model.route._tag !== 'Run' &&
       model.route._tag !== 'Tassadar' &&
@@ -525,6 +529,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Animations') {
     return Animations.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'Activity') {
+    return Activity.view<Message>(authState)
   }
 
   if (model.route._tag === 'DemoLegal') {

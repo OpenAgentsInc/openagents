@@ -155,6 +155,7 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'ComponentsFamily' &&
   route._tag !== 'Business' &&
   route._tag !== 'Animations' &&
+  route._tag !== 'Activity' &&
   route._tag !== 'DemoLegal' &&
   route._tag !== 'Run' &&
   route._tag !== 'Tassadar' &&
@@ -194,6 +195,7 @@ export const browserRouteProductIntents = {
   Billing: 'billing.credits',
   Business: 'public.business.landing',
   Animations: 'internal.animations.playground',
+  Activity: 'public.activity.timeline',
   Login: 'public.login',
   Blog: 'public.blog.index',
   BlogPost: 'public.blog.post',

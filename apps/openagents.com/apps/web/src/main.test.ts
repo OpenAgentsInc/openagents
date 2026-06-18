@@ -182,6 +182,16 @@ describe('auth bootstrap flags', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
+  test('does not request the auth session on the Activity route', async () => {
+    window.history.replaceState({}, '', '/activity')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const loadedFlags = await Effect.runPromise(flags)
+
+    expect(loadedFlags.maybeAuth).toEqual(Option.none())
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   test('requests the auth session on application routes', async () => {
     window.history.replaceState({}, '', '/teams/openagents-core-team/chat')
     const fetchSpy = vi
@@ -364,6 +374,31 @@ describe('authenticated startup routing', () => {
     expect(commands).toHaveLength(0)
   })
 
+  test('opens Activity without an auth session', () => {
+    const [model, commands] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/activity'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: { _tag: 'Activity' },
+    })
+    expect(commands).toHaveLength(0)
+  })
+
+  test('opens Activity as a public model for signed-in users', () => {
+    const [model] = init(
+      Flags.make({ maybeAuth: Option.some(authWithProject) }),
+      appUrl('/activity'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: { _tag: 'Activity' },
+    })
+  })
+
   test('renders the Tassadar route through the top-level view', () => {
     const [model] = init(
       Flags.make({ maybeAuth: Option.none() }),
@@ -396,6 +431,29 @@ describe('authenticated startup routing', () => {
       Scene.expect(Scene.role('link', { name: 'Blog' })).not.toExist(),
       Scene.expect(Scene.role('link', { name: 'Log in' })).not.toExist(),
     )
+  })
+
+  test('renders the Activity route through the top-level view', () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(
+        () => new Promise<Response>(() => undefined),
+      ) as unknown as typeof fetch & { mockRestore: () => void }
+    const [model] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/activity'),
+    )
+
+    try {
+      Scene.scene(
+        { update, view },
+        Scene.with(model),
+        Scene.expect(Scene.selector('[data-route="activity"]')).toExist(),
+        Scene.expect(Scene.selector('oa-public-activity-timeline')).toExist(),
+      )
+    } finally {
+      fetchSpy.mockRestore()
+    }
   })
 
   test('renders the Pylon route through the top-level view', () => {

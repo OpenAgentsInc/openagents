@@ -94,6 +94,7 @@ export const startupRouteForLoggedOut = (
       'ComponentsFamily',
       'Business',
       'Animations',
+      'Activity',
       'DemoLegal',
       'Run',
       'Tassadar',
@@ -151,6 +152,7 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
       'Moksha',
       'Moksha2',
       'Pylon',
+      'Activity',
       'Workspace',
       route =>
         route._tag === 'Workspace'
@@ -243,6 +245,7 @@ const startupRouteForCompleteOnboarding = (
       'Moksha',
       'Moksha2',
       'Pylon',
+      'Activity',
       route =>
         LoggedOutStartupRoute({
           route,
