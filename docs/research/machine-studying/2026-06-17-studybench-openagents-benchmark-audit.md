@@ -81,6 +81,13 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   refs before release-gate readiness, and allow Action Submission proposals to
   cite StudyBench closeout and study-packet refs as evidence while staying
   pending approval with no direct execution authority.
+- 2026-06-17: #5294 / MSB-MVP-12 complete. The first public-retained launch
+  study packet now lives at
+  `openagents-studybench/study-packets/openagents-launch-study-packet-v0.md`
+  with packet/source refs, source-package digest, public row map, authority
+  map, invariant map, forbidden-claim trap catalog, test catalog, launch-edit
+  playbooks, and a glossary while excluding private validation and holdout
+  material.
 
 ## Short Answer
 
