@@ -1,0 +1,501 @@
+import {
+  assertPublicActivityTimelineEnvelopeSafe,
+  type PublicActivityTimelineEnvelope,
+} from '@openagentsinc/public-activity-timeline'
+import { Effect } from 'effect'
+import { describe, expect, test } from 'vitest'
+
+import type {
+  NexusPaymentAuthorityReceiptRecord,
+  NexusTreasuryPayoutReconciliationEventRecord,
+} from './nexus-treasury-payout-ledger'
+import type {
+  PublicActivityTimelineArtanisStore,
+  PublicActivityTimelineCapacityStore,
+  PublicActivityTimelineForumStore,
+  PublicActivityTimelinePylonStore,
+  PublicActivityTimelineReceiptStore,
+  PublicActivityTimelineTrainingStore,
+} from './public-activity-timeline'
+import { handlePublicActivityTimelineApi } from './public-activity-timeline-routes'
+import type { PylonApiRegistrationRecord } from './pylon-api'
+import type {
+  TrainingRunRecord,
+  TrainingWindowLeaseRecord,
+  TrainingWindowRecord,
+} from './training-run-window-authority'
+import type { TrainingVerificationChallengeRecord } from './training-verification'
+
+const nowIso = '2026-06-18T18:10:00.000Z'
+const runRef = 'run.tassadar.executor.20260615'
+const windowRef = 'training.window.public.timeline.w1'
+const pylonRef = 'pylon.public.timeline.worker'
+const validatorRef = 'pylon.public.timeline.validator'
+const realReceiptRef = 'receipt.nexus.public_activity_timeline.real.1'
+const simulationReceiptRef =
+  'receipt.nexus.public_activity_timeline.simulation.1'
+
+const request = (path = '/api/public/activity-timeline') =>
+  new Request(`https://openagents.com${path}`)
+
+const route = async (
+  path: string,
+  input: Parameters<typeof handlePublicActivityTimelineApi>[1] = fullInput(),
+): Promise<Response> =>
+  Effect.runPromise(handlePublicActivityTimelineApi(request(path), input))
+
+const decode = async (response: Response) =>
+  assertPublicActivityTimelineEnvelopeSafe(
+    (await response.json()) as PublicActivityTimelineEnvelope,
+  )
+
+const registration = (): PylonApiRegistrationRecord => ({
+  capabilityRefs: ['capability.public.tassadar_executor_trace'],
+  clientProtocolVersion: '1.0.0',
+  clientVersion: 'openagents.pylon@1.0.0',
+  createdAt: '2026-06-18T18:00:00.000Z',
+  displayName: 'Timeline Worker',
+  id: 'registration-public-activity-timeline',
+  latestCapacityRefs: ['capacity.public.gpu_available'],
+  latestHeartbeatAt: '2026-06-18T18:00:02.000Z',
+  latestHeartbeatStatus: 'online',
+  latestHealthRefs: ['health.public.ok'],
+  latestLoadRefs: ['load.public.low'],
+  latestResourceMode: 'background_20',
+  ownerAgentCredentialId: 'credential_public_timeline',
+  ownerAgentTokenPrefix: 'oa_agent_test',
+  ownerAgentUserId: 'agent_public_timeline',
+  providerMarketRelayRefs: [],
+  providerNip90LaneRefs: [],
+  providerNostrNpub: null,
+  providerNostrPubkey: null,
+  publicProjectionJson: '{}',
+  pylonRef,
+  resourceMode: 'background_20',
+  status: 'active',
+  updatedAt: '2026-06-18T18:00:02.000Z',
+  walletReady: true,
+  walletRef: 'wallet.public.timeline.ready',
+})
+
+const runRecord: TrainingRunRecord = {
+  createdAt: '2026-06-18T17:59:00.000Z',
+  id: 'run-public-activity-timeline',
+  manifest: null,
+  maxAllowedStale: 0,
+  promiseRef: 'training.decentralized_training_launch.v1',
+  publicProjectionJson: '{}',
+  receiptRefs: [realReceiptRef, simulationReceiptRef],
+  sealInFlightAt: null,
+  sealPublicationCadenceWindows: 1,
+  sourceRefs: ['source.public.timeline.run'],
+  state: 'active',
+  trainingRunRef: runRef,
+  updatedAt: '2026-06-18T18:00:00.000Z',
+}
+
+const activeWindow: TrainingWindowRecord = {
+  activatedAt: '2026-06-18T18:00:05.000Z',
+  datasetRefs: [],
+  homeworkKind: 'admin_dispatched_homework',
+  id: 'window-public-activity-timeline',
+  plannedAt: '2026-06-18T18:00:04.000Z',
+  priority: 100,
+  publicProjectionJson: '{}',
+  receiptRefs: [],
+  reconciledAt: null,
+  sealMetadata: null,
+  sealedAt: null,
+  sourceRefs: ['source.public.timeline.window'],
+  state: 'active',
+  trainingRunRef: runRef,
+  updatedAt: '2026-06-18T18:00:05.000Z',
+  windowRef,
+}
+
+const sealedWindow: TrainingWindowRecord = {
+  ...activeWindow,
+  activatedAt: '2026-06-18T18:00:03.000Z',
+  id: 'window-public-activity-timeline-sealed',
+  reconciledAt: null,
+  sealedAt: '2026-06-18T18:00:13.000Z',
+  state: 'sealed',
+  updatedAt: '2026-06-18T18:00:13.000Z',
+  windowRef: 'training.window.public.timeline.w0',
+}
+
+const leaseRecord: TrainingWindowLeaseRecord = {
+  claimedAt: '2026-06-18T18:00:06.000Z',
+  id: 'lease-public-activity-timeline',
+  leaseExpiresAt: '2026-06-18T19:00:06.000Z',
+  leaseRef: 'training.lease.public.timeline.1',
+  publicProjectionJson: '{}',
+  pylonRef,
+  receiptRefs: [],
+  state: 'active',
+  trainingRunRef: runRef,
+  windowRef,
+}
+
+const challenge = (
+  state: 'Verified' | 'Rejected',
+): TrainingVerificationChallengeRecord => ({
+  challengeRef: `training.verification.challenge.public.timeline.${state.toLowerCase()}`,
+  commitmentRefs: [`trace.commitment.public.timeline.${state.toLowerCase()}`],
+  contributionRef: `trace.contribution.public.timeline.${state.toLowerCase()}`,
+  createdAt:
+    state === 'Verified'
+      ? '2026-06-18T18:00:07.000Z'
+      : '2026-06-18T18:00:08.000Z',
+  failureCodes: state === 'Verified' ? [] : ['ExecutorTraceMismatch'],
+  homeworkKind: 'tassadar_executor_trace',
+  id: `challenge-public-activity-timeline-${state}`,
+  leaseExpiresAt: null,
+  leaseRef: null,
+  leasedToRef: validatorRef,
+  maxAttempts: 1,
+  payloadJson: '{}',
+  publicProjectionJson: '{}',
+  rejectedAt: state === 'Rejected' ? '2026-06-18T18:00:12.000Z' : null,
+  samplingPolicy: 'per_contribution',
+  state,
+  timedOutAt: null,
+  trainingRunRef: runRef,
+  updatedAt:
+    state === 'Verified'
+      ? '2026-06-18T18:00:11.000Z'
+      : '2026-06-18T18:00:12.000Z',
+  verdictRefs: [`verdict.public.timeline.${state.toLowerCase()}`],
+  verificationClass: 'exact_trace_replay',
+  verifiedAt: state === 'Verified' ? '2026-06-18T18:00:11.000Z' : null,
+  windowRef,
+})
+
+const receipt = (
+  input: Readonly<{
+    amountSats: number
+    eventRef: string
+    movementMode: 'real_bitcoin' | 'simulation'
+    receiptRef: string
+  }>,
+): NexusPaymentAuthorityReceiptRecord => ({
+  archivedAt: null,
+  audience: 'public',
+  createdAt:
+    input.movementMode === 'real_bitcoin'
+      ? '2026-06-18T18:00:14.000Z'
+      : '2026-06-18T18:00:09.000Z',
+  eventRef: input.eventRef,
+  id: `receipt_${input.receiptRef}`,
+  metadataRefs: ['metadata.public.timeline.receipt'],
+  payoutAttemptRef: `attempt.public.timeline.${input.receiptRef}`,
+  payoutIntentRef: `intent.public.timeline.${input.receiptRef}`,
+  publicProjectionJson: JSON.stringify({
+    amountSats: input.amountSats,
+    contributorRef: pylonRef,
+    movementMode: input.movementMode,
+    realBitcoinMoved: input.movementMode === 'real_bitcoin',
+    state: 'settled',
+    trainingRunRef: runRef,
+    verificationChallengeRef:
+      'training.verification.challenge.public.timeline.verified',
+    windowRef,
+  }),
+  receiptKind: 'settlement_recorded',
+  receiptRef: input.receiptRef,
+})
+
+const reconciliationEvent = (
+  eventRef: string,
+  createdAt: string,
+): NexusTreasuryPayoutReconciliationEventRecord => ({
+  adapterKind: 'spark_treasury',
+  archivedAt: null,
+  createdAt,
+  eventRef,
+  externalEventRef: `external.public.timeline.${eventRef}`,
+  id: `event_${eventRef}`,
+  idempotencyKeyHash: `idempotency.${eventRef}`,
+  metadataRefs: ['metadata.public.timeline.reconciliation'],
+  payoutAttemptRef: `attempt.public.timeline.${eventRef}`,
+  payoutIntentRef: `intent.public.timeline.${eventRef}`,
+  providerRef: 'provider.public.spark_treasury',
+  publicProjectionJson: '{}',
+  resultRef: `result.public.timeline.${eventRef}`,
+  status: 'matched',
+})
+
+const pylonStore = (): PublicActivityTimelinePylonStore => ({
+  listRegistrations: async () => [registration()],
+})
+
+const trainingStore = (): PublicActivityTimelineTrainingStore => ({
+  listRuns: async () => [runRecord],
+  listVerificationChallengesForRun: async () => [
+    challenge('Verified'),
+    challenge('Rejected'),
+  ],
+  listWindowLeasesForRun: async () => [leaseRecord],
+  listWindowsForRun: async () => [activeWindow, sealedWindow],
+})
+
+const receiptStore = (): PublicActivityTimelineReceiptStore => {
+  const receipts = [
+    receipt({
+      amountSats: 5,
+      eventRef: 'event.public.timeline.simulation',
+      movementMode: 'simulation',
+      receiptRef: simulationReceiptRef,
+    }),
+    receipt({
+      amountSats: 1000,
+      eventRef: 'event.public.timeline.real',
+      movementMode: 'real_bitcoin',
+      receiptRef: realReceiptRef,
+    }),
+  ]
+  const events = new Map([
+    [
+      'event.public.timeline.real',
+      reconciliationEvent(
+        'event.public.timeline.real',
+        '2026-06-18T18:00:15.000Z',
+      ),
+    ],
+    [
+      'event.public.timeline.simulation',
+      reconciliationEvent(
+        'event.public.timeline.simulation',
+        '2026-06-18T18:00:10.000Z',
+      ),
+    ],
+  ])
+
+  return {
+    listPaymentAuthorityReceipts: async () => receipts,
+    readReconciliationEventByRef: async eventRef => events.get(eventRef),
+  }
+}
+
+const forumStore = (): PublicActivityTimelineForumStore => ({
+  listRecentActivity: async () => [
+    {
+      actorRef: 'agent.public.forum.author',
+      createdAt: '2026-06-18T18:00:16.000Z',
+      eventRef: 'forum.topic.public.timeline.1',
+      kind: 'topic',
+      postRef: null,
+      sourceRefs: ['forum.topic.public.timeline.1', 'route:/api/forum'],
+      state: 'open',
+      title: 'Timeline topic',
+      topicRef: 'forum.topic.public.timeline.1',
+    },
+    {
+      actorRef: 'agent.public.forum.author',
+      createdAt: '2026-06-18T18:00:17.000Z',
+      eventRef: 'forum.post.public.timeline.1',
+      kind: 'post',
+      postRef: 'forum.post.public.timeline.1',
+      sourceRefs: [
+        'forum.topic.public.timeline.1',
+        'forum.post.public.timeline.1',
+        'route:/api/forum/posts',
+      ],
+      state: 'visible',
+      title: 'Timeline topic',
+      topicRef: 'forum.topic.public.timeline.1',
+    },
+  ],
+})
+
+const artanisStore = (): PublicActivityTimelineArtanisStore => ({
+  listRecentTicks: async () => [
+    {
+      assignmentRef: null,
+      createdAt: '2026-06-18T18:00:18.000Z',
+      decisionRef: 'tick_decision.public.timeline.1',
+      sourceRefs: [
+        'tick_decision.public.timeline.1',
+        'route:/api/public/artanis/admin-ticks',
+      ],
+      state: 'no_action',
+    },
+  ],
+})
+
+const capacityStore = (): PublicActivityTimelineCapacityStore => ({
+  listRecentSnapshots: async () => [
+    {
+      aggregateState: 'total:3',
+      snapshotAt: '2026-06-18T18:00:19.000Z',
+      snapshotRef: 'pylon_capacity_funnel_snapshot_public_timeline_1',
+      sourceRefs: [
+        'pylon_capacity_funnel_snapshot_public_timeline_1',
+        'route:/api/public/pylon-capacity-funnel/history',
+      ],
+    },
+  ],
+})
+
+const fullInput = () => ({
+  artanisStore: artanisStore(),
+  capacityStore: capacityStore(),
+  forumStore: forumStore(),
+  nowIso: () => nowIso,
+  pylonStore: pylonStore(),
+  receiptStore: receiptStore(),
+  trainingStore: trainingStore(),
+})
+
+describe('public activity timeline route', () => {
+  test('unions public-safe source families into a cursor ordered timeline', async () => {
+    const response = await route('/api/public/activity-timeline?limit=200')
+    const body = await decode(response)
+    const kinds = body.events.map(event => event.kind)
+
+    expect(response.status).toBe(200)
+    expect(body.schemaVersion).toBe('openagents.public_activity_timeline.v1')
+    expect(kinds).toEqual(
+      expect.arrayContaining([
+        'pylon_registered',
+        'pylon_heartbeat',
+        'wallet_ready',
+        'assignment_ready',
+        'window_opened',
+        'window_closed',
+        'work_claimed',
+        'trace_submitted',
+        'verification_verified',
+        'verification_rejected',
+        'settlement_recorded',
+        'real_bitcoin_moved',
+        'forum_topic_created',
+        'forum_posted',
+        'artanis_tick',
+        'capacity_snapshot',
+      ]),
+    )
+    expect(body.sourceLag.map(item => item.sourceKind)).toEqual(
+      expect.arrayContaining([
+        'pylon_api',
+        'pylon_presence',
+        'training_window',
+        'training_trace',
+        'training_verification',
+        'settlement_receipt',
+        'forum',
+        'artanis',
+        'capacity_funnel',
+      ]),
+    )
+    expect(body.events.every(event => event.cursor.includes(event.eventRef))).toBe(
+      true,
+    )
+    expect(JSON.stringify(body)).not.toMatch(
+      /raw_(trace|payload|log)|secret|token_secret|sk-[a-z0-9]/i,
+    )
+  })
+
+  test('supports live-tail cursor and bounded range filters', async () => {
+    const first = await decode(
+      await route('/api/public/activity-timeline?limit=3'),
+    )
+
+    expect(first.events).toHaveLength(3)
+    expect(first.nextCursor).toBe(first.events[2]?.cursor)
+
+    const second = await decode(
+      await route(
+        `/api/public/activity-timeline?limit=200&since=${encodeURIComponent(
+          first.nextCursor ?? '',
+        )}`,
+      ),
+    )
+    const bounded = await decode(
+      await route(
+        '/api/public/activity-timeline?from=2026-06-18T18:00:14.000Z&to=2026-06-18T18:00:18.000Z&kind=real_bitcoin_moved,forum_posted,artanis_tick&source=settlement_receipt,forum,artanis&limit=20',
+      ),
+    )
+
+    expect(second.events[0]?.cursor).not.toBe(first.events[0]?.cursor)
+    expect(bounded.range).toMatchObject({
+      filterKinds: ['real_bitcoin_moved', 'forum_posted', 'artanis_tick'],
+      from: '2026-06-18T18:00:14.000Z',
+      limit: 20,
+      to: '2026-06-18T18:00:18.000Z',
+    })
+    expect(bounded.events.map(event => event.kind)).toEqual([
+      'real_bitcoin_moved',
+      'forum_posted',
+      'artanis_tick',
+    ])
+  })
+
+  test('emits real bitcoin movement only for receipt-backed real movement', async () => {
+    const body = await decode(
+      await route('/api/public/activity-timeline?source=settlement_receipt&limit=20'),
+    )
+    const realMovement = body.events.filter(
+      event => event.kind === 'real_bitcoin_moved',
+    )
+    const simulationSettlement = body.events.find(
+      event =>
+        event.kind === 'settlement_recorded' &&
+        event.refs.includes(simulationReceiptRef),
+    )
+
+    expect(realMovement).toHaveLength(1)
+    expect(realMovement[0]).toMatchObject({
+      amountSats: 1000,
+      realBitcoinMoved: true,
+      refs: expect.arrayContaining([realReceiptRef]),
+      sourceRefs: expect.arrayContaining([realReceiptRef]),
+    })
+    expect(simulationSettlement).toMatchObject({
+      amountSats: 5,
+      realBitcoinMoved: false,
+      refs: expect.arrayContaining([simulationReceiptRef]),
+    })
+  })
+
+  test('emits projection gaps instead of guessing when source coverage is missing', async () => {
+    const response = await route('/api/public/activity-timeline?limit=20', {
+      nowIso: () => nowIso,
+    })
+    const body = await decode(response)
+    const gap = body.events.find(event =>
+      event.blockerRefs.includes(
+        'blocker.public.activity_timeline.pylon_store_missing',
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(gap).toMatchObject({
+      blockerRefs: expect.arrayContaining([
+        'blocker.public.activity_timeline.pylon_store_missing',
+      ]),
+      sourceKind: 'projection_gap',
+    })
+  })
+
+  test('rejects invalid filters and methods', async () => {
+    const invalidKind = await route(
+      '/api/public/activity-timeline?kind=raw_private_trace',
+    )
+    const invalidSource = await route(
+      '/api/public/activity-timeline?source=private_wallet',
+    )
+    const method = await Effect.runPromise(
+      handlePublicActivityTimelineApi(
+        new Request('https://openagents.com/api/public/activity-timeline', {
+          method: 'POST',
+        }),
+        fullInput(),
+      ),
+    )
+
+    expect(invalidKind.status).toBe(400)
+    expect(invalidSource.status).toBe(400)
+    expect(method.status).toBe(405)
+  })
+})

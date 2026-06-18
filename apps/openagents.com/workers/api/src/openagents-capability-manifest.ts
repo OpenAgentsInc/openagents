@@ -300,6 +300,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Public-safe live-at-read Tassadar run projection with run state, real-vs-simulation settlement rows, verification refs, generatedAt, and staleness metadata. Read-only; grants no assignment, payout, settlement, or model-publication authority.',
       },
       {
+        id: 'public_activity_timeline',
+        href: 'https://openagents.com/api/public/activity-timeline?since={cursor}&limit={limit}',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Cursor-addressable public-safe activity timeline for pylon presence, training windows, trace refs, verification, settlement receipts, Forum activity, Artanis ticks, and capacity snapshots. Supports since/from/to/limit/kind/source filters, includes source lag, emits projection_gap instead of guessing, and grants no settlement, payout, accepted-work, deployment, provider, wallet, or claim authority.',
+      },
+      {
         id: 'public_training_run_settlements',
         href: 'https://openagents.com/api/public/training/runs/{trainingRunRef}/settlements',
         method: 'GET',

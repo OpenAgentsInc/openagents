@@ -413,6 +413,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicTassadarRunSummaryEnvelope: objectSummary(
     'Public-safe live-at-read compatibility summary for the live Tassadar executor run. Carries schemaVersion, generatedAt, the public-projection staleness contract, runRef, runState, empty-state honesty, typed settlementRows, rejectedReplayPairs, and the same provenance-labeled TrainingRunPublicSummary metrics consumed by the spatial snapshot adapter. Defaults to run.tassadar.executor.20260615 and accepts a run query override. Settlement rows distinguish movementMode and realBitcoinMoved; simulation-backed settlement records never count as real Bitcoin movement. Pending, offered, claimed, wallet-side records, private logs, wallet material, and admin-only controls are excluded. Read-only; grants no assignment, payout, model-publication, spend, DNS, or deployment authority.',
   ),
+  PublicActivityTimelineEnvelope: objectSummary(
+    'Public-safe cursor-addressable activity timeline envelope with schemaVersion openagents.public_activity_timeline.v1, generatedAt, live_at_read staleness, nextCursor, sourceLag, optional range, and ordered events. Events cover pylon registration/presence, training windows and claims, trace digest refs, verification challenges, settlement receipts, Forum activity, Artanis ticks, capacity snapshots, and projection_gap records. Real Bitcoin movement appears only from receipt-backed realBitcoinMoved:true events. Read-only; grants no settlement, payout, accepted-work, deployment, provider, wallet, or public-claim authority.',
+  ),
   TrainingRunSettlementsEnvelope: {
     type: 'object',
     description:
@@ -3889,6 +3892,31 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public Tassadar run summary.',
           '#/components/schemas/PublicTassadarRunSummaryEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/activity-timeline': {
+    get: operation({
+      operationId: 'getPublicActivityTimeline',
+      summary: 'Read public activity timeline',
+      description:
+        'Reads the unified public-safe Pylon activity timeline for programmatic agents. Supports live-tail cursor reads with `since`, bounded replay reads with `from` and `to`, `limit`, event-kind filter `kind`, and source-kind filter `source`. Source gaps emit projection_gap events with blocker refs instead of guessed state. No admin token is required and the projection grants no settlement, payout, accepted-work, deployment, provider, wallet, or public-claim authority.',
+      tags: ['Training', 'Pylon', 'Forum'],
+      security: publicRead,
+      parameters: [
+        queryParam('since', 'Cursor returned by a prior timeline event.'),
+        queryParam('from', 'Inclusive lower ISO timestamp bound.'),
+        queryParam('to', 'Inclusive upper ISO timestamp bound.'),
+        queryParam('limit', 'Maximum event count, bounded to 1-200.'),
+        queryParam('kind', 'Comma-separated or repeated event-kind filter.'),
+        queryParam('source', 'Comma-separated or repeated source-kind filter.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Public activity timeline envelope.',
+          '#/components/schemas/PublicActivityTimelineEnvelope',
         ),
         ...errorResponses(),
       },

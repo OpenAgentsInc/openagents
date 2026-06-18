@@ -548,6 +548,20 @@ generation, and clips.
      envelope with `?since=`, `?from=`, `?to=`, `?limit=`, and filter support.
      Emit `projection_gap` events instead of guessing when source coverage is
      incomplete.
+   - Implementation status (2026-06-18, issue #5415): added
+     `GET /api/public/activity-timeline` on the Worker API. The endpoint emits
+     `openagents.public_activity_timeline.v1`, supports `since`, `from`, `to`,
+     `limit`, `kind`, and `source` filters, reports source lag, orders events
+     by stable `{ts}:{sourceKind}:{eventRef}` cursors, and returns
+     `projection_gap` events with blocker refs when a source family is missing
+     or unreadable. Initial live sources are Pylon registration/presence,
+     training windows/leases/challenges, receipt-backed settlements, public
+     Forum topic/post rows, Artanis tick decisions, and capacity-funnel
+     snapshots. The capability manifest and OpenAPI catalog now advertise the
+     route. Real Bitcoin movement is emitted only from settlement receipts with
+     `realBitcoinMoved:true`; simulation receipts remain `settlement_recorded`
+     only. This is read-only projection/retrieval and grants no settlement,
+     payout, accepted-work, deployment, provider, wallet, or claim authority.
 4. **Add timeline source-coverage and redaction tests**
    - Body summary: Add focused tests proving every event kind carries source
      refs or blocker refs, private material is omitted, stale source lag is

@@ -147,6 +147,9 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(body, '/api/public/tassadar-run-summary', 'get').operationId,
     ).toBe('getPublicTassadarRunSummary')
+    expect(
+      operationAt(body, '/api/public/activity-timeline', 'get').operationId,
+    ).toBe('getPublicActivityTimeline')
     expect(operationAt(body, '/api/training/evals/a5', 'get').operationId).toBe(
       'readTrainingA5EvalDashboard',
     )
@@ -508,6 +511,9 @@ describe('OpenAgents OpenAPI route', () => {
     ).toEqual([])
     expect(
       operationAt(body, '/api/public/tassadar-run-summary', 'get').security,
+    ).toEqual([])
+    expect(
+      operationAt(body, '/api/public/activity-timeline', 'get').security,
     ).toEqual([])
     expect(
       operationAt(
