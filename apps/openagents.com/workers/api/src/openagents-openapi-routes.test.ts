@@ -131,11 +131,29 @@ describe('OpenAgents OpenAPI route', () => {
         .operationId,
     ).toBe('getPublicTrainingRun')
     expect(
+      operationAt(
+        body,
+        '/api/public/training/runs/{trainingRunRef}/settlements',
+        'get',
+      ).operationId,
+    ).toBe('listPublicTrainingRunSettlements')
+    expect(
+      operationAt(
+        body,
+        '/api/public/training/verification-challenges/{challengeRef}',
+        'get',
+      ).operationId,
+    ).toBe('getPublicTrainingVerificationChallenge')
+    expect(
       operationAt(body, '/api/public/tassadar-run-summary', 'get').operationId,
     ).toBe('getPublicTassadarRunSummary')
     expect(operationAt(body, '/api/training/evals/a5', 'get').operationId).toBe(
       'readTrainingA5EvalDashboard',
     )
+    expect(
+      operationAt(body, '/api/hygiene-lane/debt-receipts', 'post')
+        .operationId,
+    ).toBe('createHygieneLaneDebtReceipt')
     expect(operationAt(body, '/api/agents/register', 'post').operationId).toBe(
       'registerProgrammaticAgent',
     )
@@ -475,6 +493,20 @@ describe('OpenAgents OpenAPI route', () => {
         .security,
     ).toEqual([])
     expect(
+      operationAt(
+        body,
+        '/api/public/training/runs/{trainingRunRef}/settlements',
+        'get',
+      ).security,
+    ).toEqual([])
+    expect(
+      operationAt(
+        body,
+        '/api/public/training/verification-challenges/{challengeRef}',
+        'get',
+      ).security,
+    ).toEqual([])
+    expect(
       operationAt(body, '/api/public/tassadar-run-summary', 'get').security,
     ).toEqual([])
     expect(
@@ -497,6 +529,9 @@ describe('OpenAgents OpenAPI route', () => {
         'get',
       ).operationId,
     ).toBe('getPublicTassadarFirstRealSettlementReplay')
+    expect(
+      operationAt(body, '/api/hygiene-lane/debt-receipts', 'post').security,
+    ).toEqual([{ adminBearer: [] }])
     expect(
       operationAt(body, '/api/customer-orders/active', 'get').security,
     ).toEqual([{ browserSession: [] }, { agentBearer: [] }])
@@ -805,6 +840,8 @@ describe('OpenAgents OpenAPI route', () => {
         'ForumReceiptLookupResponse',
         'CreateForumTopicRequest',
         'CreateForumReplyRequest',
+        'HygieneDebtReceiptCreateRequest',
+        'HygieneDebtReceiptCreateResponse',
         'CustomerOrderEnvelope',
         'OperatorSiteEnvelope',
         'OperatorAdjutantAssignmentEnvelope',
@@ -817,6 +854,43 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       schemaProperties(body, 'CreateForumReplyRequest').bodyText?.maxLength,
     ).toBe(40000)
+    const hygieneDebtReceiptRequest = schemaProperties(
+      body,
+      'HygieneDebtReceiptCreateRequest',
+    )
+    expect(hygieneDebtReceiptRequest.debtReceiptKeyInput).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        required: [
+          'debtReceiptRef',
+          'objectiveDigest',
+          'repoBaselineRef',
+          'scopeDigest',
+        ],
+      }),
+    )
+    const hygieneDebtReceiptSourceRefs = hygieneDebtReceiptRequest.sourceRefs
+    expect(hygieneDebtReceiptSourceRefs).toEqual(
+      expect.objectContaining({ minItems: 1 }),
+    )
+    if (hygieneDebtReceiptSourceRefs === undefined) {
+      throw new Error('Missing HygieneDebtReceiptCreateRequest.sourceRefs')
+    }
+    expect(
+      (
+        hygieneDebtReceiptSourceRefs.items as Readonly<Record<string, unknown>>
+      ).maxLength,
+    ).toBe(261)
+    expect(hygieneDebtReceiptRequest.payableSats).toEqual(
+      expect.objectContaining({ minimum: 1 }),
+    )
+    const hygieneDebtReceiptResponse = schemaProperties(
+      body,
+      'HygieneDebtReceiptCreateResponse',
+    )
+    expect(hygieneDebtReceiptResponse.debtReceipt).toEqual(
+      expect.objectContaining({ additionalProperties: false }),
+    )
     expect(schemaProperties(body, 'AgentHostedSearchRequest').query).toEqual(
       expect.objectContaining({ maxLength: 500, minLength: 3 }),
     )

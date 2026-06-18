@@ -292,6 +292,27 @@ describe('POST /api/hygiene-lane/debt-receipts (create payable receipt, #5335 st
     expect(store.rows.size).toBe(0)
   })
 
+  it('rejects malformed debt-receipt key input refs before persisting', async () => {
+    const { routes, store } = makeRoutes()
+
+    const response = await runRoute(
+      routes.routeHygieneLaneSettlementRequest(
+        createRequest(
+          createBody({
+            debtReceiptKeyInput: {
+              ...KEY_INPUT,
+              scopeDigest: '/Users/trigger/private-scope',
+            },
+          }),
+        ),
+        {},
+      ),
+    )
+
+    expect(response.status).toBe(400)
+    expect(store.rows.size).toBe(0)
+  })
+
   it('rejects an unsafe ref (payment/wallet material) before persisting', async () => {
     const { routes, store } = makeRoutes()
 

@@ -180,6 +180,27 @@ const objectSummary = (description: string): JsonSchema => ({
   additionalProperties: true,
 })
 
+const hygieneDebtReceiptRef = (description: string): JsonSchema => ({
+  type: 'string',
+  minLength: 1,
+  maxLength: 261,
+  pattern: '^[A-Za-z0-9][A-Za-z0-9_.:/#-]{0,260}$',
+  description,
+})
+
+const hygieneDebtReceiptRefArray = (description: string): JsonSchema => ({
+  type: 'array',
+  minItems: 1,
+  items: hygieneDebtReceiptRef('Public-safe hygiene debt-receipt ref.'),
+  description,
+})
+
+const satsInteger = (description: string, minimum = 0): JsonSchema => ({
+  type: 'integer',
+  minimum,
+  description,
+})
+
 const schemaComponents = (): JsonSchema => ({
   ErrorResponse: {
     type: 'object',
@@ -1901,6 +1922,178 @@ const requestSchemas = (): JsonSchema => ({
   TrainingRunSettlementEnvelope: objectSummary(
     'Settlement result: the updated run projection, a settlement block (amountSats, contributorRef, settlementReceiptRef, verificationChallengeRef), and the run summary whose providerConfirmedSettledPayoutSats now reflects the provider-confirmed settled receipt linked to the run.',
   ),
+  HygieneDebtReceiptCreateResponse: {
+    type: 'object',
+    additionalProperties: false,
+    description:
+      'Admin-only hygiene debt-receipt create response. It returns the durable payable receipt identity and public-safe refs only; raw evidence, diffs, prompts, wallet material, payout targets, and provider payloads are never echoed.',
+    required: ['debtReceipt'],
+    properties: {
+      debtReceipt: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'budgetCapSats',
+          'debtReceiptKey',
+          'debtReceiptRef',
+          'idempotent',
+          'mergedPrRef',
+          'payableSats',
+          'reviewerAcceptanceRef',
+          'state',
+        ],
+        properties: {
+          budgetCapSats: satsInteger(
+            'Funded budget cap for this payable receipt in sats.',
+            1,
+          ),
+          debtReceiptKey: {
+            type: 'string',
+            pattern: '^debt_receipt_key:[a-f0-9]{64}$',
+            description:
+              'Typed DebtReceiptKey fingerprint for the retire-once receipt.',
+          },
+          debtReceiptRef: hygieneDebtReceiptRef(
+            'Public ref naming the funded hygiene debt receipt.',
+          ),
+          idempotent: {
+            type: 'boolean',
+            description:
+              'True when the create request reconnected to an existing payable receipt for the same DebtReceiptKey.',
+          },
+          mergedPrRef: hygieneDebtReceiptRef(
+            'Public ref for the merged PR this receipt funds.',
+          ),
+          payableSats: satsInteger(
+            'Payable amount in sats after the debt-receipt policy reprojects the evidence.',
+            1,
+          ),
+          reviewerAcceptanceRef: hygieneDebtReceiptRef(
+            'Public ref for the reviewer acceptance evidence.',
+          ),
+          state: {
+            type: 'string',
+            enum: ['payable'],
+            description:
+              'Create only persists receipts that reproject to payable.',
+          },
+        },
+      },
+    },
+  },
+  HygieneDebtReceiptCreateRequest: {
+    type: 'object',
+    additionalProperties: false,
+    description:
+      'Admin-only request to create a durable payable hygiene debt receipt (#5372/#5335 step 1). The server reprojects these public-safe refs through the debt-receipt policy and persists only payable receipts, keyed by DebtReceiptKey.',
+    required: [
+      'acceptedWorkRefs',
+      'baselineMetricRefs',
+      'budgetCapSats',
+      'debtReceiptKeyInput',
+      'fundingApprovalRefs',
+      'fundingAuthorityRefs',
+      'hygieneDeltaRefs',
+      'mergedPrRef',
+      'noNewEqualOrWorseDebtRefs',
+      'payableSats',
+      'reviewDecisionRefs',
+      'reviewerAcceptanceRef',
+      'scopeRefs',
+      'settlementApprovalRefs',
+      'sourceRefs',
+      'stopConditionRefs',
+      'targetMetricRefs',
+      'verificationCommandRefs',
+    ],
+    properties: {
+      acceptedWorkRefs: hygieneDebtReceiptRefArray(
+        'Refs proving the merged work was accepted.',
+      ),
+      baselineMetricRefs: hygieneDebtReceiptRefArray(
+        'Refs for the measured debt baseline.',
+      ),
+      budgetCapSats: satsInteger('Funded budget cap in sats.', 1),
+      debtReceiptKeyInput: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'debtReceiptRef',
+          'objectiveDigest',
+          'repoBaselineRef',
+          'scopeDigest',
+        ],
+        properties: {
+          debtReceiptRef: hygieneDebtReceiptRef(
+            'Public ref naming the funded debt receipt.',
+          ),
+          objectiveDigest: hygieneDebtReceiptRef(
+            'Public digest/ref for the baseline metric, target metric, stop condition, and verifier objective.',
+          ),
+          repoBaselineRef: hygieneDebtReceiptRef(
+            'Public ref for the repository baseline the receipt was measured against.',
+          ),
+          scopeDigest: hygieneDebtReceiptRef(
+            'Public digest/ref for the touched scope.',
+          ),
+        },
+      },
+      fundingApprovalRefs: hygieneDebtReceiptRefArray(
+        'Refs proving the receipt or batch was funded by an authority distinct from the worker.',
+      ),
+      fundingAuthorityActorRef: hygieneDebtReceiptRef(
+        'Optional actor ref for the funding authority.',
+      ),
+      fundingAuthorityRefs: hygieneDebtReceiptRefArray(
+        'Refs identifying the funding authority or market policy.',
+      ),
+      hygieneDeltaRefs: hygieneDebtReceiptRefArray(
+        'Refs for the measured hygiene delta.',
+      ),
+      mergedPrRef: hygieneDebtReceiptRef('Public ref for the merged PR.'),
+      noNewEqualOrWorseDebtRefs: hygieneDebtReceiptRefArray(
+        'Refs proving no equal-or-worse debt was introduced in scope.',
+      ),
+      payableSats: satsInteger(
+        'Payable amount requested for the policy projection in sats.',
+        1,
+      ),
+      proposerActorRef: hygieneDebtReceiptRef(
+        'Optional actor ref for the debt proposer.',
+      ),
+      reviewDecisionRefs: hygieneDebtReceiptRefArray(
+        'Refs for the reviewer decision evidence.',
+      ),
+      reviewerAcceptanceRef: hygieneDebtReceiptRef(
+        'Public ref for the reviewer acceptance evidence.',
+      ),
+      reviewerActorRef: hygieneDebtReceiptRef(
+        'Optional actor ref for the reviewer.',
+      ),
+      scopeRefs: hygieneDebtReceiptRefArray('Refs for the receipt scope.'),
+      settlementApprovalRefs: hygieneDebtReceiptRefArray(
+        'Refs proving settlement authority approved this payable receipt.',
+      ),
+      settlementAuthorityActorRef: hygieneDebtReceiptRef(
+        'Optional actor ref for the settlement authority.',
+      ),
+      sourceRefs: hygieneDebtReceiptRefArray(
+        'Refs naming the source debt, issue, probe, or buyer request.',
+      ),
+      stopConditionRefs: hygieneDebtReceiptRefArray(
+        'Refs naming the receipt stop condition.',
+      ),
+      targetMetricRefs: hygieneDebtReceiptRefArray(
+        'Refs for the target metric.',
+      ),
+      verificationCommandRefs: hygieneDebtReceiptRefArray(
+        'Refs for the verifier command or independent replay evidence.',
+      ),
+      workerActorRef: hygieneDebtReceiptRef(
+        'Optional actor ref for the worker.',
+      ),
+    },
+  },
   TrainingWindowPlanRequest: objectSummary(
     'Admin-only request to plan a training window for a trainingRunRef, including homeworkKind, priority, datasetRefs, sourceRefs, and receiptRefs as public-safe refs only.',
   ),
@@ -3763,6 +3956,24 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/public/training/runs/{trainingRunRef}/settlements': {
+    get: operation({
+      operationId: 'listPublicTrainingRunSettlements',
+      summary: 'List public training-run settlements',
+      description:
+        'Lists public-safe settlement rows for a training run under the explicit /api/public alias. Rows are generated from receipt-first settlement evidence and keep simulation rows separate from real Bitcoin movement. No raw wallet material, invoices, preimages, payout targets, or provider payloads are returned.',
+      tags: ['Training'],
+      security: publicRead,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      responses: {
+        '200': okJson(
+          'Public training-run settlement rows.',
+          '#/components/schemas/TrainingRunSettlementsEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/training/runs/{trainingRunRef}/activate': {
     post: operation({
       operationId: 'activateTrainingRun',
@@ -3884,6 +4095,30 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Recorded run-linked provider-confirmed settlement receipt.',
           '#/components/schemas/TrainingRunSettlementEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/hygiene-lane/debt-receipts': {
+    post: operation({
+      operationId: 'createHygieneLaneDebtReceipt',
+      summary: 'Create a payable hygiene debt receipt',
+      description:
+        'Admin-only (#5372/#5335 step 1). Creates or reconnects a durable payable hygiene debt receipt for merged and reviewed work. The request supplies public-safe debt-receipt evidence refs; the server reprojects them through the debt-receipt policy, computes the DebtReceiptKey, persists only payable receipts, and refuses retired duplicate replays. This creates payability evidence only; settlement and real Bitcoin movement remain separate owner-gated routes. No raw diffs, prompts, PR bodies, wallet material, payout targets, provider payloads, or secrets are accepted or returned.',
+      tags: ['Operator', 'Payments'],
+      security: adminBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/HygieneDebtReceiptCreateRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Existing payable hygiene debt receipt for this DebtReceiptKey.',
+          '#/components/schemas/HygieneDebtReceiptCreateResponse',
+        ),
+        '201': okJson(
+          'Created payable hygiene debt receipt.',
+          '#/components/schemas/HygieneDebtReceiptCreateResponse',
         ),
         ...errorResponses(),
       },
@@ -4352,6 +4587,26 @@ const paths = (): JsonSchema => ({
       responses: {
         '200': okJson(
           'Training verification challenge projection.',
+          '#/components/schemas/TrainingVerificationChallengeEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/training/verification-challenges/{challengeRef}': {
+    get: operation({
+      operationId: 'getPublicTrainingVerificationChallenge',
+      summary: 'Read public training verification challenge',
+      description:
+        'Reads the public-safe training verification challenge projection under the public challenge alias, including generatedAt, schemaVersion, sourceRefs, a live_at_read staleness contract, queue state, class, sampling policy, commitment refs, typed failure codes, and verdict refs only.',
+      tags: ['Training'],
+      security: publicRead,
+      parameters: [
+        pathParam('challengeRef', 'Training verification challenge ref.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Public training verification challenge projection.',
           '#/components/schemas/TrainingVerificationChallengeEnvelope',
         ),
         ...errorResponses(),
