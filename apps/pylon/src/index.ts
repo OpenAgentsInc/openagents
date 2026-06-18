@@ -2651,13 +2651,22 @@ async function main() {
   }
 
   if (args[0] === "operator" && args[1] === "snapshot" && args.includes("--json")) {
+    // #5401 regression seam: simulate a dangling SDK/event-loop handle after the
+    // snapshot prints. Without the explicit process.exit below, this command
+    // would hang after emitting valid JSON.
+    if (Bun.env.PYLON_OPERATOR_SNAPSHOT_TEST_DANGLING_HANDLE === "1") {
+      setInterval(() => undefined, 60_000)
+    }
     const inventory = await discoverHostInventory({ env: Bun.env })
     const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
     const state = await ensurePylonLocalState(summary)
     const wallet = await classifyPrimaryAgentWalletForState(state)
     const snapshot = createOperatorSnapshot({ inventory, wallet })
     process.stdout.write(`${JSON.stringify(snapshot, null, 2)}\n`)
-    return
+    // Reading the wallet projection may load Spark/Breez, whose background
+    // handles can keep a one-shot process alive after stdout is complete.
+    // Exit explicitly so release gates and pipes see EOF.
+    process.exit(0)
   }
 
   if (args[0] === "psionic") {
