@@ -75,6 +75,13 @@ Workers may propose findings, but a separate allocator has to fund them.
 Workers do not receive spend authority, deployment authority, settlement
 authority, or authority to mint payable follow-ups.
 
+The adapter in
+`apps/openagents.com/workers/api/src/debt-receipt-work-request.ts` keeps this
+contract hexagonal: debt-receipt economics are projected and checked first,
+then a funded receipt is translated into the existing ref-only Forum
+work-request contract. The Forum market still sees only objective, verifier,
+budget, deadline, repo, and capability refs.
+
 ## First Receipt: #5334
 
 Proposed public-safe receipt packet:
@@ -116,4 +123,5 @@ the receipt payable when the implementation diff exists.
   human-review-only until the benchmark, budget, or scope changes.
 
 Regression coverage for these invariants lives in
-`apps/openagents.com/workers/api/src/debt-receipt-policy.test.ts`.
+`apps/openagents.com/workers/api/src/debt-receipt-policy.test.ts` and
+`apps/openagents.com/workers/api/src/debt-receipt-work-request.test.ts`.
