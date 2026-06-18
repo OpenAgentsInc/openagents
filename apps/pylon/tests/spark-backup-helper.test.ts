@@ -5,6 +5,8 @@ import {
   createSparkBackupHelper,
   createSparkBackupSendTransfer,
   createSparkBackupSweepTransfer,
+  domainFromLightningAddress,
+  evaluateDomainFeePolicy,
   isSparkAddress,
   resolveSparkBackupHelper,
 } from "../src/spark-backup-helper"
@@ -828,6 +830,347 @@ describe("Spark backup helper adapter (slice 2: real Breez SDK contract via fake
       if (priorEnv === undefined) delete process.env.PYLON_SPARK_MAX_FEE_SATS
       else process.env.PYLON_SPARK_MAX_FEE_SATS = priorEnv
     }
+  })
+
+  // -------------------------------------------------------------------------
+  // #5257 — PER-DESTINATION-DOMAIN FEE POLICY (the "blacklist") + attribution.
+  // -------------------------------------------------------------------------
+
+  // Mock the LNURL-pay resolve fetch (GET /.well-known/lnurlp/<name> -> callback)
+  // so an LA destination resolves to a BOLT11 that the SDK fake then prepares.
+  const installLnurlFetch = (resolvedBolt11: string) => {
+    const original = globalThis.fetch
+    globalThis.fetch = (async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString()
+      if (u.includes("/.well-known/lnurlp/")) {
+        return new Response(
+          JSON.stringify({
+            tag: "payRequest",
+            callback: "https://bitnob.io/cb",
+            minSendable: 1,
+            maxSendable: 1_000_000_000,
+          }),
+          { status: 200 },
+        )
+      }
+      return new Response(JSON.stringify({ pr: resolvedBolt11 }), { status: 200 })
+    }) as typeof fetch
+    return () => {
+      globalThis.fetch = original
+    }
+  }
+
+  const withDenyEnv = async (key: string, value: string | undefined, fn: () => Promise<void>) => {
+    const prior = process.env[key]
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+    try {
+      await fn()
+    } finally {
+      if (prior === undefined) delete process.env[key]
+      else process.env[key] = prior
+    }
+  }
+
+  test("REFUSES an LA send to a DENIED domain pre-dispatch (destination_fee_policy), no LNURL resolve, zero movement (#5257)", async () => {
+    const rawLightningAddress = "alice@bitnob.io"
+    let sendCalls = 0
+    let fetched = false
+    const original = globalThis.fetch
+    globalThis.fetch = (async (url: string | URL) => {
+      fetched = true
+      throw new Error(`a denied domain must not trigger LNURL resolve: ${String(url)}`)
+    }) as typeof fetch
+    try {
+      const transfer = createSparkBackupSendTransfer({
+        apiKey: "k",
+        mnemonic: TEST_MNEMONIC,
+        loadModule: async () =>
+          fakeSparkModule({ balanceSats: 5000, onSend: () => { sendCalls += 1 } }),
+      })
+      await withDenyEnv("PYLON_SPARK_DENY_DOMAINS", "foo.example,bitnob.io", async () => {
+        const result = await transfer({
+          amountSats: 5000,
+          destination: rawLightningAddress,
+          idempotencyKey: "test-5257-deny",
+        })
+        expect(result.ok).toBe(false)
+        if (result.ok) throw new Error("expected domain-policy refusal")
+        // Public-safe failure ref carries the BARE domain, never the full LA.
+        expect(result.failureRef).toBe("wallet.spark_backup_send.destination_fee_policy:bitnob.io")
+        expect(result.failureRef).not.toContain("alice@")
+        // Refused pre-resolve AND pre-dispatch: no LNURL fetch, no sendPayment.
+        expect(fetched).toBe(false)
+        expect(sendCalls).toBe(0)
+        expect(JSON.stringify(result)).not.toContain(rawLightningAddress)
+        assertPublicProjectionSafe(result)
+      })
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  test("REFUSES an LA send that violates the per-domain fee bound pre-dispatch (destination_fee_policy), zero movement (#5257)", async () => {
+    // amount 1000, prepared fee 200, PYLON_SPARK_DOMAIN_FEE_MAX_PCT=10 →
+    // bound max(50, 100)=100 → 200 > 100 → REFUSE on the domain bound.
+    // (The #5254 magnitude guard alone would PASS this: 200 ≤ max(50, 500)=500.)
+    const rawLightningAddress = "bob@bitnob.io"
+    const resolvedBolt11 = "lnbc1000n1mock5257feeboundinvoicethatmustnotleak"
+    let sendCalls = 0
+    const restore = installLnurlFetch(resolvedBolt11)
+    try {
+      const transfer = createSparkBackupSendTransfer({
+        apiKey: "k",
+        mnemonic: TEST_MNEMONIC,
+        loadModule: async () =>
+          fakeSparkModule({
+            balanceSats: 1000,
+            preparedLightningFeeSats: 200,
+            sendResultFees: 0n,
+            onSend: () => { sendCalls += 1 },
+          }),
+      })
+      await withDenyEnv("PYLON_SPARK_DOMAIN_FEE_MAX_PCT", "10", async () => {
+        const result = await transfer({
+          amountSats: 1000,
+          destination: rawLightningAddress,
+          idempotencyKey: "test-5257-feebound",
+        })
+        expect(result.ok).toBe(false)
+        if (result.ok) throw new Error("expected per-domain fee-bound refusal")
+        expect(result.failureRef).toBe("wallet.spark_backup_send.destination_fee_policy:bitnob.io")
+        expect(sendCalls).toBe(0)
+        expect(JSON.stringify(result)).not.toContain(rawLightningAddress)
+        expect(JSON.stringify(result)).not.toContain(resolvedBolt11)
+        assertPublicProjectionSafe(result)
+      })
+    } finally {
+      restore()
+    }
+  })
+
+  test("PASSES an allowed/normal LA domain and dispatches, attributing the domain (#5257)", async () => {
+    const rawLightningAddress = "carol@bitnob.io"
+    const resolvedBolt11 = "lnbc1000n1mock5257okinvoicethatmustnotleak"
+    let sendCalls = 0
+    const restore = installLnurlFetch(resolvedBolt11)
+    try {
+      const transfer = createSparkBackupSendTransfer({
+        apiKey: "k",
+        mnemonic: TEST_MNEMONIC,
+        loadModule: async () =>
+          fakeSparkModule({
+            balanceSats: 1000,
+            preparedLightningFeeSats: 12,
+            sendResultFees: null,
+            onSend: () => { sendCalls += 1 },
+          }),
+      })
+      // No deny env set → a normal domain with a sane fee passes and dispatches.
+      const result = await transfer({
+        amountSats: 1000,
+        destination: rawLightningAddress,
+        idempotencyKey: "test-5257-pass",
+      })
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected normal LA send to pass")
+      expect(result.method).toBe("lnurl_pay")
+      expect(sendCalls).toBe(1)
+      // The bare domain is attributed; the full LA never appears.
+      expect(result.destinationDomain).toBe("bitnob.io")
+      expect(JSON.stringify(result)).not.toContain(rawLightningAddress)
+      expect(JSON.stringify(result)).not.toContain(resolvedBolt11)
+      assertPublicProjectionSafe(result)
+    } finally {
+      restore()
+    }
+  })
+
+  test("OPERATOR ALLOWLIST override forces a denied domain through (never silent) (#5257)", async () => {
+    const rawLightningAddress = "dave@bitnob.io"
+    const resolvedBolt11 = "lnbc1000n1mock5257allowoverrideinvoice"
+    let sendCalls = 0
+    const restore = installLnurlFetch(resolvedBolt11)
+    try {
+      const transfer = createSparkBackupSendTransfer({
+        apiKey: "k",
+        mnemonic: TEST_MNEMONIC,
+        loadModule: async () =>
+          fakeSparkModule({
+            balanceSats: 1000,
+            preparedLightningFeeSats: 12,
+            sendResultFees: null,
+            onSend: () => { sendCalls += 1 },
+          }),
+      })
+      await withDenyEnv("PYLON_SPARK_DENY_DOMAINS", "bitnob.io", async () => {
+        await withDenyEnv("PYLON_SPARK_ALLOW_DOMAINS", "bitnob.io", async () => {
+          const result = await transfer({
+            amountSats: 1000,
+            destination: rawLightningAddress,
+            idempotencyKey: "test-5257-allow-override",
+          })
+          // The allowlist override wins over the deny list: the send proceeds.
+          expect(result.ok).toBe(true)
+          if (!result.ok) throw new Error("expected allowlist override to force the send")
+          expect(sendCalls).toBe(1)
+          expect(result.destinationDomain).toBe("bitnob.io")
+          assertPublicProjectionSafe(result)
+        })
+      })
+    } finally {
+      restore()
+    }
+  })
+
+  test("OPERATOR fee-ceiling override (maxFeeSats) also forces a fee-bound-flagged domain through (#5257)", async () => {
+    const rawLightningAddress = "erin@bitnob.io"
+    const resolvedBolt11 = "lnbc1000n1mock5257feeoverrideinvoice"
+    let sendCalls = 0
+    const restore = installLnurlFetch(resolvedBolt11)
+    try {
+      const transfer = createSparkBackupSendTransfer({
+        apiKey: "k",
+        mnemonic: TEST_MNEMONIC,
+        loadModule: async () =>
+          fakeSparkModule({
+            balanceSats: 1000,
+            preparedLightningFeeSats: 200,
+            sendResultFees: 0n,
+            onSend: () => { sendCalls += 1 },
+          }),
+      })
+      await withDenyEnv("PYLON_SPARK_DOMAIN_FEE_MAX_PCT", "10", async () => {
+        const result = await transfer({
+          amountSats: 1000,
+          destination: rawLightningAddress,
+          idempotencyKey: "test-5257-fee-override",
+          // Explicit operator acceptance also overrides the per-domain policy.
+          maxFeeSats: 5000,
+        })
+        expect(result.ok).toBe(true)
+        if (!result.ok) throw new Error("expected fee override to force the flagged send")
+        expect(sendCalls).toBe(1)
+        expect(result.feeSats).toBe(200)
+        assertPublicProjectionSafe(result)
+      })
+    } finally {
+      restore()
+    }
+  })
+
+  test("native spark_native + a bolt11 send are UNAFFECTED by the domain policy (#5257)", async () => {
+    // Even with a deny list AND a strict per-domain fee bound configured, a native
+    // Spark send and a bare BOLT11 send (no domain) are never subject to the policy.
+    await withDenyEnv("PYLON_SPARK_DENY_DOMAINS", "bitnob.io,anything.example", async () => {
+      await withDenyEnv("PYLON_SPARK_DOMAIN_FEE_MAX_PCT", "1", async () => {
+        // Native Spark.
+        let nativeSendCalls = 0
+        const nativeTransfer = createSparkBackupSendTransfer({
+          apiKey: "k",
+          mnemonic: TEST_MNEMONIC,
+          loadModule: async () =>
+            fakeSparkModule({ balanceSats: 5000, sendResultFees: 0n, onSend: () => { nativeSendCalls += 1 } }),
+        })
+        const nativeResult = await nativeTransfer({
+          amountSats: 1,
+          destination: RAW_SPARK_NATIVE_ADDRESS,
+          idempotencyKey: "test-5257-native-unaffected",
+        })
+        expect(nativeResult.ok).toBe(true)
+        if (!nativeResult.ok) throw new Error("expected native send to pass")
+        expect(nativeResult.method).toBe("spark_native")
+        expect(nativeResult.destinationDomain).toBeNull()
+        expect(nativeSendCalls).toBe(1)
+        assertPublicProjectionSafe(nativeResult)
+
+        // Bare BOLT11 (no LNURL resolve, no domain).
+        const rawPaymentRequest = "lnbc1000n1rawbolt11unaffectedbydomainpolicy5257"
+        let bolt11SendCalls = 0
+        const bolt11Transfer = createSparkBackupSendTransfer({
+          apiKey: "k",
+          mnemonic: TEST_MNEMONIC,
+          loadModule: async () =>
+            fakeSparkModule({
+              balanceSats: 1000,
+              preparedLightningFeeSats: 12,
+              sendResultFees: null,
+              onSend: () => { bolt11SendCalls += 1 },
+            }),
+        })
+        const bolt11Result = await bolt11Transfer({
+          amountSats: 1000,
+          destination: rawPaymentRequest,
+          idempotencyKey: "test-5257-bolt11-unaffected",
+        })
+        expect(bolt11Result.ok).toBe(true)
+        if (!bolt11Result.ok) throw new Error("expected bolt11 send to pass")
+        expect(bolt11Result.method).toBe("payment_request")
+        expect(bolt11Result.destinationDomain).toBeNull()
+        expect(bolt11SendCalls).toBe(1)
+        assertPublicProjectionSafe(bolt11Result)
+      })
+    })
+  })
+
+  test("domainFromLightningAddress extracts the bare public-safe domain, null for non-LA (#5257)", () => {
+    expect(domainFromLightningAddress("alice@bitnob.io")).toBe("bitnob.io")
+    expect(domainFromLightningAddress("  ALICE@Bitnob.IO  ")).toBe("bitnob.io")
+    expect(domainFromLightningAddress("lnbc1000n1notalightningaddress")).toBeNull()
+    expect(domainFromLightningAddress(RAW_SPARK_NATIVE_ADDRESS)).toBeNull()
+    expect(domainFromLightningAddress("")).toBeNull()
+  })
+
+  test("evaluateDomainFeePolicy: deny, fee-bound, allow-override, and non-LA passthrough (#5257)", () => {
+    // Deny list.
+    expect(
+      evaluateDomainFeePolicy({
+        domain: "bitnob.io",
+        amountSats: 1000,
+        preparedFeeSats: 10,
+        env: { PYLON_SPARK_DENY_DOMAINS: "bitnob.io" } as NodeJS.ProcessEnv,
+      }),
+    ).toEqual({ refuse: true, domain: "bitnob.io", reason: "deny_list" })
+    // Fee bound (200 > max(50, 10% of 1000)=100).
+    expect(
+      evaluateDomainFeePolicy({
+        domain: "bitnob.io",
+        amountSats: 1000,
+        preparedFeeSats: 200,
+        env: { PYLON_SPARK_DOMAIN_FEE_MAX_PCT: "10" } as NodeJS.ProcessEnv,
+      }),
+    ).toEqual({ refuse: true, domain: "bitnob.io", reason: "fee_bound" })
+    // Allowlist override beats the deny list.
+    expect(
+      evaluateDomainFeePolicy({
+        domain: "bitnob.io",
+        amountSats: 1000,
+        preparedFeeSats: 10,
+        env: {
+          PYLON_SPARK_DENY_DOMAINS: "bitnob.io",
+          PYLON_SPARK_ALLOW_DOMAINS: "bitnob.io",
+        } as NodeJS.ProcessEnv,
+      }),
+    ).toEqual({ refuse: false })
+    // Explicit fee override beats the per-domain bound.
+    expect(
+      evaluateDomainFeePolicy({
+        domain: "bitnob.io",
+        amountSats: 1000,
+        preparedFeeSats: 200,
+        hasExplicitFeeOverride: true,
+        env: { PYLON_SPARK_DOMAIN_FEE_MAX_PCT: "10" } as NodeJS.ProcessEnv,
+      }),
+    ).toEqual({ refuse: false })
+    // Non-LA (null domain) is never subject to the policy.
+    expect(
+      evaluateDomainFeePolicy({
+        domain: null,
+        amountSats: 1000,
+        preparedFeeSats: 999_999,
+        env: { PYLON_SPARK_DENY_DOMAINS: "bitnob.io" } as NodeJS.ProcessEnv,
+      }),
+    ).toEqual({ refuse: false })
   })
 
   test("send transfer reports a CLEAR lnurl_resolve failure (not send-pending) when an external LNURL host hangs (#5195 follow-up)", async () => {

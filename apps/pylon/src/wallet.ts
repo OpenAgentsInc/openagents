@@ -1765,6 +1765,13 @@ export type SparkBackupSendProjection = {
   // than claiming `feeSats: 0` on a send that actually paid a Lightning/LSP fee.
   feeFromPrepared: boolean
   destinationRef: string | null
+  // #5257: for a Lightning-Address send, the destination's bare DOMAIN (the part
+  // after `@`, e.g. `bitnob.io`). PUBLIC-SAFE: the domain is the LNURL-pay
+  // endpoint, not payment material — the full `name@domain` stays redacted to
+  // `destinationRef`. Null for non-LA sends (bolt11/bolt12 and native Spark).
+  // Surfaced so an operator can build a picture of which domains quote
+  // extortionate Lightning fees and drive the per-domain fee policy.
+  destinationDomain: string | null
   sparkPaymentRef: string | null
   transferRef: string | null
   // #5225: `spark_native` = a Spark→Spark send that routed natively (no Lightning
@@ -1791,6 +1798,10 @@ export type SparkBackupSendTransferResult =
       // (`amountSats + feeSats` matches the real balance delta) instead of
       // claiming `feeSats: 0` on a send that actually cost a Lightning/LSP fee.
       feeFromPrepared?: boolean
+      // #5257: bare destination DOMAIN for a Lightning-Address send (public-safe
+      // attribution; the full `name@domain` is never returned). Null/absent for
+      // non-LA sends (bolt11/bolt12, native Spark).
+      destinationDomain?: string | null
       // #5225: `spark_native` for a native Spark→Spark send (no Lightning routing fee).
       method: "payment_request" | "lnurl_pay" | "spark_native"
       status: string | null
@@ -2234,6 +2245,7 @@ export async function sendWithSparkBackup(
     feeSats: null,
     feeFromPrepared: false,
     destinationRef,
+    destinationDomain: null,
     sparkPaymentRef: null,
     transferRef: null,
     method: null,
@@ -2321,6 +2333,29 @@ export async function sendWithSparkBackup(
         nextActionRefs: ["action.wallet.spark_backup.verify_balance_before_retry"],
       })
     }
+    // #5257: a per-destination-domain policy refusal (operator deny list or a
+    // per-domain fee bound) surfaces its OWN distinct, public-safe blocker plus a
+    // raise-the-override next action. The failureRef carries the bare domain
+    // (public-safe; never the full `name@domain`) as
+    // `wallet.spark_backup_send.destination_fee_policy:<domain>`, so we key on it
+    // directly and echo the domain into the projection for attribution. This is
+    // pre-dispatch (zero sats move), composing cleanly with the #5254 magnitude
+    // guard which is also pre-dispatch.
+    const destinationFeePolicy =
+      result.failureRef.startsWith("wallet.spark_backup_send") &&
+      result.failureRef.includes("destination_fee_policy")
+    if (destinationFeePolicy) {
+      const policyDomain = result.failureRef.split("destination_fee_policy:")[1] ?? null
+      return safe({
+        ...base,
+        state: "send-failed",
+        consentRequired: false,
+        ...(policyDomain && policyDomain.length > 0 ? { destinationDomain: policyDomain } : {}),
+        blockerRefs: ["blocker.wallet.spark_backup.destination_fee_policy"],
+        failureRefs: [result.failureRef],
+        nextActionRefs: ["action.wallet.spark_backup.allow_destination_domain_or_adjust"],
+      })
+    }
     // #5254: a pre-send fee-guard rejection surfaces a DISTINCT, operator-legible
     // blocker + a raise-the-ceiling next action, rather than the generic
     // "fix the transfer and retry" guidance. The failureRef is public-safe
@@ -2359,6 +2394,8 @@ export async function sendWithSparkBackup(
       fee: result.feeSats,
       feeFromPrepared: result.feeFromPrepared === true,
       destinationRef,
+      // #5257: bare destination domain is public-safe attribution material.
+      destinationDomain: result.destinationDomain ?? null,
       transferRef: result.transferRef,
       paymentRef: result.sparkPaymentRef,
       method: result.method,
@@ -2376,6 +2413,7 @@ export async function sendWithSparkBackup(
     amountSats: result.amountSats,
     feeSats: result.feeSats,
     feeFromPrepared: result.feeFromPrepared === true,
+    destinationDomain: result.destinationDomain ?? null,
     sparkPaymentRef: result.sparkPaymentRef,
     transferRef: result.transferRef,
     method: result.method,

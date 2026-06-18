@@ -285,6 +285,117 @@ export function resolveFeeCeilingSats(
   return Math.max(...candidates)
 }
 
+// #5257 — PER-DESTINATION-DOMAIN FEE POLICY (the "blacklist").
+//
+// The ~4,096-sat fee on a 44-sat send (#5250) was the SDK's TOTAL prepared
+// Lightning fee with NO per-hop/per-LSP breakdown, so we cannot attribute it to
+// an intermediate routing node. The ONE thing we CAN attribute is the
+// destination Lightning-Address DOMAIN (the LNURL-pay endpoint), which the
+// sending node resolves anyway. #5257 attributes the prepared fee to that bare
+// domain (public-safe — e.g. `bitnob.io`; the full `name@domain` is payment
+// material and stays redacted) and lets an operator deny or fee-cap a domain.
+//
+// This is keyed by DOMAIN and composes with — does not replace — the #5254
+// amount-relative magnitude guard. Both run PRE-dispatch (before sendPayment),
+// so a refusal moves zero sats. Knobs (all env, read like PYLON_SPARK_MAX_FEE_SATS):
+//   - PYLON_SPARK_DENY_DOMAINS    comma-separated deny list (e.g. "bitnob.io,foo.bar").
+//   - PYLON_SPARK_ALLOW_DOMAINS   comma-separated allowlist OVERRIDE. A domain
+//                                 present here is forced through regardless of the
+//                                 deny list or per-domain fee bound (operator
+//                                 knowingly-accepts; never silent — it is explicit).
+//   - PYLON_SPARK_DOMAIN_FEE_MAX_PCT  optional per-domain ceiling as a percentage
+//                                 of the amount (e.g. "10" = fee may be at most 10%
+//                                 of amountSats for ANY LA domain).
+//   - PYLON_SPARK_DOMAIN_FEE_MAX_SATS optional small absolute floor below which a
+//                                 fee always passes the per-domain bound (defaults
+//                                 to FEE_GUARD_FLOOR_SATS). Above it, the pct bound
+//                                 applies.
+// The existing per-call `maxFeeSats` / PYLON_SPARK_MAX_FEE_SATS operator override
+// (the #5254 path) ALSO forces a flagged domain through: an explicit raised
+// ceiling is a deliberate operator acceptance, so we honor it here too.
+
+// Extract the bare domain (part after `@`, lowercased) from a Lightning Address.
+// Returns null when the input is not a syntactic lud16 `name@domain`. The domain
+// is PUBLIC-SAFE attribution material; callers must NOT surface the full address.
+export function domainFromLightningAddress(value: string): string | null {
+  const trimmed = value.trim().toLowerCase()
+  if (!isLightningAddress(trimmed)) return null
+  const at = trimmed.indexOf("@")
+  if (at <= 0 || at === trimmed.length - 1) return null
+  return trimmed.slice(at + 1)
+}
+
+function parseDomainList(raw: string | undefined): Set<string> {
+  const set = new Set<string>()
+  if (typeof raw !== "string") return set
+  for (const part of raw.split(",")) {
+    const domain = part.trim().toLowerCase()
+    if (domain !== "") set.add(domain)
+  }
+  return set
+}
+
+function parseNonNegativeNumber(raw: string | undefined): number | null {
+  if (typeof raw !== "string" || raw.trim() === "") return null
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 ? value : null
+}
+
+export type DomainFeePolicyDecision =
+  | { refuse: false }
+  // `reason` is a fixed enum (no payment material); `domain` is the bare,
+  // public-safe destination domain that triggered the refusal.
+  | { refuse: true; domain: string; reason: "deny_list" | "fee_bound" }
+
+/**
+ * Evaluate the #5257 per-destination-domain policy for a Lightning-Address send.
+ *
+ * PRE-dispatch and DOMAIN-keyed (complements the #5254 amount-relative guard):
+ *   - An allowlist (PYLON_SPARK_ALLOW_DOMAINS) OR an explicit operator
+ *     fee-ceiling override (`maxFeeSats` / PYLON_SPARK_MAX_FEE_SATS) forces the
+ *     send through (deliberate operator acceptance; never silent).
+ *   - Otherwise a denied domain refuses with `deny_list`.
+ *   - Otherwise a domain whose prepared fee exceeds the per-domain bound
+ *     (PYLON_SPARK_DOMAIN_FEE_MAX_PCT, above a small absolute floor) refuses
+ *     with `fee_bound`.
+ *   - Native Spark and non-LA destinations never reach here (domain === null).
+ */
+export function evaluateDomainFeePolicy(input: {
+  domain: string | null
+  amountSats: number
+  preparedFeeSats: number | null
+  // An explicit operator fee-ceiling override (#5254 path) is a deliberate
+  // acceptance, so it also overrides the domain policy.
+  hasExplicitFeeOverride?: boolean
+  env?: NodeJS.ProcessEnv
+}): DomainFeePolicyDecision {
+  const { domain } = input
+  // Only Lightning-Address (domain-bearing) sends are subject to the policy.
+  if (domain === null || domain === "") return { refuse: false }
+  const env = input.env ?? process.env
+
+  // Operator allowlist OR an explicit raised fee ceiling = knowingly-accepted.
+  const allow = parseDomainList(env.PYLON_SPARK_ALLOW_DOMAINS)
+  if (allow.has(domain)) return { refuse: false }
+  if (input.hasExplicitFeeOverride === true) return { refuse: false }
+
+  // Deny list.
+  const deny = parseDomainList(env.PYLON_SPARK_DENY_DOMAINS)
+  if (deny.has(domain)) return { refuse: true, domain, reason: "deny_list" }
+
+  // Per-domain fee bound: above a small absolute floor, the prepared fee may not
+  // exceed PYLON_SPARK_DOMAIN_FEE_MAX_PCT of the amount. Absent the pct knob,
+  // there is no per-domain fee bound (the #5254 magnitude guard still applies).
+  const maxPct = parseNonNegativeNumber(env.PYLON_SPARK_DOMAIN_FEE_MAX_PCT)
+  if (maxPct !== null && input.preparedFeeSats !== null && input.preparedFeeSats > 0) {
+    const floor = parseNonNegativeNumber(env.PYLON_SPARK_DOMAIN_FEE_MAX_SATS) ?? FEE_GUARD_FLOOR_SATS
+    const bound = Math.max(floor, Math.floor((maxPct / 100) * input.amountSats))
+    if (input.preparedFeeSats > bound) return { refuse: true, domain, reason: "fee_bound" }
+  }
+
+  return { refuse: false }
+}
+
 // Send-latency audit: opt-in per-step timing (PYLON_SPARK_DEBUG=1) so the cold
 // per-command send pipeline cost is MEASURABLE on real infra. Monotonic clock,
 // no payment material — just labelled millisecond deltas on stderr.
@@ -577,6 +688,44 @@ async function sendSparkPaymentFromSdk(input: {
   // how the treasury Spark sender pays Lightning Addresses.
   let method: "payment_request" | "lnurl_pay" | "spark_native" =
     isSparkNative ? "spark_native" : "payment_request"
+
+  // #5257: attribute the send to the destination Lightning-Address DOMAIN
+  // (public-safe; the full `name@domain` stays redacted) and apply the operator
+  // per-domain policy. Captured from the ORIGINAL destination before LNURL
+  // resolution rewrites it to a BOLT11. Null for non-LA sends (bolt11/bolt12,
+  // native Spark) — those are never subject to the domain policy.
+  const destinationDomain =
+    !isSparkNative && input.allowLnurlPay ? domainFromLightningAddress(destination) : null
+  // An explicit operator fee-ceiling override (#5254 path) is a deliberate
+  // acceptance that also overrides the domain policy.
+  const hasExplicitFeeOverride =
+    (typeof input.maxFeeSats === "number" && Number.isFinite(input.maxFeeSats)) ||
+    (typeof process.env.PYLON_SPARK_MAX_FEE_SATS === "string" &&
+      process.env.PYLON_SPARK_MAX_FEE_SATS.trim() !== "")
+
+  // #5257: enforce the DENY-LIST pre-resolve — a denied domain must not even
+  // trigger an LNURL round-trip. The per-domain FEE BOUND needs the prepared fee,
+  // so it is enforced after prepare (still pre-dispatch) below. The failureRef
+  // carries the bare domain (public-safe) so `sendWithSparkBackup` surfaces the
+  // `destination_fee_policy` blocker; zero sats move.
+  if (destinationDomain !== null) {
+    const denyDecision = evaluateDomainFeePolicy({
+      domain: destinationDomain,
+      amountSats: input.amountSats,
+      preparedFeeSats: null,
+      hasExplicitFeeOverride,
+    })
+    if (denyDecision.refuse && denyDecision.reason === "deny_list") {
+      if (process.env.PYLON_SPARK_DEBUG === "1") {
+        console.error(`[spark-send] fee_domain:${destinationDomain}:denied reason=deny_list`)
+      }
+      return {
+        ok: false,
+        failureRef: `${input.prefix}.destination_fee_policy:${destinationDomain}`,
+      }
+    }
+  }
+
   if (!isSparkNative && input.allowLnurlPay && isLightningAddress(destination)) {
     // #5195 follow-up: resolve LNURL-pay under its OWN generous timeout, NOT the
     // short read timeout — an external LNURL server is slower than a local SDK
@@ -673,6 +822,38 @@ async function sendSparkPaymentFromSdk(input: {
     preparedFeeComponents.length > 0
       ? preparedFeeComponents.reduce((sum, value) => sum + value, 0)
       : null
+
+  // #5257 — DOMAIN ATTRIBUTION + PER-DOMAIN FEE BOUND (pre-dispatch).
+  // For a Lightning-Address send, record the bare destination domain alongside
+  // the prepared fee (public-safe telemetry under PYLON_SPARK_DEBUG so we build a
+  // picture of which domains quote extortionate fees), then enforce the operator
+  // per-domain fee bound BEFORE dispatch. The deny-list check already ran above;
+  // here we only need the fee-bound (which requires the prepared fee). Composes
+  // with the #5254 magnitude guard below — both pre-dispatch, both zero-movement.
+  if (destinationDomain !== null) {
+    if (process.env.PYLON_SPARK_DEBUG === "1") {
+      console.error(
+        `[spark-send] fee_domain:${destinationDomain}:${preparedFee === null ? "unknown" : preparedFee}`,
+      )
+    }
+    const domainDecision = evaluateDomainFeePolicy({
+      domain: destinationDomain,
+      amountSats: input.amountSats,
+      preparedFeeSats: preparedFee,
+      hasExplicitFeeOverride,
+    })
+    if (domainDecision.refuse) {
+      if (process.env.PYLON_SPARK_DEBUG === "1") {
+        console.error(
+          `[spark-send] fee_domain:${destinationDomain}:denied reason=${domainDecision.reason}`,
+        )
+      }
+      return {
+        ok: false,
+        failureRef: `${input.prefix}.destination_fee_policy:${destinationDomain}`,
+      }
+    }
+  }
 
   // #5254 — PRE-SEND FEE GUARD. Refuse a send whose prepared fee is grossly
   // disproportionate to the amount BEFORE calling sendPayment, so zero sats
@@ -781,6 +962,8 @@ async function sendSparkPaymentFromSdk(input: {
     amountSats: amount,
     feeSats: fee,
     feeFromPrepared,
+    // #5257: public-safe destination-domain attribution (null for non-LA sends).
+    destinationDomain,
     method,
     status: publicStatus(payment.status),
   }

@@ -1242,6 +1242,71 @@ describe("Spark backup send / withdraw (#5177)", () => {
     assertPublicProjectionSafe(send)
   })
 
+  test("a per-domain policy refusal surfaces the destination_fee_policy blocker + attributes the bare domain, full LA redacted (#5257)", async () => {
+    const RAW_LIGHTNING_ADDRESS = "alice@bitnob.io"
+    const send = await sendWithSparkBackup({
+      amountSats: 5000,
+      destination: RAW_LIGHTNING_ADDRESS,
+      confirmSend: true,
+      env: enabledEnv,
+      // Mirror the helper's pre-dispatch domain-policy refusal: a public-safe
+      // failureRef carrying the BARE domain (never the full `name@domain`).
+      transfer: async () => ({
+        ok: false,
+        failureRef: "wallet.spark_backup_send.destination_fee_policy:bitnob.io",
+      }),
+    })
+    expect(send.state).toBe("send-failed")
+    // Distinct domain-policy blocker, NOT the generic send_failed or fee_too_high.
+    expect(send.blockerRefs).toContain("blocker.wallet.spark_backup.destination_fee_policy")
+    expect(send.blockerRefs).not.toContain("blocker.wallet.spark_backup.send_failed")
+    expect(send.blockerRefs).not.toContain("blocker.wallet.spark_backup.send_fee_too_high")
+    expect(send.nextActionRefs).toContain("action.wallet.spark_backup.allow_destination_domain_or_adjust")
+    // The bare domain is attributed into the projection (public-safe).
+    expect(send.destinationDomain).toBe("bitnob.io")
+    expect(send.failureRefs).toContain("wallet.spark_backup_send.destination_fee_policy:bitnob.io")
+    expect(send.publicReceiptRefs).toEqual([])
+    // The full Lightning Address NEVER appears anywhere in the projection.
+    expect(JSON.stringify(send)).not.toContain(RAW_LIGHTNING_ADDRESS)
+    expect(JSON.stringify(send)).not.toContain("alice@")
+    assertPublicProjectionSafe(send)
+  })
+
+  test("a successful LA send attributes the bare destination domain while keeping the full LA redacted (#5257)", async () => {
+    const RAW_LIGHTNING_ADDRESS = "carol@bitnob.io"
+    const laSend: SparkBackupSendTransfer = async ({ amountSats, destination }) => {
+      expect(destination).toBe(RAW_LIGHTNING_ADDRESS)
+      return {
+        ok: true,
+        transferRef: "wallet.spark_backup_send.deadbeefdeadbeefdeadbeef",
+        sparkPaymentRef: "wallet.spark_backup_send_payment.deadbeefdeadbeefdeadbeef",
+        amountSats,
+        feeSats: 12,
+        feeFromPrepared: true,
+        // The helper returns the bare domain as public-safe attribution.
+        destinationDomain: "bitnob.io",
+        method: "lnurl_pay",
+        status: "complete",
+      }
+    }
+    const send = await sendWithSparkBackup({
+      amountSats: 1000,
+      destination: RAW_LIGHTNING_ADDRESS,
+      confirmSend: true,
+      env: enabledEnv,
+      transfer: laSend,
+      now: () => new Date("2026-06-17T00:00:00.000Z"),
+    })
+    expect(send.state).toBe("sent")
+    expect(send.method).toBe("lnurl_pay")
+    expect(send.destinationDomain).toBe("bitnob.io")
+    expect(send.publicReceiptRefs[0]).toMatch(/^receipt\.pylon\.spark_backup_send\.[a-f0-9]{24}$/)
+    // The full LA stays redacted to destinationRef; only the bare domain surfaces.
+    expect(JSON.stringify(send)).not.toContain(RAW_LIGHTNING_ADDRESS)
+    expect(JSON.stringify(send)).not.toContain("carol@")
+    assertPublicProjectionSafe(send)
+  })
+
   test("maxFeeSats override is threaded to the transfer (#5254)", async () => {
     let seenMaxFee: number | undefined = -1
     const send = await sendWithSparkBackup({
