@@ -114,6 +114,10 @@ import {
   type ApprovalPolicy,
   type SessionsExecControl,
 } from "./node/sessions-exec"
+import {
+  parseSessionsBatchTasks,
+  runSessionsBatch,
+} from "./node/sessions-batch"
 import { createBoundedAutoApprovalPolicy } from "./node/auto-approval-policy"
 import {
   PYLON_COMMAND_CATALOG,
@@ -2120,7 +2124,7 @@ async function main() {
   }
 
   // CL-5035 sessions: first-class headless wrappers over the control-server
-  // session verbs (session.list/spawn/reply/cancel) the Autopilot desktop drives.
+  // session verbs (session.list/spawn/reply/batch/cancel) the Autopilot desktop drives.
   if (args[0] === "sessions") {
     const command = args[1]
     const options = parseCliOptions(args.slice(2))
@@ -2205,6 +2209,73 @@ async function main() {
         if (!sessionRef) throw new Error("sessions cancel requires --session-ref <ref>")
         const { result } = await runControlCommand({ type: "session.cancel", sessionRef }, Bun.env)
         process.stdout.write(`${JSON.stringify({ ok: true, session: result }, null, 2)}\n`)
+        return
+      }
+      if (command === "batch") {
+        const adapter = optionString(options, "adapter")
+        if (adapter !== "codex" && adapter !== "claude_agent") {
+          throw new Error("sessions batch --adapter must be codex or claude_agent")
+        }
+        const tasksPath = optionString(options, "tasks")
+        if (!tasksPath || tasksPath.trim().length === 0) {
+          throw new Error("sessions batch requires --tasks <json-file>")
+        }
+        const tasks = parseSessionsBatchTasks(JSON.parse(await readFile(tasksPath, "utf8")))
+        const verifyArgs = args.slice(2)
+        const verifies: string[] = []
+        for (let i = 0; i < verifyArgs.length; i += 1) {
+          if (verifyArgs[i] === "--verify") {
+            const value = verifyArgs[i + 1]
+            if (typeof value === "string" && !value.startsWith("--") && value.trim().length > 0) {
+              verifies.push(value.trim())
+              i += 1
+            }
+          }
+        }
+        const verify =
+          verifies.length === 0
+            ? ["bun", "--version"]
+            : ["sh", "-c", verifies.join(" && ")]
+        const concurrency = positiveIntegerOption(options, "concurrency", "sessions batch --concurrency") ?? 2
+        const timeoutSeconds = positiveIntegerOption(options, "timeout-seconds", "sessions batch --timeout-seconds")
+        const worktree = optionString(options, "worktree")
+        const managedWorktree = optionFlag(options, "managed-worktree")
+        if (worktree && managedWorktree) {
+          throw new Error("sessions batch uses either --worktree or --managed-worktree, not both")
+        }
+        const repoRef = managedWorktree ? await managedWorktreeRepoRef(options) : undefined
+        const control: SessionsExecControl = {
+          spawn: async (cmd) => {
+            const { result } = await runControlCommand(cmd, Bun.env)
+            return result as { sessionRef: string; state: any }
+          },
+          list: async () => {
+            const { result } = await runControlCommand({ type: "session.list" }, Bun.env)
+            return result as any
+          },
+          events: async (sessionRef) => {
+            const { result } = await runControlCommand({ type: "session.events", sessionRef }, Bun.env)
+            return result as any
+          },
+          artifact: async (sessionRef) => {
+            const { result } = await runControlCommand({ type: "session.artifact", sessionRef }, Bun.env)
+            return result as any
+          },
+          approvalsList: async () => {
+            const { result } = await runControlCommand({ type: "approvals.list" }, Bun.env)
+            return result as { approvals: Array<{ approvalRef: string; kind: string }> }
+          },
+        }
+        const result = await runSessionsBatch(control, {
+          adapter,
+          tasks,
+          verify,
+          concurrency,
+          ...(repoRef ? { repoRef } : worktree ? { worktreePath: worktree } : {}),
+          ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }),
+        })
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        if (!result.ok) process.exitCode = 1
         return
       }
       // W-1 (#5377): blocking run-to-completion one-shot. Spawn a coding session
@@ -2351,7 +2422,7 @@ async function main() {
         if (!result.ok) process.exitCode = 1
         return
       }
-      throw new Error("usage: pylon sessions list|spawn|reply|exec|cancel ...")
+      throw new Error("usage: pylon sessions list|spawn|reply|batch|exec|cancel ...")
     } catch (error) {
       emitControlError("sessions", error)
       return

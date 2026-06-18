@@ -35,10 +35,13 @@ describe("pylon command catalog", () => {
     const entry = findCommandEntry("sessions")!
     expect(entry.summary).toContain("reply")
     expect(entry.args[0]?.name).toContain("reply")
+    expect(entry.args[0]?.name).toContain("batch")
     expect(entry.args.some((arg) => arg.name === "--session-ref" && arg.description.includes("reply"))).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--wait" && arg.kind === "flag")).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--managed-worktree" && arg.kind === "flag")).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--base-ref")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--tasks")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--concurrency")).toBe(true)
   })
 
   test("only the wallet/work/tip verbs are flagged as spending", () => {
