@@ -301,6 +301,7 @@ export const browserCommandProductIntents = {
   LoadCustomerSiteBuilderFiles: 'customer.order.site-builder.files.load',
   LoadCustomerSiteBuilderSession: 'customer.order.site-builder.session.load',
   LoadCustomerSiteFeedback: 'customer.order.site-feedback.load',
+  LoadCustomerOneCohort: 'forge.customer-one.cohort.load',
   LoadCustomerFulfillmentArtifacts: 'customer.order.fulfillment-artifacts.load',
   LoadCustomerSiteRevisions: 'customer.order.site-revisions.load',
   LoadExternal: 'navigation.external.load',

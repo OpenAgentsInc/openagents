@@ -1063,6 +1063,11 @@ This is the invariant ledger for `openagents`.
 - Payment follows verified delta, not churn: behavior or benchmark parity must
   be green, the named hygiene metric must improve, and no equal-or-worse debt
   may be introduced elsewhere in the scoped receipt.
+- For hygiene work that depends on tests or typechecks, "green" must be
+  dereferenceable as an OpenAgents-owned runner check-run or an independent
+  verifier replay before it can support payout. GitHub-hosted Actions are not
+  an allowed trust anchor for this lane. Local worker assertions are useful
+  progress notes, but they are not settlement evidence.
 - Duplicate/novelty is enforced by typed fingerprint keys, not loose ref
   matching: `DebtReceiptKey = sha256(debtReceiptRef | repoBaselineRef |
   scopeDigest | objectiveDigest)` and `PatchNoveltyKey = sha256(DebtReceiptKey |
@@ -1124,7 +1129,8 @@ This is the invariant ledger for `openagents`.
   nothing was paid. Every stored column is a public-safe ref or a bounded
   integer, and the policy re-validates ref safety on every reprojection, so the
   store never relies on itself to keep secrets out.
-- Regression coverage for this policy lives in
+- Regression coverage for this policy lives in the OpenAgents-owned
+  verification runner / independent replay plan plus
   `workers/api/src/debt-receipt-key.test.ts`,
   `workers/api/src/debt-receipt-policy.test.ts`,
   `workers/api/src/debt-receipt-work-request.test.ts`,
