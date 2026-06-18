@@ -14,6 +14,7 @@ describe("Pylon launch gate copy guards", () => {
     expect(matrix.gates.find((gate) => gate.claimRef === "claim.pylon.psionic_training_boundary")?.state).toBe(
       "blocked",
     )
+    expect(matrix.gates.every((gate) => !/Pylon v0\.3/i.test(gate.publicPhrase))).toBe(true)
     expect(matrix.supportsTraining).toBe(false)
     assertLaunchCopyAllowed(`@openagentsinc/pylon@${PYLON_VERSION} is the v1.0 stable release.`)
     assertPublicProjectionSafe(matrix)
@@ -22,6 +23,9 @@ describe("Pylon launch gate copy guards", () => {
   test("blocks unsafe public launch phrases until evidence gates exist", () => {
     expect(() => assertLaunchCopyAllowed("Pylon v0.3.0 is stable and ready.")).toThrow("blocked public claim")
     expect(() => assertLaunchCopyAllowed("Pylon v0.3 is assignment-ready across the network.")).toThrow(
+      "blocked public claim",
+    )
+    expect(() => assertLaunchCopyAllowed("Pylon v1.0 is assignment-ready across the network.")).toThrow(
       "blocked public claim",
     )
     expect(() => assertLaunchCopyAllowed("Paid Pylon work settles Bitcoin today.")).toThrow("blocked public claim")

@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-18.5')
+    expect(decoded.version).toBe('2026-06-18.6')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -116,6 +116,15 @@ describe('public product promises document', () => {
     expect(
       decoded.promises.every(promise => promise.sourceRefs.length > 0),
     ).toBe(true)
+    const currentCopy = [
+      decoded.currentMonorepoStatus.summary,
+      ...decoded.currentMonorepoStatus.caveats,
+      ...decoded.notes,
+    ].join('\n')
+    expect(currentCopy).not.toMatch(
+      /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
+    )
+    expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
     expect(decoded.promises).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -506,12 +515,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-18.5', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-18.6', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-18.5',
+      expectedVersion: '2026-06-18.6',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-18.5',
+      servedVersion: '2026-06-18.6',
       status: 'ready',
     })
     expect(
@@ -521,7 +530,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-18.5',
+      servedVersion: '2026-06-18.6',
       status: 'blocked',
     })
   })
