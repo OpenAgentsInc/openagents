@@ -42,3 +42,14 @@ This initial package contains 10 launch-focused rows covering:
 
 The rows are public retained fixtures. They are useful for examples, regression,
 loader tests, and evaluator calibration. They are not hidden benchmark evidence.
+
+## Product-Promise Boundary
+
+The MVP-14 comparison and launch study packet support only the yellow
+`autopilot.repo_study_packets.v1` internal-dogfood claim. StudyBench rows and
+study packets are refs-only evidence inputs; they are not customer repo
+studying, not trained repo expert proof, not marketplace packages, not payout
+eligibility, and not paid work.
+
+See `../../../promises/2026-06-17-repo-studying-product-promise-gate-review.md`
+from the repository root for the product-promise gate review.

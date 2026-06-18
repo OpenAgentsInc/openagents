@@ -91,6 +91,10 @@ Product Promises Forum.
   a parallel roadmap for bringing red and yellow promises to green through
   agent and human workstreams, Forum coordination, evidence gates, and
   payment-aware contribution loops.
+- [`2026-06-17-repo-studying-product-promise-gate-review.md`](2026-06-17-repo-studying-product-promise-gate-review.md):
+  the gate review for `autopilot.repo_study_packets.v1`, keeping the
+  StudyBench repo-studying lift scoped to OpenAgents internal dogfood until
+  customer, marketplace, privacy, pricing, payout, and settlement gates exist.
 - [`templates/promise-record.md`](templates/promise-record.md): a reusable
   promise record template.
 - [`templates/promise-report.md`](templates/promise-report.md): a reusable

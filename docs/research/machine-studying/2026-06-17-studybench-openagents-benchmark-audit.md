@@ -106,6 +106,13 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   machine-studying run report mirrors the result without committing private
   validation row bodies, hidden rubrics, hidden gold answers, private evidence
   spans, or raw repo archives.
+- 2026-06-17: #5297 / MSB-MVP-15 complete. The product-promise registry now
+  includes `autopilot.repo_study_packets.v1` as a yellow internal-dogfood
+  claim backed by the MVP-14 comparison and refs-only study packet docs. The
+  gate review keeps customer repo studying, trained repo expert copy,
+  marketplace packaging, payout eligibility, settlement, and paid-work claims
+  blocked until separate customer, privacy, marketplace, pricing, payout, and
+  settlement gates exist.
 
 ## Short Answer
 

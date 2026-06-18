@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-17.3')
+    expect(decoded.version).toBe('2026-06-17.4')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -234,6 +234,23 @@ describe('public product promises document', () => {
           authorityBoundary: expect.stringContaining(
             'does not grant write, deploy, spend',
           ),
+        }),
+        expect.objectContaining({
+          audience: expect.arrayContaining(['agent', 'operator', 'developer']),
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.repo_studying_customer_private_validation_missing',
+            'blocker.product_promises.repo_studying_marketplace_metering_missing',
+            'blocker.product_promises.repo_studying_payout_settlement_gates_missing',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'docs/research/machine-studying/openagents-studybench/runs/2026-06-17-mvp-14-baseline-packet-gepa-comparison.md',
+            'packages/probe/docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json',
+            'docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md',
+            'promise:repo.open_source_code_map.v1',
+          ]),
+          promiseId: 'autopilot.repo_study_packets.v1',
+          safeCopy: expect.stringContaining('dogfooding'),
+          state: 'yellow',
         }),
         expect.objectContaining({
           blockerRefs: [],
@@ -400,18 +417,38 @@ describe('public product promises document', () => {
     expect(pylonInstallPromise?.evidenceRefs).toContain(
       'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
     )
+    const repoStudyPacketPromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.repo_study_packets.v1',
+    )
+    expect(repoStudyPacketPromise).toMatchObject({
+      state: 'yellow',
+    })
+    expect(
+      `${repoStudyPacketPromise?.claim} ${repoStudyPacketPromise?.safeCopy}`,
+    ).not.toMatch(
+      /trained repo expert|customer repo studying is live|marketplace package|payout eligible/i,
+    )
+    expect(repoStudyPacketPromise?.unsafeCopy).toContain('trained repo expert')
+    expect(repoStudyPacketPromise?.unsafeCopy).toContain(
+      'customer repo studying is live',
+    )
+    expect(repoStudyPacketPromise?.unsafeCopy).toContain('marketplace package')
+    expect(repoStudyPacketPromise?.unsafeCopy).toContain('payout eligibility')
+    expect(repoStudyPacketPromise?.authorityBoundary).toContain(
+      'not paid work',
+    )
   })
 
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-17.3', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-17.4', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-17.3',
+      expectedVersion: '2026-06-17.4',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-17.3',
+      servedVersion: '2026-06-17.4',
       status: 'ready',
     })
     expect(
@@ -421,7 +458,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-17.3',
+      servedVersion: '2026-06-17.4',
       status: 'blocked',
     })
   })

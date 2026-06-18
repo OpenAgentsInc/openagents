@@ -32,6 +32,20 @@ The boundary intentionally does not grant runtime authority. Program Runs and
 most kernel records are evidence-only. Write-side services must be
 approval-gated. Contract exports are export-only.
 
+## Study Packet Marketplace Boundary
+
+StudyBench study packets can cite Blueprint program signatures, source
+authority refs, context packs, release gates, and Action Submission evidence,
+but they remain evidence-only until a separate package lane passes product and
+marketplace gates.
+
+For `autopilot.repo_study_packets.v1`, the allowed public claim is internal
+OpenAgents dogfood over the public `openagents` repo. A study packet is not
+customer repo studying, not a trained repo expert, not a marketplace package,
+not payout eligibility, and not paid work. Marketplace package work requires
+separate customer-data privacy, held-out evaluation, usage metering, pricing,
+payout, and settlement receipts.
+
 ## Ownership
 
 The boundary manifest declares:

@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-17.3'
+export const PublicProductPromisesVersion = '2026-06-17.4'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -36,6 +36,11 @@ const sourceRefs = [
   'docs/apple-fm/2026-06-15-current-apple-fm-electrobun-desktop-audit.md',
   'apps/pylon/docs/proofs/m10-live-2026-06-14/README.md',
   'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
+  'docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md',
+  'docs/research/machine-studying/2026-06-17-blueprint-marketplace-ties.md',
+  'docs/research/machine-studying/openagents-studybench/runs/2026-06-17-mvp-14-baseline-packet-gepa-comparison.md',
+  'docs/research/machine-studying/openagents-studybench/study-packets/openagents-launch-study-packet-v0.md',
+  'packages/probe/docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json',
 ]
 
 const basePromiseFields = {
@@ -91,7 +96,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-06-15',
+    lastUpdated: '2026-06-17',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -152,6 +157,7 @@ export const publicProductPromisesDocument = () => {
         'Wave-3 Autopilot Sites / Agency Pack surfaces (#4977-#4995) enter as conservative new records: autopilot.desktop_gui_client.v1 (yellow, local-only), mobile.autopilot_remote_control.v1 (planned), workrooms.omni_client_delivery_workrooms.v1 (red), autopilot_sites.native_email_sequences.v1 (yellow, no send service), autopilot_sites.custom_tenant_hostnames.v1 (yellow, no self-serve/SSL), autopilot_sites.partner_payout_ledger.v1 (red), autopilot.cloud_credits_ui.v1 (yellow, presentational), mobile.voice_session_evidence_transcript_ingest.v1 (red, contracts only). Registry 2026-06-15.11 moves autopilot.local_apple_fm_tool_chat.v1 to yellow for basic fully local Apple FM Autopilot chat/tool use: Pylon exposes the token-authenticated apple_fm.status projection, retains a buildable local Foundation Models bridge helper, Autopilot Desktop renders hosted/local readiness modes, the desktop-originated local session path is fake-bridge tested, and admitted-Mac smoke evidence exists. It is still scoped to source/local operator builds and supported Apple Silicon; no current signed-installer, compute resale, paid-work, or green claim is made.',
         'Autopilot-is-the-install reconciliation for the 2026-06-15 launch: contributor-facing install copy should name Autopilot Desktop as the install surface and Pylon as the local node it drives; the affected Pylon promises remain yellow.',
         'Decentralized-training lane (RESEARCH_PLAN W5): the new training.public_gradient_windows.v1 record is planned, not live. Public devices do generation/validation/evaluation only; the Pluralis lifecycle substrate (#4855, P0-P3) is in place, but no public gradient enters the canonical optimizer until a quarantine→verify→canary→promotion regime ships. Do not claim public decentralized gradient training for the launch.',
+        'Registry 2026-06-17.4 adds autopilot.repo_study_packets.v1 as a yellow internal-dogfood claim only. The public StudyBench MVP shows source-grounded lift on OpenAgents refs, but customer repo studying, trained repo expert language, marketplace packages, payout eligibility, and paid-work status remain blocked by separate validation, privacy, metering, pricing, payout, and settlement gates.',
       ],
     },
     promises: [
@@ -182,6 +188,41 @@ export const publicProductPromisesDocument = () => {
           'Fetch /api/public/product-promises and /.well-known/openagents.json, then follow sourceCode/liveSiteSource/workerSource/webSource/productPromiseSource/pylonSource/probeSource to the public GitHub tree.',
         authorityBoundary:
           'Open-source source availability is a transparency claim only. It does not grant write, deploy, spend, moderation, data-access, settlement, or account authority, and it does not make any separate feature green.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot.repo_study_packets.v1',
+        productArea: 'Autopilot repo studying',
+        audience: ['agent', 'operator', 'developer', 'public'],
+        state: 'yellow',
+        claim:
+          'OpenAgents is dogfooding public, refs-only StudyBench study packets on its own public repository to improve OpenAgents-codebase work under Probe, Forge, Blueprint, and product-promise gates.',
+        safeCopy:
+          'OpenAgents is dogfooding source-grounded study packets on its own public repo. The current evidence is internal OpenAgents lift only; customer repo studying, marketplace packaging, payout eligibility, and paid work remain separately gated.',
+        unsafeCopy:
+          'Do not say OpenAgents has a trained repo expert, customer repo studying is live, a marketplace package, payout eligibility, or automatic paid work from StudyBench rows or study packets.',
+        evidenceRefs: [
+          'docs/research/machine-studying/2026-06-17-studybench-openagents-benchmark-audit.md',
+          'docs/research/machine-studying/2026-06-17-blueprint-marketplace-ties.md',
+          'docs/research/machine-studying/openagents-studybench/private-boundary.md',
+          'docs/research/machine-studying/openagents-studybench/study-packets/openagents-launch-study-packet-v0.md',
+          'docs/research/machine-studying/openagents-studybench/runs/2026-06-17-mvp-14-baseline-packet-gepa-comparison.md',
+          'packages/probe/docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json',
+          'docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md',
+          'promise:repo.open_source_code_map.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.repo_studying_customer_private_validation_missing',
+          'blocker.product_promises.repo_studying_privacy_review_missing',
+          'blocker.product_promises.repo_studying_marketplace_metering_missing',
+          'blocker.product_promises.repo_studying_pricing_package_policy_missing',
+          'blocker.product_promises.repo_studying_payout_settlement_gates_missing',
+          'blocker.product_promises.repo_studying_product_copy_review_missing',
+        ],
+        verification:
+          'Yellow is limited to the recorded MVP-14 OpenAgents public-safe comparison plus docs review. Green or external copy requires customer-data privacy review, private validation/holdout discipline, marketplace package policy, usage metering, pricing, payout eligibility, settlement receipts, and product-promise preflight. Public score summaries must keep productPromiseBoundary.publicProductClaimAllowed false until those gates pass.',
+        authorityBoundary:
+          'A StudyBench row or study packet is evidence and repository-memory input only. It grants no runtime mutation, customer repository ingestion, marketplace listing, billing, payout eligibility, settlement, training promotion, or public green-claim authority, and it is not paid work.',
       },
       {
         ...basePromiseFields,

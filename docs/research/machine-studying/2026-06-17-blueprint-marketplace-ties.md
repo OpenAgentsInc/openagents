@@ -188,6 +188,24 @@ A future signature marketplace package should have to answer:
 Only after that chain exists should marketplace listing, usage pricing,
 revenue projection, payout eligibility, or settlement copy become possible.
 
+## MVP-15 product-promise gate
+
+The first OpenAgents StudyBench comparison is enough to support a yellow
+internal-dogfood product promise for OpenAgents-owned repo study packets:
+`autopilot.repo_study_packets.v1`.
+
+That promise is deliberately not marketplace work. The study packet and rows
+are refs-only evidence for OpenAgents-codebase work, not customer repo studying,
+not a trained repo expert, not a marketplace package, not payout eligibility,
+and not paid work. The product-promise gate review lives at
+`docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md`.
+
+Before a Blueprint study packet becomes a marketplace package candidate, the
+package lane needs separate gates for customer-data privacy, source authority,
+private validation, held-out evaluation, package conformance, usage metering,
+exact usage-subject refs, pricing, refunds/disputes, payout eligibility, and
+settlement receipts.
+
 ## Tassadar tie-in
 
 The Tassadar marketplace audit says the store should be built last. Machine
@@ -328,4 +346,3 @@ contract, Probe gives it a runtime, Pylon gives it work intake, Tassadar gives
 it a proof tier, and marketplace gates give it business discipline. The study
 packet is the bridge between "read this corpus" and "this capability can be
 trusted, routed, promoted, priced, or paid."
-
