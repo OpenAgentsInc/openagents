@@ -25,6 +25,7 @@ export type SessionsBatchOptions = {
   approvalPolicy?: ApprovalPolicyCallback
   concurrency?: number
   deadlineMs?: number
+  lane?: ControlSessionSpawnCommand["lane"]
   now?: () => number
   onApproval?: ApprovalPolicy
   pollIntervalMs?: number
@@ -167,6 +168,7 @@ export async function runSessionsBatch(
       try {
         result = await runSessionsExec(control, {
           adapter: options.adapter,
+          ...(options.lane === undefined ? {} : { lane: options.lane }),
           objective: task.objective,
           verify: task.verify ?? options.verify,
           ...(options.repoRef ? { repoRef: options.repoRef } : {}),

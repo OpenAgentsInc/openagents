@@ -149,6 +149,24 @@ describe("pylon sessions exec (W-1 run-to-completion)", () => {
     })
   })
 
+  test("forwards the requested cloud lane into session.spawn", async () => {
+    await withFixture(async ({ proofDir, summary, worktree }) => {
+      const executor: ControlSessionExecutor = async () => executorResult("passed")
+      const actions = createControlSessionActions({ executor, proofsDir: proofDir, summary })
+      const result = await runSessionsExec(controlFrom(actions), {
+        adapter: "codex",
+        lane: "cloud-gcp",
+        objective: "run on the cloud lane when configured",
+        verify: ["bun", "--version"],
+        worktreePath: worktree,
+        pollIntervalMs: 25,
+      })
+      expect(result.ok).toBe(true)
+      const list = await actions.list()
+      expect(list.find((entry) => entry.sessionRef === result.sessionRef)?.lane).toBe("cloud-gcp")
+    })
+  })
+
   test("verify failure drives to a failed terminal with ok=false and the failed verify captured", async () => {
     await withFixture(async ({ proofDir, summary, worktree }) => {
       const executor: ControlSessionExecutor = async () => executorResult("failed")

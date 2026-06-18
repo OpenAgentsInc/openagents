@@ -30,6 +30,7 @@ export type SessionsExecControl = {
   spawn: (command: {
     type: "session.spawn"
     adapter: "codex" | "claude_agent"
+    lane?: ControlSessionSpawnCommand["lane"]
     objective: string
     repoRef?: ControlSessionSpawnCommand["repoRef"]
     verify: string[]
@@ -76,6 +77,7 @@ export type ApprovalPolicyCallback = (
 
 export type SessionsExecOptions = {
   adapter: "codex" | "claude_agent"
+  lane?: ControlSessionSpawnCommand["lane"]
   objective: string
   repoRef?: ControlSessionSpawnCommand["repoRef"]
   verify: string[]
@@ -262,6 +264,7 @@ export async function runSessionsExec(
   const spawned = await control.spawn({
     type: "session.spawn",
     adapter: options.adapter,
+    ...(options.lane === undefined ? {} : { lane: options.lane }),
     objective: options.objective,
     ...(options.repoRef ? { repoRef: options.repoRef } : {}),
     verify: options.verify,

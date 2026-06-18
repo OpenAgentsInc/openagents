@@ -126,6 +126,7 @@ describe("pylon sessions batch", () => {
       const result = await runSessionsBatch(controlFrom(actions), {
         adapter: "codex",
         concurrency: 2,
+        lane: "cloud-gcp",
         tasks: parseSessionsBatchTasks([
           { id: "first", objective: "first task" },
           { id: "second", objective: "second task should fail" },
@@ -143,6 +144,10 @@ describe("pylon sessions batch", () => {
       expect(result.concurrency).toBe(2)
       expect(result.results.map((entry) => entry.id)).toEqual(["first", "second", "third"])
       expect(result.results.map((entry) => entry.ok)).toEqual([true, false, true])
+      const list = await actions.list()
+      for (const entry of result.results) {
+        expect(list.find((session) => session.sessionRef === entry.result.sessionRef)?.lane).toBe("cloud-gcp")
+      }
       expect(result.failures).toEqual([
         expect.objectContaining({
           id: "second",

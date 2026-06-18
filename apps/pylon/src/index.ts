@@ -1959,6 +1959,18 @@ async function managedWorktreeRepoRef(
   }
 }
 
+function sessionLaneOption(
+  options: Record<string, string | true>,
+  label: string,
+): ControlSessionSpawnCommand["lane"] | undefined {
+  const lane = optionString(options, "lane")
+  if (lane === undefined) return undefined
+  if (lane === "auto" || lane === "local" || lane === "cloud-gcp" || lane === "cloud-shc") {
+    return lane
+  }
+  throw new Error(`${label} --lane must be auto, local, cloud-gcp, or cloud-shc`)
+}
+
 const isTerminalSessionState = (state: unknown): boolean =>
   state === "completed" || state === "failed" || state === "cancelled"
 
@@ -2161,10 +2173,12 @@ async function main() {
           throw new Error("sessions spawn uses either --worktree or --managed-worktree, not both")
         }
         const repoRef = managedWorktree ? await managedWorktreeRepoRef(options) : undefined
+        const lane = sessionLaneOption(options, "sessions spawn")
         const { result } = await runControlCommand(
           {
             type: "session.spawn",
             adapter,
+            ...(lane === undefined ? {} : { lane }),
             objective,
             verify,
             ...(repoRef ? { repoRef } : worktree ? { worktreePath: worktree } : {}),
@@ -2244,6 +2258,7 @@ async function main() {
           throw new Error("sessions batch uses either --worktree or --managed-worktree, not both")
         }
         const repoRef = managedWorktree ? await managedWorktreeRepoRef(options) : undefined
+        const lane = sessionLaneOption(options, "sessions batch")
         const control: SessionsExecControl = {
           spawn: async (cmd) => {
             const { result } = await runControlCommand(cmd, Bun.env)
@@ -2268,6 +2283,7 @@ async function main() {
         }
         const result = await runSessionsBatch(control, {
           adapter,
+          ...(lane === undefined ? {} : { lane }),
           tasks,
           verify,
           concurrency,
@@ -2370,6 +2386,7 @@ async function main() {
           throw new Error("sessions exec uses either --worktree or --managed-worktree, not both")
         }
         const repoRef = managedWorktree ? await managedWorktreeRepoRef(options) : undefined
+        const lane = sessionLaneOption(options, "sessions exec")
         // Thin control adapter: every verb forwards to the running node. No new
         // authority — this only spawns + observes the existing session surface.
         const control: SessionsExecControl = {
@@ -2411,6 +2428,7 @@ async function main() {
             : undefined
         const result = await runSessionsExec(control, {
           adapter,
+          ...(lane === undefined ? {} : { lane }),
           objective,
           verify,
           ...(repoRef ? { repoRef } : worktree ? { worktreePath: worktree } : {}),

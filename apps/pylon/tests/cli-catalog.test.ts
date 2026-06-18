@@ -40,6 +40,7 @@ describe("pylon command catalog", () => {
     expect(entry.args.some((arg) => arg.name === "--wait" && arg.kind === "flag")).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--managed-worktree" && arg.kind === "flag")).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--base-ref")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--lane" && arg.description.includes("cloud-gcp"))).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--tasks")).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--concurrency")).toBe(true)
   })

@@ -152,6 +152,7 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
       flag("--managed-worktree", "spawn/exec/batch: create a Pylon-managed isolated worktree from a git base ref."),
       opt("--repo", "spawn/exec/batch --managed-worktree: GitHub owner/name (defaults from origin)."),
       opt("--base-ref", "spawn/exec/batch --managed-worktree: git ref to materialize (default origin/main)."),
+      opt("--lane", "spawn/exec/batch: execution lane auto|local|cloud-gcp|cloud-shc."),
       opt("--tasks", "batch: JSON file containing task strings or task objects."),
       opt("--concurrency", "batch: maximum concurrent sessions (default 2)."),
       opt("--on-approval", "exec: manual|deny|auto (default manual; auto = BOUNDED owner-local auto-approve, audited)."),
