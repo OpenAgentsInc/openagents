@@ -3,8 +3,30 @@ import { describe, expect, test } from 'vitest'
 import {
   DataTraceMarketplaceGateUnsafe,
   dataTraceMarketplaceGateHasPrivateMaterial,
+  deriveDataContributionTraceDigest,
   projectDataTraceMarketplaceGate,
+  verifyDataContributionCorrectness,
 } from './data-trace-marketplace-gate'
+
+const sourceDigest =
+  'sha256:1111111111111111111111111111111111111111111111111111111111111111'
+const tamperedDigest =
+  'sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+const traceRows = [
+  {
+    evidenceRef: 'span.public.repo.readme_001',
+    fieldRef: 'field.public.repo.path',
+    valueDigest:
+      'sha256:2222222222222222222222222222222222222222222222222222222222222222',
+  },
+]
+const correctnessInputBase = {
+  contributionRef: 'trace.public.data_market.submission_001',
+  provenanceRefs: ['provenance.public.data_market.citation_001'],
+  sourceDigest,
+  sourceRefs: ['source.public.data_market.corpus_001'],
+  transformRef: 'transform.public.data_market.derive_ref_rows_v1',
+} as const
 
 const publicSaleSmokeInput = {
   correctnessReceiptRefs: ['correctness.public.data_market.trace_sale_001'],
@@ -20,6 +42,188 @@ const publicSaleSmokeInput = {
 }
 
 describe('Data trace marketplace gate', () => {
+  test('verifies a re-derivable contribution by derived trace digest before settlement', async () => {
+    const claimedTraceDigest = await deriveDataContributionTraceDigest({
+      sourceDigest,
+      traceRows,
+      transformRef: correctnessInputBase.transformRef,
+    })
+    const correctnessVerification = await verifyDataContributionCorrectness({
+      ...correctnessInputBase,
+      claimedTraceDigest,
+      derivedTraceRows: traceRows,
+      verificationMode: 'derived_trace_replay',
+    })
+    const gate = projectDataTraceMarketplaceGate({
+      ...publicSaleSmokeInput,
+      correctnessReceiptRefs: [],
+      correctnessVerification,
+    })
+
+    expect(correctnessVerification).toMatchObject({
+      correctnessGatePassed: true,
+      derivedTraceDigest: claimedTraceDigest,
+      status: 'accepted',
+      validatorReviewRequired: false,
+    })
+    expect(gate).toMatchObject({
+      correctnessGatePassed: true,
+      correctnessVerificationStatus: 'accepted',
+      dataRevenueCopyAllowed: true,
+      derivedTraceDigest: claimedTraceDigest,
+      publicSafeDataSaleSmokePassed: true,
+      settlementClaimAllowed: true,
+      state: 'settled',
+    })
+    expect(gate.correctnessReceiptRefs).toEqual(
+      correctnessVerification.correctnessReceiptRefs,
+    )
+    expect(gate.provenanceReceiptRefs).toHaveLength(1)
+    expect(gate.dedupeReceiptRefs).toEqual([
+      'dedupe.public.data_market.source.1111111111111111',
+      `dedupe.public.data_market.trace.${claimedTraceDigest.replace('sha256:', '').slice(0, 16)}`,
+    ])
+    expect(gate.valuationRefs).toEqual(publicSaleSmokeInput.valuationRefs)
+  })
+
+  test('rejects a tampered derived trace digest before valuation can make it payable', async () => {
+    const correctnessVerification = await verifyDataContributionCorrectness({
+      ...correctnessInputBase,
+      claimedTraceDigest: tamperedDigest,
+      derivedTraceRows: traceRows,
+      verificationMode: 'derived_trace_replay',
+    })
+    const gate = projectDataTraceMarketplaceGate({
+      ...publicSaleSmokeInput,
+      correctnessReceiptRefs: [],
+      correctnessVerification,
+    })
+
+    expect(correctnessVerification).toMatchObject({
+      correctnessGatePassed: false,
+      status: 'rejected',
+    })
+    expect(correctnessVerification.blockerRefs).toContain(
+      'blocker.public.data_market.derived_trace_digest_mismatch',
+    )
+    expect(gate).toMatchObject({
+      correctnessGatePassed: false,
+      correctnessVerificationStatus: 'rejected',
+      dataRevenueCopyAllowed: false,
+      settlementClaimAllowed: false,
+      state: 'redacted',
+    })
+    expect(gate.correctnessReceiptRefs).toEqual([])
+    expect(gate.blockerRefs).toContain(
+      'blocker.public.data_market.correctness_verdict_rejected',
+    )
+    expect(gate.blockerRefs).toContain(
+      'blocker.public.data_market.derived_trace_digest_mismatch',
+    )
+  })
+
+  test('rejects unprovenanced contributions instead of minting correctness receipts', async () => {
+    const claimedTraceDigest = await deriveDataContributionTraceDigest({
+      sourceDigest,
+      traceRows,
+      transformRef: correctnessInputBase.transformRef,
+    })
+    const correctnessVerification = await verifyDataContributionCorrectness({
+      contributionRef: correctnessInputBase.contributionRef,
+      claimedTraceDigest,
+      derivedTraceRows: traceRows,
+      provenanceRefs: [],
+      sourceDigest,
+      sourceRefs: [],
+      transformRef: correctnessInputBase.transformRef,
+      verificationMode: 'derived_trace_replay',
+    })
+    const gate = projectDataTraceMarketplaceGate({
+      ...publicSaleSmokeInput,
+      correctnessReceiptRefs: [],
+      correctnessVerification,
+    })
+
+    expect(correctnessVerification).toMatchObject({
+      correctnessReceiptRefs: [],
+      status: 'rejected',
+    })
+    expect(correctnessVerification.blockerRefs).toEqual([
+      'blocker.public.data_market.provenance_ref_missing',
+      'blocker.public.data_market.provenance_source_missing',
+    ])
+    expect(gate).toMatchObject({
+      correctnessGatePassed: false,
+      correctnessVerificationStatus: 'rejected',
+      state: 'redacted',
+    })
+  })
+
+  test('rejects duplicate contribution digests before payout evidence can settle', async () => {
+    const claimedTraceDigest = await deriveDataContributionTraceDigest({
+      sourceDigest,
+      traceRows,
+      transformRef: correctnessInputBase.transformRef,
+    })
+    const correctnessVerification = await verifyDataContributionCorrectness({
+      ...correctnessInputBase,
+      claimedTraceDigest,
+      derivedTraceRows: traceRows,
+      knownTraceDigests: [claimedTraceDigest],
+      verificationMode: 'derived_trace_replay',
+    })
+    const gate = projectDataTraceMarketplaceGate({
+      ...publicSaleSmokeInput,
+      correctnessReceiptRefs: [],
+      correctnessVerification,
+    })
+
+    expect(correctnessVerification).toMatchObject({
+      correctnessReceiptRefs: [],
+      dedupeReceiptRefs: [],
+      status: 'rejected',
+    })
+    expect(correctnessVerification.blockerRefs).toContain(
+      'blocker.public.data_market.duplicate_trace_digest',
+    )
+    expect(gate).toMatchObject({
+      dataRevenueCopyAllowed: false,
+      settlementClaimAllowed: false,
+      state: 'redacted',
+    })
+  })
+
+  test('routes nondeterministic data-contribution remainder to validator review', async () => {
+    const correctnessVerification = await verifyDataContributionCorrectness({
+      ...correctnessInputBase,
+      claimedTraceDigest: tamperedDigest,
+      validatorReviewRefs: ['validator_review.public.data_market.study_001'],
+      verificationMode: 'validator_review_required',
+    })
+    const gate = projectDataTraceMarketplaceGate({
+      ...publicSaleSmokeInput,
+      correctnessReceiptRefs: [],
+      correctnessVerification,
+    })
+
+    expect(correctnessVerification).toMatchObject({
+      correctnessGatePassed: false,
+      status: 'needs_validator_review',
+      validatorReviewRequired: true,
+      validatorReviewRefs: ['validator_review.public.data_market.study_001'],
+    })
+    expect(gate).toMatchObject({
+      correctnessGatePassed: false,
+      correctnessVerificationStatus: 'needs_validator_review',
+      state: 'redacted',
+      validatorReviewRequired: true,
+      validatorReviewRefs: ['validator_review.public.data_market.study_001'],
+    })
+    expect(gate.blockerRefs).toContain(
+      'blocker.public.data_market.validator_review_required',
+    )
+  })
+
   test('keeps submitted traces blocked until redaction and planner evidence exist', () => {
     const gate = projectDataTraceMarketplaceGate({
       plannerMode: 'typed_semantic_selector',
@@ -98,6 +302,7 @@ describe('Data trace marketplace gate', () => {
 
     expect(gate).toMatchObject({
       correctnessGatePassed: true,
+      correctnessVerificationStatus: 'accepted',
       dataRevenueCopyAllowed: false,
       publicSafeDataSaleSmokePassed: false,
       state: 'valued',
@@ -201,6 +406,18 @@ describe('Data trace marketplace gate', () => {
         DataTraceMarketplaceGateUnsafe,
       )
     })
+  })
+
+  test('rejects unsafe verifier refs before projecting correctness state', async () => {
+    await expect(
+      verifyDataContributionCorrectness({
+        ...correctnessInputBase,
+        claimedTraceDigest: tamperedDigest,
+        sourceRefs: ['source_raw.private_customer_trace'],
+        validatorReviewRefs: ['validator_review.public.data_market.study_001'],
+        verificationMode: 'validator_review_required',
+      }),
+    ).rejects.toThrow(DataTraceMarketplaceGateUnsafe)
   })
 
   test('keeps settled sale projection free of private material', () => {

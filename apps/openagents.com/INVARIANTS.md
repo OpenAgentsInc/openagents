@@ -42,6 +42,12 @@ This is the invariant ledger for `openagents`.
 - Valuation evidence must not advance a data trace to `valued` unless a
   public-safe correctness receipt is present. Correctness receipts are separate
   from valuation refs and settlement refs.
+- General data-contribution correctness receipts must be minted by the
+  verifier only after public-safe provenance refs, duplicate checks, and
+  deterministic derived-trace replay agree with the claimed trace digest.
+  Tampered, unprovenanced, or duplicate contributions must remain non-payable
+  even if valuation, purchase, entitlement, payout-contract, or settlement refs
+  are present.
 - Studied-knowledge verification reports may provide correctness receipts for
   deterministic link/span replay. Non-deterministic remainder must surface as
   validator-review refs and must not pass the correctness gate until review

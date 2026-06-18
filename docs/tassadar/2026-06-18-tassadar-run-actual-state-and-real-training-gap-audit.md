@@ -1095,6 +1095,23 @@ marketplace packaging, pricing, payout, and settlement claims remain blocked.
   settlement, widen real-money gates, or claim gradient-trained weights.
 - **#5328 — V3** Data-contribution correctness-verification model (provenance +
   derived-trace replay + validator review) atop the data-trace marketplace gate.
+  Status 2026-06-18: landed in `openagents`. The data-trace gate now has a
+  general correctness verifier, not just caller-supplied correctness refs. A
+  deterministic contribution must cite public-safe source/provenance refs, pass
+  duplicate source/trace checks, replay the derived trace from the source digest
+  and transform ref, and match the claimed trace digest before the gate mints
+  `correctness.public.data_market.derived_trace.*` receipts. Tampered claimed
+  digests, missing provenance/source refs, duplicate trace digests, unsafe refs,
+  and explicit rejected verdicts keep the lifecycle at `redacted` even when
+  valuation, purchase, entitlement, payout-contract, and settlement refs are
+  present. Irreducibly nondeterministic contributions route to
+  `validator_review.public.data_market.*` with
+  `validatorReviewRequired=true` and no correctness receipt, so they remain
+  non-payable/non-settled until review produces a separate correctness verdict.
+  The public projection exposes only refs, digests, blocker refs, provenance
+  receipt refs, dedupe receipt refs, and verifier status; it does not store raw
+  source material, private traces, customer data, provider payloads, wallet
+  material, or live payment evidence.
 
 ### Track E — Edge-agent variance engine (§4b)
 
