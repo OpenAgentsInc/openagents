@@ -5,7 +5,11 @@ import {
   TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND,
   TASSADAR_EXECUTOR_TRACE_JOB_KIND,
 } from '@openagentsinc/tassadar-executor'
-import { tassadarPocLoopSumFixture } from './tassadar-poc-fixture'
+import {
+  selectTassadarCompiledProgramFixture,
+  tassadarCompiledProgramCorpus,
+  tassadarCompiledProgramCorpusSize,
+} from '@openagentsinc/tassadar-executor/compiled-program-corpus'
 
 import { artanisMindComplete } from './artanis-mind'
 import { parseJsonStringArray, parseJsonWithSchema } from './json-boundary'
@@ -62,16 +66,12 @@ export type AdminDispatchFn = (
 // in-worker: transit rename seed_writes -> initialChannelWrites for the
 // public-projection scanner, capability mirrored into the lease payload,
 // no-spend gates for unpaid_smoke.
-export const buildTassadarPocDispatchBody = (
+export const buildTassadarCorpusDispatchBody = (
   input: Readonly<{ pylonRef: string; assignmentRef: string }>,
 ): Record<string, unknown> => {
-  const fixture = tassadarPocLoopSumFixture as unknown as {
-    fixtureId: string
-    expectedModelDigest: string
-    expectedTraceDigest: string
-    steps: number
-    model: Record<string, unknown> & { seed_writes?: unknown }
-  }
+  const fixture = selectTassadarCompiledProgramFixture({
+    assignmentRef: input.assignmentRef,
+  })
   const { seed_writes: fixtureSeedWrites, ...modelWithoutSeeds } =
     fixture.model
   const transitModel = {
@@ -86,37 +86,51 @@ export const buildTassadarPocDispatchBody = (
   return {
     acceptanceCriteriaRefs: [
       'acceptance.tassadar_poc.trace_digest_matches_fixture',
+      'acceptance.tassadar_corpus.trace_digest_matches_selected_fixture',
       'acceptance.tassadar_poc.closeout_carries_trace_digest',
     ],
     assignmentRef: input.assignmentRef,
     campaignPaused: false,
-    campaignPolicyRefs: ['policy.tassadar_poc.single_assignment_smoke'],
-    campaignRef: 'campaign.tassadar_poc.v1',
+    campaignPolicyRefs: [
+      'policy.tassadar_poc.single_assignment_smoke',
+      'policy.tassadar_corpus.c1_no_spend_program_corpus',
+    ],
+    campaignRef: 'campaign.tassadar_corpus.c1.v1',
     closeoutPathRefs: [
       'route:/api/pylons/pylonRef/assignments/leaseRef/closeout',
     ],
     codingAssignment: {
       kind: TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND,
       objective: {
-        objectiveRef: `goal.tassadar_poc.execute.${fixture.fixtureId}`,
+        objectiveRef: `goal.tassadar_corpus.execute.${fixture.fixtureId}`,
       },
       requiredCapabilityRefs: [TASSADAR_EXECUTOR_CAPABILITY_REF],
       tassadar: {
         boundedProfileRef: TassadarBoundedProfileRef,
+        compileReceiptRefs: fixture.compileReceiptRefs,
+        corpusDigest: tassadarCompiledProgramCorpus.corpusDigest,
+        corpusId: tassadarCompiledProgramCorpus.corpusId,
         expectedModelDigest: fixture.expectedModelDigest,
+        expectedOutputs: fixture.expectedOutputs,
         expectedTraceDigest: fixture.expectedTraceDigest,
         fixtureId: fixture.fixtureId,
         homework: homeworkPayload,
         model: transitModel,
+        programDigest: fixture.programDigest,
+        programId: fixture.programId,
         steps: fixture.steps,
         verificationClass: TassadarExactTraceReplayVerificationClass,
+        workloadKind: fixture.workloadKind,
       },
     },
     forumAutoPublishAllowed: false,
-    idempotencyRefs: [`idempotency.tassadar_poc.${input.assignmentRef}`],
+    idempotencyRefs: [`idempotency.tassadar_corpus.${input.assignmentRef}`],
     jobKind: TASSADAR_EXECUTOR_TRACE_JOB_KIND,
     leaseSeconds: 3600,
-    noDuplicateAssignmentRefs: ['gate.tassadar_poc.no_duplicate'],
+    noDuplicateAssignmentRefs: [
+      'gate.tassadar_poc.no_duplicate',
+      'gate.tassadar_corpus.no_duplicate',
+    ],
     noForumAutoPublishRefs: ['gate.tassadar_poc.no_forum_auto_publish'],
     operatorPauseRefs: ['gate.tassadar_poc.operator_pause_available'],
     paymentMode: 'unpaid_smoke',
@@ -124,13 +138,20 @@ export const buildTassadarPocDispatchBody = (
     requiredCapabilityRefs: [TASSADAR_EXECUTOR_CAPABILITY_REF],
     resultExpectationRefs: [
       `expectation.tassadar_poc.trace_digest.${fixture.expectedTraceDigest.slice(0, 16)}`,
+      `expectation.tassadar_corpus.program.${fixture.programId}`,
+      `expectation.tassadar_corpus.corpus.${tassadarCompiledProgramCorpus.corpusDigest.slice(0, 16)}`,
     ],
     rollbackRefs: ['gate.tassadar_poc.rollback_cancel_assignment'],
-    selectionPolicyRefs: ['policy.artanis_admin_tick.mind_selected_pylon'],
+    selectionPolicyRefs: [
+      'policy.artanis_admin_tick.mind_selected_pylon',
+      'policy.tassadar_corpus.assignment_ref_workload_slot',
+    ],
     spendCapRefs: ['gate.tassadar_poc.no_spend'],
-    taskRefs: [`task.tassadar_poc.${fixture.fixtureId}`],
+    taskRefs: [`task.tassadar_corpus.${fixture.fixtureId}`],
   }
 }
+
+export const buildTassadarPocDispatchBody = buildTassadarCorpusDispatchBody
 
 const assembleContext = async (db: D1Database, nowIso: string) => {
   const onlinePylons = (
@@ -195,7 +216,9 @@ export const runArtanisAdminTick = async (
     .bind(`${deps.nowIso.slice(0, 10)}T00:00:00.000Z`)
     .first()) as { n: number } | null
 
-  if (Number(dispatchedToday?.n ?? 0) >= ARTANIS_ADMIN_DISPATCH_PER_DAY) {
+  const dispatchedTodayCount = Number(dispatchedToday?.n ?? 0)
+
+  if (dispatchedTodayCount >= ARTANIS_ADMIN_DISPATCH_PER_DAY) {
     return skipped('daily_dispatch_bound_reached')
   }
 
@@ -230,7 +253,7 @@ export const runArtanisAdminTick = async (
       'Administrator context for this tick:',
       `Eligible online Pylons (executor capability declared, heartbeat within 10 minutes): ${JSON.stringify(eligible.map(p => ({ lastHeartbeatAt: p.latest_heartbeat_at, pylonRef: p.pylon_ref })))}`,
       `Open executor-trace assignments: ${JSON.stringify(context.openAssignments)}`,
-      'Available actions: dispatch one no-spend executor-trace workload to keep an idle eligible device exercised and its capability proven, or take no action if dispatch would not be useful this tick.',
+      `Available actions: dispatch one no-spend executor-trace workload from the ${tassadarCompiledProgramCorpusSize}-program compiled corpus to keep an idle eligible device exercised and its capability proven, or take no action if dispatch would not be useful this tick.`,
       'Output STRICT JSON only: {"kind":"dispatch_executor_trace","pylonRef":"...","rationale":"..."} or {"kind":"no_action","rationale":"..."}',
     ].join('\n'),
     system:
@@ -320,9 +343,10 @@ export const runArtanisAdminTick = async (
     }
   }
 
-  const assignmentRef = `assignment.artanis_admin.${deps.nowIso.replace(/[-:.TZ]/g, '').slice(0, 14)}`
+  const workloadIndex = dispatchedTodayCount % tassadarCompiledProgramCorpusSize
+  const assignmentRef = `assignment.artanis_admin.${deps.nowIso.replace(/[-:.TZ]/g, '').slice(0, 14)}.w${workloadIndex}`
   const dispatchResult = await deps.dispatch(
-    buildTassadarPocDispatchBody({
+    buildTassadarCorpusDispatchBody({
       assignmentRef,
       pylonRef: action.pylonRef,
     }),
@@ -472,7 +496,7 @@ export const runArtanisCloseoutVerifier = async (
       continue
     }
 
-    const dispatchBody = buildTassadarPocDispatchBody({
+    const dispatchBody = buildTassadarCorpusDispatchBody({
       assignmentRef,
       pylonRef: String(row.pylon_ref),
     })

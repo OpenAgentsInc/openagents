@@ -938,6 +938,10 @@ H).
 
 ### Track S — Studying → Autopilot-coder (start here; §4c)
 
+Status 2026-06-18: complete on `origin/main` for #5314-#5320. The external-repo
+pilot remains a yellow, refs-only product surface; customer-private ingestion,
+marketplace packaging, pricing, payout, and settlement claims remain blocked.
+
 - **#5314 — S1** Repo-knowledge substrate v1: study-packet ingest over the
   `openagents` repo (current code + commit history + rationale + cross-links),
   building on the #5284 repo-corpus manifest/entry/evidence-span primitives.
@@ -962,6 +966,11 @@ H).
 
 - **#5321 — C1** Run work-unit = real compiled-program corpus (distinct
   CALM/Wasm programs), not the single `loop_sum_v1` fixture — top-5 #1.
+  Status 2026-06-18: first C1 slice landed in psionic/openagents as a
+  four-program psionic-generated numeric corpus (loop-sum, arithmetic, memory
+  roundtrip, factorial state machine) plus no-spend Artanis dispatch/replay
+  selection by assignment workload slot. This does not claim dense loadable
+  modules, composition, marketplace listing, or paid construction yet.
 - **#5322 — C2** Complete psionic E4 MILP scheduler (gate-graph→layer/phase
   assignment). `[psionic]`
 - **#5323 — C3** Dense, loadable, digest-pinned weight-module materialization

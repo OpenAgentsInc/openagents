@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./compiled-program-corpus": "./src/compiled-program-corpus.ts",
     "./self-test": "./src/self-test.ts"
   },
   "files": [
