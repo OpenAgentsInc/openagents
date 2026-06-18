@@ -1170,3 +1170,20 @@ marketplace packaging, pricing, payout, and settlement claims remain blocked.
 
 - **#5332 — H1** Frozen compiled core + learned interface: gradient windows
   under quarantine/canary/promotion (the subordinate hybrid ring). `[psionic + openagents]`
+  Status 2026-06-18: landed across psionic + openagents. Psionic now exposes
+  `psionic-tassadar-student::hybrid`, a machine-checkable H1 validator over the
+  retained W3 Baseline D fixture. It verifies that the frozen analytic executor
+  plus learned interface still reproduces the documented W3 result
+  (`1.0` pass@1, `1.0` replay acceptance, `1.0` output-digest match), that the
+  interface receipt matches the retained Baseline D checkpoint/config digest,
+  and that learned-interface trainable scopes do not target the compiled exact
+  core. A changed frozen-core digest, trace-not-in-forward-pass claim, or
+  trainable compiled-core scope fails closed. OpenAgents now adds
+  `tassadar-gradient-window-regime.ts`, which projects public learned-interface
+  candidate updates through quarantine -> deterministic recompute -> replicated
+  matching update digests -> Baseline-D-grade canary metrics -> explicit
+  promotion decision. Promotion remains blocked until recompute, replication,
+  canary, construction/verification/data refs, and the promotion decision all
+  pass, and direct submission never mutates the canonical checkpoint. This does
+  not arm real settlement, pay public gradient windows, serve learned weights,
+  or claim public decentralized gradient training is live.

@@ -108,6 +108,26 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/tassadar-adversarial-verification-market.test.ts` and
   `workers/api/src/artanis-work-directions.test.ts`.
 
+## Tassadar Gradient Window Hybrid Ring
+
+- Public learned-interface gradient windows are candidate updates only. A
+  submission may enter a quarantine checkpoint, but it must not mutate a
+  canonical checkpoint directly.
+- Promotion requires explicit construction-substrate refs, verification-substrate
+  refs, curated-data refs, quarantine receipts, deterministic recompute receipts,
+  replicated matching update digests, Baseline-D-grade canary metrics, and a
+  public promotion decision ref. Missing or failed recompute, replication,
+  canary, or promotion evidence blocks canonical mutation.
+- The compiled exact core remains frozen across the whole window. Any changed
+  frozen-core digest, trainable compiled-core scope, direct compiled-core gradient
+  target, missing frozen-core scope, or trace-not-in-forward-pass claim blocks
+  the window.
+- The gradient-window gate does not settle payouts, arm real Bitcoin, widen
+  spend caps, publish raw gradients/traces/prompts/private data, or grant live
+  public decentralized-training claims by itself.
+- Regression coverage for this policy lives in
+  `workers/api/src/tassadar-gradient-window-regime.test.ts`.
+
 ## Foldkit-Owned Browser Navigation
 
 - Production browser app code must not call raw History APIs such as
