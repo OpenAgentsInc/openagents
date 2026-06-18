@@ -27,6 +27,12 @@ export default {
       // (run before electrobun build). Lands at views/autopilot-desktop/styles.css
       // and is linked from index.html.
       "src/ui/styles.out.css": "views/autopilot-desktop/styles.css",
+      // The network-home pylon diamond renderer is shared with openagents.com
+      // and resolves its GLB/font/image assets relative to the bundled view
+      // module (`views://autopilot-desktop/assets/moksha/...`). Copy the whole
+      // asset directory so WebKit does not get empty `views://` responses.
+      "node_modules/@openagentsinc/three-effect/packages/core/src/assets/moksha":
+        "views/autopilot-desktop/assets/moksha",
       // #5027 (Phase 2, packaged build): the bundled headless Pylon node, built
       // by `bun run build:pylon-node` before electrobun build. electrobun copies
       // `build.copy` dests under `<RESOURCES_FOLDER>/app/`, so this dest lands at

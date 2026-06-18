@@ -310,7 +310,7 @@ const askCard = (model: Model): Html => {
                 [cls("ask-row")],
                 [
                   h.span(
-                    [cls("ask-dot"), h.Style(`background-color:${sl.dotColor}`)],
+                    [cls("ask-dot"), h.Style({ backgroundColor: sl.dotColor })],
                     [],
                   ),
                   h.span([cls("ask-text")], [`${label} · ${sl.text}`]),
@@ -3826,7 +3826,7 @@ const networkPane = (model: Model): Html => {
       pylonDiamondsView<Message>(
         [
           cls("network-pylon-diamonds"),
-          h.Style(`--network-activity:${scene.activityIntensity.toFixed(3)}`),
+          h.Style({ "--network-activity": scene.activityIntensity.toFixed(3) }),
         ],
         scene.activityIntensity,
       ),

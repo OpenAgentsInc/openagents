@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs"
 import { describe, expect, test } from "bun:test"
-import { initialModel } from "../src/ui/model"
+import { initialModel, type PaneId } from "../src/ui/model"
 import { sanitizeTree, view } from "../src/ui/view"
 
 // Regression for the blank-screen crash: Foldkit's element constructors strip
@@ -53,6 +54,18 @@ const treeContainsText = (node: unknown, text: string): boolean => {
   if (typeof vnode.text === "string" && vnode.text.includes(text)) return true
   return Array.isArray(vnode.children)
     ? vnode.children.some((child) => treeContainsText(child, text))
+    : false
+}
+
+const treeContainsStringStyle = (node: unknown): boolean => {
+  if (node === null || typeof node !== "object") return false
+  const vnode = node as {
+    children?: unknown[]
+    data?: { style?: unknown }
+  }
+  if (typeof vnode.data?.style === "string") return true
+  return Array.isArray(vnode.children)
+    ? vnode.children.some(child => treeContainsStringStyle(child))
     : false
 }
 
@@ -224,6 +237,37 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "app-shell-network")).toBe(true)
     // immersive: no sidebar chrome on the home
     expect(treeContainsClass(document.body, "sidebar")).toBe(false)
+  })
+
+  test("all rendered panes use style objects, not CSS strings", () => {
+    const panes: ReadonlyArray<PaneId> = [
+      "network",
+      "builtin-agent",
+      "nodes",
+      "training",
+      "training-fullscreen",
+      "sessions",
+      "decisions",
+      "spawn",
+      "settings",
+    ]
+
+    for (const pane of panes) {
+      expect(treeContainsStringStyle(view({ ...initialModel, pane }).body)).toBe(
+        false,
+      )
+    }
+  })
+
+  test("desktop UI sources do not pass raw CSS strings to Foldkit Style", () => {
+    const sources = [
+      new URL("../src/ui/main.ts", import.meta.url),
+      new URL("../src/ui/view.ts", import.meta.url),
+    ]
+
+    for (const source of sources) {
+      expect(readFileSync(source, "utf8")).not.toMatch(/\bStyle\(\s*["'`]/)
+    }
   })
 
   test("settings pane includes first-run health blockers (#5064)", () => {

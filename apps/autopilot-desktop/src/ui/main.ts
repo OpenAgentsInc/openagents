@@ -42,32 +42,52 @@ const crashView = (error: Error): Document => ({
   title: "Autopilot Desktop — error",
   body: ch.div(
     [
-      ch.Style(
-        "position:fixed;inset:0;overflow:auto;padding:24px;background:#0b0d12;color:#e6e9ef;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5;z-index:99999",
-      ),
+      ch.Style({
+        background: "#0b0d12",
+        color: "#e6e9ef",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: "13px",
+        inset: "0",
+        lineHeight: "1.5",
+        overflow: "auto",
+        padding: "24px",
+        position: "fixed",
+        zIndex: "99999",
+      }),
     ],
     [
       ch.h1(
-        [ch.Style("margin:0 0 8px;font-size:16px;color:#ff6b6b")],
+        [ch.Style({ color: "#ff6b6b", fontSize: "16px", margin: "0 0 8px" })],
         ["⚠ Autopilot Desktop — render error"],
       ),
       ch.p(
-        [ch.Style("margin:0 0 12px;color:#8b93a7")],
+        [ch.Style({ color: "#8b93a7", margin: "0 0 12px" })],
         ["The webview hit an unrecoverable error. Details below (dev build)."],
       ),
       ch.pre(
         [
-          ch.Style(
-            "margin:0;white-space:pre-wrap;word-break:break-word;color:#ffb454;font-weight:600",
-          ),
+          ch.Style({
+            color: "#ffb454",
+            fontWeight: "600",
+            margin: "0",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }),
         ],
         [error.message],
       ),
       ch.pre(
         [
-          ch.Style(
-            "margin:12px 0 0;white-space:pre-wrap;word-break:break-word;color:#cdd3e0;background:#11151d;border:1px solid #1c2230;border-radius:6px;padding:12px",
-          ),
+          ch.Style({
+            background: "#11151d",
+            border: "1px solid #1c2230",
+            borderRadius: "6px",
+            color: "#cdd3e0",
+            margin: "12px 0 0",
+            padding: "12px",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }),
         ],
         [error.stack ?? "(no stack)"],
       ),

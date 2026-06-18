@@ -28,6 +28,30 @@ The `--assets ../../apps/web/dist` argument is mandatory. A deploy can otherwise
 publish a Worker version whose `ASSETS` binding returns 404 for `/` and the
 hashed web bundle, even though Wrangler reports a successful Worker upload.
 
+## Desktop Build Gate
+
+`openagents.com` deploys must not regress Autopilot Desktop. The canonical
+deploy check now runs the desktop deploy verifier before the Worker typecheck
+and selected web/API tests:
+
+```sh
+cd apps/openagents.com
+bun run check:deploy
+```
+
+That transitively runs:
+
+```sh
+cd ../..
+bun run verify:autopilot-desktop:deploy
+```
+
+The desktop verifier runs the Foldkit regression tests, the Three/WebGL training
+scene smoke, the browser and Bun entrypoint builds, the full ElectroBun build,
+and a packaged-asset assertion for the shared `three-effect` Moksha GLB used by
+the desktop network scene. Do not deploy if this gate fails; fix the desktop
+failure first.
+
 ## Keep shared github-dependency pins consistent across workspaces
 
 `typecheck:web` (and therefore the deploy gate) can break for a reason that has

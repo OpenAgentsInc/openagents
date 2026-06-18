@@ -42,11 +42,13 @@
     "test:probe": "bun run --cwd packages/probe test",
     "test:nip90": "bun run --cwd packages/nip90 test",
     "test:proof-replay": "bun run --cwd packages/proof-replay test",
+    "check:deploy": "bun run --cwd apps/openagents.com check:deploy",
     "typecheck": "bun run typecheck:forum && bun run typecheck:nostr-relay && bun run typecheck:nip90 && bun run typecheck:proof-replay",
     "typecheck:forum": "bun run --cwd apps/forum typecheck",
     "typecheck:nostr-relay": "bun run --cwd apps/nostr-relay typecheck",
     "typecheck:nip90": "bun run --cwd packages/nip90 typecheck",
     "typecheck:proof-replay": "bun run --cwd packages/proof-replay typecheck",
+    "verify:autopilot-desktop:deploy": "bun run --cwd apps/autopilot-desktop verify:deploy",
     "prepare": "effect-language-service patch"
   },
   "devDependencies": {
