@@ -4,7 +4,7 @@ Date: 2026-06-18
 Scope: proof-replay primitives, the web replay scene, the desktop replay
 surface, and the rendering/capture infrastructure, audited against the owner's
 stated replay vision.
-Type: read/audit + recommendation. No feature code was written.
+Type: audit, recommendation, and implementation status ledger.
 
 ## Implementation updates
 
@@ -22,14 +22,22 @@ Type: read/audit + recommendation. No feature code was written.
   poses, codec settings, and the run-location boundary. Inputs may be the local
   fixture, a local bundle JSON file, an explicit bundle URL, or a public replay
   slug such as `first-real-settlement`.
-- Current capability status after this update: headless DOM frame sequence,
-  frames-to-mp4, and one CLI entrypoint are implemented for local/CI/Container
-  render boxes. The Cloudflare Worker is still only the intended trigger/serve
-  boundary and must not render or run ffmpeg. True owner-directed **3D**
-  reframing remains blocked on porting proof-replay visuals into
-  `@openagentsinc/three-effect`; until then, camera paths are recorded in the
-  manifest and select the existing DOM bridge camera modes, but they do not move
-  a real WebGL viewpoint.
+- 2026-06-18: R-1a/R-2 (#5353/#5348) closed the true-3D/directable-camera
+  blocker. `@openagentsinc/three-effect` now owns a proof-replay WebGL mount
+  (`19013ae`) with real geometry, lighting, labels, source-ref beams, event
+  motion, and a perspective camera. The web replay element now adapts
+  `ProofReplayBundle` + `ReplayRenderPlan` into that shared renderer instead of
+  drawing app-local DOM/CSS stage visuals. The `driveReplayFrame` hook now
+  accepts a call-time `cameraPose` override and applies it to the Three camera
+  before each headless screenshot. R-1 verification reported `canvasCount: 1`,
+  `context: webgl2`, and `projectionNodeCount: 0`.
+- Current capability status after this update: moment selection, true WebGL
+  headless frames, camera-path input, frames-to-mp4, and one CLI entrypoint are
+  implemented for local/CI/Container render boxes. The Cloudflare Worker remains
+  only the intended trigger/serve boundary and must not render or run ffmpeg.
+  The acceptance proof rendered two equal-time clips with different camera
+  paths; matching frames had different hashes, frame 0 PSNR was ~22.95 dB, and
+  frame 24 SSIM was ~0.339, proving real camera reframing.
 
 ## The vision (the target)
 
@@ -206,19 +214,29 @@ This is the load-bearing gap, so it was checked carefully:
 | #   | Capability                                                                       | Status      | Where it stands                                                                                                                                                                                                                                                                                                                                                                                                         |
 | --- | -------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | **Moment selection** (event/timestamp/ref -> scene state)                        | **EXISTS**  | `ProofReplayBundle` + `buildReplayRenderPlan` + `activeReplayEventsAt(bundle, second)` + `interpolateActorPosition`. Moments are addressable by `eventRef` / `sequenceIndex` / `timelineSecond`. Bundles exist for two moments.                                                                                                                                                                                         |
-| 2   | **Programmatic camera direction** (API/params, camera path)                      | **PARTIAL** | The data model exists: `ReplayCameraMode`, `ReplayCameraCue`, `cameraPoseFor(plan, second, mode) -> {position,target}`. But: (a) cues are baked into the bundle, not owner-supplied at call time; (b) there is no "place/move camera here/there" path or keyframed camera-path input; (c) nothing actually renders from the pose — the web scene writes it to a data attribute and renders a fixed 2.5D DOM projection. |
-| 3   | **Headless render -> frames** (no UI, deterministic, image sequence)             | **MISSING** | No headless rendering at all. WGPUI is gone; three-effect is browser-canvas-only with no readback/OffscreenCanvas/Node context; the only "renderer" today is the interactive DOM/CSS element, which requires a live browser and a person.                                                                                                                                                                               |
-| 4   | **Frames -> video clip** (ffmpeg/encoder -> mp4/gif)                             | **MISSING** | No encoder of any kind in the codebase.                                                                                                                                                                                                                                                                                                                                                                                 |
-| 5   | **One programmatic entrypoint** ("render moment X w/ camera path Y -> clip.mp4") | **MISSING** | No CLI/API. The closest is the `?camera=social` URL cut, which is a live self-playing web page, not a file-producing command.                                                                                                                                                                                                                                                                                           |
+| 2   | **Programmatic camera direction** (API/params, camera path)                      | **EXISTS**  | `render-clip.mjs --camera <path>` resolves ordered keyframes into per-frame `{position,target,fov}` overrides and passes them through `window.driveReplayFrame`. The hook applies those overrides on top of `cameraPoseFor`, and the WebGL camera renders from the resulting pose.                                                                                                                                          |
+| 3   | **Headless render -> frames** (no UI, deterministic, image sequence)             | **EXISTS**  | The R-1/R-3 harness runs headless Chromium, mounts the `three-effect` proof-replay canvas, seeks the deterministic replay clock, and writes `frame_%05d.png`. R-1 now reports `canvasCount: 1`, `context: webgl2`, and `projectionNodeCount: 0`.                                                                                                                                                                      |
+| 4   | **Frames -> video clip** (ffmpeg/encoder -> mp4/gif)                             | **EXISTS**  | `render-clip.mjs` shells ffmpeg over the PNG sequence and emits H.264/yuv420p/faststart mp4 clips.                                                                                                                                                                                                                                                                                                                       |
+| 5   | **One programmatic entrypoint** ("render moment X w/ camera path Y -> clip.mp4") | **EXISTS**  | `render-clip.mjs` accepts fixture, bundle file, explicit URL, or public slug inputs plus camera path/mode, start/duration/end, fps, resolution, ffmpeg, codec settings, and output path. It writes both the mp4 and a render manifest.                                                                                                                                                                                |
 
-Honest "is any of it ready" verdict, capability by capability:
+Current "is any of it ready" verdict, capability by capability:
 
 - Capability 1 works today and is genuinely reusable.
-- Capability 2 is half-built: real camera _math_ exists, but it is not
-  owner-directable at call time and is not wired to anything that renders from
-  the camera.
-- Capabilities 3, 4, 5 — the entire "produce an actual video clip headlessly"
-  half of the vision — **do not exist**.
+- Capability 2 is complete for explicit keyframed camera paths: caller-supplied
+  camera positions, targets, fov, and camera modes are resolved per frame and
+  applied to the rendered Three camera.
+- Capabilities 3, 4, 5 are complete for the local/CI/Container render-box path:
+  headless Chromium produces WebGL frames, ffmpeg stitches them into mp4, and
+  `render-clip.mjs` is the one entrypoint.
+
+## Updated verdict after R-1a/R-2/R-3/R-4/R-5
+
+The clip-generation path is ready as a render-box pipeline: a caller can pick a
+replay bundle/time window, pass a camera path, and get an mp4 plus a manifest.
+The Worker boundary is unchanged: it should trigger or serve uploaded results,
+not render frames or run ffmpeg at the edge.
+
+The original audit below remains as the historical pre-implementation finding.
 
 ## Verdict
 

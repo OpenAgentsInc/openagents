@@ -374,8 +374,8 @@ describe('tassadar proof replay element', () => {
       'The first real Tassadar settlement replay begins.',
     )
     expect(
-      el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]'),
-    ).toBeNull()
+      el.shadowRoot?.querySelector('canvas[data-proof-replay-webgl]'),
+    ).not.toBeNull()
   })
 
   it('pauses from press events while the replay timer is running', async () => {
@@ -503,7 +503,7 @@ describe('tassadar proof replay element', () => {
     )
   })
 
-  it('renders recognition zaps and overpayment markers from a launch-recognition bundle', async () => {
+  it('drives recognition and overpayment moments through the WebGL replay frame', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse(recognitionReplayBundle),
     )
@@ -519,24 +519,29 @@ describe('tassadar proof replay element', () => {
     scrub!.value = '13'
     scrub!.dispatchEvent(new Event('input', { bubbles: true }))
 
-    expect(
-      el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]'),
-    ).not.toBeNull()
-    const overpayment = el.shadowRoot?.querySelector(
-      '[data-replay-marker="overpayment"]',
-    )
-    expect(overpayment?.textContent ?? '').toContain(
-      '109239 sats overage documented as hazard pay',
+    const world = el.shadowRoot?.querySelector('[data-replay-stage]')
+    expect(world?.getAttribute('data-proof-replay-webgl')).toBe('unavailable')
+    const canvas = el.shadowRoot?.querySelector(
+      'canvas[data-proof-replay-webgl]',
+    ) as HTMLCanvasElement | null
+    expect(canvas).not.toBeNull()
+    expect(canvas?.getAttribute('data-proof-replay-second')).toBe('13.000')
+    expect(canvas?.getAttribute('data-proof-replay-camera')).toBe('zap_focus')
+    expect(el.shadowRoot?.textContent ?? '').toContain(
+      'Orrery overpayment is an exception lane.',
     )
   })
 
-  it('does not render the real sats zap until the confirmed payment event', async () => {
+  it('moves the WebGL replay frame to the confirmed real-sats moment', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(replayBundle))
     const el = await mountAndSettle()
 
-    expect(
-      el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]'),
-    ).toBeNull()
+    const initialCanvas = el.shadowRoot?.querySelector(
+      'canvas[data-proof-replay-webgl]',
+    ) as HTMLCanvasElement | null
+    expect(initialCanvas?.getAttribute('data-proof-replay-second')).toBe(
+      '0.000',
+    )
 
     const scrub = el.shadowRoot?.querySelector(
       '[data-replay-control="scrub"]',
@@ -545,10 +550,15 @@ describe('tassadar proof replay element', () => {
     scrub!.value = '39'
     scrub!.dispatchEvent(new Event('input', { bubbles: true }))
 
-    const zap = el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')
+    const canvas = el.shadowRoot?.querySelector(
+      'canvas[data-proof-replay-webgl]',
+    ) as HTMLCanvasElement | null
     expect(el.getAttribute('data-replay-second')).toBe('39.0')
-    expect(zap).not.toBeNull()
-    expect(zap?.textContent ?? '').toContain('1000 sats spark_treasury')
+    expect(canvas?.getAttribute('data-proof-replay-second')).toBe('39.000')
+    expect(canvas?.getAttribute('data-proof-replay-camera')).toBe('zap_focus')
+    expect(el.shadowRoot?.textContent ?? '').toContain(
+      'The Spark treasury rail confirms real Bitcoin movement.',
+    )
   })
 
   it('renders the deterministic social share cut chrome from query params', async () => {
@@ -570,11 +580,12 @@ describe('tassadar proof replay element', () => {
     ).toBeNull()
 
     const canvas = el.shadowRoot?.querySelector(
-      '[data-social-canvas="nonblank"]',
+      'canvas[data-proof-replay-webgl]',
     ) as HTMLCanvasElement | null
     expect(canvas).not.toBeNull()
-    expect(canvas?.width).toBe(1280)
-    expect(canvas?.height).toBe(720)
+    expect(canvas?.getAttribute('data-proof-replay-webgl')).toBe(
+      'unavailable',
+    )
 
     const text = el.shadowRoot?.textContent ?? ''
     expect(text).toContain('Tassadar Run 1: first real Bitcoin settlement')
@@ -586,8 +597,8 @@ describe('tassadar proof replay element', () => {
       /spark1|bolt11|preimage|mnemonic|api[_ -]?key|service[_ -]?token|bearer|payment_hash|private log|raw prompt/i,
     )
     expect(
-      el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]'),
-    ).toBeNull()
+      el.shadowRoot?.querySelector('[data-proof-replay-webgl-mount="true"]'),
+    ).not.toBeNull()
   })
 
   it('shows the confirmed zap and receipt-backed end card late in the social cut', async () => {
@@ -596,9 +607,10 @@ describe('tassadar proof replay element', () => {
       '/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social&start=56',
     )
 
-    expect(
-      el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]'),
-    ).not.toBeNull()
+    const canvas = el.shadowRoot?.querySelector(
+      'canvas[data-proof-replay-webgl]',
+    ) as HTMLCanvasElement | null
+    expect(canvas?.getAttribute('data-proof-replay-second')).toBe('56.000')
     const endCard = el.shadowRoot?.querySelector(
       '[data-social-end-card="settled"]',
     )
@@ -620,21 +632,45 @@ describe('tassadar proof replay element', () => {
       driveReplayFrame: (input: {
         second?: number
         cameraMode?: string
-      }) => { mode: string; second: number } | null
+        cameraPose?: {
+          fov?: number
+          position?: { x: number; y: number; z: number }
+          target?: { x: number; y: number; z: number }
+        }
+      }) => {
+        fov?: number
+        mode: string
+        position: { x: number; y: number; z: number }
+        second: number
+      } | null
     }
 
-    const pose = el.driveReplayFrame({ cameraMode: 'zap_focus', second: 39 })
+    const pose = el.driveReplayFrame({
+      cameraMode: 'zap_focus',
+      cameraPose: {
+        fov: 34,
+        position: { x: 7, y: 4, z: 2 },
+        target: { x: 0, y: 0, z: 0 },
+      },
+      second: 39,
+    })
 
     expect(pose?.mode).toBe('zap_focus')
     expect(pose?.second).toBe(39)
+    expect(pose?.fov).toBe(34)
+    expect(pose?.position).toEqual({ x: 7, y: 4, z: 2 })
     expect(el.getAttribute('data-replay-second')).toBe('39.0')
     expect(el.getAttribute('data-replay-camera')).toBe('zap_focus')
+    const world = el.shadowRoot?.querySelector('[data-replay-stage]')
+    expect(world?.getAttribute('data-camera-fov')).toBe('34.00')
     expect(
       el.shadowRoot?.querySelector('[data-replay-control="scrub"]'),
     ).toBeNull()
-    expect(
-      el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]'),
-    ).not.toBeNull()
+    const canvas = el.shadowRoot?.querySelector(
+      'canvas[data-proof-replay-webgl]',
+    ) as HTMLCanvasElement | null
+    expect(canvas?.getAttribute('data-proof-replay-second')).toBe('39.000')
+    expect(canvas?.getAttribute('data-proof-replay-camera')).toBe('zap_focus')
   })
 
   it('opens source refs in the inspector when an event is selected', async () => {

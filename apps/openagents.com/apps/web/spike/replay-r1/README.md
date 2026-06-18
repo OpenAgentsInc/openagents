@@ -32,9 +32,12 @@ A minimal, self-contained spike (no live Worker / D1):
   frame at a time, writes a deterministic `frame_%05d.png` sequence, shells
   ffmpeg to produce an H.264 mp4, and writes a render manifest next to the mp4.
 - `camera-path.example.json` — a caller-supplied camera path/keyframe example.
-  The current DOM bridge records and mode-selects the camera path for each
-  frame; a future true-3D `three-effect` proof-replay scene can consume the same
-  manifest poses to re-frame the actual viewpoint.
+  The path is resolved per frame and passed through `window.driveReplayFrame`
+  as `{position,target,fov}`, so the `three-effect` WebGL camera actually
+  reframes the rendered shot.
+- `camera-path-alt.example.json` — a second path used by the acceptance proof
+  to verify that equal-time frames visibly differ when the caller changes the
+  camera.
 
 Reference design only (NOT a dependency): Remotion's `renderStill`
 (= `seekToFrame` + `takeFrame`). License forbids forking/depending; we port the
@@ -92,30 +95,32 @@ This is a **render-box / CI workload** (headless Chrome), NOT a Cloudflare
 Worker workload — the Worker can trigger a render and serve the mp4 from R2, it
 must not render.
 
-## RESULT — does a single frame come out as real pixels headlessly?
+## RESULT — does a single frame come out as real WebGL pixels headlessly?
 
 **YES.** A 1280x720 RGB PNG with real content comes out of headless Chrome,
 driven entirely programmatically (no human clicking). The driver seeks to
 second 24 (the `payment_zap_confirmed` beat), sets camera `zap_focus`, and
 screenshots. `cameraPoseFor` returns a concrete pose for that second.
 
-**BUT — and this is the load-bearing caveat — the frame is a 2.5D DOM/CSS
-projection, not a true-3D WebGL render.** The driver inspected the rendered
-shadow DOM and found:
+The #5353/#5348 follow-up replaced the old 2.5D DOM/CSS projection with a
+`three-effect` WebGL mount. The driver now inspects the rendered shadow DOM and
+finds:
 
-- `canvasCount: 0` in the interactive scene — **no WebGL canvas at all**.
-- 110 DOM nodes / 7 absolutely-positioned `.plane` projection nodes (stages,
-  actors, zap, caption).
-- The computed `cameraPoseFor` pose is written to `data-camera-*` attributes
-  only; it does **not** move a rendered viewpoint. Selecting `zap_focus` changes
-  data, not the picture.
+- `canvasCount: 1`.
+- `context: webgl2` in headless Chromium.
+- `projectionNodeCount: 0`.
+- `computedPose` matches the caller-supplied camera-path pose when one is
+  present.
 
-So headless Chrome screenshots the **existing** scene fine — because the scene
-is DOM, and Chrome paints DOM. But "camera direction" (the owner's "move the
-camera here/there") is not honored by what renders, because there is no real 3D
-camera to move. The `?camera=social` capture (`frame-social.png`) is widget-free
-and uses a real **2D** `<canvas>` background, but is still a fixed DOM
-projection, not a 3D viewpoint.
+An example camera-path render was produced at
+`spike/replay-r1/example-cinematic-3d.mp4` with matching ignored frame and
+manifest outputs beside it.
+
+The camera-path acceptance proof rendered that clip and
+`spike/replay-r1/example-alt-camera-3d.mp4` over the same replay window. Matching
+frames differed by hash; frame 0 PSNR was `22.945324` dB and frame 24 SSIM was
+`0.338971`. Both manifests record requested camera-path poses matching the
+computed Three camera pose.
 
 ## Verdict for the EPIC
 
@@ -125,32 +130,9 @@ headlessly, and the `proof-replay` clock + `cameraPoseFor` math drives a chosen
 moment + pose programmatically. R-2..R-5 (camera-path input -> frame sequence ->
 ffmpeg -> CLI) are mostly assembly on top of this harness.
 
-**However, before R-2..R-5 deliver an owner-directable _3D_ clip, a renderer
-decision is required:** the current proof-replay scene
-(`tassadarProofReplayElement.ts`) is an explicitly-temporary 2.5D DOM bridge
-with no WebGL and no camera-honoring viewpoint. To make camera direction
-actually change the rendered picture, the proof-replay scene needs a true-3D
-WebGL render path in `@openagentsinc/three-effect` (the renderer of record per
-`apps/openagents.com/AGENTS.md`) that consumes `buildReplayRenderPlan` +
-`cameraPoseFor` and renders from the camera pose. Other three-effect scenes in
-this app already do real WebGL (e.g. `scene/tassadarRunSnapshot.ts`,
-`scene/pylonElement.ts`), so the substrate exists; the proof-replay scene simply
-has not been ported to it yet.
-
-### Two valid next paths (both work with this exact harness)
-
-1. **Ship clips of the DOM scene as-is.** The headless screenshot loop already
-   works on the current scene. `render-clip.mjs` now assembles R-3..R-5 and gets
-   real clips — they just won't have a moving 3D camera (the "camera here/there"
-   direction is captured in the manifest and limited visually to the existing
-   mode-selected fixed projections).
-2. **Port the proof-replay scene to a true-3D `three-effect` WebGL mount
-   first** (in `three-effect`, per AGENTS.md), then run this same harness. This
-   is what makes owner-supplied camera paths actually re-frame the shot. This is
-   the renderer decision to make before R-2 if 3D camera direction is required.
-
-The screenshot harness itself does not change between the two — that is the part
-this spike de-risked.
+The headless-Chrome-screenshot pattern and the renderer decision are now both
+resolved for this track. `render-clip.mjs` produces a real 3D clip, and
+camera-path keyframes visibly reframe matching replay moments.
 
 ## R-3/R-4/R-5 status
 

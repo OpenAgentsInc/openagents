@@ -19,7 +19,18 @@ import {
   proofReplayBundleEndpointForSlug,
   reduceReplayClock,
 } from '@openagentsinc/proof-replay'
-import { Schema as S } from 'effect'
+import {
+  type ProofReplayActorDefinition,
+  type ProofReplayCameraPose as ThreeEffectProofReplayCameraPose,
+  type ProofReplayEventDefinition,
+  type ProofReplayFlowDefinition,
+  type ProofReplayStageDefinition,
+  type ProofReplayVisualizationFrame,
+  type ProofReplayVisualizationHandle,
+  type ProofReplayVisualizationOptions,
+  mountProofReplayVisualization,
+} from '@openagentsinc/three-effect/core'
+import { Effect, Schema as S } from 'effect'
 import { define as defineCustomElement } from 'foldkit/customElement'
 import type { Attribute, Html } from 'foldkit/html'
 
@@ -32,6 +43,17 @@ export { FIRST_REAL_SETTLEMENT_REPLAY_SLUG, OPENAGENTS_PUBLIC_ORIGIN }
 
 type ReplayDataState = 'loading' | 'ok' | 'error'
 type ReplayPresentationMode = 'interactive' | 'social'
+type ReplayCameraOverride = Readonly<{
+  fov?: number
+  position?: ReplayVector3
+  target?: ReplayVector3
+}>
+type DrivenReplayCameraPose = ReplayCameraPose & Readonly<{ fov?: number }>
+type DriveReplayFrameInput = Readonly<{
+  cameraMode?: ReplayCameraMode
+  cameraPose?: ReplayCameraOverride
+  second?: number
+}>
 
 const SOCIAL_TITLE = 'Tassadar Run 1: first real Bitcoin settlement'
 const SOCIAL_SUBTITLE =
@@ -39,8 +61,6 @@ const SOCIAL_SUBTITLE =
 const SOCIAL_FINAL_RECEIPT_REF =
   'receipt.nexus.tassadar_run_settlement...v6.20260618'
 const SOCIAL_DEFAULT_DURATION_SECOND = 60
-const SOCIAL_CANVAS_WIDTH = 1280
-const SOCIAL_CANVAS_HEIGHT = 720
 
 const CAMERA_MODES: ReadonlyArray<ReplayCameraMode> = [
   'director_track',
@@ -67,50 +87,20 @@ const HOST_STYLE =
   '.top a{position:relative;z-index:9;align-self:start;justify-self:end;width:max-content;margin-left:auto;white-space:nowrap;pointer-events:auto;color:rgba(255,255,255,0.86);font-size:0.72rem;text-underline-offset:0.2rem;touch-action:manipulation}.top a:hover{color:#fff}' +
   '.world{position:relative;min-height:0;margin:0 1rem;border-top:1px solid rgba(255,255,255,0.08);border-bottom:1px solid rgba(255,255,255,0.08);overflow:hidden;perspective:900px}' +
   '.shell.social .world{margin:0;border:0;min-height:100%;aspect-ratio:16/9;background:#000}' +
-  '.social-canvas{position:absolute;inset:0;width:100%;height:100%;opacity:0.92}' +
-  '.plane{position:absolute;inset:7% 6% 8%;transform-style:preserve-3d}.grid{position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,0.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.045) 1px,transparent 1px);background-size:7.5% 10%;mask-image:radial-gradient(circle at 50% 50%,#000 0 62%,transparent 82%);opacity:0.58}' +
-  '.shell.social .plane{inset:9% 7% 10%}.shell.social .grid{opacity:0.36}' +
-  '.stage,.actor,.zap,.marker{position:absolute;transform:translate(-50%,-50%);border:0;color:#f1efe8;font:inherit;text-align:center}' +
-  '.stage{min-width:5.2rem;max-width:9.5rem;padding:0;background:transparent;text-shadow:0 1px 10px rgba(0,0,0,0.9);cursor:pointer}.stage .orb{display:block;width:2.15rem;height:2.15rem;margin:0 auto 0.34rem;border:1px solid rgba(255,255,255,0.24);border-radius:999px;background:rgba(255,255,255,0.08);box-shadow:0 0 1.2rem rgba(42,181,161,0.32)}' +
-  '.stage span:last-child{display:block;overflow:hidden;text-overflow:ellipsis;font-size:0.67rem;line-height:1.18;color:rgba(255,255,255,0.72)}.stage.core .orb{width:4.8rem;height:4.8rem;background:radial-gradient(circle,rgba(249,255,232,0.92),rgba(42,181,161,0.38) 42%,rgba(42,181,161,0.02) 72%);box-shadow:0 0 3.4rem rgba(249,255,232,0.72),0 0 8rem rgba(42,181,161,0.28)}.stage.core span:last-child{font-size:1rem;color:#fff}' +
-  '.stage.proof_gate .orb{background:rgba(96,163,255,0.18);box-shadow:0 0 1.6rem rgba(96,163,255,0.36)}.stage.settlement_terminal .orb{background:rgba(255,193,83,0.18);box-shadow:0 0 1.8rem rgba(255,193,83,0.32)}.stage.registry_marker .orb{background:rgba(255,255,255,0.06);box-shadow:0 0 1.2rem rgba(255,255,255,0.14)}' +
-  '.actor{z-index:2;min-width:5.8rem;background:transparent;text-shadow:0 1px 10px rgba(0,0,0,0.85);cursor:pointer}.actor .avatar{display:block;width:2.4rem;height:2.4rem;margin:0 auto 0.26rem;border-radius:999px;border:1px solid rgba(255,255,255,0.32);background:radial-gradient(circle at 35% 28%,#fff,rgba(42,181,161,0.72) 38%,rgba(42,181,161,0.12) 78%);box-shadow:0 0 1.4rem rgba(42,181,161,0.38)}.actor.validator .avatar{background:radial-gradient(circle at 35% 28%,#fff,rgba(96,163,255,0.7) 38%,rgba(96,163,255,0.12) 78%)}.actor.settlement_terminal .avatar,.actor.operator_gate .avatar{background:radial-gradient(circle at 35% 28%,#fff,rgba(255,193,83,0.74) 38%,rgba(255,193,83,0.12) 78%)}' +
-  '.actor strong{display:block;overflow:hidden;text-overflow:ellipsis;font-size:0.64rem;font-weight:600;color:rgba(255,255,255,0.86)}.actor em{display:block;margin-top:0.12rem;font-style:normal;font-size:0.55rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.42)}' +
-  '.zap{z-index:1;left:50%;top:50%;width:min(42rem,70%);height:0.2rem;background:linear-gradient(90deg,transparent,rgba(255,241,151,0.18),rgba(255,241,151,0.92),rgba(255,241,151,0.18),transparent);box-shadow:0 0 1.4rem rgba(255,241,151,0.72);animation:zapPulse 1.2s infinite}.zap span{position:absolute;left:50%;top:-1.5rem;transform:translateX(-50%);white-space:nowrap;font-size:0.76rem;color:#fff;text-shadow:0 0 1rem rgba(255,241,151,0.9)}' +
-  '.marker{z-index:3;right:8%;top:28%;left:auto;transform:none;max-width:16rem;border-left:2px solid rgba(255,112,112,0.75);padding-left:0.6rem;text-align:left;font-size:0.66rem;line-height:1.35;color:rgba(255,205,205,0.84);text-shadow:0 1px 8px rgba(0,0,0,0.9)}.marker.simulation{top:40%;border-left-color:rgba(255,255,255,0.42);color:rgba(255,255,255,0.68)}' +
-  '.marker.recognition{top:16%;border-left-color:rgba(125,211,252,0.72);color:rgba(214,240,255,0.84)}.marker.overpayment{top:52%;border-left-color:rgba(255,193,83,0.78);color:rgba(255,234,190,0.88)}' +
+  '.webgl-mount{position:absolute;inset:0;width:100%;height:100%;background:#000}' +
   '.caption{position:absolute;left:50%;bottom:1rem;z-index:4;max-width:min(52rem,calc(100% - 2rem));transform:translateX(-50%);padding:0.5rem 0.75rem;background:rgba(0,0,0,0.44);border:1px solid rgba(255,255,255,0.1);backdrop-filter:blur(12px);font-size:0.78rem;line-height:1.45;color:rgba(255,255,255,0.82);text-align:center}' +
-  '.social-hud{position:absolute;inset:0;z-index:5;pointer-events:none;color:#fff;text-shadow:0 1px 16px rgba(0,0,0,0.88)}.social-title{position:absolute;left:4.2%;top:6.8%;max-width:56rem}.social-title h1{margin:0;font-size:4rem;line-height:1.02;font-weight:760;letter-spacing:0;color:#fff}.social-title p{margin:0.52rem 0 0;font-size:1.16rem;line-height:1.3;color:rgba(255,255,255,0.78)}.social-time{position:absolute;right:4.2%;top:7.2%;font-size:1.05rem;color:rgba(255,255,255,0.82)}.social-beat{position:absolute;left:4.2%;right:4.2%;bottom:6.2%;display:flex;align-items:flex-end;justify-content:space-between;gap:1.2rem}.social-beat p{max-width:52rem;margin:0;font-size:1.18rem;line-height:1.36;color:rgba(255,255,255,0.84)}.social-progress{width:min(16rem,26vw);height:0.18rem;background:rgba(255,255,255,0.22);overflow:hidden}.social-progress span{display:block;height:100%;background:#fff;box-shadow:0 0 1rem rgba(255,255,255,0.78)}.end-card{position:absolute;right:4.2%;bottom:13%;width:min(30rem,38vw);border:1px solid rgba(255,255,255,0.16);background:rgba(0,0,0,0.52);padding:0.78rem 0.92rem;backdrop-filter:blur(14px)}.end-card strong{display:block;margin-bottom:0.38rem;font-size:1.58rem;line-height:1.08;color:#fff}.end-card span,.end-card a{display:block;overflow-wrap:anywhere;font-size:0.82rem;line-height:1.35;color:rgba(255,255,255,0.78);pointer-events:auto}.end-card a{margin-top:0.42rem;text-underline-offset:0.2rem;color:rgba(255,255,255,0.92)}' +
+  '.social-hud{position:absolute;inset:0;z-index:5;pointer-events:none;color:#fff;text-shadow:0 1px 16px rgba(0,0,0,0.88)}.social-title{position:absolute;left:4.2%;top:6.4%;max-width:43rem}.social-title h1{margin:0;font-size:3.15rem;line-height:1.02;font-weight:760;letter-spacing:0;color:#fff}.social-title p{margin:0.42rem 0 0;font-size:1rem;line-height:1.3;color:rgba(255,255,255,0.78)}.social-time{position:absolute;right:4.2%;top:7.2%;font-size:1.05rem;color:rgba(255,255,255,0.82)}.social-beat{position:absolute;left:4.2%;right:4.2%;bottom:6.2%;display:flex;align-items:flex-end;justify-content:space-between;gap:1.2rem}.social-beat p{max-width:52rem;margin:0;font-size:1.18rem;line-height:1.36;color:rgba(255,255,255,0.84)}.social-progress{width:min(16rem,26vw);height:0.18rem;background:rgba(255,255,255,0.22);overflow:hidden}.social-progress span{display:block;height:100%;background:#fff;box-shadow:0 0 1rem rgba(255,255,255,0.78)}.end-card{position:absolute;right:4.2%;bottom:13%;width:min(30rem,38vw);border:1px solid rgba(255,255,255,0.16);background:rgba(0,0,0,0.52);padding:0.78rem 0.92rem;backdrop-filter:blur(14px)}.end-card strong{display:block;margin-bottom:0.38rem;font-size:1.58rem;line-height:1.08;color:#fff}.end-card span,.end-card a{display:block;overflow-wrap:anywhere;font-size:0.82rem;line-height:1.35;color:rgba(255,255,255,0.78);pointer-events:auto}.end-card a{margin-top:0.42rem;text-underline-offset:0.2rem;color:rgba(255,255,255,0.92)}' +
   '.bottom{position:relative;z-index:6;display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,28rem);gap:0.8rem;padding:0.75rem 1rem 1rem;min-height:12rem;max-height:36vh;pointer-events:auto}.controls,.events,.inspector{position:relative;z-index:7;pointer-events:auto}.controls{display:grid;grid-template-columns:auto minmax(8rem,1fr) auto auto;gap:0.5rem;align-items:center;margin-bottom:0.55rem}.controls button,.controls select,.events button{border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.07);color:#f1efe8;font:inherit;font-size:0.72rem}.controls button{min-width:4.2rem;padding:0.42rem 0.58rem;touch-action:manipulation}.controls select{padding:0.38rem 0.46rem}.controls input{min-width:0;accent-color:#f1efe8}' +
   '.events{min-height:0;overflow:auto;border-top:1px solid rgba(255,255,255,0.08);padding-top:0.45rem}.events ol{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));gap:0.35rem;margin:0;padding:0;list-style:none}.events button{display:grid;gap:0.18rem;width:100%;padding:0.45rem 0.5rem;text-align:left}.events button[aria-current=true]{border-color:rgba(255,241,151,0.5);background:rgba(255,241,151,0.09)}.events time{font-size:0.58rem;color:rgba(255,255,255,0.38)}.events span{font-size:0.66rem;line-height:1.28;color:rgba(255,255,255,0.72)}' +
   '.inspector{min-height:0;overflow:auto;border:1px solid rgba(255,255,255,0.11);background:rgba(0,0,0,0.38);padding:0.65rem 0.7rem;backdrop-filter:blur(12px)}.inspector h2{margin:0 0 0.5rem;font-size:0.84rem;line-height:1.25;font-weight:650;color:#fff}.inspector dl{display:grid;gap:0.42rem;margin:0}.inspector dt{margin:0 0 0.12rem;font-size:0.56rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.34)}.inspector dd{margin:0;overflow-wrap:anywhere;font-size:0.67rem;line-height:1.38;color:rgba(255,255,255,0.68)}.inspector a{color:rgba(255,255,255,0.9);text-underline-offset:0.18rem}.inspector a:hover{color:#fff}.source-list{display:grid;gap:0.2rem;margin:0;padding:0;list-style:none}.source-list li{overflow-wrap:anywhere}' +
   '.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:2rem;text-align:center;pointer-events:none}.overlay p{max-width:48ch;margin:0;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.42);padding:0.8rem 1rem;font-size:0.86rem;line-height:1.55;color:rgba(255,255,255,0.66);backdrop-filter:blur(12px)}.overlay .label{display:block;margin-bottom:0.36rem;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.36)}' +
-  '@keyframes zapPulse{0%,100%{opacity:0.72;filter:blur(0)}50%{opacity:1;filter:blur(0.5px)}}' +
-  '@media (max-width:820px){.top{display:grid}.top dl{grid-template-columns:repeat(2,minmax(0,1fr))}.bottom{grid-template-columns:1fr;max-height:48vh}.controls{grid-template-columns:auto minmax(0,1fr);}.world{margin:0}.stage:not(.core) span:last-child,.actor strong{max-width:5.8rem}.top dd{max-width:none}.social-title h1{font-size:2.2rem}.social-title p,.social-time,.social-beat p{font-size:0.86rem}.end-card{width:min(23rem,44vw)}.end-card strong{font-size:1.12rem}.end-card span,.end-card a{font-size:0.68rem}}'
+  '@media (max-width:820px){.top{display:grid}.top dl{grid-template-columns:repeat(2,minmax(0,1fr))}.bottom{grid-template-columns:1fr;max-height:48vh}.controls{grid-template-columns:auto minmax(0,1fr);}.world{margin:0}.top dd{max-width:none}.social-title h1{font-size:2.2rem}.social-title p,.social-time,.social-beat p{font-size:0.86rem}.end-card{width:min(23rem,44vw)}.end-card strong{font-size:1.12rem}.end-card span,.end-card a{font-size:0.68rem}}'
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, Number.isFinite(value) ? value : min))
 
 const formatSecond = (second: number): string =>
   `${Math.round(second * 10) / 10}s`
-
-const textOrUnknown = (value: string | undefined): string => {
-  const text = value?.trim()
-  return text === undefined || text.length === 0 ? 'unknown' : text
-}
-
-const stageClassFor = (kind: string): string =>
-  kind.replace(/[^a-z0-9_-]/gi, '_').toLowerCase()
-
-const projectPoint = (
-  position: ReplayVector3,
-): Readonly<{
-  left: string
-  top: string
-}> => ({
-  left: `${clamp(50 + position.x * 5.8, 7, 93)}%`,
-  top: `${clamp(50 + position.z * 4.9 - position.y * 3.5, 9, 91)}%`,
-})
 
 const addPressHandler = (element: HTMLElement, handler: () => void): void => {
   let pointerHandled = false
@@ -161,39 +151,6 @@ const latestCaptionAt = (
 ): string | undefined =>
   [...plan.captions].reverse().find(caption => caption.timelineSecond <= second)
     ?.text
-
-const activePaymentEvent = (
-  events: ReadonlyArray<ReplayEvent>,
-): ReplayEvent | undefined =>
-  [...events].reverse().find(event => event.kind === 'payment_zap_confirmed')
-
-const activeBlockedEvent = (
-  events: ReadonlyArray<ReplayEvent>,
-): ReplayEvent | undefined =>
-  [...events]
-    .reverse()
-    .find(event => event.kind === 'settlement_blocked_closed')
-
-const activeSimulationEvent = (
-  events: ReadonlyArray<ReplayEvent>,
-): ReplayEvent | undefined =>
-  [...events].reverse().find(event => event.kind === 'payment_zap_simulated')
-
-const activeRecognitionEvent = (
-  events: ReadonlyArray<ReplayEvent>,
-): ReplayEvent | undefined =>
-  [...events]
-    .reverse()
-    .find(
-      event =>
-        event.kind === 'recognition_reward_recorded' ||
-        event.kind === 'recipient_confirmation_recorded',
-    )
-
-const activeOverpaymentEvent = (
-  events: ReadonlyArray<ReplayEvent>,
-): ReplayEvent | undefined =>
-  [...events].reverse().find(event => event.kind === 'overpayment_detected')
 
 const queryParamsFromLocation = (): URLSearchParams => {
   if (typeof window === 'undefined') return new URLSearchParams()
@@ -256,15 +213,148 @@ const socialReceiptHref = (bundle: ProofReplayBundle): string => {
   return '/tassadar/replay/first-real-settlement'
 }
 
+const uniqueRefs = (refs: ReadonlyArray<string | undefined>): ReadonlyArray<string> =>
+  [...new Set(refs.filter((ref): ref is string => ref !== undefined && ref.trim() !== ''))]
+
+const cameraPoseForFrame = (
+  plan: ReplayRenderPlan,
+  second: number,
+  cameraMode: ReplayCameraMode,
+  override: ReplayCameraOverride | null,
+): DrivenReplayCameraPose => {
+  const base = cameraPoseFor(
+    plan,
+    second,
+    cameraMode === 'director_track' ? undefined : cameraMode,
+  )
+  return {
+    ...base,
+    ...(override?.fov === undefined ? {} : { fov: override.fov }),
+    position: override?.position ?? base.position,
+    target: override?.target ?? base.target,
+  }
+}
+
+const threeEffectCameraPose = (
+  pose: DrivenReplayCameraPose,
+): ThreeEffectProofReplayCameraPose => ({
+  cameraRef: pose.cameraRef,
+  ...(pose.fov === undefined ? {} : { fov: pose.fov }),
+  mode: pose.mode,
+  position: pose.position,
+  second: pose.second,
+  sourceRefs: pose.sourceRefs,
+  target: pose.target,
+})
+
+const stageDefinitionsFor = (
+  plan: ReplayRenderPlan,
+): ReadonlyArray<ProofReplayStageDefinition> =>
+  plan.stagePlacements.map(stage => ({
+    id: stage.ref,
+    kind: stage.kind,
+    label: stage.label,
+    position: stage.position,
+    sourceRefs: stage.sourceRefs,
+  }))
+
+const actorDefinitionsAt = (
+  bundle: ProofReplayBundle,
+  plan: ReplayRenderPlan,
+  second: number,
+): ReadonlyArray<ProofReplayActorDefinition> =>
+  plan.actorTracks.map(track => {
+    const actor = bundle.actors.find(value => value.actorRef === track.actorRef)
+    const activeFrame = [...track.keyframes]
+      .reverse()
+      .find(frame => frame.second <= second)
+    return {
+      id: track.actorRef,
+      label: actor?.displayName ?? track.actorRef,
+      position: interpolateActorPosition(track, second),
+      role: actor?.avatarRole ?? 'agent',
+      sourceRefs: uniqueRefs([
+        actor?.pylonRef,
+        ...(activeFrame?.sourceRefs ?? []),
+      ]),
+      state: activeFrame?.state ?? 'idle',
+    }
+  })
+
+const eventDefinitionsFor = (
+  events: ReadonlyArray<ReplayEvent>,
+): ReadonlyArray<ProofReplayEventDefinition> =>
+  events.map(event => ({
+    actorIds: event.actorRefs,
+    ...(event.amountSats === undefined ? {} : { amountSats: event.amountSats }),
+    id: event.eventRef,
+    kind: event.kind,
+    label: event.displayText,
+    ...(event.rail === undefined ? {} : { rail: event.rail }),
+    second: event.timelineSecond,
+    sourceRefs: event.sourceRefs,
+    targetIds: event.targetRefs,
+  }))
+
+const activeVisualEventsAt = (
+  bundle: ProofReplayBundle,
+  second: number,
+): ReadonlyArray<ReplayEvent> =>
+  activeReplayEventsAt(bundle, second)
+    .filter(event => second - event.timelineSecond <= 9)
+    .slice(-4)
+
+const flowDefinitionsFor = (
+  bundle: ProofReplayBundle,
+): ReadonlyArray<ProofReplayFlowDefinition> =>
+  bundle.flows.map(flow => ({
+    fromId: flow.fromRef,
+    id: flow.flowRef,
+    kind: flow.flowKind,
+    sourceRefs: flow.sourceRefs,
+    toId: flow.toRef,
+  }))
+
+const proofReplayVisualizationOptionsFor = (
+  bundle: ProofReplayBundle,
+  plan: ReplayRenderPlan,
+  playback: ReplayPlaybackState,
+  camera: DrivenReplayCameraPose,
+  labels: boolean,
+): ProofReplayVisualizationOptions => ({
+  actors: actorDefinitionsAt(bundle, plan, playback.second),
+  camera: threeEffectCameraPose(camera),
+  durationSecond: playback.durationSecond,
+  events: eventDefinitionsFor(plan.orderedEvents),
+  flows: flowDefinitionsFor(bundle),
+  labels,
+  stages: stageDefinitionsFor(plan),
+  title: bundle.title,
+})
+
+const proofReplayVisualizationFrameFor = (
+  bundle: ProofReplayBundle,
+  plan: ReplayRenderPlan,
+  playback: ReplayPlaybackState,
+  camera: DrivenReplayCameraPose,
+): ProofReplayVisualizationFrame => ({
+  activeEvents: eventDefinitionsFor(activeVisualEventsAt(bundle, playback.second)),
+  actors: actorDefinitionsAt(bundle, plan, playback.second),
+  camera: threeEffectCameraPose(camera),
+  second: playback.second,
+})
+
 const makeClass = (): CustomElementConstructor =>
   class extends HTMLElement {
     #abort: AbortController | null = null
     #bundle: ProofReplayBundle | null = null
+    #cameraOverride: ReplayCameraOverride | null = null
     #cameraMode: ReplayCameraMode = 'director_track'
     #hasProvidedBundle = false
     #lastTickAt = 0
     #playback: ReplayPlaybackState | null = null
     #plan: ReplayRenderPlan | null = null
+    #proofHandle: ProofReplayVisualizationHandle | null = null
     #providedBundle: ProofReplayBundle | null = null
     #selectedRef: string | null = null
     #shadow: ShadowRoot | null = null
@@ -289,10 +379,7 @@ const makeClass = (): CustomElementConstructor =>
       if (this.isConnected) this.#renderProvidedBundle()
     }
 
-    driveReplayFrame(input: {
-      second?: number
-      cameraMode?: ReplayCameraMode
-    }): ReplayCameraPose | null {
+    driveReplayFrame(input: DriveReplayFrameInput): DrivenReplayCameraPose | null {
       const plan = this.#plan
       const playback = this.#playback
       if (plan === null || playback === null) return null
@@ -300,6 +387,7 @@ const makeClass = (): CustomElementConstructor =>
       if (isReplayCameraMode(input.cameraMode)) {
         this.#cameraMode = input.cameraMode
       }
+      this.#cameraOverride = input.cameraPose ?? null
 
       const requestedSecond =
         typeof input.second === 'number' ? input.second : playback.second
@@ -314,10 +402,11 @@ const makeClass = (): CustomElementConstructor =>
       this.#renderCurrent()
 
       const current = this.#playback ?? playback
-      return cameraPoseFor(
+      return cameraPoseForFrame(
         plan,
         current.second,
-        this.#cameraMode === 'director_track' ? undefined : this.#cameraMode,
+        this.#cameraMode,
+        this.#cameraOverride,
       )
     }
 
@@ -331,6 +420,7 @@ const makeClass = (): CustomElementConstructor =>
       this.#abort?.abort()
       this.#abort = null
       this.#stopTimer()
+      this.#disposeProofScene()
       this.#shadow?.replaceChildren()
     }
 
@@ -400,6 +490,7 @@ const makeClass = (): CustomElementConstructor =>
     #base(): HTMLDivElement | null {
       const shadow = this.#shadow
       if (shadow === null) return null
+      this.#disposeProofScene()
       shadow.replaceChildren()
       const style = document.createElement('style')
       style.textContent = HOST_STYLE
@@ -449,6 +540,7 @@ const makeClass = (): CustomElementConstructor =>
       }
       this.#selectedRef = plan.orderedEvents[0]?.eventRef ?? null
       this.#cameraMode = 'director_track'
+      this.#cameraOverride = null
       this.#renderCurrent()
       if (presentationMode === 'social') this.#startTimer()
     }
@@ -532,6 +624,13 @@ const makeClass = (): CustomElementConstructor =>
       return panel
     }
 
+    #disposeProofScene(): void {
+      const handle = this.#proofHandle
+      if (handle === null) return
+      Effect.runSync(handle.dispose)
+      this.#proofHandle = null
+    }
+
     #renderWorld(
       bundle: ProofReplayBundle,
       plan: ReplayRenderPlan,
@@ -550,101 +649,11 @@ const makeClass = (): CustomElementConstructor =>
       world.setAttribute('data-camera-mode', this.#cameraMode)
       world.setAttribute('data-replay-presentation', presentationMode)
 
-      if (presentationMode === 'social') {
-        const canvas = document.createElement('canvas')
-        canvas.className = 'social-canvas'
-        canvas.width = SOCIAL_CANVAS_WIDTH
-        canvas.height = SOCIAL_CANVAS_HEIGHT
-        canvas.setAttribute('data-social-canvas', 'nonblank')
-        canvas.setAttribute('aria-hidden', 'true')
-        this.#drawSocialCanvas(canvas, playback)
-        world.append(canvas)
-      }
-
-      const plane = document.createElement('div')
-      plane.className = 'plane'
-      const grid = document.createElement('div')
-      grid.className = 'grid'
-      plane.append(grid)
-
-      for (const stage of plan.stagePlacements) {
-        plane.append(
-          this.#stageButton(stage.ref, stage.label, stage.kind, stage.position),
-        )
-      }
-
-      for (const track of plan.actorTracks) {
-        const actor = bundle.actors.find(
-          value => value.actorRef === track.actorRef,
-        )
-        const position = interpolateActorPosition(track, playback.second)
-        const activeFrame = [...track.keyframes]
-          .reverse()
-          .find(frame => frame.second <= playback.second)
-        plane.append(
-          this.#actorButton(
-            track.actorRef,
-            actor?.displayName ?? track.actorRef,
-            actor?.avatarRole ?? 'agent',
-            position,
-            activeFrame?.state ?? 'idle',
-          ),
-        )
-      }
-
-      const activeEvents = activeReplayEventsAt(bundle, playback.second)
-      const confirmedZap = activePaymentEvent(activeEvents)
-      if (confirmedZap !== undefined) {
-        const zap = document.createElement('div')
-        zap.className = 'zap'
-        zap.setAttribute('data-replay-zap', 'confirmed')
-        const label = document.createElement('span')
-        label.textContent = `${confirmedZap.amountSats ?? 1_000} sats ${textOrUnknown(confirmedZap.rail)}`
-        zap.append(label)
-        plane.append(zap)
-      }
-
-      const blocked = activeBlockedEvent(activeEvents)
-      if (blocked !== undefined && confirmedZap === undefined) {
-        const marker = document.createElement('div')
-        marker.className = 'marker blocked'
-        marker.setAttribute('data-replay-marker', 'blocked')
-        marker.textContent =
-          `${blocked.displayText} ${blocked.caveat ?? ''}`.trim()
-        plane.append(marker)
-      }
-
-      const simulation = activeSimulationEvent(activeEvents)
-      if (simulation !== undefined && confirmedZap === undefined) {
-        const marker = document.createElement('div')
-        marker.className = 'marker simulation'
-        marker.setAttribute('data-replay-marker', 'simulation')
-        marker.textContent = `${simulation.amountSats ?? 0} sats simulation, not payment`
-        plane.append(marker)
-      }
-
-      const recognition = activeRecognitionEvent(activeEvents)
-      if (recognition !== undefined) {
-        const marker = document.createElement('div')
-        marker.className = 'marker recognition'
-        marker.setAttribute('data-replay-marker', 'recognition')
-        marker.textContent = recognition.displayText
-        plane.append(marker)
-      }
-
-      const overpayment = activeOverpaymentEvent(activeEvents)
-      if (overpayment !== undefined) {
-        const marker = document.createElement('div')
-        marker.className = 'marker overpayment'
-        marker.setAttribute('data-replay-marker', 'overpayment')
-        marker.textContent = `${overpayment.amountSats ?? 0} sats overage documented as hazard pay`
-        plane.append(marker)
-      }
-
-      const pose = cameraPoseFor(
+      const pose = cameraPoseForFrame(
         plan,
         playback.second,
-        this.#cameraMode === 'director_track' ? undefined : this.#cameraMode,
+        this.#cameraMode,
+        this.#cameraOverride,
       )
       world.setAttribute(
         'data-camera-pose',
@@ -654,10 +663,46 @@ const makeClass = (): CustomElementConstructor =>
         'data-camera-target',
         `${pose.target.x.toFixed(2)},${pose.target.y.toFixed(2)},${pose.target.z.toFixed(2)}`,
       )
+      if (pose.fov !== undefined) {
+        world.setAttribute('data-camera-fov', pose.fov.toFixed(2))
+      } else {
+        world.removeAttribute('data-camera-fov')
+      }
 
-      world.append(plane)
+      const mount = document.createElement('div')
+      mount.className = 'webgl-mount'
+      mount.setAttribute('data-proof-replay-webgl-mount', 'true')
+      mount.setAttribute('aria-hidden', 'true')
+      world.append(mount)
+      try {
+        const handle = Effect.runSync(
+          mountProofReplayVisualization(
+            mount,
+            proofReplayVisualizationOptionsFor(
+              bundle,
+              plan,
+              playback,
+              pose,
+              presentationMode !== 'social',
+            ),
+          ),
+        )
+        handle.setFrame(
+          proofReplayVisualizationFrameFor(bundle, plan, playback, pose),
+        )
+        this.#proofHandle = handle
+        world.setAttribute(
+          'data-proof-replay-webgl',
+          handle.webglAvailable ? 'available' : 'unavailable',
+        )
+      } catch {
+        world.setAttribute('data-proof-replay-webgl', 'error')
+        world.append(
+          this.#overlay('Proof replay renderer', 'WebGL scene unavailable.'),
+        )
+      }
       const captionText = latestCaptionAt(plan, playback.second)
-      if (captionText !== undefined) {
+      if (captionText !== undefined && presentationMode !== 'social') {
         const caption = document.createElement('div')
         caption.className = 'caption'
         caption.textContent = captionText
@@ -667,71 +712,6 @@ const makeClass = (): CustomElementConstructor =>
         world.append(this.#renderSocialHud(bundle, plan, playback))
       }
       return world
-    }
-
-    #drawSocialCanvas(
-      canvas: HTMLCanvasElement,
-      playback: ReplayPlaybackState,
-    ): void {
-      let context: CanvasRenderingContext2D | null = null
-      try {
-        context = canvas.getContext('2d')
-      } catch {
-        context = null
-      }
-      if (context === null) return
-
-      const width = canvas.width
-      const height = canvas.height
-      context.clearRect(0, 0, width, height)
-      const background = context.createLinearGradient(0, 0, width, height)
-      background.addColorStop(0, '#050605')
-      background.addColorStop(0.52, '#06120f')
-      background.addColorStop(1, '#000000')
-      context.fillStyle = background
-      context.fillRect(0, 0, width, height)
-
-      const glow = context.createRadialGradient(
-        width * 0.5,
-        height * 0.52,
-        10,
-        width * 0.5,
-        height * 0.52,
-        height * 0.58,
-      )
-      glow.addColorStop(0, 'rgba(249,255,232,0.78)')
-      glow.addColorStop(0.28, 'rgba(42,181,161,0.2)')
-      glow.addColorStop(1, 'rgba(42,181,161,0)')
-      context.fillStyle = glow
-      context.fillRect(0, 0, width, height)
-
-      context.strokeStyle = 'rgba(255,255,255,0.08)'
-      context.lineWidth = 1
-      for (let x = 0; x <= width; x += width / 16) {
-        context.beginPath()
-        context.moveTo(x, height * 0.2)
-        context.lineTo(width * 0.5 + (x - width * 0.5) * 0.72, height * 0.9)
-        context.stroke()
-      }
-      for (let y = height * 0.32; y <= height * 0.9; y += height / 14) {
-        context.beginPath()
-        context.moveTo(width * 0.08, y)
-        context.lineTo(width * 0.92, y)
-        context.stroke()
-      }
-
-      const progress = socialProgressPercent(playback) / 100
-      context.strokeStyle = 'rgba(255,241,151,0.32)'
-      context.lineWidth = 4
-      context.beginPath()
-      context.arc(
-        width * 0.5,
-        height * 0.52,
-        height * 0.18 + progress * height * 0.05,
-        -Math.PI * 0.5,
-        -Math.PI * 0.5 + Math.PI * 2 * progress,
-      )
-      context.stroke()
     }
 
     #renderSocialHud(
@@ -789,60 +769,6 @@ const makeClass = (): CustomElementConstructor =>
       link.textContent = 'Public receipt'
       card.append(amount, moved, receipt, link)
       return card
-    }
-
-    #stageButton(
-      ref: string,
-      label: string,
-      kind: string,
-      position: ReplayVector3,
-    ): HTMLButtonElement {
-      const button = document.createElement('button')
-      button.type = 'button'
-      button.className = `stage ${stageClassFor(kind)}`
-      button.setAttribute('data-replay-target-ref', ref)
-      const point = projectPoint(position)
-      button.style.left = point.left
-      button.style.top = point.top
-      const orb = document.createElement('span')
-      orb.className = 'orb'
-      const text = document.createElement('span')
-      text.textContent = label
-      button.append(orb, text)
-      addPressHandler(button, () => {
-        this.#selectedRef = ref
-        this.#renderCurrent()
-      })
-      return button
-    }
-
-    #actorButton(
-      ref: string,
-      label: string,
-      role: string,
-      position: ReplayVector3,
-      state: string,
-    ): HTMLButtonElement {
-      const button = document.createElement('button')
-      button.type = 'button'
-      button.className = `actor ${stageClassFor(role)}`
-      button.setAttribute('data-replay-actor-ref', ref)
-      button.setAttribute('data-replay-actor-state', state)
-      const point = projectPoint(position)
-      button.style.left = point.left
-      button.style.top = point.top
-      const avatar = document.createElement('span')
-      avatar.className = 'avatar'
-      const name = document.createElement('strong')
-      name.textContent = label
-      const mode = document.createElement('em')
-      mode.textContent = state
-      button.append(avatar, name, mode)
-      addPressHandler(button, () => {
-        this.#selectedRef = ref
-        this.#renderCurrent()
-      })
-      return button
     }
 
     #renderBottom(

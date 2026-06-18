@@ -53,7 +53,7 @@ export const spikeReplayBundle = {
       captionRef: 'caption.title',
       sequenceIndex: 0,
       sourceRefs: ['run.test'],
-      text: 'Replay R-1 headless spike: first real settlement',
+      text: 'Receipt-backed work becomes a public Bitcoin settlement.',
       timelineSecond: 0,
     },
   ],

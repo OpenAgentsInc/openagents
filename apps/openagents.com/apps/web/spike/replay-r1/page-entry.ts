@@ -16,6 +16,7 @@ import {
   type ProofReplayBundle,
   type ReplayCameraMode,
   type ReplayCameraPose,
+  type ReplayVector3,
   buildReplayRenderPlan,
   cameraPoseFor,
 } from '@openagentsinc/proof-replay'
@@ -36,7 +37,12 @@ declare global {
     driveReplayFrame: (input: {
       second?: number
       cameraMode?: ReplayCameraMode
-    }) => Promise<ReplayCameraPose | null>
+      cameraPose?: {
+        fov?: number
+        position?: ReplayVector3
+        target?: ReplayVector3
+      }
+    }) => Promise<(ReplayCameraPose & { fov?: number }) | null>
     loadReplayBundle: (bundle: ProofReplayBundle) => Promise<void>
     setReplaySecond: (second: number) => Promise<void>
     setCamera: (mode: ReplayCameraMode) => Promise<void>
@@ -53,7 +59,18 @@ type ReplaySceneElement = HTMLElement & {
   driveReplayFrame?: (input: {
     second?: number
     cameraMode?: ReplayCameraMode
-  }) => ReplayCameraPose | null
+    cameraPose?: {
+      fov?: number
+      position?: ReplayVector3
+      target?: ReplayVector3
+    }
+  }) => (ReplayCameraPose & { fov?: number }) | null
+}
+
+type ReplayCameraOverride = {
+  fov?: number
+  position?: ReplayVector3
+  target?: ReplayVector3
 }
 
 const sceneEl = (): ReplaySceneElement => {
@@ -64,6 +81,16 @@ const sceneEl = (): ReplaySceneElement => {
 
 const waitFrame = (): Promise<void> =>
   new Promise(resolve => requestAnimationFrame(() => resolve()))
+
+const applyCameraOverride = (
+  pose: ReplayCameraPose,
+  override?: ReplayCameraOverride,
+): ReplayCameraPose & { fov?: number } => ({
+  ...pose,
+  ...(override?.fov === undefined ? {} : { fov: override.fov }),
+  position: override?.position ?? pose.position,
+  target: override?.target ?? pose.target,
+})
 
 const mount = async (): Promise<void> => {
   await customElements.whenDefined(TASSADAR_PROOF_REPLAY_TAG)
@@ -86,13 +113,21 @@ window.loadReplayBundle = async (bundle: ProofReplayBundle): Promise<void> => {
 window.driveReplayFrame = async (input: {
   second?: number
   cameraMode?: ReplayCameraMode
-}): Promise<ReplayCameraPose | null> => {
+  cameraPose?: {
+    fov?: number
+    position?: ReplayVector3
+    target?: ReplayVector3
+  }
+}): Promise<(ReplayCameraPose & { fov?: number }) | null> => {
   const pose =
     sceneEl().driveReplayFrame?.(input) ??
-    cameraPoseFor(
-      buildReplayRenderPlan(currentReplayBundle),
-      input.second ?? 0,
-      input.cameraMode,
+    applyCameraOverride(
+      cameraPoseFor(
+        buildReplayRenderPlan(currentReplayBundle),
+        input.second ?? 0,
+        input.cameraMode,
+      ),
+      input.cameraPose,
     )
   window.replaySpikeCameraPose = pose
   await waitFrame()

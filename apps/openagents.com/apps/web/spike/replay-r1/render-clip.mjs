@@ -219,8 +219,12 @@ const normalizeCameraKeyframe = value => {
   if (mode !== undefined && !cameraModes.has(mode)) {
     throw new Error(`Unknown camera keyframe mode: ${mode}`)
   }
+  const fov = value.fov === undefined ? undefined : Number(value.fov)
+  if (fov !== undefined && !Number.isFinite(fov)) {
+    throw new Error('Camera keyframe fov must be a finite number')
+  }
   return {
-    fov: value.fov === undefined ? undefined : Number(value.fov),
+    fov,
     mode,
     position: parseVector(value.position),
     second,
@@ -439,6 +443,7 @@ const renderFrames = async ({
         async input => window.driveReplayFrame(input),
         {
           cameraMode: camera.cameraMode,
+          cameraPose: camera.requestedPose,
           second,
         },
       )

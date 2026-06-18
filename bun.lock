@@ -88,7 +88,7 @@
         "@openagentsinc/provider-account-schema": "workspace:*",
         "@openagentsinc/sync-client": "workspace:*",
         "@openagentsinc/sync-schema": "workspace:*",
-        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#d87a79f5ea9b102cde23922657c4069344105990",
+        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#19013aece99d94cb0e703321cff16f9b4e68e988",
         "@openagentsinc/ui": "workspace:*",
         "@tailwindcss/vite": "^4.2.4",
         "clsx": "^2.1.1",
@@ -217,7 +217,7 @@
     },
     "apps/pylon": {
       "name": "@openagentsinc/pylon",
-      "version": "1.0.0-rc.33",
+      "version": "1.0.0-rc.34",
       "bin": {
         "pylon": "src/index.ts",
         "pylon-foundation-bridge": "bin/foundation-bridge",
@@ -2718,7 +2718,7 @@
 
     "@moneydevkit/core/@orpc/client": ["@orpc/client@1.13.6", "", { "dependencies": { "@orpc/shared": "1.13.6", "@orpc/standard-server": "1.13.6", "@orpc/standard-server-fetch": "1.13.6", "@orpc/standard-server-peer": "1.13.6" } }, "sha512-M6lYM6fJUFp9GR+It/qglYTeXwspb6sGj46xXWHqHS6iDVquqju0bdYuLOfHx8CGJcUSzi0aKUcqMXiGJhBG3w=="],
 
-    "@openagentsinc/autopilot-web/@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#d87a79f", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-d87a79f", "sha512-1Svb4l6cEBSaUDYi4hOL96pEufIZRAw5AFED3bcez4/1dk5ShMuHinHBhMnoSWqmdFdqn7f6WlbduT9v70VVpQ=="],
+    "@openagentsinc/autopilot-web/@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#19013ae", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-19013ae", "sha512-CmjEdDv/yJ2l5sdd05/YQJjcvf+/iS9NduNzxJSQd7AguRsjEiiDbQ35BQwyjRrrLMTai+WQXjyvPEKpqhtG5g=="],
 
     "@openagentsinc/nostr-relay/nostr-effect": ["nostr-effect@0.0.12", "", { "dependencies": { "@effect/platform": "0.93.5", "@effect/schema": "0.75.5", "@noble/ciphers": "1.2.1", "@noble/curves": "1.8.1", "@noble/hashes": "1.7.1", "@scure/base": "1.2.4", "@scure/bip32": "1.6.2", "@scure/bip39": "1.5.4", "effect": "3.19.8", "pako": "2.1.0" } }, "sha512-mrBi/thtI+NvDsZJsPKexkzsqlfnzM4L26klgrwTAyzwoDx486emeQkVFMkB3iuc3sSiwNPoFrVNCxUlV30oMw=="],
 
