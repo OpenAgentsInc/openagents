@@ -567,6 +567,23 @@ generation, and clips.
      refs or blocker refs, private material is omitted, stale source lag is
      visible, simulation settlement never emits `real_bitcoin_moved`, and cursor
      pagination is deterministic.
+   - Implementation status (2026-06-18, issue #5416): hardened the live
+     activity-timeline route tests so the Worker projection covers every
+     non-gap event kind plus projection gaps, rejects any event without source
+     refs or blocker refs, proves private source payload fields are not
+     projected, marks stale source lag with explicit lag seconds/caveat refs,
+     keeps simulation settlements from emitting `real_bitcoin_moved`, and
+     paginates deterministically across same-timestamp cursor ties. The route
+     now computes `sourceLag.lagSeconds` from source event time versus read time
+     and marks stale source families instead of reporting every readable source
+     as fresh. Validation passed with
+     `bun run --cwd apps/openagents.com/workers/api test src/public-activity-timeline-routes.test.ts`,
+     `bun run --cwd packages/public-activity-timeline test`, and
+     `bun run --cwd apps/openagents.com/workers/api typecheck`, plus the
+     public-projection ledger guard
+     `bun run --cwd apps/openagents.com check:architecture`. This remains a
+     read-only projection/test hardening change and grants no settlement,
+     payout, accepted-work, deployment, provider, wallet, or claim authority.
 5. **Publish agent-readable activity endpoint docs and manifest entries**
    - Body summary: Add docs and/or a public endpoint manifest entry so agents
      can discover the timeline, settlements, verification, receipt, proof-replay,

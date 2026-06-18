@@ -1,5 +1,8 @@
 import {
   assertPublicActivityTimelineEnvelopeSafe,
+  publicActivityTimelineEventKinds,
+  publicActivityTimelineHasUnsafeMaterial,
+  publicActivityTimelineSourceKinds,
   type PublicActivityTimelineEnvelope,
 } from '@openagentsinc/public-activity-timeline'
 import { Effect } from 'effect'
@@ -138,38 +141,50 @@ const leaseRecord: TrainingWindowLeaseRecord = {
 }
 
 const challenge = (
-  state: 'Verified' | 'Rejected',
-): TrainingVerificationChallengeRecord => ({
-  challengeRef: `training.verification.challenge.public.timeline.${state.toLowerCase()}`,
-  commitmentRefs: [`trace.commitment.public.timeline.${state.toLowerCase()}`],
-  contributionRef: `trace.contribution.public.timeline.${state.toLowerCase()}`,
-  createdAt:
-    state === 'Verified'
-      ? '2026-06-18T18:00:07.000Z'
-      : '2026-06-18T18:00:08.000Z',
-  failureCodes: state === 'Verified' ? [] : ['ExecutorTraceMismatch'],
-  homeworkKind: 'tassadar_executor_trace',
-  id: `challenge-public-activity-timeline-${state}`,
-  leaseExpiresAt: null,
-  leaseRef: null,
-  leasedToRef: validatorRef,
-  maxAttempts: 1,
-  payloadJson: '{}',
-  publicProjectionJson: '{}',
-  rejectedAt: state === 'Rejected' ? '2026-06-18T18:00:12.000Z' : null,
-  samplingPolicy: 'per_contribution',
-  state,
-  timedOutAt: null,
-  trainingRunRef: runRef,
-  updatedAt:
-    state === 'Verified'
-      ? '2026-06-18T18:00:11.000Z'
-      : '2026-06-18T18:00:12.000Z',
-  verdictRefs: [`verdict.public.timeline.${state.toLowerCase()}`],
-  verificationClass: 'exact_trace_replay',
-  verifiedAt: state === 'Verified' ? '2026-06-18T18:00:11.000Z' : null,
-  windowRef,
-})
+  state: 'Queued' | 'Verified' | 'Rejected',
+): TrainingVerificationChallengeRecord => {
+  const stateSlug = state.toLowerCase()
+
+  return {
+    challengeRef: `training.verification.challenge.public.timeline.${stateSlug}`,
+    commitmentRefs: [`trace.commitment.public.timeline.${stateSlug}`],
+    contributionRef:
+      state === 'Queued'
+        ? null
+        : `trace.contribution.public.timeline.${stateSlug}`,
+    createdAt:
+      state === 'Queued'
+        ? '2026-06-18T18:00:06.500Z'
+        : state === 'Verified'
+          ? '2026-06-18T18:00:07.000Z'
+          : '2026-06-18T18:00:08.000Z',
+    failureCodes: state === 'Rejected' ? ['ExecutorTraceMismatch'] : [],
+    homeworkKind: 'tassadar_executor_trace',
+    id: `challenge-public-activity-timeline-${state}`,
+    leaseExpiresAt: null,
+    leaseRef: null,
+    leasedToRef: state === 'Queued' ? null : validatorRef,
+    maxAttempts: 1,
+    payloadJson: '{}',
+    publicProjectionJson: '{}',
+    rejectedAt: state === 'Rejected' ? '2026-06-18T18:00:12.000Z' : null,
+    samplingPolicy: 'per_contribution',
+    state,
+    timedOutAt: null,
+    trainingRunRef: runRef,
+    updatedAt:
+      state === 'Queued'
+        ? '2026-06-18T18:00:06.500Z'
+        : state === 'Verified'
+          ? '2026-06-18T18:00:11.000Z'
+          : '2026-06-18T18:00:12.000Z',
+    verdictRefs:
+      state === 'Queued' ? [] : [`verdict.public.timeline.${stateSlug}`],
+    verificationClass: 'exact_trace_replay',
+    verifiedAt: state === 'Verified' ? '2026-06-18T18:00:11.000Z' : null,
+    windowRef,
+  }
+}
 
 const receipt = (
   input: Readonly<{
@@ -232,6 +247,7 @@ const pylonStore = (): PublicActivityTimelinePylonStore => ({
 const trainingStore = (): PublicActivityTimelineTrainingStore => ({
   listRuns: async () => [runRecord],
   listVerificationChallengesForRun: async () => [
+    challenge('Queued'),
     challenge('Verified'),
     challenge('Rejected'),
   ],
@@ -352,47 +368,126 @@ describe('public activity timeline route', () => {
     const response = await route('/api/public/activity-timeline?limit=200')
     const body = await decode(response)
     const kinds = body.events.map(event => event.kind)
+    const nonGapEventKinds = publicActivityTimelineEventKinds.filter(
+      kind => kind !== 'projection_gap',
+    )
+    const nonGapSourceKinds = publicActivityTimelineSourceKinds.filter(
+      kind => kind !== 'projection_gap',
+    )
 
     expect(response.status).toBe(200)
     expect(body.schemaVersion).toBe('openagents.public_activity_timeline.v1')
-    expect(kinds).toEqual(
-      expect.arrayContaining([
-        'pylon_registered',
-        'pylon_heartbeat',
-        'wallet_ready',
-        'assignment_ready',
-        'window_opened',
-        'window_closed',
-        'work_claimed',
-        'trace_submitted',
-        'verification_verified',
-        'verification_rejected',
-        'settlement_recorded',
-        'real_bitcoin_moved',
-        'forum_topic_created',
-        'forum_posted',
-        'artanis_tick',
-        'capacity_snapshot',
-      ]),
-    )
-    expect(body.sourceLag.map(item => item.sourceKind)).toEqual(
-      expect.arrayContaining([
-        'pylon_api',
-        'pylon_presence',
-        'training_window',
-        'training_trace',
-        'training_verification',
-        'settlement_receipt',
-        'forum',
-        'artanis',
-        'capacity_funnel',
-      ]),
+    expect([...new Set(kinds)].sort()).toEqual([...nonGapEventKinds].sort())
+    expect([...new Set(body.sourceLag.map(item => item.sourceKind))].sort()).toEqual(
+      [...nonGapSourceKinds].sort(),
     )
     expect(body.events.every(event => event.cursor.includes(event.eventRef))).toBe(
       true,
     )
+    expect(
+      body.events.every(
+        event => event.sourceRefs.length > 0 || event.blockerRefs.length > 0,
+      ),
+    ).toBe(true)
     expect(JSON.stringify(body)).not.toMatch(
       /raw_(trace|payload|log)|secret|token_secret|sk-[a-z0-9]/i,
+    )
+  })
+
+  test('omits private source payload material from the public projection', async () => {
+    const unsafeProjectionReceipt = receipt({
+      amountSats: 1000,
+      eventRef: 'event.public.timeline.real',
+      movementMode: 'real_bitcoin',
+      receiptRef: realReceiptRef,
+    })
+    const response = await route('/api/public/activity-timeline?limit=200', {
+      ...fullInput(),
+      forumStore: {
+        listRecentActivity: async () =>
+          (await forumStore().listRecentActivity(48)).map(record => ({
+            ...record,
+            title: 'raw_prompt customer_email@example.com sk-test-private',
+          })),
+      },
+      pylonStore: {
+        listRegistrations: async () => [
+          {
+            ...registration(),
+            displayName: 'private customer email@example.com token_secret',
+            ownerAgentTokenPrefix: 'token_secret_not_projected',
+          },
+        ],
+      },
+      receiptStore: {
+        listPaymentAuthorityReceipts: async () => [
+          {
+            ...unsafeProjectionReceipt,
+            publicProjectionJson: JSON.stringify({
+              amountSats: 1000,
+              contributorRef: pylonRef,
+              movementMode: 'real_bitcoin',
+              paymentPreimage: 'payment_preimage_not_projected',
+              providerToken: 'provider_token_not_projected',
+              rawPrompt: 'raw_prompt_not_projected',
+              realBitcoinMoved: true,
+              state: 'settled',
+              trainingRunRef: runRef,
+              verificationChallengeRef:
+                'training.verification.challenge.public.timeline.verified',
+              windowRef,
+            }),
+          },
+        ],
+        readReconciliationEventByRef: receiptStore().readReconciliationEventByRef,
+      },
+      trainingStore: {
+        ...trainingStore(),
+        listRuns: async () => [
+          {
+            ...runRecord,
+            publicProjectionJson: JSON.stringify({
+              localPath: '/Users/example/private-source',
+              rawTrace: 'raw_trace_not_projected',
+            }),
+          },
+        ],
+        listVerificationChallengesForRun: async () => [
+          {
+            ...challenge('Verified'),
+            payloadJson: JSON.stringify({
+              paymentPreimage: 'payment_preimage_not_projected',
+              rawPayload: 'raw_payload_not_projected',
+            }),
+          },
+        ],
+      },
+    })
+    const body = await decode(response)
+
+    expect(response.status).toBe(200)
+    expect(publicActivityTimelineHasUnsafeMaterial(body)).toBe(false)
+    expect(JSON.stringify(body)).not.toMatch(
+      /@|\/Users\/|payment_preimage|provider_token|raw_(payload|prompt|trace)|sk-[a-z0-9]|token_secret/i,
+    )
+  })
+
+  test('surfaces stale source lag instead of hiding it behind a fresh read timestamp', async () => {
+    const body = await decode(
+      await route('/api/public/activity-timeline?limit=200'),
+    )
+    const lag = body.sourceLag.find(item => item.sourceKind === 'pylon_presence')
+
+    expect(lag).toMatchObject({
+      latestSourceEventAt: '2026-06-18T18:00:02.000Z',
+      lagSeconds: 598,
+      maxStalenessSeconds: 300,
+      observedAt: nowIso,
+      status: 'stale',
+    })
+    expect(lag?.sourceRefs).toContain('route:/api/public/pylon-stats')
+    expect(lag?.caveatRefs).toContain(
+      'caveat.public.activity_timeline.source_lag_exceeds_contract',
     )
   })
 
@@ -431,6 +526,34 @@ describe('public activity timeline route', () => {
     ])
   })
 
+  test('paginates deterministically across equal timestamps', async () => {
+    const first = await decode(
+      await route('/api/public/activity-timeline?limit=2'),
+    )
+    const second = await decode(
+      await route(
+        `/api/public/activity-timeline?limit=2&since=${encodeURIComponent(
+          first.nextCursor ?? '',
+        )}`,
+      ),
+    )
+    const replay = await decode(
+      await route('/api/public/activity-timeline?limit=4'),
+    )
+    const tiedPresenceRefs = replay.events
+      .filter(
+        event =>
+          event.ts === '2026-06-18T18:00:02.000Z' &&
+          event.sourceKind === 'pylon_presence',
+      )
+      .map(event => event.eventRef)
+
+    expect([...first.events, ...second.events].map(event => event.cursor)).toEqual(
+      replay.events.map(event => event.cursor),
+    )
+    expect(tiedPresenceRefs).toEqual([...tiedPresenceRefs].sort())
+  })
+
   test('emits real bitcoin movement only for receipt-backed real movement', async () => {
     const body = await decode(
       await route('/api/public/activity-timeline?source=settlement_receipt&limit=20'),
@@ -445,6 +568,9 @@ describe('public activity timeline route', () => {
     )
 
     expect(realMovement).toHaveLength(1)
+    expect(
+      realMovement.some(event => event.refs.includes(simulationReceiptRef)),
+    ).toBe(false)
     expect(realMovement[0]).toMatchObject({
       amountSats: 1000,
       realBitcoinMoved: true,

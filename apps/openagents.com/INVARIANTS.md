@@ -1657,6 +1657,14 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     top-level contract, public-safe summary metrics, and honest idle envelope
     only; no admin token, private logs, wallet material, pending-as-paid
     payout, or write authority).
+  - `GET /api/public/activity-timeline` — live at read over public-safe Pylon,
+    training, verification, settlement receipt, Forum, Artanis, and capacity
+    source families — compliant (`generatedAt`, top-level
+    `projection_staleness.v1` contract, source-lag rows with stale/unavailable
+    statuses and blocker/caveat refs, cursor-ordered events, projection gaps for
+    unreadable source families, simulation-vs-real Bitcoin separation, and no
+    wallet material, raw logs, payment preimages, provider/customer payloads, or
+    write authority).
   - `GET /api/public/tassadar/compiled-module-marketplace` — live at read over
     the committed psionic linked-dense fixture and local composition gate —
     compliant (`generatedAt`, top-level contract, digest-pinned linked module

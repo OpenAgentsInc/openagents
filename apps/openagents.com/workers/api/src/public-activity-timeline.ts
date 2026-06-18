@@ -4,7 +4,6 @@ import {
   orderPublicActivityTimelineEvents,
   publicActivityTimelineCursorForEvent,
   publicActivityTimelineEventKinds,
-  publicActivityTimelineLiveAtReadStaleness,
   publicActivityTimelineSourceKinds,
   type PublicActivityTimelineEnvelope,
   type PublicActivityTimelineEvent,
@@ -19,6 +18,7 @@ import {
   type NexusPaymentAuthorityReceiptRecord,
   type NexusTreasuryPayoutLedgerStore,
 } from './nexus-treasury-payout-ledger'
+import { liveAtReadStaleness } from './public-projection-staleness'
 import {
   PUBLIC_PYLON_STATS_MINIMUM_CLIENT_VERSION,
 } from './public-pylon-stats'
@@ -155,6 +155,20 @@ const uniqueRefs = (
 const slugPart = (value: string): string =>
   value.replaceAll(/[^A-Za-z0-9_.:-]+/g, '_').slice(0, 160)
 
+const sourceLagSeconds = (
+  observedAt: string,
+  latestSourceEventAt: string,
+): number | null => {
+  const observedMillis = Date.parse(observedAt)
+  const latestMillis = Date.parse(latestSourceEventAt)
+
+  if (!Number.isFinite(observedMillis) || !Number.isFinite(latestMillis)) {
+    return null
+  }
+
+  return Math.max(0, Math.floor((observedMillis - latestMillis) / 1000))
+}
+
 const eventWithCursor = (
   input: Omit<PublicActivityTimelineEvent, 'cursor'>,
 ): PublicActivityTimelineEvent => {
@@ -189,16 +203,30 @@ const sourceLag = (input: {
           ?.ts ?? null
   const sourceRefs = uniqueRefs(input.sourceRefs)
   const blockerRefs = uniqueRefs(input.blockerRefs ?? [])
+  const lagSeconds =
+    latestSourceEventAt === null
+      ? null
+      : sourceLagSeconds(input.observedAt, latestSourceEventAt)
+  const sourceIsStale =
+    lagSeconds !== null && lagSeconds > input.maxStalenessSeconds
   const status =
     input.status ??
     (blockerRefs.length > 0 && input.events.length === 0
       ? 'projection_gap'
+      : sourceIsStale
+        ? 'stale'
       : 'current')
+  const caveatRefs = uniqueRefs([
+    ...(input.caveatRefs ?? []),
+    ...(sourceIsStale
+      ? ['caveat.public.activity_timeline.source_lag_exceeds_contract']
+      : []),
+  ])
 
   return {
     blockerRefs,
-    caveatRefs: uniqueRefs(input.caveatRefs ?? []),
-    lagSeconds: latestSourceEventAt === null ? null : 0,
+    caveatRefs,
+    lagSeconds,
     latestSourceEventAt,
     maxStalenessSeconds: input.maxStalenessSeconds,
     observedAt: input.observedAt,
@@ -1150,7 +1178,7 @@ export const buildPublicActivityTimelineEnvelope = async (
     range: rangeForQuery(query, observedAt),
     schemaVersion: PUBLIC_ACTIVITY_TIMELINE_SCHEMA_VERSION,
     sourceLag: sourceLagItems,
-    staleness: publicActivityTimelineLiveAtReadStaleness(timelineRebuildRefs),
+    staleness: liveAtReadStaleness(timelineRebuildRefs),
   }
 
   try {
