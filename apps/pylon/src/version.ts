@@ -57,7 +57,14 @@
 // network earnings ledger) and Gap #2 (surfaces an unregistered Spark payout
 // target in `wallet status` + warns on `training claim` so a contributor never
 // earns to nothing). Observable CLI behavior change, so the version bumps.
-export const PYLON_VERSION = "1.0.1"
+// v1.0.2: Spark wallet helper now auto-starts via the daemon's warm session.
+// `wallet status`/`balance` route through the running daemon's already-warm
+// Spark SDK instead of doing a cold per-read SDK build that contended with the
+// daemon for the same SQLite file and timed out (the false `daemonOnline:false`
+// / `helper_unavailable` a node operator saw). Now `daemonOnline: true`
+// automatically with no manual step or env flag; genuine failures surface a
+// reason-qualified blocker. Observable behavior change, so the version bumps.
+export const PYLON_VERSION = "1.0.2"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.
