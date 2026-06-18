@@ -198,6 +198,15 @@ type Harness = Readonly<{
   ) => Promise<Response>
 }>
 
+type AutoStreamHook = (
+  env: Readonly<Record<string, unknown>>,
+  input: Readonly<{
+    challenge: TrainingVerificationChallengeRecord
+    lease: TrainingWindowLeaseRecord
+    validatorContributorRef: string
+  }>,
+) => Effect.Effect<void, unknown>
+
 // resolvePylonOwnerUserId binds each Pylon to its owning agent user so the
 // lease-ownership check can compare the lease pylon_ref to the session user.
 const PYLON_OWNERS = new Map<string, string>([
@@ -207,6 +216,9 @@ const PYLON_OWNERS = new Map<string, string>([
 
 const makeHarness = (
   leases: ReadonlyArray<TrainingWindowLeaseRecord> = [leaseRecord()],
+  options: Readonly<{
+    onVerifiedExactTraceReplayPair?: AutoStreamHook
+  }> = {},
 ): Harness => {
   const authority = makeAuthorityStore(leases)
   const contributions = makeContributionStore()
@@ -254,6 +266,12 @@ const makeHarness = (
     makeId: () => `id-${++counter}`,
     makeStore: () => authority,
     nowIso: () => '2026-06-15T00:05:00.000Z',
+    ...(options.onVerifiedExactTraceReplayPair === undefined
+      ? {}
+      : {
+          onVerifiedExactTraceReplayPair:
+            options.onVerifiedExactTraceReplayPair,
+        }),
     resolvePylonOwnerUserId: async (_env, pylonRef) =>
       PYLON_OWNERS.get(pylonRef),
   })
@@ -465,6 +483,38 @@ describe('tassadar trace contribution routes (#5052)', () => {
     expect(body.contribution.verificationChallengeRef).toBe(
       harness.challenges[0]!.challengeRef,
     )
+  })
+
+  it('§4.2 keeps Verified verdicts fail-soft when auto-streaming fails', async () => {
+    const autoStreamCalls: Array<string> = []
+    const harness = makeHarness([leaseRecord()], {
+      onVerifiedExactTraceReplayPair: (_env, input) => {
+        autoStreamCalls.push(input.validatorContributorRef)
+
+        return Effect.fail({ _tag: 'AutoStreamUnavailable' as const })
+      },
+    })
+    await harness.route(submitPath, {
+      body: submissionBody({ traceCommitmentDigestRef: 'digest.match' }),
+      tokenUserId: WORKER_USER,
+    })
+    const response = await harness.route(verdictPath, {
+      body: {
+        replayDigestRef: 'digest.match',
+        validatorDeviceRef: 'device.validator.1',
+        workloadFamily: 'article_closeout',
+      },
+      tokenUserId: VALIDATOR_USER,
+    })
+    const body = (await response.json()) as {
+      challenge: { state: string }
+      contribution: { state: string }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.challenge.state).toBe('Verified')
+    expect(body.contribution.state).toBe('paired')
+    expect(autoStreamCalls).toEqual(['device.validator.1'])
   })
 
   it('§4.2 digest mismatch -> exact_trace_replay challenge finalizes Rejected', async () => {
