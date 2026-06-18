@@ -20,6 +20,11 @@ import {
   TassadarNumericExecutionError,
   type TassadarAlmNumericModel,
 } from '@openagentsinc/tassadar-executor'
+import {
+  TassadarDenseModuleError,
+  executeTassadarDenseWeightModule,
+  type TassadarDenseWeightModule,
+} from '@openagentsinc/tassadar-executor/dense-weight-module'
 
 export const TassadarReplayValidatorDeviceRef =
   'device.cloudflare_worker.openagents_api'
@@ -29,6 +34,7 @@ export const TassadarReplayRequest = S.Struct({
   claimedTraceDigest: S.String,
   pylonDeviceRef: S.String,
   workload: S.Struct({
+    denseModule: S.optionalKey(S.Record(S.String, S.Unknown)),
     model: S.Record(S.String, S.Unknown),
     steps: S.Array(S.Array(S.Number)),
   }),
@@ -69,8 +75,16 @@ export const runTassadarReplayValidation = async (
     validatorDeviceRef: TassadarReplayValidatorDeviceRef,
   } as const
   try {
-    const model = restoreTransitModel(request.workload.model)
-    const trace = await executeTassadarNumericModel(model, request.workload.steps)
+    const trace =
+      request.workload.denseModule === undefined
+        ? await executeTassadarNumericModel(
+            restoreTransitModel(request.workload.model),
+            request.workload.steps,
+          )
+        : await executeTassadarDenseWeightModule(
+            request.workload.denseModule as unknown as TassadarDenseWeightModule,
+            request.workload.steps,
+          )
     const { outputs, halted } = collectInterpreterOutputs(trace.stepOutputs)
     const matches = trace.traceDigest === request.claimedTraceDigest
     return {
@@ -83,7 +97,10 @@ export const runTassadarReplayValidation = async (
       replayedTraceDigest: trace.traceDigest,
     }
   } catch (error: unknown) {
-    if (error instanceof TassadarNumericExecutionError) {
+    if (
+      error instanceof TassadarNumericExecutionError ||
+      error instanceof TassadarDenseModuleError
+    ) {
       return {
         ...base,
         halted: false,

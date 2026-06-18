@@ -35,6 +35,17 @@ describe('Artanis Tassadar corpus dispatch', () => {
       [42],
       [24],
     ])
+    expect(payloads[0]?.modelArtifactKind).toBe(
+      'tassadar_alm_dense_weight_module.v1',
+    )
+    expect(payloads[0]?.denseModuleDigest).toBe(
+      'cfda0fe5dcf42e16db9e18696731427f0f30915fd3100d38da2dcc8411433e2c',
+    )
+    expect(payloads.slice(1).map(payload => payload.modelArtifactKind)).toEqual([
+      'tassadar_alm_numeric_model.v1',
+      'tassadar_alm_numeric_model.v1',
+      'tassadar_alm_numeric_model.v1',
+    ])
     expect(payloads.every(payload => payload.corpusDigest === payloads[0]?.corpusDigest)).toBe(true)
   })
 
@@ -54,6 +65,9 @@ describe('Artanis Tassadar corpus dispatch', () => {
           claimedTraceDigest: String(payload.expectedTraceDigest),
           pylonDeviceRef: 'device.pylon.test',
           workload: {
+            ...(payload.denseModule === undefined
+              ? {}
+              : { denseModule: payload.denseModule as Record<string, unknown> }),
             model: payload.model as Record<string, unknown>,
             steps: payload.steps as ReadonlyArray<ReadonlyArray<number>>,
           },

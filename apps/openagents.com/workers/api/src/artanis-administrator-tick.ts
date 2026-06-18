@@ -10,6 +10,10 @@ import {
   tassadarCompiledProgramCorpus,
   tassadarCompiledProgramCorpusSize,
 } from '@openagentsinc/tassadar-executor/compiled-program-corpus'
+import {
+  TASSADAR_ALM_DENSE_WEIGHT_MODULE_KIND,
+  tassadarDenseProgramFixture,
+} from '@openagentsinc/tassadar-executor/dense-weight-module'
 
 import { artanisMindComplete } from './artanis-mind'
 import { parseJsonStringArray, parseJsonWithSchema } from './json-boundary'
@@ -82,11 +86,18 @@ export const buildTassadarCorpusDispatchBody = (
     assignmentRef: input.assignmentRef,
     workloadFamily: 'kernel_trace',
   })
+  const denseFixture =
+    fixture.programId === tassadarDenseProgramFixture.programId
+      ? tassadarDenseProgramFixture
+      : null
 
   return {
     acceptanceCriteriaRefs: [
       'acceptance.tassadar_poc.trace_digest_matches_fixture',
       'acceptance.tassadar_corpus.trace_digest_matches_selected_fixture',
+      ...(denseFixture === null
+        ? []
+        : ['acceptance.tassadar_dense_weight_module.trace_digest_matches_fixture']),
       'acceptance.tassadar_poc.closeout_carries_trace_digest',
     ],
     assignmentRef: input.assignmentRef,
@@ -94,6 +105,9 @@ export const buildTassadarCorpusDispatchBody = (
     campaignPolicyRefs: [
       'policy.tassadar_poc.single_assignment_smoke',
       'policy.tassadar_corpus.c1_no_spend_program_corpus',
+      ...(denseFixture === null
+        ? []
+        : ['policy.tassadar_c3.dense_weight_module_no_spend_replay']),
     ],
     campaignRef: 'campaign.tassadar_corpus.c1.v1',
     closeoutPathRefs: [
@@ -116,6 +130,19 @@ export const buildTassadarCorpusDispatchBody = (
         fixtureId: fixture.fixtureId,
         homework: homeworkPayload,
         model: transitModel,
+        modelArtifactKind:
+          denseFixture === null
+            ? 'tassadar_alm_numeric_model.v1'
+            : TASSADAR_ALM_DENSE_WEIGHT_MODULE_KIND,
+        ...(denseFixture === null
+          ? {}
+          : {
+              denseModule: denseFixture.denseModule,
+              denseModuleDigest: denseFixture.denseModuleDigest,
+              denseModuleSourceModelDigest:
+                denseFixture.denseModule.sourceModelDigest,
+              denseRunArtifactRefs: denseFixture.runArtifactRefs,
+            }),
         programDigest: fixture.programDigest,
         programId: fixture.programId,
         steps: fixture.steps,
@@ -140,6 +167,11 @@ export const buildTassadarCorpusDispatchBody = (
       `expectation.tassadar_poc.trace_digest.${fixture.expectedTraceDigest.slice(0, 16)}`,
       `expectation.tassadar_corpus.program.${fixture.programId}`,
       `expectation.tassadar_corpus.corpus.${tassadarCompiledProgramCorpus.corpusDigest.slice(0, 16)}`,
+      ...(denseFixture === null
+        ? []
+        : [
+            `expectation.tassadar_dense_weight_module.${denseFixture.denseModuleDigest.slice(0, 16)}`,
+          ]),
     ],
     rollbackRefs: ['gate.tassadar_poc.rollback_cancel_assignment'],
     selectionPolicyRefs: [
@@ -147,7 +179,12 @@ export const buildTassadarCorpusDispatchBody = (
       'policy.tassadar_corpus.assignment_ref_workload_slot',
     ],
     spendCapRefs: ['gate.tassadar_poc.no_spend'],
-    taskRefs: [`task.tassadar_corpus.${fixture.fixtureId}`],
+    taskRefs: [
+      `task.tassadar_corpus.${fixture.fixtureId}`,
+      ...(denseFixture === null
+        ? []
+        : [`task.tassadar_dense_weight_module.${denseFixture.fixtureId}`]),
+    ],
   }
 }
 
@@ -441,7 +478,11 @@ export const runArtanisCloseoutVerifier = async (
       assignmentRef: string
       claimedTraceDigest: string
       pylonDeviceRef: string
-      workload: { model: Record<string, unknown>; steps: number }
+      workload: {
+        denseModule?: Record<string, unknown>
+        model: Record<string, unknown>
+        steps: ReadonlyArray<ReadonlyArray<number>>
+      }
     }) => Promise<{ outcome: string }>
     accept: CloseoutAcceptFn
     nowIso: string
@@ -502,7 +543,11 @@ export const runArtanisCloseoutVerifier = async (
     })
     const tassadar = (
       dispatchBody.codingAssignment as {
-        tassadar: { model: Record<string, unknown>; steps: number }
+        tassadar: {
+          denseModule?: Record<string, unknown>
+          model: Record<string, unknown>
+          steps: ReadonlyArray<ReadonlyArray<number>>
+        }
       }
     ).tassadar
 
@@ -510,7 +555,13 @@ export const runArtanisCloseoutVerifier = async (
       assignmentRef,
       claimedTraceDigest: claimedDigest,
       pylonDeviceRef: `device.pylon.${String(row.pylon_ref)}`,
-      workload: { model: tassadar.model, steps: tassadar.steps },
+      workload: {
+        ...(tassadar.denseModule === undefined
+          ? {}
+          : { denseModule: tassadar.denseModule }),
+        model: tassadar.model,
+        steps: tassadar.steps,
+      },
     })
 
     const isVerified = verdict.outcome === 'verified'

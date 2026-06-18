@@ -986,6 +986,20 @@ marketplace packaging, pricing, payout, and settlement claims remain blocked.
   construction yet.
 - **#5323 — C3** Dense, loadable, digest-pinned weight-module materialization
   (psionic W1.2) + wire one as a run artifact — top-5 #2. `[psionic + openagents]`
+  Status 2026-06-18: landed in psionic/openagents. Psionic now emits
+  `TassadarAlmDenseWeightModule` v1 for `tassadar_corpus.loop_sum_v1`, with
+  dense `W_Q/W_K/W_V/W_O` attention blocks, dense FFN matrices, residual
+  wiring matrices, source numeric-model provenance, and reproducible dense
+  module digest
+  `cfda0fe5dcf42e16db9e18696731427f0f30915fd3100d38da2dcc8411433e2c`.
+  The committed fixture replays to trace digest
+  `2465d2c2af5077b4cf44c6eddbdc5aba2859029e30062f49a30e669acfc8e9d2`.
+  OpenAgents dispatch now marks the loop-sum corpus slot as
+  `tassadar_alm_dense_weight_module.v1`, includes the dense module as a
+  no-spend run artifact, and the Worker replay validator executes the dense
+  artifact when present. This does not claim trained weights, softmax bounds,
+  composition/linking, marketplace listing, paid construction settlement, or
+  serving.
 - **#5324 — C4** Softmax-approximation bounds (psionic W1.4) + Wasm window
   ladder (W1.1) to grow corpus diversity. `[psionic]`
 - **#5325 — C5** Module composition/linking (`tassadar_module_linker`) + the

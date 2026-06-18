@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./compiled-program-corpus": "./src/compiled-program-corpus.ts",
+    "./dense-weight-module": "./src/dense-weight-module.ts",
     "./self-test": "./src/self-test.ts"
   },
   "files": [
