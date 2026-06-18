@@ -68,6 +68,8 @@ Every payable receipt needs these public-safe refs:
 - baseline metric: current debt measurement;
 - target metric: what must improve;
 - scope: files, package, subsystem, or artifact class;
+- work class: code hygiene by default, or `documentation_or_journal` when the
+  work is process notes, journals, docs, receipts, or discussion cleanup;
 - budget cap: maximum payable sats or buyer credit;
 - stop condition: when the receipt is retired;
 - verifier: command or benchmark that proves behavior did not regress;
@@ -93,6 +95,11 @@ authorities.
 - `credit_class`: accepted and credited work where no owner-funded hygiene-lane
   settlement path has been armed. This is recognition, not a pending Bitcoin
   payout.
+  Documentation, journal, forum-process, and receipt-only hygiene work is
+  `credit_class` by default, even when it carries good evidence. It should not be
+  size/depth-scaled by the code hygiene payout formula. If the owner wants paid
+  docs/process work, create a separate funded labor contract with its own budget,
+  verifier, and settlement authority.
 - `payable_class`: accepted work against an owner-approved funded receipt or
   batch. The receipt has a budget cap, verifier, and settlement authority, but
   the worker still must not call it paid.
@@ -168,6 +175,13 @@ validator review — fails the gate **even when studied knowledge is optional**.
 Bad optional evidence may not leave a contribution payable while attaching
 blockers. A required source must additionally be present.
 
+**Work-class gate (reviewer-flagged #5387 fix):** `documentation_or_journal`
+receipts project to `credit_class`, zero their projected payable sats, and add a
+public blocker/caveat explaining that docs/journals are not size-scaled code
+hygiene payouts. The durable debt-receipt store accepts only `payable`
+projections, so credit-class docs cannot be persisted as payable receipts by
+accident.
+
 Workers may propose findings, but a separate allocator has to fund them.
 Workers do not receive spend authority, deployment authority, settlement
 authority, or authority to mint payable follow-ups.
@@ -219,6 +233,8 @@ the receipt payable when the implementation diff exists.
   duplicate work, not payable work.
 - Bad optional studied-knowledge evidence fails closed; it cannot leave a
   contribution payable.
+- Documentation, journal, and process-discussion work is credit-class by default;
+  it does not enter the code hygiene size/depth payout formula.
 - After repeated rejected or revision-required attempts, the receipt/scope goes
   human-review-only until the benchmark, budget, or scope changes.
 

@@ -81,6 +81,14 @@ describe('buildHygieneDebtReceiptRecord', () => {
     ).toThrow(HygieneDebtReceiptStoreError)
   })
 
+  it('refuses documentation or journal credit as a payable receipt', () => {
+    expect(() =>
+      buildHygieneDebtReceiptRecord(
+        createInput({ workClass: 'documentation_or_journal' }),
+      ),
+    ).toThrow(HygieneDebtReceiptStoreError)
+  })
+
   it('refuses an input with no DebtReceiptKey input', () => {
     expect(() =>
       buildHygieneDebtReceiptRecord(

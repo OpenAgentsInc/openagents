@@ -4,6 +4,7 @@ import { sha256Hex } from './agent-registration'
 import {
   type DebtReceiptSettlementInput,
   type DebtReceiptSettlementProjection,
+  DebtReceiptWorkClass,
   DebtReceiptPolicyUnsafe,
 } from './debt-receipt-policy'
 import {
@@ -181,6 +182,9 @@ export const HygieneDebtReceiptCreateRequest = S.Struct({
   // positive integer <= budgetCap (the policy enforces this).
   budgetCapSats: NonNegativeInteger,
   payableSats: NonNegativeInteger,
+  // Defaults to code hygiene. Documentation/journal work is credit-class and
+  // cannot create a payable debt receipt through this hygiene-lane path.
+  workClass: S.optionalKey(DebtReceiptWorkClass),
   // The evidence refs the policy needs to reach `payable`.
   sourceRefs: DebtReceiptRefArray,
   baselineMetricRefs: DebtReceiptRefArray,
@@ -228,6 +232,7 @@ const settlementInputFromCreateRequest = (
   stopConditionRefs: body.stopConditionRefs,
   targetMetricRefs: body.targetMetricRefs,
   verificationCommandRefs: body.verificationCommandRefs,
+  workClass: body.workClass,
   workerActorRef: body.workerActorRef,
 })
 

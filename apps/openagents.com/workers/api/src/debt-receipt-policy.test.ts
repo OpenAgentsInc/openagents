@@ -116,11 +116,40 @@ describe('Debt receipt settlement policy', () => {
       settledSats: 0,
       settlementClaimAllowed: false,
       state: 'payable',
+      workClass: 'code_hygiene',
       workerPayoutEligible: true,
     })
     expect(projection.blockerRefs).toEqual([
       'blocker.public.debt_receipt.settlement_receipt_missing',
     ])
+  })
+
+  test('classifies documentation and journal work as credit instead of payable', () => {
+    const projection = projectDebtReceiptSettlement({
+      ...verifiedReceiptInput,
+      payableSats: 50_000,
+      settlementApprovalRefs: ['approval.public.debt_receipt.5334.settlement'],
+      settlementReceiptRefs: [
+        'settlement.public.debt_receipt.5334.worker_codex_loop',
+      ],
+      settledSats: 0,
+      workClass: 'documentation_or_journal',
+    })
+
+    expect(projection).toMatchObject({
+      payableSats: 0,
+      publicCopyRefs: ['copy.public.debt_receipt.credit_class_not_payable'],
+      settlementClaimAllowed: false,
+      state: 'credit_class',
+      workClass: 'documentation_or_journal',
+      workerPayoutEligible: false,
+    })
+    expect(projection.blockerRefs).toEqual([
+      'blocker.public.debt_receipt.documentation_or_journal_credit_not_payable',
+    ])
+    expect(projection.caveatRefs).toContain(
+      'caveat.public.debt_receipt.documentation_or_journal_not_size_scaled',
+    )
   })
 
   test('uses studied knowledge as evidence for hygiene receipts without granting authority', () => {
