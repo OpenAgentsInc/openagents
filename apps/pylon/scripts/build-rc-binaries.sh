@@ -27,8 +27,21 @@ fi
 echo "== version sync OK: $VERSION (src/version.ts + package.json) =="
 
 # bun --compile cross-targets. darwin-arm64 is native here; the rest cross-compile.
-TARGETS=(bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-linux-arm64)
+# #5404: bun-windows-x64 makes Pylon a full earning client on Windows (its
+# embedded-FS compiled-binary detection was fixed so the embedded Spark WASM is
+# extracted on Windows too, not just macOS/Linux).
+TARGETS=(bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-linux-arm64 bun-windows-x64)
 built=()
+
+# #5404 detection guard: the Spark-SDK load guard (#5166) below can only EXECUTE
+# the native target on this build host, so cross-compiled Windows can't be
+# spark-selftested here. Instead, prove the cross-platform compiled-binary
+# DETECTOR still matches the Windows embedded-FS URL shape (`B:\~BUN\root\…`) —
+# the exact bug that left Windows receive-only/non-earning. A regression here
+# would silently disable embedded-WASM extraction on Windows again, so fail
+# closed before building any binary.
+echo "== detection guard (#5404): Windows embedded-FS URL shape =="
+bun test src/spark-wasm-runtime.test.ts
 
 # Host platform — only the native target can be executed on this build host, so
 # the Spark-SDK load guard (#5166) runs against it. Cross-compiled targets share

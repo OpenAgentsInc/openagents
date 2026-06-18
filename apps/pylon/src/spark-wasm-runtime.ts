@@ -24,8 +24,42 @@ import { join } from "node:path"
 const WASM_BASENAME = "breez_sdk_spark_wasm_bg.wasm"
 export const WASM_PATH_ENV = "PYLON_SPARK_WASM_PATH"
 
+// #5404: detect a Bun-compiled standalone binary from its module URL across
+// platforms. Bun runs a compiled binary's modules from a virtual embedded
+// filesystem, but the `import.meta.url` shape is platform-dependent. Observed
+// values (Bun 1.3.x):
+//   - macOS/Linux: `file:///$bunfs/root/<exe>`
+//   - Windows:     `file:///B:/%7EBUN/root/<exe>`  (verified on a real
+//                  Windows Server 2022 VM). The virtual root is a drive-letter
+//                  `B:\~BUN\root\…` path, and crucially the `~` is
+//                  PERCENT-ENCODED to `%7E` in the URL form.
+// The original detector matched only `/$bunfs/`, so on Windows it returned
+// FALSE — the binary thought it was a source/npm run, `ensureSparkWasmAvailable`
+// short-circuited, `PYLON_SPARK_WASM_PATH` was never set, and the SDK fell back
+// to the (non-existent) build-machine WASM path → ENOENT, leaving Windows
+// receive-only/non-earning. A first fix that matched a literal `~BUN` still
+// missed the live Windows shape because the tilde arrives url-encoded (`%7e`).
+//
+// We now decode percent-escapes, normalize slash direction and case, then match
+// the embedded-FS markers (`$bunfs` for POSIX, `~bun` for the Windows virtual
+// root) regardless of drive letter. Breez Spark is pure WASM with no native/os
+// restriction, so once detection is correct Windows extracts and loads the
+// embedded WASM exactly like macOS/Linux → full earning client.
+export function isBunCompiledBinaryUrl(url: unknown): boolean {
+  if (typeof url !== "string" || url.length === 0) return false
+  let decoded = url
+  try {
+    decoded = decodeURIComponent(url)
+  } catch {
+    // Leave the raw string if it is not valid percent-encoding.
+  }
+  // Fold both raw (`B:\~BUN\…`) and url forms (`/B:/%7EBUN/…`) to one shape.
+  const normalized = decoded.replace(/\\/g, "/").toLowerCase()
+  return normalized.includes("$bunfs") || normalized.includes("~bun")
+}
+
 function isCompiledBinary(): boolean {
-  return typeof import.meta.url === "string" && import.meta.url.includes("/$bunfs/")
+  return isBunCompiledBinaryUrl(import.meta.url)
 }
 
 let ensured = false

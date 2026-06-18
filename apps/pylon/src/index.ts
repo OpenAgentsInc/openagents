@@ -4,6 +4,9 @@
 // side effect before any sibling module (or eagerly-evaluated bundled Breez SDK
 // module in the compiled binary) can print its storage banner to stdout. rc.33.
 import { installBreezStdoutGuard } from "./breez-stdout-guard"
+// #5404: cross-platform Bun compiled-binary detection (POSIX `/$bunfs/` and
+// Windows `B:\~BUN\root\…`), shared with the embedded Spark WASM extraction.
+import { isBunCompiledBinaryUrl } from "./spark-wasm-runtime"
 import { readFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import {
@@ -1728,10 +1731,12 @@ export interface SparkSelftest {
   moduleReason: string | null
 }
 async function computeSparkSelftest(state: PylonLocalState): Promise<SparkSelftest> {
-  // A Bun-compiled standalone binary runs its modules from the virtual
-  // `/$bunfs/` filesystem; a source/npm run resolves to a real path.
-  const isCompiledBinary =
-    typeof import.meta.url === "string" && import.meta.url.includes("/$bunfs/")
+  // A Bun-compiled standalone binary runs its modules from a virtual embedded
+  // filesystem; a source/npm run resolves to a real path. The embedded-FS URL
+  // shape differs by platform (POSIX `/$bunfs/` vs Windows `B:\~BUN\root\…`),
+  // so we share the cross-platform detector with the WASM-extraction path
+  // (#5404) instead of matching only the POSIX marker here.
+  const isCompiledBinary = isBunCompiledBinaryUrl(import.meta.url)
   const enabled = true
   const idPath = resolveNostrIdentityPath(state.paths, Bun.env)
   const mnemonic = await readIdentityMnemonicOrNull(state)
