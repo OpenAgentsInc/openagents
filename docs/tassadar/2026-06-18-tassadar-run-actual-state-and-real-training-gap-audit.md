@@ -1002,6 +1002,24 @@ marketplace packaging, pricing, payout, and settlement claims remain blocked.
   serving.
 - **#5324 — C4** Softmax-approximation bounds (psionic W1.4) + Wasm window
   ladder (W1.1) to grow corpus diversity. `[psionic]`
+  Status 2026-06-18: landed in psionic/openagents. Psionic now exposes the
+  bounded `tassadar.wasm.core_i32_w1_1.v1` profile with 21 documented opcodes
+  (the prior 12 plus `nop`, `local.tee`, `drop`, `i32.eqz`, `i32.eq`,
+  `i32.ne`, `i32.gt`, `i32.le`, `i32.ge`) and cross-validates the ALM
+  interpreter plus specialized compiled legs against the CPU reference runner.
+  The run-facing corpus now includes a fifth fixture,
+  `tassadar_corpus.w1_1_window_v1`, with regenerated corpus digest
+  `0d347bc3081acd2740761673f0b70d3e17a5ae467e9f865b5e6ef12009bfeb49`.
+  Psionic also adds the W1.4 analytic softmax-bound certificate: for `n`
+  candidates, margin `Delta`, and inverse temperature `beta`, non-winner mass
+  is bounded by `T/(1+T)` where `T=(n-1)exp(-beta*Delta)`, with L1 hard-max
+  distance bounded by `2T/(1+T)`; the canonical keyed-read case
+  (`n=1024`, integer gap `1`, `beta=32`) yields non-winner mass under
+  `1.4e-11`. OpenAgents imports the regenerated five-program fixture, extends
+  Artanis no-spend dispatch/replay selection to slot 4, and fixes dense-module
+  dispatches to claim the dense trace digest when a dense artifact is present.
+  This does not claim a softmax runtime, learned weights, module linking,
+  marketplace listing, paid construction settlement, or serving.
 - **#5325 — C5** Module composition/linking (`tassadar_module_linker`) + the
   compiled-weight-module marketplace listing — top-5 #3. `[psionic + openagents]`
 

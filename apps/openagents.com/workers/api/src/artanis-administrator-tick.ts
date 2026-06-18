@@ -90,6 +90,12 @@ export const buildTassadarCorpusDispatchBody = (
     fixture.programId === tassadarDenseProgramFixture.programId
       ? tassadarDenseProgramFixture
       : null
+  const expectedModelDigest =
+    denseFixture === null ? fixture.expectedModelDigest : denseFixture.denseModuleDigest
+  const expectedTraceDigest =
+    denseFixture === null ? fixture.expectedTraceDigest : denseFixture.expectedTraceDigest
+  const compileReceiptRefs =
+    denseFixture === null ? fixture.compileReceiptRefs : denseFixture.compileReceiptRefs
 
   return {
     acceptanceCriteriaRefs: [
@@ -121,12 +127,12 @@ export const buildTassadarCorpusDispatchBody = (
       requiredCapabilityRefs: [TASSADAR_EXECUTOR_CAPABILITY_REF],
       tassadar: {
         boundedProfileRef: TassadarBoundedProfileRef,
-        compileReceiptRefs: fixture.compileReceiptRefs,
+        compileReceiptRefs,
         corpusDigest: tassadarCompiledProgramCorpus.corpusDigest,
         corpusId: tassadarCompiledProgramCorpus.corpusId,
-        expectedModelDigest: fixture.expectedModelDigest,
+        expectedModelDigest,
         expectedOutputs: fixture.expectedOutputs,
-        expectedTraceDigest: fixture.expectedTraceDigest,
+        expectedTraceDigest,
         fixtureId: fixture.fixtureId,
         homework: homeworkPayload,
         model: transitModel,
@@ -164,7 +170,7 @@ export const buildTassadarCorpusDispatchBody = (
     pylonRef: input.pylonRef,
     requiredCapabilityRefs: [TASSADAR_EXECUTOR_CAPABILITY_REF],
     resultExpectationRefs: [
-      `expectation.tassadar_poc.trace_digest.${fixture.expectedTraceDigest.slice(0, 16)}`,
+      `expectation.tassadar_poc.trace_digest.${expectedTraceDigest.slice(0, 16)}`,
       `expectation.tassadar_corpus.program.${fixture.programId}`,
       `expectation.tassadar_corpus.corpus.${tassadarCompiledProgramCorpus.corpusDigest.slice(0, 16)}`,
       ...(denseFixture === null

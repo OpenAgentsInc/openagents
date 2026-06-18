@@ -43,7 +43,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
   "corpusId": "tassadar_alm.numeric_program_corpus.v1",
   "generatedBy": "psionic crates/psionic-compiler tassadar_alm_numeric_program_corpus_v1",
   "claimBoundary": "the numeric model is a faithful f64 re-encoding of one compiled ALM bundle - explicit coefficient arrays executed with hard-max attention inside a checked exactness window of 2^53 - not a trained transformer; it claims integer parity only while every intermediate stays inside the window, refuses when one does not, and makes no softmax, learning, or served-route claim",
-  "programCount": 4,
+  "programCount": 5,
   "fixtures": [
     {
       "fixtureId": "tassadar_corpus.loop_sum_v1.numeric_fixture.v1",
@@ -136,10 +136,10 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
       "model": {
         "schema_version": 1,
         "model_id": "alm.numeric.tassadar.alm_wasm_interpreter.v1.tassadar_corpus.loop_sum_v1",
-        "graph_digest": "30b042c3e3880c3b13b3df9d5388da334f982c44a295f03f7a4448f54a6da223",
-        "bundle_digest": "3c34af4e07a17713b597306024c10390b1c78340eed89f43163d89898f52bff9",
+        "graph_digest": "88219d6cd782a035c2979bdc2bcc00b79dbe6152dd8e918534d7c373b18caa1c",
+        "bundle_digest": "226022f654a907e7ea994ef42fffa5b5d0bde1c68a4b52bfbdca875d8766d3a3",
         "input_field_count": 1,
-        "slot_count": 60,
+        "slot_count": 83,
         "layer_count": 6,
         "seed_writes": [
           [
@@ -423,11 +423,119 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 0
           },
           {
-            "out_slot": 7,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
               [
                 2,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 4
+          },
+          {
+            "out_slot": 6,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 9,
+            "bias": -2,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 10,
+            "bias": -2,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 11,
+            "bias": -3,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 12,
+            "bias": -12,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 13,
+            "bias": -13,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 14,
+            "bias": -13,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 15,
+            "bias": -14,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 6,
+            "bias": -1,
+            "terms": [
+              [
+                1,
                 5
               ]
             ],
@@ -435,36 +543,24 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 8
           },
           {
-            "out_slot": 8,
+            "out_slot": 9,
             "bias": 0,
             "terms": [
               [
                 -1,
-                6
+                8
               ]
             ],
             "input_field": null,
             "phase": 8
           },
           {
-            "out_slot": 7,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
               [
                 1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 10,
-            "bias": -1,
-            "terms": [
-              [
-                1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -476,7 +572,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -484,11 +580,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 12,
-            "bias": -2,
+            "bias": 0,
             "terms": [
               [
                 1,
-                9
+                16
+              ],
+              [
+                -1,
+                17
               ]
             ],
             "input_field": null,
@@ -496,11 +596,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 13,
-            "bias": -2,
+            "bias": 0,
             "terms": [
               [
                 1,
-                9
+                18
+              ],
+              [
+                -1,
+                19
               ]
             ],
             "input_field": null,
@@ -512,7 +616,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -520,107 +624,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 15,
-            "bias": -3,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 16,
             "bias": -4,
             "terms": [
               [
                 1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 17,
-            "bias": -4,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 18,
-            "bias": -5,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 19,
-            "bias": -5,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 20,
-            "bias": -6,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 21,
-            "bias": -6,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 22,
-            "bias": -7,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 23,
-            "bias": -7,
-            "terms": [
-              [
-                1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -628,11 +636,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 24,
-            "bias": -8,
+            "bias": -4,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -640,11 +648,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 25,
-            "bias": -8,
+            "bias": -5,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -652,11 +660,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 26,
-            "bias": -9,
+            "bias": -5,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -664,11 +672,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 27,
-            "bias": -9,
+            "bias": -6,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -676,11 +684,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 28,
-            "bias": -10,
+            "bias": -6,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -688,11 +696,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 29,
-            "bias": -10,
+            "bias": -7,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -700,7 +708,319 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 30,
+            "bias": -7,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 31,
+            "bias": -8,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 32,
+            "bias": -8,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 33,
+            "bias": -9,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 34,
+            "bias": -9,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 35,
+            "bias": -10,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 36,
+            "bias": -10,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 37,
             "bias": -11,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 38,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                20
+              ],
+              [
+                -1,
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 39,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                22
+              ],
+              [
+                -1,
+                23
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 40,
+            "bias": -14,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 41,
+            "bias": -15,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 42,
+            "bias": -15,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 43,
+            "bias": -16,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 44,
+            "bias": -16,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 45,
+            "bias": -17,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 46,
+            "bias": -17,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 47,
+            "bias": -18,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 48,
+            "bias": -18,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 49,
+            "bias": -19,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 50,
+            "bias": -19,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 51,
+            "bias": -20,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 52,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                10
+              ],
+              [
+                -1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 53,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 54,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 55,
+            "bias": 0,
             "terms": [
               [
                 1,
@@ -711,71 +1031,83 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 10
           },
           {
-            "out_slot": 31,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                6
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 32,
+            "out_slot": 56,
             "bias": -1,
             "terms": [
               [
                 1,
-                6
+                9
               ]
             ],
             "input_field": null,
             "phase": 10
           },
           {
-            "out_slot": 33,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
               [
                 1,
-                8
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 34,
-            "bias": -1,
-            "terms": [
-              [
-                1,
-                8
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 7,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                36
+                59
               ],
               [
                 -1,
-                37
+                60
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 10,
+            "out_slot": 11,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                61
+              ],
+              [
+                -1,
+                62
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 14,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                63
+              ],
+              [
+                -1,
+                64
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 15,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                12
+              ],
+              [
+                -1,
+                13
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 24,
             "bias": 0,
             "terms": [
               [
@@ -791,101 +1123,69 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 12
           },
           {
-            "out_slot": 11,
+            "out_slot": 25,
             "bias": 0,
             "terms": [
-              [
-                1,
-                48
-              ],
               [
                 -1,
-                49
-              ]
-            ],
-            "input_field": null,
-            "phase": 12
-          },
-          {
-            "out_slot": 12,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                50
-              ],
-              [
-                -1,
-                51
-              ]
-            ],
-            "input_field": null,
-            "phase": 12
-          },
-          {
-            "out_slot": 13,
-            "bias": 0,
-            "terms": [
-              [
-                1,
                 52
-              ],
-              [
-                -1,
-                53
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 14,
-            "bias": -1,
-            "terms": [
-              [
-                1,
-                4
-              ]
-            ],
-            "input_field": null,
-            "phase": 12
-          },
-          {
-            "out_slot": 15,
+            "out_slot": 26,
             "bias": 0,
             "terms": [
               [
                 1,
-                56
+                79
               ],
               [
                 -1,
-                57
+                80
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 16,
+            "out_slot": 27,
             "bias": 0,
             "terms": [
               [
                 1,
-                58
+                81
               ],
               [
                 -1,
-                59
+                82
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 14,
+            "out_slot": 29,
             "bias": 1,
             "terms": [
+              [
+                -1,
+                28
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 30,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                16
+              ],
               [
                 -1,
                 17
@@ -895,12 +1195,420 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 14
           },
           {
-            "out_slot": 19,
+            "out_slot": 31,
             "bias": 0,
             "terms": [
               [
                 1,
-                9
+                18
+              ],
+              [
+                -1,
+                19
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 32,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                20
+              ],
+              [
+                -1,
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 33,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                22
+              ],
+              [
+                -1,
+                23
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 34,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                57
+              ],
+              [
+                -1,
+                58
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 35,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                65
+              ],
+              [
+                -1,
+                66
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 36,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                67
+              ],
+              [
+                -1,
+                68
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 37,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                69
+              ],
+              [
+                -1,
+                70
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 40,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                71
+              ],
+              [
+                -1,
+                72
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 41,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                73
+              ],
+              [
+                -1,
+                74
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 42,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                75
+              ],
+              [
+                -1,
+                76
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 43,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                77
+              ],
+              [
+                -1,
+                78
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 44,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                6
+              ],
+              [
+                -1,
+                11
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 45,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                11
+              ],
+              [
+                -1,
+                14
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 46,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 47,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 48,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                25
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 49,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                25
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 50,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                26
+              ],
+              [
+                1,
+                27
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 51,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                15
+              ],
+              [
+                1,
+                24
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 9,
+            "bias": 1,
+            "terms": [
+              [
+                2,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 23,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                30
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 24,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                30
+              ],
+              [
+                -1,
+                12
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 25,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                13
+              ],
+              [
+                -1,
+                31
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 26,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                31
+              ],
+              [
+                -1,
+                32
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 27,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                32
+              ],
+              [
+                -1,
+                33
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 46,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                33
+              ],
+              [
+                -1,
+                34
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 47,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                34
+              ],
+              [
+                -1,
+                6
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 48,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                14
               ],
               [
                 -1,
@@ -908,10 +1616,58 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 20,
+            "out_slot": 49,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                39
+              ],
+              [
+                -1,
+                36
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 51,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                36
+              ],
+              [
+                -1,
+                37
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 53,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                37
+              ],
+              [
+                -1,
+                40
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 54,
             "bias": 0,
             "terms": [
               [
@@ -924,10 +1680,26 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 21,
+            "out_slot": 55,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                41
+              ],
+              [
+                -1,
+                42
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 56,
             "bias": 0,
             "terms": [
               [
@@ -940,63 +1712,27 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 22,
+            "out_slot": 57,
             "bias": 0,
             "terms": [
               [
                 1,
-                44
-              ],
-              [
-                -1,
-                45
+                43
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 23,
+            "out_slot": 58,
             "bias": 0,
             "terms": [
               [
                 1,
-                46
-              ],
-              [
-                -1,
-                47
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 24,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                54
-              ],
-              [
-                -1,
-                55
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 25,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                7
+                8
               ],
               [
                 -1,
@@ -1004,95 +1740,55 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 26,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                11
-              ],
-              [
-                -1,
-                12
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 27,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                12
-              ],
-              [
-                -1,
-                13
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 28,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                15
-              ],
-              [
-                1,
-                16
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 8,
-            "bias": 1,
-            "terms": [
-              [
-                2,
-                5
-              ]
-            ],
-            "input_field": null,
             "phase": 16
           },
           {
-            "out_slot": 28,
-            "bias": 1,
-            "terms": [
-              [
-                -1,
-                19
-              ]
-            ],
-            "input_field": null,
-            "phase": 16
-          },
-          {
-            "out_slot": 29,
-            "bias": 0,
+            "out_slot": 9,
+            "bias": -11,
             "terms": [
               [
                 1,
-                19
-              ],
-              [
-                -1,
                 7
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
+          },
+          {
+            "out_slot": 12,
+            "bias": -12,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 13,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                24
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 14,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                47
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
           },
           {
             "out_slot": 30,
@@ -1100,31 +1796,23 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                10
-              ],
-              [
-                -1,
-                20
+                58
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 31,
-            "bias": 0,
+            "bias": -1,
             "terms": [
               [
                 1,
-                20
-              ],
-              [
-                -1,
-                21
+                58
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 32,
@@ -1132,15 +1820,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                21
+                16
               ],
               [
                 -1,
-                22
+                17
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 33,
@@ -1148,15 +1836,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                22
+                18
               ],
               [
                 -1,
-                23
+                19
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 34,
@@ -1164,131 +1852,95 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                23
-              ],
-              [
-                -1,
-                11
+                52
               ]
             ],
             "input_field": null,
-            "phase": 16
-          },
-          {
-            "out_slot": 35,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                13
-              ],
-              [
-                -1,
-                24
-              ]
-            ],
-            "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 36,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                6
-              ],
-              [
-                -1,
-                18
-              ]
-            ],
-            "input_field": null,
-            "phase": 16
-          },
-          {
-            "out_slot": 8,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                24
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 10,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                29
-              ],
-              [
-                1,
-                25
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 11,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                34
-              ],
-              [
-                1,
-                26
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 13,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                36
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 19,
             "bias": -1,
             "terms": [
               [
                 1,
-                36
+                52
               ]
             ],
             "input_field": null,
             "phase": 18
           },
           {
-            "out_slot": 20,
+            "out_slot": 37,
+            "bias": 1,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 39,
             "bias": 0,
             "terms": [
               [
                 1,
-                28
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 40,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                50
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 41,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                23
               ],
               [
                 1,
-                29
+                24
               ],
               [
                 1,
-                34
+                47
+              ],
+              [
+                -1,
+                15
+              ],
+              [
+                -1,
+                44
+              ],
+              [
+                -1,
+                45
+              ],
+              [
+                -1,
+                48
+              ],
+              [
+                -1,
+                49
               ],
               [
                 -1,
@@ -1304,31 +1956,111 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 -1,
-                35
+                46
               ],
               [
                 -1,
-                30
+                53
               ],
               [
                 -1,
-                31
+                54
               ],
               [
                 -1,
-                32
+                55
               ],
               [
                 -1,
-                33
+                56
+              ],
+              [
+                -1,
+                57
               ]
             ],
             "input_field": null,
             "phase": 18
           },
           {
-            "out_slot": 21,
+            "out_slot": 42,
             "bias": -1,
+            "terms": [
+              [
+                1,
+                6
+              ],
+              [
+                -1,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 43,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                23
+              ],
+              [
+                1,
+                24
+              ],
+              [
+                1,
+                47
+              ],
+              [
+                1,
+                25
+              ],
+              [
+                1,
+                26
+              ],
+              [
+                1,
+                27
+              ],
+              [
+                1,
+                46
+              ],
+              [
+                1,
+                51
+              ],
+              [
+                1,
+                53
+              ],
+              [
+                1,
+                54
+              ],
+              [
+                1,
+                55
+              ],
+              [
+                1,
+                56
+              ],
+              [
+                1,
+                57
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 0,
+            "bias": 0,
             "terms": [
               [
                 1,
@@ -1336,36 +2068,16 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 -1,
-                5
+                15
               ]
             ],
             "input_field": null,
-            "phase": 18
+            "phase": 20
           },
           {
-            "out_slot": 22,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
-              [
-                1,
-                28
-              ],
-              [
-                1,
-                29
-              ],
-              [
-                1,
-                34
-              ],
-              [
-                1,
-                30
-              ],
-              [
-                1,
-                31
-              ],
               [
                 1,
                 32
@@ -1376,55 +2088,23 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 18
+            "phase": 20
           },
           {
-            "out_slot": 10,
+            "out_slot": 9,
             "bias": 0,
             "terms": [
               [
                 1,
-                18
-              ],
-              [
-                1,
-                6
-              ]
-            ],
-            "input_field": null,
-            "phase": 22
-          },
-          {
-            "out_slot": 11,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                18
+                45
               ],
               [
                 -1,
-                6
+                49
               ]
             ],
             "input_field": null,
-            "phase": 22
-          },
-          {
-            "out_slot": 12,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                25
-              ],
-              [
-                -1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 22
+            "phase": 20
           },
           {
             "out_slot": 13,
@@ -1432,27 +2112,75 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                26
+                35
               ],
               [
                 -1,
-                27
+                0
               ]
             ],
             "input_field": null,
             "phase": 22
           },
           {
-            "out_slot": 19,
+            "out_slot": 14,
             "bias": 0,
             "terms": [
               [
                 1,
-                4
+                0
+              ],
+              [
+                -1,
+                38
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 15,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                10
               ],
               [
                 1,
-                36
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 16,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                18
+              ],
+              [
+                -1,
+                11
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 17,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                19
+              ],
+              [
+                -1,
+                44
               ]
             ],
             "input_field": null,
@@ -1463,15 +2191,43 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "bias": 1,
             "terms": [
               [
-                1,
-                37
+                -1,
+                6
               ]
             ],
             "input_field": null,
             "phase": 22
           },
           {
-            "out_slot": 0,
+            "out_slot": 23,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                9
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 26,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                50
+              ],
+              [
+                -1,
+                58
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 30,
             "bias": 0,
             "terms": [
               [
@@ -1480,11 +2236,23 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 1,
-                4
+                59
               ]
             ],
             "input_field": null,
-            "phase": 24
+            "phase": 22
+          },
+          {
+            "out_slot": 31,
+            "bias": 1,
+            "terms": [
+              [
+                1,
+                60
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
           },
           {
             "out_slot": 6,
@@ -1492,15 +2260,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                17
+                4
               ],
               [
                 1,
-                8
-              ],
-              [
-                -1,
-                9
+                0
               ]
             ],
             "input_field": null,
@@ -1512,7 +2276,43 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                39
+                28
+              ],
+              [
+                1,
+                13
+              ],
+              [
+                -1,
+                5
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 8,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                62
+              ],
+              [
+                1,
+                10
+              ],
+              [
+                1,
+                11
+              ],
+              [
+                1,
+                14
+              ],
+              [
+                1,
+                63
               ],
               [
                 1,
@@ -1520,55 +2320,47 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 1,
-                21
+                19
               ],
               [
                 1,
-                22
+                64
               ],
               [
                 1,
-                23
+                32
               ],
               [
                 1,
-                24
+                33
               ],
               [
                 1,
-                25
+                34
+              ],
+              [
+                1,
+                35
+              ],
+              [
+                1,
+                36
               ]
             ],
             "input_field": null,
             "phase": 24
           },
           {
-            "out_slot": 10,
+            "out_slot": 9,
             "bias": -1000,
             "terms": [
               [
                 1,
-                26
+                37
               ],
               [
                 1000,
-                38
-              ]
-            ],
-            "input_field": null,
-            "phase": 24
-          },
-          {
-            "out_slot": 11,
-            "bias": -1000,
-            "terms": [
-              [
-                1,
-                27
-              ],
-              [
-                1000,
-                15
+                61
               ]
             ],
             "input_field": null,
@@ -1580,11 +2372,27 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                35
+                38
               ],
               [
                 1000,
-                16
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 15,
+            "bias": -1000,
+            "terms": [
+              [
+                1,
+                40
+              ],
+              [
+                1000,
+                22
               ]
             ],
             "input_field": null,
@@ -1595,7 +2403,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           {
             "keyed_read": {
               "channel": 4,
-              "query_slot": 2,
+              "query_slot": 1,
               "out_slot": 4,
               "phase": 1
             }
@@ -1603,24 +2411,32 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           {
             "keyed_read": {
               "channel": 4,
-              "query_slot": 1,
+              "query_slot": 2,
               "out_slot": 5,
+              "phase": 1
+            }
+          },
+          {
+            "keyed_read": {
+              "channel": 0,
+              "query_slot": 6,
+              "out_slot": 7,
               "phase": 5
             }
           },
           {
             "keyed_read": {
               "channel": 1,
-              "query_slot": 4,
-              "out_slot": 6,
+              "query_slot": 5,
+              "out_slot": 8,
               "phase": 5
             }
           },
           {
             "keyed_read": {
-              "channel": 0,
-              "query_slot": 7,
-              "out_slot": 9,
+              "channel": 1,
+              "query_slot": 6,
+              "out_slot": 10,
               "phase": 9
             }
           },
@@ -1628,39 +2444,31 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "keyed_read": {
               "channel": 4,
               "query_slot": 3,
-              "out_slot": 17,
-              "phase": 13
-            }
-          },
-          {
-            "keyed_read": {
-              "channel": 1,
-              "query_slot": 14,
-              "out_slot": 18,
+              "out_slot": 28,
               "phase": 13
             }
           },
           {
             "keyed_read": {
               "channel": 0,
-              "query_slot": 8,
-              "out_slot": 7,
+              "query_slot": 9,
+              "out_slot": 6,
               "phase": 17
             }
           },
           {
             "keyed_read": {
               "channel": 2,
-              "query_slot": 23,
-              "out_slot": 0,
+              "query_slot": 16,
+              "out_slot": 7,
               "phase": 21
             }
           },
           {
             "keyed_read": {
               "channel": 3,
-              "query_slot": 24,
-              "out_slot": 7,
+              "query_slot": 17,
+              "out_slot": 12,
               "phase": 21
             }
           }
@@ -1668,379 +2476,571 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
         "ffn": [
           {
             "value_slot": 0,
-            "gate_slot": 7,
-            "out_slot": 9,
-            "phase": 11
+            "gate_slot": 6,
+            "out_slot": 16,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 9,
+            "out_slot": 17,
+            "phase": 7
           },
           {
             "value_slot": 0,
             "gate_slot": 10,
-            "out_slot": 35,
+            "out_slot": 18,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 11,
+            "out_slot": 19,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 12,
+            "out_slot": 20,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 13,
+            "out_slot": 21,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 14,
+            "out_slot": 22,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 15,
+            "out_slot": 23,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 6,
+            "out_slot": 16,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 11,
-            "out_slot": 36,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 12,
-            "out_slot": 37,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 13,
-            "out_slot": 38,
+            "out_slot": 17,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 14,
-            "out_slot": 39,
+            "out_slot": 18,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 15,
-            "out_slot": 40,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 16,
-            "out_slot": 41,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 17,
-            "out_slot": 42,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 18,
-            "out_slot": 43,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 19,
-            "out_slot": 44,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 20,
-            "out_slot": 45,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 21,
-            "out_slot": 46,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 22,
-            "out_slot": 47,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 23,
-            "out_slot": 48,
+            "out_slot": 19,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 24,
-            "out_slot": 49,
+            "out_slot": 20,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 25,
-            "out_slot": 50,
+            "out_slot": 21,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 26,
-            "out_slot": 51,
+            "out_slot": 22,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 27,
-            "out_slot": 52,
+            "out_slot": 23,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 28,
-            "out_slot": 53,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 29,
-            "out_slot": 54,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 30,
-            "out_slot": 55,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 31,
-            "out_slot": 56,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 32,
             "out_slot": 57,
             "phase": 11
           },
           {
             "value_slot": 0,
-            "gate_slot": 33,
+            "gate_slot": 29,
             "out_slot": 58,
             "phase": 11
           },
           {
             "value_slot": 0,
-            "gate_slot": 34,
+            "gate_slot": 30,
             "out_slot": 59,
             "phase": 11
           },
           {
-            "value_slot": 18,
-            "gate_slot": 8,
-            "out_slot": 9,
+            "value_slot": 0,
+            "gate_slot": 31,
+            "out_slot": 60,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 32,
+            "out_slot": 61,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 33,
+            "out_slot": 62,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 34,
+            "out_slot": 63,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 35,
+            "out_slot": 64,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 36,
+            "out_slot": 65,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 37,
+            "out_slot": 66,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 40,
+            "out_slot": 67,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 41,
+            "out_slot": 68,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 42,
+            "out_slot": 69,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 43,
+            "out_slot": 70,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 44,
+            "out_slot": 71,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 45,
+            "out_slot": 72,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 46,
+            "out_slot": 73,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 47,
+            "out_slot": 74,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 48,
+            "out_slot": 75,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 49,
+            "out_slot": 76,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 50,
+            "out_slot": 77,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 51,
+            "out_slot": 78,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 53,
+            "out_slot": 79,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 54,
+            "out_slot": 80,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 55,
+            "out_slot": 81,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 56,
+            "out_slot": 82,
+            "phase": 11
+          },
+          {
+            "value_slot": 10,
+            "gate_slot": 9,
+            "out_slot": 11,
             "phase": 15
           },
           {
-            "value_slot": 28,
-            "gate_slot": 27,
-            "out_slot": 12,
-            "phase": 15
-          },
-          {
-            "value_slot": 25,
-            "gate_slot": 14,
-            "out_slot": 15,
-            "phase": 15
-          },
-          {
-            "value_slot": 26,
-            "gate_slot": 14,
+            "value_slot": 0,
+            "gate_slot": 46,
             "out_slot": 16,
             "phase": 15
           },
           {
-            "value_slot": 7,
-            "gate_slot": 10,
-            "out_slot": 23,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 11,
-            "out_slot": 24,
-            "phase": 19
-          },
-          {
-            "value_slot": 18,
-            "gate_slot": 6,
-            "out_slot": 25,
-            "phase": 19
+            "value_slot": 0,
+            "gate_slot": 47,
+            "out_slot": 17,
+            "phase": 15
           },
           {
             "value_slot": 0,
-            "gate_slot": 13,
-            "out_slot": 26,
-            "phase": 19
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 19,
-            "out_slot": 27,
-            "phase": 19
-          },
-          {
-            "value_slot": 20,
-            "gate_slot": 14,
-            "out_slot": 36,
-            "phase": 19
-          },
-          {
-            "value_slot": 21,
-            "gate_slot": 12,
-            "out_slot": 37,
-            "phase": 19
-          },
-          {
-            "value_slot": 22,
-            "gate_slot": 14,
-            "out_slot": 38,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 28,
-            "out_slot": 39,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 15,
-            "out_slot": 40,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 16,
-            "out_slot": 41,
-            "phase": 19
-          },
-          {
-            "value_slot": 35,
-            "gate_slot": 14,
-            "out_slot": 42,
-            "phase": 19
-          },
-          {
-            "value_slot": 20,
-            "gate_slot": 14,
-            "out_slot": 4,
-            "phase": 23
-          },
-          {
-            "value_slot": 17,
-            "gate_slot": 8,
-            "out_slot": 9,
-            "phase": 23
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 29,
+            "gate_slot": 48,
             "out_slot": 18,
-            "phase": 23
+            "phase": 15
           },
           {
-            "value_slot": 7,
-            "gate_slot": 34,
+            "value_slot": 0,
+            "gate_slot": 49,
+            "out_slot": 19,
+            "phase": 15
+          },
+          {
+            "value_slot": 50,
+            "gate_slot": 45,
+            "out_slot": 20,
+            "phase": 15
+          },
+          {
+            "value_slot": 51,
+            "gate_slot": 29,
             "out_slot": 21,
-            "phase": 23
+            "phase": 15
+          },
+          {
+            "value_slot": 44,
+            "gate_slot": 29,
+            "out_slot": 22,
+            "phase": 15
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 9,
+            "out_slot": 7,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 12,
+            "out_slot": 15,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 13,
+            "out_slot": 16,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 14,
+            "out_slot": 17,
+            "phase": 19
           },
           {
             "value_slot": 10,
+            "gate_slot": 8,
+            "out_slot": 18,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
             "gate_slot": 30,
-            "out_slot": 22,
+            "out_slot": 19,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 31,
+            "out_slot": 44,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 34,
+            "out_slot": 45,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 36,
+            "out_slot": 49,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 37,
+            "out_slot": 50,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 39,
+            "out_slot": 58,
+            "phase": 19
+          },
+          {
+            "value_slot": 41,
+            "gate_slot": 29,
+            "out_slot": 59,
+            "phase": 19
+          },
+          {
+            "value_slot": 42,
+            "gate_slot": 20,
+            "out_slot": 60,
+            "phase": 19
+          },
+          {
+            "value_slot": 43,
+            "gate_slot": 29,
+            "out_slot": 61,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 23,
+            "out_slot": 62,
+            "phase": 19
+          },
+          {
+            "value_slot": 52,
+            "gate_slot": 26,
+            "out_slot": 63,
+            "phase": 19
+          },
+          {
+            "value_slot": 40,
+            "gate_slot": 51,
+            "out_slot": 64,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 21,
+            "out_slot": 65,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 22,
+            "out_slot": 66,
+            "phase": 19
+          },
+          {
+            "value_slot": 48,
+            "gate_slot": 29,
+            "out_slot": 67,
+            "phase": 19
+          },
+          {
+            "value_slot": 31,
+            "gate_slot": 29,
+            "out_slot": 0,
             "phase": 23
           },
           {
-            "value_slot": 11,
-            "gate_slot": 31,
-            "out_slot": 23,
+            "value_slot": 28,
+            "gate_slot": 13,
+            "out_slot": 5,
+            "phase": 23
+          },
+          {
+            "value_slot": 7,
+            "gate_slot": 24,
+            "out_slot": 10,
             "phase": 23
           },
           {
             "value_slot": 12,
-            "gate_slot": 32,
-            "out_slot": 24,
+            "gate_slot": 47,
+            "out_slot": 11,
             "phase": 23
           },
           {
-            "value_slot": 13,
-            "gate_slot": 33,
-            "out_slot": 25,
+            "value_slot": 15,
+            "gate_slot": 25,
+            "out_slot": 14,
             "phase": 23
           },
           {
-            "value_slot": 19,
-            "gate_slot": 38,
-            "out_slot": 26,
+            "value_slot": 16,
+            "gate_slot": 27,
+            "out_slot": 18,
             "phase": 23
           },
           {
-            "value_slot": 40,
-            "gate_slot": 15,
-            "out_slot": 27,
+            "value_slot": 17,
+            "gate_slot": 46,
+            "out_slot": 19,
+            "phase": 23
+          },
+          {
+            "value_slot": 20,
+            "gate_slot": 53,
+            "out_slot": 32,
             "phase": 23
           },
           {
             "value_slot": 6,
-            "gate_slot": 15,
-            "out_slot": 28,
+            "gate_slot": 54,
+            "out_slot": 33,
             "phase": 23
           },
           {
-            "value_slot": 41,
-            "gate_slot": 16,
+            "value_slot": 9,
+            "gate_slot": 55,
+            "out_slot": 34,
+            "phase": 23
+          },
+          {
+            "value_slot": 23,
+            "gate_slot": 56,
             "out_slot": 35,
             "phase": 23
           },
           {
-            "value_slot": 6,
-            "gate_slot": 16,
+            "value_slot": 26,
+            "gate_slot": 57,
             "out_slot": 36,
             "phase": 23
           },
           {
-            "value_slot": 6,
-            "gate_slot": 42,
+            "value_slot": 30,
+            "gate_slot": 61,
             "out_slot": 37,
+            "phase": 23
+          },
+          {
+            "value_slot": 65,
+            "gate_slot": 21,
+            "out_slot": 38,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 21,
+            "out_slot": 39,
+            "phase": 23
+          },
+          {
+            "value_slot": 66,
+            "gate_slot": 22,
+            "out_slot": 40,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 22,
+            "out_slot": 41,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 67,
+            "out_slot": 42,
             "phase": 23
           }
         ],
         "writes": [
           {
             "channel": 1,
-            "key_slot": 10,
-            "value_slot": 7
+            "key_slot": 9,
+            "value_slot": 8
           },
           {
             "channel": 2,
-            "key_slot": 11,
-            "value_slot": 28
+            "key_slot": 12,
+            "value_slot": 39
           },
           {
             "channel": 3,
-            "key_slot": 12,
-            "value_slot": 36
+            "key_slot": 15,
+            "value_slot": 41
           },
           {
             "channel": 4,
             "key_slot": 1,
-            "value_slot": 0
+            "value_slot": 6
           },
           {
             "channel": 4,
             "key_slot": 2,
-            "value_slot": 19
+            "value_slot": 30
           },
           {
             "channel": 4,
             "key_slot": 3,
-            "value_slot": 6
+            "value_slot": 7
           }
         ],
         "output_slots": [
+          67,
           42,
-          37,
-          0,
-          19,
-          6
+          6,
+          30,
+          7
         ]
       },
       "steps": [
@@ -2285,8 +3285,8 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           0
         ]
       ],
-      "expectedTraceDigest": "2465d2c2af5077b4cf44c6eddbdc5aba2859029e30062f49a30e669acfc8e9d2",
-      "expectedModelDigest": "855c94b4f2c46d8c0e0b28993368d71fa82d3738cc3535deaff32e0ccc075381",
+      "expectedTraceDigest": "b012fdddd616fba9e3707f7dd688bfc2397f8a953decbdd7e9e4c2e8023b04a1",
+      "expectedModelDigest": "35f0bae7f97df0c89d48f66b7b4af43aef5b9bf4d8ffbce6687cc1d97d8a375f",
       "expectedFinalRow": [
         0,
         0,
@@ -2300,10 +3300,10 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
       "halted": true,
       "compileReceiptRefs": [
         "receipt.psionic.tassadar_program.69815f8c4340fc9d",
-        "receipt.psionic.tassadar_graph.30b042c3e3880c3b",
-        "receipt.psionic.tassadar_bundle.3c34af4e07a17713",
-        "receipt.psionic.tassadar_numeric_model.855c94b4f2c46d8c",
-        "receipt.psionic.tassadar_trace.2465d2c2af5077b4"
+        "receipt.psionic.tassadar_graph.88219d6cd782a035",
+        "receipt.psionic.tassadar_bundle.226022f654a907e7",
+        "receipt.psionic.tassadar_numeric_model.35f0bae7f97df0c8",
+        "receipt.psionic.tassadar_trace.b012fdddd616fba9"
       ]
     },
     {
@@ -2350,10 +3350,10 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
       "model": {
         "schema_version": 1,
         "model_id": "alm.numeric.tassadar.alm_wasm_interpreter.v1.tassadar_corpus.mul_add_v1",
-        "graph_digest": "b3ffca32a159c0662e0ff0efee45b57c5c8fc82d3d99774caaa204308b60cdfa",
-        "bundle_digest": "bb618614eac8faa6715b36eede23cdda528612478149c482a8cf98b0f760d873",
+        "graph_digest": "6ba49df561640d53f1f35cda5a582e7137dba34a739b45a86d88b4999af2547b",
+        "bundle_digest": "60eea91f657d636f362ce6a3c278492260a26ac2ebde685cdcb4cc8bb78b1668",
         "input_field_count": 1,
-        "slot_count": 60,
+        "slot_count": 83,
         "layer_count": 6,
         "seed_writes": [
           [
@@ -2512,11 +3512,119 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 0
           },
           {
-            "out_slot": 7,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
               [
                 2,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 4
+          },
+          {
+            "out_slot": 6,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 9,
+            "bias": -2,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 10,
+            "bias": -2,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 11,
+            "bias": -3,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 12,
+            "bias": -12,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 13,
+            "bias": -13,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 14,
+            "bias": -13,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 15,
+            "bias": -14,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 6,
+            "bias": -1,
+            "terms": [
+              [
+                1,
                 5
               ]
             ],
@@ -2524,36 +3632,24 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 8
           },
           {
-            "out_slot": 8,
+            "out_slot": 9,
             "bias": 0,
             "terms": [
               [
                 -1,
-                6
+                8
               ]
             ],
             "input_field": null,
             "phase": 8
           },
           {
-            "out_slot": 7,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
               [
                 1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 10,
-            "bias": -1,
-            "terms": [
-              [
-                1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -2565,7 +3661,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -2573,11 +3669,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 12,
-            "bias": -2,
+            "bias": 0,
             "terms": [
               [
                 1,
-                9
+                16
+              ],
+              [
+                -1,
+                17
               ]
             ],
             "input_field": null,
@@ -2585,11 +3685,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 13,
-            "bias": -2,
+            "bias": 0,
             "terms": [
               [
                 1,
-                9
+                18
+              ],
+              [
+                -1,
+                19
               ]
             ],
             "input_field": null,
@@ -2601,7 +3705,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -2609,107 +3713,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 15,
-            "bias": -3,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 16,
             "bias": -4,
             "terms": [
               [
                 1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 17,
-            "bias": -4,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 18,
-            "bias": -5,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 19,
-            "bias": -5,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 20,
-            "bias": -6,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 21,
-            "bias": -6,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 22,
-            "bias": -7,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 23,
-            "bias": -7,
-            "terms": [
-              [
-                1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -2717,11 +3725,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 24,
-            "bias": -8,
+            "bias": -4,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -2729,11 +3737,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 25,
-            "bias": -8,
+            "bias": -5,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -2741,11 +3749,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 26,
-            "bias": -9,
+            "bias": -5,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -2753,11 +3761,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 27,
-            "bias": -9,
+            "bias": -6,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -2765,11 +3773,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 28,
-            "bias": -10,
+            "bias": -6,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -2777,11 +3785,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 29,
-            "bias": -10,
+            "bias": -7,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -2789,7 +3797,319 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 30,
+            "bias": -7,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 31,
+            "bias": -8,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 32,
+            "bias": -8,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 33,
+            "bias": -9,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 34,
+            "bias": -9,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 35,
+            "bias": -10,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 36,
+            "bias": -10,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 37,
             "bias": -11,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 38,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                20
+              ],
+              [
+                -1,
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 39,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                22
+              ],
+              [
+                -1,
+                23
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 40,
+            "bias": -14,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 41,
+            "bias": -15,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 42,
+            "bias": -15,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 43,
+            "bias": -16,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 44,
+            "bias": -16,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 45,
+            "bias": -17,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 46,
+            "bias": -17,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 47,
+            "bias": -18,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 48,
+            "bias": -18,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 49,
+            "bias": -19,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 50,
+            "bias": -19,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 51,
+            "bias": -20,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 52,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                10
+              ],
+              [
+                -1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 53,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 54,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 55,
+            "bias": 0,
             "terms": [
               [
                 1,
@@ -2800,71 +4120,83 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 10
           },
           {
-            "out_slot": 31,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                6
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 32,
+            "out_slot": 56,
             "bias": -1,
             "terms": [
               [
                 1,
-                6
+                9
               ]
             ],
             "input_field": null,
             "phase": 10
           },
           {
-            "out_slot": 33,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
               [
                 1,
-                8
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 34,
-            "bias": -1,
-            "terms": [
-              [
-                1,
-                8
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 7,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                36
+                59
               ],
               [
                 -1,
-                37
+                60
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 10,
+            "out_slot": 11,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                61
+              ],
+              [
+                -1,
+                62
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 14,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                63
+              ],
+              [
+                -1,
+                64
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 15,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                12
+              ],
+              [
+                -1,
+                13
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 24,
             "bias": 0,
             "terms": [
               [
@@ -2880,101 +4212,69 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 12
           },
           {
-            "out_slot": 11,
+            "out_slot": 25,
             "bias": 0,
             "terms": [
-              [
-                1,
-                48
-              ],
               [
                 -1,
-                49
-              ]
-            ],
-            "input_field": null,
-            "phase": 12
-          },
-          {
-            "out_slot": 12,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                50
-              ],
-              [
-                -1,
-                51
-              ]
-            ],
-            "input_field": null,
-            "phase": 12
-          },
-          {
-            "out_slot": 13,
-            "bias": 0,
-            "terms": [
-              [
-                1,
                 52
-              ],
-              [
-                -1,
-                53
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 14,
-            "bias": -1,
-            "terms": [
-              [
-                1,
-                4
-              ]
-            ],
-            "input_field": null,
-            "phase": 12
-          },
-          {
-            "out_slot": 15,
+            "out_slot": 26,
             "bias": 0,
             "terms": [
               [
                 1,
-                56
+                79
               ],
               [
                 -1,
-                57
+                80
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 16,
+            "out_slot": 27,
             "bias": 0,
             "terms": [
               [
                 1,
-                58
+                81
               ],
               [
                 -1,
-                59
+                82
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 14,
+            "out_slot": 29,
             "bias": 1,
             "terms": [
+              [
+                -1,
+                28
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 30,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                16
+              ],
               [
                 -1,
                 17
@@ -2984,12 +4284,420 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 14
           },
           {
-            "out_slot": 19,
+            "out_slot": 31,
             "bias": 0,
             "terms": [
               [
                 1,
-                9
+                18
+              ],
+              [
+                -1,
+                19
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 32,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                20
+              ],
+              [
+                -1,
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 33,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                22
+              ],
+              [
+                -1,
+                23
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 34,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                57
+              ],
+              [
+                -1,
+                58
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 35,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                65
+              ],
+              [
+                -1,
+                66
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 36,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                67
+              ],
+              [
+                -1,
+                68
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 37,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                69
+              ],
+              [
+                -1,
+                70
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 40,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                71
+              ],
+              [
+                -1,
+                72
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 41,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                73
+              ],
+              [
+                -1,
+                74
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 42,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                75
+              ],
+              [
+                -1,
+                76
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 43,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                77
+              ],
+              [
+                -1,
+                78
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 44,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                6
+              ],
+              [
+                -1,
+                11
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 45,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                11
+              ],
+              [
+                -1,
+                14
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 46,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 47,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 48,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                25
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 49,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                25
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 50,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                26
+              ],
+              [
+                1,
+                27
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 51,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                15
+              ],
+              [
+                1,
+                24
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 9,
+            "bias": 1,
+            "terms": [
+              [
+                2,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 23,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                30
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 24,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                30
+              ],
+              [
+                -1,
+                12
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 25,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                13
+              ],
+              [
+                -1,
+                31
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 26,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                31
+              ],
+              [
+                -1,
+                32
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 27,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                32
+              ],
+              [
+                -1,
+                33
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 46,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                33
+              ],
+              [
+                -1,
+                34
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 47,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                34
+              ],
+              [
+                -1,
+                6
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 48,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                14
               ],
               [
                 -1,
@@ -2997,10 +4705,58 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 20,
+            "out_slot": 49,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                39
+              ],
+              [
+                -1,
+                36
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 51,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                36
+              ],
+              [
+                -1,
+                37
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 53,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                37
+              ],
+              [
+                -1,
+                40
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 54,
             "bias": 0,
             "terms": [
               [
@@ -3013,10 +4769,26 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 21,
+            "out_slot": 55,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                41
+              ],
+              [
+                -1,
+                42
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 56,
             "bias": 0,
             "terms": [
               [
@@ -3029,63 +4801,27 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 22,
+            "out_slot": 57,
             "bias": 0,
             "terms": [
               [
                 1,
-                44
-              ],
-              [
-                -1,
-                45
+                43
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 23,
+            "out_slot": 58,
             "bias": 0,
             "terms": [
               [
                 1,
-                46
-              ],
-              [
-                -1,
-                47
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 24,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                54
-              ],
-              [
-                -1,
-                55
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 25,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                7
+                8
               ],
               [
                 -1,
@@ -3093,95 +4829,55 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 26,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                11
-              ],
-              [
-                -1,
-                12
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 27,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                12
-              ],
-              [
-                -1,
-                13
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 28,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                15
-              ],
-              [
-                1,
-                16
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 8,
-            "bias": 1,
-            "terms": [
-              [
-                2,
-                5
-              ]
-            ],
-            "input_field": null,
             "phase": 16
           },
           {
-            "out_slot": 28,
-            "bias": 1,
-            "terms": [
-              [
-                -1,
-                19
-              ]
-            ],
-            "input_field": null,
-            "phase": 16
-          },
-          {
-            "out_slot": 29,
-            "bias": 0,
+            "out_slot": 9,
+            "bias": -11,
             "terms": [
               [
                 1,
-                19
-              ],
-              [
-                -1,
                 7
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
+          },
+          {
+            "out_slot": 12,
+            "bias": -12,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 13,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                24
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 14,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                47
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
           },
           {
             "out_slot": 30,
@@ -3189,31 +4885,23 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                10
-              ],
-              [
-                -1,
-                20
+                58
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 31,
-            "bias": 0,
+            "bias": -1,
             "terms": [
               [
                 1,
-                20
-              ],
-              [
-                -1,
-                21
+                58
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 32,
@@ -3221,15 +4909,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                21
+                16
               ],
               [
                 -1,
-                22
+                17
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 33,
@@ -3237,15 +4925,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                22
+                18
               ],
               [
                 -1,
-                23
+                19
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 34,
@@ -3253,131 +4941,95 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                23
-              ],
-              [
-                -1,
-                11
+                52
               ]
             ],
             "input_field": null,
-            "phase": 16
-          },
-          {
-            "out_slot": 35,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                13
-              ],
-              [
-                -1,
-                24
-              ]
-            ],
-            "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 36,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                6
-              ],
-              [
-                -1,
-                18
-              ]
-            ],
-            "input_field": null,
-            "phase": 16
-          },
-          {
-            "out_slot": 8,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                24
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 10,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                29
-              ],
-              [
-                1,
-                25
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 11,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                34
-              ],
-              [
-                1,
-                26
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 13,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                36
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 19,
             "bias": -1,
             "terms": [
               [
                 1,
-                36
+                52
               ]
             ],
             "input_field": null,
             "phase": 18
           },
           {
-            "out_slot": 20,
+            "out_slot": 37,
+            "bias": 1,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 39,
             "bias": 0,
             "terms": [
               [
                 1,
-                28
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 40,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                50
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 41,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                23
               ],
               [
                 1,
-                29
+                24
               ],
               [
                 1,
-                34
+                47
+              ],
+              [
+                -1,
+                15
+              ],
+              [
+                -1,
+                44
+              ],
+              [
+                -1,
+                45
+              ],
+              [
+                -1,
+                48
+              ],
+              [
+                -1,
+                49
               ],
               [
                 -1,
@@ -3393,31 +5045,111 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 -1,
-                35
+                46
               ],
               [
                 -1,
-                30
+                53
               ],
               [
                 -1,
-                31
+                54
               ],
               [
                 -1,
-                32
+                55
               ],
               [
                 -1,
-                33
+                56
+              ],
+              [
+                -1,
+                57
               ]
             ],
             "input_field": null,
             "phase": 18
           },
           {
-            "out_slot": 21,
+            "out_slot": 42,
             "bias": -1,
+            "terms": [
+              [
+                1,
+                6
+              ],
+              [
+                -1,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 43,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                23
+              ],
+              [
+                1,
+                24
+              ],
+              [
+                1,
+                47
+              ],
+              [
+                1,
+                25
+              ],
+              [
+                1,
+                26
+              ],
+              [
+                1,
+                27
+              ],
+              [
+                1,
+                46
+              ],
+              [
+                1,
+                51
+              ],
+              [
+                1,
+                53
+              ],
+              [
+                1,
+                54
+              ],
+              [
+                1,
+                55
+              ],
+              [
+                1,
+                56
+              ],
+              [
+                1,
+                57
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 0,
+            "bias": 0,
             "terms": [
               [
                 1,
@@ -3425,36 +5157,16 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 -1,
-                5
+                15
               ]
             ],
             "input_field": null,
-            "phase": 18
+            "phase": 20
           },
           {
-            "out_slot": 22,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
-              [
-                1,
-                28
-              ],
-              [
-                1,
-                29
-              ],
-              [
-                1,
-                34
-              ],
-              [
-                1,
-                30
-              ],
-              [
-                1,
-                31
-              ],
               [
                 1,
                 32
@@ -3465,55 +5177,23 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 18
+            "phase": 20
           },
           {
-            "out_slot": 10,
+            "out_slot": 9,
             "bias": 0,
             "terms": [
               [
                 1,
-                18
-              ],
-              [
-                1,
-                6
-              ]
-            ],
-            "input_field": null,
-            "phase": 22
-          },
-          {
-            "out_slot": 11,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                18
+                45
               ],
               [
                 -1,
-                6
+                49
               ]
             ],
             "input_field": null,
-            "phase": 22
-          },
-          {
-            "out_slot": 12,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                25
-              ],
-              [
-                -1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 22
+            "phase": 20
           },
           {
             "out_slot": 13,
@@ -3521,27 +5201,75 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                26
+                35
               ],
               [
                 -1,
-                27
+                0
               ]
             ],
             "input_field": null,
             "phase": 22
           },
           {
-            "out_slot": 19,
+            "out_slot": 14,
             "bias": 0,
             "terms": [
               [
                 1,
-                4
+                0
+              ],
+              [
+                -1,
+                38
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 15,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                10
               ],
               [
                 1,
-                36
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 16,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                18
+              ],
+              [
+                -1,
+                11
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 17,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                19
+              ],
+              [
+                -1,
+                44
               ]
             ],
             "input_field": null,
@@ -3552,15 +5280,43 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "bias": 1,
             "terms": [
               [
-                1,
-                37
+                -1,
+                6
               ]
             ],
             "input_field": null,
             "phase": 22
           },
           {
-            "out_slot": 0,
+            "out_slot": 23,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                9
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 26,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                50
+              ],
+              [
+                -1,
+                58
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 30,
             "bias": 0,
             "terms": [
               [
@@ -3569,11 +5325,23 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 1,
-                4
+                59
               ]
             ],
             "input_field": null,
-            "phase": 24
+            "phase": 22
+          },
+          {
+            "out_slot": 31,
+            "bias": 1,
+            "terms": [
+              [
+                1,
+                60
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
           },
           {
             "out_slot": 6,
@@ -3581,15 +5349,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                17
+                4
               ],
               [
                 1,
-                8
-              ],
-              [
-                -1,
-                9
+                0
               ]
             ],
             "input_field": null,
@@ -3601,7 +5365,43 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                39
+                28
+              ],
+              [
+                1,
+                13
+              ],
+              [
+                -1,
+                5
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 8,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                62
+              ],
+              [
+                1,
+                10
+              ],
+              [
+                1,
+                11
+              ],
+              [
+                1,
+                14
+              ],
+              [
+                1,
+                63
               ],
               [
                 1,
@@ -3609,55 +5409,47 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 1,
-                21
+                19
               ],
               [
                 1,
-                22
+                64
               ],
               [
                 1,
-                23
+                32
               ],
               [
                 1,
-                24
+                33
               ],
               [
                 1,
-                25
+                34
+              ],
+              [
+                1,
+                35
+              ],
+              [
+                1,
+                36
               ]
             ],
             "input_field": null,
             "phase": 24
           },
           {
-            "out_slot": 10,
+            "out_slot": 9,
             "bias": -1000,
             "terms": [
               [
                 1,
-                26
+                37
               ],
               [
                 1000,
-                38
-              ]
-            ],
-            "input_field": null,
-            "phase": 24
-          },
-          {
-            "out_slot": 11,
-            "bias": -1000,
-            "terms": [
-              [
-                1,
-                27
-              ],
-              [
-                1000,
-                15
+                61
               ]
             ],
             "input_field": null,
@@ -3669,11 +5461,27 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                35
+                38
               ],
               [
                 1000,
-                16
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 15,
+            "bias": -1000,
+            "terms": [
+              [
+                1,
+                40
+              ],
+              [
+                1000,
+                22
               ]
             ],
             "input_field": null,
@@ -3684,7 +5492,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           {
             "keyed_read": {
               "channel": 4,
-              "query_slot": 2,
+              "query_slot": 1,
               "out_slot": 4,
               "phase": 1
             }
@@ -3692,24 +5500,32 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           {
             "keyed_read": {
               "channel": 4,
-              "query_slot": 1,
+              "query_slot": 2,
               "out_slot": 5,
+              "phase": 1
+            }
+          },
+          {
+            "keyed_read": {
+              "channel": 0,
+              "query_slot": 6,
+              "out_slot": 7,
               "phase": 5
             }
           },
           {
             "keyed_read": {
               "channel": 1,
-              "query_slot": 4,
-              "out_slot": 6,
+              "query_slot": 5,
+              "out_slot": 8,
               "phase": 5
             }
           },
           {
             "keyed_read": {
-              "channel": 0,
-              "query_slot": 7,
-              "out_slot": 9,
+              "channel": 1,
+              "query_slot": 6,
+              "out_slot": 10,
               "phase": 9
             }
           },
@@ -3717,39 +5533,31 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "keyed_read": {
               "channel": 4,
               "query_slot": 3,
-              "out_slot": 17,
-              "phase": 13
-            }
-          },
-          {
-            "keyed_read": {
-              "channel": 1,
-              "query_slot": 14,
-              "out_slot": 18,
+              "out_slot": 28,
               "phase": 13
             }
           },
           {
             "keyed_read": {
               "channel": 0,
-              "query_slot": 8,
-              "out_slot": 7,
+              "query_slot": 9,
+              "out_slot": 6,
               "phase": 17
             }
           },
           {
             "keyed_read": {
               "channel": 2,
-              "query_slot": 23,
-              "out_slot": 0,
+              "query_slot": 16,
+              "out_slot": 7,
               "phase": 21
             }
           },
           {
             "keyed_read": {
               "channel": 3,
-              "query_slot": 24,
-              "out_slot": 7,
+              "query_slot": 17,
+              "out_slot": 12,
               "phase": 21
             }
           }
@@ -3757,379 +5565,571 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
         "ffn": [
           {
             "value_slot": 0,
-            "gate_slot": 7,
-            "out_slot": 9,
-            "phase": 11
+            "gate_slot": 6,
+            "out_slot": 16,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 9,
+            "out_slot": 17,
+            "phase": 7
           },
           {
             "value_slot": 0,
             "gate_slot": 10,
-            "out_slot": 35,
+            "out_slot": 18,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 11,
+            "out_slot": 19,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 12,
+            "out_slot": 20,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 13,
+            "out_slot": 21,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 14,
+            "out_slot": 22,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 15,
+            "out_slot": 23,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 6,
+            "out_slot": 16,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 11,
-            "out_slot": 36,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 12,
-            "out_slot": 37,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 13,
-            "out_slot": 38,
+            "out_slot": 17,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 14,
-            "out_slot": 39,
+            "out_slot": 18,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 15,
-            "out_slot": 40,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 16,
-            "out_slot": 41,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 17,
-            "out_slot": 42,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 18,
-            "out_slot": 43,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 19,
-            "out_slot": 44,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 20,
-            "out_slot": 45,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 21,
-            "out_slot": 46,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 22,
-            "out_slot": 47,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 23,
-            "out_slot": 48,
+            "out_slot": 19,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 24,
-            "out_slot": 49,
+            "out_slot": 20,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 25,
-            "out_slot": 50,
+            "out_slot": 21,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 26,
-            "out_slot": 51,
+            "out_slot": 22,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 27,
-            "out_slot": 52,
+            "out_slot": 23,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 28,
-            "out_slot": 53,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 29,
-            "out_slot": 54,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 30,
-            "out_slot": 55,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 31,
-            "out_slot": 56,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 32,
             "out_slot": 57,
             "phase": 11
           },
           {
             "value_slot": 0,
-            "gate_slot": 33,
+            "gate_slot": 29,
             "out_slot": 58,
             "phase": 11
           },
           {
             "value_slot": 0,
-            "gate_slot": 34,
+            "gate_slot": 30,
             "out_slot": 59,
             "phase": 11
           },
           {
-            "value_slot": 18,
-            "gate_slot": 8,
-            "out_slot": 9,
+            "value_slot": 0,
+            "gate_slot": 31,
+            "out_slot": 60,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 32,
+            "out_slot": 61,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 33,
+            "out_slot": 62,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 34,
+            "out_slot": 63,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 35,
+            "out_slot": 64,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 36,
+            "out_slot": 65,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 37,
+            "out_slot": 66,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 40,
+            "out_slot": 67,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 41,
+            "out_slot": 68,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 42,
+            "out_slot": 69,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 43,
+            "out_slot": 70,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 44,
+            "out_slot": 71,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 45,
+            "out_slot": 72,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 46,
+            "out_slot": 73,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 47,
+            "out_slot": 74,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 48,
+            "out_slot": 75,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 49,
+            "out_slot": 76,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 50,
+            "out_slot": 77,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 51,
+            "out_slot": 78,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 53,
+            "out_slot": 79,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 54,
+            "out_slot": 80,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 55,
+            "out_slot": 81,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 56,
+            "out_slot": 82,
+            "phase": 11
+          },
+          {
+            "value_slot": 10,
+            "gate_slot": 9,
+            "out_slot": 11,
             "phase": 15
           },
           {
-            "value_slot": 28,
-            "gate_slot": 27,
-            "out_slot": 12,
-            "phase": 15
-          },
-          {
-            "value_slot": 25,
-            "gate_slot": 14,
-            "out_slot": 15,
-            "phase": 15
-          },
-          {
-            "value_slot": 26,
-            "gate_slot": 14,
+            "value_slot": 0,
+            "gate_slot": 46,
             "out_slot": 16,
             "phase": 15
           },
           {
-            "value_slot": 7,
-            "gate_slot": 10,
-            "out_slot": 23,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 11,
-            "out_slot": 24,
-            "phase": 19
-          },
-          {
-            "value_slot": 18,
-            "gate_slot": 6,
-            "out_slot": 25,
-            "phase": 19
+            "value_slot": 0,
+            "gate_slot": 47,
+            "out_slot": 17,
+            "phase": 15
           },
           {
             "value_slot": 0,
-            "gate_slot": 13,
-            "out_slot": 26,
-            "phase": 19
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 19,
-            "out_slot": 27,
-            "phase": 19
-          },
-          {
-            "value_slot": 20,
-            "gate_slot": 14,
-            "out_slot": 36,
-            "phase": 19
-          },
-          {
-            "value_slot": 21,
-            "gate_slot": 12,
-            "out_slot": 37,
-            "phase": 19
-          },
-          {
-            "value_slot": 22,
-            "gate_slot": 14,
-            "out_slot": 38,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 28,
-            "out_slot": 39,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 15,
-            "out_slot": 40,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 16,
-            "out_slot": 41,
-            "phase": 19
-          },
-          {
-            "value_slot": 35,
-            "gate_slot": 14,
-            "out_slot": 42,
-            "phase": 19
-          },
-          {
-            "value_slot": 20,
-            "gate_slot": 14,
-            "out_slot": 4,
-            "phase": 23
-          },
-          {
-            "value_slot": 17,
-            "gate_slot": 8,
-            "out_slot": 9,
-            "phase": 23
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 29,
+            "gate_slot": 48,
             "out_slot": 18,
-            "phase": 23
+            "phase": 15
           },
           {
-            "value_slot": 7,
-            "gate_slot": 34,
+            "value_slot": 0,
+            "gate_slot": 49,
+            "out_slot": 19,
+            "phase": 15
+          },
+          {
+            "value_slot": 50,
+            "gate_slot": 45,
+            "out_slot": 20,
+            "phase": 15
+          },
+          {
+            "value_slot": 51,
+            "gate_slot": 29,
             "out_slot": 21,
-            "phase": 23
+            "phase": 15
+          },
+          {
+            "value_slot": 44,
+            "gate_slot": 29,
+            "out_slot": 22,
+            "phase": 15
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 9,
+            "out_slot": 7,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 12,
+            "out_slot": 15,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 13,
+            "out_slot": 16,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 14,
+            "out_slot": 17,
+            "phase": 19
           },
           {
             "value_slot": 10,
+            "gate_slot": 8,
+            "out_slot": 18,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
             "gate_slot": 30,
-            "out_slot": 22,
+            "out_slot": 19,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 31,
+            "out_slot": 44,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 34,
+            "out_slot": 45,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 36,
+            "out_slot": 49,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 37,
+            "out_slot": 50,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 39,
+            "out_slot": 58,
+            "phase": 19
+          },
+          {
+            "value_slot": 41,
+            "gate_slot": 29,
+            "out_slot": 59,
+            "phase": 19
+          },
+          {
+            "value_slot": 42,
+            "gate_slot": 20,
+            "out_slot": 60,
+            "phase": 19
+          },
+          {
+            "value_slot": 43,
+            "gate_slot": 29,
+            "out_slot": 61,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 23,
+            "out_slot": 62,
+            "phase": 19
+          },
+          {
+            "value_slot": 52,
+            "gate_slot": 26,
+            "out_slot": 63,
+            "phase": 19
+          },
+          {
+            "value_slot": 40,
+            "gate_slot": 51,
+            "out_slot": 64,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 21,
+            "out_slot": 65,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 22,
+            "out_slot": 66,
+            "phase": 19
+          },
+          {
+            "value_slot": 48,
+            "gate_slot": 29,
+            "out_slot": 67,
+            "phase": 19
+          },
+          {
+            "value_slot": 31,
+            "gate_slot": 29,
+            "out_slot": 0,
             "phase": 23
           },
           {
-            "value_slot": 11,
-            "gate_slot": 31,
-            "out_slot": 23,
+            "value_slot": 28,
+            "gate_slot": 13,
+            "out_slot": 5,
+            "phase": 23
+          },
+          {
+            "value_slot": 7,
+            "gate_slot": 24,
+            "out_slot": 10,
             "phase": 23
           },
           {
             "value_slot": 12,
-            "gate_slot": 32,
-            "out_slot": 24,
+            "gate_slot": 47,
+            "out_slot": 11,
             "phase": 23
           },
           {
-            "value_slot": 13,
-            "gate_slot": 33,
-            "out_slot": 25,
+            "value_slot": 15,
+            "gate_slot": 25,
+            "out_slot": 14,
             "phase": 23
           },
           {
-            "value_slot": 19,
-            "gate_slot": 38,
-            "out_slot": 26,
+            "value_slot": 16,
+            "gate_slot": 27,
+            "out_slot": 18,
             "phase": 23
           },
           {
-            "value_slot": 40,
-            "gate_slot": 15,
-            "out_slot": 27,
+            "value_slot": 17,
+            "gate_slot": 46,
+            "out_slot": 19,
+            "phase": 23
+          },
+          {
+            "value_slot": 20,
+            "gate_slot": 53,
+            "out_slot": 32,
             "phase": 23
           },
           {
             "value_slot": 6,
-            "gate_slot": 15,
-            "out_slot": 28,
+            "gate_slot": 54,
+            "out_slot": 33,
             "phase": 23
           },
           {
-            "value_slot": 41,
-            "gate_slot": 16,
+            "value_slot": 9,
+            "gate_slot": 55,
+            "out_slot": 34,
+            "phase": 23
+          },
+          {
+            "value_slot": 23,
+            "gate_slot": 56,
             "out_slot": 35,
             "phase": 23
           },
           {
-            "value_slot": 6,
-            "gate_slot": 16,
+            "value_slot": 26,
+            "gate_slot": 57,
             "out_slot": 36,
             "phase": 23
           },
           {
-            "value_slot": 6,
-            "gate_slot": 42,
+            "value_slot": 30,
+            "gate_slot": 61,
             "out_slot": 37,
+            "phase": 23
+          },
+          {
+            "value_slot": 65,
+            "gate_slot": 21,
+            "out_slot": 38,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 21,
+            "out_slot": 39,
+            "phase": 23
+          },
+          {
+            "value_slot": 66,
+            "gate_slot": 22,
+            "out_slot": 40,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 22,
+            "out_slot": 41,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 67,
+            "out_slot": 42,
             "phase": 23
           }
         ],
         "writes": [
           {
             "channel": 1,
-            "key_slot": 10,
-            "value_slot": 7
+            "key_slot": 9,
+            "value_slot": 8
           },
           {
             "channel": 2,
-            "key_slot": 11,
-            "value_slot": 28
+            "key_slot": 12,
+            "value_slot": 39
           },
           {
             "channel": 3,
-            "key_slot": 12,
-            "value_slot": 36
+            "key_slot": 15,
+            "value_slot": 41
           },
           {
             "channel": 4,
             "key_slot": 1,
-            "value_slot": 0
+            "value_slot": 6
           },
           {
             "channel": 4,
             "key_slot": 2,
-            "value_slot": 19
+            "value_slot": 30
           },
           {
             "channel": 4,
             "key_slot": 3,
-            "value_slot": 6
+            "value_slot": 7
           }
         ],
         "output_slots": [
+          67,
           42,
-          37,
-          0,
-          19,
-          6
+          6,
+          30,
+          7
         ]
       },
       "steps": [
@@ -4170,8 +6170,8 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           0
         ]
       ],
-      "expectedTraceDigest": "1a47828b750fc9c964f631f729766c2ebc0897b2e65ae1c84c1170a7b08f2af6",
-      "expectedModelDigest": "51733079031bc94ed0989ff0a72e48a38b1744767357661d10c9d6c440f793ec",
+      "expectedTraceDigest": "0e6409beef97643fd301202571beb947a3f061f1167ade06fb98eb96805b0ae6",
+      "expectedModelDigest": "36fe256c6e704b2b38718e52e1fd8e8b1ccf627f878d3062f2023fadd819bac3",
       "expectedFinalRow": [
         0,
         0,
@@ -4185,10 +6185,10 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
       "halted": true,
       "compileReceiptRefs": [
         "receipt.psionic.tassadar_program.3a90befea6efb5f7",
-        "receipt.psionic.tassadar_graph.b3ffca32a159c066",
-        "receipt.psionic.tassadar_bundle.bb618614eac8faa6",
-        "receipt.psionic.tassadar_numeric_model.51733079031bc94e",
-        "receipt.psionic.tassadar_trace.1a47828b750fc9c9"
+        "receipt.psionic.tassadar_graph.6ba49df561640d53",
+        "receipt.psionic.tassadar_bundle.60eea91f657d636f",
+        "receipt.psionic.tassadar_numeric_model.36fe256c6e704b2b",
+        "receipt.psionic.tassadar_trace.0e6409beef97643f"
       ]
     },
     {
@@ -4237,10 +6237,10 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
       "model": {
         "schema_version": 1,
         "model_id": "alm.numeric.tassadar.alm_wasm_interpreter.v1.tassadar_corpus.memory_roundtrip_v1",
-        "graph_digest": "df5267de2d1573cc1ce5d469c9705c4ef8d3d8eecdca767202d13963919e6878",
-        "bundle_digest": "fac8ba5c50a5b13c22270695e77b00db8e6102c5d8bfab90252f0bd0948713ad",
+        "graph_digest": "39243b3f70f4fd60c23784d6222b5ad0bf1b7615061dbb40bda2ff720ba1094a",
+        "bundle_digest": "76470bf8e52cf977a90d3b0189e4ac8deeefde246477a0dcc6d31c25463d69dd",
         "input_field_count": 1,
-        "slot_count": 60,
+        "slot_count": 83,
         "layer_count": 6,
         "seed_writes": [
           [
@@ -4404,11 +6404,119 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 0
           },
           {
-            "out_slot": 7,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
               [
                 2,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 4
+          },
+          {
+            "out_slot": 6,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 9,
+            "bias": -2,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 10,
+            "bias": -2,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 11,
+            "bias": -3,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 12,
+            "bias": -12,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 13,
+            "bias": -13,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 14,
+            "bias": -13,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 15,
+            "bias": -14,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 6,
+            "bias": -1,
+            "terms": [
+              [
+                1,
                 5
               ]
             ],
@@ -4416,36 +6524,24 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 8
           },
           {
-            "out_slot": 8,
+            "out_slot": 9,
             "bias": 0,
             "terms": [
               [
                 -1,
-                6
+                8
               ]
             ],
             "input_field": null,
             "phase": 8
           },
           {
-            "out_slot": 7,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
               [
                 1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 10,
-            "bias": -1,
-            "terms": [
-              [
-                1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -4457,7 +6553,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -4465,11 +6561,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 12,
-            "bias": -2,
+            "bias": 0,
             "terms": [
               [
                 1,
-                9
+                16
+              ],
+              [
+                -1,
+                17
               ]
             ],
             "input_field": null,
@@ -4477,11 +6577,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 13,
-            "bias": -2,
+            "bias": 0,
             "terms": [
               [
                 1,
-                9
+                18
+              ],
+              [
+                -1,
+                19
               ]
             ],
             "input_field": null,
@@ -4493,7 +6597,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -4501,107 +6605,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 15,
-            "bias": -3,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 16,
             "bias": -4,
             "terms": [
               [
                 1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 17,
-            "bias": -4,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 18,
-            "bias": -5,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 19,
-            "bias": -5,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 20,
-            "bias": -6,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 21,
-            "bias": -6,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 22,
-            "bias": -7,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 23,
-            "bias": -7,
-            "terms": [
-              [
-                1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -4609,11 +6617,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 24,
-            "bias": -8,
+            "bias": -4,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -4621,11 +6629,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 25,
-            "bias": -8,
+            "bias": -5,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -4633,11 +6641,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 26,
-            "bias": -9,
+            "bias": -5,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -4645,11 +6653,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 27,
-            "bias": -9,
+            "bias": -6,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -4657,11 +6665,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 28,
-            "bias": -10,
+            "bias": -6,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -4669,11 +6677,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 29,
-            "bias": -10,
+            "bias": -7,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -4681,7 +6689,319 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 30,
+            "bias": -7,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 31,
+            "bias": -8,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 32,
+            "bias": -8,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 33,
+            "bias": -9,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 34,
+            "bias": -9,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 35,
+            "bias": -10,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 36,
+            "bias": -10,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 37,
             "bias": -11,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 38,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                20
+              ],
+              [
+                -1,
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 39,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                22
+              ],
+              [
+                -1,
+                23
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 40,
+            "bias": -14,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 41,
+            "bias": -15,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 42,
+            "bias": -15,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 43,
+            "bias": -16,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 44,
+            "bias": -16,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 45,
+            "bias": -17,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 46,
+            "bias": -17,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 47,
+            "bias": -18,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 48,
+            "bias": -18,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 49,
+            "bias": -19,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 50,
+            "bias": -19,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 51,
+            "bias": -20,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 52,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                10
+              ],
+              [
+                -1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 53,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 54,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 55,
+            "bias": 0,
             "terms": [
               [
                 1,
@@ -4692,71 +7012,83 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 10
           },
           {
-            "out_slot": 31,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                6
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 32,
+            "out_slot": 56,
             "bias": -1,
             "terms": [
               [
                 1,
-                6
+                9
               ]
             ],
             "input_field": null,
             "phase": 10
           },
           {
-            "out_slot": 33,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
               [
                 1,
-                8
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 34,
-            "bias": -1,
-            "terms": [
-              [
-                1,
-                8
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 7,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                36
+                59
               ],
               [
                 -1,
-                37
+                60
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 10,
+            "out_slot": 11,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                61
+              ],
+              [
+                -1,
+                62
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 14,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                63
+              ],
+              [
+                -1,
+                64
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 15,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                12
+              ],
+              [
+                -1,
+                13
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 24,
             "bias": 0,
             "terms": [
               [
@@ -4772,101 +7104,69 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 12
           },
           {
-            "out_slot": 11,
+            "out_slot": 25,
             "bias": 0,
             "terms": [
-              [
-                1,
-                48
-              ],
               [
                 -1,
-                49
-              ]
-            ],
-            "input_field": null,
-            "phase": 12
-          },
-          {
-            "out_slot": 12,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                50
-              ],
-              [
-                -1,
-                51
-              ]
-            ],
-            "input_field": null,
-            "phase": 12
-          },
-          {
-            "out_slot": 13,
-            "bias": 0,
-            "terms": [
-              [
-                1,
                 52
-              ],
-              [
-                -1,
-                53
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 14,
-            "bias": -1,
-            "terms": [
-              [
-                1,
-                4
-              ]
-            ],
-            "input_field": null,
-            "phase": 12
-          },
-          {
-            "out_slot": 15,
+            "out_slot": 26,
             "bias": 0,
             "terms": [
               [
                 1,
-                56
+                79
               ],
               [
                 -1,
-                57
+                80
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 16,
+            "out_slot": 27,
             "bias": 0,
             "terms": [
               [
                 1,
-                58
+                81
               ],
               [
                 -1,
-                59
+                82
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 14,
+            "out_slot": 29,
             "bias": 1,
             "terms": [
+              [
+                -1,
+                28
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 30,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                16
+              ],
               [
                 -1,
                 17
@@ -4876,12 +7176,420 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 14
           },
           {
-            "out_slot": 19,
+            "out_slot": 31,
             "bias": 0,
             "terms": [
               [
                 1,
-                9
+                18
+              ],
+              [
+                -1,
+                19
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 32,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                20
+              ],
+              [
+                -1,
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 33,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                22
+              ],
+              [
+                -1,
+                23
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 34,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                57
+              ],
+              [
+                -1,
+                58
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 35,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                65
+              ],
+              [
+                -1,
+                66
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 36,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                67
+              ],
+              [
+                -1,
+                68
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 37,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                69
+              ],
+              [
+                -1,
+                70
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 40,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                71
+              ],
+              [
+                -1,
+                72
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 41,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                73
+              ],
+              [
+                -1,
+                74
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 42,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                75
+              ],
+              [
+                -1,
+                76
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 43,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                77
+              ],
+              [
+                -1,
+                78
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 44,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                6
+              ],
+              [
+                -1,
+                11
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 45,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                11
+              ],
+              [
+                -1,
+                14
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 46,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 47,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 48,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                25
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 49,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                25
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 50,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                26
+              ],
+              [
+                1,
+                27
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 51,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                15
+              ],
+              [
+                1,
+                24
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 9,
+            "bias": 1,
+            "terms": [
+              [
+                2,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 23,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                30
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 24,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                30
+              ],
+              [
+                -1,
+                12
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 25,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                13
+              ],
+              [
+                -1,
+                31
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 26,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                31
+              ],
+              [
+                -1,
+                32
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 27,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                32
+              ],
+              [
+                -1,
+                33
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 46,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                33
+              ],
+              [
+                -1,
+                34
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 47,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                34
+              ],
+              [
+                -1,
+                6
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 48,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                14
               ],
               [
                 -1,
@@ -4889,10 +7597,58 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 20,
+            "out_slot": 49,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                39
+              ],
+              [
+                -1,
+                36
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 51,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                36
+              ],
+              [
+                -1,
+                37
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 53,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                37
+              ],
+              [
+                -1,
+                40
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 54,
             "bias": 0,
             "terms": [
               [
@@ -4905,10 +7661,26 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 21,
+            "out_slot": 55,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                41
+              ],
+              [
+                -1,
+                42
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 56,
             "bias": 0,
             "terms": [
               [
@@ -4921,63 +7693,27 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 22,
+            "out_slot": 57,
             "bias": 0,
             "terms": [
               [
                 1,
-                44
-              ],
-              [
-                -1,
-                45
+                43
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 23,
+            "out_slot": 58,
             "bias": 0,
             "terms": [
               [
                 1,
-                46
-              ],
-              [
-                -1,
-                47
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 24,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                54
-              ],
-              [
-                -1,
-                55
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 25,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                7
+                8
               ],
               [
                 -1,
@@ -4985,95 +7721,55 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 26,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                11
-              ],
-              [
-                -1,
-                12
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 27,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                12
-              ],
-              [
-                -1,
-                13
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 28,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                15
-              ],
-              [
-                1,
-                16
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 8,
-            "bias": 1,
-            "terms": [
-              [
-                2,
-                5
-              ]
-            ],
-            "input_field": null,
             "phase": 16
           },
           {
-            "out_slot": 28,
-            "bias": 1,
-            "terms": [
-              [
-                -1,
-                19
-              ]
-            ],
-            "input_field": null,
-            "phase": 16
-          },
-          {
-            "out_slot": 29,
-            "bias": 0,
+            "out_slot": 9,
+            "bias": -11,
             "terms": [
               [
                 1,
-                19
-              ],
-              [
-                -1,
                 7
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
+          },
+          {
+            "out_slot": 12,
+            "bias": -12,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 13,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                24
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 14,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                47
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
           },
           {
             "out_slot": 30,
@@ -5081,31 +7777,23 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                10
-              ],
-              [
-                -1,
-                20
+                58
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 31,
-            "bias": 0,
+            "bias": -1,
             "terms": [
               [
                 1,
-                20
-              ],
-              [
-                -1,
-                21
+                58
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 32,
@@ -5113,15 +7801,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                21
+                16
               ],
               [
                 -1,
-                22
+                17
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 33,
@@ -5129,15 +7817,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                22
+                18
               ],
               [
                 -1,
-                23
+                19
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 34,
@@ -5145,131 +7833,95 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                23
-              ],
-              [
-                -1,
-                11
+                52
               ]
             ],
             "input_field": null,
-            "phase": 16
-          },
-          {
-            "out_slot": 35,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                13
-              ],
-              [
-                -1,
-                24
-              ]
-            ],
-            "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 36,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                6
-              ],
-              [
-                -1,
-                18
-              ]
-            ],
-            "input_field": null,
-            "phase": 16
-          },
-          {
-            "out_slot": 8,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                24
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 10,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                29
-              ],
-              [
-                1,
-                25
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 11,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                34
-              ],
-              [
-                1,
-                26
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 13,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                36
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 19,
             "bias": -1,
             "terms": [
               [
                 1,
-                36
+                52
               ]
             ],
             "input_field": null,
             "phase": 18
           },
           {
-            "out_slot": 20,
+            "out_slot": 37,
+            "bias": 1,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 39,
             "bias": 0,
             "terms": [
               [
                 1,
-                28
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 40,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                50
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 41,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                23
               ],
               [
                 1,
-                29
+                24
               ],
               [
                 1,
-                34
+                47
+              ],
+              [
+                -1,
+                15
+              ],
+              [
+                -1,
+                44
+              ],
+              [
+                -1,
+                45
+              ],
+              [
+                -1,
+                48
+              ],
+              [
+                -1,
+                49
               ],
               [
                 -1,
@@ -5285,31 +7937,111 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 -1,
-                35
+                46
               ],
               [
                 -1,
-                30
+                53
               ],
               [
                 -1,
-                31
+                54
               ],
               [
                 -1,
-                32
+                55
               ],
               [
                 -1,
-                33
+                56
+              ],
+              [
+                -1,
+                57
               ]
             ],
             "input_field": null,
             "phase": 18
           },
           {
-            "out_slot": 21,
+            "out_slot": 42,
             "bias": -1,
+            "terms": [
+              [
+                1,
+                6
+              ],
+              [
+                -1,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 43,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                23
+              ],
+              [
+                1,
+                24
+              ],
+              [
+                1,
+                47
+              ],
+              [
+                1,
+                25
+              ],
+              [
+                1,
+                26
+              ],
+              [
+                1,
+                27
+              ],
+              [
+                1,
+                46
+              ],
+              [
+                1,
+                51
+              ],
+              [
+                1,
+                53
+              ],
+              [
+                1,
+                54
+              ],
+              [
+                1,
+                55
+              ],
+              [
+                1,
+                56
+              ],
+              [
+                1,
+                57
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 0,
+            "bias": 0,
             "terms": [
               [
                 1,
@@ -5317,36 +8049,16 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 -1,
-                5
+                15
               ]
             ],
             "input_field": null,
-            "phase": 18
+            "phase": 20
           },
           {
-            "out_slot": 22,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
-              [
-                1,
-                28
-              ],
-              [
-                1,
-                29
-              ],
-              [
-                1,
-                34
-              ],
-              [
-                1,
-                30
-              ],
-              [
-                1,
-                31
-              ],
               [
                 1,
                 32
@@ -5357,55 +8069,23 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 18
+            "phase": 20
           },
           {
-            "out_slot": 10,
+            "out_slot": 9,
             "bias": 0,
             "terms": [
               [
                 1,
-                18
-              ],
-              [
-                1,
-                6
-              ]
-            ],
-            "input_field": null,
-            "phase": 22
-          },
-          {
-            "out_slot": 11,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                18
+                45
               ],
               [
                 -1,
-                6
+                49
               ]
             ],
             "input_field": null,
-            "phase": 22
-          },
-          {
-            "out_slot": 12,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                25
-              ],
-              [
-                -1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 22
+            "phase": 20
           },
           {
             "out_slot": 13,
@@ -5413,27 +8093,75 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                26
+                35
               ],
               [
                 -1,
-                27
+                0
               ]
             ],
             "input_field": null,
             "phase": 22
           },
           {
-            "out_slot": 19,
+            "out_slot": 14,
             "bias": 0,
             "terms": [
               [
                 1,
-                4
+                0
+              ],
+              [
+                -1,
+                38
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 15,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                10
               ],
               [
                 1,
-                36
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 16,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                18
+              ],
+              [
+                -1,
+                11
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 17,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                19
+              ],
+              [
+                -1,
+                44
               ]
             ],
             "input_field": null,
@@ -5444,15 +8172,43 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "bias": 1,
             "terms": [
               [
-                1,
-                37
+                -1,
+                6
               ]
             ],
             "input_field": null,
             "phase": 22
           },
           {
-            "out_slot": 0,
+            "out_slot": 23,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                9
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 26,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                50
+              ],
+              [
+                -1,
+                58
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 30,
             "bias": 0,
             "terms": [
               [
@@ -5461,11 +8217,23 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 1,
-                4
+                59
               ]
             ],
             "input_field": null,
-            "phase": 24
+            "phase": 22
+          },
+          {
+            "out_slot": 31,
+            "bias": 1,
+            "terms": [
+              [
+                1,
+                60
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
           },
           {
             "out_slot": 6,
@@ -5473,15 +8241,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                17
+                4
               ],
               [
                 1,
-                8
-              ],
-              [
-                -1,
-                9
+                0
               ]
             ],
             "input_field": null,
@@ -5493,7 +8257,43 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                39
+                28
+              ],
+              [
+                1,
+                13
+              ],
+              [
+                -1,
+                5
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 8,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                62
+              ],
+              [
+                1,
+                10
+              ],
+              [
+                1,
+                11
+              ],
+              [
+                1,
+                14
+              ],
+              [
+                1,
+                63
               ],
               [
                 1,
@@ -5501,55 +8301,47 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 1,
-                21
+                19
               ],
               [
                 1,
-                22
+                64
               ],
               [
                 1,
-                23
+                32
               ],
               [
                 1,
-                24
+                33
               ],
               [
                 1,
-                25
+                34
+              ],
+              [
+                1,
+                35
+              ],
+              [
+                1,
+                36
               ]
             ],
             "input_field": null,
             "phase": 24
           },
           {
-            "out_slot": 10,
+            "out_slot": 9,
             "bias": -1000,
             "terms": [
               [
                 1,
-                26
+                37
               ],
               [
                 1000,
-                38
-              ]
-            ],
-            "input_field": null,
-            "phase": 24
-          },
-          {
-            "out_slot": 11,
-            "bias": -1000,
-            "terms": [
-              [
-                1,
-                27
-              ],
-              [
-                1000,
-                15
+                61
               ]
             ],
             "input_field": null,
@@ -5561,11 +8353,27 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                35
+                38
               ],
               [
                 1000,
-                16
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 15,
+            "bias": -1000,
+            "terms": [
+              [
+                1,
+                40
+              ],
+              [
+                1000,
+                22
               ]
             ],
             "input_field": null,
@@ -5576,7 +8384,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           {
             "keyed_read": {
               "channel": 4,
-              "query_slot": 2,
+              "query_slot": 1,
               "out_slot": 4,
               "phase": 1
             }
@@ -5584,24 +8392,32 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           {
             "keyed_read": {
               "channel": 4,
-              "query_slot": 1,
+              "query_slot": 2,
               "out_slot": 5,
+              "phase": 1
+            }
+          },
+          {
+            "keyed_read": {
+              "channel": 0,
+              "query_slot": 6,
+              "out_slot": 7,
               "phase": 5
             }
           },
           {
             "keyed_read": {
               "channel": 1,
-              "query_slot": 4,
-              "out_slot": 6,
+              "query_slot": 5,
+              "out_slot": 8,
               "phase": 5
             }
           },
           {
             "keyed_read": {
-              "channel": 0,
-              "query_slot": 7,
-              "out_slot": 9,
+              "channel": 1,
+              "query_slot": 6,
+              "out_slot": 10,
               "phase": 9
             }
           },
@@ -5609,39 +8425,31 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "keyed_read": {
               "channel": 4,
               "query_slot": 3,
-              "out_slot": 17,
-              "phase": 13
-            }
-          },
-          {
-            "keyed_read": {
-              "channel": 1,
-              "query_slot": 14,
-              "out_slot": 18,
+              "out_slot": 28,
               "phase": 13
             }
           },
           {
             "keyed_read": {
               "channel": 0,
-              "query_slot": 8,
-              "out_slot": 7,
+              "query_slot": 9,
+              "out_slot": 6,
               "phase": 17
             }
           },
           {
             "keyed_read": {
               "channel": 2,
-              "query_slot": 23,
-              "out_slot": 0,
+              "query_slot": 16,
+              "out_slot": 7,
               "phase": 21
             }
           },
           {
             "keyed_read": {
               "channel": 3,
-              "query_slot": 24,
-              "out_slot": 7,
+              "query_slot": 17,
+              "out_slot": 12,
               "phase": 21
             }
           }
@@ -5649,379 +8457,571 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
         "ffn": [
           {
             "value_slot": 0,
-            "gate_slot": 7,
-            "out_slot": 9,
-            "phase": 11
+            "gate_slot": 6,
+            "out_slot": 16,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 9,
+            "out_slot": 17,
+            "phase": 7
           },
           {
             "value_slot": 0,
             "gate_slot": 10,
-            "out_slot": 35,
+            "out_slot": 18,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 11,
+            "out_slot": 19,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 12,
+            "out_slot": 20,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 13,
+            "out_slot": 21,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 14,
+            "out_slot": 22,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 15,
+            "out_slot": 23,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 6,
+            "out_slot": 16,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 11,
-            "out_slot": 36,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 12,
-            "out_slot": 37,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 13,
-            "out_slot": 38,
+            "out_slot": 17,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 14,
-            "out_slot": 39,
+            "out_slot": 18,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 15,
-            "out_slot": 40,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 16,
-            "out_slot": 41,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 17,
-            "out_slot": 42,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 18,
-            "out_slot": 43,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 19,
-            "out_slot": 44,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 20,
-            "out_slot": 45,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 21,
-            "out_slot": 46,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 22,
-            "out_slot": 47,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 23,
-            "out_slot": 48,
+            "out_slot": 19,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 24,
-            "out_slot": 49,
+            "out_slot": 20,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 25,
-            "out_slot": 50,
+            "out_slot": 21,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 26,
-            "out_slot": 51,
+            "out_slot": 22,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 27,
-            "out_slot": 52,
+            "out_slot": 23,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 28,
-            "out_slot": 53,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 29,
-            "out_slot": 54,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 30,
-            "out_slot": 55,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 31,
-            "out_slot": 56,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 32,
             "out_slot": 57,
             "phase": 11
           },
           {
             "value_slot": 0,
-            "gate_slot": 33,
+            "gate_slot": 29,
             "out_slot": 58,
             "phase": 11
           },
           {
             "value_slot": 0,
-            "gate_slot": 34,
+            "gate_slot": 30,
             "out_slot": 59,
             "phase": 11
           },
           {
-            "value_slot": 18,
-            "gate_slot": 8,
-            "out_slot": 9,
+            "value_slot": 0,
+            "gate_slot": 31,
+            "out_slot": 60,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 32,
+            "out_slot": 61,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 33,
+            "out_slot": 62,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 34,
+            "out_slot": 63,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 35,
+            "out_slot": 64,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 36,
+            "out_slot": 65,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 37,
+            "out_slot": 66,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 40,
+            "out_slot": 67,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 41,
+            "out_slot": 68,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 42,
+            "out_slot": 69,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 43,
+            "out_slot": 70,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 44,
+            "out_slot": 71,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 45,
+            "out_slot": 72,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 46,
+            "out_slot": 73,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 47,
+            "out_slot": 74,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 48,
+            "out_slot": 75,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 49,
+            "out_slot": 76,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 50,
+            "out_slot": 77,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 51,
+            "out_slot": 78,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 53,
+            "out_slot": 79,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 54,
+            "out_slot": 80,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 55,
+            "out_slot": 81,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 56,
+            "out_slot": 82,
+            "phase": 11
+          },
+          {
+            "value_slot": 10,
+            "gate_slot": 9,
+            "out_slot": 11,
             "phase": 15
           },
           {
-            "value_slot": 28,
-            "gate_slot": 27,
-            "out_slot": 12,
-            "phase": 15
-          },
-          {
-            "value_slot": 25,
-            "gate_slot": 14,
-            "out_slot": 15,
-            "phase": 15
-          },
-          {
-            "value_slot": 26,
-            "gate_slot": 14,
+            "value_slot": 0,
+            "gate_slot": 46,
             "out_slot": 16,
             "phase": 15
           },
           {
-            "value_slot": 7,
-            "gate_slot": 10,
-            "out_slot": 23,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 11,
-            "out_slot": 24,
-            "phase": 19
-          },
-          {
-            "value_slot": 18,
-            "gate_slot": 6,
-            "out_slot": 25,
-            "phase": 19
+            "value_slot": 0,
+            "gate_slot": 47,
+            "out_slot": 17,
+            "phase": 15
           },
           {
             "value_slot": 0,
-            "gate_slot": 13,
-            "out_slot": 26,
-            "phase": 19
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 19,
-            "out_slot": 27,
-            "phase": 19
-          },
-          {
-            "value_slot": 20,
-            "gate_slot": 14,
-            "out_slot": 36,
-            "phase": 19
-          },
-          {
-            "value_slot": 21,
-            "gate_slot": 12,
-            "out_slot": 37,
-            "phase": 19
-          },
-          {
-            "value_slot": 22,
-            "gate_slot": 14,
-            "out_slot": 38,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 28,
-            "out_slot": 39,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 15,
-            "out_slot": 40,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 16,
-            "out_slot": 41,
-            "phase": 19
-          },
-          {
-            "value_slot": 35,
-            "gate_slot": 14,
-            "out_slot": 42,
-            "phase": 19
-          },
-          {
-            "value_slot": 20,
-            "gate_slot": 14,
-            "out_slot": 4,
-            "phase": 23
-          },
-          {
-            "value_slot": 17,
-            "gate_slot": 8,
-            "out_slot": 9,
-            "phase": 23
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 29,
+            "gate_slot": 48,
             "out_slot": 18,
-            "phase": 23
+            "phase": 15
           },
           {
-            "value_slot": 7,
-            "gate_slot": 34,
+            "value_slot": 0,
+            "gate_slot": 49,
+            "out_slot": 19,
+            "phase": 15
+          },
+          {
+            "value_slot": 50,
+            "gate_slot": 45,
+            "out_slot": 20,
+            "phase": 15
+          },
+          {
+            "value_slot": 51,
+            "gate_slot": 29,
             "out_slot": 21,
-            "phase": 23
+            "phase": 15
+          },
+          {
+            "value_slot": 44,
+            "gate_slot": 29,
+            "out_slot": 22,
+            "phase": 15
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 9,
+            "out_slot": 7,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 12,
+            "out_slot": 15,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 13,
+            "out_slot": 16,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 14,
+            "out_slot": 17,
+            "phase": 19
           },
           {
             "value_slot": 10,
+            "gate_slot": 8,
+            "out_slot": 18,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
             "gate_slot": 30,
-            "out_slot": 22,
+            "out_slot": 19,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 31,
+            "out_slot": 44,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 34,
+            "out_slot": 45,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 36,
+            "out_slot": 49,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 37,
+            "out_slot": 50,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 39,
+            "out_slot": 58,
+            "phase": 19
+          },
+          {
+            "value_slot": 41,
+            "gate_slot": 29,
+            "out_slot": 59,
+            "phase": 19
+          },
+          {
+            "value_slot": 42,
+            "gate_slot": 20,
+            "out_slot": 60,
+            "phase": 19
+          },
+          {
+            "value_slot": 43,
+            "gate_slot": 29,
+            "out_slot": 61,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 23,
+            "out_slot": 62,
+            "phase": 19
+          },
+          {
+            "value_slot": 52,
+            "gate_slot": 26,
+            "out_slot": 63,
+            "phase": 19
+          },
+          {
+            "value_slot": 40,
+            "gate_slot": 51,
+            "out_slot": 64,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 21,
+            "out_slot": 65,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 22,
+            "out_slot": 66,
+            "phase": 19
+          },
+          {
+            "value_slot": 48,
+            "gate_slot": 29,
+            "out_slot": 67,
+            "phase": 19
+          },
+          {
+            "value_slot": 31,
+            "gate_slot": 29,
+            "out_slot": 0,
             "phase": 23
           },
           {
-            "value_slot": 11,
-            "gate_slot": 31,
-            "out_slot": 23,
+            "value_slot": 28,
+            "gate_slot": 13,
+            "out_slot": 5,
+            "phase": 23
+          },
+          {
+            "value_slot": 7,
+            "gate_slot": 24,
+            "out_slot": 10,
             "phase": 23
           },
           {
             "value_slot": 12,
-            "gate_slot": 32,
-            "out_slot": 24,
+            "gate_slot": 47,
+            "out_slot": 11,
             "phase": 23
           },
           {
-            "value_slot": 13,
-            "gate_slot": 33,
-            "out_slot": 25,
+            "value_slot": 15,
+            "gate_slot": 25,
+            "out_slot": 14,
             "phase": 23
           },
           {
-            "value_slot": 19,
-            "gate_slot": 38,
-            "out_slot": 26,
+            "value_slot": 16,
+            "gate_slot": 27,
+            "out_slot": 18,
             "phase": 23
           },
           {
-            "value_slot": 40,
-            "gate_slot": 15,
-            "out_slot": 27,
+            "value_slot": 17,
+            "gate_slot": 46,
+            "out_slot": 19,
+            "phase": 23
+          },
+          {
+            "value_slot": 20,
+            "gate_slot": 53,
+            "out_slot": 32,
             "phase": 23
           },
           {
             "value_slot": 6,
-            "gate_slot": 15,
-            "out_slot": 28,
+            "gate_slot": 54,
+            "out_slot": 33,
             "phase": 23
           },
           {
-            "value_slot": 41,
-            "gate_slot": 16,
+            "value_slot": 9,
+            "gate_slot": 55,
+            "out_slot": 34,
+            "phase": 23
+          },
+          {
+            "value_slot": 23,
+            "gate_slot": 56,
             "out_slot": 35,
             "phase": 23
           },
           {
-            "value_slot": 6,
-            "gate_slot": 16,
+            "value_slot": 26,
+            "gate_slot": 57,
             "out_slot": 36,
             "phase": 23
           },
           {
-            "value_slot": 6,
-            "gate_slot": 42,
+            "value_slot": 30,
+            "gate_slot": 61,
             "out_slot": 37,
+            "phase": 23
+          },
+          {
+            "value_slot": 65,
+            "gate_slot": 21,
+            "out_slot": 38,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 21,
+            "out_slot": 39,
+            "phase": 23
+          },
+          {
+            "value_slot": 66,
+            "gate_slot": 22,
+            "out_slot": 40,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 22,
+            "out_slot": 41,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 67,
+            "out_slot": 42,
             "phase": 23
           }
         ],
         "writes": [
           {
             "channel": 1,
-            "key_slot": 10,
-            "value_slot": 7
+            "key_slot": 9,
+            "value_slot": 8
           },
           {
             "channel": 2,
-            "key_slot": 11,
-            "value_slot": 28
+            "key_slot": 12,
+            "value_slot": 39
           },
           {
             "channel": 3,
-            "key_slot": 12,
-            "value_slot": 36
+            "key_slot": 15,
+            "value_slot": 41
           },
           {
             "channel": 4,
             "key_slot": 1,
-            "value_slot": 0
+            "value_slot": 6
           },
           {
             "channel": 4,
             "key_slot": 2,
-            "value_slot": 19
+            "value_slot": 30
           },
           {
             "channel": 4,
             "key_slot": 3,
-            "value_slot": 6
+            "value_slot": 7
           }
         ],
         "output_slots": [
+          67,
           42,
-          37,
-          0,
-          19,
-          6
+          6,
+          30,
+          7
         ]
       },
       "steps": [
@@ -6062,8 +9062,8 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           0
         ]
       ],
-      "expectedTraceDigest": "467637249759afbcdc693a6e86f6252e220a39eee8f51887e6d674c75f85cc18",
-      "expectedModelDigest": "4c86ba88c1211ccf655040df6a5d01d82367f4aa57241df964890bb18eb09b22",
+      "expectedTraceDigest": "6676807cea1e1f2840ace3485f8b6e49cea3bd29ae1264b7c1214761caceebff",
+      "expectedModelDigest": "929c5df178a15085e118d3e1707ae52caadeedd60be731b8ba70d128d77df2c4",
       "expectedFinalRow": [
         0,
         0,
@@ -6077,10 +9077,10 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
       "halted": true,
       "compileReceiptRefs": [
         "receipt.psionic.tassadar_program.63cc87aa90bbcbfd",
-        "receipt.psionic.tassadar_graph.df5267de2d1573cc",
-        "receipt.psionic.tassadar_bundle.fac8ba5c50a5b13c",
-        "receipt.psionic.tassadar_numeric_model.4c86ba88c1211ccf",
-        "receipt.psionic.tassadar_trace.467637249759afbc"
+        "receipt.psionic.tassadar_graph.39243b3f70f4fd60",
+        "receipt.psionic.tassadar_bundle.76470bf8e52cf977",
+        "receipt.psionic.tassadar_numeric_model.929c5df178a15085",
+        "receipt.psionic.tassadar_trace.6676807cea1e1f28"
       ]
     },
     {
@@ -6174,10 +9174,10 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
       "model": {
         "schema_version": 1,
         "model_id": "alm.numeric.tassadar.alm_wasm_interpreter.v1.tassadar_corpus.factorial_loop_v1",
-        "graph_digest": "5a98e6c54901d55c2a74aa5eb8e14a55abcafcc8263fcf09c320ed571e18b4bb",
-        "bundle_digest": "d7bfb2c775362a9a16664f876ae07855a5dea3702b837fdd20344f58487ced03",
+        "graph_digest": "96d645801da2e7d85b1fef93a3307cbbaf9fc958cce781670286774665381c94",
+        "bundle_digest": "5f967b3e470bf958a2c5fd7527f83aef49e411c9e26d66ab4d2d48b6d0607621",
         "input_field_count": 1,
-        "slot_count": 60,
+        "slot_count": 83,
         "layer_count": 6,
         "seed_writes": [
           [
@@ -6461,11 +9461,119 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 0
           },
           {
-            "out_slot": 7,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
               [
                 2,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 4
+          },
+          {
+            "out_slot": 6,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 9,
+            "bias": -2,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 10,
+            "bias": -2,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 11,
+            "bias": -3,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 12,
+            "bias": -12,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 13,
+            "bias": -13,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 14,
+            "bias": -13,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 15,
+            "bias": -14,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 6,
+            "bias": -1,
+            "terms": [
+              [
+                1,
                 5
               ]
             ],
@@ -6473,36 +9581,24 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 8
           },
           {
-            "out_slot": 8,
+            "out_slot": 9,
             "bias": 0,
             "terms": [
               [
                 -1,
-                6
+                8
               ]
             ],
             "input_field": null,
             "phase": 8
           },
           {
-            "out_slot": 7,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
               [
                 1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 10,
-            "bias": -1,
-            "terms": [
-              [
-                1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -6514,7 +9610,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -6522,11 +9618,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 12,
-            "bias": -2,
+            "bias": 0,
             "terms": [
               [
                 1,
-                9
+                16
+              ],
+              [
+                -1,
+                17
               ]
             ],
             "input_field": null,
@@ -6534,11 +9634,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 13,
-            "bias": -2,
+            "bias": 0,
             "terms": [
               [
                 1,
-                9
+                18
+              ],
+              [
+                -1,
+                19
               ]
             ],
             "input_field": null,
@@ -6550,7 +9654,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -6558,107 +9662,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 15,
-            "bias": -3,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 16,
             "bias": -4,
             "terms": [
               [
                 1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 17,
-            "bias": -4,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 18,
-            "bias": -5,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 19,
-            "bias": -5,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 20,
-            "bias": -6,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 21,
-            "bias": -6,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 22,
-            "bias": -7,
-            "terms": [
-              [
-                1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 23,
-            "bias": -7,
-            "terms": [
-              [
-                1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -6666,11 +9674,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 24,
-            "bias": -8,
+            "bias": -4,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -6678,11 +9686,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 25,
-            "bias": -8,
+            "bias": -5,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -6690,11 +9698,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 26,
-            "bias": -9,
+            "bias": -5,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -6702,11 +9710,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 27,
-            "bias": -9,
+            "bias": -6,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -6714,11 +9722,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 28,
-            "bias": -10,
+            "bias": -6,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -6726,11 +9734,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 29,
-            "bias": -10,
+            "bias": -7,
             "terms": [
               [
                 1,
-                9
+                7
               ]
             ],
             "input_field": null,
@@ -6738,7 +9746,319 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           },
           {
             "out_slot": 30,
+            "bias": -7,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 31,
+            "bias": -8,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 32,
+            "bias": -8,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 33,
+            "bias": -9,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 34,
+            "bias": -9,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 35,
+            "bias": -10,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 36,
+            "bias": -10,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 37,
             "bias": -11,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 38,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                20
+              ],
+              [
+                -1,
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 39,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                22
+              ],
+              [
+                -1,
+                23
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 40,
+            "bias": -14,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 41,
+            "bias": -15,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 42,
+            "bias": -15,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 43,
+            "bias": -16,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 44,
+            "bias": -16,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 45,
+            "bias": -17,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 46,
+            "bias": -17,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 47,
+            "bias": -18,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 48,
+            "bias": -18,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 49,
+            "bias": -19,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 50,
+            "bias": -19,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 51,
+            "bias": -20,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 52,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                10
+              ],
+              [
+                -1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 53,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 54,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 55,
+            "bias": 0,
             "terms": [
               [
                 1,
@@ -6749,71 +10069,83 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 10
           },
           {
-            "out_slot": 31,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                6
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 32,
+            "out_slot": 56,
             "bias": -1,
             "terms": [
               [
                 1,
-                6
+                9
               ]
             ],
             "input_field": null,
             "phase": 10
           },
           {
-            "out_slot": 33,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
               [
                 1,
-                8
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 34,
-            "bias": -1,
-            "terms": [
-              [
-                1,
-                8
-              ]
-            ],
-            "input_field": null,
-            "phase": 10
-          },
-          {
-            "out_slot": 7,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                36
+                59
               ],
               [
                 -1,
-                37
+                60
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 10,
+            "out_slot": 11,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                61
+              ],
+              [
+                -1,
+                62
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 14,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                63
+              ],
+              [
+                -1,
+                64
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 15,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                12
+              ],
+              [
+                -1,
+                13
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 24,
             "bias": 0,
             "terms": [
               [
@@ -6829,101 +10161,69 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 12
           },
           {
-            "out_slot": 11,
+            "out_slot": 25,
             "bias": 0,
             "terms": [
-              [
-                1,
-                48
-              ],
               [
                 -1,
-                49
-              ]
-            ],
-            "input_field": null,
-            "phase": 12
-          },
-          {
-            "out_slot": 12,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                50
-              ],
-              [
-                -1,
-                51
-              ]
-            ],
-            "input_field": null,
-            "phase": 12
-          },
-          {
-            "out_slot": 13,
-            "bias": 0,
-            "terms": [
-              [
-                1,
                 52
-              ],
-              [
-                -1,
-                53
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 14,
-            "bias": -1,
-            "terms": [
-              [
-                1,
-                4
-              ]
-            ],
-            "input_field": null,
-            "phase": 12
-          },
-          {
-            "out_slot": 15,
+            "out_slot": 26,
             "bias": 0,
             "terms": [
               [
                 1,
-                56
+                79
               ],
               [
                 -1,
-                57
+                80
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 16,
+            "out_slot": 27,
             "bias": 0,
             "terms": [
               [
                 1,
-                58
+                81
               ],
               [
                 -1,
-                59
+                82
               ]
             ],
             "input_field": null,
             "phase": 12
           },
           {
-            "out_slot": 14,
+            "out_slot": 29,
             "bias": 1,
             "terms": [
+              [
+                -1,
+                28
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 30,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                16
+              ],
               [
                 -1,
                 17
@@ -6933,12 +10233,420 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "phase": 14
           },
           {
-            "out_slot": 19,
+            "out_slot": 31,
             "bias": 0,
             "terms": [
               [
                 1,
-                9
+                18
+              ],
+              [
+                -1,
+                19
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 32,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                20
+              ],
+              [
+                -1,
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 33,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                22
+              ],
+              [
+                -1,
+                23
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 34,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                57
+              ],
+              [
+                -1,
+                58
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 35,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                65
+              ],
+              [
+                -1,
+                66
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 36,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                67
+              ],
+              [
+                -1,
+                68
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 37,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                69
+              ],
+              [
+                -1,
+                70
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 40,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                71
+              ],
+              [
+                -1,
+                72
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 41,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                73
+              ],
+              [
+                -1,
+                74
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 42,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                75
+              ],
+              [
+                -1,
+                76
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 43,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                77
+              ],
+              [
+                -1,
+                78
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 44,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                6
+              ],
+              [
+                -1,
+                11
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 45,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                11
+              ],
+              [
+                -1,
+                14
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 46,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 47,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 48,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                25
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 49,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                25
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 50,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                26
+              ],
+              [
+                1,
+                27
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 51,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                15
+              ],
+              [
+                1,
+                24
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 9,
+            "bias": 1,
+            "terms": [
+              [
+                2,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 23,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                30
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 24,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                30
+              ],
+              [
+                -1,
+                12
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 25,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                13
+              ],
+              [
+                -1,
+                31
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 26,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                31
+              ],
+              [
+                -1,
+                32
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 27,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                32
+              ],
+              [
+                -1,
+                33
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 46,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                33
+              ],
+              [
+                -1,
+                34
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 47,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                34
+              ],
+              [
+                -1,
+                6
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 48,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                14
               ],
               [
                 -1,
@@ -6946,10 +10654,58 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 20,
+            "out_slot": 49,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                39
+              ],
+              [
+                -1,
+                36
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 51,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                36
+              ],
+              [
+                -1,
+                37
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 53,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                37
+              ],
+              [
+                -1,
+                40
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 54,
             "bias": 0,
             "terms": [
               [
@@ -6962,10 +10718,26 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 21,
+            "out_slot": 55,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                41
+              ],
+              [
+                -1,
+                42
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 56,
             "bias": 0,
             "terms": [
               [
@@ -6978,63 +10750,27 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 22,
+            "out_slot": 57,
             "bias": 0,
             "terms": [
               [
                 1,
-                44
-              ],
-              [
-                -1,
-                45
+                43
               ]
             ],
             "input_field": null,
-            "phase": 14
+            "phase": 16
           },
           {
-            "out_slot": 23,
+            "out_slot": 58,
             "bias": 0,
             "terms": [
               [
                 1,
-                46
-              ],
-              [
-                -1,
-                47
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 24,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                54
-              ],
-              [
-                -1,
-                55
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 25,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                7
+                8
               ],
               [
                 -1,
@@ -7042,95 +10778,55 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 26,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                11
-              ],
-              [
-                -1,
-                12
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 27,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                12
-              ],
-              [
-                -1,
-                13
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 28,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                15
-              ],
-              [
-                1,
-                16
-              ]
-            ],
-            "input_field": null,
-            "phase": 14
-          },
-          {
-            "out_slot": 8,
-            "bias": 1,
-            "terms": [
-              [
-                2,
-                5
-              ]
-            ],
-            "input_field": null,
             "phase": 16
           },
           {
-            "out_slot": 28,
-            "bias": 1,
-            "terms": [
-              [
-                -1,
-                19
-              ]
-            ],
-            "input_field": null,
-            "phase": 16
-          },
-          {
-            "out_slot": 29,
-            "bias": 0,
+            "out_slot": 9,
+            "bias": -11,
             "terms": [
               [
                 1,
-                19
-              ],
-              [
-                -1,
                 7
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
+          },
+          {
+            "out_slot": 12,
+            "bias": -12,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 13,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                24
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 14,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                47
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
           },
           {
             "out_slot": 30,
@@ -7138,31 +10834,23 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                10
-              ],
-              [
-                -1,
-                20
+                58
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 31,
-            "bias": 0,
+            "bias": -1,
             "terms": [
               [
                 1,
-                20
-              ],
-              [
-                -1,
-                21
+                58
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 32,
@@ -7170,15 +10858,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                21
+                16
               ],
               [
                 -1,
-                22
+                17
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 33,
@@ -7186,15 +10874,15 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                22
+                18
               ],
               [
                 -1,
-                23
+                19
               ]
             ],
             "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 34,
@@ -7202,131 +10890,95 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                23
-              ],
-              [
-                -1,
-                11
+                52
               ]
             ],
             "input_field": null,
-            "phase": 16
-          },
-          {
-            "out_slot": 35,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                13
-              ],
-              [
-                -1,
-                24
-              ]
-            ],
-            "input_field": null,
-            "phase": 16
+            "phase": 18
           },
           {
             "out_slot": 36,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                6
-              ],
-              [
-                -1,
-                18
-              ]
-            ],
-            "input_field": null,
-            "phase": 16
-          },
-          {
-            "out_slot": 8,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                24
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 10,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                29
-              ],
-              [
-                1,
-                25
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 11,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                34
-              ],
-              [
-                1,
-                26
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 13,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                36
-              ]
-            ],
-            "input_field": null,
-            "phase": 18
-          },
-          {
-            "out_slot": 19,
             "bias": -1,
             "terms": [
               [
                 1,
-                36
+                52
               ]
             ],
             "input_field": null,
             "phase": 18
           },
           {
-            "out_slot": 20,
+            "out_slot": 37,
+            "bias": 1,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 39,
             "bias": 0,
             "terms": [
               [
                 1,
-                28
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 40,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                50
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 41,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                23
               ],
               [
                 1,
-                29
+                24
               ],
               [
                 1,
-                34
+                47
+              ],
+              [
+                -1,
+                15
+              ],
+              [
+                -1,
+                44
+              ],
+              [
+                -1,
+                45
+              ],
+              [
+                -1,
+                48
+              ],
+              [
+                -1,
+                49
               ],
               [
                 -1,
@@ -7342,31 +10994,111 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 -1,
-                35
+                46
               ],
               [
                 -1,
-                30
+                53
               ],
               [
                 -1,
-                31
+                54
               ],
               [
                 -1,
-                32
+                55
               ],
               [
                 -1,
-                33
+                56
+              ],
+              [
+                -1,
+                57
               ]
             ],
             "input_field": null,
             "phase": 18
           },
           {
-            "out_slot": 21,
+            "out_slot": 42,
             "bias": -1,
+            "terms": [
+              [
+                1,
+                6
+              ],
+              [
+                -1,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 43,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                23
+              ],
+              [
+                1,
+                24
+              ],
+              [
+                1,
+                47
+              ],
+              [
+                1,
+                25
+              ],
+              [
+                1,
+                26
+              ],
+              [
+                1,
+                27
+              ],
+              [
+                1,
+                46
+              ],
+              [
+                1,
+                51
+              ],
+              [
+                1,
+                53
+              ],
+              [
+                1,
+                54
+              ],
+              [
+                1,
+                55
+              ],
+              [
+                1,
+                56
+              ],
+              [
+                1,
+                57
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 0,
+            "bias": 0,
             "terms": [
               [
                 1,
@@ -7374,36 +11106,16 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 -1,
-                5
+                15
               ]
             ],
             "input_field": null,
-            "phase": 18
+            "phase": 20
           },
           {
-            "out_slot": 22,
+            "out_slot": 6,
             "bias": 0,
             "terms": [
-              [
-                1,
-                28
-              ],
-              [
-                1,
-                29
-              ],
-              [
-                1,
-                34
-              ],
-              [
-                1,
-                30
-              ],
-              [
-                1,
-                31
-              ],
               [
                 1,
                 32
@@ -7414,55 +11126,23 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ]
             ],
             "input_field": null,
-            "phase": 18
+            "phase": 20
           },
           {
-            "out_slot": 10,
+            "out_slot": 9,
             "bias": 0,
             "terms": [
               [
                 1,
-                18
-              ],
-              [
-                1,
-                6
-              ]
-            ],
-            "input_field": null,
-            "phase": 22
-          },
-          {
-            "out_slot": 11,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                18
+                45
               ],
               [
                 -1,
-                6
+                49
               ]
             ],
             "input_field": null,
-            "phase": 22
-          },
-          {
-            "out_slot": 12,
-            "bias": 0,
-            "terms": [
-              [
-                1,
-                25
-              ],
-              [
-                -1,
-                9
-              ]
-            ],
-            "input_field": null,
-            "phase": 22
+            "phase": 20
           },
           {
             "out_slot": 13,
@@ -7470,27 +11150,75 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                26
+                35
               ],
               [
                 -1,
-                27
+                0
               ]
             ],
             "input_field": null,
             "phase": 22
           },
           {
-            "out_slot": 19,
+            "out_slot": 14,
             "bias": 0,
             "terms": [
               [
                 1,
-                4
+                0
+              ],
+              [
+                -1,
+                38
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 15,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                10
               ],
               [
                 1,
-                36
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 16,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                18
+              ],
+              [
+                -1,
+                11
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 17,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                19
+              ],
+              [
+                -1,
+                44
               ]
             ],
             "input_field": null,
@@ -7501,15 +11229,43 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "bias": 1,
             "terms": [
               [
-                1,
-                37
+                -1,
+                6
               ]
             ],
             "input_field": null,
             "phase": 22
           },
           {
-            "out_slot": 0,
+            "out_slot": 23,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                9
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 26,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                50
+              ],
+              [
+                -1,
+                58
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 30,
             "bias": 0,
             "terms": [
               [
@@ -7518,11 +11274,23 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 1,
-                4
+                59
               ]
             ],
             "input_field": null,
-            "phase": 24
+            "phase": 22
+          },
+          {
+            "out_slot": 31,
+            "bias": 1,
+            "terms": [
+              [
+                1,
+                60
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
           },
           {
             "out_slot": 6,
@@ -7530,15 +11298,11 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                17
+                4
               ],
               [
                 1,
-                8
-              ],
-              [
-                -1,
-                9
+                0
               ]
             ],
             "input_field": null,
@@ -7550,7 +11314,43 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                39
+                28
+              ],
+              [
+                1,
+                13
+              ],
+              [
+                -1,
+                5
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 8,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                62
+              ],
+              [
+                1,
+                10
+              ],
+              [
+                1,
+                11
+              ],
+              [
+                1,
+                14
+              ],
+              [
+                1,
+                63
               ],
               [
                 1,
@@ -7558,55 +11358,47 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
               ],
               [
                 1,
-                21
+                19
               ],
               [
                 1,
-                22
+                64
               ],
               [
                 1,
-                23
+                32
               ],
               [
                 1,
-                24
+                33
               ],
               [
                 1,
-                25
+                34
+              ],
+              [
+                1,
+                35
+              ],
+              [
+                1,
+                36
               ]
             ],
             "input_field": null,
             "phase": 24
           },
           {
-            "out_slot": 10,
+            "out_slot": 9,
             "bias": -1000,
             "terms": [
               [
                 1,
-                26
+                37
               ],
               [
                 1000,
-                38
-              ]
-            ],
-            "input_field": null,
-            "phase": 24
-          },
-          {
-            "out_slot": 11,
-            "bias": -1000,
-            "terms": [
-              [
-                1,
-                27
-              ],
-              [
-                1000,
-                15
+                61
               ]
             ],
             "input_field": null,
@@ -7618,11 +11410,27 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "terms": [
               [
                 1,
-                35
+                38
               ],
               [
                 1000,
-                16
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 15,
+            "bias": -1000,
+            "terms": [
+              [
+                1,
+                40
+              ],
+              [
+                1000,
+                22
               ]
             ],
             "input_field": null,
@@ -7633,7 +11441,7 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           {
             "keyed_read": {
               "channel": 4,
-              "query_slot": 2,
+              "query_slot": 1,
               "out_slot": 4,
               "phase": 1
             }
@@ -7641,24 +11449,32 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           {
             "keyed_read": {
               "channel": 4,
-              "query_slot": 1,
+              "query_slot": 2,
               "out_slot": 5,
+              "phase": 1
+            }
+          },
+          {
+            "keyed_read": {
+              "channel": 0,
+              "query_slot": 6,
+              "out_slot": 7,
               "phase": 5
             }
           },
           {
             "keyed_read": {
               "channel": 1,
-              "query_slot": 4,
-              "out_slot": 6,
+              "query_slot": 5,
+              "out_slot": 8,
               "phase": 5
             }
           },
           {
             "keyed_read": {
-              "channel": 0,
-              "query_slot": 7,
-              "out_slot": 9,
+              "channel": 1,
+              "query_slot": 6,
+              "out_slot": 10,
               "phase": 9
             }
           },
@@ -7666,39 +11482,31 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
             "keyed_read": {
               "channel": 4,
               "query_slot": 3,
-              "out_slot": 17,
-              "phase": 13
-            }
-          },
-          {
-            "keyed_read": {
-              "channel": 1,
-              "query_slot": 14,
-              "out_slot": 18,
+              "out_slot": 28,
               "phase": 13
             }
           },
           {
             "keyed_read": {
               "channel": 0,
-              "query_slot": 8,
-              "out_slot": 7,
+              "query_slot": 9,
+              "out_slot": 6,
               "phase": 17
             }
           },
           {
             "keyed_read": {
               "channel": 2,
-              "query_slot": 23,
-              "out_slot": 0,
+              "query_slot": 16,
+              "out_slot": 7,
               "phase": 21
             }
           },
           {
             "keyed_read": {
               "channel": 3,
-              "query_slot": 24,
-              "out_slot": 7,
+              "query_slot": 17,
+              "out_slot": 12,
               "phase": 21
             }
           }
@@ -7706,379 +11514,571 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
         "ffn": [
           {
             "value_slot": 0,
-            "gate_slot": 7,
-            "out_slot": 9,
-            "phase": 11
+            "gate_slot": 6,
+            "out_slot": 16,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 9,
+            "out_slot": 17,
+            "phase": 7
           },
           {
             "value_slot": 0,
             "gate_slot": 10,
-            "out_slot": 35,
+            "out_slot": 18,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 11,
+            "out_slot": 19,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 12,
+            "out_slot": 20,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 13,
+            "out_slot": 21,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 14,
+            "out_slot": 22,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 15,
+            "out_slot": 23,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 6,
+            "out_slot": 16,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 11,
-            "out_slot": 36,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 12,
-            "out_slot": 37,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 13,
-            "out_slot": 38,
+            "out_slot": 17,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 14,
-            "out_slot": 39,
+            "out_slot": 18,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 15,
-            "out_slot": 40,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 16,
-            "out_slot": 41,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 17,
-            "out_slot": 42,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 18,
-            "out_slot": 43,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 19,
-            "out_slot": 44,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 20,
-            "out_slot": 45,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 21,
-            "out_slot": 46,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 22,
-            "out_slot": 47,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 23,
-            "out_slot": 48,
+            "out_slot": 19,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 24,
-            "out_slot": 49,
+            "out_slot": 20,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 25,
-            "out_slot": 50,
+            "out_slot": 21,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 26,
-            "out_slot": 51,
+            "out_slot": 22,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 27,
-            "out_slot": 52,
+            "out_slot": 23,
             "phase": 11
           },
           {
             "value_slot": 0,
             "gate_slot": 28,
-            "out_slot": 53,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 29,
-            "out_slot": 54,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 30,
-            "out_slot": 55,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 31,
-            "out_slot": 56,
-            "phase": 11
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 32,
             "out_slot": 57,
             "phase": 11
           },
           {
             "value_slot": 0,
-            "gate_slot": 33,
+            "gate_slot": 29,
             "out_slot": 58,
             "phase": 11
           },
           {
             "value_slot": 0,
-            "gate_slot": 34,
+            "gate_slot": 30,
             "out_slot": 59,
             "phase": 11
           },
           {
-            "value_slot": 18,
-            "gate_slot": 8,
-            "out_slot": 9,
+            "value_slot": 0,
+            "gate_slot": 31,
+            "out_slot": 60,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 32,
+            "out_slot": 61,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 33,
+            "out_slot": 62,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 34,
+            "out_slot": 63,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 35,
+            "out_slot": 64,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 36,
+            "out_slot": 65,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 37,
+            "out_slot": 66,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 40,
+            "out_slot": 67,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 41,
+            "out_slot": 68,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 42,
+            "out_slot": 69,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 43,
+            "out_slot": 70,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 44,
+            "out_slot": 71,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 45,
+            "out_slot": 72,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 46,
+            "out_slot": 73,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 47,
+            "out_slot": 74,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 48,
+            "out_slot": 75,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 49,
+            "out_slot": 76,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 50,
+            "out_slot": 77,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 51,
+            "out_slot": 78,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 53,
+            "out_slot": 79,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 54,
+            "out_slot": 80,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 55,
+            "out_slot": 81,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 56,
+            "out_slot": 82,
+            "phase": 11
+          },
+          {
+            "value_slot": 10,
+            "gate_slot": 9,
+            "out_slot": 11,
             "phase": 15
           },
           {
-            "value_slot": 28,
-            "gate_slot": 27,
-            "out_slot": 12,
-            "phase": 15
-          },
-          {
-            "value_slot": 25,
-            "gate_slot": 14,
-            "out_slot": 15,
-            "phase": 15
-          },
-          {
-            "value_slot": 26,
-            "gate_slot": 14,
+            "value_slot": 0,
+            "gate_slot": 46,
             "out_slot": 16,
             "phase": 15
           },
           {
-            "value_slot": 7,
-            "gate_slot": 10,
-            "out_slot": 23,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 11,
-            "out_slot": 24,
-            "phase": 19
-          },
-          {
-            "value_slot": 18,
-            "gate_slot": 6,
-            "out_slot": 25,
-            "phase": 19
+            "value_slot": 0,
+            "gate_slot": 47,
+            "out_slot": 17,
+            "phase": 15
           },
           {
             "value_slot": 0,
-            "gate_slot": 13,
-            "out_slot": 26,
-            "phase": 19
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 19,
-            "out_slot": 27,
-            "phase": 19
-          },
-          {
-            "value_slot": 20,
-            "gate_slot": 14,
-            "out_slot": 36,
-            "phase": 19
-          },
-          {
-            "value_slot": 21,
-            "gate_slot": 12,
-            "out_slot": 37,
-            "phase": 19
-          },
-          {
-            "value_slot": 22,
-            "gate_slot": 14,
-            "out_slot": 38,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 28,
-            "out_slot": 39,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 15,
-            "out_slot": 40,
-            "phase": 19
-          },
-          {
-            "value_slot": 7,
-            "gate_slot": 16,
-            "out_slot": 41,
-            "phase": 19
-          },
-          {
-            "value_slot": 35,
-            "gate_slot": 14,
-            "out_slot": 42,
-            "phase": 19
-          },
-          {
-            "value_slot": 20,
-            "gate_slot": 14,
-            "out_slot": 4,
-            "phase": 23
-          },
-          {
-            "value_slot": 17,
-            "gate_slot": 8,
-            "out_slot": 9,
-            "phase": 23
-          },
-          {
-            "value_slot": 0,
-            "gate_slot": 29,
+            "gate_slot": 48,
             "out_slot": 18,
-            "phase": 23
+            "phase": 15
           },
           {
-            "value_slot": 7,
-            "gate_slot": 34,
+            "value_slot": 0,
+            "gate_slot": 49,
+            "out_slot": 19,
+            "phase": 15
+          },
+          {
+            "value_slot": 50,
+            "gate_slot": 45,
+            "out_slot": 20,
+            "phase": 15
+          },
+          {
+            "value_slot": 51,
+            "gate_slot": 29,
             "out_slot": 21,
-            "phase": 23
+            "phase": 15
+          },
+          {
+            "value_slot": 44,
+            "gate_slot": 29,
+            "out_slot": 22,
+            "phase": 15
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 9,
+            "out_slot": 7,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 12,
+            "out_slot": 15,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 13,
+            "out_slot": 16,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 14,
+            "out_slot": 17,
+            "phase": 19
           },
           {
             "value_slot": 10,
+            "gate_slot": 8,
+            "out_slot": 18,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
             "gate_slot": 30,
-            "out_slot": 22,
+            "out_slot": 19,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 31,
+            "out_slot": 44,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 34,
+            "out_slot": 45,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 36,
+            "out_slot": 49,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 37,
+            "out_slot": 50,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 39,
+            "out_slot": 58,
+            "phase": 19
+          },
+          {
+            "value_slot": 41,
+            "gate_slot": 29,
+            "out_slot": 59,
+            "phase": 19
+          },
+          {
+            "value_slot": 42,
+            "gate_slot": 20,
+            "out_slot": 60,
+            "phase": 19
+          },
+          {
+            "value_slot": 43,
+            "gate_slot": 29,
+            "out_slot": 61,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 23,
+            "out_slot": 62,
+            "phase": 19
+          },
+          {
+            "value_slot": 52,
+            "gate_slot": 26,
+            "out_slot": 63,
+            "phase": 19
+          },
+          {
+            "value_slot": 40,
+            "gate_slot": 51,
+            "out_slot": 64,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 21,
+            "out_slot": 65,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 22,
+            "out_slot": 66,
+            "phase": 19
+          },
+          {
+            "value_slot": 48,
+            "gate_slot": 29,
+            "out_slot": 67,
+            "phase": 19
+          },
+          {
+            "value_slot": 31,
+            "gate_slot": 29,
+            "out_slot": 0,
             "phase": 23
           },
           {
-            "value_slot": 11,
-            "gate_slot": 31,
-            "out_slot": 23,
+            "value_slot": 28,
+            "gate_slot": 13,
+            "out_slot": 5,
+            "phase": 23
+          },
+          {
+            "value_slot": 7,
+            "gate_slot": 24,
+            "out_slot": 10,
             "phase": 23
           },
           {
             "value_slot": 12,
-            "gate_slot": 32,
-            "out_slot": 24,
+            "gate_slot": 47,
+            "out_slot": 11,
             "phase": 23
           },
           {
-            "value_slot": 13,
-            "gate_slot": 33,
-            "out_slot": 25,
+            "value_slot": 15,
+            "gate_slot": 25,
+            "out_slot": 14,
             "phase": 23
           },
           {
-            "value_slot": 19,
-            "gate_slot": 38,
-            "out_slot": 26,
+            "value_slot": 16,
+            "gate_slot": 27,
+            "out_slot": 18,
             "phase": 23
           },
           {
-            "value_slot": 40,
-            "gate_slot": 15,
-            "out_slot": 27,
+            "value_slot": 17,
+            "gate_slot": 46,
+            "out_slot": 19,
+            "phase": 23
+          },
+          {
+            "value_slot": 20,
+            "gate_slot": 53,
+            "out_slot": 32,
             "phase": 23
           },
           {
             "value_slot": 6,
-            "gate_slot": 15,
-            "out_slot": 28,
+            "gate_slot": 54,
+            "out_slot": 33,
             "phase": 23
           },
           {
-            "value_slot": 41,
-            "gate_slot": 16,
+            "value_slot": 9,
+            "gate_slot": 55,
+            "out_slot": 34,
+            "phase": 23
+          },
+          {
+            "value_slot": 23,
+            "gate_slot": 56,
             "out_slot": 35,
             "phase": 23
           },
           {
-            "value_slot": 6,
-            "gate_slot": 16,
+            "value_slot": 26,
+            "gate_slot": 57,
             "out_slot": 36,
             "phase": 23
           },
           {
-            "value_slot": 6,
-            "gate_slot": 42,
+            "value_slot": 30,
+            "gate_slot": 61,
             "out_slot": 37,
+            "phase": 23
+          },
+          {
+            "value_slot": 65,
+            "gate_slot": 21,
+            "out_slot": 38,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 21,
+            "out_slot": 39,
+            "phase": 23
+          },
+          {
+            "value_slot": 66,
+            "gate_slot": 22,
+            "out_slot": 40,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 22,
+            "out_slot": 41,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 67,
+            "out_slot": 42,
             "phase": 23
           }
         ],
         "writes": [
           {
             "channel": 1,
-            "key_slot": 10,
-            "value_slot": 7
+            "key_slot": 9,
+            "value_slot": 8
           },
           {
             "channel": 2,
-            "key_slot": 11,
-            "value_slot": 28
+            "key_slot": 12,
+            "value_slot": 39
           },
           {
             "channel": 3,
-            "key_slot": 12,
-            "value_slot": 36
+            "key_slot": 15,
+            "value_slot": 41
           },
           {
             "channel": 4,
             "key_slot": 1,
-            "value_slot": 0
+            "value_slot": 6
           },
           {
             "channel": 4,
             "key_slot": 2,
-            "value_slot": 19
+            "value_slot": 30
           },
           {
             "channel": 4,
             "key_slot": 3,
-            "value_slot": 6
+            "value_slot": 7
           }
         ],
         "output_slots": [
+          67,
           42,
-          37,
-          0,
-          19,
-          6
+          6,
+          30,
+          7
         ]
       },
       "steps": [
@@ -8371,8 +12371,8 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
           0
         ]
       ],
-      "expectedTraceDigest": "b1b48c92b0e5aaca203832361690e552d475cb18ebf805c3cb458f464fcee98a",
-      "expectedModelDigest": "db2e99920a3a6e6681b06c5a5bf1d52f5ed9d167e8fff9c3498327b8a9157c8b",
+      "expectedTraceDigest": "99a8795d351ea495ada90289e2522af2ca2ae846496788cf051c7a3aa3de5801",
+      "expectedModelDigest": "f16b8b0a2ffe253cbfcd35af817a05053e18a230b8ebce6b9b918fedd73703e8",
       "expectedFinalRow": [
         0,
         0,
@@ -8386,15 +12386,3136 @@ export const tassadarCompiledProgramCorpus: TassadarCompiledProgramCorpus = {
       "halted": true,
       "compileReceiptRefs": [
         "receipt.psionic.tassadar_program.3ce8f0b7ed2fbbd6",
-        "receipt.psionic.tassadar_graph.5a98e6c54901d55c",
-        "receipt.psionic.tassadar_bundle.d7bfb2c775362a9a",
-        "receipt.psionic.tassadar_numeric_model.db2e99920a3a6e66",
-        "receipt.psionic.tassadar_trace.b1b48c92b0e5aaca"
+        "receipt.psionic.tassadar_graph.96d645801da2e7d8",
+        "receipt.psionic.tassadar_bundle.5f967b3e470bf958",
+        "receipt.psionic.tassadar_numeric_model.f16b8b0a2ffe253c",
+        "receipt.psionic.tassadar_trace.99a8795d351ea495"
+      ]
+    },
+    {
+      "fixtureId": "tassadar_corpus.w1_1_window_v1.numeric_fixture.v1",
+      "programId": "tassadar_corpus.w1_1_window_v1",
+      "programDigest": "0b0804543211139b617fddcea492cc2330d25d81190ef1b2f1e8310274e85a8e",
+      "workloadKind": "wasm_window.w1_1_stack_comparison_ladder",
+      "profileId": "tassadar.wasm.core_i32_w1_1.v1",
+      "program": {
+        "program_id": "tassadar_corpus.w1_1_window_v1",
+        "profile_id": "tassadar.wasm.core_i32_w1_1.v1",
+        "local_count": 1,
+        "memory_slots": 1,
+        "initial_memory": [
+          0
+        ],
+        "instructions": [
+          {
+            "opcode": "nop"
+          },
+          {
+            "opcode": "i32_const",
+            "value": 5
+          },
+          {
+            "opcode": "local_tee",
+            "local": 0
+          },
+          {
+            "opcode": "drop"
+          },
+          {
+            "opcode": "local_get",
+            "local": 0
+          },
+          {
+            "opcode": "i32_eqz"
+          },
+          {
+            "opcode": "i32_const",
+            "value": 0
+          },
+          {
+            "opcode": "i32_eq"
+          },
+          {
+            "opcode": "i32_const",
+            "value": 7
+          },
+          {
+            "opcode": "i32_const",
+            "value": 3
+          },
+          {
+            "opcode": "i32_gt"
+          },
+          {
+            "opcode": "i32_add"
+          },
+          {
+            "opcode": "i32_const",
+            "value": 2
+          },
+          {
+            "opcode": "i32_le"
+          },
+          {
+            "opcode": "i32_const",
+            "value": 1
+          },
+          {
+            "opcode": "i32_ge"
+          },
+          {
+            "opcode": "i32_const",
+            "value": 0
+          },
+          {
+            "opcode": "i32_ne"
+          },
+          {
+            "opcode": "output"
+          },
+          {
+            "opcode": "return"
+          }
+        ]
+      },
+      "model": {
+        "schema_version": 1,
+        "model_id": "alm.numeric.tassadar.alm_wasm_interpreter.v1.tassadar_corpus.w1_1_window_v1",
+        "graph_digest": "d48b8696fd824c868a5abb62302058f4cbc7456676d5782d21f9e60bf60bcf1f",
+        "bundle_digest": "7f5aecff95ee9ec1aef997007f7c098e0b2bcd428031bac4daeee93706f71f19",
+        "input_field_count": 1,
+        "slot_count": 83,
+        "layer_count": 6,
+        "seed_writes": [
+          [
+            0,
+            0,
+            12
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            2,
+            0
+          ],
+          [
+            0,
+            3,
+            5
+          ],
+          [
+            0,
+            4,
+            13
+          ],
+          [
+            0,
+            5,
+            0
+          ],
+          [
+            0,
+            6,
+            14
+          ],
+          [
+            0,
+            7,
+            0
+          ],
+          [
+            0,
+            8,
+            1
+          ],
+          [
+            0,
+            9,
+            0
+          ],
+          [
+            0,
+            10,
+            15
+          ],
+          [
+            0,
+            11,
+            0
+          ],
+          [
+            0,
+            12,
+            0
+          ],
+          [
+            0,
+            13,
+            0
+          ],
+          [
+            0,
+            14,
+            16
+          ],
+          [
+            0,
+            15,
+            0
+          ],
+          [
+            0,
+            16,
+            0
+          ],
+          [
+            0,
+            17,
+            7
+          ],
+          [
+            0,
+            18,
+            0
+          ],
+          [
+            0,
+            19,
+            3
+          ],
+          [
+            0,
+            20,
+            18
+          ],
+          [
+            0,
+            21,
+            0
+          ],
+          [
+            0,
+            22,
+            3
+          ],
+          [
+            0,
+            23,
+            0
+          ],
+          [
+            0,
+            24,
+            0
+          ],
+          [
+            0,
+            25,
+            2
+          ],
+          [
+            0,
+            26,
+            19
+          ],
+          [
+            0,
+            27,
+            0
+          ],
+          [
+            0,
+            28,
+            0
+          ],
+          [
+            0,
+            29,
+            1
+          ],
+          [
+            0,
+            30,
+            20
+          ],
+          [
+            0,
+            31,
+            0
+          ],
+          [
+            0,
+            32,
+            0
+          ],
+          [
+            0,
+            33,
+            0
+          ],
+          [
+            0,
+            34,
+            17
+          ],
+          [
+            0,
+            35,
+            0
+          ],
+          [
+            0,
+            36,
+            10
+          ],
+          [
+            0,
+            37,
+            0
+          ],
+          [
+            0,
+            38,
+            11
+          ],
+          [
+            0,
+            39,
+            0
+          ],
+          [
+            0,
+            40,
+            11
+          ],
+          [
+            0,
+            41,
+            0
+          ],
+          [
+            0,
+            42,
+            11
+          ],
+          [
+            0,
+            43,
+            0
+          ],
+          [
+            1,
+            -1,
+            0
+          ],
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            2,
+            0,
+            0
+          ],
+          [
+            3,
+            0,
+            0
+          ],
+          [
+            4,
+            0,
+            0
+          ],
+          [
+            4,
+            1,
+            0
+          ],
+          [
+            4,
+            2,
+            0
+          ]
+        ],
+        "wiring": [
+          {
+            "out_slot": 0,
+            "bias": 1,
+            "terms": [],
+            "input_field": null,
+            "phase": 0
+          },
+          {
+            "out_slot": 1,
+            "bias": 0,
+            "terms": [],
+            "input_field": null,
+            "phase": 0
+          },
+          {
+            "out_slot": 2,
+            "bias": 1,
+            "terms": [],
+            "input_field": null,
+            "phase": 0
+          },
+          {
+            "out_slot": 3,
+            "bias": 2,
+            "terms": [],
+            "input_field": null,
+            "phase": 0
+          },
+          {
+            "out_slot": 6,
+            "bias": 0,
+            "terms": [
+              [
+                2,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 4
+          },
+          {
+            "out_slot": 6,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 9,
+            "bias": -2,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 10,
+            "bias": -2,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 11,
+            "bias": -3,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 12,
+            "bias": -12,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 13,
+            "bias": -13,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 14,
+            "bias": -13,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 15,
+            "bias": -14,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 6
+          },
+          {
+            "out_slot": 6,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                5
+              ]
+            ],
+            "input_field": null,
+            "phase": 8
+          },
+          {
+            "out_slot": 9,
+            "bias": 0,
+            "terms": [
+              [
+                -1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 8
+          },
+          {
+            "out_slot": 6,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 11,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 12,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                16
+              ],
+              [
+                -1,
+                17
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 13,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                18
+              ],
+              [
+                -1,
+                19
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 14,
+            "bias": -3,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 15,
+            "bias": -4,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 24,
+            "bias": -4,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 25,
+            "bias": -5,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 26,
+            "bias": -5,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 27,
+            "bias": -6,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 28,
+            "bias": -6,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 29,
+            "bias": -7,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 30,
+            "bias": -7,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 31,
+            "bias": -8,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 32,
+            "bias": -8,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 33,
+            "bias": -9,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 34,
+            "bias": -9,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 35,
+            "bias": -10,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 36,
+            "bias": -10,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 37,
+            "bias": -11,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 38,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                20
+              ],
+              [
+                -1,
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 39,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                22
+              ],
+              [
+                -1,
+                23
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 40,
+            "bias": -14,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 41,
+            "bias": -15,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 42,
+            "bias": -15,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 43,
+            "bias": -16,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 44,
+            "bias": -16,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 45,
+            "bias": -17,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 46,
+            "bias": -17,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 47,
+            "bias": -18,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 48,
+            "bias": -18,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 49,
+            "bias": -19,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 50,
+            "bias": -19,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 51,
+            "bias": -20,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 52,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                10
+              ],
+              [
+                -1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 53,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 54,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 55,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                9
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 56,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                9
+              ]
+            ],
+            "input_field": null,
+            "phase": 10
+          },
+          {
+            "out_slot": 6,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                59
+              ],
+              [
+                -1,
+                60
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 11,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                61
+              ],
+              [
+                -1,
+                62
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 14,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                63
+              ],
+              [
+                -1,
+                64
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 15,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                12
+              ],
+              [
+                -1,
+                13
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 24,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                38
+              ],
+              [
+                -1,
+                39
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 25,
+            "bias": 0,
+            "terms": [
+              [
+                -1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 26,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                79
+              ],
+              [
+                -1,
+                80
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 27,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                81
+              ],
+              [
+                -1,
+                82
+              ]
+            ],
+            "input_field": null,
+            "phase": 12
+          },
+          {
+            "out_slot": 29,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                28
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 30,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                16
+              ],
+              [
+                -1,
+                17
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 31,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                18
+              ],
+              [
+                -1,
+                19
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 32,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                20
+              ],
+              [
+                -1,
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 33,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                22
+              ],
+              [
+                -1,
+                23
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 34,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                57
+              ],
+              [
+                -1,
+                58
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 35,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                65
+              ],
+              [
+                -1,
+                66
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 36,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                67
+              ],
+              [
+                -1,
+                68
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 37,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                69
+              ],
+              [
+                -1,
+                70
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 40,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                71
+              ],
+              [
+                -1,
+                72
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 41,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                73
+              ],
+              [
+                -1,
+                74
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 42,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                75
+              ],
+              [
+                -1,
+                76
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 43,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                77
+              ],
+              [
+                -1,
+                78
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 44,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                6
+              ],
+              [
+                -1,
+                11
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 45,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                11
+              ],
+              [
+                -1,
+                14
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 46,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 47,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 48,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                25
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 49,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                25
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 50,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                26
+              ],
+              [
+                1,
+                27
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 51,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                15
+              ],
+              [
+                1,
+                24
+              ]
+            ],
+            "input_field": null,
+            "phase": 14
+          },
+          {
+            "out_slot": 9,
+            "bias": 1,
+            "terms": [
+              [
+                2,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 23,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                30
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 24,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                30
+              ],
+              [
+                -1,
+                12
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 25,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                13
+              ],
+              [
+                -1,
+                31
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 26,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                31
+              ],
+              [
+                -1,
+                32
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 27,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                32
+              ],
+              [
+                -1,
+                33
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 46,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                33
+              ],
+              [
+                -1,
+                34
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 47,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                34
+              ],
+              [
+                -1,
+                6
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 48,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                14
+              ],
+              [
+                -1,
+                35
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 49,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                39
+              ],
+              [
+                -1,
+                36
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 51,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                36
+              ],
+              [
+                -1,
+                37
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 53,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                37
+              ],
+              [
+                -1,
+                40
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 54,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                40
+              ],
+              [
+                -1,
+                41
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 55,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                41
+              ],
+              [
+                -1,
+                42
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 56,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                42
+              ],
+              [
+                -1,
+                43
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 57,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                43
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 58,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                8
+              ],
+              [
+                -1,
+                10
+              ]
+            ],
+            "input_field": null,
+            "phase": 16
+          },
+          {
+            "out_slot": 9,
+            "bias": -11,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 12,
+            "bias": -12,
+            "terms": [
+              [
+                1,
+                7
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 13,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                24
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 14,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                47
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 30,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                58
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 31,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                58
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 32,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                16
+              ],
+              [
+                -1,
+                17
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 33,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                18
+              ],
+              [
+                -1,
+                19
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 34,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 36,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 37,
+            "bias": 1,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 39,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                52
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 40,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                50
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 41,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                23
+              ],
+              [
+                1,
+                24
+              ],
+              [
+                1,
+                47
+              ],
+              [
+                -1,
+                15
+              ],
+              [
+                -1,
+                44
+              ],
+              [
+                -1,
+                45
+              ],
+              [
+                -1,
+                48
+              ],
+              [
+                -1,
+                49
+              ],
+              [
+                -1,
+                25
+              ],
+              [
+                -1,
+                26
+              ],
+              [
+                -1,
+                27
+              ],
+              [
+                -1,
+                46
+              ],
+              [
+                -1,
+                53
+              ],
+              [
+                -1,
+                54
+              ],
+              [
+                -1,
+                55
+              ],
+              [
+                -1,
+                56
+              ],
+              [
+                -1,
+                57
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 42,
+            "bias": -1,
+            "terms": [
+              [
+                1,
+                6
+              ],
+              [
+                -1,
+                4
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 43,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                23
+              ],
+              [
+                1,
+                24
+              ],
+              [
+                1,
+                47
+              ],
+              [
+                1,
+                25
+              ],
+              [
+                1,
+                26
+              ],
+              [
+                1,
+                27
+              ],
+              [
+                1,
+                46
+              ],
+              [
+                1,
+                51
+              ],
+              [
+                1,
+                53
+              ],
+              [
+                1,
+                54
+              ],
+              [
+                1,
+                55
+              ],
+              [
+                1,
+                56
+              ],
+              [
+                1,
+                57
+              ]
+            ],
+            "input_field": null,
+            "phase": 18
+          },
+          {
+            "out_slot": 0,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                7
+              ],
+              [
+                -1,
+                15
+              ]
+            ],
+            "input_field": null,
+            "phase": 20
+          },
+          {
+            "out_slot": 6,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                32
+              ],
+              [
+                1,
+                33
+              ]
+            ],
+            "input_field": null,
+            "phase": 20
+          },
+          {
+            "out_slot": 9,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                45
+              ],
+              [
+                -1,
+                49
+              ]
+            ],
+            "input_field": null,
+            "phase": 20
+          },
+          {
+            "out_slot": 13,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                35
+              ],
+              [
+                -1,
+                0
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 14,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                0
+              ],
+              [
+                -1,
+                38
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 15,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                10
+              ],
+              [
+                1,
+                8
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 16,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                18
+              ],
+              [
+                -1,
+                11
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 17,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                19
+              ],
+              [
+                -1,
+                44
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 20,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                6
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 23,
+            "bias": 1,
+            "terms": [
+              [
+                -1,
+                9
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 26,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                50
+              ],
+              [
+                -1,
+                58
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 30,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                5
+              ],
+              [
+                1,
+                59
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 31,
+            "bias": 1,
+            "terms": [
+              [
+                1,
+                60
+              ]
+            ],
+            "input_field": null,
+            "phase": 22
+          },
+          {
+            "out_slot": 6,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                4
+              ],
+              [
+                1,
+                0
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 7,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                28
+              ],
+              [
+                1,
+                13
+              ],
+              [
+                -1,
+                5
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 8,
+            "bias": 0,
+            "terms": [
+              [
+                1,
+                62
+              ],
+              [
+                1,
+                10
+              ],
+              [
+                1,
+                11
+              ],
+              [
+                1,
+                14
+              ],
+              [
+                1,
+                63
+              ],
+              [
+                1,
+                18
+              ],
+              [
+                1,
+                19
+              ],
+              [
+                1,
+                64
+              ],
+              [
+                1,
+                32
+              ],
+              [
+                1,
+                33
+              ],
+              [
+                1,
+                34
+              ],
+              [
+                1,
+                35
+              ],
+              [
+                1,
+                36
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 9,
+            "bias": -1000,
+            "terms": [
+              [
+                1,
+                37
+              ],
+              [
+                1000,
+                61
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 12,
+            "bias": -1000,
+            "terms": [
+              [
+                1,
+                38
+              ],
+              [
+                1000,
+                21
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          },
+          {
+            "out_slot": 15,
+            "bias": -1000,
+            "terms": [
+              [
+                1,
+                40
+              ],
+              [
+                1000,
+                22
+              ]
+            ],
+            "input_field": null,
+            "phase": 24
+          }
+        ],
+        "attention": [
+          {
+            "keyed_read": {
+              "channel": 4,
+              "query_slot": 1,
+              "out_slot": 4,
+              "phase": 1
+            }
+          },
+          {
+            "keyed_read": {
+              "channel": 4,
+              "query_slot": 2,
+              "out_slot": 5,
+              "phase": 1
+            }
+          },
+          {
+            "keyed_read": {
+              "channel": 0,
+              "query_slot": 6,
+              "out_slot": 7,
+              "phase": 5
+            }
+          },
+          {
+            "keyed_read": {
+              "channel": 1,
+              "query_slot": 5,
+              "out_slot": 8,
+              "phase": 5
+            }
+          },
+          {
+            "keyed_read": {
+              "channel": 1,
+              "query_slot": 6,
+              "out_slot": 10,
+              "phase": 9
+            }
+          },
+          {
+            "keyed_read": {
+              "channel": 4,
+              "query_slot": 3,
+              "out_slot": 28,
+              "phase": 13
+            }
+          },
+          {
+            "keyed_read": {
+              "channel": 0,
+              "query_slot": 9,
+              "out_slot": 6,
+              "phase": 17
+            }
+          },
+          {
+            "keyed_read": {
+              "channel": 2,
+              "query_slot": 16,
+              "out_slot": 7,
+              "phase": 21
+            }
+          },
+          {
+            "keyed_read": {
+              "channel": 3,
+              "query_slot": 17,
+              "out_slot": 12,
+              "phase": 21
+            }
+          }
+        ],
+        "ffn": [
+          {
+            "value_slot": 0,
+            "gate_slot": 6,
+            "out_slot": 16,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 9,
+            "out_slot": 17,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 10,
+            "out_slot": 18,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 11,
+            "out_slot": 19,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 12,
+            "out_slot": 20,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 13,
+            "out_slot": 21,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 14,
+            "out_slot": 22,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 15,
+            "out_slot": 23,
+            "phase": 7
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 6,
+            "out_slot": 16,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 11,
+            "out_slot": 17,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 14,
+            "out_slot": 18,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 15,
+            "out_slot": 19,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 24,
+            "out_slot": 20,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 25,
+            "out_slot": 21,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 26,
+            "out_slot": 22,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 27,
+            "out_slot": 23,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 28,
+            "out_slot": 57,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 29,
+            "out_slot": 58,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 30,
+            "out_slot": 59,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 31,
+            "out_slot": 60,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 32,
+            "out_slot": 61,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 33,
+            "out_slot": 62,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 34,
+            "out_slot": 63,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 35,
+            "out_slot": 64,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 36,
+            "out_slot": 65,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 37,
+            "out_slot": 66,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 40,
+            "out_slot": 67,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 41,
+            "out_slot": 68,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 42,
+            "out_slot": 69,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 43,
+            "out_slot": 70,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 44,
+            "out_slot": 71,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 45,
+            "out_slot": 72,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 46,
+            "out_slot": 73,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 47,
+            "out_slot": 74,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 48,
+            "out_slot": 75,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 49,
+            "out_slot": 76,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 50,
+            "out_slot": 77,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 51,
+            "out_slot": 78,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 53,
+            "out_slot": 79,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 54,
+            "out_slot": 80,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 55,
+            "out_slot": 81,
+            "phase": 11
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 56,
+            "out_slot": 82,
+            "phase": 11
+          },
+          {
+            "value_slot": 10,
+            "gate_slot": 9,
+            "out_slot": 11,
+            "phase": 15
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 46,
+            "out_slot": 16,
+            "phase": 15
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 47,
+            "out_slot": 17,
+            "phase": 15
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 48,
+            "out_slot": 18,
+            "phase": 15
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 49,
+            "out_slot": 19,
+            "phase": 15
+          },
+          {
+            "value_slot": 50,
+            "gate_slot": 45,
+            "out_slot": 20,
+            "phase": 15
+          },
+          {
+            "value_slot": 51,
+            "gate_slot": 29,
+            "out_slot": 21,
+            "phase": 15
+          },
+          {
+            "value_slot": 44,
+            "gate_slot": 29,
+            "out_slot": 22,
+            "phase": 15
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 9,
+            "out_slot": 7,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 12,
+            "out_slot": 15,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 13,
+            "out_slot": 16,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 14,
+            "out_slot": 17,
+            "phase": 19
+          },
+          {
+            "value_slot": 10,
+            "gate_slot": 8,
+            "out_slot": 18,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 30,
+            "out_slot": 19,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 31,
+            "out_slot": 44,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 34,
+            "out_slot": 45,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 36,
+            "out_slot": 49,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 37,
+            "out_slot": 50,
+            "phase": 19
+          },
+          {
+            "value_slot": 0,
+            "gate_slot": 39,
+            "out_slot": 58,
+            "phase": 19
+          },
+          {
+            "value_slot": 41,
+            "gate_slot": 29,
+            "out_slot": 59,
+            "phase": 19
+          },
+          {
+            "value_slot": 42,
+            "gate_slot": 20,
+            "out_slot": 60,
+            "phase": 19
+          },
+          {
+            "value_slot": 43,
+            "gate_slot": 29,
+            "out_slot": 61,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 23,
+            "out_slot": 62,
+            "phase": 19
+          },
+          {
+            "value_slot": 52,
+            "gate_slot": 26,
+            "out_slot": 63,
+            "phase": 19
+          },
+          {
+            "value_slot": 40,
+            "gate_slot": 51,
+            "out_slot": 64,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 21,
+            "out_slot": 65,
+            "phase": 19
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 22,
+            "out_slot": 66,
+            "phase": 19
+          },
+          {
+            "value_slot": 48,
+            "gate_slot": 29,
+            "out_slot": 67,
+            "phase": 19
+          },
+          {
+            "value_slot": 31,
+            "gate_slot": 29,
+            "out_slot": 0,
+            "phase": 23
+          },
+          {
+            "value_slot": 28,
+            "gate_slot": 13,
+            "out_slot": 5,
+            "phase": 23
+          },
+          {
+            "value_slot": 7,
+            "gate_slot": 24,
+            "out_slot": 10,
+            "phase": 23
+          },
+          {
+            "value_slot": 12,
+            "gate_slot": 47,
+            "out_slot": 11,
+            "phase": 23
+          },
+          {
+            "value_slot": 15,
+            "gate_slot": 25,
+            "out_slot": 14,
+            "phase": 23
+          },
+          {
+            "value_slot": 16,
+            "gate_slot": 27,
+            "out_slot": 18,
+            "phase": 23
+          },
+          {
+            "value_slot": 17,
+            "gate_slot": 46,
+            "out_slot": 19,
+            "phase": 23
+          },
+          {
+            "value_slot": 20,
+            "gate_slot": 53,
+            "out_slot": 32,
+            "phase": 23
+          },
+          {
+            "value_slot": 6,
+            "gate_slot": 54,
+            "out_slot": 33,
+            "phase": 23
+          },
+          {
+            "value_slot": 9,
+            "gate_slot": 55,
+            "out_slot": 34,
+            "phase": 23
+          },
+          {
+            "value_slot": 23,
+            "gate_slot": 56,
+            "out_slot": 35,
+            "phase": 23
+          },
+          {
+            "value_slot": 26,
+            "gate_slot": 57,
+            "out_slot": 36,
+            "phase": 23
+          },
+          {
+            "value_slot": 30,
+            "gate_slot": 61,
+            "out_slot": 37,
+            "phase": 23
+          },
+          {
+            "value_slot": 65,
+            "gate_slot": 21,
+            "out_slot": 38,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 21,
+            "out_slot": 39,
+            "phase": 23
+          },
+          {
+            "value_slot": 66,
+            "gate_slot": 22,
+            "out_slot": 40,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 22,
+            "out_slot": 41,
+            "phase": 23
+          },
+          {
+            "value_slot": 8,
+            "gate_slot": 67,
+            "out_slot": 42,
+            "phase": 23
+          }
+        ],
+        "writes": [
+          {
+            "channel": 1,
+            "key_slot": 9,
+            "value_slot": 8
+          },
+          {
+            "channel": 2,
+            "key_slot": 12,
+            "value_slot": 39
+          },
+          {
+            "channel": 3,
+            "key_slot": 15,
+            "value_slot": 41
+          },
+          {
+            "channel": 4,
+            "key_slot": 1,
+            "value_slot": 6
+          },
+          {
+            "channel": 4,
+            "key_slot": 2,
+            "value_slot": 30
+          },
+          {
+            "channel": 4,
+            "key_slot": 3,
+            "value_slot": 7
+          }
+        ],
+        "output_slots": [
+          67,
+          42,
+          6,
+          30,
+          7
+        ]
+      },
+      "steps": [
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0
+        ]
+      ],
+      "expectedTraceDigest": "d472c32fa0d4b651cfc4e29c6203dcc6211253f7d11654d63f0de5314d46ffb3",
+      "expectedModelDigest": "caf66939e14b7d4fb823c80c9f8969f7604407b6fabf5b7e6a895f1b54b9556e",
+      "expectedFinalRow": [
+        0,
+        0,
+        20,
+        0,
+        1
+      ],
+      "expectedOutputs": [
+        1
+      ],
+      "halted": true,
+      "compileReceiptRefs": [
+        "receipt.psionic.tassadar_program.0b0804543211139b",
+        "receipt.psionic.tassadar_graph.d48b8696fd824c86",
+        "receipt.psionic.tassadar_bundle.7f5aecff95ee9ec1",
+        "receipt.psionic.tassadar_numeric_model.caf66939e14b7d4f",
+        "receipt.psionic.tassadar_trace.d472c32fa0d4b651"
       ]
     }
   ],
-  "corpusDigest": "1b7babcd0c3ce63e43212f3e4f07480969a7a9612a237b117f8de7fb8a828d6a"
+  "corpusDigest": "0d347bc3081acd2740761673f0b70d3e17a5ae467e9f865b5e6ef12009bfeb49"
 }
+
 
 const stableWorkloadIndex = (seed: string): number => {
   let hash = 2166136261

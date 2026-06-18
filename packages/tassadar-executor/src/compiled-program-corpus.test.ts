@@ -28,10 +28,10 @@ describe("Tassadar compiled-program corpus", () => {
       "tassadar_alm.numeric_program_corpus.v1",
     )
     expect(tassadarCompiledProgramCorpus.corpusDigest).toBe(
-      "1b7babcd0c3ce63e43212f3e4f07480969a7a9612a237b117f8de7fb8a828d6a",
+      "0d347bc3081acd2740761673f0b70d3e17a5ae467e9f865b5e6ef12009bfeb49",
     )
     expect(tassadarCompiledProgramCorpus).toEqual(fixtureFile)
-    expect(tassadarCompiledProgramCorpusSize).toBe(4)
+    expect(tassadarCompiledProgramCorpusSize).toBe(5)
     expect(
       tassadarCompiledProgramCorpus.fixtures.map(fixture => fixture.programId),
     ).toEqual([
@@ -39,6 +39,7 @@ describe("Tassadar compiled-program corpus", () => {
       "tassadar_corpus.mul_add_v1",
       "tassadar_corpus.memory_roundtrip_v1",
       "tassadar_corpus.factorial_loop_v1",
+      "tassadar_corpus.w1_1_window_v1",
     ])
   })
 
@@ -63,7 +64,7 @@ describe("Tassadar compiled-program corpus", () => {
 
   test("selects explicit workload suffixes as corpus round-robin slots", () => {
     expect(
-      [0, 1, 2, 3].map(index =>
+      [0, 1, 2, 3, 4].map(index =>
         selectTassadarCompiledProgramFixture({
           assignmentRef: `assignment.artanis_admin.2026061800000${index}.w${index}`,
         }).programId,
@@ -73,6 +74,7 @@ describe("Tassadar compiled-program corpus", () => {
       "tassadar_corpus.mul_add_v1",
       "tassadar_corpus.memory_roundtrip_v1",
       "tassadar_corpus.factorial_loop_v1",
+      "tassadar_corpus.w1_1_window_v1",
     ])
     expect(
       selectTassadarCompiledProgramFixture({

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { tassadarDenseWeightModuleTraceDigest } from '@openagentsinc/tassadar-executor/dense-weight-module'
+
 import { buildTassadarCorpusDispatchBody } from './artanis-administrator-tick'
 import { runTassadarReplayValidation } from './tassadar-replay-validator'
 
@@ -11,8 +13,8 @@ const tassadarPayloadFrom = (
 }
 
 describe('Artanis Tassadar corpus dispatch', () => {
-  it('dispatches four distinct psionic-derived compiled programs by workload slot', async () => {
-    const payloads = [0, 1, 2, 3].map(index =>
+  it('dispatches five distinct psionic-derived compiled programs by workload slot', async () => {
+    const payloads = [0, 1, 2, 3, 4].map(index =>
       tassadarPayloadFrom(
         buildTassadarCorpusDispatchBody({
           assignmentRef: `assignment.artanis_admin.2026061801000${index}.w${index}`,
@@ -26,14 +28,16 @@ describe('Artanis Tassadar corpus dispatch', () => {
       'tassadar_corpus.mul_add_v1',
       'tassadar_corpus.memory_roundtrip_v1',
       'tassadar_corpus.factorial_loop_v1',
+      'tassadar_corpus.w1_1_window_v1',
     ])
-    expect(new Set(payloads.map(payload => payload.expectedTraceDigest)).size).toBe(4)
-    expect(new Set(payloads.map(payload => payload.expectedModelDigest)).size).toBe(4)
+    expect(new Set(payloads.map(payload => payload.expectedTraceDigest)).size).toBe(5)
+    expect(new Set(payloads.map(payload => payload.expectedModelDigest)).size).toBe(5)
     expect(payloads.map(payload => payload.expectedOutputs)).toEqual([
       [15],
       [47],
       [42],
       [24],
+      [1],
     ])
     expect(payloads[0]?.modelArtifactKind).toBe(
       'tassadar_alm_dense_weight_module.v1',
@@ -41,7 +45,11 @@ describe('Artanis Tassadar corpus dispatch', () => {
     expect(payloads[0]?.denseModuleDigest).toBe(
       'cfda0fe5dcf42e16db9e18696731427f0f30915fd3100d38da2dcc8411433e2c',
     )
+    expect(payloads[0]?.expectedTraceDigest).toBe(
+      tassadarDenseWeightModuleTraceDigest,
+    )
     expect(payloads.slice(1).map(payload => payload.modelArtifactKind)).toEqual([
+      'tassadar_alm_numeric_model.v1',
       'tassadar_alm_numeric_model.v1',
       'tassadar_alm_numeric_model.v1',
       'tassadar_alm_numeric_model.v1',
@@ -51,7 +59,7 @@ describe('Artanis Tassadar corpus dispatch', () => {
 
   it('replay-verifies each selected corpus workload through the Worker validator', async () => {
     await Promise.all(
-      [0, 1, 2, 3].map(async index => {
+      [0, 1, 2, 3, 4].map(async index => {
         const assignmentRef = `assignment.artanis_admin.2026061802000${index}.w${index}`
         const payload = tassadarPayloadFrom(
           buildTassadarCorpusDispatchBody({
