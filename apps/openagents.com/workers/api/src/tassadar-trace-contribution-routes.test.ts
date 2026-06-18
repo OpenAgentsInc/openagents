@@ -335,17 +335,41 @@ describe('tassadar trace contribution routes (#5052)', () => {
     expect(harness.contributions._records.size).toBe(0)
   })
 
-  it('§4.1 rejects a lease owned by another Pylon', async () => {
+  it('§4.1 rejects a lease owned by another registered Pylon with a clear hint', async () => {
     const harness = makeHarness()
-    // The validator agent does not own the worker Pylon's lease.
+    // The validator agent owns a DIFFERENT registered Pylon, not the worker
+    // Pylon's lease: ownerUserId is defined but != session.user.id.
     const response = await harness.route(submitPath, {
       body: submissionBody(),
       tokenUserId: VALIDATOR_USER,
     })
-    const body = (await response.json()) as { error: string }
+    const body = (await response.json()) as { error: string; reason: string }
+
+    expect(response.status).toBe(403)
+    // Typed tag is unchanged — only the human-facing reason is clearer.
+    expect(body.error).toBe('training_authority_forbidden')
+    expect(body.reason).toContain('registered to a different agent identity')
+    expect(body.reason).toContain(WORKER_PYLON)
+    expect(harness.contributions._records.size).toBe(0)
+  })
+
+  it('§4.1 tells an UNREGISTERED Pylon to run `pylon presence register` first', async () => {
+    // The contributor footgun: a fresh node claimed a lease (public, no owner
+    // binding) but never ran `pylon presence register`, so the lease pylon_ref
+    // resolves to NO owning agent identity. The agent is a legitimate, fully
+    // authenticated session; the only thing missing is the Pylon registration.
+    const harness = makeHarness([leaseRecord({ pylonRef: 'pylon.unregistered' })])
+    const response = await harness.route(submitPath, {
+      body: submissionBody(),
+      tokenUserId: WORKER_USER,
+    })
+    const body = (await response.json()) as { error: string; reason: string }
 
     expect(response.status).toBe(403)
     expect(body.error).toBe('training_authority_forbidden')
+    expect(body.reason).toContain('not registered to your agent identity')
+    expect(body.reason).toContain('pylon presence register')
+    expect(body.reason).toContain('pylon.unregistered')
     expect(harness.contributions._records.size).toBe(0)
   })
 

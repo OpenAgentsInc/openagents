@@ -249,10 +249,25 @@ const requireOwnedLease = <Bindings extends TassadarTraceContributionRouteEnv>(
       try: () => dependencies.resolvePylonOwnerUserId(env, lease.pylonRef),
     })
 
-    if (ownerUserId === undefined || ownerUserId !== session.user.id) {
+    // Two distinct 403 (forbidden) shapes on the SAME typed tag, with separate
+    // human-facing reasons. The first is the common contributor footgun: a fresh
+    // node can `pylon training claim` (public, no owner binding) but the lease
+    // pylon_ref resolves to NO registered agent identity until
+    // `pylon presence register` binds it to the agent token's user. The second is
+    // a genuine cross-owner attempt. Auth behavior is unchanged — only the
+    // message text is clearer, and no English-substring classification is added
+    // on the worker (callers still map the typed `training_authority_forbidden`).
+    if (ownerUserId === undefined) {
       return yield* new TrainingAuthorityStoreError({
         kind: 'forbidden',
-        reason: 'Training window lease belongs to another Pylon.',
+        reason: `This Pylon (${lease.pylonRef}) is not registered to your agent identity. Run \`pylon presence register\` with your agent token before claiming or submitting.`,
+      })
+    }
+
+    if (ownerUserId !== session.user.id) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'forbidden',
+        reason: `This Pylon (${lease.pylonRef}) is registered to a different agent identity. Submit/validate with the agent token that registered this Pylon, or register your own Pylon with \`pylon presence register\`.`,
       })
     }
 
