@@ -631,7 +631,7 @@ describe('training run window routes', () => {
         jsonRequest(
           '/api/training/runs',
           {
-            promiseRef: 'training.monday_decentralized_training_launch.v1',
+            promiseRef: 'training.decentralized_training_launch.v1',
             sourceRefs: ['issue.github.openagents.5114'],
             trainingRunRef: 'run.tassadar.executor.20260615',
           },
@@ -694,7 +694,7 @@ describe('training run window routes', () => {
             verifierPolicy: 'exact_trace_replay',
             workloadFamily: 'executor-trace',
           },
-          promiseRef: 'training.monday_decentralized_training_launch.v1',
+          promiseRef: 'training.decentralized_training_launch.v1',
           trainingRunRef: 'run.tassadar.executor.20260615',
         }),
         {},
@@ -750,7 +750,7 @@ describe('training run window routes', () => {
     await runRoute(
       routes.routeTrainingRunWindowRequest(
         jsonRequest('/api/training/runs', {
-          promiseRef: 'training.monday_decentralized_training_launch.v1',
+          promiseRef: 'training.decentralized_training_launch.v1',
           trainingRunRef: 'run.tassadar.executor.20260615',
         }),
         {},
@@ -829,7 +829,7 @@ describe('training run window routes', () => {
     await runRoute(
       routes.routeTrainingRunWindowRequest(
         jsonRequest('/api/training/runs', {
-          promiseRef: 'training.monday_decentralized_training_launch.v1',
+          promiseRef: 'training.decentralized_training_launch.v1',
           trainingRunRef: 'run.tassadar.executor.20260615',
         }),
         {},
@@ -931,7 +931,7 @@ describe('training run window routes', () => {
             'Qualified contributor count = admitted contributors with accepted, replay-verified useful work and public-safe receipt refs; never raw registrations or stale heartbeats.',
           spendCapSats: 100,
         },
-        promiseRef: 'training.monday_decentralized_training_launch.v1',
+        promiseRef: 'training.decentralized_training_launch.v1',
         trainingRunRef: 'run.tassadar.executor.20260615',
       },
     })
@@ -1084,7 +1084,7 @@ describe('training run window routes', () => {
       makeId: () => 'run5010',
       nowIso: '2026-06-14T10:00:00.000Z',
       request: {
-        promiseRef: 'training.monday_decentralized_training_launch.v1',
+        promiseRef: 'training.decentralized_training_launch.v1',
         trainingRunRef: 'run.tassadar.executor.20260615',
       },
     })
@@ -2274,7 +2274,7 @@ describe('real settlement route wiring (#5232, gate default OFF)', () => {
           blockerRefs: [],
           spendCapSats: 100,
         },
-        promiseRef: 'training.monday_decentralized_training_launch.v1',
+        promiseRef: 'training.decentralized_training_launch.v1',
         trainingRunRef: REAL_RUN_REF,
       },
     })

@@ -162,7 +162,7 @@ const blogPosts: ReadonlyArray<BlogPost> = [
         title: 'The run is live',
         blocks: [
           paragraph(
-            'The Tassadar run is live. It is a public decentralized training run where you install node software, do useful executor-trace work, and the work is verified by exact replay on a separate machine before anyone is paid. Two launch promises just flipped green on the live product-promises registry (version 2026-06-16.7): training.monday_decentralized_training_launch.v1 and pylon.install_without_wallet_knowledge.v1.',
+            'The Tassadar run is live. It is a public decentralized training run where you install node software, do useful executor-trace work, and the work is verified by exact replay on a separate machine before anyone is paid. Two launch promises just flipped green on the live product-promises registry (version 2026-06-16.7): training.decentralized_training_launch.v1 and pylon.install_without_wallet_knowledge.v1.',
           ),
           paragraph(
             'Everything here is receipt-first: each claim degrades to the receipts actually recorded, and you can dereference every one of them. The run, its state, and its settlement metrics are public.',

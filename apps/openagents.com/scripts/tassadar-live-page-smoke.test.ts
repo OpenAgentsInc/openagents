@@ -60,7 +60,7 @@ describe('Tassadar live page smoke', () => {
         return json({
           promises: [
             {
-              promiseId: 'training.monday_decentralized_training_launch.v1',
+              promiseId: 'training.decentralized_training_launch.v1',
               state: 'green',
             },
             {

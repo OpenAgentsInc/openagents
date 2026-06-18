@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-17.5'
+export const PublicProductPromisesVersion = '2026-06-17.6'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -160,6 +160,7 @@ export const publicProductPromisesDocument = () => {
         'Decentralized-training lane (RESEARCH_PLAN W5): the new training.public_gradient_windows.v1 record is planned, not live. Public devices do generation/validation/evaluation only; the Pluralis lifecycle substrate (#4855, P0-P3) is in place, but no public gradient enters the canonical optimizer until a quarantine→verify→canary→promotion regime ships. Do not claim public decentralized gradient training for the launch.',
         'Registry 2026-06-17.4 adds autopilot.repo_study_packets.v1 as a yellow internal-dogfood claim only. The public StudyBench MVP shows source-grounded lift on OpenAgents refs, but customer repo studying, trained repo expert language, marketplace packages, payout eligibility, and paid-work status remain blocked by separate validation, privacy, metering, pricing, payout, and settlement gates.',
         'Registry 2026-06-17.5: the real paid-settlement gate on training.monday_decentralized_training_launch.v1 is now MET for a bounded scope. A 1,000-sat real Bitcoin run-settlement settled, native over Spark, to an independent contributor (Orrery, pylon.448ba824…), evidenced by public receipt receipt.nexus.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618 (realBitcoinMoved:true, moneyMovement:real_bitcoin, state:settled, adapter:spark_treasury), backed by Verified challenge training.verification.challenge.071445c5-6ad6-4136-87e3-253b01914b4c (independent validator replay on a distinct device, digests matched). #5232 closed and the public settled feed moved 0 → 1, with no raw address in the projection. The promise stays green; this is an evidence/copy upgrade from simulation-record-path-only to one real paid settlement. The earlier simulation-backed Orrery receipt (realBitcoinMoved:false) is retained as historical projection-path context only. This proof is exactly one 1,000-sat canary: it does not authorize network-scale, paid-at-scale, hundreds-paid, largest-run, canonical-model-mutation, or unbounded-payout copy. training.public_distributed_training_run.v1 drops its public_training_settlement_receipts_missing blocker but stays red on public_distributed_training_run_receipts_missing plus network-scale/participant criteria. The decision record is docs/promises/2026-06-18-training-monday-real-settlement-gate-met.md, and the matching promise_transition exception receipt promise_transition_5be9bf3e-4784-41c4-a861-b23f5da61552 was recorded against the deployed registry via the operator route (from-state equals to-state, both green), dereferenceable at /api/public/product-promises/transitions.',
+        'Registry 2026-06-17.6: the training launch promise was renamed from training.monday_decentralized_training_launch.v1 to training.decentralized_training_launch.v1 ("Monday" dropped — it is just the decentralized training launch now). This is a forward-looking identifier rename only: the promise state stays green, the real-settlement evidence (receipt.nexus.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618, realBitcoinMoved:true) is unchanged, and no scope is widened. Earlier registry notes and promise_transition receipts recorded under the old training.monday_decentralized_training_launch.v1 id are retained as accurate history of the prior registry states.',
       ],
     },
     promises: [
@@ -424,7 +425,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Pylons participate in public distributed model-training runs with visible run state, verified work, reported results, and contributor payment for useful work.',
         safeCopy:
-          'A bounded two-device CS336 A1-scale run is evidenced under pylon.first_real_model_training_run.v1, and one bounded 1,000-sat real Bitcoin run-settlement to a single independent contributor is evidenced under training.monday_decentralized_training_launch.v1, but a broad public distributed training run is still not green: network-scale participation, broad accepted-work receipts, and a participant-count methodology remain unmet.',
+          'A bounded two-device CS336 A1-scale run is evidenced under pylon.first_real_model_training_run.v1, and one bounded 1,000-sat real Bitcoin run-settlement to a single independent contributor is evidenced under training.decentralized_training_launch.v1, but a broad public distributed training run is still not green: network-scale participation, broad accepted-work receipts, and a participant-count methodology remain unmet.',
         unsafeCopy:
           'Do not claim a public network-scale training run is live, open for broad contribution, or paying contributors at scale. One verified pairing and one 1,000-sat canary settlement do not prove a network-scale run; the broad run, broad work, validation, and multi-contributor settlement receipts do not yet exist.',
         evidenceRefs: [
@@ -434,7 +435,7 @@ export const publicProductPromisesDocument = () => {
           'docs/promises/registry.md',
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'promise:pylon.first_real_model_training_run.v1',
-          'promise:training.monday_decentralized_training_launch.v1',
+          'promise:training.decentralized_training_launch.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.public_distributed_training_run_receipts_missing',
@@ -446,7 +447,7 @@ export const publicProductPromisesDocument = () => {
       },
       {
         ...basePromiseFields,
-        promiseId: 'training.monday_decentralized_training_launch.v1',
+        promiseId: 'training.decentralized_training_launch.v1',
         productArea: 'training',
         audience: ['contributor', 'operator', 'public'],
         state: 'green',

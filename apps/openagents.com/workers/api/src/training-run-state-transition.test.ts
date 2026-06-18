@@ -32,7 +32,7 @@ const makeTassadarRun = () =>
     nowIso,
     request: {
       manifest,
-      promiseRef: 'training.monday_decentralized_training_launch.v1',
+      promiseRef: 'training.decentralized_training_launch.v1',
       receiptRefs: [],
       sourceRefs: [],
       trainingRunRef: 'run.tassadar.executor.20260615',

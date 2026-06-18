@@ -2,7 +2,7 @@
 
 const defaultBaseUrl = 'https://openagents.com'
 const requiredPromiseRefs = [
-  'training.monday_decentralized_training_launch.v1',
+  'training.decentralized_training_launch.v1',
   'pylon.install_without_wallet_knowledge.v1',
   'models.tassadar_percepta_executor.v1',
   'training.public_gradient_windows.v1',

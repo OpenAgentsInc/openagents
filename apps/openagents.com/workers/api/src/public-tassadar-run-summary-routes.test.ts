@@ -41,7 +41,7 @@ const runRecord: TrainingRunRecord = {
     spendCapSats: 100_000,
   },
   maxAllowedStale: 5,
-  promiseRef: 'training.monday_decentralized_training_launch.v1',
+  promiseRef: 'training.decentralized_training_launch.v1',
   publicProjectionJson: '{}',
   receiptRefs: [settlementReceiptRef],
   sealInFlightAt: null,

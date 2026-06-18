@@ -27,7 +27,7 @@ const activeRun = (
     nowIso: '2026-06-14T10:00:00.000Z',
     request: {
       manifest: { artifactDigestRefs: [], blockerRefs: [], spendCapSats: 100 },
-      promiseRef: 'training.monday_decentralized_training_launch.v1',
+      promiseRef: 'training.decentralized_training_launch.v1',
       trainingRunRef: 'run.tassadar.executor.20260615',
     },
   }),
