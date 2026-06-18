@@ -56,6 +56,23 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/data-trace-marketplace-gate.test.ts` and
   `packages/probe/packages/runtime/tests/openagents-study-verification.test.ts`.
 
+## Artanis Work Direction Labor Requests
+
+- Artanis construction/data work-direction requests must stay operator-enabled
+  by default-off configuration and must use the existing labor requester,
+  NIP-LBR lifecycle, and labor escrow rail. Do not add a parallel settlement or
+  payout workflow for these directions.
+- Program-authorship requests must carry V1 construction verification commands
+  and may release escrow only after the compiled module construction/replay
+  verdict passes without real-bitcoin movement. Dataset-curation requests must
+  carry V3 data-correctness verification commands and may release escrow only
+  after the data contribution correctness gate passes.
+- Contributor work-routing proposals must enter the requester surface through
+  typed proposal records with selector refs and explicit direction kinds. Do
+  not infer funded direction kinds from keywords in Forum post text.
+- Regression coverage for this policy lives in
+  `workers/api/src/artanis-work-directions.test.ts`.
+
 ## Foldkit-Owned Browser Navigation
 
 - Production browser app code must not call raw History APIs such as

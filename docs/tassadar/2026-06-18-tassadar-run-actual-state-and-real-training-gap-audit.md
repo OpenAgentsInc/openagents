@@ -1117,7 +1117,24 @@ marketplace packaging, pricing, payout, and settlement claims remain blocked.
 
 - **#5329 — E1** Artanis construction/data work-request directions (program
   authorship, dataset curation, data-direction proposals) via the live labor
-  market.
+  market. Status 2026-06-18: landed in `openagents`. Artanis now has a typed
+  work-direction layer over the existing #4731 requester, Forum/NIP-LBR
+  lifecycle, and labor escrow rail. Program-authorship requests carry
+  CALM/Wasm module/corpus refs plus
+  `command.public.tassadar.v1_construction_verification` and require a passing
+  V1 construction/replay verdict before escrow release. Dataset-curation
+  requests carry trace-corpus/source refs plus
+  `command.public.openagents.data_contribution.v3_correctness` and require a
+  passing V3 data-correctness verifier receipt before release. Contributor
+  `work_routing_proposal` inputs route into funded requests only through typed
+  proposal records with selector refs and explicit direction kinds, and the
+  filter is default-off until operator-enabled. Delivered work records the
+  full `delivered -> accepted -> settled` lifecycle only after the relevant
+  verifier gate passes; failed V1, failed V3, or V3 validator-review remainder
+  refunds escrow and does not accept/settle. This reuses the existing labor
+  escrow; it does not add a parallel payout rail, arm live Bitcoin settlement,
+  infer work directions from Forum keywords, or store raw/private source
+  material in public projections.
 - **#5330 — E2** Demand-priced curation + module-library ranking/dedup.
 - **#5331 — E3** Adversarial-verification market: agents paid to find
   module-divergence inputs.
