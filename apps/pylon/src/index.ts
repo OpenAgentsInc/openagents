@@ -163,6 +163,7 @@ import {
   requestPayoutTargetAdmission,
   sendWithSparkBackup,
   sweepSparkBackupToMdk,
+  withPayoutTargetReadiness,
   withSparkPrimaryWalletBalance,
   writeCachedSparkTarget,
   isSparkBackupDefaultEnabled,
@@ -1555,7 +1556,24 @@ async function readSparkBackupStatusProjection(
 
 async function classifyPrimaryAgentWalletForState(state: PylonLocalState) {
   const sparkBackup = await readSparkBackupStatusProjection(state, { enabled: true })
-  return withSparkPrimaryWalletBalance(mdkScopedAgentWalletStatus(), sparkBackup)
+  const status = withSparkPrimaryWalletBalance(mdkScopedAgentWalletStatus(), sparkBackup)
+  // Gap #2 (v1.0 self-serve shakeout): surface the registered payout target —
+  // or the lack of one — in `wallet status`. The presence state records the
+  // public-safe `payout.spark.<digest>` ref once a target is registered; when
+  // absent, `withPayoutTargetReadiness` adds
+  // `blocker.wallet.payout_target_unregistered` so a contributor SEES they are
+  // not set up to be paid BEFORE they claim + run verified work that would
+  // otherwise settle to nothing. Fail-soft: a presence read error must not break
+  // `wallet status`, so it falls back to "no registered target" (which is the
+  // safe, visible-blocker state).
+  let registeredPayoutTargetRef: string | null = null
+  try {
+    const presence = await loadOrCreatePresenceState(state.paths, state.identity)
+    registeredPayoutTargetRef = presence.sparkPayoutTargetRef ?? null
+  } catch {
+    registeredPayoutTargetRef = null
+  }
+  return withPayoutTargetReadiness(status, [registeredPayoutTargetRef])
 }
 
 async function classifyPrimaryAgentWallet() {
@@ -2150,13 +2168,34 @@ async function main() {
         if (!windowRef) throw new Error("training closeout requires --window-ref")
         result = await closeoutTrainingWindow(net, windowRef)
       } else if (command === "claim") {
-        const pylonRef =
-          optionString(options, "pylon-ref") ??
-          (await ensurePylonLocalState(createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env))).identity.pylonRef
+        const claimState = await ensurePylonLocalState(createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env))
+        const pylonRef = optionString(options, "pylon-ref") ?? claimState.identity.pylonRef
         const leaseSecondsRaw = optionString(options, "lease-seconds")
         const leaseSeconds = leaseSecondsRaw === undefined ? undefined : Number(leaseSecondsRaw)
+        // Gap #2 (v1.0 self-serve shakeout): resolve whether THIS node has a
+        // registered payout target so the claim can WARN (not block) a fresh
+        // contributor that verified work will not pay until they run
+        // `pylon wallet register-payout-target`. Fail-soft: a presence read
+        // error falls back to "unregistered" (the safe, visible-warning state).
+        let payoutTargetRegistered = false
+        try {
+          const presence = await loadOrCreatePresenceState(claimState.paths, claimState.identity)
+          payoutTargetRegistered =
+            typeof presence.sparkPayoutTargetRef === "string" && presence.sparkPayoutTargetRef.trim() !== ""
+        } catch {
+          payoutTargetRegistered = false
+        }
+        if (!payoutTargetRegistered) {
+          // Human-readable warning on stderr so it is visible even when stdout
+          // is piped to `| jq`. The structured warning also rides the --json
+          // result below (`payoutTargetWarning`).
+          process.stderr.write(
+            "[training claim] WARNING: no payout target registered — verified work will NOT pay. Run `pylon wallet register-payout-target` to get paid.\n",
+          )
+        }
         result = await claimTrainingLease(net, {
           pylonRef,
+          payoutTargetRegistered,
           ...(leaseSeconds !== undefined && Number.isFinite(leaseSeconds) ? { leaseSeconds } : {}),
         })
       } else if (command === "admit") {

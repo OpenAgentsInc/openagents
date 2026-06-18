@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   activateTrainingWindow,
   admitTrainingEvidence,
+  claimPayoutTargetWarning,
   claimTrainingLease,
   closeoutTrainingWindow,
   planTrainingWindow,
@@ -95,6 +96,49 @@ describe("training claim", () => {
     expect(result.reason).toBe("claimed")
     expect(rec.calls[0]!.url).toBe(`${base}/api/training/leases/claim`)
     expect(rec.calls[0]!.auth).toBeNull()
+  })
+
+  // Gap #2 (v1.0 self-serve shakeout): a contributor that claims without a
+  // registered payout target gets a clear WARNING (not a hard block) pointing at
+  // `pylon wallet register-payout-target`, surfaced in the --json result.
+  test("warns about an unregistered payout target without blocking the claim", async () => {
+    const rec = recordingFetch(() => ({ json: { lease: { leaseRef: "l1", windowRef: "win.1" } } }))
+    const result = (await claimTrainingLease(
+      { baseUrl: base, fetchFn: rec.fetchFn, nowIso },
+      { pylonRef: "pylon.abc", payoutTargetRegistered: false },
+    )) as { ok: boolean; reason: string; payoutTargetWarning?: { warningRef: string; command: string } }
+    // The claim still succeeds — warn, do not block.
+    expect(result.ok).toBe(true)
+    expect(result.reason).toBe("claimed")
+    expect(result.payoutTargetWarning?.warningRef).toBe("warning.training.claim.payout_target_unregistered")
+    expect(result.payoutTargetWarning?.command).toBe("pylon wallet register-payout-target")
+  })
+
+  test("does NOT warn when a payout target is registered", async () => {
+    const rec = recordingFetch(() => ({ json: { lease: { leaseRef: "l1", windowRef: "win.1" } } }))
+    const result = (await claimTrainingLease(
+      { baseUrl: base, fetchFn: rec.fetchFn, nowIso },
+      { pylonRef: "pylon.abc", payoutTargetRegistered: true },
+    )) as { ok: boolean; payoutTargetWarning?: unknown }
+    expect(result.ok).toBe(true)
+    expect(result.payoutTargetWarning).toBeUndefined()
+  })
+
+  test("still warns when the claim itself fails (so the contributor sees it early)", async () => {
+    const rec = recordingFetch(() => ({ status: 409, json: { reason: "no_active_window" } }))
+    const result = (await claimTrainingLease(
+      { baseUrl: base, fetchFn: rec.fetchFn, nowIso },
+      { pylonRef: "pylon.abc", payoutTargetRegistered: false },
+    )) as { ok: boolean; reason: string; payoutTargetWarning?: { warningRef: string } }
+    expect(result.ok).toBe(false)
+    expect(result.reason).toBe("claim_failed")
+    expect(result.payoutTargetWarning?.warningRef).toBe("warning.training.claim.payout_target_unregistered")
+  })
+
+  test("claimPayoutTargetWarning is null when registered or unresolved, set when missing", () => {
+    expect(claimPayoutTargetWarning(true)).toBeNull()
+    expect(claimPayoutTargetWarning(undefined)).toBeNull()
+    expect(claimPayoutTargetWarning(false)?.warningRef).toBe("warning.training.claim.payout_target_unregistered")
   })
 })
 

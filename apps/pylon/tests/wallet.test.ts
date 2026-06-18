@@ -10,6 +10,7 @@ import {
   classifyMdkReceiveFailure,
   classifyMdkWallet,
   classifySparkBackupReceive,
+  mdkScopedAgentWalletStatus,
   detectSparkBackupBalance,
   isSparkBackupDefaultEnabled,
   preflightLegacySparkMigration,
@@ -28,6 +29,7 @@ import {
   sendWithSparkBackup,
   sparkBackupTargetPath,
   sweepSparkBackupToMdk,
+  withPayoutTargetReadiness,
   withUnifiedWalletBalance,
   withSparkPrimaryWalletBalance,
   writeCachedSparkTarget,
@@ -58,6 +60,67 @@ const runner =
       stderr: response.stderr ?? "",
     }
   }
+
+describe("payout-target readiness visibility (Gap #2)", () => {
+  // Helper: a default/unconfigured Spark-primary status (daemon offline, no
+  // payout target) — the shape `wallet status` reports for a fresh node.
+  const unconfiguredStatus = () => withSparkPrimaryWalletBalance(mdkScopedAgentWalletStatus())
+
+  test("surfaces the unregistered-payout-target blocker when payoutTargetRefs is empty (default/unconfigured branch)", () => {
+    const status = withPayoutTargetReadiness(unconfiguredStatus(), [])
+    expect(status.payoutTargetRefs).toEqual([])
+    expect(status.blockerRefs).toContain("blocker.wallet.payout_target_unregistered")
+  })
+
+  test("surfaces the unregistered-payout-target blocker on the LIVE send-ready branch too (Orrery case)", async () => {
+    // A wallet can be send-ready yet have NO payout target registered.
+    const mdkStatus = await classifyMdkWallet(
+      runner({ balance: { stdout: { balance_sats: 123, send_ready: true, outbound_capacity_sats: 21 } } }),
+      { MDK_WALLET_PORT: "3457" } as NodeJS.ProcessEnv,
+    )
+    expect(mdkStatus.sendReady).toBe(true)
+    const status = withPayoutTargetReadiness(mdkStatus, [])
+    expect(status.sendReady).toBe(true)
+    expect(status.payoutTargetRefs).toEqual([])
+    expect(status.blockerRefs).toContain("blocker.wallet.payout_target_unregistered")
+  })
+
+  test("does NOT add the blocker and populates payoutTargetRefs when a target is registered", () => {
+    const status = withPayoutTargetReadiness(unconfiguredStatus(), [
+      "payout.spark.deadbeefdeadbeefdeadbeef",
+    ])
+    expect(status.payoutTargetRefs).toEqual(["payout.spark.deadbeefdeadbeefdeadbeef"])
+    expect(status.blockerRefs).not.toContain("blocker.wallet.payout_target_unregistered")
+  })
+
+  test("ignores empty/whitespace/null refs and de-duplicates registered refs", () => {
+    const status = withPayoutTargetReadiness(unconfiguredStatus(), [
+      null,
+      "   ",
+      "payout.spark.deadbeefdeadbeefdeadbeef",
+      "payout.spark.deadbeefdeadbeefdeadbeef",
+      undefined,
+    ])
+    expect(status.payoutTargetRefs).toEqual(["payout.spark.deadbeefdeadbeefdeadbeef"])
+    expect(status.blockerRefs).not.toContain("blocker.wallet.payout_target_unregistered")
+  })
+
+  test("the resulting projection is public-safe (redacted refs only)", () => {
+    const status = withPayoutTargetReadiness(unconfiguredStatus(), [
+      "payout.spark.deadbeefdeadbeefdeadbeef",
+    ])
+    expect(() => assertPublicProjectionSafe(status)).not.toThrow()
+    expect(JSON.stringify(status)).not.toContain("spark1")
+  })
+
+  test("rejects a raw Spark address smuggled into payoutTargetRefs", () => {
+    expect(() =>
+      withPayoutTargetReadiness(unconfiguredStatus(), [
+        "spark1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+      ]),
+    ).toThrow()
+  })
+})
 
 describe("MDK wallet readiness and ledger", () => {
   test("reclaims stale MDK daemon pidfiles before wallet commands", async () => {

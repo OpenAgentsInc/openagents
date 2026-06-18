@@ -204,10 +204,46 @@ export function closeoutTrainingWindow(options: TrainingNetworkOptions, windowRe
   return transitionWindow(options, "closeout", windowRef)
 }
 
+// Gap #2 (v1.0 self-serve shakeout): a contributor can claim + run verified
+// work but is SILENTLY not paid if no Spark payout target is registered. This
+// is the public-safe warning a `training claim` surfaces (human + --json) so a
+// fresh contributor knows to register BEFORE earning, instead of discovering
+// the verified pair settled to nothing. It is a WARNING, not a hard block:
+// claiming still succeeds; the contributor is just told to register.
+export type ClaimPayoutTargetWarning = {
+  schema: "openagents.pylon.training_claim_payout_warning.v0.1"
+  warningRef: "warning.training.claim.payout_target_unregistered"
+  message: string
+  actionRef: "action.wallet.register_payout_target"
+  command: "pylon wallet register-payout-target"
+}
+
+const CLAIM_PAYOUT_TARGET_WARNING: ClaimPayoutTargetWarning = {
+  schema: "openagents.pylon.training_claim_payout_warning.v0.1",
+  warningRef: "warning.training.claim.payout_target_unregistered",
+  message:
+    "No payout target is registered: verified work will NOT pay until you run `pylon wallet register-payout-target`.",
+  actionRef: "action.wallet.register_payout_target",
+  command: "pylon wallet register-payout-target",
+}
+
+/**
+ * Public-safe payout-target warning for the claim path, or `null` when a target
+ * is registered. Pure + projection-safe (carries only refs + a human message,
+ * never raw payment material), so the CLI can surface it in both human and
+ * `--json` output. `payoutTargetRegistered === undefined` means the caller did
+ * not resolve local payout-target state, so no warning is emitted.
+ */
+export function claimPayoutTargetWarning(
+  payoutTargetRegistered: boolean | undefined,
+): ClaimPayoutTargetWarning | null {
+  return payoutTargetRegistered === false ? CLAIM_PAYOUT_TARGET_WARNING : null
+}
+
 // claim: a Pylon claims a lease on an active window (public endpoint).
 export async function claimTrainingLease(
   options: TrainingNetworkOptions,
-  input: { pylonRef: string; leaseSeconds?: number },
+  input: { pylonRef: string; leaseSeconds?: number; payoutTargetRegistered?: boolean },
 ): Promise<unknown> {
   const fetchFn = options.fetchFn ?? fetch
   const baseUrl = normalizeBaseUrl(options.baseUrl)
@@ -217,16 +253,33 @@ export async function claimTrainingLease(
     throw new Error("invalid --pylon-ref (3-120 chars, [a-zA-Z0-9._-])")
   }
   const stamp = safeRefStamp(fetchedAt)
+  // Gap #2: surface the missing payout target alongside the claim result so a
+  // contributor SEES they are not set up to be paid. A warning never blocks the
+  // claim. `null` (target registered, or state not resolved) carries no field.
+  const payoutTargetWarning = claimPayoutTargetWarning(input.payoutTargetRegistered)
   const result = await postPublicJson(fetchFn, `${baseUrl}/api/training/leases/claim`, {
     ...(input.leaseSeconds === undefined ? {} : { leaseSeconds: input.leaseSeconds }),
     pylonRef,
     receiptRefs: [`receipt.pylon.cli.training.lease.claim.${stamp}`],
   })
   if (!result.ok) {
-    return { ok: false, reason: "claim_failed", pylonRef, lease: null, error: result.error }
+    return {
+      ok: false,
+      reason: "claim_failed",
+      pylonRef,
+      lease: null,
+      error: result.error,
+      ...(payoutTargetWarning ? { payoutTargetWarning } : {}),
+    }
   }
   const lease = (result.json as Record<string, unknown> | null)?.lease ?? null
-  return { ok: lease !== null, reason: lease === null ? "claim_failed" : "claimed", pylonRef, lease }
+  return {
+    ok: lease !== null,
+    reason: lease === null ? "claim_failed" : "claimed",
+    pylonRef,
+    lease,
+    ...(payoutTargetWarning ? { payoutTargetWarning } : {}),
+  }
 }
 
 // admit: admit real-gradient evidence for a training run (admin endpoint).

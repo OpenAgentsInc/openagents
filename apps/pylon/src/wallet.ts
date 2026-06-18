@@ -699,6 +699,48 @@ export function withSparkPrimaryWalletBalance(
   }
 }
 
+/**
+ * Surface whether this node has a registered payout target (Gap #2 from the
+ * v1.0 self-serve shakeout). A contributor can claim + run verified work, but
+ * if no payout target is registered the verified pair settles to NOTHING at the
+ * downstream destination resolver — silently. This makes that state VISIBLE in
+ * `wallet status` BEFORE earning by:
+ *   - populating `payoutTargetRefs` with the registered digest ref(s), and
+ *   - appending `blocker.wallet.payout_target_unregistered` when none exist.
+ *
+ * Applied to EVERY branch (default/unconfigured AND the live send-ready branch)
+ * because a wallet can be send-ready yet have NO payout target registered —
+ * exactly the Orrery case. Projection-safe: only redacted `payout.<kind>.<digest>`
+ * refs are accepted (the same admission guard the register path uses); a raw
+ * Spark address / invoice / offer is rejected before it can reach a projection.
+ */
+export function withPayoutTargetReadiness(
+  status: WalletStatusProjection,
+  registeredPayoutTargetRefs: ReadonlyArray<string | null | undefined> = [],
+): WalletStatusProjection {
+  const payoutTargetRefs = [
+    ...new Set(
+      registeredPayoutTargetRefs
+        .map((ref) => (typeof ref === "string" ? ref.trim() : ""))
+        .filter((ref) => ref !== ""),
+    ),
+  ]
+  const hasPayoutTarget = payoutTargetRefs.length > 0
+  const blockerRefs = hasPayoutTarget
+    ? status.blockerRefs
+    : [...new Set([...status.blockerRefs, "blocker.wallet.payout_target_unregistered"])]
+  const next: WalletStatusProjection = {
+    ...status,
+    payoutTargetRefs,
+    blockerRefs,
+  }
+  // Guard the projection so a raw payout target (e.g. a `spark1…` address) can
+  // never ride the `payoutTargetRefs` field into a projection or log. Only the
+  // redacted `payout.<kind>.<digest>` digest refs are admissible.
+  assertPublicProjectionSafe(next)
+  return next
+}
+
 // Projection-safe balance subset shared by the mobile `walletStatus` action and
 // the dedicated `pylon balance --json` command (#5402 launch shakeout). Both
 // read the SAME local primary-wallet projection (`classifyPrimaryAgentWallet`)
