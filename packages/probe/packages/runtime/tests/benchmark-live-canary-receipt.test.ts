@@ -1,10 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import {
-  PROBE_BENCHMARK_CLOSEOUT_BUNDLE_FILE_NAMES,
   decodeProbeBenchmarkCloseout,
   decodeProbeBenchmarkRouteScorecard,
   decodeProbeBenchmarkRun,
@@ -13,6 +12,19 @@ import {
 const testDir = dirname(fileURLToPath(import.meta.url));
 const canaryDir = join(testDir, "../../../docs/benchmarks/canaries/20260608151057");
 const bundleDir = join(canaryDir, "closeout-bundle");
+const CANARY_CLOSEOUT_BUNDLE_FILE_NAMES = [
+  "probe-run-record.json",
+  "probe-closeout.json",
+  "decision-trace-summary.json",
+  "selected-signatures.json",
+  "tool-menu.json",
+  "candidate-ref.json",
+  "artifact-refs.json",
+  "resource-usage-ref.json",
+  "policy-findings.json",
+  "failure-classification.json",
+  "route-scorecard.json",
+] as const;
 
 const readJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, "utf8"));
 
@@ -60,9 +72,9 @@ describe("live Probe GEPA Terminal-Bench canary receipt", () => {
       "task.public.terminal_bench_2.configure_git_webserver.retained",
       "task.public.terminal_bench_2.filter_js_from_html.retained",
     ]);
-    expect(receipt.closeoutBundle.fileRefs.sort()).toEqual(
-      [...PROBE_BENCHMARK_CLOSEOUT_BUNDLE_FILE_NAMES].sort(),
-    );
+    const bundleFileNames = await readdir(bundleDir);
+    expect(receipt.closeoutBundle.fileRefs.sort()).toEqual([...CANARY_CLOSEOUT_BUNDLE_FILE_NAMES].sort());
+    expect(bundleFileNames.sort()).toEqual([...CANARY_CLOSEOUT_BUNDLE_FILE_NAMES].sort());
 
     expect(receipt.pylonLifecycle.assignmentState).toBe("accepted_work");
     expect(receipt.pylonLifecycle.leaseState).toBe("terminal");
