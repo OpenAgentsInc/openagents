@@ -239,6 +239,16 @@ class FakeStatement {
     this.db.ran.push({ query: this.query, values: this.values })
 
     if (this.query.includes('INSERT OR IGNORE INTO nexus_treasury_payout_intents')) {
+      // Model real SQLite `INSERT OR IGNORE` conflict semantics: when a UNIQUE
+      // constraint (or, with FKs enforced, a foreign-key constraint) would be
+      // violated, the row is silently dropped and `.run()` still resolves with
+      // zero changes. The store must not treat that as a successful persist.
+      if (this.db.dropNextIntentInsert) {
+        this.db.dropNextIntentInsert = false
+
+        return { meta: { changes: 0 } }
+      }
+
       const row: IntentRow = {
         id: String(this.values[0]),
         payout_intent_ref: String(this.values[1]),
@@ -316,6 +326,7 @@ class FakeD1Database {
   attemptRowsByIdempotency = new Map<string, AttemptRow>()
   attemptRowsByRef = new Map<string, AttemptRow>()
   bound: Array<{ query: string; values: ReadonlyArray<unknown> }> = []
+  dropNextIntentInsert = false
   intentRowsByIdempotency = new Map<string, IntentRow>()
   intentRowsByRef = new Map<string, IntentRow>()
   ran: Array<{ query: string; values: ReadonlyArray<unknown> }> = []
@@ -466,5 +477,51 @@ describe('Nexus treasury payout authority ledger', () => {
         payoutIntentRef: 'payout_intent.invalid',
       }),
     ).rejects.toBeInstanceOf(NexusTreasuryPayoutLedgerUnsafe)
+  })
+
+  // openagents #5232: the first real settlement attempt failed CLOSED with
+  // `payout_intent_not_found` at dispatch even though createPayoutIntent had
+  // "succeeded". Root cause: `INSERT OR IGNORE` silently drops the intent row
+  // on a constraint conflict and still resolves successfully, so the intent was
+  // never durably persisted and dispatchPayout's readPayoutIntentByRef returned
+  // undefined. createPayoutIntent must verify durable presence by ref and fail
+  // loudly at the persistence boundary instead of leaking a misleading
+  // not-found downstream.
+  test('createPayoutIntent fails loudly when INSERT OR IGNORE silently drops the row (#5232)', async () => {
+    const fakeDb = new FakeD1Database()
+    const store = makeD1NexusTreasuryPayoutLedgerStore(
+      fakeDb as unknown as D1Database,
+    )
+
+    await store.createPayoutTargetApproval(approval)
+
+    // Force the next intent insert to be ignored (constraint conflict).
+    fakeDb.dropNextIntentInsert = true
+
+    await expect(store.createPayoutIntent(intent)).rejects.toBeInstanceOf(
+      NexusTreasuryPayoutLedgerUnsafe,
+    )
+
+    // The silent drop is observable: nothing was persisted by ref.
+    await expect(
+      store.readPayoutIntentByRef(intent.payoutIntentRef),
+    ).resolves.toBeUndefined()
+  })
+
+  // A genuine idempotent replay re-inserts the identical row. The row is
+  // already present, so the post-insert verification finds it and the call
+  // succeeds — retry-safety is preserved, no double-create occurs.
+  test('createPayoutIntent stays idempotent on a faithful replay (#5232)', async () => {
+    const fakeDb = new FakeD1Database()
+    const store = makeD1NexusTreasuryPayoutLedgerStore(
+      fakeDb as unknown as D1Database,
+    )
+
+    await store.createPayoutTargetApproval(approval)
+    await store.createPayoutIntent(intent)
+    await expect(store.createPayoutIntent(intent)).resolves.toBeUndefined()
+    await expect(
+      store.readPayoutIntentByRef(intent.payoutIntentRef),
+    ).resolves.toEqual(intent)
   })
 })

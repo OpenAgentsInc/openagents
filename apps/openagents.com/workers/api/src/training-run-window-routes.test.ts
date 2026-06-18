@@ -2548,6 +2548,59 @@ describe('real settlement route wiring (#5232, gate default OFF)', () => {
     expect(body.reason).toContain('real_settlement_payout_blocked')
   })
 
+  it('intent not durably persisted => fails CLOSED, no dispatch, no real-settled receipt (#5232)', async () => {
+    const { lease, store, verified } = seedRealSettlementStore()
+    await store.claimLease(lease, '2026-06-17T10:01:00.000Z')
+    store._testSeedChallenge(verified)
+    const spark = new CountingSparkAdapter()
+
+    // Reproduce the production incident: a store whose createPayoutIntent
+    // silently drops the row (as `INSERT OR IGNORE` did on a constraint
+    // conflict) so the intent is never findable by ref. The fix makes the D1
+    // store throw on this, but here we assert the END-TO-END contract: when the
+    // intent is not durably persisted, the real dispatch must fail CLOSED —
+    // never call the Spark adapter and never write a settlement_recorded
+    // receipt. No money, no "paid" claim.
+    const baseLedger = makeRealLedgerStore()
+    const ledger: NexusTreasuryPayoutLedgerStore & {
+      readonly receipts: Map<string, NexusPaymentAuthorityReceiptRecord>
+    } = {
+      ...baseLedger,
+      createPayoutIntent: async () => {},
+    }
+
+    const routes = makeTrainingRunWindowRoutes({
+      makePayoutLedgerStore: () => ledger,
+      makeSettlementPaymentAuthority: (_env, context) =>
+        makeTreasuryPaymentAuthority({
+          adapters: [spark.adapter],
+          ledgerStore: context.ledgerStore,
+        }),
+      makeStore: () => store,
+      nowIso: () => '2026-06-17T10:05:00.000Z',
+      readSettlementWalletReadiness: async () => 'ready',
+      requireAdminApiToken: async () => true,
+      resolveSettlementPayoutDestination: async () => 'destination.test',
+    })
+
+    const failed = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          `/api/training/runs/${REAL_RUN_REF}/settlement-receipt`,
+          realSettlementBody(verified.challengeRef),
+        ),
+        enabledGateEnv(),
+      ),
+    )
+
+    expect(failed.status).toBeGreaterThanOrEqual(400)
+    // No dispatch happened: the missing intent fails closed before the rail.
+    expect(spark.dispatchCalls).toBe(0)
+    expect(settlementReceiptFromStore(ledger)).toBeUndefined()
+    const body = (await failed.json()) as { reason?: string }
+    expect(body.reason).toContain('payout_intent_not_found')
+  })
+
   it('gate ON but amount over the gate cap => simulation, no dispatch', async () => {
     const { lease, store, verified } = seedRealSettlementStore()
     await store.claimLease(lease, '2026-06-17T10:01:00.000Z')

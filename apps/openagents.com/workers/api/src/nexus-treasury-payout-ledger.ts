@@ -1027,6 +1027,25 @@ export const makeD1NexusTreasuryPayoutLedgerStore = (
           error,
         )
       }
+
+      // `INSERT OR IGNORE` silently drops the row on any constraint conflict
+      // (a UNIQUE collision on a different `id` / `payout_intent_ref` /
+      // `idempotency_key_hash`, or a foreign-key violation) and still resolves
+      // successfully. That turned a real persistence failure into a misleading
+      // downstream `payout_intent_not_found` at dispatch (openagents #5232) —
+      // moving no money and writing no receipt. Confirm the intent is durably
+      // present by ref before returning. A genuine idempotent replay re-inserts
+      // the identical row, finds it here, and succeeds; a true silent drop now
+      // fails loudly at the persistence boundary where it belongs, exactly as
+      // createPayoutAttempt already guards its parent intent.
+      const persisted = await readPayoutIntentByRef(record.payoutIntentRef)
+
+      if (persisted === undefined) {
+        throw new NexusTreasuryPayoutLedgerUnsafe({
+          reason:
+            'payout intent insert was silently ignored (constraint conflict); the intent is not durably persisted.',
+        })
+      }
     },
     createPayoutTargetApproval: async record => {
       assertNexusTreasuryPayoutLedgerRecordSafe(
