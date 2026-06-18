@@ -1,5 +1,6 @@
 import {
   activeReplayEventsAt,
+  assertProofReplayBundleShipmentGate,
   assertReplayPlanSourceCoverage,
   buildReplayRenderPlan,
   cameraPoseFor,
@@ -308,6 +309,7 @@ const makeClass = (): CustomElementConstructor =>
     }
 
     #renderBundle(bundle: ProofReplayBundle): void {
+      assertProofReplayBundleShipmentGate(bundle)
       const plan = buildReplayRenderPlan(bundle)
       assertReplayPlanSourceCoverage(plan)
       const presentationMode = presentationModeFromLocation()

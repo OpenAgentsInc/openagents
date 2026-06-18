@@ -2,14 +2,17 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   activeReplayEventsAt,
+  assertProofReplayBundleShipmentGate,
   assertReplayPlanSourceCoverage,
   buildReplayRenderPlan,
   cameraPoseFor,
   createReplayDisposalRegistry,
   initialReplayPlaybackState,
   interpolateActorPosition,
+  orderedReplayEvents,
   paymentVisualForEvent,
   reduceReplayClock,
+  ReplayBundleShipmentGateError,
   type ProofReplayBundle,
   type ReplayEvent,
 } from './index'
@@ -194,6 +197,22 @@ describe('@openagentsinc/proof-replay', () => {
     assertReplayPlanSourceCoverage(first)
   })
 
+  test('orders equal-sequence events by authoritative replay second and stable ref', () => {
+    const events = orderedReplayEvents({
+      events: [
+        event('proof_verified', 7, 10, { eventRef: 'event.c' }),
+        event('proof_submitted', 7, 4, { eventRef: 'event.a' }),
+        event('trace_linked', 7, 4, { eventRef: 'event.b' }),
+      ],
+    })
+
+    expect(events.map(item => item.eventRef)).toEqual([
+      'event.a',
+      'event.b',
+      'event.c',
+    ])
+  })
+
   test('clock reducer gates active events by replay time', () => {
     const plan = buildReplayRenderPlan(bundle)
     const initial = initialReplayPlaybackState(bundle)
@@ -261,6 +280,73 @@ describe('@openagentsinc/proof-replay', () => {
     expect(paymentVisualForEvent(event('proof_submitted', 99, 1)).kind).toBe(
       'neutral_event',
     )
+    expect(
+      paymentVisualForEvent(event('recognition_reward_recorded', 98, 1)).kind,
+    ).toBe('recognition_marker')
+    expect(
+      paymentVisualForEvent(event('overpayment_detected', 97, 1)).kind,
+    ).toBe('recognition_marker')
+  })
+
+  test('shipment gate accepts public-safe evidence bundles and rejects missing coverage', () => {
+    expect(() => assertProofReplayBundleShipmentGate(bundle)).not.toThrow()
+
+    expect(() =>
+      assertProofReplayBundleShipmentGate({
+        ...bundle,
+        captions: [
+          {
+            captionRef: 'caption.missing_source',
+            sequenceIndex: 0,
+            sourceRefs: [],
+            text: 'Missing source',
+            timelineSecond: 0,
+          },
+        ],
+      }),
+    ).toThrow(ReplayBundleShipmentGateError)
+  })
+
+  test('shipment gate blocks unsafe private material and unsupported confirmed zaps', () => {
+    expect(() =>
+      assertProofReplayBundleShipmentGate({
+        ...bundle,
+        captions: [
+          {
+            captionRef: 'caption.private',
+            sequenceIndex: 0,
+            sourceRefs: ['source.private'],
+            text: 'payment_hash should not render',
+            timelineSecond: 0,
+          },
+        ],
+      }),
+    ).toThrow(/private payment/)
+
+    expect(() =>
+      assertProofReplayBundleShipmentGate({
+        ...bundle,
+        events: [
+          event('payment_zap_confirmed', 0, 1, {
+            eventRef: 'event.unsafe_zap',
+            sourceRefs: ['ledger.pending.only'],
+          }),
+        ],
+      }),
+    ).toThrow(/lacks public payment evidence/)
+
+    expect(() =>
+      assertProofReplayBundleShipmentGate({
+        ...bundle,
+        events: [
+          event('settlement_blocked_closed', 0, 1, {
+            amountSats: 100,
+            eventRef: 'event.blocked_money',
+            sourceRefs: ['source.blocked'],
+          }),
+        ],
+      }),
+    ).toThrow(/cannot carry moving sats/)
   })
 
   test('disposal registry cleans registered render resources exactly once', () => {

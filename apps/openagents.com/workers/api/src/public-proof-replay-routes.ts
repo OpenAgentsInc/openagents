@@ -344,6 +344,10 @@ const selectRealSettlementRow = (
   rows.find(row => row.realBitcoinMoved)
 
 const privateMaterialPatterns = [
+  /\b(?:lnbc|lntb|lnbcrt|lno1)[a-z0-9]{12,}/i,
+  /\bspark1[a-z0-9]{12,}/i,
+  /\bbc1[ac-hj-np-z02-9]{20,}/i,
+  /\bxprv[a-z0-9]{12,}/i,
   /mnemonic/i,
   /preimage/i,
   /bolt11/i,
@@ -356,6 +360,7 @@ const privateMaterialPatterns = [
   /raw[_-]?prompt/i,
   /private[_-]?log/i,
   /wallet[_-]?path/i,
+  /customer[_-]?(?:data|email|record)/i,
 ]
 
 const assertPublicSafe = (bundle: Omit<ProofReplayBundle, 'bundleRef'>): void => {

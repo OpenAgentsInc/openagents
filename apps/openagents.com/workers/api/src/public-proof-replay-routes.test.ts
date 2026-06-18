@@ -284,6 +284,7 @@ describe('public proof replay bundle resolver (#5298)', () => {
               receiptRef: FIRST_REAL_SETTLEMENT_RECEIPT_REF,
               sourceRefs: [
                 FIRST_REAL_SETTLEMENT_RECEIPT_REF,
+                'spark1rawpublicaddresslookingmaterial000000000000',
                 'mnemonic should never enter public replay fixtures',
               ],
               state: 'settled',

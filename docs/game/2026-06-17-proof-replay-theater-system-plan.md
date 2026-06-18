@@ -53,6 +53,14 @@ and `docs/launch/JUNE17_ROADMAP.md`.
   pending, failed, timeout, and pre-dispatch rows as non-payment ledger cards;
   and shows Orrery's overpayment as a hazard-pay exception lane rather than
   original payout intent.
+- 2026-06-17: #5303 added the shared replay shipment gate in
+  `@openagentsinc/proof-replay` and made the website replay element call it
+  before rendering. The gate enforces schema, `public_safe` privacy,
+  `evidence_presentation_only` claim scope, source coverage on events/flows/
+  captions/gaps, private-material rejection, confirmed-zap evidence, blocked
+  settlement non-payment semantics, and simulation-vs-real copy boundaries. The
+  Worker resolver redaction patterns were also expanded to catch raw
+  Lightning/Spark/on-chain address-looking material.
 
 ## Thesis
 
@@ -779,8 +787,6 @@ Implementation notes:
 
 ## Open Decisions
 
-- Bundle endpoint path: colocate under `/api/public/proof-replays` or run-scoped
-  `/api/public/tassadar-replays` first?
 - Replay storage: generate on demand, store immutable snapshots, or cache by
   source-ref digest?
 - Source freshness: how stale can a replay bundle be before the UI forces a
@@ -791,3 +797,40 @@ Implementation notes:
   path, or as an operator-only job?
 - Director tracks: are authored camera paths stored as part of the public bundle
   or as separate presentation overlays?
+
+## Verification Gates
+
+CI-safe replay gates:
+
+```text
+bun run --cwd packages/proof-replay test
+bun run --cwd packages/proof-replay typecheck
+bun run --cwd apps/openagents.com/workers/api test -- src/public-proof-replay-routes.test.ts
+bun run --cwd apps/openagents.com/workers/api typecheck
+bun run --cwd apps/openagents.com/apps/web test -- src/scene/tassadarProofReplayElement.test.ts
+bun run --cwd apps/openagents.com/apps/web typecheck
+bun run --cwd apps/openagents.com check:deploy
+```
+
+The shared shipment gate must pass before browser rendering. It rejects:
+
+- bundle schema or claim-boundary drift;
+- missing source refs on events, flows, captions, or gaps;
+- raw private prompts, logs, provider payloads, customer data, wallet paths,
+  mnemonics, service tokens, payment hashes/preimages, raw BOLT11/Lightning,
+  Spark, or on-chain address-looking values;
+- confirmed zaps without public receipt or recipient-confirmation evidence;
+- blocked settlement rows carrying moving sats;
+- simulated payment rows claiming `realBitcoinMoved:true`.
+
+Operator-only visual smoke, when a browser is available:
+
+1. Open `/tassadar/replay/first-real-settlement`.
+2. Open `/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social`.
+3. Open `/tassadar/replay/launch-recognition-payments`.
+4. Check 1920x1080 and 1280x720. The stage/canvas must be nonblank; labels must
+   not overlap; early first-settlement frames must have no confirmed zap; late
+   settlement and recognition frames must show only source-backed zaps; source
+   inspector links must open public refs.
+5. Scan visible text for private/payment/operator material before capturing or
+   posting social video.

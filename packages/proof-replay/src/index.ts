@@ -215,6 +215,26 @@ export type ReplayRenderPlan = Readonly<{
   captions: ReadonlyArray<ReplayCaption>
 }>
 
+export type ReplayBundleShipmentGateSubject =
+  | 'bundle'
+  | 'caption'
+  | 'event'
+  | 'flow'
+  | 'gap'
+  | 'payment'
+  | 'privacy'
+  | 'source'
+
+export class ReplayBundleShipmentGateError extends Error {
+  readonly subject: ReplayBundleShipmentGateSubject
+
+  constructor(subject: ReplayBundleShipmentGateSubject, message: string) {
+    super(message)
+    this.name = 'ReplayBundleShipmentGateError'
+    this.subject = subject
+  }
+}
+
 export type ReplayDisposable = Readonly<{
   dispose: () => void
 }>
@@ -231,6 +251,45 @@ const clamp = (value: number, min: number, max: number): number =>
 
 const unique = (values: ReadonlyArray<string>): ReadonlyArray<string> =>
   [...new Set(values.map(value => value.trim()).filter(value => value !== ''))]
+
+const unsafeReplayMaterialPatterns = [
+  /\b(?:lnbc|lntb|lnbcrt|lno1)[a-z0-9]{12,}/i,
+  /\bspark1[a-z0-9]{12,}/i,
+  /\bbc1[ac-hj-np-z02-9]{20,}/i,
+  /\bxprv[a-z0-9]{12,}/i,
+  /\bmnemonic\b/i,
+  /\bpreimage\b/i,
+  /\bpayment[_-]?hash\b/i,
+  /\bservice[_-]?token\b/i,
+  /\bbearer\s+[a-z0-9._-]{12,}/i,
+  /\bprovider[_-]?payload\b/i,
+  /\braw[_-]?prompt\b/i,
+  /\bprivate[_-]?log\b/i,
+  /\bwallet[_-]?path\b/i,
+  /\bcustomer[_-]?(?:data|email|record)\b/i,
+  /\bbolt11\b/i,
+]
+
+const hasUnsafeReplayMaterial = (value: unknown): boolean => {
+  const serialized = JSON.stringify(value)
+  return unsafeReplayMaterialPatterns.some(pattern => pattern.test(serialized))
+}
+
+const hasSourceRefs = (refs: ReadonlyArray<string>): boolean =>
+  refs.some(ref => ref.trim() !== '')
+
+const hasConfirmedPaymentEvidence = (
+  refs: ReadonlyArray<string>,
+): boolean =>
+  refs.some(
+    ref =>
+      ref.startsWith('receipt.') ||
+      ref.includes('/api/public/nexus-pylon/receipts/') ||
+      ref.startsWith('recipient_confirmation.') ||
+      ref.startsWith(
+        'https://github.com/OpenAgentsInc/openagents/blob/main/docs/',
+      ),
+  )
 
 const add = (a: ReplayVector3, b: ReplayVector3): ReplayVector3 => ({
   x: a.x + b.x,
@@ -744,6 +803,117 @@ export const assertReplayPlanSourceCoverage = (
   if (missingHitTarget !== undefined) {
     throw new Error(
       `Replay hit target missing source refs: ${missingHitTarget.targetRef}`,
+    )
+  }
+}
+
+export const assertProofReplayBundleShipmentGate = (
+  bundle: ProofReplayBundle,
+): void => {
+  if (bundle.schemaVersion !== 'proof_replay_bundle.v1') {
+    throw new ReplayBundleShipmentGateError(
+      'bundle',
+      `Unsupported replay bundle schema: ${bundle.schemaVersion}`,
+    )
+  }
+
+  if (
+    bundle.privacyLevel !== 'public_safe' ||
+    bundle.claimScope !== 'evidence_presentation_only'
+  ) {
+    throw new ReplayBundleShipmentGateError(
+      'privacy',
+      'Replay bundle must be public_safe and evidence_presentation_only.',
+    )
+  }
+
+  if (bundle.sourceRefs.length === 0) {
+    throw new ReplayBundleShipmentGateError(
+      'source',
+      'Replay bundle must include public source refs.',
+    )
+  }
+
+  if (hasUnsafeReplayMaterial(bundle)) {
+    throw new ReplayBundleShipmentGateError(
+      'privacy',
+      'Replay bundle contains private payment/operator material.',
+    )
+  }
+
+  const eventWithoutSource = bundle.events.find(
+    event => !hasSourceRefs(event.sourceRefs),
+  )
+  if (eventWithoutSource !== undefined) {
+    throw new ReplayBundleShipmentGateError(
+      'event',
+      `Replay event missing source refs: ${eventWithoutSource.eventRef}`,
+    )
+  }
+
+  const flowWithoutSource = bundle.flows.find(
+    flow => !hasSourceRefs(flow.sourceRefs),
+  )
+  if (flowWithoutSource !== undefined) {
+    throw new ReplayBundleShipmentGateError(
+      'flow',
+      `Replay flow missing source refs: ${flowWithoutSource.flowRef}`,
+    )
+  }
+
+  const captionWithoutSource = bundle.captions.find(
+    caption => !hasSourceRefs(caption.sourceRefs),
+  )
+  if (captionWithoutSource !== undefined) {
+    throw new ReplayBundleShipmentGateError(
+      'caption',
+      `Replay caption missing source refs: ${captionWithoutSource.captionRef}`,
+    )
+  }
+
+  const gapWithoutSource = bundle.gaps.find(gap => !hasSourceRefs(gap.sourceRefs))
+  if (gapWithoutSource !== undefined) {
+    throw new ReplayBundleShipmentGateError(
+      'gap',
+      `Replay gap missing source refs: ${gapWithoutSource.gapRef}`,
+    )
+  }
+
+  const unsupportedZap = bundle.events.find(
+    event =>
+      event.kind === 'payment_zap_confirmed' &&
+      !hasConfirmedPaymentEvidence(event.sourceRefs),
+  )
+  if (unsupportedZap !== undefined) {
+    throw new ReplayBundleShipmentGateError(
+      'payment',
+      `Confirmed payment zap lacks public payment evidence: ${unsupportedZap.eventRef}`,
+    )
+  }
+
+  const blockedMoneyMovement = bundle.events.find(
+    event =>
+      event.kind === 'settlement_blocked_closed' &&
+      event.amountSats !== undefined,
+  )
+  if (blockedMoneyMovement !== undefined) {
+    throw new ReplayBundleShipmentGateError(
+      'payment',
+      `Blocked settlement event cannot carry moving sats: ${blockedMoneyMovement.eventRef}`,
+    )
+  }
+
+  const simulatedRealCopy = bundle.events.find(
+    event =>
+      event.kind === 'payment_zap_simulated' &&
+      /realBitcoinMoved:true/i.test(
+        `${event.displayText} ${event.stateAfter ?? ''} ${event.caveat ?? ''}`,
+      ),
+  )
+  if (simulatedRealCopy !== undefined) {
+    throw new ReplayBundleShipmentGateError(
+      'payment',
+      `Simulated payment event cannot claim realBitcoinMoved:true: ${simulatedRealCopy.eventRef}`,
     )
   }
 }
