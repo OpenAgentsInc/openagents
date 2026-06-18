@@ -37,3 +37,13 @@ direction.
 
 - `apps/openagents-world-spacetimedb/` owns the Rust/WASM SpacetimeDB module
   source for the live `openagents-world` database.
+- `/Users/christopherdavid/work/three-effect` owns reusable spatial/visual
+  primitives for the game world and proof replay theater. Add missing replay
+  stages, avatar, zap, camera, particle, terrain, label, and interaction
+  primitives there before consuming them from web or desktop.
+- `packages/proof-replay/` owns replay bundle normalization, deterministic
+  clocks, source gates, and timeline planning only. It is not a visual renderer.
+- `apps/openagents.com/` and `apps/autopilot-desktop/` may adapt public replay
+  data and render Foldkit HUD/inspector/accessibility chrome, but should consume
+  `three-effect` for world visuals rather than adding app-local DOM/canvas
+  replay renderers.

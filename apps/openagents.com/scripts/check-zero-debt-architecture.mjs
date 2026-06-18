@@ -83,6 +83,13 @@ const deterministicBusinessLogicFiles = sourceFiles.filter(
   path => !runtimePrimitiveBoundaryFiles.has(path),
 )
 
+const proofReplayVisualRendererFiles = sourceFiles.filter(
+  path =>
+    /(?:proofReplay|proof-replay|ProofReplay)/.test(path) &&
+    path !== 'apps/web/src/scene/tassadarProofReplayElement.ts' &&
+    !path.startsWith('packages/proof-replay/'),
+)
+
 const lineCount = path => {
   const text = read(path)
   const lines = text.split('\n').length
@@ -268,6 +275,16 @@ const budgetChecks = [
       /path:\s*['"]\/chat['"](?:(?!path:\s*['"])[\s\S])*redirectResponse\(\s*['"]\/['"]\s*\)/g,
     ),
     name: 'legacy Worker /chat redirect alias',
+  },
+  {
+    budget: 0,
+    description:
+      'Proof replay visual renderers must be promoted through @openagentsinc/three-effect and the /animations visual taxonomy. App code may adapt bundles, HUD, inspector, and accessibility mirrors, but must not add new DOM/canvas/WebGL replay stages outside the named legacy bridge.',
+    details: countByFile(
+      proofReplayVisualRendererFiles,
+      /document\.createElement\(\s*['"](?:canvas|div|section|button|span|footer|aside)['"]|CanvasRenderingContext2D|new\s+Three\./g,
+    ),
+    name: 'app-local proof replay visual renderers outside three-effect',
   },
 ]
 

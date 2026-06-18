@@ -467,6 +467,23 @@ beam traffic, or payout bursts.
    Live for the run-specific grammar. The Network pane answers "is the fleet
    alive?"; Training Live should answer "what happened to this run?"
 
+## Proof Replay Renderer Correction
+
+The first proof replay route shipped a temporary custom element bridge in
+`apps/openagents.com/apps/web/src/scene/tassadarProofReplayElement.ts`. That
+bridge is useful for validating bundle loading, clocks, public-safe source
+inspection, and share-route behavior, but its DOM/CSS/canvas stage is not the
+target visual architecture.
+
+Going forward, proof replay visuals must use this taxonomy through
+`@openagentsinc/three-effect`. The app-local bridge may keep controls,
+captions, event lists, source inspectors, loading/error states, and accessibility
+mirrors. Stages, actor avatars, payment zaps, evidence bursts, camera language,
+particles, labels-in-scene, terrain, and hit targets belong in `three-effect`
+first, then get consumed by both website and Autopilot Desktop. This keeps
+replay share cuts and desktop replay views from forking into separate visual
+systems.
+
 ## Open questions
 
 - Should `Tassadar` remain the public run name across all chrome, or should some

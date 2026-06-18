@@ -62,6 +62,30 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in `apps/web/src/icon.test.ts` and
   `apps/web/src/icon-policy.test.ts`, both included in `bun run check:deploy`.
 
+## Three-Effect Proof Replay Visual Ownership
+
+- Training-run and proof-replay visual renderers are owned by
+  `@openagentsinc/three-effect` and the visual taxonomy in
+  `docs/launch/2026-06-17-tassadar-training-run-visual-language.md` plus the
+  `/animations` route studies.
+- `@openagentsinc/proof-replay` owns deterministic replay bundles, timeline
+  clocks, source coverage, shipment gates, and render-plan data only. It must
+  not become a parallel DOM, CSS, canvas, WebGL, actor, camera, zap, avatar, or
+  particle renderer.
+- `apps/web` and `apps/autopilot-desktop` may adapt public-safe replay bundles
+  into `three-effect` visualization options and may render Foldkit controls,
+  inspectors, event lists, transcripts, loading states, and accessibility
+  mirrors. They must not add new app-local replay stage/world visuals.
+- The existing `apps/web/src/scene/tassadarProofReplayElement.ts` is a
+  temporary legacy bridge for the first public replay route. It may receive
+  interaction, loading, source-inspection, accessibility, and migration glue
+  fixes, but new replay visual language must first land in
+  `/Users/christopherdavid/work/three-effect` and then be consumed here.
+- Regression coverage starts in
+  `apps/web/src/scene/tassadarProofReplayElement.test.ts` and
+  `scripts/check-zero-debt-architecture.mjs` ("app-local proof replay visual
+  renderers outside three-effect").
+
 ## Explicit Team Autopilot File Selection
 
 - Team Autopilot command parsing is bounded to exact `@autopilot` command

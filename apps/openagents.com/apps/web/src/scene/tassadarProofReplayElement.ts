@@ -77,7 +77,7 @@ const HOST_STYLE =
   '.marker.recognition{top:16%;border-left-color:rgba(125,211,252,0.72);color:rgba(214,240,255,0.84)}.marker.overpayment{top:52%;border-left-color:rgba(255,193,83,0.78);color:rgba(255,234,190,0.88)}' +
   '.caption{position:absolute;left:50%;bottom:1rem;z-index:4;max-width:min(52rem,calc(100% - 2rem));transform:translateX(-50%);padding:0.5rem 0.75rem;background:rgba(0,0,0,0.44);border:1px solid rgba(255,255,255,0.1);backdrop-filter:blur(12px);font-size:0.78rem;line-height:1.45;color:rgba(255,255,255,0.82);text-align:center}' +
   '.social-hud{position:absolute;inset:0;z-index:5;pointer-events:none;color:#fff;text-shadow:0 1px 16px rgba(0,0,0,0.88)}.social-title{position:absolute;left:4.2%;top:6.8%;max-width:56rem}.social-title h1{margin:0;font-size:4rem;line-height:1.02;font-weight:760;letter-spacing:0;color:#fff}.social-title p{margin:0.52rem 0 0;font-size:1.16rem;line-height:1.3;color:rgba(255,255,255,0.78)}.social-time{position:absolute;right:4.2%;top:7.2%;font-size:1.05rem;color:rgba(255,255,255,0.82)}.social-beat{position:absolute;left:4.2%;right:4.2%;bottom:6.2%;display:flex;align-items:flex-end;justify-content:space-between;gap:1.2rem}.social-beat p{max-width:52rem;margin:0;font-size:1.18rem;line-height:1.36;color:rgba(255,255,255,0.84)}.social-progress{width:min(16rem,26vw);height:0.18rem;background:rgba(255,255,255,0.22);overflow:hidden}.social-progress span{display:block;height:100%;background:#fff;box-shadow:0 0 1rem rgba(255,255,255,0.78)}.end-card{position:absolute;right:4.2%;bottom:13%;width:min(30rem,38vw);border:1px solid rgba(255,255,255,0.16);background:rgba(0,0,0,0.52);padding:0.78rem 0.92rem;backdrop-filter:blur(14px)}.end-card strong{display:block;margin-bottom:0.38rem;font-size:1.58rem;line-height:1.08;color:#fff}.end-card span,.end-card a{display:block;overflow-wrap:anywhere;font-size:0.82rem;line-height:1.35;color:rgba(255,255,255,0.78);pointer-events:auto}.end-card a{margin-top:0.42rem;text-underline-offset:0.2rem;color:rgba(255,255,255,0.92)}' +
-  '.bottom{z-index:4;display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,28rem);gap:0.8rem;padding:0.75rem 1rem 1rem;min-height:12rem;max-height:36vh}.controls{display:grid;grid-template-columns:auto minmax(8rem,1fr) auto auto;gap:0.5rem;align-items:center;margin-bottom:0.55rem}.controls button,.controls select,.events button{border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.07);color:#f1efe8;font:inherit;font-size:0.72rem}.controls button{min-width:4.2rem;padding:0.42rem 0.58rem}.controls select{padding:0.38rem 0.46rem}.controls input{min-width:0;accent-color:#f1efe8}' +
+  '.bottom{position:relative;z-index:6;display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,28rem);gap:0.8rem;padding:0.75rem 1rem 1rem;min-height:12rem;max-height:36vh;pointer-events:auto}.controls,.events,.inspector{position:relative;z-index:7;pointer-events:auto}.controls{display:grid;grid-template-columns:auto minmax(8rem,1fr) auto auto;gap:0.5rem;align-items:center;margin-bottom:0.55rem}.controls button,.controls select,.events button{border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.07);color:#f1efe8;font:inherit;font-size:0.72rem}.controls button{min-width:4.2rem;padding:0.42rem 0.58rem;touch-action:manipulation}.controls select{padding:0.38rem 0.46rem}.controls input{min-width:0;accent-color:#f1efe8}' +
   '.events{min-height:0;overflow:auto;border-top:1px solid rgba(255,255,255,0.08);padding-top:0.45rem}.events ol{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));gap:0.35rem;margin:0;padding:0;list-style:none}.events button{display:grid;gap:0.18rem;width:100%;padding:0.45rem 0.5rem;text-align:left}.events button[aria-current=true]{border-color:rgba(255,241,151,0.5);background:rgba(255,241,151,0.09)}.events time{font-size:0.58rem;color:rgba(255,255,255,0.38)}.events span{font-size:0.66rem;line-height:1.28;color:rgba(255,255,255,0.72)}' +
   '.inspector{min-height:0;overflow:auto;border:1px solid rgba(255,255,255,0.11);background:rgba(0,0,0,0.38);padding:0.65rem 0.7rem;backdrop-filter:blur(12px)}.inspector h2{margin:0 0 0.5rem;font-size:0.84rem;line-height:1.25;font-weight:650;color:#fff}.inspector dl{display:grid;gap:0.42rem;margin:0}.inspector dt{margin:0 0 0.12rem;font-size:0.56rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.34)}.inspector dd{margin:0;overflow-wrap:anywhere;font-size:0.67rem;line-height:1.38;color:rgba(255,255,255,0.68)}.inspector a{color:rgba(255,255,255,0.9);text-underline-offset:0.18rem}.inspector a:hover{color:#fff}.source-list{display:grid;gap:0.2rem;margin:0;padding:0;list-style:none}.source-list li{overflow-wrap:anywhere}' +
   '.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:2rem;text-align:center;pointer-events:none}.overlay p{max-width:48ch;margin:0;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.42);padding:0.8rem 1rem;font-size:0.86rem;line-height:1.55;color:rgba(255,255,255,0.66);backdrop-filter:blur(12px)}.overlay .label{display:block;margin-bottom:0.36rem;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.36)}' +
@@ -105,6 +105,28 @@ const projectPoint = (position: ReplayVector3): Readonly<{
   left: `${clamp(50 + position.x * 5.8, 7, 93)}%`,
   top: `${clamp(50 + position.z * 4.9 - position.y * 3.5, 9, 91)}%`,
 })
+
+const addPressHandler = (
+  element: HTMLElement,
+  handler: () => void,
+): void => {
+  let pointerHandled = false
+  element.addEventListener('pointerdown', event => {
+    pointerHandled = true
+    event.preventDefault()
+    event.stopPropagation()
+    handler()
+  })
+  element.addEventListener('click', event => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (pointerHandled) {
+      pointerHandled = false
+      return
+    }
+    handler()
+  })
+}
 
 const sourceRecordMap = (
   bundle: ProofReplayBundle,
@@ -717,7 +739,7 @@ const makeClass = (): CustomElementConstructor =>
       const text = document.createElement('span')
       text.textContent = label
       button.append(orb, text)
-      button.addEventListener('click', () => {
+      addPressHandler(button, () => {
         this.#selectedRef = ref
         this.#renderCurrent()
       })
@@ -746,7 +768,7 @@ const makeClass = (): CustomElementConstructor =>
       const mode = document.createElement('em')
       mode.textContent = state
       button.append(avatar, name, mode)
-      button.addEventListener('click', () => {
+      addPressHandler(button, () => {
         this.#selectedRef = ref
         this.#renderCurrent()
       })
@@ -778,8 +800,10 @@ const makeClass = (): CustomElementConstructor =>
       toggle.type = 'button'
       toggle.setAttribute('data-replay-control', 'play')
       toggle.textContent = playback.isPlaying ? 'Pause' : 'Play'
-      toggle.addEventListener('click', () => {
-        playback.isPlaying ? this.#pause() : this.#play()
+      addPressHandler(toggle, () => {
+        const current = this.#playback
+        if (current === null) return
+        current.isPlaying ? this.#pause() : this.#play()
       })
 
       const scrub = document.createElement('input')
@@ -790,7 +814,8 @@ const makeClass = (): CustomElementConstructor =>
       scrub.value = String(playback.second)
       scrub.setAttribute('data-replay-control', 'scrub')
       scrub.addEventListener('input', () => {
-        this.#setPlayback(reduceReplayClock(playback, {
+        const current = this.#playback ?? playback
+        this.#setPlayback(reduceReplayClock(current, {
           second: Number(scrub.value),
           type: 'seek',
         }))
@@ -806,7 +831,8 @@ const makeClass = (): CustomElementConstructor =>
         speed.append(option)
       }
       speed.addEventListener('change', () => {
-        this.#setPlayback(reduceReplayClock(playback, {
+        const current = this.#playback ?? playback
+        this.#setPlayback(reduceReplayClock(current, {
           playbackRate: Number(speed.value),
           type: 'set_speed',
         }))
@@ -852,9 +878,10 @@ const makeClass = (): CustomElementConstructor =>
         const text = document.createElement('span')
         text.textContent = event.displayText
         button.append(time, text)
-        button.addEventListener('click', () => {
+        addPressHandler(button, () => {
           this.#selectedRef = event.eventRef
-          this.#setPlayback(reduceReplayClock(playback, {
+          const current = this.#playback ?? playback
+          this.#setPlayback(reduceReplayClock(current, {
             second: event.timelineSecond,
             type: 'seek',
           }))

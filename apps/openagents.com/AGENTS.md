@@ -101,6 +101,20 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
   icon dependencies. If a needed icon is missing, update the upstream Fireball
   catalog first, then run `bun run sync:icons` and keep `apps/web/src/icon*.test.ts`
   passing.
+- Training and proof replay visual surfaces must use the existing
+  `@openagentsinc/three-effect` renderer vocabulary and the visual taxonomy
+  documented in `docs/launch/2026-06-17-tassadar-training-run-visual-language.md`
+  plus the `/animations` studies. `@openagentsinc/proof-replay` owns replay
+  bundle shape, clocks, source gates, and render plans only; it is not a visual
+  renderer. Browser or desktop app code may adapt public replay bundles into
+  `three-effect` options and may render Foldkit controls, inspectors, transcript
+  mirrors, and accessibility fallbacks. Do not add new app-local DOM/CSS/canvas
+  stages, actor/avatar renderers, payment-zap effects, camera grammar, particles,
+  or other proof replay visuals. Add missing primitives to
+  `/Users/christopherdavid/work/three-effect` first, then consume the package.
+  The current `apps/web/src/scene/tassadarProofReplayElement.ts` is a temporary
+  legacy bridge for the first replay route; do not extend its visual language
+  except to replace it with `three-effect` mounts.
 - Use Tailwind utility classes and the local Foldkit UI registry as the default
   styling path. For Worker-rendered HTML, put Tailwind classes in the template
   and make sure `apps/web/src/styles.css` sources the Worker templates so the

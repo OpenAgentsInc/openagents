@@ -370,6 +370,46 @@ describe('tassadar proof replay element', () => {
     expect(el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')).toBeNull()
   })
 
+  it('pauses from press events while the replay timer is running', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(replayBundle))
+    const el = await mountAndSettle()
+
+    const play = el.shadowRoot?.querySelector(
+      '[data-replay-control="play"]',
+    ) as HTMLButtonElement | null
+    expect(play).not.toBeNull()
+    play!.dispatchEvent(new Event('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+    }))
+
+    const pause = el.shadowRoot?.querySelector(
+      '[data-replay-control="play"]',
+    ) as HTMLButtonElement | null
+    expect(pause?.textContent).toBe('Pause')
+    pause!.dispatchEvent(new Event('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+    }))
+
+    const resumed = el.shadowRoot?.querySelector(
+      '[data-replay-control="play"]',
+    ) as HTMLButtonElement | null
+    expect(resumed?.textContent).toBe('Play')
+  })
+
+  it('keeps replay controls in a pointer-enabled layer above the stage', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(replayBundle))
+    const el = await mountAndSettle()
+
+    const styleText = el.shadowRoot?.querySelector('style')?.textContent ?? ''
+    expect(styleText).toContain('.bottom{position:relative;z-index:6;')
+    expect(styleText).toContain(
+      '.controls,.events,.inspector{position:relative;z-index:7;pointer-events:auto}',
+    )
+    expect(styleText).toContain('touch-action:manipulation')
+  })
+
   it('renders a provided bundle without a browser fetch', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')

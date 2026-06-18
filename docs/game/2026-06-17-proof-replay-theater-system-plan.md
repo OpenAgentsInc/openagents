@@ -76,6 +76,16 @@ and `docs/launch/JUNE17_ROADMAP.md`.
   the app shell for direct `/tassadar/replay/:slug` visits, including the social
   cut querystring. This keeps replay URLs shareable instead of redirecting them
   to `/`.
+- 2026-06-17 renderer-correction follow-up: the first website replay element is
+  now explicitly documented as a temporary legacy bridge, not the target visual
+  architecture. It fixes the immediate play/pause interaction by handling
+  controls on press before the replay timer can replace the DOM target, and it
+  adds a deploy-time architecture guard against new app-local proof replay
+  renderers. The permanent replay theater renderer must be promoted through
+  `@openagentsinc/three-effect` and the existing `/animations` visual taxonomy:
+  `@openagentsinc/proof-replay` owns bundle normalization, source gates, clocks,
+  and timeline planning only; `three-effect` owns stages, avatars, payment zaps,
+  camera language, particles, and world motion.
 
 ## Thesis
 
@@ -255,8 +265,31 @@ visual treatment.
    must not reorder events or hide gaps.
 9. Render through `three-effect` with replay time as the clock. Live
    SpacetimeDB presence can show co-viewers, but cannot mutate the bundle.
+   App-local DOM, CSS, 2D canvas, or ad hoc WebGL replay visuals are a
+   migration bug: DOM belongs to controls, source inspection, captions,
+   transcripts, loading/error states, and accessibility mirrors only.
 10. Expose event-list, transcript, and proof-inspector mirrors for accessibility
    and auditability.
+
+## Visual Renderer Ownership
+
+The replay theater has two separate packages with different jobs:
+
+- `@openagentsinc/proof-replay`: replay bundle schema, shipment gate, source
+  coverage, deterministic clock reduction, actor tracks, camera cues, and
+  public-safe render-plan data.
+- `@openagentsinc/three-effect`: the visual taxonomy and renderer: world stage,
+  agents/avatars, proof gates, settlement terminals, payment zaps, evidence
+  bursts, camera modes, particles, terrain, hit targets, labels, and interaction
+  primitives.
+
+Website and desktop app code should compose those packages, not replace either
+one. The app can mount `three-effect`, bind replay playback state, and render
+Foldkit chrome around it. It must not create a second visual language in a
+custom element or a desktop-only canvas. If the replay needs a new visual
+primitive, add it to the sibling `three-effect` repository first, expose it
+through the package, then consume it from both `apps/openagents.com` and
+`apps/autopilot-desktop`.
 
 ## Visual Grammar
 

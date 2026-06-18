@@ -58,6 +58,14 @@ canvases, particles, text-in-scene), and it has Foldkit bindings
   reuses it too) rather than building a one-off here — same rule as `autopilot-ui`.
   Per the workspace contract, extend `three-effect` first instead of rebuilding
   parallel Three primitives.
+- Proof replay is included in this rule. The desktop app may fetch and gate
+  `@openagentsinc/proof-replay` bundles and may render Foldkit controls,
+  source inspectors, lists, and accessibility mirrors, but replay stages,
+  avatars, payment zaps, camera grammar, particles, and world motion must come
+  from `@openagentsinc/three-effect` and the visual taxonomy exercised in the
+  `openagents.com` `/animations` route. Do not add another app-local DOM or
+  canvas proof replay renderer in desktop; add the primitive to the sibling
+  `three-effect` repo first and then consume it from web and desktop.
 
 ## Boundaries
 
