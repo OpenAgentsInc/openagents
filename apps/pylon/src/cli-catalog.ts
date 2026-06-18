@@ -66,11 +66,26 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
   },
   {
     command: "status",
-    summary: "Project public node status (identity, inventory, psionic).",
+    summary: "Project public node status (identity, inventory, psionic); read-only, never binds the control port.",
     mutates: false,
     spends: false,
     json: true,
-    args: [flag("--json", "Emit JSON (required).")],
+    args: [
+      flag("--json", "Emit JSON."),
+      flag("--remote", "Read a running node over the control API (error if none reachable)."),
+      flag("--connect", "Alias for --remote."),
+    ],
+  },
+  {
+    command: "doctor",
+    summary: "Read-only health diagnostic: resolved node home + source, seed presence, running-node + wallet state. Never binds the control port.",
+    mutates: false,
+    spends: false,
+    json: true,
+    args: [
+      flag("--remote", "Read a running node over the control API (error if none reachable)."),
+      flag("--connect", "Alias for --remote."),
+    ],
   },
   {
     command: "inventory",

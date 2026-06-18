@@ -9,7 +9,6 @@
 // already-running node, which owns all execution + spend authority. No new
 // money/wallet/spend authority is introduced on the CLI side.
 
-import { homedir } from "node:os"
 import { join } from "node:path"
 import {
   controlTokenFileName,
@@ -17,6 +16,7 @@ import {
   type ControlCommand,
 } from "./control-server"
 import { sendControlCommand } from "./control-client"
+import { resolvePylonHome } from "../bootstrap"
 
 export type ResolvedControlEndpoint = {
   baseUrl: string
@@ -34,10 +34,13 @@ export class ControlEndpointError extends Error {
   }
 }
 
+// Resolve the node home the SAME way the node + the rest of the CLI does
+// (issue: Orwell PYLON_HOME auto-discovery). An explicit PYLON_HOME always
+// wins; otherwise the seed-bearing home (`~/.openagents/pylon` preferred over a
+// bare `~/.pylon`) is discovered so a CLI control verb finds the running node's
+// control token instead of a wrong, seedless `~/.pylon`.
 function resolvePylonHomeDir(env: NodeJS.ProcessEnv): string {
-  const configured = env.PYLON_HOME
-  if (configured && configured.trim().length > 0) return configured
-  return join(homedir(), ".pylon")
+  return resolvePylonHome(env).home
 }
 
 function resolveControlBaseUrl(env: NodeJS.ProcessEnv): string {

@@ -1,10 +1,14 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
 import {
   createBootstrapSummary,
   isSupportedPlatform,
   PYLON_DEFAULT_CAPABILITY_REFS,
   parseBootstrapArgs,
   resolvePylonHome,
+  selectPylonHomeResolution,
 } from "../src/bootstrap"
 import { PYLON_VERSION } from "../src/version"
 
@@ -52,5 +56,81 @@ describe("Pylon bootstrap release surface", () => {
       cache: "/tmp/pylon-home/cache",
       releases: "/tmp/pylon-home/cache/releases",
     })
+  })
+})
+
+// Bug 1 (the Orwell report on v1.0.x): with no PYLON_HOME set, the CLI silently
+// fell back to `~/.pylon`, a SEEDLESS home on his machine →
+// seedPresent:false → daemonOnline:false → balanceSats:null. His real node home
+// was `~/.openagents/pylon` (seed there → identitySource:
+// historical_config_identity_path, daemon online, 5,672 sats). The CLI must
+// AUTO-RESOLVE the seed-bearing home instead of defaulting to a bare `~/.pylon`.
+describe("PYLON_HOME auto-resolution (Bug 1: Orwell wrong-home)", () => {
+  const roots: string[] = []
+  function fakeHome(): string {
+    const dir = mkdtempSync(join(tmpdir(), "pylon-home-resolve-"))
+    roots.push(dir)
+    return dir
+  }
+  function seedHome(home: string): string {
+    mkdirSync(home, { recursive: true })
+    // PUBLIC-SAFE: write a non-secret marker file, NOT a real seed. Resolution
+    // only tests for the file's presence; it never reads the contents.
+    writeFileSync(join(home, "identity.mnemonic"), "test-marker-not-a-real-seed\n", { mode: 0o600 })
+    return home
+  }
+
+  afterEach(() => {
+    while (roots.length > 0) {
+      try {
+        rmSync(roots.pop()!, { recursive: true, force: true })
+      } catch {
+        // best-effort
+      }
+    }
+  })
+
+  test("an explicit PYLON_HOME always wins (override is never broken)", () => {
+    const fake = fakeHome()
+    seedHome(join(fake, ".openagents", "pylon")) // a seed elsewhere must not steal it
+    const resolution = selectPylonHomeResolution({ PYLON_HOME: "/tmp/explicit-home" }, fake)
+    expect(resolution.home).toBe("/tmp/explicit-home")
+    expect(resolution.source).toBe("explicit_pylon_home")
+  })
+
+  test("with no PYLON_HOME, prefers the seed-bearing ~/.openagents/pylon over a bare ~/.pylon", () => {
+    const fake = fakeHome()
+    // The Orwell shape: ~/.pylon exists but is SEEDLESS; ~/.openagents/pylon has the seed.
+    mkdirSync(join(fake, ".pylon"), { recursive: true })
+    seedHome(join(fake, ".openagents", "pylon"))
+    const resolution = selectPylonHomeResolution({}, fake)
+    expect(resolution.home).toBe(join(fake, ".openagents", "pylon"))
+    expect(resolution.source).toBe("discovered_openagents_pylon")
+  })
+
+  test("with no PYLON_HOME, uses ~/.pylon when ONLY it holds the seed", () => {
+    const fake = fakeHome()
+    seedHome(join(fake, ".pylon"))
+    const resolution = selectPylonHomeResolution({}, fake)
+    expect(resolution.home).toBe(join(fake, ".pylon"))
+    expect(resolution.source).toBe("discovered_dot_pylon")
+  })
+
+  test("a fresh machine (no seed anywhere) defaults to ~/.openagents/pylon (colocated with the identity path)", () => {
+    const fake = fakeHome()
+    const resolution = selectPylonHomeResolution({}, fake)
+    expect(resolution.home).toBe(join(fake, ".openagents", "pylon"))
+    expect(resolution.source).toBe("legacy_default")
+  })
+
+  test("the public-safe source label never leaks the seed (path label only)", () => {
+    const fake = fakeHome()
+    seedHome(join(fake, ".openagents", "pylon"))
+    const resolution = selectPylonHomeResolution({}, fake)
+    // The label is a coarse provenance enum, not a path-with-contents.
+    expect(["explicit_pylon_home", "discovered_openagents_pylon", "discovered_dot_pylon", "legacy_default"]).toContain(
+      resolution.source,
+    )
+    expect(resolution.source).not.toContain("test-marker-not-a-real-seed")
   })
 })

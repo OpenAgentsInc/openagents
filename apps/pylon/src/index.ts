@@ -5,6 +5,7 @@
 // module in the compiled binary) can print its storage banner to stdout. rc.33.
 import { installBreezStdoutGuard } from "./breez-stdout-guard"
 import { readFile } from "node:fs/promises"
+import { existsSync } from "node:fs"
 import {
   PYLON_TASSADAR_SELF_TEST_FAILED_BLOCKER_REF,
   declareTassadarExecutorCapability,
@@ -137,9 +138,10 @@ import {
   createBootstrapSummary,
   formatBootstrapText,
   parseBootstrapArgs,
+  selectPylonHomeResolution,
   writeBootstrapFiles,
 } from "./bootstrap"
-import { ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState } from "./state"
+import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState } from "./state"
 import {
   completePylonLink,
   presenceClientOptionsFromEnv,
@@ -1538,6 +1540,92 @@ async function routeWalletCommandThroughDaemon(
   }
 }
 
+// Read-only detection of a RUNNING Pylon node on the loopback control port.
+// `status`/`doctor` use this to query a live node read-only INSTEAD of trying
+// to bind the control port themselves (binding crashes with EADDRINUSE when the
+// Autopilot/GUI bun node already holds 4716 — the Orwell report). Mirrors the
+// bounded `/health` probe `routeWalletCommandThroughDaemon` already uses, so
+// detection NEVER opens a competing listener.
+//
+//   --remote / --connect    force the remote read; error (no bind) if no node
+//   PYLON_CONNECT_REMOTE=1   same, via env
+// Default: AUTO — probe; if a node is up, read it remotely; if not, the caller
+// is free to fall through to its local file-only projection.
+type RunningNodeProbe = {
+  reachable: boolean
+  baseUrl: string
+  hasToken: boolean
+  token: string | null
+}
+
+function controlBaseUrlFromEnv(env: NodeJS.ProcessEnv = Bun.env): string {
+  const explicit = env.PYLON_CONTROL_URL?.trim()
+  if (explicit) return explicit.replace(/\/+$/, "")
+  const host = env.PYLON_CONTROL_HOST ?? "127.0.0.1"
+  const port = Number(env.PYLON_CONTROL_PORT ?? defaultControlPort)
+  return `http://${host}:${Number.isFinite(port) ? port : defaultControlPort}`
+}
+
+function remoteReadRequested(args: string[], env: NodeJS.ProcessEnv = Bun.env): boolean {
+  return (
+    args.includes("--remote") ||
+    args.includes("--connect") ||
+    env.PYLON_CONNECT_REMOTE === "1"
+  )
+}
+
+// Probe the loopback control server WITHOUT binding it. A bounded `/health`
+// GET tells us a node is live; we also read (never write) the per-home control
+// token so a follow-up read-only `/command` can authenticate.
+async function probeRunningNode(
+  state: PylonLocalState,
+  env: NodeJS.ProcessEnv = Bun.env,
+): Promise<RunningNodeProbe> {
+  const baseUrl = controlBaseUrlFromEnv(env)
+  let token: string | null = null
+  const envToken = env.PYLON_CONTROL_TOKEN?.trim()
+  if (envToken && envToken.length > 0) {
+    token = envToken
+  } else {
+    try {
+      const file = Bun.file(controlTokenPath(state.paths.home))
+      if (await file.exists()) {
+        const text = (await file.text()).trim()
+        if (text.length >= 16) token = text
+      }
+    } catch {
+      token = null
+    }
+  }
+  try {
+    const health = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(750) })
+    return { reachable: health.ok, baseUrl, hasToken: token !== null, token }
+  } catch {
+    return { reachable: false, baseUrl, hasToken: token !== null, token }
+  }
+}
+
+// Send a read-only control command to an already-running node. Returns null on
+// any transport/auth failure so the caller can degrade gracefully.
+async function readControlCommand(
+  probe: RunningNodeProbe,
+  command: ControlCommand,
+): Promise<unknown | null> {
+  if (!probe.reachable || !probe.token) return null
+  try {
+    const response = await fetch(`${probe.baseUrl}/command`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${probe.token}`, "content-type": "application/json" },
+      body: JSON.stringify(command),
+    })
+    const json = (await response.json()) as { ok?: boolean; result?: unknown }
+    if (!response.ok || json.ok !== true) return null
+    return json.result ?? null
+  } catch {
+    return null
+  }
+}
+
 async function readSparkBackupStatusProjection(
   state: PylonLocalState,
   // #5306: `warmSession` lets the long-lived daemon serve the `wallet status`
@@ -2362,18 +2450,98 @@ async function main() {
     }
   }
 
-  if (args[0] === "status" && args.includes("--json")) {
+  // `pylon status` projects this node's public status. It is READ-ONLY and must
+  // NEVER bind the control port: a bare `pylon status` (no `--json`) previously
+  // fell through to the default node boot, which binds 4716 and crashes with
+  // EADDRINUSE when the Autopilot/GUI node is already up (the Orwell report).
+  //
+  // Now `status` (with or without `--json`) detects a running node and reports
+  // its LIVE wallet state read-only through the control API, then prints the
+  // file-only public-status projection. `--remote`/`--connect` force the remote
+  // read (error if no node is reachable instead of falling back).
+  if (args[0] === "status") {
     const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
     const state = await ensurePylonLocalState(summary)
+    const probe = await probeRunningNode(state, Bun.env)
+    const forceRemote = remoteReadRequested(args, Bun.env)
+    if (forceRemote && !probe.reachable) {
+      const payload = { ok: false, error: `no Pylon node reachable at ${probe.baseUrl} (start one with \`pylon node\`)` }
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
+      process.exitCode = 1
+      return
+    }
     const inventory = await discoverHostInventory({ env: Bun.env })
     const psionicConnector = await inspectPsionicConnector({ env: Bun.env })
-    process.stdout.write(`${JSON.stringify(projectPublicStatus(state, inventory, psionicConnector), null, 2)}\n`)
+    const projection = projectPublicStatus(state, inventory, psionicConnector)
+    // When a node is live, attach its read-only wallet status off the warm
+    // session (same projection-safe read `wallet status` routes through).
+    const liveWallet = probe.reachable
+      ? ((await readControlCommand(probe, { type: "wallet.status" })) as WalletStatusProjection | null)
+      : null
+    const output = {
+      ...projection,
+      node: {
+        running: probe.reachable,
+        controlUrl: probe.baseUrl,
+        ...(liveWallet ? { wallet: liveWallet } : {}),
+      },
+    }
+    process.stdout.write(`${JSON.stringify(output, null, 2)}\n`)
     return
   }
 
   if (args[0] === "inventory" && args.includes("--json")) {
     const inventory = await discoverHostInventory({ env: Bun.env })
     process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`)
+    return
+  }
+
+  // `pylon doctor` — read-only health diagnostic. Like `status`, it must NEVER
+  // bind the control port. Previously there was no top-level `doctor`, so
+  // `pylon doctor` fell through to the default node boot and crashed with
+  // EADDRINUSE when a node already held 4716 (the Orwell report).
+  //
+  // It reports: which node home was selected + WHY (public-safe label, never
+  // the seed), whether a seed/identity is present, whether a node is running,
+  // and — when one is — its live wallet readiness read-only through the control
+  // API. `--remote`/`--connect` force the remote read.
+  if (args[0] === "doctor") {
+    const homeResolution = selectPylonHomeResolution(Bun.env)
+    const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+    const state = await ensurePylonLocalState(summary)
+    const seedPresent = existsSync(state.paths.identityMnemonic)
+    const probe = await probeRunningNode(state, Bun.env)
+    const forceRemote = remoteReadRequested(args, Bun.env)
+    if (forceRemote && !probe.reachable) {
+      const payload = { ok: false, error: `no Pylon node reachable at ${probe.baseUrl} (start one with \`pylon node\`)` }
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
+      process.exitCode = 1
+      return
+    }
+    const liveWallet = probe.reachable
+      ? ((await readControlCommand(probe, { type: "wallet.status" })) as WalletStatusProjection | null)
+      : null
+    const report = {
+      ok: true,
+      schema: "openagents.pylon.doctor.v0.1",
+      version: PYLON_VERSION,
+      home: {
+        // PUBLIC-SAFE: a path label + the selection reason, NEVER the seed.
+        path: homeResolution.home,
+        source: homeResolution.source,
+        seedPresent,
+      },
+      node: {
+        running: probe.reachable,
+        controlUrl: probe.baseUrl,
+        controlTokenPresent: probe.hasToken,
+        ...(liveWallet ? { wallet: liveWallet } : {}),
+      },
+    }
+    // Defense-in-depth: the projection-safety guard rejects any seed/raw-Spark
+    // shaped material before it can be printed.
+    assertPublicProjectionSafe(report)
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
     return
   }
 
