@@ -3,7 +3,6 @@ import { Effect, Schema as S } from 'effect'
 import type { VerifiedPublicIdentityClaim } from './agent-owner-claim-routes'
 import type { AgentRegistrationStore } from './agent-registration'
 import {
-  ForumContextKind,
   type ForumHumanSessionActor,
   ForumMethod,
   type ForumModerationEventRow,
@@ -18,7 +17,6 @@ import {
   type ForumPaidActionTargetType,
   ForumParticipationWriteResponse,
   type ForumPostRevisionRow,
-  type ForumPostThreadRef,
   ForumPublicProjectionUnsafe,
   ForumReadAccessDenied,
   type ForumReportRow,
@@ -96,6 +94,12 @@ import {
 } from './forum'
 import { ForumPostBodyTextMaxLength } from './forum-limits'
 import { verifyOpenAgentsForumMdkWebhook } from './forum-mdk-webhooks'
+import {
+  decodeCreateForumReplyBody,
+  decodeCreateForumTopicBody,
+  type ForumContextLinkBody,
+  invalidForumReplyParentPostReference,
+} from './forum-topic-reply-route-contract'
 import {
   type ForumWorkRequestAcceptanceRecord,
   type ForumWorkRequestOfferRecord,
@@ -224,46 +228,6 @@ type ForumAgentWriterActor = Extract<
   ForumWriterActorInput,
   Readonly<{ _tag: 'Agent' }>
 >
-
-const ForumContextLinkBody = S.Struct({
-  contextId: S.Trim.check(S.isNonEmpty(), S.isMaxLength(160)),
-  contextKind: ForumContextKind,
-  contextSlug: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(120)))),
-  contextTitle: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(160)))),
-  publicUrl: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(400)))),
-  sourceRef: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(220)))),
-})
-type ForumContextLinkBody = typeof ForumContextLinkBody.Type
-
-const CreateForumTopicBody = S.Struct({
-  bodyText: S.Trim.check(
-    S.isNonEmpty(),
-    S.isMaxLength(ForumPostBodyTextMaxLength),
-  ),
-  context: S.optionalKey(S.NullOr(ForumContextLinkBody)),
-  paymentProofRef: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(300)))),
-  requestedSlug: S.optionalKey(
-    S.NullOr(
-      S.Trim.check(
-        S.isMinLength(3),
-        S.isMaxLength(80),
-        S.isPattern(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/),
-      ),
-    ),
-  ),
-  title: S.Trim.check(S.isMinLength(3), S.isMaxLength(160)),
-})
-
-const CreateForumReplyBody = S.Struct({
-  bodyText: S.Trim.check(
-    S.isNonEmpty(),
-    S.isMaxLength(ForumPostBodyTextMaxLength),
-  ),
-  context: S.optionalKey(S.NullOr(ForumContextLinkBody)),
-  parentPostId: S.optionalKey(S.NullOr(S.String)),
-  paymentProofRef: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(300)))),
-  quotePostId: S.optionalKey(S.NullOr(S.String)),
-})
 
 const ForumWorkRequestRef = S.Trim.check(S.isNonEmpty(), S.isMaxLength(220))
 const ForumWorkRequestRefs = S.Array(ForumWorkRequestRef)
@@ -501,23 +465,6 @@ const decodeParticipationWriteResponse = S.decodeUnknownSync(
 
 const badRequest = (reason: string) =>
   noStoreJsonResponse({ error: 'bad_request', reason }, { status: 400 })
-
-// A parent ref is valid only when it points at an existing, visible post in
-// the same topic. Dangling refs (for example a truncated post ID) must reject
-// at the write boundary instead of persisting verbatim (#4856).
-const invalidParentPostReference = (
-  parent: ForumPostThreadRef | null,
-  topicId: string,
-): string | null =>
-  parent === null
-    ? 'parentPostId must reference an existing post'
-    : parent.topicId !== topicId
-      ? 'parentPostId must belong to the target topic'
-      : parent.state === 'tombstoned' ||
-          parent.state === 'hidden' ||
-          parent.state === 'held_for_review'
-        ? 'parentPostId must reference a visible post'
-        : null
 
 const notFound = () =>
   noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
@@ -1818,7 +1765,7 @@ const createTopicResponse = (
 
     const body = yield* decodeJsonBody(
       request,
-      S.decodeUnknownSync(CreateForumTopicBody),
+      decodeCreateForumTopicBody,
     )
     const existingTopic = yield* readForumTopicByIdempotencyKey(
       db,
@@ -1951,7 +1898,7 @@ const createReplyResponse = (
 
     const body = yield* decodeJsonBody(
       request,
-      S.decodeUnknownSync(CreateForumReplyBody),
+      decodeCreateForumReplyBody,
     )
     const existingPost = yield* readForumPostByIdempotencyKey(
       db,
@@ -2031,7 +1978,7 @@ const createReplyResponse = (
         db,
         requestedParentPostId,
       )
-      const parentDenialReason = invalidParentPostReference(
+      const parentDenialReason = invalidForumReplyParentPostReference(
         parentRef,
         topic.topicId,
       )
@@ -3623,7 +3570,7 @@ const editPostResponse = (
         db,
         requestedParentPostId,
       )
-      const parentDenialReason = invalidParentPostReference(
+      const parentDenialReason = invalidForumReplyParentPostReference(
         parentRef,
         target.topic.topicId,
       )
