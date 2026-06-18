@@ -6956,6 +6956,10 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
     resolveSparkPayoutDestination(
       makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
       contributorRef,
+      pylonRef =>
+        makeD1PylonApiStore(openAgentsDatabase(env))
+          .readRegistration(pylonRef)
+          .then(registration => registration?.ownerAgentUserId),
     ),
   makeStore: env => makeD1TrainingAuthorityStore(openAgentsDatabase(env)),
   requireAdminApiToken,
@@ -7059,7 +7063,14 @@ const tassadarTraceContributionRoutes =
                     }
                   },
                   resolveSettlementPayoutDestination: (_authorityEnv, ref) =>
-                    resolveSparkPayoutDestination(sparkTargetStore, ref),
+                    resolveSparkPayoutDestination(
+                      sparkTargetStore,
+                      ref,
+                      pylonRef =>
+                        makeD1PylonApiStore(db)
+                          .readRegistration(pylonRef)
+                          .then(registration => registration?.ownerAgentUserId),
+                    ),
                 },
                 {
                   contributorRef: dispatchInput.contributorRef,
@@ -7071,7 +7082,14 @@ const tassadarTraceContributionRoutes =
             nowIso: currentIsoTimestamp(),
             readGate: () => readTassadarRealSettlementGate(env),
             resolvePayoutDestination: ref =>
-              resolveSparkPayoutDestination(sparkTargetStore, ref),
+              resolveSparkPayoutDestination(
+                sparkTargetStore,
+                ref,
+                pylonRef =>
+                  makeD1PylonApiStore(db)
+                    .readRegistration(pylonRef)
+                    .then(registration => registration?.ownerAgentUserId),
+              ),
             run,
           },
           {

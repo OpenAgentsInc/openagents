@@ -271,6 +271,16 @@ export type PylonSparkPayoutTargetStore = Readonly<{
   read: (
     pylonRef: string,
   ) => Promise<PylonSparkPayoutTargetRecord | undefined>
+  // Owner-scoped read (#5252 backing index): the most recently updated Spark
+  // payout target registered by an owning agent across ANY of its pylons. The
+  // settlement resolver uses this as a canonical fallback when a contribution's
+  // lease pylonRef (e.g. a device-ref) differs from the pylonRef the target was
+  // registered under, so a contributor whose registered Pylon projects
+  // `sparkPayoutTargetReady: true` actually resolves a destination. Bound to the
+  // owning agent only; it never crosses agent ownership.
+  readByOwner: (
+    ownerAgentUserId: string,
+  ) => Promise<PylonSparkPayoutTargetRecord | undefined>
 }>
 
 export const makeD1PylonSparkPayoutTargetStore = (
@@ -334,6 +344,40 @@ export const makeD1PylonSparkPayoutTargetStore = (
       updatedAt: row.updated_at,
     }
   },
+
+  readByOwner: async ownerAgentUserId => {
+    const row = await db
+      .prepare(
+        `SELECT pylon_ref, owner_agent_user_id, payout_target_ref,
+                raw_spark_address, created_at, updated_at
+           FROM pylon_spark_payout_targets
+          WHERE owner_agent_user_id = ?
+          ORDER BY updated_at DESC
+          LIMIT 1`,
+      )
+      .bind(ownerAgentUserId)
+      .first<{
+        pylon_ref: string
+        owner_agent_user_id: string
+        payout_target_ref: string
+        raw_spark_address: string
+        created_at: string
+        updated_at: string
+      }>()
+
+    if (row === null) {
+      return undefined
+    }
+
+    return {
+      pylonRef: row.pylon_ref,
+      ownerAgentUserId: row.owner_agent_user_id,
+      payoutTargetRef: row.payout_target_ref,
+      rawSparkAddress: row.raw_spark_address,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }
+  },
 })
 
 /**
@@ -348,12 +392,43 @@ export const makeD1PylonSparkPayoutTargetStore = (
 export const resolveSparkPayoutDestination = async (
   store: PylonSparkPayoutTargetStore,
   contributorRef: string,
+  // Optional owner-resolver (#5252): when the contribution's lease pylonRef is
+  // not the exact pylonRef the target was registered under, fall back to the
+  // owning agent's canonical registered Spark target. Bound to the same owning
+  // agent only; absent resolver preserves prior exact-key behavior.
+  resolveOwnerAgentUserId?: (pylonRef: string) => Promise<string | undefined>,
 ): Promise<string | undefined> => {
-  try {
-    const record = await store.read(contributorRef)
+  const rawFromRecord = (
+    record: PylonSparkPayoutTargetRecord | undefined,
+  ): string | undefined => {
     const raw = record?.rawSparkAddress.trim()
 
     return raw !== undefined && raw !== '' ? raw : undefined
+  }
+
+  try {
+    // 1) Exact pylonRef match (prior behavior — the common case).
+    const direct = rawFromRecord(await store.read(contributorRef))
+
+    if (direct !== undefined) {
+      return direct
+    }
+
+    // 2) Owner-scoped canonical fallback. The target may be registered under a
+    //    different pylonRef owned by the SAME agent (e.g. the lease used a
+    //    device-ref). Resolve the owner, then use the owner's registered target.
+    //    Fail-closed: any missing owner / missing target / read error -> no send.
+    if (resolveOwnerAgentUserId === undefined) {
+      return undefined
+    }
+
+    const ownerAgentUserId = await resolveOwnerAgentUserId(contributorRef)
+
+    if (ownerAgentUserId === undefined || ownerAgentUserId.trim() === '') {
+      return undefined
+    }
+
+    return rawFromRecord(await store.readByOwner(ownerAgentUserId))
   } catch {
     return undefined
   }
