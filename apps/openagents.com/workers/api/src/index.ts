@@ -3281,6 +3281,10 @@ export const cleanProductRouteRedirectLocation = (
     return undefined
   }
 
+  if (url.pathname === '/login') {
+    return `${url.origin}/`
+  }
+
   if (
     url.pathname === '/' ||
     url.pathname === '/billing' ||
@@ -7690,6 +7694,10 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/discord',
     handler: () =>
       Effect.succeed(redirectResponse('https://discord.gg/4RrjGCuQAZ')),
+  },
+  {
+    path: '/login',
+    handler: () => Effect.succeed(redirectResponse('/')),
   },
   {
     path: '/login/email',
