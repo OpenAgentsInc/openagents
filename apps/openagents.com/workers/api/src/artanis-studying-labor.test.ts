@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
+import { projectDebtReceiptSettlement } from './debt-receipt-policy'
 import {
   buildArtanisStudyingLaborProposal,
   handleArtanisStudyingContributionDelivery,
   projectArtanisStudyingContributionCorrectnessGate,
   runArtanisStudyingLaborRequestTick,
+  studyingVerdictToDebtReceiptStudiedKnowledgeSource,
   type ArtanisStudyingContributionDelivery,
   type ArtanisStudyingContributionVerificationVerdict,
   type ArtanisStudyingContributionWorkRequest,
@@ -335,6 +337,119 @@ describe('Artanis studying labor S3 correctness gate', () => {
       expect.arrayContaining([
         'blocker.public.study_labor.validator_review_required',
       ]),
+    )
+  })
+})
+
+// SA-3 (#5340): studied knowledge wired into the hygiene/refactoring debt-receipt
+// lane.
+const hygieneDebtReceiptInput = (
+  source: ReturnType<typeof studyingVerdictToDebtReceiptStudiedKnowledgeSource>,
+) => ({
+  acceptedWorkRefs: ['accepted_work.public.debt_receipt.hygiene.pass'],
+  baselineMetricRefs: ['metric.public.debt_receipt.hygiene.baseline'],
+  budgetCapSats: 10_000,
+  fundingApprovalRefs: ['approval.public.debt_receipt.hygiene.funded'],
+  fundingAuthorityActorRef: 'actor.public.owner.allocator',
+  fundingAuthorityRefs: ['authority.public.debt_receipt.allocator_route'],
+  hygieneDeltaRefs: ['delta.public.debt_receipt.hygiene.improved'],
+  noNewEqualOrWorseDebtRefs: ['check.public.debt_receipt.hygiene.no_new_debt'],
+  payableSats: 5_000,
+  proposerActorRef: 'actor.public.orrery.churn_probe',
+  reviewerActorRef: 'actor.public.reviewer.trigger',
+  reviewDecisionRefs: ['review.public.debt_receipt.hygiene.accepted'],
+  scopeRefs: ['scope.public.debt_receipt.hygiene.module'],
+  settlementApprovalRefs: ['approval.public.debt_receipt.hygiene.settlement'],
+  settlementAuthorityActorRef: 'actor.public.treasury.policy',
+  sourceRefs: ['issue.public.github.openagentsinc_openagents.5340'],
+  stopConditionRefs: ['stop.public.debt_receipt.hygiene.retire_once'],
+  studiedKnowledgeRequired: true,
+  studiedKnowledgeSource: source,
+  targetMetricRefs: ['metric.public.debt_receipt.hygiene.target'],
+  verificationCommandRefs: ['command.public.debt_receipt.hygiene.bun_test'],
+})
+
+describe('Studied knowledge wired into the hygiene debt-receipt lane (#5340)', () => {
+  test('a passing S3 studying verdict becomes a payable hygiene debt-receipt source', () => {
+    const source = studyingVerdictToDebtReceiptStudiedKnowledgeSource(
+      s3Verdict(),
+    )
+
+    expect(source).toMatchObject({
+      correctnessGatePassed: true,
+      graphRef: 'openagents_repo_studied_knowledge_graph.fixture',
+      packetRef: 'openagents_repo_study_packet.fixture',
+      rejectedCount: 0,
+      schemaRef: 'openagents.repo_studied_knowledge_verification.v0',
+      sourceBoundary: 'public_refs_only',
+      validatorReviewRequired: false,
+      verificationRef:
+        'openagents_repo_studied_knowledge_verification.fixture_passed',
+    })
+
+    const projection = projectDebtReceiptSettlement(
+      hygieneDebtReceiptInput(source),
+    )
+
+    expect(projection).toMatchObject({
+      state: 'payable',
+      studiedKnowledgeGatePassed: true,
+      studiedKnowledgeRequired: true,
+      workerPayoutEligible: true,
+    })
+    expect(projection.studiedKnowledgeSourceRefs).toContain(
+      'openagents_repo_studied_knowledge_verification.fixture_passed',
+    )
+  })
+
+  test('a rejected S3 studying verdict blocks the hygiene debt receipt from becoming payable', () => {
+    const source = studyingVerdictToDebtReceiptStudiedKnowledgeSource(
+      s3Verdict({
+        correctnessGatePassed: false,
+        rejectedCount: 2,
+        verificationRef:
+          'openagents_repo_studied_knowledge_verification.fixture_rejected',
+      }),
+    )
+
+    const projection = projectDebtReceiptSettlement(
+      hygieneDebtReceiptInput(source),
+    )
+
+    expect(projection).toMatchObject({
+      studiedKnowledgeGatePassed: false,
+      workerPayoutEligible: false,
+    })
+    expect(projection.state).not.toBe('payable')
+    expect(projection.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.public.debt_receipt.studied_knowledge_correctness_failed',
+        'blocker.public.debt_receipt.studied_knowledge_rejected_claims',
+      ]),
+    )
+  })
+
+  test('a validator-review-required S3 studying verdict surfaces review refs and stays unpayable', () => {
+    const source = studyingVerdictToDebtReceiptStudiedKnowledgeSource(
+      s3Verdict({
+        correctnessGatePassed: false,
+        validatorReviewRefs: ['validator_review.public.study_labor.remainder_1'],
+        validatorReviewRequired: true,
+      }),
+    )
+
+    expect(source.validatorReviewRefs).toEqual([
+      'validator_review.public.study_labor.remainder_1',
+    ])
+
+    const projection = projectDebtReceiptSettlement(
+      hygieneDebtReceiptInput(source),
+    )
+
+    expect(projection.studiedKnowledgeGatePassed).toBe(false)
+    expect(projection.workerPayoutEligible).toBe(false)
+    expect(projection.blockerRefs).toContain(
+      'blocker.public.debt_receipt.studied_knowledge_validator_review_required',
     )
   })
 })

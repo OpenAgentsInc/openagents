@@ -12,6 +12,10 @@ import {
   type ArtanisLaborResultDelivery,
 } from './artanis-labor-requester'
 import { projectDataTraceMarketplaceGate } from './data-trace-marketplace-gate'
+import {
+  type DebtReceiptStudiedKnowledgeSource,
+  DebtReceiptStudiedKnowledgeVerificationSchemaRef,
+} from './debt-receipt-policy'
 import type { ForumWorkRequestLifecycleKind } from './forum-work-requests'
 
 export const OpenAgentsRepoStudiedKnowledgeVerificationSchemaRef =
@@ -391,5 +395,46 @@ const projectStudyingLaborOutcome = async (
     lifecycleKinds: ['delivered'],
     reasonRef: laborOutcome.reasonRef,
     refundReceiptRef: laborOutcome.refundReceiptRef,
+  }
+}
+
+// SA-3 (#5340): wire studied knowledge into the hygiene/refactoring debt-receipt
+// lane (EPIC #5335). A studying contribution verified through the SA-1 study
+// graph + S3 verification (`generateOpenAgentsRepoStudyArtifact` ->
+// `verifyOpenAgentsRepoStudiedKnowledgeClaims`) is the understanding source a
+// hygiene pass cites: "you can't safely refactor what you don't understand."
+//
+// This recognizes Artanis studying labor as a hygiene-lane work type by mapping
+// its S3 verification verdict into a debt-receipt studied-knowledge source. The
+// mapping carries public refs only and grants no mutation, spend, deployment,
+// settlement, or self-review authority — the studied-knowledge gate in
+// `debt-receipt-policy` remains evidence-only.
+
+export const ArtanisStudyingHygieneWorkType =
+  'hygiene.openagents.studied_knowledge_source' as const
+
+export const studyingVerdictToDebtReceiptStudiedKnowledgeSource = (
+  verdictInput: ArtanisStudyingContributionVerificationVerdict,
+): DebtReceiptStudiedKnowledgeSource => {
+  const verdict = decodeStudyingVerdict(verdictInput)
+  const graphRef = verdict.graphRef ?? verdict.packetRef
+  const refs = uniqueRefs([
+    verdict.packetRef,
+    graphRef,
+    verdict.verificationRef,
+    ...verdict.validatorReviewRefs,
+  ])
+  assertSafeRefs(refs, 'Artanis studying debt-receipt source')
+
+  return {
+    correctnessGatePassed: verdict.correctnessGatePassed,
+    graphRef,
+    packetRef: verdict.packetRef,
+    rejectedCount: verdict.rejectedCount,
+    schemaRef: DebtReceiptStudiedKnowledgeVerificationSchemaRef,
+    sourceBoundary: 'public_refs_only',
+    validatorReviewRefs: uniqueRefs(verdict.validatorReviewRefs),
+    validatorReviewRequired: verdict.validatorReviewRequired,
+    verificationRef: verdict.verificationRef,
   }
 }

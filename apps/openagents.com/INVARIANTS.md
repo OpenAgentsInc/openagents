@@ -1043,6 +1043,50 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/agent-claim-reward-ledger.test.ts`.
 
+## Debt Receipt Hygiene Settlement
+
+- Codebase hygiene work is payable only as a funded debt receipt: a public-safe
+  source ref, baseline metric, target metric, touched scope, budget cap, stop
+  condition, verifier, accepted-work evidence, measured hygiene delta, and
+  settlement approval.
+- Discovery is inventory, not spend. A worker, churn probe, or agent may
+  propose debt, but a distinct owner, allocator, reviewer, or market policy must
+  convert it into a funded receipt before payout eligibility exists.
+- Workers must not receive spend authority, settlement authority, deployment
+  authority, or authority to mint payable follow-up debt from their own work.
+- Payment follows verified delta, not churn: behavior or benchmark parity must
+  be green, the named hygiene metric must improve, and no equal-or-worse debt
+  may be introduced elsewhere in the scoped receipt.
+- Duplicate/novelty is enforced by typed fingerprint keys, not loose ref
+  matching: `DebtReceiptKey = sha256(debtReceiptRef | repoBaselineRef |
+  scopeDigest | objectiveDigest)` and `PatchNoveltyKey = sha256(DebtReceiptKey |
+  normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
+  settlement is allowed per `DebtReceiptKey`, then it retires; a near-duplicate
+  patch carrying an already-retired `DebtReceiptKey` is a duplicate replay and
+  is not payable.
+- When a debt receipt requires studied-codebase evidence, the cited study
+  packet, studied-knowledge graph, and studied-knowledge verification refs are
+  an evidence-only gate. The gate must use public refs only and pass correctness
+  with zero rejected claims and no pending validator review before the receipt
+  can become verified/payable. A studied-knowledge source that is present but
+  invalid fails the gate closed even when the gate is optional: bad optional
+  evidence may not leave a contribution payable while attaching blockers.
+  Studied knowledge does not grant mutation, spend, deployment, settlement, or
+  self-review authority. Artanis studying labor is a recognized hygiene work
+  type only through this evidence-only source mapping.
+- After repeated rejected or revision-required attempts on the same
+  receipt/scope, the receipt becomes human-review-only until the benchmark,
+  budget, or scope changes.
+- Public debt-receipt projections must reject raw diffs, prompts, generated
+  fixtures, provider payloads, customer data, private repo data, payment or
+  wallet material, payout targets, secrets, and raw timestamps.
+- Regression coverage for this policy lives in
+  `workers/api/src/debt-receipt-key.test.ts`,
+  `workers/api/src/debt-receipt-policy.test.ts`,
+  `workers/api/src/debt-receipt-work-request.test.ts`, and
+  `workers/api/src/artanis-studying-labor.test.ts`; the buyer-facing lane packet
+  lives in `docs/labor/2026-06-18-debt-receipt-hygiene-lane.md`.
+
 ## User-Facing Live Data Integrity
 
 - User-facing product surfaces must not render dummy, example, fixture, seed,
