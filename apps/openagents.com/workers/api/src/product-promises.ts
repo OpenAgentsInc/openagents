@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-18.3'
+export const PublicProductPromisesVersion = '2026-06-18.4'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -26,6 +26,7 @@ const sourceRefs = [
   'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
   'docs/refactor/path-to-bolt-12.md',
   'docs/transcripts/199.md',
+  'docs/transcripts/217.md',
   'docs/transcripts/236.md',
   'docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
   'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
@@ -1758,6 +1759,39 @@ export const publicProductPromisesDocument = () => {
       },
       {
         ...basePromiseFields,
+        promiseId: 'compute.agentic_kernel_optimization_at_scale.v1',
+        productArea: 'compute',
+        audience: ['contributor', 'operator', 'public'],
+        state: 'red',
+        claim:
+          'Coding agents continuously write and optimize inference kernels across open models and device types (CUDA/Metal/WebGPU), measured by both throughput (tokens/second) and output-parity (an optimized kernel must reproduce identical outputs, verified by exact replay on an independent device), with that work dispatched and paid through the verified-work market as part of the decentralized inference and training mesh.',
+        safeCopy:
+          'This is the direction, not a shipped network capability. The demonstrated piece is a single historical development result, captured on a public build-series video, not a live dereferenceable receipt: in March 2026 an agent wrote custom CUDA kernels that took the OpenAgents Rust ML library Psionic to ~523 tok/s versus a leading local inference runtime\u2019s ~328 tok/s on the smallest Qwen 3.5 model, and Psionic beat that runtime on the four smallest Qwen 3.5 models (docs/transcripts/217.md). The correctness anchor \u2014 an optimized kernel must produce identical outputs, proven by exact replay on a separate device \u2014 is the same exact-trace-replay verification proven for bounded workloads under compute.tassadar_executor_poc.v1; the verified-work payment rail is the labor market proven under labor.forum_work_requests.v1 / labor.nostr_negotiation_market.v1. Continuous, at-scale, across-the-mesh agentic kernel optimization \u2014 many agents optimizing kernels for open models and devices, dispatched and paid through the market \u2014 has not been built, run as a network workload, verified at scale, or settled.',
+        unsafeCopy:
+          'Do not claim that agents are continuously optimizing kernels across the mesh today, that this is a live or paying network workload, that the March Psionic/Qwen result is a current benchmark or a dereferenceable on-chain/worker receipt, that Psionic is the fastest inference engine, that throughput-and-parity verification runs at scale, or that this lane is earning contributors bitcoin. The demonstrated result is one historical demo on the four smallest Qwen 3.5 models on a single machine; do not generalize it to other models, larger models, other devices, broad superiority, or paid market liveness.',
+        evidenceRefs: [
+          'docs/transcripts/217.md',
+          'https://github.com/OpenAgentsInc/psionic',
+          'promise:compute.tassadar_executor_poc.v1',
+          'promise:training.public_distributed_training_run.v1',
+          'promise:labor.forum_work_requests.v1',
+          'promise:labor.nostr_negotiation_market.v1',
+          'promise:proof.demand_provenance.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.agentic_kernel_optimization_demo_only_no_receipt',
+          'blocker.product_promises.agentic_kernel_optimization_throughput_parity_verification_missing',
+          'blocker.product_promises.agentic_kernel_optimization_market_dispatch_missing',
+          'blocker.product_promises.agentic_kernel_optimization_at_scale_run_missing',
+          'blocker.product_promises.agentic_kernel_optimization_settlement_receipts_missing',
+        ],
+        verification:
+          'Green requires a public kernel-optimization work definition; an agent-authored optimized kernel dispatched through the verified-work market; a public throughput (tok/s) improvement record against a named baseline on declared hardware; an output-parity verdict in which an independent device replays the optimized kernel\u2019s outputs and confirms they match the baseline byte-for-byte (exact-trace-replay, per compute.tassadar_executor_poc.v1); accepted-work and settlement receipts for that job; and a participant/scale methodology before any at-scale or across-the-mesh claim. The March 2026 Psionic/Qwen 3.5 result is historical-demo evidence (a build-series video, docs/transcripts/217.md) only and does not satisfy any of these gates. Per proof.demand_provenance.v1, internal first-party optimization is plumbing proof, not market proof.',
+        authorityBoundary:
+          'A demonstrated single-machine throughput result and a stated direction grant no network capability, no paid-work authority, no at-scale claim, no cross-model or cross-device generalization, no performance-superiority claim, and no settlement authority. Throughput improvement without an independent exact-replay output-parity verdict is not an accepted optimized kernel; an accepted kernel is not paid work until the verified-work market records accepted-work and settlement receipts.',
+      },
+      {
+        ...basePromiseFields,
         promiseId: 'artanis.tassadar_evolution_loop.v1',
         productArea: 'Pylon',
         audience: ['contributor', 'operator'],
@@ -2520,6 +2554,7 @@ export const publicProductPromisesDocument = () => {
       'Registry 2026-06-14.3: Coder Cloud contract layer started landing (concurrent agent work merged): the lane selector auto|local|cloud-gcp|cloud-shc is wired end to end (#4998), the Vortex-independent Codex grant endpoint contract is in place (#4999), and the cloud placement endpoint shipped Google-first (cloud #86/#87/#88). The remaining seam to a live loop is #4997: cloud-gcp spawns still execute locally and per-session GCE provisioning is unwired. autopilot.cloud_coding_sessions.v1 stays red until the desktop->GCE dispatch loop is demonstrable.',
       'Registry 2026-06-14.4: Coder Cloud Phase 1 contract layer fully landed (#4997 Pylon cloud dispatch to the placement endpoint with local fallback, plus cloud #90 GCE lease lifecycle, on top of #4998/#4999/cloud #86-#88). autopilot.cloud_coding_sessions.v1 stays red: live GCE provisioning is a fake-default ADC-gated stub and the cloud.gce.* event kinds + resource_usage_receipt ref do not round-trip to the desktop yet (#5005, open). This registry version is the one deployed after the zero-debt architecture gate (check:architecture) was brought back to green: the wave-3 comment-only false positives were reworded, the 7 raw JSON.parse calls were routed through the parseJsonUnknown json-boundary helper, and three migration-bridge budgets (route Effect.promise adapters 8->18, Worker Response surfaces 80->83, index.ts runPromise allowlist 6->7) were raised under owner authorization with ratchet-down notes.',
       'Registry 2026-06-17.3: the Spark agent-wallet unification epic #5176 closed end-to-end. Offline receive is recipient-confirmed by two independent contributors (Trigger 50k, Whitefang 50k) with payments.offline_receive_spark_fallback.v1 green; Spark is now the primary agent balance (#5178); and consented owner-approved Spark send/withdraw (`wallet send --rail spark --confirm-send`) is shipped and verified on Pylon rc.16 with real 100-sat and 878-sat sends (state=sent/status=completed, balance debited). The original offline-receive gap #5078 and the rc.13 send/version bugs #5184/#5185 are closed. This version updates the offline-receive record’s evidence/verification only — the claim stays receive-only and no new public send/withdraw claim is asserted; a dedicated consented-spend/withdraw promise remains an owner product-claim decision. Host-specific balance-read follow-up is tracked in #5194 (rc.17 candidate fix + PYLON_SPARK_DEBUG diagnostic).',
+      'Registry 2026-06-18.4 adds one conservative new record, compute.agentic_kernel_optimization_at_scale.v1 (red): coding agents continuously writing and optimizing inference kernels across open models and device types, scored on BOTH throughput (tok/s) AND output-parity (an optimized kernel must reproduce identical outputs, verified by exact replay on an independent device), dispatched and paid through the verified-work market as part of the decentralized inference/training mesh. This is the direction, not a shipped network capability. The only demonstrated piece is a single historical development result on a public build-series video (docs/transcripts/217.md): in March 2026 an agent wrote custom CUDA kernels that took the OpenAgents Rust ML library Psionic to ~523 tok/s versus a leading local inference runtime\u2019s ~328 tok/s on the smallest Qwen 3.5 model, beating that runtime on the four smallest Qwen 3.5 models on a single machine. That demo is NOT a dereferenceable on-chain/worker receipt, so nothing here is green; the record stays red with the demo flagged as historical-demo evidence only. The output-parity correctness anchor reuses the exact-trace-replay verification proven under compute.tassadar_executor_poc.v1, and the payment rail reuses the verified-work labor market proven under labor.forum_work_requests.v1 / labor.nostr_negotiation_market.v1 \u2014 cross-referenced, not duplicated. Green requires a market-dispatched agent-authored kernel, a public tok/s improvement against a named baseline on declared hardware, an independent exact-replay output-parity verdict, accepted-work and settlement receipts, and a participant/scale methodology; per proof.demand_provenance.v1 internal first-party optimization is plumbing proof, not market proof. No promise_transition is required (a new red record creates no state flip).',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
