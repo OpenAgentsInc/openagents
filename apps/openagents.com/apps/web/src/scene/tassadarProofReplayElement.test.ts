@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TASSADAR_FIRST_REAL_SETTLEMENT_REPLAY_ENDPOINT } from '@openagentsinc/proof-replay'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   TASSADAR_PROOF_REPLAY_TAG,
@@ -360,14 +360,22 @@ describe('tassadar proof replay element', () => {
     )
     expect(el.getAttribute('data-state')).toBe('ok')
     expect(el.shadowRoot?.querySelector('[data-replay-stage]')).not.toBeNull()
-    expect(el.shadowRoot?.querySelector('[data-replay-control="play"]')).not.toBeNull()
-    expect(el.shadowRoot?.querySelector('[data-replay-control="scrub"]')).not.toBeNull()
-    expect(el.shadowRoot?.querySelector('[data-replay-control="camera"]')).not.toBeNull()
+    expect(
+      el.shadowRoot?.querySelector('[data-replay-control="play"]'),
+    ).not.toBeNull()
+    expect(
+      el.shadowRoot?.querySelector('[data-replay-control="scrub"]'),
+    ).not.toBeNull()
+    expect(
+      el.shadowRoot?.querySelector('[data-replay-control="camera"]'),
+    ).not.toBeNull()
     expect(el.shadowRoot?.textContent ?? '').toContain('Tassadar')
     expect(el.shadowRoot?.textContent ?? '').toContain(
       'The first real Tassadar settlement replay begins.',
     )
-    expect(el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')).toBeNull()
+    expect(
+      el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]'),
+    ).toBeNull()
   })
 
   it('pauses from press events while the replay timer is running', async () => {
@@ -378,19 +386,23 @@ describe('tassadar proof replay element', () => {
       '[data-replay-control="play"]',
     ) as HTMLButtonElement | null
     expect(play).not.toBeNull()
-    play!.dispatchEvent(new Event('pointerdown', {
-      bubbles: true,
-      cancelable: true,
-    }))
+    play!.dispatchEvent(
+      new Event('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+      }),
+    )
 
     const pause = el.shadowRoot?.querySelector(
       '[data-replay-control="play"]',
     ) as HTMLButtonElement | null
     expect(pause?.textContent).toBe('Pause')
-    pause!.dispatchEvent(new Event('pointerdown', {
-      bubbles: true,
-      cancelable: true,
-    }))
+    pause!.dispatchEvent(
+      new Event('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+      }),
+    )
 
     const resumed = el.shadowRoot?.querySelector(
       '[data-replay-control="play"]',
@@ -424,10 +436,12 @@ describe('tassadar proof replay element', () => {
     ) as HTMLAnchorElement | null
     expect(live).not.toBeNull()
     expect(live?.getAttribute('href')).toBe('/tassadar')
-    live!.dispatchEvent(new Event('pointerdown', {
-      bubbles: true,
-      cancelable: true,
-    }))
+    live!.dispatchEvent(
+      new Event('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+      }),
+    )
 
     expect(assignSpy).toHaveBeenCalledWith('/tassadar')
   })
@@ -437,7 +451,9 @@ describe('tassadar proof replay element', () => {
       .spyOn(globalThis, 'fetch')
       .mockRejectedValue(new Error('must not fetch'))
     tassadarProofReplayView([], replayBundle)
-    const el = document.createElement(TASSADAR_PROOF_REPLAY_TAG) as HTMLElement & {
+    const el = document.createElement(
+      TASSADAR_PROOF_REPLAY_TAG,
+    ) as HTMLElement & {
       bundle?: unknown
     }
     el.bundle = replayBundle
@@ -503,7 +519,9 @@ describe('tassadar proof replay element', () => {
     scrub!.value = '13'
     scrub!.dispatchEvent(new Event('input', { bubbles: true }))
 
-    expect(el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')).not.toBeNull()
+    expect(
+      el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]'),
+    ).not.toBeNull()
     const overpayment = el.shadowRoot?.querySelector(
       '[data-replay-marker="overpayment"]',
     )
@@ -516,7 +534,9 @@ describe('tassadar proof replay element', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(replayBundle))
     const el = await mountAndSettle()
 
-    expect(el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')).toBeNull()
+    expect(
+      el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]'),
+    ).toBeNull()
 
     const scrub = el.shadowRoot?.querySelector(
       '[data-replay-control="scrub"]',
@@ -539,9 +559,15 @@ describe('tassadar proof replay element', () => {
 
     expect(el.getAttribute('data-replay-presentation')).toBe('social')
     expect(el.getAttribute('data-social-duration')).toBe('60')
-    expect(el.shadowRoot?.querySelector('[data-social-hud="social"]')).not.toBeNull()
-    expect(el.shadowRoot?.querySelector('[data-replay-control="play"]')).toBeNull()
-    expect(el.shadowRoot?.querySelector('[data-replay-control="scrub"]')).toBeNull()
+    expect(
+      el.shadowRoot?.querySelector('[data-social-hud="social"]'),
+    ).not.toBeNull()
+    expect(
+      el.shadowRoot?.querySelector('[data-replay-control="play"]'),
+    ).toBeNull()
+    expect(
+      el.shadowRoot?.querySelector('[data-replay-control="scrub"]'),
+    ).toBeNull()
 
     const canvas = el.shadowRoot?.querySelector(
       '[data-social-canvas="nonblank"]',
@@ -552,12 +578,16 @@ describe('tassadar proof replay element', () => {
 
     const text = el.shadowRoot?.textContent ?? ''
     expect(text).toContain('Tassadar Run 1: first real Bitcoin settlement')
-    expect(text).toContain('Verified work -> owner gate -> Spark zap -> public receipt')
+    expect(text).toContain(
+      'Verified work -> owner gate -> Spark zap -> public receipt',
+    )
     expect(text).toContain('8:38pm, June 17')
     expect(text).not.toMatch(
       /spark1|bolt11|preimage|mnemonic|api[_ -]?key|service[_ -]?token|bearer|payment_hash|private log|raw prompt/i,
     )
-    expect(el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')).toBeNull()
+    expect(
+      el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]'),
+    ).toBeNull()
   })
 
   it('shows the confirmed zap and receipt-backed end card late in the social cut', async () => {
@@ -566,8 +596,12 @@ describe('tassadar proof replay element', () => {
       '/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social&start=56',
     )
 
-    expect(el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')).not.toBeNull()
-    const endCard = el.shadowRoot?.querySelector('[data-social-end-card="settled"]')
+    expect(
+      el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]'),
+    ).not.toBeNull()
+    const endCard = el.shadowRoot?.querySelector(
+      '[data-social-end-card="settled"]',
+    )
     expect(endCard?.textContent ?? '').toContain('1,000 sats settled')
     expect(endCard?.textContent ?? '').toContain('realBitcoinMoved:true')
     expect(endCard?.textContent ?? '').toContain(
@@ -576,6 +610,31 @@ describe('tassadar proof replay element', () => {
     expect(endCard?.querySelector('a')?.getAttribute('href')).toContain(
       '/api/public/nexus-pylon/receipts/',
     )
+  })
+
+  it('can seek the social replay through the programmatic frame driver', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(replayBundle))
+    const el = (await mountAndSettle(
+      '/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social',
+    )) as HTMLElement & {
+      driveReplayFrame: (input: {
+        second?: number
+        cameraMode?: string
+      }) => { mode: string; second: number } | null
+    }
+
+    const pose = el.driveReplayFrame({ cameraMode: 'zap_focus', second: 39 })
+
+    expect(pose?.mode).toBe('zap_focus')
+    expect(pose?.second).toBe(39)
+    expect(el.getAttribute('data-replay-second')).toBe('39.0')
+    expect(el.getAttribute('data-replay-camera')).toBe('zap_focus')
+    expect(
+      el.shadowRoot?.querySelector('[data-replay-control="scrub"]'),
+    ).toBeNull()
+    expect(
+      el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]'),
+    ).not.toBeNull()
   })
 
   it('opens source refs in the inspector when an event is selected', async () => {

@@ -1,22 +1,23 @@
 import {
-  activeReplayEventsAt,
-  assertProofReplayBundleShipmentGate,
-  assertReplayPlanSourceCoverage,
-  buildReplayRenderPlan,
-  cameraPoseFor,
   FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
-  initialReplayPlaybackState,
   OPENAGENTS_PUBLIC_ORIGIN,
-  interpolateActorPosition,
-  proofReplayBundleEndpointForSlug,
-  reduceReplayClock,
   type ProofReplayBundle,
   type ReplayCameraMode,
+  type ReplayCameraPose,
   type ReplayEvent,
   type ReplayPlaybackState,
   type ReplayRenderPlan,
   type ReplaySourceRef,
   type ReplayVector3,
+  activeReplayEventsAt,
+  assertProofReplayBundleShipmentGate,
+  assertReplayPlanSourceCoverage,
+  buildReplayRenderPlan,
+  cameraPoseFor,
+  initialReplayPlaybackState,
+  interpolateActorPosition,
+  proofReplayBundleEndpointForSlug,
+  reduceReplayClock,
 } from '@openagentsinc/proof-replay'
 import { Schema as S } from 'effect'
 import { define as defineCustomElement } from 'foldkit/customElement'
@@ -49,6 +50,9 @@ const CAMERA_MODES: ReadonlyArray<ReplayCameraMode> = [
   'zap_focus',
   'free_camera',
 ]
+
+const isReplayCameraMode = (value: unknown): value is ReplayCameraMode =>
+  typeof value === 'string' && CAMERA_MODES.includes(value as ReplayCameraMode)
 
 const SPEEDS = [0.5, 1, 1.5, 2, 4] as const
 
@@ -98,7 +102,9 @@ const textOrUnknown = (value: string | undefined): string => {
 const stageClassFor = (kind: string): string =>
   kind.replace(/[^a-z0-9_-]/gi, '_').toLowerCase()
 
-const projectPoint = (position: ReplayVector3): Readonly<{
+const projectPoint = (
+  position: ReplayVector3,
+): Readonly<{
   left: string
   top: string
 }> => ({
@@ -106,10 +112,7 @@ const projectPoint = (position: ReplayVector3): Readonly<{
   top: `${clamp(50 + position.z * 4.9 - position.y * 3.5, 9, 91)}%`,
 })
 
-const addPressHandler = (
-  element: HTMLElement,
-  handler: () => void,
-): void => {
+const addPressHandler = (element: HTMLElement, handler: () => void): void => {
   let pointerHandled = false
   element.addEventListener('pointerdown', event => {
     pointerHandled = true
@@ -179,10 +182,13 @@ const activeSimulationEvent = (
 const activeRecognitionEvent = (
   events: ReadonlyArray<ReplayEvent>,
 ): ReplayEvent | undefined =>
-  [...events].reverse().find(event =>
-    event.kind === 'recognition_reward_recorded' ||
-    event.kind === 'recipient_confirmation_recorded',
-  )
+  [...events]
+    .reverse()
+    .find(
+      event =>
+        event.kind === 'recognition_reward_recorded' ||
+        event.kind === 'recipient_confirmation_recorded',
+    )
 
 const activeOverpaymentEvent = (
   events: ReadonlyArray<ReplayEvent>,
@@ -203,7 +209,9 @@ const presentationModeFromLocation = (): ReplayPresentationMode => {
 
 const socialDurationSecondFromLocation = (fallback: number): number => {
   const params = queryParamsFromLocation()
-  const requested = Number(params.get('duration') ?? SOCIAL_DEFAULT_DURATION_SECOND)
+  const requested = Number(
+    params.get('duration') ?? SOCIAL_DEFAULT_DURATION_SECOND,
+  )
   return clamp(
     Number.isFinite(requested) ? requested : fallback,
     45,
@@ -281,6 +289,38 @@ const makeClass = (): CustomElementConstructor =>
       if (this.isConnected) this.#renderProvidedBundle()
     }
 
+    driveReplayFrame(input: {
+      second?: number
+      cameraMode?: ReplayCameraMode
+    }): ReplayCameraPose | null {
+      const plan = this.#plan
+      const playback = this.#playback
+      if (plan === null || playback === null) return null
+
+      if (isReplayCameraMode(input.cameraMode)) {
+        this.#cameraMode = input.cameraMode
+      }
+
+      const requestedSecond =
+        typeof input.second === 'number' ? input.second : playback.second
+      const paused = reduceReplayClock(playback, { type: 'pause' })
+      this.#setPlayback(
+        reduceReplayClock(paused, {
+          second: requestedSecond,
+          type: 'seek',
+        }),
+        false,
+      )
+      this.#renderCurrent()
+
+      const current = this.#playback ?? playback
+      return cameraPoseFor(
+        plan,
+        current.second,
+        this.#cameraMode === 'director_track' ? undefined : this.#cameraMode,
+      )
+    }
+
     connectedCallback(): void {
       this.#shadow = this.shadowRoot ?? this.attachShadow({ mode: 'open' })
       if (this.#renderProvidedBundle()) return
@@ -316,7 +356,9 @@ const makeClass = (): CustomElementConstructor =>
         )
         if (signal.aborted) return
         if (!response.ok) {
-          this.#renderError(`Replay bundle unavailable (HTTP ${response.status}).`)
+          this.#renderError(
+            `Replay bundle unavailable (HTTP ${response.status}).`,
+          )
           return
         }
         const bundle = (await response.json()) as ProofReplayBundle
@@ -329,7 +371,8 @@ const makeClass = (): CustomElementConstructor =>
     }
 
     #renderProvidedBundle(): boolean {
-      if (!this.#hasProvidedBundle || this.#providedBundle === null) return false
+      if (!this.#hasProvidedBundle || this.#providedBundle === null)
+        return false
       try {
         this.#renderBundle(this.#providedBundle)
       } catch {
@@ -370,7 +413,9 @@ const makeClass = (): CustomElementConstructor =>
       const shell = this.#base()
       if (shell === null) return
       this.#setDataState('loading')
-      shell.append(this.#overlay('Proof replay', 'Loading public replay bundle.'))
+      shell.append(
+        this.#overlay('Proof replay', 'Loading public replay bundle.'),
+      )
     }
 
     #renderError(message: string): void {
@@ -413,7 +458,12 @@ const makeClass = (): CustomElementConstructor =>
       const plan = this.#plan
       const playback = this.#playback
       const shell = this.#base()
-      if (bundle === null || plan === null || playback === null || shell === null) {
+      if (
+        bundle === null ||
+        plan === null ||
+        playback === null ||
+        shell === null
+      ) {
         return
       }
 
@@ -424,9 +474,14 @@ const makeClass = (): CustomElementConstructor =>
       this.setAttribute('data-replay-camera', this.#cameraMode)
       this.setAttribute('data-replay-presentation', presentationMode)
       if (presentationMode === 'social') {
-        this.setAttribute('data-social-duration', String(playback.durationSecond))
+        this.setAttribute(
+          'data-social-duration',
+          String(playback.durationSecond),
+        )
         this.setAttribute('data-social-hud', 'social')
-        shell.append(this.#renderWorld(bundle, plan, playback, presentationMode))
+        shell.append(
+          this.#renderWorld(bundle, plan, playback, presentationMode),
+        )
         return
       }
       this.removeAttribute('data-social-duration')
@@ -454,7 +509,10 @@ const makeClass = (): CustomElementConstructor =>
         ['Replay', bundle.title],
         ['Bundle', bundle.bundleRef],
         ['Moment', bundle.socialDisplayTime ?? 'June 17, 8:38pm CT'],
-        ['Clock', `${formatSecond(playback.second)} / ${formatSecond(playback.durationSecond)}`],
+        [
+          'Clock',
+          `${formatSecond(playback.second)} / ${formatSecond(playback.durationSecond)}`,
+        ],
       ]
       for (const [termText, detailText] of rows) {
         const row = document.createElement('div')
@@ -510,11 +568,15 @@ const makeClass = (): CustomElementConstructor =>
       plane.append(grid)
 
       for (const stage of plan.stagePlacements) {
-        plane.append(this.#stageButton(stage.ref, stage.label, stage.kind, stage.position))
+        plane.append(
+          this.#stageButton(stage.ref, stage.label, stage.kind, stage.position),
+        )
       }
 
       for (const track of plan.actorTracks) {
-        const actor = bundle.actors.find(value => value.actorRef === track.actorRef)
+        const actor = bundle.actors.find(
+          value => value.actorRef === track.actorRef,
+        )
         const position = interpolateActorPosition(track, playback.second)
         const activeFrame = [...track.keyframes]
           .reverse()
@@ -547,7 +609,8 @@ const makeClass = (): CustomElementConstructor =>
         const marker = document.createElement('div')
         marker.className = 'marker blocked'
         marker.setAttribute('data-replay-marker', 'blocked')
-        marker.textContent = `${blocked.displayText} ${blocked.caveat ?? ''}`.trim()
+        marker.textContent =
+          `${blocked.displayText} ${blocked.caveat ?? ''}`.trim()
         plane.append(marker)
       }
 
@@ -822,10 +885,12 @@ const makeClass = (): CustomElementConstructor =>
       scrub.setAttribute('data-replay-control', 'scrub')
       scrub.addEventListener('input', () => {
         const current = this.#playback ?? playback
-        this.#setPlayback(reduceReplayClock(current, {
-          second: Number(scrub.value),
-          type: 'seek',
-        }))
+        this.#setPlayback(
+          reduceReplayClock(current, {
+            second: Number(scrub.value),
+            type: 'seek',
+          }),
+        )
       })
 
       const speed = document.createElement('select')
@@ -839,10 +904,12 @@ const makeClass = (): CustomElementConstructor =>
       }
       speed.addEventListener('change', () => {
         const current = this.#playback ?? playback
-        this.#setPlayback(reduceReplayClock(current, {
-          playbackRate: Number(speed.value),
-          type: 'set_speed',
-        }))
+        this.#setPlayback(
+          reduceReplayClock(current, {
+            playbackRate: Number(speed.value),
+            type: 'set_speed',
+          }),
+        )
       })
 
       const camera = document.createElement('select')
@@ -888,10 +955,12 @@ const makeClass = (): CustomElementConstructor =>
         addPressHandler(button, () => {
           this.#selectedRef = event.eventRef
           const current = this.#playback ?? playback
-          this.#setPlayback(reduceReplayClock(current, {
-            second: event.timelineSecond,
-            type: 'seek',
-          }))
+          this.#setPlayback(
+            reduceReplayClock(current, {
+              second: event.timelineSecond,
+              type: 'seek',
+            }),
+          )
         })
         item.append(button)
         list.append(item)
@@ -918,10 +987,15 @@ const makeClass = (): CustomElementConstructor =>
       title.textContent = event?.displayText ?? target?.label ?? 'Replay source'
       inspector.append(title)
 
-      const rows: ReadonlyArray<readonly [string, string | ReadonlyArray<string>]> = [
+      const rows: ReadonlyArray<
+        readonly [string, string | ReadonlyArray<string>]
+      > = [
         ['Kind', event?.kind ?? target?.kind ?? 'bundle'],
         ['State', event?.stateAfter ?? 'evidence presentation'],
-        ['Time', event === undefined ? 'n/a' : formatSecond(event.timelineSecond)],
+        [
+          'Time',
+          event === undefined ? 'n/a' : formatSecond(event.timelineSecond),
+        ],
         [
           'Sats',
           event?.amountSats === undefined
@@ -929,7 +1003,12 @@ const makeClass = (): CustomElementConstructor =>
             : `${event.amountSats} sats ${event.rail ?? ''}`.trim(),
         ],
         ['Caveat', event?.caveat ?? 'public refs only'],
-        ['Source refs', event?.sourceRefs ?? target?.sourceRefs ?? bundle.sourceRefs.map(source => source.ref)],
+        [
+          'Source refs',
+          event?.sourceRefs ??
+            target?.sourceRefs ??
+            bundle.sourceRefs.map(source => source.ref),
+        ],
       ]
       const list = document.createElement('dl')
       const sourceRecords = sourceRecordMap(bundle)
@@ -995,7 +1074,9 @@ const makeClass = (): CustomElementConstructor =>
       if (!next.isPlaying || next.second >= next.durationSecond) {
         this.#stopTimer()
         this.#playback =
-          next.second >= next.durationSecond ? { ...next, isPlaying: false } : next
+          next.second >= next.durationSecond
+            ? { ...next, isPlaying: false }
+            : next
       }
       if (render) this.#renderCurrent()
     }

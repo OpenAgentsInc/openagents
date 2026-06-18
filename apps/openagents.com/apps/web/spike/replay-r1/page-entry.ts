@@ -12,16 +12,17 @@
 // want in a clip), but for this spike we drive it programmatically through its
 // real shadow-DOM controls so the screenshot reflects the genuine rendered
 // scene at a chosen moment + camera, with no human clicking.
-
 import {
+  type ProofReplayBundle,
+  type ReplayCameraMode,
+  type ReplayCameraPose,
   buildReplayRenderPlan,
   cameraPoseFor,
-  type ReplayCameraMode,
 } from '@openagentsinc/proof-replay'
 
 import {
-  tassadarProofReplayView,
   TASSADAR_PROOF_REPLAY_TAG,
+  tassadarProofReplayView,
 } from '../../src/scene/tassadarProofReplayElement'
 import { spikeReplayBundle } from './fixture-bundle'
 
@@ -32,6 +33,11 @@ void tassadarProofReplayView()
 
 declare global {
   interface Window {
+    driveReplayFrame: (input: {
+      second?: number
+      cameraMode?: ReplayCameraMode
+    }) => Promise<ReplayCameraPose | null>
+    loadReplayBundle: (bundle: ProofReplayBundle) => Promise<void>
     setReplaySecond: (second: number) => Promise<void>
     setCamera: (mode: ReplayCameraMode) => Promise<void>
     replaySpikeReady: boolean
@@ -40,17 +46,20 @@ declare global {
 }
 
 const SCENE_ID = 'replay-spike-scene'
+let currentReplayBundle: ProofReplayBundle = spikeReplayBundle
 
-const sceneEl = (): HTMLElement => {
-  const el = document.getElementById(SCENE_ID)
-  if (el === null) throw new Error('spike scene element missing')
-  return el
+type ReplaySceneElement = HTMLElement & {
+  bundle?: unknown
+  driveReplayFrame?: (input: {
+    second?: number
+    cameraMode?: ReplayCameraMode
+  }) => ReplayCameraPose | null
 }
 
-const shadowControl = (selector: string): HTMLElement | null => {
-  const root = sceneEl().shadowRoot
-  if (root === null) return null
-  return root.querySelector(selector)
+const sceneEl = (): ReplaySceneElement => {
+  const el = document.getElementById(SCENE_ID)
+  if (el === null) throw new Error('spike scene element missing')
+  return el as ReplaySceneElement
 }
 
 const waitFrame = (): Promise<void> =>
@@ -65,34 +74,37 @@ const mount = async (): Promise<void> => {
   document.body.appendChild(host)
   // The element exposes a `bundle` property setter that renders the scene from
   // the EXISTING proof-replay render plan. This is the real scene, not a stub.
-  ;(host as unknown as { bundle: unknown }).bundle = spikeReplayBundle
+  ;(host as ReplaySceneElement).bundle = spikeReplayBundle
+}
+
+window.loadReplayBundle = async (bundle: ProofReplayBundle): Promise<void> => {
+  currentReplayBundle = bundle
+  sceneEl().bundle = bundle
+  await waitFrame()
+}
+
+window.driveReplayFrame = async (input: {
+  second?: number
+  cameraMode?: ReplayCameraMode
+}): Promise<ReplayCameraPose | null> => {
+  const pose =
+    sceneEl().driveReplayFrame?.(input) ??
+    cameraPoseFor(
+      buildReplayRenderPlan(currentReplayBundle),
+      input.second ?? 0,
+      input.cameraMode,
+    )
+  window.replaySpikeCameraPose = pose
+  await waitFrame()
+  return pose
 }
 
 window.setReplaySecond = async (second: number): Promise<void> => {
-  // Drive the real scrubber control the scene renders, so playback time is set
-  // through the scene's own clock reducer.
-  const scrub = shadowControl('[data-replay-control="scrub"]') as
-    | HTMLInputElement
-    | null
-  if (scrub === null) throw new Error('scrubber control not found in scene')
-  scrub.value = String(second)
-  scrub.dispatchEvent(new Event('input', { bubbles: true }))
-  // Record the camera pose the proof-replay math computes for this moment, so
-  // the spike can report whether the camera model is exercised (it is — as
-  // data; see the report on whether it drives a viewpoint).
-  const plan = buildReplayRenderPlan(spikeReplayBundle)
-  window.replaySpikeCameraPose = cameraPoseFor(plan, second)
-  await waitFrame()
+  await window.driveReplayFrame({ second })
 }
 
 window.setCamera = async (mode: ReplayCameraMode): Promise<void> => {
-  const select = shadowControl('[data-replay-control="camera"]') as
-    | HTMLSelectElement
-    | null
-  if (select === null) throw new Error('camera control not found in scene')
-  select.value = mode
-  select.dispatchEvent(new Event('change', { bubbles: true }))
-  await waitFrame()
+  await window.driveReplayFrame({ cameraMode: mode })
 }
 
 // Mount, then signal readiness once the scene has painted at least one frame.

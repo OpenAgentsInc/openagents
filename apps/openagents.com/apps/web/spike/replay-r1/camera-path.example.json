@@ -1,0 +1,27 @@
+{
+  "keyframes": [
+    {
+      "second": 0,
+      "mode": "overview"
+    },
+    {
+      "second": 1.5,
+      "mode": "orbit_proof"
+    },
+    {
+      "second": 3,
+      "mode": "zap_focus",
+      "position": {
+        "x": 3.2,
+        "y": 3.4,
+        "z": 5.2
+      },
+      "target": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 45
+    }
+  ]
+}

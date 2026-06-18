@@ -6,6 +6,31 @@ surface, and the rendering/capture infrastructure, audited against the owner's
 stated replay vision.
 Type: read/audit + recommendation. No feature code was written.
 
+## Implementation updates
+
+- 2026-06-18: R-1 (#5347) landed the one-frame Playwright/headless-Chromium
+  spike at `apps/openagents.com/apps/web/spike/replay-r1/`. The spike proved
+  that the existing proof-replay DOM bridge can be rendered to pixels
+  headlessly and that `cameraPoseFor` can be computed for a chosen moment. It
+  also confirmed the important caveat: the current proof-replay scene is a 2.5D
+  DOM/CSS bridge, not a true 3D `three-effect` camera-honoring renderer.
+- 2026-06-18: R-3/R-4/R-5 (#5349/#5350/#5351) now exist as assembly on that
+  harness. `render-clip.mjs` drives the replay page frame-by-frame, writes
+  `frame_%05d.png`, shells ffmpeg to produce an H.264/yuv420p/faststart mp4,
+  and writes a render manifest containing the bundle source, frame seconds,
+  camera modes, computed `cameraPoseFor` poses, optional requested camera-path
+  poses, codec settings, and the run-location boundary. Inputs may be the local
+  fixture, a local bundle JSON file, an explicit bundle URL, or a public replay
+  slug such as `first-real-settlement`.
+- Current capability status after this update: headless DOM frame sequence,
+  frames-to-mp4, and one CLI entrypoint are implemented for local/CI/Container
+  render boxes. The Cloudflare Worker is still only the intended trigger/serve
+  boundary and must not render or run ffmpeg. True owner-directed **3D**
+  reframing remains blocked on porting proof-replay visuals into
+  `@openagentsinc/three-effect`; until then, camera paths are recorded in the
+  manifest and select the existing DOM bridge camera modes, but they do not move
+  a real WebGL viewpoint.
+
 ## The vision (the target)
 
 > "I want to be able to see replays of relevant moments... pick a moment, have
@@ -52,7 +77,7 @@ layer**. It is presentation-only in the authority sense (the README is explicit:
 "It does not validate proofs, authorize settlement, dispatch payments, read
 wallet state, or promote product claims") — the 2026-06-18 Tassadar audit's
 "validates/authorizes nothing" verdict is correct on authority. But on
-*capability* it already provides most of the scene-planning math a clip
+_capability_ it already provides most of the scene-planning math a clip
 generator needs:
 
 - A typed bundle schema `proof_replay_bundle.v1` (`ProofReplayBundle`) with
@@ -70,7 +95,7 @@ generator needs:
   deterministic 3D position.
 - A camera model: `ReplayCameraMode`
   (`overview | follow_actor | orbit_proof | zap_focus | free_camera |
-  director_track`), `ReplayCameraCue`, and crucially
+director_track`), `ReplayCameraCue`, and crucially
   `cameraPoseFor(plan, second, requestedMode?) -> ReplayCameraPose` which
   returns a concrete `{ position, target }` in world space for a given
   second. `cameraCueAt(plan, second)` resolves the active cue.
@@ -166,7 +191,7 @@ This is the load-bearing gap, so it was checked carefully:
   `packages/core/src/renderPrimitives.ts`), but there is **no pixel readback**
   (`readPixels` / `toDataURL` / `toBlob`), **no OffscreenCanvas**, **no Node
   headless context**, and **no frame-sequence export**. OffscreenCanvas is only
-  listed as a *future suggestion* in three-effect's own audit
+  listed as a _future suggestion_ in three-effect's own audit
   (`docs/2026-06-14-implementation-audit.md`), not implemented. Every renderer
   is constructed against a DOM canvas.
 - **No video encoder anywhere.** Zero references to ffmpeg, `MediaRecorder`,
@@ -178,18 +203,18 @@ This is the load-bearing gap, so it was checked carefully:
 
 ## Gap analysis: the five capabilities the vision needs
 
-| # | Capability | Status | Where it stands |
-|---|-----------|--------|-----------------|
-| 1 | **Moment selection** (event/timestamp/ref -> scene state) | **EXISTS** | `ProofReplayBundle` + `buildReplayRenderPlan` + `activeReplayEventsAt(bundle, second)` + `interpolateActorPosition`. Moments are addressable by `eventRef` / `sequenceIndex` / `timelineSecond`. Bundles exist for two moments. |
-| 2 | **Programmatic camera direction** (API/params, camera path) | **PARTIAL** | The data model exists: `ReplayCameraMode`, `ReplayCameraCue`, `cameraPoseFor(plan, second, mode) -> {position,target}`. But: (a) cues are baked into the bundle, not owner-supplied at call time; (b) there is no "place/move camera here/there" path or keyframed camera-path input; (c) nothing actually renders from the pose — the web scene writes it to a data attribute and renders a fixed 2.5D DOM projection. |
-| 3 | **Headless render -> frames** (no UI, deterministic, image sequence) | **MISSING** | No headless rendering at all. WGPUI is gone; three-effect is browser-canvas-only with no readback/OffscreenCanvas/Node context; the only "renderer" today is the interactive DOM/CSS element, which requires a live browser and a person. |
-| 4 | **Frames -> video clip** (ffmpeg/encoder -> mp4/gif) | **MISSING** | No encoder of any kind in the codebase. |
-| 5 | **One programmatic entrypoint** ("render moment X w/ camera path Y -> clip.mp4") | **MISSING** | No CLI/API. The closest is the `?camera=social` URL cut, which is a live self-playing web page, not a file-producing command. |
+| #   | Capability                                                                       | Status      | Where it stands                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --- | -------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Moment selection** (event/timestamp/ref -> scene state)                        | **EXISTS**  | `ProofReplayBundle` + `buildReplayRenderPlan` + `activeReplayEventsAt(bundle, second)` + `interpolateActorPosition`. Moments are addressable by `eventRef` / `sequenceIndex` / `timelineSecond`. Bundles exist for two moments.                                                                                                                                                                                         |
+| 2   | **Programmatic camera direction** (API/params, camera path)                      | **PARTIAL** | The data model exists: `ReplayCameraMode`, `ReplayCameraCue`, `cameraPoseFor(plan, second, mode) -> {position,target}`. But: (a) cues are baked into the bundle, not owner-supplied at call time; (b) there is no "place/move camera here/there" path or keyframed camera-path input; (c) nothing actually renders from the pose — the web scene writes it to a data attribute and renders a fixed 2.5D DOM projection. |
+| 3   | **Headless render -> frames** (no UI, deterministic, image sequence)             | **MISSING** | No headless rendering at all. WGPUI is gone; three-effect is browser-canvas-only with no readback/OffscreenCanvas/Node context; the only "renderer" today is the interactive DOM/CSS element, which requires a live browser and a person.                                                                                                                                                                               |
+| 4   | **Frames -> video clip** (ffmpeg/encoder -> mp4/gif)                             | **MISSING** | No encoder of any kind in the codebase.                                                                                                                                                                                                                                                                                                                                                                                 |
+| 5   | **One programmatic entrypoint** ("render moment X w/ camera path Y -> clip.mp4") | **MISSING** | No CLI/API. The closest is the `?camera=social` URL cut, which is a live self-playing web page, not a file-producing command.                                                                                                                                                                                                                                                                                           |
 
 Honest "is any of it ready" verdict, capability by capability:
 
 - Capability 1 works today and is genuinely reusable.
-- Capability 2 is half-built: real camera *math* exists, but it is not
+- Capability 2 is half-built: real camera _math_ exists, but it is not
   owner-directable at call time and is not wired to anything that renders from
   the camera.
 - Capabilities 3, 4, 5 — the entire "produce an actual video clip headlessly"
@@ -256,10 +281,10 @@ Reuse the good half; drop the widgets; build the headless render + encode path.
      a Three.js `WebGLRenderer`, then `readRenderTargetPixels` -> PNG.
    - Headless browser (Playwright) mounting a minimal three-effect scene,
      stepping the deterministic clock, and `readPixels`/`toBlob` per frame.
-   Add the offscreen-render + readback primitive **to three-effect** (its own
-   audit already lists OffscreenCanvas as a planned option). This step is the
-   make-or-break; sequence work is meaningless until one frame renders
-   headlessly. **This is where to spend the first real effort.**
+     Add the offscreen-render + readback primitive **to three-effect** (its own
+     audit already lists OffscreenCanvas as a planned option). This step is the
+     make-or-break; sequence work is meaningless until one frame renders
+     headlessly. **This is where to spend the first real effort.**
 
 3. **Frame sequence (capability 3, complete it).** Drive the deterministic
    clock from `startSecond` to `endSecond` at a fixed fps (e.g. 30), and for
@@ -276,7 +301,7 @@ Reuse the good half; drop the widgets; build the headless render + encode path.
 
 5. **One entrypoint (capability 5).** A CLI/API:
    `render-replay-clip --slug <moment> --start <s> --end <s>
-   --camera <path.json> --out clip.mp4`. It composes steps 1-4: load bundle ->
+--camera <path.json> --out clip.mp4`. It composes steps 1-4: load bundle ->
    gate -> build plan -> apply camera plan -> render frame sequence -> ffmpeg
    encode. This is the owner-facing surface; no widgets.
 
@@ -289,7 +314,7 @@ whole vision rests on it. Steps 1, 4, and 5 are comparatively low-risk
 (pure math, a well-known encoder, and a thin composition CLI). The data model
 (step 0, already done) means the project does not start from zero.
 
-**Recommended first concrete step:** a throwaway spike that renders a *single*
+**Recommended first concrete step:** a throwaway spike that renders a _single_
 frame of an existing replay bundle's scene state to a PNG with no browser UI,
 using three-effect + a headless GL/canvas (or Playwright `readPixels`). If that
 PNG comes out, the rest of the pipeline is mostly assembly; if it cannot, the
