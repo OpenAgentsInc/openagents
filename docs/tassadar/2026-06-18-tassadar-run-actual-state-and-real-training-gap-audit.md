@@ -1,56 +1,116 @@
-# Tassadar Run: Actual State and the Real-Training Gap
+# Tassadar Run: Actual State and the Real-Construction Gap
 
-Date: 2026-06-18
-Scope: an honest accounting of where the Tassadar run actually is — whether we
-are training the actual Tassadar model or running the verified-work /
-executor-trace verification + settlement loop — and a concrete, sequenced path
-out of "guinea-pig test mode" into real model training.
+Date: 2026-06-18 (corrected 2026-06-18)
+Scope: an honest accounting of where the Tassadar run actually is — measured
+against what "training/building the Tassadar model" *means in the Percepta
+LLM-computer paradigm* — and a concrete, sequenced path out of "guinea-pig test
+mode" into real capability construction on the run.
 
 Status: audit. Public-safe. Every claim is cited to a file or to an existing
 product-promise record; where the code and an earlier doc disagree, both are
 stated. Claim-discipline rule of this folder applies: where this names a fact, a
 source is named; where it states a gap, it is labeled a gap.
 
----
-
-## TL;DR (the bottom line first)
-
-**No. We are not training the actual Tassadar model on the live run.** The live
-run `run.tassadar.executor.20260615` is the **verified-work loop**: a worker
-executes a fixed, digest-pinned computation (a pinned ~80-step numeric fixture),
-an independent validator device re-executes the same fixed computation, the two
-trace digests are compared, and on a match a tiny Bitcoin settlement streams to
-both parties. That is **exact-trace-replay verification of a fixed computation
-with sats settlement on top** — the economic and verification rails — not a
-training loop, not gradients, not a model that improves.
-
-This is a real and valuable achievement (the rails work, end to end, in the
-open, with one real-Bitcoin canary settlement). It is also, accurately, a
-verification proof-of-concept and **not** model training. The single biggest
-blocker between here and training the real Tassadar model is that **there is no
-canonical model + checkpoint lineage + training loop wired into the run**: the
-run's "work" is a frozen fixture, settlement gates on a digest match (not on any
-training metric), and the one piece of genuine training code in the repo
-(analytic CS336-A1 backprop) is **script/test-only and unwired** from the run,
-settlement, projection, and routes.
-
-The shortest credible path is **RESEARCH_PLAN W5** (`training.public_gradient_windows.v1`,
-state `planned`): define a tiny real student model + checkpoint C0, publish a
-trace/data shard, make the run's "work unit" an *accepted training window*
-(gradient/loss claim) instead of a fixed-fixture trace, add quarantine →
-canary-eval → promotion, and adapt verification (recompute/replicate) to the
-new work unit. The rails we already have carry most of the verification and
-settlement machinery; what is missing is the model, the training loop, the
-window unit, and the merge/promotion gates.
+> **CORRECTION (2026-06-18).** The first version of this document framed
+> "training the Tassadar model" as conventional gradient descent / CS336-style
+> loss minimization, and treated the exact-trace-replay verified-work loop as a
+> "side game" distinct from real training. **That framing was wrong for this
+> lane.** Tassadar is the **Percepta "LLM-computer" paradigm**: capability is
+> *constructed analytically* (programs compiled into transformer weights), and
+> *verified by exact replay*, not learned by gradient descent. Under that
+> paradigm the verified-work/exact-replay/settlement loop is **not a side game —
+> it is the native verification and economic substrate of the paradigm**, and
+> gradient training is relevant only as a *hybrid support layer* (Percepta
+> direction #4; RESEARCH_PLAN H2/H3/H5). The sections below are rewritten around
+> the correct definition. Section 0 is new and leads. Sections 1, 2, 3, and 4
+> are re-assessed under this lens. The honest economic facts (one real 1k
+> canary, 5+5 streaming rate, the simulation-vs-real receipt distinction) are
+> preserved but reframed as *verification of constructed/executed work*. The
+> earlier "gradient windows = real training" framing survives only as the
+> *hybrid* sub-lane (now correctly subordinate), not as the definition.
 
 ---
 
-## 1. What is ACTUALLY live today
+## 0. What "training" means for Tassadar (the LLM-computer paradigm)
 
-The live, money-moving loop is the **executor-trace contribution → independent
-replay verification → streaming Bitcoin settlement** loop. State it as the real
-achievement it is: the economic and verification rails are built and proven
-end-to-end in the open.
+This is the anchor for the whole document. Everything below is defined against
+it; do not silently revert to a gradient-descent reading.
+
+**The paradigm (Percepta, "Constructing an LLM-Computer").** A transformer can
+be made to *execute programs exactly* rather than predict tokens statistically.
+The pipeline is analytic, not learned:
+
+1. **ALM — the Append-only Lookup Machine.** Five primitives — read/write,
+   cumulative sum, product, conditional, linear combination — each realized
+   *exactly* by a standard transformer component: **2D parabolic-key attention**
+   is exact keyed memory (`score(q,k)=2qk−k²=−(k−q)²+q²`, uniquely maximized at
+   `k=q`); **uniform-key attention** gives exact prefix sums; **ReGLU** (gated
+   ReLU in the FFN) gives exact integer logic, indicators, and products
+   (`a·b = a·ReLU(b) − a·ReLU(−b)`, `1[z≥0]=ReLU(z+1)−ReLU(z)`); the **residual
+   stream** is free linear combination. The defining restriction is *writes
+   before reads, history never edited* — append-only. With it the ALM is **Turing
+   complete** (`2026-06-10-percepta-constructing-llm-computer-notes.md`;
+   `2026-06-11-llm-computer-full-introduction.md`, Part IV).
+2. **CALM** — a language over those primitives.
+3. **Gate-graph IR** — a CALM program compiles to a DAG of exactly two gate
+   families, **LookUp gates** (attention) and **ReGLU gates** (FFN), wired by the
+   residual stream.
+4. **Scheduling + register allocation → weights, emitted analytically.** The gate
+   graph is placed into a finite transformer's four-phase layer structure
+   (attention → materialize → FFN → materialize) by a **MILP** that minimizes
+   peak simultaneous liveness (which sets `d_model`); slots are reused by
+   **interval coloring** with **stale-slot subtraction** (the residual stream is
+   additive). The weight matrices then follow **mechanically — computed, not
+   gradient-trained.**
+5. **Programs → weights**, two routes: a universal **Wasm interpreter** baked in
+   weights (feed bytecode as prompt tokens), or **partial evaluation** (the first
+   Futamura projection — `2N` ReGLU neurons for an `N`-instruction program) baking
+   a *fixed* program directly into the FFN.
+
+**Correctness and verification.** The construction's correctness guarantee is
+stated in decoding terms: the next execution token is always scored *strictly
+highest*, so greedy decode is deterministic. Therefore correctness is verified by
+**exact replay**: re-execute and compare digests byte-for-byte. The defining
+"writes before reads, history never edited" restriction *is* the replayable,
+audit-native receipt property — the property the entire OpenAgents verification
+economy prices (`work-that-proves-itself.md`, §I; the trace *is* the receipt).
+
+**Therefore — the corrected definition.** For Tassadar,
+
+> **"training / building the Tassadar model" = constructing, verifying,
+> composing, and paying for real compiled capability weight-modules (and exactly
+> executed programs) in this paradigm — NOT minimizing a loss over weights.**
+
+The exact-trace-replay verified-work loop is the paradigm's **native verification
+layer**, not a side game. Conventional gradient / CS336 / smol-LLM training is
+relevant **only insofar as it supports this** paradigm:
+
+- Percepta direction #4 — *injecting programmatic logic into the training loop*
+  (the hybrid: a trained planner around frozen compiled exact cores; the trace is
+  part of the forward pass, so gradients flow *through* the computation).
+- Differentiability and composition of compiled modules.
+- **Architectural sovereignty** — you cannot graft exact-execution heads into, or
+  backprop through, a model you only reach through a vendor API; the from-scratch
+  CS336 program acquires the kernels/loop/architecture the hybrid needs
+  (`work-that-proves-itself.md`, §V).
+
+The RESEARCH_PLAN already encodes this ordering with receipts: **H1 supported**
+(pure next-token learning of exactness fails — Baseline A: `0.0` rollout pass@1),
+**H2 supported** (frozen analytic executor + learned interface — Baseline D:
+`1.0` pass@1, `1.0` replay acceptance), **H3 falsified for that setup** (learned
+2D geometry — Baseline C: lookup accuracy `1.0` but `0.0` rollout)
+(`2026-06-14-w3-student-program-report.md`). Gradient training is the *outer
+ring*; the compiled exact core is the center.
+
+---
+
+## 1. What is ACTUALLY live today — re-assessed under the paradigm
+
+The live, money-moving loop is the **compiled-program execution → independent
+exact-replay verification → streaming Bitcoin settlement** loop. Under the
+corrected lens this is **the paradigm's native verification + economic substrate,
+operating** — a real achievement, now auto-streaming — not a detour from
+training.
 
 **The loop, concretely:**
 
@@ -58,30 +118,38 @@ end-to-end in the open.
    (`POST /api/training/runs/{ref}/admit`, `POST /api/training/leases/claim` —
    the only public/agent-callable training writes;
    `apps/openagents.com/workers/api/src/training-run-window-routes.ts`).
-2. The **worker** runs a dispatched, digest-pinned workload locally and submits
-   a trace-commitment digest. The executor is
+2. The **worker** executes a dispatched, digest-pinned **compiled workload**
+   locally and submits a trace-commitment digest. The executor is
    `packages/tassadar-executor/src/numeric-executor.ts`
-   (`executeTassadarNumericModel`), whose module header states the boundary
-   plainly: "faithful re-execution of digest-pinned compiled workloads only. No
-   softmax, no learning, no serving, no performance claim."
+   (`executeTassadarNumericModel`). Its module header states the boundary plainly:
+   it is the TS executor for the *psionic Tassadar ALM numeric model format*
+   (`TassadarAlmNumericModel` v1, from
+   `psionic crates/psionic-compiler/src/tassadar_alm_numeric.rs`) — "explicit f64
+   coefficient arrays executed with hard-max parabolic attention inside a checked
+   2^53 exactness window. Claim boundary: faithful re-execution of digest-pinned
+   compiled workloads only. No softmax, no learning, no serving, no performance
+   claim." **This is an ALM execution engine** (parabolic-key keyed reads, ReGLU
+   FFN gates, residual wiring, channel writes) — i.e. it runs the *output of the
+   construction pipeline*, not an arbitrary numeric program (see §2).
 3. An **independent validator device** re-executes the same workload and submits
    its replay digest. Device-distinctness is enforced server-side
    (`validatorDeviceRef != pylonDeviceRef`).
-4. The verdict is a **digest string comparison**, not recomputed judgment:
+4. The verdict is a **digest string comparison**:
    `apps/openagents.com/workers/api/src/training-verification.ts`
    (`verifyExactTraceReplay`) compares the worker commitment digest against the
-   validator replay digest; mismatch → `ExecutorTraceMismatch`/`Rejected`,
-   match → `Verified`. The worker side of validation is
+   validator replay digest; mismatch → `ExecutorTraceMismatch`/`Rejected`, match →
+   `Verified`. The worker side is
    `apps/openagents.com/workers/api/src/tassadar-replay-validator.ts`
    (`runTassadarReplayValidation`), which re-runs `executeTassadarNumericModel`
-   and sets `matches = trace.traceDigest === request.claimedTraceDigest`.
-5. On a `Verified` `exact_trace_replay` pair, settlement **auto-streams** to
-   both legs with no operator POST (openagents #5309 / #5310 / #5311):
+   and sets `matches = trace.traceDigest === request.claimedTraceDigest`. This is
+   exactly the paradigm's verification primitive: re-execute the exact computation
+   and compare.
+5. On a `Verified` `exact_trace_replay` pair, settlement **auto-streams** to both
+   legs with no operator POST (openagents #5309 / #5310 / #5311):
    `apps/openagents.com/workers/api/src/tassadar-auto-settlement.ts`
    (`autoSettleVerifiedPair`) pays the worker and validator over the Spark
-   treasury rail, idempotent and fail-soft; #5311 broadcasts each settled leg
-   onto the public live settled feed
-   (`apps/openagents.com/workers/api/src/index.ts`, `buildSettledFeedEvents`).
+   treasury rail, idempotent and fail-soft; #5311 broadcasts each settled leg onto
+   the public live settled feed (`index.ts`, `buildSettledFeedEvents`).
 
 **Evidence it is real (from the promise registry,**
 `apps/openagents.com/workers/api/src/product-promises.ts`):
@@ -89,346 +157,377 @@ end-to-end in the open.
 - `training.decentralized_training_launch.v1` is **green** (renamed from
   `training.monday_decentralized_training_launch.v1`; rename only, no scope
   widened). Its safeCopy: an independent contributor installed Pylon, claimed a
-  window lease, submitted a Tassadar executor trace; an independent validator on
-  a separate machine/identity replayed the pinned fixture; the challenge
-  finalized `Verified`; and **exactly one bounded 1,000-sat real-Bitcoin
-  run-settlement** settled native over Spark to an independent contributor
+  window lease, submitted a Tassadar executor trace; an independent validator on a
+  separate machine/identity replayed the pinned workload; the challenge finalized
+  `Verified`; and **exactly one bounded 1,000-sat real-Bitcoin run-settlement**
+  settled native over Spark to an independent contributor
   (`receipt.nexus.tassadar_run_settlement...canary1k.v6.20260618`,
   `realBitcoinMoved:true`, `state:settled`). The public settled feed moved 0 → 1.
 - `compute.tassadar_executor_poc.v1` is **green** (2026-06-10): one bounded
-  workload family on one Pylon, one operator-funded Lightning closeout, a
-  Verified replay receipt and a Rejected-on-tamper receipt.
+  workload family on one Pylon, one operator-funded Lightning closeout, a Verified
+  replay receipt and a Rejected-on-tamper receipt.
 
-**Honest caveats baked into the records themselves:** the earlier Orrery
-settlement receipt is **simulation-backed** (`realBitcoinMoved:false`) and
-proves only the projection/record path; the single real-Bitcoin movement is the
-one 1,000-sat canary. The launch promise's unsafeCopy forbids claiming
-network-scale, hundreds paid, or "public gradients mutate a canonical model."
-The current per-window rate in shipped code is **5 sats to the worker + 5 sats
-to the validator** (`tassadar-auto-settlement.ts`,
-`TassadarPerWindowWorkerRewardSats = 5`, `TassadarPerWindowValidatorRewardSats = 5`).
-Note: the 2026-06-16 economics doc recommended **1 sat** for the fixture class
-and flagged that validators earned nothing; the shipped reality (5+5, validator
-now paid) supersedes that recommendation — worth reconciling the doc.
+**Honest economic facts, preserved (reframed as verification of *executed*
+work):** the earlier Orrery settlement receipt is **simulation-backed**
+(`realBitcoinMoved:false`) and proves only the projection/record path; the single
+real-Bitcoin movement is the one 1,000-sat canary. The launch promise's
+unsafeCopy forbids claiming network-scale, hundreds paid, or "public gradients
+mutate a canonical model." The current per-window rate in shipped code is **5 sats
+to the worker + 5 sats to the validator** (`tassadar-auto-settlement.ts`,
+`TassadarPerWindowWorkerRewardSats = 5`, `TassadarPerWindowValidatorRewardSats =
+5`); the 2026-06-16 economics doc's 1-sat-fixture recommendation is superseded by
+the shipped 5+5 (validator now paid) — worth reconciling the doc. Real settlement
+is **OFF by default and fails closed**: the gate
+(`tassadar-run-settlement-gate.ts`) only arms when the owner sets
+`OPENAGENTS_REAL_SETTLEMENT_GATE` with `enabled:true` and only for the
+`spark_treasury` adapter; otherwise every leg returns
+`skipped: 'gate_not_authorized'`. Hard ceilings: per-payout 100,000 sats, daily
+1,000,000 sats (fails closed), plus the run manifest `spendCapSats`. The Artanis
+scheduled runner is disabled in production
+(`ARTANIS_SCHEDULED_RUNNER_ENABLED="false"`); the admin tick, worker↔validator
+pairing, and real settlement are each independently flag-gated off by default.
 
-**Gating is conservative.** Real settlement is OFF by default and fails closed:
-the gate (`tassadar-run-settlement-gate.ts`) only arms when the owner sets
-`OPENAGENTS_REAL_SETTLEMENT_GATE` with `enabled:true`; otherwise every leg
-returns `skipped: 'gate_not_authorized'`. Hard ceilings apply: per-payout cap
-100,000 sats, daily ceiling 1,000,000 sats (fails closed), plus the run
-manifest `spendCapSats`. The Artanis scheduled runner is disabled in production
-(`ARTANIS_SCHEDULED_RUNNER_ENABLED="false"` in `wrangler.jsonc`); the admin
-tick, worker↔validator pairing, and real settlement are each independently
-flag-gated off by default.
-
-**What Artanis (the autonomous cloud-mind administrator) actually drives.** Each
-enabled tick (`apps/openagents.com/workers/api/src/artanis-administrator-tick.ts`,
-`runArtanisAdminTick`), Artanis chooses one typed action from a two-member
-vocabulary — `dispatch_executor_trace` or `no_action` — bounded to 4 dispatches
-per day. On dispatch it sends the **fixed PoC fixture** (`tassadarPocLoopSumFixture`)
-in `paymentMode: 'unpaid_smoke'` with a no-spend cap, then re-executes the same
-fixture in-worker as a validator and accepts/rejects purely on digest equality.
-"Continual-learning templates"
-(`artanis-continual-learning-templates.ts`) are **typed proposal records with
-explicitly zero execution authority** (`assertNoExecutionAuthority` throws if any
-authority flag is true); the only one tied to the live run is
-`artanisExecutorTraceReplayTemplate()` — the same fixed trace-replay workload,
-`riskLabel: 'low'`, no-spend, no runtime promotion. **There is no Artanis code
-path that ingests verified contributions as gradients/data into an improving
-model.** It accumulates verified traces, verdicts, receipts, and settled sats.
-This matches the yellow `artanis.tassadar_evolution_loop.v1` promise (spine
-deployed, one real autonomous dispatch span; sustained unattended streak and a
-first curated distillation dataset still gated).
+**What Artanis (the autonomous administrator) drives.** Each enabled tick
+(`artanis-administrator-tick.ts`, `runArtanisAdminTick`), Artanis chooses one
+typed action from a two-member vocabulary — `dispatch_executor_trace` or
+`no_action` — bounded to 4 dispatches/day. On dispatch it sends the **one fixed
+compiled workload** (`tassadarPocLoopSumFixture`) in `paymentMode: 'unpaid_smoke'`
+with a no-spend cap, then re-executes the same workload in-worker as a validator
+and accepts/rejects on digest equality. "Continual-learning templates"
+(`artanis-continual-learning-templates.ts`) are typed proposal records with
+**explicitly zero execution authority** (`assertNoExecutionAuthority` throws on
+any authority flag); the only one tied to the live run is
+`artanisExecutorTraceReplayTemplate()` — the same fixed workload, `riskLabel:
+'low'`, no-spend, no runtime promotion. There is **no Artanis path that
+constructs, composes, or admits new compiled capability modules** — it accumulates
+verified traces, verdicts, receipts, and settled sats for **one** program. This
+matches the yellow `artanis.tassadar_evolution_loop.v1` promise.
 
 ---
 
-## 2. Is the actual Tassadar model being trained?
+## 2. Is the Tassadar model being constructed (at the run level)? — the corrected verdict
 
-**No.** With proof, and with the two cases the question implies kept distinct.
+**The verified-work substrate is live, but the run constructs no new capability.
+The one workload it runs is a real compiled-program output of the owned ALM
+pipeline — but it is a single trivial program, materialized as sparse scalar-lane
+coefficients, with no variety, no marketplace, and no composition.** Both halves
+of that sentence matter, and the prior audit got the first half wrong.
 
-### (a) The live run is not training a model
+### (a) The live workload is a genuine compiled-program artifact — not a hand-coded fixture
 
-The run's "work" is a **pinned exact-program executor trace**, not forward/
-backward passes:
+This is the single most important correction. The PoC workload is **not** an
+arbitrary hand-written numeric blob; it is **emitted by the owned construction
+pipeline** in psionic:
 
-- The workload is a committed fixture
-  `packages/tassadar-executor/fixtures/tassadar-poc-loop-sum-v1.json`
+- `packages/tassadar-executor/fixtures/tassadar-poc-loop-sum-v1.json`
   (`fixtureId: "tassadar_poc.loop_sum_v1.numeric_fixture.v1"`,
-  `programId: "tassadar_poc.loop_sum_v1"`), pinning `expectedTraceDigest`,
-  `expectedModelDigest`, `expectedOutputs: [15]`, the full model coefficient
-  arrays, and 80 identical input steps. Its own `claimBoundary` states it is
-  "not a trained transformer ... makes no softmax, learning, or served-route
-  claim."
-- `executeTassadarNumericModel` (`numeric-executor.ts`) walks a fixed plan of
-  wiring/attention/FFN rows and SHA-256-hashes step outputs into a
-  `traceDigest`. **There is no loss, no gradient, no parameter update anywhere
-  in this executor.**
-- Settlement hard-gates on a `Verified` `exact_trace_replay` challenge:
-  `apps/openagents.com/workers/api/src/tassadar-run-settlement.ts`
-  (`buildTassadarRunSettlement`) rejects any other class with "Only
-  exact_trace_replay executor-trace work is settleable on this run." Payment is
-  for a **digest match**, never for loss reduction, gradient quality, or any
-  training metric.
-- The public `realGradient` projection
-  (`apps/openagents.com/workers/api/src/training-run-window-authority.ts`,
-  `publicRealGradientStatus`) is a **read-only status surface** over existing
-  challenges/leases plus an optional blob a caller may stash in
-  `publicProjectionJson.realGradient`. It computes no training; in the live flow
-  it reports standing blockers (`requires_two_real_contributor_devices`,
-  `blocker.cs336_a1.real_gradient_psionic_lane_external`) and `settledPayoutSats:
-  0` in every leaderboard row. It is wired into the run summary but reports
-  `blocked_external`.
+  `programId: "tassadar_poc.loop_sum_v1"`) is generated, per
+  `psionic crates/psionic-compiler/src/tassadar_alm_numeric.rs`, by: build a real
+  `TassadarProgram` (a **backward-branch loop**) → `tassadar_alm_wasm_interpreter`
+  (E3 frontend, 12-opcode `core_i32` window) → `compile_tassadar_alm_graph` (E2
+  scheduler: four-phase placement, interval-coloring slot reuse, stale-slot
+  subtraction) → `materialize_tassadar_alm_numeric` (E6 numeric model) → execute →
+  emit digest-pinned JSON. Its `expectedTraceDigest`, `expectedModelDigest`, and
+  `expectedOutputs:[15]` are *derived from the pipeline*, not authored.
+- So the live work unit *is* "a real compiled capability in the paradigm,"
+  executed and exactly-replay-verified. The fixture's own `claimBoundary` is
+  honest: a faithful f64 re-encoding of *one* compiled ALM bundle, hard-max only,
+  not a trained transformer, integer-parity-only inside the 2^53 window.
 
-### (b) The two training cases the registry actually distinguishes
+This means the prior audit's "the run trains nothing — it's a frozen fixture and a
+digest compare" was *technically true but mis-aimed*: in this paradigm,
+**executing-and-verifying a compiled program IS the work**, and the run does
+exactly that, correctly. The real deficiency is not "no gradients"; it is **no new
+construction**.
 
-The question's own framing — a one-off bounded A1-scale run that may have been
-*evidenced* vs an ongoing real distributed model-training run — maps exactly to
-two promise records:
+### (b) What the run is missing under the paradigm
 
-- **`pylon.first_real_model_training_run.v1` — yellow.** SafeCopy: a *bounded*
-  public remote two-device real-gradient training run (CS336 A1 scale,
-  `run.cs336.a1.real_gradient.demo`) with digest-committed shard gradients on
-  two physical machines, cross-device deterministic-recompute + Freivalds-Merkle
-  verification, merge/eval refs, a loss-under-budget curve, and settled
-  closeouts. This is the closest thing to "real training was done," and it is
-  **a separate run from the live Tassadar executor run**, evidenced as bounded,
-  with `model_ladder_network_rungs_not_run` still blocking. (The genuine
-  analytic-backprop code exists at
-  `apps/openagents.com/workers/api/src/cs336-a1-real-gradient-workload.ts` —
-  real forward+backward, shard-gradient averaging, finite-difference gradient
-  check — but in *this* repo it is imported only by its own test and
-  `scripts/cs336-a1-real-gradient.ts`; the live Worker request path never calls
-  it. The asserted execution lives in an external Psionic lane,
-  `psion_cs336_a1_demo_v1`, which this repo cannot confirm.)
-- **`training.public_distributed_training_run.v1` — red.** SafeCopy: a broad
-  public distributed training run is *not* green — network-scale participation,
-  broad accepted-work receipts, and a participant-count methodology remain
-  unmet.
+The run does not *construct, vary, compose, or sell* capability. Specifically:
 
-So: a bounded A1-scale real-gradient run has been **evidenced** (yellow); an
-**ongoing real distributed model-training run is red**; and the **live Tassadar
-run itself trains nothing** — it verifies and settles a fixed computation.
+- **One program, forever.** The run dispatches exactly `loop_sum_v1` (sum to 15
+  over 100 steps). The owned compiler can emit other programs, but the run never
+  asks it to. The "work" never changes; there is no program corpus, no
+  curriculum, no marketplace of distinct compiled modules.
+- **No weight-module as a first-class run artifact.** The numeric model is
+  digest-pinned and portable, but it ships as **sparse scalar-lane coefficient
+  arrays, not dense loadable `W_Q/W_K/W_V/FFN` checkpoint blocks** an inference
+  engine could load and *compose*. (Psionic names this as W1 deliverable 2, "dense
+  materialization," explicitly: H4 — the module marketplace — is "unreachable
+  without it.")
+- **No composition / linking.** Composing several specialized banks into one model
+  (the marketplace's value proposition) is unbuilt; psionic has the plumbing
+  surfaces (`tassadar_module_linker.rs`,
+  `tassadar_cross_profile_link_compatibility.rs`) but no live linked-module unit.
+- **No on-run pricing of construction.** Settlement pays for *re-executing and
+  matching* the one workload (5+5 sats per Verified pair), never for *constructing
+  a new verified module* or for *composing* modules — the actual economic events
+  the paradigm makes possible.
 
-Supporting registry ground truth: `models.tassadar_percepta_executor.v1` is
-**red** (`tassadar_model_spec_missing`, ...); the 2026-06-14 W3 sweep
-(`docs/tassadar/2026-06-14-w3-student-program-report.md`) is explicitly
-research/eval only and "creates no public model claim." `training.model_ladder.v1`
-is **planned** — only rung R0 (a tri-host 12-step rehearsal, ~3,992 train
-tokens) exists; no rung above R0 has started. No `models.psion_*` promise exists
-at all.
+### (c) Where the owned stack already is (the partway), and where it is not
+
+The owned construction pipeline is **far more built than the prior audit
+implied** — but it lives in **psionic**, and only its *output* (one program)
+touches the live openagents run.
+
+- **In psionic (`OpenAgentsInc/psionic`, #1098–#1114), landed:** the ALM
+  gate-graph IR with the five primitives, write-before-read validation, and an
+  exact integer evaluator producing digest-stable traces
+  (`psionic-ir/src/tassadar_alm_graph.rs`, **E1**); the four-phase scheduler with
+  interval-coloring slot reuse + stale-slot subtraction and a compiled-bundle
+  executor (`psionic-compiler/src/tassadar_alm_backend.rs`, **E2**); the geometric
+  parabolic-key attention leg with near-miss *refusal* and the Li Chao hull
+  log-time fast path (`tassadar_alm_geometric.rs` **E2b**, `tassadar_alm_hull.rs`
+  **E2c**); the Futamura specializer (v2, shared `2N` step-function indicators —
+  `tassadar_alm_specializer.rs`, **E5**); a branch-capable 12-opcode Wasm
+  interpreter and a 6-instruction stack ISA cross-validated against the production
+  CPU reference runner (`tassadar_alm_wasm_interpreter.rs` **E3a**,
+  `tassadar_alm_stack_isa.rs` **E3b**); the portable f64 numeric materialization
+  (`tassadar_alm_numeric.rs`, **E6-numeric**); and a five-leg differential harness
+  over 400 generated graphs (evaluator / row / geometric / hull / numeric) that on
+  its *first run* caught two real scheduler bugs the hand-written tests missed.
+- **In psionic, NOT yet built:** **E4** — the MILP optimal scheduler (the current
+  scheduler is feasible-first/greedy — a *correct* `d_model`, not a minimal one);
+  **dense weight materialization** (W1.2 — scalar lanes today, not loadable
+  checkpoint blocks); **softmax error bounds in owned code** (hard-max only today,
+  W1.4); a Wasm window beyond ~12 opcodes toward Percepta's 35 (W1.1).
+- **In openagents (this repo):** **none of the construction pipeline is owned
+  here.** This repo owns *execution* (`packages/tassadar-executor`), *replay
+  validation*, *settlement*, and *projection*. The
+  `2026-06-10-psionic-alm-compiler-design-speculation.md` doc in this folder is
+  explicit that the compiler belongs in psionic. (`packages/proof-replay` is a
+  presentation-only 3D visualization of the settlement run; it validates and
+  authorizes nothing. The `deterministic_recompute` / `freivalds_merkle`
+  primitives referenced for the *hybrid/gradient* sub-lane live with the cs336
+  lane, not with any live Tassadar path.)
+
+So: **the construction pipeline is ~6/7 phases landed in psionic** (E1–E3, E5,
+E6-numeric; E4 + dense materialization + softmax bounds open), the live run is fed
+**one** of its outputs, and the run-level gaps are *variety, dense composable
+modules, a marketplace, and pricing of construction* — not "no training loop."
+
+### (d) Where gradient training enters (the correctly-subordinate hybrid)
+
+Gradient/CS336 training is the *outer ring*, and the W3 sweep already pins its
+shape (`2026-06-14-w3-student-program-report.md`,
+`fixtures/tassadar/w3_student_sweep_20260612/`):
+
+- **H1 supported / H3 falsified:** purely-learned exactness fails (Baseline A:
+  `0.0` rollout pass@1, `0.0` replay acceptance; every record diverged at step 0),
+  and analytic-lookup initialization did not rescue the learned backbone (Baseline
+  C: lookup accuracy `1.0` in training, still `0.0` rollout).
+- **H2 supported:** the **frozen analytic executor + learned interface** (Baseline
+  D) achieved `1.0` pass@1, `1.0` replay acceptance, `1.0` output-digest match,
+  median first-divergence step 512 / p90 4096. *The thing that works is the
+  compiled core, with a thin learned shell around it.*
+
+That is the correct role for gradients here: a learned planner/interface
+*marshaling* compiled exact cores, trained *around* and *through* them — not a
+gradient loop that mutates the exact capability. The "public gradient windows"
+lane (RESEARCH_PLAN W5, `training.public_gradient_windows.v1`, **planned**) is
+this hybrid's decentralized-training future; it is **subordinate to**, and gated
+behind, the compiled construction + verification substrate, not the definition of
+training.
+
+Registry ground truth (unchanged, correctly read): `models.tassadar_percepta_executor.v1`
+is **red** (`tassadar_model_spec_missing`); `training.model_ladder.v1` is
+**planned** (only rung R0 exists); `pylon.first_real_model_training_run.v1` is
+**yellow** (a bounded CS336-A1 real-gradient run, a *separate* run, evidenced via
+an external psionic lane this repo cannot confirm);
+`training.public_distributed_training_run.v1` is **red**. None of these is the
+Tassadar construction substrate; they are the hybrid/learned ring around it.
 
 ---
 
-## 3. The gap — exactly what is missing to train the real Tassadar model
+## 3. The gap — exactly what is missing to construct the real Tassadar model on the run
 
-The live run already supplies a surprising amount of the substrate. The gap is
-specific. Each item below names what is missing and the existing primitive that
-gets us partway.
+Restated for the paradigm. The deficiency is **construction, variety,
+composition, and on-run pricing of compiled capability** — not a gradient loop.
+Each item names what is missing and the existing primitive that gets us partway.
 
-1. **A real model definition + checkpoint lineage.** The run has no canonical
-   model. `training-run-window-authority.ts` carries window-seal /
-   `checkpointDigestRef` *bookkeeping* but no checkpoint that gradients merge
-   into; `checkpointDigestRef` is optional and merely echoed.
-   *Partway:* the W3 student crate
-   (psionic `crates/psionic-tassadar-student/`, fixture bundle
-   `fixtures/tassadar/w3_student_sweep_20260612/`) and the analytic A1 trainer
-   (`cs336-a1-real-gradient-workload.ts`) are real model+gradient code; neither
-   is wired to a published, versioned canonical checkpoint with parent-hash
-   lineage.
+1. **Real program work-units (not one fixed program).** The run's contribution
+   unit must be *a compiled program/module*, drawn from a growing corpus of Wasm /
+   CALM programs, not the single `loop_sum_v1` fixture.
+   *Partway:* the psionic compiler can already emit distinct programs end-to-end
+   (IR → schedule → specialize → numeric); nothing wires a *program-generation /
+   dispatch* path into the run beyond the one baked fixture.
 
-2. **A training loop that ingests verified contributions as gradients/data.**
-   Today the run ingests *trace digests*. Nothing turns a verified contribution
-   into a gradient or a training step against a checkpoint.
-   *Partway:* `cs336-a1-real-gradient-workload.ts` already does real shard
-   gradient computation and `applyAggregatedSgdStep`; `training-real-gradient-
-   evidence.ts` admits public-safe loss-curve/shard summaries into a projection.
-   These are unwired from the run.
+2. **Dense, loadable, digest-pinned weight-modules.** The compiled artifact must
+   be a loadable `W_Q/W_K/W_V/FFN` checkpoint block (a real composable module),
+   not sparse scalar lanes.
+   *Partway:* the E6 numeric materialization is portable and digest-pinned;
+   psionic W1.2 ("dense materialization") is the named, unbuilt bridge.
 
-3. **Gradient aggregation/merge + admission into a canonical model.** No
-   aggregation/merge of public contributions into a shared checkpoint exists.
-   This is the W5 "accepted training window" unit
-   (`model_checkpoint_hash`, `optimizer_state_hash`, `dataset_shard_hash`,
-   `update_or_delta_digest`, `loss_stats`, `acceptance_decision`) and the
-   quarantine optimizer (`canonical → quarantine → promoted`). Per
-   `training.public_gradient_windows.v1` (**planned**), the substrate (#4855
-   P0–P3: join lifecycle, staleness pricing, admission, canary) landed, but the
-   **public model-update layer is not built**.
+3. **Composition / linking of modules (the compiled-weight-module marketplace).**
+   The paradigm's distinctive economic unit is a *library of composable compiled
+   modules* (Futamura-baked solvers, validators, arithmetic cores) that any
+   compatible model can absorb — listed, priced, conformance-tested, verified
+   before purchase clears.
+   *Partway:* psionic's `tassadar_module_linker.rs` +
+   `tassadar_cross_profile_link_compatibility.rs` + the internal package-manager
+   surfaces are the plumbing; no live linked-module unit or listing exists.
 
-4. **A curriculum / corpus.** The CS336 ladder and the verified-trace corpus are
-   the intended training data.
-   *Partway:* a 100M-token verified-trace corpus snapshot exists
-   (`corpus.tassadar_trace.v0_2.w3_100m`, 103,573,600 verified tokens, 6
-   families) and the A4 data-refinery dashboard exists
-   (`/api/training/refinery/a4`) — but the refinery in this repo is a
-   verification-orchestration shim delegating the actual refining to an external
-   Psionic lane, and the corpus is not wired as a *dataset-shard authority* the
-   run trains against.
+4. **Exact-replay verification + payment for *construction/execution* (not just
+   one fixed replay).** Verification already works (this is the live substrate's
+   strength); it must be pointed at *new* compiled modules and at *composition*,
+   and settlement must pay for **constructing/composing a verified module**, not
+   only for re-running the one workload.
+   *Partway:* `verifyExactTraceReplay` + the worker-as-validator flow + auto-
+   settlement are all live and proven — they are the right primitive, aimed at one
+   target.
 
-5. **Artanis orchestrating real training windows (not verification windows).**
-   Artanis dispatches the fixed fixture in `unpaid_smoke`. To drive training it
-   would need a new action (`dispatch_training_window`) that binds a checkpoint +
-   shard + config and a settlement path keyed to an *accepted training window*,
-   not a digest match. Today its continual-learning templates are zero-authority
-   proposals; the high-risk training kinds (`lora_finetuning_training`) cannot
-   even reach `running` without operator-approval + downstream executor-authority
-   refs.
+5. **Wider window + MILP + dense emit (substrate completion gates variety).** A
+   ~12-opcode window and a feasible-first (non-MILP) scheduler bound how rich the
+   compiled corpus can be.
+   *Partway:* psionic E4 (MILP), W1.1 (window ladder toward 35 opcodes), and W1.4
+   (softmax bounds) are the named, open substrate-completion items.
 
-6. **Verification adapted to real training work.** Exact-trace replay does not
-   transfer to gradient work (a gradient cannot be replayed for a byte-identical
-   digest as cheaply as a deterministic trace). W5 specifies the harder ladder:
-   Tier 0 schema/hash → Tier 1 deterministic recompute of a bounded window →
-   Tier 2 replicated training (2–3 workers agree) → Tier 3 statistical checks
-   (loss delta, update norm, NaN/inf, outliers) → Tier 4 canary eval on
-   quarantine → Tier 5 downstream acceptance.
-   *Partway:* the A1 lane already demonstrates `deterministic_recompute` and
-   `freivalds_merkle` verification shapes against gradient/training-step digests
-   (`cs336-a1-homework.ts`) — the right primitives, not yet pointed at an
-   accepted-window unit on the live run.
+6. **The hybrid ring (where gradients enter), built around the compiled core.** A
+   trained interface/planner that marshals frozen compiled modules — the only
+   learned configuration that worked in W3 (Baseline D).
+   *Partway:* the W3 student crate + Baseline D interface + the W5 gradient-window
+   regime (quarantine → recompute/replicate → canary → promotion) are the
+   subordinate hybrid lane, gated behind the construction substrate.
 
-In one line: **we have the verification ladder's bottom rung, the settlement
-rails, the corpus snapshot, the autonomous dispatcher, and real (but unwired)
-gradient code — and we are missing the canonical model, the window-as-training-
-unit, the merge/quarantine/promotion gates, and Artanis driving training
-windows.**
+In one line: **we own a ~6/7-phase construction pipeline (in psionic) and a live,
+auto-streaming exact-replay verification + settlement substrate (in openagents) —
+and we are missing program *variety*, *dense composable weight-modules*, a
+*module marketplace + composition*, on-run *pricing of construction*, and the
+substrate-completion (MILP, wider window, dense emit) that unlocks corpus
+diversity.**
 
 ---
 
 ## 4. What's needed before real forward progress on the run
 
-A concrete, sequenced checklist. This is the W5 lane
-(`training.public_gradient_windows.v1`, planned) made operational, scoped to the
-*smallest real run* first. Nothing here requires hardware we lack for the first
-rungs (adapter/LoRA or small-dense deltas on a tiny student; CPU/Apple-Silicon
-windows), per RESEARCH_PLAN §5 W5.
+A concrete, sequenced checklist for the LLM-computer paradigm, scoped to the
+*smallest real construction* first. Nothing in the first rungs requires hardware
+we lack — the compiler runs on CPU and the verifier is the same harness pointed at
+new modules.
 
-1. **Pick the smallest real model and publish checkpoint C0.** A tiny Psion/
-   Tassadar student (reuse the W3 student crate or the A1 analytic trainer).
-   Publish C0 with a checkpoint hash and an empty-parent lineage record. This is
-   the thing the run trains. Decide: analytic-backprop A1-scale student first
-   (fastest, already coded) vs the W3 distillation student.
+1. **Make the run's work unit a real compiled program (corpus of ≥N distinct
+   programs), not the single fixture.** Stand up a program source (CALM/Wasm
+   programs from the 12-opcode window: arithmetic/carry, stack/control-flow,
+   memory/load-store, small state machines), compile each through the owned
+   psionic pipeline, dispatch *distinct* compiled workloads, and verify each by
+   replay. This is the single most load-bearing change: it turns the run from
+   "replay one thing" into "construct and verify many things."
 
-2. **Define the accepted-training-window work unit + dataset-shard authority.**
-   Replace the fixed-fixture "work" with a window binding
-   `model_checkpoint_hash` + `dataset_shard_hash` + `training_config_hash` +
-   `seed` + `start/end_step` + `update_or_delta_digest` + `loss_stats`. Seed the
-   shard authority from the existing `corpus.tassadar_trace.v0_2.w3_100m`
-   snapshot (split → shard hashes). This is the W2-`trace_record` analogue for
-   training and is the single most load-bearing new contract.
+2. **Emit dense, loadable, digest-pinned weight-modules (psionic W1.2), and wire
+   one as a run artifact.** Replace scalar-lane coefficients with loadable
+   `W_Q/W_K/W_V/FFN` blocks for at least one compiled program, content-addressed
+   from birth, executed and replay-verified on the run. Without this, H4 (the
+   module marketplace) is unreachable.
 
-3. **Build the quarantine optimizer + checkpoint lineage/rollback.** Three
-   checkpoints (`canonical → quarantine → promoted`): public deltas apply to
-   quarantine only; lineage records parent hash, included windows, shards,
-   optimizer state, eval results, promotion/rollback decision, payout refs.
-   Without this, one bad gradient corrupts the model and the run is undebuggable.
+3. **Ship module composition + a digest-pinned compiled-weight-module listing.**
+   Link ≥2 specialized banks into one model (using psionic's linker surfaces),
+   conformance-test by replay, and expose the composed module as a listable,
+   verified-before-purchase artifact on the OpenAgents rails — the
+   compiled-weight-module marketplace unit. Replay-verification clears before any
+   purchase settles.
 
-4. **Adapt verification to gradient windows (recompute/replicate + canary).**
-   Point the existing `deterministic_recompute` / `freivalds_merkle` primitives
-   (already proven in the A1 lane) at the new window unit; add Tier 2 replicated
-   training and a Tier 4 canary eval on the quarantine checkpoint, judged by the
-   W3 first-divergence/eval metrics — never by raw loss. Ship the falsifier with
-   the lane (the validator is the same harness pointed at submitted windows).
+4. **Pay for *construction/composition*, verified by exact replay (extend the live
+   substrate).** Point `verifyExactTraceReplay` + the worker-as-validator flow at
+   *newly constructed* and *composed* modules, and add a settlement path that pays
+   for **an accepted compiled/composed module** (verified by replay), not only for
+   re-running `loop_sum_v1`. Keep real settlement OFF until a full construct → emit
+   dense → compose → list → verify → pay loop passes end-to-end on a clean
+   checkout, under the existing spend caps and operator-approval gates.
 
-5. **Wire Artanis to dispatch training windows + stage payout on promotion.**
-   Add a bounded `dispatch_training_window` action and a staged-payout path
-   (`submitted → pending`, `recomputed → provisional`, `quarantine-eval passed →
-   accepted`, `promoted → settled`, `later regression → clawback`) — pay per
-   *accepted window*, never raw GPU time, under the existing spend caps and
-   operator-approval gates. Keep real settlement OFF until a full real run
-   (publish C0 → shard D0 → claim W0 → train N steps → submit delta + loss →
-   validator recompute → quarantine → canary → promote to C1 → pay → receipt
-   shows the window contributed to C1) passes end-to-end on a clean checkout.
+5. **Complete the substrate so corpus diversity can grow (psionic E4 + W1.1 +
+   W1.4), then build the subordinate hybrid ring.** Land the MILP scheduler (E4),
+   widen the Wasm window toward 35 opcodes (W1.1), and reproduce softmax error
+   bounds (W1.4) so the compiled corpus can broaden; *then* build the hybrid ring
+   (Baseline-D-style frozen-core + learned interface; the W5 gradient-window
+   regime for any public learned interface, with quarantine → recompute/replicate
+   → canary → promotion). Gradients enter here and only here — around the compiled
+   core, never replacing it.
 
-**Top-5 (the "before real forward progress" gate):** (1) publish C0 + lineage;
-(2) define the accepted-training-window unit + dataset-shard authority from the
-existing corpus; (3) quarantine optimizer + checkpoint lineage/rollback; (4)
-gradient-window verification (recompute/replicate + canary on first-divergence
-metrics); (5) Artanis training-window dispatch + staged-on-promotion payout. A
-new master tracker (`training.public_gradient_windows.v1` becomes the registry
-promise) is filed only when this lane produces evidence that needs one, per the
-§7 disclosure rule.
+**Top-5 (the "before real forward progress" gate), sequenced:** (1) real
+compiled-program corpus as the run's work unit (vs one fixture); (2) dense
+loadable digest-pinned weight-module emit (psionic W1.2) wired to the run; (3)
+module composition + a verified compiled-weight-module listing (the marketplace
+unit); (4) exact-replay verification + payment for *construction/composition*
+(extend the live substrate); (5) substrate completion (MILP/E4, window ladder
+W1.1, softmax bounds W1.4) → then the subordinate hybrid ring (frozen-core +
+learned interface; W5 gradient windows under quarantine/canary/promotion).
 
 ### Where StudyBench / "machine studying" fits
 
-**Adjacent infrastructure, not on the training path — at most a later eval/
-optimization stepping stone.** "Machine studying" is an external research idea
-(an agent studies an unlabeled corpus, then is scored on a hidden exam; headline
-metric = expertise as area under score-vs-inference-compute). OpenAgents'
-StudyBench (`packages/probe/packages/runtime/src/benchmark/studybench.ts`) is a
-set of **typed benchmark schemas + evidence/closeout validators over the
-OpenAgents repo** — it runs no model, no inference, no grading (scores are
-supplied as input; the MVP-14 comparison numbers are authored, not computed),
-and its only live footprint is the yellow, heavily-blocked
-`autopilot.repo_study_packets.v1` promise. The studying roadmap is explicit:
-*"The useful next move is not to train a model immediately"* — it favors
-amortized study packets + GEPA *prompt-bundle* optimization (text, not weights),
-and the upstream research found naive weight updates did **not** create
-expertise. So for the real-training path, StudyBench is:
-
-- **Not** training signal or corpus for the Tassadar/Psion model — a deliberate
-  *deferral away from* weight training.
-- **Possibly** a later *eval* harness (first-divergence-style scoring discipline,
-  source-grounded rubrics) and a GEPA prompt-optimization input — useful once a
-  student exists, but a **detour if pursued before W5's checkpoint-and-window
-  loop.**
-
-(For completeness: `packages/proof-replay` is unrelated to StudyBench — a live,
-public-safe 3D visualization package that renders the real settlement run; it
-validates nothing and authorizes nothing.)
+**Adjacent, not on the construction path.** "Machine studying" (an agent studies a
+corpus, scored on a hidden exam; expertise = area under score-vs-inference-
+compute) and OpenAgents' StudyBench
+(`packages/probe/packages/runtime/src/benchmark/studybench.ts` — typed benchmark
+schemas + evidence/closeout validators; runs no model, supplies scores as input)
+are not capability construction in this paradigm. The studying roadmap explicitly
+defers weight training in favor of amortized study packets + GEPA *prompt-bundle*
+optimization (text, not weights), and the upstream research found naive weight
+updates did not create expertise. For the construction path StudyBench is at most
+a later *eval* harness (first-divergence scoring discipline) and a GEPA prompt
+input — a detour if pursued before the compiled-corpus/dense-module/marketplace
+loop.
 
 ---
 
 ## 5. Honest bottom line
 
-The Tassadar run today is **a verification proof-of-concept with real settlement
-rails — accurately described, it is not training.** That is not a criticism: the
-rails are genuinely built and genuinely proven in the open. An independent
-contributor installed Pylon, did a unit of dispatched work, an independent
-validator on a separate machine confirmed it by replay, and a real-Bitcoin
-canary settled with a public receipt — and the whole thing now auto-streams. The
-hard, valuable parts of a machine-work economy — independent verification at
-near-zero cost, hands-off settlement, public dereferenceable evidence,
-conservative spend gates, an autonomous dispatcher under bounded authority —
-exist and work. The registry states this honestly: green is scoped to exactly
-one verified pairing and exactly one 1,000-sat canary, and the unsafeCopy
-forbids extrapolating to network-scale or to "public gradients mutate a
-canonical model."
+Read correctly through the LLM-computer paradigm, the Tassadar run today is **a
+live, auto-streaming exact-replay verification-and-settlement substrate around a
+genuinely compiled program — the paradigm's native economic layer, operating at
+smallest viable scale.** That is a real achievement, and the prior audit
+underrated it by treating exact replay as a side game: in this paradigm,
+*executing-and-verifying a compiled capability IS the work*, and the run does that
+correctly, end-to-end, in the open, with one real-Bitcoin canary and a public
+settled feed. The construction pipeline behind it (in psionic) is ~6/7 phases
+landed, and its differential harness has already caught its own bugs — the
+property that makes priced exact work credible at all.
 
-But the "model" in "Tassadar run" is, on the live run, a **fixed 80-step
-fixture**, and "training" is a **digest comparison**. We are in guinea-pig test
-mode by design: the fixture is the cheapest possible unit that exercises the
-rails end-to-end so that the rails can be proven before expensive work flows
-through them. The single biggest blocker to real model training is the absence
-of a **canonical model + checkpoint lineage and a training-window work unit
-wired into the run** — settlement gates on `exact_trace_replay`, and the one
-piece of real gradient code in the repo is unwired script/test code. The
-shortest credible path out is RESEARCH_PLAN's W5, scoped to the smallest real
-run: publish a tiny student checkpoint C0, make the run's work unit an accepted
-*training window* (gradient + loss claim) drawn from the corpus we already have,
-add quarantine → canary-eval → promotion, point the recompute/replicate
-verification primitives (already proven in the A1 lane) at that window, and let
-Artanis dispatch training windows under the existing spend caps. The day a
-public Pylon trains N steps against a published checkpoint, a validator
-recomputes the window, a canary eval passes, the update promotes C0 → C1, and a
-receipt shows that accepted window contributed to C1 — **that** is the run
-becoming real training, and not one step before it.
+But the run **constructs no new capability.** It runs **one** trivial compiled
+program (`loop_sum_v1`), forever, materialized as **sparse scalar-lane
+coefficients** rather than dense loadable composable weight-modules, with **no
+program variety, no composition, no marketplace, and no pricing of construction.**
+The single biggest blocker under this paradigm is therefore not "no gradient loop"
+— it is **the run's work unit is a single fixed compiled program instead of a
+corpus of real, verified, composable compiled modules.** The shortest credible
+path out is: make the work unit a real compiled-program corpus; emit dense
+digest-pinned weight-modules; compose and list them as the verified
+compiled-weight-module marketplace unit; pay for construction/composition (verified
+by exact replay, on the live substrate); complete the substrate (MILP, wider
+window, softmax bounds) to grow corpus diversity; and build the subordinate hybrid
+ring (frozen-core + learned interface; gradient windows under
+quarantine/canary/promotion) around it. The day the run dispatches a *new*
+compiled program a contributor's device executes, an independent device
+replay-verifies, a dense composable module is emitted and listed, and a receipt
+pays for *constructing and composing verified capability* — **that** is the run
+becoming real Tassadar-model construction, and not one step before it.
 
 ---
 
 ## Sources
 
-Code (all under `apps/openagents.com/workers/api/src/` unless noted):
-`training-run-window-routes.ts`, `training-run-window-authority.ts`
-(`publicRealGradientStatus`), `training-verification.ts` (`verifyExactTraceReplay`),
+Code (openagents, under `apps/openagents.com/workers/api/src/` unless noted):
+`training-run-window-routes.ts`, `training-run-window-authority.ts`,
+`training-verification.ts` (`verifyExactTraceReplay`),
 `tassadar-replay-validator.ts`, `tassadar-run-settlement.ts`,
-`tassadar-run-settlement-gate.ts`, `tassadar-auto-settlement.ts`,
+`tassadar-run-settlement-gate.ts`, `tassadar-auto-settlement.ts`
+(`TassadarPerWindowWorkerRewardSats=5`, `TassadarPerWindowValidatorRewardSats=5`),
 `tassadar-trace-contribution-routes.ts`, `artanis-administrator-tick.ts`,
 `artanis-continual-learning-templates.ts`, `artanis-scheduled-runner.ts`,
-`cs336-a1-homework.ts`, `cs336-a1-real-gradient-workload.ts`,
-`cs336-a4-data-refinery.ts`, `training-real-gradient-evidence.ts`,
-`product-promises.ts`, `index.ts`; `packages/tassadar-executor/src/numeric-executor.ts`,
+`cs336-a1-real-gradient-workload.ts`, `product-promises.ts`, `index.ts`;
+`packages/tassadar-executor/src/numeric-executor.ts` (`executeTassadarNumericModel`),
 `packages/tassadar-executor/fixtures/tassadar-poc-loop-sum-v1.json`,
 `packages/probe/packages/runtime/src/benchmark/studybench.ts`,
-`packages/proof-replay/`.
+`packages/proof-replay/` (visualization only).
+
+Code (psionic, `OpenAgentsInc/psionic`, the construction pipeline — read-only here):
+`psionic-ir/src/tassadar_alm_graph.rs` (E1), `psionic-compiler/src/tassadar_alm_backend.rs`
+(E2), `tassadar_alm_geometric.rs` (E2b), `tassadar_alm_hull.rs` (E2c),
+`tassadar_alm_wasm_interpreter.rs` (E3a), `tassadar_alm_stack_isa.rs` (E3b),
+`tassadar_alm_specializer.rs` (E5), `tassadar_alm_numeric.rs` (E6-numeric, the
+source of the live fixture), `tassadar_module_linker.rs`,
+`tassadar_cross_profile_link_compatibility.rs`;
+`crates/psionic-tassadar-student/`, `fixtures/tassadar/w3_student_sweep_20260612/`;
+`docs/TASSADAR_ALM_*.md`, `docs/TASSADAR_WASM_WINDOW_ALIGNMENT.md`,
+`PSION_EXECUTOR_PROGRAM.md`, `PSION_PROGRAM_MAP.md`.
 
 Promises (ground truth): `training.decentralized_training_launch.v1` (green),
 `compute.tassadar_executor_poc.v1` (green),
@@ -437,12 +536,16 @@ Promises (ground truth): `training.decentralized_training_launch.v1` (green),
 `training.public_distributed_training_run.v1` (red),
 `models.tassadar_percepta_executor.v1` (red),
 `pylon.largest_decentralized_training_claim.v1` (red),
-`training.public_gradient_windows.v1` (planned),
+`training.public_gradient_windows.v1` (planned, the subordinate hybrid lane),
 `training.model_ladder.v1` (planned).
 
-Docs in this folder: `RESEARCH_PLAN.md` (W2 vs W5), `README.md`,
-`work-that-proves-itself.md`, `2026-06-15-executor-trace-contributor-completion-design.md`,
-`2026-06-16-verified-work-payment-economics.md`,
-`2026-06-14-w3-student-program-report.md`; and
-`docs/research/machine-studying/` (StudyBench audit + studying roadmap +
-research note).
+Docs in this folder (the paradigm anchor):
+`2026-06-10-percepta-constructing-llm-computer-notes.md`,
+`2026-06-11-llm-computer-full-introduction.md`,
+`2026-06-10-tassadar-percepta-audit.md`,
+`2026-06-10-psionic-alm-compiler-design-speculation.md`,
+`RESEARCH_PLAN.md` (the two-lane rule, H1–H6, W1–W5),
+`work-that-proves-itself.md`, `2026-06-14-w3-student-program-report.md`,
+`2026-06-15-executor-trace-contributor-completion-design.md`,
+`2026-06-16-verified-work-payment-economics.md`; and
+`docs/research/machine-studying/` (StudyBench audit + studying roadmap).
