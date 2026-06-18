@@ -403,11 +403,33 @@ describe('tassadar proof replay element', () => {
     const el = await mountAndSettle()
 
     const styleText = el.shadowRoot?.querySelector('style')?.textContent ?? ''
+    expect(styleText).toContain('.top{position:relative;z-index:8;')
+    expect(styleText).toContain('touch-action:manipulation')
     expect(styleText).toContain('.bottom{position:relative;z-index:6;')
     expect(styleText).toContain(
       '.controls,.events,.inspector{position:relative;z-index:7;pointer-events:auto}',
     )
     expect(styleText).toContain('touch-action:manipulation')
+  })
+
+  it('navigates to the live Tassadar route from the top action', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(replayBundle))
+    const assignSpy = vi
+      .spyOn(window.location, 'assign')
+      .mockImplementation(() => undefined)
+    const el = await mountAndSettle()
+
+    const live = el.shadowRoot?.querySelector(
+      '[data-replay-control="live-tassadar"]',
+    ) as HTMLAnchorElement | null
+    expect(live).not.toBeNull()
+    expect(live?.getAttribute('href')).toBe('/tassadar')
+    live!.dispatchEvent(new Event('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+    }))
+
+    expect(assignSpy).toHaveBeenCalledWith('/tassadar')
   })
 
   it('renders a provided bundle without a browser fetch', async () => {

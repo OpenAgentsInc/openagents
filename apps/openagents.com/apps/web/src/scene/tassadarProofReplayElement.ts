@@ -56,11 +56,11 @@ const HOST_STYLE =
   ':host{position:absolute;inset:0;display:block;background:#000;color:#f1efe8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}' +
   '.shell{position:absolute;inset:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:radial-gradient(circle at 50% 48%,rgba(44,162,143,0.16),transparent 34%),#000;overflow:hidden}' +
   '.shell.social{grid-template-rows:minmax(0,1fr);background:#000}' +
-  '.top{z-index:4;display:flex;justify-content:space-between;gap:1rem;padding:0.9rem 1rem 0;color:#f1efe8;pointer-events:none}' +
+  '.top{position:relative;z-index:8;display:flex;justify-content:space-between;gap:1rem;padding:0.9rem 1rem 0;color:#f1efe8;pointer-events:auto}' +
   '.shell.social .top{position:absolute;left:1.4rem;right:1.4rem;top:1rem;padding:0;z-index:6}' +
   '.top dl{display:grid;grid-template-columns:repeat(4,minmax(0,auto));gap:0.55rem 1rem;margin:0;min-width:0}.top div{min-width:0}.top dt{margin:0 0 0.16rem;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.34)}' +
   '.top dd{margin:0;max-width:20rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.72rem;color:rgba(255,255,255,0.78);text-shadow:0 1px 8px rgba(0,0,0,0.9)}' +
-  '.top a{pointer-events:auto;color:rgba(255,255,255,0.86);font-size:0.72rem;text-underline-offset:0.2rem}.top a:hover{color:#fff}' +
+  '.top a{position:relative;z-index:9;align-self:start;justify-self:end;width:max-content;margin-left:auto;white-space:nowrap;pointer-events:auto;color:rgba(255,255,255,0.86);font-size:0.72rem;text-underline-offset:0.2rem;touch-action:manipulation}.top a:hover{color:#fff}' +
   '.world{position:relative;min-height:0;margin:0 1rem;border-top:1px solid rgba(255,255,255,0.08);border-bottom:1px solid rgba(255,255,255,0.08);overflow:hidden;perspective:900px}' +
   '.shell.social .world{margin:0;border:0;min-height:100%;aspect-ratio:16/9;background:#000}' +
   '.social-canvas{position:absolute;inset:0;width:100%;height:100%;opacity:0.92}' +
@@ -126,6 +126,11 @@ const addPressHandler = (
     }
     handler()
   })
+}
+
+const navigateToTassadar = (): void => {
+  if (typeof window === 'undefined') return
+  window.location.assign('/tassadar')
 }
 
 const sourceRecordMap = (
@@ -462,7 +467,9 @@ const makeClass = (): CustomElementConstructor =>
       }
       const live = document.createElement('a')
       live.href = '/tassadar'
+      live.setAttribute('data-replay-control', 'live-tassadar')
       live.textContent = 'Live Tassadar'
+      addPressHandler(live, navigateToTassadar)
       panel.append(list, live)
       return panel
     }
