@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-18.4')
+    expect(decoded.version).toBe('2026-06-18.5')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -187,6 +187,46 @@ describe('public product promises document', () => {
         expect.objectContaining({
           promiseId: 'pylon.largest_decentralized_training_claim.v1',
           state: 'red',
+        }),
+        expect.objectContaining({
+          promiseId: 'claims.world_first_ai_training_paid_bitcoin.v1',
+          state: 'red',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.world_first_evidence_pack_missing',
+            'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'docs/transcripts/238.md',
+            'docs/launch/2026-06-18-world-firsts-verification.md',
+          ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'claims.world_first_public_llm_computer_training_run.v1',
+          state: 'red',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.llm_computer_training_run_definition_missing',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'promise:compute.tassadar_executor_poc.v1',
+          ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'pylon.consumer_compute_earns_bitcoin_self_serve.v1',
+          state: 'red',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.default_npm_install_not_earning_capable',
+            'blocker.product_promises.fully_autonomous_self_serve_settlement_missing',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'https://openagents.com/api/training/runs/run.tassadar.executor.20260615/settlements',
+          ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'marketplace.agentic_npm_module_registry.v1',
+          state: 'planned',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.agentic_npm_registry_not_live',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'models.tasadar_percepta_executor.v1',
@@ -466,12 +506,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-18.4', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-18.5', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-18.4',
+      expectedVersion: '2026-06-18.5',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-18.4',
+      servedVersion: '2026-06-18.5',
       status: 'ready',
     })
     expect(
@@ -481,7 +521,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-18.4',
+      servedVersion: '2026-06-18.5',
       status: 'blocked',
     })
   })
