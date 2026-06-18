@@ -68,6 +68,12 @@ Tassadar, Probe, Psionic, Blueprint, and Forge Autopilot Coder plans.
   out-of-menu tools and max-tool-call violations, turns timeout overruns into
   timed-out closeouts, withholds private gold/rubric/evidence material from
   candidate input, and emits normal Probe closeout bundles.
+- 2026-06-17: #5292 / MSB-MVP-10 complete. Probe runtime now exports a
+  StudyBench-to-GEPA feedback bridge that converts rubric score failures into
+  deterministic Psionic feedback refs for failed claims, missed evidence spans,
+  forbidden claim refs, skipped tests, wrong files, and budget failures while
+  keeping optimizer acceptance separate from runtime promotion, public claims,
+  and payout authority.
 
 ## Short Answer
 
