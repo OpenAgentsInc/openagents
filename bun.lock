@@ -217,7 +217,7 @@
     },
     "apps/pylon": {
       "name": "@openagentsinc/pylon",
-      "version": "1.0.0-rc.37",
+      "version": "1.0.3",
       "bin": {
         "pylon": "src/index.ts",
         "pylon-foundation-bridge": "bin/foundation-bridge",
@@ -353,6 +353,17 @@
     "packages/proof-replay": {
       "name": "@openagentsinc/proof-replay",
       "version": "0.1.0",
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/public-activity-timeline": {
+      "name": "@openagentsinc/public-activity-timeline",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
       "devDependencies": {
         "bun-types": "^1.0.0",
         "typescript": "catalog:",
@@ -973,6 +984,8 @@
     "@openagentsinc/proof-replay": ["@openagentsinc/proof-replay@workspace:packages/proof-replay"],
 
     "@openagentsinc/provider-account-schema": ["@openagentsinc/provider-account-schema@workspace:apps/openagents.com/packages/provider-account-schema"],
+
+    "@openagentsinc/public-activity-timeline": ["@openagentsinc/public-activity-timeline@workspace:packages/public-activity-timeline"],
 
     "@openagentsinc/pylon": ["@openagentsinc/pylon@workspace:apps/pylon"],
 

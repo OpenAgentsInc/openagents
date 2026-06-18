@@ -516,6 +516,13 @@ generation, and clips.
      private-material redaction rules. Add JSON fixtures for empty, active,
      stale, replay-range, simulation-only, and real-Bitcoin sequences. Include
      contract tests for ordering, redaction, and simulation-vs-real fields.
+   - Implementation status (2026-06-18, issue #5413): added the shared
+     `@openagentsinc/public-activity-timeline` package with Effect schemas,
+     cursor helpers, public-safe assertion helpers, README contract docs, and
+     fixtures/tests for empty, active, stale, replay-range, simulation-only, and
+     receipt-backed real-Bitcoin sequences. The package is schema-only and
+     grants no settlement, payout, deployment, accepted-work, provider, wallet,
+     or product-claim authority.
 2. **Normalize launch evidence routes for agent dereference**
    - Body summary: Ensure public route consistency for settlements,
      verification challenges, receipts, run summary, proof replays, and product
