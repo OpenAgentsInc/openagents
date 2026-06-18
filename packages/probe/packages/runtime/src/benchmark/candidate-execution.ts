@@ -12,6 +12,7 @@ import {
 import { JsonValue, ProbePublicProjectionUnsafe, validateProbePublicProjection } from "../contracts/provider-account";
 import { makeProbeBenchmarkCloseoutBundle, type ProbeBenchmarkCloseoutBundle } from "./closeout-writer";
 import { type ProbeRetainedBenchmarkFixture, type ProbeBenchmarkToolMenuConstraints } from "./fixtures";
+import { shortHash } from "./stable-hash";
 
 export const PROBE_GEPA_CANDIDATE_MANIFEST_SCHEMA_VERSION = "psionic.probe_gepa_candidate_manifest.v1" as const;
 export const PROBE_GEPA_PROBE_IMPORT_SCHEMA_VERSION = "probe.prompt_candidate_import.v1" as const;
@@ -493,10 +494,6 @@ function containsUnsafeCandidateText(value: string): boolean {
 
 function defaultRunRef(taskId: string, candidateHash: string, baseline: boolean): string {
   return `probe_run.retained.${taskId}.${baseline ? "baseline" : shortHash(candidateHash)}`;
-}
-
-function shortHash(hash: string): string {
-  return hash.startsWith("sha256:") ? hash.slice("sha256:".length, "sha256:".length + 16) : hash.slice(0, 16);
 }
 
 function requireNonEmpty(value: string, path: string): Effect.Effect<void, ProbeBenchmarkCandidateExecutionError> {

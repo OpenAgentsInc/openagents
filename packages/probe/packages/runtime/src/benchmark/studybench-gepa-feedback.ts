@@ -15,6 +15,7 @@ import {
   validateProbeStudybenchScoreVector,
   type ProbeStudybenchScoringMode,
 } from "./studybench-score";
+import { shortHash } from "./stable-hash";
 
 export const PROBE_STUDYBENCH_GEPA_FEEDBACK_SCHEMA_REF =
   "probe.studybench_gepa_feedback.v0" as const;
@@ -160,10 +161,6 @@ function validateFeedbackRefs(
 
 function uniqueStrings(values: ReadonlyArray<string>): ReadonlyArray<string> {
   return [...new Set(values)];
-}
-
-function shortHash(value: string): string {
-  return value.replace(/^sha256:/, "").slice(0, 16);
 }
 
 function gepaFeedbackError(path: string, reason: string): Effect.Effect<never, ProbeBenchmarkContractError> {

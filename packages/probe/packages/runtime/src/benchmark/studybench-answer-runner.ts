@@ -29,6 +29,7 @@ import {
   buildProbeStudybenchRubricScore,
   type ProbeStudybenchScoringMode,
 } from "./studybench-score";
+import { shortHash } from "./stable-hash";
 
 export const PROBE_STUDYBENCH_ANSWER_CANDIDATE_INPUT_SCHEMA_REF =
   "probe.studybench_answer_candidate_input.v0" as const;
@@ -298,10 +299,6 @@ function visibilityRefPart(visibility: OpenAgentsStudybenchTask["visibility"]): 
     case "openagents_private_holdout":
       return "private_holdout";
   }
-}
-
-function shortHash(value: string): string {
-  return value.replace(/^sha256:/, "").slice(0, 16);
 }
 
 function answerRunnerError(path: string, reason: string): Effect.Effect<never, ProbeStudybenchAnswerRunnerError> {
