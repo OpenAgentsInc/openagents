@@ -76,7 +76,9 @@
 // dep via nip90) ran a bun-requiring prepare hook on consumer npm install,
 // crashing npx with code 127 when bun was absent; now a Node-only guard no-ops.
 // Republished with nip90 0.1.1 carrying the fixed nostr-effect pin.
-export const PYLON_VERSION = "1.0.4"
+// v1.0.5: supersedes 1.0.4, which packed a stale nip90@0.1.0 (broken bun prepare)
+// instead of 0.1.1; 1.0.5 correctly references nip90@0.1.1 with the fixed pin.
+export const PYLON_VERSION = "1.0.5"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.
