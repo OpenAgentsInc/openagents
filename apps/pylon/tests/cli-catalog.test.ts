@@ -37,6 +37,8 @@ describe("pylon command catalog", () => {
     expect(entry.args[0]?.name).toContain("reply")
     expect(entry.args.some((arg) => arg.name === "--session-ref" && arg.description.includes("reply"))).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--wait" && arg.kind === "flag")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--managed-worktree" && arg.kind === "flag")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--base-ref")).toBe(true)
   })
 
   test("only the wallet/work/tip verbs are flagged as spending", () => {

@@ -40,7 +40,9 @@ import { classifySessionError } from "../session-error-class"
 import { assertPublicProjectionSafe } from "../state"
 import {
   materializeGitCheckoutWorkspaceWithLease,
+  releaseWorkspace,
   type GitCheckoutWorkspace,
+  type WorkspaceCheckoutRunner,
 } from "../workspace-materializer"
 import { estimateAppleFmLocalSessionEnergy } from "./apple-fm-energy-estimate"
 import { collectPylonAppleFmStatus } from "./apple-fm-status"
@@ -153,6 +155,8 @@ export type ControlSessionEvent = {
   resultRef?: string
   errorClass?: string
   errorDigestRef?: string
+  workspaceCleanupReceiptRef?: string
+  workspaceRetentionReasonRef?: string
   violationRefs?: string[]
 }
 
@@ -168,6 +172,9 @@ export type ControlSessionProjection = {
   accountRefHash: string | null
   objectiveRef: string
   workspaceRef: string
+  workspaceCleanupRef: string | null
+  workspaceCleanupReceiptRef: string | null
+  workspaceRetentionReasonRef: string | null
   objectiveDigestRef: string
   verifyRef: string
   state: ControlSessionState
@@ -272,6 +279,8 @@ export type ControlSessionExecutor = (
 type WorkspaceSelection = {
   workspaceRef: string
   workingDirectory: string
+  cleanupRef?: string
+  workspaceStateRoot?: string
 }
 
 export function codexControlSessionExecutionSettings(
@@ -300,6 +309,8 @@ type SessionRecord = {
   lane: ControlSessionLane
   account: ResolvedPylonAccountSelection | null
   workspace: WorkspaceSelection
+  workspaceCleanupReceiptRef: string | null
+  workspaceRetentionReasonRef: string | null
   objective: string
   objectiveDigestRef: string
   verify: string[]
@@ -344,6 +355,7 @@ function repositoryRefFrom(value: unknown): ControlSessionRepositoryRef | null {
   if (typeof record.fullName !== "string" || typeof record.branch !== "string") return null
   if (typeof record.commitSha !== "string" || !/^[a-f0-9]{40}$/i.test(record.commitSha)) return null
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(record.fullName)) return null
+  if (!/^[A-Za-z0-9_./-]+$/.test(record.branch) || record.branch.includes("..") || record.branch.startsWith("-")) return null
   return {
     provider: "github",
     visibility: "public",
@@ -484,6 +496,9 @@ function projectionFor(record: SessionRecord): ControlSessionProjection {
     accountRefHash: account?.accountRefHash ?? null,
     objectiveRef: record.objectiveDigestRef,
     workspaceRef: record.workspace.workspaceRef,
+    workspaceCleanupRef: record.workspace.cleanupRef ?? null,
+    workspaceCleanupReceiptRef: record.workspaceCleanupReceiptRef,
+    workspaceRetentionReasonRef: record.workspaceRetentionReasonRef,
     objectiveDigestRef: record.objectiveDigestRef,
     verifyRef: record.verifyRef,
     state: record.state,
@@ -519,6 +534,7 @@ async function workspaceForCommand(input: {
   index: number
   runRef: string
   summary: BootstrapSummary
+  workspaceCheckoutRunner?: WorkspaceCheckoutRunner
 }): Promise<WorkspaceSelection> {
   if (input.command.worktreePath !== undefined) {
     return workspaceForWorktreePath(input.command.worktreePath)
@@ -537,13 +553,17 @@ async function workspaceForCommand(input: {
   const materialized = await materializeGitCheckoutWorkspaceWithLease({
     cacheRoot: join(input.summary.paths.cache, "control-session-worktrees"),
     checkout,
+    ...(input.workspaceCheckoutRunner === undefined ? {} : { checkoutRunner: input.workspaceCheckoutRunner }),
     leaseRef: stableRef("lease.pylon.control_session.workspace", `${input.runRef}:${input.index}`),
     refPrefix: "workspace.pylon.control_session",
     repositoryCacheRoot: join(input.summary.paths.cache, "workspace-git-cache"),
+    retentionPolicy: "remove_on_closeout",
     workspaceStateRoot: join(input.summary.paths.cache, "workspace-leases"),
   })
   return {
+    cleanupRef: materialized.cleanupRef,
     workingDirectory: materialized.workingDirectory,
+    workspaceStateRoot: join(input.summary.paths.cache, "workspace-leases"),
     workspaceRef: materialized.workspaceRef,
   }
 }
@@ -769,6 +789,7 @@ export function createControlSessionActions(options: {
   appleFmNow?: Date
   env?: Record<string, string | undefined>
   executor?: ControlSessionExecutor
+  workspaceCheckoutRunner?: WorkspaceCheckoutRunner
   // #4997: optional cloud executor used when a session's lane resolves to a
   // cloud lane and a cloud control plane is configured. When omitted, the
   // factory builds one from env via `cloudExecutorFactory`. When neither is
@@ -952,22 +973,48 @@ export function createControlSessionActions(options: {
     return stableRef("artifact.pylon.control_session.failure", `${record.sessionRef}:failure`)
   }
 
-  const finishCancelled = (record: SessionRecord) => {
+  const releaseManagedWorkspace = async (record: SessionRecord) => {
+    if (record.workspace.workspaceStateRoot === undefined) return
+    if (record.workspaceCleanupReceiptRef !== null || record.workspaceRetentionReasonRef !== null) return
+    const result = await releaseWorkspace({
+      workspaceStateRoot: record.workspace.workspaceStateRoot,
+      workspaceRef: record.workspace.workspaceRef,
+    })
+    if (result?.cleanupReceiptRef !== undefined) {
+      record.workspaceCleanupReceiptRef = result.cleanupReceiptRef
+    }
+    if (result?.retentionReasonRef !== undefined) {
+      record.workspaceRetentionReasonRef = result.retentionReasonRef
+    }
+  }
+
+  const workspaceCleanupEventFields = (record: SessionRecord) => ({
+    ...(record.workspaceCleanupReceiptRef === null
+      ? {}
+      : { workspaceCleanupReceiptRef: record.workspaceCleanupReceiptRef }),
+    ...(record.workspaceRetentionReasonRef === null
+      ? {}
+      : { workspaceRetentionReasonRef: record.workspaceRetentionReasonRef }),
+  })
+
+  const finishCancelled = async (record: SessionRecord) => {
     if (record.state === "completed" || record.state === "failed" || record.state === "cancelled") return
-    record.state = "cancelled"
     record.completedAt = nowIso()
     record.errorClass = "cancelled"
     record.errorDigestRef = stableRef("digest.pylon.control_session.cancelled", record.sessionRef)
+    await releaseManagedWorkspace(record)
+    record.state = "cancelled"
     emit(record, {
       phase: "cancelled",
       errorClass: record.errorClass,
       errorDigestRef: record.errorDigestRef,
+      ...workspaceCleanupEventFields(record),
     })
   }
 
   const runSession = async (record: SessionRecord) => {
     if (record.abort.signal.aborted) {
-      finishCancelled(record)
+      await finishCancelled(record)
       return
     }
     record.state = "running"
@@ -1008,27 +1055,34 @@ export function createControlSessionActions(options: {
       record.completedAt = nowIso()
       record.artifactRef = await writeRetainedArtifact(record, result)
       if (result.devCheck.state === "passed") {
-        record.state = "completed"
         record.resultRef = stableRef("result.pylon.control_session", record.sessionRef)
-        emit(record, { phase: "completed", artifactRef: record.artifactRef, resultRef: record.resultRef })
+        await releaseManagedWorkspace(record)
+        record.state = "completed"
+        emit(record, {
+          phase: "completed",
+          artifactRef: record.artifactRef,
+          resultRef: record.resultRef,
+          ...workspaceCleanupEventFields(record),
+        })
       } else {
         const failure = classifySessionError("dev check did not pass")
-        record.state = "failed"
         record.errorClass = "verification_failed"
         record.errorDigestRef = failure.errorDigestRef
+        await releaseManagedWorkspace(record)
+        record.state = "failed"
         emit(record, {
           phase: "failed",
           artifactRef: record.artifactRef,
           errorClass: record.errorClass,
           errorDigestRef: record.errorDigestRef,
+          ...workspaceCleanupEventFields(record),
         })
       }
     } catch (error) {
       if (record.state === "cancelled" || record.abort.signal.aborted) {
-        finishCancelled(record)
+        await finishCancelled(record)
         return
       }
-      record.state = "failed"
       record.completedAt = nowIso()
       const failure = classifySessionError(error)
       record.errorClass = failure.errorClass
@@ -1038,11 +1092,14 @@ export function createControlSessionActions(options: {
       } catch {
         record.artifactRef = null
       }
+      await releaseManagedWorkspace(record)
+      record.state = "failed"
       emit(record, {
         phase: "failed",
         ...(record.artifactRef === null ? {} : { artifactRef: record.artifactRef }),
         errorClass: record.errorClass,
         errorDigestRef: record.errorDigestRef,
+        ...workspaceCleanupEventFields(record),
       })
     }
   }
@@ -1063,7 +1120,15 @@ export function createControlSessionActions(options: {
         ...(command.accountRef === undefined ? {} : { accountRef: command.accountRef }),
         ...(accountHome === undefined ? {} : { accountHome }),
       })
-      const workspace = await workspaceForCommand({ command, index, runRef, summary: options.summary })
+      const workspace = await workspaceForCommand({
+        command,
+        index,
+        runRef,
+        summary: options.summary,
+        ...(options.workspaceCheckoutRunner === undefined
+          ? {}
+          : { workspaceCheckoutRunner: options.workspaceCheckoutRunner }),
+      })
       const sessionRef = stableRef(
         "session.pylon.control",
         `${runRef}:${command.adapter}:${command.objective}:${workspace.workspaceRef}`,
@@ -1075,6 +1140,8 @@ export function createControlSessionActions(options: {
         lane: command.lane ?? DEFAULT_CONTROL_SESSION_LANE,
         account,
         workspace,
+        workspaceCleanupReceiptRef: null,
+        workspaceRetentionReasonRef: null,
         objective: command.objective,
         objectiveDigestRef: stableRef("digest.pylon.control_session.objective", command.objective),
         verify: command.verify,
@@ -1115,6 +1182,8 @@ export function createControlSessionActions(options: {
         lane: parent.lane,
         account: parent.account,
         workspace: parent.workspace,
+        workspaceCleanupReceiptRef: null,
+        workspaceRetentionReasonRef: null,
         objective,
         objectiveDigestRef: stableRef("digest.pylon.control_session.objective", objective),
         verify: [...parent.verify],
@@ -1176,6 +1245,8 @@ export function createControlSessionActions(options: {
         lane: "local",
         account: null,
         workspace,
+        workspaceCleanupReceiptRef: null,
+        workspaceRetentionReasonRef: null,
         objective: command.prompt,
         objectiveDigestRef: stableRef("digest.pylon.apple_fm.prompt", command.prompt),
         verify: ["bun", "--version"],
@@ -1210,7 +1281,7 @@ export function createControlSessionActions(options: {
       const record = records.get(sessionRef)
       if (!record) throw new Error("session not found")
       record.abort.abort()
-      finishCancelled(record)
+      await finishCancelled(record)
       return projectionFor(record)
     },
     events: async (sessionRef) => {

@@ -74,6 +74,7 @@ import {
 import { collectPylonAppleFmStatus } from "./node/apple-fm-status"
 import {
   createControlSessionActions,
+  type ControlSessionSpawnCommand,
   type ControlSessionProjection,
 } from "./node/control-sessions"
 import { resolveCloudControlConfig } from "./cloud-control-client"
@@ -1899,6 +1900,61 @@ function positiveIntegerOption(options: Record<string, string | true>, key: stri
   return parsed
 }
 
+async function localGitText(args: string[], cwd = process.cwd()): Promise<string> {
+  const proc = Bun.spawn(["git", ...args], { cwd, stderr: "pipe", stdout: "pipe" })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exitCode !== 0) throw new Error(`git ${args[0] ?? "command"} failed: ${stderr.trim()}`)
+  return stdout.trim()
+}
+
+const gitHubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
+
+function gitHubFullNameFromRemote(remote: string): string | null {
+  const trimmed = remote.trim()
+  const normalize = (path: string): string | null => {
+    const fullName = path.replace(/^\/+/, "").replace(/\.git$/, "")
+    return gitHubFullNamePattern.test(fullName) ? fullName : null
+  }
+  try {
+    const url = new URL(trimmed)
+    if (url.hostname !== "github.com") return null
+    return normalize(url.pathname)
+  } catch {
+    const ssh = /^git@github\.com:([^#?]+)$/.exec(trimmed)
+    if (ssh !== null) return normalize(ssh[1] ?? "")
+    return null
+  }
+}
+
+async function managedWorktreeRepoRef(
+  options: Record<string, string | true>,
+): Promise<NonNullable<ControlSessionSpawnCommand["repoRef"]>> {
+  const explicitRepo = optionString(options, "repo") ?? optionString(options, "repo-ref")
+  const fullName = explicitRepo ?? gitHubFullNameFromRemote(await localGitText(["remote", "get-url", "origin"]))
+  if (typeof fullName !== "string" || !gitHubFullNamePattern.test(fullName)) {
+    throw new Error("managed worktree requires a GitHub origin or --repo owner/name")
+  }
+  const baseRef = optionString(options, "base-ref") ?? "origin/main"
+  if (!/^[A-Za-z0-9_./-]+$/.test(baseRef) || baseRef.includes("..") || baseRef.startsWith("-")) {
+    throw new Error("managed worktree --base-ref is invalid")
+  }
+  const commitSha = await localGitText(["rev-parse", `${baseRef}^{commit}`])
+  if (!/^[a-f0-9]{40}$/i.test(commitSha)) {
+    throw new Error("managed worktree base ref did not resolve to a commit")
+  }
+  return {
+    provider: "github",
+    visibility: "public",
+    fullName,
+    branch: baseRef.replace(/^origin\//, ""),
+    commitSha,
+  }
+}
+
 const isTerminalSessionState = (state: unknown): boolean =>
   state === "completed" || state === "failed" || state === "cancelled"
 
@@ -2096,13 +2152,18 @@ async function main() {
           return ["sh", "-c", raw.trim()]
         })()
         const worktree = optionString(options, "worktree")
+        const managedWorktree = optionFlag(options, "managed-worktree")
+        if (worktree && managedWorktree) {
+          throw new Error("sessions spawn uses either --worktree or --managed-worktree, not both")
+        }
+        const repoRef = managedWorktree ? await managedWorktreeRepoRef(options) : undefined
         const { result } = await runControlCommand(
           {
             type: "session.spawn",
             adapter,
             objective,
             verify,
-            ...(worktree ? { worktreePath: worktree } : {}),
+            ...(repoRef ? { repoRef } : worktree ? { worktreePath: worktree } : {}),
           },
           Bun.env,
         )
@@ -2233,6 +2294,11 @@ async function main() {
         if (timeoutSeconds !== undefined && (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0)) {
           throw new Error("sessions exec --timeout-seconds must be a positive integer")
         }
+        const managedWorktree = optionFlag(options, "managed-worktree")
+        if (worktree && managedWorktree) {
+          throw new Error("sessions exec uses either --worktree or --managed-worktree, not both")
+        }
+        const repoRef = managedWorktree ? await managedWorktreeRepoRef(options) : undefined
         // Thin control adapter: every verb forwards to the running node. No new
         // authority — this only spawns + observes the existing session surface.
         const control: SessionsExecControl = {
@@ -2276,7 +2342,7 @@ async function main() {
           adapter,
           objective,
           verify,
-          ...(worktree ? { worktreePath: worktree } : {}),
+          ...(repoRef ? { repoRef } : worktree ? { worktreePath: worktree } : {}),
           ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }),
           onApproval,
           ...(auto ? { approvalPolicy: auto.policy, approvalAudit: auto.audit } : {}),

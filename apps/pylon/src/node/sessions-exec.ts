@@ -18,6 +18,7 @@
 import type {
   ControlSessionEvent,
   ControlSessionProjection,
+  ControlSessionSpawnCommand,
   ControlSessionState,
 } from "./control-sessions"
 
@@ -30,6 +31,7 @@ export type SessionsExecControl = {
     type: "session.spawn"
     adapter: "codex" | "claude_agent"
     objective: string
+    repoRef?: ControlSessionSpawnCommand["repoRef"]
     verify: string[]
     worktreePath?: string
     timeoutSeconds?: number
@@ -75,6 +77,7 @@ export type ApprovalPolicyCallback = (
 export type SessionsExecOptions = {
   adapter: "codex" | "claude_agent"
   objective: string
+  repoRef?: ControlSessionSpawnCommand["repoRef"]
   verify: string[]
   worktreePath?: string
   timeoutSeconds?: number
@@ -260,8 +263,9 @@ export async function runSessionsExec(
     type: "session.spawn",
     adapter: options.adapter,
     objective: options.objective,
+    ...(options.repoRef ? { repoRef: options.repoRef } : {}),
     verify: options.verify,
-    ...(options.worktreePath ? { worktreePath: options.worktreePath } : {}),
+    ...(options.repoRef === undefined && options.worktreePath ? { worktreePath: options.worktreePath } : {}),
     ...(options.timeoutSeconds ? { timeoutSeconds: options.timeoutSeconds } : {}),
   })
   const sessionRef = spawned.sessionRef

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { existsSync, mkdtempSync } from "node:fs"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -28,6 +28,10 @@ import {
 import type { PylonEvent } from "../src/node/state"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { PYLON_DEV_CHECK_SCHEMA, type PylonDevCheckProjection } from "../src/dev-loop"
+import {
+  workspaceLeaseRecordFor,
+  type WorkspaceCheckoutRunner,
+} from "../src/workspace-materializer"
 
 const appleFmControlEnv = {
   PYLON_HOME: "/tmp/pylon-apple-fm-control-test",
@@ -65,6 +69,22 @@ const appleFmFetch = (handler: (url: URL) => Response | Promise<Response>): type
     const url = new URL(input instanceof Request ? input.url : input.toString())
     return handler(url)
   }) as typeof fetch
+
+async function runCommand(args: string[], cwd: string): Promise<void> {
+  const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
+  const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+  if (exitCode !== 0) throw new Error(`command failed: ${args.join(" ")}\n${stderr}`)
+}
+
+const cleanGitCheckoutRunner: WorkspaceCheckoutRunner = async (workingDirectory) => {
+  await mkdir(workingDirectory, { recursive: true })
+  await runCommand(["git", "init"], workingDirectory)
+  await runCommand(["git", "config", "user.email", "fixture@test.local"], workingDirectory)
+  await runCommand(["git", "config", "user.name", "Fixture"], workingDirectory)
+  await writeFile(join(workingDirectory, "README.md"), "managed workspace fixture\n")
+  await runCommand(["git", "add", "."], workingDirectory)
+  await runCommand(["git", "commit", "-m", "fixture"], workingDirectory)
+}
 
 function fakeDevCheck(state: PylonDevCheckProjection["state"] = "passed"): PylonDevCheckProjection {
   return {
@@ -717,6 +737,85 @@ describe("control protocol", () => {
           }),
         ),
       )
+    })
+  })
+
+  test("repoRef sessions release clean managed worktrees and retain dirty closeouts", async () => {
+    await withControlSessionFixture(async ({ proofDir, summary }) => {
+      const executor: ControlSessionExecutor = async (input) => {
+        if (input.objective.includes("dirty")) {
+          await writeFile(join(input.cwd, "dirty-output.txt"), "dirty\n")
+        }
+        return {
+          commandCount: 1,
+          devCheck: fakeDevCheck("passed"),
+          editedFileCount: input.objective.includes("dirty") ? 1 : 0,
+          eventCount: 1,
+          externalSessionRef: null,
+          responseDigestRef: null,
+          totalTokens: 1,
+        }
+      }
+      const actions = createControlSessionActions({
+        executor,
+        proofsDir: proofDir,
+        summary,
+        workspaceCheckoutRunner: cleanGitCheckoutRunner,
+      })
+      const repoRef = {
+        provider: "github" as const,
+        visibility: "public" as const,
+        fullName: "OpenAgentsInc/openagents",
+        branch: "main",
+        commitSha: "3333333333333333333333333333333333333333",
+      }
+      const clean = await actions.spawn({
+        type: "session.spawn",
+        adapter: "codex",
+        repoRef,
+        objective: "clean managed session",
+        verify: ["bun", "--version"],
+      })
+      const dirty = await actions.spawn({
+        type: "session.spawn",
+        adapter: "codex",
+        repoRef,
+        objective: "dirty managed session",
+        verify: ["bun", "--version"],
+      })
+
+      let list = await actions.list()
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        list = await actions.list()
+        const cleanState = list.find((entry) => entry.sessionRef === clean.sessionRef)?.state
+        const dirtyState = list.find((entry) => entry.sessionRef === dirty.sessionRef)?.state
+        if (cleanState === "completed" && dirtyState === "completed") break
+        await Bun.sleep(10)
+      }
+      const cleanRow = list.find((entry) => entry.sessionRef === clean.sessionRef)
+      const dirtyRow = list.find((entry) => entry.sessionRef === dirty.sessionRef)
+      expect(cleanRow?.workspaceCleanupRef).toStartWith("cleanup.pylon.workspace.")
+      expect(cleanRow?.workspaceCleanupReceiptRef).toStartWith("receipt.pylon.workspace_cleanup.")
+      expect(cleanRow?.workspaceRetentionReasonRef).toBeNull()
+      expect(dirtyRow?.workspaceCleanupRef).toStartWith("cleanup.pylon.workspace.")
+      expect(dirtyRow?.workspaceCleanupReceiptRef).toBeNull()
+      expect(dirtyRow?.workspaceRetentionReasonRef).toBe("retention.workspace.dirty")
+
+      const workspaceStateRoot = join(summary.paths.cache, "workspace-leases")
+      const cleanLease = await workspaceLeaseRecordFor({
+        workspaceStateRoot,
+        workspaceRef: cleanRow?.workspaceRef ?? "",
+      })
+      const dirtyLease = await workspaceLeaseRecordFor({
+        workspaceStateRoot,
+        workspaceRef: dirtyRow?.workspaceRef ?? "",
+      })
+      expect(cleanLease?.state).toBe("cleaned")
+      expect(cleanLease?.cleanupReceiptRef).toBe(cleanRow?.workspaceCleanupReceiptRef)
+      expect(cleanLease?.local.workingDirectory && existsSync(cleanLease.local.workingDirectory)).toBe(false)
+      expect(dirtyLease?.state).toBe("materialized")
+      expect(dirtyLease?.retentionReasonRef).toBe("retention.workspace.dirty")
+      expect(dirtyLease?.local.workingDirectory && existsSync(dirtyLease.local.workingDirectory)).toBe(true)
     })
   })
 
