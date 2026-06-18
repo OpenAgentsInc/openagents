@@ -493,6 +493,190 @@ Exit: the public claim can move from "the data exists and the loop is proven in
 bounded pieces" to "a normal contributor can join, be observed live, be replayed,
 and produce a clip from public evidence."
 
+### Issue series to file (epics + child issues)
+
+File these as `roadmap` issues, in this order. Every issue body should link back
+to this audit, preserve the invariants above, and state explicitly that the work
+adds observation/projection only: no settlement, payout, deployment, accepted-
+work, or public-claim authority. The first epic deliberately makes API/CLI/
+agent retrievability the acceptance surface before any UI work starts.
+
+#### EPIC 1 — Programmatic Pylon activity evidence spine
+
+Body summary: Build the machine-readable public evidence spine for Pylon
+visibility and replay. The outcome is a public-safe, cursor-addressable timeline
+API, agent-readable docs/fixtures, and CLI commands that let agents reconstruct
+boot, claim, verify, settle, Forum, and blocker state without scraping the web
+UI. This epic is the prerequisite for live UI, desktop, world projection, replay
+generation, and clips.
+
+1. **Define `openagents.public_activity_timeline.v1` schema and fixtures**
+   - Body summary: Specify the timeline envelope, cursor, event shape,
+     finite event-kind enum, staleness/source-lag fields, caveat refs, and
+     private-material redaction rules. Add JSON fixtures for empty, active,
+     stale, replay-range, simulation-only, and real-Bitcoin sequences. Include
+     contract tests for ordering, redaction, and simulation-vs-real fields.
+2. **Normalize launch evidence routes for agent dereference**
+   - Body summary: Ensure public route consistency for settlements,
+     verification challenges, receipts, run summary, proof replays, and product
+     promises. Alias or remove drifted paths, add focused verification-challenge
+     dereference, and keep simulation rows excluded from real-settled
+     aggregates. Acceptance is a one-screen `curl` recipe that resolves every
+     evidence ref without UI.
+3. **Implement `GET /api/public/activity-timeline`**
+   - Body summary: Union public-safe pylon, training, verification, settlement,
+     Forum, Artanis, and capacity-funnel source events into the v1 timeline
+     envelope with `?since=`, `?from=`, `?to=`, `?limit=`, and filter support.
+     Emit `projection_gap` events instead of guessing when source coverage is
+     incomplete.
+4. **Add timeline source-coverage and redaction tests**
+   - Body summary: Add focused tests proving every event kind carries source
+     refs or blocker refs, private material is omitted, stale source lag is
+     visible, simulation settlement never emits `real_bitcoin_moved`, and cursor
+     pagination is deterministic.
+5. **Publish agent-readable activity endpoint docs and manifest entries**
+   - Body summary: Add docs and/or a public endpoint manifest entry so agents
+     can discover the timeline, settlements, verification, receipt, proof-replay,
+     and product-promise routes. Include example responses, event-kind meanings,
+     staleness semantics, filters, and safe copy boundaries.
+6. **Add Pylon CLI `activity`, `timeline`, `receipts`, and `evidence-pack`**
+   - Body summary: Add JSON-first CLI commands over the public APIs:
+     `pylon activity --watch`, `pylon timeline --from/--to`,
+     `pylon receipts --run`, and `pylon evidence-pack --run`. Keep own-node
+     status commands separate from public fleet commands. Acceptance: a fresh
+     agent can answer the current-state questions from CLI JSON only.
+
+#### EPIC 2 — General replay from the public timeline
+
+Body summary: Turn the programmatic timeline into generated replay bundles and
+CLI replay output. Curated stories remain fixtures, but arbitrary
+run/window/pair/range replay must be generated from public event refs instead
+of hand-authored builders.
+
+1. **Add generated proof-replay builder from activity timeline events**
+   - Body summary: Map timeline events into `proof_replay_bundle.v1` actors,
+     stages, flows, captions, camera cues, source refs, and gaps. Run the
+     existing proof-replay shipment gates and source-coverage assertions on the
+     generated bundle.
+2. **Expose range-filtered generated replay API**
+   - Body summary: Add a public route or route mode that accepts
+     `from/to/runRef/windowRef/actorRef/kind` filters and returns generated
+     replay bundles with the input cursor/range/filter recorded in the manifest.
+3. **Add fleet boot and Forum replay tracks**
+   - Body summary: Convert pylon boot/readiness/capacity events and Forum
+     topic/post events into replay tracks so replay is not limited to
+     proof->verify->settle. Preserve caveats for aggregate snapshots and stale
+     sources.
+4. **Add `pylon replay` over generated bundles**
+   - Body summary: Extend CLI replay to fetch generated bundles and render a
+     text/JSON event track for agents. The command should be useful without
+     video or web UI and should expose source refs and caveats for every event.
+
+#### EPIC 3 — Live stream and SpacetimeDB projection
+
+Body summary: Add live delivery for the same timeline contract after the
+programmatic API is stable. The Worker/D1 timeline remains source projection;
+SSE and SpacetimeDB are delivery/projection layers only.
+
+1. **Add SSE tail for the public activity timeline**
+   - Body summary: Implement
+     `GET /api/public/activity-timeline/stream?since=...` over the same event
+     shape, with reconnect, cursor resume, stale-source reporting, and polling
+     fallback guidance. Add tests for reconnect and no private material.
+2. **Bridge activity events into `openagents-world` public rows**
+   - Body summary: Project public activity events into SpacetimeDB `world_event`
+     rows through the existing service-identity bridge. Keep D1/Worker as the
+     authority and enforce public-safe refs, generated-at, and replay-safe
+     deterministic projection.
+3. **Render evidence-bound live activity motion on `/tassadar`**
+   - Body summary: Subscribe to timeline-backed world events and animate only
+     events with source refs, generated-at, and stale/expiry metadata. Preserve
+     the June 17 ban on anonymous motion and add canvas/browser smoke coverage.
+
+#### EPIC 4 — Web and desktop visibility surfaces
+
+Body summary: Build human/operator surfaces as consumers of the programmatic
+contract. Web and desktop must not invent fields absent from the public API/CLI
+contract; every visible event links back to timeline refs and proof URLs.
+
+1. **Add web live-activity page over the public timeline**
+   - Body summary: Build `/activity` or `/tassadar/activity` with Fleet, Money
+     Loop, Forum, Timeline, and Proof Drawer panes. Start with polling if needed,
+     but consume only documented public shapes and show stale-source state.
+2. **Add proof drawer and filters for activity events**
+   - Body summary: Add event filters (`boot`, `work`, `verify`, `settle`,
+     `forum`, `operator`) and a proof drawer that shows source refs, public URLs,
+     caveats, staleness, and product-promise blockers for the selected event.
+3. **Add Autopilot Desktop activity pane/strip**
+   - Body summary: Add a live activity pane or strip to Network/Training so
+     downloaded users can see fleet/work/money/forum activity even when the
+     local node is unavailable. Reuse the public timeline endpoint and keep the
+     coding-surface promise separate.
+4. **Teach desktop replay pane generated bundle filters**
+   - Body summary: Let the desktop replay pane request generated replay bundles
+     by run/window/pair/range, not only curated slugs. Render source refs and
+     caveats consistently with web and CLI.
+
+#### EPIC 5 — Replay clips production service
+
+Body summary: Productize the existing render-box clip pipeline so an agent or
+operator can choose a timeline/replay moment, supply camera direction, and get a
+public-safe mp4 plus manifest. Rendering runs on owned local/CI/Container
+infrastructure, never inside the Cloudflare Worker.
+
+1. **Define replay clip job schema and manifest**
+   - Body summary: Specify the render job input (`replayBundleRef` or timeline
+     range, start/duration/fps/resolution, camera path, output kind) and output
+     manifest (source refs, bundle ref, camera path, renderer version, sha256,
+     storage URL, caveats).
+2. **Promote render-box worker with R2 upload**
+   - Body summary: Turn `render-clip.mjs` into a production-owned render worker
+     or wrapper that writes mp4 + manifest and uploads to R2/object storage.
+     Keep Chrome/ffmpeg out of the Worker and document required runtime.
+3. **Add Worker clip job/read API**
+   - Body summary: Add routes to create/list/read clip jobs and serve finished
+     manifests/clips. The Worker may trigger or serve jobs only; it must not
+     render frames or run native binaries.
+4. **Add camera-path DSL for agents**
+   - Body summary: Add a JSON camera-path grammar with keyframes and simple
+     verbs (`hold`, `orbit`, `follow`, `frame_actor`, `frame_settlement`) that
+     compiles into existing camera-path input. Include examples usable by agents.
+5. **Add replay clip regression renders**
+   - Body summary: Add owned-infra/local render checks for one curated story and
+     one generated timeline bundle. Verify nonblank WebGL frames, differing
+     camera paths produce differing frames, and manifests carry source refs.
+
+#### EPIC 6 — Operations, gates, and launch proof
+
+Body summary: Make the visibility/replay stack operational and line it up with
+product-promise gates. This epic closes the gap between "implemented" and
+"fully live": freshness checks, runbooks, promise alignment, and the first
+fully autonomous self-serve settlement captured by timeline/replay/clip.
+
+1. **Add owned-infra visibility freshness checks**
+   - Body summary: Add non-GitHub-hosted scheduled checks for timeline
+     freshness, source lag, SSE health, SpacetimeDB bridge health, render queue
+     health, R2 clip availability, and public route status. Alert on stale
+     projections instead of discovering them by manual refresh.
+2. **Add browser/canvas smokes for activity and replay surfaces**
+   - Body summary: Add browser-capable smokes for `/tassadar`, replay pages, and
+     the live-activity page: nonblank WebGL, no anonymous motion, proof drawer
+     public route returns 200, and text fits desktop/mobile viewports.
+3. **Document timeline/stream/world/render operations in deployment docs**
+   - Body summary: Add runbook coverage for operating the timeline API, SSE
+     stream, SpacetimeDB bridge, render worker, R2 outputs, failure modes, and
+     rollback. Link it from `docs/DEPLOYMENT.md`.
+4. **Capture first fully autonomous self-serve settlement in timeline/replay**
+   - Body summary: When a fresh independent contributor is auto-paid at verdict
+     with no operator POST, record the evidence sequence in the timeline, produce
+     a generated replay bundle, and render a clip. This is an evidence capture
+     issue, not a new settlement authority issue.
+5. **Align product promises and launch docs to visibility evidence**
+   - Body summary: Once the autonomous sequence is captured, update the product
+     promises, AGENTS/INSTALL/evidence-pack refs, and launch docs with the exact
+     public refs and owner-signed upgrades where required. Keep world-firsts in
+     qualified wording until their owner-signed receipt-first upgrades land.
+
 ---
 
 ## 4. The single most valuable next step
