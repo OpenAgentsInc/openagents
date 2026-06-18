@@ -1108,6 +1108,24 @@ This is the invariant ledger for `openagents`.
   must always be allowlisted even under run-scoped streaming; the explicit
   `allowedContributorRefs` path keeps working alongside it. No adapter is
   broadened and no existing guard is removed.
+- Compiled-module construction settlement (#5326) is a separate payment leg
+  from the 5+5 worker/validator auto-stream. It is eligible only for a
+  `Verified` `exact_trace_replay` challenge tied to a digest-pinned compiled
+  module contribution, and its settlement receipt must carry explicit
+  construction metadata (`constructionSettlement: true`,
+  `settlementSource: compiled_module_construction`, public module kind, module
+  digest, contribution ref). It must not treat ordinary replay work,
+  marketplace listing, purchase, entitlement, or composition metadata as
+  construction-payment authority.
+- Construction settlement records simulation receipts by default in
+  `unpaid_smoke` mode (`adapterKind: simulation`, `moneyMovement: none`,
+  `realBitcoinMoved: false`) so a clean checkout can prove the construct →
+  verify → pay loop without moving sats. Real Spark settlement remains
+  owner-gated by the existing `OPENAGENTS_REAL_SETTLEMENT_GATE`, per-payout
+  cap, daily cap, run allowlist, contributor eligibility, registered payout
+  target, and receipt-first dispatch/reconciliation chain. An over-cap,
+  non-verified, unsafe-ref, missing-target, or dispatch-failed construction
+  settlement must fail soft with no real-settled receipt.
 - Regression coverage for this policy lives in
   `workers/api/src/tassadar-auto-settlement.test.ts` and
   `workers/api/src/tassadar-run-settlement-gate.test.ts`.

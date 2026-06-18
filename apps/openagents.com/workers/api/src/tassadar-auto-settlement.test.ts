@@ -1,6 +1,12 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import {
+  TASSADAR_ALM_LINKED_DENSE_COMPOSED_TRACE_DIGEST,
+  TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST,
+  TASSADAR_ALM_LINKED_DENSE_MODULE_KIND,
+  tassadarLinkedDenseProgramFixture,
+} from '@openagentsinc/tassadar-executor/linked-dense-module'
 import type {
   NexusPaymentAuthorityReceiptRecord,
   NexusTreasuryPayoutAttemptRecord,
@@ -10,11 +16,15 @@ import type {
 } from './nexus-treasury-payout-ledger'
 import {
   type TassadarAutoSettlementDeps,
+  TassadarCompiledModuleConstructionRewardSats,
   TassadarPerWindowValidatorRewardSats,
   TassadarPerWindowWorkerRewardSats,
+  autoSettleVerifiedCompiledModuleConstruction,
   autoSettleVerifiedPair,
   buildTassadarAutoSettlementRequest,
+  buildTassadarCompiledModuleConstructionSettlementRequest,
 } from './tassadar-auto-settlement'
+import { runTassadarReplayValidation } from './tassadar-replay-validator'
 import {
   type TassadarRunSettlementRecords,
   buildTassadarRunSettlement,
@@ -66,6 +76,27 @@ const verifiedChallenge = (): TrainingVerificationChallengeRecord => ({
   verificationClass: 'exact_trace_replay',
   verifiedAt: '2026-06-17T10:03:00.000Z',
   windowRef: 'training.window.tassadar.executor.20260615.w1',
+})
+
+const verifiedConstructionChallenge = (
+  overrides: Partial<TrainingVerificationChallengeRecord> = {},
+): TrainingVerificationChallengeRecord => ({
+  ...verifiedChallenge(),
+  challengeRef: 'challenge.tassadar.compiled_module_construction.1',
+  commitmentRefs: [
+    `commitment.tassadar.compiled_module.${TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST.slice(0, 16)}`,
+  ],
+  contributionRef:
+    `contribution.tassadar.compiled_module.${TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST.slice(0, 16)}`,
+  payloadJson: JSON.stringify({
+    moduleDigest: TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST,
+    moduleKind: TASSADAR_ALM_LINKED_DENSE_MODULE_KIND,
+    replayedTraceDigest: TASSADAR_ALM_LINKED_DENSE_COMPOSED_TRACE_DIGEST,
+  }),
+  verdictRefs: [
+    `verdict.tassadar.compiled_module.${TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST.slice(0, 16)}`,
+  ],
+  ...overrides,
 })
 
 const activeLease = (): TrainingWindowLeaseRecord => ({
@@ -438,6 +469,143 @@ describe('autoSettleVerifiedPair — both legs (#5309 + #5310)', () => {
   })
 })
 
+describe('autoSettleVerifiedCompiledModuleConstruction (#5326)', () => {
+  it('replay-verifies a non-loop linked dense module and pays construction in simulation mode by default', async () => {
+    const replay = await runTassadarReplayValidation({
+      assignmentRef:
+        `assignment.tassadar.compiled_module.${TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST.slice(0, 16)}`,
+      claimedTraceDigest: TASSADAR_ALM_LINKED_DENSE_COMPOSED_TRACE_DIGEST,
+      pylonDeviceRef: 'device.pylon.constructor.1',
+      workload: {
+        denseModule: tassadarLinkedDenseProgramFixture.linkedModule
+          .composedDenseModule as unknown as Record<string, unknown>,
+        model: {},
+        steps: tassadarLinkedDenseProgramFixture.steps.map(step => [...step]),
+      },
+    })
+
+    expect(replay.outcome).toBe('verified')
+    expect(replay.replayedTraceDigest).toBe(
+      TASSADAR_ALM_LINKED_DENSE_COMPOSED_TRACE_DIGEST,
+    )
+    expect(
+      tassadarLinkedDenseProgramFixture.linkedModule.banks.some(
+        bank => bank.programId === 'tassadar_corpus.loop_sum_v1',
+      ),
+    ).toBe(false)
+
+    const ledger = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const deps = makeDeps({
+      dispatchCount,
+      gate: { ...armedGate(), enabled: false },
+      ledger,
+      targets: new Map(),
+    })
+    const challenge = verifiedConstructionChallenge()
+    const outcome = await Effect.runPromise(
+      autoSettleVerifiedCompiledModuleConstruction(deps, {
+        challenge,
+        lease: activeLease(),
+        moduleDigest: TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST,
+        moduleKind: TASSADAR_ALM_LINKED_DENSE_MODULE_KIND,
+      }),
+    )
+
+    expect(outcome.settled).toBe(true)
+    expect(outcome.adapterKind).toBe('simulation')
+    expect(outcome.mode).toBe('unpaid_smoke_simulation')
+    expect(outcome.realBitcoinMoved).toBe(false)
+    expect(outcome.realSettlementAuthorized).toBe(false)
+    expect(outcome.realSettlementBlocker).toBe('gate_disabled')
+    expect(outcome.amountSats).toBe(TassadarCompiledModuleConstructionRewardSats)
+    expect(outcome.skipped).toBe(null)
+    expect(dispatchCount.value).toBe(0)
+    expect(ledger.receipts.size).toBe(1)
+
+    const receipt = ledger.receipts.get(outcome.settlementReceiptRef!)!
+    const projection = JSON.parse(receipt.publicProjectionJson) as {
+      constructionSettlement: boolean
+      moduleDigest: string
+      moduleKind: string
+      moneyMovement: string
+      settlementSource: string
+      state: string
+      verificationChallengeRef: string
+    }
+    expect(projection.state).toBe('settled')
+    expect(projection.moneyMovement).toBe('none')
+    expect(projection.constructionSettlement).toBe(true)
+    expect(projection.settlementSource).toBe('compiled_module_construction')
+    expect(projection.moduleDigest).toBe(TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST)
+    expect(projection.moduleKind).toBe(TASSADAR_ALM_LINKED_DENSE_MODULE_KIND)
+    expect(projection.verificationChallengeRef).toBe(challenge.challengeRef)
+    expect(receipt.metadataRefs).toContain(challenge.contributionRef)
+    expect(receipt.publicProjectionJson).not.toMatch(/spark1|invoice|preimage/i)
+  })
+
+  it('is idempotent for construction simulation receipts', async () => {
+    const ledger = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const deps = makeDeps({
+      dispatchCount,
+      gate: { ...armedGate(), enabled: false },
+      ledger,
+      targets: new Map(),
+    })
+    const input = {
+      challenge: verifiedConstructionChallenge(),
+      lease: activeLease(),
+      moduleDigest: TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST,
+      moduleKind: TASSADAR_ALM_LINKED_DENSE_MODULE_KIND,
+    } as const
+
+    const first = await Effect.runPromise(
+      autoSettleVerifiedCompiledModuleConstruction(deps, input),
+    )
+    const second = await Effect.runPromise(
+      autoSettleVerifiedCompiledModuleConstruction(deps, input),
+    )
+
+    expect(first.settled).toBe(true)
+    expect(first.idempotent).toBe(false)
+    expect(second.settled).toBe(true)
+    expect(second.idempotent).toBe(true)
+    expect(second.settlementReceiptRef).toBe(first.settlementReceiptRef)
+    expect(ledger.intents.size).toBe(1)
+    expect(ledger.attempts.size).toBe(1)
+    expect(ledger.events.size).toBe(1)
+    expect(ledger.receipts.size).toBe(1)
+    expect(dispatchCount.value).toBe(0)
+  })
+
+  it('is fail-soft when construction settlement exceeds the run spend cap', async () => {
+    const ledger = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const deps = makeDeps({
+      dispatchCount,
+      gate: { ...armedGate(), enabled: false },
+      ledger,
+      targets: new Map(),
+    })
+
+    const outcome = await Effect.runPromise(
+      autoSettleVerifiedCompiledModuleConstruction(deps, {
+        amountSats: 101,
+        challenge: verifiedConstructionChallenge(),
+        lease: activeLease(),
+        moduleDigest: TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST,
+        moduleKind: TASSADAR_ALM_LINKED_DENSE_MODULE_KIND,
+      }),
+    )
+
+    expect(outcome.settled).toBe(false)
+    expect(outcome.skipped).toBe('settlement_policy_blocked')
+    expect(ledger.receipts.size).toBe(0)
+    expect(dispatchCount.value).toBe(0)
+  })
+})
+
 describe('redaction-safe deterministic requests (#5309/#5310)', () => {
   it('derives distinct deterministic public-safe refs per party', () => {
     const worker = buildTassadarAutoSettlementRequest({
@@ -458,6 +626,27 @@ describe('redaction-safe deterministic requests (#5309/#5310)', () => {
     // No raw spark addresses anywhere in the request refs.
     expect(JSON.stringify(worker)).not.toMatch(/spark1/)
     expect(JSON.stringify(validator)).not.toMatch(/spark1/)
+  })
+
+  it('derives public-safe refs for compiled-module construction settlement', () => {
+    const request = buildTassadarCompiledModuleConstructionSettlementRequest({
+      adapterKind: 'simulation',
+      amountSats: 25,
+      challengeRef: 'challenge.tassadar.compiled_module_construction.1',
+      constructionContributionRef:
+        `contribution.tassadar.compiled_module.${TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST.slice(0, 16)}`,
+      leaseRef: 'lease.tassadar.1',
+      moduleDigest: TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST,
+    })
+
+    expect(request.adapterKind).toBe('simulation')
+    expect(request.idempotencyRef).toContain(
+      'idempotency.tassadar.compiled_module_construction',
+    )
+    expect(request.operatorApprovalRef).toBe(
+      'operator_approval.tassadar.compiled_module_construction.v1',
+    )
+    expect(JSON.stringify(request)).not.toMatch(/spark1|invoice|preimage/i)
   })
 
   it('produces a settlement receipt projection with NO raw address or payment material', () => {

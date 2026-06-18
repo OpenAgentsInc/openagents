@@ -1,5 +1,6 @@
 import { Array as Arr, Effect } from 'effect'
 
+import { parseJsonRecord } from './json-boundary'
 import type { NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
 import {
   type TassadarRunSettlementRecords,
@@ -52,11 +53,33 @@ import type { TrainingVerificationChallengeRecord } from './training-verificatio
 // Verified exact_trace_replay fixture pair.
 export const TassadarPerWindowWorkerRewardSats = 5
 export const TassadarPerWindowValidatorRewardSats = 5
+export const TassadarCompiledModuleConstructionRewardSats = 25
 
 export type TassadarAutoSettlementParty = 'worker' | 'validator'
 
 const stableRefSuffix = (value: string): string =>
   value.replace(/[^A-Za-z0-9_.:/-]/g, '_').slice(0, 180)
+
+const publicSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,240}$/
+const moduleDigestPattern = /^[a-f0-9]{32,128}$/i
+
+const uniqueRefs = (refs: ReadonlyArray<string>): ReadonlyArray<string> =>
+  [...new Set(refs.map(ref => ref.trim()).filter(ref => ref !== ''))].sort()
+
+const parseProjection = (json: string): Record<string, unknown> => {
+  return parseJsonRecord(json) ?? {}
+}
+
+const constructionInputSafe = (
+  input: Readonly<{
+    constructionContributionRef: string
+    moduleDigest: string
+    moduleKind: string
+  }>,
+): boolean =>
+  publicSafeRefPattern.test(input.constructionContributionRef) &&
+  moduleDigestPattern.test(input.moduleDigest) &&
+  publicSafeRefPattern.test(input.moduleKind)
 
 /**
  * Build the deterministic settlement request for one leg of a Verified pair.
@@ -86,6 +109,35 @@ export const buildTassadarAutoSettlementRequest = (
   }
 }
 
+export const buildTassadarCompiledModuleConstructionSettlementRequest = (
+  input: Readonly<{
+    adapterKind: NonNullable<TassadarRunSettlementRequest['adapterKind']>
+    amountSats: number
+    challengeRef: string
+    constructionContributionRef: string
+    leaseRef: string
+    moduleDigest: string
+  }>,
+): TassadarRunSettlementRequest => {
+  const suffix = stableRefSuffix(
+    `${input.challengeRef}.${input.constructionContributionRef}.${input.moduleDigest}`,
+  )
+
+  return {
+    adapterKind: input.adapterKind,
+    amountSats: input.amountSats,
+    challengeRef: input.challengeRef,
+    idempotencyRef: `idempotency.tassadar.compiled_module_construction.${suffix}`,
+    leaseRef: input.leaseRef,
+    operatorApprovalRef:
+      'operator_approval.tassadar.compiled_module_construction.v1',
+    payoutTargetApprovalRef:
+      `payout_target_approval.tassadar.compiled_module_construction.${suffix}`,
+    payoutTargetRef:
+      `payout_target.tassadar.compiled_module_construction.${suffix}`,
+  }
+}
+
 export type TassadarAutoSettlementLegSkipReason =
   | 'daily_budget_exhausted'
   | 'gate_not_authorized'
@@ -110,6 +162,37 @@ export type TassadarAutoSettlementLegOutcome = Readonly<{
 
 export type TassadarAutoSettlementOutcome = Readonly<{
   legs: ReadonlyArray<TassadarAutoSettlementLegOutcome>
+}>
+
+export type TassadarCompiledModuleConstructionSettlementSkipReason =
+  | 'daily_budget_exhausted'
+  | 'no_payout_destination'
+  | 'not_verified'
+  | 'settlement_failed'
+  | 'settlement_policy_blocked'
+
+export type TassadarCompiledModuleConstructionSettlementOutcome = Readonly<{
+  adapterKind: NonNullable<TassadarRunSettlementRequest['adapterKind']> | null
+  amountSats: number
+  constructionContributionRef: string
+  contributorRef: string
+  eligibilitySource: 'allowlisted' | 'run_scoped_streaming' | null
+  idempotent: boolean
+  mode: 'real_bitcoin' | 'unpaid_smoke_simulation' | null
+  moduleDigest: string
+  moduleKind: string
+  realBitcoinMoved: boolean
+  realSettlementAuthorized: boolean
+  realSettlementBlocker:
+    | TassadarSettlementAdapterDecision['blockedReason']
+    | 'daily_budget_exhausted'
+    | 'no_payout_destination'
+    | 'settlement_failed'
+    | null
+  remainingDailyBudgetSats: number | null
+  settlementReceiptRef: string | null
+  settled: boolean
+  skipped: TassadarCompiledModuleConstructionSettlementSkipReason | null
 }>
 
 // Minimal injected surface so this module stays unit-testable and reuses the
@@ -152,6 +235,174 @@ const buildLegSettlement = (
       party: input.party,
     }),
     run: input.run,
+  })
+
+const withConstructionSettlementEvidence = (
+  settlement: TassadarRunSettlementRecords,
+  input: Readonly<{
+    constructionContributionRef: string
+    moduleDigest: string
+    moduleKind: string
+  }>,
+): TassadarRunSettlementRecords => {
+  const moduleDigestRef =
+    `digest.tassadar_compiled_module.${input.moduleDigest.slice(0, 32)}`
+  const moduleKindRef =
+    `kind.tassadar_compiled_module.${stableRefSuffix(input.moduleKind)}`
+  const constructionRefs = uniqueRefs([
+    input.constructionContributionRef,
+    moduleDigestRef,
+    moduleKindRef,
+    'metadata.tassadar.compiled_module_construction',
+  ])
+  const annotateProjection = (json: string): string =>
+    JSON.stringify({
+      ...parseProjection(json),
+      constructionContributionRef: input.constructionContributionRef,
+      constructionSettlement: true,
+      moduleDigest: input.moduleDigest,
+      moduleKind: input.moduleKind,
+      settlementSource: 'compiled_module_construction',
+    })
+  const metadataRefs = uniqueRefs([
+    ...settlement.intent.metadataRefs,
+    ...constructionRefs,
+  ])
+
+  return {
+    ...settlement,
+    attempt: {
+      ...settlement.attempt,
+      metadataRefs,
+      publicProjectionJson: annotateProjection(
+        settlement.attempt.publicProjectionJson,
+      ),
+    },
+    intent: {
+      ...settlement.intent,
+      acceptedWorkRefs: uniqueRefs([
+        ...settlement.intent.acceptedWorkRefs,
+        input.constructionContributionRef,
+        moduleDigestRef,
+      ]),
+      metadataRefs,
+      publicProjectionJson: annotateProjection(
+        settlement.intent.publicProjectionJson,
+      ),
+    },
+    reconciliationEvent: {
+      ...settlement.reconciliationEvent,
+      metadataRefs,
+      publicProjectionJson: annotateProjection(
+        settlement.reconciliationEvent.publicProjectionJson,
+      ),
+    },
+    settlementReceipt: {
+      ...settlement.settlementReceipt,
+      metadataRefs,
+      publicProjectionJson: annotateProjection(
+        settlement.settlementReceipt.publicProjectionJson,
+      ),
+    },
+    targetApproval: {
+      ...settlement.targetApproval,
+      scopeRefs: uniqueRefs([
+        ...settlement.targetApproval.scopeRefs,
+        input.constructionContributionRef,
+        moduleDigestRef,
+      ]),
+    },
+  }
+}
+
+const buildConstructionSettlement = (
+  input: Readonly<{
+    adapterKind: NonNullable<TassadarRunSettlementRequest['adapterKind']>
+    amountSats: number
+    challenge: TrainingVerificationChallengeRecord
+    constructionContributionRef: string
+    lease: TrainingWindowLeaseRecord
+    moduleDigest: string
+    moduleKind: string
+    nowIso: string
+    run: TrainingRunRecord
+  }>,
+): TassadarRunSettlementRecords =>
+  withConstructionSettlementEvidence(
+    buildTassadarRunSettlement({
+      challenge: input.challenge,
+      lease: input.lease,
+      nowIso: input.nowIso,
+      request: buildTassadarCompiledModuleConstructionSettlementRequest({
+        adapterKind: input.adapterKind,
+        amountSats: input.amountSats,
+        challengeRef: input.challenge.challengeRef,
+        constructionContributionRef: input.constructionContributionRef,
+        leaseRef: input.lease.leaseRef,
+        moduleDigest: input.moduleDigest,
+      }),
+      run: input.run,
+    }),
+    {
+      constructionContributionRef: input.constructionContributionRef,
+      moduleDigest: input.moduleDigest,
+      moduleKind: input.moduleKind,
+    },
+  )
+
+const recordSimulationSettlement = (
+  ledger: NexusTreasuryPayoutLedgerStore,
+  settlement: TassadarRunSettlementRecords,
+): Effect.Effect<Readonly<{ idempotent: boolean }>, unknown> =>
+  Effect.gen(function* () {
+    const existingReceipt = yield* Effect.promise(() =>
+      ledger.readPaymentAuthorityReceiptByRef(settlement.settlementReceiptRef),
+    )
+
+    if (existingReceipt !== undefined) {
+      return { idempotent: true }
+    }
+
+    const existingIntent = yield* Effect.promise(() =>
+      ledger.readPayoutIntentByIdempotencyKeyHash(
+        settlement.intent.idempotencyKeyHash,
+      ),
+    )
+
+    if (existingIntent === undefined) {
+      yield* Effect.promise(() =>
+        ledger.createPayoutTargetApproval(settlement.targetApproval),
+      )
+      yield* Effect.promise(() => ledger.createPayoutIntent(settlement.intent))
+    }
+
+    const existingAttempt = yield* Effect.promise(() =>
+      ledger.readPayoutAttemptByIdempotencyKeyHash(
+        settlement.attempt.idempotencyKeyHash,
+      ),
+    )
+
+    if (existingAttempt === undefined) {
+      yield* Effect.promise(() => ledger.createPayoutAttempt(settlement.attempt))
+    }
+
+    const existingEvent = yield* Effect.promise(() =>
+      ledger.readReconciliationEventByRef(
+        settlement.reconciliationEvent.eventRef,
+      ),
+    )
+
+    if (existingEvent === undefined) {
+      yield* Effect.promise(() =>
+        ledger.createReconciliationEvent(settlement.reconciliationEvent),
+      )
+    }
+
+    yield* Effect.promise(() =>
+      ledger.createPaymentAuthorityReceipt(settlement.settlementReceipt),
+    )
+
+    return { idempotent: false }
   })
 
 /**
@@ -394,4 +645,254 @@ export const autoSettleVerifiedPair = <Bindings>(
     )
 
     return { legs: settled.legs }
+  })
+
+/**
+ * Settle one accepted compiled-module construction contribution. This is
+ * intentionally separate from the existing 5+5 verified-pair autostream:
+ * construction work records a simulation settlement by default (unpaid smoke,
+ * moneyMovement:none) and only attempts Spark when the existing owner real-
+ * settlement gate authorizes the contributor, run, adapter, and caps.
+ */
+export const autoSettleVerifiedCompiledModuleConstruction = <Bindings>(
+  deps: TassadarAutoSettlementDeps<Bindings>,
+  input: Readonly<{
+    amountSats?: number
+    challenge: TrainingVerificationChallengeRecord
+    constructionContributionRef?: string
+    lease: TrainingWindowLeaseRecord
+    moduleDigest: string
+    moduleKind: string
+  }>,
+): Effect.Effect<TassadarCompiledModuleConstructionSettlementOutcome> =>
+  Effect.gen(function* () {
+    const amountSats =
+      input.amountSats ?? TassadarCompiledModuleConstructionRewardSats
+    const constructionContributionRef = (
+      input.constructionContributionRef ?? input.challenge.contributionRef ?? ''
+    ).trim()
+    const contributorRef = input.lease.pylonRef.trim()
+    const baseOutcome = {
+      amountSats,
+      constructionContributionRef,
+      contributorRef,
+      eligibilitySource: null,
+      idempotent: false,
+      moduleDigest: input.moduleDigest,
+      moduleKind: input.moduleKind,
+      realBitcoinMoved: false,
+      realSettlementAuthorized: false,
+      remainingDailyBudgetSats: null,
+      settlementReceiptRef: null,
+      settled: false,
+    } satisfies Omit<
+      TassadarCompiledModuleConstructionSettlementOutcome,
+      'adapterKind' | 'mode' | 'realSettlementBlocker' | 'skipped'
+    >
+
+    if (
+      input.challenge.state !== 'Verified' ||
+      input.challenge.verificationClass !== 'exact_trace_replay'
+    ) {
+      return {
+        ...baseOutcome,
+        adapterKind: null,
+        mode: null,
+        realSettlementBlocker: null,
+        skipped: 'not_verified',
+      }
+    }
+
+    if (
+      contributorRef === '' ||
+      !constructionInputSafe({
+        constructionContributionRef,
+        moduleDigest: input.moduleDigest,
+        moduleKind: input.moduleKind,
+      })
+    ) {
+      return {
+        ...baseOutcome,
+        adapterKind: null,
+        mode: null,
+        realSettlementBlocker: null,
+        skipped: 'settlement_policy_blocked',
+      }
+    }
+
+    const gate = deps.readGate()
+    const decision = resolveTassadarSettlementAdapter({
+      amountSats,
+      contributorRef,
+      gate,
+      requestedAdapterKind: 'spark_treasury',
+      trainingRunRef: deps.run.trainingRunRef,
+    })
+
+    const adapterKind = decision.realAuthorized
+      ? decision.adapterKind
+      : 'simulation'
+    const settlement = (() => {
+      try {
+        return buildConstructionSettlement({
+          adapterKind,
+          amountSats,
+          challenge: input.challenge,
+          constructionContributionRef,
+          lease: input.lease,
+          moduleDigest: input.moduleDigest,
+          moduleKind: input.moduleKind,
+          nowIso: deps.nowIso,
+          run: deps.run,
+        })
+      } catch {
+        return null
+      }
+    })()
+
+    if (settlement === null) {
+      return {
+        ...baseOutcome,
+        adapterKind,
+        mode: null,
+        realSettlementBlocker: decision.blockedReason,
+        skipped: 'settlement_policy_blocked',
+      }
+    }
+
+    const existingReceipt = yield* Effect.tryPromise({
+      catch: () => undefined,
+      try: () =>
+        deps.ledger.readPaymentAuthorityReceiptByRef(
+          settlement.settlementReceiptRef,
+        ),
+    }).pipe(Effect.orElseSucceed(() => undefined))
+
+    if (existingReceipt !== undefined) {
+      return {
+        ...baseOutcome,
+        adapterKind,
+        eligibilitySource: decision.eligibilitySource,
+        idempotent: true,
+        mode:
+          adapterKind === 'spark_treasury'
+            ? 'real_bitcoin'
+            : 'unpaid_smoke_simulation',
+        realBitcoinMoved: adapterKind === 'spark_treasury',
+        realSettlementAuthorized: decision.realAuthorized,
+        realSettlementBlocker: decision.blockedReason,
+        settlementReceiptRef: settlement.settlementReceiptRef,
+        settled: true,
+        skipped: null,
+      }
+    }
+
+    if (!decision.realAuthorized) {
+      const recorded = yield* recordSimulationSettlement(
+        deps.ledger,
+        settlement,
+      ).pipe(Effect.orElseSucceed(() => null))
+
+      if (recorded === null) {
+        return {
+          ...baseOutcome,
+          adapterKind: 'simulation',
+          mode: null,
+          realSettlementBlocker: decision.blockedReason,
+          skipped: 'settlement_failed',
+        }
+      }
+
+      return {
+        ...baseOutcome,
+        adapterKind: 'simulation',
+        idempotent: recorded.idempotent,
+        mode: 'unpaid_smoke_simulation',
+        realSettlementBlocker: decision.blockedReason,
+        settlementReceiptRef: settlement.settlementReceiptRef,
+        settled: true,
+        skipped: null,
+      }
+    }
+
+    const receipts = yield* Effect.tryPromise({
+      catch: () => [],
+      try: () => deps.ledger.listPaymentAuthorityReceipts(5000),
+    }).pipe(Effect.orElseSucceed(() => []))
+    const budget = decideTassadarDailyBudget({
+      alreadySettledTodaySats: tassadarRealSettledSatsForDay(
+        receipts,
+        tassadarRealSettlementUtcDayKey(deps.nowIso),
+      ),
+      amountSats,
+      gate,
+    })
+
+    if (!budget.authorized) {
+      return {
+        ...baseOutcome,
+        adapterKind,
+        eligibilitySource: decision.eligibilitySource,
+        mode: null,
+        realSettlementAuthorized: true,
+        realSettlementBlocker: 'daily_budget_exhausted',
+        remainingDailyBudgetSats: budget.remainingDailyBudgetSats,
+        skipped: 'daily_budget_exhausted',
+      }
+    }
+
+    const destination = yield* Effect.tryPromise({
+      catch: () => undefined,
+      try: () => deps.resolvePayoutDestination(contributorRef),
+    }).pipe(Effect.orElseSucceed(() => undefined))
+
+    if (destination === undefined || destination.trim() === '') {
+      return {
+        ...baseOutcome,
+        adapterKind,
+        eligibilitySource: decision.eligibilitySource,
+        mode: null,
+        realSettlementAuthorized: true,
+        realSettlementBlocker: 'no_payout_destination',
+        remainingDailyBudgetSats: budget.remainingDailyBudgetSats,
+        skipped: 'no_payout_destination',
+      }
+    }
+
+    const dispatched = yield* deps
+      .dispatchRealSettlement({
+        contributorRef,
+        settlement,
+      })
+      .pipe(
+        Effect.as(true),
+        Effect.orElseSucceed(() => false),
+      )
+
+    if (!dispatched) {
+      return {
+        ...baseOutcome,
+        adapterKind,
+        eligibilitySource: decision.eligibilitySource,
+        mode: null,
+        realSettlementAuthorized: true,
+        realSettlementBlocker: 'settlement_failed',
+        remainingDailyBudgetSats: budget.remainingDailyBudgetSats,
+        skipped: 'settlement_failed',
+      }
+    }
+
+    return {
+      ...baseOutcome,
+      adapterKind,
+      eligibilitySource: decision.eligibilitySource,
+      mode: 'real_bitcoin',
+      realBitcoinMoved: true,
+      realSettlementAuthorized: true,
+      realSettlementBlocker: null,
+      remainingDailyBudgetSats: budget.remainingDailyBudgetSats,
+      settlementReceiptRef: settlement.settlementReceiptRef,
+      settled: true,
+      skipped: null,
+    }
   })

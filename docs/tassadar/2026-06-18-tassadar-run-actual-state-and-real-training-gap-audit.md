@@ -1048,6 +1048,24 @@ marketplace packaging, pricing, payout, and settlement claims remain blocked.
 - **#5326 — V1** Extend exact-replay verification + settlement to PAY for
   construction (a verified compiled-module contribution), not just one fixed
   replay — top-5 #4.
+  Status 2026-06-18: landed in openagents. The Worker replay validator is now
+  regression-tested against the non-`loop_sum_v1` linked dense compiled module
+  from C5 (`tassadar_alm_linked_dense_module.v1`, linked digest
+  `cc1403674fc0d38892610d9e9c6c9230075494061f720c45bfa4f7b5a961756a`,
+  replay trace digest
+  `0caa43ace27a5b86da14cfe037e65c30f250f0c0a0ac1c01f1fe3a3a45a230b2`).
+  `tassadar-auto-settlement.ts` adds a separate compiled-module construction
+  settlement leg that derives deterministic public-safe refs, records a
+  construction-tagged `settlement_recorded` receipt in unpaid-smoke simulation
+  mode by default (`adapterKind: simulation`, `moneyMovement: none`,
+  `realBitcoinMoved: false`), is idempotent by receipt ref, and fails soft on
+  non-Verified, unsafe, over-cap, missing-target, or dispatch-failed cases. Real
+  Spark payment remains owner-gated behind the existing
+  `OPENAGENTS_REAL_SETTLEMENT_GATE`, run allowlist, per-payout cap, daily cap,
+  registered payout target, and receipt-first dispatch/reconciliation chain.
+  This proves the clean-checkout construct/dense-module replay/verified/pay
+  simulation loop; it does not arm real settlement, broaden purchase/entitlement
+  authority, serve modules, or claim live paid construction sats.
 - **#5327 — V2** Module-composition verification (a linked module verified as a
   composition of verified parts).
 - **#5328 — V3** Data-contribution correctness-verification model (provenance +
