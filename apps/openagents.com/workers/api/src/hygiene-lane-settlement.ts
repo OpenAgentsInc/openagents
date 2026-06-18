@@ -2,7 +2,16 @@ import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-
 import { Schema as S } from 'effect'
 
 import { type DebtReceiptSettlementProjection } from './debt-receipt-policy'
-import { NexusTreasuryPayoutAdapterKind } from './nexus-treasury-payout-ledger'
+import {
+  type NexusPaymentAuthorityReceiptRecord,
+  type NexusPayoutTargetApprovalRecord,
+  NexusTreasuryPayoutAdapterKind,
+  type NexusTreasuryPayoutAmount,
+  type NexusTreasuryPayoutAttemptRecord,
+  type NexusTreasuryPayoutIntentRecord,
+  type NexusTreasuryPayoutReconciliationEventRecord,
+} from './nexus-treasury-payout-ledger'
+import { realSettlementMovementMode } from './tassadar-run-settlement'
 import {
   type TassadarRealSettlementGate,
   type TassadarSettlementAdapterDecision,
@@ -68,6 +77,17 @@ export type HygieneLaneRunRef = typeof HygieneLaneRunRef.Type
 export const isHygieneLaneRunRef = (
   value: string,
 ): value is HygieneLaneRunRef => HygieneLaneRunRefPattern.test(value)
+
+// A public-safe request ref: a bounded, non-empty token that carries no
+// provider/payment/wallet/secret/raw-timestamp material. Used for every ref
+// field on the hygiene settlement request so nothing unsafe enters the rail.
+const HygieneRequestRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/#-]{0,260}$/
+
+export const HygieneLaneSettlementRequestRef = S.Trim.check(
+  S.isNonEmpty(),
+  S.isMaxLength(261),
+  S.isPattern(HygieneRequestRefPattern),
+)
 
 /**
  * Size/depth signals for one merged hygiene PR. These are the inputs the interim
@@ -346,5 +366,289 @@ export const decideHygieneLaneSettlement = (
     publicProjectionRefs,
     realAuthorized: true,
     settlementRail,
+  }
+}
+
+/**
+ * The honest verification basis for a hygiene-lane settlement (#5372).
+ *
+ * Hygiene PRs are verified by tests + reviewer acceptance + the merged debt
+ * receipt — NOT by exact trace replay. This module therefore NEVER emits an
+ * `exact_trace_replay` verdict for hygiene work. The settlement receipt instead
+ * states this `hygiene_merged_reviewed` basis, so the public projection is
+ * truthful about WHY the money moved. The money rail is identical to the proven
+ * Tassadar Spark treasury payout; only the verification class differs.
+ */
+export const HygieneLaneVerificationClass = 'hygiene_merged_reviewed' as const
+
+export const HygieneLaneSettlementPolicySnapshotRef =
+  'policy.public.hygiene_lane.merged_reviewed_small_sats.v1' as const
+
+export const HygieneLaneSettlementPayoutTargetApprovalPolicyRef =
+  'policy.public.hygiene_lane.settlement_payout' as const
+
+/**
+ * Admin request to settle ONE merged, benchmark-verified hygiene debt receipt
+ * (#5372, EPIC #5335). Every field is a public-safe ref or a bounded integer.
+ * No raw diffs, PR bodies, wallet/payment material, or addresses ever enter the
+ * request — the contributor's private Spark destination is resolved server-side
+ * from `contributorRef` via `resolveSparkPayoutDestination` (fail-closed).
+ */
+export const HygieneLaneSettlementRequest = S.Struct({
+  // The single allowed real adapter; defaults to simulation (honest fail-closed).
+  adapterKind: S.optionalKey(NexusTreasuryPayoutAdapterKind),
+  // The contributor (Pylon ref) whose registered Spark target is paid.
+  contributorRef: HygieneLaneSettlementRequestRef,
+  // The merged-PR / DebtReceiptKey ref this settlement retires (#5340).
+  debtReceiptKeyRef: HygieneLaneSettlementRequestRef,
+  // The merged-PR ref (e.g. github PR ref). Public-safe ref only.
+  mergedPrRef: HygieneLaneSettlementRequestRef,
+  // Idempotency ref: a retry with the SAME ref pays at most once.
+  idempotencyRef: HygieneLaneSettlementRequestRef,
+  // Operator approval ref (the human who authorized this settle).
+  operatorApprovalRef: HygieneLaneSettlementRequestRef,
+  // Payout-target approval ref + payout-target ref (owner-scoped). The raw
+  // destination is NEVER in the request; only these refs are.
+  payoutTargetApprovalRef: HygieneLaneSettlementRequestRef,
+  payoutTargetRef: HygieneLaneSettlementRequestRef,
+  // Reviewer acceptance ref (the human/maintainer who accepted the PR).
+  reviewerAcceptanceRef: HygieneLaneSettlementRequestRef,
+  // The size/depth signals for this merged PR (drive the interim amount).
+  signals: HygieneSizeDepthSignals,
+  // The hygiene-lane run-ref the gate must allowlist (run.hygiene.lane.YYYYMMDD).
+  trainingRunRef: HygieneLaneSettlementRequestRef,
+})
+export type HygieneLaneSettlementRequest =
+  typeof HygieneLaneSettlementRequest.Type
+
+export type HygieneLaneSettlementRecords = Readonly<{
+  amountSats: number
+  attempt: NexusTreasuryPayoutAttemptRecord
+  contributorRef: string
+  intent: NexusTreasuryPayoutIntentRecord
+  reconciliationEvent: NexusTreasuryPayoutReconciliationEventRecord
+  settlementReceipt: NexusPaymentAuthorityReceiptRecord
+  settlementReceiptRef: string
+  targetApproval: NexusPayoutTargetApprovalRecord
+}>
+
+const stableSuffix = (value: string): string =>
+  value.replace(/[^A-Za-z0-9_.:/-]/g, '_').slice(0, 120)
+
+const uniqueRefs = (refs: ReadonlyArray<string>): ReadonlyArray<string> =>
+  [...new Set(refs.map(ref => ref.trim()).filter(ref => ref !== ''))].sort()
+
+const bitcoinAmount = (sats: number): NexusTreasuryPayoutAmount => ({
+  amountMinorUnits: sats * 1000,
+  asset: 'bitcoin',
+  denomination: 'bitcoin_millisatoshi',
+})
+
+/**
+ * Build the settlement ledger chain for ONE merged, benchmark-verified hygiene
+ * debt receipt (#5372). Structurally identical to the Tassadar run-settlement
+ * builder — same intent -> attempt -> reconciliation -> settlement_recorded
+ * chain, same deterministic idempotency hashes, same redacted destination ref —
+ * so it drives the SAME `dispatchRealRunSettlementCore` Spark rail. The ONLY
+ * differences are honest:
+ *   - the verification basis is `hygiene_merged_reviewed` (merged PR + reviewer
+ *     acceptance + debt receipt), NEVER `exact_trace_replay`; and
+ *   - the receipt projection cites the merged-PR/debt-receipt refs as its basis
+ *     instead of a fabricated verification-challenge ref.
+ *
+ * `amountSats` is the gate-bound, formula-computed amount (≤ 100). The caller
+ * (`decideHygieneLaneSettlement`) has already confirmed the debt receipt is
+ * payable, the amount is payable, and the gate authorizes this run/contributor/
+ * amount before this builder is reached on the real branch.
+ */
+export const buildHygieneLaneSettlement = (
+  input: Readonly<{
+    adapterKind: typeof NexusTreasuryPayoutAdapterKind.Type
+    amountSats: number
+    contributorRef: string
+    debtReceiptKeyRef: string
+    idempotencyRef: string
+    mergedPrRef: string
+    nowIso: string
+    operatorApprovalRef: string
+    payoutTargetApprovalRef: string
+    payoutTargetRef: string
+    reviewerAcceptanceRef: string
+    trainingRunRef: string
+  }>,
+): HygieneLaneSettlementRecords => {
+  const adapterKind = input.adapterKind
+  const moneyMovement = realSettlementMovementMode(adapterKind)
+  const suffix = stableSuffix(input.idempotencyRef)
+  const contributorRef = input.contributorRef.trim()
+  const amount = bitcoinAmount(input.amountSats)
+  // The accepted-work basis is the HONEST hygiene evidence: merged PR + reviewer
+  // acceptance + the debt receipt. No verification-challenge ref appears.
+  const acceptedWorkRefs = uniqueRefs([
+    input.debtReceiptKeyRef,
+    input.mergedPrRef,
+    input.reviewerAcceptanceRef,
+  ])
+  const metadataRefs = uniqueRefs([
+    input.trainingRunRef,
+    input.debtReceiptKeyRef,
+    input.mergedPrRef,
+    input.reviewerAcceptanceRef,
+    input.operatorApprovalRef,
+    `verification.public.hygiene_lane.${HygieneLaneVerificationClass}`,
+    'metadata.hygiene_lane.settlement.merged_reviewed',
+  ])
+  const redactedDestinationRef = `destination.redacted.hygiene_lane_settlement.${suffix}`
+
+  const targetApproval: NexusPayoutTargetApprovalRecord = {
+    agentRef: 'agent.artanis',
+    approvalPolicyRef: HygieneLaneSettlementPayoutTargetApprovalPolicyRef,
+    approvalRef: input.payoutTargetApprovalRef,
+    approvedByRef: 'operator.openagents.hygiene_lane_settlement',
+    archivedAt: null,
+    createdAt: input.nowIso,
+    expiresAt: null,
+    id: `nexus_payout_target_approval_hygiene_lane_${suffix}`,
+    idempotencyKeyHash: `hash.hygiene_lane_settlement.approval.${suffix}`,
+    ownerUserId: 'user_openagents_operator',
+    payoutTargetRef: input.payoutTargetRef,
+    publicProjectionJson: JSON.stringify({
+      debtReceiptKeyRef: input.debtReceiptKeyRef,
+      pylonRef: contributorRef,
+      state: 'active',
+      trainingRunRef: input.trainingRunRef,
+    }),
+    pylonRef: contributorRef,
+    redactedDestinationRef,
+    scopeRefs: uniqueRefs([
+      input.trainingRunRef,
+      input.debtReceiptKeyRef,
+      input.mergedPrRef,
+    ]),
+    status: 'active',
+    updatedAt: input.nowIso,
+  }
+
+  const intent: NexusTreasuryPayoutIntentRecord = {
+    acceptedWorkRefs,
+    actorRef: 'agent.artanis',
+    adapterKind,
+    amount,
+    archivedAt: null,
+    artanisDispatchRef: `artanis_dispatch.hygiene_lane_settlement.${suffix}`,
+    assignmentRef: null,
+    buyerPaymentRef: null,
+    createdAt: input.nowIso,
+    id: `nexus_treasury_payout_intent_hygiene_lane_${suffix}`,
+    idempotencyKeyHash: `hash.hygiene_lane_settlement.intent.${suffix}`,
+    metadataRefs,
+    ownerUserId: null,
+    payoutIntentRef: `payout_intent.hygiene_lane_settlement.${suffix}`,
+    payoutTargetApprovalRef: input.payoutTargetApprovalRef,
+    payoutTargetRef: input.payoutTargetRef,
+    policySnapshotRef: HygieneLaneSettlementPolicySnapshotRef,
+    publicProjectionJson: JSON.stringify({
+      acceptedWork: true,
+      adapter: adapterKind,
+      amountSats: input.amountSats,
+      moneyMovement,
+      operatorApproved: true,
+      state: 'approved',
+      trainingRunRef: input.trainingRunRef,
+      verificationBasis: HygieneLaneVerificationClass,
+    }),
+    pylonJobRef: null,
+    sourceKind: 'accepted_work',
+    spendCap: amount,
+    status: 'approved',
+    updatedAt: input.nowIso,
+  }
+
+  const attempt: NexusTreasuryPayoutAttemptRecord = {
+    adapterAttemptRef: `adapter_attempt.hygiene_lane_settlement.${adapterKind}.${suffix}`,
+    adapterKind,
+    amount,
+    archivedAt: null,
+    createdAt: input.nowIso,
+    id: `nexus_treasury_payout_attempt_hygiene_lane_${suffix}`,
+    idempotencyKeyHash: `hash.hygiene_lane_settlement.attempt.${suffix}`,
+    metadataRefs,
+    payoutAttemptRef: `payout_attempt.hygiene_lane_settlement.${suffix}`,
+    payoutIntentRef: intent.payoutIntentRef,
+    publicProjectionJson: JSON.stringify({
+      adapter: adapterKind,
+      amountSats: input.amountSats,
+      moneyMovement,
+      trainingRunRef: input.trainingRunRef,
+      verificationBasis: HygieneLaneVerificationClass,
+    }),
+    redactedDestinationRef,
+    redactedPaymentRef: null,
+    status: 'confirmed',
+    updatedAt: input.nowIso,
+  }
+
+  const reconciliationEvent: NexusTreasuryPayoutReconciliationEventRecord = {
+    adapterKind,
+    archivedAt: null,
+    createdAt: input.nowIso,
+    eventRef: `reconciliation.hygiene_lane_settlement.${suffix}`,
+    externalEventRef: `external_event.hygiene_lane_settlement.${adapterKind}.${suffix}`,
+    id: `nexus_treasury_reconciliation_hygiene_lane_${suffix}`,
+    idempotencyKeyHash: `hash.hygiene_lane_settlement.reconciliation.${suffix}`,
+    metadataRefs,
+    payoutAttemptRef: attempt.payoutAttemptRef,
+    payoutIntentRef: intent.payoutIntentRef,
+    providerRef: `provider.${adapterKind}`,
+    publicProjectionJson: JSON.stringify({
+      adapter: adapterKind,
+      amountSats: input.amountSats,
+      moneyMovement,
+      trainingRunRef: input.trainingRunRef,
+      verificationBasis: HygieneLaneVerificationClass,
+    }),
+    resultRef: `result.hygiene_lane_settlement.${suffix}`,
+    status: 'matched',
+  }
+
+  const settlementReceiptRef = `receipt.nexus.hygiene_lane_settlement.${suffix}`
+  const settlementReceipt: NexusPaymentAuthorityReceiptRecord = {
+    archivedAt: null,
+    audience: 'public',
+    createdAt: input.nowIso,
+    eventRef: reconciliationEvent.eventRef,
+    id: `nexus_payment_authority_receipt_hygiene_lane_${suffix}`,
+    metadataRefs,
+    payoutAttemptRef: attempt.payoutAttemptRef,
+    payoutIntentRef: intent.payoutIntentRef,
+    publicProjectionJson: JSON.stringify({
+      adapter: adapterKind,
+      amountSats: input.amountSats,
+      asset: 'bitcoin',
+      contributorRef,
+      // HONEST basis. The receipt names the merged-PR + reviewer acceptance +
+      // debt receipt as the reason money moved — NOT trace replay. There is no
+      // `verificationChallengeRef` and no `exact_trace_replay` verdict here.
+      debtReceiptKeyRef: input.debtReceiptKeyRef,
+      mergedPrRef: input.mergedPrRef,
+      moneyMovement,
+      reviewerAcceptanceRef: input.reviewerAcceptanceRef,
+      state: 'settled',
+      trainingRunRef: input.trainingRunRef,
+      verificationBasis: HygieneLaneVerificationClass,
+    }),
+    receiptKind: 'settlement_recorded',
+    receiptRef: settlementReceiptRef,
+  }
+
+  return {
+    amountSats: input.amountSats,
+    attempt,
+    contributorRef,
+    intent,
+    reconciliationEvent,
+    settlementReceipt,
+    settlementReceiptRef,
+    targetApproval,
   }
 }

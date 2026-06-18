@@ -1086,10 +1086,35 @@ This is the invariant ledger for `openagents`.
 - Public debt-receipt projections must reject raw diffs, prompts, generated
   fixtures, provider payloads, customer data, private repo data, payment or
   wallet material, payout targets, secrets, and raw timestamps.
+- Hygiene settlement uses an HONEST verification basis. The hygiene-lane
+  settlement dispatch (`POST /api/hygiene-lane/settlement-receipt`) settles a
+  merged hygiene debt receipt through the SAME owner gate
+  (`OPENAGENTS_REAL_SETTLEMENT_GATE`, scoped by a `run.hygiene.lane.<YYYYMMDD>`
+  run ref) and the SAME Spark treasury payout rail as the Tassadar run
+  settlement, but its receipt projection states the basis is
+  `hygiene_merged_reviewed` (merged PR + reviewer acceptance + debt receipt).
+  It must NEVER emit an `exact_trace_replay` verdict or a
+  `verificationChallengeRef` for hygiene work, and must not route hygiene work
+  through the Tassadar lease/challenge settle endpoint (which would force a
+  fabricated trace-replay verification receipt). The debt-receipt projection is
+  the source of truth for payability; an operator cannot assert payability
+  through the request body, and an absent projection fails closed.
+- Hygiene settlement is fail-closed and idempotent: only a `payable`
+  (non-duplicate, non-blocked) debt receipt with a payable computed amount
+  (`computeHygieneLaneSettlementSats`, in [1, 100]) under the gate cap may move
+  real Bitcoin; the gate-disabled / over-cap / not-allowlisted cases record the
+  honest simulation chain (`moneyMovement:'none'`, `realBitcoinMoved:false`)
+  rather than paying. One settlement per `DebtReceiptKey`, and a retry on the
+  same `idempotencyRef` dispatches at most once. No registered Spark
+  destination means no send. Receipt projections remain public-projection-safe
+  (redacted `payout.spark.<digest>`-style refs only; no raw `spark1…`,
+  preimages, invoices, or payout targets).
 - Regression coverage for this policy lives in
   `workers/api/src/debt-receipt-key.test.ts`,
   `workers/api/src/debt-receipt-policy.test.ts`,
-  `workers/api/src/debt-receipt-work-request.test.ts`, and
+  `workers/api/src/debt-receipt-work-request.test.ts`,
+  `workers/api/src/hygiene-lane-settlement.test.ts`,
+  `workers/api/src/hygiene-lane-settlement-routes.test.ts`, and
   `workers/api/src/artanis-studying-labor.test.ts`; the buyer-facing lane packet
   lives in `docs/labor/2026-06-18-debt-receipt-hygiene-lane.md`.
 

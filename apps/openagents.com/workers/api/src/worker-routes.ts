@@ -72,6 +72,7 @@ type WorkerRouteDependencies = Readonly<{
     env: Env,
     ctx: ExecutionContext,
   ) => Effect.Effect<Response>
+  routeHygieneLaneSettlementRequest: OptionalEffectRoute
   routeTassadarTraceContributionRequest: OptionalEffectRoute
   routeTeamChatRequest: OptionalEffectRoute
   routeThreadFileRequest: OptionalEffectRoute
@@ -393,6 +394,13 @@ export const makeWorkerRouteRequest =
 
       if (trainingRunWindowResponse !== undefined) {
         return yield* trainingRunWindowResponse
+      }
+
+      const hygieneLaneSettlementResponse =
+        dependencies.routeHygieneLaneSettlementRequest(request, env, ctx)
+
+      if (hygieneLaneSettlementResponse !== undefined) {
+        return yield* hygieneLaneSettlementResponse
       }
 
       const trainingVerificationResponse =

@@ -471,6 +471,7 @@ import {
   tassadarRealSettledSatsForDay,
   tassadarRealSettlementUtcDayKey,
 } from './tassadar-run-settlement-gate'
+import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
 import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
 import {
   dispatchRealRunSettlementCore,
@@ -6976,6 +6977,72 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
   requireAdminApiToken,
 })
 
+// Honest hygiene-lane settlement DISPATCH route (openagents #5372, EPIC #5335).
+// Settles ONE merged, benchmark-verified hygiene debt receipt to the
+// contributor's registered Spark target through the SAME proven #5232 Spark
+// treasury rail and the SAME owner gate as the Tassadar run settlement, but with
+// an HONEST `hygiene_merged_reviewed` verification basis (merged PR + reviewer
+// acceptance + debt receipt) instead of a fabricated exact_trace_replay verdict.
+//
+// INERT by default: with the owner gate OFF (the default everywhere) every
+// settle resolves to the simulation chain. The real branch is unreachable until
+// the owner arms OPENAGENTS_REAL_SETTLEMENT_GATE with the hygiene run-ref.
+//
+// `resolveDebtReceiptProjection` is the source of truth for payability; an
+// operator cannot assert payability through the request body. It is fail-closed:
+// until a durable debt-receipt projection source is wired here it returns
+// undefined, so the route reports `debt_receipt_not_found` and never pays.
+const hygieneLaneSettlementRoutes =
+  makeHygieneLaneSettlementRoutes<WorkerBindings>({
+    makePayoutLedgerStore: env =>
+      makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(env)),
+    // REAL Bitcoin settlement wiring (openagents #5232): the SAME proven Spark
+    // treasury rail the Tassadar run settlement uses. INERT unless the gate is
+    // armed.
+    makeSettlementPaymentAuthority: (env, context) =>
+      makeTreasuryPaymentAuthority({
+        adapters: [
+          makeSparkTreasuryPayoutAdapter({
+            fetchTreasury: fetchMdkTreasuryPath(env),
+            providerRef: context.providerRef,
+            resolveDestination: () =>
+              Effect.succeed(context.privatePayoutDestination),
+          }),
+        ],
+        ledgerStore: context.ledgerStore,
+      }),
+    readSettlementWalletReadiness: async env => {
+      const fetchTreasury = fetchMdkTreasuryPath(env)
+
+      if (fetchTreasury === undefined) {
+        return 'absent'
+      }
+
+      try {
+        const response = await fetchTreasury('/spark/balance')
+
+        return response.ok ? 'ready' : 'absent'
+      } catch {
+        return 'absent'
+      }
+    },
+    resolveSettlementPayoutDestination: (env, contributorRef) =>
+      resolveSparkPayoutDestination(
+        makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
+        contributorRef,
+        pylonRef =>
+          makeD1PylonApiStore(openAgentsDatabase(env))
+            .readRegistration(pylonRef)
+            .then(registration => registration?.ownerAgentUserId),
+      ),
+    // Fail-closed debt-receipt projection source. No durable debt-receipt store
+    // exists yet; until one is wired, this returns undefined and the route never
+    // settles. The decision/build/dispatch/redaction wiring is complete and
+    // tested; only this source-of-truth lookup remains to be connected.
+    resolveDebtReceiptProjection: async () => undefined,
+    requireAdminApiToken,
+  })
+
 // #5052 (epic #5051): agent-gated worker -> validator executor-trace completion
 // routes. These add the contributor-callable submit/verify path; they are inert
 // with respect to existing admin/closeout/settlement behavior until the pairing
@@ -8375,6 +8442,8 @@ const routeRequest = makeWorkerRouteRequest({
   routeSyncRequest: syncRoutes.routeSyncRequest,
   routeTeamChatRequest: teamChatRoutes.routeTeamChatRequest,
   routeThreadFileRequest: threadFileRoutes.routeThreadFileRequest,
+  routeHygieneLaneSettlementRequest: (request, env) =>
+    hygieneLaneSettlementRoutes.routeHygieneLaneSettlementRequest(request, env),
   routeTassadarTraceContributionRequest:
     tassadarTraceContributionRoutes.routeTassadarTraceContributionRequest,
   routeTrainingRunWindowRequest:
