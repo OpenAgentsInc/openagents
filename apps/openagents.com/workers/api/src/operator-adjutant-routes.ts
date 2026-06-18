@@ -1137,6 +1137,24 @@ const decodeJsonBody = <Schema extends S.Top>(
     ),
   )
 
+type AdjutantAssignmentServiceShape = ReturnType<
+  typeof makeAdjutantAssignmentService
+>
+
+const readRequiredAdjutantAssignment = (
+  assignments: AdjutantAssignmentServiceShape,
+  assignmentId: string,
+) =>
+  Effect.gen(function* () {
+    const assignment = yield* assignments.readAssignmentById(assignmentId)
+
+    if (assignment === null) {
+      return yield* new AdjutantAssignmentNotFound({ assignmentId })
+    }
+
+    return assignment
+  })
+
 const requireAdminSession = <
   Session extends OperatorAdjutantSession,
   Bindings extends OperatorAdjutantEnv,
@@ -4584,11 +4602,7 @@ export const makeOperatorAdjutantRoutes = <
           ctx,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const review = yield* readAssignmentReview(
           openAgentsDatabase(env),
@@ -4623,11 +4637,7 @@ export const makeOperatorAdjutantRoutes = <
           ctx,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const enrichment = yield* readEnrichmentReview(
           openAgentsDatabase(env),
@@ -4666,11 +4676,7 @@ export const makeOperatorAdjutantRoutes = <
           EnqueueOperatorAdjutantEnrichmentRequest,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = openAgentsDatabase(env)
         const jobs = makeAdjutantEnrichmentJobService(db)
@@ -4758,11 +4764,7 @@ export const makeOperatorAdjutantRoutes = <
           ctx,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = openAgentsDatabase(env)
         const service = makeAdjutantResearchPolicyService(db)
@@ -4837,11 +4839,7 @@ export const makeOperatorAdjutantRoutes = <
           PlanOperatorAdjutantEnrichmentRequest,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const config = getOpenAgentsWorkerConfig(env)
         const plan = yield* buildEnrichmentPlan(
@@ -4885,11 +4883,7 @@ export const makeOperatorAdjutantRoutes = <
           RunOperatorAdjutantEnrichmentRequest,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const config = getOpenAgentsWorkerConfig(env)
 
@@ -5088,11 +5082,7 @@ export const makeOperatorAdjutantRoutes = <
           CreateOperatorAdjutantPublicSourceRefRequest,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = openAgentsDatabase(env)
         const order =
@@ -5149,11 +5139,7 @@ export const makeOperatorAdjutantRoutes = <
           ReviewOperatorAdjutantPublicSourceRefRequest,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = openAgentsDatabase(env)
 
@@ -5207,11 +5193,7 @@ export const makeOperatorAdjutantRoutes = <
           ReviewOperatorAdjutantSourceCardRequest,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = openAgentsDatabase(env)
         const ledger = makeAdjutantEnrichmentLedger(db)
@@ -5299,11 +5281,7 @@ export const makeOperatorAdjutantRoutes = <
           ReviewOperatorAdjutantResearchBriefRequest,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = openAgentsDatabase(env)
         const briefService = makeAdjutantResearchBriefService(db)
@@ -5426,11 +5404,7 @@ export const makeOperatorAdjutantRoutes = <
           PreflightOperatorAdjutantAssignmentRequest,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const targetUser: OperatorAdjutantTargetUser = {
           displayName: session.user.email,
@@ -5543,11 +5517,7 @@ export const makeOperatorAdjutantRoutes = <
           GenerateOperatorAdjutantTaskPacketRequest,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const site =
           assignment.siteId === null
@@ -5670,11 +5640,7 @@ export const makeOperatorAdjutantRoutes = <
           KeepCurrentOperatorAdjutantTaskPacketRequest,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = openAgentsDatabase(env)
         const latestApprovedBrief = yield* latestApprovedResearchBrief(
@@ -5749,11 +5715,7 @@ export const makeOperatorAdjutantRoutes = <
         }
 
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         if (
           assignment.status === 'complete' ||
@@ -5852,11 +5814,7 @@ export const makeOperatorAdjutantRoutes = <
           LaunchOperatorAdjutantAssignmentRequest,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const targetUser: OperatorAdjutantTargetUser = {
           displayName: session.user.email,
@@ -6151,11 +6109,7 @@ export const makeOperatorAdjutantRoutes = <
           CreateOperatorAdjutantAdjustmentRequest,
         )
         const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* assignments.readAssignmentById(assignmentId)
-
-        if (assignment === null) {
-          return yield* new AdjutantAssignmentNotFound({ assignmentId })
-        }
+        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         if (assignment.siteId === null) {
           return yield* new OperatorAdjutantBadRequest({
