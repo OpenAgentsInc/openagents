@@ -201,6 +201,7 @@
         "@openagentsinc/mullet-schema": "workspace:*",
         "@openagentsinc/mullet-sim": "workspace:*",
         "@openagentsinc/nip90": "workspace:*",
+        "@openagentsinc/proof-replay": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
         "@openagentsinc/public-activity-timeline": "workspace:*",
         "@openagentsinc/replay-clips": "workspace:*",
@@ -213,7 +214,7 @@
         "effect": "4.0.0-beta.70",
         "effect-cf": "0.13.1",
         "hono": "^4.12.23",
-        "nostr-effect": "github:OpenAgentsInc/nostr-effect#6187985",
+        "nostr-effect": "github:OpenAgentsInc/nostr-effect#4c52847",
         "stripe": "^22.2.0",
       },
     },
@@ -328,7 +329,7 @@
       "name": "@openagentsinc/nip90",
       "version": "0.1.0",
       "dependencies": {
-        "nostr-effect": "github:OpenAgentsInc/nostr-effect#6187985",
+        "nostr-effect": "github:OpenAgentsInc/nostr-effect#4c52847",
       },
       "devDependencies": {
         "bun-types": "^1.0.0",
@@ -355,6 +356,9 @@
     "packages/proof-replay": {
       "name": "@openagentsinc/proof-replay",
       "version": "0.1.0",
+      "dependencies": {
+        "@openagentsinc/public-activity-timeline": "workspace:*",
+      },
       "devDependencies": {
         "bun-types": "^1.0.0",
         "typescript": "catalog:",
@@ -2144,7 +2148,7 @@
 
     "normalize-path": ["normalize-path@3.0.0", "", {}, "sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA=="],
 
-    "nostr-effect": ["nostr-effect@github:OpenAgentsInc/nostr-effect#6187985", { "dependencies": { "@noble/ciphers": "1.2.1", "@noble/curves": "1.8.1", "@noble/hashes": "1.7.1", "@scure/base": "1.2.4", "@scure/bip32": "1.6.2", "@scure/bip39": "1.5.4", "effect": "4.0.0-beta.70", "pako": "2.1.0" } }, "OpenAgentsInc-nostr-effect-6187985", "sha512-rhPeASmMwMILvTxbJDCjKn4RX0Y5hWjqCnEpCBETshfxqIY8spwcC0pIBK+pnOKiHHzEUrRCBzCJmOaDHYevnA=="],
+    "nostr-effect": ["nostr-effect@github:OpenAgentsInc/nostr-effect#4c52847", { "dependencies": { "@noble/ciphers": "1.2.1", "@noble/curves": "1.8.1", "@noble/hashes": "1.7.1", "@scure/base": "1.2.4", "@scure/bip32": "1.6.2", "@scure/bip39": "1.5.4", "effect": "4.0.0-beta.70", "pako": "2.1.0" } }, "OpenAgentsInc-nostr-effect-4c52847", "sha512-UV1yC4RzmgnpNWxX74vLddfV9IMPQVdlW6u0tHNtuniTyrbXCpFsvVDkgWWScUliaatKQ2upHF8DoTcd9TSmXg=="],
 
     "npm-package-arg": ["npm-package-arg@11.0.3", "", { "dependencies": { "hosted-git-info": "^7.0.0", "proc-log": "^4.0.0", "semver": "^7.3.5", "validate-npm-package-name": "^5.0.0" } }, "sha512-sHGJy8sOC1YraBywpzQlIKBE4pBbGbiF95U6Auspzyem956E0+FtDtsx1ZxlOJkQCZ1AFXAY/yuvtFYrOxF+Bw=="],
 

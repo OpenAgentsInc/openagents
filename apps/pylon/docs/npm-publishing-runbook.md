@@ -88,6 +88,20 @@ bun pm pack && npm publish ./openagentsinc-pylon-<v>.tgz --tag rc --access publi
   window after the epoch and then fail forever. Verify with the same
   injected `now`.
 
+## Consumer install must work without bun (git-dep prepare hazard)
+
+`@openagentsinc/nip90` (a pylon dependency) pulls `nostr-effect` as a **git
+dependency**. npm runs the git dep's `prepare` lifecycle script on consumer
+install (registry tarballs do not), so a bun-requiring `prepare` in any
+transitive git dep breaks plain `npx @openagentsinc/pylon` / `npm install`
+on a clean Node/npm box with `code 127 (git dep preparation failed)` — even
+though `bun install`/`bunx` work because bun blocks lifecycle scripts by
+default. This was the 2026-06-18 launch bug (fixed: `nostr-effect`'s
+`prepare` is now a Node-only guard; `nip90` repins to
+`nostr-effect#4c52847`). Before publishing, run the **npm + no-bun** consumer
+smoke in `release-install-smokes.md`. Repinning a git dep inside a published
+package (e.g. nip90) requires republishing that package AND pylon.
+
 ## After publishing
 
 1. Update `apps/pylon/README.md` "Launch Package And Version Truth"

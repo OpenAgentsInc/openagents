@@ -50,6 +50,48 @@ That local gate runs unit/runtime tests, bootstrap/status/inventory/operator
 JSON smokes, dashboard startup smoke, package dry-run, and the local package
 install smoke before a release candidate is treated as launchable.
 
+## npm-without-bun Consumer Smoke (REQUIRED before publish)
+
+The local smoke above installs with **bun**, which by default **blocks**
+dependency lifecycle scripts (`postinstall`/`prepare`). Larry's clean Ubuntu
+x64 box hit a launch-blocking bug the bun smoke could never catch: a plain
+`npx @openagentsinc/pylon` crashed during install with
+
+```
+sh: bun: command not found
+npm error code 127   (git dep preparation failed)
+```
+
+Root cause: `@openagentsinc/nip90` depends on `nostr-effect` as a **git
+dependency** (`github:OpenAgentsInc/nostr-effect#<sha>`). npm runs the
+`prepare` lifecycle script for git deps on consumer install (it does NOT for
+registry tarballs). `nostr-effect`'s old `prepare` ran `bun run setup:hooks`,
+which hard-required bun. The working path the tester found was: install bun,
+then `bunx @openagentsinc/pylon` (bun blocks the offending script).
+
+Fixed 2026-06-18 by guarding `nostr-effect`'s `prepare`
+(`scripts/prepare.mjs`, Node-only) so it no-ops on consumer/git-dep installs
+and when bun is absent, and repinning `nip90` to the fixed
+`nostr-effect#4c52847`. **This ships only after `@openagentsinc/nip90` and
+`@openagentsinc/pylon` are republished** (see npm-publishing-runbook.md);
+the registry copies of nip90 0.1.0 / pylon 1.0.3 still carry the old pin.
+
+To prevent recurrence, run this **npm + no-bun** smoke before any publish, on
+a box (or PATH) without bun:
+
+```sh
+# bun must NOT be on PATH for this smoke to be meaningful
+command -v bun && echo "REMOVE bun from PATH first" && exit 1
+mkdir -p /tmp/pylon-npm-smoke && cd /tmp/pylon-npm-smoke
+npm init -y >/dev/null
+npm install @openagentsinc/pylon@<version>   # must exit 0, no code 127
+npx --no-install @openagentsinc/pylon --version   # or bootstrap --json
+```
+
+A non-zero exit, `code 127`, or `git dep preparation failed` means a
+transitive dependency is running a bun-requiring (or otherwise failing)
+lifecycle script on consumer install. Never publish until this passes.
+
 ## Bootstrap Surface
 
 The launch-safe automation entry points are:
