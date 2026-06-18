@@ -1,7 +1,6 @@
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
-import { AUTOPILOT_DESKTOP_MACOS_ARM64_DMG_URL } from '../../../constant'
 import { pylonBezierNetworkView } from '../../../scene/pylonBezierNetworkElement'
 import { pylonView } from '../../../scene/pylonElement'
 import { pylonLaunchGateView } from '../../../scene/pylonLaunchGateElement'
@@ -9,10 +8,13 @@ import { pylonStatsView } from '../../../scene/pylonStatsElement'
 import * as Ui from '../../../ui'
 import type { Message } from '../message'
 
-// #5059: a real server-rendered Download Autopilot link overlaid on the pylon
-// scene. The scene layers are pointer-events-none, so this anchor sits above
-// them with pointer-events-auto and stays clickable without disrupting the viz.
-const downloadAutopilotCta = (): Html => {
+const PYLON_INSTALL_COMMAND = 'npx @openagentsinc/pylon'
+
+// A server-rendered Pylon install block overlaid on the pylon scene. The scene
+// layers are pointer-events-none, so this card sits above them with
+// pointer-events-auto and stays selectable without disrupting the viz. The copy
+// frames the expectation that you hand this to your coding agent to run.
+const pylonInstallCta = (): Html => {
   const h = html<Message>()
 
   return h.div(
@@ -22,12 +24,11 @@ const downloadAutopilotCta = (): Html => {
       ),
     ],
     [
-      h.a(
+      h.div(
         [
-          h.Href(AUTOPILOT_DESKTOP_MACOS_ARM64_DMG_URL),
-          h.DataAttribute('cta', 'download-autopilot'),
+          h.DataAttribute('cta', 'install-pylon'),
           Ui.className<Message>(
-            'pointer-events-auto inline-flex flex-col items-center gap-0.5 border border-[#d6f6ff] bg-[rgba(1,1,2,0.86)] px-4 py-2 text-center font-mono text-[#f1efe8] shadow-[0_0_28px_rgba(41,121,255,0.22)] hover:border-white hover:bg-[rgba(12,15,19,0.94)]',
+            'pointer-events-auto inline-flex max-w-md flex-col items-center gap-1.5 border border-[#d6f6ff] bg-[rgba(1,1,2,0.86)] px-4 py-3 text-center font-mono text-[#f1efe8] shadow-[0_0_28px_rgba(41,121,255,0.22)]',
           ),
         ],
         [
@@ -37,7 +38,7 @@ const downloadAutopilotCta = (): Html => {
                 'text-[0.75rem] font-bold uppercase leading-none tracking-[0.08em]',
               ),
             ],
-            ['Download Autopilot'],
+            ['Run a Pylon node'],
           ),
           h.span(
             [
@@ -45,7 +46,16 @@ const downloadAutopilotCta = (): Html => {
                 'text-[0.6rem] uppercase leading-none tracking-[0.08em] text-white/55',
               ),
             ],
-            ['macOS arm64 DMG'],
+            ['Paste this to your coding agent'],
+          ),
+          h.pre(
+            [
+              h.DataAttribute('cta', 'install-pylon-command'),
+              Ui.className<Message>(
+                'mt-0.5 w-full select-all overflow-x-auto border border-white/15 bg-[rgba(12,15,19,0.94)] px-3 py-2 text-left text-[0.8rem] leading-none text-[#d6f6ff]',
+              ),
+            ],
+            [h.code([], [PYLON_INSTALL_COMMAND])],
           ),
         ],
       ),
@@ -64,7 +74,7 @@ export const view = (): Html => {
       ),
     ],
     [
-      downloadAutopilotCta(),
+      pylonInstallCta(),
       pylonView<Message>([
         Ui.className<Message>('absolute inset-0 block h-full w-full'),
       ]),

@@ -2,7 +2,6 @@ import { Effect, Option } from 'effect'
 import { Scene } from 'foldkit'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { AUTOPILOT_DESKTOP_MACOS_ARM64_DMG_URL } from './constant'
 import {
   authBootstrapFromSession,
   incompleteOnboardingStatus,
@@ -411,9 +410,10 @@ describe('authenticated startup routing', () => {
       Scene.expect(Scene.selector('[data-route="pylon"]')).toExist(),
       Scene.expect(Scene.selector('oa-pylon')).toExist(),
       Scene.expect(Scene.selector('oa-pylon-launch-gate')).toExist(),
+      Scene.expect(Scene.selector('[data-cta="install-pylon"]')).toExist(),
       Scene.expect(
-        Scene.selector('[data-cta="download-autopilot"]'),
-      ).toHaveAttr('href', AUTOPILOT_DESKTOP_MACOS_ARM64_DMG_URL),
+        Scene.selector('[data-cta="install-pylon-command"]'),
+      ).toHaveText('npx @openagentsinc/pylon'),
     )
   })
 
