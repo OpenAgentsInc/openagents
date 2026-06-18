@@ -145,6 +145,7 @@ import {
   ForumTipRecipientProviderClass,
 } from './forum/schemas'
 import type { OpenAgentsHostedMdkClient } from './hosted-mdk-client'
+import { forumThreadOgImageResponse } from './http/forum-social-preview'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
@@ -5300,6 +5301,31 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
     requestDependencies: ForumRouteDependencies = dependencies,
   ) => {
     const url = new URL(request.url)
+
+    // Per-thread Open Graph / Twitter Card image. Renders the thread title onto
+    // a 1200x630 branded SVG so a shared `/forum/t/{id}` link carries a visual.
+    // `default` and an unknown/malformed topic both yield the branded default
+    // image rather than an error, so a crawler never sees a broken thumbnail.
+    const forumOgImageMatch = /^\/og\/forum\/([^/]+)\.svg$/.exec(url.pathname)
+
+    if (forumOgImageMatch !== null) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return Effect.succeed(methodNotAllowed(['GET', 'HEAD']))
+      }
+
+      const rawSegment = forumOgImageMatch[1]
+      const topicSegment = decodePathSegment(rawSegment)
+
+      if (topicSegment === undefined || topicSegment === 'default') {
+        return Effect.succeed(forumThreadOgImageResponse(null))
+      }
+
+      return readForumTopicById(db, topicSegment).pipe(
+        Effect.map(topic => forumThreadOgImageResponse(topic?.title ?? null)),
+        Effect.catch(() => Effect.succeed(forumThreadOgImageResponse(null))),
+      )
+    }
+
     const forumAgentProfilePageMatch = /^\/forum\/u\/([^/]+)\/([^/]+)$/.exec(
       url.pathname,
     )

@@ -302,6 +302,12 @@ const runPromiseAllowlist = new Map([
   // SSR-seed the snapshot. Named bridge; ratchet down if the asset path moves
   // to an Effect program.
   ['workers/api/src/http/pylon-stats-boot-payload.ts', 1],
+  // Added 2026-06-18: the forum thread document SSR path runs the
+  // Effect-returning topic-detail read once to derive per-thread Open Graph /
+  // Twitter Card metadata. Named bridge; ratchet down if the forum read path
+  // moves to an Effect program. Keeping it here (not in index.ts) holds the
+  // index.ts bridge budget flat.
+  ['workers/api/src/http/forum-social-preview.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

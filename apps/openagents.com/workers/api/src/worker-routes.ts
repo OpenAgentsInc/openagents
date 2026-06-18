@@ -30,6 +30,12 @@ type WorkerRouteDependencies = Readonly<{
     ctx: ExecutionContext,
     threadId: string,
   ) => RouteEffect
+  handleForumThreadPage: (
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+    topicId: string,
+  ) => RouteEffect
   optionalUuid: (value: string | undefined) => string | undefined
   routeAutopilotWorkRequest: OptionalEffectRoute
   routeAgentGoalRequest: OptionalEffectRoute
@@ -114,6 +120,15 @@ const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/training\/runs(?:\/[^/]+)?$/,
   /^\/usage$/,
 ]
+
+const safeDecodeTopicSegment = (value: string): string | undefined => {
+  try {
+    const decoded = decodeURIComponent(value)
+    return decoded.length > 0 ? decoded : undefined
+  } catch {
+    return undefined
+  }
+}
 
 const acceptsDocument = (request: Request): boolean => {
   const accept = request.headers.get('accept')?.toLowerCase() ?? ''
@@ -457,6 +472,32 @@ export const makeWorkerRouteRequest =
 
       if (mulletResponse !== undefined) {
         return yield* mulletResponse
+      }
+
+      // Forum thread document requests get per-thread Open Graph / Twitter
+      // Card metadata injected into the server-rendered shell so shared
+      // `/forum/t/{id}` links render rich previews for non-JS social crawlers.
+      // Only GET/HEAD document navigations are intercepted; every other forum
+      // request (including the `/og/forum/...svg` image and all `/api/forum`
+      // calls) flows through routeForumRequest unchanged.
+      const forumThreadPageMatch =
+        (request.method === 'GET' || request.method === 'HEAD') &&
+        acceptsDocument(request)
+          ? /^\/forum\/t\/([^/]+)$/.exec(url.pathname)
+          : null
+
+      if (forumThreadPageMatch !== null) {
+        const topicSegment = forumThreadPageMatch[1]
+        const topicId =
+          topicSegment === undefined
+            ? undefined
+            : safeDecodeTopicSegment(topicSegment)
+
+        if (topicId !== undefined) {
+          return yield* routeEffectOrResponse(
+            dependencies.handleForumThreadPage(request, env, ctx, topicId),
+          )
+        }
       }
 
       const forumResponse = dependencies.routeForumRequest(request, env, ctx)

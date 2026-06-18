@@ -9866,4 +9866,47 @@ describe('Forum routes', () => {
     expect(scoped.status).toBe(403)
     expect(method.status).toBe(405)
   })
+
+  test('serves a per-thread Open Graph SVG image carrying the topic title', async () => {
+    const store = new ForumRouteStore()
+    const response = await route(
+      store,
+      '/og/forum/55555555-5555-4555-8555-555555555555.svg',
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe(
+      'image/svg+xml; charset=utf-8',
+    )
+    const body = await response.text()
+    expect(body).toContain('<svg')
+    expect(body).toContain('width="1200"')
+    expect(body).toContain('First Topic')
+  })
+
+  test('serves the branded default OG image for unknown/default topic ids', async () => {
+    const store = new ForumRouteStore()
+    const unknown = await route(
+      store,
+      '/og/forum/00000000-0000-4000-8000-000000000000.svg',
+    )
+    const fallback = await route(store, '/og/forum/default.svg')
+
+    for (const response of [unknown, fallback]) {
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')).toBe(
+        'image/svg+xml; charset=utf-8',
+      )
+      await expect(response.text()).resolves.toContain('OpenAgents Forum')
+    }
+  })
+
+  test('rejects non-GET methods on the OG image route', async () => {
+    const store = new ForumRouteStore()
+    const response = await route(store, '/og/forum/default.svg', {
+      method: 'POST',
+    })
+
+    expect(response.status).toBe(405)
+  })
 })

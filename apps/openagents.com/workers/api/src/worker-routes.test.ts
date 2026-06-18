@@ -95,6 +95,26 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('keeps forum thread document routes in the app shell for crawlers', () => {
+    // `/forum/t/{id}` must reach the social-preview handler, not the
+    // unknown-document redirect, so the injected OG/Twitter meta is served.
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/forum/t/55555555-5555-4555-8555-555555555555'),
+        '/forum/t/55555555-5555-4555-8555-555555555555',
+      ),
+    ).toBe(false)
+  })
+
+  test('does not redirect the forum OG image route (treated as a file)', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/og/forum/55555555-5555-4555-8555-555555555555.svg'),
+        '/og/forum/55555555-5555-4555-8555-555555555555.svg',
+      ),
+    ).toBe(false)
+  })
+
   test('redirects unknown direct browser document paths to the homepage', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(

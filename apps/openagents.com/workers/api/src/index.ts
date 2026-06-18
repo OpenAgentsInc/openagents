@@ -214,6 +214,7 @@ import {
   makeOpenAgentsHostedMdkRouteClient,
 } from './hosted-mdk-client'
 import type { ContainerPathFetch } from './http/container-fetch'
+import { handleForumThreadDocument } from './http/forum-social-preview'
 import {
   type DurableMdkPaymentOutcome,
   durableMdkPaymentOutcomeResponse,
@@ -8211,6 +8212,14 @@ const routeRequest = makeWorkerRouteRequest({
   handleThreadPage: (request, env, ctx, threadId) =>
     routeEffect('handle_thread_page', () =>
       handleThreadPage(request, env, ctx, threadId),
+    ),
+  handleForumThreadPage: (request, env, ctx, topicId) =>
+    routeEffect('handle_forum_thread_page', () =>
+      handleForumThreadDocument({
+        db: openAgentsDatabase(env),
+        fetchAppShell: () => handleAppShellPage(request, env, ctx),
+        topicId,
+      }),
     ),
   optionalUuid,
   routeAutopilotWorkRequest: (request, env, ctx) =>
