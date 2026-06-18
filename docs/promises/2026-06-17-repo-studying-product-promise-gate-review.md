@@ -54,6 +54,24 @@ Do not say or imply:
 - Settlement receipts for any paid package or accepted work claim.
 - Product-promise preflight before public copy changes state.
 
+## SA-5 Gate Matrix (#5342)
+
+SA-5 advances only by clearing these gates with dereferenceable evidence. Until
+then, `autopilot.repo_study_packets.v1` remains yellow for internal
+OpenAgents-repo dogfood only.
+
+| Capability | Required evidence before claim | Current state |
+| --- | --- | --- |
+| Customer repo studying | Customer consent and workspace authority refs; a tenant-scoped corpus manifest; source-ingestion and deletion/export policy; redaction report; private-material boundary tests; holdout validation showing lift on customer-safe tasks; product-promise transition receipt. | Blocked. No customer repo ingestion or public customer studying claim. |
+| Marketplace study package | Package schema; conformance tests; package review/approval refs; entitlement and usage-metering refs; pricing, refund, and dispute policy; public listing copy reviewed against this promise gate. | Blocked. Study packets are not marketplace packages. |
+| Repo-expert language | Evaluation report from private validation and holdout tasks; freshness and source-authority refs; failure analysis; caveat copy that distinguishes packet-assisted retrieval from a trained model/expert. | Blocked. Current evidence is internal OpenAgents-codebase lift only. |
+| Payout eligibility | A separate work request or funded receipt; accepted-work evidence; independent verification; payout target approval; settlement approval; public-safe settlement receipt. Study packets or StudyBench rows alone must not create payout eligibility. | Blocked except where another already-green labor/debt-receipt rail independently supplies the payout authority. |
+| Automatic paid work | Assignment/claim route, budget cap, worker/reviewer/settlement role split, idempotent settlement, reconciliation, and public receipt projection for the actual work product. | Blocked. A study packet may be evidence/context only. |
+
+Closeout for #5342 is gate definition, not a green-claim transition. Any future
+state change must update this review, the registry entry, and the relevant
+tests or receipt docs in the same change.
+
 ## Authority Boundary
 
 StudyBench rows and study packets are evidence and repository-memory inputs.
@@ -72,4 +90,3 @@ material, payment material, or customer-sensitive content.
 - Product-promise docs review.
 - Machine-studying docs review.
 - Blueprint marketplace boundary review.
-
