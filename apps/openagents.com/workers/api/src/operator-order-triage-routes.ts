@@ -1239,6 +1239,20 @@ const readRecordByOrderId = (
       .first<OrderTriageRow>(),
   ).pipe(Effect.map(row => (row === null ? null : rowToRecord(row))))
 
+const requireTriageRecordByOrderId = (
+  db: D1Database,
+  softwareOrderId: string,
+): Effect.Effect<OperatorOrderTriageRecord, OrderTriageError> =>
+  Effect.gen(function* () {
+    const record = yield* readRecordByOrderId(db, softwareOrderId)
+
+    if (record === null) {
+      return yield* new OrderTriageSoftwareOrderNotFound({ softwareOrderId })
+    }
+
+    return record
+  })
+
 const requireSoftwareOrder = (
   db: D1Database,
   softwareOrderId: string,
@@ -1370,13 +1384,7 @@ const upsertTriageRecord = (
       )
     }
 
-    const record = yield* readRecordByOrderId(db, softwareOrderId)
-
-    if (record === null) {
-      return yield* new OrderTriageSoftwareOrderNotFound({ softwareOrderId })
-    }
-
-    return record
+    return yield* requireTriageRecordByOrderId(db, softwareOrderId)
   })
 
 const summarizeFirstBatch = (
@@ -1741,11 +1749,7 @@ const prepareOrderFulfillment = (
   AdjutantAssignmentService | AutopilotSitesService
 > =>
   Effect.gen(function* () {
-    const record = yield* readRecordByOrderId(db, softwareOrderId)
-
-    if (record === null) {
-      return yield* new OrderTriageSoftwareOrderNotFound({ softwareOrderId })
-    }
+    const record = yield* requireTriageRecordByOrderId(db, softwareOrderId)
 
     return yield* createFirstBatchAssignment(
       db,
