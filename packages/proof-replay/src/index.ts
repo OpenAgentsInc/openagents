@@ -1,3 +1,10 @@
+import {
+  assertPublicActivityTimelineEnvelopeSafe,
+  orderPublicActivityTimelineEvents,
+  type PublicActivityTimelineEnvelope,
+  type PublicActivityTimelineEvent,
+} from '@openagentsinc/public-activity-timeline'
+
 export type ReplayVector3 = Readonly<{
   x: number
   y: number
@@ -299,11 +306,28 @@ export type ReplayDisposalRegistry = Readonly<{
   pendingCount: () => number
 }>
 
+export type GeneratedProofReplayBundleOptions = Readonly<{
+  bundleRef?: string
+  generatedAt?: string
+  origin?: string
+  sourceAuthority?: string
+  title?: string
+}>
+
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, Number.isFinite(value) ? value : min))
 
 const unique = (values: ReadonlyArray<string>): ReadonlyArray<string> =>
   [...new Set(values.map(value => value.trim()).filter(value => value !== ''))]
+
+const stableHash = (value: string): string => {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
 
 const originPrefix = (origin: string | undefined): string => {
   const value = origin?.trim()
@@ -345,6 +369,398 @@ export const proofReplayBundleEndpointForSlug = (
         `/api/public/proof-replays?ref=${encodeURIComponent(slug)}`,
         origin,
       )
+
+const safeRefSegment = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
+    .slice(0, 96) || 'unknown'
+
+const sourceRefKind = (ref: string): string => {
+  if (ref.startsWith('receipt.') || ref.includes('/receipts/')) return 'receipt'
+  if (ref.startsWith('training.verification.challenge.')) return 'challenge'
+  if (ref.startsWith('run.') || ref.startsWith('training.run.')) return 'run'
+  if (ref.startsWith('window.') || ref.startsWith('training.window.')) return 'window'
+  if (ref.startsWith('pylon.')) return 'pylon'
+  if (ref.startsWith('forum.') || ref.includes('/forum/')) return 'forum'
+  if (ref.startsWith('blocker.')) return 'blocker'
+  if (ref.startsWith('caveat.')) return 'caveat'
+  return 'public_activity_source'
+}
+
+const sourceRefUrl = (ref: string, origin?: string): string | undefined => {
+  if (/^https?:\/\//i.test(ref)) return ref
+  const base = originPrefix(origin)
+  if (base === '') return undefined
+  if (ref.startsWith('receipt.')) {
+    return `${base}/api/public/nexus-pylon/receipts/${encodeURIComponent(ref)}`
+  }
+  if (ref.startsWith('training.verification.challenge.')) {
+    return `${base}/api/public/training/verification-challenges/${encodeURIComponent(ref)}`
+  }
+  if (ref.startsWith('training.run.') || ref.startsWith('run.')) {
+    return `${base}/api/public/tassadar-run-summary?run=${encodeURIComponent(ref)}`
+  }
+  return undefined
+}
+
+const replaySourceRefsFrom = (
+  refs: ReadonlyArray<string>,
+  origin?: string,
+): ReadonlyArray<ReplaySourceRef> =>
+  unique(refs).map(ref => {
+    const url = sourceRefUrl(ref, origin)
+    return {
+      kind: sourceRefKind(ref),
+      ref,
+      ...(url === undefined ? {} : { url }),
+    }
+  })
+
+const eventEvidenceRefs = (
+  event: Pick<
+    PublicActivityTimelineEvent,
+    'blockerRefs' | 'caveatRefs' | 'refs' | 'sourceRefs'
+  >,
+): ReadonlyArray<string> =>
+  unique([
+    ...event.sourceRefs,
+    ...event.blockerRefs,
+    ...event.caveatRefs,
+    ...event.refs,
+  ])
+
+const primaryEventSourceRefs = (
+  event: Pick<PublicActivityTimelineEvent, 'blockerRefs' | 'sourceRefs'>,
+): ReadonlyArray<string> => {
+  const sourceRefs = unique(event.sourceRefs)
+  return sourceRefs.length > 0 ? sourceRefs : unique(event.blockerRefs)
+}
+
+const actorRefForTimelineEvent = (event: PublicActivityTimelineEvent): string => {
+  if (event.actorRef !== undefined && event.actorRef.trim() !== '') {
+    return `actor.timeline.${safeRefSegment(event.actorRef)}`
+  }
+  if (
+    event.kind === 'settlement_recorded' ||
+    event.kind === 'real_bitcoin_moved'
+  ) {
+    return 'actor.openagents.settlement'
+  }
+  if (
+    event.kind === 'verification_queued' ||
+    event.kind === 'verification_verified' ||
+    event.kind === 'verification_rejected' ||
+    event.kind === 'trace_submitted'
+  ) {
+    return 'actor.openagents.verifier'
+  }
+  if (event.kind === 'forum_topic_created' || event.kind === 'forum_posted') {
+    return 'actor.openagents.forum'
+  }
+  if (event.kind === 'artanis_tick') return 'actor.openagents.artanis'
+  return 'actor.openagents.network'
+}
+
+const actorDisplayName = (actorRef: string): string => {
+  if (actorRef === 'actor.openagents.settlement') return 'Settlement'
+  if (actorRef === 'actor.openagents.verifier') return 'Verifier'
+  if (actorRef === 'actor.openagents.forum') return 'Forum'
+  if (actorRef === 'actor.openagents.artanis') return 'Artanis'
+  if (actorRef === 'actor.openagents.network') return 'OpenAgents Network'
+  return actorRef.replace(/^actor\.timeline\./, '').replace(/[._-]+/g, ' ')
+}
+
+const stageForTimelineEvent = (
+  event: Pick<PublicActivityTimelineEvent, 'kind' | 'runRef' | 'sourceKind'>,
+): ReplayStage => {
+  const sourceRefs = unique([
+    ...(event.runRef === undefined ? [] : [event.runRef]),
+    event.sourceKind,
+  ])
+  if (
+    event.kind === 'verification_queued' ||
+    event.kind === 'verification_verified' ||
+    event.kind === 'verification_rejected' ||
+    event.kind === 'trace_submitted' ||
+    event.kind === 'work_claimed'
+  ) {
+    return {
+      label: 'Proof gate',
+      sourceRefs,
+      stageKind: 'proof_gate',
+      stageRef: 'stage.timeline.proof',
+    }
+  }
+  if (event.kind === 'settlement_recorded' || event.kind === 'real_bitcoin_moved') {
+    return {
+      label: 'Settlement terminal',
+      sourceRefs,
+      stageKind: 'settlement_terminal',
+      stageRef: 'stage.timeline.settlement',
+    }
+  }
+  if (event.kind === 'forum_topic_created' || event.kind === 'forum_posted') {
+    return {
+      label: 'Forum',
+      sourceRefs,
+      stageKind: 'forum_surface',
+      stageRef: 'stage.timeline.forum',
+    }
+  }
+  if (event.kind === 'projection_gap') {
+    return {
+      label: 'Projection gaps',
+      sourceRefs,
+      stageKind: 'replay_gap',
+      stageRef: 'stage.timeline.gaps',
+    }
+  }
+  if (event.kind === 'capacity_snapshot') {
+    return {
+      label: 'Capacity',
+      sourceRefs,
+      stageKind: 'capacity_surface',
+      stageRef: 'stage.timeline.capacity',
+    }
+  }
+  return {
+    label: 'Fleet',
+    sourceRefs,
+    stageKind: 'pylon_station',
+    stageRef: 'stage.timeline.fleet',
+  }
+}
+
+const replayKindForTimelineEvent = (
+  event: PublicActivityTimelineEvent,
+): ReplayEventKind | null => {
+  switch (event.kind) {
+    case 'pylon_registered':
+      return 'actor_entered_region'
+    case 'pylon_heartbeat':
+      return 'actor_moved'
+    case 'wallet_ready':
+    case 'assignment_ready':
+    case 'work_claimed':
+      return 'actor_focused_pylon'
+    case 'window_opened':
+    case 'window_closed':
+    case 'artanis_tick':
+      return 'actor_said_public_message'
+    case 'trace_submitted':
+      return 'trace_linked'
+    case 'verification_queued':
+      return 'proof_submitted'
+    case 'verification_verified':
+      return 'proof_verified'
+    case 'verification_rejected':
+      return 'proof_rejected'
+    case 'settlement_recorded':
+      return 'settlement_recorded'
+    case 'real_bitcoin_moved':
+      return 'payment_zap_confirmed'
+    case 'forum_topic_created':
+    case 'forum_posted':
+      return 'forum_announcement_posted'
+    case 'capacity_snapshot':
+      return 'artifact_opened'
+    case 'projection_gap':
+      return null
+  }
+}
+
+const cameraModeForReplayEvent = (kind: ReplayEventKind): ReplayCameraMode => {
+  if (kind === 'payment_zap_confirmed' || kind === 'settlement_recorded') {
+    return 'zap_focus'
+  }
+  if (
+    kind === 'proof_submitted' ||
+    kind === 'proof_verified' ||
+    kind === 'proof_rejected' ||
+    kind === 'trace_linked'
+  ) {
+    return 'orbit_proof'
+  }
+  return 'overview'
+}
+
+const replayEventForTimelineEvent = (
+  event: PublicActivityTimelineEvent,
+  sequenceIndex: number,
+): ReplayEvent | null => {
+  const kind = replayKindForTimelineEvent(event)
+  if (kind === null) return null
+  const stage = stageForTimelineEvent(event)
+  const sourceRefs = primaryEventSourceRefs(event)
+  return {
+    actorRefs: [actorRefForTimelineEvent(event)],
+    displayText: event.text,
+    eventRef: `replay.${safeRefSegment(event.eventRef)}`,
+    kind,
+    sequenceIndex,
+    sourceRefs,
+    targetRefs: unique([
+      stage.stageRef,
+      ...(event.targetRef === undefined
+        ? []
+        : [`target.timeline.${safeRefSegment(event.targetRef)}`]),
+    ]),
+    timelineSecond: sequenceIndex * 6,
+    observedAt: event.ts,
+    ...(event.amountSats === undefined ? {} : { amountSats: event.amountSats }),
+    ...(event.realBitcoinMoved === true ? { rail: 'spark_treasury' } : {}),
+    ...(event.caveatRefs.length === 0 && event.blockerRefs.length === 0
+      ? {}
+      : { caveat: unique([...event.caveatRefs, ...event.blockerRefs]).join(', ') }),
+    ...(event.state === undefined ? {} : { stateAfter: event.state }),
+  }
+}
+
+const replayGapForTimelineEvent = (
+  event: PublicActivityTimelineEvent,
+  sequenceIndex: number,
+): ReplayGap | null => {
+  if (event.kind !== 'projection_gap') return null
+  const sourceRefs = primaryEventSourceRefs(event)
+  return {
+    affectedRefs: unique([event.eventRef, ...event.refs]),
+    gapRef: `gap.${safeRefSegment(event.eventRef)}`,
+    reason: event.text || event.state || 'Public activity projection gap',
+    sourceRefs,
+  }
+}
+
+const replayGapForSourceLag = (
+  lag: PublicActivityTimelineEnvelope['sourceLag'][number],
+  index: number,
+): ReplayGap | null => {
+  if (lag.status === 'current') return null
+  const sourceRefs = unique([...lag.sourceRefs, ...lag.blockerRefs, ...lag.caveatRefs])
+  return {
+    affectedRefs: unique([lag.sourceKind, ...sourceRefs]),
+    gapRef: `gap.source_lag.${index}.${lag.sourceKind}`,
+    reason: `Public activity source ${lag.sourceKind} is ${lag.status}`,
+    sourceRefs,
+  }
+}
+
+const captionForReplayEvent = (event: ReplayEvent): ReplayCaption => ({
+  captionRef: `caption.${event.eventRef}`,
+  sequenceIndex: event.sequenceIndex,
+  sourceRefs: event.sourceRefs,
+  text: event.displayText,
+  timelineSecond: event.timelineSecond,
+})
+
+const cameraCueForReplayEvent = (event: ReplayEvent): ReplayCameraCue => ({
+  cueRef: `cue.${event.eventRef}`,
+  durationSecond: 6,
+  focusRefs: event.targetRefs,
+  mode: cameraModeForReplayEvent(event.kind),
+  sourceRefs: event.sourceRefs,
+  startSecond: event.timelineSecond,
+})
+
+const paymentFlowForReplayEvent = (event: ReplayEvent): ReplayFlow | null =>
+  event.kind === 'payment_zap_confirmed'
+    ? {
+        flowKind: 'payment_movement',
+        flowRef: `flow.${event.eventRef}`,
+        fromRef: 'actor.openagents.settlement',
+        sourceRefs: event.sourceRefs,
+        toRef: event.actorRefs[0] ?? 'actor.openagents.network',
+        ...(event.amountSats === undefined ? {} : { amountSats: event.amountSats }),
+        ...(event.rail === undefined ? {} : { rail: event.rail }),
+      }
+    : null
+
+export const buildProofReplayBundleFromPublicActivityTimeline = (
+  input: PublicActivityTimelineEnvelope | unknown,
+  options: GeneratedProofReplayBundleOptions = {},
+): ProofReplayBundle => {
+  const envelope = assertPublicActivityTimelineEnvelopeSafe(input)
+  const timelineEvents = orderPublicActivityTimelineEvents(envelope.events)
+  const replayEvents = timelineEvents
+    .map((event, index) => replayEventForTimelineEvent(event, index))
+    .filter((event): event is ReplayEvent => event !== null)
+  const projectionGaps = timelineEvents
+    .map((event, index) => replayGapForTimelineEvent(event, index))
+    .filter((gap): gap is ReplayGap => gap !== null)
+  const sourceLagGaps = envelope.sourceLag
+    .map(replayGapForSourceLag)
+    .filter((gap): gap is ReplayGap => gap !== null)
+  const stageMap = new Map<string, ReplayStage>()
+  stageMap.set('stage.timeline', {
+    label: 'Public activity timeline',
+    sourceRefs: unique(timelineEvents.flatMap(eventEvidenceRefs)),
+    stageKind: 'run_core',
+    stageRef: 'stage.timeline',
+  })
+  for (const event of timelineEvents) {
+    const stage = stageForTimelineEvent(event)
+    const existing = stageMap.get(stage.stageRef)
+    stageMap.set(
+      stage.stageRef,
+      existing === undefined
+        ? { ...stage, sourceRefs: unique([...stage.sourceRefs, ...eventEvidenceRefs(event)]) }
+        : {
+            ...existing,
+            sourceRefs: unique([
+              ...existing.sourceRefs,
+              ...stage.sourceRefs,
+              ...eventEvidenceRefs(event),
+            ]),
+          },
+    )
+  }
+
+  const actorRefs = unique(replayEvents.flatMap(event => event.actorRefs))
+  const sourceRefs = unique([
+    ...timelineEvents.flatMap(eventEvidenceRefs),
+    ...envelope.sourceLag.flatMap(lag => [
+      ...lag.sourceRefs,
+      ...lag.blockerRefs,
+      ...lag.caveatRefs,
+    ]),
+  ])
+  const generatedAt = options.generatedAt ?? envelope.generatedAt
+  const bundle: ProofReplayBundle = {
+    actors: actorRefs.map(actorRef => ({
+      actorRef,
+      avatarRole: actorRef.replace(/^actor\./, ''),
+      displayName: actorDisplayName(actorRef),
+      fallbackAssetId: 'procedural.activity',
+    })),
+    bundleRef:
+      options.bundleRef ??
+      `proof_replay_bundle.public_activity.${stableHash(
+        JSON.stringify({
+          cursors: timelineEvents.map(event => event.cursor),
+          generatedAt,
+        }),
+      )}`,
+    cameraCues: replayEvents.map(cameraCueForReplayEvent),
+    captions: replayEvents.map(captionForReplayEvent),
+    claimScope: 'evidence_presentation_only',
+    events: replayEvents,
+    flows: replayEvents
+      .map(paymentFlowForReplayEvent)
+      .filter((flow): flow is ReplayFlow => flow !== null),
+    gaps: [...projectionGaps, ...sourceLagGaps],
+    generatedAt,
+    privacyLevel: 'public_safe',
+    schemaVersion: 'proof_replay_bundle.v1',
+    sourceAuthority: options.sourceAuthority ?? 'public_activity_timeline',
+    sourceRefs: replaySourceRefsFrom(sourceRefs, options.origin),
+    stages: [...stageMap.values()].filter(stage => stage.sourceRefs.length > 0),
+    title: options.title ?? 'Public Activity Timeline Replay',
+  }
+
+  assertProofReplayBundleShipmentGate(bundle)
+  return bundle
+}
 
 const unsafeReplayMaterialPatterns = [
   /\b(?:lnbc|lntb|lnbcrt|lno1)[a-z0-9]{12,}/i,

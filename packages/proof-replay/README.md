@@ -33,3 +33,18 @@ The gate enforces the public replay contract:
 - confirmed zaps must cite public receipt or recipient-confirmation evidence;
 - blocked settlements cannot carry moving sats;
 - simulated payment events cannot claim `realBitcoinMoved:true`.
+
+## Generated Timeline Bundles
+
+`buildProofReplayBundleFromPublicActivityTimeline(envelope, options)` converts
+a public-safe `openagents.public_activity_timeline.v1` envelope into a
+`proof_replay_bundle.v1`. It maps work, trace, verification, settlement,
+payment, forum, fleet, and capacity events into deterministic replay events,
+camera cues, captions, flows, actors, and stages. `projection_gap` rows and
+stale/unavailable source-lag entries become replay gaps with source or blocker
+refs; the builder does not invent motion for missing data.
+
+The builder validates the timeline envelope first and runs
+`assertProofReplayBundleShipmentGate` before returning. A receipt-backed
+`real_bitcoin_moved` timeline event is the only path that becomes a confirmed
+payment zap.

@@ -639,6 +639,22 @@ of hand-authored builders.
      stages, flows, captions, camera cues, source refs, and gaps. Run the
      existing proof-replay shipment gates and source-coverage assertions on the
      generated bundle.
+   - Implementation status (2026-06-18, issue #5419): added
+     `buildProofReplayBundleFromPublicActivityTimeline` to
+     `@openagentsinc/proof-replay`. The builder accepts a public
+     `openagents.public_activity_timeline.v1` envelope, validates it through the
+     timeline package, maps public work/trace/verification/settlement/payment/
+     forum/fleet/capacity rows into deterministic replay actors, stages,
+     events, flows, captions, and camera cues, and turns `projection_gap` rows
+     plus stale/unavailable source-lag entries into explicit replay gaps. It
+     runs `assertProofReplayBundleShipmentGate` before returning, preserves
+     source/blocker/caveat refs, and only emits `payment_zap_confirmed` from
+     receipt-backed `real_bitcoin_moved` rows. Package tests now assert the
+     generated bundle passes the shipment gate and render-plan source coverage
+     and rejects real-bitcoin timeline rows without public receipt evidence.
+     This remains observation/projection/retrieval only and grants no
+     settlement, payout, accepted-work, deployment, provider, wallet, or
+     public-claim authority.
 2. **Expose range-filtered generated replay API**
    - Body summary: Add a public route or route mode that accepts
      `from/to/runRef/windowRef/actorRef/kind` filters and returns generated

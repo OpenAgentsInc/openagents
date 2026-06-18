@@ -5,6 +5,7 @@ import {
   assertProofReplayBundleShipmentGate,
   assertReplayPlanSourceCoverage,
   buildReplayRenderPlan,
+  buildProofReplayBundleFromPublicActivityTimeline,
   cameraPoseFor,
   createReplayDisposalRegistry,
   FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
@@ -22,6 +23,157 @@ import {
   type ProofReplayBundle,
   type ReplayEvent,
 } from './index'
+
+type TimelineEventInput = {
+  amountSats?: number
+  actorRef?: string
+  blockerRefs?: ReadonlyArray<string>
+  caveatRefs?: ReadonlyArray<string>
+  eventRef: string
+  kind:
+    | 'work_claimed'
+    | 'trace_submitted'
+    | 'verification_verified'
+    | 'settlement_recorded'
+    | 'real_bitcoin_moved'
+    | 'forum_posted'
+    | 'projection_gap'
+  realBitcoinMoved?: boolean
+  refs?: ReadonlyArray<string>
+  sourceKind:
+    | 'training_trace'
+    | 'training_verification'
+    | 'settlement_receipt'
+    | 'forum'
+    | 'projection_gap'
+  sourceRefs?: ReadonlyArray<string>
+  text: string
+  ts: string
+}
+
+const timelineEvent = (input: TimelineEventInput) => ({
+  blockerRefs: [...(input.blockerRefs ?? [])],
+  caveatRefs: [...(input.caveatRefs ?? [])],
+  cursor: `${input.ts}:${input.sourceKind}:${input.eventRef}`,
+  eventRef: input.eventRef,
+  kind: input.kind,
+  refs: [...(input.refs ?? [])],
+  sourceKind: input.sourceKind,
+  sourceRefs: [...(input.sourceRefs ?? [])],
+  text: input.text,
+  ts: input.ts,
+  ...(input.actorRef === undefined ? {} : { actorRef: input.actorRef }),
+  ...(input.amountSats === undefined ? {} : { amountSats: input.amountSats }),
+  ...(input.realBitcoinMoved === undefined
+    ? {}
+    : { realBitcoinMoved: input.realBitcoinMoved }),
+})
+
+const generatedTimelineEnvelope = {
+  events: [
+    timelineEvent({
+      actorRef: 'pylon.worker.alpha',
+      eventRef: 'activity.work.claimed.1',
+      kind: 'work_claimed',
+      refs: ['training.run.demo'],
+      sourceKind: 'training_trace',
+      sourceRefs: ['training.lease.demo.1'],
+      text: 'Worker claimed the public training window.',
+      ts: '2026-06-18T12:00:00.000Z',
+    }),
+    timelineEvent({
+      actorRef: 'pylon.worker.alpha',
+      eventRef: 'activity.trace.submitted.1',
+      kind: 'trace_submitted',
+      refs: ['training.run.demo'],
+      sourceKind: 'training_trace',
+      sourceRefs: ['trace.training.demo.1'],
+      text: 'Trace submitted for public verification.',
+      ts: '2026-06-18T12:01:00.000Z',
+    }),
+    timelineEvent({
+      eventRef: 'activity.verification.verified.1',
+      kind: 'verification_verified',
+      refs: ['training.verification.challenge.demo.1'],
+      sourceKind: 'training_verification',
+      sourceRefs: ['training.verification.challenge.demo.1'],
+      text: 'Verifier accepted the replayed trace.',
+      ts: '2026-06-18T12:02:00.000Z',
+    }),
+    timelineEvent({
+      amountSats: 1000,
+      eventRef: 'activity.settlement.recorded.1',
+      kind: 'settlement_recorded',
+      refs: ['receipt.training.demo.1'],
+      sourceKind: 'settlement_receipt',
+      sourceRefs: ['receipt.training.demo.1'],
+      text: 'Settlement receipt recorded.',
+      ts: '2026-06-18T12:03:00.000Z',
+    }),
+    timelineEvent({
+      amountSats: 1000,
+      eventRef: 'activity.real.bitcoin.1',
+      kind: 'real_bitcoin_moved',
+      realBitcoinMoved: true,
+      refs: ['receipt.training.demo.1'],
+      sourceKind: 'settlement_receipt',
+      sourceRefs: ['receipt.training.demo.1'],
+      text: 'Receipt-backed Spark payment confirmed.',
+      ts: '2026-06-18T12:04:00.000Z',
+    }),
+    timelineEvent({
+      eventRef: 'activity.forum.posted.1',
+      kind: 'forum_posted',
+      refs: ['forum.topic.demo'],
+      sourceKind: 'forum',
+      sourceRefs: ['forum.post.demo.1'],
+      text: 'Forum post announced the verified payment.',
+      ts: '2026-06-18T12:05:00.000Z',
+    }),
+    timelineEvent({
+      blockerRefs: ['blocker.activity.capacity_source_unavailable'],
+      eventRef: 'activity.projection.gap.1',
+      kind: 'projection_gap',
+      refs: ['capacity_snapshot'],
+      sourceKind: 'projection_gap',
+      text: 'Capacity source unavailable at read time.',
+      ts: '2026-06-18T12:06:00.000Z',
+    }),
+  ],
+  generatedAt: '2026-06-18T12:07:00.000Z',
+  nextCursor: null,
+  schemaVersion: 'openagents.public_activity_timeline.v1',
+  sourceLag: [
+    {
+      blockerRefs: [],
+      caveatRefs: [],
+      lagSeconds: 0,
+      latestSourceEventAt: '2026-06-18T12:06:00.000Z',
+      maxStalenessSeconds: 0,
+      observedAt: '2026-06-18T12:07:00.000Z',
+      sourceKind: 'settlement_receipt',
+      sourceRefs: ['receipt.training.demo.1'],
+      status: 'current',
+    },
+    {
+      blockerRefs: ['blocker.activity.forum_lag'],
+      caveatRefs: ['caveat.activity.forum_stale'],
+      lagSeconds: 90,
+      latestSourceEventAt: '2026-06-18T12:05:30.000Z',
+      maxStalenessSeconds: 30,
+      observedAt: '2026-06-18T12:07:00.000Z',
+      sourceKind: 'forum',
+      sourceRefs: ['forum.post.demo.1'],
+      status: 'stale',
+    },
+  ],
+  staleness: {
+    composition: 'live_at_read',
+    contractVersion: 'projection_staleness.v1',
+    maxStalenessSeconds: 0,
+    rebuildsOn: ['read'],
+  },
+}
 
 const event = (
   kind: ReplayEvent['kind'],
@@ -212,6 +364,76 @@ describe('@openagentsinc/proof-replay', () => {
     ).toBe(
       'https://openagents.com/api/public/proof-replays?ref=launch-recognition-payments',
     )
+  })
+
+  test('generates a shipment-gated replay bundle from public activity timeline events', () => {
+    const generated = buildProofReplayBundleFromPublicActivityTimeline(
+      generatedTimelineEnvelope,
+      {
+        bundleRef: 'proof_replay_bundle.public_activity.test',
+        origin: 'https://openagents.com',
+        title: 'Generated Public Activity Replay',
+      },
+    )
+
+    expect(generated.schemaVersion).toBe('proof_replay_bundle.v1')
+    expect(generated.sourceAuthority).toBe('public_activity_timeline')
+    expect(generated.title).toBe('Generated Public Activity Replay')
+    expect(generated.events.map(item => item.kind)).toEqual([
+      'actor_focused_pylon',
+      'trace_linked',
+      'proof_verified',
+      'settlement_recorded',
+      'payment_zap_confirmed',
+      'forum_announcement_posted',
+    ])
+    expect(generated.events.find(item => item.kind === 'payment_zap_confirmed'))
+      .toEqual(
+        expect.objectContaining({
+          amountSats: 1000,
+          rail: 'spark_treasury',
+          sourceRefs: ['receipt.training.demo.1'],
+        }),
+      )
+    expect(generated.sourceRefs).toContainEqual(
+      expect.objectContaining({
+        kind: 'receipt',
+        ref: 'receipt.training.demo.1',
+        url: 'https://openagents.com/api/public/nexus-pylon/receipts/receipt.training.demo.1',
+      }),
+    )
+    expect(generated.gaps.map(gap => gap.gapRef)).toEqual([
+      'gap.activity.projection.gap.1',
+      'gap.source_lag.1.forum',
+    ])
+    expect(generated.gaps[0]?.affectedRefs).toContain('capacity_snapshot')
+    expect(generated.cameraCues.map(cue => cue.mode)).toContain('zap_focus')
+
+    assertProofReplayBundleShipmentGate(generated)
+    assertReplayPlanSourceCoverage(buildReplayRenderPlan(generated))
+  })
+
+  test('generated replay rejects real bitcoin timeline rows without public receipt evidence', () => {
+    const unsafe = {
+      ...generatedTimelineEnvelope,
+      events: [
+        timelineEvent({
+          amountSats: 1000,
+          eventRef: 'activity.real.bitcoin.unsafe',
+          kind: 'real_bitcoin_moved',
+          realBitcoinMoved: true,
+          sourceKind: 'settlement_receipt',
+          sourceRefs: ['settlement.row.without.receipt'],
+          text: 'Unsafe payment row.',
+          ts: '2026-06-18T12:00:00.000Z',
+        }),
+      ],
+      sourceLag: [],
+    }
+
+    expect(() =>
+      buildProofReplayBundleFromPublicActivityTimeline(unsafe),
+    ).toThrow(/realBitcoinMoved:true requires a public receipt source ref/)
   })
 
   test('builds a deterministic render plan with stable event ordering and hit targets', () => {
