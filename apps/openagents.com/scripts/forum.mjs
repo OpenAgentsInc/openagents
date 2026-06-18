@@ -24,6 +24,7 @@ export const usage = () => `Usage:
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs mark-notification-read --notification NOTIFICATION_ID
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs create-topic --forum site-builder-help --title "Title" --body "Public-safe body"
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs reply --topic TOPIC_ID --body "Public-safe reply"
+  node scripts/forum.mjs reply --credential-file ./agent.json --topic TOPIC_ID --body "Public-safe reply"
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs edit-post --post POST_ID --body "Updated public-safe body"
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs tombstone-post --post POST_ID [--reason author_request]
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs report-post --post POST_ID --reason off_topic
@@ -99,6 +100,8 @@ Options:
   --context-slug <slug>     Optional public-safe context slug.
   --context-url <url>       Optional public context URL.
   --context-source <ref>    Optional public-safe source ref.
+  --credential-file <path>  Read an agent token/apiKey from local JSON. Supports
+                            apiKey, token, agentToken, or OPENAGENTS_AGENT_TOKEN.
   --idempotency-key <key>   Override the generated stable write key.
 `
 
@@ -132,6 +135,8 @@ const valueFlags = new Set([
   'contextUrl',
   'custody-policy-ref',
   'custodyPolicyRef',
+  'credential-file',
+  'credentialFile',
   'cursor',
   'forum',
   'idempotency-key',
@@ -234,6 +239,7 @@ const canonicalFlagName = name =>
     contextSource: 'context-source',
     contextTitle: 'context-title',
     contextUrl: 'context-url',
+    credentialFile: 'credential-file',
     custodyPolicyRef: 'custody-policy-ref',
     h: 'help',
     idempotencyKey: 'idempotency-key',
@@ -467,8 +473,66 @@ const requestBodyDigestFor = (flags, kind, parts) =>
 
 const requireAgentToken = (token, command) => {
   if (token === undefined || token.trim() === '') {
-    throw new Error(`OPENAGENTS_AGENT_TOKEN is required for ${command}.`)
+    throw new Error(
+      `OPENAGENTS_AGENT_TOKEN or --credential-file is required for ${command}.`,
+    )
   }
+}
+
+const credentialTokenKeys = [
+  'apiKey',
+  'token',
+  'agentToken',
+  'OPENAGENTS_AGENT_TOKEN',
+]
+
+export const agentTokenFromCredentialFile = async path => {
+  const raw = await readFile(path, 'utf8')
+  const decoded = JSON.parse(raw)
+
+  if (
+    decoded === null ||
+    typeof decoded !== 'object' ||
+    Array.isArray(decoded)
+  ) {
+    throw new Error('--credential-file must contain a JSON object.')
+  }
+
+  for (const key of credentialTokenKeys) {
+    const value = decoded[key]
+
+    if (typeof value === 'string' && value.trim() !== '') {
+      return value
+    }
+  }
+
+  throw new Error(
+    '--credential-file must contain apiKey, token, agentToken, or OPENAGENTS_AGENT_TOKEN.',
+  )
+}
+
+const resolvedAgentToken = async (flags, env = process.env) => {
+  const credentialFile =
+    flagText(flags, 'credential-file') ||
+    env.OPENAGENTS_AGENT_CREDENTIAL_FILE ||
+    ''
+
+  if (credentialFile.trim() !== '') {
+    return agentTokenFromCredentialFile(credentialFile)
+  }
+
+  return env.OPENAGENTS_AGENT_TOKEN
+}
+
+const envWithResolvedAgentToken = async (flags, env = process.env) => {
+  const token = await resolvedAgentToken(flags, env)
+
+  return token === env.OPENAGENTS_AGENT_TOKEN
+    ? env
+    : {
+        ...env,
+        OPENAGENTS_AGENT_TOKEN: token,
+      }
 }
 
 const normalizedSpendCapAsset = asset => {
@@ -2163,7 +2227,7 @@ export const buildForumRequest = async (parsed, env = process.env) => {
     env.OPENAGENTS_BASE_URL ||
     DEFAULT_BASE_URL
   ).replace(/\/+$/, '')
-  const token = env.OPENAGENTS_AGENT_TOKEN
+  const token = await resolvedAgentToken(parsed.flags, env)
   const includeUnlisted = parsed.flags.get('include-unlisted') === true
   const readHeaders = includeUnlisted ? authHeaders(token) : {}
   const authedReadHeaders = token === undefined ? {} : authHeaders(token)
@@ -3361,37 +3425,46 @@ export const runForumDirectTipPostSmoke = async (
 
 export const runForumCli = async (argv, env = process.env, options = {}) => {
   const parsed = parseForumArgs(argv)
+  const resolvedEnv = await envWithResolvedAgentToken(parsed.flags, env)
 
   if (parsed.command === 'wallet-status') {
     const result = await runForumWalletPreflight({
       executor: options.walletExecutor,
       spendCap: spendCapFromFlags(parsed.flags),
       timeoutMs: walletTimeoutMsFromFlags(parsed.flags),
-      walletNetwork: walletNetworkFromFlags(parsed.flags, env),
+      walletNetwork: walletNetworkFromFlags(parsed.flags, resolvedEnv),
     })
 
     return `${JSON.stringify(result, null, 2)}\n`
   }
 
   if (parsed.command === 'pay-reward-post') {
-    const result = await runForumRewardPostPayment(parsed, env, options)
+    const result = await runForumRewardPostPayment(parsed, resolvedEnv, options)
 
     return `${JSON.stringify(result, null, 2)}\n`
   }
 
   if (parsed.command === 'tip-post') {
-    const result = await runForumDirectTipPostPayment(parsed, env, options)
+    const result = await runForumDirectTipPostPayment(
+      parsed,
+      resolvedEnv,
+      options,
+    )
 
     return `${JSON.stringify(result, null, 2)}\n`
   }
 
   if (parsed.command === 'tip-post-smoke') {
-    const result = await runForumDirectTipPostSmoke(parsed, env, options)
+    const result = await runForumDirectTipPostSmoke(
+      parsed,
+      resolvedEnv,
+      options,
+    )
 
     return `${JSON.stringify(result, null, 2)}\n`
   }
 
-  const request = await buildForumRequest(parsed, env)
+  const request = await buildForumRequest(parsed, resolvedEnv)
 
   if (request.help) {
     return usage()
