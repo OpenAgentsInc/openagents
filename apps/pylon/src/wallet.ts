@@ -699,6 +699,41 @@ export function withSparkPrimaryWalletBalance(
   }
 }
 
+// Projection-safe balance subset shared by the mobile `walletStatus` action and
+// the dedicated `pylon balance --json` command (#5402 launch shakeout). Both
+// read the SAME local primary-wallet projection (`classifyPrimaryAgentWallet`)
+// so a contributor running `balance` sees the same readable, send-ready balance
+// `wallet status` shows -- not the empty `{}` the old network earnings endpoint
+// returned. This deliberately exposes only redacted/projection-safe fields:
+// balance + readiness flags + blocker refs + the unified-balance projection.
+// It NEVER carries seeds, raw Spark addresses, invoices, offers, or any other
+// payment material -- the same redaction posture `wallet status` already uses.
+export type WalletBalanceProjection = {
+  schema: "openagents.pylon.wallet_balance.v0.1"
+  configured: boolean
+  daemonOnline: boolean
+  balanceSats: number | null
+  receiveReady: boolean
+  sendReady: boolean
+  readiness: WalletReadiness
+  blockerRefs: string[]
+  unifiedBalance: UnifiedWalletBalanceProjection
+}
+
+export function projectWalletBalance(status: WalletStatusProjection): WalletBalanceProjection {
+  return {
+    schema: "openagents.pylon.wallet_balance.v0.1",
+    configured: status.configured,
+    daemonOnline: status.daemonOnline,
+    balanceSats: status.balanceSats,
+    receiveReady: status.receiveReady,
+    sendReady: status.sendReady,
+    readiness: status.readiness,
+    blockerRefs: status.blockerRefs,
+    unifiedBalance: status.unifiedBalance,
+  }
+}
+
 export function mdkScopedAgentWalletStatus(): WalletStatusProjection {
   return {
     schema: "openagents.pylon.wallet_status.v0.3",

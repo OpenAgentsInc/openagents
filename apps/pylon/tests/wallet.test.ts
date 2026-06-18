@@ -14,6 +14,7 @@ import {
   isSparkBackupDefaultEnabled,
   preflightLegacySparkMigration,
   prepareSparkBackupReceive,
+  projectWalletBalance,
   readCachedSparkTarget,
   receiveWithFallback,
   receiveWithMdk,
@@ -959,6 +960,63 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
     expect(JSON.stringify(status.unifiedBalance)).not.toContain("123")
     expect(JSON.stringify(status.unifiedBalance)).not.toContain(RAW_SPARK_ADDRESS)
     assertPublicProjectionSafe(status.unifiedBalance)
+  })
+
+  test("`balance --json` projects the same send-ready local wallet source as `wallet status` (never empty {}) (#5402)", async () => {
+    // Regression for the v1.0.0 shakeout bug: `pylon balance --json` returned an
+    // empty `{}` because it called the network earnings endpoint instead of the
+    // local primary-wallet projection `wallet status --json` reads. Both now flow
+    // through the SAME projection; this asserts the balance subset is populated
+    // and mirrors the wallet-status balance source.
+    const mdkStatus = await classifyMdkWallet(
+      runner({ balance: { stdout: { balance_sats: 123, send_ready: true, outbound_capacity_sats: 21 } } }),
+      { MDK_WALLET_PORT: "3457" } as NodeJS.ProcessEnv,
+    )
+    const helper = sparkHelper({
+      address: { stdout: { spark_address: RAW_SPARK_ADDRESS } },
+      status: {
+        stdout: {
+          balance_sats: 50_000,
+          claimable_htlc_count: 0,
+          claimable_htlc_sats: 0,
+          unclaimed_deposit_count: 0,
+        },
+      },
+    })
+    const sparkBackup = await classifySparkBackupReceive({
+      enabled: true,
+      env: { OPENAGENTS_SPARK_API_KEY: "k" } as NodeJS.ProcessEnv,
+      helper,
+    })
+    const detected = await detectSparkBackupBalance(helper)
+    sparkBackup.detectedBalanceSats = detected.detectedBalanceSats
+    sparkBackup.claimableHtlcSats = detected.claimableHtlcSats
+    sparkBackup.claimableHtlcCount = detected.claimableHtlcCount
+    sparkBackup.unclaimedDepositCount = detected.unclaimedDepositCount
+
+    // Same local projection source `wallet status --json` uses.
+    const status = withSparkPrimaryWalletBalance(mdkStatus, sparkBackup)
+    const projected = projectWalletBalance(status)
+
+    // Not the old empty `{}`: the balance subset is populated.
+    expect(Object.keys(projected).length).toBeGreaterThan(0)
+    expect(projected.balanceSats).toBe(50_000)
+    expect(projected.daemonOnline).toBe(true)
+    expect(projected.receiveReady).toBe(true)
+    expect(projected.sendReady).toBe(true)
+    expect(projected.readiness).toBe("send-ready")
+
+    // Mirrors the wallet-status balance source exactly.
+    expect(projected.balanceSats).toBe(status.balanceSats)
+    expect(projected.sendReady).toBe(status.sendReady)
+    expect(projected.receiveReady).toBe(status.receiveReady)
+    expect(projected.readiness).toBe(status.readiness)
+    expect(projected.daemonOnline).toBe(status.daemonOnline)
+    expect(projected.unifiedBalance).toBe(status.unifiedBalance)
+
+    // Projection-safe: no seeds, raw Spark addresses, offers, or invoices.
+    expect(JSON.stringify(projected)).not.toContain(RAW_SPARK_ADDRESS)
+    assertPublicProjectionSafe(projected)
   })
 
   test("assertPublicProjectionSafe rejects projections containing raw Spark material", () => {

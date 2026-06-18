@@ -22,7 +22,7 @@ import {
   withCodexAgentCapability,
 } from "./codex-agent"
 import { withWorkspaceMaterializerCapability } from "./workspace-materializer"
-import { claimTipReadiness, readBalance, setTipPreferences, sweepStatus, tipPost } from "./tips"
+import { claimTipReadiness, setTipPreferences, sweepStatus, tipPost } from "./tips"
 import {
   ARTANIS_FORUM_SLUG,
   appendMemory,
@@ -154,6 +154,7 @@ import {
   detectSparkBackupBalance,
   mdkScopedAgentWalletStatus,
   prepareSparkBackupReceive,
+  projectWalletBalance,
   preflightLegacySparkMigration,
   readCachedSparkTarget,
   recommendSparkSweep,
@@ -2624,9 +2625,23 @@ async function main() {
         return
       }
       if (args[0] === "balance") {
-        const result = await readBalance(networkOptions)
+        // #5402: `balance` is the projection-safe "check your earnings" path in
+        // the 28-command catalog. It MUST read the same local primary-wallet
+        // projection `wallet status --json` reads (classifyPrimaryAgentWallet),
+        // not the network earnings endpoint -- that endpoint returns `{}` for a
+        // contributor with no server-side ledger record, making the wallet look
+        // empty even when it holds a readable, send-ready balance. We emit only
+        // the projection-safe balance subset (balance + readiness + blockers),
+        // never seeds/offers/raw Spark material.
+        const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+        const state = await ensurePylonLocalState(summary)
+        const status = await classifyPrimaryAgentWalletForState(state)
+        const result = projectWalletBalance(status)
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
-        return
+        // Reading the Spark-primary balance opens the Spark SDK which keeps a
+        // background handle alive; exit explicitly so pipes see EOF (same reason
+        // `wallet status` calls process.exit(0)).
+        process.exit(0)
       }
       if (args[0] === "sweep-status") {
         const result = await sweepStatus(networkOptions)
