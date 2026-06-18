@@ -771,6 +771,20 @@ SSE and SpacetimeDB are delivery/projection layers only.
    - Body summary: Subscribe to timeline-backed world events and animate only
      events with source refs, generated-at, and stale/expiry metadata. Preserve
      the June 17 ban on anonymous motion and add canvas/browser smoke coverage.
+   - Implementation status (2026-06-18, issue #5425): extended the `/tassadar`
+     SpacetimeDB subscription to include `run.public_activity_timeline`
+     `world_event` rows, and extended the summary adapter to parse
+     `world_event.public_activity.*` summaries that use
+     `openagents.world.public_activity_event_summary.v1`, then expose only
+     source-backed rows as `world.activityMotions`. The visualization adapter
+     turns those rows into one-shot bursts only when the target entity already
+     exists and the motion carries public source refs, generatedAt, and either
+     expiry or source-lag metadata; structural/ambient motion stays static and
+     beams remain empty. Tests cover positive activity bursts plus rejection of
+     missing refs, missing liveness metadata, and unsafe summary text. This
+     remains observation/projection/retrieval only and grants no settlement,
+     payout, accepted-work, deployment, provider, wallet, or public-claim
+     authority.
 
 #### EPIC 4 — Web and desktop visibility surfaces
 

@@ -15,6 +15,42 @@ const m = (value: number) => ({
   sourceRefs: [],
 })
 
+const activitySummary = (
+  input: Readonly<{
+    cursor?: string
+    eventRef?: string
+    expiresAt?: string
+    generatedAt?: string
+    kind?: string
+    sourceKind?: string
+    sourceLagStatus?: string
+    sourceRefs?: ReadonlyArray<string>
+    text?: string
+  }>,
+) =>
+  JSON.stringify({
+    authority: 'worker_d1_public_projection_only',
+    blockerRefs: [],
+    caveatRefs: ['caveat.public.activity_timeline.source_lag_exceeds_contract'],
+    cursor:
+      input.cursor ??
+      '2026-06-18T18:00:02.000Z:pylon_presence:pylon.world.one',
+    eventRef: input.eventRef ?? 'pylon.world.one',
+    eventTs: '2026-06-18T18:00:02.000Z',
+    expiresAt: input.expiresAt ?? '2026-06-18T18:05:02.000Z',
+    generatedAt: input.generatedAt ?? '2026-06-18T18:00:02.000Z',
+    kind: input.kind ?? 'pylon_heartbeat',
+    schema: 'openagents.world.public_activity_event_summary.v1',
+    sourceKind: input.sourceKind ?? 'pylon_presence',
+    sourceLagStatus: input.sourceLagStatus ?? 'stale',
+    sourceRefs: input.sourceRefs ?? [
+      'pylon.world.one',
+      'route:/api/public/pylon-stats',
+    ],
+    text:
+      input.text ?? 'Pylon heartbeat observed in the public activity timeline.',
+  })
+
 const populated: TassadarRunPublicSummary = {
   runRef: 'run.tassadar.executor.20260615',
   runLabel: 'Tassadar executor run',
@@ -633,6 +669,15 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
           sourceRef: 'challenge.world.1',
           summary: 'Verified replay pair 1',
         } as never,
+        {
+          entityRef: 'pylon.world.one',
+          eventKind: 'pylon_heartbeat',
+          eventRef: 'world_event.public_activity.pylon_heartbeat.1',
+          runRef: 'run.public_activity_timeline',
+          sourceGeneratedAt: '2026-06-18T18:00:02.000Z',
+          sourceRef: 'pylon.world.one',
+          summary: activitySummary({}),
+        } as never,
       ],
     })
 
@@ -760,6 +805,21 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
         speakerAvatarRef: 'avatar.viewer.one',
       },
     ])
+    expect(fromWorld.world?.activityMotions).toEqual([
+      {
+        atId: 'pylon.world.one',
+        cursor: '2026-06-18T18:00:02.000Z:pylon_presence:pylon.world.one',
+        eventRef: 'pylon.world.one',
+        expiresAt: '2026-06-18T18:05:02.000Z',
+        generatedAt: '2026-06-18T18:00:02.000Z',
+        motionId: 'world_event.public_activity.pylon_heartbeat.1',
+        motionKind: 'pylon_heartbeat',
+        sourceKind: 'pylon_presence',
+        sourceLagStatus: 'stale',
+        sourceRefs: ['pylon.world.one', 'route:/api/public/pylon-stats'],
+        text: 'Pylon heartbeat observed in the public activity timeline.',
+      },
+    ])
 
     const options = tassadarRunVisualizationOptions(fromWorld)
     expect(options.entities).toContainEqual({
@@ -817,7 +877,21 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
       status: 'simulation_settled',
     })
     expect(options.beams).toEqual([])
-    expect(options.bursts).toEqual([])
+    expect(options.bursts).toEqual([
+      {
+        atId: 'pylon.world.one',
+        cursor: '2026-06-18T18:00:02.000Z:pylon_presence:pylon.world.one',
+        eventRef: 'pylon.world.one',
+        expiresAt: '2026-06-18T18:05:02.000Z',
+        generatedAt: '2026-06-18T18:00:02.000Z',
+        motionId: 'world_event.public_activity.pylon_heartbeat.1',
+        motionKind: 'pylon_heartbeat',
+        simulated: false,
+        sourceKind: 'pylon_presence',
+        sourceLagStatus: 'stale',
+        sourceRefs: ['pylon.world.one', 'route:/api/public/pylon-stats'],
+      },
+    ])
     expect(options.contributors).toEqual([])
   })
 
@@ -856,5 +930,71 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
         entity => entity.id === 'avatar.pylon_agent.missing_position',
       ),
     ).toBe(false)
+  })
+
+  it('does not animate activity rows without public refs or liveness metadata', () => {
+    const summary = spacetimeWorldSummaryFromRows(
+      {
+        realGradient: {
+          leaderboardRows: [
+            {
+              pylonRef: 'pylon.world.one',
+              rank: 1,
+              sourceRefs: ['training.lease.world.one'],
+              verifiedWindowCount: 1,
+            },
+          ],
+        },
+        runRef: 'run.tassadar.executor.20260615',
+      },
+      {
+        worldEvents: [
+          {
+            entityRef: 'pylon.world.one',
+            eventKind: 'pylon_heartbeat',
+            eventRef: 'world_event.public_activity.missing_refs',
+            runRef: 'run.public_activity_timeline',
+            sourceGeneratedAt: '2026-06-18T18:00:02.000Z',
+            sourceRef: '',
+            summary: activitySummary({ sourceRefs: [] }),
+          } as never,
+          {
+            entityRef: 'pylon.world.one',
+            eventKind: 'pylon_heartbeat',
+            eventRef: 'world_event.public_activity.missing_liveness',
+            runRef: 'run.public_activity_timeline',
+            sourceGeneratedAt: '',
+            sourceRef: 'pylon.world.one',
+            summary: activitySummary({
+              expiresAt: '',
+              generatedAt: '',
+              sourceLagStatus: '',
+            }),
+          } as never,
+          {
+            entityRef: 'pylon.world.one',
+            eventKind: 'pylon_heartbeat',
+            eventRef: 'world_event.public_activity.private_payload',
+            runRef: 'run.public_activity_timeline',
+            sourceGeneratedAt: '2026-06-18T18:00:02.000Z',
+            sourceRef: 'pylon.world.one',
+            summary: activitySummary({
+              text: 'raw_prompt customer_email@example.com sk-test-private',
+            }),
+          } as never,
+        ],
+      },
+    )
+    const options = tassadarRunVisualizationOptions(summary)
+
+    expect(summary.world?.activityMotions).toBeUndefined()
+    expect(options.entities).toContainEqual({
+      id: 'pylon.world.one',
+      label: 'P1',
+      position: [-2.35, 0, 0.12],
+      status: 'verified',
+    })
+    expect(options.beams).toEqual([])
+    expect(options.bursts).toEqual([])
   })
 })

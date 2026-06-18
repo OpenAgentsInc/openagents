@@ -14,6 +14,7 @@
 import {
   SpatialHashGrid,
   type SpatialBounds2,
+  type TrainingRunBurstDefinition,
   type TrainingRunEntityDefinition,
   type TrainingRunNodeDefinition,
   type TrainingRunVector,
@@ -166,6 +167,20 @@ export interface TassadarWorldChatBubble {
   readonly speakerAvatarRef: string
 }
 
+export interface TassadarWorldActivityMotion {
+  readonly atId: string
+  readonly cursor: string
+  readonly eventRef: string
+  readonly expiresAt?: string
+  readonly generatedAt: string
+  readonly motionId: string
+  readonly motionKind: string
+  readonly sourceKind: string
+  readonly sourceLagStatus?: string
+  readonly sourceRefs: ReadonlyArray<string>
+  readonly text: string
+}
+
 /** Narrow structural view of the worker's `TrainingRunPublicSummary` (public-safe). */
 export interface TassadarRunPublicSummary {
   readonly corpus?: {
@@ -227,6 +242,7 @@ export interface TassadarRunPublicSummary {
     readonly windowRef?: string
   }>
   readonly world?: {
+    readonly activityMotions?: ReadonlyArray<TassadarWorldActivityMotion>
     readonly agentAvatars?: ReadonlyArray<TassadarWorldAgentAvatar>
     readonly avatarPositions?: ReadonlyArray<TassadarWorldAvatarPosition>
     readonly chatBubbles?: ReadonlyArray<TassadarWorldChatBubble>
@@ -809,6 +825,48 @@ const chatBubbleEntities = (
   })
 }
 
+type TassadarActivityBurstDefinition = TrainingRunBurstDefinition & {
+  readonly cursor: string
+  readonly eventRef: string
+  readonly sourceKind: string
+  readonly sourceLagStatus?: string
+}
+
+const activityBurstsFromSummary = (
+  summary: TassadarRunPublicSummary,
+  entities: ReadonlyArray<TrainingRunEntityDefinition>,
+): ReadonlyArray<TassadarActivityBurstDefinition> => {
+  const entityIds = new Set(entities.map(entity => entity.id))
+  return (summary.world?.activityMotions ?? []).flatMap(motion => {
+    if (!entityIds.has(motion.atId)) return []
+    if (publicRefs(motion.sourceRefs).length === 0) return []
+    if (motion.generatedAt.trim() === '') return []
+    if (
+      (motion.expiresAt ?? '').trim() === '' &&
+      (motion.sourceLagStatus ?? '').trim() === ''
+    ) {
+      return []
+    }
+    return [
+      {
+        atId: motion.atId,
+        cursor: motion.cursor,
+        eventRef: motion.eventRef,
+        ...(motion.expiresAt === undefined ? {} : { expiresAt: motion.expiresAt }),
+        generatedAt: motion.generatedAt,
+        motionId: motion.motionId,
+        motionKind: motion.motionKind,
+        simulated: motion.motionKind === 'settlement_recorded',
+        sourceKind: motion.sourceKind,
+        ...(motion.sourceLagStatus === undefined
+          ? {}
+          : { sourceLagStatus: motion.sourceLagStatus }),
+        sourceRefs: motion.sourceRefs,
+      },
+    ]
+  })
+}
+
 const runNodeStatus = (
   state: string | undefined,
 ): TrainingRunNodeDefinition['status'] =>
@@ -853,6 +911,10 @@ export interface TassadarSpacetimeWorldRows {
 const rowText = (value: string | null | undefined): string =>
   value?.trim() ?? ''
 
+const ACTIVITY_WORLD_RUN_REF = 'run.public_activity_timeline'
+const ACTIVITY_WORLD_EVENT_SUMMARY_SCHEMA =
+  'openagents.world.public_activity_event_summary.v1'
+
 const labelOrdinal = (label: string, prefix: string): number => {
   const match = label.match(new RegExp(`^${prefix}(\\d+)$`))
   return match?.[1] === undefined ? Number.POSITIVE_INFINITY : Number(match[1])
@@ -896,6 +958,109 @@ const sourceRefsForEntity = (
       .filter(event => event.entityRef === entity.entityRef)
       .map(event => event.sourceRef),
   ])
+
+const unsafeActivityMotionMaterialPattern =
+  /(@|\/Users\/|\/home\/|bearer\s+[A-Za-z0-9._-]+|customer[_-]?(email|name|phone|prompt)|email[_-]?(address|body|raw)|invoice[_-]?(raw|id)|lnbc|lntb|lnbcrt|mnemonic|payment[_-]?(hash|invoice|preimage|raw)|private[_-]?(key|source|trace|wallet)|provider[_-]?(payload|secret|token)|raw[_-]?(payload|prompt|trace|log)|secret|sk-[a-z0-9]|token[_-]?secret|wallet[_-]?(key|material|seed))/i
+
+const safeActivitySummaryText = (value: string): boolean =>
+  !unsafeActivityMotionMaterialPattern.test(value)
+
+const jsonRecord = (value: string): Record<string, unknown> | null => {
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
+}
+
+const recordString = (
+  record: Record<string, unknown>,
+  key: string,
+): string => {
+  const value = record[key]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+const recordRefs = (
+  record: Record<string, unknown>,
+  key: string,
+): ReadonlyArray<string> => {
+  const value = record[key]
+  return Array.isArray(value)
+    ? uniquePublicRefs(
+        value.map(item => (typeof item === 'string' ? item : undefined)),
+      )
+    : []
+}
+
+const activityMotionFromWorldEvent = (
+  row: WorldEvent,
+): TassadarWorldActivityMotion | null => {
+  const summaryText = rowText(row.summary)
+  if (!row.eventRef.startsWith('world_event.public_activity.')) return null
+  if (summaryText === '' || !safeActivitySummaryText(summaryText)) return null
+
+  const summary = jsonRecord(summaryText)
+  if (
+    summary === null ||
+    recordString(summary, 'schema') !== ACTIVITY_WORLD_EVENT_SUMMARY_SCHEMA
+  ) {
+    return null
+  }
+
+  const sourceRefs = uniquePublicRefs([
+    rowText(row.sourceRef),
+    ...recordRefs(summary, 'sourceRefs'),
+  ])
+  const generatedAt =
+    recordString(summary, 'generatedAt') || rowText(row.sourceGeneratedAt)
+  const expiresAt = recordString(summary, 'expiresAt')
+  const sourceLagStatus = recordString(summary, 'sourceLagStatus')
+  const atId = rowText(row.entityRef)
+
+  if (
+    atId === '' ||
+    sourceRefs.length === 0 ||
+    generatedAt === '' ||
+    (expiresAt === '' && sourceLagStatus === '')
+  ) {
+    return null
+  }
+
+  return {
+    atId,
+    cursor: recordString(summary, 'cursor'),
+    eventRef: recordString(summary, 'eventRef') || row.eventRef,
+    ...(expiresAt === '' ? {} : { expiresAt }),
+    generatedAt,
+    motionId: row.eventRef,
+    motionKind: recordString(summary, 'kind') || rowText(row.eventKind),
+    sourceKind: recordString(summary, 'sourceKind'),
+    ...(sourceLagStatus === '' ? {} : { sourceLagStatus }),
+    sourceRefs,
+    text: recordString(summary, 'text') || rowText(row.eventKind),
+  }
+}
+
+const activityMotionsFromWorldEvents = (
+  rows: ReadonlyArray<WorldEvent>,
+  runRef: string,
+): ReadonlyArray<TassadarWorldActivityMotion> =>
+  rows
+    .filter(
+      row =>
+        row.runRef === runRef ||
+        row.runRef === ACTIVITY_WORLD_RUN_REF ||
+        row.eventRef.startsWith('world_event.public_activity.'),
+    )
+    .map(activityMotionFromWorldEvent)
+    .filter(
+      (motion): motion is TassadarWorldActivityMotion => motion !== null,
+    )
+    .sort((left, right) => left.motionId.localeCompare(right.motionId))
 
 const numberFromU64 = (value: SettlementRef['amountSats']): number =>
   typeof value === 'bigint'
@@ -1209,6 +1374,10 @@ export const spacetimeWorldSummaryFromRows = (
     row => row.runRef === runRef,
   )
   const events = (rows.worldEvents ?? []).filter(row => row.runRef === runRef)
+  const activityMotions = activityMotionsFromWorldEvents(
+    rows.worldEvents ?? [],
+    runRef,
+  )
   const worldRegions = worldRegionsFromRows(rows.worldRegions ?? [], runRef)
   const pylonStations = worldStationsFromRows(rows.pylonStations ?? [], runRef)
   const stationRefs = new Set(pylonStations.map(row => row.pylonRef))
@@ -1255,6 +1424,7 @@ export const spacetimeWorldSummaryFromRows = (
     proofs.length === 0 &&
     settlements.length === 0 &&
     events.length === 0 &&
+    activityMotions.length === 0 &&
     worldRegions.length === 0 &&
     pylonStations.length === 0 &&
     agentAvatars.length === 0 &&
@@ -1326,6 +1496,7 @@ export const spacetimeWorldSummaryFromRows = (
     ...(runState === undefined ? {} : { runState }),
     ...(settlementRows.length === 0 ? {} : { settlementRows }),
     ...(pylonStations.length === 0 &&
+    activityMotions.length === 0 &&
     worldRegions.length === 0 &&
     agentAvatars.length === 0 &&
     avatarPositions.length === 0 &&
@@ -1336,6 +1507,7 @@ export const spacetimeWorldSummaryFromRows = (
       : {
           world: {
             ...baseSummary.world,
+            ...(activityMotions.length === 0 ? {} : { activityMotions }),
             ...(agentAvatars.length === 0 ? {} : { agentAvatars }),
             ...(avatarPositions.length === 0 ? {} : { avatarPositions }),
             ...(chatBubbles.length === 0 ? {} : { chatBubbles }),
@@ -1391,10 +1563,11 @@ export const trainingRunEntityLayerFromPublicSummary = (
     ...settlementEntities(settlements),
     ...corpusEntities(summary),
   ]
+  const bursts = activityBurstsFromSummary(summary, entities)
 
   return {
     beams: [],
-    bursts: [],
+    bursts,
     contributors: [],
     entities,
     lossCurve: [],

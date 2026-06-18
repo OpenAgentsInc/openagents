@@ -46,6 +46,7 @@ const SUBSCRIBED_TABLES = [
 
 const REGION_REF_PREFIX = 'region.'
 const REGION_REF_SUFFIX = '.main'
+const PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF = 'run.public_activity_timeline'
 
 type SpacetimeBindings = typeof import('./spacetimeWorldBindings')
 type DbConnection = InstanceType<SpacetimeBindings['DbConnection']>
@@ -156,11 +157,15 @@ export const spacetimeConfigFromElement = (
   }
 }
 
-const subscriptionQueries = (runRef: string): ReadonlyArray<string> => {
+export const tassadarSpacetimeWorldSubscriptionQueries = (
+  runRef: string,
+): ReadonlyArray<string> => {
   const run = sqlString(runRef)
+  const publicActivityRun = sqlString(PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF)
   const region = sqlString(tassadarRegionRefForRun(runRef))
   return [
     ...SUBSCRIBED_TABLES.map(table => `SELECT * FROM ${table} WHERE run_ref = ${run}`),
+    `SELECT * FROM world_event WHERE run_ref = ${publicActivityRun}`,
     `SELECT * FROM pylon_station WHERE run_ref = ${run}`,
     'SELECT * FROM agent_avatar',
     `SELECT * FROM avatar_position WHERE region_ref = ${region}`,
@@ -291,7 +296,7 @@ export const startTassadarSpacetimeWorldSubscription = async (
         .subscriptionBuilder()
         .onApplied(publish)
         .onError(input.onError)
-        .subscribe([...subscriptionQueries(runRef)])
+        .subscribe([...tassadarSpacetimeWorldSubscriptionQueries(runRef)])
     })
     .onConnectError((_ctx: unknown, error: Error) => {
       input.onError(error)
