@@ -1022,6 +1022,26 @@ marketplace packaging, pricing, payout, and settlement claims remain blocked.
   marketplace listing, paid construction settlement, or serving.
 - **#5325 — C5** Module composition/linking (`tassadar_module_linker`) + the
   compiled-weight-module marketplace listing — top-5 #3. `[psionic + openagents]`
+  Status 2026-06-18: landed in psionic/openagents. Psionic now builds
+  `tassadar_alm_linked_dense_module.v1` for two dense source banks,
+  `tassadar_corpus.mul_add_v1` and `tassadar_corpus.memory_roundtrip_v1`,
+  resolves them through `tassadar_module_linker`, materializes one block-
+  separated composed dense module, and conformance-replays each projected bank
+  output against its source dense trace. The linked module digest is
+  `cc1403674fc0d38892610d9e9c6c9230075494061f720c45bfa4f7b5a961756a`;
+  the composed dense module digest is
+  `2f3fa15120f0a078d4ede4e074e288fed24533ffa46f2d4b8aa4ca418c876602`;
+  the composed replay trace digest is
+  `0caa43ace27a5b86da14cfe037e65c30f250f0c0a0ac1c01f1fe3a3a45a230b2`.
+  OpenAgents imports the generated fixture, independently replay-verifies the
+  composed module and source-bank projections in TypeScript, and exposes a
+  digest-pinned read-only listing at
+  `/api/public/tassadar/compiled-module-marketplace`. The listing keeps
+  purchase, entitlement, and settlement separate: `settlementClaimAllowed` and
+  `purchaseSettlementAllowed` remain false unless replay verification clears
+  and public-safe purchase plus settlement receipt refs are present. This does
+  not claim arbitrary module installation, serving, learned weights, softmax
+  runtime, live purchase mutation, real settlement, or paid construction yet.
 
 ### Track V — Verification + settlement extensions (§3-§4, §4b)
 

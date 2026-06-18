@@ -336,6 +336,10 @@ import { handlePublicProofReplayBundleRequest } from './public-proof-replay-rout
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
 import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
 import {
+  TASSADAR_COMPILED_MODULE_MARKETPLACE_ROUTE,
+  buildPublicTassadarCompiledModuleMarketplaceEnvelope,
+} from './tassadar-compiled-module-marketplace'
+import {
   makeD1PylonApiStore,
   makeD1PylonSparkPayoutTargetStore,
   resolveSparkPayoutDestination,
@@ -7303,6 +7307,13 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.promise(() =>
         buildPublicTassadarRunSummaryEnvelopeForRequest(request, env),
+      ).pipe(Effect.map(envelope => noStoreJsonResponse(envelope))),
+  },
+  {
+    path: TASSADAR_COMPILED_MODULE_MARKETPLACE_ROUTE,
+    handler: () =>
+      Effect.promise(() =>
+        buildPublicTassadarCompiledModuleMarketplaceEnvelope(),
       ).pipe(Effect.map(envelope => noStoreJsonResponse(envelope))),
   },
   {

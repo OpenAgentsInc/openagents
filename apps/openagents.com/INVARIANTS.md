@@ -1404,6 +1404,11 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     top-level contract, public-safe summary metrics, and honest idle envelope
     only; no admin token, private logs, wallet material, pending-as-paid
     payout, or write authority).
+  - `GET /api/public/tassadar/compiled-module-marketplace` — live at read over
+    the committed psionic linked-dense fixture and local replay gate —
+    compliant (`generatedAt`, top-level contract, digest-pinned linked module
+    listing, source-bank replay/conformance refs, purchase/settlement blockers,
+    and explicit no mutation/no real-settlement authority).
   - `GET /api/public/proof-replays` — live at read proof replay resolver over
     public Worker-authoritative proof, run, pylon, and settlement refs —
     compliant (`generatedAt`, top-level contract, public-safe source refs,

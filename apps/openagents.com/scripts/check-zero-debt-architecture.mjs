@@ -503,6 +503,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/tassadar-compiled-module-marketplace.ts',
+    route: '/api/public/tassadar/compiled-module-marketplace',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/public-proof-replay-routes.ts',
     route: '/api/public/proof-replays',
     status: 'staleness_declared',

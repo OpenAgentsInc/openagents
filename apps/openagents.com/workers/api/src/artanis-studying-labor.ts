@@ -118,6 +118,15 @@ export type ArtanisStudyingLaborAcceptanceOutcome =
 const safeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,240}$/
 const sha256Pattern = /^sha256:[a-f0-9]{64}$/
 
+export class ArtanisStudyingLaborValidationError extends Error {
+  readonly field: string
+
+  constructor(field: string, detail: string) {
+    super(`${field} ${detail}`)
+    this.field = field
+  }
+}
+
 const uniqueRefs = (
   refs: ReadonlyArray<string | undefined>,
 ): ReadonlyArray<string> =>
@@ -128,7 +137,10 @@ const uniqueRefs = (
 
 const assertSafeRef = (ref: string, field: string): void => {
   if (!safeRefPattern.test(ref)) {
-    throw new Error(`${field} must be a public-safe ref.`)
+    throw new ArtanisStudyingLaborValidationError(
+      field,
+      'must be a public-safe ref.',
+    )
   }
   assertArtanisLaborPublicSafe(ref)
 }
@@ -140,7 +152,10 @@ const assertSafeRefs = (
 
 const assertSha256 = (hash: string, field: string): void => {
   if (!sha256Pattern.test(hash)) {
-    throw new Error(`${field} must be a sha256 ref.`)
+    throw new ArtanisStudyingLaborValidationError(
+      field,
+      'must be a sha256 ref.',
+    )
   }
 }
 

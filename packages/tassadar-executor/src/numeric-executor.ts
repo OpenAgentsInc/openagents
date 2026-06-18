@@ -135,6 +135,23 @@ const sha256Hex = async (chunks: ReadonlyArray<Uint8Array>): Promise<string> => 
 
 const textBytes = (value: string): Uint8Array => new TextEncoder().encode(value)
 
+export const digestTassadarNumericTraceRows = async (
+  graphDigest: string,
+  rows: ReadonlyArray<ReadonlyArray<bigint>>,
+): Promise<string> => {
+  const chunks: Uint8Array[] = [
+    textBytes("tassadar_alm_trace|"),
+    textBytes(graphDigest),
+  ]
+  for (const row of rows) {
+    chunks.push(textBytes("|row|"))
+    for (const value of row) {
+      chunks.push(i64LeBytes(value))
+    }
+  }
+  return sha256Hex(chunks)
+}
+
 /**
  * Executes one numeric model over per-step input rows, reproducing the
  * Rust executor's semantics and trace digest exactly.
@@ -244,17 +261,10 @@ export const executeTassadarNumericModel = async (
     }
     stepOutputs.push(model.output_slots.map((slot) => BigInt(Math.trunc(residual[slot] ?? 0))))
   }
-  const chunks: Uint8Array[] = [
-    textBytes("tassadar_alm_trace|"),
-    textBytes(model.graph_digest),
-  ]
-  for (const row of stepOutputs) {
-    chunks.push(textBytes("|row|"))
-    for (const value of row) {
-      chunks.push(i64LeBytes(value))
-    }
-  }
-  const traceDigest = await sha256Hex(chunks)
+  const traceDigest = await digestTassadarNumericTraceRows(
+    model.graph_digest,
+    stepOutputs,
+  )
   return {
     executorId: "tassadar.alm_numeric_executor.ts.v1",
     graphDigest: model.graph_digest,
