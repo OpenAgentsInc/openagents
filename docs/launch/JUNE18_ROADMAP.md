@@ -4,6 +4,60 @@ Date: 2026-06-18, 07:18 CT. Carries forward the still-live launch/test work
 from [`JUNE17_ROADMAP.md`](./JUNE17_ROADMAP.md), now that the Tassadar
 LLM-computer roadmap is implemented on `main`.
 
+## END-OF-DAY UPDATE 3 (2026-06-18, latest) — v1.0.1 shipped + visibility/replay audit — AUTHORITATIVE
+
+> Newest layer on top of all sections below. Honest split: **shipped** vs **in
+> flight** vs **owner-gated / not-yet**. Supersedes earlier sections where they
+> differ on these specific items.
+
+### Shipped (since UPDATE 2)
+
+- **Pylon v1.0.1 cut (`e8131c9`)** — `release(pylon): cut v1.0.1 — balance --json
+  fix + payout-target surfacing (Gap #2)`. The `balance --json` output is fixed
+  and the payout-target is now surfaced (closes the Gap #2 surfacing item). This
+  is the current `origin/main` tip.
+- **Self-serve open-window producer — DEPLOYED.** The scheduled producer
+  (`workers/api/src/index.ts` `runSelfServeWindowProducerScheduled`, `#5396`)
+  maintains a pool of openly-claimable Tassadar windows
+  (`run.tassadar.executor.20260615`, `homeworkKind:auto_starter`) so a fresh
+  contributor always has a window to claim without an operator opening one. Live.
+- **World-firsts — VERIFIED + finalized** (carried from UPDATE 2, §C / L-3,
+  `#5395` CLOSED): both claims defensible **only with their full qualifiers**;
+  registry promises stay RED pending an owner-signed receipt-first upgrade.
+- **Visibility/replay audit (this lane).** A full inventory of live + replay
+  visibility/observability infrastructure landed at
+  [`docs/launch/2026-06-18-pylon-visibility-replay-audit.md`](./2026-06-18-pylon-visibility-replay-audit.md).
+  Headline: the **data layer is built and live** (pylon-stats, capacity funnel +
+  history, tassadar-run-summary, enumerable settlements feed, verification
+  challenges, settlement receipts, artanis tick log, proof-replay bundle, the
+  SpacetimeDB live world) — all proven HTTP 200 live; but the **consumption
+  layer is partial**: no single live-activity surface, no real-time push (web is
+  polling), replay is two curated stories (no general "replay any
+  run/window/pair/range"), no unified cross-domain event timeline, and **desktop
+  + CLI see almost none of the fleet/money/forum live picture** (CLI is
+  self-only). Recommended path: Phase 0 composed live page → Phase 1 unified
+  public activity-timeline endpoint (keystone) → Phase 2 general replay generator
+  + fleet/forum replay → Phase 3 push + desktop/CLI fan-out → Phase 4 clip
+  productization (`#5346`, in flight). No new spend/settlement authority; reuse
+  the existing staleness contract + public-safe scrub.
+
+### Open items (honest)
+
+- **Spark-helper auto-start for non-technical users — OPEN.** The default
+  install still assumes the operator can bring up the Spark wallet helper; a
+  one-step auto-start for non-technical users is not yet shipped. Gates the
+  "anybody plugs in and earns" promise for non-technical contributors.
+- **Windows support — `#5404` OPEN.** Pylon is proven on darwin-arm64; Windows
+  is not yet a supported install target.
+- **Visibility/replay productization — OPEN (this audit's recommended path).**
+  Phases 0–4 above; Phase 1 (unified activity timeline) is the keystone.
+- **First fully-autonomous auto-stream live settlement — still OPEN** (L-2
+  `#5394`): the resolver is fixed and both legs are proven in test, but no
+  hands-off live receipt (gate firing at verdict, no operator) has been
+  dereferenced yet. Flag the first when it lands.
+- **Worker redeploy to serve registry `2026-06-18.5`** + updated AGENTS.md/
+  INSTALL.md — owner-gated (carried from UPDATE 2).
+
 ## END-OF-DAY UPDATE 2 (2026-06-18, late) — launch-readiness program + first hygiene Bitcoin — AUTHORITATIVE
 
 > Latest whole-day picture, layered on top of the FULL-DAY STATUS and the
