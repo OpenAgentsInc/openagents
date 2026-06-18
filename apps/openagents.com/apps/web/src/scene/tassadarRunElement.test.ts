@@ -329,6 +329,11 @@ describe('tassadarRunView page wiring', () => {
     expect(status?.textContent ?? '').toContain('active')
     expect(status?.textContent ?? '').toContain('2026-06-17T16:39:20.270Z')
     expect(status?.querySelector('.legend')).not.toBeNull()
+    expect(
+      status
+        ?.querySelector('[data-tassadar-replay-link="first-real-settlement"]')
+        ?.getAttribute('href'),
+    ).toBe('/tassadar/replay/first-real-settlement')
     expect(status?.textContent ?? '').toContain('registered')
     expect(status?.textContent ?? '').toContain('world rows')
     expect(status?.textContent ?? '').not.toContain('Refresh snapshot')

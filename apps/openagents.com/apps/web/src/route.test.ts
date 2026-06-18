@@ -40,6 +40,7 @@ import {
   SiteCheckoutDemoRoute,
   StatsRoute,
   TassadarRoute,
+  TassadarReplayRoute,
   WorkspaceRoute,
   urlToAppRoute,
 } from './route'
@@ -134,6 +135,11 @@ describe('app route parser', () => {
   test('accepts the public live Tassadar run route', () => {
     expect(urlToAppRoute(appUrl('/run'))).toEqual(RunRoute())
     expect(urlToAppRoute(appUrl('/tassadar'))).toEqual(TassadarRoute())
+    expect(
+      urlToAppRoute(appUrl('/tassadar/replay/first-real-settlement')),
+    ).toEqual(
+      TassadarReplayRoute({ replaySlug: 'first-real-settlement' }),
+    )
   })
 
   test('uses the Pylon scene as the root route', () => {

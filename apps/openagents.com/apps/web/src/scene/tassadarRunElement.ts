@@ -27,6 +27,10 @@ import { define as defineCustomElement } from 'foldkit/customElement'
 import type { Attribute, Html } from 'foldkit/html'
 
 import {
+  FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
+  TASSADAR_PROOF_REPLAY_TAG,
+} from './tassadarProofReplayElement'
+import {
   type PublicTassadarSettlementRow,
   type TassadarRunPublicSummary,
   tassadarRunVisualizationOptions,
@@ -94,6 +98,7 @@ const HOST_STYLE =
   '.status .legend{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:0.35rem 0.6rem;max-width:46rem;margin:0;padding:0;list-style:none;text-shadow:0 1px 8px rgba(0,0,0,0.85)}' +
   '.status .legend li{display:inline-flex;gap:0.32rem;align-items:baseline;min-width:0;font-size:0.62rem;line-height:1.25;color:rgba(255,255,255,0.58)}' +
   '.status .legend strong{font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.34)}.status .legend span{color:rgba(255,255,255,0.72)}' +
+  '.status a{pointer-events:auto;align-self:flex-start;white-space:nowrap;color:rgba(255,255,255,0.86);font-size:0.72rem;text-underline-offset:0.2rem;text-shadow:0 1px 8px rgba(0,0,0,0.9)}.status a:hover{color:#fff}' +
   '@media (max-width:720px){.status{display:grid}.status dl{grid-template-columns:repeat(2,minmax(0,1fr))}.status dd{max-width:none}.status .legend{justify-content:flex-start;max-width:none}}' +
   '.selection{position:absolute;right:1rem;bottom:1rem;z-index:2;max-width:min(26rem,calc(100% - 2rem));' +
   'border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.42);padding:0.75rem 0.875rem;' +
@@ -1235,7 +1240,19 @@ const makeClass = (): CustomElementConstructor =>
         item.append(term, detail)
         legend.append(item)
       }
-      panel.append(list, legend)
+      const replayLink = document.createElement('a')
+      replayLink.href = `/tassadar/replay/${FIRST_REAL_SETTLEMENT_REPLAY_SLUG}`
+      replayLink.setAttribute(
+        'data-tassadar-replay-link',
+        'first-real-settlement',
+      )
+      replayLink.textContent = 'Replay first settlement'
+      replayLink.setAttribute(
+        'aria-label',
+        'Replay first real Tassadar settlement',
+      )
+      replayLink.setAttribute('data-replay-element', TASSADAR_PROOF_REPLAY_TAG)
+      panel.append(list, legend, replayLink)
       mount.append(panel)
     }
 

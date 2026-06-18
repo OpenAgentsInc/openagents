@@ -158,6 +158,7 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'DemoLegal' &&
   route._tag !== 'Run' &&
   route._tag !== 'Tassadar' &&
+  route._tag !== 'TassadarReplay' &&
   route._tag !== 'Login' &&
   route._tag !== 'Blog' &&
   route._tag !== 'BlogPost' &&
@@ -241,6 +242,7 @@ export const browserRouteProductIntents = {
   PublicTrainingRuns: 'public.training.runs',
   Run: 'public.tassadar.run',
   Tassadar: 'public.tassadar.run',
+  TassadarReplay: 'public.tassadar.replay',
   Share: 'share.projection',
   SiteCheckoutDemo: 'public.sites.demo-checkout',
   SiteCheckoutDemoReturn: 'public.sites.demo-checkout-return',

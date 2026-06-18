@@ -17,6 +17,7 @@
     "@openagentsinc/mullet-schema": "workspace:*",
     "@openagentsinc/mullet-sim": "workspace:*",
     "@openagentsinc/provider-account-schema": "workspace:*",
+    "@openagentsinc/proof-replay": "workspace:*",
     "@openagentsinc/ui": "workspace:*",
     "@openagentsinc/sync-client": "workspace:*",
     "@openagentsinc/sync-schema": "workspace:*",

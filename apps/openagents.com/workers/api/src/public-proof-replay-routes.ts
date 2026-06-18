@@ -187,6 +187,10 @@ type Deps = Readonly<{
   now?: () => string
 }>
 
+class ProofReplayPublicProjectionUnsafe extends Error {
+  override readonly name = 'ProofReplayPublicProjectionUnsafe'
+}
+
 const replayBundleStaleness = () =>
   liveAtReadStaleness([
     'training_run_state_transition_recorded',
@@ -314,7 +318,9 @@ const assertPublicSafe = (bundle: Omit<ProofReplayBundle, 'bundleRef'>): void =>
   )
 
   if (matchedPattern !== undefined) {
-    throw new Error(`proof replay bundle rejected private material pattern ${matchedPattern}`)
+    throw new ProofReplayPublicProjectionUnsafe(
+      `proof replay bundle rejected private material pattern ${matchedPattern}`,
+    )
   }
 }
 

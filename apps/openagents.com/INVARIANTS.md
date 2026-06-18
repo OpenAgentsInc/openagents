@@ -1305,6 +1305,17 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     top-level contract, public-safe summary metrics, and honest idle envelope
     only; no admin token, private logs, wallet material, pending-as-paid
     payout, or write authority).
+  - `GET /api/public/proof-replays` — live at read proof replay resolver over
+    public Worker-authoritative proof, run, pylon, and settlement refs —
+    compliant (`generatedAt`, top-level contract, public-safe source refs,
+    replay bundle claim scope, explicit gaps/caveats, and no wallet material,
+    raw logs, service tokens, payment preimages, or private operator payloads).
+  - `GET /api/public/tassadar-replays/first-real-settlement` — live at read
+    compatibility replay bundle for the first real Tassadar settlement —
+    compliant (`generatedAt`, top-level contract, public-safe first-settlement
+    proof/payment refs, failed-closed markers, simulation-vs-real payment
+    distinction, and no wallet material, raw logs, service tokens, payment
+    preimages, or private operator payloads).
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no

@@ -380,6 +380,8 @@ const title = (model: Model): string => {
       return 'Live Tassadar run - OpenAgents'
     case 'Tassadar':
       return 'Tassadar run - OpenAgents'
+    case 'TassadarReplay':
+      return 'Tassadar proof replay - OpenAgents'
     case 'Login':
       return 'Log in - OpenAgents'
     case 'PublicAgent':
@@ -498,7 +500,8 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'Animations' &&
       model.route._tag !== 'DemoLegal' &&
       model.route._tag !== 'Run' &&
-      model.route._tag !== 'Tassadar'
+      model.route._tag !== 'Tassadar' &&
+      model.route._tag !== 'TassadarReplay'
     ) {
       return undefined
     }
@@ -530,6 +533,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Run' || model.route._tag === 'Tassadar') {
     return Run.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'TassadarReplay') {
+    return Run.view<Message>(authState, model.route.replaySlug)
   }
 
   if (model.route._tag === 'Components') {

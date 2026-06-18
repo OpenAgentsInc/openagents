@@ -81,6 +81,7 @@
         "@openagentsinc/autopilot-ui": "workspace:*",
         "@openagentsinc/mullet-schema": "workspace:*",
         "@openagentsinc/mullet-sim": "workspace:*",
+        "@openagentsinc/proof-replay": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
         "@openagentsinc/sync-client": "workspace:*",
         "@openagentsinc/sync-schema": "workspace:*",

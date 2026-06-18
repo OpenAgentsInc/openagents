@@ -120,6 +120,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               DemoLegal: () => DemoLegal.view({ _tag: 'LoggedOut' }),
               Run: () => Run.view({ _tag: 'LoggedOut' }),
               Tassadar: () => Run.view({ _tag: 'LoggedOut' }),
+              TassadarReplay: route =>
+                Run.view({ _tag: 'LoggedOut' }, route.replaySlug),
               Login: () => Login.view({ _tag: 'LoggedOut' }),
               Blog: route => Blog.view(route, { _tag: 'LoggedOut' }),
               BlogPost: route => Blog.view(route, { _tag: 'LoggedOut' }),

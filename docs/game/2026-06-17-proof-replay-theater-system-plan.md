@@ -21,6 +21,20 @@ and `docs/launch/JUNE17_ROADMAP.md`.
   pose planning, hit-target/source-inspector records, payment visual
   classification, source coverage assertions, and disposal tracking for future
   Three.js/Foldkit/ElectroBun adapters.
+- 2026-06-17: #5300 added the first public website replay MVP at
+  `/tassadar/replay/first-real-settlement` in `apps/openagents.com`. The live
+  `/tassadar` scene now links to the replay, and the replay route renders a
+  fullscreen public-safe stage with actors, the glowing Tassadar core, clocked
+  event playback, play/pause/scrub/speed/camera controls, a source inspector,
+  failed-closed markers, and a confirmed 1,000-sat Spark zap that appears only
+  after the `payment_zap_confirmed` event. The change also repaired the worker
+  deploy gate for the replay bundle resolver by registering
+  `/api/public/proof-replays` and
+  `/api/public/tassadar-replays/first-real-settlement` in the public projection
+  staleness ledger, documenting them in `apps/openagents.com/INVARIANTS.md`,
+  making the private-material replay guard use a typed error, and making the
+  OpenAPI schema explicitly declare `generatedAt` plus the live-at-read
+  staleness contract.
 
 ## Thesis
 

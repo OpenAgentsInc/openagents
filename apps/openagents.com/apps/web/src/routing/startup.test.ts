@@ -39,6 +39,7 @@ import {
   SiteCheckoutDemoRoute,
   StatsRoute,
   TassadarRoute,
+  TassadarReplayRoute,
   TeamChatRoute,
   TeamProjectChatRoute,
 } from '../route'
@@ -219,6 +220,9 @@ describe('startup route policy', () => {
 
   test('keeps the live Tassadar run route available for every auth state', () => {
     const tassadarRoute = TassadarRoute()
+    const tassadarReplayRoute = TassadarReplayRoute({
+      replaySlug: 'first-real-settlement',
+    })
 
     expect(startupRouteForLoggedOut(tassadarRoute)).toEqual({
       _tag: 'LoggedOutStartupRoute',
@@ -234,6 +238,16 @@ describe('startup route policy', () => {
       _tag: 'LoggedInStartupRoute',
       redirect: Option.none(),
       route: tassadarRoute,
+    })
+    expect(startupRouteForLoggedOut(tassadarReplayRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: tassadarReplayRoute,
+    })
+    expect(startupRouteForLoggedIn(tassadarReplayRoute, completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: tassadarReplayRoute,
     })
   })
 
@@ -518,6 +532,11 @@ describe('startup route policy', () => {
     expect(routeRequiresAuthBootstrap(Moksha2Route())).toBe(false)
     expect(routeRequiresAuthBootstrap(PylonRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(TassadarRoute())).toBe(false)
+    expect(
+      routeRequiresAuthBootstrap(
+        TassadarReplayRoute({ replaySlug: 'first-real-settlement' }),
+      ),
+    ).toBe(false)
     expect(routeRequiresAuthBootstrap(PublicStatsArchiveRoute())).toBe(false)
     expect(
       routeRequiresAuthBootstrap(

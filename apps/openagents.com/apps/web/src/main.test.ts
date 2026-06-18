@@ -169,6 +169,20 @@ describe('auth bootstrap flags', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
+  test('does not request the auth session on the Tassadar replay route', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/tassadar/replay/first-real-settlement',
+    )
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const loadedFlags = await Effect.runPromise(flags)
+
+    expect(loadedFlags.maybeAuth).toEqual(Option.none())
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   test('requests the auth session on application routes', async () => {
     window.history.replaceState({}, '', '/teams/openagents-core-team/chat')
     const fetchSpy = vi
@@ -335,6 +349,22 @@ describe('authenticated startup routing', () => {
     expect(commands).toHaveLength(0)
   })
 
+  test('opens Tassadar replay without an auth session', () => {
+    const [model, commands] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/tassadar/replay/first-real-settlement'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: {
+        _tag: 'TassadarReplay',
+        replaySlug: 'first-real-settlement',
+      },
+    })
+    expect(commands).toHaveLength(0)
+  })
+
   test('renders the Tassadar route through the top-level view', () => {
     const [model] = init(
       Flags.make({ maybeAuth: Option.none() }),
@@ -346,6 +376,23 @@ describe('authenticated startup routing', () => {
       Scene.with(model),
       Scene.expect(Scene.selector('oa-tassadar-run')).toExist(),
       Scene.expect(Scene.selector('[data-route="tassadar"]')).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Docs' })).not.toExist(),
+      Scene.expect(Scene.role('link', { name: 'Blog' })).not.toExist(),
+      Scene.expect(Scene.role('link', { name: 'Log in' })).not.toExist(),
+    )
+  })
+
+  test('renders the Tassadar replay route through the top-level view', () => {
+    const [model] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/tassadar/replay/first-real-settlement'),
+    )
+
+    Scene.scene(
+      { update, view },
+      Scene.with(model),
+      Scene.expect(Scene.selector('oa-tassadar-proof-replay')).toExist(),
+      Scene.expect(Scene.selector('[data-route="tassadar-replay"]')).toExist(),
       Scene.expect(Scene.role('link', { name: 'Docs' })).not.toExist(),
       Scene.expect(Scene.role('link', { name: 'Blog' })).not.toExist(),
       Scene.expect(Scene.role('link', { name: 'Log in' })).not.toExist(),
