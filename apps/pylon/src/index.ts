@@ -95,6 +95,7 @@ import {
   runClaudeComposerStream,
 } from "./claude-composer"
 import { runProbeCli } from "../packages/runtime/src/index"
+import { PYLON_VERSION } from "./version"
 import {
   ControlEndpointError,
   runControlCommand,
@@ -1764,11 +1765,49 @@ async function maybeAutoUpdate(): Promise<void> {
   }
 }
 
+// Format a node-startup failure into a clear, actionable message. The most
+// common operational failure is the control port already being held by a
+// running Pylon daemon (Bun.serve throws an EADDRINUSE-class error whose
+// message mentions the port). Surface that as guidance instead of a raw crash
+// dump, and keep the real release version in the banner.
+function formatNodeStartupError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  const port = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
+  const looksLikePortInUse =
+    /EADDRINUSE/i.test(message) ||
+    /port .* in use/i.test(message) ||
+    /address (already )?in use/i.test(message) ||
+    /failed to start server/i.test(message)
+  if (looksLikePortInUse) {
+    return [
+      `Pylon ${PYLON_VERSION} could not start: control port ${port} is already in use.`,
+      `Another Pylon node (or process) is already bound to 127.0.0.1:${port}.`,
+      `Run a second instance on a different port and home, e.g.:`,
+      `  PYLON_CONTROL_PORT=4726 PYLON_HOME=/tmp/pylon-alt pylon`,
+      `Or stop the existing node before starting a new one.`,
+    ].join("\n")
+  }
+  return `Pylon ${PYLON_VERSION} crashed on startup: ${message}`
+}
+
 async function main() {
   const args = Bun.argv.slice(2)
 
-  // `pylon help [--json]` and `pylon <cmd> --help` machine-readable catalog.
-  if (args[0] === "help") {
+  // `pylon --version` / `pylon -V`: print the authoritative release version
+  // and exit BEFORE any runtime or control-server boot. Without this guard,
+  // `--version` falls through to the no-subcommand default path below and
+  // boots the headless node, which crashes when the control port is already
+  // held by a running daemon.
+  if (args[0] === "--version" || args[0] === "-V") {
+    process.stdout.write(`${PYLON_VERSION}\n`)
+    return
+  }
+
+  // `pylon help [--json]`, `pylon --help`, and `pylon -h` print the
+  // machine-readable command catalog. A bare `--help`/`-h` (no subcommand)
+  // must short-circuit BEFORE the no-subcommand default node boot below;
+  // otherwise it falls through and starts the headless node.
+  if (args[0] === "help" || args[0] === "--help" || args[0] === "-h") {
     process.stdout.write(`${JSON.stringify(projectCommandCatalog(), null, 2)}\n`)
     return
   }
@@ -3357,12 +3396,15 @@ async function main() {
       return
     }
     await maybeAutoUpdate()
-    await Effect.runPromise(
+    const nodeExit = await Effect.runPromise(
       Effect.scoped(runHeadlessNode).pipe(
-        Effect.catch((error) => Console.error(`Pylon node-core crashed: ${error.message}`)),
+        Effect.catch((error) => {
+          process.stderr.write(`${formatNodeStartupError(error)}\n`)
+          return Effect.succeed(1 as const)
+        }),
       ),
     )
-    process.exit(0)
+    process.exit(typeof nodeExit === "number" ? nodeExit : 0)
   }
 
   if (args[0] === "runtime" || runtimeCommandNamespaces.has(args[0] ?? "")) {
@@ -3386,17 +3428,18 @@ async function main() {
     return
   }
   await maybeAutoUpdate()
-  await Effect.runPromise(
+  const defaultExit = await Effect.runPromise(
     Effect.scoped(runHeadlessNode).pipe(
-      Effect.catch((error) =>
-        Console.error(`Pylon v0.3 crashed on startup: ${error.message}`)
-      )
-    )
+      Effect.catch((error) => {
+        process.stderr.write(`${formatNodeStartupError(error)}\n`)
+        return Effect.succeed(1 as const)
+      }),
+    ),
   )
   // Scope is closed: services interrupted, process can exit cleanly. Exit
   // explicitly so lingering library handles cannot hold the process open
-  // after a deliberate shutdown.
-  process.exit(0)
+  // after a deliberate shutdown. A startup failure exits non-zero.
+  process.exit(typeof defaultExit === "number" ? defaultExit : 0)
 }
 
 await main()
