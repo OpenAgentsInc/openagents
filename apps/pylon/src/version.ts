@@ -64,7 +64,15 @@
 // / `helper_unavailable` a node operator saw). Now `daemonOnline: true`
 // automatically with no manual step or env flag; genuine failures surface a
 // reason-qualified blocker. Observable behavior change, so the version bumps.
-export const PYLON_VERSION = "1.0.2"
+// v1.0.3: node-home auto-resolution + read-only live-node queries. The CLI no
+// longer blindly falls back to a seedless `~/.pylon` — it auto-discovers the
+// seed-bearing node home (e.g. `~/.openagents/pylon`) when PYLON_HOME is unset,
+// so `wallet status`/`status`/`doctor` find the real node without exporting an
+// env var. `status` and `doctor` now detect a running node and read its state
+// read-only (and accept `--remote`/`--connect`) instead of trying to bind the
+// control port and crashing when the GUI node already holds it. Observable
+// behavior change, so the version bumps.
+export const PYLON_VERSION = "1.0.3"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.
