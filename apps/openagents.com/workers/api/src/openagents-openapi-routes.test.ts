@@ -478,6 +478,26 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(body, '/api/public/tassadar-run-summary', 'get').security,
     ).toEqual([])
     expect(
+      operationAt(
+        body,
+        '/api/public/tassadar-replays/first-real-settlement',
+        'get',
+      ).security,
+    ).toEqual([])
+    expect(operationAt(body, '/api/public/proof-replays', 'get').security).toEqual(
+      [],
+    )
+    expect(
+      operationAt(body, '/api/public/proof-replays', 'get').operationId,
+    ).toBe('getPublicProofReplayBundle')
+    expect(
+      operationAt(
+        body,
+        '/api/public/tassadar-replays/first-real-settlement',
+        'get',
+      ).operationId,
+    ).toBe('getPublicTassadarFirstRealSettlementReplay')
+    expect(
       operationAt(body, '/api/customer-orders/active', 'get').security,
     ).toEqual([{ browserSession: [] }, { agentBearer: [] }])
     expect(operationAt(body, '/api/customer-orders', 'post').security).toEqual([

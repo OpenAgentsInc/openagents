@@ -366,6 +366,12 @@ const schemaComponents = (): JsonSchema => ({
   OperatorTreasuryRecipientConfirmationResponse: objectSummary(
     'Admin-only recipient confirmation receipt with transactionId, confirmationRef, recipientConfirmationState, and recipientConfirmedAt. It marks recipient-visible receipt separately from treasury-side settled state and exposes no wallet or payment material.',
   ),
+  OperatorSparkTreasuryFundingInvoiceRequest: objectSummary(
+    'Admin-only Spark treasury funding invoice request. Accepts a positive integer amountSat only. It does not accept wallet material, private destinations, preimages, payment hashes, mnemonics, or provider secrets.',
+  ),
+  OperatorSparkTreasuryFundingInvoiceResponse: objectSummary(
+    'Admin-only Spark treasury funding invoice response proxied from the Spark treasury container. Used only to fund the treasury wallet; it grants no payout, settlement, or accepted-work authority.',
+  ),
   HealthResponse: {
     type: 'object',
     additionalProperties: false,
@@ -385,6 +391,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   PublicTassadarRunSummaryEnvelope: objectSummary(
     'Public-safe live-at-read compatibility summary for the live Tassadar executor run. Carries schemaVersion, generatedAt, the public-projection staleness contract, runRef, runState, empty-state honesty, typed settlementRows, rejectedReplayPairs, and the same provenance-labeled TrainingRunPublicSummary metrics consumed by the spatial snapshot adapter. Defaults to run.tassadar.executor.20260615 and accepts a run query override. Settlement rows distinguish movementMode and realBitcoinMoved; simulation-backed settlement records never count as real Bitcoin movement. Pending, offered, claimed, wallet-side records, private logs, wallet material, and admin-only controls are excluded. Read-only; grants no assignment, payout, model-publication, spend, DNS, or deployment authority.',
+  ),
+  PublicProofReplayBundle: objectSummary(
+    'Public-safe proof replay bundle (`proof_replay_bundle.v1`) for deterministic 3D replay rendering. Carries source refs, public authority/staleness metadata, actors, stages, replay events, flows, camera cues, captions, and explicit gaps. Confirmed payment-zap events require receipt-first real-bitcoin evidence such as realBitcoinMoved:true; simulation, pending, blocked, deferred, and failed-closed rows stay separate non-payment events. Raw wallet material, invoices, payment hashes/preimages, prompts, logs, provider payloads, service tokens, and operator-only notes are excluded. Read-only; grants no proof, settlement, payout, wallet, product-promise, or spend authority.',
   ),
   TrainingRunListEnvelope: objectSummary(
     'Public-safe training-run index with active/recent run projections and provenance-labeled summaries, including A1 real-gradient loss/leaderboard status when evidence exists, the providerConfirmedSettledPayoutSats settlement metric, and the Tassadar verified-trace corpus block (acceptedTraceCount of accepted Verified exact_trace_replay closed ticks with public-safe trace/verdict refs and a live-at-read staleness contract, rebuilding on verification-challenge transitions). Empty runs stay visible as idle instead of being hidden.',
@@ -469,6 +478,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   NexusPylonAcceptedWorkPayoutResponse: objectSummary(
     'Operator-only accepted-work payout response with redacted payout intent and attempt projections, wallet readiness state, and the public Nexus/Pylon receipt projection. Raw destinations, invoices, payment hashes, preimages, wallet material, and exact balances are excluded.',
+  ),
+  PylonSparkPayoutTargetRegisterRequest: objectSummary(
+    'Registered-agent Spark payout-target registration request. Accepts the caller-owned Pylon ref, a redacted payout.spark.<digest> ref, policy refs, and a raw Spark address consumed only by the authenticated private store boundary. The raw address is never projected into public events or responses.',
   ),
   NexusPylonAssignmentProofRunRequest: objectSummary(
     'Operator-only request to run the Artanis/Pylon assignment proof checker around the settlement bridge. Requires an Artanis run ref, assignment ref, amount, payout target approval refs, policy refs, and Pylon API evidence already recorded for the assignment.',
@@ -2664,6 +2676,26 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/operator/treasury/spark-funding-invoice': {
+    post: operation({
+      operationId: 'createOperatorSparkTreasuryFundingInvoice',
+      summary: 'Create Spark treasury funding invoice',
+      description:
+        'Admin-only funding helper for the Spark treasury container. Accepts a positive integer amountSat and returns the container-provided funding invoice payload so the treasury wallet can be funded. This route is for treasury funding only; it grants no payout, accepted-work settlement, recipient confirmation, wallet-readiness, or product-claim authority.',
+      tags: ['Payments', 'Operator'],
+      security: adminBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/OperatorSparkTreasuryFundingInvoiceRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Spark treasury funding invoice.',
+          '#/components/schemas/OperatorSparkTreasuryFundingInvoiceResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/operator/treasury/recipient-report': {
     get: operation({
       operationId: 'getOperatorTreasuryRecipientReport',
@@ -3288,6 +3320,32 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/pylons/{pylonRef}/spark-payout-target': {
+    post: operation({
+      operationId: 'registerPylonSparkPayoutTarget',
+      summary: 'Register Pylon Spark payout target',
+      description:
+        'Registers a raw Spark payout address for the authenticated owner of a Pylon while projecting only the redacted payout.spark.<digest> ref. The raw Spark address is decoded at the authenticated boundary and stored privately; it is not emitted in public events, responses, logs, or replay bundles. This registers recipient readiness only and does not approve payout, spend bitcoin, or settle accepted work.',
+      tags: ['Pylon', 'Payments'],
+      security: agentBearer,
+      parameters: [
+        pathParam('pylonRef', 'Pylon ref.'),
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this Spark payout-target registration.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/PylonSparkPayoutTargetRegisterRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Pylon Spark payout-target registration response.',
+          '#/components/schemas/PylonApiWriteResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/operator/pylons/assignments': {
     post: operation({
       operationId: 'createPylonAssignment',
@@ -3578,6 +3636,50 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public Tassadar run summary.',
           '#/components/schemas/PublicTassadarRunSummaryEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/tassadar-replays/first-real-settlement': {
+    get: operation({
+      operationId: 'getPublicTassadarFirstRealSettlementReplay',
+      summary: 'Read first real Tassadar settlement replay bundle',
+      description:
+        'Builds the public-safe proof_replay_bundle.v1 payload for the historical Tassadar Run 1 first real Bitcoin settlement. The bundle is generated from Worker/D1 public summary and receipt refs, keeps SpacetimeDB as projection-only context, distinguishes the older simulation row from the 1,000-sat real Spark settlement, and emits confirmed payment-zap events only from receipt-first realBitcoinMoved:true evidence.',
+      tags: ['Training'],
+      security: publicRead,
+      parameters: [
+        queryParam('receiptRef', 'Optional settlement receipt ref override.'),
+        queryParam('run', 'Training run ref override.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Public proof replay bundle.',
+          '#/components/schemas/PublicProofReplayBundle',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/proof-replays': {
+    get: operation({
+      operationId: 'getPublicProofReplayBundle',
+      summary: 'Read public proof replay bundle',
+      description:
+        'Builds a deterministic public-safe proof_replay_bundle.v1 payload from explicit proof, run, pylon, receipt, settlement, or forum refs. The initial implementation resolves the first real Tassadar settlement bundle and preserves receipt-first payment classification: confirmed zaps require public real-bitcoin evidence, while simulation, blocked, pending, and failed-closed rows render as non-payment replay events.',
+      tags: ['Training'],
+      security: publicRead,
+      parameters: [
+        queryParam('refs', 'Comma-separated public replay source refs.'),
+        queryParam('ref', 'Repeated public replay source ref.'),
+        queryParam('receiptRef', 'Settlement receipt ref.'),
+        queryParam('run', 'Training run ref override.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Public proof replay bundle.',
+          '#/components/schemas/PublicProofReplayBundle',
         ),
         ...errorResponses(),
       },

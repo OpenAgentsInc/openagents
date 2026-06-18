@@ -4,6 +4,17 @@ Date: 2026-06-17
 Status: audit and implementation plan after reading all `docs/game/` direction
 and `docs/launch/JUNE17_ROADMAP.md`.
 
+## Implementation Log
+
+- 2026-06-17: #5298 added the first public replay bundle resolver in
+  `apps/openagents.com/workers/api/src/public-proof-replay-routes.ts`.
+  It exposes `proof_replay_bundle.v1` through
+  `/api/public/tassadar-replays/first-real-settlement` and the generic
+  `/api/public/proof-replays` alias, with OpenAPI coverage and unit tests for
+  deterministic bundle ids, source coverage, private-material redaction,
+  simulation-vs-real payment classification, failed-closed blockers, and the
+  first 1,000-sat Spark settlement zap.
+
 ## Thesis
 
 OpenAgents should be able to take any explicit set of public proof references
