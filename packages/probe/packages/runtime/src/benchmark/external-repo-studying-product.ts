@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { Effect, Schema as S } from "effect";
 import {
@@ -35,6 +34,7 @@ import {
   buildOpenAgentsRepoCorpusManifest,
   type OpenAgentsRepoCorpusManifest,
 } from "./repo-corpus-manifest";
+import { sha256Ref, shortHash, stableJson } from "./stable-hash";
 
 export const OPENAGENTS_EXTERNAL_REPO_STUDY_PRODUCT_SURFACE_SCHEMA_REF =
   "openagents.external_repo_study_product_surface.v0" as const;
@@ -525,34 +525,6 @@ function slugRepo(repo: string): string {
     .replace(/^_+|_+$/g, "")
     .toLowerCase()
     .slice(0, 80);
-}
-
-function shortHash(value: string): string {
-  return value.replace(/^sha256:/, "").slice(0, 16);
-}
-
-function sha256Ref(value: string): string {
-  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
-}
-
-function stableJson(value: unknown): string {
-  return JSON.stringify(sortStable(value));
-}
-
-function sortStable(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((entry) => sortStable(entry));
-  }
-
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => [key, sortStable(entry)]),
-  );
 }
 
 function externalStudyError(path: string, reason: string): Effect.Effect<never, ProbeBenchmarkContractError> {

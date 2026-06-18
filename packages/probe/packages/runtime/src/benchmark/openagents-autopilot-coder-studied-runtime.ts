@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { Effect, Schema as S } from "effect";
 import { ProbeBenchmarkContractError } from "../contracts/benchmark";
 import { type ProbePublicProjectionUnsafe } from "../contracts/provider-account";
@@ -14,6 +13,7 @@ import {
   generateOpenAgentsRepoStudyArtifact,
   type GenerateOpenAgentsRepoStudyArtifactInput,
 } from "./openagents-study-artifact";
+import { sha256Ref, shortHash, stableJson } from "./stable-hash";
 
 export const OPENAGENTS_AUTOPILOT_CODER_STUDIED_RUNTIME_SCHEMA_REF =
   "openagents.autopilot_coder_studied_runtime_context.v0" as const;
@@ -239,34 +239,6 @@ function requireSha256(value: string, path: string): Effect.Effect<void, ProbeBe
   return /^sha256:[a-f0-9]{64}$/.test(value)
     ? Effect.void
     : runtimeContextError(path, "must be a sha256 hash ref");
-}
-
-function shortHash(value: string): string {
-  return value.replace(/^sha256:/, "").slice(0, 16);
-}
-
-function sha256Ref(value: string): string {
-  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
-}
-
-function stableJson(value: unknown): string {
-  return JSON.stringify(sortStable(value));
-}
-
-function sortStable(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((entry) => sortStable(entry));
-  }
-
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => [key, sortStable(entry)]),
-  );
 }
 
 function runtimeContextError(path: string, reason: string): Effect.Effect<never, ProbeBenchmarkContractError> {
