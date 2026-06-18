@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { lstat, readdir, readFile } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 import { Effect, Schema as S } from "effect";
@@ -12,6 +11,7 @@ import {
   OpenAgentsStudybenchEvidenceSpan,
   OpenAgentsStudybenchVisibility,
 } from "./studybench";
+import { sha256Ref, shortHash, stableJson } from "./stable-hash";
 
 export const OPENAGENTS_REPO_CORPUS_ENTRY_SCHEMA_REF = "openagents.repo_corpus_entry.v0" as const;
 export const OPENAGENTS_REPO_CORPUS_MANIFEST_SCHEMA_REF = "openagents.repo_corpus_manifest.v0" as const;
@@ -490,29 +490,6 @@ function requireNonEmptyRefs(
   return blankIndex === -1
     ? Effect.void
     : repoCorpusError(`${path}[${blankIndex}]`, "must be a non-empty ref");
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableJson(entry)).join(",")}]`;
-  }
-
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
-      .join(",")}}`;
-  }
-
-  return JSON.stringify(value);
-}
-
-function sha256Ref(value: string | Uint8Array): string {
-  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
-}
-
-function shortHash(hash: string): string {
-  return hash.replace(/^sha256:/, "").slice(0, 16);
 }
 
 function repoCorpusError(path: string, reason: string): Effect.Effect<never, ProbeBenchmarkContractError> {
