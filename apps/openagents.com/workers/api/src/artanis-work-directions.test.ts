@@ -15,9 +15,16 @@ import {
   type ArtanisWorkDirectionRequest,
   type ArtanisWorkRoutingProposalDirection,
 } from './artanis-work-directions'
+import { verifyTassadarAdversarialDivergenceClaim } from './tassadar-adversarial-verification-market'
 
 const sourceDigest =
   'sha256:3333333333333333333333333333333333333333333333333333333333333333'
+const divergenceInputDigest =
+  'sha256:5555555555555555555555555555555555555555555555555555555555555555'
+const divergenceExpectedDigest =
+  'sha256:6666666666666666666666666666666666666666666666666666666666666666'
+const divergenceObservedDigest =
+  'sha256:7777777777777777777777777777777777777777777777777777777777777777'
 const traceRows = [
   {
     evidenceRef: 'span.public.reference_lane.prosemirror_001',
@@ -58,6 +65,24 @@ const datasetRequest = (
   verificationClass: 'v3_data_correctness',
   verificationCommandRef:
     'command.public.openagents.data_contribution.v3_correctness',
+  ...overrides,
+})
+
+const adversarialRequest = (
+  overrides: Partial<ArtanisWorkDirectionRequest> = {},
+): ArtanisWorkDirectionRequest => ({
+  budgetSats: 3_000,
+  corpusRef: 'corpus.tassadar_adversarial.divergence_inputs.v1',
+  deadlineRef: 'deadline.public.artanis.work_direction.soon',
+  directionKind: 'adversarial_verification',
+  moduleFamilyRef: 'module_family.public.tassadar.linked_dense',
+  objectiveRef:
+    'objective.public.artanis.adversarial_verification.linked_dense_001',
+  repositoryRefs: ['repo.public.github.OpenAgentsInc.openagents'],
+  sourceRefs: ['source.public.artanis.work_direction.e3'],
+  title: 'Find a reproducible linked dense module divergence',
+  verificationClass: 'e3_adversarial_divergence',
+  verificationCommandRef: 'command.public.tassadar.e3_adversarial_divergence',
   ...overrides,
 })
 
@@ -126,6 +151,51 @@ const acceptedDataCorrectness = async () => {
   })
 }
 
+const acceptedDivergence = () =>
+  verifyTassadarAdversarialDivergenceClaim({
+    claim: {
+      claimRef: 'claim.public.tassadar_adversarial.divergence_artanis_001',
+      claimantActorRef: 'agent:adversarial-verifier',
+      claimantDeviceRef: 'device.pylon.adversarial_hunter',
+      divergenceKind: 'trace_digest_mismatch',
+      expectedBehaviorDigest: divergenceExpectedDigest,
+      implementationRefs: [
+        'implementation.public.tassadar.reference_linear',
+        'implementation.public.tassadar.hull_cache',
+      ],
+      inputDigest: divergenceInputDigest,
+      inputRef: 'input.public.tassadar_adversarial.divergence_artanis_001',
+      moduleDigest:
+        'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
+      moduleKind: 'tassadar.linked_dense.module',
+      moduleRef: 'module.public.tassadar.linked_dense.canonical',
+      observedBehaviorDigest: divergenceObservedDigest,
+      psionicEvidenceRefs: [
+        'report.public.psionic.tassadar_exactness_refusal.step_mismatch',
+      ],
+      sourceRefs: ['source.public.psionic.tassadar_trace_diff_report'],
+      specRef: 'spec.public.tassadar.linked_dense.w3_100m',
+      workRequestId: 'work_request_artanis_adversarial_001',
+    },
+    reproduction: {
+      blockerRefs: [],
+      expectedBehaviorDigest: divergenceExpectedDigest,
+      inputDigest: divergenceInputDigest,
+      observedBehaviorDigest: divergenceObservedDigest,
+      psionicEvidenceRefs: [
+        'report.public.psionic.tassadar_exactness_refusal.reproduced',
+      ],
+      reproduced: true,
+      reproductionRef:
+        'reproduction.public.tassadar_adversarial.divergence_artanis_001',
+      validatorActorRef: 'agent:independent-validator',
+      validatorDeviceRef: 'device.pylon.independent_validator',
+      validatorReceiptRefs: [
+        'receipt.public.tassadar_adversarial.validator_replay_artanis_001',
+      ],
+    },
+  })
+
 describe('Artanis work-direction requests', () => {
   test('builds a program-authorship request with V1 construction capabilities', () => {
     const proposal = buildArtanisWorkDirectionLaborProposal(programRequest())
@@ -159,6 +229,21 @@ describe('Artanis work-direction requests', () => {
     ])
     expect(proposal.verificationCommandRef).toBe(
       'command.public.openagents.data_contribution.v3_correctness',
+    )
+  })
+
+  test('builds an adversarial-verification request with E3 divergence capabilities', () => {
+    const proposal = buildArtanisWorkDirectionLaborProposal(adversarialRequest())
+
+    expect(proposal.requiredCapabilityRefs).toEqual([
+      'capability.openagents.artanis_work_direction.ref_only_delivery',
+      'capability.openagents.tassadar.adversarial_verification.divergence_input',
+      'capability.openagents.tassadar.adversarial_verification.independent_reproduction',
+      'capability.openagents.tassadar.e3_adversarial_divergence',
+      'capability.openagents.tassadar.v1_found_defect_settlement',
+    ])
+    expect(proposal.verificationCommandRef).toBe(
+      'command.public.tassadar.e3_adversarial_divergence',
     )
   })
 
@@ -433,6 +518,117 @@ describe('Artanis work-direction acceptance gates', () => {
         acceptanceEventRef: 'nostr.event.' + 'a'.repeat(64),
         providerActorRef: 'agent:dataset-curator',
         workRequestId: 'work_request_artanis_dataset_001',
+      },
+    ])
+  })
+
+  test('settles adversarial-verification work only after independent divergence reproduction passes', async () => {
+    const releases: unknown[] = []
+    const outcome = await handleArtanisWorkDirectionDelivery(
+      delivery({
+        adversarialVerification: acceptedDivergence(),
+        dataCorrectnessVerification: undefined,
+        directionKind: 'adversarial_verification',
+        programVerification: undefined,
+        providerActorRef: 'agent:adversarial-verifier',
+        resultRef: 'result.public.artanis.work_direction.adversarial_001',
+        verificationCommandRef:
+          'command.public.tassadar.e3_adversarial_divergence',
+        workRequestId: 'work_request_artanis_adversarial_001',
+      }),
+      {
+        recordLifecycle: async () => {},
+        recordTickReceipt: async () => {},
+        refundEscrow: async () => {
+          throw new Error('passing E3 verdict should not refund')
+        },
+        releaseEscrow: async input => {
+          releases.push(input)
+          return {
+            ok: true,
+            releaseReceiptRef:
+              'receipt.labor_escrow.release.work_direction_adversarial_001',
+          }
+        },
+      },
+    )
+
+    expect(outcome).toMatchObject({
+      kind: 'settled',
+      releaseReceiptRef:
+        'receipt.labor_escrow.release.work_direction_adversarial_001',
+    })
+    expect(outcome.verificationGate).toMatchObject({
+      releaseAllowed: true,
+      status: 'accepted',
+      verificationClass: 'e3_adversarial_divergence',
+    })
+    expect(releases).toEqual([
+      {
+        acceptanceEventRef: 'nostr.event.' + 'a'.repeat(64),
+        providerActorRef: 'agent:adversarial-verifier',
+        workRequestId: 'work_request_artanis_adversarial_001',
+      },
+    ])
+  })
+
+  test('refunds adversarial-verification work when the divergence is not reproduced', async () => {
+    const refunds: unknown[] = []
+    const failed = {
+      ...acceptedDivergence(),
+      blockerRefs: [
+        'blocker.public.tassadar_adversarial.validator_did_not_reproduce',
+      ],
+      reproducible: false,
+      settlementEligible: false,
+      status: 'rejected_false_claim' as const,
+      verificationReceiptRefs: [],
+    }
+    const outcome = await handleArtanisWorkDirectionDelivery(
+      delivery({
+        adversarialVerification: failed,
+        dataCorrectnessVerification: undefined,
+        directionKind: 'adversarial_verification',
+        programVerification: undefined,
+        providerActorRef: 'agent:adversarial-verifier',
+        resultRef: 'result.public.artanis.work_direction.adversarial_false_001',
+        verificationCommandRef:
+          'command.public.tassadar.e3_adversarial_divergence',
+        workRequestId: 'work_request_artanis_adversarial_false_001',
+      }),
+      {
+        recordLifecycle: async () => {},
+        recordTickReceipt: async () => {},
+        refundEscrow: async input => {
+          refunds.push(input)
+          return {
+            ok: true,
+            refundReceiptRef:
+              'receipt.labor_escrow.refund.work_direction_adversarial_001',
+          }
+        },
+        releaseEscrow: async () => {
+          throw new Error('false E3 claim should not release')
+        },
+      },
+    )
+
+    expect(outcome).toMatchObject({
+      kind: 'rejected_refunded',
+      lifecycleKinds: ['delivered'],
+      refundReceiptRef:
+        'receipt.labor_escrow.refund.work_direction_adversarial_001',
+    })
+    expect(outcome.verificationGate).toMatchObject({
+      releaseAllowed: false,
+      status: 'rejected',
+      verificationClass: 'e3_adversarial_divergence',
+    })
+    expect(refunds).toEqual([
+      {
+        reasonRef:
+          'blocker.public.tassadar_adversarial.validator_did_not_reproduce',
+        workRequestId: 'work_request_artanis_adversarial_false_001',
       },
     ])
   })

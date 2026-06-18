@@ -91,6 +91,23 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/tassadar-module-library.test.ts` and
   `workers/api/src/tassadar-compiled-module-marketplace.test.ts`.
 
+## Tassadar Adversarial Verification Market
+
+- Adversarial-verification work requests are a typed Artanis direction, not a
+  Forum keyword inference path. They must carry explicit module, corpus, spec,
+  implementation, input, psionic evidence, and verifier command refs.
+- A divergence claim becomes payable only when an independent validator device
+  reproduces the exact claimed input and behavior divergence. Same-device,
+  non-reproduced, non-divergent, digest-mismatched, or missing-near-miss-refusal
+  claims must refund/reject and must not release escrow.
+- Confirmed defects reuse the V1 compiled-module construction settlement path.
+  Public code must not add a separate payout rail, bypass labor escrow, bypass
+  the owner real-settlement gate, widen spend caps, or publish raw inputs,
+  traces, private source material, wallet material, or payment material.
+- Regression coverage for this policy lives in
+  `workers/api/src/tassadar-adversarial-verification-market.test.ts` and
+  `workers/api/src/artanis-work-directions.test.ts`.
+
 ## Foldkit-Owned Browser Navigation
 
 - Production browser app code must not call raw History APIs such as

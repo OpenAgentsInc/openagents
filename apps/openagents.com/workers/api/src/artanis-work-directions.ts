@@ -17,14 +17,21 @@ import {
   type DataContributionCorrectnessVerification as DataContributionCorrectnessVerificationType,
 } from './data-trace-marketplace-gate'
 import type { ForumWorkRequestLifecycleKind } from './forum-work-requests'
+import {
+  TassadarAdversarialVerificationVerdict,
+  projectTassadarAdversarialVerificationReleaseGate,
+  type TassadarAdversarialVerificationVerdict as TassadarAdversarialVerificationVerdictType,
+} from './tassadar-adversarial-verification-market'
 
 export const ArtanisWorkDirectionKind = S.Literals([
+  'adversarial_verification',
   'program_authorship',
   'dataset_curation',
 ])
 export type ArtanisWorkDirectionKind = typeof ArtanisWorkDirectionKind.Type
 
 export const ArtanisWorkDirectionVerificationClass = S.Literals([
+  'e3_adversarial_divergence',
   'v1_construction',
   'v3_data_correctness',
 ])
@@ -63,6 +70,7 @@ export type ArtanisProgramAuthorshipVerificationVerdict =
 
 export const ArtanisWorkDirectionDelivery = S.Struct({
   acceptanceEventRef: S.String,
+  adversarialVerification: S.optional(TassadarAdversarialVerificationVerdict),
   dataCorrectnessVerification: S.optional(
     DataContributionCorrectnessVerification,
   ),
@@ -173,6 +181,9 @@ const decodeWorkRoutingProposal = S.decodeUnknownSync(
 const decodeDataCorrectnessVerification = S.decodeUnknownSync(
   DataContributionCorrectnessVerification,
 )
+const decodeAdversarialVerification = S.decodeUnknownSync(
+  TassadarAdversarialVerificationVerdict,
+)
 
 const uniqueRefs = (
   refs: ReadonlyArray<string | undefined>,
@@ -205,14 +216,18 @@ const verifierCommandRefFor = (
 ): string =>
   directionKind === 'program_authorship'
     ? 'command.public.tassadar.v1_construction_verification'
-    : 'command.public.openagents.data_contribution.v3_correctness'
+    : directionKind === 'dataset_curation'
+      ? 'command.public.openagents.data_contribution.v3_correctness'
+      : 'command.public.tassadar.e3_adversarial_divergence'
 
 const verificationClassFor = (
   directionKind: ArtanisWorkDirectionKind,
 ): ArtanisWorkDirectionVerificationClass =>
   directionKind === 'program_authorship'
     ? 'v1_construction'
-    : 'v3_data_correctness'
+    : directionKind === 'dataset_curation'
+      ? 'v3_data_correctness'
+      : 'e3_adversarial_divergence'
 
 const capabilityRefsFor = (
   request: ArtanisWorkDirectionRequest,
@@ -226,11 +241,18 @@ const capabilityRefsFor = (
           'capability.openagents.tassadar.v1_construction_verification',
           'capability.openagents.tassadar.corpus.c1',
         ]
-      : [
-          'capability.openagents.tassadar.dataset_curation.trace_corpus',
-          'capability.openagents.data_contribution.v3_correctness',
-          'capability.openagents.reference_lane.distill_to_trace_corpus',
-        ]),
+      : request.directionKind === 'dataset_curation'
+        ? [
+            'capability.openagents.tassadar.dataset_curation.trace_corpus',
+            'capability.openagents.data_contribution.v3_correctness',
+            'capability.openagents.reference_lane.distill_to_trace_corpus',
+          ]
+        : [
+            'capability.openagents.tassadar.adversarial_verification.divergence_input',
+            'capability.openagents.tassadar.adversarial_verification.independent_reproduction',
+            'capability.openagents.tassadar.e3_adversarial_divergence',
+            'capability.openagents.tassadar.v1_found_defect_settlement',
+          ]),
   ])
 
 const assertRequest = (request: ArtanisWorkDirectionRequest): void => {
@@ -271,6 +293,18 @@ const assertRequest = (request: ArtanisWorkDirectionRequest): void => {
     if (request.corpusRef === undefined) {
       throw new ArtanisWorkDirectionUnsafe({
         reason: 'Dataset curation requests require corpusRef.',
+      })
+    }
+  }
+  if (request.directionKind === 'adversarial_verification') {
+    assertSafeRefs(
+      [request.moduleFamilyRef, request.corpusRef],
+      'Artanis adversarial-verification target refs',
+    )
+    if (request.moduleFamilyRef === undefined || request.corpusRef === undefined) {
+      throw new ArtanisWorkDirectionUnsafe({
+        reason:
+          'Adversarial verification requests require moduleFamilyRef and corpusRef.',
       })
     }
   }
@@ -511,6 +545,40 @@ const dataCorrectnessGate = (
   }
 }
 
+const adversarialVerificationGate = (
+  verificationInput:
+    | TassadarAdversarialVerificationVerdictType
+    | undefined,
+): ArtanisWorkDirectionVerificationGate => {
+  if (verificationInput === undefined) {
+    return {
+      blockerRefs: [
+        'blocker.public.artanis.work_direction.e3_verification_missing',
+      ],
+      gateRef: 'gate.public.artanis.work_direction.e3.missing',
+      releaseAllowed: false,
+      status: 'rejected',
+      validatorReviewRefs: [],
+      verificationClass: 'e3_adversarial_divergence',
+      verificationReceiptRefs: [],
+    }
+  }
+
+  const verification = decodeAdversarialVerification(verificationInput)
+  const divergenceGate =
+    projectTassadarAdversarialVerificationReleaseGate(verification)
+
+  return {
+    blockerRefs: divergenceGate.blockerRefs,
+    gateRef: divergenceGate.gateRef,
+    releaseAllowed: divergenceGate.releaseAllowed,
+    status: divergenceGate.status,
+    validatorReviewRefs: [],
+    verificationClass: 'e3_adversarial_divergence',
+    verificationReceiptRefs: divergenceGate.verificationReceiptRefs,
+  }
+}
+
 export const projectArtanisWorkDirectionVerificationGate = (
   deliveryInput: ArtanisWorkDirectionDelivery,
 ): ArtanisWorkDirectionVerificationGate => {
@@ -529,7 +597,9 @@ export const projectArtanisWorkDirectionVerificationGate = (
 
   return delivery.directionKind === 'program_authorship'
     ? programVerificationGate(delivery.programVerification)
-    : dataCorrectnessGate(delivery.dataCorrectnessVerification, delivery)
+    : delivery.directionKind === 'dataset_curation'
+      ? dataCorrectnessGate(delivery.dataCorrectnessVerification, delivery)
+      : adversarialVerificationGate(delivery.adversarialVerification)
 }
 
 const laborDeliveryFromWorkDirectionDelivery = (

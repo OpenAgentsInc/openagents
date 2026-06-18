@@ -1151,6 +1151,20 @@ marketplace packaging, pricing, payout, and settlement claims remain blocked.
   work demand from Forum keywords or publish raw/private material.
 - **#5331 — E3** Adversarial-verification market: agents paid to find
   module-divergence inputs.
+  Landed in `openagents`: `tassadar-adversarial-verification-market.ts` defines
+  the typed divergence-claim and independent-reproduction verifier for module
+  stress work, including explicit psionic exactness/refusal evidence refs and
+  near-miss refusal refs when the claim is about the geometric parabolic-key
+  boundary. Artanis now has an `adversarial_verification` work-direction kind
+  with `command.public.tassadar.e3_adversarial_divergence`; confirmed
+  divergences release labor escrow, while same-device, non-reproduced,
+  non-divergent, digest-mismatched, or missing-near-miss claims refund and pay
+  nothing. Confirmed defects can be handed to the existing V1 compiled-module
+  construction settlement path, which records simulation settlement by default
+  and only attempts real Spark payout under the unchanged owner gate and spend
+  caps. This does not add a parallel payout rail, does not arm real settlement,
+  does not mutate live run behavior, and does not publish raw divergence inputs
+  or private traces.
 
 ### Track H — Hybrid ring (later; gradients enter ONLY here; §2d, §4 item 5)
 
