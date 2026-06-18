@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-17.4'
+export const PublicProductPromisesVersion = '2026-06-17.5'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -29,6 +29,7 @@ const sourceRefs = [
   'docs/transcripts/236.md',
   'docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
   'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
+  'docs/promises/2026-06-18-training-monday-real-settlement-gate-met.md',
   'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
   'docs/labor/2026-06-14-p5-backlog-faucet-closeout.md',
   'docs/labor/2026-06-14-p7-lane-c-fanout-closeout.md',
@@ -158,6 +159,7 @@ export const publicProductPromisesDocument = () => {
         'Autopilot-is-the-install reconciliation for the 2026-06-15 launch: contributor-facing install copy should name Autopilot Desktop as the install surface and Pylon as the local node it drives; the affected Pylon promises remain yellow.',
         'Decentralized-training lane (RESEARCH_PLAN W5): the new training.public_gradient_windows.v1 record is planned, not live. Public devices do generation/validation/evaluation only; the Pluralis lifecycle substrate (#4855, P0-P3) is in place, but no public gradient enters the canonical optimizer until a quarantine→verify→canary→promotion regime ships. Do not claim public decentralized gradient training for the launch.',
         'Registry 2026-06-17.4 adds autopilot.repo_study_packets.v1 as a yellow internal-dogfood claim only. The public StudyBench MVP shows source-grounded lift on OpenAgents refs, but customer repo studying, trained repo expert language, marketplace packages, payout eligibility, and paid-work status remain blocked by separate validation, privacy, metering, pricing, payout, and settlement gates.',
+        'Registry 2026-06-17.5: the real paid-settlement gate on training.monday_decentralized_training_launch.v1 is now MET for a bounded scope. A 1,000-sat real Bitcoin run-settlement settled, native over Spark, to an independent contributor (Orrery, pylon.448ba824…), evidenced by public receipt receipt.nexus.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618 (realBitcoinMoved:true, moneyMovement:real_bitcoin, state:settled, adapter:spark_treasury), backed by Verified challenge training.verification.challenge.071445c5-6ad6-4136-87e3-253b01914b4c (independent validator replay on a distinct device, digests matched). #5232 closed and the public settled feed moved 0 → 1, with no raw address in the projection. The promise stays green; this is an evidence/copy upgrade from simulation-record-path-only to one real paid settlement. The earlier simulation-backed Orrery receipt (realBitcoinMoved:false) is retained as historical projection-path context only. This proof is exactly one 1,000-sat canary: it does not authorize network-scale, paid-at-scale, hundreds-paid, largest-run, canonical-model-mutation, or unbounded-payout copy. training.public_distributed_training_run.v1 drops its public_training_settlement_receipts_missing blocker but stays red on public_distributed_training_run_receipts_missing plus network-scale/participant criteria. The decision record is docs/promises/2026-06-18-training-monday-real-settlement-gate-met.md, and the matching promise_transition exception receipt was recorded against the deployed registry via the operator route (from-state equals to-state, both green), dereferenceable at /api/public/product-promises/transitions.',
       ],
     },
     promises: [
@@ -422,9 +424,9 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Pylons participate in public distributed model-training runs with visible run state, verified work, reported results, and contributor payment for useful work.',
         safeCopy:
-          'A bounded two-device CS336 A1-scale run is evidenced under pylon.first_real_model_training_run.v1, but a broad public distributed training run is not green.',
+          'A bounded two-device CS336 A1-scale run is evidenced under pylon.first_real_model_training_run.v1, and one bounded 1,000-sat real Bitcoin run-settlement to a single independent contributor is evidenced under training.monday_decentralized_training_launch.v1, but a broad public distributed training run is still not green: network-scale participation, broad accepted-work receipts, and a participant-count methodology remain unmet.',
         unsafeCopy:
-          'Do not claim a public network-scale training run is live, open for broad contribution, or paying contributors until the run, work, validation, and settlement receipts exist.',
+          'Do not claim a public network-scale training run is live, open for broad contribution, or paying contributors at scale. One verified pairing and one 1,000-sat canary settlement do not prove a network-scale run; the broad run, broad work, validation, and multi-contributor settlement receipts do not yet exist.',
         evidenceRefs: [
           'docs/transcripts/224.md',
           'docs/transcripts/227.md',
@@ -432,13 +434,13 @@ export const publicProductPromisesDocument = () => {
           'docs/promises/registry.md',
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'promise:pylon.first_real_model_training_run.v1',
+          'promise:training.monday_decentralized_training_launch.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.public_distributed_training_run_receipts_missing',
-          'blocker.product_promises.public_training_settlement_receipts_missing',
         ],
         verification:
-          'Green requires a public run definition, start/end state, participant admission and count methodology, task/work receipts, verification/eval evidence, payment and settlement refs, and stale-state handling.',
+          'Green requires a public run definition, start/end state, participant admission and count methodology, task/work receipts, verification/eval evidence, payment and settlement refs for more than one contributor, and stale-state handling. A single 1,000-sat canary settlement satisfies the existence-of-real-settlement question but not network-scale contribution.',
         authorityBoundary:
           'A launch transcript or bounded demo run does not authorize network-scale training, contributor admission, payout, or model-quality claims.',
       },
@@ -451,23 +453,27 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents/Pylon launched a scoped decentralized training run where contributors install node software, complete useful work, and have that work independently verified on public run rails.',
         safeCopy:
-          'Launched for the scoped proof. The public run `run.tassadar.executor.20260615` is active, and the decentralized contribution loop is proven end-to-end in the open: an independent contributor installed Pylon, claimed a window lease, and submitted a Tassadar executor trace; an independent validator on a separate machine/identity replayed the pinned fixture and the verification challenge finalized `Verified`. The linked Orrery settlement receipt is intentionally simulation-backed (`realBitcoinMoved:false`): it proves the operator-approved settlement-record/projection path for this launch gate, not real Bitcoin movement. Real payout settlement remains a separate gate and must use receipts with `realBitcoinMoved:true` before copy can say the contributor was actually paid.',
+          'Launched for the scoped proof, and one contributor has now been paid real Bitcoin. The public run `run.tassadar.executor.20260615` is active, and the decentralized contribution loop is proven end-to-end in the open: an independent contributor installed Pylon, claimed a window lease, and submitted a Tassadar executor trace; an independent validator on a separate machine/identity replayed the pinned fixture and the verification challenge finalized `Verified`. The real paid-settlement gate is now met for a bounded scope: a 1,000-sat real Bitcoin run-settlement settled, native over Spark, to an independent contributor, evidenced by a public receipt with `realBitcoinMoved:true`, `moneyMovement:real_bitcoin`, and `state:settled`, backed by a Verified independent-validator replay challenge. The public settled feed moved from 0 to 1. The earlier Orrery settlement receipt remains valid historical context as a simulation-backed (`realBitcoinMoved:false`) record that proved the settlement-record/projection path — it is not real Bitcoin movement; the new 1,000-sat canary is. This is exactly one bounded canary settlement, not network-scale paid training.',
         unsafeCopy:
-          'Do not claim this is a network-scale, large, or the largest decentralized training run, that hundreds of contributors are paid, that public gradients mutate a canonical model, or that the Orrery receipt proves real sats moved. Green here means the scoped launch/run/verification/settlement-record path is live; real paid-settlement copy requires `realBitcoinMoved:true` evidence and remains bounded by separate payout/settlement gates.',
+          'Do not claim this is a network-scale, large, or the largest decentralized training run, that hundreds of contributors are paid, that contributors are being paid at scale, that public gradients mutate a canonical model, or that any unbounded payout authority exists. The real paid-settlement proof is exactly one bounded 1,000-sat canary run-settlement to a single independent contributor (`realBitcoinMoved:true`); copy must stay scoped to that one canary and must not extrapolate to broad earning. The prior Orrery receipt still does not prove real sats moved.',
         evidenceRefs: [
           'https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615',
+          'training.verification.challenge.071445c5-6ad6-4136-87e3-253b01914b4c',
+          'receipt.nexus.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618',
           'training.verification.challenge.59ba1f30-c2f0-40b0-b3ec-b9c5e1fb5316',
           'receipt.nexus.tassadar_run_settlement.idem.tassadar.settlement.59ba1f30.orrery.v2',
+          'docs/promises/2026-06-18-training-monday-real-settlement-gate-met.md',
           'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
           'docs/transcripts/236.md',
           'docs/launch/JUNE16_ROADMAP.md',
           'https://github.com/OpenAgentsInc/openagents/issues/4855',
+          'https://github.com/OpenAgentsInc/openagents/issues/5232',
         ],
         blockerRefs: [],
         verification:
-          'GET /api/public/training/runs/run.tassadar.executor.20260615: run state active, summary.metrics.qualifiedContributorCount >= 1, and a Verified exact_trace_replay verification challenge with a settlement_recorded receipt linked to the run. For this promise version, the Orrery receipt is accepted only as simulation-backed settlement-record evidence (`realBitcoinMoved:false`). It must not be counted as real Bitcoin movement, accepted-work sats settled, or spendable contributor payout. Real paid-settlement copy requires a linked receipt with `realBitcoinMoved:true` and no private payment material.',
+          'GET /api/public/training/runs/run.tassadar.executor.20260615: run state active, summary.metrics.qualifiedContributorCount >= 1, and a Verified exact_trace_replay verification challenge with a settlement_recorded receipt linked to the run. The real paid-settlement gate is satisfied by receipt receipt.nexus.tassadar_run_settlement.idempotency.tassadar.run_settlement.5b7f92fe.canary1k.v6.20260618 (realBitcoinMoved:true, moneyMovement:real_bitcoin, state:settled, adapter:spark_treasury), backed by Verified challenge training.verification.challenge.071445c5-6ad6-4136-87e3-253b01914b4c. The earlier Orrery receipt remains only simulation-backed settlement-record evidence (`realBitcoinMoved:false`) and must not be counted as real Bitcoin movement, accepted-work sats settled, or spendable contributor payout. Broadening beyond one canary requires additional public settled receipts with `realBitcoinMoved:true`, a participant-count methodology, and accepted-work receipts for more than one contributor.',
         authorityBoundary:
-          'A launched, verified first pairing plus a simulation-backed settlement record does not authorize network-scale training claims, contributor admission beyond the published rules, largest-run comparisons, canonical-checkpoint mutation from public gradients, real-payout claims, or any spend beyond a future operator-approved real settlement.',
+          'A launched, verified first pairing plus one bounded 1,000-sat real settlement does not authorize network-scale training claims, paid-at-scale or hundreds-paid claims, contributor admission beyond the published rules, largest-run comparisons, canonical-checkpoint mutation from public gradients, or any spend beyond this single operator-approved 1,000-sat canary settlement. The earlier simulation-backed settlement record proves the projection path only, not real movement.',
       },
       {
         ...basePromiseFields,
