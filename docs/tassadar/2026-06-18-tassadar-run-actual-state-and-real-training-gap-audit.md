@@ -674,6 +674,170 @@ diversity comes from*: the edge.
 
 ---
 
+## 4c. Studying → deep codebase knowledge → Autopilot-as-coder
+
+This section is **forward-looking design**, framed as an audit vision, not a
+capability claim. It corrects how StudyBench / "machine studying" fits relative to
+§4's "Where StudyBench fits" note. That note placed studying as *adjacent* — a
+later eval harness and a GEPA prompt input, "a detour if pursued before the
+compiled-corpus loop." Read narrowly against the *analytic-construction* path that
+is true. But it understates studying's real value: studying is also a
+**first-class, near-term, high-value capability direction in its own right** — the
+direction that produces **coding agents deeply knowledgeable about a given
+codebase, the way a senior engineer who has lived in a repo for years is.** That
+track is product-facing (Autopilot coder / Forge cockpit / the Probe coding
+runtime) and runs **in parallel** with the longer-arc weight-module construction
+of §2–§4 — it does not sit on the analytic-construction path, and it does not
+compete with it for the same rung. Both halves are honestly labeled below:
+what already EXISTS, and what must be BUILT.
+
+### What a "studied" agent internalizes
+
+A studied agent is not a grep-and-guess agent that re-derives context every turn.
+It carries an internalized model of a specific repository along four axes:
+
+1. **All current code** — modules, types, contracts, invariants — *indexed and
+   understood*, not searched blind. It knows where a surface lives, what it owns,
+   and which file is the authority for a given change.
+2. **The full commit history** — what changed, when, and **why** — so it reasons
+   about a line in the context of how it got there.
+3. **The rationale of each thing** — why code exists, why it is shaped this way,
+   what was tried and **rejected**. This is the lineage captured in
+   `AGENTS.md` / `INVARIANTS.md` / dated audits, *and* — distinctively — in the
+   workspace's `backroom/` pruned-code corpus (the archive of removed DSPy/GEPA/
+   RLM/FRLM lanes and the `openagents`-side `2026-02-25` prune in `d7f53fccc`),
+   which records *what was deliberately removed and why*.
+4. **Everything cross-linked** — a traversable knowledge graph:
+   code ↔ commit ↔ doc ↔ issue ↔ rationale ↔ invariant. The value is in the
+   edges, not the nodes: an edit site links to the invariant it must respect, the
+   commit that introduced it, the audit that explains it, and the rejected
+   approach it must not re-introduce.
+
+### Why this directly powers "Autopilot as coder"
+
+A coder that genuinely knows the repo makes changes consistent with the repo's
+*intent*: it respects invariants, finds the right edit site the first time, does
+not re-introduce a pruned mistake the `backroom/` lineage already recorded as
+rejected, and understands *why* before changing. That is precisely the gap between
+a grep-and-guess agent and one fluent in a codebase — and closing it is the
+**highest-leverage near-term use of studying**, because it improves the coding
+agents OpenAgents is *already* building (the Probe runtime in `packages/probe/`,
+the Autopilot Coder surface, the Forge cockpit), rather than waiting on the
+longer-arc weight-module marketplace.
+
+### Start with THIS repo (dogfood)
+
+The first studied codebase is **`openagents` itself**: all current code + the full
+commit history + the rationale in `docs/` / `AGENTS.md` / `INVARIANTS.md` / the
+dated audits + the pruned lineage in `backroom/` + the cross-links among them —
+yielding a knowledge substrate the Autopilot coder uses to work on `openagents`,
+then generalizes to any repo. This is **not a new proposal**: it is exactly the
+plan already written down in
+`docs/research/machine-studying/2026-06-17-tassadar-openagents-repo-studying-roadmap.md`,
+whose thesis is "OpenAgents should dogfood a 'repo expert' system by studying
+itself first" (corpus = the `openagents` repo at a pinned commit; admit
+`AGENTS.md`, `INVARIANTS.md`, `docs/promises/`, `docs/tassadar/`, the
+machine-studying docs, Blueprint/Probe/Pylon/Tassadar code; study packet =
+source map + invariant map + typed-ref glossary + **trap catalog** + edit
+playbooks + **retained failure fixtures**; evaluation = *hidden repo-edit exams*,
+not Q&A). That roadmap's Phase 6 is the generalize-to-any-repo customer product.
+
+### How it connects to the rest of this audit (each grounded)
+
+- **StudyBench / the machine-studying lane is the METHOD + benchmark for codebase
+  studying.** It EXISTS as research + typed contracts:
+  `docs/research/machine-studying/*` (the studying roadmap above; the StudyBench
+  benchmark audit
+  `2026-06-17-studybench-openagents-benchmark-audit.md`, whose own scope ties
+  StudyBench to "Forge Coder repo memory" and the "Autopilot Coder plans"), and
+  the shipped Probe contracts in
+  `packages/probe/packages/runtime/src/benchmark/studybench.ts`
+  (`openagents.studybench_task.v0`, `…rubric_claim.v0`, `…evidence_span.v0`,
+  `…dataset_package.v0`, `probe.studybench_claim_score.v0`,
+  `…rubric_score.v0`, with public-projection/redaction validators) — plus the
+  deterministic repo-corpus helpers (`openagents.repo_corpus_manifest.v0`,
+  `…corpus_entry.v0`, `…corpus_evidence_span.v0`, MSB-MVP-02/#5284) that already
+  admit files with exclusion rules and stable digests. The benchmark *measures*
+  studied-knowledge lift (pass at fixed budget, fewer wrong-file reads,
+  first-divergence from the ideal trajectory); the corpus helpers *build the
+  substrate it measures over*.
+- **The edge agents source it as a verifiable, payable data direction** — this
+  ties straight into §4b. The live work-request market already EXISTS:
+  `apps/openagents.com/workers/api/src/artanis-labor-requester.ts` (#4731) lets
+  Artanis issue a bounded, budgeted `ArtanisLaborRequestProposal`
+  (`objectiveRef`, `requiredCapabilityRefs`, `budgetSats`, `deadlineRef`,
+  `verificationCommandRef`), gated and fail-closed;
+  `forum-work-requests.ts` carries the full typed lifecycle
+  `open → quote_received → quote_accepted → running → delivered → accepted →
+  settled` over **NIP-LBR** (`LBR_AGENTIC_CODING_REQUEST_KIND`, kind-5934);
+  `labor-escrow.ts` reserves/releases budget on the agent credit ledger; and the
+  `work_routing_proposal` decision kind in `artanis-forum-listener.ts` lets
+  contributors *propose* studying/data directions that Artanis filters and funds.
+  So "task an edge agent to produce a chunk of studied knowledge about a repo,
+  escrow a budget, accept on delivery, settle" rides rails that already ship.
+- **Studied knowledge is a *checkable* data contribution — a concrete way to start
+  closing §4b's data-verification gap.** §4b flagged that
+  `apps/openagents.com/workers/api/src/data-trace-marketplace-gate.ts` already
+  enforces a `blocked → submitted → redacted → valued → purchased → entitled →
+  payable → settled` lifecycle with provenance/redaction/valuation/settlement —
+  but **without a correctness verdict** (confirmed: the gate has no
+  correctness/validity/verify path; it prices and sells, it does not judge
+  correctness). A *studied-knowledge* contribution is more checkable than raw
+  data: a claimed commit-rationale link can be re-derived from the cited commit
+  and doc and **compared**; a claimed code↔history↔doc graph edge resolves (or
+  fails to resolve) against the actual repo at a pinned digest; the
+  `repo_corpus_*` helpers already produce stable manifest/span hashes and
+  line-numbered evidence spans, and StudyBench rubric scoring already attaches
+  evidence-span resolution. That is exactly the **derived-trace replay + validator
+  review** shape §4b named as the missing data analogue of §1's exact replay —
+  pointed at a *bounded, resolvable* target (links and spans over a pinned repo)
+  rather than at irreducibly non-deterministic raw data. Studied knowledge is
+  therefore the most natural *first* data direction to make verifiable and payable.
+- **It is the knowledge/data layer — DISTINCT from the compiled weight-module
+  core.** In §0–§2's analytic-construction paradigm, capability is *constructed
+  and verified by exact replay*; studied knowledge is **not** a compiled
+  weight-module and must never be described as one. It is the hybrid ring's
+  *learned-interface context* / a memory-retrieval substrate over a codebase
+  (§2d, Baseline D: a thin learned shell marshaling frozen exact cores) — exactly
+  the kind of *data direction* §4b says the edge produces. The honest framing:
+  this is the **near-term, product-facing track** (Autopilot coder / Forge
+  cockpit / the Probe coding runtime) that runs in parallel with, and feeds
+  context to, the longer-arc weight-module construction — not a substitute for it.
+
+### Honest split: EXISTS vs must-be-BUILT
+
+- **EXISTS:** the machine-studying *research + roadmap* (repo-as-corpus dogfood,
+  study-packet shape, hidden-edit-exam design); the StudyBench *benchmark*
+  contracts and the deterministic `repo_corpus_*` manifest/span helpers in the
+  Probe runtime; the *live labor market* (Artanis requester, NIP-LBR work-request
+  lifecycle, labor escrow, `work_routing_proposal`); the *data-trace gate*
+  (provenance/redaction/valuation/settlement); and `backroom/` as the
+  ready-made **rationale corpus** of rejected/pruned lineage.
+- **Must be BUILT:** the **deep, cross-linked knowledge substrate** over a repo
+  (code ↔ commit ↔ doc ↔ issue ↔ rationale ↔ invariant) as a first-class,
+  digest-addressed artifact — today the pieces (corpus manifest, evidence spans,
+  study packet) are separate, not yet a traversable graph; a **studied-knowledge
+  correctness-verification model** (derived-trace replay over link/span claims +
+  validator review for the non-deterministic remainder) that gives the
+  data-trace gate the *correctness verdict* §4b says it lacks; and the
+  **Autopilot-coder integration** that actually *consumes* the substrate at edit
+  time (find the right site, respect the invariant, avoid the pruned mistake).
+  This maps onto the roadmap's open phases (study-packet MVP → hidden exam →
+  Probe-backed runs → deterministic refinery → dogfood surface → external-repo
+  product), not onto §4's top-5 construction gate.
+
+**Relationship to the §4 top-5 and the §4b data gap.** This track is *parallel*
+to the §4 top-5 (which sequence the analytic weight-module construction), not a
+sixth item inside it — studied knowledge is data/context for the hybrid ring
+(§2d), never a compiled module. It is, however, the most concrete near-term
+*answer* to the data-verification gap §4b flagged: the first data direction whose
+correctness is actually checkable, on rails (labor market + data-trace gate +
+StudyBench contracts + repo-corpus helpers) that already exist — with the
+knowledge graph, the correctness model, and the coder integration as the honest
+build-list.
+
+---
+
 ## 5. Honest bottom line
 
 Read correctly through the LLM-computer paradigm, the Tassadar run today is **a
