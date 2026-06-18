@@ -4,6 +4,99 @@ Date: 2026-06-18, 07:18 CT. Carries forward the still-live launch/test work
 from [`JUNE17_ROADMAP.md`](./JUNE17_ROADMAP.md), now that the Tassadar
 LLM-computer roadmap is implemented on `main`.
 
+## END-OF-DAY UPDATE (2026-06-18) — what shipped (authoritative current state)
+
+The morning plan (launch the RC, self-test, invite testers) is **done**, and the
+RC moved rc.31 → **rc.33** as self-testing and a real tester (Trigger) shook out
+bugs. All on npm `rc` + signed OTA 4-platform rollout 100 + GitHub prereleases;
+`latest` stays `0.2.5`.
+
+**RC progression (why each cut):**
+
+- **rc.32** — pre-invite self-test fixes so basic commands don't break for
+  testers: `pylon --version`/`-V` and bare `--help`/`-h` were booting the node and
+  crashing on the control port (now short-circuit + exit); raw port-in-use crash →
+  clear actionable error; stale "Pylon v0.3" crash banner → real version; the
+  bundled Breez SDK storage banner was corrupting `wallet status --json` /
+  `backup-status --json` stdout (guard added).
+- **rc.33** — the Breez guard installed too late vs module-eval order in the
+  compiled binary, so `wallet status --json` still leaked the banner (Trigger hit
+  it). Fixed by installing the stdout guard eval-first (top-level side effect on the
+  first import). Verified on the signed darwin-arm64 binary; **Trigger confirmed
+  `wallet status --json` parses clean on rc.33.**
+
+**RC thread — POSTED (owner approved).** Release Candidates thread:
+<https://openagents.com/forum/t/6cb2d165-7a65-495d-a21c-6a3a546ad759> (title
+corrected to rc.32; consolidated to one clean OP; my redundant reply deleted —
+which required building real post-deletion + a topic-rename endpoint, below).
+
+**Self-tested the full path before inviting anyone.** On the live run
+`run.tassadar.executor.20260615`: worker `claim` → `submit-trace` (pinned
+loop-sum, digest match, 80 steps) → an independent validator (`validate --auto`,
+distinct device) replayed (exact digest match) → challenge **`Verified`**. Caught
+5+ tester-facing bugs ourselves first.
+
+**Settlements (precise, per Orrery's dereference):** two real-Bitcoin settled
+receipts on the run —
+
+- **Orrery 1,000 sats** (`pylon.448ba824…`, ~01:34Z) — the owner-armed canary;
+  **first real settlement, full stop** (it proved the *rail*).
+- **Trigger 5 sats** (`pylon.81f0facfe…`, ~14:13Z) — **first independent
+  contributor through the rc.32 self-serve public path** (install → register →
+  claim → submit → independent validation → paid). It proved the *door*.
+  **Operator-retro-settled** via the admin settlement endpoint because the
+  auto-stream *skipped* at verdict time (the payout-target resolution bug, fixed
+  below).
+- **The first fully-autonomous auto-stream settlement (gate firing at verdict, no
+  operator POST) has NOT happened yet** — the next Verified pair should be it, now
+  the resolver is fixed. Flag it explicitly when it lands.
+- **Real settled total = 1,005 sats** (1000 + 5). The public aggregate
+  `providerConfirmedSettledPayoutSats` currently reads 1,010 because it counts
+  `state:settled` without filtering movement, so it includes an old 5-sat
+  **simulation** receipt (`…59ba1f30…`, `mdk_agent_wallet`,
+  `realBitcoinMoved:false`). Reconcile fix in flight (below).
+
+**Bugs fixed + deployed today (openagents.com Worker):**
+
+- **Settlement payout-target resolution** — Verified contributors with a *ready*
+  Spark target weren't paid because settlement resolved by the lease's worker
+  device-ref while the target is registered under the pylonRef; added an
+  owner-scoped canonical fallback (fail-closed). Unblocked Trigger's payout.
+- **Real forum post deletion** — tombstoned posts were rendering a broken
+  `content.forum.post.<id>` placeholder; now excluded from the topic projection
+  (audit row kept, counts corrected). Cleared the bad post.
+- **#5333 self-serve agent displayName** — `PATCH /api/agents/me` so an agent can
+  rename itself (propagates live to `/api/pylons`; Forum author names are per-post
+  snapshots — flagged, no risky backfill). Closed.
+- **Forum topic-title rename** — `PATCH /api/forum/topics/{id}` (author-only),
+  built to fix the stale RC thread title.
+
+**In flight (last open item):** reconcile the run-level settled state from settled
+receipts (stop showing stale manifest `settlementState:pending`), add an
+enumerable REST settled-feed endpoint keyed by run, and **fix the real-vs-sim
+total so the run reads 1,005 real, not 1,010** — all per Orrery's reconciliation
+asks. On deploy, post the corrected numbers + the feed URL for re-dereference.
+
+**Monitoring:** all-day forum-reply + GitHub-issue watchers armed; regular
+public-safe progress updates posted as Raynor as each fix lands. Two independent
+contributors are actively stress-testing — Trigger (client + settlement path),
+Orrery (receipt-trail + projection reconciliation, with sha256/Nostr/OTS
+pre-commitments).
+
+**Overnight (context):** the Tassadar roadmap EPIC #5313 + child issues
+#5314–#5332 were built (C/V/E/H tracks) and the run-state audit was reframed to the
+Percepta **LLM-computer** paradigm — training = compiling programs into
+transformer weights, verified by exact replay, not gradient descent.
+
+**Morning closeout criteria — MET:** RC verified across npm/OTA/GitHub (rc.33);
+the live Worker includes the current Tassadar code (deployed); an actual-run Pylon
+path was exercised through contribution + independent replay → `Verified` +
+settled; the RC thread is posted (owner-approved); launch docs updated (this
+section). The remaining reconciliation fix is tracked above.
+
+> The sections below are the **morning handoff record** (07:18 CT) and are
+> superseded by the END-OF-DAY UPDATE above where they differ.
+
 ## Status at morning handoff
 
 - Public AGENTS reviewed at <https://openagents.com/AGENTS.md>. The Release
@@ -71,6 +164,10 @@ with the proper logic now present:
 7. Only after the above, post the Release Candidates forum thread as Raynor.
 
 ## Release Candidates forum thread prep - Raynor
+
+> POSTED (owner-approved) — live at
+> <https://openagents.com/forum/t/6cb2d165-7a65-495d-a21c-6a3a546ad759>, now
+> rc.33 + consolidated. The draft below is the historical morning prep.
 
 No post yet. Prepare this as a draft for the owner/posting step.
 
@@ -167,6 +264,10 @@ Tassadar actual-run RC.
   posting.
 
 ## Closeout for today
+
+> Status: criteria MET (see END-OF-DAY UPDATE). One reconciliation fix
+> (real-only settled total + run-level reconcile + enumerable settled feed)
+> remains in flight; settlement gate stays armed as-is.
 
 June 18 is done when:
 
