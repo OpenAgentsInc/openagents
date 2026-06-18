@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { sha256Hex } from './agent-registration'
 import { deriveDebtReceiptKey } from './debt-receipt-key'
 import {
   type DebtReceiptSettlementInput,
@@ -362,6 +363,41 @@ describe('POST /api/hygiene-lane/settlement-receipt (honest dispatch, #5372)', (
         receipt => receipt.receiptKind === 'settlement_recorded',
       ),
     ).toHaveLength(1)
+  })
+
+  it('hashes idempotency refs before deriving settlement receipt refs', async () => {
+    const commonPrefix = `idem.${'a'.repeat(160)}`
+    const firstIdempotencyRef = `${commonPrefix}.first`
+    const secondIdempotencyRef = `${commonPrefix}.second`
+
+    const receiptRefFor = async (idempotencyRef: string): Promise<string> => {
+      const routes = makeRoutes()
+      const response = await runRoute(
+        routes.routeHygieneLaneSettlementRequest(
+          jsonRequest(settlementBody({ idempotencyRef })),
+          {},
+        ),
+      )
+
+      expect(response.status).toBe(200)
+      const json = (await response.json()) as {
+        settlement: { settlementReceiptRef: string }
+      }
+
+      return json.settlement.settlementReceiptRef
+    }
+
+    const firstReceiptRef = await receiptRefFor(firstIdempotencyRef)
+    const secondReceiptRef = await receiptRefFor(secondIdempotencyRef)
+
+    expect(firstReceiptRef).not.toBe(secondReceiptRef)
+    expect(firstReceiptRef).toContain(
+      `sha256_${(await sha256Hex(firstIdempotencyRef)).slice(0, 32)}`,
+    )
+    expect(secondReceiptRef).toContain(
+      `sha256_${(await sha256Hex(secondIdempotencyRef)).slice(0, 32)}`,
+    )
+    expect(firstReceiptRef).not.toContain(commonPrefix.slice(0, 120))
   })
 
   it('a duplicate-replay debt receipt is never payable (one settlement per key, #5340)', async () => {

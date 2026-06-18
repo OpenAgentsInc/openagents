@@ -1,5 +1,6 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
+import { sha256Hex } from './agent-registration'
 import { DebtReceiptKeyInput } from './debt-receipt-key'
 import {
   type DebtReceiptSettlementInput,
@@ -336,12 +337,16 @@ const routeHygieneLaneSettlement = <
     // 'none'); on the real branch it is `spark_treasury` (moneyMovement
     // 'real_bitcoin'). The resolved adapter — not the raw request — drives the
     // builder, so the simulation path never claims real money.
+    const idempotencyDigestHex = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => sha256Hex(body.idempotencyRef),
+    })
     const settlement = buildHygieneLaneSettlement({
       adapterKind: decision.gateDecision?.adapterKind ?? 'simulation',
       amountSats: decision.amount.payoutSats,
       contributorRef: body.contributorRef,
       debtReceiptKeyRef: body.debtReceiptKeyRef,
-      idempotencyRef: body.idempotencyRef,
+      idempotencyDigestHex,
       mergedPrRef: body.mergedPrRef,
       nowIso,
       operatorApprovalRef: body.operatorApprovalRef,
