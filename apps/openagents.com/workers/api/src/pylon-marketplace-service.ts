@@ -17,6 +17,7 @@ import {
 } from './pylon-marketplace-jobs'
 import { PylonResourceMode } from './pylon-resource-mode-setup'
 import { decodeUnknownWithSchema, parseJsonUnknown } from './json-boundary'
+import { publicRefSegment, uniqueRefs } from './public-ref-format'
 
 export const PylonMarketplaceTriageOutcome = S.Literals([
   'accepted_for_review',
@@ -205,12 +206,6 @@ type StoredTriageActionRow = Readonly<{
   target_intake_ref: string
 }>
 
-const uniqueRefs = (
-  refs: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> =>
-  [...new Set((refs ?? []).map(ref => ref.trim()).filter(ref => ref !== ''))]
-    .sort()
-
 const requiredRefs = (
   label: string,
   refs: ReadonlyArray<string>,
@@ -245,16 +240,8 @@ const stableValue = (value: unknown): unknown => {
 
 const stableJson = (value: unknown): string => JSON.stringify(stableValue(value))
 
-const publicRefSegment = (value: string): string =>
-  value
-    .trim()
-    .replaceAll(/[^A-Za-z0-9_.-]+/g, '_')
-    .replaceAll(/_{2,}/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 120) || 'record'
-
 const recordId = (prefix: string, value: string): string =>
-  `${prefix}.${publicRefSegment(value)}`
+  `${prefix}.${publicRefSegment(value, 'record')}`
 
 const defaultPrivacyClass = (
   source: PylonMarketplaceJobSource,
@@ -368,7 +355,7 @@ const makeIntakeRecord = (
 ): PylonMarketplaceJobIntakeRecord => {
   const source = request.source ?? 'openagents_seeded'
   const privacyClass = request.privacyClass ?? defaultPrivacyClass(source)
-  const suffix = publicRefSegment(`${source}_${request.jobKind}_${input.id}`)
+  const suffix = publicRefSegment(`${source}_${request.jobKind}_${input.id}`, 'record')
   const intakeRef =
     request.intakeRef ?? recordId('intake.public.pylon_marketplace', suffix)
   const jobRef =

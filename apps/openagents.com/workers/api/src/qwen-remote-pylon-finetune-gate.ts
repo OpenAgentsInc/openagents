@@ -1,6 +1,8 @@
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Schema as S } from 'effect'
 
+import { publicRefSegment, uniqueRefs } from './public-ref-format'
+
 export const QwenRemotePylonFineTuneGateSchemaVersion =
   'omega.qwen_remote_pylon_finetune_gate.v1'
 
@@ -112,22 +114,7 @@ const unsafeRefPattern =
   /(@|\/Users\/|\/home\/|access[_-]?token|auth\.json|bearer|callback[_-]?token|cookie|customer[_-]?(email|name|phone|prompt|record|value)|dataset\.(raw|private)|email[_-]?(address|body|html|raw|text)|full[_-]?(prompt|source|trace)|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice[_-]?(id|raw)|lnbc|lntb|lnbcrt|lno1|lnurl|macaroon|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|model[_-]?(weights|raw|secret)|oauth|opencode_auth_content|payment[_-]?(hash|id|invoice|preimage|proof|raw|secret)|payout[_-]?(address|destination|private|raw|target)|preimage|private[_-]?(archive|customer|dataset|key|prompt|source|trace|wallet)|provider[_-]?(account|credential|grant|payload|secret|token)|raw[_-]?(artifact|auth|customer|dataset|email|invoice|model|payment|payload|payout|prompt|provider|record|repo|runner|run[_-]?log|source|state|target|telemetry|text|trace|training|weights|webhook)|recovery[_-]?phrase|runner[_-]?(payload|secret|token)|secret|seed[_-]?phrase|sk-[a-z0-9]|source[_-]?(archive|raw)|token|wallet[._-](key|material|mnemonic|payment|preimage|secret|seed)|weights\.(bin|gguf|safetensors|pt|pth))/i
 const rawTimestampPattern = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
 
-const uniqueRefs = (
-  refs: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> =>
-  [
-    ...new Set((refs ?? []).map(ref => ref.trim()).filter(ref => ref !== '')),
-  ].sort()
-
 const hasRefs = (refs: ReadonlyArray<string>): boolean => refs.length > 0
-
-const publicRefSegment = (value: string): string =>
-  value
-    .trim()
-    .replaceAll(/[^A-Za-z0-9_.-]+/g, '_')
-    .replaceAll(/_{2,}/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 120) || 'qwen'
 
 const assertSafeRefs = (
   label: string,
@@ -293,6 +280,7 @@ export const projectQwenRemotePylonFineTuneGate = (
       : [
           `blocker.public.qwen_remote_finetune.shard_receipts_missing.required_${publicRefSegment(
             String(normalized.requiredShardCount),
+            'qwen',
           )}`,
         ]),
     ...(everyWorkerHasArtifactRefs && hasRefs(artifactRefs)

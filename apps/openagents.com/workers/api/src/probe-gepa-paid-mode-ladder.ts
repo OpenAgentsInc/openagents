@@ -10,6 +10,7 @@ import {
   assertPylonGepaMetricCallPublicRefs,
 } from './pylon-gepa-metric-call-assignments'
 import type { PylonGepaMetricCallCoordinatorImport } from './pylon-gepa-metric-call-assignments'
+import { publicRefSegment, uniqueRefs } from './public-ref-format'
 
 export const ProbeGepaPaidModeCampaignLadderSchemaVersion =
   'omega.probe_gepa_paid_mode_campaign_ladder.v1'
@@ -125,23 +126,8 @@ export class ProbeGepaPaidModeCampaignLadderUnsafe extends S.TaggedErrorClass<Pr
   },
 ) {}
 
-const uniqueRefs = (
-  refs: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> =>
-  [
-    ...new Set((refs ?? []).map(ref => ref.trim()).filter(ref => ref !== '')),
-  ].sort()
-
 const hasRefs = (refs: ReadonlyArray<string>): boolean =>
   Arr.isReadonlyArrayNonEmpty(refs)
-
-const publicRefSegment = (value: string): string =>
-  value
-    .trim()
-    .replaceAll(/[^A-Za-z0-9_.-]+/g, '_')
-    .replaceAll(/_{2,}/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 120) || 'record'
 
 const assertPublicRefs = (
   label: string,
@@ -188,7 +174,7 @@ const duplicateRefs = (
 
   refs.forEach(ref => {
     if (seen.has(ref)) {
-      duplicates.add(`${label}.${publicRefSegment(ref)}`)
+      duplicates.add(`${label}.${publicRefSegment(ref, 'record')}`)
     }
     seen.add(ref)
   })
@@ -224,6 +210,7 @@ const bridgeReplayBlockers = (
         ? [
             `blocker.probe_gepa.paid_ladder.duplicate_replay_missing_source.${publicRefSegment(
               attempt.bridgeAttemptRef,
+              'record',
             )}`,
           ]
         : []),
@@ -232,6 +219,7 @@ const bridgeReplayBlockers = (
         ? [
             `blocker.probe_gepa.paid_ladder.duplicate_replay_has_new_receipts.${publicRefSegment(
               attempt.bridgeAttemptRef,
+              'record',
             )}`,
           ]
         : []),

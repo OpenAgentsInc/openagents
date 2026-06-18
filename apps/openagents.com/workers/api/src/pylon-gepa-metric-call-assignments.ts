@@ -1,5 +1,7 @@
 import { Schema as S } from 'effect'
 
+import { publicRefSegment, uniqueRefs } from './public-ref-format'
+
 export const PylonGepaMetricCallAssignmentSchemaVersion =
   'omega.pylon_gepa_metric_call_assignment.v1'
 export const PylonGepaMetricCallCoordinatorImportSchemaVersion =
@@ -137,26 +139,12 @@ const unsafeRefPattern =
   /(@|\/Users\/|\/home\/|access[_-]?token|auth\.json|bearer|callback[_-]?token|cookie|customer[_-]?(email|name|value)|email[_-]?(address|body)|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|opencode_auth_content|payment[_-]?(hash|id|preimage|proof)|payout[_-]?(address|destination|target)|preimage|private[_-]?(channel|key|repo)|provider[_-]?(grant|payload|secret|token)|raw[_-]?(auth|email|invoice|payment|payload|prompt|provider|runner|run[_-]?log|source[_-]?archive|webhook)|runner[_-]?log|secret|sk-[a-z0-9]|source[_-]?archive|token|wallet)/i
 const rawTimestampPattern = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
 
-const uniqueRefs = (
-  refs: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> =>
-  [
-    ...new Set((refs ?? []).map(ref => ref.trim()).filter(ref => ref !== '')),
-  ].sort()
-
-const publicRefSegment = (value: string): string =>
-  value
-    .trim()
-    .replaceAll(/[^A-Za-z0-9_.-]+/g, '_')
-    .replaceAll(/_{2,}/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 120) || 'record'
-
 const defaultAssignmentRef = (
   input: PylonGepaMetricCallAssignmentInput,
 ): string =>
   `assignment.public.pylon_gepa_metric_call.${publicRefSegment(
     `${input.campaignId}.${input.taskRef}.${input.candidateHash}`,
+    'record',
   )}`
 
 const assertSafeRefs = (label: string, refs: ReadonlyArray<string>): void => {

@@ -10,6 +10,7 @@ import {
   ProbeGepaOutcomeMetricsProjection,
   probeGepaOutcomeMetricSummary,
 } from './probe-gepa-outcome-metrics'
+import { publicRefSegment, uniqueRefs } from './public-ref-format'
 
 export const ProbeGepaForumSummarySchemaVersion =
   'omega.probe_gepa_forum_summary.v1'
@@ -59,13 +60,6 @@ const unsafeRefPattern =
   /(@|\/Users\/|\/home\/|access[_-]?token|auth\.json|bearer|callback[_-]?token|cookie|credential|customer[_-]?(email|name|value)|email[_-]?(address|body)|fixture[_-]?body|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|opencode_auth_content|payment[_-]?(hash|id|preimage|proof)|payout[_-]?(address|destination|target)|preimage|private[_-]?(channel|key|repo)|provider[_-]?(account|grant|payload|secret|token)|raw[_-]?(auth|benchmark|email|fixture|invoice|payment|payload|prompt|provider|runner|run[_-]?log|source[_-]?archive|trace|traces)|runner[_-]?log|secret|sk-[a-z0-9]|source[_-]?archive|token|wallet)/i
 const rawTimestampPattern = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
 
-const uniqueRefs = (
-  refs: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> =>
-  [
-    ...new Set((refs ?? []).map(ref => ref.trim()).filter(ref => ref !== '')),
-  ].sort()
-
 const assertSafeRefs = (label: string, refs: ReadonlyArray<string>): void => {
   const unsafe = uniqueRefs(refs).find(
     ref =>
@@ -80,14 +74,6 @@ const assertSafeRefs = (label: string, refs: ReadonlyArray<string>): void => {
     })
   }
 }
-
-const publicRefSegment = (value: string): string =>
-  value
-    .trim()
-    .replaceAll(/[^A-Za-z0-9_.-]+/g, '_')
-    .replaceAll(/_{2,}/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 120) || 'campaign'
 
 export const generateProbeGepaForumSummary = (
   input: ProbeGepaForumSummaryInput,
@@ -127,7 +113,7 @@ export const generateProbeGepaForumSummary = (
   const title = `Probe GEPA ${projection.stage} summary: ${projection.campaignRef}`
   const idempotencyKey = [
     'forum_summary.probe_gepa',
-    publicRefSegment(projection.campaignRef),
+    publicRefSegment(projection.campaignRef, 'campaign'),
     projection.stage,
     projection.claimState,
     String(projection.completedMetricCalls),
