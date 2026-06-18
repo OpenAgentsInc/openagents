@@ -1,4 +1,12 @@
-# JUNE 17 ROADMAP — finish wallet unification, publish the RC, close v1.0 gates
+# JUNE 17 ROADMAP - CLOSED OUT (2026-06-18)
+
+> **Status: CLOSED OUT on 2026-06-18.** This is the historical record of the
+> June 17 wallet-unification, RC-hardening, launch-gate, and terminal-agent
+> systems closeout day. Ongoing June 18 work has moved to
+> [`JUNE18_ROADMAP.md`](./JUNE18_ROADMAP.md): launch/test the current Pylon RC
+> with the completed Tassadar construction/verification/hybrid logic, prepare
+> the Release Candidates forum thread as Raynor, and keep remaining release
+> gates receipt-first.
 
 Date: 2026-06-17. Carries the open work forward from `JUNE16_ROADMAP.md` (now
 closed out). June 15 shipped the launch; June 16 stabilized it and shipped the
