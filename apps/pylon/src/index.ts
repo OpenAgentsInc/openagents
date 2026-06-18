@@ -105,6 +105,11 @@ import {
   runControlCommand,
 } from "./node/control-cli"
 import {
+  runSessionsExec,
+  type ApprovalPolicy,
+  type SessionsExecControl,
+} from "./node/sessions-exec"
+import {
   PYLON_COMMAND_CATALOG,
   findCommandEntry,
   projectCommandCatalog,
@@ -1901,7 +1906,92 @@ async function main() {
         process.stdout.write(`${JSON.stringify({ ok: true, session: result }, null, 2)}\n`)
         return
       }
-      throw new Error("usage: pylon sessions list|spawn|cancel ...")
+      // W-1 (#5377): blocking run-to-completion one-shot. Spawn a coding session
+      // and drive its turn loop to a terminal state over the SAME control verbs,
+      // returning a structured JSON result. Exit 0 on success-terminal, nonzero
+      // on failure/timeout/approval-required. Thin wrapper — no new wire verb.
+      if (command === "exec") {
+        const adapter = optionString(options, "adapter")
+        const objective = optionString(options, "objective")
+        if (adapter !== "codex" && adapter !== "claude_agent") {
+          throw new Error("sessions exec --adapter must be codex or claude_agent")
+        }
+        if (!objective || objective.trim().length === 0) {
+          throw new Error("sessions exec requires --objective")
+        }
+        // `--verify` is REPEATABLE (each is a whole command). parseCliOptions
+        // collapses repeats, so collect every occurrence from the raw argv. A
+        // single `--verify "test -f x"` is tokenized like `spawn` does.
+        const verifyArgs = args.slice(2)
+        const verifies: string[][] = []
+        for (let i = 0; i < verifyArgs.length; i += 1) {
+          if (verifyArgs[i] === "--verify") {
+            const value = verifyArgs[i + 1]
+            if (typeof value === "string" && !value.startsWith("--") && value.trim().length > 0) {
+              verifies.push(value.trim().split(/\s+/))
+              i += 1
+            }
+          }
+        }
+        // The control session takes ONE verify argv. With multiple `--verify`
+        // commands, chain them with `&&` via a shell so all must pass; a single
+        // command runs directly (no shell wrap). Default to `bun --version` when
+        // none given so the session still produces a verify outcome.
+        const verify =
+          verifies.length === 0
+            ? ["bun", "--version"]
+            : verifies.length === 1
+              ? verifies[0]
+              : ["bash", "-lc", verifies.map((cmd) => cmd.join(" ")).join(" && ")]
+        const worktree = optionString(options, "worktree")
+        const onApprovalRaw = optionString(options, "on-approval")
+        if (onApprovalRaw !== undefined && onApprovalRaw !== "manual" && onApprovalRaw !== "deny") {
+          throw new Error("sessions exec --on-approval must be manual or deny")
+        }
+        const onApproval: ApprovalPolicy = onApprovalRaw === "deny" ? "deny" : "manual"
+        const timeoutSecondsRaw = optionString(options, "timeout-seconds")
+        const timeoutSeconds =
+          timeoutSecondsRaw === undefined ? undefined : Number.parseInt(timeoutSecondsRaw, 10)
+        if (timeoutSeconds !== undefined && (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0)) {
+          throw new Error("sessions exec --timeout-seconds must be a positive integer")
+        }
+        // Thin control adapter: every verb forwards to the running node. No new
+        // authority — this only spawns + observes the existing session surface.
+        const control: SessionsExecControl = {
+          spawn: async (cmd) => {
+            const { result } = await runControlCommand(cmd, Bun.env)
+            return result as { sessionRef: string; state: any }
+          },
+          list: async () => {
+            const { result } = await runControlCommand({ type: "session.list" }, Bun.env)
+            return result as any
+          },
+          events: async (sessionRef) => {
+            const { result } = await runControlCommand({ type: "session.events", sessionRef }, Bun.env)
+            return result as any
+          },
+          artifact: async (sessionRef) => {
+            const { result } = await runControlCommand({ type: "session.artifact", sessionRef }, Bun.env)
+            return result as any
+          },
+          approvalsList: async () => {
+            const { result } = await runControlCommand({ type: "approvals.list" }, Bun.env)
+            return result as { approvals: Array<{ approvalRef: string; kind: string }> }
+          },
+        }
+        const result = await runSessionsExec(control, {
+          adapter,
+          objective,
+          verify,
+          ...(worktree ? { worktreePath: worktree } : {}),
+          ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }),
+          onApproval,
+        })
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        if (!result.ok) process.exitCode = 1
+        return
+      }
+      throw new Error("usage: pylon sessions list|spawn|exec|cancel ...")
     } catch (error) {
       emitControlError("sessions", error)
       return

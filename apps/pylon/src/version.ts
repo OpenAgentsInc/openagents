@@ -22,7 +22,13 @@
 // (#5345). The Spark Lightning Address becomes a best-effort optional add for
 // external Lightning senders and no longer blocks readiness when its LSP is
 // unreachable.
-export const PYLON_VERSION = "1.0.0-rc.34"
+// rc.35: add `pylon sessions exec` — a blocking run-to-completion task primitive
+// (W-1, #5377). It spawns a coding session and drives its turn loop to a terminal
+// state over the existing control verbs (session.spawn/list/events/artifact),
+// returning a structured JSON result (final state, summary, changeset, verify
+// outcome, refs). Exit 0 on success-terminal, nonzero on failure/timeout. New CLI
+// surface, so the version bumps.
+export const PYLON_VERSION = "1.0.0-rc.35"
 export type PylonVersion = typeof PYLON_VERSION
 
 // Composed client-version string sent in presence/heartbeat payloads.
