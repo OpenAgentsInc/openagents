@@ -2148,6 +2148,7 @@ async function main() {
   if (
     args[0] === "activity" ||
     args[0] === "timeline" ||
+    args[0] === "replay" ||
     args[0] === "receipts" ||
     args[0] === "evidence-pack"
   ) {

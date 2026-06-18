@@ -92,6 +92,127 @@ const promisesFixture = {
   ],
 }
 
+const generatedReplayFixture = {
+  bundleRef: "proof_replay_bundle.public_activity.demo",
+  schemaVersion: "proof_replay_bundle.v1",
+  generatedAt: "2026-06-18T12:01:00.000Z",
+  title: "Generated Public Activity Replay",
+  socialDisplayTime: "Generated from public activity timeline",
+  sourceAuthority: "worker_d1_public",
+  privacyLevel: "public_safe",
+  claimScope: "evidence_presentation_only",
+  sourceRefs: [
+    {
+      ref: "https://openagents.test/api/public/activity-timeline?from=2026-06-18T00%3A00%3A00Z&to=2026-06-18T01%3A00%3A00Z",
+      kind: "api",
+      url: "https://openagents.test/api/public/activity-timeline?from=2026-06-18T00%3A00%3A00Z&to=2026-06-18T01%3A00%3A00Z",
+      observedAt: "2026-06-18T12:01:00.000Z",
+    },
+  ],
+  staleness: {
+    mode: "live_at_read",
+    generatedAt: "2026-06-18T12:01:00.000Z",
+  },
+  generatedFrom: {
+    schemaVersion: "openagents.public_activity_generated_replay.v1",
+    authority: "evidence_presentation_only",
+    caveatRefs: [
+      "caveat.public.proof_replay.generated_from_activity_timeline_observation_only",
+    ],
+    input: {
+      actorRefs: ["pylon.demo", "validator.demo"],
+      filterKinds: ["verification_verified"],
+      filterSources: ["training_verification"],
+      from: "2026-06-18T00:00:00Z",
+      limit: 50,
+      runRefs: ["training.run.demo"],
+      since: "cursor.0",
+      to: "2026-06-18T01:00:00Z",
+      windowRefs: ["training.window.demo"],
+    },
+    route: "/api/public/proof-replays",
+    source: {
+      route: "/api/public/activity-timeline",
+      url: "https://openagents.test/api/public/activity-timeline?from=2026-06-18T00%3A00%3A00Z&to=2026-06-18T01%3A00%3A00Z",
+    },
+  },
+  actors: [
+    {
+      actorRef: "pylon.demo",
+      avatarRole: "contributor",
+      displayName: "Demo Pylon",
+    },
+  ],
+  stages: [
+    {
+      stageRef: "stage.timeline.verification",
+      stageKind: "proof_gate",
+      label: "Verification",
+      sourceRefs: ["training.verification.challenge.challenge.1"],
+    },
+  ],
+  events: [
+    {
+      eventRef: "replay.event.1",
+      kind: "actor_focused_pylon",
+      sequenceIndex: 0,
+      timelineSecond: 0,
+      observedAt: "2026-06-18T00:00:05.000Z",
+      actorRefs: ["pylon.demo"],
+      targetRefs: ["stage.timeline.verification"],
+      sourceRefs: ["pylon.demo.registration"],
+      displayText: "Demo Pylon became assignment ready.",
+      caveat: "caveat.public.activity_timeline.source_lag",
+      stateAfter: "assignment_ready",
+    },
+    {
+      eventRef: "replay.event.2",
+      kind: "proof_verified",
+      sequenceIndex: 1,
+      timelineSecond: 6,
+      observedAt: "2026-06-18T00:00:20.000Z",
+      actorRefs: ["validator.demo"],
+      targetRefs: ["training.verification.challenge.challenge.1"],
+      sourceRefs: ["training.verification.challenge.challenge.1"],
+      displayText: "Validator verified the replay digest.",
+    },
+  ],
+  flows: [
+    {
+      flowRef: "flow.demo.1",
+      flowKind: "fleet_readiness_track",
+      fromRef: "pylon.demo",
+      toRef: "stage.timeline.fleet",
+      sourceRefs: ["pylon.demo.registration"],
+    },
+  ],
+  cameraCues: [],
+  captions: [
+    {
+      captionRef: "caption.demo.1",
+      sequenceIndex: 0,
+      timelineSecond: 0,
+      text: "Fleet readiness event",
+      sourceRefs: ["pylon.demo.registration"],
+    },
+    {
+      captionRef: "caption.demo.2",
+      sequenceIndex: 1,
+      timelineSecond: 6,
+      text: "Verification event",
+      sourceRefs: ["training.verification.challenge.challenge.1"],
+    },
+  ],
+  gaps: [
+    {
+      gapRef: "gap.source_lag.training_verification",
+      reason: "Training verification source lagged.",
+      affectedRefs: ["training_verification"],
+      sourceRefs: ["blocker.public.activity_timeline.source_lag.training_verification"],
+    },
+  ],
+}
+
 describe("public activity CLI", () => {
   test("activity --json fetches filtered public timeline events with dereferenceable refs", async () => {
     const rec = recordingFetch(() => timelineFixture)
@@ -222,6 +343,134 @@ describe("public activity CLI", () => {
     assertPublicProjectionSafe(result)
   })
 
+  test("replay fetches a generated public activity bundle and projects JSON event track", async () => {
+    const rec = recordingFetch((url) => {
+      if (url.includes("/api/public/proof-replays")) return generatedReplayFixture
+      throw new Error(`unexpected url ${url}`)
+    })
+
+    const result = await runPublicActivityCliCommand(
+      "replay",
+      [
+        "--format",
+        "json",
+        "--from",
+        "2026-06-18T00:00:00Z",
+        "--to",
+        "2026-06-18T01:00:00Z",
+        "--run",
+        "training.run.demo",
+        "--window",
+        "training.window.demo",
+        "--pair",
+        "pylon.demo:validator.demo",
+        "--kind",
+        "verification_verified",
+        "--source",
+        "training_verification",
+        "--since",
+        "cursor.0",
+        "--limit",
+        "50",
+        "--base-url",
+        baseUrl,
+      ],
+      { fetchFn: rec.fetchFn, nowIso },
+    )
+
+    expect(result.json).toBe(true)
+    expect(result.output.kind).toBe("replay")
+    if (result.output.kind !== "replay") throw new Error("unexpected output")
+    const url = new URL(rec.calls[0]!.url)
+    expect(`${url.origin}${url.pathname}`).toBe(`${baseUrl}/api/public/proof-replays`)
+    expect(url.searchParams.get("mode")).toBe("activity-timeline")
+    expect(url.searchParams.get("from")).toBe("2026-06-18T00:00:00Z")
+    expect(url.searchParams.get("to")).toBe("2026-06-18T01:00:00Z")
+    expect(url.searchParams.get("runRef")).toBe("training.run.demo")
+    expect(url.searchParams.get("windowRef")).toBe("training.window.demo")
+    expect(url.searchParams.getAll("actorRef")).toEqual([
+      "pylon.demo",
+      "validator.demo",
+    ])
+    expect(url.searchParams.getAll("kind")).toEqual(["verification_verified"])
+    expect(url.searchParams.getAll("source")).toEqual(["training_verification"])
+    expect(url.searchParams.get("since")).toBe("cursor.0")
+    expect(url.searchParams.get("limit")).toBe("50")
+    expect(result.output.eventTrack).toEqual({
+      schema: "openagents.pylon.public_replay_event_track.v1",
+      bundleRef: "proof_replay_bundle.public_activity.demo",
+      title: "Generated Public Activity Replay",
+      generatedAt: "2026-06-18T12:01:00.000Z",
+      sourceAuthority: "worker_d1_public",
+      privacyLevel: "public_safe",
+      claimScope: "evidence_presentation_only",
+      generatedFrom: generatedReplayFixture.generatedFrom,
+      staleness: generatedReplayFixture.staleness,
+      sourceRefs: generatedReplayFixture.sourceRefs,
+      events: [
+        {
+          sequenceIndex: 0,
+          eventRef: "replay.event.1",
+          kind: "actor_focused_pylon",
+          timelineSecond: 0,
+          timestamp: "2026-06-18T00:00:05.000Z",
+          displayText: "Demo Pylon became assignment ready.",
+          actorRefs: ["pylon.demo"],
+          targetRefs: ["stage.timeline.verification"],
+          sourceRefs: ["pylon.demo.registration"],
+          caveatRefs: ["caveat.public.activity_timeline.source_lag"],
+          captions: ["Fleet readiness event"],
+          amountSats: null,
+          rail: null,
+          stateBefore: null,
+          stateAfter: "assignment_ready",
+        },
+        {
+          sequenceIndex: 1,
+          eventRef: "replay.event.2",
+          kind: "proof_verified",
+          timelineSecond: 6,
+          timestamp: "2026-06-18T00:00:20.000Z",
+          displayText: "Validator verified the replay digest.",
+          actorRefs: ["validator.demo"],
+          targetRefs: ["training.verification.challenge.challenge.1"],
+          sourceRefs: ["training.verification.challenge.challenge.1"],
+          caveatRefs: [],
+          captions: ["Verification event"],
+          amountSats: null,
+          rail: null,
+          stateBefore: null,
+          stateAfter: null,
+        },
+      ],
+      gaps: [
+        {
+          gapRef: "gap.source_lag.training_verification",
+          reason: "Training verification source lagged.",
+          affectedRefs: ["training_verification"],
+          sourceRefs: ["blocker.public.activity_timeline.source_lag.training_verification"],
+        },
+      ],
+      captions: [
+        {
+          captionRef: "caption.demo.1",
+          sequenceIndex: 0,
+          timelineSecond: 0,
+          text: "Fleet readiness event",
+          sourceRefs: ["pylon.demo.registration"],
+        },
+        {
+          captionRef: "caption.demo.2",
+          sequenceIndex: 1,
+          timelineSecond: 6,
+          text: "Verification event",
+          sourceRefs: ["training.verification.challenge.challenge.1"],
+        },
+      ],
+    })
+    assertPublicProjectionSafe(result)
+  })
+
   test("text formatting is useful without JSON parsing", async () => {
     const timelineResult = await runPublicActivityCliCommand(
       "activity",
@@ -239,6 +488,29 @@ describe("public activity CLI", () => {
     )
     expect(formatPublicActivityCliText(receiptsResult)).toContain(
       "receipt.training.run.demo.1 amount=1000 realBitcoinMoved=true",
+    )
+
+    const replayResult = await runPublicActivityCliCommand(
+      "replay",
+      [
+        "--from",
+        "2026-06-18T00:00:00Z",
+        "--to",
+        "2026-06-18T01:00:00Z",
+        "--base-url",
+        baseUrl,
+      ],
+      { fetchFn: recordingFetch(() => generatedReplayFixture).fetchFn, nowIso },
+    )
+    const replayText = formatPublicActivityCliText(replayResult)
+    expect(replayText).toContain(
+      "2026-06-18T00:00:05.000Z +0s #0 actor_focused_pylon replay.event.1",
+    )
+    expect(replayText).toContain("refs=pylon.demo.registration")
+    expect(replayText).toContain("caveats=caveat.public.activity_timeline.source_lag")
+    expect(replayText).toContain("captions=Fleet readiness event")
+    expect(replayText).toContain(
+      "gap gap.source_lag.training_verification: Training verification source lagged.",
     )
   })
 

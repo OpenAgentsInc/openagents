@@ -64,13 +64,13 @@ W = web app, D = desktop app, C = CLI.
 
 | Capability | Where it lives | Mode | W | D | C | State |
 | --- | --- | --- | --- | --- | --- | --- |
-| Proof-replay bundle (ordered event sequence: proof_submitted → verified → settled → zap, with actors/stages/flows/camera-cues/captions/gaps) | `workers/api/src/public-proof-replay-routes.ts`; `GET /api/public/proof-replays`, `GET /api/public/tassadar-replays/first-real-settlement` | **Replay** | ✅ | ✅ | ❌ | **Built** |
+| Proof-replay bundle (ordered event sequence: proof_submitted → verified → settled → zap, with actors/stages/flows/camera-cues/captions/gaps) | `workers/api/src/public-proof-replay-routes.ts`; `GET /api/public/proof-replays`, `GET /api/public/tassadar-replays/first-real-settlement`; `apps/pylon/src/public-activity-cli.ts` (`pylon replay`) | **Replay** | ✅ | ✅ | ✅ | **Built** (CLI text/JSON, no video) |
 | Replay math primitives (deterministic clock, render-plan, camera model, actor interpolation, shipment gates) | `packages/proof-replay/src/index.ts` | Replay | ✅ | ✅ | — | **Built** |
 | Web replay viewer (play/pause/scrub/camera-mode/event-list) | `apps/web/src/scene/tassadarProofReplayElement.ts`; route `/tassadar/replay/{slug}` | Replay | ✅ | — | — | **Built** (flagged temporary 2.5D bridge in repo AGENTS) |
 | Desktop replay pane | `apps/autopilot-desktop/src/shared/proof-replays.ts`, `src/ui/view.ts` | Replay | — | ✅ | — | **Built** |
 | Headless clip render → mp4 (camera path, time window, fps) | `apps/web/spike/replay-r1/render-clip.mjs`; EPIC `#5346` (R-1a/R-2/R-3/R-4/R-5 done) | Replay → video | (offline) | (offline) | (offline) | **Built** (render-box / CI, not edge) |
 | Exact-trace-replay verifier (worker digest vs validator re-execution) | `workers/api/src/tassadar-replay-validator.ts`; `apps/pylon/src/tassadar-trace-client.ts`; migration `0188_training_trace_contributions.sql` | Replay (verification) | — | — | C (`validate --auto`) | **Built** |
-| **Unified cross-domain event timeline / cursor / stream** | — (none) | — | ❌ | ❌ | ❌ | **Missing** |
+| **Unified cross-domain event timeline / cursor / stream** | `packages/public-activity-timeline`; `workers/api/src/public-activity-timeline-routes.ts`; `GET /api/public/activity-timeline`; `apps/pylon/src/public-activity-cli.ts` (`activity`, `timeline`) | Live + Replay source | ⚠️ | ❌ | ✅ | **Partial** (endpoint + CLI; SSE/UI pending) |
 
 ### D. World projection / 3D scene
 
@@ -175,7 +175,10 @@ What's **not fully built** for replay:
    API** that orders events across domains. This is the single biggest structural
    gap for a general replay: you cannot say "replay everything that happened
    between T1 and T2" because there is no one ordered stream to read.
-4. **CLI has no replay at all.** No `pylon replay` / `pylon timeline` command.
+4. **CLI replay is emerging, not complete across surfaces.** `pylon timeline`
+   and `pylon replay` now expose bounded public activity and generated replay
+   tracks for agents, but desktop/web generated-bundle controls and production
+   replay clips still remain follow-on work.
 5. **Replay viewer is a flagged-temporary bridge.** The web 2.5D DOM/CSS scene
    (`tassadarProofReplayElement.ts`) is explicitly marked a temporary legacy
    bridge; the canonical renderer is the three-effect WebGL mount.
@@ -699,6 +702,21 @@ of hand-authored builders.
    - Body summary: Extend CLI replay to fetch generated bundles and render a
      text/JSON event track for agents. The command should be useful without
      video or web UI and should expose source refs and caveats for every event.
+   - Implementation status (2026-06-18, issue #5422): added `pylon replay`
+     as the CLI-first replay consumer for generated public activity bundles.
+     The command calls `GET /api/public/proof-replays?mode=activity-timeline`
+     with required bounded `--from`/`--to` filters and optional `--run`,
+     `--window`, `--actor`, `--pair`, `--kind`/`--filter`, `--source`,
+     `--since`, and `--limit` filters. It supports text output by default plus
+     `--format json` / `--json`; both outputs include an
+     `openagents.pylon.public_replay_event_track.v1` projection with bundle
+     refs, source authority, staleness/generatedFrom metadata, event sequence,
+     timestamps, source refs, caveat refs, captions, and gaps. Video/clip
+     generation remains separate. Tests cover generated replay URL construction,
+     JSON event-track projection, text rendering of refs/caveats/captions/gaps,
+     public-projection safety, and command catalog discovery. This remains
+     observation/projection/retrieval only and grants no settlement, payout,
+     accepted-work, deployment, provider, wallet, or public-claim authority.
 
 #### EPIC 3 — Live stream and SpacetimeDB projection
 

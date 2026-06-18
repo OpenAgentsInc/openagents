@@ -172,6 +172,7 @@ payout target`) run from the palette and always end in an explicit
 - Public activity evidence is available without a local node:
   `pylon activity --json [--since CURSOR] [--filter work,verify,settle]`,
   `pylon timeline --from <iso> --to <iso> --json`,
+  `pylon replay --from <iso> --to <iso> [--run <trainingRunRef>] [--window <windowRef>] [--pair <actorA:actorB>] [--format text|json]`,
   `pylon receipts --run <trainingRunRef> --json`, and
   `pylon evidence-pack --run <trainingRunRef> --json`. These commands read the
   documented public OpenAgents APIs only, return dereferenceable source/blocker

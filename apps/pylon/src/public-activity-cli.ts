@@ -3,10 +3,12 @@ import { assertPublicProjectionSafe } from "./state"
 export type PublicActivityCliCommand =
   | "activity"
   | "timeline"
+  | "replay"
   | "receipts"
   | "evidence-pack"
 
 export type PublicActivityCliParsed = {
+  actorRefs: string[]
   baseUrl: string
   command: PublicActivityCliCommand
   filterKinds: string[]
@@ -22,6 +24,7 @@ export type PublicActivityCliParsed = {
   to?: string
   verificationChallengeRef?: string
   watch: boolean
+  windowRef?: string
 }
 
 export type PublicActivityCliResult = {
@@ -38,6 +41,7 @@ export type PublicActivityCliResult = {
   output:
     | { kind: "activity"; pages: unknown[]; timeline: unknown }
     | { kind: "timeline"; timeline: unknown }
+    | { kind: "replay"; bundle: unknown; eventTrack: PublicReplayCliEventTrack }
     | { kind: "receipts"; settlements: unknown; receiptUrls: string[] }
     | {
         kind: "evidence-pack"
@@ -55,6 +59,55 @@ export type PublicActivityCliResult = {
           verificationChallengeUrls: string[]
         }
       }
+}
+
+export type PublicReplayCliEventTrack = {
+  schema: "openagents.pylon.public_replay_event_track.v1"
+  bundleRef: string | null
+  title: string | null
+  generatedAt: string | null
+  sourceAuthority: string | null
+  privacyLevel: string | null
+  claimScope: string | null
+  generatedFrom: unknown | null
+  staleness: unknown | null
+  sourceRefs: unknown[]
+  events: PublicReplayCliEventRow[]
+  gaps: PublicReplayCliGapRow[]
+  captions: PublicReplayCliCaptionRow[]
+}
+
+export type PublicReplayCliEventRow = {
+  sequenceIndex: number
+  eventRef: string
+  kind: string
+  timelineSecond: number
+  timestamp: string | null
+  displayText: string
+  actorRefs: string[]
+  targetRefs: string[]
+  sourceRefs: string[]
+  caveatRefs: string[]
+  captions: string[]
+  amountSats: number | null
+  rail: string | null
+  stateBefore: string | null
+  stateAfter: string | null
+}
+
+export type PublicReplayCliGapRow = {
+  gapRef: string
+  reason: string
+  affectedRefs: string[]
+  sourceRefs: string[]
+}
+
+export type PublicReplayCliCaptionRow = {
+  captionRef: string
+  sequenceIndex: number
+  timelineSecond: number
+  text: string
+  sourceRefs: string[]
 }
 
 type RunOptions = {
@@ -110,6 +163,15 @@ const optionString = (
 const optionFlag = (options: Record<string, string | true>, key: string): boolean =>
   options[key] === true || options[key] === "true"
 
+const optionFormat = (options: Record<string, string | true>): "text" | "json" => {
+  const value = optionString(options, "format")
+  if (value === undefined) return optionFlag(options, "json") ? "json" : "text"
+  if (value !== "text" && value !== "json") {
+    throw new Error("--format must be text or json")
+  }
+  return value
+}
+
 const splitList = (value: string | undefined): string[] =>
   value === undefined
     ? []
@@ -123,6 +185,18 @@ const unique = (values: readonly string[]): string[] => [...new Set(values)].sor
 function expandFilter(value: string | undefined): string[] {
   return unique(
     splitList(value).flatMap((item) => filterAliases[item] ?? [item]),
+  )
+}
+
+function expandPairFilter(value: string | undefined): string[] {
+  if (value === undefined) return []
+  return unique(
+    splitList(value).flatMap((item) =>
+      item
+        .split(/[+:]/)
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0),
+    ),
   )
 }
 
@@ -165,25 +239,34 @@ export function parsePublicActivityCliArgs(
   const intervalMs =
     positiveInt(optionString(options, "interval-ms"), "--interval-ms") ?? 15_000
   const runRef = optionString(options, "run") ?? optionString(options, "run-ref")
+  const windowRef = optionString(options, "window") ?? optionString(options, "window-ref")
   const verificationChallengeRef =
     optionString(options, "challenge-ref") ??
     optionString(options, "verification-challenge-ref")
+  const actorRefs = unique([
+    ...splitList(optionString(options, "actor") ?? optionString(options, "actor-ref")),
+    ...expandPairFilter(optionString(options, "pair")),
+  ])
 
   if (command === "timeline" && (!optionString(options, "from") || !optionString(options, "to"))) {
     throw new Error("pylon timeline requires --from and --to")
+  }
+  if (command === "replay" && (!optionString(options, "from") || !optionString(options, "to"))) {
+    throw new Error("pylon replay requires --from and --to")
   }
   if ((command === "receipts" || command === "evidence-pack") && !runRef) {
     throw new Error(`pylon ${command} requires --run <trainingRunRef>`)
   }
 
   return {
+    actorRefs,
     baseUrl,
     command,
     filterKinds: expandFilter(optionString(options, "filter") ?? optionString(options, "kind")),
     filterSources: splitList(optionString(options, "source")),
     from: optionString(options, "from"),
     intervalMs,
-    json: optionFlag(options, "json"),
+    json: optionFormat(options) === "json",
     limit,
     maxIterations,
     replayRef: optionString(options, "replay-ref") ?? "first-real-settlement",
@@ -192,6 +275,7 @@ export function parsePublicActivityCliArgs(
     to: optionString(options, "to"),
     verificationChallengeRef,
     watch,
+    windowRef,
   }
 }
 
@@ -240,6 +324,21 @@ function receiptUrl(baseUrl: string, ref: string): string {
 function proofReplayUrl(parsed: PublicActivityCliParsed): string {
   const url = new URL("/api/public/proof-replays", parsed.baseUrl)
   if (parsed.replayRef) url.searchParams.set("ref", parsed.replayRef)
+  return url.toString()
+}
+
+function generatedReplayUrl(parsed: PublicActivityCliParsed): string {
+  const url = new URL("/api/public/proof-replays", parsed.baseUrl)
+  url.searchParams.set("mode", "activity-timeline")
+  if (parsed.from) url.searchParams.set("from", parsed.from)
+  if (parsed.to) url.searchParams.set("to", parsed.to)
+  if (parsed.since) url.searchParams.set("since", parsed.since)
+  if (parsed.limit !== undefined) url.searchParams.set("limit", String(parsed.limit))
+  if (parsed.runRef) url.searchParams.set("runRef", parsed.runRef)
+  if (parsed.windowRef) url.searchParams.set("windowRef", parsed.windowRef)
+  appendList(url, "actorRef", parsed.actorRefs)
+  appendList(url, "kind", parsed.filterKinds)
+  appendList(url, "source", parsed.filterSources)
   return url.toString()
 }
 
@@ -323,6 +422,126 @@ function settlementRows(settlements: unknown): Array<Record<string, unknown>> {
     : []
 }
 
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : []
+}
+
+function numericValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" ? value : null
+}
+
+function caveatRefsFromEvent(event: Record<string, unknown>): string[] {
+  const caveat = stringValue(event.caveat)
+  return caveat === null
+    ? []
+    : caveat
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+        .sort()
+}
+
+function replayBundleEvents(bundle: unknown): Array<Record<string, unknown>> {
+  const record = bundle as { events?: unknown }
+  return Array.isArray(record.events)
+    ? record.events.filter((event): event is Record<string, unknown> => event !== null && typeof event === "object")
+    : []
+}
+
+function replayBundleCaptions(bundle: unknown): Array<Record<string, unknown>> {
+  const record = bundle as { captions?: unknown }
+  return Array.isArray(record.captions)
+    ? record.captions.filter((caption): caption is Record<string, unknown> => caption !== null && typeof caption === "object")
+    : []
+}
+
+function replayBundleGaps(bundle: unknown): Array<Record<string, unknown>> {
+  const record = bundle as { gaps?: unknown }
+  return Array.isArray(record.gaps)
+    ? record.gaps.filter((gap): gap is Record<string, unknown> => gap !== null && typeof gap === "object")
+    : []
+}
+
+function buildPublicReplayEventTrack(bundle: unknown): PublicReplayCliEventTrack {
+  const record = bundle !== null && typeof bundle === "object"
+    ? bundle as Record<string, unknown>
+    : {}
+  const captions = replayBundleCaptions(bundle)
+    .map((caption): PublicReplayCliCaptionRow => ({
+      captionRef: stringValue(caption.captionRef) ?? "caption.unknown",
+      sequenceIndex: numericValue(caption.sequenceIndex) ?? -1,
+      timelineSecond: numericValue(caption.timelineSecond) ?? -1,
+      text: stringValue(caption.text) ?? "",
+      sourceRefs: stringList(caption.sourceRefs),
+    }))
+    .sort((left, right) =>
+      left.sequenceIndex - right.sequenceIndex ||
+      left.timelineSecond - right.timelineSecond ||
+      left.captionRef.localeCompare(right.captionRef),
+    )
+  const captionsBySequence = new Map<number, string[]>()
+  for (const caption of captions) {
+    const existing = captionsBySequence.get(caption.sequenceIndex) ?? []
+    captionsBySequence.set(caption.sequenceIndex, [...existing, caption.text])
+  }
+  const events = replayBundleEvents(bundle)
+    .map((event): PublicReplayCliEventRow => {
+      const sequenceIndex = numericValue(event.sequenceIndex) ?? -1
+      return {
+        sequenceIndex,
+        eventRef: stringValue(event.eventRef) ?? "event.unknown",
+        kind: stringValue(event.kind) ?? "event",
+        timelineSecond: numericValue(event.timelineSecond) ?? -1,
+        timestamp: stringValue(event.observedAt),
+        displayText: stringValue(event.displayText) ?? "",
+        actorRefs: stringList(event.actorRefs),
+        targetRefs: stringList(event.targetRefs),
+        sourceRefs: stringList(event.sourceRefs),
+        caveatRefs: caveatRefsFromEvent(event),
+        captions: captionsBySequence.get(sequenceIndex) ?? [],
+        amountSats: numericValue(event.amountSats),
+        rail: stringValue(event.rail),
+        stateBefore: stringValue(event.stateBefore),
+        stateAfter: stringValue(event.stateAfter),
+      }
+    })
+    .sort((left, right) =>
+      left.sequenceIndex - right.sequenceIndex ||
+      left.timelineSecond - right.timelineSecond ||
+      left.eventRef.localeCompare(right.eventRef),
+    )
+  const gaps = replayBundleGaps(bundle)
+    .map((gap): PublicReplayCliGapRow => ({
+      gapRef: stringValue(gap.gapRef) ?? "gap.unknown",
+      reason: stringValue(gap.reason) ?? "",
+      affectedRefs: stringList(gap.affectedRefs),
+      sourceRefs: stringList(gap.sourceRefs),
+    }))
+    .sort((left, right) => left.gapRef.localeCompare(right.gapRef))
+
+  return {
+    schema: "openagents.pylon.public_replay_event_track.v1",
+    bundleRef: stringValue(record.bundleRef),
+    title: stringValue(record.title),
+    generatedAt: stringValue(record.generatedAt),
+    sourceAuthority: stringValue(record.sourceAuthority),
+    privacyLevel: stringValue(record.privacyLevel),
+    claimScope: stringValue(record.claimScope),
+    generatedFrom: record.generatedFrom ?? null,
+    staleness: record.staleness ?? null,
+    sourceRefs: Array.isArray(record.sourceRefs) ? record.sourceRefs : [],
+    events,
+    gaps,
+    captions,
+  }
+}
+
 function assertTimelineEventsDereferenceable(timeline: unknown) {
   for (const event of eventRows(timeline)) {
     const sourceRefs = Array.isArray(event.sourceRefs) ? event.sourceRefs : []
@@ -398,6 +617,25 @@ export async function runPublicActivityCliCommand(
       blockerRefs: blockerRefsFrom(timeline),
       caveatRefs: ["caveat.pylon_cli.public_activity_observation_only"],
       output: { kind: "timeline", timeline },
+    })
+  }
+
+  if (command === "replay") {
+    const url = generatedReplayUrl(parsed)
+    requestUrls.push(url)
+    const bundle = await fetchJson(fetchFn, url)
+    const eventTrack = buildPublicReplayEventTrack(bundle)
+    return safeResult({
+      ...common,
+      ok: true,
+      requestUrls,
+      blockerRefs: blockerRefsFrom(bundle),
+      caveatRefs: unique([
+        "caveat.pylon_cli.public_replay_observation_only",
+        ...eventTrack.events.flatMap((event) => event.caveatRefs),
+        ...collectPublicRefs(bundle, (ref) => ref.startsWith("caveat.")),
+      ]),
+      output: { kind: "replay", bundle, eventTrack },
     })
   }
 
@@ -497,6 +735,36 @@ export function formatPublicActivityCliText(result: PublicActivityCliResult): st
       `${row.receiptRef ?? "receipt"} amount=${row.amountSats ?? "unknown"} realBitcoinMoved=${row.realBitcoinMoved ?? false}`,
     )
     return rows.length > 0 ? `${rows.join("\n")}\n` : "No public settlement receipt rows.\n"
+  }
+  if (result.output.kind === "replay") {
+    const track = result.output.eventTrack
+    const header = [
+      `${track.title ?? "Generated public replay"} (${track.bundleRef ?? "bundle.unknown"})`,
+      `authority=${track.sourceAuthority ?? "unknown"} privacy=${track.privacyLevel ?? "unknown"} claimScope=${track.claimScope ?? "unknown"}`,
+    ]
+    const rows = track.events.map((event) => {
+      const when = event.timestamp ?? `+${event.timelineSecond}s`
+      const refs = event.sourceRefs.length > 0 ? event.sourceRefs.join(",") : "none"
+      const caveats = event.caveatRefs.length > 0 ? event.caveatRefs.join(",") : "none"
+      const captions = event.captions.length > 0
+        ? `\n  captions=${event.captions.join(" | ")}`
+        : ""
+      return [
+        `${when} +${event.timelineSecond}s #${event.sequenceIndex} ${event.kind} ${event.eventRef}`,
+        `  text=${event.displayText}`,
+        `  refs=${refs}`,
+        `  caveats=${caveats}`,
+        `  actors=${event.actorRefs.length > 0 ? event.actorRefs.join(",") : "none"} targets=${event.targetRefs.length > 0 ? event.targetRefs.join(",") : "none"}${captions}`,
+      ].join("\n")
+    })
+    const gaps = track.gaps.map((gap) =>
+      `gap ${gap.gapRef}: ${gap.reason} refs=${gap.sourceRefs.length > 0 ? gap.sourceRefs.join(",") : "none"} affected=${gap.affectedRefs.length > 0 ? gap.affectedRefs.join(",") : "none"}`,
+    )
+    return [
+      ...header,
+      rows.length > 0 ? rows.join("\n") : "No public replay events.",
+      ...(gaps.length > 0 ? ["Gaps:", ...gaps] : []),
+    ].join("\n") + "\n"
   }
   const refs = result.output.refs
   return [

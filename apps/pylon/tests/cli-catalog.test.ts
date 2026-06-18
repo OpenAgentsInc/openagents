@@ -51,7 +51,7 @@ describe("pylon command catalog", () => {
   })
 
   test("public activity evidence commands are read-only network-backed", () => {
-    for (const name of ["activity", "timeline", "receipts", "evidence-pack"]) {
+    for (const name of ["activity", "timeline", "replay", "receipts", "evidence-pack"]) {
       const entry = findCommandEntry(name)!
       expect(entry, `missing ${name}`).toBeDefined()
       expect(entry.needsNetwork).toBe(true)
