@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   cleanProductRouteRedirectLocation,
   githubWriteResultRedirectLocation,
-} from './index'
+} from './routing/redirect-policy'
 
 describe('redirect URL policy', () => {
   test('keeps GitHub write OAuth result state out of the public app URL', () => {

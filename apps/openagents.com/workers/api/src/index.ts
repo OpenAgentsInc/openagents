@@ -237,6 +237,10 @@ import { routeEffect, routeEffectOrResponse } from './http/route-effects'
 import type { ExactRoute } from './http/router'
 import { makeImageGenerationRoutes } from './image-generation-routes'
 import {
+  cleanProductRouteRedirectLocation,
+  githubWriteResultRedirectLocation,
+} from './routing/redirect-policy'
+import {
   decodeUnknownWithSchema,
   isRecord,
   nestedUnknown,
@@ -3272,32 +3276,8 @@ const handleGitHubStart = (request: Request, env: Env) =>
 const handleEmailStart = (request: Request, env: Env) =>
   handleLoginStart(request, env, 'code')
 
-export const githubWriteResultRedirectLocation = (appOrigin: string): string =>
-  appOrigin
-
 const githubWriteResultRedirect = (env: Env): Response =>
   redirectResponse(githubWriteResultRedirectLocation(getAppOrigin(env)))
-
-export const cleanProductRouteRedirectLocation = (
-  url: URL,
-): string | undefined => {
-  if (url.search === '') {
-    return undefined
-  }
-
-  if (
-    url.pathname === '/' ||
-    url.pathname === '/billing' ||
-    url.pathname === '/onboarding' ||
-    url.pathname === '/order' ||
-    url.pathname.startsWith('/orders/') ||
-    url.pathname.startsWith('/share/')
-  ) {
-    return `${url.origin}${url.pathname}`
-  }
-
-  return undefined
-}
 
 const handleGitHubWriteStart = async (
   request: Request,
@@ -7758,6 +7738,10 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/discord',
     handler: () =>
       Effect.succeed(redirectResponse('https://discord.gg/4RrjGCuQAZ')),
+  },
+  {
+    path: '/login',
+    handler: () => Effect.succeed(redirectResponse('/')),
   },
   {
     path: '/login/email',
