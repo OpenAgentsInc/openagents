@@ -368,3 +368,21 @@ June 18 is done when:
 - the Release Candidates thread is posted as Raynor only after owner approval;
 - product promises and launch docs are updated to reflect only what receipts
   prove.
+
+## Studying track — built + dogfood-proven; pull it forward into the active lanes (2026-06-18)
+
+Reviewed the MSB-MVP / repo-studying work (the question: do we have enough now to pull the studying track in?). **Verdict: yes — it's past "plan," into shipped + dogfood-proven; the move now is to _activate_ it, not rebuild it.**
+
+**What's shipped:**
+
+- `autopilot.repo_study_packets.v1` — **yellow** (internal dogfood): the public StudyBench MVP shows source-grounded lift on OpenAgents refs (gate-review: `docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md`). Customer-repo studying / trained repo-expert / marketplace / payout stay gated (correctly red/blocked).
+- Shipped primitives: StudyBench contracts + the `#5284` repo-corpus manifest/entry/evidence-span; the MSB-MVP sequence is complete (`#5297`; no open MSB-MVP issues).
+- EPIC #5313 **track-S (studying → Autopilot-coder)** issues #5314–#5320 are built + closed (substrate, knowledge-graph, verification, eval harness, Autopilot-coder consumption, paid-contribution, external-repo generalization).
+
+**Decision — pull it forward as the near-term thrust, wired to the lanes already moving:**
+
+1. **Feed the hygiene/refactoring lane (EPIC #5335).** Studied-knowledge is the prerequisite for _safe_ refactoring ("you can't safely refactor what you don't understand"). Point the studied-knowledge substrate at the lane so passes start from real codebase understanding, not grep-and-guess.
+2. **Feed Autopilot-coder.** Track-S S5 wired studied knowledge into the coding-agent context; activate it on real coding work, dogfooding on this repo first.
+3. **Advance the yellow promise toward its gated capabilities** (customer repo studying, marketplace, payout) only as the privacy / metering / pricing / payout gates clear — receipt-first, no premature green.
+
+**Net:** studying, the hygiene lane (#5335), and Autopilot-coder are **one near-term program** — _agents that deeply know the codebase, paid to improve it, starting with ours._ The foundation is built; the active work is integration (studying → hygiene lane + Autopilot-coder) and advancing the gated promise — not a new build track.
