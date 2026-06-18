@@ -35,6 +35,15 @@ and `docs/launch/JUNE17_ROADMAP.md`.
   making the private-material replay guard use a typed error, and making the
   OpenAPI schema explicitly declare `generatedAt` plus the live-at-read
   staleness contract.
+- 2026-06-17: #5301 added the first social share cut on the same website replay
+  route via
+  `/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social`.
+  Social mode uses the same public replay bundle as the interactive page, hides
+  the inspector/control HUD, renders a deterministic 16:9 canvas backdrop,
+  keeps the center world focused on `Tassadar`, shows the 8:38pm June 17 hero
+  timestamp, gates the Spark zap behind `payment_zap_confirmed`, and adds an
+  end card with `1,000 sats settled`, `realBitcoinMoved:true`, and the public
+  receipt link.
 
 ## Thesis
 
@@ -597,6 +606,23 @@ Useful route/export direction:
 ```text
 /tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social
 ```
+
+Recording/export runbook for the first Twitter/X artifact:
+
+1. Open the route above in production or a verified local build. Do not open
+   DevTools, private logs, admin pages, or wallet/operator surfaces in the
+   captured browser window.
+2. Capture at 1920x1080 first. A 1280x720 smoke is also required because the
+   social canvas is authored at 1280x720 and scaled by the browser.
+3. Record exactly one 60-second pass from `start=0`. Use
+   `&start=56` only for a quick final-card inspection, not for the exported
+   artifact.
+4. Confirm the early frames show no real zap, the late frames show the
+   `payment_zap_confirmed` Spark rail, and the end card links to the public
+   receipt endpoint.
+5. Scan the exported frame text for private refs, raw addresses, payment
+   hashes, preimages, keys, prompts, bearer/service tokens, or operator-only
+   notes before posting.
 
 Before exporting a clip, browser smoke should verify:
 

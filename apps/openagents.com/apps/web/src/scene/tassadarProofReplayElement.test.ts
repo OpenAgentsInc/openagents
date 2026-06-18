@@ -204,8 +204,11 @@ const waitForSettled = async (el: HTMLElement): Promise<void> => {
   }
 }
 
-const mountAndSettle = async (): Promise<HTMLElement> => {
+const mountAndSettle = async (
+  path = '/tassadar/replay/first-real-settlement',
+): Promise<HTMLElement> => {
   tassadarProofReplayView()
+  window.history.replaceState({}, '', path)
   const el = document.createElement(TASSADAR_PROOF_REPLAY_TAG)
   document.body.append(el)
   await waitForSettled(el)
@@ -215,6 +218,7 @@ const mountAndSettle = async (): Promise<HTMLElement> => {
 describe('tassadar proof replay element', () => {
   afterEach(() => {
     document.body.replaceChildren()
+    window.history.replaceState({}, '', '/')
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
@@ -261,6 +265,53 @@ describe('tassadar proof replay element', () => {
     expect(el.getAttribute('data-replay-second')).toBe('39.0')
     expect(zap).not.toBeNull()
     expect(zap?.textContent ?? '').toContain('1000 sats spark_treasury')
+  })
+
+  it('renders the deterministic social share cut chrome from query params', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(replayBundle))
+    const el = await mountAndSettle(
+      '/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social',
+    )
+
+    expect(el.getAttribute('data-replay-presentation')).toBe('social')
+    expect(el.getAttribute('data-social-duration')).toBe('60')
+    expect(el.shadowRoot?.querySelector('[data-social-hud="social"]')).not.toBeNull()
+    expect(el.shadowRoot?.querySelector('[data-replay-control="play"]')).toBeNull()
+    expect(el.shadowRoot?.querySelector('[data-replay-control="scrub"]')).toBeNull()
+
+    const canvas = el.shadowRoot?.querySelector(
+      '[data-social-canvas="nonblank"]',
+    ) as HTMLCanvasElement | null
+    expect(canvas).not.toBeNull()
+    expect(canvas?.width).toBe(1280)
+    expect(canvas?.height).toBe(720)
+
+    const text = el.shadowRoot?.textContent ?? ''
+    expect(text).toContain('Tassadar Run 1: first real Bitcoin settlement')
+    expect(text).toContain('Verified work -> owner gate -> Spark zap -> public receipt')
+    expect(text).toContain('8:38pm, June 17')
+    expect(text).not.toMatch(
+      /spark1|bolt11|preimage|mnemonic|api[_ -]?key|service[_ -]?token|bearer|payment_hash|private log|raw prompt/i,
+    )
+    expect(el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')).toBeNull()
+  })
+
+  it('shows the confirmed zap and receipt-backed end card late in the social cut', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(replayBundle))
+    const el = await mountAndSettle(
+      '/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social&start=56',
+    )
+
+    expect(el.shadowRoot?.querySelector('[data-replay-zap="confirmed"]')).not.toBeNull()
+    const endCard = el.shadowRoot?.querySelector('[data-social-end-card="settled"]')
+    expect(endCard?.textContent ?? '').toContain('1,000 sats settled')
+    expect(endCard?.textContent ?? '').toContain('realBitcoinMoved:true')
+    expect(endCard?.textContent ?? '').toContain(
+      'receipt.nexus.tassadar_run_settlement...v6.20260618',
+    )
+    expect(endCard?.querySelector('a')?.getAttribute('href')).toContain(
+      '/api/public/nexus-pylon/receipts/',
+    )
   })
 
   it('opens source refs in the inspector when an event is selected', async () => {
