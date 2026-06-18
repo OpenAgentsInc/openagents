@@ -182,6 +182,12 @@ describe('OpenAgents capability manifest route', () => {
         }),
         expect.objectContaining({
           auth: 'public',
+          href: 'https://openagents.com/api/public/activity-timeline/stream?since={cursor}&limit={limit}',
+          id: 'public_activity_timeline_stream',
+          description: expect.stringContaining('Last-Event-ID'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
           href: 'https://openagents.com/api/public/training/runs/{trainingRunRef}/settlements',
           id: 'public_training_run_settlements',
           description: expect.stringContaining('realBitcoinMoved'),

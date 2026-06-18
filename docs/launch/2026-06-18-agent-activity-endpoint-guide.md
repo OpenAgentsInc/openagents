@@ -28,6 +28,7 @@ The relevant public evidence endpoints are:
 | Resource | Endpoint | Use |
 |---|---|---|
 | Activity timeline | `GET /api/public/activity-timeline` | Cursor-addressable activity across Pylon presence, training, verification, settlement receipts, Forum, Artanis, and capacity snapshots. |
+| Activity timeline stream | `GET /api/public/activity-timeline/stream` | Server-sent event tail for the same public timeline event shape; resume with `since` or `Last-Event-ID`. |
 | Run summary | `GET /api/public/tassadar-run-summary` | One live summary for the Tassadar run, including run state, summary metrics, verification refs, and settlement rows. |
 | Run settlements | `GET /api/public/training/runs/{trainingRunRef}/settlements` | Receipt-backed per-run settlement rows; simulation and real Bitcoin rows stay distinct. |
 | Verification challenge | `GET /api/public/training/verification-challenges/{challengeRef}` | One public-safe verification challenge with digest/verdict refs and staleness metadata. |
@@ -129,6 +130,42 @@ openagents.public_activity_timeline.v1`.
 Every event must carry `sourceRefs` or `blockerRefs`. A fresh `generatedAt`
 does not mean each source family is current; inspect `sourceLag`.
 
+## Activity Timeline Stream
+
+Request:
+
+```text
+GET https://openagents.com/api/public/activity-timeline/stream?since={cursor}&limit=50
+Accept: text/event-stream
+```
+
+The stream uses the same filters as the JSON timeline endpoint: `since`,
+`from`, `to`, `limit`, `kind`, and `source`. Reconnect by passing the last SSE
+`id` as either `since` or the `Last-Event-ID` header. Query `since` wins when
+both are present.
+
+Frames:
+
+```text
+retry: 15000
+
+: polling-fallback https://openagents.com/api/public/activity-timeline?since=...
+
+event: activity_timeline_meta
+data: {"schemaVersion":"openagents.public_activity_timeline.v1","generatedAt":"...","nextCursor":"...","range":{...},"sourceLag":[...],"staleness":{...}}
+
+id: 2026-06-18T18:00:06.000Z:training_window:event.public.work_claimed.training.lease.public.1
+event: work_claimed
+data: {"event":{...PublicActivityTimelineEvent}}
+```
+
+The metadata frame contains only timeline-envelope fields. Event frames carry
+`data.event` with the exact `PublicActivityTimelineEvent` shape shown above.
+The response also includes an `x-openagents-polling-fallback` header pointing
+to the equivalent JSON polling URL. Treat stream frames as observation-only
+progress signals; they do not grant payout, settlement, accepted-work,
+deployment, provider, wallet, or claim authority.
+
 Source lag statuses:
 
 | Status | Meaning |
@@ -198,6 +235,12 @@ Tail the latest public activity:
 ```sh
 curl -s 'https://openagents.com/api/public/activity-timeline?limit=20' \
   | jq '{generatedAt, nextCursor, sourceLag, events: [.events[] | {ts, kind, sourceKind, eventRef, refs, blockerRefs, caveatRefs}]}'
+```
+
+Tail with SSE and resume on reconnect:
+
+```sh
+curl -N 'https://openagents.com/api/public/activity-timeline/stream?limit=20'
 ```
 
 Fetch the next page:

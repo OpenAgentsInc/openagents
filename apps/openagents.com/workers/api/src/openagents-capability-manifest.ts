@@ -319,6 +319,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Cursor-addressable public-safe activity timeline for pylon presence, training windows, trace refs, verification, settlement receipts, Forum activity, Artanis ticks, and capacity snapshots. Supports since/from/to/limit/kind/source filters, includes source lag, emits projection_gap instead of guessing, and grants no settlement, payout, accepted-work, deployment, provider, wallet, or claim authority.',
       },
       {
+        id: 'public_activity_timeline_stream',
+        href: 'https://openagents.com/api/public/activity-timeline/stream?since={cursor}&limit={limit}',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Server-sent event tail for the same public activity timeline contract. Event frames use the public timeline cursor as SSE id, support reconnect through since or Last-Event-ID, include source-lag metadata, and provide polling fallback guidance. Read-only; grants no settlement, payout, accepted-work, deployment, provider, wallet, or claim authority.',
+      },
+      {
         id: 'public_training_run_settlements',
         href: 'https://openagents.com/api/public/training/runs/{trainingRunRef}/settlements',
         method: 'GET',

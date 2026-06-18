@@ -1,4 +1,8 @@
 import { Effect } from 'effect'
+import type {
+  PublicActivityTimelineEnvelope,
+  PublicActivityTimelineEvent,
+} from '@openagentsinc/public-activity-timeline'
 
 import { readArtanisTickMonitor } from './artanis-tick-monitor'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
@@ -171,6 +175,49 @@ export const makeD1PublicActivityTimelineCapacityStore = (
   }
 }
 
+const buildPublicActivityTimelineEnvelopeForRequest = async (
+  request: Request,
+  input: PublicActivityTimelineRouteInput,
+  query: Exclude<ReturnType<typeof publicActivityTimelineQueryFromUrl>, Response>,
+): Promise<PublicActivityTimelineEnvelope> => {
+  void request
+  const db = input.OPENAGENTS_DB ?? undefined
+  const nowIso = input.nowIso?.() ?? currentIsoTimestamp()
+  const artanisStore =
+    input.artanisStore ??
+    (db === undefined
+      ? undefined
+      : makeD1PublicActivityTimelineArtanisStore(db, nowIso))
+  const capacityStore =
+    input.capacityStore ??
+    (db === undefined
+      ? undefined
+      : makeD1PublicActivityTimelineCapacityStore(db))
+  const forumStore =
+    input.forumStore ??
+    (db === undefined ? undefined : makeD1PublicActivityTimelineForumStore(db))
+  const pylonStore =
+    input.pylonStore ?? (db === undefined ? undefined : makeD1PylonApiStore(db))
+  const receiptStore =
+    input.receiptStore ??
+    (db === undefined ? undefined : makeD1NexusTreasuryPayoutLedgerStore(db))
+  const trainingStore =
+    input.trainingStore ??
+    (db === undefined ? undefined : makeD1TrainingAuthorityStore(db))
+  const sourceInput: PublicActivityTimelineSourceInput = {
+    ...(artanisStore === undefined ? {} : { artanisStore }),
+    ...(capacityStore === undefined ? {} : { capacityStore }),
+    ...(forumStore === undefined ? {} : { forumStore }),
+    nowIso: () => nowIso,
+    ...(pylonStore === undefined ? {} : { pylonStore }),
+    query,
+    ...(receiptStore === undefined ? {} : { receiptStore }),
+    ...(trainingStore === undefined ? {} : { trainingStore }),
+  }
+
+  return buildPublicActivityTimelineEnvelope(sourceInput)
+}
+
 export const handlePublicActivityTimelineApi = (
   request: Request,
   input: PublicActivityTimelineRouteInput,
@@ -185,43 +232,132 @@ export const handlePublicActivityTimelineApi = (
   }
 
   return Effect.promise(async () => {
-    const db = input.OPENAGENTS_DB ?? undefined
-    const nowIso = input.nowIso?.() ?? currentIsoTimestamp()
-    const artanisStore =
-      input.artanisStore ??
-      (db === undefined
-        ? undefined
-        : makeD1PublicActivityTimelineArtanisStore(db, nowIso))
-    const capacityStore =
-      input.capacityStore ??
-      (db === undefined
-        ? undefined
-        : makeD1PublicActivityTimelineCapacityStore(db))
-    const forumStore =
-      input.forumStore ??
-      (db === undefined ? undefined : makeD1PublicActivityTimelineForumStore(db))
-    const pylonStore =
-      input.pylonStore ?? (db === undefined ? undefined : makeD1PylonApiStore(db))
-    const receiptStore =
-      input.receiptStore ??
-      (db === undefined ? undefined : makeD1NexusTreasuryPayoutLedgerStore(db))
-    const trainingStore =
-      input.trainingStore ??
-      (db === undefined ? undefined : makeD1TrainingAuthorityStore(db))
-    const sourceInput: PublicActivityTimelineSourceInput = {
-      ...(artanisStore === undefined ? {} : { artanisStore }),
-      ...(capacityStore === undefined ? {} : { capacityStore }),
-      ...(forumStore === undefined ? {} : { forumStore }),
-      nowIso: () => nowIso,
-      ...(pylonStore === undefined ? {} : { pylonStore }),
+    const envelope = await buildPublicActivityTimelineEnvelopeForRequest(
+      request,
+      input,
       query,
-      ...(receiptStore === undefined ? {} : { receiptStore }),
-      ...(trainingStore === undefined ? {} : { trainingStore }),
-    }
-
-    const envelope = await buildPublicActivityTimelineEnvelope(sourceInput)
+    )
 
     return noStoreJsonResponse(envelope)
+  })
+}
+
+const sanitizeSseLine = (value: string): string =>
+  value.replace(/[\r\n]+/g, ' ')
+
+const sseFrame = (
+  input: Readonly<{
+    data?: unknown
+    event?: string
+    id?: string
+  }>,
+): string => {
+  const lines: string[] = []
+  if (input.id !== undefined) lines.push(`id: ${sanitizeSseLine(input.id)}`)
+  if (input.event !== undefined) {
+    lines.push(`event: ${sanitizeSseLine(input.event)}`)
+  }
+  if (input.data !== undefined) {
+    lines.push(`data: ${JSON.stringify(input.data)}`)
+  }
+  return `${lines.join('\n')}\n\n`
+}
+
+const pollingFallbackUrl = (
+  request: Request,
+  envelope: PublicActivityTimelineEnvelope,
+): string => {
+  const url = new URL(request.url)
+  url.pathname = '/api/public/activity-timeline'
+  const cursor = envelope.nextCursor ?? envelope.events.at(-1)?.cursor
+  if (cursor !== undefined) url.searchParams.set('since', cursor)
+  if (!url.searchParams.has('limit')) url.searchParams.set('limit', '50')
+  return url.toString()
+}
+
+const activityTimelineMetaFrame = (
+  envelope: PublicActivityTimelineEnvelope,
+) =>
+  sseFrame({
+    event: 'activity_timeline_meta',
+    data: {
+      generatedAt: envelope.generatedAt,
+      nextCursor: envelope.nextCursor ?? null,
+      range: envelope.range,
+      schemaVersion: envelope.schemaVersion,
+      sourceLag: envelope.sourceLag,
+      staleness: envelope.staleness,
+    },
+  })
+
+const activityTimelineEventFrame = (
+  event: PublicActivityTimelineEvent,
+) =>
+  sseFrame({
+    data: { event },
+    event: event.kind,
+    id: event.cursor,
+  })
+
+const publicActivityTimelineStreamPayload = (
+  request: Request,
+  envelope: PublicActivityTimelineEnvelope,
+): string => {
+  const fallback = pollingFallbackUrl(request, envelope)
+  const eventFrames = envelope.events.map(activityTimelineEventFrame).join('')
+  return [
+    'retry: 15000\n',
+    `: polling-fallback ${sanitizeSseLine(fallback)}\n\n`,
+    activityTimelineMetaFrame(envelope),
+    eventFrames === '' ? ': no events\n\n' : eventFrames,
+  ].join('')
+}
+
+const publicActivityTimelineStreamResponse = (
+  request: Request,
+  envelope: PublicActivityTimelineEnvelope,
+) =>
+  new Response(publicActivityTimelineStreamPayload(request, envelope), {
+    headers: {
+      'cache-control': 'no-store',
+      'content-type': 'text/event-stream; charset=utf-8',
+      'x-accel-buffering': 'no',
+      'x-openagents-authority': 'observation_only',
+      'x-openagents-polling-fallback': pollingFallbackUrl(request, envelope),
+    },
+  })
+
+const requestWithLastEventCursor = (request: Request): Request => {
+  const url = new URL(request.url)
+  if (url.searchParams.has('since')) return request
+  const cursor = request.headers.get('Last-Event-ID')?.trim()
+  if (cursor === undefined || cursor === '') return request
+  url.searchParams.set('since', cursor)
+  return new Request(url.toString(), request)
+}
+
+export const handlePublicActivityTimelineStreamApi = (
+  request: Request,
+  input: PublicActivityTimelineRouteInput,
+) => {
+  if (request.method !== 'GET') return Effect.succeed(methodNotAllowed(['GET']))
+
+  const resumedRequest = requestWithLastEventCursor(request)
+  const url = new URL(resumedRequest.url)
+  const query = publicActivityTimelineQueryFromUrl(url)
+
+  if (query instanceof Response) {
+    return Effect.succeed(query)
+  }
+
+  return Effect.promise(async () => {
+    const envelope = await buildPublicActivityTimelineEnvelopeForRequest(
+      resumedRequest,
+      input,
+      query,
+    )
+
+    return publicActivityTimelineStreamResponse(resumedRequest, envelope)
   })
 }
 
@@ -230,5 +366,13 @@ export const handlePublicActivityTimelineApiForEnv = (
   env: Parameters<typeof openAgentsDatabase>[0],
 ) =>
   handlePublicActivityTimelineApi(request, {
+    OPENAGENTS_DB: openAgentsDatabase(env),
+  })
+
+export const handlePublicActivityTimelineStreamApiForEnv = (
+  request: Request,
+  env: Parameters<typeof openAgentsDatabase>[0],
+) =>
+  handlePublicActivityTimelineStreamApi(request, {
     OPENAGENTS_DB: openAgentsDatabase(env),
   })

@@ -336,7 +336,10 @@ import {
   listProviderAccountsForUser,
   makeD1ProviderAccountRepository,
 } from './provider-accounts'
-import { handlePublicActivityTimelineApiForEnv } from './public-activity-timeline-routes'
+import {
+  handlePublicActivityTimelineApiForEnv,
+  handlePublicActivityTimelineStreamApiForEnv,
+} from './public-activity-timeline-routes'
 import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-routes'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
@@ -7505,6 +7508,11 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: '/api/public/activity-timeline',
     handler: (request, env) => handlePublicActivityTimelineApiForEnv(request, env),
+  },
+  {
+    path: '/api/public/activity-timeline/stream',
+    handler: (request, env) =>
+      handlePublicActivityTimelineStreamApiForEnv(request, env),
   },
   {
     path: TASSADAR_COMPILED_MODULE_MARKETPLACE_ROUTE,

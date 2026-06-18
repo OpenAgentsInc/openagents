@@ -70,7 +70,7 @@ W = web app, D = desktop app, C = CLI.
 | Desktop replay pane | `apps/autopilot-desktop/src/shared/proof-replays.ts`, `src/ui/view.ts` | Replay | — | ✅ | — | **Built** |
 | Headless clip render → mp4 (camera path, time window, fps) | `apps/web/spike/replay-r1/render-clip.mjs`; EPIC `#5346` (R-1a/R-2/R-3/R-4/R-5 done) | Replay → video | (offline) | (offline) | (offline) | **Built** (render-box / CI, not edge) |
 | Exact-trace-replay verifier (worker digest vs validator re-execution) | `workers/api/src/tassadar-replay-validator.ts`; `apps/pylon/src/tassadar-trace-client.ts`; migration `0188_training_trace_contributions.sql` | Replay (verification) | — | — | C (`validate --auto`) | **Built** |
-| **Unified cross-domain event timeline / cursor / stream** | `packages/public-activity-timeline`; `workers/api/src/public-activity-timeline-routes.ts`; `GET /api/public/activity-timeline`; `apps/pylon/src/public-activity-cli.ts` (`activity`, `timeline`) | Live + Replay source | ⚠️ | ❌ | ✅ | **Partial** (endpoint + CLI; SSE/UI pending) |
+| **Unified cross-domain event timeline / cursor / stream** | `packages/public-activity-timeline`; `workers/api/src/public-activity-timeline-routes.ts`; `GET /api/public/activity-timeline`; `GET /api/public/activity-timeline/stream`; `apps/pylon/src/public-activity-cli.ts` (`activity`, `timeline`) | Live + Replay source | ⚠️ | ❌ | ✅ | **Partial** (endpoint + CLI + SSE; UI pending) |
 
 ### D. World projection / 3D scene
 
@@ -729,6 +729,22 @@ SSE and SpacetimeDB are delivery/projection layers only.
      `GET /api/public/activity-timeline/stream?since=...` over the same event
      shape, with reconnect, cursor resume, stale-source reporting, and polling
      fallback guidance. Add tests for reconnect and no private material.
+   - Implementation status (2026-06-18, issue #5423): added the public SSE
+     stream route at `GET /api/public/activity-timeline/stream`. The stream
+     reuses the exact public activity timeline builder, accepts the same
+     `since`, `from`, `to`, `limit`, `kind`, and `source` filters, and also
+     resumes from `Last-Event-ID` when `since` is absent. It emits a metadata
+     frame containing the timeline envelope's schema/version, generated time,
+     range, source-lag, staleness, and next cursor, then emits one SSE frame per
+     public timeline event with `id` set to the event cursor, `event` set to the
+     event kind, and `data.event` set to the same event shape returned by the
+     JSON endpoint. The response includes `retry: 15000`,
+     `x-openagents-polling-fallback`, no-store buffering headers, manifest and
+     OpenAPI discovery, and guide docs for reconnect/poll fallback. Worker tests
+     cover stream framing, source-lag metadata, `Last-Event-ID` reconnect, and
+     private-material redaction. This remains observation/projection/retrieval
+     only and grants no settlement, payout, accepted-work, deployment, provider,
+     wallet, or public-claim authority.
 2. **Bridge activity events into `openagents-world` public rows**
    - Body summary: Project public activity events into SpacetimeDB `world_event`
      rows through the existing service-identity bridge. Keep D1/Worker as the

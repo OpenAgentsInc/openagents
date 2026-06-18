@@ -89,6 +89,19 @@ const okJson = (description: string, schemaRef: string): JsonSchema => ({
   ...jsonContent(schemaRef),
 })
 
+const okEventStream = (description: string): JsonSchema => ({
+  description,
+  content: {
+    'text/event-stream': {
+      schema: {
+        description:
+          'Server-sent events. Data frames carry public activity timeline metadata or { event } where event is PublicActivityTimelineEvent.',
+        type: 'string',
+      },
+    },
+  },
+})
+
 const operation = (input: OpenApiOperationInput): JsonSchema => ({
   operationId: input.operationId,
   summary: input.summary,
@@ -3896,6 +3909,28 @@ const paths = (): JsonSchema => ({
           'Public activity timeline envelope.',
           '#/components/schemas/PublicActivityTimelineEnvelope',
         ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/activity-timeline/stream': {
+    get: operation({
+      operationId: 'streamPublicActivityTimeline',
+      summary: 'Stream public activity timeline events',
+      description:
+        'Streams the same public-safe activity timeline event shape as server-sent events. Use `since` or the `Last-Event-ID` header to resume after reconnect. Each event frame uses the timeline cursor as the SSE id, event kind as the SSE event name, and `{ event }` as data. A metadata frame reports the same schemaVersion, generatedAt, range, sourceLag, staleness, and nextCursor fields as the JSON timeline envelope. The response includes polling fallback guidance and grants no settlement, payout, accepted-work, deployment, provider, wallet, or public-claim authority.',
+      tags: ['Training', 'Pylon', 'Forum'],
+      security: publicRead,
+      parameters: [
+        queryParam('since', 'Cursor returned by a prior timeline event.'),
+        queryParam('from', 'Inclusive lower ISO timestamp bound.'),
+        queryParam('to', 'Inclusive upper ISO timestamp bound.'),
+        queryParam('limit', 'Maximum event count, bounded to 1-200.'),
+        queryParam('kind', 'Comma-separated or repeated event-kind filter.'),
+        queryParam('source', 'Comma-separated or repeated source-kind filter.'),
+      ],
+      responses: {
+        '200': okEventStream('Public activity timeline SSE stream.'),
         ...errorResponses(),
       },
     }),

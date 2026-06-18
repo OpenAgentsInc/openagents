@@ -166,6 +166,27 @@ describe('OpenAgents OpenAPI route', () => {
     ).toEqual(
       expect.arrayContaining(['since', 'from', 'to', 'limit', 'kind', 'source']),
     )
+    const activityTimelineStreamOperation = operationAt(
+      body,
+      '/api/public/activity-timeline/stream',
+      'get',
+    )
+    expect(activityTimelineStreamOperation.operationId).toBe(
+      'streamPublicActivityTimeline',
+    )
+    expect(activityTimelineStreamOperation.description).toEqual(
+      expect.stringContaining('Last-Event-ID'),
+    )
+    const streamResponses = activityTimelineStreamOperation.responses as Record<
+      string,
+      { content?: Record<string, unknown> }
+    >
+    expect(streamResponses['200']?.content?.['text/event-stream']).toBeDefined()
+    expect(
+      activityTimelineStreamOperation.parameters?.map(parameter => parameter.name),
+    ).toEqual(
+      expect.arrayContaining(['since', 'from', 'to', 'limit', 'kind', 'source']),
+    )
     expect(operationAt(body, '/api/training/evals/a5', 'get').operationId).toBe(
       'readTrainingA5EvalDashboard',
     )
@@ -530,6 +551,9 @@ describe('OpenAgents OpenAPI route', () => {
     ).toEqual([])
     expect(
       operationAt(body, '/api/public/activity-timeline', 'get').security,
+    ).toEqual([])
+    expect(
+      operationAt(body, '/api/public/activity-timeline/stream', 'get').security,
     ).toEqual([])
     expect(
       operationAt(

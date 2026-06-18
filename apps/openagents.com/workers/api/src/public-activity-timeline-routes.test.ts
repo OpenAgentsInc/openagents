@@ -20,7 +20,10 @@ import type {
   PublicActivityTimelineReceiptStore,
   PublicActivityTimelineTrainingStore,
 } from './public-activity-timeline'
-import { handlePublicActivityTimelineApi } from './public-activity-timeline-routes'
+import {
+  handlePublicActivityTimelineApi,
+  handlePublicActivityTimelineStreamApi,
+} from './public-activity-timeline-routes'
 import type { PylonApiRegistrationRecord } from './pylon-api'
 import type {
   TrainingRunRecord,
@@ -41,16 +44,98 @@ const simulationReceiptRef =
 const request = (path = '/api/public/activity-timeline') =>
   new Request(`https://openagents.com${path}`)
 
+const streamRequest = (
+  path = '/api/public/activity-timeline/stream',
+  init?: RequestInit,
+) => new Request(`https://openagents.com${path}`, init)
+
 const route = async (
   path: string,
   input: Parameters<typeof handlePublicActivityTimelineApi>[1] = fullInput(),
 ): Promise<Response> =>
   Effect.runPromise(handlePublicActivityTimelineApi(request(path), input))
 
+const streamRoute = async (
+  path: string,
+  input: Parameters<typeof handlePublicActivityTimelineStreamApi>[1] = fullInput(),
+  init?: RequestInit,
+): Promise<Response> =>
+  Effect.runPromise(
+    handlePublicActivityTimelineStreamApi(streamRequest(path, init), input),
+  )
+
 const decode = async (response: Response) =>
   assertPublicActivityTimelineEnvelopeSafe(
     (await response.json()) as PublicActivityTimelineEnvelope,
   )
+
+type SseFrame = Readonly<{
+  data?: unknown
+  event?: string
+  id?: string
+  retry?: string
+}>
+
+const parseSseFrames = (text: string): SseFrame[] =>
+  text
+    .split(/\n\n/)
+    .map(frame => frame.trim())
+    .filter(frame => frame !== '')
+    .map(frame => {
+      const parsed: { dataLines: string[]; event?: string; id?: string; retry?: string } = {
+        dataLines: [],
+      }
+      for (const line of frame.split('\n')) {
+        if (line.startsWith(':')) continue
+        const separator = line.indexOf(':')
+        const key = separator === -1 ? line : line.slice(0, separator)
+        const value =
+          separator === -1 ? '' : line.slice(separator + 1).replace(/^ /, '')
+        if (key === 'data') parsed.dataLines.push(value)
+        if (key === 'event') parsed.event = value
+        if (key === 'id') parsed.id = value
+        if (key === 'retry') parsed.retry = value
+      }
+      const dataText = parsed.dataLines.join('\n')
+      return {
+        ...(parsed.event === undefined ? {} : { event: parsed.event }),
+        ...(parsed.id === undefined ? {} : { id: parsed.id }),
+        ...(parsed.retry === undefined ? {} : { retry: parsed.retry }),
+        ...(dataText === '' ? {} : { data: JSON.parse(dataText) as unknown }),
+      }
+    })
+
+const frameDataRecord = (frame: SseFrame): Record<string, unknown> => {
+  expect(frame.data).toBeTypeOf('object')
+  expect(frame.data).not.toBeNull()
+  return frame.data as Record<string, unknown>
+}
+
+const eventFromFrame = (frame: SseFrame): PublicActivityTimelineEnvelope['events'][number] => {
+  const data = frameDataRecord(frame)
+  expect(data.event).toBeTypeOf('object')
+  return data.event as PublicActivityTimelineEnvelope['events'][number]
+}
+
+const envelopeFromSseFrames = (frames: readonly SseFrame[]) => {
+  const meta = frames.find(frame => frame.event === 'activity_timeline_meta')
+  if (meta === undefined) throw new Error('missing activity timeline meta frame')
+  const metaData = frameDataRecord(meta)
+  const nextCursor = metaData.nextCursor
+  const envelope = {
+    schemaVersion: metaData.schemaVersion,
+    generatedAt: metaData.generatedAt,
+    staleness: metaData.staleness,
+    range: metaData.range,
+    sourceLag: metaData.sourceLag,
+    nextCursor: typeof nextCursor === 'string' ? nextCursor : null,
+    events: frames
+      .filter(frame => frame.id !== undefined && frame.data !== undefined)
+      .map(eventFromFrame),
+  } as PublicActivityTimelineEnvelope
+  assertPublicActivityTimelineEnvelopeSafe(envelope)
+  return envelope
+}
 
 const registration = (): PylonApiRegistrationRecord => ({
   capabilityRefs: ['capability.public.tassadar_executor_trace'],
@@ -472,6 +557,48 @@ describe('public activity timeline route', () => {
     )
   })
 
+  test('stream omits private source payload material from public frames', async () => {
+    const response = await streamRoute('/api/public/activity-timeline/stream?limit=200', {
+      ...fullInput(),
+      forumStore: {
+        listRecentActivity: async () =>
+          (await forumStore().listRecentActivity(48)).map(record => ({
+            ...record,
+            title: 'raw_prompt customer_email@example.com sk-test-private',
+          })),
+      },
+      pylonStore: {
+        listRegistrations: async () => [
+          {
+            ...registration(),
+            displayName: 'private customer email@example.com token_secret',
+            ownerAgentTokenPrefix: 'token_secret_not_projected',
+          },
+        ],
+      },
+      trainingStore: {
+        ...trainingStore(),
+        listVerificationChallengesForRun: async () => [
+          {
+            ...challenge('Verified'),
+            payloadJson: JSON.stringify({
+              paymentPreimage: 'payment_preimage_not_projected',
+              rawPayload: 'raw_payload_not_projected',
+            }),
+          },
+        ],
+      },
+    })
+    const text = await response.text()
+    const streamed = envelopeFromSseFrames(parseSseFrames(text))
+
+    expect(response.status).toBe(200)
+    expect(publicActivityTimelineHasUnsafeMaterial(streamed)).toBe(false)
+    expect(text).not.toMatch(
+      /@|payment_preimage|raw_(payload|prompt)|sk-[a-z0-9]|token_secret/i,
+    )
+  })
+
   test('surfaces stale source lag instead of hiding it behind a fresh read timestamp', async () => {
     const body = await decode(
       await route('/api/public/activity-timeline?limit=200'),
@@ -524,6 +651,76 @@ describe('public activity timeline route', () => {
       'forum_posted',
       'artanis_tick',
     ])
+  })
+
+  test('streams timeline events as SSE frames with source-lag metadata', async () => {
+    const json = await decode(
+      await route('/api/public/activity-timeline?limit=3'),
+    )
+    const response = await streamRoute(
+      '/api/public/activity-timeline/stream?limit=3',
+    )
+    const text = await response.text()
+    const frames = parseSseFrames(text)
+    const streamed = envelopeFromSseFrames(frames)
+    const retry = frames.find(frame => frame.retry !== undefined)
+    const meta = frames.find(frame => frame.event === 'activity_timeline_meta')
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(response.headers.get('x-accel-buffering')).toBe('no')
+    expect(response.headers.get('x-openagents-authority')).toBe(
+      'observation_only',
+    )
+    expect(response.headers.get('x-openagents-polling-fallback')).toContain(
+      '/api/public/activity-timeline?',
+    )
+    expect(retry?.retry).toBe('15000')
+    expect(meta).toBeDefined()
+    expect(frameDataRecord(meta!).sourceLag).toEqual(json.sourceLag)
+    expect(frameDataRecord(meta!).staleness).toEqual(json.staleness)
+    expect(streamed.events).toEqual(json.events)
+    expect(
+      frames
+        .filter(frame => frame.id !== undefined)
+        .map(frame => [frame.id, frame.event]),
+    ).toEqual(json.events.map(event => [event.cursor, event.kind]))
+  })
+
+  test('stream reconnect resumes from Last-Event-ID cursor', async () => {
+    const first = await streamRoute(
+      '/api/public/activity-timeline/stream?limit=2',
+    )
+    const firstFrames = parseSseFrames(await first.text())
+    const lastEventId = firstFrames
+      .filter(frame => frame.id !== undefined)
+      .at(-1)?.id
+    if (lastEventId === undefined) throw new Error('missing first stream cursor')
+
+    const resumed = await streamRoute(
+      '/api/public/activity-timeline/stream?limit=200',
+      fullInput(),
+      { headers: { 'Last-Event-ID': lastEventId } },
+    )
+    const expected = await decode(
+      await route(
+        `/api/public/activity-timeline?limit=200&since=${encodeURIComponent(
+          lastEventId,
+        )}`,
+      ),
+    )
+    const resumedEnvelope = envelopeFromSseFrames(
+      parseSseFrames(await resumed.text()),
+    )
+
+    expect(resumed.status).toBe(200)
+    expect(resumedEnvelope.events.map(event => event.cursor)).toEqual(
+      expected.events.map(event => event.cursor),
+    )
+    expect(
+      resumedEnvelope.events.every(event => event.cursor > lastEventId),
+    ).toBe(true)
   })
 
   test('paginates deterministically across equal timestamps', async () => {
