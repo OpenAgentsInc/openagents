@@ -3,6 +3,15 @@
 Date: 2026-06-18. Off `origin/main` (`e8131c9` — `release(pylon): cut v1.0.1`).
 Audit only — no production behavior changed, nothing deployed.
 
+Roadmap refresh: later on 2026-06-18, after reading the full `docs/launch/`
+folder, this document was expanded from a gap audit into the launch roadmap for
+bringing Pylon visibility/replay fully live. The companion launch docs update a
+few baselines: stable `npx @openagentsinc/pylon` v1.0.0 is now the default
+install, the evidence pack is live enough for the honest-scoped video, product
+promises are served at `2026-06-18.6`, and the remaining launch/product blockers
+are autonomous self-serve settlement, visibility/replay productization, Windows,
+Spark-helper auto-start, and owner-signed claim upgrades.
+
 ## Why this exists (owner's goal)
 
 The owner needs **visibility into what is actually happening as people boot up
@@ -173,12 +182,21 @@ What's **not fully built** for replay:
 
 ---
 
-## 3. Recommended path (phased; reuse, don't rebuild)
+## 3. Roadmap to fully live (reuse, don't rebuild)
 
-The cheapest route to the owner's goal reuses every endpoint above and adds (a)
-one unified live-activity stream and (b) one general replay generator, then
-fans both out to the three surfaces. Greenfield is **not** warranted — the data
-layer is done.
+"Fully live" means a new contributor boots Pylon, claims work, submits/verifies,
+settles, and posts/discusses in the Forum, while an operator can see the same
+sequence **live** and **replay it later** from the web app, Autopilot Desktop,
+and the CLI. The finished system must also generate directed replay clips from
+the same evidence without adding settlement, payout, deployment, or public-claim
+authority.
+
+Greenfield is not warranted. The launch folder says the hard data paths are
+already in place: stable Pylon install (`@openagentsinc/pylon@1.0.0`), public run
+summary, reconciled settlement rows, public receipts, pylon-stats, capacity
+funnel + history, proof-replay bundles, SpacetimeDB world projection, Forum
+feeds, and a render-box clip pipeline. The remaining work is status cleanup,
+one keystone timeline API, product surfaces, and proof gates.
 
 ### Authority / projection-safety invariants (apply to every phase)
 
@@ -198,81 +216,251 @@ layer is done.
   world projection goes through the deterministic, replay-safe service-reducer
   bridge.
 - **No new spend/settlement authority.** This is observability; it arms nothing.
+- **Evidence-bound motion.** If it moves, pulses, flows, or bursts, it must name
+  the public refs that caused it. The `/tassadar` motion-policy work from the
+  June 17 audits is the baseline, not an optional design preference.
 
-### Phase 0 — Consolidate the live read surface (days, web-first)
+### Phase 0 — Normalize evidence and status (same-day polish)
 
-Reuse the existing live endpoints; add **one operator live-activity page** that
-composes the three signals already available:
-- boot-ups: `/api/public/pylon-stats` (recentPylons + counts) and
-  `/api/public/pylon-capacity-funnel`;
-- money loop: `/api/public/tassadar-run-summary` + `/settlements` +
-  `/api/training/verification/challenges` + `/api/public/artanis/admin-ticks`;
-- forum: `/api/forum/posts` + context activity.
+Close the small evidence-surface gaps before building new presentation on top:
 
-No new backend. This is a Foldkit page that polls the existing endpoints on a
-short interval and lays them out as one "what's happening now" view. Closes the
-"five separate endpoints" gap (2a-1) immediately.
+- Add or alias the public settlements route so both the evidence pack and the
+  operator UI can cite a stable public URL. Today the working route is
+  `/api/training/runs/{runRef}/settlements`; the mistaken
+  `/api/public/training/runs/{runRef}/settlements` shape should either resolve
+  or disappear from docs.
+- Add a focused public verification-challenge read route (or a documented
+  `focusRef` route) so `training.verification.challenge.*` can be dereferenced
+  directly, not only as embedded run-summary data.
+- Reconcile every public aggregate that can still show simulation rows as real
+  settled sats. The run summary is reconciled at 1,005 real sats; any remaining
+  `/api/public/pylon-stats` 1,010-style aggregate must exclude
+  `realBitcoinMoved:false` rows before it is used in the live dashboard.
+- Label the remaining V1.0 gates plainly in the UI: install is now stable, but
+  fully autonomous self-serve settlement is still not proven; the two
+  world-first claims remain RED/qualified pending owner-signed upgrades.
+- Add smoke coverage for the public routes above, the real-vs-simulation
+  reconciliation, and the absence of private material.
 
-### Phase 1 — Unified public activity timeline (the keystone)
+Exit: a skeptic can dereference run, settlement, receipt, verification, promise,
+and install refs from one evidence pack without discovering URL drift.
 
-Build **one** read-only, cursor-addressable, public-safe **activity-event
-endpoint** that unions the existing per-domain event tables into a single
-ordered stream:
-- Source: `pylon_api_events` (online/heartbeat/claim/closeout),
-  `training_window_events`, `training_verification_events` (worker→validator→
-  verdict), `nexus_payment_authority_receipt_recorded` (settlements),
-  `forum_*_events`, `artanis_admin_tick_decisions`.
-- Output: `{ schemaVersion, generatedAt, staleness, cursor, events[] }` where each
-  event is a public-safe `{ ts, kind, actorRef?, targetRef?, refs[], text }`
-  (reuse the proof-replay `ReplayEvent` shape and its scrub).
-- Two reads off the same shape: **live tail** (`?since=<cursor>`, `live_at_read`)
-  and **range replay** (`?from=&to=`, `stored_snapshot`).
+### Phase 1 — Ship the unified public activity timeline (keystone)
 
-This single endpoint is the keystone: it powers both the live ticker (2a-3) and
-general replay (2b-1, 2b-3) for boot-ups + verify + settle + forum, and removes
-the need for new hand-authored replay builders.
+Build **one** read-only, cursor-addressable, public-safe timeline endpoint:
+`GET /api/public/activity-timeline`.
 
-### Phase 2 — General replay generator + fleet/forum replay
+Contract:
 
-- Generalize the proof-replay bundle builder to assemble a bundle from the
-  Phase-1 timeline for **any** run/window/pair/time-range (not just the two named
-  stories), keeping the curated builders as named presets.
-- Turn the capacity-funnel **history** series into a replayable "nodes coming
-  online over time" timeline visualization (data already exists).
-- Add forum activity as a replayable track on the same timeline.
+- `schemaVersion: "openagents.public_activity_timeline.v1"`.
+- Envelope: `{ generatedAt, staleness, nextCursor, sourceLag, events[] }`.
+- Cursor: stable monotonic key such as
+  `{ts}:{sourceKind}:{eventRef}`; support `?since=<cursor>`, `?limit=`, and
+  bounded `?from=&to=` range reads.
+- Event shape:
+  `{ eventRef, ts, kind, actorRef?, targetRef?, runRef?, windowRef?, refs[],
+  amountSats?, realBitcoinMoved?, state?, sourceKind, sourceRefs, text,
+  caveatRefs[] }`.
+- Event kinds should be typed and finite: `pylon_registered`,
+  `pylon_heartbeat`, `wallet_ready`, `assignment_ready`, `window_opened`,
+  `work_claimed`, `trace_submitted`, `verification_queued`,
+  `verification_verified`, `verification_rejected`, `settlement_recorded`,
+  `real_bitcoin_moved`, `forum_topic_created`, `forum_posted`,
+  `artanis_tick`, `capacity_snapshot`, and `projection_gap`.
 
-### Phase 3 — Push + fan-out to desktop and CLI
+Initial sources:
 
-- **Live push (web):** extend the SpacetimeDB world projection (already
-  subscription-based and wired to `/tassadar`) to carry the Phase-1 activity
-  events, replacing polling for the live ticker; or add an SSE tail on the
-  Phase-1 endpoint. Reuses the only live-push channel we already operate.
-- **Desktop:** the desktop already embeds the replay pane and has
-  update-feed/network-stats plumbing — point it at the Phase-0 live page + the
-  Phase-1/2 timeline + replay bundle.
-- **CLI:** add `pylon activity --watch` (live tail of the Phase-1 endpoint,
-  fleet-wide, public-safe) and `pylon replay <run|window|pair|range>` (pull a
-  Phase-2 bundle and render an ASCII/JSON timeline). This closes the CLI gaps
-  (self-only, no replay, no money-loop) with the smallest possible surface,
-  reusing the same endpoint the web/desktop use.
+- `pylon_api_events` and registration/heartbeat state for boot and readiness.
+- `training_window_events`, lease/claim rows, trace-contribution rows, and
+  verification events for claim→submit→replay→verdict.
+- Settlement receipt rows, not payout intent rows, for paid/settled events.
+- Forum topic/post/context activity rows for public activity.
+- Artanis admin-tick decisions for dispatch/no-action/blocked context.
+- Capacity-funnel snapshots for aggregate fleet-shape events.
 
-### Phase 4 — Productionize replay clips (in flight already)
+Rules:
 
-EPIC `#5346` (headless clip→mp4) already renders camera-path-driven clips from a
-bundle. Once Phase 2 makes bundles general, the clip pipeline can render *any*
-moment (boot surge, a verify pair, a settlement) as a shareable clip with no new
-render work — only bundle selection.
+- If a source table lacks enough public-safe detail, emit a
+  `projection_gap` event with blocker refs instead of guessing.
+- Never infer `real_bitcoin_moved` from amount or state; only a receipt with
+  `realBitcoinMoved:true` may emit it.
+- Attach `projection_staleness.v1` and source lag. A stale source must be visible
+  in the envelope, not hidden behind a fresh timeline timestamp.
+
+Exit: the timeline can answer "what happened since cursor X?" and "what happened
+between time A and B?" across boot-ups, work, verification, settlement, Forum,
+and operator ticks using one public-safe schema.
+
+### Phase 2 — Web live-activity surface (visible win)
+
+Ship a Foldkit page that first composes existing endpoints, then swaps to the
+Phase-1 timeline without changing the UI model. Candidate routes:
+`/activity`, `/tassadar/activity`, or an admin-linked "Pylon Live" page.
+
+Required panes:
+
+- Fleet: online/seen/registered, wallet-ready, assignment-ready, capacity funnel,
+  recent pylons, dark-capacity reasons, and stale-source labels.
+- Money loop: run state, open windows, latest claims/submissions/verdicts,
+  settlement receipt rows, real vs simulation split, autonomous-settlement gate
+  status, and Artanis tick decisions.
+- Forum: latest public product-promise, release-candidate, and run-context posts
+  with public author refs and timestamps.
+- Timeline: a single reverse-chronological event list with filters for
+  `boot`, `work`, `verify`, `settle`, `forum`, and `operator`.
+- Proof drawer: selected event shows source refs, public URLs, caveats,
+  staleness, and any product-promise blockers.
+- World link: selected timeline events can focus `/tassadar` entities when the
+  world projection has matching refs.
+
+Start with 3-5 second polling. Do not wait for push to get the operator view
+online.
+
+Exit: an operator no longer needs five tabs to answer "are people booting,
+working, getting verified, getting paid, and talking?"
+
+### Phase 3 — Live push + world projection
+
+Once the timeline endpoint exists, add a live tail:
+
+- First choice: SSE on `GET /api/public/activity-timeline/stream?since=...`
+  because it is the least invasive way to tail the same public event shape.
+- Second layer: bridge the same event shape into `openagents-world` as
+  public-safe `world_event` rows so `/tassadar` can animate live events through
+  the existing SpacetimeDB subscription path.
+- Keep polling as a fallback and expose reconnect/stale state.
+- Preserve the June 17 motion contract: the world may animate only events with
+  `sourceRefs`, `generatedAt`, and expiry/staleness metadata.
+
+Exit: boot/claim/verify/settle/forum events appear live without refresh, but the
+Worker/D1 timeline remains the source projection and SpacetimeDB remains a
+projection.
+
+### Phase 4 — General replay generator
+
+Generalize proof replay from hand-authored named stories to generated bundles:
+
+- Add `GET /api/public/proof-replays?from=&to=&runRef=&windowRef=&actorRef=&kind=`
+  or a sibling route that builds a `proof_replay_bundle.v1` from Phase-1 timeline
+  events.
+- Keep curated bundles (`first-real-settlement`,
+  `launch-recognition-payments`) as named presets and regression fixtures.
+- Convert boot-ups and capacity-funnel history into a "fleet boot" replay track.
+- Convert Forum events into a "discussion" replay track.
+- Generate actors/stages/flows/captions/camera cues from event kinds and source
+  refs, then run the existing `assertProofReplayBundleShipmentGate` and source
+  coverage checks.
+- Store generated replay bundles as reconstructable snapshots with the input
+  cursor/range/filter in the manifest, not as authority.
+
+Exit: a caller can replay any run/window/pair/time-range without writing a new
+builder.
+
+### Phase 5 — Replay clips as a production service
+
+The render-box pipeline already exists: Playwright/headless Chromium drives the
+three-effect proof-replay scene and `ffmpeg` emits mp4. Productize it without
+putting Chrome or `ffmpeg` in the Cloudflare Worker.
+
+Build:
+
+- A job schema: `{ replayBundleRef|timelineRange, startSecond, duration, fps,
+  resolution, cameraPathRef|cameraPath, outputKind }`.
+- A local/CI/Container render worker that runs `render-clip.mjs` or its
+  production successor, writes an mp4 plus a render manifest, and uploads to R2.
+- A Worker route that creates/list jobs and serves finished clips/manifests; it
+  does not render frames.
+- A camera-path DSL with explicit keyframes and simple verbs (`hold`, `orbit`,
+  `follow`, `frame_actor`, `frame_settlement`) compiled into the existing
+  camera-path input.
+- Regression renders for one curated story and one generated timeline bundle;
+  verify nonblank WebGL frames and camera-path differences.
+
+Exit: "pick this moment, move the camera here, generate a clip" is one command
+or API call, with a public-safe manifest and no interactive widget dependency.
+
+### Phase 6 — Fan out to desktop and CLI
+
+Use the same timeline and replay endpoints; do not create per-surface backends.
+
+Desktop:
+
+- Add a live activity strip or pane to the Network/Training surfaces so the app
+  is not just an immersive scene when a local node is unavailable.
+- Replay pane accepts generated bundles and range filters, not only curated
+  slugs.
+- The coding-surface yellow promise remains separate: desktop live visibility can
+  ship before the full in-window coding composer or signed packaged-node CS-B1
+  gate, but downloaded builds still need the packaged node/signing path for a
+  normal-user "fully live" experience.
+
+CLI:
+
+- `pylon activity --watch [--json] [--since CURSOR] [--filter work,verify,...]`
+  tails public-safe fleet activity.
+- `pylon timeline --from ... --to ... --json` fetches bounded historical events.
+- `pylon replay --run ...|--window ...|--range ... --format text|json` fetches
+  generated replay bundles and prints an ASCII/JSON event track.
+- `pylon receipts --run ...` summarizes settlement rows and links receipt URLs.
+- Keep own-node commands (`status`, `presence`, `wallet status`) separate from
+  public fleet commands so users do not confuse self state with network state.
+
+Exit: web, desktop, and CLI can all answer the same questions from the same refs.
+
+### Phase 7 — Ops, smokes, and owned-infra automation
+
+Make the visibility system operational:
+
+- Add owned-infra scheduled checks for timeline freshness, source lag, SSE
+  health, SpacetimeDB bridge health, render-box queue health, R2 clip
+  availability, and public route status. Do not add GitHub-hosted CI.
+- Add browser/canvas smokes for `/tassadar`, replay pages, and the live-activity
+  page: nonblank WebGL canvas, no anonymous motion, proof drawer route returns
+  200, text fits at desktop/mobile sizes.
+- Add API tests for private-material redaction, staleness envelopes, cursor
+  ordering, simulation exclusion, and source coverage.
+- Add a runbook in `docs/DEPLOYMENT.md` or a launch sub-runbook for operating
+  the timeline, stream, world bridge, and render worker.
+
+Exit: a stale or broken visibility surface is detected as an operations problem,
+not discovered by the owner manually refreshing tabs.
+
+### Phase 8 — Product-promise and launch gates
+
+The visibility/replay system is "fully live" only after the evidence and copy
+gates agree:
+
+- `pylon.consumer_compute_earns_bitcoin_self_serve.v1` remains RED until a fresh
+  independent contributor uses the stable install, claims work, submits, is
+  independently replay-verified, and is **auto-paid at verdict with no operator
+  POST**, with receipt refs.
+- The live activity timeline must show that same event sequence without manual
+  backfill.
+- A generated replay bundle and a render-box clip for that exact sequence must
+  be produced from the timeline, not hand-authored.
+- Product-promises registry, AGENTS.md/INSTALL.md, evidence pack, and launch docs
+  cite the same refs and states.
+- World-first claims stay only in their qualified wording until the owner-signed
+  receipt-first upgrades land.
+- Windows support and Spark-helper auto-start stay explicit open platform
+  coverage gates for "anybody" language.
+
+Exit: the public claim can move from "the data exists and the loop is proven in
+bounded pieces" to "a normal contributor can join, be observed live, be replayed,
+and produce a clip from public evidence."
 
 ---
 
 ## 4. The single most valuable next step
 
 If only one thing ships: **Phase 1 — the unified public activity timeline
-endpoint.** It is the keystone that unblocks both halves of the owner's goal
-(live + replay) across all three surfaces, it reuses event data we already
-write, and it removes the hand-authored-builder bottleneck that currently makes
-replay a per-story coding task. Phase 0 (the composed live page) is the fastest
-*visible* win and can land in parallel against today's endpoints.
+endpoint.** It is the keystone that unblocks live ticker, arbitrary replay,
+desktop/CLI parity, SpacetimeDB event projection, and generated replay clips.
+
+The fastest visible win is Phase 2 in parallel: a polling web live-activity page
+that composes today's endpoints. But do not let that page become a second
+aggregation authority; its job is to prove the operator workflow while Phase 1
+becomes the shared event contract.
 
 ---
 
