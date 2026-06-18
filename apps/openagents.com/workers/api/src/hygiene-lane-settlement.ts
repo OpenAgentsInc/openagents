@@ -600,7 +600,7 @@ export const buildHygieneLaneSettlement = (
     amountSats: number
     contributorRef: string
     debtReceiptKeyRef: string
-    idempotencyRef: string
+    idempotencyDigestHex: string
     mergedPrRef: string
     nowIso: string
     operatorApprovalRef: string
@@ -612,9 +612,11 @@ export const buildHygieneLaneSettlement = (
 ): HygieneLaneSettlementRecords => {
   const adapterKind = input.adapterKind
   const moneyMovement = realSettlementMovementMode(adapterKind)
-  const suffix = stableSuffix(input.idempotencyRef)
+  const suffix = stableSuffix(`sha256_${input.idempotencyDigestHex}`)
   const contributorRef = input.contributorRef.trim()
   const amount = bitcoinAmount(input.amountSats)
+  const idempotencyHash = (stage: string): string =>
+    `hash.hygiene_lane_settlement.${stage}.${input.idempotencyDigestHex}`
   // The accepted-work basis is the HONEST hygiene evidence: merged PR + reviewer
   // acceptance + the debt receipt. No verification-challenge ref appears.
   const acceptedWorkRefs = uniqueRefs([
@@ -642,7 +644,7 @@ export const buildHygieneLaneSettlement = (
     createdAt: input.nowIso,
     expiresAt: null,
     id: `nexus_payout_target_approval_hygiene_lane_${suffix}`,
-    idempotencyKeyHash: `hash.hygiene_lane_settlement.approval.${suffix}`,
+    idempotencyKeyHash: idempotencyHash('approval'),
     ownerUserId: 'user_openagents_operator',
     payoutTargetRef: input.payoutTargetRef,
     publicProjectionJson: JSON.stringify({
@@ -673,7 +675,7 @@ export const buildHygieneLaneSettlement = (
     buyerPaymentRef: null,
     createdAt: input.nowIso,
     id: `nexus_treasury_payout_intent_hygiene_lane_${suffix}`,
-    idempotencyKeyHash: `hash.hygiene_lane_settlement.intent.${suffix}`,
+    idempotencyKeyHash: idempotencyHash('intent'),
     metadataRefs,
     ownerUserId: null,
     payoutIntentRef: `payout_intent.hygiene_lane_settlement.${suffix}`,
@@ -704,7 +706,7 @@ export const buildHygieneLaneSettlement = (
     archivedAt: null,
     createdAt: input.nowIso,
     id: `nexus_treasury_payout_attempt_hygiene_lane_${suffix}`,
-    idempotencyKeyHash: `hash.hygiene_lane_settlement.attempt.${suffix}`,
+    idempotencyKeyHash: idempotencyHash('attempt'),
     metadataRefs,
     payoutAttemptRef: `payout_attempt.hygiene_lane_settlement.${suffix}`,
     payoutIntentRef: intent.payoutIntentRef,
@@ -728,7 +730,7 @@ export const buildHygieneLaneSettlement = (
     eventRef: `reconciliation.hygiene_lane_settlement.${suffix}`,
     externalEventRef: `external_event.hygiene_lane_settlement.${adapterKind}.${suffix}`,
     id: `nexus_treasury_reconciliation_hygiene_lane_${suffix}`,
-    idempotencyKeyHash: `hash.hygiene_lane_settlement.reconciliation.${suffix}`,
+    idempotencyKeyHash: idempotencyHash('reconciliation'),
     metadataRefs,
     payoutAttemptRef: attempt.payoutAttemptRef,
     payoutIntentRef: intent.payoutIntentRef,
