@@ -1130,6 +1130,31 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/tassadar-auto-settlement.test.ts` and
   `workers/api/src/tassadar-run-settlement-gate.test.ts`.
 
+## Tassadar Compiled-Module Composition Verification
+
+- A linked compiled-module listing is not settlement-eligible merely because
+  the composed dense payload replays to the expected digest. The Worker replay
+  path and marketplace projection must require a first-class composition
+  verdict: every constituent dense bank replays to its source trace digest, the
+  psionic link-resolution compatibility evidence conformance-checks
+  (requested/selected refs, trust posture, claim class, compatibility digests,
+  dependency graph digest, resolution digest, and dependency edge), and the
+  composed exact replay digest matches end-to-end.
+- Injected link incompatibility, dependency-graph drift, resolution-digest
+  drift, or tampered constituent evidence must reject the linked-module replay
+  even when the composed trace digest itself still matches. Marketplace
+  purchase settlement remains blocked until
+  `compositionVerificationCleared: true`; purchase refs and settlement refs do
+  not override a failed composition verdict.
+- Public compiled-module marketplace projections may expose only digest-pinned
+  refs, receipt refs, blocker refs, and caveats. They must not expose raw
+  module install authority, runtime activation, private traces, wallet/payment
+  material, or real-settlement authority.
+- Regression coverage for this policy lives in
+  `packages/tassadar-executor/src/linked-dense-module.test.ts`,
+  `workers/api/src/tassadar-replay-validator.test.ts`, and
+  `workers/api/src/tassadar-compiled-module-marketplace.test.ts`.
+
 ## Probe GEPA Campaign Public Projection
 
 - Artanis/Probe GEPA campaign projections are public-safe summaries of
@@ -1423,10 +1448,11 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     only; no admin token, private logs, wallet material, pending-as-paid
     payout, or write authority).
   - `GET /api/public/tassadar/compiled-module-marketplace` — live at read over
-    the committed psionic linked-dense fixture and local replay gate —
+    the committed psionic linked-dense fixture and local composition gate —
     compliant (`generatedAt`, top-level contract, digest-pinned linked module
-    listing, source-bank replay/conformance refs, purchase/settlement blockers,
-    and explicit no mutation/no real-settlement authority).
+    listing, source-bank replay/conformance refs, psionic link-compatibility
+    receipt refs, purchase/settlement blockers, and explicit no mutation/no
+    real-settlement authority).
   - `GET /api/public/proof-replays` — live at read proof replay resolver over
     public Worker-authoritative proof, run, pylon, and settlement refs —
     compliant (`generatedAt`, top-level contract, public-safe source refs,

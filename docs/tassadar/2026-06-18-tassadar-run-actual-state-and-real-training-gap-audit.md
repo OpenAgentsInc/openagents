@@ -1068,6 +1068,31 @@ marketplace packaging, pricing, payout, and settlement claims remain blocked.
   authority, serve modules, or claim live paid construction sats.
 - **#5327 — V2** Module-composition verification (a linked module verified as a
   composition of verified parts).
+  Status 2026-06-18: landed across openagents + psionic. The linked dense
+  verifier now emits an explicit composition verdict instead of treating C5 as
+  an opaque blob: every source dense bank must replay to its expected source
+  trace, the composed trace digest must match
+  `0caa43ace27a5b86da14cfe037e65c30f250f0c0a0ac1c01f1fe3a3a45a230b2`, and
+  the psionic link-resolution evidence must conformance-check requested/selected
+  module refs, `benchmark_gated_internal` trust posture, the
+  `compiled dense ALM module composition / exact replay gate` claim class,
+  compatibility digests
+  `7383efa5fc20908b610c46cd015fe56a4bf7e793ac76ecddfaa7bf3e4ca72ad7` /
+  `7873bf9e8f60675c7fcae4bf077f240514a8f2a14733d29c800531f59c6a2389`,
+  dependency graph digest
+  `bd346a41f5a2c6329c49c51eef075e751ad2abf8a02d45c4727ee47df58b7d84`,
+  and link resolution digest
+  `6c98a62f135a1c56169257c17c932c5ac3cedfade95b6ada4992c4f015d221c6`.
+  The Worker replay validator accepts a linked-dense fixture mode and rejects
+  injected link incompatibility or a tampered constituent even when the composed
+  trace digest itself still matches. The public compiled-module marketplace now
+  gates `purchaseSettlementAllowed` / `settlementClaimAllowed` on
+  `compositionVerificationCleared`, with composition and link-compatibility
+  receipt refs exposed separately from purchase and settlement refs. Psionic
+  regression tests assert that the linked fixture carries compatibility evidence
+  for each bank and that an incompatible claim-class consumer request refuses at
+  link time. This does not install or serve arbitrary modules, arm live purchase
+  settlement, widen real-money gates, or claim gradient-trained weights.
 - **#5328 — V3** Data-contribution correctness-verification model (provenance +
   derived-trace replay + validator review) atop the data-trace marketplace gate.
 

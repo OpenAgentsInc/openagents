@@ -24,7 +24,9 @@ describe('Tassadar compiled module marketplace projection', () => {
       settlementMutationAuthority: false,
     })
     expect(listing).toMatchObject({
+      compositionVerificationCleared: true,
       dependencyEdgeCount: 1,
+      linkCompatibilityVerified: true,
       linkedModuleDigest:
         'cc1403674fc0d38892610d9e9c6c9230075494061f720c45bfa4f7b5a961756a',
       replayVerificationCleared: true,

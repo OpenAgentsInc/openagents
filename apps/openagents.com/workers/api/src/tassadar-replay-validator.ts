@@ -25,6 +25,11 @@ import {
   executeTassadarDenseWeightModule,
   type TassadarDenseWeightModule,
 } from '@openagentsinc/tassadar-executor/dense-weight-module'
+import {
+  verifyTassadarLinkedDenseComposition,
+  type TassadarLinkedDenseProgramFixture,
+  type TassadarLinkedDenseReplayVerification,
+} from '@openagentsinc/tassadar-executor/linked-dense-module'
 
 export const TassadarReplayValidatorDeviceRef =
   'device.cloudflare_worker.openagents_api'
@@ -35,6 +40,7 @@ export const TassadarReplayRequest = S.Struct({
   pylonDeviceRef: S.String,
   workload: S.Struct({
     denseModule: S.optionalKey(S.Record(S.String, S.Unknown)),
+    linkedDenseFixture: S.optionalKey(S.Record(S.String, S.Unknown)),
     model: S.Record(S.String, S.Unknown),
     steps: S.Array(S.Array(S.Number)),
   }),
@@ -48,7 +54,12 @@ export type TassadarReplayResponse = Readonly<{
   outcome: 'verified' | 'rejected'
   outputCount: number
   pylonDeviceRef: string
-  rejectionReason: 'trace_digest_mismatch' | 'execution_refused' | null
+  rejectionReason:
+    | 'trace_digest_mismatch'
+    | 'execution_refused'
+    | 'composition_verification_failed'
+    | null
+  compositionVerification: TassadarLinkedDenseReplayVerification | null
   replayedSteps: number
   replayedTraceDigest: string | null
   validatorDeviceRef: typeof TassadarReplayValidatorDeviceRef
@@ -65,6 +76,32 @@ const restoreTransitModel = (
   return model as unknown as TassadarAlmNumericModel
 }
 
+const runLinkedDenseCompositionValidation = async (
+  request: TassadarReplayRequest,
+  base: Omit<TassadarReplayResponse, 'compositionVerification' | 'halted' | 'outcome' | 'outputCount' | 'rejectionReason' | 'replayedSteps' | 'replayedTraceDigest'>,
+): Promise<TassadarReplayResponse> => {
+  const verification = await verifyTassadarLinkedDenseComposition(
+    request.workload.linkedDenseFixture as TassadarLinkedDenseProgramFixture,
+  )
+  const digestMatches =
+    verification.composedTraceDigest === request.claimedTraceDigest
+  const verified = verification.compositionVerificationCleared && digestMatches
+  return {
+    ...base,
+    compositionVerification: verification,
+    halted: false,
+    outcome: verified ? 'verified' : 'rejected',
+    outputCount: 0,
+    rejectionReason: verified
+      ? null
+      : digestMatches
+        ? 'composition_verification_failed'
+        : 'trace_digest_mismatch',
+    replayedSteps: request.workload.steps.length,
+    replayedTraceDigest: verification.composedTraceDigest,
+  }
+}
+
 export const runTassadarReplayValidation = async (
   request: TassadarReplayRequest,
 ): Promise<TassadarReplayResponse> => {
@@ -75,6 +112,9 @@ export const runTassadarReplayValidation = async (
     validatorDeviceRef: TassadarReplayValidatorDeviceRef,
   } as const
   try {
+    if (request.workload.linkedDenseFixture !== undefined) {
+      return await runLinkedDenseCompositionValidation(request, base)
+    }
     const trace =
       request.workload.denseModule === undefined
         ? await executeTassadarNumericModel(
@@ -89,6 +129,7 @@ export const runTassadarReplayValidation = async (
     const matches = trace.traceDigest === request.claimedTraceDigest
     return {
       ...base,
+      compositionVerification: null,
       halted,
       outcome: matches ? 'verified' : 'rejected',
       outputCount: outputs.length,
@@ -103,6 +144,7 @@ export const runTassadarReplayValidation = async (
     ) {
       return {
         ...base,
+        compositionVerification: null,
         halted: false,
         outcome: 'rejected',
         outputCount: 0,
