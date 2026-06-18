@@ -260,9 +260,13 @@ describe("pylon sessions exec (W-1 run-to-completion)", () => {
           input.abortSignal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true })
         })
       const actions = createControlSessionActions({ executor, proofsDir: proofDir, summary })
+      const resolved: Array<{ approvalRef: string; decision: string }> = []
       const control: SessionsExecControl = {
         ...controlFrom(actions),
         approvalsList: async () => ({ approvals: [{ approvalRef: "approval.y", kind: "spend_gate" }] }),
+        approvalsResolve: async (approvalRef, decision) => {
+          resolved.push({ approvalRef, decision })
+        },
       }
       const result = await runSessionsExec(control, {
         adapter: "codex",
@@ -277,6 +281,7 @@ describe("pylon sessions exec (W-1 run-to-completion)", () => {
       expect(result.pendingApprovals).toEqual([
         { approvalRef: "approval.y", kind: "spend_gate", decision: "deny" },
       ])
+      expect(resolved).toEqual([{ approvalRef: "approval.y", decision: "deny" }])
       expect(result.ok).toBe(false)
       await actions.cancel(result.sessionRef)
     })
@@ -289,6 +294,7 @@ describe("pylon sessions exec (W-1 run-to-completion)", () => {
       const executor: ControlSessionExecutor = async () => executorResult("passed")
       const actions = createControlSessionActions({ executor, proofsDir: proofDir, summary })
       let calls = 0
+      const resolved: Array<{ approvalRef: string; decision: string }> = []
       const control: SessionsExecControl = {
         ...controlFrom(actions),
         approvalsList: async () => {
@@ -296,6 +302,9 @@ describe("pylon sessions exec (W-1 run-to-completion)", () => {
           return calls === 1
             ? { approvals: [{ approvalRef: "approval.z", kind: "bounded_safe" }] }
             : { approvals: [] }
+        },
+        approvalsResolve: async (approvalRef, decision) => {
+          resolved.push({ approvalRef, decision })
         },
       }
       const result = await runSessionsExec(control, {
@@ -311,6 +320,7 @@ describe("pylon sessions exec (W-1 run-to-completion)", () => {
       expect(result.pendingApprovals).toEqual([
         { approvalRef: "approval.z", kind: "bounded_safe", decision: "approve" },
       ])
+      expect(resolved).toEqual([{ approvalRef: "approval.z", decision: "approve" }])
       // An approve does NOT pause: the session is allowed to reach its terminal.
       expect(result.outcome).toBe("completed")
       expect(result.ok).toBe(true)
@@ -325,6 +335,7 @@ describe("pylon sessions exec (W-1 run-to-completion)", () => {
       const executor: ControlSessionExecutor = async () => executorResult("passed")
       const actions = createControlSessionActions({ executor, proofsDir: proofDir, summary })
       let calls = 0
+      const resolved: Array<{ approvalRef: string; decision: string }> = []
       const control: SessionsExecControl = {
         ...controlFrom(actions),
         approvalsList: async () => {
@@ -332,6 +343,9 @@ describe("pylon sessions exec (W-1 run-to-completion)", () => {
           return calls === 1
             ? { approvals: [{ approvalRef: "approval.edit", kind: "file_edit", paths: [`${worktree}/src/x.ts`] }] }
             : { approvals: [] }
+        },
+        approvalsResolve: async (approvalRef, decision) => {
+          resolved.push({ approvalRef, decision })
         },
       }
       const auto = createBoundedAutoApprovalPolicy({ scopeRoot: worktree })
@@ -352,6 +366,7 @@ describe("pylon sessions exec (W-1 run-to-completion)", () => {
       expect(result.pendingApprovals).toEqual([
         { approvalRef: "approval.edit", kind: "file_edit", decision: "approve" },
       ])
+      expect(resolved).toEqual([{ approvalRef: "approval.edit", decision: "approve" }])
       expect(result.autoApprovals).toEqual([
         {
           approvalRef: "approval.edit",
@@ -373,11 +388,15 @@ describe("pylon sessions exec (W-1 run-to-completion)", () => {
           input.abortSignal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true })
         })
       const actions = createControlSessionActions({ executor, proofsDir: proofDir, summary })
+      const resolved: Array<{ approvalRef: string; decision: string }> = []
       const control: SessionsExecControl = {
         ...controlFrom(actions),
         approvalsList: async () => ({
           approvals: [{ approvalRef: "approval.spend", kind: "spend_gate", prompt: "pay 1000 sats" }],
         }),
+        approvalsResolve: async (approvalRef, decision) => {
+          resolved.push({ approvalRef, decision })
+        },
       }
       const auto = createBoundedAutoApprovalPolicy({ scopeRoot: worktree })
       const result = await runSessionsExec(control, {
@@ -394,6 +413,7 @@ describe("pylon sessions exec (W-1 run-to-completion)", () => {
 
       expect(result.ok).toBe(false)
       expect(result.pendingApprovals[0]?.decision).toBe("deny")
+      expect(resolved).toEqual([{ approvalRef: "approval.spend", decision: "deny" }])
       expect(result.autoApprovals[0]).toMatchObject({
         approvalRef: "approval.spend",
         category: "deny",

@@ -51,6 +51,13 @@ export type SessionsExecControl = {
   // empty list). W-3 (#5379) replaces the policy below with bounded
   // auto-approve; it does NOT belong here.
   approvalsList?: () => Promise<{ approvals: PendingApprovalSummary[] }>
+  // Optional exactly-once approval resolver owned by the running node. The
+  // driver may decide approve/deny, but the node still owns applying that
+  // decision to its approval queue.
+  approvalsResolve?: (
+    approvalRef: string,
+    decision: Extract<ApprovalDecision, "approve" | "deny">,
+  ) => Promise<unknown>
 }
 
 export type PendingApprovalSummary = {
@@ -289,8 +296,12 @@ export async function runSessionsExec(
         seenApprovalRefs.add(approval.approvalRef)
         const decision = await policy(approval)
         pendingApprovals.push({ approvalRef: approval.approvalRef, kind: approval.kind, decision })
+        if ((decision === "approve" || decision === "deny") && control.approvalsResolve) {
+          await control.approvalsResolve(approval.approvalRef, decision)
+        }
         if (decision === "deny") approvalDenied = true
-        // `pause`/`approve` are recorded; bounded approve execution is W-3.
+        // `pause` is recorded without mutation; `approve`/`deny` are applied by
+        // the node's approval queue when that resolver is available.
       }
     }
 

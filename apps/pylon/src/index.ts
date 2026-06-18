@@ -2011,6 +2011,13 @@ async function main() {
             const { result } = await runControlCommand({ type: "approvals.list" }, Bun.env)
             return result as { approvals: Array<{ approvalRef: string; kind: string }> }
           },
+          approvalsResolve: async (approvalRef, decision) => {
+            const { result } = await runControlCommand(
+              { type: "approvals.resolve", approvalRef, decision },
+              Bun.env,
+            )
+            return result
+          },
         }
         // W-3: when `auto` is selected, build the BOUNDED auto-approve policy and
         // pass its callback + audit accessor. The policy is scoped to the
