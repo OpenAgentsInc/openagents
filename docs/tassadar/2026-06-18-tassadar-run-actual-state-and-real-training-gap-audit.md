@@ -468,6 +468,212 @@ loop.
 
 ---
 
+## 4b. Where module/data diversity comes from: the edge agents as the variance engine
+
+This section is **forward-looking design**, clearly framed as such — it extends
+the "real forward progress" path of §3–§4 (program corpus, dense weight-modules,
+composition, paying for *construction*), and does not contradict §0–§2: capability
+is still *constructed analytically and verified by exact replay*, never gradient-
+learned. The question it answers is the one §4 leaves open: once the run's work
+unit is "a real compiled program" instead of one fixture, **where does the
+*variety* of programs and data actually come from, and how is each piece verified
+and paid?** The grounded answer: the heterogeneous **edge agents** — the smart
+Pylon contributors, with different owners, machines, and specialties — are the
+natural variance engine, and every contribution rides rails that are *already
+live or already named in §1–§3*. Nothing below is claimed to exist today except
+where it cites a shipped primitive.
+
+**Why "diversity" means a program/data corpus here.** In the LLM-computer
+paradigm (§0) a "module" is a *compiled program/capability* — a digest-pinned
+weight-module emitted by the owned psionic ALM pipeline (IR → schedule →
+specialize → numeric, ~6/7 phases landed; §2c). So model diversity is not weight
+noise from many gradient steps; it is **a corpus of many distinct, composable,
+exactly-verified programs**, plus the **data** the hybrid ring's learned interface
+(§2d, Baseline D) needs. A monoculture of one program (`loop_sum_v1`, executed
+forever) has zero variance; a population of heterogeneous edge agents authoring
+*different* programs and curating *different* data is the obvious source of it.
+Each of the five diversity sources below is grounded in an existing primitive.
+
+### (1) Program authorship — agents compile distinct CALM/Wasm programs into modules
+
+The most direct source. Each agent contributes a *different* CALM or Wasm program
+from the supported window (today ~12 opcodes; widening toward 35 is psionic W1.1,
+§2c) — parsers, sorters, numeric kernels, small automata/state machines, encoders,
+constraint solvers, domain transforms — and the owned psionic pipeline compiles
+each one end-to-end into a **digest-pinned, composable weight-module**. The
+pipeline that does this already exists and already emits *more than one* program
+shape: the live fixture is itself a non-trivial **backward-branch loop** built
+through `TassadarProgram` → `tassadar_alm_wasm_interpreter` (12-opcode `core_i32`)
+→ `compile_tassadar_alm_graph` → `materialize_tassadar_alm_numeric` (§2a, citing
+`psionic crates/psionic-compiler/src/tassadar_alm_numeric.rs`). The run simply
+never *asks* for a second program (§2b: "one program, forever"). Agents naturally
+**specialize** — one contributor's machine and skill suit carry/arithmetic cores,
+another's suit control-flow automata — so the supply is heterogeneous by
+construction. When two agents submit **competing implementations of the same
+spec**, they are disambiguated exactly as §1's live loop already disambiguates a
+worker against a validator: **exact replay** (do the digests match the spec's
+expected trace?) plus a **canary** (the bounded, single-real-settlement
+discipline the launch promise already encodes — `…canary1k.v6.20260618`, §1). No
+new judging primitive is required; the existing replay verdict
+(`verifyExactTraceReplay`, `tassadar-replay-validator.ts`) *is* the arbiter.
+
+*What must be built (honest):* the run must accept a program **corpus** and a
+*dispatch-of-distinct-workloads* path, not one baked fixture (§3 item 1, §4 item
+1); and digest-pinning must extend from the trace to a **dense loadable module**
+(§3 item 2, psionic W1.2) before authored modules are *composable*, not just
+*executable*.
+
+### (2) Datasets and data directions — Artanis can task agents, and agents can propose
+
+Variety of *data* (for the hybrid ring's learned interface, and for evals) comes
+from the same edge, **tasked and budgeted by Artanis** — the autonomous
+administrator (§1). The labor/work-request market that makes this possible is
+**already live, not hypothetical**:
+
+- **Artanis can issue bounded, budgeted work requests.** The requester surface is
+  shipped: `apps/openagents.com/workers/api/src/artanis-labor-requester.ts`
+  (#4731) takes an `ArtanisLaborRequestProposal` (title, `objectiveRef`, repository
+  refs, `requiredCapabilityRefs`, `budgetSats`, `deadlineRef`,
+  `verificationCommandRef`), gates it through a per-tick budget
+  (`evaluateArtanisLaborBudgetGate` in `labor-escrow.ts`), and — only when an
+  operator has enabled it — emits a work request. The mind *proposes*, **schemas
+  and budgets gate**, side effects are injected, and the default path stays **off**
+  until an operator enables it (the same fail-closed posture as the settlement
+  gate, §1). This is exactly "Artanis tasks the edge with bounded, funded
+  requests."
+- **The Forum work-request lifecycle is a real, typed market.**
+  `forum-work-requests.ts` defines the full state machine —
+  `open → quote_received → quote_accepted → running → delivered → accepted →
+  settled` (plus `cancelled`/`expired`) — over the **NIP-LBR** protocol
+  (`@openagentsinc/nip90`, `LBR_AGENTIC_CODING_REQUEST_KIND` kind-5934), with a
+  live relay publisher (`forum-work-request-live-publisher.ts`, #4777) that signs
+  a ref-only draft with the operator market key and publishes to the owned scoped
+  relay (and **fails closed** to "not published" when unconfigured). Payment rides
+  **labor escrow** (`labor-escrow.ts`: `reserve → release_to_provider | refund`
+  on the existing agent credit ledger, releasing only on `requester_acceptance`).
+  So the rails to *commission* edge work, *escrow* a budget, *accept* on delivery,
+  and *settle* — already exist.
+- **Agents can also PROPOSE directions, which Artanis filters.** Artanis listens
+  to the Forum (`artanis-forum-listener.ts`) and one of its typed decision kinds
+  is **`work_routing_proposal`** — i.e. a contributor's "here is a capability/data
+  direction worth funding" can be routed into the requester surface above. That is
+  a bidirectional loop: Artanis tasks, agents scout and propose, Artanis filters +
+  funds.
+
+Concretely, the bounded, budgeted asks Artanis can make of agents:
+
+- **Curate program-with-trace corpora** — exactly the artifact the W3 lane already
+  consumed as the snapshot `corpus.tassadar_trace.v0_2.w3_100m`
+  (`2026-06-14-w3-student-program-report.md`; `RESEARCH_PLAN.md`); a growing,
+  agent-curated version of that snapshot is the training input for the hybrid
+  interface (§2d).
+- **Pull real-world datasets** the learned interface needs — and the workspace
+  already exposes large **read-only reference lanes** agents can mine as data
+  directions: `projects/*` (legal — `claude-for-legal`, `harvey-labs`, `stella`;
+  power markets — `projects/ercot`; Lightning — `projects/ldk`,
+  `projects/lightninglabs`, `projects/mutiny`; the full Stanford
+  `projects/cs336` curriculum; and the broad inference/training reference set).
+  These are documented as study-and-port references, not vendor dumps — a natural
+  menu of data directions an agent can be tasked to distill into a trace corpus.
+- **Build eval / benchmark suites** — the **StudyBench** schemas already exist
+  (`packages/probe/packages/runtime/src/benchmark/studybench.ts`: typed benchmark
+  schemas + evidence/closeout validators), and §4's "Where StudyBench fits" note
+  places it correctly as a *later eval harness* (first-divergence scoring) rather
+  than on the construction path. Agents can be tasked to populate such suites.
+- **Generate adversarial / edge-case inputs** — feeding source (4) below.
+
+*What must be built (honest):* a **data-contribution verification model does not
+yet fully exist.** Code is *exactly* deterministic-replayable; *data* is not. The
+nearest shipped primitive is `data-trace-marketplace-gate.ts`, whose lifecycle
+(`blocked → submitted → redacted → valued → purchased → entitled → payable →
+settled`) already enforces **provenance/redaction** (it screens provider-secret
+material and routes through a typed semantic planner, never ad-hoc keyword
+matching — consistent with the workspace semantic-routing rule). But that gate
+values and sells *data traces*; it does **not** yet give a *correctness* verdict
+the way exact replay does for programs. A real model for data contributions still
+needs: **provenance + dedup**, **derived-trace replay** (re-derive the claimed
+trace from the cited source and compare digests, the data analogue of §1's replay),
+and **validator review** for the irreducibly non-deterministic remainder. Until
+that exists, data contributions can be *priced and escrowed* but not *exactly
+verified* — an honest gap, and a prerequisite before paying for data at scale.
+
+### (3) Composition + linking — agents wire modules into higher-level modules
+
+Combinatorial diversity. An agent need not author a primitive program from
+scratch; it can **link existing verified modules** (an arithmetic core + a
+control-flow automaton + an encoder) into a higher-level module — and **the
+composition is itself a new module, verified the same way** (conformance-tested by
+exact replay before it counts). This is the paradigm's distinctive economic unit
+(§3 item 3). The plumbing exists in psionic — `tassadar_module_linker.rs`,
+`tassadar_cross_profile_link_compatibility.rs` — but, honestly, **no live
+linked-module unit or marketplace listing exists yet** (§2b, §3 item 3, §4 item
+3). A population of authored primitive modules (source 1) makes the *number* of
+possible compositions grow super-linearly, so composition is where edge variety
+compounds fastest once the dense-module and listing prerequisites land.
+
+### (4) Adversarial verification — agents paid for finding real divergence
+
+Extend the live worker≠validator pairing (§1: device-distinctness enforced
+server-side, `validatorDeviceRef != pylonDeviceRef`) from "replay the same
+workload" to "**stress** the module": agents search for **divergence inputs** that
+make two implementations of a spec disagree, or that expose a near-miss the
+parabolic-key refusal (§2c, `tassadar_alm_geometric.rs` near-miss refusal) should
+have caught. An agent that surfaces a *real* defect is paid for it — the same way
+the differential harness over 400 generated graphs caught two real scheduler bugs
+on its first run (§2c). This turns verification itself into a paid, diversity-
+producing activity: adversarial agents widen the space of inputs the corpus is
+known-correct over.
+
+*What must be built (honest):* settlement today pays only for a matched replay of
+the one workload (5+5 sats per Verified pair; §1). Paying for *found defects* and
+for *constructed/composed modules* is §3 item 4 / §4 item 4 — the live substrate
+pointed at new targets, not a new substrate.
+
+### (5) Demand-priced curation — Artanis + the marketplace steer edge effort
+
+The final ingredient turns heterogeneous *supply* into a *self-directing* engine.
+Artanis's budgeted requester surface (source 2) and the (to-be-built) compiled-
+weight-module marketplace (§3 item 3) together **price demand**: what capability or
+data is most wanted gets the larger budget / higher listing value, which is an
+**economic gradient** steering where edge agents spend effort. There is already a
+shipped notion of remembering marketplace margins
+(`marketplace-margin-memory.ts`) and of valuing data traces
+(`data-trace-marketplace-gate.ts`), so demand-side signal is not foreign to the
+rails. Heterogeneous supply (sources 1, 3) **plus** priced demand (Artanis budgets
++ marketplace value) **plus** exact-replay verification (source 4) is the closed
+loop: a variance engine that *aims itself* at what the computer most needs next,
+under the existing spend caps and fail-closed gates (§1).
+
+### How this turns "one fixed program" into a living, growing corpus
+
+Tie back to the §4 top-5 gate. The edge-as-variance-engine is not a sixth
+workstream bolted on; it is **what the top-5 are *for*.** Item 1 (corpus, not one
+fixture) is the *intake* for sources 1–2. Items 2–3 (dense modules + composition +
+listing) are the *substrate* for source 3 and the marketplace half of source 5.
+Item 4 (pay for *construction/composition*, verified by replay) is what funds
+sources 1, 3, and 4, and arms source 5's price signal. Item 5 (substrate
+completion: MILP/E4, window ladder W1.1, softmax bounds W1.4 → then the subordinate
+hybrid ring) widens *how rich* an authored program can be and gives source 2's
+curated data its consumer (the Baseline-D learned interface). The honest near-term
+ordering is unchanged: the run must first accept a program **corpus** and pay for
+**construction** (not just one replay), and data contributions need the
+verification model (provenance / dedup / derived-trace replay / validator review)
+that does not yet exist.
+
+The destination this section adds to the audit: the day the run is fed by *many*
+edge agents — each authoring a distinct compiled program, composing modules into
+higher-level ones, curating program-with-trace and real-world data corpora that
+Artanis tasked and budgeted (and that agents themselves proposed), and stress-
+testing each other's modules for pay — and **every one of those contributions is
+verified (by exact replay for code, by the to-be-built data-verification model for
+data) and settled on the live rails** — is the day Tassadar stops being "one fixed
+program executed forever" and becomes a **living, growing, composable capability +
+data corpus sourced by paid, heterogeneous edge agents.** That is the same
+"becoming real construction" line as §5, now with a concrete answer for *where the
+diversity comes from*: the edge.
+
+---
+
 ## 5. Honest bottom line
 
 Read correctly through the LLM-computer paradigm, the Tassadar run today is **a
