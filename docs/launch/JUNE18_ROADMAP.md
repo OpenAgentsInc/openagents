@@ -94,6 +94,94 @@ path was exercised through contribution + independent replay → `Verified` +
 settled; the RC thread is posted (owner-approved); launch docs updated (this
 section). The remaining reconciliation fix is tracked above.
 
+## Product-promise status (end of day)
+
+Audit of the product-promises registry (`apps/openagents.com/workers/api/src/product-promises.ts`)
+and `docs/promises/` against today's dereferenceable receipts. Registry bumped
+`2026-06-18.2 → 2026-06-18.3` (copy/evidence accuracy upgrade only — no gate flip).
+
+### Q1 — is "paying people for verified work" fully + accurately reflected?
+
+**Verdict: covered, and now accurate (after this update).** Paid-verified-work /
+streaming-settlement / paid-contributions is reflected by a *set* of promises, not
+one named "streaming settlement" promise (the registry models claims/capabilities,
+not mechanisms — that is correct):
+
+- `training.decentralized_training_launch.v1` (**green**) — the primary one for
+  today: install Pylon → verified Tassadar exact-trace-replay work → independent
+  validator replay → real Bitcoin settlement over Spark. This is where the
+  streaming-settlement gate (run-scoped, 5w/5v, 100/payout, 50k/day) and the
+  real settled receipts live.
+- `labor.forum_work_requests.v1` + `labor.nostr_negotiation_market.v1` (**green**)
+  — the live labor/work-request market (credit-ledger settlement; external-wallet
+  labor payout still gated under `provider.compliant_usage_labor.v1`, yellow).
+- `payments.accepted_outcome_economics.v1` (**red**) — the formal
+  paid/accepted/payable/dispatched/settled state-machine gate (correctly red).
+- `pylon.five_bitcoin_revenue_streams.v1`, `pylon.compute_revenue_modes.v1`,
+  `pylon.data_trace_revenue.v1` (**planned**) — broad earning, correctly planned.
+
+**Gap found and corrected (under-statement):** the green
+`training.decentralized_training_launch.v1` and the registry notes were frozen at
+the Orrery-canary state — they said "**one** contributor has now been paid real
+Bitcoin" and cited only the 1,000-sat canary receipt + the simulation receipt.
+Today's reality is **two** distinct real settled receipts to **two** distinct
+independent contributors, and a live enumerable settled feed. The copy understated
+the proof. Corrected to "two distinct independent contributors paid", 1,005 real
+sats total, with the second (self-serve) receipt + the settled feed added as
+evidence, and the operator-retro-settled / no-auto-stream-yet caveat made explicit.
+No scope widened; codebase-contribution paid work ("soon") remains a future claim
+and was not added.
+
+Dereferenceable evidence used:
+- `GET /api/training/runs/run.tassadar.executor.20260615/settlements` — three rows:
+  1,000-sat **real** (canary, `pylon.448ba824…`), 5-sat **real** (self-serve,
+  `pylon.81f0facfe…`, `…retro.10c3b01b.trigger.v1`), 5-sat **simulation**
+  (`realBitcoinMoved:false`, excluded). Real total = **1,005**.
+- Second real receipt `receipt.nexus.tassadar_run_settlement.settlement.tassadar.retro.10c3b01b.trigger.v1`
+  (`realBitcoinMoved:true`, `state:settled`, `adapter:spark_treasury`), backed by
+  Verified challenge `training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4`.
+
+Honesty caveats preserved: the **first fully-autonomous auto-stream settlement
+has not happened** (the 5-sat self-serve payout was operator-retro-settled because
+the auto-stream skipped at verdict, payout-target bug since fixed); and the
+run-summary `settledPayoutSats` / `/api/public/pylon-stats` 24h aggregate still
+read **1,010** because they have not yet excluded the simulation row — the
+`/settlements` feed (1,005) is the reconciled per-run truth and the aggregate
+reconciliation is tracked separately (Orrery is actively dereferencing it).
+
+### Q2 — today's gates: flip-status + evidence
+
+| Promise | State | Flip today? | Evidence / why |
+| --- | --- | --- | --- |
+| `training.decentralized_training_launch.v1` | green | **No flip — copy upgrade only (done)** | Already green. Two real settled receipts (1,005 sats) + live settled feed. Updated copy/evidence in registry `2026-06-18.3`. State unchanged green→green, so no `promise_transition` required; an optional exception receipt for the copy upgrade is **owner-gated** per `proof.claim_upgrade_receipts.v1`. |
+| `training.public_distributed_training_run.v1` | red | **No** | Correctly red. Two bounded settlements + one verified pairing do not prove network-scale participation, a participant-count methodology, or broad multi-contributor accepted-work receipts. Stays red. |
+| `pylon.first_real_model_training_run.v1` | yellow | **No** | Unrelated evidence base (CS336 A1 two-device real-gradient run). Today's Tassadar receipts do not bear on its model-ladder-network-rungs blocker. Stays yellow. |
+| `training.public_gradient_windows.v1` | planned | **No** | H1 has code-backed psionic frozen-core validation + quarantine→recompute→canary→promotion gate, but no public contributor gradient window has been accepted/promoted/paid/settled. Public devices do generation/validation/eval only. Stays planned. |
+| `payments.accepted_outcome_economics.v1` | red | **No** | The formal settlement state-machine + contributor-ledger + gross-margin gates are not met. Stays red. |
+| `autopilot.repo_study_packets.v1` / `autopilot.external_repo_studying_pilot.v1` (studying→Autopilot-coder) | yellow | **No** | Internal-dogfood / refs-only pilot. Customer-repo studying, marketplace packaging, pricing, payout, and settlement remain blocked. Stays yellow. |
+
+**No gate is a warranted flip today.** The single warranted registry change was the
+green-promise copy/evidence accuracy upgrade above (no state change). Conservative
+per the 2026-06-18 read: the run constructs **no new capability** beyond the fixed
+executor workload, and the first fully-autonomous auto-stream settlement has not
+landed — so no red/yellow/planned promise advances on today's evidence.
+
+### Owner sign-off needed
+
+- **Optional:** record a `promise_transition` *exception* receipt for the
+  `2026-06-18.3` green→green copy upgrade via the operator route (per
+  `proof.claim_upgrade_receipts.v1`), if the owner wants the copy upgrade itself
+  dereferenceable as a transition. Not required for correctness (state unchanged).
+- **Worker redeploy required:** `product-promises.ts` changed, so
+  `/api/public/product-promises` will not serve `2026-06-18.3` (Trigger receipt,
+  settled feed, two-contributor copy) until the `openagents.com` Worker is
+  redeployed. **Not deployed by this change** — deploy is owner-gated.
+- **Watch item (not a registry change):** flip-to-1,005 of the run-summary
+  `settledPayoutSats` field and the pylon-stats 24h aggregate (currently 1,010,
+  simulation row not yet excluded) is the in-flight reconciliation already tracked
+  in the END-OF-DAY UPDATE; the registry now points readers to the `/settlements`
+  feed as the reconciled truth in the meantime.
+
 > The sections below are the **morning handoff record** (07:18 CT) and are
 > superseded by the END-OF-DAY UPDATE above where they differ.
 
