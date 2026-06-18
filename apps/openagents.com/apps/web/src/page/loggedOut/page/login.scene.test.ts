@@ -61,6 +61,7 @@ const loadedStatsFixture = {
   pylonsRegisteredTotal: 6,
   pylonsSeen24h: 9,
   pylonsWalletReadyNow: 3,
+  publicRealSatsSettled24h: 2,
   recentPylons: [],
   sellablePylonsOnlineNow: 2,
   earningLaunchGate: {
@@ -198,7 +199,8 @@ describe('maintenance landing scene', () => {
       },
       Scene.with(LoggedOut.init(HomeRoute())),
       Scene.expect(Scene.text('Live Settled Feed')).toExist(),
-      Scene.expect(Scene.text('Settled total')).toExist(),
+      Scene.expect(Scene.text('Settled (total)')).toExist(),
+      Scene.expect(Scene.text('Settled (24h)')).toExist(),
       Scene.expect(Scene.text('Live')).toExist(),
       Scene.expect(Scene.text('worker · pylon.worker.orrery')).toExist(),
     )

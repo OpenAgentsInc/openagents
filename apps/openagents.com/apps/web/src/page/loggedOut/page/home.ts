@@ -36,6 +36,18 @@ const statsFromModel = (
 ): PublicPylonStats | null =>
   model._tag === 'PublicPylonStatsLoaded' ? model.stats : null
 
+// Resolve the public real-settled 24h figure for the settled feed panel.
+// `publicRealSatsSettled24h` is the deduped aggregate of accepted-work, market,
+// and treasury-outflow real settlements (workers/api public-pylon-stats), so it
+// is the right 24h counterpart to the live feed's settled total. Returns null
+// when stats are unavailable or the field is absent.
+const settled24hSatsFromModel = (
+  model: PublicPylonStatsModel,
+): number | null => {
+  const stats = statsFromModel(model)
+  return stats?.publicRealSatsSettled24h ?? null
+}
+
 const forumLaunchStatusFromModel = (
   model: PublicForumLaunchStatusModel,
 ): PublicForumLaunchStatus | null =>
@@ -398,7 +410,10 @@ const settledFeedConnectionLabel = (
 // updates in real-time as real Bitcoin settlements stream — no reload. When the
 // socket is offline this still shows the last-known totals from the snapshot
 // fetch (graceful fallback).
-export const liveSettledFeedPanel = (model: SettledFeedModel): Html => {
+export const liveSettledFeedPanel = (
+  model: SettledFeedModel,
+  settled24hSats: number | null,
+): Html => {
   const connection = settledFeedConnectionLabel(model.connection)
   const latest = model.events[0]
 
@@ -413,9 +428,20 @@ export const liveSettledFeedPanel = (model: SettledFeedModel): Html => {
       }),
       metricRow({
         detail: 'Receipt-backed real Bitcoin settlements, updated live.',
-        label: 'Settled total',
+        label: 'Settled (total)',
         tone: model.totalSettledSats > 0 ? 'good' : 'muted',
         value: formatSats(model.totalSettledSats),
+      }),
+      metricRow({
+        detail: 'Receipt-backed real Bitcoin settlements in the last 24 hours.',
+        label: 'Settled (24h)',
+        tone:
+          settled24hSats === null
+            ? 'muted'
+            : settled24hSats > 0
+              ? 'good'
+              : 'muted',
+        value: valueOrUnavailable(settled24hSats),
       }),
       metricRow({
         detail: 'Number of settled events on the live feed.',
@@ -465,14 +491,6 @@ export const pylonStatsPanel = (model: PublicPylonStatsModel): Html => {
         label: 'Seen 24h',
         value:
           stats === null ? 'Unavailable' : formatNumber(stats.pylonsSeen24h),
-      }),
-      metricRow({
-        detail: 'Wallet receive readiness, not spend authority.',
-        label: 'Wallet ready',
-        value:
-          stats === null
-            ? 'Unavailable'
-            : formatNumber(stats.pylonsWalletReadyNow),
       }),
       metricRow({
         detail: 'Pylons idle and waiting for assignments.',
@@ -1011,7 +1029,10 @@ export const view = (input: HomeViewInput): Html => {
               ],
             ),
             topStatsStrip(input),
-            liveSettledFeedPanel(input.settledFeed),
+            liveSettledFeedPanel(
+              input.settledFeed,
+              settled24hSatsFromModel(input.publicPylonStats),
+            ),
           ],
         ),
       ],
