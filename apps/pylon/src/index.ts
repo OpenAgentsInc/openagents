@@ -168,6 +168,7 @@ import {
   writeCachedSparkTarget,
   isSparkBackupDefaultEnabled,
   type SparkBackupSendProjection,
+  type WalletStatusProjection,
 } from "./wallet"
 import {
   createSparkBackupHelper,
@@ -946,6 +947,17 @@ const runHeadlessNode = Effect.gen(function* () {
   // `warmSession: true` so the singleton SDK is built once and kept alive across
   // commands, and the background-sync timer (below) keeps it current.
   const headlessSparkWalletActions = {
+    // #5306: the daemon serves `wallet.status` off its WARM Spark session (the
+    // SDK it already built at go-online startup), so `daemonOnline` becomes true
+    // with ZERO manual steps the moment the node is up. This OVERRIDES the
+    // module-level cold `nodeWalletActions.walletStatus` (which would build a
+    // SECOND SDK on the same storage and contend with the warm session — the
+    // exact lock contention that surfaced `helperReady:false` on a healthy node).
+    // Returns the FULL `WalletStatusProjection` (not just the CL-23 read-only
+    // subset) so a CLI `wallet status` routed here prints byte-identical output
+    // to the local cold path. Projection-safe by construction (no seed / raw
+    // Spark material — `classifyPrimaryAgentWalletForState` already guards it).
+    walletStatus: async () => classifyPrimaryAgentWalletForState(localState, { warmSession: true }),
     walletSparkSend: (input: { destination: string; amountSats?: number; confirmSend?: boolean }) =>
       runSparkBackupSendForState(localState, {
         destination: input.destination,
@@ -1528,7 +1540,14 @@ async function routeWalletCommandThroughDaemon(
 
 async function readSparkBackupStatusProjection(
   state: PylonLocalState,
-  input: { enabled?: boolean } = {},
+  // #5306: `warmSession` lets the long-lived daemon serve the `wallet status`
+  // Spark read off its already-built, kept-alive warm session instead of
+  // cold-building a SECOND SDK on the same `<HOME>/wallet/spark-backup/sdk/
+  // storage.sql`. Cold-building under the daemon's warm session is the SQLite
+  // lock contention that made the cold `receivePayment`/build time out and
+  // report `helperReady:false` + `helper_unavailable` on a healthy node (the
+  // Orwell case). Undefined keeps the cold path (the no-daemon CLI fallback).
+  input: { enabled?: boolean; warmSession?: boolean } = {},
 ) {
   const sparkBackupOptions = await resolveSparkBackupOptions(state, input)
   const projection = await classifySparkBackupReceive(sparkBackupOptions)
@@ -1539,6 +1558,13 @@ async function readSparkBackupStatusProjection(
       projection.unclaimedDepositCount = detected.unclaimedDepositCount
       projection.claimableHtlcCount = detected.claimableHtlcCount
       projection.claimableHtlcSats = detected.claimableHtlcSats
+      // #5306: if the warm-session status read failed, carry its bounded
+      // public-safe reason (e.g. db_init_failed | timeout | network_unreachable)
+      // onto the projection so a degraded `wallet status` surfaces WHY instead of
+      // a bare `helper_unavailable`. Matches the `backup-status` read path.
+      if (!detected.helperReady && detected.helperUnavailableReason) {
+        projection.helperUnavailableReason = detected.helperUnavailableReason
+      }
       // #5197: a non-forced fallback balance is possibly-stale; flag it refreshing
       // + add a blocker so it is not read as a confirmed-spendable balance.
       if (detected.balanceRefreshing) {
@@ -1554,8 +1580,19 @@ async function readSparkBackupStatusProjection(
   return projection
 }
 
-async function classifyPrimaryAgentWalletForState(state: PylonLocalState) {
-  const sparkBackup = await readSparkBackupStatusProjection(state, { enabled: true })
+async function classifyPrimaryAgentWalletForState(
+  state: PylonLocalState,
+  // #5306: when the long-lived daemon classifies the wallet (its own
+  // `walletStatus` control action, or a CLI `wallet status` routed to it), it
+  // passes `warmSession: true` so the Spark read reuses the warm SDK the node
+  // already built at startup — never a contending cold build on the same
+  // storage. Undefined keeps the cold path for the no-daemon CLI fallback.
+  input: { warmSession?: boolean } = {},
+) {
+  const sparkBackup = await readSparkBackupStatusProjection(state, {
+    enabled: true,
+    ...(input.warmSession === undefined ? {} : { warmSession: input.warmSession }),
+  })
   const status = withSparkPrimaryWalletBalance(mdkScopedAgentWalletStatus(), sparkBackup)
   // Gap #2 (v1.0 self-serve shakeout): surface the registered payout target —
   // or the lack of one — in `wallet status`. The presence state records the
@@ -2674,7 +2711,12 @@ async function main() {
         // never seeds/offers/raw Spark material.
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
         const state = await ensurePylonLocalState(summary)
-        const status = await classifyPrimaryAgentWalletForState(state)
+        // #5306: route through the running daemon's WARM session (same reason as
+        // `wallet status`), falling back to the local cold read with no daemon.
+        const routed = (await routeWalletCommandThroughDaemon(state, {
+          type: "wallet.status",
+        })) as WalletStatusProjection | null
+        const status = routed ?? (await classifyPrimaryAgentWalletForState(state))
         const result = projectWalletBalance(status)
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         // Reading the Spark-primary balance opens the Spark SDK which keeps a
@@ -2931,7 +2973,20 @@ async function main() {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const state = await ensurePylonLocalState(summary)
       if (command === "status") {
-        const status = await classifyPrimaryAgentWalletForState(state)
+        // #5306: prefer a RUNNING daemon's WARM Spark session for the wallet
+        // read. The daemon built and kept the Spark SDK alive at go-online
+        // startup, so it can answer immediately and report `daemonOnline:true`.
+        // Building a SECOND cold SDK here (the old behavior) opened a competing
+        // connection on the same `<HOME>/wallet/spark-backup/sdk/storage.sql` as
+        // the daemon's warm session; under SQLite/SDK lock contention the cold
+        // `receivePayment`/build timed out and the read degraded to
+        // `helperReady:false` + `helper_unavailable` even on a healthy node
+        // (the Orwell report). Falls back to the local cold read only when NO
+        // daemon is reachable (e.g. a bare one-shot CLI with no node up).
+        const routed = (await routeWalletCommandThroughDaemon(state, {
+          type: "wallet.status",
+        })) as WalletStatusProjection | null
+        const status = routed ?? (await classifyPrimaryAgentWalletForState(state))
         const legacySparkMigration = await preflightLegacySparkMigration({
           dryRun: true,
           env: Bun.env,

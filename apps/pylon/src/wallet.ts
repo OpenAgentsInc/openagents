@@ -668,10 +668,25 @@ export function withSparkPrimaryWalletBalance(
   const daemonOnline = configured && helperReady
   const receiveReady = daemonOnline && receiveTargetReady
   const sendReady = receiveReady && sparkBalanceSats !== null && sparkBalanceSats > 0
+  // #5306: when the helper is unavailable AND we know WHY (a bounded public-safe
+  // reason from the read — db_init_failed | timeout | network_unreachable |
+  // module_load_failed | no_result | unknown), surface a reason-qualified blocker
+  // (`helper_unavailable.<reason>`) ALONGSIDE the bare ref so a degraded
+  // `wallet status` gives an actionable detail instead of only the opaque
+  // `helper_unavailable`. The default healthy path never hits this (helperReady).
+  const helperUnavailableReason =
+    typeof sparkBackup?.helperUnavailableReason === "string" ? sparkBackup.helperUnavailableReason : null
   const blockerRefs = [
     ...(!enabled ? ["blocker.wallet.spark_primary.disabled"] : []),
     ...(enabled && !credentialReady ? ["blocker.wallet.spark_primary.credential_missing"] : []),
-    ...(configured && !helperReady ? ["blocker.wallet.spark_primary.helper_unavailable"] : []),
+    ...(configured && !helperReady
+      ? [
+          "blocker.wallet.spark_primary.helper_unavailable",
+          ...(helperUnavailableReason
+            ? [`blocker.wallet.spark_primary.helper_unavailable.${helperUnavailableReason}`]
+            : []),
+        ]
+      : []),
     ...(receiveReady && sparkBalanceSats === null ? ["blocker.wallet.spark_primary.balance_unknown"] : []),
     ...(receiveReady && sparkBalanceSats === 0 ? ["blocker.wallet.spark_primary.balance_empty"] : []),
     ...((sparkClaimableSats ?? 0) > 0 ? ["blocker.wallet.spark_primary.claim_pending"] : []),
