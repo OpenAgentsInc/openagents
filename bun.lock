@@ -213,7 +213,7 @@
     },
     "apps/pylon": {
       "name": "@openagentsinc/pylon",
-      "version": "1.0.0-rc.24",
+      "version": "1.0.0-rc.29",
       "bin": {
         "pylon": "src/index.ts",
         "pylon-foundation-bridge": "bin/foundation-bridge",
@@ -344,6 +344,14 @@
         "diff": "^9.0.0",
         "effect": "catalog:",
         "marked": "^18.0.5",
+      },
+    },
+    "packages/proof-replay": {
+      "name": "@openagentsinc/proof-replay",
+      "version": "0.1.0",
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
       },
     },
     "packages/tassadar-executor": {
@@ -957,6 +965,8 @@
     "@openagentsinc/openagents-com": ["@openagentsinc/openagents-com@workspace:apps/openagents.com"],
 
     "@openagentsinc/probe-runtime": ["@openagentsinc/probe-runtime@workspace:packages/probe/packages/runtime"],
+
+    "@openagentsinc/proof-replay": ["@openagentsinc/proof-replay@workspace:packages/proof-replay"],
 
     "@openagentsinc/provider-account-schema": ["@openagentsinc/provider-account-schema@workspace:apps/openagents.com/packages/provider-account-schema"],
 

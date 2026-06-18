@@ -14,6 +14,13 @@ and `docs/launch/JUNE17_ROADMAP.md`.
   deterministic bundle ids, source coverage, private-material redaction,
   simulation-vs-real payment classification, failed-closed blockers, and the
   first 1,000-sat Spark settlement zap.
+- 2026-06-17: #5299 added `@openagentsinc/proof-replay` under
+  `packages/proof-replay` as the shared web/desktop replay primitive layer.
+  It provides deterministic replay clock reduction, event ordering, active
+  event gating, stage and actor render plans, actor interpolation, camera cue
+  pose planning, hit-target/source-inspector records, payment visual
+  classification, source coverage assertions, and disposal tracking for future
+  Three.js/Foldkit/ElectroBun adapters.
 
 ## Thesis
 
