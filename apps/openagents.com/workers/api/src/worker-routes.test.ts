@@ -21,6 +21,20 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
     expect(
       shouldRedirectUnknownDocumentToHome(
+        requestFor('/tassadar/replay/first-real-settlement'),
+        '/tassadar/replay/first-real-settlement',
+      ),
+    ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor(
+          '/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social',
+        ),
+        '/tassadar/replay/first-real-settlement',
+      ),
+    ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
         requestFor('/training/runs'),
         '/training/runs',
       ),

@@ -72,6 +72,10 @@ and `docs/launch/JUNE17_ROADMAP.md`.
   desktop app, and labels the current cache state as a live HTTPS read with no
   offline snapshot. The social cut is available from desktop as a clear website
   handoff while the replay bundle remains inspectable in-app.
+- 2026-06-17 deploy follow-up: the Worker document-route allowlist now serves
+  the app shell for direct `/tassadar/replay/:slug` visits, including the social
+  cut querystring. This keeps replay URLs shareable instead of redirecting them
+  to `/`.
 
 ## Thesis
 

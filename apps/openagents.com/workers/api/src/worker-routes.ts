@@ -108,6 +108,7 @@ const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/stats$/,
   /^\/stats-old$/,
   /^\/tassadar$/,
+  /^\/tassadar\/replay\/[^/]+$/,
   /^\/teams\/[^/]+(?:\/chat|\/files(?:\/[^/]+)?|\/projects\/[^/]+\/chat)$/,
   /^\/t\/[^/]+$/,
   /^\/training\/runs(?:\/[^/]+)?$/,
