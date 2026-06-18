@@ -1058,8 +1058,10 @@ This is the invariant ledger for `openagents`.
   only. Without an owner-funded receipt or approved batch plus settlement
   authority, accepted hygiene work is recognition/credit-class work, not a
   pending Bitcoin payout. `payable_pending_settlement` requires settlement
-  approval or escrow/payout processing evidence, and `settled_bitcoin` requires
-  settlement receipt refs.
+  approval or escrow/payout processing evidence. The lane state `settled`
+  requires settlement receipt refs; Bitcoin-specific payment-mode projections
+  may spell that terminal state as `settled_bitcoin` only when they also prove
+  real Bitcoin movement.
 - Payment follows verified delta, not churn: behavior or benchmark parity must
   be green, the named hygiene metric must improve, and no equal-or-worse debt
   may be introduced elsewhere in the scoped receipt.
