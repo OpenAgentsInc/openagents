@@ -95,6 +95,7 @@ import {
   ClickedRemoveManagedAccount,
   SelectedComposerAccount,
   ClickedCancelSession,
+  ClickedOpenSessionInComposer,
   ClickedComposerNewThread,
   ClickedComposerReply,
   ClickedComposerSpawn,
@@ -141,9 +142,15 @@ import {
   eventRowText,
   isComposerTranscriptEvent,
   nodeStatusLine,
+  orderSwarmSessions,
   sessionCancellable,
   shipStatusLine,
   stateBreakdown,
+  swarmAccountLabel,
+  swarmSessionPendingApprovals,
+  swarmStatusLabel,
+  swarmSummaryLine,
+  swarmWorkspaceLabel,
   trainingProjectionMeta,
   verifyLineText,
   walletSummary,
@@ -213,6 +220,8 @@ const NAV: ReadonlyArray<{ id: PaneId; label: string }> = [
   { id: "training", label: "Training" },
   { id: "training-fullscreen", label: "Training Live" },
   { id: "sessions", label: "Sessions" },
+  // CS-A2 (#5362): the swarm / multi-session grid over N concurrent sessions.
+  { id: "swarm", label: "Swarm" },
   { id: "decisions", label: "Decisions" },
   { id: "spawn", label: "Spawn" },
   { id: "settings", label: "Settings" },
@@ -3171,6 +3180,153 @@ const sessionsPane = (model: Model): Html => {
   )
 }
 
+// ── CS-A2 (#5362): Swarm / multi-session view ───────────────────────────────
+//
+// A lane/grid over the N concurrent coding sessions the runtime can run. Each
+// cell is a pure read projection over node-state (session + its event tail +
+// the global approvals queue): status, the account it runs under (CS-A1 data),
+// repo/worktree, a per-cell pending-approval count, plus per-cell quick actions
+// (open in composer / cancel). A top-level roll-up shows the pending approvals
+// across ALL sessions and links to the Decisions queue. No new wire verb — it
+// is `session.list` + the existing per-session events/approvals.
+
+const swarmCell = (
+  session: SessionSummary,
+  accounts: ReadonlyArray<AccountRow>,
+  events: ReadonlyArray<SessionEventRow> | undefined,
+): Html => {
+  const status = swarmStatusLabel(session.state)
+  const accountLabel = swarmAccountLabel(session, accounts)
+  const workspaceLabel = swarmWorkspaceLabel(session)
+  const pendingApprovals = swarmSessionPendingApprovals(events)
+  const activity = session.latestActivity ?? session.lastProgressRef ?? ""
+  const isChild = session.parentRef != null && session.parentRef !== session.sessionRef
+  const laneLabel = session.lane && session.lane !== "local" ? session.lane : null
+
+  return h.div(
+    [
+      cls(`swarm-cell ${status.toneClass}${isChild ? " swarm-cell-child" : ""}`),
+      h.DataAttribute("autopilot-session-ref", session.sessionRef),
+    ],
+    [
+      h.div(
+        [cls("swarm-cell-head")],
+        [
+          h.span([cls(`swarm-status ${status.toneClass}`)], [status.text]),
+          h.span([cls("swarm-adapter")], [session.adapter]),
+          ...(laneLabel ? [h.span([cls("swarm-lane")], [laneLabel])] : []),
+          ...(isChild ? [h.span([cls("swarm-child-badge")], ["nested"])] : []),
+        ],
+      ),
+      h.div([cls("swarm-cell-meta")], [`account: ${accountLabel}`]),
+      h.div([cls("swarm-cell-meta")], [`repo: ${workspaceLabel}`]),
+      ...(activity.trim() !== ""
+        ? [h.div([cls("swarm-cell-activity")], [activity])]
+        : []),
+      ...(pendingApprovals > 0
+        ? [
+            h.div(
+              [cls("swarm-cell-approvals")],
+              [
+                `${pendingApprovals} pending approval${pendingApprovals === 1 ? "" : "s"}`,
+              ],
+            ),
+          ]
+        : []),
+      h.div(
+        [cls("swarm-cell-actions")],
+        [
+          h.button(
+            [
+              cls("swarm-action"),
+              h.Type("button"),
+              h.OnClick(
+                ClickedOpenSessionInComposer({
+                  sessionRef: session.sessionRef,
+                  workspaceRef: session.workspaceRef ?? null,
+                  adapter: session.adapter,
+                }),
+              ),
+            ],
+            ["Open in composer"],
+          ),
+          h.button(
+            [
+              cls("swarm-action"),
+              h.Type("button"),
+              h.OnClick(SelectedSession({ sessionRef: session.sessionRef })),
+            ],
+            ["Details"],
+          ),
+          ...(sessionCancellable(session.state)
+            ? [
+                h.button(
+                  [
+                    cls("swarm-action swarm-action-cancel"),
+                    h.Type("button"),
+                    h.OnClick(
+                      ClickedCancelSession({ sessionRef: session.sessionRef }),
+                    ),
+                  ],
+                  ["Cancel"],
+                ),
+              ]
+            : []),
+        ],
+      ),
+    ],
+  )
+}
+
+const swarmPane = (model: Model): Html => {
+  const node = modelNode(model)
+  const sessions: ReadonlyArray<SessionSummary> = node?.sessions ?? []
+  const accounts: ReadonlyArray<AccountRow> = node?.accounts ?? []
+  const events = node?.events ?? {}
+  const ordered = orderSwarmSessions(sessions)
+  // The authoritative pending-approval count across all sessions is the node's
+  // global queue length (the same queue the Decisions pane resolves).
+  const pendingApprovalCount = pendingApprovals(model).length
+
+  return h.div(
+    [cls("swarm-pane")],
+    [
+      paneTitle("Swarm"),
+      h.p(
+        [cls("node-status")],
+        [
+          node === null
+            ? "Connecting to your local node… Start it with `pylon dev` to drive a swarm."
+            : swarmSummaryLine(sessions, pendingApprovalCount),
+        ],
+      ),
+      // Top-level "pending approvals across all sessions" roll-up → Decisions.
+      pendingApprovalCount > 0
+        ? h.button(
+            [
+              cls("swarm-approvals-rollup"),
+              h.Type("button"),
+              h.OnClick(NavigatedTo({ pane: "decisions" })),
+            ],
+            [
+              `${pendingApprovalCount} approval${pendingApprovalCount === 1 ? "" : "s"} need you — review in Decisions →`,
+            ],
+          )
+        : h.empty,
+      node === null
+        ? h.empty
+        : ordered.length === 0
+          ? emptyLine("No sessions. Spawn one from the Composer to start a swarm.")
+          : h.div(
+              [cls("swarm-grid")],
+              ordered.map((session) =>
+                swarmCell(session, accounts, events[session.sessionRef]),
+              ),
+            ),
+    ],
+  )
+}
+
 // ── Decisions pane ────────────────────────────────────────────────────────────
 
 const decisionsPane = (model: Model): Html => {
@@ -4392,6 +4548,8 @@ const paneView = (model: Model): Html => {
       return trainingFullscreenPane(model)
     case "sessions":
       return sessionsPane(model)
+    case "swarm":
+      return swarmPane(model)
     case "decisions":
       return decisionsPane(model)
     case "spawn":

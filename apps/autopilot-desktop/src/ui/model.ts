@@ -58,6 +58,12 @@ export const PaneId = S.Literals([
   // cancel) built on the existing control protocol (session.spawn/events/cancel
   // + approvals). The day-to-day Claude-Code/Codex replacement surface.
   "composer",
+  // CS-A2 (#5362): the swarm / multi-session view — a lane/grid over the N
+  // concurrent coding sessions the runtime can run (concurrent spawner #4869,
+  // control `session.list`, external-session `parentRef` nesting). A pure read
+  // projection over node-state + a per-cell open-in-composer / cancel quick
+  // action + a top-level pending-approvals roll-up. No new wire verb.
+  "swarm",
   "settings",
   "session-detail",
 ])

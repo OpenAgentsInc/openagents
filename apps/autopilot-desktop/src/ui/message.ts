@@ -254,6 +254,18 @@ export const ClickedCancelSession = m("ClickedCancelSession", {
 })
 export const SettledCancelSession = m("SettledCancelSession")
 
+// ── CS-A2 (#5362): swarm / multi-session view quick action ──────────────────
+// "Open in composer" adopts an existing swarm session into the composer thread
+// so the owner can continue/reply to it from the day-to-day coding surface. The
+// session-detail timeline already covers read-only inspection (SelectedSession),
+// and cancel reuses ClickedCancelSession — so the swarm view adds only this one
+// adoption verb on top of the existing protocol.
+export const ClickedOpenSessionInComposer = m("ClickedOpenSessionInComposer", {
+  sessionRef: S.String,
+  workspaceRef: S.NullOr(S.String),
+  adapter: S.Literals(["codex", "claude_agent", "apple_fm"]),
+})
+
 // ── #5355: coding composer (the day-to-day CLI replacement loop) ────────────
 // The composer reuses ChangedSpawnAdapter/Objective/Verify/Lane for the first
 // turn's form fields, and adds repo-path + reply-turn inputs plus its own
@@ -395,6 +407,7 @@ export const Message = S.Union([
   FailedSpawn,
   ClickedCancelSession,
   SettledCancelSession,
+  ClickedOpenSessionInComposer,
   ChangedComposerRepoPath,
   ChangedComposerReply,
   ClickedComposerSpawn,

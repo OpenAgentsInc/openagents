@@ -294,3 +294,118 @@ body {
   gap: 0.75rem;
   margin-top: 0.5rem;
 }
+
+/* CS-A2 (#5362): swarm / multi-session view. A responsive grid of session
+ * cells over the existing node-state projection. Dark/mono operational idiom;
+ * status tone borders reuse the canonical success/warning/danger/info tokens. */
+.swarm-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.swarm-approvals-rollup {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--warning, #ffb400);
+  background: rgb(255 180 0 / 0.08);
+  color: var(--warning, #ffb400);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.swarm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+.swarm-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--outline, #525458);
+  border-left-width: 3px;
+  background: var(--bg-secondary, #151515);
+}
+.swarm-cell-child {
+  margin-left: 0.75rem;
+}
+.swarm-cell.swarm-running {
+  border-left-color: var(--info, #2979ff);
+}
+.swarm-cell.swarm-queued {
+  border-left-color: var(--text-secondary, #8a8c93);
+}
+.swarm-cell.swarm-completed {
+  border-left-color: var(--success, #00c853);
+}
+.swarm-cell.swarm-failed {
+  border-left-color: var(--danger, #d32f2f);
+}
+.swarm-cell.swarm-cancelled {
+  border-left-color: var(--text-secondary, #8a8c93);
+}
+.swarm-cell-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.swarm-status {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.swarm-status.swarm-running {
+  color: var(--info, #2979ff);
+}
+.swarm-status.swarm-completed {
+  color: var(--success, #00c853);
+}
+.swarm-status.swarm-failed {
+  color: var(--danger, #d32f2f);
+}
+.swarm-status.swarm-queued,
+.swarm-status.swarm-cancelled {
+  color: var(--text-secondary, #8a8c93);
+}
+.swarm-adapter,
+.swarm-lane,
+.swarm-child-badge {
+  font-size: 0.72rem;
+  color: var(--text-secondary, #8a8c93);
+  border: 1px solid var(--outline, #525458);
+  padding: 0 0.3rem;
+}
+.swarm-cell-meta {
+  font-size: 0.8rem;
+  color: var(--text, #d7d8e5);
+}
+.swarm-cell-activity {
+  font-size: 0.78rem;
+  color: var(--text-secondary, #8a8c93);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.swarm-cell-approvals {
+  font-size: 0.78rem;
+  color: var(--warning, #ffb400);
+}
+.swarm-cell-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+.swarm-action {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--outline, #525458);
+  background: var(--bg, #000);
+  color: var(--text, #d7d8e5);
+  cursor: pointer;
+}
+.swarm-action-cancel {
+  color: var(--danger, #d32f2f);
+  border-color: var(--danger, #d32f2f);
+}

@@ -296,3 +296,155 @@ export function composerTurnSummary(
       return `${activeSessionState} · ${turnLabel}`
   }
 }
+
+// ── CS-A2 (#5362): swarm / multi-session view ────────────────────────────────
+//
+// The swarm view is a lane/grid over the N concurrent coding sessions the
+// runtime can already run (concurrent spawner #4869, control `session.list`,
+// external-session `parentRef` nesting). It is a pure read projection over the
+// existing node-state (`sessions` + per-session `events` + global `approvals`):
+// NO new wire verb. These helpers are the DOM-free derivations each cell and the
+// top-level roll-up render, so the swarm view stays unit-testable without a
+// runtime or a DOM, the same way the composer/CL-53 helpers do.
+
+// A session is "active" while it has not reached a terminal state. Active
+// sessions sort first in the grid so the running swarm is the foreground.
+export function isActiveSwarmSession(state: string): boolean {
+  return state === "queued" || state === "running" || state === "started"
+}
+
+// A short, public-safe status label for a swarm cell (refs only; no raw paths).
+export function swarmStatusLabel(state: string): {
+  text: string
+  toneClass: string
+} {
+  switch (state) {
+    case "queued":
+      return { text: "queued", toneClass: "swarm-queued" }
+    case "running":
+    case "started":
+      return { text: "running", toneClass: "swarm-running" }
+    case "completed":
+      return { text: "done", toneClass: "swarm-completed" }
+    case "failed":
+      return { text: "failed", toneClass: "swarm-failed" }
+    case "cancelled":
+      return { text: "cancelled", toneClass: "swarm-cancelled" }
+    default:
+      return { text: state, toneClass: "swarm-cancelled" }
+  }
+}
+
+// The account a cell is running under. CS-A1 surfaces accounts as `AccountRow`s
+// keyed by a stable `accountRefHash`; a spawned session carries the same
+// `accountRefHash`, so the cell can name the account without a raw secret/path.
+// Falls back to the provider adapter / "default" when the session has no hash
+// (e.g. a default-home spawn) or the row is not in the readiness projection.
+export function swarmAccountLabel(
+  session: { accountRefHash: string | null; adapter: string },
+  accounts: ReadonlyArray<{ accountRefHash: string; provider: string; selector: string }>,
+): string {
+  if (session.accountRefHash !== null && session.accountRefHash !== "") {
+    const match = accounts.find((a) => a.accountRefHash === session.accountRefHash)
+    if (match) {
+      const which =
+        match.selector === "default_home"
+          ? "default"
+          : session.accountRefHash.slice(-6)
+      return `${match.provider} · ${which}`
+    }
+    // Hash present but no matching readiness row — still name it by its suffix.
+    return `${session.adapter} · ${session.accountRefHash.slice(-6)}`
+  }
+  return `${session.adapter} · default`
+}
+
+// The repo / worktree a cell is running in. `workspaceRef` is a public-safe ref
+// (no raw path); show its tail, or a neutral placeholder when absent.
+export function swarmWorkspaceLabel(session: {
+  workspaceRef?: string | null
+}): string {
+  const ref = session.workspaceRef ?? null
+  if (ref === null || ref.trim() === "") return "—"
+  return ref.length > 18 ? `…${ref.slice(-16)}` : ref
+}
+
+// Per-cell pending-approval count. The node's authoritative pending queue
+// (`approvals[]`) is NOT keyed by session, so a per-cell count is derived from
+// the session's bounded event tail: a `decision_requested` not yet followed by a
+// `decision_resolved`/`decision_cancelled` for the same session. Best-effort,
+// public-safe, and matches what the session-detail timeline already shows.
+export function swarmSessionPendingApprovals(
+  events: ReadonlyArray<{ phase: string }> | undefined,
+): number {
+  if (!events || events.length === 0) return 0
+  let pending = 0
+  for (const e of events) {
+    if (e.phase === "decision_requested") pending += 1
+    else if (e.phase === "decision_resolved" || e.phase === "decision_cancelled") {
+      if (pending > 0) pending -= 1
+    }
+  }
+  return pending
+}
+
+// Order the swarm grid: active sessions first (by most-recent update), then
+// terminal sessions. `parentRef` children are kept adjacent to (and after)
+// their parent so nested external/host sessions read as a sub-lane rather than
+// scattering across the grid.
+export function orderSwarmSessions<
+  T extends {
+    sessionRef: string
+    state: string
+    parentRef?: string | null
+    updatedAt: string
+  },
+>(sessions: ReadonlyArray<T>): ReadonlyArray<T> {
+  const activeRank = (s: T): number => (isActiveSwarmSession(s.state) ? 0 : 1)
+  const byRecency = (a: T, b: T): number => {
+    const rank = activeRank(a) - activeRank(b)
+    if (rank !== 0) return rank
+    return b.updatedAt.localeCompare(a.updatedAt)
+  }
+  // Roots = sessions with no parent in this set; children attach under them.
+  const refs = new Set(sessions.map((s) => s.sessionRef))
+  const childrenByParent = new Map<string, T[]>()
+  const roots: T[] = []
+  for (const s of sessions) {
+    const parent = s.parentRef ?? null
+    if (parent !== null && parent !== s.sessionRef && refs.has(parent)) {
+      const list = childrenByParent.get(parent) ?? []
+      list.push(s)
+      childrenByParent.set(parent, list)
+    } else {
+      roots.push(s)
+    }
+  }
+  const ordered: T[] = []
+  for (const root of [...roots].sort(byRecency)) {
+    ordered.push(root)
+    const kids = childrenByParent.get(root.sessionRef)
+    if (kids) for (const kid of [...kids].sort(byRecency)) ordered.push(kid)
+  }
+  return ordered
+}
+
+// Top-level swarm summary: how many sessions, broken down by active count, plus
+// the total pending approvals across all sessions (the authoritative global
+// queue length). One line for the swarm-pane header.
+export function swarmSummaryLine(
+  sessions: ReadonlyArray<{ state: string }>,
+  pendingApprovalCount: number,
+): string {
+  const total = sessions.length
+  if (total === 0) return "no sessions"
+  const active = sessions.filter((s) => isActiveSwarmSession(s.state)).length
+  const noun = total === 1 ? "session" : "sessions"
+  const parts = [`${total} ${noun}`, `${active} active`]
+  if (pendingApprovalCount > 0) {
+    parts.push(
+      `${pendingApprovalCount} pending approval${pendingApprovalCount === 1 ? "" : "s"}`,
+    )
+  }
+  return parts.join(" · ")
+}

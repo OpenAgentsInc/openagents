@@ -1335,6 +1335,37 @@ export const update = (model: Model, message: Message): Result => {
       // The next node-state poll carries the authoritative session state.
       return [model, noCommands]
 
+    // ── CS-A2 (#5362): swarm quick action — open an existing session in the
+    //    composer. Adopts the session as the composer's active thread (its
+    //    repo/worktree + runtime) so the owner can reply/continue from the
+    //    day-to-day coding surface. The live node poll then drives the
+    //    transcript/approvals the composer renders — no new wire verb.
+    case "ClickedOpenSessionInComposer":
+      return [
+        Model.make({
+          ...model,
+          pane: "composer",
+          expandedEvents: [],
+          composerSessionRef: message.sessionRef,
+          composerRepoPath: message.workspaceRef ?? "",
+          composerReply: "",
+          composerPending: false,
+          composerStatus: {
+            text: "adopted session — streaming transcript",
+            tone: "info" as const,
+          },
+          spawnAdapter: message.adapter,
+          // Load the managed-account registry so the picker is populated, the
+          // same way NavigatedTo("composer") does.
+          managedAccountsPending: true,
+          managedAccountsStatus: {
+            text: "loading accounts...",
+            tone: "info" as const,
+          },
+        }),
+        [LoadManagedAccounts()],
+      ]
+
     // ── #5355: coding composer ──────────────────────────────────────────────────
     case "ChangedComposerRepoPath":
       return [Model.make({ ...model, composerRepoPath: message.value }), noCommands]
