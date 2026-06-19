@@ -1,0 +1,446 @@
+// Pricing & multiplier engine for the OpenAgents inference gateway
+// (EPIC #5474, child #5478).
+//
+// Pure, typed, table-driven pricing. Given (model, token usage, funding kind)
+// this module computes the credits/cost to charge for a completed inference
+// request. It is the ONE place that turns provider token usage into a price.
+//
+// Boundaries (kept deliberately narrow):
+//   - This module is PURE. No Effect runtime, no IO, no clock, no env. The
+//     metering hook (#5477) imports `priceRequest` and decrements the live
+//     credit ledger from the result; this module never moves money, never
+//     touches D1 / payments-ledger, never logs.
+//   - Cost numbers are CONFIG. The Vertex/Anthropic Claude per-token cost is
+//     the published LIST rate, NOT our committed-use rate — that real number is
+//     a TODO from the billing export (see `VERTEX_COST_IS_LIST_TODO`). The
+//     Fireworks open-model costs ARE real (verified 2026-06-19). Everything is
+//     a tunable constant so the table re-solves when the real cost lands.
+//
+// Math (from docs/inference/2026-06-19-pricing-model.md):
+//   sell-rate per token = our cost per token × (1 + margin)
+//   charge $            = Σ (tokens of each kind × per-kind sell-rate)
+//   credits             = charge $ ÷ BASE_CREDIT_USD   (1 credit = $0.01)
+//   bitcoin funding     => charge × (1 − BITCOIN_DISCOUNT)   (~5%, config)
+// Cached input is billed at a fraction of the input rate; batch requests get a
+// flat discount on both directions. All discounts come off COST before margin
+// so margin is preserved (docs §6: "funded by real savings, not margin").
+
+import { type InferenceUsage } from './provider-adapter'
+
+// ----------------------------------------------------------------------------
+// Config constants (tune here; everything downstream re-solves)
+// ----------------------------------------------------------------------------
+
+// Base credit unit. 1 credit = $0.01 (docs §5). We meter internally in USD;
+// "credits" is the legible UI unit (credits = usd / BASE_CREDIT_USD).
+export const BASE_CREDIT_USD = 0.01
+
+// Target margin applied on top of our marginal cost to get the sell rate.
+// 40% midpoint of the 30–50% target band (docs §3). Tunable per launch.
+export const DEFAULT_MARGIN = 0.4
+
+// Bitcoin/Lightning funding discount. ~5% off the final charge, funded by the
+// card-processing + chargeback-reserve costs we DON'T pay on the BTC rail
+// (docs §6) — cost-neutral to us, on-brand pull onto Bitcoin. Configurable;
+// keep ≤ realized card-fee savings so margin is untouched.
+export const BITCOIN_DISCOUNT = 0.05
+
+// Cached-input fraction of the input rate. Fireworks prompt-cache hits bill
+// ~50% of input (fireworks-provider doc); Vertex/Anthropic prompt caching is
+// similar in spirit. Applied to `usage.cachedPromptTokens` (a subset of
+// promptTokens) so cache hits cost the customer less, mirroring our lower cost.
+export const CACHED_INPUT_FRACTION = 0.5
+
+// Batch-inference discount. Fireworks batch = 50% of standard in BOTH
+// directions (fireworks-provider doc §pricing). Applied to COST before margin.
+export const BATCH_DISCOUNT = 0.5
+
+// !! BILLING TODO (the one true unknown, docs §1 + §8) !!
+// The published Cloud Billing Catalog does not expose the Vertex *partner-model*
+// (Anthropic) per-token SKUs, so the Claude cost numbers below are the PUBLISHED
+// VERTEX/ANTHROPIC LIST rates, not our committed-use / quota rate (which is
+// lower). Confirm real per-token cost from the BigQuery billing export before
+// publishing prices, then drop the real numbers into the Claude rows of
+// VERTEX_CLAUDE_COST and the multiplier table re-solves. Fireworks open-model
+// costs ARE real (verified 2026-06-19) and need no such caveat.
+export const VERTEX_COST_IS_LIST_TODO = true as const
+
+// ----------------------------------------------------------------------------
+// Types
+// ----------------------------------------------------------------------------
+
+// How the account funds its balance. Bitcoin gets the funding discount.
+export type FundingKind = 'card' | 'bitcoin'
+
+// Supply lane a model is served from (cost attribution / provenance). Purely
+// descriptive here — routing (#5482) owns lane selection.
+export type SupplyLane = 'vertex-anthropic' | 'fireworks' | 'openagents-network'
+
+// Our marginal cost for a model, per 1M tokens, by billed dimension. Cost is
+// CONFIG; sell rate = cost × (1 + margin). `cachedInput` is optional; when a
+// provider does not report a distinct cached rate we fall back to
+// `input × CACHED_INPUT_FRACTION`.
+export type ModelCostPerMtok = Readonly<{
+  // USD per 1M input (prompt) tokens.
+  inputUsdPerMtok: number
+  // USD per 1M output (completion) tokens.
+  outputUsdPerMtok: number
+  // USD per 1M cached-input tokens, when the provider publishes a distinct
+  // cached rate (e.g. Fireworks). Omitted => derived from input.
+  cachedInputUsdPerMtok?: number
+}>
+
+// A pricing-table entry for one model alias.
+export type ModelPricingEntry = Readonly<{
+  // Canonical model id used in pricing (lowercased alias key in the table).
+  model: string
+  // Supply lane (cost provenance).
+  lane: SupplyLane
+  // Marginal cost basis (config).
+  cost: ModelCostPerMtok
+  // Published per-model multiplier relative to the baseline (Sonnet = 1.0×).
+  // This is the LEGIBLE, published number (Factory-style). It is derived from
+  // the blended cost so the table is cost-proportional by default; see
+  // `costProportionalMultiplier`. We store it explicitly so the published table
+  // can be tuned (e.g. compress the Opus multiplier once real Vertex cost lands)
+  // without changing the underlying cost basis.
+  multiplier: number
+  // True when the cost row is the published LIST rate, not our real cost
+  // (the Vertex Claude TODO). Surfaced so callers/tests can assert provenance.
+  costIsListPlaceholder: boolean
+}>
+
+// Input to a pricing computation.
+export type PriceInput = Readonly<{
+  // Model alias the customer is charged for (case-insensitive; matched against
+  // the table). Unknown models fall back to UNKNOWN_MODEL_COST.
+  model: string
+  // Receipt-first usage from the provider response (never an estimate).
+  usage: InferenceUsage
+  // How the account funds its balance (card | bitcoin).
+  fundingKind: FundingKind
+  // Whether this was a batch request (Fireworks batch = −50% both directions).
+  batch?: boolean
+  // Margin override (defaults to DEFAULT_MARGIN). Pure knob for tests / tiers.
+  margin?: number
+}>
+
+// Result of a pricing computation. All amounts are receipt-first and pure.
+export type PriceResult = Readonly<{
+  // The model the price was computed against (canonical table key, or the raw
+  // input lowercased when it fell back to the unknown-model rate).
+  model: string
+  // True when the model was not in the table and the unknown-model fallback
+  // rate was used.
+  isUnknownModel: boolean
+  // Funding kind the price reflects.
+  fundingKind: FundingKind
+  // Effective margin applied.
+  margin: number
+  // USD cost to US (our marginal cost, after cached/batch discounts, before
+  // margin). Useful for margin reporting + revshare split (#5474 §6).
+  costUsd: number
+  // USD charge to the customer BEFORE the funding (bitcoin) discount.
+  grossChargeUsd: number
+  // USD charge AFTER the funding discount (what actually decrements balance).
+  chargeUsd: number
+  // The funding discount applied in USD (grossChargeUsd − chargeUsd).
+  discountUsd: number
+  // Charge expressed in credits (1 credit = $0.01). UI-facing legible unit.
+  // The ledger (#5477) converts to msat; this module stays currency-pure (USD).
+  credits: number
+}>
+
+// ----------------------------------------------------------------------------
+// Cost basis (config) — Vertex Claude = LIST (TODO), Fireworks open = REAL
+// ----------------------------------------------------------------------------
+
+// Vertex/Anthropic Claude list rates (docs §2). PLACEHOLDER COST — see
+// VERTEX_COST_IS_LIST_TODO. Replace with committed-use rate from billing.
+const VERTEX_CLAUDE_COST: Readonly<Record<string, ModelCostPerMtok>> = {
+  opus: { inputUsdPerMtok: 15.0, outputUsdPerMtok: 75.0 },
+  sonnet: { inputUsdPerMtok: 3.0, outputUsdPerMtok: 15.0 },
+  haiku: { inputUsdPerMtok: 1.0, outputUsdPerMtok: 5.0 },
+}
+
+// Fireworks serverless open-model costs — REAL, verified 2026-06-19
+// (docs/inference/2026-06-19-fireworks-provider.md). input / cached / output
+// per 1M tokens.
+const FIREWORKS_OPEN_COST: Readonly<Record<string, ModelCostPerMtok>> = {
+  'gpt-oss-20b': {
+    inputUsdPerMtok: 0.07,
+    cachedInputUsdPerMtok: 0.035,
+    outputUsdPerMtok: 0.3,
+  },
+  'gpt-oss-120b': {
+    inputUsdPerMtok: 0.15,
+    cachedInputUsdPerMtok: 0.015,
+    outputUsdPerMtok: 0.6,
+  },
+  'deepseek-v4-flash': {
+    inputUsdPerMtok: 0.14,
+    cachedInputUsdPerMtok: 0.028,
+    outputUsdPerMtok: 0.28,
+  },
+  minimax: {
+    inputUsdPerMtok: 0.3,
+    cachedInputUsdPerMtok: 0.06,
+    outputUsdPerMtok: 1.2,
+  },
+  'qwen-3p7-plus': {
+    inputUsdPerMtok: 0.4,
+    cachedInputUsdPerMtok: 0.08,
+    outputUsdPerMtok: 1.6,
+  },
+  'nemotron-3-ultra': {
+    inputUsdPerMtok: 0.6,
+    cachedInputUsdPerMtok: 0.12,
+    outputUsdPerMtok: 2.4,
+  },
+  'kimi-k2p5': {
+    inputUsdPerMtok: 0.6,
+    cachedInputUsdPerMtok: 0.1,
+    outputUsdPerMtok: 3.0,
+  },
+  'kimi-k2p6': {
+    inputUsdPerMtok: 0.95,
+    cachedInputUsdPerMtok: 0.16,
+    outputUsdPerMtok: 4.0,
+  },
+  'kimi-k2p7-code': {
+    inputUsdPerMtok: 0.95,
+    cachedInputUsdPerMtok: 0.19,
+    outputUsdPerMtok: 4.0,
+  },
+  'glm-5p2': {
+    inputUsdPerMtok: 1.4,
+    cachedInputUsdPerMtok: 0.26,
+    outputUsdPerMtok: 4.4,
+  },
+  'glm-5p1': {
+    inputUsdPerMtok: 1.4,
+    cachedInputUsdPerMtok: 0.26,
+    outputUsdPerMtok: 4.4,
+  },
+  'deepseek-v4-pro': {
+    inputUsdPerMtok: 1.74,
+    cachedInputUsdPerMtok: 0.145,
+    outputUsdPerMtok: 3.48,
+  },
+}
+
+// Unknown-model fallback cost. Conservative: priced like a mid open model so an
+// un-tabled model is never under-charged below plausible cost (docs edge:
+// unknown models still clear a sane floor). Not a measured rate.
+export const UNKNOWN_MODEL_COST: ModelCostPerMtok = {
+  inputUsdPerMtok: 1.0,
+  cachedInputUsdPerMtok: 0.5,
+  outputUsdPerMtok: 4.0,
+}
+
+// Coding-typical input:output blend (4:1) used to derive a single legible
+// multiplier from the two-dimensional cost (docs §2): blended = (4·in + 1·out)/5.
+const BLEND_INPUT_WEIGHT = 4
+const BLEND_OUTPUT_WEIGHT = 1
+
+// Blended cost $/Mtok for a model (the 4:1 coding mix).
+export const blendedCostPerMtok = (cost: ModelCostPerMtok): number =>
+  (BLEND_INPUT_WEIGHT * cost.inputUsdPerMtok +
+    BLEND_OUTPUT_WEIGHT * cost.outputUsdPerMtok) /
+  (BLEND_INPUT_WEIGHT + BLEND_OUTPUT_WEIGHT)
+
+// The baseline model whose blended cost defines multiplier = 1.0× (Sonnet).
+const BASELINE_MODEL = 'sonnet'
+
+// Cost-proportional multiplier relative to the baseline (Sonnet = 1.0×). This
+// is our DEFAULT strategy (docs §4): every model clears cost+margin on its own,
+// because there is no subscription to backstop a frontier subsidy.
+export const costProportionalMultiplier = (cost: ModelCostPerMtok): number => {
+  const baseline = blendedCostPerMtok(VERTEX_CLAUDE_COST[BASELINE_MODEL]!)
+  return blendedCostPerMtok(cost) / baseline
+}
+
+// ----------------------------------------------------------------------------
+// Pricing table (the published multiplier table)
+// ----------------------------------------------------------------------------
+
+const entry = (
+  model: string,
+  lane: SupplyLane,
+  cost: ModelCostPerMtok,
+  costIsListPlaceholder: boolean,
+  multiplierOverride?: number,
+): ModelPricingEntry => ({
+  model,
+  lane,
+  cost,
+  costIsListPlaceholder,
+  // Default to the cost-proportional multiplier, rounded to 2 decimals for a
+  // legible published number; allow an explicit override for tuning (e.g.
+  // compressing Opus once the real Vertex cost lands).
+  multiplier:
+    multiplierOverride ??
+    Math.round(costProportionalMultiplier(cost) * 100) / 100,
+})
+
+// The canonical pricing table keyed by lowercased model alias. Multipliers are
+// cost-proportional by default (Sonnet = 1.0×, Opus ≈ 5×, Haiku ≈ 0.33×),
+// matching docs §4 "cost-proportional (our default, guaranteed margin)".
+export const MODEL_PRICING_TABLE: ReadonlyArray<ModelPricingEntry> = [
+  // Vertex/Anthropic Claude lane — cost is LIST placeholder (TODO).
+  entry('opus', 'vertex-anthropic', VERTEX_CLAUDE_COST.opus!, true),
+  entry('sonnet', 'vertex-anthropic', VERTEX_CLAUDE_COST.sonnet!, true),
+  entry('haiku', 'vertex-anthropic', VERTEX_CLAUDE_COST.haiku!, true),
+  // Fireworks open-model lane — REAL cost (verified 2026-06-19).
+  entry('gpt-oss-20b', 'fireworks', FIREWORKS_OPEN_COST['gpt-oss-20b']!, false),
+  entry(
+    'gpt-oss-120b',
+    'fireworks',
+    FIREWORKS_OPEN_COST['gpt-oss-120b']!,
+    false,
+  ),
+  entry(
+    'deepseek-v4-flash',
+    'fireworks',
+    FIREWORKS_OPEN_COST['deepseek-v4-flash']!,
+    false,
+  ),
+  entry('minimax', 'fireworks', FIREWORKS_OPEN_COST.minimax!, false),
+  entry(
+    'qwen-3p7-plus',
+    'fireworks',
+    FIREWORKS_OPEN_COST['qwen-3p7-plus']!,
+    false,
+  ),
+  entry(
+    'nemotron-3-ultra',
+    'fireworks',
+    FIREWORKS_OPEN_COST['nemotron-3-ultra']!,
+    false,
+  ),
+  entry('kimi-k2p5', 'fireworks', FIREWORKS_OPEN_COST['kimi-k2p5']!, false),
+  entry('kimi-k2p6', 'fireworks', FIREWORKS_OPEN_COST['kimi-k2p6']!, false),
+  entry(
+    'kimi-k2p7-code',
+    'fireworks',
+    FIREWORKS_OPEN_COST['kimi-k2p7-code']!,
+    false,
+  ),
+  entry('glm-5p2', 'fireworks', FIREWORKS_OPEN_COST['glm-5p2']!, false),
+  entry('glm-5p1', 'fireworks', FIREWORKS_OPEN_COST['glm-5p1']!, false),
+  entry(
+    'deepseek-v4-pro',
+    'fireworks',
+    FIREWORKS_OPEN_COST['deepseek-v4-pro']!,
+    false,
+  ),
+]
+
+// Index for O(1) lookup by lowercased model alias.
+const MODEL_INDEX: ReadonlyMap<string, ModelPricingEntry> = new Map(
+  MODEL_PRICING_TABLE.map((e) => [e.model, e]),
+)
+
+// Resolve a model alias to its pricing entry (case-insensitive). Returns
+// undefined when the model is not in the table (caller uses the unknown
+// fallback). Substring matching is intentionally NOT done here — the gateway
+// resolves provider-native aliases upstream; pricing keys on the canonical id.
+export const lookupModel = (model: string): ModelPricingEntry | undefined =>
+  MODEL_INDEX.get(model.trim().toLowerCase())
+
+// ----------------------------------------------------------------------------
+// Core pricing computation
+// ----------------------------------------------------------------------------
+
+// Per-token sell rate (USD) for one dimension: cost × (1 + margin).
+const sellPerToken = (usdPerMtok: number, margin: number): number =>
+  (usdPerMtok / 1_000_000) * (1 + margin)
+
+// Clamp to a non-negative finite number (defensive: usage counts and rates must
+// be non-negative; a NaN/negative override should not produce a negative charge).
+const nonNeg = (n: number): number => (Number.isFinite(n) && n > 0 ? n : 0)
+
+// Compute the charge for a completed request. PURE.
+//
+// charge = Σ over {uncached-input, cached-input, output} of:
+//            tokens × per-token sell-rate × (batch ? BATCH_DISCOUNT : 1)
+// then bitcoin funding applies a flat BITCOIN_DISCOUNT on the gross charge.
+//
+// Token split:
+//   cachedTokens     = min(usage.cachedPromptTokens ?? 0, promptTokens)
+//   uncachedTokens   = promptTokens − cachedTokens
+//   completionTokens = usage.completionTokens
+export const priceRequest = (input: PriceInput): PriceResult => {
+  const margin = nonNeg(input.margin ?? DEFAULT_MARGIN)
+  const batchFactor = input.batch ? BATCH_DISCOUNT : 1
+
+  const matched = lookupModel(input.model)
+  const isUnknownModel = matched === undefined
+  const cost = matched?.cost ?? UNKNOWN_MODEL_COST
+  const canonicalModel = matched?.model ?? input.model.trim().toLowerCase()
+
+  const promptTokens = nonNeg(input.usage.promptTokens)
+  const completionTokens = nonNeg(input.usage.completionTokens)
+  const cachedTokens = Math.min(
+    nonNeg(input.usage.cachedPromptTokens ?? 0),
+    promptTokens,
+  )
+  const uncachedTokens = promptTokens - cachedTokens
+
+  // Cached-input cost per Mtok: provider's published cached rate when present,
+  // else input × CACHED_INPUT_FRACTION.
+  const cachedInputUsdPerMtok =
+    cost.cachedInputUsdPerMtok ?? cost.inputUsdPerMtok * CACHED_INPUT_FRACTION
+
+  // --- our marginal COST (before margin), after cached + batch discounts ---
+  const costUsd =
+    ((uncachedTokens * cost.inputUsdPerMtok) / 1_000_000 +
+      (cachedTokens * cachedInputUsdPerMtok) / 1_000_000 +
+      (completionTokens * cost.outputUsdPerMtok) / 1_000_000) *
+    batchFactor
+
+  // --- customer SELL charge (cost × (1 + margin)), same token split ---
+  const grossChargeUsd =
+    (uncachedTokens * sellPerToken(cost.inputUsdPerMtok, margin) +
+      cachedTokens * sellPerToken(cachedInputUsdPerMtok, margin) +
+      completionTokens * sellPerToken(cost.outputUsdPerMtok, margin)) *
+    batchFactor
+
+  // --- bitcoin funding discount (off the top, funded by real card savings) ---
+  const fundingFactor =
+    input.fundingKind === 'bitcoin' ? 1 - BITCOIN_DISCOUNT : 1
+  const chargeUsd = grossChargeUsd * fundingFactor
+  const discountUsd = grossChargeUsd - chargeUsd
+
+  return {
+    model: canonicalModel,
+    isUnknownModel,
+    fundingKind: input.fundingKind,
+    margin,
+    costUsd,
+    grossChargeUsd,
+    chargeUsd,
+    discountUsd,
+    credits: chargeUsd / BASE_CREDIT_USD,
+  }
+}
+
+// Convenience: published sell price $/Mtok for a model + dimension, for the
+// pricing table / public price page. Pure, derived from cost × (1 + margin).
+export const sellPricePerMtok = (
+  model: string,
+  dimension: 'input' | 'cached' | 'output',
+  margin: number = DEFAULT_MARGIN,
+): number | undefined => {
+  const matched = lookupModel(model)
+  if (matched === undefined) return undefined
+  const cost = matched.cost
+  const usdPerMtok =
+    dimension === 'input'
+      ? cost.inputUsdPerMtok
+      : dimension === 'output'
+        ? cost.outputUsdPerMtok
+        : (cost.cachedInputUsdPerMtok ??
+          cost.inputUsdPerMtok * CACHED_INPUT_FRACTION)
+  return usdPerMtok * (1 + margin)
+}
