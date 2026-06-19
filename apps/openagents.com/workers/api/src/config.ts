@@ -7,6 +7,15 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // `/v1/chat/completions` route is inert on the live Worker until the
   // inference build lands. Set "true"/"1"/"on" to enable.
   INFERENCE_GATEWAY_ENABLED?: string | undefined
+  // Partner passthrough adapter secrets (EPIC #5474, #5481). Worker secrets,
+  // never committed/logged. Each enables the corresponding passthrough adapter
+  // when the gateway flag is on; absent => that partner adapter stays inert.
+  ANTHROPIC_API_KEY?: string | undefined
+  OPENAI_API_KEY?: string | undefined
+  // Optional partner base-URL overrides (origin, no trailing slash). Default to
+  // the public Anthropic / OpenAI origins when unset.
+  ANTHROPIC_BASE_URL?: string | undefined
+  OPENAI_BASE_URL?: string | undefined
   EXA_API_KEY?: string | undefined
   EXA_BASE_URL?: string | undefined
   EXA_DEFAULT_NUM_RESULTS?: string | undefined

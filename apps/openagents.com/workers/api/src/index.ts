@@ -35,6 +35,10 @@ import {
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
 import { InferenceProviderRegistry } from './inference/provider-adapter'
+import {
+  type PassthroughAdapterConfig,
+  makePassthroughAdapter,
+} from './inference/passthrough-adapter'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
 import { readAgentBalance } from './payments-ledger'
 import { makeAgentGoalRoutes } from './agent-goal-routes'
@@ -7563,6 +7567,56 @@ const recordPublicAgentFunnelRead = (
 const inferenceProviderRegistry = new InferenceProviderRegistry()
 inferenceProviderRegistry.register(stubEchoAdapter)
 
+// Partner passthrough adapters (#5481). Registered from Worker secrets at
+// request time (env is per-request in Workers); `register` replaces by id, so
+// repeated calls are idempotent. INERT under the flag: when a partner secret is
+// absent the adapter is never registered, and even when registered the route is
+// only reachable with INFERENCE_GATEWAY_ENABLED on. The redacted key never
+// leaves this closure except onto the outbound partner request header.
+const passthroughAdaptersRegistered = new WeakSet<object>()
+
+// Only the partner-secret slice of the Worker env is read here, so we accept a
+// narrow shape rather than the full Cloudflare `Env` (which the zero-debt check
+// keeps off new business surfaces).
+type PassthroughSecretsEnv = Readonly<{
+  ANTHROPIC_API_KEY?: string | undefined
+  ANTHROPIC_BASE_URL?: string | undefined
+  OPENAI_API_KEY?: string | undefined
+  OPENAI_BASE_URL?: string | undefined
+}>
+
+const registerPassthroughAdapters = (
+  registry: InferenceProviderRegistry,
+  env: PassthroughSecretsEnv,
+): void => {
+  if (passthroughAdaptersRegistered.has(env)) {
+    return
+  }
+  passthroughAdaptersRegistered.add(env)
+
+  const anthropicKey = env.ANTHROPIC_API_KEY?.trim()
+  if (anthropicKey !== undefined && anthropicKey !== '') {
+    const config: PassthroughAdapterConfig = {
+      apiKey: Redacted.make(anthropicKey),
+      baseUrl: env.ANTHROPIC_BASE_URL?.trim() || 'https://api.anthropic.com',
+      id: 'passthrough-anthropic',
+      wireFormat: 'anthropic',
+    }
+    registry.register(makePassthroughAdapter(config))
+  }
+
+  const openaiKey = env.OPENAI_API_KEY?.trim()
+  if (openaiKey !== undefined && openaiKey !== '') {
+    const config: PassthroughAdapterConfig = {
+      apiKey: Redacted.make(openaiKey),
+      baseUrl: env.OPENAI_BASE_URL?.trim() || 'https://api.openai.com',
+      id: 'passthrough-openai',
+      wireFormat: 'openai',
+    }
+    registry.register(makePassthroughAdapter(config))
+  }
+}
+
 const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/',
@@ -8469,8 +8523,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // adapter + no-op metering stub; Phase-2 issues register real adapters
     // (#5479/#5480/#5481), routing (#5482), and live metering/credits (#5477).
     path: '/v1/chat/completions',
-    handler: (request, env) =>
-      handleChatCompletions(request, {
+    handler: (request, env) => {
+      registerPassthroughAdapters(inferenceProviderRegistry, env)
+      return handleChatCompletions(request, {
         authenticate: async authRequest => {
           const token = readBearerToken(authRequest)
           if (token === undefined) {
@@ -8493,7 +8548,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           return balance === null ? 0 : balance.availableMsat
         },
         registry: inferenceProviderRegistry,
-      }),
+      })
+    },
   },
 ])
 
