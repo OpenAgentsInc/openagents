@@ -69,6 +69,12 @@ export {
   type BlueprintProgramSignature as BlueprintProgramSignatureType,
   BlueprintProgramStatus,
   type BlueprintProgramStatus as BlueprintProgramStatusType,
+  BlueprintTassadarModuleStepBinding,
+  type BlueprintTassadarModuleStepBinding as BlueprintTassadarModuleStepBindingType,
+  BlueprintTassadarModuleStepExecutionMode,
+  type BlueprintTassadarModuleStepExecutionMode as BlueprintTassadarModuleStepExecutionModeType,
+  BlueprintTassadarModuleStepKind,
+  type BlueprintTassadarModuleStepKind as BlueprintTassadarModuleStepKindType,
   BlueprintProgramToolScope,
   type BlueprintProgramToolScope as BlueprintProgramToolScopeType,
   BlueprintProgramType,
@@ -84,6 +90,7 @@ export {
   BlueprintValidationMode,
   type BlueprintValidationMode as BlueprintValidationModeType,
   blueprintProgramSignatureSupportsFamily,
+  blueprintProgramToolScopeIsTassadarModuleStep,
   blueprintProgramTypeRequiredReceiptRefs,
   blueprintProgramTypeRequiresApproval,
 } from './schemas/program'
@@ -233,6 +240,20 @@ export {
   denyProgramRunDirectEffect,
   type BlueprintProgramRunAuthorityError,
 } from './services/program-run-authority'
+
+export {
+  BLUEPRINT_TASSADAR_DENSE_FIXTURE_MODULE_REF,
+  BLUEPRINT_TASSADAR_LINKED_FIXTURE_MODULE_REF,
+  BLUEPRINT_TASSADAR_MODULE_FIXTURE_REGISTRY_REF,
+  BlueprintTassadarModuleStepEvidence,
+  type BlueprintTassadarModuleStepEvidence as BlueprintTassadarModuleStepEvidenceType,
+  BlueprintTassadarModuleStepRefused,
+  BlueprintTassadarModuleStepUnsafe,
+  BlueprintTassadarModuleStepVerdict,
+  type BlueprintTassadarModuleStepVerdict as BlueprintTassadarModuleStepVerdictType,
+  executeBlueprintTassadarModuleStep,
+  type BlueprintTassadarModuleStepError,
+} from './services/tassadar-module-step'
 
 export {
   assertBlueprintContinuationDecisionEvidenceOnly,

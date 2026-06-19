@@ -180,6 +180,7 @@ export const BLUEPRINT_CONTRACT_EXPORT_SEED: BlueprintContractExportSeed = {
     jsonSchema('BlueprintProgramSignature', 'public_refs_only'),
     jsonSchema('BlueprintModuleVersion', 'operator_refs_only'),
     jsonSchema('BlueprintProgramRunRecord', 'operator_refs_only'),
+    jsonSchema('BlueprintTassadarModuleStepEvidence', 'operator_refs_only'),
     jsonSchema('ProbeBlueprintProgramRunEvidence', 'operator_refs_only'),
     jsonSchema(
       'BlueprintProgramRunEvidenceIntakeResponse',
@@ -313,6 +314,16 @@ export const BLUEPRINT_CONTRACT_EXPORT_SEED: BlueprintContractExportSeed = {
       privacyPolicy: 'public_refs_only',
       receiptRef: 'receipt.release_gate',
       retentionPolicyRef: 'retention.blueprint.public_receipt_refs',
+      stability: 'seed',
+    },
+    {
+      consumers: operatorConsumers(),
+      evidenceSchemaRef:
+        'schema.blueprint.BlueprintTassadarModuleStepEvidence.v1',
+      id: 'blueprint_receipt.tassadar_module_step.v1',
+      privacyPolicy: 'operator_refs_only',
+      receiptRef: 'receipt.openagents.blueprint_tassadar_step',
+      retentionPolicyRef: 'retention.blueprint.operator_receipt_refs',
       stability: 'seed',
     },
     {

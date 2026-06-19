@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Effect, Schema as S } from "effect";
 import {
+  BlueprintTassadarModuleStepEvidence,
   blueprintProgramRunEvidenceFlagsAreEvidenceOnly,
   isBlueprintProjectionPrivateDataSafe,
 } from "./contracts";
@@ -36,6 +37,7 @@ export const ProbeBlueprintProgramRunEvidence = S.Struct({
   registryVersionRef: S.String,
   routeRef: S.String,
   runnerRef: S.optional(S.String),
+  tassadarModuleStepEvidence: S.optional(S.Array(BlueprintTassadarModuleStepEvidence)),
   threadRef: S.optional(S.String),
   toolCallbackRefs: S.Array(S.String),
   typedOutput: S.Record(S.String, S.Unknown),

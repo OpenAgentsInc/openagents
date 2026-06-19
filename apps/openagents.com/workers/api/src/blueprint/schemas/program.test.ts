@@ -6,6 +6,7 @@ import {
   type BlueprintProgramType,
   BlueprintProgramSignature as BlueprintProgramSignatureSchema,
   blueprintProgramSignatureSupportsFamily,
+  blueprintProgramToolScopeIsTassadarModuleStep,
   BlueprintProgramType as BlueprintProgramTypeSchema,
   blueprintProgramTypeRequiredReceiptRefs,
   blueprintProgramTypeRequiresApproval,
@@ -130,5 +131,39 @@ describe('Blueprint Program Type and Program Signature schemas', () => {
         status: 'published',
       }),
     ).toThrow()
+  })
+
+  test('decodes a typed Tassadar module step bound to a Blueprint tool scope', () => {
+    const scope = S.decodeUnknownSync(BlueprintProgramTypeSchema)({
+      ...programTypeFixture,
+      toolScopes: [
+        {
+          access: 'evidence',
+          allowedSurfaces: ['agent_api', 'pylon_desktop'],
+          requiresApproval: false,
+          tassadarModuleStep: {
+            executionMode: 'fixture_bound',
+            expectedCapabilityRef: 'capability.tassadar_poc.numeric_model_executor',
+            expectedClaimClass: 'compiled dense ALM module / exact replay gate',
+            expectedModuleDigest:
+              'cfda0fe5dcf42e16db9e18696731427f0f30915fd3100d38da2dcc8411433e2c',
+            expectedTraceDigest:
+              '2465d2c2af5077b4cf44c6eddbdc5aba2859029e30062f49a30e669acfc8e9d2',
+            expectedTrustPosture: 'benchmark_gated_internal',
+            kind: 'tassadar_module_step',
+            moduleKind: 'dense_weight_module',
+            moduleRef:
+              'alm.dense.alm.numeric.tassadar.alm_wasm_interpreter.v1.tassadar_corpus.loop_sum_v1',
+            registryRef: 'registry.tassadar_modules.fixture.v0',
+            stepRef: 'step.tassadar.loop_sum_dense',
+          },
+          toolRef: 'tool.tassadar.module.execute',
+        },
+      ],
+    }).toolScopes[0]
+
+    expect(scope).toBeDefined()
+    expect(scope?.access).toBe('evidence')
+    expect(blueprintProgramToolScopeIsTassadarModuleStep(scope!)).toBe(true)
   })
 })

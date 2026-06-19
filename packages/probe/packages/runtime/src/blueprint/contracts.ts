@@ -54,6 +54,27 @@ export type BlueprintReceiptRequirementKind = typeof BlueprintReceiptRequirement
 export const BlueprintToolAccess = S.Literals(["read", "evidence", "propose_action"]);
 export type BlueprintToolAccess = typeof BlueprintToolAccess.Type;
 
+export const BlueprintTassadarModuleStepKind = S.Literals(["dense_weight_module", "linked_dense_module"]);
+export type BlueprintTassadarModuleStepKind = typeof BlueprintTassadarModuleStepKind.Type;
+
+export const BlueprintTassadarModuleStepExecutionMode = S.Literals(["fixture_bound", "registry_resolved"]);
+export type BlueprintTassadarModuleStepExecutionMode = typeof BlueprintTassadarModuleStepExecutionMode.Type;
+
+export const BlueprintTassadarModuleStepBinding = S.Struct({
+  executionMode: BlueprintTassadarModuleStepExecutionMode,
+  expectedCapabilityRef: S.String,
+  expectedClaimClass: S.String,
+  expectedModuleDigest: S.String,
+  expectedTraceDigest: S.String,
+  expectedTrustPosture: S.String,
+  kind: S.Literal("tassadar_module_step"),
+  moduleKind: BlueprintTassadarModuleStepKind,
+  moduleRef: S.String,
+  registryRef: S.String,
+  stepRef: S.String,
+});
+export type BlueprintTassadarModuleStepBinding = typeof BlueprintTassadarModuleStepBinding.Type;
+
 export const BlueprintObjectiveSurface = S.Literals([
   "agent_api",
   "customer_dashboard",
@@ -118,6 +139,7 @@ export const BlueprintProgramToolScope = S.Struct({
   access: BlueprintToolAccess,
   allowedSurfaces: S.Array(BlueprintObjectiveSurface),
   requiresApproval: S.Boolean,
+  tassadarModuleStep: S.optional(BlueprintTassadarModuleStepBinding),
   toolRef: S.String,
 });
 export type BlueprintProgramToolScope = typeof BlueprintProgramToolScope.Type;
@@ -295,6 +317,39 @@ export const BlueprintProgramRunDetailProjection = S.Struct({
 });
 export type BlueprintProgramRunDetailProjection = typeof BlueprintProgramRunDetailProjection.Type;
 
+export const BlueprintTassadarModuleStepVerdict = S.Literals(["verified", "rejected"]);
+export type BlueprintTassadarModuleStepVerdict = typeof BlueprintTassadarModuleStepVerdict.Type;
+
+export const BlueprintTassadarModuleStepEvidence = S.Struct({
+  authorityBoundary: S.Literal("evidence_only"),
+  blockerRefs: S.Array(S.String),
+  capabilityRef: S.String,
+  claimClass: S.String,
+  contentRedacted: S.Literal(true),
+  directMutationDisabled: S.Literal(true),
+  evidenceRefs: S.Array(S.String),
+  expectedModuleDigest: S.String,
+  expectedTraceDigest: S.String,
+  kind: S.Literal("blueprint_tassadar_module_step_evidence"),
+  moduleDigest: S.String,
+  moduleKind: BlueprintTassadarModuleStepKind,
+  moduleRef: S.String,
+  noDeploy: S.Literal(true),
+  noEmail: S.Literal(true),
+  noSourceMutation: S.Literal(true),
+  noSpend: S.Literal(true),
+  observedAt: S.String,
+  receiptRefs: S.Array(S.String),
+  registryRef: S.String,
+  replayedTraceDigest: S.NullOr(S.String),
+  result: S.Record(S.String, S.Unknown),
+  stepRef: S.String,
+  toolRef: S.String,
+  trustPosture: S.String,
+  verdict: BlueprintTassadarModuleStepVerdict,
+});
+export type BlueprintTassadarModuleStepEvidence = typeof BlueprintTassadarModuleStepEvidence.Type;
+
 export const BlueprintProgramRegistryEntry = S.Struct({
   approvalRequired: S.Boolean,
   backendKinds: S.Array(S.String),
@@ -442,6 +497,7 @@ export const ProbeToolMenuTool = S.Struct({
   inputSchemaRef: S.String,
   programSignatureId: S.String,
   requiresApproval: S.Boolean,
+  tassadarModuleStep: S.optional(BlueprintTassadarModuleStepBinding),
   toolRef: S.String,
 });
 export type ProbeToolMenuTool = typeof ProbeToolMenuTool.Type;
