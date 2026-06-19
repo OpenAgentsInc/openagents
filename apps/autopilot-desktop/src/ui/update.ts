@@ -35,6 +35,7 @@ import {
   PlanTrainingRunWindow,
   QueueTrainingCloseout,
   QueueTrainingLaunch,
+  PersistPreferences,
   ReconcileTrainingWindow,
   RemoveManagedAccount,
   RequestTrainingBootstrapGrant,
@@ -113,6 +114,16 @@ import type {
 type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
 const noCommands: ReadonlyArray<Command.Command<Message>> = []
+
+// #5472: build the PersistPreferences command from the (already-updated) model,
+// so the four preference handlers can't drift on which fields are saved.
+const persistPreferencesFor = (model: Model): Command.Command<Message> =>
+  PersistPreferences({
+    theme: model.themePreference,
+    defaultAdapter: model.defaultAdapter,
+    defaultLane: model.defaultLane,
+    showNotificationPanel: model.showNotificationPanel,
+  })
 
 const proofReplayCommandRequestForModel = (
   model: Model,
@@ -1743,6 +1754,42 @@ export const update = (model: Model, message: Message): Result => {
       return [Model.make({ ...model, spawnVerify: message.value }), noCommands]
     case "ChangedSpawnLane":
       return [Model.make({ ...model, spawnLane: message.lane }), noCommands]
+
+    // ── Settings preferences (#5472) ─────────────────────────────────────────
+    // Each handler (a) writes the preference field, (b) for theme/defaults makes
+    // the choice take effect immediately, and (c) persists via PersistPreferences
+    // (local, refs-only — no RPC). A `persist` helper keeps the four writes from
+    // drifting on which fields get saved.
+    case "ChangedThemePreference": {
+      const next = Model.make({ ...model, themePreference: message.theme })
+      return [next, [persistPreferencesFor(next)]]
+    }
+    case "ChangedDefaultAdapter": {
+      // Persist the default AND seed the live spawn adapter so the new default
+      // takes effect now (spawn/composer/chat read `spawnAdapter` directly).
+      const next = Model.make({
+        ...model,
+        defaultAdapter: message.adapter,
+        spawnAdapter: message.adapter,
+      })
+      return [next, [persistPreferencesFor(next)]]
+    }
+    case "ChangedDefaultLane": {
+      const next = Model.make({
+        ...model,
+        defaultLane: message.lane,
+        spawnLane: message.lane,
+      })
+      return [next, [persistPreferencesFor(next)]]
+    }
+    case "ToggledNotificationPanel": {
+      const next = Model.make({ ...model, showNotificationPanel: message.show })
+      return [next, [persistPreferencesFor(next)]]
+    }
+    case "SettledPersistPreferences":
+      // No-op: the preference values already live in the Model; this only closes
+      // the persistence command (side effect done in the command, not here).
+      return [model, noCommands]
     case "ClickedSpawn": {
       const validation = validateSpawnRequest({
         adapter: model.spawnAdapter,

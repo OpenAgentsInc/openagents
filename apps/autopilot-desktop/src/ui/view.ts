@@ -89,6 +89,10 @@ import {
   ChangedSpawnObjective,
   ChangedSpawnVerify,
   ChangedSpawnLane,
+  ChangedThemePreference,
+  ChangedDefaultAdapter,
+  ChangedDefaultLane,
+  ToggledNotificationPanel,
   ChangedChatInput,
   ChangedAddAccountHome,
   ChangedAddAccountPriority,
@@ -165,6 +169,8 @@ import {
   groupForPane,
   type NavGroup,
 } from "./nav"
+// #5472: live theme attribute helper for the Settings preferences.
+import { themeAttr } from "./preferences"
 import {
   approvalLabel,
   artifactLineText,
@@ -4248,6 +4254,29 @@ const installReadinessRows = (
   )
 }
 
+// #5472: a reusable segmented toggle for a Settings preference. Each option is
+// a button; the active one is highlighted. Reuses the existing `.adapter-toggle`
+// / `.adapter-btn` styles so preferences match the spawn-form look. `onSelect`
+// maps the chosen option to the Message the reducer handles.
+const settingsToggle = <T extends string>(
+  options: ReadonlyArray<{ readonly value: T; readonly label: string }>,
+  selected: T,
+  onSelect: (value: T) => Message,
+): Html =>
+  h.div(
+    [cls("adapter-toggle")],
+    options.map((option) =>
+      h.button(
+        [
+          cls(`adapter-btn${selected === option.value ? " active" : ""}`),
+          h.Type("button"),
+          h.OnClick(onSelect(option.value)),
+        ],
+        [option.label],
+      ),
+    ),
+  )
+
 const settingsPane = (model: Model): Html => {
   const node = modelNode(model)
   const installReadiness = modelInstallReadiness(model)
@@ -4315,17 +4344,73 @@ const settingsPane = (model: Model): Html => {
           "The desktop app connects to the local Pylon node over loopback (auto-discovered home: .pylon-tailnet / .pylon-local).",
         ),
       ]),
-      card("Notifications", [
-        h.p(
-          [cls("card-body")],
+      // #5472: functional defaults. The chosen adapter/lane are persisted AND
+      // seed the live spawn fields, so spawn/composer/chat use them without any
+      // hardcoded fallback. Editing here changes the default for the next turn.
+      card("Defaults", [
+        h.p([cls("card-body")], [
+          "The adapter and execution lane new sessions start with. Spawn, Composer, and Chat read these — change them once here instead of per-session.",
+        ]),
+        h.label([cls("field-label")], ["Default adapter"]),
+        settingsToggle(
           [
-            "Desktop OS notifications fire on new session state transitions (CL-30). No configuration required — notifications are sent automatically when a session changes state.",
+            { value: "codex" as const, label: SPAWN_ADAPTER_LABEL.codex },
+            { value: "claude_agent" as const, label: SPAWN_ADAPTER_LABEL.claude_agent },
+            { value: "apple_fm" as const, label: SPAWN_ADAPTER_LABEL.apple_fm },
           ],
+          model.defaultAdapter,
+          (adapter) => ChangedDefaultAdapter({ adapter }),
+        ),
+        h.label([cls("field-label")], ["Default execution lane"]),
+        settingsToggle(
+          (["auto", "local", "cloud-gcp", "cloud-shc"] as const).map((lane) => ({
+            value: lane,
+            label: spawnLaneLabel(lane),
+          })),
+          model.defaultLane,
+          (lane) => ChangedDefaultLane({ lane }),
         ),
       ]),
+      // #5472: a real Theme control (was static "read-only" copy). Persisted and
+      // applied live via the `data-theme` attribute on the app shell (rootView)
+      // + the [data-theme="light"] CSS overrides. Dark is the canonical default.
       card("Theme", [
-        h.p([cls("card-body")], ["Dark (shared tokens)"]),
-        emptyLine("Theme is read-only. All surfaces share the canonical dark token palette."),
+        h.p([cls("card-body")], [
+          "Switches the desktop between the canonical dark palette and a light palette. Applied immediately and remembered across restarts.",
+        ]),
+        settingsToggle(
+          [
+            { value: "dark" as const, label: "Dark" },
+            { value: "light" as const, label: "Light" },
+          ],
+          model.themePreference,
+          (theme) => ChangedThemePreference({ theme }),
+        ),
+      ]),
+      // #5472: notifications. The in-app feed visibility is a real persisted
+      // toggle (gates the panel below). The OS channel is honestly described as
+      // always-on / not yet user-gateable from here (it fires in the Bun poll).
+      card("Notifications", [
+        h.p([cls("card-body")], [
+          "Show the in-app notification feed in Settings: ",
+          h.strong([], [model.showNotificationPanel ? "on" : "off"]),
+        ]),
+        settingsToggle(
+          [
+            { value: "on" as const, label: "Show feed" },
+            { value: "off" as const, label: "Hide feed" },
+          ],
+          model.showNotificationPanel ? "on" : "off",
+          (value) => ToggledNotificationPanel({ show: value === "on" }),
+        ),
+        emptyLine(
+          "Desktop OS notifications fire automatically on new session state transitions (CL-30) and are not yet user-configurable here — this toggle only controls the in-app feed.",
+        ),
+        model.showNotificationPanel
+          ? modelNotifications(model)
+            ? notificationsSection(modelNotifications(model) as NotificationCenterView)
+            : emptyLine("No notifications yet.")
+          : h.empty,
       ]),
       card("Updates", [
         h.p(
@@ -4335,7 +4420,7 @@ const settingsPane = (model: Model): Html => {
           ],
         ),
         emptyLine(
-          "Update chooser: available actions are full, bsdiff, or none.",
+          "Update behavior is managed by the app (not yet user-configurable here): available modes are full, bsdiff, or none.",
         ),
       ]),
       card("About", [
@@ -5313,18 +5398,23 @@ const paneView = (model: Model): Html => {
 }
 
 const rootView = (model: Model): Html => {
+  // #5472: the live theme attribute. Both app-shell roots carry `data-theme` so
+  // the (central) CSS can restyle for light mode; `dark` matches the hard-coded
+  // dark palette so it's a visual no-op, and switching to `light` takes effect
+  // immediately (no reload). See index.html `[data-theme="light"]` overrides.
+  const themeData = h.DataAttribute("theme", themeAttr(model.themePreference))
   // The network home remains immersive: fullscreen replay scene, no sidebar
   // chrome, plus the public activity strip from #5428. The command palette
   // (#5464) still overlays it so Cmd-K works everywhere.
   if (model.pane === "network") {
     return h.div(
-      [cls("app-shell app-shell-network")],
+      [cls("app-shell app-shell-network"), themeData],
       [networkPane(model), commandPalette(model)],
     )
   }
   const fullscreenTraining = model.pane === "training-fullscreen"
   return h.div(
-    [cls("app-shell")],
+    [cls("app-shell"), themeData],
     [
       sidebar(model),
       h.main(

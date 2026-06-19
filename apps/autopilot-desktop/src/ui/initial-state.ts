@@ -9,6 +9,11 @@ import {
 } from "./commands"
 import type { Message } from "./message"
 import { initialModel, Model } from "./model"
+// #5472: load the locally-persisted Settings preferences and apply them to the
+// initial model so theme + spawn defaults take effect from app entry. Loaded
+// here (the real app entry), not in `initialModel`, so the shared neutral base
+// stays deterministic for the view/update tests (which never touch storage).
+import { loadPreferences } from "./preferences"
 
 type InitialRuntimeState = readonly [
   Model,
@@ -16,8 +21,18 @@ type InitialRuntimeState = readonly [
 ]
 
 export const initialRuntimeState = (): InitialRuntimeState => {
+  const preferences = loadPreferences()
   const model = Model.make({
     ...initialModel,
+    // #5472: apply the saved preferences. `defaultAdapter`/`defaultLane` ALSO
+    // seed the live spawn fields so the saved default is what spawn/composer/
+    // chat use without any extra wiring. Identity / Pylon home are untouched.
+    themePreference: preferences.theme,
+    defaultAdapter: preferences.defaultAdapter,
+    defaultLane: preferences.defaultLane,
+    showNotificationPanel: preferences.showNotificationPanel,
+    spawnAdapter: preferences.defaultAdapter,
+    spawnLane: preferences.defaultLane,
     // AO-4/C5 (#5441/#5445/#5454): launch starts by loading the onboarding
     // projection. Fresh users see the identity choice + live chain; returning
     // users whose projection is already complete auto-route to Chat when

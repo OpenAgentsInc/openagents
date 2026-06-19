@@ -17,7 +17,10 @@ import {
 } from "../shared/proof-replays"
 import type { OnboardingStatusResponse } from "../shared/rpc"
 import { ProofReplayCommandRequest } from "./model"
+// #5472: local preference persistence (no RPC verb — writes localStorage).
+import { savePreferences } from "./preferences"
 import {
+  SettledPersistPreferences,
   FailedCoordinatorToggle,
   FailedBuiltInAgent,
   FailedAppleFmSession,
@@ -1380,4 +1383,28 @@ export const SetManagedAccountPriority = Command.define(
       ),
     ),
   ),
+)
+
+// #5472: persist the Settings preferences locally (localStorage, refs-only). No
+// RPC verb / Bun contract change — `savePreferences` is a synchronous webview
+// write, wrapped in Effect.sync and best-effort (a storage failure is swallowed
+// inside savePreferences, so this command never fails). The reducer already
+// holds the chosen values; this only writes them through so they survive a
+// restart. Returns the no-op SettledPersistPreferences to close the command.
+export const PersistPreferences = Command.define(
+  "PersistPreferences",
+  {
+    theme: S.Literals(["dark", "light"]),
+    defaultAdapter: S.Literals(["codex", "claude_agent", "apple_fm"]),
+    defaultLane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
+    showNotificationPanel: S.Boolean,
+  },
+  SettledPersistPreferences,
+)((preferences) =>
+  Effect.sync(() => {
+    // `preferences` is already decoded to the Preferences shape by the command
+    // args schema (the literals/boolean match `Preferences` field-for-field).
+    savePreferences(preferences)
+    return SettledPersistPreferences()
+  }),
 )
