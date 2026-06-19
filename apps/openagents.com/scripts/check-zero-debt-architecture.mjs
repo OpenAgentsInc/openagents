@@ -237,7 +237,12 @@ const budgetChecks = [
     // returns `Effect.Effect<Response>` like the sibling public read handlers.
     // Ratchet back down when the marketplace handlers are extracted behind
     // route mappers.
-    budget: 85,
+    // Raised 85 -> 86 on 2026-06-19 (#5519) for the INERT Autopilot all-in-one
+    // composed-run listing handler (`handleAutopilotComposedRunApi`), which
+    // returns `Effect.Effect<Response>` like the sibling public read handlers.
+    // Ratchet back down when the composed-run handlers are extracted behind
+    // route mappers.
+    budget: 86,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -535,6 +540,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/marketplace-product-composition.ts',
     route: '/api/public/marketplace/composed-products',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/autopilot-composed-run.ts',
+    route: '/api/public/autopilot/composed-runs',
     status: 'staleness_declared',
   },
   {

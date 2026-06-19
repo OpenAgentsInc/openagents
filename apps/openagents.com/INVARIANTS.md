@@ -1711,6 +1711,18 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     (`MARKETPLACE_COMPOSE_AND_LIST_ENABLED`, default off => empty store) and the
     payload always reports `inert: true` / `promiseState: 'planned'`; it makes
     no billing, fulfillment, or live-product claim.
+  - `GET /api/public/autopilot/composed-runs` — live at read over the INERT
+    Autopilot all-in-one composed-run store (EPIC #5510, #5519; promises
+    `autopilot.all_in_one_business_system.v1` + `cloud.primitives_suite.v1`, both
+    planned) — compliant (`generatedAt`, `live_at_read` contract). The surface is
+    flag-gated (`AUTOPILOT_COMPOSED_RUN_ENABLED`, default off => empty store) and
+    the payload always reports `inert: true` / `promiseState: 'planned'` over both
+    capstone promise ids, with the three composition blockers surfaced as
+    `unclearedBlockerRefs`. It shows the composition SHAPE only (one balance ref,
+    one receipt envelope referencing per-component receipt refs derived from the
+    inference / fine-tuning / sandbox primitive scaffolds); it provisions no
+    primitive, debits no balance, and makes no billing, settlement, or
+    live-business claim.
   - `GET /api/public/customer-one-cohort` — live at read over Customer #1
     cohort source rows and privacy-review evidence — compliant (`generatedAt`,
     contract, evidence-only opaque cohort refs, generic labels, counts, blockers,

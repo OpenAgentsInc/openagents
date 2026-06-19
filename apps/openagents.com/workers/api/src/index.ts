@@ -32,6 +32,11 @@ import {
   handleMarketplaceCompositionApi,
   isMarketplaceComposeAndListEnabled,
 } from './marketplace-composition-routes'
+import {
+  AutopilotComposedRunEndpoint,
+  handleAutopilotComposedRunApi,
+  isAutopilotComposedRunEnabled,
+} from './autopilot-composed-run-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
@@ -7906,6 +7911,21 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleMarketplaceCompositionApi(request, {
         enabled: isMarketplaceComposeAndListEnabled(
           env.MARKETPLACE_COMPOSE_AND_LIST_ENABLED,
+        ),
+      }),
+  },
+  {
+    // Autopilot all-in-one composed-run scaffold (#5510, #5519). INERT: the
+    // store is empty unless AUTOPILOT_COMPOSED_RUN_ENABLED is armed, and the
+    // response always reports inert/planned over BOTH capstone promises
+    // (autopilot.all_in_one_business_system.v1 + cloud.primitives_suite.v1). It
+    // shows the composition shape (one balance, one receipt envelope across the
+    // primitive scaffolds) and makes no live/billable claim. Read-only.
+    path: AutopilotComposedRunEndpoint,
+    handler: (request, env) =>
+      handleAutopilotComposedRunApi(request, {
+        enabled: isAutopilotComposedRunEnabled(
+          env.AUTOPILOT_COMPOSED_RUN_ENABLED,
         ),
       }),
   },

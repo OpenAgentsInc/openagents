@@ -8,6 +8,13 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // store) on the live Worker until the marketplace build lands. Set
   // "true"/"1"/"on" to arm the (still planned/inert) surface.
   MARKETPLACE_COMPOSE_AND_LIST_ENABLED?: string | undefined
+  // Autopilot all-in-one composed-run scaffold flag (EPIC #5510, #5519). Default
+  // OFF: the `/api/public/autopilot/composed-runs` listing surface is INERT
+  // (empty store) on the live Worker. Set "true"/"1"/"on" to arm the (still
+  // planned/inert) surface. The composition makes no live/billable claim and the
+  // autopilot.all_in_one_business_system.v1 + cloud.primitives_suite.v1 promises
+  // stay planned regardless.
+  AUTOPILOT_COMPOSED_RUN_ENABLED?: string | undefined
   // Inference gateway feature flag (EPIC #5474, #5476). Default OFF: the
   // `/v1/chat/completions` route is inert on the live Worker until the
   // inference build lands. Set "true"/"1"/"on" to enable.
