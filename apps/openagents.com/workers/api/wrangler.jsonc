@@ -204,6 +204,13 @@
       "vars": {
         "ARTANIS_SCHEDULED_RUNNER_ENABLED": "false",
         "INFERENCE_GATEWAY_ENABLED": "true",
+        // Ep239 "Let's Make Money" loop surfaces — armed on STAGING ONLY so
+        // external agent-testers can exercise the inert/scaffold endpoints.
+        // Production (the top-level config above) leaves these unset, so the
+        // markets/marketplace/cloud surfaces stay default-OFF (404) on prod.
+        "CLOUD_FINE_TUNING_ENABLED": "true",
+        "CLOUD_SANDBOX_COMPUTE_ENABLED": "true",
+        "MARKETPLACE_COMPOSE_AND_LIST_ENABLED": "true",
         "GITHUB_CLIENT_ID": "Ov23lirHI1DWTzZ1zT1u",
         "GITHUB_CLIENT_SECRET": "staging-unconfigured",
         "OPENAUTH_CLIENT_ID": "openagents-web",
