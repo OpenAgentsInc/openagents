@@ -21,7 +21,6 @@ import {
   VERIFIED_OWNER_FREE_CAP_USD_MICROS,
   accrueEarnedAllowance,
   baseFreeCapUsdMicros,
-  checkFreeAllowancePreflight,
   decideFreeAllowance,
   isFreeEligibleModel,
   usdToMicrosCeil,
@@ -481,85 +480,5 @@ describe('accrueEarnedAllowance (real D1)', () => {
     expect(d.remainingUsdMicros).toBe(
       EARNED_ALLOWANCE_PER_REFERRED_SIGNUP_USD_MICROS,
     )
-  })
-})
-
-describe('checkFreeAllowancePreflight (balance-gate bypass)', () => {
-  const seedExhaustedTally = async (
-    db: D1Database,
-    ownerKey: string,
-    identityKind: 'verified' | 'unclaimed',
-    cumulative: number,
-  ): Promise<void> => {
-    await db
-      .prepare(
-        `INSERT INTO inference_free_usage_tally
-           (owner_key, identity_kind, cumulative_free_usd_micros, free_request_count, created_at, updated_at)
-         VALUES (?, ?, ?, 1, ?, ?)`,
-      )
-      .bind(ownerKey, identityKind, cumulative, NOW, NOW)
-      .run()
-  }
-
-  test('eligible for a free-eligible model when the owner has fresh allowance', async () => {
-    const db = makeDb()
-    const decision = await checkFreeAllowancePreflight({
-      db,
-      resolveOwnerIdentity: verifiedOwner('owner-1'),
-    })('agent:user-a', 'gemini-3.5-flash')
-    expect(decision.eligible).toBe(true)
-    expect(decision.remainingUsdMicros).toBe(VERIFIED_OWNER_FREE_CAP_USD_MICROS)
-    expect(decision.identityKind).toBe('verified')
-  })
-
-  test('an unclaimed account still gets the tiny taste pool', async () => {
-    const db = makeDb()
-    const decision = await checkFreeAllowancePreflight({
-      db,
-      resolveOwnerIdentity: unclaimed,
-    })('agent:user-a', 'gemini-3.5-flash')
-    expect(decision.eligible).toBe(true)
-    expect(decision.remainingUsdMicros).toBe(UNCLAIMED_TASTE_FREE_CAP_USD_MICROS)
-    expect(decision.identityKind).toBe('unclaimed')
-  })
-
-  test('NOT eligible for a non-free model (premium/open lanes still gate on balance)', async () => {
-    const db = makeDb()
-    for (const model of ['claude-sonnet', 'gpt-4o', 'gpt-oss-20b']) {
-      const decision = await checkFreeAllowancePreflight({
-        db,
-        resolveOwnerIdentity: verifiedOwner('owner-1'),
-      })('agent:user-a', model)
-      expect(decision.eligible).toBe(false)
-    }
-  })
-
-  test('NOT eligible once the owner pool is exhausted', async () => {
-    const db = makeDb()
-    // Verified owner key is `owner:<ownerUserId>`; exhaust the whole $10 base.
-    await seedExhaustedTally(
-      db,
-      'owner:owner-1',
-      'verified',
-      VERIFIED_OWNER_FREE_CAP_USD_MICROS,
-    )
-    const decision = await checkFreeAllowancePreflight({
-      db,
-      resolveOwnerIdentity: verifiedOwner('owner-1'),
-    })('agent:user-a', 'gemini-3.5-flash')
-    expect(decision.eligible).toBe(false)
-    expect(decision.remainingUsdMicros).toBe(0)
-  })
-
-  test('resolution error => not eligible (the balance gate stands)', async () => {
-    const db = makeDb()
-    const throwingResolver: VerifiedOwnerIdentityResolver = async () => {
-      throw new Error('owner resolver unavailable')
-    }
-    const decision = await checkFreeAllowancePreflight({
-      db,
-      resolveOwnerIdentity: throwingResolver,
-    })('agent:user-a', 'gemini-3.5-flash')
-    expect(decision.eligible).toBe(false)
   })
 })

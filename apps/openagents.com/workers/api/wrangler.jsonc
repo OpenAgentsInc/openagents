@@ -208,7 +208,7 @@
         "GITHUB_CLIENT_SECRET": "staging-unconfigured",
         "OPENAUTH_CLIENT_ID": "openagents-web",
         "OPENAUTH_ISSUER_URL": "https://auth.openagents.com",
-        "OPENAGENTS_APP_URL": "https://openagents-staging.openagents.workers.dev",
+        "OPENAGENTS_APP_URL": "https://openagents.com",
         "MDK_CHECKOUT_CONFIG_REF": "config.openagents.mdk.cloudflare_container",
         "MDK_CHECKOUT_CREDENTIAL_BINDING_REF": "credential_binding.openagents.mdk.cloudflare_worker_binding",
         "MDK_CHECKOUT_ENVIRONMENT": "production",

@@ -116,59 +116,6 @@ describe('POST /v1/chat/completions', () => {
     expect(body.availableMsat).toBe(0)
   })
 
-  test('zero-balance + free-allowance eligible => NOT 402 (free bypass)', async () => {
-    // A zero-balance account whose (account, model) is free-eligible with a
-    // remaining owner pool must reach dispatch, not be rejected by the balance
-    // gate; the metering hook owns the authoritative free accrual after that.
-    const seen: Array<{ accountRef: string; model: string }> = []
-    const response = await run(
-      handleChatCompletions(
-        chatRequest(helloBody),
-        baseDeps({
-          checkFreeAllowance: async (accountRef, model) => {
-            seen.push({ accountRef, model })
-            return { eligible: true }
-          },
-          readAvailableMsat: emptyBalance,
-        }),
-      ),
-    )
-    expect(response.status).toBe(200)
-    expect(seen).toHaveLength(1)
-  })
-
-  test('zero-balance + free-allowance NOT eligible => still 402', async () => {
-    const response = await run(
-      handleChatCompletions(
-        chatRequest(helloBody),
-        baseDeps({
-          checkFreeAllowance: async () => ({ eligible: false }),
-          readAvailableMsat: emptyBalance,
-        }),
-      ),
-    )
-    expect(response.status).toBe(402)
-    const body = (await response.json()) as { error: string }
-    expect(body.error).toBe('insufficient_credits')
-  })
-
-  test('funded balance never calls the free-allowance pre-flight', async () => {
-    let calls = 0
-    const response = await run(
-      handleChatCompletions(
-        chatRequest(helloBody),
-        baseDeps({
-          checkFreeAllowance: async () => {
-            calls += 1
-            return { eligible: true }
-          },
-        }),
-      ),
-    )
-    expect(response.status).toBe(200)
-    expect(calls).toBe(0)
-  })
-
   test('rejects a malformed body with 400', async () => {
     const response = await run(
       handleChatCompletions(

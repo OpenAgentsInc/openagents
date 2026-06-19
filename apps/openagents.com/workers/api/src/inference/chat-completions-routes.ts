@@ -131,20 +131,6 @@ export type ChatCompletionsDeps = Readonly<{
   // prices per-model, any positive balance clears the gate; an account with
   // zero/negative available balance is rejected.
   minimumAvailableMsat?: number
-  // FREE-ALLOWANCE PRE-FLIGHT (EPIC #5474 §1). Read-only mirror of the gate
-  // inside `withFreeAllowance`. The balance gate calls this BEFORE rejecting a
-  // zero/insufficient-balance account: if the (account, model) is free-eligible
-  // and the resolving owner still has remaining free allowance, the request is
-  // allowed through (the metering hook then eats the cost and accrues it), so a
-  // genuinely-free request is never falsely 402'd. Default undefined => the gate
-  // is unchanged (a zero-balance account is rejected). Resolution errors return
-  // not-eligible, so the balance gate stands. Wired by the Worker to
-  // `checkFreeAllowancePreflight` against the SAME owner-identity resolver the
-  // metering hook uses, keeping the bypass and the accrual consistent.
-  checkFreeAllowance?: (
-    accountRef: string,
-    model: string,
-  ) => Promise<{ readonly eligible: boolean }>
   // ABUSE-CONTROL SEAMS (#5486). Both default to undefined => the gate is OPEN
   // (no-op), so the inert/flag-off path and the unconfigured-account path are
   // byte-for-byte unchanged. The decisions are computed by the pure deciders in
@@ -385,29 +371,14 @@ export const handleChatCompletions = (
       deps.readAvailableMsat(session.accountRef),
     )
     if (availableMsat < minimum) {
-      // FREE-ALLOWANCE BYPASS (EPIC #5474 §1). A zero/insufficient-balance
-      // account is NOT rejected when the request is free-eligible AND the
-      // resolving owner still has remaining free allowance — that request would
-      // be eaten by `withFreeAllowance` after dispatch, so 402'ing it here would
-      // make the free tier untestable/unreachable without a funded balance. The
-      // pre-flight is read-only and conservative: non-free models, exhausted
-      // pools, and resolution errors all fall through to the normal 402.
-      const freeAllowed =
-        deps.checkFreeAllowance === undefined
-          ? false
-          : (yield* Effect.promise(() =>
-              deps.checkFreeAllowance!(session.accountRef, requestedModel),
-            )).eligible
-      if (!freeAllowed) {
-        return noStoreJsonResponse(
-          {
-            error: 'insufficient_credits',
-            availableMsat,
-            requiredMsat: minimum,
-          },
-          { status: 402 },
-        )
-      }
+      return noStoreJsonResponse(
+        {
+          error: 'insufficient_credits',
+          availableMsat,
+          requiredMsat: minimum,
+        },
+        { status: 402 },
+      )
     }
 
     // SPEND-CAP GATE (#5486). DISTINCT from the balance gate above: an account
