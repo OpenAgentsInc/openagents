@@ -6300,6 +6300,123 @@ describe('Forum routes', () => {
     })
   })
 
+  test('filters the notifications array to unread items when unread=true is set', async () => {
+    const store = new ForumRouteStore()
+    store.posts[0] = {
+      ...store.posts[0]!,
+      body_text: 'Seed route-test body mentioning @route-test-agent.',
+    }
+    store.watches.push({
+      actor_ref: 'agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      archived_at: null,
+      created_at: '2026-06-05T20:05:00.000Z',
+      forum_id: '33333333-3333-4333-8333-333333333333',
+      id: 'watch-topic-existing',
+      idempotency_key: 'watch-topic-existing',
+      topic_id: '55555555-5555-4555-8555-555555555555',
+      watch_kind: 'topic',
+    })
+
+    const initialResponse = await route(store, '/api/agents/notifications', {
+      headers: { authorization: 'Bearer oa_agent_route_test' },
+    })
+    const initialBody = JSON.parse(await initialResponse.text()) as Readonly<{
+      notifications: ReadonlyArray<
+        Readonly<{ id: string; kind: string; readState: string }>
+      >
+      summary: Readonly<{ unreadCount: number; totalCount: number }>
+    }>
+    expect(initialResponse.status).toBe(200)
+    const initialNotifications = [...initialBody.notifications]
+    const mention = initialNotifications.find(
+      notification => notification.kind === 'mention',
+    )
+    const watchedTopicReply = initialNotifications.find(
+      notification => notification.kind === 'watched_topic_reply',
+    )
+    expect(mention).toBeDefined()
+    expect(watchedTopicReply).toBeDefined()
+    expect(initialNotifications.every(n => n.readState === 'unread')).toBe(true)
+
+    // Mark exactly one notification (the mention) as read.
+    const markRead = await route(
+      store,
+      `/api/agents/notifications/${encodeURIComponent(mention!.id)}/read`,
+      {
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'notification-read-unread-filter-1',
+        },
+        method: 'POST',
+      },
+    )
+    expect(markRead.status).toBe(201)
+
+    // No param: the broad feed still returns both the read and unread items.
+    const broadResponse = await route(store, '/api/agents/notifications', {
+      headers: { authorization: 'Bearer oa_agent_route_test' },
+    })
+    const broadBody = JSON.parse(await broadResponse.text()) as Readonly<{
+      notifications: ReadonlyArray<
+        Readonly<{ id: string; kind: string; readState: string }>
+      >
+      summary: Readonly<{ unreadCount: number; totalCount: number }>
+    }>
+    expect(broadResponse.status).toBe(200)
+    const broadNotifications = [...broadBody.notifications]
+    expect(broadNotifications).toHaveLength(initialNotifications.length)
+    expect(
+      broadNotifications.some(
+        notification =>
+          notification.id === mention!.id && notification.readState === 'read',
+      ),
+    ).toBe(true)
+    expect(
+      broadNotifications.some(
+        notification => notification.id === watchedTopicReply!.id,
+      ),
+    ).toBe(true)
+
+    // unread=true: only the unread item(s) come back in the array, but the
+    // summary still reports the true server-computed unread count.
+    const unreadResponse = await route(
+      store,
+      '/api/agents/notifications?unread=true',
+      { headers: { authorization: 'Bearer oa_agent_route_test' } },
+    )
+    const unreadBody = JSON.parse(await unreadResponse.text()) as Readonly<{
+      notifications: ReadonlyArray<
+        Readonly<{ id: string; kind: string; readState: string }>
+      >
+      summary: Readonly<{ unreadCount: number; totalCount: number }>
+    }>
+    expect(unreadResponse.status).toBe(200)
+    const unreadNotifications = [...unreadBody.notifications]
+    expect(
+      unreadNotifications.every(
+        notification => notification.readState === 'unread',
+      ),
+    ).toBe(true)
+    expect(
+      unreadNotifications.some(
+        notification => notification.id === mention!.id,
+      ),
+    ).toBe(false)
+    expect(
+      unreadNotifications.some(
+        notification => notification.id === watchedTopicReply!.id,
+      ),
+    ).toBe(true)
+
+    // summary.unreadCount is consistent across both views and equals the true
+    // server unread count (one item was marked read).
+    expect(broadBody.summary.unreadCount).toBe(initialBody.summary.unreadCount - 1)
+    expect(unreadBody.summary.unreadCount).toBe(broadBody.summary.unreadCount)
+    expect(unreadBody.summary.totalCount).toBe(broadBody.summary.totalCount)
+    // The filtered array length matches the true unread count here.
+    expect(unreadNotifications).toHaveLength(unreadBody.summary.unreadCount)
+  })
+
   test('denies participation writes and notifications without a bearer token', async () => {
     const store = new ForumRouteStore()
     const watch = await route(
