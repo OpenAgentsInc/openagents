@@ -480,6 +480,8 @@ import {
   tassadarRealSettlementUtcDayKey,
 } from './tassadar-run-settlement-gate'
 import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
+import { makeFirmupBitcoinSettlementRoutes } from './firmup-bitcoin-settlement-routes'
+import { readFirmupSettleableEscrow } from './firmup-settleable-escrow'
 import { makeD1HygieneDebtReceiptStore } from './hygiene-debt-receipt-store'
 import {
   buildTrainingWindowRecord,
@@ -7110,6 +7112,70 @@ const hygieneLaneSettlementRoutes =
     requireAdminApiToken,
   })
 
+// Firm-up escrow -> real Bitcoin settlement DISPATCH route (openagents #5459,
+// EPIC #5457). Settles ONE firmed-up, EXECUTED-verified labor job to the
+// worker's registered Spark target through the SAME proven #5232 Spark treasury
+// rail and the SAME owner gate as the Tassadar + hygiene lanes, but against an
+// EXECUTED verification verdict (not a manual attestation).
+//
+// INERT by default: with the owner gate OFF (the default everywhere) every
+// settle resolves to the simulation chain. The real branch is unreachable until
+// the owner deliberately arms OPENAGENTS_REAL_SETTLEMENT_GATE with a firm-up
+// run-ref (run.firmup.lane.YYYYMMDD). No firm-up run-ref is armed by this code;
+// the first real firm-up payout is a separate, deliberate prod event.
+//
+// `resolveSettleableEscrow` is the SOURCE OF TRUTH for settleability: it reads
+// the escrow + acceptance + work request server-side. Fail-closed — the escrow
+// must be a `reserved` firm-up escrow with an accepted offer (the provider) and
+// a declared verification command. The operator cannot assert settleability
+// through the request body.
+const firmupBitcoinSettlementRoutes =
+  makeFirmupBitcoinSettlementRoutes<WorkerBindings>({
+    makePayoutLedgerStore: env =>
+      makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(env)),
+    resolveSettleableEscrow: (env, escrowRef) =>
+      readFirmupSettleableEscrow(openAgentsDatabase(env), escrowRef),
+    // REAL Bitcoin settlement wiring (openagents #5232): the SAME proven Spark
+    // treasury rail. INERT unless the gate is armed.
+    makeSettlementPaymentAuthority: (env, context) =>
+      makeTreasuryPaymentAuthority({
+        adapters: [
+          makeSparkTreasuryPayoutAdapter({
+            fetchTreasury: fetchMdkTreasuryPath(env),
+            providerRef: context.providerRef,
+            resolveDestination: () =>
+              Effect.succeed(context.privatePayoutDestination),
+          }),
+        ],
+        ledgerStore: context.ledgerStore,
+      }),
+    readSettlementWalletReadiness: async env => {
+      const fetchTreasury = fetchMdkTreasuryPath(env)
+
+      if (fetchTreasury === undefined) {
+        return 'absent'
+      }
+
+      try {
+        const response = await fetchTreasury('/spark/balance')
+
+        return response.ok ? 'ready' : 'absent'
+      } catch {
+        return 'absent'
+      }
+    },
+    resolveSettlementPayoutDestination: (env, contributorRef) =>
+      resolveSparkPayoutDestination(
+        makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
+        contributorRef,
+        pylonRef =>
+          makeD1PylonApiStore(openAgentsDatabase(env))
+            .readRegistration(pylonRef)
+            .then(registration => registration?.ownerAgentUserId),
+      ),
+    requireAdminApiToken,
+  })
+
 // #5052 (epic #5051): agent-gated worker -> validator executor-trace completion
 // routes. These add the contributor-callable submit/verify path; they are inert
 // with respect to existing admin/closeout/settlement behavior until the pairing
@@ -8564,6 +8630,11 @@ const routeRequest = makeWorkerRouteRequest({
   routeThreadFileRequest: threadFileRoutes.routeThreadFileRequest,
   routeHygieneLaneSettlementRequest: (request, env) =>
     hygieneLaneSettlementRoutes.routeHygieneLaneSettlementRequest(request, env),
+  routeFirmupLaneSettlementRequest: (request, env) =>
+    firmupBitcoinSettlementRoutes.routeFirmupLaneSettlementRequest(
+      request,
+      env,
+    ),
   routeTassadarTraceContributionRequest:
     tassadarTraceContributionRoutes.routeTassadarTraceContributionRequest,
   routeTrainingRunWindowRequest:
