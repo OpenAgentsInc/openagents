@@ -8664,6 +8664,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // retryable provider failure (429 / 503 / 5xx / transport). INERT
         // regardless — the gateway is gated by INFERENCE_GATEWAY_ENABLED above.
         lanePlan: selectAdapterPlan,
+        // Abuse / fair-share / spend-cap gates (#5486): the route exposes
+        // `checkFairShare` and `checkSpendCap` seams whose pure deciders live in
+        // inference-abuse-controls.ts (`decideFairShare` / `decideSpendCap`).
+        // They are deliberately LEFT UNWIRED here (=> the gate is OPEN / no-op)
+        // until a per-account rolling-window counter store (D1/KV keyed by account
+        // + window bucket) lands; wiring them then is a one-line dep add with no
+        // route change. The enforceable money-side abuse control (chargeback /
+        // refund credit clawback, `clawbackInferenceCredits`) hangs off the
+        // Stripe dispute/refund webhook path, not this hot route.
         registry: inferenceProviderRegistry,
       })
     },

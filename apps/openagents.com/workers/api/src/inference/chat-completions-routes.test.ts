@@ -18,6 +18,10 @@ import {
   InferenceProviderRegistry,
 } from './provider-adapter'
 import { STUB_ECHO_ADAPTER_ID, stubEchoAdapter } from './stub-echo-adapter'
+import {
+  decideFairShare,
+  decideSpendCap,
+} from './inference-abuse-controls'
 
 const run = <A>(effect: Effect.Effect<A>): Promise<A> => Effect.runPromise(effect)
 
@@ -363,6 +367,112 @@ describe('POST /v1/chat/completions', () => {
     expect(response.status).toBe(400)
     const body = (await response.json()) as { error: string }
     expect(body.error).toBe('model_unavailable')
+  })
+})
+
+// ABUSE / FAIR-SHARE / SPEND-CAP GATES (#5486) -----------------------------
+// The route exposes `checkFairShare` and `checkSpendCap` seams. Both default to
+// undefined (gate OPEN / no-op) so the inert and unconfigured paths are
+// unchanged; when wired they bind only on the enabled gateway.
+describe('POST /v1/chat/completions abuse gates (#5486)', () => {
+  test('inert: with neither gate wired the request serves normally', async () => {
+    const response = await run(
+      handleChatCompletions(chatRequest(helloBody), baseDeps()),
+    )
+    expect(response.status).toBe(200)
+  })
+
+  test('fair-share: rejects with 429 + RateLimit headers when the request ceiling is hit', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          checkFairShare: async () =>
+            decideFairShare({
+              limits: { maxRequests: 60, maxTokens: 2_000_000, windowSeconds: 60 },
+              usage: { requestsInWindow: 60, tokensInWindow: 0 },
+            }),
+        }),
+      ),
+    )
+    expect(response.status).toBe(429)
+    expect(response.headers.get('ratelimit-limit')).toBe('60')
+    expect(response.headers.get('retry-after')).toBe('60')
+    const body = (await response.json()) as { error: string; reason: string }
+    expect(body.error).toBe('rate_limited')
+    expect(body.reason).toBe('request_rate_exceeded')
+  })
+
+  test('fair-share: rejects with 429 when the token fair-share is exhausted', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          checkFairShare: async () =>
+            decideFairShare({
+              limits: { maxRequests: 60, maxTokens: 1_000, windowSeconds: 60 },
+              usage: { requestsInWindow: 1, tokensInWindow: 1_000 },
+            }),
+        }),
+      ),
+    )
+    expect(response.status).toBe(429)
+    const body = (await response.json()) as { reason: string }
+    expect(body.reason).toBe('token_fair_share_exceeded')
+  })
+
+  test('fair-share: allows when under both ceilings', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          checkFairShare: async () =>
+            decideFairShare({
+              usage: { requestsInWindow: 1, tokensInWindow: 10 },
+            }),
+        }),
+      ),
+    )
+    expect(response.status).toBe(200)
+  })
+
+  test('spend-cap: rejects with 402 spend_cap_exceeded (distinct from insufficient_credits)', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          // Balance is funded; the spend cap is the thing that rejects.
+          checkSpendCap: async () =>
+            decideSpendCap({
+              cap: { maxSpendMsatPerWindow: 1_000, windowSeconds: 86_400 },
+              spentMsatInWindow: 1_001,
+            }),
+        }),
+      ),
+    )
+    expect(response.status).toBe(402)
+    const body = (await response.json()) as {
+      error: string
+      capMsat: number
+    }
+    expect(body.error).toBe('spend_cap_exceeded')
+    expect(body.capMsat).toBe(1_000)
+  })
+
+  test('spend-cap: no cap configured serves normally', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          checkSpendCap: async () =>
+            decideSpendCap({
+              cap: { maxSpendMsatPerWindow: null, windowSeconds: 86_400 },
+              spentMsatInWindow: 999_999,
+            }),
+        }),
+      ),
+    )
+    expect(response.status).toBe(200)
   })
 })
 
