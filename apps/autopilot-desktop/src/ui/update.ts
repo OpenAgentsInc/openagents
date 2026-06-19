@@ -641,7 +641,15 @@ export const update = (model: Model, message: Message): Result => {
         case "navigate-pane":
           return update(model, NavigatedTo({ pane: intent.pane }))
         case "back-to-shell":
-          return update(model, ClosedPanes())
+          // Inline the shell return — do NOT call ClosedPanes() here. The message
+          // constructors are type-only imports in this module, so using one as a
+          // value crashes at runtime ("Can't find variable: ClosedPanes"). This
+          // is byte-identical to the ClosedPanes reducer (pane → shell, palette
+          // closed).
+          return [
+            Model.make({ ...model, pane: "shell", commandPaletteOpen: false }),
+            noCommands,
+          ]
         case "submit-turn": {
           const submit = submitTurnMessage(model, intent.pane)
           return submit ? update(model, submit) : [model, noCommands]
