@@ -36,6 +36,24 @@ change, update its linked runbook **and** fix the pointer here.
 | **Pylon Cloud node** | managed/cloud Pylon node | `apps/pylon/docs/cloud-node-deployment.md` | see runbook | — |
 | **SHC agent** | SHC agent deploy | `apps/openagents.com/docs/2026-06-02-shc-agent-deployment-runbook.md` | see runbook | — |
 
+## Owned Visibility Freshness Smoke
+
+Run the Pylon visibility/replay freshness smoke from owned local, CI, or
+container infrastructure, not GitHub Actions:
+
+```sh
+node apps/openagents.com/scripts/visibility-freshness-smoke.mjs \
+  --base-url https://openagents.com
+```
+
+The smoke checks public route status, activity-timeline `generatedAt` and
+`projection_staleness.v1`, source-lag rows, the SSE stream route, the local
+SpacetimeDB bridge projection plan, replay-clip render queue freshness, and R2
+clip manifest/artifact availability. It exits nonzero for alerting unless
+`--warn-only` is used to collect an evidence report during a known incident.
+Failures name the stale source or broken route so the operator can route the
+fix without manual page refreshes.
+
 ### Pylon npm vs signed OTA feed
 
 The Pylon npm RC and signed standalone RC feed are independent release surfaces.

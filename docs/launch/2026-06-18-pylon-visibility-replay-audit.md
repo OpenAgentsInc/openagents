@@ -943,6 +943,18 @@ fully autonomous self-serve settlement captured by timeline/replay/clip.
      freshness, source lag, SSE health, SpacetimeDB bridge health, render queue
      health, R2 clip availability, and public route status. Alert on stale
      projections instead of discovering them by manual refresh.
+   - Implementation status (2026-06-19, issue #5435): Added
+     `apps/openagents.com/scripts/visibility-freshness-smoke.mjs`, an
+     owned-infra/local Node smoke for public route status, activity timeline
+     freshness, source-lag rows, SSE stream health, SpacetimeDB bridge-plan
+     health, replay-clip render queue freshness, and R2 clip manifest/artifact
+     availability. The smoke exits nonzero for scheduler alerting by default,
+     supports `--warn-only` for manual evidence capture during known incidents,
+     and reports stale source kinds or broken URLs directly in JSON. The
+     deployment hub now documents the command and explicitly keeps it off
+     GitHub Actions. Validation: `cd apps/openagents.com && bunx vitest run
+     scripts/visibility-freshness-smoke.test.ts`, live `--warn-only` smoke
+     against `https://openagents.com`, and `git diff --check`.
 2. **Add browser/canvas smokes for activity and replay surfaces**
    - Body summary: Add browser-capable smokes for `/tassadar`, replay pages, and
      the live-activity page: nonblank WebGL, no anonymous motion, proof drawer
