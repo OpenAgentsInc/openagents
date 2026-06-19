@@ -9,9 +9,9 @@ model is built in: every inference dollar can split three ways — OpenAgents ma
 anyone they sign up). All of it rides the revenue-loop spine (EPIC #5457: RL-1 referral
 ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
 
-> Status: initial thinking docs, not specs. Honest-scope throughout. One hard gate before
-> the Vertex-supply leg ships: **confirm Google/Anthropic ToS permits reselling Vertex
-> Claude inference** (see the gateway doc §7).
+> Status: initial thinking docs, not specs. Honest-scope throughout. Aggregating hosted
+> model inference behind one credits-based API is standard gateway practice (OpenRouter,
+> Together, Fireworks, et al.).
 
 ## Contents
 
@@ -19,8 +19,8 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
    — the core thesis. One OpenAI/Anthropic-compatible API + credits; who it's for (Autopilot
    users with no subscription, BYO-tool users who run out, businesses that can't use personal
    subscriptions, agents); the supply we already hold (**verified Vertex quota**: Global Opus
-   40M / Sonnet 50M / Haiku 60M tok-min, +US/EU); the product, economics, **referral-on-all-
-   inference**, and the ToS gate.
+   40M / Sonnet 50M / Haiku 60M tok-min, +US/EU); the product, economics, and **referral-on-
+   all-inference**.
 
 2. **[`2026-06-19-pricing-vs-factory.md`](./2026-06-19-pricing-vs-factory.md)**
    — comparison with Factory. Their structure (subscription tiers + rolling rate limits +

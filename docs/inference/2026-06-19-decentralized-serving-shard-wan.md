@@ -48,7 +48,7 @@ cheapest viable supply. That doc named two lanes; this adds the third:
 
 | Supply lane | What it is | Margin shape | Status |
 | --- | --- | --- | --- |
-| **Vertex quota** | First-party Google Cloud / Vertex Anthropic quota (project `openagentsgemini`) | Best margin; structurally below retail | Live quota; **resale ToS-gated** (see §7) |
+| **Vertex quota** | First-party Google Cloud / Vertex Anthropic quota (project `openagentsgemini`) | Best margin; structurally below retail | Live quota; standard hosted-model reselling |
 | **Partner passthrough** | Direct Anthropic / OpenAI / others | Lowest margin (pure passthrough); maximal coverage | Available |
 | **Our serving fabric (this doc)** | Pylons serving inference — whole-small or shard-WAN-large | **The lane where margin fans to contributors** | Whole-small: near-term; shard-WAN-large: Psionic-planned |
 
@@ -240,11 +240,6 @@ gateway spend regardless of which supply lane served it.
   extends only after trusted posture is stable, and even then receipts prove same-engine
   reproducibility + node evidence, **not** proof of every internal FLOP. The marketplace
   identity authority for "who may serve" is a product-layer surface, not Psionic.
-- **Vertex-resale ToS caveat (inherited).** Same as the gateway doc §7: confirm Google Cloud
-  + Anthropic terms permit reselling Vertex-served Claude. This gates the **Vertex** lane,
-  not the fabric — the fabric serves models *we* run (open-weight on our network), which is
-  the cleanest resale lane. But the overall gateway must not build the Vertex-resale path
-  until that ToS question clears.
 - **Exact-parity is the non-negotiable payment gate.** Revshare clears against a checkable
   outcome. A run with no exact-greedy parity / no feasible same-engine reference does not pay
   against a strong proof by default; payout policy must decide explicitly and conservatively

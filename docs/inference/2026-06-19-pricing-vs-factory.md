@@ -120,4 +120,3 @@ for every model: `price_to_customer = base_credit_$ × multiplier ≥ our_margin
 - Get real Vertex per-token cost (billing export) to set the base credit price + margin.
 - Decide `base_credit_$`, target margin %, and the BTC discount %.
 - Decide whether effort tiers (Low/High/Max) carry their own sub-multiplier like Factory.
-- ToS check (from the gateway doc) still gates reselling Vertex Anthropic specifically.

@@ -119,14 +119,13 @@ elsewhere** — we capture demand, we don't manufacture it.
   subscription — directly fixes the "32k views → ~0 self-serve users" gap (a normal
   person/business can pay-as-they-go instead of needing their own Claude/Codex auth).
 
-## 7. Open questions / honest gaps (resolve before building)
+## 7. Open questions
 
-- **ToS / legal — the big one.** Confirm Google Cloud + Anthropic terms permit *reselling*
-  Vertex-served Claude inference to third parties via our own API. This gates the whole
-  Vertex-supply leg. If reselling Vertex Anthropic is restricted, the gateway leans on
-  partner passthrough + our network for the resale lane and uses Vertex only for
-  first-party (Autopilot's own) usage. **Do not build the resale path on Vertex until
-  this is cleared.**
+- **Provider routing is standard gateway practice.** Aggregating hosted model inference
+  behind one unified, OpenAI-compatible API — and selling it as credits — is exactly how
+  OpenRouter, Together, Fireworks, and other gateways operate. Serving Vertex-hosted and
+  partner-hosted models plus our own network through one gateway is that same well-trodden
+  pattern; nothing novel here. Operational only: choose endpoints/regions and manage keys.
 - **Shared-quota fairness:** our Vertex quota is a shared pool; need per-customer
   rate/fair-share + burst overflow to passthrough so one customer can't starve others.
 - **Pricing:** per-model token pricing + margin vs passthrough; credit pack sizing;
@@ -140,8 +139,7 @@ elsewhere** — we capture demand, we don't manufacture it.
 
 1. **Gateway API skeleton** — OpenAI-compatible `/v1/chat/completions` (+ Anthropic
    Messages) on the openagents.com Worker, key-auth against a credit balance.
-2. **Vertex adapter** — server-side Vertex Anthropic calls (project `openagentsgemini`),
-   gated on the ToS clearance in §7.
+2. **Vertex adapter** — server-side Vertex Anthropic calls (project `openagentsgemini`).
 3. **Metering + credit decrement** — per-request usage → credit ledger, reusing the
    billing infra; receipt-first accounting.
 4. **Routing** — cheapest-viable-supply selection (Vertex → network → passthrough) with
@@ -150,6 +148,5 @@ elsewhere** — we capture demand, we don't manufacture it.
    spine.
 6. **Pricing model + credit packs** — and the Autopilot-app default-inference integration.
 
-> Build order is gated by §7's ToS answer. Everything else (compat API, metering, credits,
-> routing, Autopilot integration) can proceed against partner passthrough + our network
-> while the Vertex-resale question is resolved.
+> Build order: stand up the compat API + metering + credits first (works across all supply
+> lanes), then wire the Vertex and network adapters and routing behind it.
