@@ -7,6 +7,7 @@
 import type { SessionSummary } from "@openagentsinc/autopilot-control-protocol"
 import type {
   AssignmentRow,
+  IntentRow,
   SessionArtifactStats,
   SessionEventRow,
   TrainingRunsResponse,
@@ -70,6 +71,115 @@ export function shipStatusLine(status: string): ShipStatusLine {
     default:
       return { text: status, terminal: false, dotColor: "#8b949e" }
   }
+}
+
+// ── #5467: Autonomous coordinator loop (intent → plan → fanout → reconcile →
+// ship) — pure derivations over the REAL `intent.list` projection ────────────
+//
+// The desktop reads exactly what the control protocol exposes today
+// (`intent.list` projections + `coordinator.status` paused flag); it never
+// fabricates a per-intent session mapping the node does not publish. The five
+// loop stages map onto the node's REAL `IntentStatus` lifecycle so the view is
+// a faithful projection of the coordinator runtime, not a mock.
+//
+//   intent     ← the ask was received / queued        (received)
+//   plan       ← the planner is fanning the ask        (planning)
+//   fanout     ← a session per part is running         (fanning_out)
+//   reconcile  ← parts converged, ship decision next   (shipping)
+//   ship       ← terminal: shipped (or failed)         (shipped | failed)
+
+export const LOOP_STAGES = [
+  { id: "intent", label: "Intent", statuses: ["received"] },
+  { id: "plan", label: "Plan", statuses: ["planning"] },
+  { id: "fanout", label: "Fanout", statuses: ["fanning_out"] },
+  { id: "reconcile", label: "Reconcile", statuses: ["shipping"] },
+  { id: "ship", label: "Ship", statuses: ["shipped", "failed"] },
+] as const
+
+export type LoopStageId = (typeof LOOP_STAGES)[number]["id"]
+
+export type LoopStageState = "done" | "active" | "pending" | "failed"
+
+// Ordered status rank used to decide which stages an intent has passed. `failed`
+// is terminal but is rendered at the ship stage as a failure, not progress.
+const LOOP_STATUS_RANK: Record<string, number> = {
+  received: 0,
+  planning: 1,
+  fanning_out: 2,
+  shipping: 3,
+  shipped: 4,
+  failed: 4,
+}
+
+// For one intent, classify each of the five loop stages. Derived from the live
+// `status` plus the REAL `statusHistory` (a stage the intent actually passed
+// through is `done`; the current stage is `active`; later stages are `pending`;
+// a `failed` intent marks its furthest-reached stage as `failed`).
+export function loopStageStates(
+  intent: Pick<IntentRow, "status" | "statusHistory">,
+): ReadonlyArray<{ id: LoopStageId; label: string; state: LoopStageState }> {
+  const rank = LOOP_STATUS_RANK[intent.status] ?? 0
+  const failed = intent.status === "failed"
+  const shipped = intent.status === "shipped"
+  const reached = new Set<string>(
+    (intent.statusHistory ?? [])
+      .map((event: { status: string }) => event.status)
+      .concat(intent.status),
+  )
+  return LOOP_STAGES.map((stage) => {
+    const stageRank = LOOP_STATUS_RANK[stage.statuses[0]] ?? 0
+    let state: LoopStageState
+    if (failed && stageRank === rank) state = "failed"
+    else if (stageRank < rank) state = "done"
+    // A terminal success (`shipped`) has completed the ship stage; only an
+    // in-flight intent's current stage is "active".
+    else if (stageRank === rank) state = shipped ? "done" : "active"
+    else state = stage.statuses.some((s) => reached.has(s)) ? "done" : "pending"
+    return { id: stage.id, label: stage.label, state }
+  })
+}
+
+// The ship gate, stated HONESTLY (audit §1.2 / issue acceptance): the autonomous
+// ship step is triple-gated (spend-gate eligible AND decision auto AND
+// OA_SHIP_AUTO_EXECUTE=1) and the spend gate DEFAULTS TO DENY, so an autonomous
+// intent escalates to the owner rather than spending. This copy never implies
+// autonomous spend.
+export type ShipGateLine = {
+  readonly text: string
+  readonly tone: "neutral" | "active" | "shipped" | "failed"
+}
+
+export function shipGateLine(status: string): ShipGateLine {
+  switch (status) {
+    case "shipped":
+      return { text: "Shipped (owner-gated; default-DENY held)", tone: "shipped" }
+    case "failed":
+      return { text: "Failed before ship", tone: "failed" }
+    case "shipping":
+      return { text: "Ship gate: default-DENY → escalates to you", tone: "active" }
+    default:
+      return { text: "Ship gate pending (default-DENY; no autonomous spend)", tone: "neutral" }
+  }
+}
+
+// One-line roll-up for the loop header: how many asks are in-flight vs terminal,
+// and whether the coordinator is paused.
+export function autonomousLoopSummary(
+  intents: ReadonlyArray<Pick<IntentRow, "status">>,
+  paused: boolean | null,
+): string {
+  const active = intents.filter(
+    (i) => i.status !== "shipped" && i.status !== "failed",
+  ).length
+  const shipped = intents.filter((i) => i.status === "shipped").length
+  const failed = intents.filter((i) => i.status === "failed").length
+  const loopState =
+    paused === null ? "coordinator status unknown" : paused ? "paused" : "running"
+  if (intents.length === 0) return `${loopState} · no asks yet`
+  const parts = [`${active} in-flight`]
+  if (shipped > 0) parts.push(`${shipped} shipped`)
+  if (failed > 0) parts.push(`${failed} failed`)
+  return `${loopState} · ${parts.join(" · ")}`
 }
 
 // ── Balance (wallet) ─────────────────────────────────────────────────────────
