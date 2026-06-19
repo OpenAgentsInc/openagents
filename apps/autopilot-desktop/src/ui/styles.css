@@ -948,6 +948,23 @@ body {
   color: var(--danger, #f85149);
 }
 .loop-ship-gate {
+/* #5469 (EPIC #5461): swarm batch launch + failover routing + sub-agent tree.
+ * Batch form is a collapsible <details> inside the pane (no new top-level
+ * button). Routing line + sub-agent count reuse the canonical tone tokens. */
+.swarm-batch {
+  border: 1px solid var(--outline, #525458);
+  background: var(--bg-secondary, #151515);
+  padding: 0.5rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.swarm-batch-summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text, #d7d8e5);
+}
+.swarm-batch-hint {
   font-size: 0.78rem;
   color: var(--text-secondary, #8a8c93);
   margin: 0;
@@ -985,4 +1002,37 @@ body {
 .loop-session-state {
   margin-left: auto;
   color: var(--text-secondary, #8a8c93);
+.swarm-batch-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.swarm-batch-controls .text-input {
+  width: 5rem;
+}
+.swarm-batch-status {
+  font-size: 0.78rem;
+  color: var(--text-secondary, #8a8c93);
+  margin: 0;
+}
+/* Routing/failover line per cell (refs-only). */
+.swarm-cell-routing {
+  font-size: 0.76rem;
+}
+.swarm-cell-routing.swarm-route-ok {
+  color: var(--success, #00c853);
+}
+.swarm-cell-routing.swarm-route-block {
+  color: var(--warning, #ffb400);
+}
+.swarm-cell-routing.swarm-route-failed {
+  color: var(--danger, #d32f2f);
+}
+/* Sub-agent child-count badge on a parent cell. */
+.swarm-child-count {
+  font-size: 0.72rem;
+  color: var(--text-secondary, #8a8c93);
+  border: 1px solid var(--outline, #525458);
+  padding: 0 0.3rem;
 }

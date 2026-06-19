@@ -401,6 +401,25 @@ export const Model = ts("AutopilotDesktop", {
   // apple_fm adapter, which has no per-account selection.
   composerAccountRef: S.NullOr(S.String),
 
+  // #5469 (EPIC #5461): swarm batch-launch state. The batch form lives inside
+  // the swarm pane (no new top-level button). The reducer drives a bounded
+  // concurrent spawner over the EXISTING session.spawn verb — no new wire verb.
+  //   - swarmBatchObjectives: the textarea (one objective per line)
+  //   - swarmBatchConcurrency: the visible concurrency cap (string-bound input)
+  //   - swarmBatchQueue: objectives not yet dispatched (drained as spawns settle)
+  //   - swarmBatchActive: how many batch spawns are currently in flight
+  //   - swarmBatchLaunched/swarmBatchFailed/swarmBatchTotal: honest counters
+  // The active/queue/launched/failed/total mirror the SwarmBatchState the pure
+  // swarm-batch.ts module threads; they live on the Model so the reducer stays a
+  // pure function of state.
+  swarmBatchObjectives: S.String,
+  swarmBatchConcurrency: S.String,
+  swarmBatchQueue: S.Array(S.String),
+  swarmBatchActive: S.Number,
+  swarmBatchLaunched: S.Number,
+  swarmBatchFailed: S.Number,
+  swarmBatchTotal: S.Number,
+
   // #5453: Blueprint chat state. The messages are persisted in the Foldkit
   // model so pane navigation does not discard the visible conversation. Turns
   // spawn bounded sessions and are reconciled by the node-state poll.
@@ -820,6 +839,14 @@ export const initialModel: Model = Model.make({
   composerStatus: { text: "", tone: "idle" },
   composerPending: false,
   composerAccountRef: null,
+  // #5469: swarm batch launch — empty objective set, default concurrency cap.
+  swarmBatchObjectives: "",
+  swarmBatchConcurrency: "3",
+  swarmBatchQueue: [],
+  swarmBatchActive: 0,
+  swarmBatchLaunched: 0,
+  swarmBatchFailed: 0,
+  swarmBatchTotal: 0,
   chatMessages: [seededChatMessage],
   chatInput: "",
   chatStatus: { text: "", tone: "idle" },

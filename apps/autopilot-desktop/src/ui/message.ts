@@ -369,6 +369,31 @@ export const ClickedOpenSessionInComposer = m("ClickedOpenSessionInComposer", {
   adapter: S.Literals(["codex", "claude_agent", "apple_fm"]),
 })
 
+// ── #5469 (EPIC #5461): swarm batch launch ──────────────────────────────────
+// A bounded concurrent spawner DRIVEN BY THE REDUCER over the EXISTING
+// session.spawn verb — no `sessions batch` wire verb is invented. The batch
+// form lives inside the swarm pane (audit §5.2: no new top-level button). The
+// reducer keeps a queue + an in-flight count and never exceeds the visible
+// concurrency cap; each launched/failed spawn settles into one of the two
+// result messages, which pull the next queued objective.
+export const ChangedSwarmBatchObjectives = m("ChangedSwarmBatchObjectives", {
+  value: S.String,
+})
+export const ChangedSwarmBatchConcurrency = m("ChangedSwarmBatchConcurrency", {
+  value: S.String,
+})
+export const ClickedSwarmBatchLaunch = m("ClickedSwarmBatchLaunch")
+// One batch session's spawn was accepted by the node. Carries the sessionRef so
+// the status line can be honest; pulls the next queued objective.
+export const SucceededSwarmBatchSpawn = m("SucceededSwarmBatchSpawn", {
+  sessionRef: S.String,
+})
+// One batch session's spawn was rejected. Pulls the next queued objective so a
+// single failure never stalls the rest of the batch.
+export const FailedSwarmBatchSpawn = m("FailedSwarmBatchSpawn", {
+  error: S.String,
+})
+
 // ── #5355: coding composer (the day-to-day CLI replacement loop) ────────────
 // The composer reuses ChangedSpawnAdapter/Objective/Verify/Lane for the first
 // turn's form fields, and adds repo-path + reply-turn inputs plus its own
@@ -547,6 +572,11 @@ export const Message = S.Union([
   ClickedCancelSession,
   SettledCancelSession,
   ClickedOpenSessionInComposer,
+  ChangedSwarmBatchObjectives,
+  ChangedSwarmBatchConcurrency,
+  ClickedSwarmBatchLaunch,
+  SucceededSwarmBatchSpawn,
+  FailedSwarmBatchSpawn,
   ChangedComposerRepoPath,
   ChangedComposerReply,
   ClickedComposerSpawn,

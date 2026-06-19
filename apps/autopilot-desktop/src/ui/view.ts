@@ -114,6 +114,9 @@ import {
   SelectedComposerAccount,
   ClickedCancelSession,
   ClickedOpenSessionInComposer,
+  ChangedSwarmBatchObjectives,
+  ChangedSwarmBatchConcurrency,
+  ClickedSwarmBatchLaunch,
   ClickedComposerNewThread,
   ClickedComposerReply,
   ClickedComposerSpawn,
@@ -200,6 +203,16 @@ import {
   projectAutoApprovalAudit,
   summarizeAutoApprovalAudit,
 } from "./auto-approval-view"
+import {
+  SWARM_BATCH_MAX_CONCURRENCY,
+  SWARM_BATCH_MAX_OBJECTIVES,
+  buildSwarmTree,
+  parseSwarmBatchObjectives,
+  swarmBatchRunning,
+  swarmBatchStatusLine,
+  swarmFailoverRouting,
+  swarmRoutingReasonLabel,
+} from "./swarm-batch"
 import {
   type Model,
   type ChatMessage,
@@ -3558,19 +3571,32 @@ const swarmCell = (
   session: SessionSummary,
   accounts: ReadonlyArray<AccountRow>,
   events: ReadonlyArray<SessionEventRow> | undefined,
+  // #5469: tree depth (0 = root) + direct-child count for the sub-agent tree.
+  depth: number,
+  childCount: number,
 ): Html => {
   const status = swarmStatusLabel(session.state)
   const accountLabel = swarmAccountLabel(session, accounts)
   const workspaceLabel = swarmWorkspaceLabel(session)
   const pendingApprovals = swarmSessionPendingApprovals(events)
   const activity = session.latestActivity ?? session.lastProgressRef ?? ""
-  const isChild = session.parentRef != null && session.parentRef !== session.sessionRef
+  const isChild = depth > 0
   const laneLabel = session.lane && session.lane !== "local" ? session.lane : null
+  // #5469: refs-only account-failover/routing summary from the event tail.
+  const routing = swarmFailoverRouting(events)
+  const routingLabel =
+    routing.reason !== null ? swarmRoutingReasonLabel(routing.reason) : null
 
   return h.div(
     [
       cls(`swarm-cell ${status.toneClass}${isChild ? " swarm-cell-child" : ""}`),
       h.DataAttribute("autopilot-session-ref", session.sessionRef),
+      // Indent each nesting level so the parentRef hierarchy reads as a tree.
+      // Depth is capped at 4 levels of visible indent so deep chains never push
+      // a cell off the grid.
+      ...(depth > 0
+        ? [h.Style({ marginLeft: `${Math.min(depth, 4) * 0.85}rem` })]
+        : []),
     ],
     [
       h.div(
@@ -3580,9 +3606,33 @@ const swarmCell = (
           h.span([cls("swarm-adapter")], [session.adapter]),
           ...(laneLabel ? [h.span([cls("swarm-lane")], [laneLabel])] : []),
           ...(isChild ? [h.span([cls("swarm-child-badge")], ["nested"])] : []),
+          ...(childCount > 0
+            ? [
+                h.span(
+                  [cls("swarm-child-count")],
+                  [`${childCount} sub-agent${childCount === 1 ? "" : "s"}`],
+                ),
+              ]
+            : []),
         ],
       ),
       h.div([cls("swarm-cell-meta")], [`account: ${accountLabel}`]),
+      // #5469: account-failover / routing line (refs-only). Only shown when the
+      // event tail surfaced a routing reason; otherwise the active account above
+      // is the route.
+      ...(routingLabel !== null
+        ? [
+            h.div(
+              [cls(`swarm-cell-routing ${routingLabel.toneClass}`)],
+              [
+                `route: ${routingLabel.text}`,
+                ...(routing.failovers > 0
+                  ? [` · re-routed ${routing.failovers}×`]
+                  : []),
+              ],
+            ),
+          ]
+        : []),
       h.div([cls("swarm-cell-meta")], [`repo: ${workspaceLabel}`]),
       ...(activity.trim() !== ""
         ? [h.div([cls("swarm-cell-activity")], [activity])]
@@ -3642,12 +3692,96 @@ const swarmCell = (
   )
 }
 
+// #5469 (EPIC #5461): the swarm batch-launch form. Lives INSIDE the swarm pane
+// (audit §5.2: no new top-level button). Launches a bounded batch of sessions
+// over the EXISTING session.spawn verb with a VISIBLE concurrency cap. The
+// adapter/lane/account come from the shared spawn-form state (so the batch runs
+// on the same selection the rest of the desktop uses); only the objective set +
+// the cap are batch-specific.
+const swarmBatchForm = (model: Model): Html => {
+  const running = swarmBatchRunning({
+    queue: model.swarmBatchQueue,
+    active: model.swarmBatchActive,
+    concurrency: Number(model.swarmBatchConcurrency) || 1,
+    launched: model.swarmBatchLaunched,
+    failed: model.swarmBatchFailed,
+    total: model.swarmBatchTotal,
+  })
+  const objectiveCount = parseSwarmBatchObjectives(model.swarmBatchObjectives).length
+  const statusLine = swarmBatchStatusLine({
+    queue: model.swarmBatchQueue,
+    active: model.swarmBatchActive,
+    concurrency: Number(model.swarmBatchConcurrency) || 1,
+    launched: model.swarmBatchLaunched,
+    failed: model.swarmBatchFailed,
+    total: model.swarmBatchTotal,
+  })
+  const adapterLabel =
+    model.spawnAdapter === "apple_fm" ? "claude_agent" : model.spawnAdapter
+
+  return h.details(
+    [cls("swarm-batch")],
+    [
+      h.summary([cls("swarm-batch-summary")], ["Batch launch"]),
+      h.p(
+        [cls("swarm-batch-hint")],
+        [
+          `One objective per line (max ${SWARM_BATCH_MAX_OBJECTIVES}). Runs on the ${adapterLabel} adapter / ${model.spawnLane} lane with a bounded concurrency cap.`,
+        ],
+      ),
+      h.textarea(
+        [
+          cls("text-area"),
+          h.Rows(4),
+          h.Placeholder("Fix the failing test\nAdd a README section\nBump the dependency"),
+          h.Value(model.swarmBatchObjectives),
+          h.OnInput((value: string) => ChangedSwarmBatchObjectives({ value })),
+        ],
+        [],
+      ),
+      h.div(
+        [cls("swarm-batch-controls")],
+        [
+          h.label([cls("field-label")], ["Max concurrent"]),
+          h.input([
+            cls("text-input mono"),
+            h.Type("number"),
+            h.Min("1"),
+            h.Max(String(SWARM_BATCH_MAX_CONCURRENCY)),
+            h.Value(model.swarmBatchConcurrency),
+            h.OnInput((value: string) => ChangedSwarmBatchConcurrency({ value })),
+          ]),
+          h.button(
+            [
+              cls("primary-button"),
+              h.Type("button"),
+              h.Disabled(running || objectiveCount === 0),
+              h.OnClick(ClickedSwarmBatchLaunch()),
+            ],
+            [
+              running
+                ? "Launching…"
+                : `Launch ${objectiveCount} session${objectiveCount === 1 ? "" : "s"}`,
+            ],
+          ),
+        ],
+      ),
+      statusLine !== ""
+        ? h.p([cls("swarm-batch-status")], [statusLine])
+        : h.empty,
+    ],
+  )
+}
+
 const swarmPane = (model: Model): Html => {
   const node = modelNode(model)
   const sessions: ReadonlyArray<SessionSummary> = node?.sessions ?? []
   const accounts: ReadonlyArray<AccountRow> = node?.accounts ?? []
   const events = node?.events ?? {}
   const ordered = orderSwarmSessions(sessions)
+  // #5469: turn the adjacency ordering into an explicit depth-annotated tree so
+  // sub-agents (parentRef children) render nested instead of as flat rows.
+  const tree = buildSwarmTree(ordered)
   // The authoritative pending-approval count across all sessions is the node's
   // global queue length (the same queue the Decisions pane resolves).
   const pendingApprovalCount = pendingApprovals(model).length
@@ -3664,6 +3798,8 @@ const swarmPane = (model: Model): Html => {
             : swarmSummaryLine(sessions, pendingApprovalCount),
         ],
       ),
+      // #5469: batch launch lives inside the pane (no new top-level button).
+      node === null ? h.empty : swarmBatchForm(model),
       // Top-level "pending approvals across all sessions" roll-up → Decisions.
       pendingApprovalCount > 0
         ? h.button(
@@ -3679,12 +3815,18 @@ const swarmPane = (model: Model): Html => {
         : h.empty,
       node === null
         ? h.empty
-        : ordered.length === 0
+        : tree.length === 0
           ? emptyLine("No sessions. Spawn one from the Composer to start a swarm.")
           : h.div(
               [cls("swarm-grid")],
-              ordered.map((session) =>
-                swarmCell(session, accounts, events[session.sessionRef]),
+              tree.map((node_) =>
+                swarmCell(
+                  node_.session,
+                  accounts,
+                  events[node_.session.sessionRef],
+                  node_.depth,
+                  node_.childCount,
+                ),
               ),
             ),
     ],

@@ -59,6 +59,8 @@ import {
   SucceededComposerTurn,
   SucceededDeploy,
   SucceededSpawn,
+  SucceededSwarmBatchSpawn,
+  FailedSwarmBatchSpawn,
   GotPublicActivityTimeline,
 } from "./message"
 
@@ -1160,6 +1162,46 @@ export const SpawnSession = Command.define(
         : FailedSpawn({ error: r.error ?? "spawn failed" }),
     ),
     Effect.catch((error) => Effect.succeed(FailedSpawn({ error: errorText(error) }))),
+  ),
+)
+
+// #5469 (EPIC #5461): spawn ONE session as part of a bounded swarm batch. Same
+// `session.spawn` verb as the Spawn/Composer panes (NO new contract / no
+// `sessions batch` wire verb) — it just maps to the batch-specific result
+// messages so the swarm reducer's bounded-concurrency queue can pull the next
+// objective as each spawn settles. The desktop is the batch orchestrator over
+// the one spawn verb the control protocol already exposes.
+export const SpawnBatchSession = Command.define(
+  "SpawnBatchSession",
+  {
+    adapter: S.Literals(["codex", "claude_agent"]),
+    objective: S.String,
+    verify: S.Array(S.String),
+    lane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
+    accountRef: S.NullOr(S.String),
+  },
+  SucceededSwarmBatchSpawn,
+  FailedSwarmBatchSpawn,
+)(({ adapter, objective, verify, lane, accountRef }) =>
+  Effect.tryPromise(() =>
+    getRequest().spawnSession({
+      adapter,
+      objective,
+      verify: verify.length > 0 ? [...verify] : undefined,
+      lane,
+      ...(accountRef !== null && accountRef.trim() !== ""
+        ? { accountRef: accountRef.trim() }
+        : {}),
+    }),
+  ).pipe(
+    Effect.map((r) =>
+      r.ok
+        ? SucceededSwarmBatchSpawn({ sessionRef: r.sessionRef })
+        : FailedSwarmBatchSpawn({ error: r.error ?? "spawn failed" }),
+    ),
+    Effect.catch((error) =>
+      Effect.succeed(FailedSwarmBatchSpawn({ error: errorText(error) })),
+    ),
   ),
 )
 
