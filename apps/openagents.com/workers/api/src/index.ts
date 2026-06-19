@@ -22,6 +22,11 @@ import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
+import {
+  handleLiquidityMarketSkeletonApi,
+  handleOpenMarketsSurfaceApi,
+  handleRiskMarketSkeletonApi,
+} from './open-markets-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
@@ -7846,6 +7851,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/metrics/accepted-outcomes-per-kwh',
     handler: request => handleAcceptedOutcomesPerKwhApi(request),
+  },
+  {
+    path: '/api/public/markets/open-markets',
+    handler: request => handleOpenMarketsSurfaceApi(request),
+  },
+  {
+    path: '/api/public/markets/liquidity/skeleton',
+    handler: request => handleLiquidityMarketSkeletonApi(request),
+  },
+  {
+    path: '/api/public/markets/risk/skeleton',
+    handler: request => handleRiskMarketSkeletonApi(request),
   },
   {
     path: CustomerOneCohortEndpoint,

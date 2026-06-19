@@ -1672,6 +1672,20 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     cohort source rows and privacy-review evidence — compliant (`generatedAt`,
     contract, evidence-only opaque cohort refs, generic labels, counts, blockers,
     caveats, and three-completion D3 gate).
+  - `GET /api/public/markets/open-markets` — live at read over the six
+    Episode 213 markets with honest per-market state — compliant (`generatedAt`,
+    contract, evidence-only per-market state/receipt flags, counts, blockers, and
+    unsafe-copy guards; no market-making, settlement, or claim authority) (#5514).
+  - `GET /api/public/markets/liquidity/skeleton` — live at read over the inert
+    liquidity market skeleton — compliant (`generatedAt`, contract,
+    `state="skeleton"`, `inert=true`, `moneyMovement="none"`,
+    `settledTransactionCount=0`, `promiseGreen=false`; documents protocol shapes
+    only, moves no money) (#5514).
+  - `GET /api/public/markets/risk/skeleton` — live at read over the inert
+    risk market skeleton (incl. the agentic-insurance-policy primitive) —
+    compliant (`generatedAt`, contract, `state="skeleton"`, `inert=true`,
+    `moneyMovement="none"`, `settledTransactionCount=0`, `promiseGreen=false`;
+    documents protocol shapes only, binds/underwrites/pays nothing) (#5514).
   - `POST /api/public/business-signup` — live-at-write intake receipt over the
     inserted business signup row — compliant (`generatedAt`, contract,
     public-safe request id/status only; no email, phone, website, or freeform

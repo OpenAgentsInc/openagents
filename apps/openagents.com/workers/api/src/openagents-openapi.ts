@@ -4,6 +4,11 @@ import { Effect, Schema as S } from 'effect'
 import { AcceptedOutcomesPerKwhEndpoint } from './accepted-outcomes-per-kwh'
 import { PublicAgentProposalRecoveryRoute } from './agent-rate-limit-recovery'
 import {
+  LiquidityMarketSkeletonEndpoint,
+  RiskMarketSkeletonEndpoint,
+} from './open-markets-skeletons'
+import { OpenMarketsSurfaceEndpoint } from './open-markets-surface'
+import {
   AGENT_SEARCH_BASIC_RECOVERY_PRODUCT_ID,
   AGENT_SEARCH_BASIC_RECOVERY_SCOPE_REF,
   AGENT_SEARCH_ENDPOINT,
@@ -343,6 +348,15 @@ const schemaComponents = (): JsonSchema => ({
   ),
   AcceptedOutcomesPerKwhProjection: objectSummary(
     'Public-safe Accepted Outcomes per Kilowatt-Hour projection. Includes generatedAt, the declared staleness contract, the frozen metric definition ref, receipt-backed accepted-outcome counter, modeled/measured energy evidence labels, gate state, blocker refs, caveats, and published datapoints. Modeled seed datapoints are clearly labeled and do not grant payout, settlement, dispatch, energy-market, investment, or grid-operation authority.',
+  ),
+  OpenMarketsSurfaceProjection: objectSummary(
+    'Public-safe unified open-markets surface enumerating the six Episode 213 markets (compute, data, labor, liquidity, risk, verification). Includes generatedAt, the declared live_at_read staleness contract, honest per-market state (live_scoped/shipped_not_broadly_live/skeleton/unbuilt), whether a settled receipt exists, protocol and promise refs, evidence refs, blockers, state counts, and the skeleton market ids. It is evidence-only and grants no market-making, matching, quoting, settlement, custody, underwriting, payout, or public-market-claim authority; liquidity and risk are inert skeletons.',
+  ),
+  LiquidityMarketSkeletonProjection: objectSummary(
+    'Public-safe INERT liquidity market skeleton. Includes generatedAt, the declared live_at_read staleness contract, state="skeleton", inert=true, moneyMovement="none", settledTransactionCount=0, promiseGreen=false, the typed protocol message shapes a real liquidity market would use, blocker refs, and the authority boundary. Moves no money, quotes no fillable price, matches nothing, and settles nothing.',
+  ),
+  RiskMarketSkeletonProjection: objectSummary(
+    'Public-safe INERT risk market skeleton, including the agentic-insurance-policy primitive from Episode 239. Includes generatedAt, the declared live_at_read staleness contract, state="skeleton", inert=true, moneyMovement="none", settledTransactionCount=0, promiseGreen=false, the typed protocol message shapes a real risk/insurance market would use, blocker refs, and the authority boundary. Binds no policy, underwrites no risk, pays no premium or claim, and settles nothing.',
   ),
   CustomerOneCohortProjection: objectSummary(
     'Public-safe Customer #1 cohort dogfood projection. Includes generatedAt, the declared live_at_read staleness contract, public-safe opaque cohort refs, generic team labels, state counts, blocker refs, caveat refs, and the three-completion D3 gate. It is evidence-only and grants no runtime, deployment, merge, accepted-work, payout, settlement, provider, or broad public customer-success authority.',
@@ -2681,6 +2695,57 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Accepted Outcomes per kWh metric.',
           '#/components/schemas/AcceptedOutcomesPerKwhProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [OpenMarketsSurfaceEndpoint]: {
+    get: operation({
+      operationId: 'getOpenMarketsSurface',
+      summary: 'Read the unified open-markets surface',
+      description:
+        'Returns the unified open-markets surface enumerating the six Episode 213 markets (compute, data, labor, liquidity, risk, verification) with HONEST per-market state. Labor and verification are scoped-live with settled receipts; compute and data shipped over NIP-90 in repo history but are not broadly live; liquidity and risk are inert skeletons. Evidence-only: the response grants no market-making, matching, settlement, custody, underwriting, or payout authority and must not be read as the open-markets promise being green.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Unified open-markets surface.',
+          '#/components/schemas/OpenMarketsSurfaceProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [LiquidityMarketSkeletonEndpoint]: {
+    get: operation({
+      operationId: 'getLiquidityMarketSkeleton',
+      summary: 'Read the inert liquidity market skeleton',
+      description:
+        'Returns the INERT liquidity market skeleton: the typed protocol/message shapes a real liquidity market would use, with state="skeleton", inert=true, moneyMovement="none", settledTransactionCount=0, and promiseGreen=false. It moves no money, quotes no fillable price, matches nothing, and settles nothing. Scaffolding toward the planned liquidity market only.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Inert liquidity market skeleton.',
+          '#/components/schemas/LiquidityMarketSkeletonProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [RiskMarketSkeletonEndpoint]: {
+    get: operation({
+      operationId: 'getRiskMarketSkeleton',
+      summary: 'Read the inert risk market skeleton',
+      description:
+        'Returns the INERT risk market skeleton, including the agentic-insurance-policy primitive from Episode 239: the typed protocol/message shapes a real risk/insurance market would use, with state="skeleton", inert=true, moneyMovement="none", settledTransactionCount=0, and promiseGreen=false. It binds no policy, underwrites no risk, pays no premium or claim, and settles nothing. Scaffolding toward the planned risk market only.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Inert risk market skeleton.',
+          '#/components/schemas/RiskMarketSkeletonProjection',
         ),
         ...errorResponses(),
       },
