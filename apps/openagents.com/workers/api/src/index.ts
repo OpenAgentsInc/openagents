@@ -36,6 +36,7 @@ import {
 } from './inference/chat-completions-routes'
 import { fireworksAdapter } from './inference/fireworks-adapter'
 import { selectAdapterPlan } from './inference/model-router'
+import { makeLedgerMeteringHook } from './inference/metering-hook'
 import {
   InferenceAdapterError,
   InferenceProviderRegistry,
@@ -8602,6 +8603,12 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             : { accountRef: `agent:${session.user.id}` }
         },
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        // Live credit metering (#5477): decrement the account's balance from
+        // real provider usage through the existing PayIn-shaped credit ledger.
+        // The route never reaches the hook on the inert (flag-off) path, so this
+        // is safe to wire unconditionally; it only fires when the gateway is on
+        // AND a real adapter served a completion.
+        meteringHook: makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
         readAvailableMsat: async accountRef => {
           const balance = await readAgentBalance(
             openAgentsDatabase(env),
