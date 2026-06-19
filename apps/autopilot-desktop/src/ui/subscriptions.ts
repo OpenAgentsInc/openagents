@@ -113,6 +113,33 @@ const keyboardStream: Stream.Stream<Message> = Stream.callback<Message>((queue) 
           queue,
           PressedKey({ key, meta, ctrl, shift: event.shiftKey ?? false, inEditable }),
         )
+        // Palette focus management. The reducer toggles the command palette on
+        // Cmd/Ctrl-K (and closes it on Escape / after running a command via
+        // Enter), but `autofocus` doesn't fire on a dynamically-mounted input and
+        // the subscriptions are static (not model-reactive), so we move focus
+        // here: after the reducer re-renders, focus the palette input if it's now
+        // open, otherwise return focus to the shell chat input. Runs only on the
+        // keys that open/close the palette; querying after a frame so the DOM has
+        // updated. (No-op where the targets don't exist, e.g. inside a pane.)
+        const affectsPalette =
+          (key.toLowerCase() === "k" && modified) ||
+          key === "Escape" ||
+          key === "Enter"
+        if (affectsPalette && typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => {
+            const palette = document.querySelector(
+              ".palette-input",
+            ) as HTMLElement | null
+            if (palette) {
+              palette.focus()
+              return
+            }
+            const shellInput = document.querySelector(
+              ".shell-input",
+            ) as HTMLElement | null
+            shellInput?.focus()
+          })
+        }
       }
       target.addEventListener?.("keydown", handler)
       return { handler, target }
