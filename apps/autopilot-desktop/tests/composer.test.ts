@@ -218,8 +218,13 @@ describe("composer reducer (#5355)", () => {
     const [model, commands] = update(initialModel, NavigatedTo({ pane: "composer" }))
     expect(model.pane).toBe("composer")
     // CS-A1: the composer hosts the per-session account picker + management UI,
-    // so opening it refreshes the node's managed accounts.
-    expect(commands).toHaveLength(1)
+    // so opening it refreshes the node's managed accounts. #5485: it also warms
+    // the inference-gateway readiness for the own-auth-vs-gateway route hint.
+    expect(commands).toHaveLength(2)
+    expect(commands.map(command => command.name)).toEqual([
+      "LoadManagedAccounts",
+      "LoadInferenceGatewayReadiness",
+    ])
     expect(model.managedAccountsPending).toBe(true)
   })
 

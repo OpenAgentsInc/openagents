@@ -21,6 +21,7 @@ import {
   LoadAppleFmReadiness,
   LoadBuiltInAgentReadiness,
   LoadIdentityChoiceState,
+  LoadInferenceGatewayReadiness,
   LoadInstallReadiness,
   LoadManagedAccounts,
   LoadOnboardingStatus,
@@ -157,14 +158,15 @@ const writeSwarmBatchState = (model: Model, state: SwarmBatchState): Model =>
     swarmBatchTotal: state.total,
   })
 
-// #5472: build the PersistPreferences command from the (already-updated) model,
-// so the four preference handlers can't drift on which fields are saved.
+// #5472/#5485: build the PersistPreferences command from the (already-updated)
+// model, so the preference handlers can't drift on which fields are saved.
 const persistPreferencesFor = (model: Model): Command.Command<Message> =>
   PersistPreferences({
     theme: model.themePreference,
     defaultAdapter: model.defaultAdapter,
     defaultLane: model.defaultLane,
     showNotificationPanel: model.showNotificationPanel,
+    gatewayInferenceFallback: model.gatewayInferenceFallback,
   })
 
 const proofReplayCommandRequestForModel = (
@@ -543,7 +545,12 @@ export const update = (model: Model, message: Message): Result => {
                 : isOnboardingPane(message.pane)
                   ? [LoadIdentityChoiceState(), LoadOnboardingStatus()]
                   : noCommands),
-          ...(isAccountManagingPane(message.pane) ? [LoadManagedAccounts()] : noCommands),
+          ...(isAccountManagingPane(message.pane)
+            ? // #5485: the account-managing panes (composer/spawn/settings) are
+              // exactly where the own-auth-vs-gateway routing matters, so refresh
+              // the gateway readiness (credits/hint) on enter alongside accounts.
+              [LoadManagedAccounts(), LoadInferenceGatewayReadiness()]
+            : noCommands),
         ],
       ]
 
@@ -856,6 +863,14 @@ export const update = (model: Model, message: Message): Result => {
         noCommands,
       ]
     }
+    case "GotInferenceGatewayReadiness":
+      // #5485: store the public-safe gateway readiness. It drives the routing
+      // decision (decideInference) + the composer low-balance hint. No status
+      // line of its own — the coding surfaces read it directly off the model.
+      return [
+        Model.make({ ...model, inferenceGatewayReadiness: message.projection }),
+        noCommands,
+      ]
     case "ClickedStartAppleFm":
       return [
         Model.make({
@@ -1943,6 +1958,15 @@ export const update = (model: Model, message: Message): Result => {
       const next = Model.make({ ...model, showNotificationPanel: message.show })
       return [next, [persistPreferencesFor(next)]]
     }
+    case "ChangedGatewayInferenceFallback": {
+      // #5485: persist the routing intent. It takes effect immediately because
+      // the spawn paths read the live decision (decideInference) off the model.
+      const next = Model.make({
+        ...model,
+        gatewayInferenceFallback: message.value,
+      })
+      return [next, [persistPreferencesFor(next)]]
+    }
     case "SettledPersistPreferences":
       // No-op: the preference values already live in the Model; this only closes
       // the persistence command (side effect done in the command, not here).
@@ -2043,7 +2067,9 @@ export const update = (model: Model, message: Message): Result => {
             tone: "info" as const,
           },
         }),
-        [LoadManagedAccounts()],
+        // #5485: + warm the gateway readiness so the composer's route hint is
+        // accurate the moment an adopted session opens (matches NavigatedTo).
+        [LoadManagedAccounts(), LoadInferenceGatewayReadiness()],
       ]
 
     // ── #5469 (EPIC #5461): swarm batch launch ──────────────────────────────────

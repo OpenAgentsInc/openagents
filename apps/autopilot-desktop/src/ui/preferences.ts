@@ -40,6 +40,17 @@ export type DefaultAdapter = typeof DefaultAdapter.Type
 export const DefaultLane = S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"])
 export type DefaultLane = typeof DefaultLane.Type
 
+// #5485 (EPIC #5474): the OpenAgents inference-gateway fallback preference.
+//   • "auto" — when there is no usable own Claude/Codex auth, route coding-turn
+//              inference through the OpenAgents gateway (pay-as-you-go credits).
+//              The conversion-friendly default: a fresh user with no own keys
+//              can still run coding turns. BYO-auth always wins when present.
+//   • "off"  — never auto-route through the gateway; require own auth.
+// Presentation/spawn-default only — the API key + credit ledger live server-
+// side; this just expresses the user's routing intent.
+export const GatewayInferenceFallback = S.Literals(["auto", "off"])
+export type GatewayInferenceFallback = typeof GatewayInferenceFallback.Type
+
 // The persisted, presentation-only preference record. Refs-only: NO identity,
 // home, token, or account-ref fields ever live here (those are node authority).
 export const Preferences = S.Struct({
@@ -49,6 +60,9 @@ export const Preferences = S.Struct({
   // Whether the in-app Settings notification panel is shown. A real local
   // effect (the panel honours it); does NOT gate the Bun-side OS channel.
   showNotificationPanel: S.Boolean,
+  // #5485: route coding inference through the OpenAgents gateway when there is
+  // no usable own auth (the default). "off" requires own Claude/Codex auth.
+  gatewayInferenceFallback: GatewayInferenceFallback,
 })
 export type Preferences = typeof Preferences.Type
 
@@ -57,10 +71,13 @@ export const defaultPreferences: Preferences = {
   defaultAdapter: "codex",
   defaultLane: "auto",
   showNotificationPanel: true,
+  gatewayInferenceFallback: "auto",
 }
 
 // One namespaced key; bump the suffix if the shape ever changes incompatibly.
-export const PREFERENCES_STORAGE_KEY = "autopilot-desktop.preferences.v1"
+// v2 (#5485): added `gatewayInferenceFallback`. An old v1 blob simply decodes to
+// defaults under the new required field, which is the desired "auto" fallback.
+export const PREFERENCES_STORAGE_KEY = "autopilot-desktop.preferences.v2"
 
 // Decode to an Option (the codebase idiom for opaque/persisted payloads): None
 // on any shape mismatch, so corruption falls back to defaults cleanly.

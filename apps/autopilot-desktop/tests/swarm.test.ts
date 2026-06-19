@@ -178,8 +178,13 @@ describe("swarm reducer (#5362)", () => {
     expect(model.spawnAdapter).toBe("claude_agent")
     expect(model.composerStatus.tone).toBe("info")
     // Opening the composer loads the managed-account registry (CS-A1 reuse).
+    // #5485: + the inference-gateway readiness for the route hint.
     expect(model.managedAccountsPending).toBe(true)
-    expect(commands).toHaveLength(1)
+    expect(commands).toHaveLength(2)
+    expect(commands.map((command) => command.name)).toEqual([
+      "LoadManagedAccounts",
+      "LoadInferenceGatewayReadiness",
+    ])
   })
 
   test("ClickedOpenSessionInComposer tolerates a null workspaceRef", () => {

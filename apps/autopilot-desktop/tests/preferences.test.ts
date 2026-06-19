@@ -6,6 +6,7 @@ import { initialRuntimeState } from "../src/ui/initial-state"
 import {
   ChangedDefaultAdapter,
   ChangedDefaultLane,
+  ChangedGatewayInferenceFallback,
   ChangedThemePreference,
   SettledPersistPreferences,
   ToggledNotificationPanel,
@@ -58,6 +59,8 @@ describe("#5472 preferences persistence", () => {
       defaultAdapter: "codex",
       defaultLane: "auto",
       showNotificationPanel: true,
+      // #5485: gateway fallback defaults to "auto" (the conversion-friendly path).
+      gatewayInferenceFallback: "auto",
     })
   })
 
@@ -68,6 +71,7 @@ describe("#5472 preferences persistence", () => {
       defaultAdapter: "claude_agent" as const,
       defaultLane: "cloud-gcp" as const,
       showNotificationPanel: false,
+      gatewayInferenceFallback: "off" as const,
     }
     savePreferences(chosen)
     expect(loadPreferences()).toEqual(chosen)
@@ -91,6 +95,7 @@ describe("#5472 preferences persistence", () => {
     expect(Object.keys(parsed).sort()).toEqual([
       "defaultAdapter",
       "defaultLane",
+      "gatewayInferenceFallback",
       "showNotificationPanel",
       "theme",
     ])
@@ -134,13 +139,25 @@ describe("#5472 preferences reducer", () => {
     expect(on.showNotificationPanel).toBe(true)
   })
 
-  test("the PersistPreferences command carries exactly the four preference fields", () => {
+  test("ChangedGatewayInferenceFallback persists the routing intent (#5485)", () => {
+    const [off, commands] = update(
+      initialModel,
+      ChangedGatewayInferenceFallback({ value: "off" }),
+    )
+    expect(off.gatewayInferenceFallback).toBe("off")
+    expect(commands.map((c) => c.name)).toEqual(["PersistPreferences"])
+    const [auto] = update(off, ChangedGatewayInferenceFallback({ value: "auto" }))
+    expect(auto.gatewayInferenceFallback).toBe("auto")
+  })
+
+  test("the PersistPreferences command carries exactly the preference fields", () => {
     const next = Model.make({
       ...initialModel,
       themePreference: "light",
       defaultAdapter: "apple_fm",
       defaultLane: "local",
       showNotificationPanel: false,
+      gatewayInferenceFallback: "off",
     })
     const [, commands] = update(next, ChangedThemePreference({ theme: "light" }))
     const persist = commands[0] as unknown as { args: Record<string, unknown> }
@@ -149,6 +166,7 @@ describe("#5472 preferences reducer", () => {
       defaultAdapter: "apple_fm",
       defaultLane: "local",
       showNotificationPanel: false,
+      gatewayInferenceFallback: "off",
     })
   })
 
@@ -166,6 +184,7 @@ describe("#5472 preferences reducer", () => {
       defaultAdapter: "claude_agent",
       defaultLane: "cloud-shc",
       showNotificationPanel: false,
+      gatewayInferenceFallback: "off",
     })
     const result = Effect.runSync(command.effect)
     expect(result._tag).toBe("SettledPersistPreferences")
@@ -174,6 +193,7 @@ describe("#5472 preferences reducer", () => {
       defaultAdapter: "claude_agent",
       defaultLane: "cloud-shc",
       showNotificationPanel: false,
+      gatewayInferenceFallback: "off",
     })
     removeLocalStorage()
   })
@@ -189,12 +209,15 @@ describe("#5472 preferences apply at init + render", () => {
       defaultAdapter: "claude_agent",
       defaultLane: "cloud-gcp",
       showNotificationPanel: false,
+      gatewayInferenceFallback: "off",
     })
     const [model] = initialRuntimeState()
     expect(model.themePreference).toBe("light")
     expect(model.defaultAdapter).toBe("claude_agent")
     expect(model.defaultLane).toBe("cloud-gcp")
     expect(model.showNotificationPanel).toBe(false)
+    // #5485: the saved gateway-fallback intent is applied at app entry.
+    expect(model.gatewayInferenceFallback).toBe("off")
     // Defaults seed the live spawn fields so they take effect from app entry.
     expect(model.spawnAdapter).toBe("claude_agent")
     expect(model.spawnLane).toBe("cloud-gcp")
