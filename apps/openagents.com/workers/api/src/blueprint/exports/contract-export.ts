@@ -185,6 +185,7 @@ export const BLUEPRINT_CONTRACT_EXPORT_SEED: BlueprintContractExportSeed = {
       'BlueprintTassadarModuleRegistryProjection',
       'operator_refs_only',
     ),
+    jsonSchema('BlueprintChatProgramTurnResult', 'operator_refs_only'),
     jsonSchema('ProbeBlueprintProgramRunEvidence', 'operator_refs_only'),
     jsonSchema(
       'BlueprintProgramRunEvidenceIntakeResponse',
