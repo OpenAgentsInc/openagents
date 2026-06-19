@@ -70,6 +70,7 @@ const approvedExactRoutePaths = [
   '/api/blueprint/action-submissions',
   '/api/blueprint/contributions',
   '/api/blueprint/contracts',
+  '/api/blueprint/tassadar-modules',
   '/.well-known/openagents.json',
   '/AGENTS-CORE.md',
   '/AGENTS.md',
@@ -89,6 +90,7 @@ const approvedExactRoutePaths = [
   '/api/agents/me/balance',
   '/api/agents/me/balance/preferences',
   '/api/agents/home',
+  '/v1/chat/completions',
 ] as const
 
 describe('Worker exact route manifest', () => {

@@ -3,6 +3,10 @@ import * as Context from 'effect/Context'
 
 export type OpenAgentsWorkerConfigEnv = Readonly<{
   ARTANIS_SCHEDULED_RUNNER_ENABLED?: string | undefined
+  // Inference gateway feature flag (EPIC #5474, #5476). Default OFF: the
+  // `/v1/chat/completions` route is inert on the live Worker until the
+  // inference build lands. Set "true"/"1"/"on" to enable.
+  INFERENCE_GATEWAY_ENABLED?: string | undefined
   EXA_API_KEY?: string | undefined
   EXA_BASE_URL?: string | undefined
   EXA_DEFAULT_NUM_RESULTS?: string | undefined

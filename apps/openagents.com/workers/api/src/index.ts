@@ -30,6 +30,13 @@ import {
   handleAgentBalanceApi,
   handleAgentBalancePreferencesApi,
 } from './agent-balance-routes'
+import {
+  handleChatCompletions,
+  isInferenceGatewayEnabled,
+} from './inference/chat-completions-routes'
+import { InferenceProviderRegistry } from './inference/provider-adapter'
+import { stubEchoAdapter } from './inference/stub-echo-adapter'
+import { readAgentBalance } from './payments-ledger'
 import { makeAgentGoalRoutes } from './agent-goal-routes'
 import {
   handleProgrammaticAgentHome,
@@ -7549,6 +7556,13 @@ const recordPublicAgentFunnelRead = (
   )
 }
 
+// Inference gateway provider registry (EPIC #5474, #5476). Seeded with the
+// stub/echo adapter so the route works end-to-end while the gateway is inert.
+// Phase-2 provider issues register their adapter exactly once here:
+//   #5479 Fireworks, #5480 Vertex Anthropic, #5481 partner passthrough.
+const inferenceProviderRegistry = new InferenceProviderRegistry()
+inferenceProviderRegistry.register(stubEchoAdapter)
+
 const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/',
@@ -8448,6 +8462,38 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       Effect.promise(() =>
         handleProgrammaticAgentHome(request, openAgentsDatabase(env)),
       ),
+  },
+  {
+    // Inference gateway (EPIC #5474, #5476). INERT by default: gated behind
+    // INFERENCE_GATEWAY_ENABLED (default off). Ships wired to the stub/echo
+    // adapter + no-op metering stub; Phase-2 issues register real adapters
+    // (#5479/#5480/#5481), routing (#5482), and live metering/credits (#5477).
+    path: '/v1/chat/completions',
+    handler: (request, env) =>
+      handleChatCompletions(request, {
+        authenticate: async authRequest => {
+          const token = readBearerToken(authRequest)
+          if (token === undefined) {
+            return undefined
+          }
+          const session = await authenticateProgrammaticAgent(
+            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            token,
+          )
+          return session === undefined
+            ? undefined
+            : { accountRef: `agent:${session.user.id}` }
+        },
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        readAvailableMsat: async accountRef => {
+          const balance = await readAgentBalance(
+            openAgentsDatabase(env),
+            accountRef,
+          )
+          return balance === null ? 0 : balance.availableMsat
+        },
+        registry: inferenceProviderRegistry,
+      }),
   },
 ])
 

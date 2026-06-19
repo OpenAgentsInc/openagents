@@ -37,6 +37,7 @@
   ],
   "vars": {
     "GITHUB_CLIENT_ID": "Ov23lirHI1DWTzZ1zT1u",
+    "INFERENCE_GATEWAY_ENABLED": "false",
     "OPENAUTH_CLIENT_ID": "openagents-web",
     "OPENAUTH_ISSUER_URL": "https://auth.openagents.com",
     "OPENAGENTS_APP_URL": "https://openagents.com",

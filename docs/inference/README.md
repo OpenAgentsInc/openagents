@@ -66,3 +66,46 @@ Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric 
 → sell it as simple usage credits (card or Bitcoin) priced by per-model multipliers over our
 real cost → split each dollar to the serving node and the referrer → the buy-side that closes
 the revenue loop.
+
+## Implementation status
+
+### Gateway API skeleton (#5476 of EPIC #5474) — landed, INERT by default
+
+The OpenAI-compatible request surface lives on the `openagents.com` Worker
+(`apps/openagents.com/workers/api`):
+
+- **Route:** `POST /v1/chat/completions` (streaming + non-streaming, OpenAI Chat
+  Completions shape). A clean spot is left for the parallel Anthropic Messages
+  surface (`/v1/messages`) — see the `ANTHROPIC SEAM` marker in
+  `src/inference/chat-completions-route.ts`.
+- **Auth + balance gate:** per-account API-key auth (the OpenAgents agent bearer
+  token via `authenticateProgrammaticAgent`) + a **read-only** credit-balance
+  gate (`readAgentBalance(...).availableMsat`). Insufficient balance → `402`.
+  This phase only *gates* on balance; the real per-model decrement is #5477.
+- **Two seams the rest of the EPIC plugs into:**
+  - **Provider-adapter interface + registry** (`src/inference/provider-adapter.ts`):
+    a typed `InferenceProviderAdapter` and `InferenceProviderRegistry`. Each
+    provider child issue registers ONE adapter by id — #5479 Fireworks, #5480
+    Vertex Anthropic, #5481 partner passthrough. A stub/echo adapter
+    (`src/inference/stub-echo-adapter.ts`) ships so the route works end-to-end.
+    Model→adapter routing is the `ModelRouter` seam (cheapest-viable selection
+    is #5482); #5476 ships a stub router that always selects the stub adapter.
+  - **Metering hook** (`src/inference/metering-hook.ts`): the typed
+    `MeteringHook` point where #5477 decrements credits from the provider
+    `usage` object (receipt-first, never an estimate). Stubbed as a public-safe
+    no-op/log for now.
+
+#### Feature flag
+
+The route is gated behind **`INFERENCE_GATEWAY_ENABLED`** (default **off**). When
+unset or not an explicit truthy token (`1`/`true`/`yes`/`on`), the route returns
+`404 inference_gateway_disabled`, so landing this code on the live Worker changes
+nothing in production until the rest of the EPIC lands. The production
+`wrangler.jsonc` sets it to `"false"` explicitly.
+
+#### Provider keys (do NOT wire live keys here)
+
+The deployed Worker reads provider keys as **Worker secrets** (`wrangler secret
+put …`), separate from the local `~/work/.secrets/` files (e.g.
+`fireworks.env`). No provider key is committed or hardcoded in this repo; the
+adapter child issues (#5479/#5480/#5481) wire their secret reads when they land.
