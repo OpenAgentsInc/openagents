@@ -607,6 +607,63 @@ export async function cancelSessionViaBridge(bridge: BridgeSession, sessionRef: 
   return String(result?.state ?? "cancelled")
 }
 
+// #5494 (epic #5492 G1): the remaining four steer-actions over the
+// capability-scoped bridge — spawn, submit-intent, pause/resume, deploy. The
+// bridge transport sends each over POST /bridge with the scoped credential
+// (capability classes spawn_session / send_instruction / pause_resume /
+// deploy_cloud), so the mobile client no longer needs the raw node dev token on
+// the wire for these. Each mirrors the dev-token return shape its caller
+// already consumes; the ConnectionContext prefers these when a bridge
+// credential is paired and falls back to the dev-token path otherwise.
+
+export async function spawnSessionViaBridge(
+  bridge: BridgeSession,
+  draft: { adapter: "codex" | "claude_agent"; objective: string; verify?: string[]; lane?: SessionLane },
+): Promise<string> {
+  const result = (await bridge.transport.spawn({
+    adapter: draft.adapter,
+    objective: draft.objective,
+    verify: draft.verify ?? [],
+    lane: draft.lane ?? "auto",
+  })) as { sessionRef?: unknown }
+  return String(result?.sessionRef ?? "spawned")
+}
+
+export async function submitIntentViaBridge(
+  bridge: BridgeSession,
+  draft: { title: string; body: string },
+): Promise<string> {
+  const result = (await bridge.transport.submitIntent({
+    title: draft.title,
+    body: draft.body,
+    submittedByClientRef: "mobile",
+  })) as { status?: unknown }
+  return String(result?.status ?? "received")
+}
+
+export async function setCoordinatorPausedViaBridge(bridge: BridgeSession, paused: boolean): Promise<boolean> {
+  const result = (paused
+    ? await bridge.transport.pauseCoordinator()
+    : await bridge.transport.resumeCoordinator()) as { paused?: unknown }
+  return typeof result?.paused === "boolean" ? result.paused : paused
+}
+
+export async function deployToCloudViaBridge(
+  bridge: BridgeSession,
+  input: { target: DeployTarget; ref: string; env?: DeployEnv },
+): Promise<DeployResult> {
+  const result = (await bridge.transport.deployCloud({
+    target: input.target,
+    ref: input.ref,
+    ...(input.env ? { env: input.env } : {}),
+  })) as { accepted?: unknown; reason?: unknown; errors?: unknown }
+  return {
+    accepted: result?.accepted === true,
+    reason: typeof result?.reason === "string" ? result.reason : "unknown",
+    errors: Array.isArray(result?.errors) ? result.errors.map((e: unknown) => String(e)) : [],
+  }
+}
+
 // Cancel a running/queued session (CL-15). Best-effort: returns the new state.
 export async function cancelSession(conn: ConnectInfo, sessionRef: string): Promise<string> {
   const json = (await command(conn, { type: "session.cancel", sessionRef })) as {

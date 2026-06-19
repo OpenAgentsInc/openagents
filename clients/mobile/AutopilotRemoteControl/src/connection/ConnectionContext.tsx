@@ -29,6 +29,7 @@ import {
   connectBridge,
   decodeConnectCode,
   deployToCloud as deployToCloudCall,
+  deployToCloudViaBridge,
   fetchAccounts,
   fetchAccountsRaw,
   fetchApprovals,
@@ -46,8 +47,11 @@ import {
   resolveApproval as resolveApprovalCall,
   resolveDecisionViaBridge,
   setCoordinatorPaused as setCoordinatorPausedCall,
+  setCoordinatorPausedViaBridge,
   spawnSession as spawnSessionCall,
+  spawnSessionViaBridge,
   submitIntent as submitIntentCall,
+  submitIntentViaBridge,
 } from "../control/control-client"
 import { parseNodesResponse, pickConnect } from "../control/discovery-client"
 
@@ -313,9 +317,23 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       return
     }
     let cancelled = false
-    // #5002: request write capabilities so the scoped credential can resolve
-    // decisions and cancel sessions over the bridge (owner's own phone).
-    void connectBridge(conn, { capabilities: ["observe_public", "answer_decision", "cancel"] })
+    // #5002 + #5494 (epic #5492 G1): request the full steer-action capability
+    // set so the scoped credential covers all six working steer-actions over the
+    // bridge — resolve decisions (answer_decision), cancel (cancel), spawn
+    // (spawn_session), submit-intent (send_instruction), pause/resume
+    // (pause_resume), deploy (deploy_cloud) — on the owner's own phone, with no
+    // long-lived dev token on the wire.
+    void connectBridge(conn, {
+      capabilities: [
+        "observe_public",
+        "answer_decision",
+        "cancel",
+        "spawn_session",
+        "send_instruction",
+        "pause_resume",
+        "deploy_cloud",
+      ],
+    })
       .then((session) => {
         if (cancelled) return
         bridge.current = session
@@ -385,6 +403,16 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const submitAsk = useCallback(
     async (draft: { title: string; body: string }) => {
       if (conn === null) throw new Error("not connected")
+      // #5494: prefer the capability-scoped bridge (send_instruction); fall
+      // back to the dev-token path if no bridge credential or the call fails.
+      const session = bridge.current
+      if (session !== null) {
+        try {
+          return await submitIntentViaBridge(session, draft)
+        } catch {
+          // fall through to dev-token path
+        }
+      }
       return submitIntentCall(conn, draft)
     },
     [conn],
@@ -438,7 +466,20 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     async (paused: boolean) => {
       if (conn === null) return null
       setCoordPaused(paused)
-      const next = await setCoordinatorPausedCall(conn, paused).catch(() => paused)
+      // #5494: prefer the capability-scoped bridge (pause_resume); fall back to
+      // the dev-token path if no bridge credential or the call fails.
+      const session = bridge.current
+      let next = paused
+      if (session !== null) {
+        try {
+          next = await setCoordinatorPausedViaBridge(session, paused)
+          setCoordPaused(next)
+          return next
+        } catch {
+          // fall through to dev-token path
+        }
+      }
+      next = await setCoordinatorPausedCall(conn, paused).catch(() => paused)
       setCoordPaused(next)
       return next
     },
@@ -474,7 +515,18 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
     }) => {
       if (conn === null) throw new Error("not connected")
-      const ref = await spawnSessionCall(conn, draft)
+      // #5494: prefer the capability-scoped bridge (spawn_session); fall back to
+      // the dev-token path if no bridge credential or the call fails.
+      const session = bridge.current
+      let ref: string | null = null
+      if (session !== null) {
+        try {
+          ref = await spawnSessionViaBridge(session, draft)
+        } catch {
+          ref = null
+        }
+      }
+      if (ref === null) ref = await spawnSessionCall(conn, draft)
       await poll(conn)
       return ref
     },
@@ -484,7 +536,18 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const deploy = useCallback(
     async (input: { target: DeployTarget; ref: string; env?: DeployEnv }) => {
       if (conn === null) return { accepted: false, reason: "not connected", errors: [] }
-      const r = await deployToCloudCall(conn, input)
+      // #5494: prefer the capability-scoped bridge (deploy_cloud); fall back to
+      // the dev-token path if no bridge credential or the call fails.
+      const session = bridge.current
+      let r: DeployResult | null = null
+      if (session !== null) {
+        try {
+          r = await deployToCloudViaBridge(session, input)
+        } catch {
+          r = null
+        }
+      }
+      if (r === null) r = await deployToCloudCall(conn, input)
       void fetchDeployStatus(conn).then(setDeployStatus)
       return r
     },

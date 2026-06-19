@@ -455,6 +455,66 @@ export const startControlServer = (
                   })
                 }
 
+                // #5494 (epic #5492 G1): the four remaining steer-actions over
+                // the capability-scoped bridge (cancel + decision.resolve were
+                // already here). Each is gated above by verbAllowedByCapabilities
+                // against the node's STORED claims; here we route to the same
+                // node action the dev-token /command path uses. The mobile
+                // client presents a scoped capability, not the raw node token.
+
+                // coordinator.pause / coordinator.resume (pause_resume).
+                if (verb === "coordinator.pause" || verb === "coordinator.resume") {
+                  if (!options.actions.coordinator) {
+                    return Response.json({ error: "coordinator unavailable on this node" }, { status: 404 })
+                  }
+                  const result =
+                    verb === "coordinator.pause"
+                      ? options.actions.coordinator.pause()
+                      : options.actions.coordinator.resume()
+                  return Response.json({ ok: true, result })
+                }
+
+                // intent.submit (send_instruction): enqueue an ask for the
+                // coordinator to plan + fan out.
+                if (verb === "intent.submit") {
+                  if (!options.actions.intents) {
+                    return Response.json({ error: "intents unavailable on this node" }, { status: 404 })
+                  }
+                  const e = envelope as {
+                    title?: unknown
+                    body?: unknown
+                    scopeHint?: unknown
+                    submittedByClientRef?: unknown
+                  }
+                  if (typeof e.title !== "string" || typeof e.body !== "string") {
+                    return Response.json({ error: "title and body required" }, { status: 400 })
+                  }
+                  const result = await options.actions.intents.submit({
+                    title: e.title,
+                    body: e.body,
+                    ...(typeof e.scopeHint === "string" ? { scopeHint: e.scopeHint } : {}),
+                    ...(typeof e.submittedByClientRef === "string"
+                      ? { submittedByClientRef: e.submittedByClientRef }
+                      : {}),
+                  })
+                  return Response.json({ ok: true, result })
+                }
+
+                // deploy.cloud (deploy_cloud): node-triggered deploy through OUR
+                // pipeline. The node still gates execution behind OA_DEPLOY_ENABLE.
+                if (verb === "deploy.cloud") {
+                  if (!options.actions.deploy) {
+                    return Response.json({ error: "deploy unavailable on this node" }, { status: 404 })
+                  }
+                  const e = envelope as { target?: unknown; ref?: unknown; env?: unknown }
+                  const result = await options.actions.deploy.deployCloud({
+                    target: e.target,
+                    ref: e.ref,
+                    ...(e.env === undefined ? {} : { env: e.env }),
+                  })
+                  return Response.json({ ok: true, result })
+                }
+
                 // decision.resolve: exactly-once approval relay. Backed by the
                 // node's approval queue, which is itself exactly-once (a repeat
                 // resolve is a no-op duplicate). Requires answer_decision.
@@ -516,6 +576,31 @@ export const startControlServer = (
                     return Response.json({ error: "sessionRef required" }, { status: 400 })
                   }
                   return Response.json({ ok: true, result: await options.actions.sessions.cancel(envelope.sessionRef) })
+                }
+                // #5494 (epic #5492 G1): session.spawn over the bridge
+                // (spawn_session). Routes to the same node spawn action the
+                // dev-token /command path uses; the node validates the payload.
+                if (verb === "session.spawn") {
+                  const e = envelope as {
+                    adapter?: unknown
+                    objective?: unknown
+                    verify?: unknown
+                    lane?: unknown
+                  }
+                  if (e.adapter !== "codex" && e.adapter !== "claude_agent") {
+                    return Response.json({ error: "adapter must be codex|claude_agent" }, { status: 400 })
+                  }
+                  if (typeof e.objective !== "string") {
+                    return Response.json({ error: "objective required" }, { status: 400 })
+                  }
+                  const result = await options.actions.sessions.spawn({
+                    type: "session.spawn",
+                    adapter: e.adapter,
+                    objective: e.objective,
+                    verify: Array.isArray(e.verify) ? e.verify.filter((v): v is string => typeof v === "string") : [],
+                    ...(typeof e.lane === "string" ? { lane: e.lane as never } : {}),
+                  })
+                  return Response.json({ ok: true, result })
                 }
                 return Response.json({ error: "unsupported bridge verb", verb }, { status: 501 })
               } catch {

@@ -29,6 +29,16 @@ export const BridgeRequestVerb = S.Literals([
   "decision.resolve",
   "artifact.read",
   "capability.list",
+  // #5494 (epic #5492 G1): promote the six working steer-actions onto the
+  // capability-scoped bridge so mobile never rides the dev token on the wire.
+  // cancel + decision.resolve were already bridged; these add the remaining
+  // four steer verbs (spawn, submit-intent, pause, resume, deploy) so the full
+  // six are capability-scoped.
+  "session.spawn",
+  "intent.submit",
+  "coordinator.pause",
+  "coordinator.resume",
+  "deploy.cloud",
 ])
 export type BridgeRequestVerb = typeof BridgeRequestVerb.Type
 
@@ -59,6 +69,12 @@ export const Capability = S.Literals([
   "cancel",
   "pause_resume",
   "read_artifact",
+  // #5494 (epic #5492 G1): steer-action capability classes that back the
+  // promoted bridge verbs. `send_instruction` covers turn.steer + intent.submit
+  // (both push instruction into the node); `spawn_session` and `deploy_cloud`
+  // are distinct higher-privilege classes a read-only viewer never holds.
+  "spawn_session",
+  "deploy_cloud",
 ])
 export type Capability = typeof Capability.Type
 
@@ -121,13 +137,21 @@ export function verbAllowedByCapabilities(verb: BridgeRequestVerb, capabilities:
     case "decision.resolve":
       return has("answer_decision")
     case "turn.steer":
+    case "intent.submit":
+      // Both push an instruction into the node (steer a turn / submit an ask).
       return has("send_instruction")
     case "turn.interrupt":
     case "session.cancel":
       return has("cancel")
     case "session.pause":
     case "session.resume":
+    case "coordinator.pause":
+    case "coordinator.resume":
       return has("pause_resume")
+    case "session.spawn":
+      return has("spawn_session")
+    case "deploy.cloud":
+      return has("deploy_cloud")
     case "artifact.read":
       return has("read_artifact")
     default:
