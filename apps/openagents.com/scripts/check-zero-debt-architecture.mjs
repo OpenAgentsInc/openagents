@@ -167,7 +167,14 @@ const budgetChecks = [
     name: 'raw time/id/random primitives',
   },
   {
-    budget: 160,
+    // Raised 160 -> 162 on 2026-06-19 (#5508) for the operator
+    // inference-credit grant route (`handleOmniOperatorInferenceCreditApi`,
+    // the admin mirror of the #5497 self-serve bridge): one `(request, env: Env)`
+    // handler in operator-billing-routes.ts and its matching dependency
+    // signature in omni-routes.ts, both the same shape as the sibling credits
+    // handler already counted here. Do not raise further; ratchet back down when
+    // the operator billing handlers move behind the config/binding boundary.
+    budget: 162,
     description:
       'Worker modules may not add raw Cloudflare Env parameters outside the future config/binding boundary.',
     details: countByFile(
@@ -220,7 +227,12 @@ const budgetChecks = [
   {
     // Raised 80 -> 83 on 2026-06-14 for the wave-3 Agency Pack route landing;
     // ratchet back down as route mappers are extracted. Do not raise further.
-    budget: 83,
+    // Raised 83 -> 84 on 2026-06-19 (#5508) for the operator inference-credit
+    // grant route (`handleOmniOperatorInferenceCreditApi`, the admin mirror of
+    // the #5497 self-serve bridge), which returns `Promise<Response>` like the
+    // sibling credits handler already counted. Ratchet back down when the
+    // operator billing handlers are extracted behind route mappers.
+    budget: 84,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -313,6 +325,13 @@ const runPromiseAllowlist = new Map([
   // Promise-based `/api/billing/inference-credit` handler. Named bridge; ratchet
   // down if the billing route handlers move to an Effect program.
   ['workers/api/src/billing-routes.ts', 1],
+  // Added 2026-06-19 (#5508): the operator inference-credit route runs the same
+  // Effect-returning USD->msat credit bridge (`fundInferenceFromCredit`) once
+  // from the Promise-based `/api/omni/operator/billing/inference-credit` admin
+  // handler — the operator mirror of the #5497 self-serve bridge above. Named
+  // bridge; ratchet down if the operator billing handlers move to an Effect
+  // program.
+  ['workers/api/src/operator-billing-routes.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

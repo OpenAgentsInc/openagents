@@ -50,6 +50,10 @@ type OmniRouteDependencies = Readonly<{
     request: Request,
     env: Env,
   ) => RouteEffect
+  handleOmniOperatorInferenceCreditApi: (
+    request: Request,
+    env: Env,
+  ) => RouteEffect
   handleOmniOperatorDeploymentsApi: (request: Request, env: Env) => RouteEffect
   handleOmniOperatorFleetApi: (request: Request, env: Env) => RouteEffect
   handleOmniOperatorTeamChatMessagesApi: (
@@ -160,6 +164,12 @@ export const makeOmniRoutes = (dependencies: OmniRouteDependencies) => ({
     if (url.pathname === '/api/omni/operator/billing/credits') {
       return routeEffectOrResponse(
         dependencies.handleOmniOperatorBillingCreditsApi(request, env),
+      )
+    }
+
+    if (url.pathname === '/api/omni/operator/billing/inference-credit') {
+      return routeEffectOrResponse(
+        dependencies.handleOmniOperatorInferenceCreditApi(request, env),
       )
     }
 

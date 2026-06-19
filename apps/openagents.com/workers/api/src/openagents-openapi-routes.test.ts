@@ -1156,6 +1156,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/omni/operator/autopilot/checklist',
   '/api/omni/operator/autopilot/preflight',
   '/api/omni/operator/billing/credits',
+  '/api/omni/operator/billing/inference-credit',
   '/api/omni/operator/deployments',
   '/api/omni/operator/fleet',
   '/api/omni/operator/team-chat/messages',
