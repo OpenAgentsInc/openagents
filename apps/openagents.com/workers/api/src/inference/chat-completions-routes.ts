@@ -35,6 +35,13 @@ import {
   type FairShareDecision,
   type SpendCapDecision,
 } from './inference-abuse-controls'
+import { type PremiumAccessDecision } from './inference-premium-allowlist'
+
+// DEFAULT MODEL ------------------------------------------------------------
+// The model served when a request omits `model`. The free-tier default is
+// Gemini 3.5 Flash (gateway free-tier enablement §2). Kept here as the single
+// route-level default so an unspecified request routes to the free lane.
+export const DEFAULT_CHAT_MODEL = 'gemini-3.5-flash'
 
 // AUTH SEAM ---------------------------------------------------------------
 // Resolves the per-account API key (the OpenAgents agent bearer token) to an
@@ -148,6 +155,19 @@ export type ChatCompletionsDeps = Readonly<{
   checkSpendCap?: (
     accountRef: string,
   ) => Promise<SpendCapDecision>
+  // PREMIUM-MODEL OWNER-GRANT GATE (free-tier enablement §2). Returns the
+  // premium-access decision for the (account, model) pair. Premium models
+  // (Claude / GPT / partner-passthrough) require the account's resolved OWNER
+  // identity to be on the owner-controlled allowlist; non-allowlisted premium
+  // requests are DENIED (403) with a clear, actionable message. Non-premium
+  // models (Gemini free default, Fireworks open) always pass. Default undefined
+  // => the gate is OPEN (no-op), so the inert/flag-off path is unchanged.
+  // Checked AFTER auth (so it is keyed to the resolved owner) and BEFORE
+  // provider dispatch (so a denied premium request never reaches a provider).
+  checkPremiumAccess?: (
+    accountRef: string,
+    model: string,
+  ) => Promise<PremiumAccessDecision>
   // Deterministic id/timestamp injection for tests. `nowEpochSeconds` defaults
   // to the runtime-primitives clock; `newId` to a runtime-primitives random id.
   nowEpochSeconds?: () => number
@@ -164,10 +184,22 @@ const ChatMessage = S.Struct({
 // forwarded to the adapter via `passthroughParams`; only the load-bearing
 // fields are decoded here.
 const ChatCompletionsRequestBody = S.Struct({
-  model: S.String,
+  // `model` is OPTIONAL: an unspecified model defaults to DEFAULT_CHAT_MODEL
+  // (Gemini 3.5 Flash, the free lane) in `resolveRequestedModel` below.
+  model: S.optionalKey(S.String),
   messages: S.Array(ChatMessage),
   stream: S.optionalKey(S.Boolean),
 })
+
+// Resolve the effective requested model: a present, non-blank `model` as given,
+// otherwise the free-tier default. Centralized so the default applies uniformly
+// to routing, premium gating, response echo, and metering.
+export const resolveRequestedModel = (
+  model: string | undefined,
+): string => {
+  const trimmed = model?.trim()
+  return trimmed === undefined || trimmed === '' ? DEFAULT_CHAT_MODEL : trimmed
+}
 
 const decodeBody = (value: unknown) => {
   try {
@@ -180,6 +212,7 @@ const decodeBody = (value: unknown) => {
 const toInferenceRequest = (
   body: typeof ChatCompletionsRequestBody.Type,
   raw: Record<string, unknown>,
+  requestedModel: string,
 ): InferenceRequest => {
   const messages: ReadonlyArray<InferenceMessage> = body.messages.map(
     message => ({ content: message.content, role: message.role }),
@@ -187,7 +220,7 @@ const toInferenceRequest = (
   const { messages: _messages, model: _model, stream: _stream, ...rest } = raw
   return {
     messages,
-    model: body.model,
+    model: requestedModel,
     passthroughParams: rest,
     stream: body.stream === true,
   }
@@ -305,6 +338,33 @@ export const handleChatCompletions = (
       )
     }
 
+    // Resolve the effective model once: an unspecified/blank model defaults to
+    // the free-tier default (Gemini 3.5 Flash). Used for premium gating,
+    // routing, response echo, and metering.
+    const requestedModel = resolveRequestedModel(body.model)
+
+    // PREMIUM-MODEL OWNER-GRANT GATE (free-tier enablement §2). Premium models
+    // require the account's resolved OWNER identity to be allowlisted. Checked
+    // here, after auth and before any balance/dispatch work, so a non-allowlisted
+    // premium request is denied with an actionable message and never reaches a
+    // provider. Open (no-op) when unwired; non-premium models always pass.
+    if (deps.checkPremiumAccess !== undefined) {
+      const premium = yield* Effect.promise(() =>
+        deps.checkPremiumAccess!(session.accountRef, requestedModel),
+      )
+      if (!premium.allowed) {
+        return noStoreJsonResponse(
+          {
+            error: 'premium_model_not_allowed',
+            message: premium.message,
+            model: requestedModel,
+            reason: premium.reasonRef,
+          },
+          { status: 403 },
+        )
+      }
+    }
+
     // BALANCE GATE (read-only). #5477 owns the real per-model decrement.
     const minimum = deps.minimumAvailableMsat ?? 1
     const availableMsat = yield* Effect.promise(() =>
@@ -354,7 +414,7 @@ export const handleChatCompletions = (
         const id = (deps.router ?? stubModelRouter)(model)
         return id === undefined ? [] : [id]
       })
-    const plannedIds = planFor(body.model)
+    const plannedIds = planFor(requestedModel)
     // model_unavailable when no lane is configured OR none of the planned lanes
     // is actually registered (e.g. an absent partner secret leaves the plan but
     // no resolvable adapter).
@@ -363,12 +423,12 @@ export const handleChatCompletions = (
     )
     if (!hasViableLane) {
       return noStoreJsonResponse(
-        { error: 'model_unavailable', model: body.model },
+        { error: 'model_unavailable', model: requestedModel },
         { status: 400 },
       )
     }
 
-    const inferenceRequest = toInferenceRequest(body, rawBody)
+    const inferenceRequest = toInferenceRequest(body, rawBody, requestedModel)
     const meteringHook = deps.meteringHook ?? stubMeteringHook
     const resolveFundingKind =
       deps.resolveFundingKind ?? defaultCardFundingResolver
@@ -429,8 +489,8 @@ export const handleChatCompletions = (
           adapterId: chunks.served.adapterId,
           fundingKind,
           requestId: responseId,
-          requestedModel: body.model,
-          servedModel: body.model,
+          requestedModel: requestedModel,
+          servedModel: requestedModel,
           streamed: true,
           usage: terminal.usage,
         })
@@ -451,7 +511,7 @@ export const handleChatCompletions = (
             ],
             created,
             id: responseId,
-            model: body.model,
+            model: requestedModel,
             object: 'chat.completion.chunk',
           }),
         )
@@ -492,7 +552,7 @@ export const handleChatCompletions = (
       adapterId: result.served.adapterId,
       fundingKind,
       requestId: responseId,
-      requestedModel: body.model,
+      requestedModel: requestedModel,
       servedModel: result.served.value.servedModel,
       streamed: false,
       usage: result.served.value.usage,
@@ -502,7 +562,7 @@ export const handleChatCompletions = (
       openAiResponse({
         created,
         id: responseId,
-        model: body.model,
+        model: requestedModel,
         result: result.served.value,
       }),
     )

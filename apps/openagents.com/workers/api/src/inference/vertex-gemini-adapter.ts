@@ -1,0 +1,497 @@
+// Vertex Gemini provider adapter for the inference gateway
+// (EPIC #5474, free-tier enablement). This is the Gemini lane: it serves
+// Google's own Gemini models (default: Gemini 3.5 Flash, model id
+// `gemini-3.5-flash`) from our first-party Google Cloud Vertex AI quota
+// (project `openagentsgemini`). Unlike the Claude lane, Gemini is Google's OWN
+// model on Vertex, so there is NO Anthropic partner quota involved — it is a
+// plain Vertex `publishers/google` model.
+//
+// It implements the InferenceProviderAdapter seam (`complete` + `stream`),
+// mapping our normalized InferenceRequest onto the Vertex AI Gemini
+// `generateContent` wire format and returning receipt-first `usage` from the
+// provider's `usageMetadata` — never an estimate (INVARIANTS.md "Canonical
+// Token Usage Ledger" + gateway business doc §4). It owns ONLY request
+// translation + transport; it never touches credits, payment, routing, free
+// allowance, or public projection.
+//
+// Wire contract (Vertex AI Gemini, verified against the Vertex Gemini REST
+// reference 2026-06-19):
+//   - Endpoint:
+//       POST https://{host}/v1/projects/{project}/locations/{location}/
+//            publishers/google/models/{modelId}:generateContent
+//       (and :streamGenerateContent?alt=sse for SSE)
+//     where {host} is `aiplatform.googleapis.com` for the `global` location and
+//     `{location}-aiplatform.googleapis.com` for regional/multi-region ones —
+//     the SAME host rule as the Vertex Anthropic lane.
+//   - `model` is NOT in the body — it is the {modelId} path segment.
+//   - Auth: `Authorization: Bearer <GCP access token>`. We REUSE the exact
+//     SA-key->OAuth token path the Vertex Anthropic adapter built
+//     (`vertex-token.ts`, Worker secret VERTEX_SA_KEY); Gemini needs the same
+//     `cloud-platform` scope.
+//   - Body shape: `contents: [{ role, parts: [{ text }] }]`, optional
+//     `systemInstruction: { parts: [{ text }] }`, and `generationConfig`
+//     ({ maxOutputTokens, temperature, topP, topK }). Gemini roles are
+//     `user` / `model` (NOT `assistant`); we map our normalized roles.
+//   - Response: `candidates[].content.parts[].text`, `candidates[].finishReason`,
+//     and `usageMetadata.{promptTokenCount, candidatesTokenCount,
+//     totalTokenCount, cachedContentTokenCount}`.
+//
+// AUTH NOTE: identical to the Anthropic lane — a Cloudflare Worker cannot use
+// gcloud ADC, so we mint a short-lived GCP access token from VERTEX_SA_KEY via
+// the shared `vertex-token.ts` path. A pre-minted token may also be supplied
+// directly (for tests / a sidecar that already holds ADC).
+//
+// INERT by default: index.ts constructs this adapter from env and registers it
+// once; with no VERTEX_SA_KEY (and no pre-minted token) the adapter is
+// unconfigured and surfaces a typed error rather than calling out. The whole
+// gateway route stays flag-gated off via INFERENCE_GATEWAY_ENABLED regardless.
+
+import { Effect } from 'effect'
+
+import { parseJsonRecord } from '../json-boundary'
+import {
+  InferenceAdapterError,
+  type InferenceProviderAdapter,
+  type InferenceRequest,
+  type InferenceResult,
+  type InferenceStreamChunk,
+  type InferenceUsage,
+} from './provider-adapter'
+import { type VertexFetch, type VertexTokenProvider } from './vertex-anthropic-adapter'
+
+export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
+
+// The default Gemini model id the free tier serves. The gateway's default model
+// when a caller specifies none (gateway free-tier enablement §3).
+export const DEFAULT_GEMINI_MODEL_ID = 'gemini-3.5-flash'
+
+// Default Vertex location — `global` uses the bare `aiplatform.googleapis.com`
+// host (no region subdomain prefix). Same default as the Anthropic lane.
+const DEFAULT_VERTEX_LOCATION = 'global'
+
+// Default max output tokens when the caller does not pass one. Gemini does not
+// strictly require maxOutputTokens, but we apply a sane floor for parity with
+// the Anthropic lane and to bound a runaway generation.
+const DEFAULT_MAX_TOKENS = 1024
+
+export type VertexGeminiAdapterConfig = Readonly<{
+  // GCP project id that holds the Vertex Gemini quota (e.g. "openagentsgemini").
+  project: string
+  // Vertex location ("global" | "us" | "eu" | a region like "us-east1").
+  location?: string | undefined
+  // Mints a GCP access token (SHARED with the Anthropic lane: same SA-key path).
+  // When undefined the adapter is unconfigured and every call fails with a
+  // typed, non-retryable error.
+  tokenProvider?: VertexTokenProvider | undefined
+  // Maps a requested model alias to the Vertex-native Gemini model id. Defaults
+  // to stripping a leading `vertex/` / `google/` / `gemini/` provider hint and
+  // mapping the bare alias `gemini` -> DEFAULT_GEMINI_MODEL_ID. Routing owns
+  // alias policy; this is only a last-mile id normalizer.
+  resolveModelId?: ((requestedModel: string) => string) | undefined
+  // Injected for tests; defaults to global fetch.
+  fetchImpl?: VertexFetch | undefined
+}>
+
+// Known Gemini model ids served from this Vertex lane. Exported as the
+// last-mile reference of the served lane; the router decides WHICH alias maps
+// here.
+export const KNOWN_VERTEX_GEMINI_MODEL_IDS: ReadonlyArray<string> = [
+  'gemini-3.5-flash',
+  'gemini-3.5-pro',
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+]
+
+const defaultResolveModelId = (requestedModel: string): string => {
+  // Strip a leading provider hint (`vertex/`, `google/`, `gemini/`) if present.
+  const stripped = requestedModel
+    .trim()
+    .replace(/^(?:vertex|google|gemini)\//u, '')
+  // A bare `gemini` alias maps to the default Flash model; an empty id likewise.
+  if (stripped === '' || stripped.toLowerCase() === 'gemini') {
+    return DEFAULT_GEMINI_MODEL_ID
+  }
+  return stripped
+}
+
+const vertexHost = (location: string): string =>
+  location === 'global'
+    ? 'aiplatform.googleapis.com'
+    : `${location}-aiplatform.googleapis.com`
+
+const vertexUrl = (
+  config: Readonly<{ project: string; location: string }>,
+  modelId: string,
+  method: 'generateContent' | 'streamGenerateContent',
+): string => {
+  const base =
+    `https://${vertexHost(config.location)}/v1/projects/${config.project}` +
+    `/locations/${config.location}/publishers/google/models/${modelId}:${method}`
+  // Streaming uses SSE framing so we can split on `data:` lines like the
+  // Anthropic lane; without `?alt=sse` Vertex returns a single JSON array.
+  return method === 'streamGenerateContent' ? `${base}?alt=sse` : base
+}
+
+// Map our normalized message role onto a Gemini `contents[].role`. Gemini uses
+// `user` and `model`; `assistant` maps to `model`, `system` is hoisted into the
+// top-level `systemInstruction` (handled in buildGeminiBody), and any other
+// role defaults to `user` (a safe, non-throwing default).
+const toGeminiRole = (role: string): 'user' | 'model' =>
+  role === 'assistant' || role === 'model' ? 'model' : 'user'
+
+// Generation-config sampling params Gemini accepts that the route may forward
+// verbatim via passthroughParams. We copy only recognized, type-checked fields
+// (Gemini names them differently from OpenAI/Anthropic, so we translate).
+const buildGenerationConfig = (
+  request: InferenceRequest,
+): Record<string, unknown> => {
+  const passthrough = request.passthroughParams
+  const config: Record<string, unknown> = {}
+
+  const rawMax = passthrough['max_tokens']
+  config['maxOutputTokens'] =
+    typeof rawMax === 'number' && Number.isInteger(rawMax) && rawMax > 0
+      ? rawMax
+      : DEFAULT_MAX_TOKENS
+
+  const temperature = passthrough['temperature']
+  if (typeof temperature === 'number') {
+    config['temperature'] = temperature
+  }
+  const topP = passthrough['top_p']
+  if (typeof topP === 'number') {
+    config['topP'] = topP
+  }
+  const topK = passthrough['top_k']
+  if (typeof topK === 'number') {
+    config['topK'] = topK
+  }
+  return config
+}
+
+const buildGeminiBody = (
+  request: InferenceRequest,
+): Record<string, unknown> => {
+  // System messages (from a `system` role or the `system` passthrough param)
+  // are hoisted into Gemini's top-level systemInstruction; everything else maps
+  // into `contents`.
+  const systemTexts: Array<string> = []
+  const contents: Array<Record<string, unknown>> = []
+  for (const message of request.messages) {
+    if (message.role === 'system') {
+      if (message.content !== '') {
+        systemTexts.push(message.content)
+      }
+      continue
+    }
+    contents.push({
+      parts: [{ text: message.content }],
+      role: toGeminiRole(message.role),
+    })
+  }
+
+  const passthroughSystem = request.passthroughParams['system']
+  if (typeof passthroughSystem === 'string' && passthroughSystem !== '') {
+    systemTexts.unshift(passthroughSystem)
+  }
+
+  const body: Record<string, unknown> = {
+    contents,
+    generationConfig: buildGenerationConfig(request),
+  }
+  if (systemTexts.length > 0) {
+    body['systemInstruction'] = {
+      parts: systemTexts.map(text => ({ text })),
+    }
+  }
+  return body
+}
+
+// Parse the receipt-first usage object from a Vertex Gemini response. Maps
+// Gemini `usageMetadata` field names onto our InferenceUsage. Missing fields
+// default to 0 so a malformed-but-2xx response still yields a stable shape; the
+// caller (metering) treats these as authoritative provider counts.
+//
+// Gemini's totalTokenCount can include tool-use + thoughts tokens beyond
+// prompt+candidates, so we trust the provider's totalTokenCount when present
+// rather than recomputing (prompt + candidates would under-count thinking
+// tokens we are still billed for).
+const parseUsage = (raw: unknown): InferenceUsage => {
+  const usage =
+    typeof raw === 'object' && raw !== null
+      ? (raw as Record<string, unknown>)
+      : {}
+  const num = (value: unknown): number =>
+    typeof value === 'number' && Number.isFinite(value) ? value : 0
+  const promptTokens = num(usage['promptTokenCount'])
+  const completionTokens = num(usage['candidatesTokenCount'])
+  const reportedTotal = num(usage['totalTokenCount'])
+  const totalTokens =
+    reportedTotal > 0 ? reportedTotal : promptTokens + completionTokens
+  const cached = usage['cachedContentTokenCount']
+  return {
+    completionTokens,
+    promptTokens,
+    totalTokens,
+    ...(typeof cached === 'number' && Number.isFinite(cached) && cached > 0
+      ? { cachedPromptTokens: cached }
+      : {}),
+  }
+}
+
+// Concatenate the text from a Gemini candidate's content.parts (text parts
+// only). Reads the FIRST candidate (we request a single completion).
+const extractText = (candidates: unknown): string => {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return ''
+  }
+  const first = candidates[0]
+  if (typeof first !== 'object' || first === null) {
+    return ''
+  }
+  const content = (first as Record<string, unknown>)['content']
+  if (typeof content !== 'object' || content === null) {
+    return ''
+  }
+  const parts = (content as Record<string, unknown>)['parts']
+  if (!Array.isArray(parts)) {
+    return ''
+  }
+  return parts
+    .map(part => {
+      if (typeof part === 'object' && part !== null) {
+        const text = (part as Record<string, unknown>)['text']
+        return typeof text === 'string' ? text : ''
+      }
+      return ''
+    })
+    .join('')
+}
+
+// Pull the finishReason from the first candidate (Gemini values: "STOP",
+// "MAX_TOKENS", "SAFETY", ...). Defaults to 'stop' when absent.
+const extractFinishReason = (candidates: unknown): string => {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return 'stop'
+  }
+  const first = candidates[0]
+  if (typeof first === 'object' && first !== null) {
+    const reason = (first as Record<string, unknown>)['finishReason']
+    if (typeof reason === 'string' && reason !== '') {
+      return reason
+    }
+  }
+  return 'stop'
+}
+
+// Whether an HTTP status from Vertex should be a retryable (overflow-eligible)
+// failure: 429 (rate limit / quota) and 5xx transient errors. Routing reads
+// `error.retryable` to fail over to other supply on quota pressure.
+const isRetryableStatus = (status: number): boolean =>
+  status === 429 || (status >= 500 && status <= 599)
+
+const adapterError = (
+  reason: string,
+  retryable: boolean,
+): InferenceAdapterError =>
+  new InferenceAdapterError({
+    adapterId: VERTEX_GEMINI_ADAPTER_ID,
+    retryable,
+    reason,
+  })
+
+// Build the adapter from config. With no token provider it is "unconfigured"
+// and every call yields a typed, non-retryable error (so the route maps it to a
+// stable provider_error rather than a crash). This keeps the registry seeding
+// in index.ts inert until the VERTEX_SA_KEY secret is present.
+export const makeVertexGeminiAdapter = (
+  config: VertexGeminiAdapterConfig,
+): InferenceProviderAdapter => {
+  const location = config.location ?? DEFAULT_VERTEX_LOCATION
+  const resolveModelId = config.resolveModelId ?? defaultResolveModelId
+  const fetchImpl = config.fetchImpl ?? fetch
+  const tokenProvider = config.tokenProvider
+
+  const ensureConfigured = (): Effect.Effect<
+    VertexTokenProvider,
+    InferenceAdapterError
+  > =>
+    tokenProvider === undefined
+      ? Effect.fail(
+          adapterError(
+            'Vertex Gemini adapter is not configured (missing VERTEX_SA_KEY / token provider).',
+            false,
+          ),
+        )
+      : Effect.succeed(tokenProvider)
+
+  // Issue a Vertex request and return the raw response body text. Reading the
+  // body here keeps the Cloudflare Response type fully encapsulated.
+  const call = (
+    request: InferenceRequest,
+    method: 'generateContent' | 'streamGenerateContent',
+  ) =>
+    Effect.gen(function* () {
+      const provide = yield* ensureConfigured()
+      const token = yield* provide()
+      const modelId = resolveModelId(request.model)
+      const url = vertexUrl({ location, project: config.project }, modelId, method)
+      const body = buildGeminiBody(request)
+
+      const { ok, status, text } = yield* Effect.tryPromise({
+        catch: error =>
+          adapterError(
+            `Vertex Gemini request transport error: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            true,
+          ),
+        try: async () => {
+          const response = await fetchImpl(url, {
+            body: JSON.stringify(body),
+            headers: {
+              authorization: `Bearer ${token}`,
+              'content-type': 'application/json',
+            },
+            method: 'POST',
+          })
+          return {
+            ok: response.ok,
+            status: response.status,
+            text: await response.text(),
+          }
+        },
+      })
+
+      if (!ok) {
+        return yield* Effect.fail(
+          adapterError(
+            `Vertex Gemini returned HTTP ${status}${
+              text === '' ? '' : `: ${text.slice(0, 500)}`
+            }`,
+            isRetryableStatus(status),
+          ),
+        )
+      }
+
+      return text
+    })
+
+  return {
+    complete: (request: InferenceRequest) =>
+      Effect.gen(function* () {
+        const text = yield* call(request, 'generateContent')
+        const json = parseJsonRecord(text)
+        if (json === undefined) {
+          return yield* Effect.fail(
+            adapterError('Vertex Gemini response was not valid JSON.', false),
+          )
+        }
+        const candidates = json['candidates']
+        const result: InferenceResult = {
+          content: extractText(candidates),
+          finishReason: extractFinishReason(candidates),
+          servedModel:
+            typeof json['modelVersion'] === 'string'
+              ? (json['modelVersion'] as string)
+              : resolveModelId(request.model),
+          usage: parseUsage(json['usageMetadata']),
+        }
+        return result
+      }),
+    id: VERTEX_GEMINI_ADAPTER_ID,
+    stream: (request: InferenceRequest) =>
+      Effect.gen(function* () {
+        const text = yield* call(request, 'streamGenerateContent')
+        return parseGeminiSseChunks(text, request.model, resolveModelId)
+      }),
+  }
+}
+
+// Parse a Vertex Gemini streamGenerateContent (?alt=sse) body into our
+// normalized stream chunks. Each `data:` line is a GenerateContentResponse
+// fragment carrying incremental `candidates[].content.parts[].text`; the final
+// fragments carry `finishReason` and the cumulative `usageMetadata`. We collapse
+// this into content deltas plus one terminal frame carrying the receipt-first
+// usage so the route's metering settles from real counts. (The route consumes a
+// batched array; this preserves that contract.)
+const parseGeminiSseChunks = (
+  body: string,
+  requestedModel: string,
+  resolveModelId: (model: string) => string,
+): ReadonlyArray<InferenceStreamChunk> => {
+  let promptTokens = 0
+  let completionTokens = 0
+  let totalTokens = 0
+  let cachedPromptTokens: number | undefined
+  let finishReason: string | undefined
+  const contentDeltas: Array<string> = []
+
+  const num = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) {
+      continue
+    }
+    const payload = trimmed.slice('data:'.length).trim()
+    if (payload === '' || payload === '[DONE]') {
+      continue
+    }
+    const event = parseJsonRecord(payload)
+    if (event === undefined) {
+      continue
+    }
+    // Incremental text + finishReason from this fragment's first candidate.
+    const candidates = event['candidates']
+    if (Array.isArray(candidates) && candidates.length > 0) {
+      const delta = extractText(candidates)
+      if (delta !== '') {
+        contentDeltas.push(delta)
+      }
+      // extractFinishReason defaults to 'stop'; only adopt a real terminal
+      // reason when the fragment actually carries one.
+      const first = candidates[0]
+      if (
+        typeof first === 'object' &&
+        first !== null &&
+        typeof (first as Record<string, unknown>)['finishReason'] === 'string'
+      ) {
+        finishReason = extractFinishReason(candidates)
+      }
+    }
+    // usageMetadata is cumulative across fragments; take the latest values.
+    const usage = event['usageMetadata']
+    if (typeof usage === 'object' && usage !== null) {
+      const u = usage as Record<string, unknown>
+      promptTokens = num(u['promptTokenCount']) ?? promptTokens
+      completionTokens = num(u['candidatesTokenCount']) ?? completionTokens
+      totalTokens = num(u['totalTokenCount']) ?? totalTokens
+      cachedPromptTokens = num(u['cachedContentTokenCount']) ?? cachedPromptTokens
+    }
+  }
+
+  const usage: InferenceUsage = {
+    completionTokens,
+    promptTokens,
+    totalTokens: totalTokens > 0 ? totalTokens : promptTokens + completionTokens,
+    ...(cachedPromptTokens === undefined || cachedPromptTokens <= 0
+      ? {}
+      : { cachedPromptTokens }),
+  }
+
+  const chunks: Array<InferenceStreamChunk> = []
+  const joined = contentDeltas.join('')
+  if (joined !== '') {
+    chunks.push({ contentDelta: joined })
+  }
+  chunks.push({
+    contentDelta: '',
+    finishReason: finishReason ?? 'stop',
+    usage,
+  })
+  void requestedModel
+  void resolveModelId
+  return chunks
+}

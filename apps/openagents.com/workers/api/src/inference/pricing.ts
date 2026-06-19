@@ -74,7 +74,11 @@ export type FundingKind = 'card' | 'bitcoin'
 
 // Supply lane a model is served from (cost attribution / provenance). Purely
 // descriptive here — routing (#5482) owns lane selection.
-export type SupplyLane = 'vertex-anthropic' | 'fireworks' | 'openagents-network'
+export type SupplyLane =
+  | 'vertex-anthropic'
+  | 'vertex-gemini'
+  | 'fireworks'
+  | 'openagents-network'
 
 // Our marginal cost for a model, per 1M tokens, by billed dimension. Cost is
 // CONFIG; sell rate = cost × (1 + margin). `cachedInput` is optional; when a
@@ -229,6 +233,26 @@ const FIREWORKS_OPEN_COST: Readonly<Record<string, ModelCostPerMtok>> = {
   },
 }
 
+// Vertex Gemini (Google's own model) cost basis — the Gemini 3.5 Flash lane is
+// the default/free-tier model (gateway free-tier enablement §1/§3). Gemini is
+// Google's first-party Vertex model (no Anthropic partner quota). These are the
+// published Vertex Gemini Flash LIST rates per 1M tokens; the committed-use /
+// quota rate may be lower. !! TODO-CONFIRM the real per-token Gemini Flash cost
+// from the Cloud Billing export before publishing prices; this is a single
+// tunable knob and the multiplier table re-solves when it lands.
+export const GEMINI_FLASH_COST_IS_LIST_TODO_CONFIRM = true as const
+
+const VERTEX_GEMINI_COST: Readonly<Record<string, ModelCostPerMtok>> = {
+  // Gemini 3.5 Flash list rates (~$0.075 in / $0.30 out per Mtok range,
+  // TODO-confirm). Cached input billed at ~25% of input per Vertex Gemini
+  // context-cache pricing; falls back to CACHED_INPUT_FRACTION if unset.
+  'gemini-3.5-flash': {
+    inputUsdPerMtok: 0.075,
+    cachedInputUsdPerMtok: 0.01875,
+    outputUsdPerMtok: 0.3,
+  },
+}
+
 // Unknown-model fallback cost. Conservative: priced like a mid open model so an
 // un-tabled model is never under-charged below plausible cost (docs edge:
 // unknown models still clear a sane floor). Not a measured rate.
@@ -291,6 +315,15 @@ export const MODEL_PRICING_TABLE: ReadonlyArray<ModelPricingEntry> = [
   entry('opus', 'vertex-anthropic', VERTEX_CLAUDE_COST.opus!, true),
   entry('sonnet', 'vertex-anthropic', VERTEX_CLAUDE_COST.sonnet!, true),
   entry('haiku', 'vertex-anthropic', VERTEX_CLAUDE_COST.haiku!, true),
+  // Vertex Gemini lane — Gemini 3.5 Flash, the default/free-tier model. Cost is
+  // the LIST placeholder (TODO-confirm); the multiplier re-solves when the real
+  // committed-use rate lands.
+  entry(
+    'gemini-3.5-flash',
+    'vertex-gemini',
+    VERTEX_GEMINI_COST['gemini-3.5-flash']!,
+    true,
+  ),
   // Fireworks open-model lane — REAL cost (verified 2026-06-19).
   entry('gpt-oss-20b', 'fireworks', FIREWORKS_OPEN_COST['gpt-oss-20b']!, false),
   entry(
