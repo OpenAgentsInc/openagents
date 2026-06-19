@@ -56,6 +56,9 @@ import {
 // layer with no dependency on adapter construction. index.ts registers adapters
 // under exactly these ids.
 export const VERTEX_ANTHROPIC_ADAPTER_ID = 'vertex-anthropic'
+// The Vertex Gemini lane (Google's own model). Serves Gemini 3.5 Flash + other
+// gemini-* ids from our first-party Vertex quota — the default/free-tier lane.
+export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
 export const FIREWORKS_ADAPTER_ID = 'fireworks'
 export const PASSTHROUGH_ANTHROPIC_ADAPTER_ID = 'passthrough-anthropic'
 export const PASSTHROUGH_OPENAI_ADAPTER_ID = 'passthrough-openai'
@@ -86,6 +89,7 @@ export type RouterLane = SupplyLane | 'passthrough'
 // that fallback is skipped at dispatch time.
 const LANE_ADAPTER_IDS: Readonly<Record<RouterLane, ReadonlyArray<string>>> = {
   'vertex-anthropic': [VERTEX_ANTHROPIC_ADAPTER_ID],
+  'vertex-gemini': [VERTEX_GEMINI_ADAPTER_ID],
   fireworks: [FIREWORKS_ADAPTER_ID],
   'openagents-network': [OPENAGENTS_NETWORK_ADAPTER_ID],
   passthrough: [
@@ -100,7 +104,19 @@ const LANE_ADAPTER_IDS: Readonly<Record<RouterLane, ReadonlyArray<string>>> = {
 
 // Model classes we route by. A bounded enum (not free-form intent): the only
 // classification we do is "which provider family is this model id?".
-export type ModelClass = 'claude' | 'open' | 'unknown'
+export type ModelClass = 'claude' | 'gemini' | 'open' | 'unknown'
+
+// Gemini-family model ids served from the Vertex Gemini lane. Matched against
+// the LOWERCASED requested id. The bare `gemini` alias and the canonical
+// `gemini-*` ids both route here, as do `google/` / `vertex/` provider-prefixed
+// forms. This is a bounded model-id classifier, not an intent parser.
+const isGeminiModel = (model: string): boolean => {
+  const id = model
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:vertex|google)\//u, '')
+  return id === 'gemini' || id.startsWith('gemini-') || id.startsWith('gemini.')
+}
 
 // Claude-family model ids served from the Vertex lane. Matched against the
 // LOWERCASED requested id. Bare aliases (`opus` / `sonnet` / `haiku` / `fable`)
@@ -142,6 +158,9 @@ export const classifyModel = (model: string): ModelClass => {
   if (isClaudeModel(model)) {
     return 'claude'
   }
+  if (isGeminiModel(model)) {
+    return 'gemini'
+  }
   if (isOpenModel(model)) {
     return 'open'
   }
@@ -177,10 +196,15 @@ export const openModelsByCost: ReadonlyArray<string> = MODEL_PRICING_TABLE.filte
 // typed-fails `network_dispatch_unavailable` (non-retryable), so `dispatchWithOverflow`
 // falls straight through to passthrough until a live Psionic fabric dispatch is
 // wired — it is a real, selectable lane but never a faked serve.
+// The gemini class routes to our first-party Vertex Gemini lane only. There is
+// no partner-passthrough overflow for Gemini today (we hold the quota directly;
+// no partner Gemini key is wired), so a Vertex Gemini failure surfaces rather
+// than overflowing to an unconfigured lane.
 const LANE_PLAN_BY_CLASS: Readonly<
   Record<ModelClass, ReadonlyArray<RouterLane>>
 > = {
   claude: ['vertex-anthropic', 'passthrough'],
+  gemini: ['vertex-gemini'],
   open: ['fireworks', 'openagents-network', 'passthrough'],
   unknown: ['passthrough'],
 }
