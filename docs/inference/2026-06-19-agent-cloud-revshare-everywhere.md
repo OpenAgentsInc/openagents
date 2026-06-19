@@ -2,9 +2,22 @@
 
 Date: 2026-06-19. Status: **vision capstone.** This connects the inference gateway/credits/
 referral work (the rest of `docs/inference/`) to the broader **OpenAgents Cloud** and the
-"Let's Make Money" revenue thesis. The point: inference is the first surface of a much bigger
-product — **the Agent Cloud, the one-stop shop for every agent need — and the same model
-(one credit balance, USD or Bitcoin, revshare throughout) applies to all of it.**
+"Let's Make Money" revenue thesis.
+
+**The wedge is coding, not inference.** The agentic coding product — **Autopilot**, on the
+verge of rolling out — is the wedge into the market. Inference (and the rest of the stack)
+**supports** that wedge: **Autopilot is the primary buyer of all of it.** Every coding
+session it runs consumes inference, sandboxes, and agentic compute from our own stack, on our
+own economics — so the stack has a large, captive, first-party demand source from day one
+instead of waiting for external API adoption.
+
+The API is **also** available — independently buyable by any agent or business (and
+discoverable via `openagents.com/AGENTS.md` so agents can buy inference or any other piece when
+they want compute beyond what Autopilot gives them). But that's additive. The point is **one
+single stack**: every part accessible to agents who want to buy any piece of it, **all on the
+same economics** (one balance, USD or Bitcoin, revshare throughout), each part **mutually
+reinforcing** the others and letting us **undercut parts of the market where our cost edge
+allows** — the Agent Cloud, the one-stop shop for every agent need.
 
 References: root `docs/cloud/README.md` ("OpenAgents Cloud is **the Agent Cloud for accepted
 outcomes**") + `docs/cloud/cloud3.md` (canonical product def) + `docs/cloud/architecture.md`
@@ -70,8 +83,11 @@ the buy-side, generalized: customers and businesses **already pay** for inferenc
 sandboxes, and agent task work elsewhere — we offer one aggregated, settleable, Bitcoin-native
 place to buy all of it, priced over our real (low) cost, with the margin fanning to the network.
 A dollar in returns more than a dollar of value (aggregated, cheaper, one bill, one balance),
-and the spread + fan-out is the business. Inference is the first wedge because demand is
-immediate and our supply (Vertex quota + Fireworks + our fabric) is already in hand.
+and the spread + fan-out is the business. **Coding (Autopilot) is the wedge that pulls the
+demand**; inference and the rest of the stack are what that demand *buys*. Autopilot being the
+primary buyer means the stack has immediate captive demand (every coding session) on day one —
+and our supply (Vertex quota + Fireworks + our fabric) is already in hand to serve it — while
+the same stack stays open for any agent/business to buy directly.
 
 ## 5. How it ties into OpenAgents Cloud (reuse, don't rebuild)
 

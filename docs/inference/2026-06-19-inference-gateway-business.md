@@ -41,7 +41,9 @@ bring demand in.
 - **Autopilot app users with no usable subscription** — the desktop app's coding agent
   needs inference. Today it leans on the user's own Claude/Codex auth. Many users won't
   have that (or will run out). The gateway is the app's default inference when the user
-  has nothing of their own.
+  has nothing of their own. **Autopilot is the gateway's primary, anchor buyer** — coding is
+  the wedge into the market, and every coding session it runs is captive first-party demand
+  for our own inference/compute stack. The other segments below are additive.
 - **People using their own tools (Claude Code / Codex) who run out or want one bill** —
   point Claude Code / Codex / any OpenAI-compatible client at our base URL; get one
   metered, top-up-able balance instead of juggling subscriptions.
@@ -85,7 +87,7 @@ we don't hold quota for.
 
 - **Compatibility:** OpenAI Chat Completions-compatible (and Anthropic Messages-compatible)
   so existing clients — Claude Code, Codex, OpenRouter-style SDKs, the Vercel AI SDK —
-  work by changing only the base URL + key. Zero-rewrite adoption is the wedge.
+  work by changing only the base URL + key — zero-rewrite adoption removes friction.
 - **Credits + metering:** a funded balance (Stripe USD top-up + Bitcoin/Lightning), priced
   per model per token, decremented per request from real usage. Reuses the openagents.com
   Worker billing/credit ledger and the revenue-loop settlement wiring (RL-1/2/3).
