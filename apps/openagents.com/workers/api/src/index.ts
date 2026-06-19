@@ -459,6 +459,7 @@ import {
 } from './site-referral-attribution-consumption'
 import { makeSiteReferralInspectionRoutes } from './site-referral-inspection-routes'
 import { sendSiteReferralOnboardingForConsumption } from './site-referral-onboarding'
+import { makeSiteReferralPayoutAdapter } from './site-referral-payout-adapter'
 import { makeSiteReferralPayoutLedgerRoutes } from './site-referral-payout-ledger-routes'
 import { makeSiteReferralRoutes } from './site-referral-routes'
 import { PENDING_REFERRAL_COOKIE } from './site-referrals'
@@ -6550,28 +6551,44 @@ const siteReferralPayoutLedgerRoutes = makeSiteReferralPayoutLedgerRoutes({
   requireAdminApiToken,
 })
 
+// Referral payout settlement adapter (RL-1 settle wire, #5511). This is the
+// PRODUCTION hosted-MDK programmatic-payout adapter the shared dispatcher
+// (`dispatchReferralPayoutSettlement`) invokes to record a `settled` referral
+// payout with a real, redacted, dereferenceable receipt ref -- replacing the
+// throwing placeholder that could never pay.
+//
+// OWNER-ARMED / INERT (the #5512 boundary): two independent gates keep this
+// inert until the owner arms live payouts:
+//   1. `readReadiness` below is the OWNER-ARMED OFF gate
+//      (`hostedMdkDirectPayoutDisabledGate` -> `livePayoutClaimAllowed: false`),
+//      so the dispatcher REFUSES before ever reaching the adapter; and
+//   2. the adapter's `client` is null (no funded programmatic-payout client
+//      armed) and its destination resolver returns null (no registered referrer
+//      destination), so even if reached it FAILS CLOSED (throws) -- no money
+//      moves and NO settled state is recorded.
+// Arming the gate + configuring a funded client + a registered destination is
+// the owner step (#5512); the rail itself is now wired and ready.
+const referralPayoutSettlementAdapter = makeSiteReferralPayoutAdapter({
+  // Not armed: no funded hosted-MDK programmatic-payout client is wired into the
+  // referral rail yet. Fail closed until the owner arms it (#5512).
+  client: null,
+  // Not armed: referrer payout-destination registration is owner-gated (#5512).
+  // Returns null so the adapter fails closed if ever reached.
+  resolveDestination: async () => null,
+})
+
 // Inference referral revshare routes (sub-EPIC #5475: #5491 dashboard read +
 // #5490 dispatch). The dispatch readiness gate defaults to the OWNER-ARMED OFF
-// gate (`hostedMdkDirectPayoutDisabledGate` -> `livePayoutClaimAllowed: false`),
-// so the first real inference referral payout is owner-armed: dispatch REFUSES
-// (no money moves, the adapter is never called) until the owner arms a live
-// payout mode. The adapter is a placeholder that throws if ever reached; the
-// readiness gate refuses first, so it is unreachable on the owner-armed path.
+// gate, so the first real referral payout is owner-armed: dispatch REFUSES (no
+// money moves, the adapter is never reached) until the owner arms a live payout
+// mode. The adapter is now the real hosted-MDK rail (`referralPayoutSettlement
+// Adapter`), which also fails closed (unconfigured client) on the not-armed
+// path -- so the placeholder that could never pay is replaced by a real,
+// readiness-gated rail.
 const inferenceReferralRoutes = makeInferenceReferralRoutes({
   appendRefreshedSessionCookies,
   dispatchDependencies: {
-    adapter: {
-      adapterKind: 'inference_referral_owner_armed_placeholder',
-      // Unreachable on the owner-armed path: the readiness gate below refuses
-      // before the adapter is ever called. If it were somehow reached, reject so
-      // NO money moves and the dispatcher records no settled state.
-      dispatch: () =>
-        Promise.reject(
-          new Error(
-            'inference referral payout adapter not armed: owner must enable a live payout mode',
-          ),
-        ),
-    },
+    adapter: referralPayoutSettlementAdapter,
     nowIso: currentIsoTimestamp,
     readReadiness: async () => hostedMdkDirectPayoutDisabledGate(),
   },
