@@ -91,21 +91,25 @@ sequencing reflects which slices unblock the most others.
 ## The 10 vertical-integration domain-epics
 
 Each domain-epic groups its promises by how the stack interlocks, not by code
-ownership. The **bold** epic is the GitHub EPIC issue that tracks it.
+ownership. The **master EPIC is #5523**; each domain-epic has its own GitHub
+EPIC issue (below).
 
-| # | Domain-epic | Promises | Net role in the ring |
-|---|---|---|---|
-| **DE-1** | **Revenue Loop — Referral · Payments · Credits collection** | 8 | The ring closes here: usage → money → referral → recycle |
-| **DE-2** | **Inference Gateway + Agent Cloud primitives** | 9 | Packages network supply into sellable, metered products |
-| **DE-3** | **Autopilot product surface (coding agent)** | 11 | Anchor demand; the headline launch proof point |
-| **DE-4** | **Pylon network + multi-earning node** | 9 | Turns hardware into market supply |
-| **DE-5** | **Training / Tassadar pipeline** | 13 | Produces the models + exact-execution architecture |
-| **DE-6** | **Open markets + marketplace** | 6 | The protocol substrate everything clears on |
-| **DE-7** | **Mobile + voice** | 3 | Mobile demand & approval surface |
-| **DE-8** | **Identity / proof / verification spine** | 6 | Keeps every claim & payout honest |
-| **DE-9** | **Workrooms · business objects · Sites delivery** | 4 | Business-system demand surface |
-| **DE-10** | **Energy · compute-at-scale · metrics · world-firsts** | 7 | Measures and proves the whole ring |
-| | **Total** | **76** | All enumerable non-green records covered, no overlaps |
+| # | Domain-epic | Promises | EPIC | Net role in the ring |
+|---|---|---|---|---|
+| **DE-1** | **Revenue Loop — Referral · Payments · Credits collection** | 8 | #5524 | The ring closes here: usage → money → referral → recycle |
+| **DE-2** | **Inference Gateway + Agent Cloud primitives** | 9 | #5525 | Packages network supply into sellable, metered products |
+| **DE-3** | **Autopilot product surface (coding agent)** | 11 | #5526 | Anchor demand; the headline launch proof point |
+| **DE-4** | **Pylon network + multi-earning node** | 9 | #5527 | Turns hardware into market supply |
+| **DE-5** | **Training / Tassadar pipeline** | 13 | #5528 | Produces the models + exact-execution architecture |
+| **DE-6** | **Open markets + marketplace** | 6 | #5529 | The protocol substrate everything clears on |
+| **DE-7** | **Mobile + voice** | 3 | #5530 | Mobile demand & approval surface |
+| **DE-8** | **Identity / proof / verification spine** | 6 | #5531 | Keeps every claim & payout honest |
+| **DE-9** | **Workrooms · business objects · Sites delivery** | 4 | #5532 | Business-system demand surface |
+| **DE-10** | **Energy · compute-at-scale · metrics · world-firsts** | 7 | #5533 | Measures and proves the whole ring |
+| | **Total** | **76** | | All enumerable non-green records covered, no overlaps |
+
+Master EPIC: **#5523** — "Weekend Promise Assault — drive all 76 non-green
+product promises green".
 
 ---
 
