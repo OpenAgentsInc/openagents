@@ -60,7 +60,16 @@ import type {
 
 // Which content pane is showing. The desktop equivalent of mobile's tab set
 // plus the focused session-detail leaf.
+//
+// ZERO-BASE SHELL (owner directive, 2026-06-19): "shell" is the new DEFAULT
+// surface — a black screen with nothing on it except a single text bar at the
+// bottom. Everything else (the full multi-pane UI: network/chat/code/supervise/
+// explore/settings + nav + palette) is KEPT and still mounts, but it is HIDDEN
+// behind an explicit open (Cmd-K palette → any "Go to …" / "Open panes", or the
+// small "open panes" affordance). The default is one thing at a time: black +
+// the bottom input + the clean conversation above it once there is a response.
 export const PaneId = S.Literals([
+  "shell",
   "network",
   // AO-4 (#5445): the first-run onboarding wizard / live status surface. Shows
   // the identity choice (AO-3) and the live chain (registered → online → wallet
@@ -178,6 +187,21 @@ export const ChatMessage = S.Struct({
   steps: S.Array(ChatStep),
 })
 export type ChatMessage = typeof ChatMessage.Type
+
+// ── Zero-base shell (owner directive, 2026-06-19) ───────────────────────────
+// The minimal default surface's state. ONE text bar, a clean conversation above
+// it, and nothing else. A turn is just `{ role, text }` — NO session refs, NO
+// program-step / verdict / node-state jargon (that all lives in the hidden chat
+// pane). `shellPending` disables the input while a response is in flight.
+export const ShellRole = S.Literals(["you", "assistant"])
+export type ShellRole = typeof ShellRole.Type
+
+export const ShellTurn = S.Struct({
+  id: S.String,
+  role: ShellRole,
+  text: S.String,
+})
+export type ShellTurn = typeof ShellTurn.Type
 
 // Transient status for the Ask-Autopilot card.
 export const AskStatus = S.Struct({
@@ -578,8 +602,25 @@ export const Model = ts("AutopilotDesktop", {
   // when there is no usable own auth. Persisted + applied to the live routing
   // decision (see shared/inference-routing.ts).
   gatewayInferenceFallback: GatewayInferenceFallback,
+
+  // ── Zero-base shell (owner directive, 2026-06-19) ─────────────────────────
+  // The minimal default surface. `shellInput` is the bottom text bar; `shellTurns`
+  // is the clean conversation rendered above it (what you typed → the answer);
+  // `shellPending` gates the input while a response is in flight. These are the
+  // ONLY fields the default screen reads — no other Model state renders there.
+  shellInput: S.String,
+  shellTurns: S.Array(ShellTurn),
+  shellPending: S.Boolean,
 })
 export type Model = typeof Model.Type
+
+// ── Zero-base shell introspection (programmatic-control parity) ─────────────
+// A pure, plain-text projection of exactly what the shell screen shows the user
+// (the conversation above the bar). The headless/RPC control path reads THIS so
+// a driver (Claude) sees the SAME rendered state the owner does — no DOM, no
+// hidden fields. One line per turn: "you: …" / "assistant: …".
+export const shellTranscriptText = (model: Model): string =>
+  model.shellTurns.map((turn) => `${turn.role}: ${turn.text}`).join("\n")
 
 // ── Typed accessors over the opaque projection fields ──────────────────────
 //
@@ -1032,4 +1073,10 @@ export const initialModel: Model = Model.make({
   defaultLane: "auto",
   showNotificationPanel: true,
   gatewayInferenceFallback: "auto",
+  // Zero-base shell: empty input, empty conversation, idle. The real app entry
+  // (initial-state.ts) sets `pane: "shell"`; this neutral base keeps `pane`
+  // "network" so the existing view/update tests stay deterministic.
+  shellInput: "",
+  shellTurns: [],
+  shellPending: false,
 })

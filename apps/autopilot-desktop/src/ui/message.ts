@@ -537,6 +537,22 @@ export const ChangedGatewayInferenceFallback = m(
 // the pure reducer. Failures are swallowed in the command (local convenience).
 export const SettledPersistPreferences = m("SettledPersistPreferences")
 
+// ── Zero-base shell (owner directive, 2026-06-19) ───────────────────────────
+// The minimal default surface's messages. `ChangedShellInput` tracks the bottom
+// text bar; `SubmittedShell` submits the current input (a turn); `RespondedShell`
+// is the response landing back (from the loopback seam in commands.ts — the
+// clear seam where the real model gets wired). `OpenedPanes` reveals the KEPT
+// full multi-pane UI (explicit open → lands on the chat pane); `ClosedPanes`
+// returns to the black shell. These are the only verbs the shell needs.
+export const ChangedShellInput = m("ChangedShellInput", { value: S.String })
+export const SubmittedShell = m("SubmittedShell")
+export const RespondedShell = m("RespondedShell", {
+  prompt: S.String,
+  text: S.String,
+})
+export const OpenedPanes = m("OpenedPanes")
+export const ClosedPanes = m("ClosedPanes")
+
 export const Message = S.Union([
   GotNodeState,
   GotPylonStats,
@@ -691,5 +707,10 @@ export const Message = S.Union([
   ToggledNotificationPanel,
   ChangedGatewayInferenceFallback,
   SettledPersistPreferences,
+  ChangedShellInput,
+  SubmittedShell,
+  RespondedShell,
+  OpenedPanes,
+  ClosedPanes,
 ])
 export type Message = typeof Message.Type

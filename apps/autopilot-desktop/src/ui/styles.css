@@ -48,6 +48,105 @@ body {
   overflow: hidden;
   background: #000;
 }
+
+/*
+ * ZERO-BASE SHELL (owner directive, 2026-06-19): the dead-simple default
+ * surface — a black screen with NOTHING on it except a single text bar at the
+ * bottom, and the clean conversation above it once there is a response. No
+ * sidebar, no nav, no panes, no chrome.
+ */
+.app-shell-shell {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+}
+.shell-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: #000;
+}
+.shell-conversation {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: clamp(1rem, 4vw, 3rem);
+  /* Keep the conversation comfortably centered/readable. */
+  max-width: 52rem;
+  width: 100%;
+  margin: 0 auto;
+}
+.shell-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.shell-turn-role {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.35);
+}
+.shell-turn-text {
+  color: var(--text, #e6e9ef);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+.shell-turn-you .shell-turn-text {
+  color: rgb(255 255 255 / 0.92);
+}
+.shell-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: clamp(0.75rem, 2vw, 1.25rem);
+  /* The bar sits on pure black; only the input itself has a faint frame. */
+  background: #000;
+}
+.shell-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: rgb(255 255 255 / 0.04);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 10px;
+  color: var(--text, #e6e9ef);
+  font: inherit;
+  font-size: 1rem;
+  padding: 0.75rem 1rem;
+  outline: none;
+}
+.shell-input::placeholder {
+  color: rgb(255 255 255 / 0.25);
+}
+.shell-input:focus {
+  border-color: rgb(255 255 255 / 0.3);
+}
+.shell-input:disabled {
+  opacity: 0.55;
+}
+.shell-open-panes {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 8px;
+  color: rgb(255 255 255 / 0.4);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  padding: 0.5rem 0.6rem;
+}
+.shell-open-panes:hover {
+  color: rgb(255 255 255 / 0.7);
+  border-color: rgb(255 255 255 / 0.25);
+}
 .network-page {
   position: absolute;
   inset: 0;

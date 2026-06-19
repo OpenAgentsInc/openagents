@@ -21,10 +21,12 @@ import type { DesktopRPCSchema } from "../shared/rpc"
 import { type DesktopRequests, pushInbound, setRequest } from "./bridge"
 import { initialRuntimeState } from "./initial-state"
 import {
+  ChangedShellInput,
   GotNodeLaunchStatus,
   GotNodeState,
   GotNotifications,
   GotPylonStats,
+  SubmittedShell,
 } from "./message"
 import { Model } from "./model"
 import { subscriptions } from "./subscriptions"
@@ -110,6 +112,17 @@ const rpc = Electroview.defineRPC<DesktopRPCSchema>({
       },
       nodeLaunchStatus(message) {
         pushInbound(GotNodeLaunchStatus({ status: message.status }))
+      },
+      // ZERO-BASE SHELL programmatic control: a Bun→webview push drives the
+      // shell's text bar through the SAME inbound messages the UI dispatches, so
+      // an operator / headless control path can set the input and submit it and
+      // a driver sees exactly the state the owner sees (model.shellTurns).
+      shellControl(message) {
+        if (message.action === "set-input") {
+          pushInbound(ChangedShellInput({ value: message.value ?? "" }))
+        } else {
+          pushInbound(SubmittedShell())
+        }
       },
     },
   },

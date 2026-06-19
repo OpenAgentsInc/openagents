@@ -67,6 +67,7 @@ import {
   SucceededSwarmBatchSpawn,
   FailedSwarmBatchSpawn,
   GotPublicActivityTimeline,
+  RespondedShell,
 } from "./message"
 
 const errorText = commandErrorText
@@ -1534,4 +1535,29 @@ export const PersistPreferences = Command.define(
     savePreferences(preferences)
     return SettledPersistPreferences()
   }),
+)
+
+// ── Zero-base shell loopback (owner directive, 2026-06-19) ──────────────────
+// The minimal default surface's response path. We START with a deterministic
+// local loopback so the bar is provably alive end-to-end (the owner — and a
+// programmatic driver — can type, submit, and read a response with no node,
+// no provider account, no network). It is intentionally simple and honest: it
+// echoes the prompt back, labelled as a local loopback, so nothing claims to be
+// a model answer that isn't.
+//
+// THE SEAM TO WIRE THE REAL MODEL: replace the body of `shellLoopbackReply`
+// with an RPC call (e.g. a Bun `shellTurn` verb over getRequest(), the same
+// pattern as SpawnChatTurn) and map its result into `RespondedShell`. The
+// reducer + view do not change — they already consume `RespondedShell`.
+export const shellLoopbackReply = (prompt: string): string =>
+  `echo (local loopback): ${prompt}`
+
+export const RespondToShellInput = Command.define(
+  "RespondToShellInput",
+  { prompt: S.String },
+  RespondedShell,
+)(({ prompt }) =>
+  Effect.sync(() =>
+    RespondedShell({ prompt, text: shellLoopbackReply(prompt) }),
+  ),
 )
