@@ -47,6 +47,30 @@ const loginPanelSecondaryLinkClass =
 
 export type PublicHeaderVariant = 'dark' | 'forum'
 
+const forumThemeSelectClass =
+  'rounded border border-white/25 bg-white/10 px-2 py-1 font-sans text-sm text-white transition hover:bg-white/[0.16] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-white [&>option]:text-black'
+
+// Forum-only light/dark/system selector. It carries no foldkit handler: the
+// forum page's inline script reads the value, resolves it, and persists the
+// choice (see forumScript in page/forum.ts). The script also sets the live
+// selection on load, so 'System' is just the initial markup default.
+const forumThemeSelector = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.select(
+    [
+      h.DataAttribute('forum-theme-select', ''),
+      h.AriaLabel('Forum theme'),
+      Ui.className<Message>(forumThemeSelectClass),
+    ],
+    [
+      h.option([h.Value('system'), h.Selected(true)], ['System theme']),
+      h.option([h.Value('light')], ['Light']),
+      h.option([h.Value('dark')], ['Dark']),
+    ],
+  )
+}
+
 const loggedOutLoginPopover = <Message>(
   loginHref: string,
   triggerClass: string,
@@ -200,22 +224,25 @@ export const view = <Message>(
           ),
           h.div(
             [Ui.className<Message>('flex items-center gap-2')],
-            authState._tag === 'LoggedIn'
-              ? [
-                  h.a(
-                    [h.Href(chatRouter()), Ui.className<Message>(linkClass)],
-                    ['Workroom'],
-                  ),
-                  h.button(
-                    [
-                      h.Type('button'),
-                      h.OnClick(authState.onLogout),
-                      Ui.className<Message>(linkClass),
-                    ],
-                    ['Log out'],
-                  ),
-                ]
-              : [loggedOutLoginPopover(loginHref, linkClass)],
+            [
+              ...(isForum ? [forumThemeSelector<Message>()] : []),
+              ...(authState._tag === 'LoggedIn'
+                ? [
+                    h.a(
+                      [h.Href(chatRouter()), Ui.className<Message>(linkClass)],
+                      ['Workroom'],
+                    ),
+                    h.button(
+                      [
+                        h.Type('button'),
+                        h.OnClick(authState.onLogout),
+                        Ui.className<Message>(linkClass),
+                      ],
+                      ['Log out'],
+                    ),
+                  ]
+                : [loggedOutLoginPopover(loginHref, linkClass)]),
+            ],
           ),
           h.details(
             [Ui.className<Message>('w-full lg:hidden')],

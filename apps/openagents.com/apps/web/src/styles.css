@@ -35,6 +35,55 @@
   --font-sans: var(--font-family-sans);
 }
 
+/*
+ * Forum theme switching (light / dark).
+ *
+ * The forum's --color-forum-* tokens default to light (defined in @theme
+ * above). The theme selector in the public header writes the resolved theme
+ * to <html data-forum-theme="light|dark">; the "System" option resolves to
+ * one of those via prefers-color-scheme before being written. Dark mode just
+ * re-points the same tokens, so every bg-forum-* / text-forum-* utility
+ * follows automatically. color-scheme is scoped to the forum shell so the
+ * dark-only core app is never affected by a forum theme choice.
+ */
+[data-forum-shell] {
+  color-scheme: light;
+}
+
+:root[data-forum-theme='dark'] [data-forum-shell] {
+  color-scheme: dark;
+}
+
+:root[data-forum-theme='dark'] {
+  --color-forum-alert: #ff6088;
+  --color-forum-heading: #e6edf3;
+  --color-forum-header: #3a6ea5;
+  --color-forum-link: #6cb0f5;
+  --color-forum-link-hover: #ff6088;
+  --color-forum-navbar: #1c3346;
+  --color-forum-online: #85de39;
+  --color-forum-page: #0e1217;
+  --color-forum-panel: #161c24;
+  --color-forum-payment: #d9942f;
+  --color-forum-post-link: #5aa6ef;
+  --color-forum-post-link-hover-bg: #213447;
+  --color-forum-row-a: #161d26;
+  --color-forum-row-b: #1b2531;
+  --color-forum-row-c: #2b3744;
+  --color-forum-text: #9aa7b8;
+  --color-forum-wrap: #151a21;
+  --color-forum-wrap-border: #262e39;
+}
+
+/*
+ * The forum container paints a 1px light ring via an arbitrary shadow
+ * utility; re-point it to the themed border colour so it doesn't glow in
+ * dark mode.
+ */
+:root[data-forum-theme='dark'] [data-forum-app] {
+  box-shadow: 0 0 0 1px var(--color-forum-wrap-border);
+}
+
 @layer base {
   @font-face {
     font-family: 'Berkeley Mono';

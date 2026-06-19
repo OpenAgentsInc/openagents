@@ -19,7 +19,7 @@ type ForumRouteValue =
 type ForumAuthMode = PublicHeaderAuthState<unknown>['_tag']
 
 const shellClass =
-  'h-dvh overflow-auto overscroll-contain bg-forum-page text-forum-text [color-scheme:light]'
+  'h-dvh overflow-auto overscroll-contain bg-forum-page text-forum-text'
 const containerClass =
   'mx-auto grid w-[min(100%,1180px)] gap-4 border-x border-forum-wrap-border bg-forum-wrap px-3 py-4 font-sans shadow-[0_0_0_1px_rgba(237,237,237,0.8)] sm:px-4 sm:py-5'
 const panelClass = 'rounded-md border border-forum-row-c bg-forum-panel'
@@ -62,6 +62,50 @@ export const forumScript = (
   const initial = ${JSON.stringify(initial)};
   const authMode = initial.authMode || 'LoggedOut';
   const loginHref = ${JSON.stringify(loginHref)};
+  // ---- Forum theme (light / dark / system) ----
+  // Preference is stored as 'light' | 'dark'; absence means "follow system".
+  // The resolved theme is written to <html data-forum-theme="..."> which the
+  // stylesheet keys the forum's --color-forum-* tokens off of. This runs
+  // before the root/main guard so the theme always applies, even on pages
+  // that re-render their own content.
+  const THEME_KEY = 'oa.forum.v1:theme';
+  const themeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+  const readThemePref = () => {
+    try {
+      const stored = localStorage.getItem(THEME_KEY);
+      return stored === 'light' || stored === 'dark' ? stored : 'system';
+    } catch (_) {
+      return 'system';
+    }
+  };
+  const resolveTheme = pref =>
+    pref === 'light' || pref === 'dark'
+      ? pref
+      : themeMedia.matches ? 'dark' : 'light';
+  const applyTheme = pref => {
+    document.documentElement.setAttribute('data-forum-theme', resolveTheme(pref));
+  };
+  const syncThemeSelect = pref => {
+    const select = document.querySelector('[data-forum-theme-select]');
+    if (select && select.value !== pref) select.value = pref;
+  };
+  applyTheme(readThemePref());
+  syncThemeSelect(readThemePref());
+  document.addEventListener('change', event => {
+    const target = event.target;
+    const select = target && target.closest ? target.closest('[data-forum-theme-select]') : null;
+    if (!select) return;
+    const value = select.value;
+    const pref = value === 'light' || value === 'dark' ? value : 'system';
+    try {
+      if (pref === 'system') localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, pref);
+    } catch (_) {}
+    applyTheme(pref);
+  });
+  themeMedia.addEventListener('change', () => {
+    if (readThemePref() === 'system') applyTheme('system');
+  });
   const state = {
     forum: null,
     launchStatus: null,
@@ -816,7 +860,7 @@ export const view = <Message>(
   const loginHref = forumLoginHref(route)
 
   return h.div(
-    [Ui.className<Message>(shellClass)],
+    [h.DataAttribute('forum-shell', ''), Ui.className<Message>(shellClass)],
     [
       PublicHeader.view(authState, 'forum', loginHref),
       h.main(
