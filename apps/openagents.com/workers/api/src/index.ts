@@ -38,7 +38,10 @@ import { fireworksAdapter } from './inference/fireworks-adapter'
 import { selectAdapterPlan } from './inference/model-router'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
 import { withReferralAccrual } from './inference/inference-referral-accrual'
-import { withFreeAllowance } from './inference/inference-free-allowance'
+import {
+  checkFreeAllowancePreflight,
+  withFreeAllowance,
+} from './inference/inference-free-allowance'
 import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
 import { makeVerifiedOwnerIdentityResolver } from './inference/inference-owner-identity'
 import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
@@ -343,6 +346,7 @@ import { makeOperatorSitesRoutes } from './operator-sites-routes'
 import {
   type OperatorTargetUser,
   readOperatorTargetUser,
+  readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
@@ -2696,6 +2700,12 @@ const makeAuthIssuer = (env: Env) => {
       return (
         hostname === 'openagents.com' ||
         hostname === 'auth.openagents.com' ||
+        // Isolated staging Worker. WIDEN-ONLY: this lets the prod issuer accept
+        // the staging-origin auth callback so a human can sign in on staging and
+        // exercise the billing/credit flow. The staging Worker delegates auth to
+        // this same prod issuer (OPENAUTH_ISSUER_URL=auth.openagents.com), so the
+        // allowlist must live here. Prod hosts above are unchanged.
+        hostname === 'openagents-staging.openagents.workers.dev' ||
         hostname === 'localhost' ||
         hostname === '127.0.0.1'
       )
@@ -5688,6 +5698,19 @@ const readSelectedOperatorTargetUser = (
 ): Promise<OperatorTargetUser | undefined> =>
   readOperatorTargetUser(db, selector, OPENAGENTS_ADMIN_EMAILS[0])
 
+// Kind-agnostic target resolver for the inference-credit grant (human OR agent
+// account) — the bridge funds `agent:<userId>` for either, and an agent account
+// under test is a valid target.
+const readSelectedInferenceCreditTargetUser = (
+  db: D1Database,
+  selector: Record<string, unknown>,
+): Promise<OperatorTargetUser | undefined> =>
+  readSelectedInferenceCreditTargetUserBase(
+    db,
+    selector,
+    OPENAGENTS_ADMIN_EMAILS[0],
+  )
+
 const sweepActiveAgentRunBilling = async (
   env: Env,
   ctx?: ExecutionContext,
@@ -6760,6 +6783,7 @@ const shareRoutes = makeShareRoutes({
 })
 
 const operatorBillingHandlers = makeOperatorBillingHandlers({
+  readSelectedInferenceCreditTargetUser,
   readSelectedOperatorTargetUser,
   requireAdminApiToken,
 })
@@ -7561,6 +7585,13 @@ const omniRoutes = makeOmniRoutes({
   handleOmniOperatorBillingCreditsApi: (request, env) =>
     routeEffect('handle_omni_operator_billing_credits_api', () =>
       operatorBillingHandlers.handleOmniOperatorBillingCreditsApi(request, env),
+    ),
+  handleOmniOperatorInferenceCreditApi: (request, env) =>
+    routeEffect('handle_omni_operator_inference_credit_api', () =>
+      operatorBillingHandlers.handleOmniOperatorInferenceCreditApi(
+        request,
+        env,
+      ),
     ),
   handleOmniOperatorDeploymentsApi: (request, env) =>
     routeEffect('handle_omni_operator_deployments_api', () =>
@@ -8725,6 +8756,19 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           )
           return balance === null ? 0 : balance.availableMsat
         },
+        // FREE-ALLOWANCE PRE-FLIGHT (EPIC #5474 §1): read-only mirror of the
+        // gate inside `withFreeAllowance` (wired just above as the metering
+        // hook). It lets the balance gate admit a zero-balance account when the
+        // (account, model) is free-eligible and the resolving owner still has
+        // remaining free allowance, so a genuinely-free request (Gemini Flash
+        // under the owner's Sybil-resistant pool) is reachable WITHOUT a funded
+        // balance — the metering hook then eats and accrues the cost. Uses the
+        // SAME owner-identity resolver as the metering hook so the bypass and
+        // the accrual agree on the owner/pool.
+        checkFreeAllowance: checkFreeAllowancePreflight({
+          db: openAgentsDatabase(env),
+          resolveOwnerIdentity,
+        }),
         // Routing & supply selection (#5482): cheapest-viable lane plan per
         // model with bounded-backoff overflow to the next viable lane on a
         // retryable provider failure (429 / 503 / 5xx / transport). INERT
