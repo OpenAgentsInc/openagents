@@ -4,8 +4,13 @@ Date: 2026-06-19. Rolls forward from
 [`JUNE18_ROADMAP.md`](./JUNE18_ROADMAP.md) (CLOSED 2026-06-19). Overnight the
 revenue-loop clearing layer (EPIC #5457) and the desktop auto-onboarding from-DMG
 proof (EPIC #5441) both landed and closed; the product-promises registry destaled
-to `2026-06-19.2` (no flips). See the June 18 close-out summary for the full
-shipped record.
+to `2026-06-19.2`. Since then: **EPIC #5461 (Autopilot Desktop → full coding agent)
+is COMPLETE** (be2378066), the post-EPIC **styles.css launch-fix** landed
+(`b6e523a77` — repaired styles.css mangled by the #5461 serial merges), the three
+**live coding-agent execution lanes were independently re-verified** (Claude +
+Codex + Tassadar), and the registry destaled again to **`2026-06-19.3`** (no
+flips). See the June 18 close-out summary for the full earlier shipped record and
+the section below for the live-verification record.
 
 > **Operating posture:** honest-scope, receipt-first. No green promise flip
 > without dereferenceable receipts **and** owner sign-off. Close issues only after
@@ -33,6 +38,50 @@ already built and wired — the remaining work is **connection + organization**,
 building panes from scratch.
 
 Audit: `docs/launch/2026-06-19-autopilot-desktop-coding-agent-audit.md`.
+
+### P0.0 — Coding-agent live re-verification + registry destale to `2026-06-19.3` — ✅ DONE
+
+Independently re-verified the three live coding-agent execution lanes from clean
+`origin/main` (`b6e523a77`, the post-#5461 styles.css launch-fix commit) — did not
+trust prior claims, re-ran each and produced fresh evidence. **All three passed.**
+Receipt (the dereferenceable ref promises now cite):
+`docs/launch/2026-06-19-coding-agent-live-verification.md`.
+
+- **Claude bridge** — `apps/pylon sessions exec --adapter claude_agent` →
+  `ok:true`, `verify.passed:true`, `verify.exitCode:0`, file created, elapsed
+  ~10.65s, process exit 0, auth on-device `~/.claude`.
+- **Codex bridge** — `--adapter codex` (workspace-write sandbox, network disabled)
+  → `ok:true`, `verify.passed:true`, `verify.exitCode:0`, file created, elapsed
+  ~13.17s, process exit 0, auth on-device `~/.codex/auth.json`.
+- **Tassadar executor** — `bun test packages/tassadar-executor` → **23 pass / 0
+  fail** across 5 files (execute + `exact_trace_replay`), exit 0.
+
+**Honest scope:** local single-task exec proof only — NOT production-scale,
+at-volume, packaged-stable-binary, or public-settlement.
+
+Registry edit (bumped `PublicProductPromisesVersion` `2026-06-19.2` →
+`2026-06-19.3`; new `Registry 2026-06-19.3` caveat note added):
+
+- **STAYED GREEN, evidence re-anchored on the new receipt (green→green, no flip,
+  no `promise_transition` required):**
+  - `pylon.local_claude_agent_bridge.v1`
+  - `autopilot.codex_probe_pylon_successor.v1`
+  - `compute.tassadar_executor_poc.v1`
+- **GREEN-CANDIDATES, FLAGGED but NOT flipped (receipt added to evidence + a
+  stays-yellow note appended to `safeCopy`):**
+  - `autopilot.builtin_compute_agent.v1` (yellow) — gap: signed/notarized recut
+    carrying the built-in-agent source + packaged OpenAgents compute credentials +
+    a **metered from-install go-online useful-work smoke**. A local single-task
+    exec does not satisfy those gates.
+  - `autopilot.desktop_gui_client.v1` (yellow) — gap: the owner-gated **from-DMG
+    clean-Mac** render/presence/settled-Bitcoin proof plus the live
+    PDF/preview/ingest/browser runtime wiring. (Note: a separate overnight DMG
+    proof `cc27f122e` addresses the from-DMG blocker independently of this lane;
+    this live-verification receipt only re-anchors the execution-lane dependency.)
+
+No yellow→green flips were made here, consistent with the green-flip guardrail:
+the only promises this receipt genuinely satisfies were already green, and the
+yellow candidates' gates need more than local single-task exec.
 
 Scope guard: stay inside the **yellow, local-only** promise
 `autopilot.desktop_gui_client.v1`; cloud lanes are the separate **red** promise
@@ -158,7 +207,9 @@ public-claim changes keep a trustworthy `check:deploy` gate.
 ## Product-promises review + next-5 green-flip analysis
 
 Reviewed `apps/openagents.com/workers/api/src/product-promises.ts` (registry
-version **`2026-06-19.2`**), `docs/promises/`, and how the gate computes
+version **`2026-06-19.3`** after the coding-agent live-verification destale in
+P0.0 above; this analysis was authored against `2026-06-19.2`), `docs/promises/`,
+and how the gate computes
 green/red. The registry shape is `{ promiseId, state, claim, safeCopy, unsafeCopy,
 evidenceRefs, blockerRefs, verification, authorityBoundary }`; a promise is GREEN
 only when its `blockerRefs` are cleared and its `verification` bar is met with

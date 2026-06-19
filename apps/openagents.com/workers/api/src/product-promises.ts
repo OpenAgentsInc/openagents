@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-19.2'
+export const PublicProductPromisesVersion = '2026-06-19.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -172,6 +172,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-18.3: training.decentralized_training_launch.v1 stays green; this is an evidence/copy accuracy upgrade only (no scope widening, no gate flip). A second real Bitcoin run-settlement on run.tassadar.executor.20260615 is now dereferenceable: 5 sats settled to a second distinct independent contributor (pylon.81f0facfe…), native over Spark, via receipt receipt.nexus.tassadar_run_settlement.settlement.tassadar.retro.10c3b01b.trigger.v1 (realBitcoinMoved:true, moneyMovement:real_bitcoin, state:settled, adapter:spark_treasury), backed by Verified independent-validator challenge training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4. This contributor came through the rc.32 self-serve public install→register→claim→submit→independent-validation path (the first independent contributor through the self-serve door), so the promise copy moves from "one contributor paid" to "two distinct independent contributors paid". Real settled total for the run is 1,005 sats (1,000 canary + 5 self-serve); the simulation 5-sat row (realBitcoinMoved:false) is excluded. The enumerable per-run settled feed GET /api/public/training/runs/run.tassadar.executor.20260615/settlements is now live (three rows: two real + one simulation) and is added as evidence. The 5-sat self-serve settlement was operator-retro-settled via the admin settlement endpoint because the auto-stream skipped at verdict time (a payout-target resolution bug, since fixed) — the first fully-autonomous auto-stream settlement (gate firing at verdict with no operator action) has NOT happened yet. No network-scale, paid-at-scale, largest-run, canonical-model-mutation, or unbounded-payout claim is authorized. No promise_transition is required because the state does not change (green→green); if owner review wants a transition exception receipt for the copy upgrade, record it against the deployed 2026-06-18.3 version via the operator route per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-18.7: public evidence route normalization. The run settlements evidence now uses the `/api/public/training/runs/{runRef}/settlements` alias, and each exact-trace verification challenge can be dereferenced at `/api/public/training/verification-challenges/{challengeRef}`. This is URL/discovery cleanup only; no promise state flips, settlement authority, payout authority, or claim scope changes.',
         'Registry 2026-06-19.2: copy/evidence destale only, no state flips. Autopilot Desktop auto-onboarding EPIC #5441 (AO-1..AO-6) is BUILT and tested (first-run self-register, AO-3 identity choice, AO-4 wizard projection, black-screen guard, AO-6 headless smoke against the real local node) but the final from-DMG proof on a clean Mac (rendered window, production presence, settled Tassadar Bitcoin receipt) is owner-gated and pending — desktop stays yellow. The Sites referral payout ledger is WIRED in source (RL-1 #5458: paid-event eligibility feed + readiness-gated idempotent approved->dispatched->settled dispatch via the MDK/Spark adapter, Bitcoin-only rev-share boundary) but NO real referral payout has settled — referral stays yellow and partner_payout_ledger stays red, each with a first-real-payout-pending blocker. All upgrades remain receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
+        'Registry 2026-06-19.3: coding-agent live re-verification, copy/evidence destale only, no state flips. On 2026-06-19, from clean origin/main (b6e523a77), the three live coding-agent execution lanes were independently re-run and all passed, captured in the dereferenceable receipt docs/launch/2026-06-19-coding-agent-live-verification.md: the local Claude Agent bridge ran sessions exec (adapter claude_agent, verify.passed:true, exit 0, ~10.65s, auth on-device ~/.claude), the local Codex bridge ran sessions exec (adapter codex, workspace-write sandbox with network disabled, verify.passed:true, exit 0, ~13.17s, auth on-device ~/.codex/auth.json), and the Tassadar executor package passed bun test packages/tassadar-executor (23 pass / 0 fail across 5 files, exit 0, execute + exact_trace_replay). The three already-green coding-agent records — pylon.local_claude_agent_bridge.v1, autopilot.codex_probe_pylon_successor.v1, and compute.tassadar_executor_poc.v1 — re-anchor their evidence on this fresh independent receipt and STAY green (green→green, no flip, no promise_transition required). The yellow desktop/built-in-compute records — autopilot.builtin_compute_agent.v1 and autopilot.desktop_gui_client.v1 — are noted as green-CANDIDATES whose execution-lane dependency is now live-proven, but they DO NOT flip: their gates require more than a local single-task exec (signed/notarized recut, packaged OpenAgents compute credentials + metered from-install go-online smoke for builtin_compute_agent; the from-DMG clean-Mac render/presence/settled-Bitcoin proof plus live PDF/preview/ingest/browser runtimes for desktop_gui_client). This receipt proves local single-task execution only and authorizes no production-scale, at-volume, packaged-stable-binary, or public-settlement copy.',
       ],
     },
     promises: [
@@ -366,6 +367,7 @@ export const publicProductPromisesDocument = () => {
           'apps/pylon/docs/codex-agent-task-smoke.md',
           'docs/autopilot-coder/2026-06-12-pylon-codex-day-to-day-readiness-audit.md',
           'assignment.closeout.f264043a9f173b20514521da',
+          'docs/launch/2026-06-19-coding-agent-live-verification.md',
         ],
         blockerRefs: [],
         verification:
@@ -1894,6 +1896,7 @@ export const publicProductPromisesDocument = () => {
           'receipt.tassadar_poc.payer_balance_2173_to_1173',
           'receipt.tassadar_poc.receiver_balance_0_to_980',
           'promise_transition_99b561e9-74f1-4c9a-90cc-cd7c0aea13bd',
+          'docs/launch/2026-06-19-coding-agent-live-verification.md',
         ],
         blockerRefs: [],
         verification:
@@ -2108,6 +2111,7 @@ export const publicProductPromisesDocument = () => {
           'assignment.closeout.ae84ca67ada1584130b823d5',
           'assignment.closeout.2dc83bdc0d8481ebba14621e',
           'docs/autopilot-coder/claude/2026-06-12-pylon-claude-codex-parity-audit.md',
+          'docs/launch/2026-06-19-coding-agent-live-verification.md',
         ],
         blockerRefs: [],
         verification:
@@ -2217,7 +2221,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Desktop is a GUI client for observing and steering local Autopilot coding sessions.',
         safeCopy:
-          'Autopilot Desktop (Bun/Electrobun shell with a Foldkit webview reusing the shared Autopilot UI) connects to a local Pylon node over loopback and renders a live session list, decision cards, and an event timeline. The auto-onboarding EPIC (#5441, AO-1..AO-6) is built and tested: on first run a fresh node self-registers, the AO-3 identity-choice screen offers create-new (named) or detected use-existing (seed marker detected by presence only, never read or overwritten), the wizard projects identity/registered/node-online/wallet/payout/presence/Tassadar/earning from real observed signals, a black-screen Document-contract guard is in place, and an AO-6 headless smoke drives the REAL local Pylon node through the launcher against a mock Worker and asserts the whole chain converges (no GUI, no terminal, no env vars). The PDF-production, loopback Sites-preview, and FS/MCP asset-ingestion + ambient-auth browser-automation cores are built as runtime-agnostic src/bun cores with injected runtimes and fake-based tests (epic #4973 and #4993/#4994/#4995 closed 2026-06-14). It is local-only: the final from-DMG proof on a clean external Mac (rendered window from the signed DMG, real appearance on production /api/public/pylon-stats, and a real claimed+settled Tassadar window with a Bitcoin receipt) is owner-gated and pending; and the live PDF renderer, Bun.serve loopback bind, FS-MCP + browser clients, Electrobun RPC exposure, cloud-lane sessions (autopilot.cloud_coding_sessions.v1), remote/Tailnet control, full TUI parity, and pricing/distribution are not wired or decided.',
+          'Autopilot Desktop (Bun/Electrobun shell with a Foldkit webview reusing the shared Autopilot UI) connects to a local Pylon node over loopback and renders a live session list, decision cards, and an event timeline. The auto-onboarding EPIC (#5441, AO-1..AO-6) is built and tested: on first run a fresh node self-registers, the AO-3 identity-choice screen offers create-new (named) or detected use-existing (seed marker detected by presence only, never read or overwritten), the wizard projects identity/registered/node-online/wallet/payout/presence/Tassadar/earning from real observed signals, a black-screen Document-contract guard is in place, and an AO-6 headless smoke drives the REAL local Pylon node through the launcher against a mock Worker and asserts the whole chain converges (no GUI, no terminal, no env vars). The PDF-production, loopback Sites-preview, and FS/MCP asset-ingestion + ambient-auth browser-automation cores are built as runtime-agnostic src/bun cores with injected runtimes and fake-based tests (epic #4973 and #4993/#4994/#4995 closed 2026-06-14). It is local-only: the final from-DMG proof on a clean external Mac (rendered window from the signed DMG, real appearance on production /api/public/pylon-stats, and a real claimed+settled Tassadar window with a Bitcoin receipt) is owner-gated and pending; and the live PDF renderer, Bun.serve loopback bind, FS-MCP + browser clients, Electrobun RPC exposure, cloud-lane sessions (autopilot.cloud_coding_sessions.v1), remote/Tailnet control, full TUI parity, and pricing/distribution are not wired or decided. The local coding-agent execution lanes the desktop client steers are independently live-proven on 2026-06-19 (docs/launch/2026-06-19-coding-agent-live-verification.md), but that is local single-task exec evidence only and does not satisfy the owner-gated from-DMG clean-Mac proof or the live PDF/preview/ingest/browser runtime wiring this promise still needs; it stays yellow.',
         unsafeCopy:
           'Do not claim the auto-onboarding EPIC final from-DMG proof is complete (it is owner-gated: no clean-Mac rendered-window screenshot, production-presence entry, or settled Tassadar Bitcoin receipt from a fresh DMG install is recorded yet), and do not claim Autopilot Desktop administers cloud or remote multi-node sessions, runs the local PDF/preview/ingest/browser runtimes end to end, has full TUI parity, or is a priced/distributed product; the cores are built behind clean seams with fakes, not yet wired to live runtimes, and the Bun host holds the control token while the webview only sees public-safe projections.',
         evidenceRefs: [
@@ -2240,6 +2244,7 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/4994',
           'https://github.com/OpenAgentsInc/openagents/issues/4995',
           'https://github.com/OpenAgentsInc/openagents/issues/5441',
+          'docs/launch/2026-06-19-coding-agent-live-verification.md',
         ],
         blockerRefs: [
           'blocker.product_promises.autopilot_desktop_from_dmg_proof_owner_gated',
@@ -2564,7 +2569,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Desktop ships a built-in, out-of-the-box agent so a user with no agent and no API key can install one desktop installer, go online, and have a working agent. It runs on OpenAgents-provided compute — the device’s own compute and/or OpenAgents’ managed cloud model set (e.g. a hosted Gemini set offered free to some users) — so no user-supplied key is required.',
         safeCopy:
-          'Source support is now wired in Autopilot Desktop: the first-screen Go online action and Agent pane call a Bun-owned built-in-agent RPC, check local Pylon + OpenAgents hosted compute readiness, create a managed scratch workspace, enforce a local daily-start cap, and start a bounded cloud-gcp/cloud-shc session with no user-supplied provider key. This is yellow, not green: the already-published rc.2 installer does not contain this source change, and green still needs a signed/notarized recut with packaged OpenAgents compute credentials plus public evidence of a from-install go-online session doing useful work. The free hosted tier is bounded/metered, not unlimited.',
+          'Source support is now wired in Autopilot Desktop: the first-screen Go online action and Agent pane call a Bun-owned built-in-agent RPC, check local Pylon + OpenAgents hosted compute readiness, create a managed scratch workspace, enforce a local daily-start cap, and start a bounded cloud-gcp/cloud-shc session with no user-supplied provider key. This is yellow, not green: the already-published rc.2 installer does not contain this source change, and green still needs a signed/notarized recut with packaged OpenAgents compute credentials plus public evidence of a from-install go-online session doing useful work. The free hosted tier is bounded/metered, not unlimited. The underlying local coding-agent execution lanes are independently live-proven on 2026-06-19 (docs/launch/2026-06-19-coding-agent-live-verification.md), so this is a green-candidate, but it stays yellow: that receipt is local single-task exec only and does not satisfy the signed/notarized recut, packaged OpenAgents compute credentials, or metered from-install go-online smoke this promise requires.',
         unsafeCopy:
           'Do not claim the already-published rc.2 installer includes this built-in agent, do not claim green/no-setup availability before a signed recut and live smoke, and do not describe hosted compute as free/unmetered or authority to spend/settle on the user behalf.',
         evidenceRefs: [
@@ -2576,6 +2581,7 @@ export const publicProductPromisesDocument = () => {
           'apps/autopilot-desktop/src/ui/view.ts',
           'apps/autopilot-desktop/tests/builtin-agent.test.ts',
           'apps/autopilot-desktop/tests/cl-53-foldkit.test.ts',
+          'docs/launch/2026-06-19-coding-agent-live-verification.md',
         ],
         blockerRefs: [
           'blocker.product_promises.builtin_compute_agent_signed_recut_missing',
