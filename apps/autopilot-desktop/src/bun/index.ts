@@ -787,16 +787,29 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           apiKey: Bun.env.OPENAGENTS_INFERENCE_API_KEY ?? null,
         })
       },
-      // HUD H5 (#5503): one zero-base shell turn. The Bun host reads the
-      // desktop's configured OpenAgents agent token (the same OPENAGENTS_AGENT_TOKEN
-      // it already uses for openagents.com) and calls the live inference gateway;
+      // HUD H5 (#5503): one zero-base shell turn. The Bun host resolves the
+      // desktop's OpenAgents agent token and calls the live inference gateway;
       // only the plain assistant text (or an honest configure/error message)
       // crosses back to the webview. The raw token never does.
+      //
+      // Token source (#5503 live-gateway fix): prefer an explicit env override
+      // (OPENAGENTS_SHELL_AGENT_TOKEN / OPENAGENTS_AGENT_TOKEN), then fall back
+      // to the agent credential the desktop already mints + persists during
+      // auto-onboarding (AO-1, `<PYLON_HOME>/agent-credential.json`, the same
+      // token the node uses for openagents.com — see node-launcher.ts). This is
+      // what lets the chat authenticate as the owner's real agent identity with
+      // no manual env var. The token stays host-side; it is never logged and
+      // never crosses to the webview.
       async shellTurn(params) {
         return buildShellTurn({
           prompt: params.prompt,
           env: Bun.env,
-          agentToken: resolveShellAgentToken(Bun.env),
+          agentToken: resolveShellAgentToken(Bun.env, () => {
+            const home = onboardingHome()
+            return home === null
+              ? null
+              : (loadPersistedCredential(home)?.token ?? null)
+          }),
         })
       },
       async installReadiness() {

@@ -27,6 +27,29 @@ describe("resolveShellAgentToken", () => {
     expect(resolveShellAgentToken({})).toBe(null)
     expect(resolveShellAgentToken({ OPENAGENTS_AGENT_TOKEN: "   " })).toBe(null)
   })
+
+  // #5503 live-gateway fix: a normal install sets no env var, so the shell must
+  // fall back to the persisted agent credential the desktop already mints.
+  test("no env token: falls back to the persisted agent credential", () => {
+    expect(resolveShellAgentToken({}, () => " oa_agent_persisted ")).toBe(
+      "oa_agent_persisted",
+    )
+  })
+
+  test("an env token still wins over the persisted credential (no read needed)", () => {
+    let read = false
+    const r = resolveShellAgentToken({ OPENAGENTS_AGENT_TOKEN: "tok-env" }, () => {
+      read = true
+      return "oa_agent_persisted"
+    })
+    expect(r).toBe("tok-env")
+    expect(read).toBe(false)
+  })
+
+  test("no env token and no persisted credential resolves to null", () => {
+    expect(resolveShellAgentToken({}, () => null)).toBe(null)
+    expect(resolveShellAgentToken({}, () => "   ")).toBe(null)
+  })
 })
 
 describe("buildShellTurn — honest no-token + network behaviour", () => {
