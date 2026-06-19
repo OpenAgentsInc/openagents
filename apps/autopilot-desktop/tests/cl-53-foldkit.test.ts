@@ -182,6 +182,8 @@ describe("helpers (CL-47..CL-58 parity, pure)", () => {
       "LoadOnboardingStatus",
       "LoadProofReplayBundle",
       "LoadPublicActivityTimeline",
+      // #5485: startup also warms the inference-gateway readiness.
+      "LoadInferenceGatewayReadiness",
     ])
     const proofReplay = commands.find(
       command => command.name === "LoadProofReplayBundle",
@@ -343,9 +345,12 @@ describe("update reducer (CL-53)", () => {
     expect(model.expandedEvents).toEqual([])
     expect(model.installReadinessPending).toBe(true)
     // CS-A1: Settings also surfaces accounts, so it loads install readiness +
-    // the managed-account registry.
+    // the managed-account registry. #5485: + the inference-gateway readiness.
     expect(model.managedAccountsPending).toBe(true)
-    expect(commands).toHaveLength(2)
+    expect(commands).toHaveLength(3)
+    expect(commands.map(command => command.name)).toContain(
+      "LoadInferenceGatewayReadiness",
+    )
   })
 
   test("NavigatedTo fullscreen training pane refreshes training projections", () => {

@@ -39,7 +39,11 @@ function bridgeFor(impl: typeof fetch): BridgeSession {
     credential: { pairingRef: "p1", jti: "j1", capabilityRef: "read_artifact" },
     fetchImpl: impl,
   })
-  return { transport, credential: { pairingRef: "p1", jti: "j1", capabilityRef: "read_artifact" } }
+  return {
+    transport,
+    credential: { pairingRef: "p1", jti: "j1", capabilityRef: "read_artifact" },
+    baseUrl: "https://node.example",
+  }
 }
 
 describe("fetchSessionArtifactContentViaBridge", () => {

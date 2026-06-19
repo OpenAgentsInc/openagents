@@ -38,6 +38,9 @@ import { fireworksAdapter } from './inference/fireworks-adapter'
 import { selectAdapterPlan } from './inference/model-router'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
 import { withReferralAccrual } from './inference/inference-referral-accrual'
+import { withFreeAllowance } from './inference/inference-free-allowance'
+import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
+import { makeVerifiedOwnerIdentityResolver } from './inference/inference-owner-identity'
 import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
 import { hostedMdkDirectPayoutDisabledGate } from './mdk-payout-mode-gate'
 import {
@@ -53,6 +56,10 @@ import {
   VERTEX_ANTHROPIC_ADAPTER_ID,
   makeVertexAnthropicAdapter,
 } from './inference/vertex-anthropic-adapter'
+import {
+  VERTEX_GEMINI_ADAPTER_ID,
+  makeVertexGeminiAdapter,
+} from './inference/vertex-gemini-adapter'
 import { tokenProviderFromSecret } from './inference/vertex-token'
 import { readAgentBalance } from './payments-ledger'
 import { makeAgentGoalRoutes } from './agent-goal-routes'
@@ -7708,6 +7715,34 @@ inferenceProviderRegistry.register(
   }),
 )
 
+// Vertex Gemini (Google's own model) — the default/free-tier lane (Gemini 3.5
+// Flash). Registered exactly once, sharing the SAME VERTEX_SA_KEY token path as
+// the Anthropic lane. INERT until the secret is present: with no key the adapter
+// returns a typed non-retryable error, and the route stays flag-gated off via
+// INFERENCE_GATEWAY_ENABLED. Project/location pin the same lane defaults.
+inferenceProviderRegistry.register(
+  makeVertexGeminiAdapter({
+    location: 'global',
+    project: 'openagentsgemini',
+    resolveModelId: undefined,
+    tokenProvider: () => {
+      const env = inferenceAdapterEnv
+      const provider =
+        env === undefined ? undefined : tokenProviderFromSecret(env.VERTEX_SA_KEY)
+      return provider === undefined
+        ? Effect.fail(
+            new InferenceAdapterError({
+              adapterId: VERTEX_GEMINI_ADAPTER_ID,
+              reason:
+                'Vertex Gemini adapter is not configured (missing VERTEX_SA_KEY).',
+              retryable: false,
+            }),
+          )
+        : provider()
+    },
+  }),
+)
+
 const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/',
@@ -8620,6 +8655,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       // credentials from Worker secrets at call time. INERT regardless: the
       // gateway is gated by INFERENCE_GATEWAY_ENABLED below.
       setInferenceAdapterEnv(env)
+      // Free-tier identity resolver (EPIC #5474 §1/§2): maps an authenticated
+      // account ref to its VERIFIED owner-claim identity (the SAME surface the
+      // #5486 light-KYC gate reads), so the Sybil-resistant free pool and the
+      // premium allowlist both key on one owner across all of that owner's
+      // accounts. INERT regardless — only reached when the gateway is enabled.
+      const ownerClaimStore = makeD1AgentOwnerClaimStore(openAgentsDatabase(env))
+      const resolveOwnerIdentity = makeVerifiedOwnerIdentityResolver(
+        ownerClaimStore.readVerifiedPublicIdentityForAgentUserId,
+      )
       return handleChatCompletions(request, {
         authenticate: async authRequest => {
           const token = readBearerToken(authRequest)
@@ -8648,9 +8692,22 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // accrual per paid request, idempotent, and never failing the inference
         // call. INERT when no real charge occurred (stub hook / zero charge / flag
         // off) and a no-op when the account was not referred.
-        meteringHook: withReferralAccrual(
-          makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
-          { db: openAgentsDatabase(env) },
+        //
+        // Free-allowance gate (EPIC #5474 §1): the OUTERMOST wrapper. For a
+        // free-eligible model (Gemini Flash) whose priced charge fits under the
+        // resolving owner's Sybil-resistant free pool ($10/verified owner, ~$0.50
+        // taste/unclaimed account, + earned allowance), it EATS the cost and
+        // short-circuits BEFORE the referral+ledger inner hook — no credit
+        // decrement, no referral accrual. Over allowance (or any non-free model)
+        // it falls through to the normal referral+ledger path. INERT on the
+        // flag-off path (the route never reaches the hook) and idempotent per
+        // request.
+        meteringHook: withFreeAllowance(
+          withReferralAccrual(
+            makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
+            { db: openAgentsDatabase(env) },
+          ),
+          { db: openAgentsDatabase(env), resolveOwnerIdentity },
         ),
         readAvailableMsat: async accountRef => {
           const balance = await readAgentBalance(
@@ -8673,6 +8730,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // route change. The enforceable money-side abuse control (chargeback /
         // refund credit clawback, `clawbackInferenceCredits`) hangs off the
         // Stripe dispute/refund webhook path, not this hot route.
+        //
+        // Premium-model owner-grant gate (EPIC #5474 §2): premium models (Claude
+        // / GPT / partner passthrough) require the requesting account's resolved
+        // OWNER identity to be on the owner-controlled allowlist
+        // (`inference_premium_allowlist`); a non-allowlisted premium request is
+        // denied (403) with an actionable message before any dispatch. Non-premium
+        // models (the Gemini free default, Fireworks open) always pass. INERT on
+        // the flag-off path.
+        checkPremiumAccess: makePremiumAccessGate({
+          db: openAgentsDatabase(env),
+          resolveOwnerIdentity,
+        }),
         registry: inferenceProviderRegistry,
       })
     },

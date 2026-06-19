@@ -18,7 +18,16 @@ import {
 import type { NotificationCenterView } from "@openagentsinc/autopilot-control-protocol"
 // #5472: functional Settings preferences — the literal schemas live in the
 // preferences module (the persistence + seam home) so the Model just re-uses them.
-import { DefaultAdapter, DefaultLane, ThemePreference } from "./preferences"
+import {
+  DefaultAdapter,
+  DefaultLane,
+  GatewayInferenceFallback,
+  ThemePreference,
+} from "./preferences"
+import {
+  decideInference,
+  type InferenceRoutingDecision,
+} from "../shared/inference-routing"
 import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
 import type { DesktopProofReplayProjection } from "../shared/proof-replays"
 import {
@@ -28,6 +37,7 @@ import type {
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
   IdentityChoiceStateResponse,
+  InferenceGatewayReadinessResponse,
   InstallReadinessResponse,
   ManagedAccountsResponse,
   OnboardingStatusResponse,
@@ -306,6 +316,11 @@ export const Model = ts("AutopilotDesktop", {
   appleFmReadiness: S.NullOr(S.Unknown),
   appleFmStatus: AppleFmStatus,
   appleFmPending: S.Boolean,
+  // #5485 (EPIC #5474): public-safe OpenAgents inference-gateway readiness
+  // (server-flag state + apiKeyPresent + credit balance). Drives the
+  // own-auth-vs-gateway routing decision + the composer low-balance hint. Bun
+  // owns the API key; the webview never sees it. Null until first fetched.
+  inferenceGatewayReadiness: S.NullOr(S.Unknown),
   agentMode: AgentMode,
 
   // #5064: first-run/install health projection. Bun composes local node
@@ -559,6 +574,10 @@ export const Model = ts("AutopilotDesktop", {
   defaultAdapter: DefaultAdapter,
   defaultLane: DefaultLane,
   showNotificationPanel: S.Boolean,
+  // #5485: whether to route coding inference through the OpenAgents gateway
+  // when there is no usable own auth. Persisted + applied to the live routing
+  // decision (see shared/inference-routing.ts).
+  gatewayInferenceFallback: GatewayInferenceFallback,
 })
 export type Model = typeof Model.Type
 
@@ -593,6 +612,37 @@ export const modelAppleFmReadiness = (
   model: Model,
 ): AppleFmReadinessResponse | null =>
   model.appleFmReadiness as AppleFmReadinessResponse | null
+
+export const modelInferenceGatewayReadiness = (
+  model: Model,
+): InferenceGatewayReadinessResponse | null =>
+  model.inferenceGatewayReadiness as InferenceGatewayReadinessResponse | null
+
+// #5485: derive the inference routing decision for the CURRENTLY-selected coding
+// adapter from the live model (provider accounts + gateway readiness + the saved
+// fallback preference). Single source so the composer hint, the spawn path, and
+// the tests all agree on the own-auth-vs-gateway choice. Apple FM and a not-yet-
+// fetched gateway readiness both degrade to a safe "own_auth/local" decision.
+export const modelInferenceDecision = (
+  model: Model,
+): InferenceRoutingDecision => {
+  const node = modelNode(model)
+  const accounts = (node?.accounts ?? []).map((row) => ({
+    provider: row.provider,
+    ready: row.ready,
+  }))
+  const readiness = modelInferenceGatewayReadiness(model)
+  return decideInference({
+    adapter: model.spawnAdapter,
+    accounts,
+    preference: model.gatewayInferenceFallback,
+    gateway: {
+      enabled: readiness?.enabled ?? false,
+      apiKeyPresent: readiness?.apiKeyPresent ?? false,
+      creditBalance: readiness?.creditBalance ?? null,
+    },
+  })
+}
 
 export const modelInstallReadiness = (
   model: Model,
@@ -836,6 +886,7 @@ export const initialModel: Model = Model.make({
   appleFmReadiness: null,
   appleFmStatus: { text: "not checked", tone: "idle" },
   appleFmPending: false,
+  inferenceGatewayReadiness: null,
   agentMode: "hosted",
   installReadiness: null,
   installReadinessStatus: { text: "not checked", tone: "idle" },
@@ -980,4 +1031,5 @@ export const initialModel: Model = Model.make({
   defaultAdapter: "codex",
   defaultLane: "auto",
   showNotificationPanel: true,
+  gatewayInferenceFallback: "auto",
 })

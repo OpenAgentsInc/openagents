@@ -5,7 +5,9 @@
 // is wired below and supersedes the dev token for read access.
 
 import {
+  buildSubscribeRequest,
   pairBridge,
+  parseEventBatch,
   createBridgeTransport,
   decodeBootstrapPayload,
   projectArtifactContentView,
@@ -14,6 +16,7 @@ import {
   type BridgeCredential,
   type Capability,
   type ProjectionLevel,
+  type SessionEvent,
   type SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
 
@@ -43,7 +46,14 @@ export function decodeConnectCode(code: string): ConnectInfo | null {
 // token on the wire. Uses the shared `@openagentsinc/autopilot-control-protocol`
 // transport (same code path as desktop).
 
-export type BridgeSession = { transport: ReturnType<typeof createBridgeTransport>; credential: BridgeCredential }
+export type BridgeSession = {
+  transport: ReturnType<typeof createBridgeTransport>
+  credential: BridgeCredential
+  // The node base URL this credential is bound to. Tracked so the live
+  // `session.subscribe` stream (#5493) can POST its cursor envelopes over the
+  // same /bridge endpoint the transport uses, without re-deriving it.
+  baseUrl: string
+}
 
 // Mint a single-use bridge bootstrap from the node (dev-token authed). The
 // secret is exchanged immediately at /bridge/pair and never re-used.
@@ -99,7 +109,7 @@ async function pairBridgeWithBootstrap(
     jti: pair.claims.jti,
     capabilityRef: opts.capabilities?.[0] ?? "observe_public",
   }
-  return { transport: createBridgeTransport({ baseUrl, credential }), credential }
+  return { transport: createBridgeTransport({ baseUrl, credential }), credential, baseUrl }
 }
 
 // Dev-token-FREE pairing: pair onto the bridge using an externally supplied
@@ -192,6 +202,48 @@ export async function fetchSessionArtifactContentViaBridge(
   const envelope = await bridge.transport.readArtifact(sessionRef)
   if (envelope.kind === "none") return null
   return projectArtifactContentView({ kind: envelope.kind, artifact: envelope.artifact })
+}
+
+// #5493 live streaming: fetch the next batch of a session's ordered events over
+// the capability-scoped bridge using the `session.subscribe` cursor verb. This
+// is the bridge-native streaming read the mobile `session-subscription` cursor
+// machine consumes — pass the cursor's `lastSequence` and the node replays only
+// events after it (empty batch when nothing new), so the timeline advances with
+// no full re-fetch and no long-lived dev token on the wire. Pure-ish: builds the
+// envelope from the shared protocol, POSTs over the same /bridge endpoint as the
+// transport, and decodes the typed event batch. Throws on a non-ok response so
+// the caller can classify the drop and fall back to polling.
+let bridgeSubscribeCounter = 0
+
+export async function fetchSessionEventBatchViaBridge(
+  bridge: BridgeSession,
+  sessionRef: string,
+  cursor: number,
+): Promise<SessionEvent[]> {
+  const clientRequestId = `mobile.subscribe.${++bridgeSubscribeCounter}`
+  const envelope = buildSubscribeRequest({
+    sessionRef,
+    pairingRef: bridge.credential.pairingRef,
+    capabilityRef: bridge.credential.capabilityRef ?? "observe_public",
+    clientRequestId,
+    idempotencyKey: clientRequestId,
+    // The cursor is the resume point; omit it for a fresh subscribe so the node
+    // replays from the start of its retained window.
+    ...(cursor > 0 ? { cursor } : {}),
+  })
+  const res = await fetch(`${bridge.baseUrl.replace(/\/+$/, "")}/bridge`, {
+    method: "POST",
+    headers: {
+      authorization: `Bridge ${bridge.credential.pairingRef}:${bridge.credential.jti}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(envelope),
+  })
+  const json = (await res.json()) as { ok?: unknown; result?: unknown; error?: unknown }
+  if (!res.ok || json.ok !== true) {
+    throw new Error(typeof json.error === "string" ? json.error : `bridge subscribe failed (${res.status})`)
+  }
+  return parseEventBatch(json.result)
 }
 
 export type ControlSessionRow = {
@@ -593,6 +645,63 @@ export async function resolveDecisionViaBridge(
 export async function cancelSessionViaBridge(bridge: BridgeSession, sessionRef: string): Promise<string> {
   const result = (await bridge.transport.cancel(sessionRef)) as { state?: unknown }
   return String(result?.state ?? "cancelled")
+}
+
+// #5494 (epic #5492 G1): the remaining four steer-actions over the
+// capability-scoped bridge — spawn, submit-intent, pause/resume, deploy. The
+// bridge transport sends each over POST /bridge with the scoped credential
+// (capability classes spawn_session / send_instruction / pause_resume /
+// deploy_cloud), so the mobile client no longer needs the raw node dev token on
+// the wire for these. Each mirrors the dev-token return shape its caller
+// already consumes; the ConnectionContext prefers these when a bridge
+// credential is paired and falls back to the dev-token path otherwise.
+
+export async function spawnSessionViaBridge(
+  bridge: BridgeSession,
+  draft: { adapter: "codex" | "claude_agent"; objective: string; verify?: string[]; lane?: SessionLane },
+): Promise<string> {
+  const result = (await bridge.transport.spawn({
+    adapter: draft.adapter,
+    objective: draft.objective,
+    verify: draft.verify ?? [],
+    lane: draft.lane ?? "auto",
+  })) as { sessionRef?: unknown }
+  return String(result?.sessionRef ?? "spawned")
+}
+
+export async function submitIntentViaBridge(
+  bridge: BridgeSession,
+  draft: { title: string; body: string },
+): Promise<string> {
+  const result = (await bridge.transport.submitIntent({
+    title: draft.title,
+    body: draft.body,
+    submittedByClientRef: "mobile",
+  })) as { status?: unknown }
+  return String(result?.status ?? "received")
+}
+
+export async function setCoordinatorPausedViaBridge(bridge: BridgeSession, paused: boolean): Promise<boolean> {
+  const result = (paused
+    ? await bridge.transport.pauseCoordinator()
+    : await bridge.transport.resumeCoordinator()) as { paused?: unknown }
+  return typeof result?.paused === "boolean" ? result.paused : paused
+}
+
+export async function deployToCloudViaBridge(
+  bridge: BridgeSession,
+  input: { target: DeployTarget; ref: string; env?: DeployEnv },
+): Promise<DeployResult> {
+  const result = (await bridge.transport.deployCloud({
+    target: input.target,
+    ref: input.ref,
+    ...(input.env ? { env: input.env } : {}),
+  })) as { accepted?: unknown; reason?: unknown; errors?: unknown }
+  return {
+    accepted: result?.accepted === true,
+    reason: typeof result?.reason === "string" ? result.reason : "unknown",
+    errors: Array.isArray(result?.errors) ? result.errors.map((e: unknown) => String(e)) : [],
+  }
 }
 
 // Cancel a running/queued session (CL-15). Best-effort: returns the new state.

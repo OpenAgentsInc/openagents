@@ -7,6 +7,14 @@
 import { buildArtifactReadRequest, buildCancelRequest, buildHistoryRequest, buildListRequest } from "./bridge-client"
 import { buildDecisionResolveEnvelope } from "./bridge-decision-client"
 import { parseArtifactReadResponse, type ArtifactReadResponse } from "./artifact-content-view"
+import {
+  buildCoordinatorPauseEnvelope,
+  buildCoordinatorResumeEnvelope,
+  buildDeployCloudEnvelope,
+  buildIntentSubmitEnvelope,
+  buildSpawnEnvelope,
+  type SpawnLane,
+} from "./bridge-steer-client"
 import type { Capability, PairingCredentialClaims, ProjectionLevel } from "./bridge"
 import type { DecisionVerb } from "./decision"
 import { decodeSessionSummary, type SessionSummary } from "./control"
@@ -69,6 +77,19 @@ export type BridgeTransport = {
   // { sessionRef, kind, artifact } envelope; run projectArtifactContentView over
   // it to render the diff/transcript/text view. Throws on a non-ok response.
   readArtifact: (sessionRef: string) => Promise<ArtifactReadResponse>
+  // #5494 (epic #5492 G1): the remaining four steer-actions over the bridge,
+  // each gated on a distinct capability class held in the node's stored claims:
+  //   spawn          → spawn_session
+  //   submitIntent   → send_instruction
+  //   pause/resume   → pause_resume
+  //   deploy         → deploy_cloud
+  // Each sends its own capabilityRef so a credential scoped to several steer
+  // classes selects the right one per verb. Throw on a non-ok response.
+  spawn: (input: { adapter: "codex" | "claude_agent"; objective: string; verify?: string[]; lane?: SpawnLane }) => Promise<unknown>
+  submitIntent: (input: { title: string; body: string; scopeHint?: string; submittedByClientRef?: string }) => Promise<unknown>
+  pauseCoordinator: () => Promise<unknown>
+  resumeCoordinator: () => Promise<unknown>
+  deployCloud: (input: { target: string; ref: string; env?: string }) => Promise<unknown>
 }
 
 // A transport bound to a pairing credential. Sends capability-scoped read
@@ -153,6 +174,59 @@ export function createBridgeTransport(input: {
         idempotencyKey: requestId,
       })
       return parseArtifactReadResponse(await send(envelope))
+    },
+    async spawn(spawnInput) {
+      const clientRequestId = nextId()
+      return send(
+        buildSpawnEnvelope({
+          ...spawnInput,
+          pairingRef: input.credential.pairingRef,
+          capabilityRef: "spawn_session",
+          clientRequestId,
+        }),
+      )
+    },
+    async submitIntent(intentInput) {
+      const clientRequestId = nextId()
+      return send(
+        buildIntentSubmitEnvelope({
+          ...intentInput,
+          pairingRef: input.credential.pairingRef,
+          capabilityRef: "send_instruction",
+          clientRequestId,
+        }),
+      )
+    },
+    async pauseCoordinator() {
+      const clientRequestId = nextId()
+      return send(
+        buildCoordinatorPauseEnvelope({
+          pairingRef: input.credential.pairingRef,
+          capabilityRef: "pause_resume",
+          clientRequestId,
+        }),
+      )
+    },
+    async resumeCoordinator() {
+      const clientRequestId = nextId()
+      return send(
+        buildCoordinatorResumeEnvelope({
+          pairingRef: input.credential.pairingRef,
+          capabilityRef: "pause_resume",
+          clientRequestId,
+        }),
+      )
+    },
+    async deployCloud(deployInput) {
+      const clientRequestId = nextId()
+      return send(
+        buildDeployCloudEnvelope({
+          ...deployInput,
+          pairingRef: input.credential.pairingRef,
+          capabilityRef: "deploy_cloud",
+          clientRequestId,
+        }),
+      )
     },
   }
 }

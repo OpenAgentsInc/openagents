@@ -64,7 +64,12 @@ export default function SessionDetailScreen() {
     [c],
   )
 
-  // Load events (poll) + the artifact once, on mount / ref change.
+  // Load events + the artifact once, on mount / ref change, then keep the
+  // timeline live. #5493: prefer the bridge `session.subscribe` stream — every
+  // new event batch triggers an immediate rich-events refresh, so the timeline
+  // advances within ~STREAM_MS of activity instead of the 4s poll. When the node
+  // has no bridge stream (subscribeSession reports streaming:false) we fall back
+  // to the periodic poll. The initial load always runs once regardless.
   useEffect(() => {
     if (sessionRef === null) return
     setEvents([])
@@ -75,6 +80,15 @@ export default function SessionDetailScreen() {
       .fetchSessionArtifact(sessionRef)
       .then((a) => setArtifact(a.kind === "none" ? null : a))
       .catch(() => {})
+
+    // Live stream: refresh the rich timeline whenever new events are replayed.
+    const sub = c.subscribeSession(sessionRef, () => void pollEvents(sessionRef))
+    if (sub.streaming) {
+      return () => sub.dispose()
+    }
+
+    // Fallback: no bridge stream — poll the rich events on a timer as before.
+    sub.dispose()
     eventsTimer.current = setInterval(() => void pollEvents(sessionRef), POLL_MS)
     return () => {
       if (eventsTimer.current) clearInterval(eventsTimer.current)

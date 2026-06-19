@@ -27,6 +27,14 @@ const BRIDGE_REQUEST_VERBS = [
   "decision.resolve",
   "artifact.read",
   "capability.list",
+  // #5494 (epic #5492 G1): the promoted steer verbs. Appended (not interleaved)
+  // so the existing projection order is preserved for credentials that don't
+  // hold the new steer capability classes.
+  "session.spawn",
+  "intent.submit",
+  "coordinator.pause",
+  "coordinator.resume",
+  "deploy.cloud",
 ] satisfies ReadonlyArray<BridgeRequestVerb>
 
 const MUTATING_BRIDGE_VERBS = new Set<BridgeRequestVerb>([
@@ -36,6 +44,12 @@ const MUTATING_BRIDGE_VERBS = new Set<BridgeRequestVerb>([
   "session.pause",
   "session.resume",
   "decision.resolve",
+  // #5494: the promoted steer verbs are all mutating (none observe-class).
+  "session.spawn",
+  "intent.submit",
+  "coordinator.pause",
+  "coordinator.resume",
+  "deploy.cloud",
 ])
 
 const VALID_CAPABILITIES = new Set<Capability>([
@@ -46,6 +60,9 @@ const VALID_CAPABILITIES = new Set<Capability>([
   "cancel",
   "pause_resume",
   "read_artifact",
+  // #5494: steer-action capability classes.
+  "spawn_session",
+  "deploy_cloud",
 ])
 
 function projectCapabilities(capabilities: ReadonlyArray<string> | undefined): Capability[] {

@@ -38,6 +38,7 @@ import {
   resolveBuiltInAgentSettings,
 } from "../shared/builtin-agent"
 import { projectInstallReadiness } from "../shared/install-readiness"
+import { buildInferenceGatewayReadiness } from "./inference-gateway"
 import {
   addManagedAccount,
   listManagedAccounts,
@@ -759,6 +760,16 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       async startAppleFmSession() {
         return startLocalAppleFmSession()
+      },
+      // #5485: OpenAgents inference-gateway readiness for default-inference
+      // routing. Bun owns the API key (never crosses to the webview); the
+      // readiness blob carries only the server-flag state, apiKeyPresent, model,
+      // and the numeric credit balance. INERT until the gateway flag is on.
+      async inferenceGatewayReadiness() {
+        return buildInferenceGatewayReadiness({
+          env: Bun.env,
+          apiKey: Bun.env.OPENAGENTS_INFERENCE_API_KEY ?? null,
+        })
       },
       async installReadiness() {
         return installReadinessProjection()
