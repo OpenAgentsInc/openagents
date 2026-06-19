@@ -120,6 +120,33 @@ export function readControlToken(pylonHome: string): string | null {
   return token.length > 0 ? token : null
 }
 
+// CL-45b: probe a candidate control token against the live control server with
+// a cheap authenticated request. A stale token in one candidate home would
+// otherwise dead-end auth at `control 401`; this lets the resolver fall through
+// to the next candidate home. Returns true when the server ACCEPTS the token
+// (any non-401 response — 200, or any other status means "this token
+// authenticated and the server is reachable"), false when the server rejects it
+// with 401. A network/transport error returns false (treat as unusable here) so
+// resolution keeps moving rather than hanging on an unreachable candidate.
+// Never logs or returns the token itself.
+export async function probeControlToken(input: {
+  baseUrl: string
+  token: string
+  fetchFn?: typeof fetch
+}): Promise<boolean> {
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "session.list" }),
+    })
+    return res.status !== 401
+  } catch {
+    return false
+  }
+}
+
 async function fetchSessionEventRows(input: {
   baseUrl: string
   token: string
