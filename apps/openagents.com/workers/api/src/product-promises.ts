@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-19.3'
+export const PublicProductPromisesVersion = '2026-06-19.4'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -49,6 +49,13 @@ const sourceRefs = [
   'packages/probe/docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json',
   'packages/probe/packages/runtime/src/benchmark/external-repo-studying-product.ts',
   'packages/probe/packages/runtime/tests/external-repo-studying-product.test.ts',
+  'docs/inference/README.md',
+  'docs/inference/2026-06-19-inference-gateway-business.md',
+  'docs/inference/2026-06-19-fireworks-provider.md',
+  'docs/inference/2026-06-19-pricing-vs-factory.md',
+  'docs/inference/2026-06-19-pricing-model.md',
+  'docs/inference/2026-06-19-decentralized-serving-shard-wan.md',
+  'docs/inference/2026-06-19-agent-cloud-revshare-everywhere.md',
 ]
 
 const basePromiseFields = {
@@ -173,6 +180,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-18.7: public evidence route normalization. The run settlements evidence now uses the `/api/public/training/runs/{runRef}/settlements` alias, and each exact-trace verification challenge can be dereferenced at `/api/public/training/verification-challenges/{challengeRef}`. This is URL/discovery cleanup only; no promise state flips, settlement authority, payout authority, or claim scope changes.',
         'Registry 2026-06-19.2: copy/evidence destale only, no state flips. Autopilot Desktop auto-onboarding EPIC #5441 (AO-1..AO-6) is BUILT and tested (first-run self-register, AO-3 identity choice, AO-4 wizard projection, black-screen guard, AO-6 headless smoke against the real local node) but the final from-DMG proof on a clean Mac (rendered window, production presence, settled Tassadar Bitcoin receipt) is owner-gated and pending — desktop stays yellow. The Sites referral payout ledger is WIRED in source (RL-1 #5458: paid-event eligibility feed + readiness-gated idempotent approved->dispatched->settled dispatch via the MDK/Spark adapter, Bitcoin-only rev-share boundary) but NO real referral payout has settled — referral stays yellow and partner_payout_ledger stays red, each with a first-real-payout-pending blocker. All upgrades remain receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-19.3: coding-agent live re-verification, copy/evidence destale only, no state flips. On 2026-06-19, from clean origin/main (b6e523a77), the three live coding-agent execution lanes were independently re-run and all passed, captured in the dereferenceable receipt docs/launch/2026-06-19-coding-agent-live-verification.md: the local Claude Agent bridge ran sessions exec (adapter claude_agent, verify.passed:true, exit 0, ~10.65s, auth on-device ~/.claude), the local Codex bridge ran sessions exec (adapter codex, workspace-write sandbox with network disabled, verify.passed:true, exit 0, ~13.17s, auth on-device ~/.codex/auth.json), and the Tassadar executor package passed bun test packages/tassadar-executor (23 pass / 0 fail across 5 files, exit 0, execute + exact_trace_replay). The three already-green coding-agent records — pylon.local_claude_agent_bridge.v1, autopilot.codex_probe_pylon_successor.v1, and compute.tassadar_executor_poc.v1 — re-anchor their evidence on this fresh independent receipt and STAY green (green→green, no flip, no promise_transition required). The yellow desktop/built-in-compute records — autopilot.builtin_compute_agent.v1 and autopilot.desktop_gui_client.v1 — are noted as green-CANDIDATES whose execution-lane dependency is now live-proven, but they DO NOT flip: their gates require more than a local single-task exec (signed/notarized recut, packaged OpenAgents compute credentials + metered from-install go-online smoke for builtin_compute_agent; the from-DMG clean-Mac render/presence/settled-Bitcoin proof plus live PDF/preview/ingest/browser runtimes for desktop_gui_client). This receipt proves local single-task execution only and authorizes no production-scale, at-volume, packaged-stable-binary, or public-settlement copy.',
+        'Registry 2026-06-19.4 adds the OpenAgents inference gateway / Agent Cloud vision as five conservative new records and flips NO existing promise. The whole inference business is ROADMAP, not built: inference.gateway_credits_business.v1 (red — no gateway endpoint, no inference credit balance, no metering/pricing/routing), inference.referral_on_all_inference.v1 (planned — cross-category ongoing referral revshare is design intent, sub-EPIC #5475), cloud.agent_cloud_one_stop_revshare.v1 (planned — the one-balance one-stop Agent Cloud is the unifying vision capstone, not a shipped product), and inference.decentralized_serving_fabric.v1 (red — Pylons do not yet serve inference; shard-WAN large-model serving is Psionic-planned/hardware-blocked; first serving-node payout owner-armed). The ONLY piece with real evidence is inference.fireworks_open_model_provider.v1 (yellow), and it is scoped precisely to a verified upstream PROVIDER CONNECTION: on 2026-06-19 a real OpenAI-compatible Fireworks chat/completions call returned a proper usage object against an OpenAgents-held key (docs/inference/2026-06-19-fireworks-provider.md), with seven serverless models live on the account — this proves reachability and a cheap-tier cost basis, NOT a sellable customer inference product, so it is deliberately not green. Existing records were cross-referenced (not inflated): sites.referral_bitcoin_stream.v1 stays yellow and is explicitly distinguished from the unbuilt inference referral product; api.hosted_gemini.v1, payments.accepted_outcome_economics.v1, training.*, and compute.tassadar_executor_poc.v1 are referenced as related/spine evidence without any state change. Sources: docs/inference/ (7 docs), EPIC #5474, sub-EPIC #5475, children #5476-#5491. No promise_transition is required (new red/yellow/planned records create no state flip); any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
       ],
     },
     promises: [
@@ -2692,6 +2700,182 @@ export const publicProductPromisesDocument = () => {
         authorityBoundary:
           'The Spark fallback is RECEIVE-ONLY. It grants no send, payout, accepted-work settlement, or public payout-target authority; activating any of those requires a separate explicit gate.',
       },
+      {
+        ...basePromiseFields,
+        promiseId: 'inference.gateway_credits_business.v1',
+        productArea: 'inference gateway',
+        audience: ['agent', 'developer', 'customer', 'operator', 'public'],
+        state: 'red',
+        claim:
+          'OpenAgents offers one OpenAI/Anthropic-compatible inference API backed by a usage-based credit balance you can fund with a card or Bitcoin, routed to the cheapest viable supply OpenAgents controls.',
+        safeCopy:
+          'The inference gateway + credits business is filed and designed (EPIC #5474) but NOT built. There is no live gateway endpoint, no credit balance you can fund for inference, and no customer can point a tool at an OpenAgents base URL and get metered inference today. The design reuses the existing openagents.com Worker billing/credit ledger and the revenue-loop spine (RL-1/2/3); the supply pillars are first-party Vertex Anthropic quota, the Fireworks open-model passthrough lane (provider connection verified — see inference.fireworks_open_model_provider.v1), and the planned Pylon serving fabric (inference.decentralized_serving_fabric.v1). Aggregating hosted-model inference behind one credits API is standard gateway practice; nothing here is novel, and nothing here is shipped.',
+        unsafeCopy:
+          'Do not claim a paid OpenAgents inference API, an inference credit balance, card-or-Bitcoin inference top-up, OpenAI/Anthropic-compatible serving, or cheapest-viable supply routing is live or usable by any customer or agent. Do not imply the verified Fireworks connection is a shipped customer inference product.',
+        evidenceRefs: [
+          'docs/inference/README.md',
+          'docs/inference/2026-06-19-inference-gateway-business.md',
+          'docs/inference/2026-06-19-pricing-vs-factory.md',
+          'docs/inference/2026-06-19-pricing-model.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/5474',
+          'https://github.com/OpenAgentsInc/openagents/issues/5476',
+          'https://github.com/OpenAgentsInc/openagents/issues/5477',
+          'https://github.com/OpenAgentsInc/openagents/issues/5478',
+          'https://github.com/OpenAgentsInc/openagents/issues/5482',
+          'https://github.com/OpenAgentsInc/openagents/issues/5485',
+          'https://github.com/OpenAgentsInc/openagents/issues/5486',
+          'promise:api.hosted_gemini.v1',
+          'promise:payments.accepted_outcome_economics.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.inference_gateway_api_unbuilt',
+          'blocker.product_promises.inference_credit_metering_unbuilt',
+          'blocker.product_promises.inference_pricing_engine_unbuilt',
+          'blocker.product_promises.inference_supply_routing_unbuilt',
+          'blocker.product_promises.inference_abuse_kyc_unbuilt',
+          'public_paid_model_gateway_missing',
+        ],
+        verification:
+          'Red until a live OpenAI/Anthropic-compatible gateway endpoint authenticates against a real inference credit balance, decrements credits receipt-first from provider usage, prices per-model with a real cost basis, routes across at least one supply lane, and a real customer/agent completes a funded metered inference request. Each must carry dereferenceable route, metering, pricing, and settlement evidence before any green or affirmative public copy.',
+        authorityBoundary:
+          'A filed EPIC and design docs are roadmap evidence only. They grant no inference serving, billing, credit-balance, routing, payout, or public-product-claim authority. API-inference resale is the allowed monetization lane under the no-resale invariant, but authorization of the mechanism is not authorization of a live product claim.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'inference.fireworks_open_model_provider.v1',
+        productArea: 'inference gateway',
+        audience: ['operator', 'developer', 'agent'],
+        state: 'yellow',
+        claim:
+          'OpenAgents has a verified live provider connection to Fireworks AI for open-weight model inference (DeepSeek, Kimi, GLM, Qwen, MiniMax, gpt-oss, Nemotron, embeddings, vision, image) as the open-model passthrough supply lane for the planned inference gateway.',
+        safeCopy:
+          'This is a verified PROVIDER CONNECTION, not a shipped customer product. On 2026-06-19 a real OpenAI-compatible call to Fireworks (POST https://api.fireworks.ai/inference/v1/chat/completions) succeeded on accounts/fireworks/models/deepseek-v4-pro and glm-5p2, returning a proper usage object; auth + inference were confirmed against an OpenAgents-held key in .secrets/fireworks.env. Seven serverless models are live on the account. This proves OpenAgents can reach Fireworks as a supply lane and that the serverless per-token prices are a usable cheap-tier cost basis; it does NOT mean any customer can buy this inference through OpenAgents. The gateway, credit metering, pricing engine, and routing that would turn this connection into a sellable product are unbuilt (inference.gateway_credits_business.v1, red).',
+        unsafeCopy:
+          'Do not claim OpenAgents sells Fireworks/open-model inference, that a customer or agent can buy Fireworks inference through OpenAgents, that there is a live inference product, or that this connection is more than a verified upstream provider link. Do not print or reference the raw Fireworks API key.',
+        evidenceRefs: [
+          'docs/inference/2026-06-19-fireworks-provider.md',
+          'docs/inference/README.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/5479',
+          'https://github.com/OpenAgentsInc/openagents/issues/5474',
+          'promise:inference.gateway_credits_business.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.inference_gateway_api_unbuilt',
+          'blocker.product_promises.inference_credit_metering_unbuilt',
+          'blocker.product_promises.inference_fireworks_adapter_unbuilt',
+        ],
+        verification:
+          'Yellow is scoped to exactly the verified upstream connection: a real Fireworks OpenAI-compatible chat/completions call returning a usage object against an OpenAgents-held key, plus the documented serverless catalog/pricing. Green (a sellable open-model inference product) additionally requires the gateway API skeleton, credit metering decremented receipt-first from the Fireworks usage object, a pricing/multiplier engine over the Fireworks cost basis, adaptive-rate-limit/429/503 overflow handling in the adapter, and a real customer-completed funded request with dereferenceable metering and settlement evidence.',
+        authorityBoundary:
+          'A verified provider connection is upstream-reachability evidence only. It grants no customer-facing inference product, billing, credit-balance, routing, payout, or public-product-claim authority, and it is not by itself any green claim.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'inference.referral_on_all_inference.v1',
+        productArea: 'inference gateway',
+        audience: ['agent', 'developer', 'customer', 'public'],
+        state: 'planned',
+        claim:
+          'Anyone who refers a user, agent, or business that funds an OpenAgents inference account earns an ongoing referral revshare cut of ALL of that account’s inference spend, indefinitely (not a one-time bounty), settled in credits or Bitcoin.',
+        safeCopy:
+          'Referral-on-all-inference is roadmap/contract language only (sub-EPIC #5475). It is designed to reuse the RL-1 referral ledger (attribution -> eligibility -> dispatch) and the credit<->Bitcoin asset-boundary/no-resale guards (RL-3), and to be implemented to span categories from the start. None of it is built: there is no live inference gateway to spend through, no inference referral attribution, no ongoing per-spend accrual, and no settled inference referral payout. The Sites 5% referral payout ledger is a separate, narrower surface that is wired but has paid no real payout (sites.referral_bitcoin_stream.v1, yellow); it is not the inference referral product and does not make this planned claim live.',
+        unsafeCopy:
+          'Do not claim anyone earns a cut of referred inference spend, that ongoing/indefinite inference referral revshare exists, or that pointing a business at OpenAgents pays the referrer today. Do not present the wired Sites referral ledger as proof this inference referral claim is live.',
+        evidenceRefs: [
+          'docs/inference/2026-06-19-inference-gateway-business.md',
+          'docs/inference/2026-06-19-decentralized-serving-shard-wan.md',
+          'docs/inference/2026-06-19-agent-cloud-revshare-everywhere.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/5475',
+          'https://github.com/OpenAgentsInc/openagents/issues/5487',
+          'https://github.com/OpenAgentsInc/openagents/issues/5488',
+          'https://github.com/OpenAgentsInc/openagents/issues/5489',
+          'https://github.com/OpenAgentsInc/openagents/issues/5490',
+          'https://github.com/OpenAgentsInc/openagents/issues/5491',
+          'promise:inference.gateway_credits_business.v1',
+          'promise:sites.referral_bitcoin_stream.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.inference_gateway_api_unbuilt',
+          'blocker.product_promises.inference_referral_attribution_unbuilt',
+          'blocker.product_promises.inference_referral_accrual_unbuilt',
+          'blocker.product_promises.referral_first_real_payout_pending',
+        ],
+        verification:
+          'Planned until the inference gateway exists, inference referral attribution binds a funded referee account to a referrer, ongoing accrual computes a referral % off receipt-first metered inference spend, a three-way per-request margin split (OpenAgents / serving node / referrer) is implemented, and a real referred-inference referral payout settles with a dereferenceable receipt under RL-1/2/3 and the asset-boundary/no-resale guards.',
+        authorityBoundary:
+          'Design intent for cross-category, indefinite referral revshare is roadmap evidence only. It grants no attribution, accrual, eligibility, payout, or settlement authority, and referral attribution is never payout eligibility or spendable settlement by itself.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'cloud.agent_cloud_one_stop_revshare.v1',
+        productArea: 'OpenAgents Cloud',
+        audience: ['agent', 'developer', 'customer', 'operator', 'public'],
+        state: 'planned',
+        claim:
+          'OpenAgents Cloud is the one-stop Agent Cloud for every agent need — inference, fine-tuning, training, sandboxes, agentic compute, tasks, and data — bought from one credit balance (USD or Bitcoin), with revshare throughout to the contributor who served the work and the referrer who brought the customer.',
+        safeCopy:
+          'This is the unifying VISION capstone (docs/inference/2026-06-19-agent-cloud-revshare-everywhere.md), not a shipped one-stop product. What is real now is the pattern and the spine: the accepted-outcome -> receipt -> settle rail and the revenue-loop wiring (RL-1/2/3) exist and are intended to be reused per category. The categories themselves are at very different stages: inference is freshly filed and unbuilt (#5474); training is at the Tassadar/decentralized stage (training.decentralized_training_launch.v1 is green only for a bounded settled scope); fine-tuning and the data marketplace are largely future; sandboxes/agentic compute are partly built/roadmap. There is no single credit balance spanning all categories, and cross-category “earn on everything forever” referral accrual is a design goal, not an implemented system.',
+        unsafeCopy:
+          'Do not claim a live one-stop Agent Cloud, a single credit balance you can spend across inference/fine-tuning/training/sandboxes/tasks/data, or that revshare-throughout/referral-on-everything-forever is operating. Do not let one bounded green claim (e.g. a single settled training run) stand in for the whole-cloud product.',
+        evidenceRefs: [
+          'docs/inference/2026-06-19-agent-cloud-revshare-everywhere.md',
+          'docs/inference/README.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/5474',
+          'https://github.com/OpenAgentsInc/openagents/issues/5475',
+          'promise:inference.gateway_credits_business.v1',
+          'promise:inference.referral_on_all_inference.v1',
+          'promise:payments.accepted_outcome_economics.v1',
+          'promise:training.decentralized_training_launch.v1',
+          'promise:training.full_pipeline_program.v1',
+          'promise:compute.tassadar_executor_poc.v1',
+          'promise:proof.demand_provenance.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.agent_cloud_unified_credit_balance_unbuilt',
+          'blocker.product_promises.agent_cloud_cross_category_revshare_unbuilt',
+          'blocker.product_promises.inference_gateway_api_unbuilt',
+          'blocker.product_promises.referral_first_real_payout_pending',
+        ],
+        verification:
+          'Planned until at least two of the named categories are simultaneously buyable from one shared credit balance, contributor revshare and cross-category referral accrual are implemented on the shared spine, and a real customer/agent completes funded multi-category work with dereferenceable per-category metering/grading and settlement receipts. Per proof.demand_provenance.v1, internal first-party usage is plumbing proof, not market proof.',
+        authorityBoundary:
+          'A vision capstone is roadmap evidence only. It grants no unified billing, cross-category routing, contributor payout, referral accrual, or public one-stop-product-claim authority. Each category remains gated by its own promise record and receipts.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'inference.decentralized_serving_fabric.v1',
+        productArea: 'inference gateway',
+        audience: ['contributor', 'operator', 'developer', 'public'],
+        state: 'red',
+        claim:
+          'The Pylon network is a decentralized model-serving fabric — every Pylon can load weights and serve inference (small models whole, large models sharded across N Pylons via the shard-WAN pipeline) — supplying the inference gateway and paying serving nodes Bitcoin revshare against exact-parity receipts.',
+        safeCopy:
+          'Decentralized serving as gateway supply is design + partly hardware-blocked roadmap, not a live capability. Today a Pylon runs coding-agent execution and the Tassadar exact-execution substrate; it does NOT yet load model weights and serve inference. The shard-WAN large-model pipeline is owned by Psionic and is mostly status planned (most large-model phases are hardware-blocked); only the planning/evidence substrate is early. The near-term lane is whole-small-model single-Pylon serving, also unbuilt as a gateway supply adapter. Serving-node Bitcoin revshare is designed to clear born-verified (exact-greedy parity) through RL-2/RL-3, but no Pylon has served a gateway inference request and no serving-node inference payout has settled — and the first real dispatched payout is owner-armed.',
+        unsafeCopy:
+          'Do not claim Pylons serve inference, that large models are sharded across the network and served, that decentralized inference supply is live, or that any serving node has earned Bitcoin for serving inference. Do not claim a trustless privacy or trustless-verification guarantee — the fabric is trusted-posture and activation-visible to the serving worker.',
+        evidenceRefs: [
+          'docs/inference/2026-06-19-decentralized-serving-shard-wan.md',
+          'docs/inference/2026-06-19-inference-gateway-business.md',
+          'docs/inference/README.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/5483',
+          'https://github.com/OpenAgentsInc/openagents/issues/5484',
+          'https://github.com/OpenAgentsInc/openagents/issues/5474',
+          'promise:inference.gateway_credits_business.v1',
+          'promise:compute.tassadar_executor_poc.v1',
+          'promise:pylon.consumer_compute_earns_bitcoin_self_serve.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.pylon_inference_serving_unbuilt',
+          'blocker.product_promises.shard_wan_large_model_serving_psionic_planned',
+          'blocker.product_promises.inference_serving_node_payout_unbuilt',
+          'blocker.product_promises.inference_serving_first_real_payout_owner_armed',
+          'blocker.product_promises.inference_gateway_api_unbuilt',
+        ],
+        verification:
+          'Red until a Pylon serves a real gateway inference request (whole-small-model near-term, shard-WAN large-model as Psionic hardware-backed phases land), the run carries an exact-greedy-parity receipt where a same-engine reference is feasible, the per-stage payout split is implemented against psionic.serve.pipeline_sharded_run_receipt.v1, and an owner-armed first serving-node Bitcoin payout settles with a dereferenceable receipt under RL-2/RL-3.',
+        authorityBoundary:
+          'Serving-fabric design honors the Psionic boundary: pricing, payout, marketplace, and identity authority stay outside Psionic, which emits evidence/receipts only. This record grants no serving, routing, payout, or public-product-claim authority, and large-model fabric claims stay blocked until a hardware-backed receipt or a typed refusal exists.',
+      },
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
@@ -2728,6 +2912,7 @@ export const publicProductPromisesDocument = () => {
       'Registry 2026-06-18.8 is a copy-only post-launch reconciliation. Stale pre-launch narrative that presented the decentralized-training launch as "imminent but has NOT happened" / "rails-ready is not launched" (point-in-time copy anchored to 2026-06-14) is corrected to current reality: the launch has happened, run.tassadar.executor.20260615 is live and active, self-serve claiming is open, and real Bitcoin has settled to independent contributors with public receipts. This is description/narrative accuracy only — no promise state flips, no new owner-signed transition receipt, no widened scope, and no new payout authority. Every red/yellow/planned promise keeps its state and its own receipt-first upgrade gate; the launch happening does not green any claim by itself.',
       'Registry 2026-06-19.1 aligns the product promises and launch docs with issue #5438. It records the exact auto-stream visibility capture for training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4: public activity timeline, generated replay proof_replay_bundle.public_activity.73e66071, receipt receipt.nexus.tassadar_run_settlement.idempotency.tassadar.autostream.training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4.worker, and docs/launch/2026-06-19-autostream-settlement-clip-manifest.json. It also removes the stale default-npm blocker because npm reports @openagentsinc/pylon@latest=1.0.5 on 2026-06-19. This version flips no promise green: pylon.consumer_compute_earns_bitcoin_self_serve.v1 remains red on scale methodology, Windows/WSL coverage, and Spark-helper auto-start/readiness evidence; world-first claims remain red pending owner-signed receipt-first upgrades; and no new payout, settlement, provider, wallet, deployment, or public-claim authority is created.',
       'Registry 2026-06-19.2 is a copy/evidence destale pass against what actually shipped to main, and flips no promise state. (1) autopilot.desktop_gui_client.v1 stays yellow but records the auto-onboarding EPIC #5441 (AO-1..AO-6, commits #5442-#5448): first-run self-register, AO-3 identity choice (create-new/named or detected use-existing with the seed marker read-by-presence-only and never overwritten), AO-4 wizard live-state projection from real observed signals, a black-screen Document-contract guard, and an AO-6 headless smoke that drives the REAL local Pylon node through the launcher against a mock Worker (apps/autopilot-desktop/scripts/auto-onboarding-e2e-smoke.ts). The EPIC final from-DMG proof — a rendered window from the signed DMG on a clean external Mac, real appearance on production /api/public/pylon-stats, and a real claimed+settled Tassadar window with a Bitcoin receipt — is owner-gated and pending per docs/launch/2026-06-18-autopilot-desktop-ao6-from-dmg-runbook.md (new blocker.product_promises.autopilot_desktop_from_dmg_proof_owner_gated). (2) sites.referral_bitcoin_stream.v1 stays yellow but records RL-1 #5458 (commit 2c83afd4f): the 5% referral payout ledger is now wired — site-referral-payout-feed.ts creates exactly one idempotent eligibility row per paid event (hooked into Stripe credit-purchase fulfillment, short-circuiting self/no-attribution) and site-referral-payout-dispatch.ts drives approved -> dispatched -> settled by invoking the injected MDK/Spark payout adapter before recording settled, readiness-gated by the MDK payout-mode projection and refusing non-Bitcoin (credit/USD) revenue, proven settle-at-most-once by site-referral-payout-wire.test.ts (mock adapter + in-memory D1). No real referral payout has settled (new blocker.product_promises.referral_first_real_payout_pending); the first real settled payout awaits a real Bitcoin-revenue production event and stays readiness-gated. (3) autopilot_sites.partner_payout_ledger.v1 stays red but cross-references the now-wired referral dispatch rail as a tested attribution->settlement reference implementation (new blocker.product_promises.partner_first_real_payout_pending); green still needs a partner-specific attribution policy, a real settled partner payout receipt, and a partner-facing projection. No promise_transition is required (no state flips); any future green flip remains receipt-first per proof.claim_upgrade_receipts.v1 and requires owner sign-off.',
+      'The OpenAgents inference gateway / Agent Cloud vision (docs/inference/, EPIC #5474 + sub-EPIC #5475 + children #5476-#5491) is recorded across five records at registry 2026-06-19.4: it is roadmap, not a shipped product. There is no live inference API, no inference credit balance, and no customer-buyable inference today. The single piece with real evidence is a VERIFIED Fireworks provider connection (a real usage-returning OpenAI-compatible call on an OpenAgents-held key), which is upstream reachability and a cost basis only — not a sellable inference product, and deliberately not green. Cross-category referral-on-everything-forever and the one-balance one-stop Agent Cloud are design intent. Report inference-product copy gaps in the Product Promises Forum.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
