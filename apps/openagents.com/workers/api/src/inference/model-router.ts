@@ -59,6 +59,17 @@ export const VERTEX_ANTHROPIC_ADAPTER_ID = 'vertex-anthropic'
 export const FIREWORKS_ADAPTER_ID = 'fireworks'
 export const PASSTHROUGH_ANTHROPIC_ADAPTER_ID = 'passthrough-anthropic'
 export const PASSTHROUGH_OPENAI_ADAPTER_ID = 'passthrough-openai'
+// The OpenAgents serving-fabric lane (#5483). Maps to the network adapter id.
+// Routing keeps it AHEAD of passthrough (our own compute is preferred over a
+// pure-passthrough partner; gateway doc §4 "our Vertex quota first ..., then
+// network nodes ..., then partner passthrough"). Until a live Psionic fabric
+// dispatch seam is wired, index.ts registers NO adapter under this id, so
+// `dispatchWithOverflow` (which filters the plan to registered adapters) simply
+// SKIPS the lane and falls through to passthrough — the lane is a real,
+// selectable insert point but never a faked serve. When the fabric dispatch lands,
+// registering a configured `openagents-network` adapter activates the lane with no
+// routing change.
+export const OPENAGENTS_NETWORK_ADAPTER_ID = 'openagents-network'
 
 // The provider lane a model is routed to. Mirrors `pricing.ts` `SupplyLane`
 // (cost provenance) plus the passthrough breadth lane that pricing folds into
@@ -76,7 +87,7 @@ export type RouterLane = SupplyLane | 'passthrough'
 const LANE_ADAPTER_IDS: Readonly<Record<RouterLane, ReadonlyArray<string>>> = {
   'vertex-anthropic': [VERTEX_ANTHROPIC_ADAPTER_ID],
   fireworks: [FIREWORKS_ADAPTER_ID],
-  'openagents-network': [],
+  'openagents-network': [OPENAGENTS_NETWORK_ADAPTER_ID],
   passthrough: [
     PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
     PASSTHROUGH_OPENAI_ADAPTER_ID,
@@ -154,16 +165,23 @@ export const openModelsByCost: ReadonlyArray<string> = MODEL_PRICING_TABLE.filte
 // margin), then network nodes ..., then partner passthrough (coverage)").
 //
 //   - claude  : Vertex (owned, best margin) -> passthrough (Anthropic breadth)
-//   - open    : Fireworks (managed open)    -> passthrough (OpenAI breadth)
+//   - open    : Fireworks (managed open) -> OpenAgents serving fabric (#5483)
+//               -> passthrough (OpenAI breadth)
 //   - unknown : passthrough only (coverage for models we hold no quota for)
 //
-// The network lane (#5483) is a future insert between the owned lane and
-// passthrough; LANE_ADAPTER_IDS maps it to no adapter today so it is skipped.
+// The OpenAgents serving-fabric lane (#5483) is placed in the OPEN class plan,
+// AHEAD of partner passthrough — per the shard-WAN doc §6 the near-term start
+// routes the cheap/open tier to our own Pylon serving (the margin lives there and
+// it is the only lane whose margin fans to contributors), keeping large frontier
+// (claude) on Vertex + passthrough. The lane is INERT today: its adapter
+// typed-fails `network_dispatch_unavailable` (non-retryable), so `dispatchWithOverflow`
+// falls straight through to passthrough until a live Psionic fabric dispatch is
+// wired — it is a real, selectable lane but never a faked serve.
 const LANE_PLAN_BY_CLASS: Readonly<
   Record<ModelClass, ReadonlyArray<RouterLane>>
 > = {
   claude: ['vertex-anthropic', 'passthrough'],
-  open: ['fireworks', 'passthrough'],
+  open: ['fireworks', 'openagents-network', 'passthrough'],
   unknown: ['passthrough'],
 }
 
