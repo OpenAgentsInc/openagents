@@ -1170,6 +1170,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/blueprint/contributions',
   '/api/blueprint/program-registry',
   '/api/blueprint/program-runs',
+  '/api/blueprint/tassadar-modules',
   // Provider webhooks and internal callbacks:
   '/api/mdk',
   '/api/webhooks/resend',

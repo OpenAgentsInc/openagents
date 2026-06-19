@@ -469,6 +469,30 @@ const uniqueRefs = (
 ): ReadonlyArray<string> =>
   [...new Set(refs.map(ref => ref.trim()).filter(ref => ref !== ''))].sort()
 
+// Dedupe while preserving first-seen order: `base` order is kept intact and
+// only refs not already present are appended. Used where a stored array's
+// order must stay stable across idempotent re-writes.
+const orderedRefUnion = (
+  base: ReadonlyArray<string>,
+  additions: ReadonlyArray<string>,
+): ReadonlyArray<string> => {
+  const seen = new Set<string>()
+  const result: Array<string> = []
+
+  for (const ref of [...base, ...additions]) {
+    const trimmed = ref.trim()
+
+    if (trimmed === '' || seen.has(trimmed)) {
+      continue
+    }
+
+    seen.add(trimmed)
+    result.push(trimmed)
+  }
+
+  return result
+}
+
 const forumPublicationProjection = (
   record: ArtanisForumPublicationIntentRecord,
   nowIso: string,
@@ -996,10 +1020,14 @@ export const closeArtanisPersistedLoopTick = (
         }),
       try: () => decodeUnknownWithSchema(ArtanisLoopTickRecord, existing.record),
     })
-    const closeoutReceiptRefs = uniqueRefs([
-      ...current.closeoutReceiptRefs,
-      ...input.closeoutReceiptRefs,
-    ])
+    // Preserve the existing closeout-receipt order and only append genuinely
+    // new refs. Re-sorting here would rewrite the row into a form that a
+    // faithful re-run of saveArtanisLoopTick cannot reproduce, breaking
+    // full-tick idempotency (same idempotency key, different content_hash).
+    const closeoutReceiptRefs = orderedRefUnion(
+      current.closeoutReceiptRefs,
+      input.closeoutReceiptRefs,
+    )
     const record = new ArtanisLoopTickRecord({
       ...current,
       closeoutReceiptRefs,
