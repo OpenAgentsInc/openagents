@@ -333,4 +333,60 @@ export const SHORTCUTS: ReadonlyArray<ShortcutSpec> = [
   })),
   { chord: "⌘↵ / Ctrl-↵", description: "Submit the chat / composer turn", when: "Chat or Composer" },
   { chord: "j / k", description: "Move to the next / previous sub-pane in the group", when: "anywhere (not while typing)" },
+  { chord: "1 … 9", description: "Activate the matching hotbar slot (jump to its group)", when: "anywhere (not while typing)" },
 ]
+
+// ── HUD H1: the numbered hotbar (#5499) ──────────────────────────────────────
+// A fourth consumer of THE SAME registry the sidebar / palette / keyboard read
+// from (audit §4.3 / §7.2: "drive the hotbar slots from the SAME registry …
+// one source of truth"). It is NOT a parallel hardcoded list: every numbered
+// slot is derived from `NAV_GROUPS` (so slot N === group accel N), and the
+// terminal "palette" slot is the existing Cmd-K command palette. Add a nav
+// group → it appears in the sidebar, the palette, j/k, AND the hotbar with no
+// extra edit here.
+//
+// Each slot resolves to an EXISTING action (audit §5.2/§5.3 — no new control
+// verb): a `group` slot dispatches `NavigatedToGroup`; the `palette` slot
+// dispatches `OpenedCommandPalette`. The keyboard layer (keyboard.ts) maps the
+// bare / Cmd / Ctrl number key to the same group jump, so the hotbar and the
+// hotkeys share one definition.
+export type HotbarSlot =
+  | Readonly<{
+      kind: "group"
+      // 1-based slot number, shown as the badge AND the hotkey. Equals the
+      // owning group's `accel` (one source of truth — see HOTBAR_SLOTS).
+      number: number
+      label: string
+      // The group id this slot jumps to (its `defaultPane` is the landing pane).
+      group: string
+      groupLabel: string
+    }>
+  | Readonly<{
+      kind: "palette"
+      // The command-palette slot has no number; it is the dedicated ⌘K slot the
+      // prior HUDs (Commander, WGPUI) shipped alongside the numbered slots.
+      label: string
+      chord: string
+    }>
+
+// The numbered slots are exactly the primary nav groups, keyed by their accel
+// (1..N) so slot 3 and Cmd-3 and the sidebar's third group can never drift.
+const groupHotbarSlots: ReadonlyArray<HotbarSlot> = [...NAV_GROUPS]
+  .sort((a, b) => a.accel - b.accel)
+  .map((group) => ({
+    kind: "group" as const,
+    number: group.accel,
+    label: group.label,
+    group: group.id,
+    groupLabel: group.label,
+  }))
+
+export const HOTBAR_SLOTS: ReadonlyArray<HotbarSlot> = [
+  ...groupHotbarSlots,
+  { kind: "palette" as const, label: "Command palette", chord: "⌘K" },
+]
+
+// Lookup for the keyboard layer + the view's active-slot highlight: which group
+// (if any) a bare/modified number key activates. Returns null for numbers with
+// no registered group, so out-of-range digits stay no-ops.
+export const hotbarGroupForNumber = (n: number): NavGroup | null => groupByAccel(n)
