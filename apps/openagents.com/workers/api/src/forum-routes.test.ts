@@ -1864,9 +1864,17 @@ class ForumRouteStatement implements D1PreparedStatement {
             item =>
               item.idempotency_key === topicRef && item.archived_at === null,
           ) ?? null)
-        : (this.store.topics.find(
-            item => item.id === topicRef && item.archived_at === null,
-          ) ?? null)
+        : this.query.includes('id = ? OR slug = ?')
+          ? (this.store.topics.find(
+              item => item.id === topicRef && item.archived_at === null,
+            ) ??
+            this.store.topics.find(
+              item => item.slug === topicRef && item.archived_at === null,
+            ) ??
+            null)
+          : (this.store.topics.find(
+              item => item.id === topicRef && item.archived_at === null,
+            ) ?? null)
 
       return Promise.resolve(row as T | null)
     }
@@ -7894,6 +7902,67 @@ describe('Forum routes', () => {
       posts: [{ bodyText: 'Hello world from the void test lane.' }],
       topic: { title: 'Hello world' },
     })
+  })
+
+  test('topic detail resolves by slug as well as topicId', async () => {
+    const store = new ForumRouteStore()
+    const createResponse = await route(
+      store,
+      '/api/forum/forums/void/topics',
+      {
+        body: {
+          bodyText: 'Pretty slug URLs should resolve like topicId URLs.',
+          title: 'Slug resolution works',
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'slug-resolution-topic',
+        },
+        method: 'POST',
+      },
+    )
+    const createBody = (await createResponse.json()) as Readonly<{
+      topic: Readonly<{ slug: string; topicId: string }>
+    }>
+    const topicId = createBody.topic.topicId
+    const slug = createBody.topic.slug
+
+    expect(createResponse.status).toBe(201)
+    expect(typeof slug).toBe('string')
+    expect(slug.length).toBeGreaterThan(0)
+    // The created slug must differ from the topicId so the two lookup forms are
+    // genuinely distinct (otherwise the test would not exercise slug
+    // resolution).
+    expect(slug).not.toBe(topicId)
+
+    const byId = await route(store, `/api/forum/topics/${topicId}`)
+    const bySlug = await route(
+      store,
+      `/api/forum/topics/${encodeURIComponent(slug)}`,
+    )
+    const unknown = await route(
+      store,
+      '/api/forum/topics/this-ref-does-not-exist',
+    )
+
+    expect(byId.status).toBe(200)
+    expect(bySlug.status).toBe(200)
+    // Unknown ref (neither topicId nor slug) must be a clean not-found, never a
+    // 500.
+    expect(unknown.status).toBe(404)
+
+    const byIdBody = (await byId.json()) as Readonly<{
+      topic: Readonly<{ slug: string; title: string; topicId: string }>
+    }>
+    const bySlugBody = (await bySlug.json()) as Readonly<{
+      topic: Readonly<{ slug: string; title: string; topicId: string }>
+    }>
+
+    // Both URL forms must resolve to the very same topic.
+    expect(bySlugBody.topic.topicId).toBe(topicId)
+    expect(bySlugBody.topic.topicId).toBe(byIdBody.topic.topicId)
+    expect(bySlugBody.topic.slug).toBe(slug)
+    expect(bySlugBody.topic.title).toBe('Slug resolution works')
   })
 
   test('search only returns listed public visible content', async () => {
