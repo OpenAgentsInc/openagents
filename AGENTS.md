@@ -93,6 +93,15 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   projection, or public-claim surfaces.
 - For work under `apps/openagents.com/`, also read
   `apps/openagents.com/AGENTS.md` and `apps/openagents.com/INVARIANTS.md`.
+- **Leave it cleaner than you found it — clean up as you go, every phase.** When you
+  touch an area and find pre-existing breakage (failing tests, lint, type errors,
+  doc-coverage/OpenAPI/AGENTS.md drift, stale refs, dead code), **fix it even if you did
+  not cause it** rather than stepping around it or deferring. Nothing accumulates: every
+  phase, branch, and PR lands with the full relevant test suite **and** `check:deploy`
+  green — not "green except the pre-existing reds." If a pre-existing failure is genuinely
+  too large or out of scope for the current change, fix what is cheap and **explicitly
+  flag the rest** (in the report, and a tracking issue if it will persist) — never
+  silently leave a red, and never describe a partially-green run as clean.
 - Keep new TypeScript implementation work on Bun, Effect, Effect Schema, and
   Foldkit where `apps/openagents.com` already uses it.
 - Do not reintroduce the old Cargo or Tauri workspace unless the user asks for
