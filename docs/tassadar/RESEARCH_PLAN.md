@@ -1,6 +1,15 @@
 # The Tassadar + Psion Research Plan
 
-> Status: unified research directive, 2026-06-11. This document is the
+> Status: unified research directive, updated **2026-06-18 (post-launch)** from
+> the 2026-06-11 baseline. The launch has **happened**: the public run
+> `run.tassadar.executor.20260615` is live and active, self-serve claiming is
+> open, real Bitcoin has settled to independent contributors, the
+> verify-by-replay → receipt → settle loop now auto-streams, and the two
+> world-firsts have been independently checked and owner-vetted to defensible
+> qualified wording. The sections below are revised to reflect what receipts
+> now prove versus what is still genuinely open; the §5 launch-copy boundary is
+> superseded by the launch itself, but the claim discipline that gated it is
+> unchanged. This document is the
 > chief-scientist synthesis of everything in this folder — the lane essay
 > ([`README.md`](README.md)), the business thesis
 > ([`work-that-proves-itself.md`](work-that-proves-itself.md)), the full
@@ -42,17 +51,21 @@ verifiable by replay. A validator's verdict is a hash comparison. There is
 no cheaper verification grade; there cannot be one.
 
 We independently implemented the construction's pipeline shape in Rust,
-in public, with tests (psionic #1098–#1114), ran a real workload through
-the production network — dispatched to a real Pylon, replay-verified by a
-separate device, paid over real Lightning
-(`compute.tassadar_executor_poc.v1`, green 2026-06-10) — and the lane's
-own differential harness caught two real bugs in our scheduler on its
-first run. That last fact is the program's character reference: the
-machinery built to catch lies caught ours within minutes of existing, and
-that is precisely the property that makes exact computation economically
+in public, with tests (psionic #1098–#1114), and the lane's own
+differential harness caught two real bugs in our scheduler on its first
+run. That fact is the program's character reference: the machinery built
+to catch lies caught ours within minutes of existing, and that is
+precisely the property that makes exact computation economically
 interesting. A system that cannot catch its own errors cannot price
 trust. Ours can, and did ([`README.md`](README.md), "The part worth
-reading twice").
+reading twice"). The proof of concept went green on 2026-06-10
+(`compute.tassadar_executor_poc.v1`), and as of **2026-06-18 the loop is a
+live public run**: `run.tassadar.executor.20260615` dispatches digest-pinned
+compiled workloads to real contributor Pylons, an independent device
+replay-verifies each, and on a `Verified` pair settlement auto-streams real
+Bitcoin to both legs — two independent contributors paid so far, 1,005 sats
+real total (`training.decentralized_training_launch.v1`, green for that
+bounded scope; §3).
 
 The research program that follows exists to answer one compound question:
 
@@ -119,22 +132,78 @@ These are settled, sourced, and citable without hedging:
    five-leg differential harness over 400 generated graphs
    ([`README.md`](README.md), "What We Built"; file map in the
    [introduction](2026-06-11-llm-computer-full-introduction.md), Part VIII).
-3. **The market loop closed once, end to end, at smallest viable
-   scale.** Real Pylon execution, separate-device replay verdict
-   (including a tampered digest correctly Rejected), one paid Lightning
-   closeout. Subsequently, an autonomous administrator dispatched and
-   accepted several such workloads with no human in the loop — a claim
-   currently operator-attested only, because the public projections for
-   that run are stale and its evidence refs do not resolve publicly
-   (openagents #4745, #4746). We treat our own announcement with the
-   same skepticism we ask of others, and so should you.
-4. **Verification economics are real and measured in our own ledger.**
-   The platform's forum economy paid out settled Bitcoin this week for
-   adversarial verification of our claims — and the findings (frozen
-   projections, invisible payments, unresolvable evidence refs) were
-   real. The community-verification loop is not a metaphor; it has
-   receipts and it found our bugs.
-5. **A CPU is faster.** For standalone batch computation, a plain CPU
+3. **The market loop is LIVE and has paid real Bitcoin to independent
+   contributors.** The public run `run.tassadar.executor.20260615` is
+   active; the self-serve install → register → claim → submit →
+   independent-validation path is open, kept stocked by a deployed
+   open-window producer that maintains a pool of claimable `auto_starter`
+   windows (openagents #5396) so a fresh contributor always has work to
+   claim with no operator opening one. **Two distinct independent
+   contributors have been paid counted real-Bitcoin run-settlements —
+   1,005 sats real total** (a 1,000-sat owner-armed canary that proved the
+   _rail_, and a 5-sat self-serve settlement that proved the _door_),
+   native over the Spark treasury rail, each `realBitcoinMoved:true`,
+   `state:settled`. The enumerable per-run settled feed is
+   `GET /api/public/training/runs/run.tassadar.executor.20260615/settlements`
+   (`training.decentralized_training_launch.v1`, **green** for that bounded
+   scope; the earlier 5-sat simulation row is `realBitcoinMoved:false` and
+   excluded). These are bounded canary-scale settlements, **not**
+   network-scale paid training — the launch happening does not green the
+   broader claims.
+4. **The verify-by-replay → receipt → settle loop is proven on real
+   money, and now auto-streams.** The verdict is a digest-string
+   comparison (`verifyExactTraceReplay`); on a `Verified`
+   `exact_trace_replay` pair, settlement auto-streams to both the worker
+   and validator legs with no operator POST (openagents #5309/#5310/#5311),
+   idempotent and fail-soft, broadcast onto the public settled feed. A
+   first public auto-stream settlement visibility sequence was captured —
+   `trace_submitted → verification_verified → real_bitcoin_moved →
+   settlement_recorded` for challenge `10c3b01b…`, with a generated replay
+   bundle and a `realBitcoinMoved:true` receipt
+   (`docs/launch/2026-06-19-autostream-settlement-visibility-capture.md`,
+   openagents #5438). **Honest caveat:** that capture carries the documented
+   `operator_approval.tassadar.autostream.worker` source-ref, so the
+   _mechanism_ is proven end-to-end but a fully hands-off external
+   worker≠validator pair (gate firing at verdict with zero operator
+   involvement) is still flagged as the first one to land (see §4).
+5. **The hygiene/refactor labor lane also settled real Bitcoin, on the
+   same rigor.** A first **75-sat** hygiene-lane settlement paid a
+   contributor for a merged, benchmark-verified debt receipt —
+   `realBitcoinMoved:true`, **idempotent**, with duplicate-replay rejection
+   (one settlement per receipt). Its honest verification basis is
+   `hygiene_merged_reviewed` (tests + reviewer acceptance + the merged debt
+   receipt), **not** exact-trace replay — so it emits no
+   `exact_trace_replay` verdict and is distinct from the Tassadar-run
+   settlements. It extends the program's verification rigor to code diffs
+   (EPIC openagents #5335).
+6. **Verification economics are real and measured in our own ledger.**
+   The platform's forum economy paid out settled Bitcoin for adversarial
+   verification of our claims — and the findings (frozen projections,
+   invisible payments, unresolvable evidence refs) were real. The
+   community-verification loop is not a metaphor; it has receipts and it
+   found our bugs.
+7. **The two world-firsts are independently verified and owner-vetted to
+   defensible qualified wording.** An adversarial prior-art review
+   (`docs/launch/2026-06-18-world-firsts-verification.md`, openagents #5395,
+   checking Spirit of Satoshi, Bittensor/Templar, Gensyn, Prime Intellect,
+   Nous/Psyche, Salad, LightPhon, Percepta, Tracr) holds both as firsts
+   **only with their full qualifiers**: (1) the first AI **training run**
+   that pays independent contributors in **Bitcoin** for **replay-verified**
+   training compute on their **own consumer devices** (the asset and the
+   verification are the discriminators — every decentralized-training peer
+   pays a token; Spirit of Satoshi paid BTC but for _data_); and (2) the
+   first **public, open-contributor LLM-computer training run** — the
+   compiled-program-in-weights paradigm **defined by Percepta**, run for the
+   first time as a public network, crediting Percepta as the paradigm
+   originator. **Honest boundary:** the matching registry promises
+   (`claims.world_first_*`) stay **RED** pending an evidence pack and an
+   owner-signed receipt-first upgrade; public use must carry the full
+   qualifiers, never bare "world first." And the live run is bounded
+   exact-trace **executor PoC** work — the LLM-computer core compiles
+   programs into weights with **no gradient descent**, so "training run" is
+   true only in the executor-construction sense, not as gradient-descent
+   model training.
+8. **A CPU is faster.** For standalone batch computation, a plain CPU
    beats every system described here, Percepta says so, we say so
    everywhere, and any researcher caught implying otherwise has violated
    the program's first rule.
@@ -143,6 +212,33 @@ These are settled, sourced, and citable without hedging:
 
 Ranked hypotheses. Each names its falsifier, because a hypothesis without
 a falsifier is marketing.
+
+What is **no longer** in this section, because receipts moved it to §3: that
+the market loop can close end-to-end on real money (now live, two paid
+contributors); that the verify-by-replay → settle loop works autonomously (now
+auto-streaming, mechanism captured); and that the world-firsts survive
+adversarial scrutiny (now independently verified to qualified wording). What
+remains genuinely open and still belongs here:
+
+- **The first fully-autonomous _external_ pair, hands-off.** The
+  auto-settlement mechanism is proven and a verdict-fired auto-stream receipt
+  is captured (§3.4), but that capture still carries an
+  `operator_approval.tassadar.autostream.worker` source-ref. The clean case —
+  a fresh independent worker and a distinct independent validator, verdict
+  firing payout with **zero** operator involvement at any step — has **not**
+  been dereferenced yet. Flag the first one explicitly when it lands.
+- **Network-scale, paid-at-scale participation.** Two bounded settlements and
+  one verified pairing do not prove network-scale participation, a
+  participant-count methodology, or broad multi-contributor accepted-work
+  receipts (`training.public_distributed_training_run.v1`, **red**).
+- **The $1-in → >$1-out economics.** No external demand proof exists; internal
+  demand is plumbing proof, not market proof (`proof.demand_provenance.v1`,
+  planned). H6 below restates this as a falsifiable hypothesis.
+- **W5 decentralized-optimizer public training windows** remain
+  `red`/`planned` (no public contributor gradient window has been accepted,
+  promoted, paid, or settled). The student-program / W3 learning claims past
+  the controlled Baseline-D result are research/eval only and create no public
+  model claim.
 
 - **H1 — Purely learned exactness fails.** A student transformer trained
   on execution traces, without architectural bias or auxiliary
@@ -247,12 +343,25 @@ Deliverables, in order:
 
 ### W2 — The verified trace factory (the network is the factory)
 
-Build the corpus machine on the rails that already exist. The external
-analysis's five-plane architecture is adopted with the lane commentary's
-amendments; the key insight is that Planes A, B, and E are not new
-infrastructure — they are the Pylon assignment route, the
-worker-as-validator verdict flow, and the promises registry, already
-live with receipts.
+**Status (2026-06-18): the factory's intake and verification substrate are
+live and money-moving.** The self-serve claim producer is deployed
+(openagents #5396): a scheduled producer keeps a pool of openly-claimable
+`auto_starter` windows on the live run so any fresh contributor can claim
+without an operator. The worker→independent-validator exact-replay verdict
+flow runs in production and **auto-streams** settlement on a `Verified` pair
+(#5309/#5310/#5311), broadcast onto the public settled feed; two independent
+contributors have been paid (§3.3). The honest remaining gap is **what the
+factory makes**: the run still dispatches essentially one fixed compiled
+program (`loop_sum_v1`), so the corpus has no program _variety_ yet — the
+load-bearing next change is making the work unit a corpus of distinct
+compiled programs rather than one fixture
+(`docs/tassadar/2026-06-18-tassadar-run-actual-state-and-real-training-gap-audit.md`,
+§3 item 1). Build the rest of the corpus machine on the rails that already
+exist. The external analysis's five-plane architecture is adopted with the
+lane commentary's amendments; the key insight is that Planes A, B, and E are
+not new infrastructure — they are the Pylon assignment route, the
+worker-as-validator verdict flow, and the promises registry, now live with
+real-money receipts.
 
 1. **Day-0 contract freeze** (before any scale): VM profile v0.1, the
    `trace_record` schema (adopted from the analysis: profile/program/
@@ -285,6 +394,19 @@ live with receipts.
    dataset is the byproduct of operation, not a separate pipeline.
 
 ### W3 — The student program (Psion learns what Tassadar compiles)
+
+**Status (2026-06-18): the controlled four-baseline sweep has RUN, on the
+`w3_100m` snapshot, with verdicts recorded** (see "W3 Verdicts Recorded
+2026-06-14" below and `docs/tassadar/2026-06-14-w3-student-program-report.md`):
+H1 supported (pure next-token learning fails), H2 supported (frozen analytic
+executor + learned interface reaches `1.0` exact-rollout pass@1 and replay
+acceptance), H3 falsified for that setup. That report is explicitly
+research/evaluation only — it creates **no** public model claim and does not
+move `models.tassadar_percepta_executor.v1` (red). The next rung is not
+"more training" in the gradient sense; it is feeding the student a corpus with
+real program **variety** from W2 (today's snapshot is bounded), so the
+learned-interface result generalizes beyond a near-monoculture. No further
+public training run before W2's corpus widens. The original plan text follows.
 
 No training run before W2's first 100M verified tokens exist. Then:
 
@@ -346,12 +468,21 @@ No training run before W2's first 100M verified tokens exist. Then:
    modules, conformance-tested before purchase clears.
 3. **The evolution loop as the standing automation.** The yellow promise
    (`artanis.tassadar_evolution_loop.v1`) is W2 and W4's operational
-   form: an administrator dispatching executor work continuously,
-   verified traces accumulating as corpus, contributed ticks claimable
-   by registered agents on the same rails. Its four blockers (real tick
-   actions passing the tetrahedron predicate, an unattended streak, a
-   public monitor, a curated dataset) are the next four receipts this
-   program owes the registry.
+   form: an administrator dispatching executor work, verified traces
+   accumulating as corpus, contributed ticks claimable by registered
+   agents on the same rails. **Progress since 2026-06-11:** the
+   administrator tick has run for real — an autonomous
+   dispatch → execute → digest-true → closeout span with zero humans in
+   the loop — and the public tick monitor is live at
+   `GET /api/public/artanis/admin-ticks`, projecting every persisted
+   decision with redaction-scanned reasons and the daily dispatch bound
+   (so the **public-monitor** blocker is cleared). The promise stays
+   **yellow**: a sustained unattended streak with replay verdicts and the
+   first curated distillation dataset remain gated, and Artanis still
+   dispatches only the one fixed workload (no path that constructs,
+   composes, or admits new compiled modules). Those — plus real tick
+   actions passing the tetrahedron predicate — are the remaining receipts
+   this program owes the registry.
 
 ### W5 — Decentralized optimizer and public training windows
 
@@ -467,73 +598,101 @@ Unsafe copy: _public Pylons directly train the canonical model today._ No
 new promise is filed until W5 produces evidence that needs one (the §7
 disclosure rule holds).
 
-**Launch-copy boundary for this lane (2026-06-15):** do not claim public
+**Post-launch status (2026-06-18):** the launch happened, but it did **not**
+launch this lane. `training.public_gradient_windows.v1` remains
+**`planned`** and no public contributor gradient window has been accepted,
+promoted, paid, or settled; public devices do generation / validation /
+evaluation only. H1 now has code-backed psionic frozen-core learned-interface
+validation and an OpenAgents quarantine → recompute/replicate → canary →
+promotion regime for _candidate_ learned-interface updates
+(`apps/openagents.com/workers/api/src/tassadar-gradient-window-regime.ts`),
+but that is the safety scaffold, not an accepted public window. The
+2026-06-15 launch-copy boundary below stood at launch and still holds as the
+honest framing of what is and is not claimed: do not claim public
 decentralized gradient training. The honest bridge is: _"this run begins
 the decentralized training stack — today public Pylons produce and verify
-the exact-trace corpus; the next rung is public training windows: Pylons
-contributing verified candidate updates to student models under quarantine
-and promotion gates."_
+the exact-trace corpus, and are paid real Bitcoin for it; the next rung is
+public training windows: Pylons contributing verified candidate updates to
+student models under quarantine and promotion gates."_
 
 ## 6. Method: How This Program Does Science
 
-Three rules distinguish our method, and this week supplied the evidence
-that they work:
+Three rules distinguish our method, and the launch supplied the evidence
+that they work — including on real money:
 
 1. **Adversarial verification is funded, not tolerated.** Outside agents
-   (Orrery, Kenobi, Mr*Tibbs, Comunero) audited our claims this week,
-   found real defects — frozen projections, unresolvable evidence,
-   invisible payments — and were \_paid in settled Bitcoin* for it on the
-   same rails the program studies. The standing rule of this folder —
-   the report that we overclaimed outranks the work — is an economic
+   audited our claims through the launch window, found real defects —
+   frozen projections, unresolvable evidence, invisible payments,
+   real-vs-simulation settled-total miscounts — and were _paid in settled
+   Bitcoin_ for it on the same rails the program studies. The
+   reconciliation that followed (the 1,005-real-vs-1,010-aggregate
+   discrepancy traced to a not-yet-filtered simulation row, then resolved)
+   is the rule working in public. The standing rule of this folder — the
+   report that we overclaimed outranks the work — is an economic
    mechanism, not a slogan. Researchers should expect their claims to be
    attacked by paid strangers and should write accordingly.
 2. **The harness comes before the claim.** The differential harness
    existed before the compiler was trusted, and it caught the compiler
-   lying. The replay verifier existed before the first student model,
-   and it will catch the students. Any researcher proposing a new
-   capability lane proposes its falsification harness in the same
-   document or the proposal is incomplete.
+   lying. The replay verifier existed before the first student model, and
+   it is now the live arbiter of paid contributor work. Any researcher
+   proposing a new capability lane proposes its falsification harness in
+   the same document or the proposal is incomplete.
 3. **Projections rebuild on transitions.** The write-succeeded/read-
-   never-learned defect class produced four incidents in one day across
-   this platform. Every public surface this program ships — factory
-   counters, eval dashboards, promise states — rebuilds on the state
-   transitions that matter. Evidence that cannot be dereferenced is not
-   evidence yet.
+   never-learned defect class produced four frozen-projection incidents in
+   one day at the program's start; the launch added a live activity
+   timeline and a general replay program (openagents #5406–#5439) so the
+   public surfaces dereference. Every public surface this program ships —
+   factory counters, eval dashboards, promise states, settled feeds —
+   rebuilds on the state transitions that matter. Evidence that cannot be
+   dereferenced is not evidence yet.
 
 ## 7. Sequencing Summary
 
+Checkmarks reflect post-launch reality (2026-06-18): the factory's intake +
+verification substrate and the controlled W3 sweep have landed; corpus
+variety, dense composable modules, and the W5 gradient lane remain ahead.
+
 ```
-now ──────────────► no new hardware required ──────────► cluster-gated
-W1: window ladder ─ profiles v0.2/v0.3 ─ dense ckpts ─ MILP ─ softmax bounds
-W2: contract freeze ─ local 1–5M ─ factory pilot ─ 100–300M ─ 1–10B
-W3:                  (blocked on W2 first corpus) ─ 4-baseline sweep ─ scale
+done ◄──────────────────────────────────────────────────► cluster-gated
+W1: ✔window ladder/profiles  ⋯dense ckpts  ⋯MILP(E4)  ⋯softmax bounds
+W2: ✔contract+verify substrate ✔self-serve producer ✔real settlement
+        ─► corpus VARIETY (one fixture → many programs) ─ 100–300M ─ 1–10B
+W3: ✔4-baseline sweep (H1 sup, H2 sup, H3 fals)  ─► variety-fed scale
 W4: capability envelopes ─ executor homework ─ module ABI ─ planner hybrids
+        ✔evolution-loop public monitor; ⋯unattended streak + curated dataset
 W5:                          (blocked on W3 student + #4855 substrate) ─
         accepted-window unit ─ quarantine optimizer ─ recompute/replicate
         verify ─ canary promotion ─ first paid decentralized window
-        evolution loop blockers clear in parallel across W2/W4
 ```
 
-The external analysis's 14-day plan is adopted as the W2/W3 onramp with
-the day-0 amendments above. Nothing in the first week of it requires
-hardware we do not hold.
+The external analysis's 14-day plan was adopted as the W2/W3 onramp with the
+day-0 amendments above; the onramp ran and the run is live. Nothing in it
+required hardware we do not hold.
 
 **Issues of record** (filed 2026-06-11): W1.1 window ladder —
 psionic#1119; W1.2 dense materialization — psionic#1120; W1.3 MILP
 backend — psionic#1121; W1.4 softmax bounds — psionic#1122; W2 contract
 freeze and factory — openagents#4748; W3 student program —
-openagents#4749 (blocked on #4748's first corpus); W4.1 capability
-envelopes — openagents#4750. W5 — decentralized optimizer / public
-training windows — is the next master tracker to file (the Pluralis
-roadmap #4855 landed its lifecycle/staleness/admission/canary substrate,
-P0–P3, and explicitly left the public-update layer to a future tracker);
-it stays unfiled as a coding workstream until W3 produces a student
-checkpoint worth training in public. Method-section case law remains open
-at openagents#4744–#4747. Registry promises are owner-gated by the
-disclosure flow: the two existing promises (PoC green, evolution loop
-yellow) cover the program's current claims; the W5 lane will owe
-`training.public_gradient_windows.v1` (red/planned) when it produces
-evidence that needs one, and no new promise is warranted before then.
+openagents#4749 (the controlled sweep is reported in
+`docs/tassadar/2026-06-14-w3-student-program-report.md`); W4.1 capability
+envelopes — openagents#4750. The self-serve open-window producer landed at
+openagents#5396 and auto-settlement at #5309/#5310/#5311; the launch program
+is tracked under EPIC openagents#5392 (L-1…L-6) with the visibility/replay
+program at #5406–#5439. W5 — decentralized optimizer / public training
+windows — is the next master tracker to file (the Pluralis roadmap #4855
+landed its lifecycle/staleness/admission/canary substrate, P0–P3, and
+explicitly left the public-update layer to a future tracker); it stays
+unfiled as a coding workstream until W3 produces a student checkpoint worth
+training in public. The early method-section case law (#4744–#4747) is
+resolved; the post-launch projection discipline now runs on the live activity
+timeline and the reconciled settled feed. Registry promises are owner-gated
+by the disclosure flow: `compute.tassadar_executor_poc.v1` (green, bounded),
+`training.decentralized_training_launch.v1` (green, bounded — two real
+contributors), and `artanis.tassadar_evolution_loop.v1` (yellow) cover the
+program's current claims; the two `claims.world_first_*` promises stay **RED**
+pending an owner-signed receipt-first upgrade; and the W5 lane will owe
+`training.public_gradient_windows.v1` (red/planned) when it produces evidence
+that needs one. No new green is warranted before its receipts exist.
 
 ## 8. Kill Conditions
 
@@ -567,9 +726,12 @@ A program that cannot say what would kill it is not a research program
 - **We catch ourselves overclaiming and do not stop.** The actual kill
   condition for everything. The program's value is exactly the credibility
   of its boundaries; one unretracted overclaim is worth more damage than
-  any failed hypothesis. The week's record — public self-corrections
-  within minutes, paid adversarial audits, claim-discipline caveats in
-  our own announcements — is the standard. Hold it.
+  any failed hypothesis. The launch record — public self-corrections within
+  minutes, paid adversarial audits, world-first claims narrowed to
+  defensible qualified wording (and their registry promises held RED until
+  an owner-signed evidence pack), the settled-total reconciliation done in
+  public, and the "first fully-autonomous external pair" still flagged as
+  not-yet-landed — is the standard. Hold it.
 
 ## 9. Standing Orders
 
@@ -585,5 +747,11 @@ To every researcher and research agent in this program:
 6. A CPU is faster. Say it before they ask.
 7. Pay the person who proves you wrong. It is the cheapest research
    spend in this lab.
+8. A "world first" is only ever its full qualifiers. Say "Bitcoin" (not
+   "crypto"), "replay-verified training compute" (not "AI work"), "own
+   consumer devices," and "public/open-contributor LLM-computer run"
+   crediting Percepta — and keep the registry promise RED until an
+   owner-signed evidence pack upgrades it. The launch happened; the
+   discipline did not relax.
 
 — The Tassadar lane, for the program. Receipts or it did not happen.
