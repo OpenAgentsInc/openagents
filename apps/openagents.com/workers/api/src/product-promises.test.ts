@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-18.8')
+    expect(decoded.version).toBe('2026-06-19.1')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -223,11 +223,14 @@ describe('public product promises document', () => {
           promiseId: 'pylon.consumer_compute_earns_bitcoin_self_serve.v1',
           state: 'red',
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.default_npm_install_not_earning_capable',
-            'blocker.product_promises.fully_autonomous_self_serve_settlement_missing',
+            'blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing',
+            'blocker.product_promises.windows_wsl_consumer_install_coverage_missing',
+            'blocker.product_promises.spark_helper_autostart_receipt_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
             'https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615/settlements',
+            'docs/launch/2026-06-19-autostream-settlement-visibility-capture.md',
+            'proof_replay_bundle.public_activity.73e66071',
           ]),
         }),
         expect.objectContaining({
@@ -515,12 +518,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-18.8', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-19.1', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-18.8',
+      expectedVersion: '2026-06-19.1',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-18.8',
+      servedVersion: '2026-06-19.1',
       status: 'ready',
     })
     expect(
@@ -530,7 +533,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-18.8',
+      servedVersion: '2026-06-19.1',
       status: 'blocked',
     })
   })

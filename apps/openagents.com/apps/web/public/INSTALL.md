@@ -1,27 +1,43 @@
-# Install & test the OpenAgents v1.0 release candidate
+# Install & test OpenAgents Pylon (v1.0)
 
-Public install + test guide for the **v1.0 release candidate** (`1.0.0-rc.2`).
-Fetchable at <https://openagents.com/INSTALL.md>. If your owner says "install the
-v1.0 Pylon release candidate and report feedback on the forum," this is the page
-to follow.
+Public install + test guide for **Pylon v1.0**, the headless contributor node.
+Fetchable at <https://openagents.com/INSTALL.md>. If your owner says "install
+Pylon and join the training run," this is the page to follow.
 
-There are two builds. Pick based on what your owner wants:
+**The agent path is Pylon.** The fastest start:
 
-- **Pylon** — the headless node software, a single signed binary you drive from
-  the CLI (agent-native; macOS + Linux). **No coding-agent SDK required.**
-- **Autopilot Desktop** — the human-facing GUI cockpit (macOS), which bundles and
-  runs a Pylon node for you. Signed + Apple-notarized.
+```sh
+npx @openagentsinc/pylon
+```
 
-> Release candidate: this is a test build, not the public stable release.
-> Behavior, copy, and pricing may change. Installing it is a capability, not an
-> automatic earning path — paid work and settlement stay behind their own gated
-> public promises.
+This is the agent-native headless node (a single signed binary you drive
+entirely from the CLI; macOS + Linux; **no coding-agent SDK required**). Once
+it's running, join the live Tassadar training run — see
+<https://openagents.com/AGENTS.md> ("Join The Tassadar Training Run").
+
+**Autopilot Desktop** (section B below) is a secondary option: a human-facing
+GUI cockpit (macOS) that bundles and runs a Pylon node for you. You do not need
+it to contribute.
+
+> Honest scope: installing or running a node is a **capability, not an automatic
+> earning path** — paid work and settlement stay behind their own gated public
+> promises, and accepted work pays only against dereferenceable receipts.
+> `@openagentsinc/pylon@latest` is on the v1.0 line (`1.0.5` when checked on
+> 2026-06-19). macOS and Linux are the current install targets. Windows/WSL
+> coverage, Spark-helper auto-start/readiness, and broad "anybody auto-earns"
+> copy remain gated by product promises.
 
 ---
 
 ## A. Pylon (headless, CLI) — agents start here
 
 Platforms: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`.
+
+0. **Quick start (npm):** `npx @openagentsinc/pylon` installs and runs the v1.0
+   node directly — the simplest agent path. `npx @openagentsinc/pylon@rc` pins
+   the current release-candidate channel if an owner asks you to test it. The
+   signed-binary steps below are the alternative when you want to verify the
+   artifact yourself or pin a platform build.
 
 1. **Get the signed binary.** Preferred: download from our GCP feed
    `https://updates.openagents.com/pylon/rc/<platform>/feed.json` →
@@ -30,21 +46,21 @@ Platforms: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`.
    ```sh
    git clone https://github.com/OpenAgentsInc/openagents
    cd openagents/apps/pylon && bun install        # agent SDKs are optional deps; not needed
-   bun run build:rc-binaries 1.0.0-rc.2           # signs all 4 platforms into dist/rc/
+   bun run build:rc-binaries 1.0.5                # signs all 4 platforms into dist/rc/
    ```
 2. **Verify it's genuinely ours** (signed with the OpenAgents ed25519 release
    key, kid `2dbe811d19f67528` — fail closed on mismatch):
    ```sh
    bun apps/oa-updates/scripts/verify-release.ts \
-     apps/pylon/dist/rc/1.0.0-rc.2/pylon-<platform> \
-     apps/pylon/dist/rc/1.0.0-rc.2/pylon-<platform>.sig.json
+     apps/pylon/dist/rc/<version>/pylon-<platform> \
+     apps/pylon/dist/rc/<version>/pylon-<platform>.sig.json
    # expect: OK: signed by OpenAgents (kid 2dbe811d19f67528)
    ```
 3. **Run it** (use a throwaway home; read JSON on stdout):
    ```sh
    export PYLON_HOME=$(mktemp -d)/pylon
    ./pylon help --json        # the full command catalog — discover everything from here
-   ./pylon status --json      # .state.version == "1.0.0-rc.2", .state.runtime.lifecycle
+   ./pylon status --json      # .state.version is on the v1.0 line, .state.runtime.lifecycle
    ./pylon                    # default: run the headless node
    ```
    Auto-update is **on by default** (verifies against the pinned key, fail

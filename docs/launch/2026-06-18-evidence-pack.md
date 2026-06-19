@@ -48,7 +48,7 @@ normalization notes are recorded in §9 rather than papered over.
 | Public run page | `https://openagents.com/tassadar` and `https://openagents.com/training/runs/run.tassadar.executor.20260615` | resolves (HTTP 200) |
 | Agent front door | `https://openagents.com/AGENTS.md` | resolves (HTTP 200) |
 | Install + test guide | `https://openagents.com/INSTALL.md` | resolves (HTTP 200) |
-| Product-promise registry | `https://openagents.com/api/public/product-promises` | resolves (HTTP 200), version `2026-06-18.7` |
+| Product-promise registry | `https://openagents.com/api/public/product-promises` | source registry target `2026-06-19.1`; public endpoint resolves (HTTP 200) |
 | Product-promise page | `https://openagents.com/docs/product-promises` | resolves (HTTP 200) |
 
 The run summary is the spine of the pack: it is a single live projection
@@ -227,17 +227,26 @@ construction sense, not as gradient-descent model training — do not conflate.
   (`…retro.10c3b01b.trigger.v1`, §2) is tied to challenge
   `training.verification.challenge.10c3b01b-…`, closing the loop verdict→payout
   for one real contributor.
+- The first auto-stream visibility capture for the same challenge is recorded in
+  `docs/launch/2026-06-19-autostream-settlement-visibility-capture.md` and
+  `docs/launch/2026-06-19-autostream-settlement-clip-manifest.json`:
+  `trace_submitted -> verification_verified -> real_bitcoin_moved ->
+  settlement_recorded`, replay bundle
+  `proof_replay_bundle.public_activity.73e66071`, and receipt
+  `receipt.nexus.tassadar_run_settlement.idempotency.tassadar.autostream.training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4.worker`.
 - `verifierPolicy: exact_trace_replay`, `paymentMode: operator_approved_small_sats`,
   `spendCapSats: 100000` (from the run manifest in the run summary).
 
-**Status: mechanism-proven.** The full loop (claim → run → independent replay →
-verified verdict → real-Bitcoin payout) is proven end-to-end at least once in
-the open, with distinct worker and validator identities and real rejections. The
-honest gap: the **fully-autonomous** version (gate fires at verdict and the
-contributor is auto-paid with **zero** operator action) has **not** yet landed —
-the 5-sat self-serve payout was operator-retro-settled because the auto-stream
-skipped (payout-target bug, since fixed). The first TRUE fully-autonomous
-external pair is still pending. Backing promises:
+**Status: visibility-captured, broad claim still gated.** The full loop (claim →
+run → independent replay → verified verdict → real-Bitcoin payout) is proven
+end-to-end at least once in the open, with distinct worker and validator
+identities and real rejections. Issue #5438 adds a public auto-stream
+timeline/replay/manifest capture. The honest gap is now narrower: this is still
+not enough for unqualified "anybody installs on any platform and is
+automatically paid" copy. The capture preserves
+`operator_approval.tassadar.autostream.worker` as owner/gate evidence and an R2
+upload caveat, and the broad claim still needs scale methodology, Windows/WSL
+coverage, and Spark-helper auto-start/readiness evidence. Backing promises:
 `training.verification_classes.v1` (yellow),
 `pylon.first_real_model_training_run.v1` (yellow),
 `pylon.consumer_compute_earns_bitcoin_self_serve.v1` (**red**).
@@ -275,9 +284,8 @@ promises: `agents.one_instruction_sheet.v1` (green),
 > **Claim (238.md):** "We're not going to be making any big claims that aren't
 > sourced by evidence."
 
-**Proof:** `https://openagents.com/api/public/product-promises`, served live,
-version `2026-06-18.7`. The relevant records and their honest states (verified
-live):
+**Proof:** `https://openagents.com/api/public/product-promises`, source registry
+target version `2026-06-19.1`. The relevant records and their honest states:
 
 | promiseId | state | meaning for this launch |
 |---|---|---|
@@ -292,7 +300,7 @@ live):
 | `pylon.v03_release_candidate.v1` | yellow | RC channel |
 | `claims.world_first_ai_training_paid_bitcoin.v1` | **red (gated)** | world-first #1 — qualified wording only |
 | `claims.world_first_public_llm_computer_training_run.v1` | **red (gated)** | world-first #2 — qualified wording only |
-| `pylon.consumer_compute_earns_bitcoin_self_serve.v1` | **red (gated)** | "anybody plugs in → auto-paid" not yet proven |
+| `pylon.consumer_compute_earns_bitcoin_self_serve.v1` | **red (gated)** | default npm and one auto-stream visibility capture exist; broad "anybody plugs in → auto-paid" still gated by scale, Windows/WSL, and Spark-helper auto-start/readiness evidence |
 | `marketplace.agentic_npm_module_registry.v1` | **planned** | the agentic-npm / module marketplace |
 
 **Status: settled-live (honest).** The registry openly carries the two
@@ -408,17 +416,20 @@ dereferenceable public ref, with status marked:
   contributors with per-receipt evidence and real-vs-sim distinguished (§2);
   install works via stable `npx @openagentsinc/pylon` v1.0 (§5); the registry
   honestly carries the strong claims as RED/PLANNED (§6).
-- **mechanism-proven:** the money loop ran end-to-end with distinct
-  worker/validator identities, real rejections, and a real payout — but the
-  fully-autonomous self-serve payout is not yet proven (§4).
+- **visibility-captured / still gated for broad copy:** the money loop ran
+  end-to-end with distinct worker/validator identities, real rejections, a real
+  payout, and one auto-stream timeline/replay/manifest capture (§4). The broad
+  "anybody installs on any platform and is automatically paid" promise remains
+  red until scale, Windows/WSL, and Spark-helper auto-start/readiness evidence
+  exists.
 - **gated:** the two world-firsts (defensible only with full qualifiers,
   Percepta credited, held RED) (§3); LLM-computer general capability,
   learning-by-construction, and the flywheel (concept/roadmap) (§7).
 
-The pack does **not** back: "anybody plugs in today and is automatically paid"
-(self-serve auto-settlement unproven), bare unqualified world-first wording,
-"first decentralized training run," "we invented the LLM-computer," or the
-agentic-npm marketplace as live. Keep the on-camera copy to "the run is live,
-the loop is proven end-to-end, and we've paid real Bitcoin to independent
-contributors — come help us prove it at scale," with the world-firsts stated
-only in their full qualified form.
+The pack does **not** back: "anybody plugs in today on any platform and is
+automatically paid at scale," bare unqualified world-first wording, "first
+decentralized training run," "we invented the LLM-computer," or the agentic-npm
+marketplace as live. Keep the on-camera copy to "the run is live, the loop is
+proven end-to-end, and we've paid real Bitcoin to independent contributors —
+come help us prove it at scale," with the world-firsts stated only in their full
+qualified form.

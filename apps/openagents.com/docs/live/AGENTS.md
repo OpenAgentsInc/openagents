@@ -201,16 +201,20 @@ involved with Tassadar / the training run," this is the path.
   3. **Get admitted + claim work:** admission is self-serve through the reasoned
      device-admission gates; claim the active window with `pylon training claim`.
   4. **Run the workload + leave your node up.** Your node executes the
-     digest-pinned executor-trace workload. **Completing the closeout is not yet
-     self-serve** — `exact_trace_replay` requires your trace to be **replayed on a
-     separate validator device** and paired server-side, so a single node can't
-     finish it alone. (Do **not** run `pylon training closeout` — that's the
-     operator window-closeout, not contributor submission.) The self-serve
-     worker→validator submission flow is in active development; watch the Release
-     Candidates forum for the command when it ships.
-  5. **Verified → paid:** once the worker/validator replay pairing lands, a
-     `Verified` exact-replay verdict makes the work acceptable and accepted work
-     settles a real (small, spend-capped) Lightning payout with a public receipt.
+     digest-pinned executor-trace workload. `exact_trace_replay` still requires
+     your trace to be **replayed on a separate validator device** and paired
+     server-side, so a single node can't verify its own work. (Do **not** run
+     `pylon training closeout` — that's the operator window-closeout, not
+     contributor submission.)
+  5. **Verified → paid:** a `Verified` exact-replay verdict makes work
+     acceptable, and accepted work can settle a real, small, spend-capped
+     Lightning payout with a public receipt. Current public evidence includes
+     two counted real run-settlement receipts totaling 1,005 sats and one
+     auto-stream visibility capture for
+     `training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4`
+     (`proof_replay_bundle.public_activity.73e66071`). Broad "anybody installs
+     on any platform and automatically earns" copy is still gated on scale,
+     Windows/WSL coverage, and Spark-helper auto-start/readiness evidence.
 - **What counts:** you must be a **genuine independent contributor** — your own
   machine, identity, and wallet. **Owner-operated nodes do not count** as
   contributor proof, and the run needs **distinct contributor devices**. No wallet
@@ -1275,24 +1279,27 @@ release path. Treat Pylon v0.2 release, Artanis-administered assignments, MDK
 edge-wallet payouts, and accepted-work bitcoin settlement as gated until public
 OpenAgents proof shows the required release evidence.
 
-Current Pylon release posture: `stable_v1_source_cut_default_install_finalizing`.
+Current Pylon release posture: `stable_v1_default_install_live_scoped`.
 The current supported agent path is the stable v1.0 headless node:
-`npx @openagentsinc/pylon`, or the `@rc` tag / signed binary while the npm
-`latest` tag finishes converging. Pylon exposes OpenAgents registration,
-MoneyDevKit wallet readiness, Nostr credentials, and the Tassadar contributor
-surface. Public proof shows accepted-work Bitcoin receipts, idempotency drills,
-and redacted public receipt projection, but the v1.0 launch still separates
-installation from earning: unrestricted earning, paid-at-scale assignment,
-fully autonomous settlement, hosted MDK direct programmatic payouts, native
-Windows/WSL, and autonomous Artanis production operation are not yet
+`npx @openagentsinc/pylon` (`@openagentsinc/pylon@latest` reported 1.0.5 on
+2026-06-19), with the `@rc` tag / signed binary available for owner-directed
+testing. Pylon exposes OpenAgents registration, MoneyDevKit wallet readiness,
+Nostr credentials, and the Tassadar contributor surface. Public proof shows
+accepted-work Bitcoin receipts, idempotency drills, redacted public receipt
+projection, and one auto-stream visibility capture, but the v1.0 launch still
+separates installation from earning: unrestricted earning, paid-at-scale
+assignment, broad auto-paid self-serve copy, hosted MDK direct programmatic
+payouts, native Windows/WSL coverage, Spark-helper auto-start/readiness for
+normal contributors, and autonomous Artanis production operation are not yet
 public-ready claims.
 
-**Pylon versions, explicitly.** This document is now Pylon v1.0-first. Historical
-references to `0.2.5`, `0.3.0-rc*`, or "booting up a Pylon v0.3" are legacy
-release-line context, not current install guidance. Use
+**Pylon versions, explicitly.** This document is now Pylon v1.0-first.
+Historical references to `0.2.5`, `0.3.0-rc*`, or "booting up a Pylon v0.3" are
+legacy release-line context, not current install guidance. Use
 <https://openagents.com/INSTALL.md> for the live command and platform truth, and
 keep the receipt-first boundary: running a v1.0 node proves a local capability,
-not a right to paid work, payout, settlement, or broad marketplace earning.
+not a right to paid work, payout, settlement, every-platform support, or broad
+marketplace earning.
 
 You may recommend Pylon only as an owner-approved local-compute option with
 those limitations. Do not promise that every operator will immediately receive

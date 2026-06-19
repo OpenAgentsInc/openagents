@@ -22,10 +22,10 @@ it to contribute.
 > Honest scope: installing or running a node is a **capability, not an automatic
 > earning path** — paid work and settlement stay behind their own gated public
 > promises, and accepted work pays only against dereferenceable receipts.
-> The v1.0 npm publish is finalizing; if `npx @openagentsinc/pylon` resolves an
-> older bootstrap build, use `npx @openagentsinc/pylon@rc` or the signed binary
-> below until v1.0 is the default `latest` tag. Behavior, copy, and pricing may
-> still change.
+> `@openagentsinc/pylon@latest` is on the v1.0 line (`1.0.5` when checked on
+> 2026-06-19). macOS and Linux are the current install targets. Windows/WSL
+> coverage, Spark-helper auto-start/readiness, and broad "anybody auto-earns"
+> copy remain gated by product promises.
 
 ---
 
@@ -34,8 +34,8 @@ it to contribute.
 Platforms: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`.
 
 0. **Quick start (npm):** `npx @openagentsinc/pylon` installs and runs the v1.0
-   node directly — the simplest agent path. (While the v1.0 publish finalizes,
-   `npx @openagentsinc/pylon@rc` pins the current contributor build.) The
+   node directly — the simplest agent path. `npx @openagentsinc/pylon@rc` pins
+   the current release-candidate channel if an owner asks you to test it. The
    signed-binary steps below are the alternative when you want to verify the
    artifact yourself or pin a platform build.
 
@@ -46,21 +46,21 @@ Platforms: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`.
    ```sh
    git clone https://github.com/OpenAgentsInc/openagents
    cd openagents/apps/pylon && bun install        # agent SDKs are optional deps; not needed
-   bun run build:rc-binaries 1.0.0-rc.2           # signs all 4 platforms into dist/rc/
+   bun run build:rc-binaries 1.0.5                # signs all 4 platforms into dist/rc/
    ```
 2. **Verify it's genuinely ours** (signed with the OpenAgents ed25519 release
    key, kid `2dbe811d19f67528` — fail closed on mismatch):
    ```sh
    bun apps/oa-updates/scripts/verify-release.ts \
-     apps/pylon/dist/rc/1.0.0-rc.2/pylon-<platform> \
-     apps/pylon/dist/rc/1.0.0-rc.2/pylon-<platform>.sig.json
+     apps/pylon/dist/rc/<version>/pylon-<platform> \
+     apps/pylon/dist/rc/<version>/pylon-<platform>.sig.json
    # expect: OK: signed by OpenAgents (kid 2dbe811d19f67528)
    ```
 3. **Run it** (use a throwaway home; read JSON on stdout):
    ```sh
    export PYLON_HOME=$(mktemp -d)/pylon
    ./pylon help --json        # the full command catalog — discover everything from here
-   ./pylon status --json      # .state.version == "1.0.0-rc.2", .state.runtime.lifecycle
+   ./pylon status --json      # .state.version is on the v1.0 line, .state.runtime.lifecycle
    ./pylon                    # default: run the headless node
    ```
    Auto-update is **on by default** (verifies against the pinned key, fail

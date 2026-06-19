@@ -6,11 +6,12 @@ Audit only — no production behavior changed, nothing deployed.
 Roadmap refresh: later on 2026-06-18, after reading the full `docs/launch/`
 folder, this document was expanded from a gap audit into the launch roadmap for
 bringing Pylon visibility/replay fully live. The companion launch docs update a
-few baselines: stable `npx @openagentsinc/pylon` v1.0.0 is now the default
-install, the evidence pack is live enough for the honest-scoped video, product
-promises are served at `2026-06-18.7`, and the remaining launch/product blockers
-are autonomous self-serve settlement, visibility/replay productization, Windows,
-Spark-helper auto-start, and owner-signed claim upgrades.
+few baselines: stable `npx @openagentsinc/pylon` is now on the v1.0 line, the
+evidence pack is live enough for the honest-scoped video, product promises are
+served from source as `2026-06-19.1`, and the remaining launch/product blockers
+are visibility/replay productization, broad self-serve earning scale,
+Windows/WSL coverage, Spark-helper auto-start/readiness, and owner-signed claim
+upgrades.
 
 ## Why this exists (owner's goal)
 
@@ -243,8 +244,9 @@ Close the small evidence-surface gaps before building new presentation on top:
   settled sats. The run summary is reconciled at 1,005 real sats; any remaining
   `/api/public/pylon-stats` 1,010-style aggregate must exclude
   `realBitcoinMoved:false` rows before it is used in the live dashboard.
-- Label the remaining V1.0 gates plainly in the UI: install is now stable, but
-  fully autonomous self-serve settlement is still not proven; the two
+- Label the remaining V1.0 gates plainly in the UI: install is now stable and
+  one auto-stream visibility sequence is captured, but broad "anybody installs
+  on any platform and automatically earns" copy is still not proven; the two
   world-first claims remain RED/qualified pending owner-signed upgrades.
 - Add smoke coverage for the public routes above, the real-vs-simulation
   reconciliation, and the absence of private material.
@@ -482,14 +484,15 @@ not discovered by the owner manually refreshing tabs.
 The visibility/replay system is "fully live" only after the evidence and copy
 gates agree:
 
-- `pylon.consumer_compute_earns_bitcoin_self_serve.v1` remains RED until a fresh
-  independent contributor uses the stable install, claims work, submits, is
-  independently replay-verified, and is **auto-paid at verdict with no operator
-  POST**, with receipt refs.
-- The live activity timeline must show that same event sequence without manual
-  backfill.
-- A generated replay bundle and a render-box clip for that exact sequence must
-  be produced from the timeline, not hand-authored.
+- `pylon.consumer_compute_earns_bitcoin_self_serve.v1` remains RED even after
+  the #5438 auto-stream visibility capture until the remaining broad-claim
+  blockers clear: scale methodology, Windows/WSL coverage for "anybody" wording,
+  and Spark-helper auto-start/readiness evidence for normal contributors.
+- The live activity timeline must continue to show exact event sequences without
+  manual backfill.
+- Generated replay bundles and render-box clips for exact sequences must be
+  produced from the timeline, not hand-authored; the #5438 manifest is committed
+  as local evidence while production R2 upload remains owner-gated.
 - Product-promises registry, AGENTS.md/INSTALL.md, evidence pack, and launch docs
   cite the same refs and states.
 - World-first claims stay only in their qualified wording until the owner-signed
@@ -1008,11 +1011,20 @@ fully autonomous self-serve settlement captured by timeline/replay/clip.
      qualified wording until their owner-signed receipt-first upgrades land.
    - Partial cleanup on 2026-06-19: `docs/promises/registry.md` no longer
      presents the scoped decentralized-training launch as a red/planned Monday
-     launch. It now points to live registry `2026-06-18.8`, keeps
+     launch. That partial cleanup pointed to live registry `2026-06-18.8`, kept
      `training.decentralized_training_launch.v1` green only for bounded
      receipt-backed launch evidence, and preserves the red/yellow gates for
      network-scale, largest-run, model-mutation, broad earning, and fully
      autonomous auto-stream settlement claims.
+   - Implementation status (2026-06-19, issue #5439): Product promises now
+     target registry `2026-06-19.1`, cite the #5438 timeline/replay/receipt/clip
+     refs, remove the stale default-npm blocker after `@openagentsinc/pylon` was
+     verified on the v1.0 line, and keep
+     `pylon.consumer_compute_earns_bitcoin_self_serve.v1` RED on scale,
+     Windows/WSL, and Spark-helper auto-start/readiness gates. AGENTS.md,
+     INSTALL.md, the evidence pack, and this audit now use the same refs and
+     states. No world-first, public-claim, settlement, payout, provider, wallet,
+     deployment, or accepted-work authority was added.
 
 ---
 
