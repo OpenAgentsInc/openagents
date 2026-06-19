@@ -3,6 +3,11 @@ import * as Context from 'effect/Context'
 
 export type OpenAgentsWorkerConfigEnv = Readonly<{
   ARTANIS_SCHEDULED_RUNNER_ENABLED?: string | undefined
+  // Compose-and-list marketplace MVP flag (EPIC #5510, #5515). Default OFF: the
+  // `/api/public/marketplace/composed-products` listing surface is INERT (empty
+  // store) on the live Worker until the marketplace build lands. Set
+  // "true"/"1"/"on" to arm the (still planned/inert) surface.
+  MARKETPLACE_COMPOSE_AND_LIST_ENABLED?: string | undefined
   // Inference gateway feature flag (EPIC #5474, #5476). Default OFF: the
   // `/v1/chat/completions` route is inert on the live Worker until the
   // inference build lands. Set "true"/"1"/"on" to enable.

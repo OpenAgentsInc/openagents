@@ -1668,6 +1668,13 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     the receipt-backed accepted-outcome seed, metric definition, and product
     promise registry — compliant (`generatedAt`, contract, evidence-state
     labels, caveats, and modeled-vs-measured gate).
+  - `GET /api/public/marketplace/composed-products` — live at read over the
+    INERT compose-and-list listing store (EPIC #5510, #5515; promise
+    `marketplace.compose_and_list_products.v1`, planned) — compliant
+    (`generatedAt`, `live_at_read` contract). The surface is flag-gated
+    (`MARKETPLACE_COMPOSE_AND_LIST_ENABLED`, default off => empty store) and the
+    payload always reports `inert: true` / `promiseState: 'planned'`; it makes
+    no billing, fulfillment, or live-product claim.
   - `GET /api/public/customer-one-cohort` — live at read over Customer #1
     cohort source rows and privacy-review evidence — compliant (`generatedAt`,
     contract, evidence-only opaque cohort refs, generic labels, counts, blockers,
