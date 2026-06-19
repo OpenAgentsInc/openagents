@@ -89,6 +89,7 @@ import {
   ChangedSpawnObjective,
   ChangedSpawnVerify,
   ChangedSpawnLane,
+  ChangedChatInput,
   ChangedAddAccountHome,
   ChangedAddAccountPriority,
   ChangedAddAccountProvider,
@@ -114,6 +115,7 @@ import {
   ClickedComposerNewThread,
   ClickedComposerReply,
   ClickedComposerSpawn,
+  ClickedChatSubmit,
   ClickedActivateTrainingWindow,
   ClickedAdmitTrainingEvidence,
   ClickedBuildTrainingEvidencePacket,
@@ -180,6 +182,8 @@ import {
 } from "./helpers"
 import {
   type Model,
+  type ChatMessage,
+  type ChatStep,
   type PaneId,
   type SessionFilter,
   modelTrainingActivation,
@@ -291,6 +295,7 @@ const NAV: ReadonlyArray<{ id: PaneId; label: string }> = [
   // #5355: Composer is the foreground "code in the app" surface — listed first
   // so the day-to-day coding loop is the primary entry, not a buried tab.
   { id: "composer", label: "Composer" },
+  { id: "chat", label: "Chat" },
   // AO-4 (#5445): the first-run onboarding wizard / live status surface, listed
   // near the top so a new user finds the "literally on Autopilot" chain.
   { id: "onboarding", label: "Get started" },
@@ -4760,6 +4765,175 @@ const accountManagementCard = (model: Model): Html => {
   ])
 }
 
+const chatRoleLabel = (role: ChatMessage["role"]): string => {
+  switch (role) {
+    case "assistant":
+      return "Autopilot"
+    case "system":
+      return "System"
+    case "user":
+      return "You"
+  }
+}
+
+const chatStepTone = (status: ChatStep["status"]): string => {
+  switch (status) {
+    case "verified":
+    case "completed":
+      return "ready"
+    case "running":
+      return "waiting"
+    case "blocked":
+      return "blocked"
+    case "pending":
+      return "watch"
+  }
+}
+
+const chatStepRef = (label: string, value: string | null): Html =>
+  value === null || value.trim() === ""
+    ? h.empty
+    : h.div(
+        [cls("chat-step-ref")],
+        [
+          h.span([cls("chat-step-ref-label")], [label]),
+          h.code([cls("detail-ref mono")], [value]),
+        ],
+      )
+
+const chatTassadarReplayPreview = (model: Model, step: ChatStep): Html => {
+  if (step.proofReplayRef === null) return h.empty
+  const projection = modelProofReplay(model)
+  const bundle =
+    projection?.request?.mode === "catalog" &&
+    projection.request.slug === step.proofReplayRef
+      ? projection.bundle
+      : null
+  return h.div(
+    [cls("chat-proof-replay")],
+    [
+      tassadarProofReplayScene(
+        "chat-proof-replay-scene",
+        step.proofReplayRef,
+        bundle,
+      ),
+    ],
+  )
+}
+
+const chatStepView = (model: Model, step: ChatStep): Html =>
+  h.li(
+    [
+      cls(`chat-step chat-step-${step.kind} chat-step-${chatStepTone(step.status)}`),
+      h.DataAttribute("autopilot-chat-step-id", step.id),
+    ],
+    [
+      h.div(
+        [cls("chat-step-main")],
+        [
+          h.span([cls("chat-step-label")], [step.label]),
+          h.span([cls("chat-step-status")], [step.status]),
+        ],
+      ),
+      chatStepRef("signature", step.signatureRef),
+      chatStepRef("tool", step.toolRef),
+      chatStepRef("module", step.moduleRef),
+      chatStepRef("step", step.tassadarModuleStepRef),
+      chatStepRef("digest", step.digestRef),
+      step.verdict === null
+        ? h.empty
+        : h.div(
+            [cls(`chat-verdict chat-verdict-${step.verdict}`)],
+            [
+              h.span([cls("chat-step-ref-label")], ["exact replay"]),
+              h.code([cls("detail-ref mono")], [step.verdict]),
+            ],
+          ),
+      chatStepRef("proof replay", step.proofReplayRef),
+      chatTassadarReplayPreview(model, step),
+    ],
+  )
+
+const chatMessageView = (model: Model, message: ChatMessage): Html =>
+  h.li(
+    [
+      cls(`chat-message chat-message-${message.role}`),
+      h.DataAttribute("autopilot-chat-message-id", message.id),
+    ],
+    [
+      h.div(
+        [cls("chat-message-header")],
+        [
+          h.span([cls("chat-message-role")], [chatRoleLabel(message.role)]),
+          h.span([cls("chat-message-time")], [message.timestamp]),
+          message.linkedSessionRef === null
+            ? h.empty
+            : h.code([cls("chat-session-ref mono")], [message.linkedSessionRef]),
+        ],
+      ),
+      h.p([cls("chat-message-body")], [message.body]),
+      message.steps.length === 0
+        ? h.empty
+        : h.ul(
+            [cls("chat-step-list")],
+            message.steps.map(step => chatStepView(model, step)),
+          ),
+    ],
+  )
+
+const chatPane = (model: Model): Html =>
+  h.div(
+    [cls("chat-pane")],
+    [
+      paneTitle("Chat"),
+      h.div(
+        [cls("chat-thread-shell")],
+        [
+          h.ul(
+            [cls("chat-message-list")],
+            model.chatMessages.length === 0
+              ? [h.li([cls("chat-empty")], [emptyLine("No chat turns yet.")])]
+              : model.chatMessages.map(message => chatMessageView(model, message)),
+          ),
+        ],
+      ),
+      h.div(
+        [cls("chat-composer")],
+        [
+          h.textarea(
+            [
+              cls("text-area chat-input"),
+              h.Rows(4),
+              h.Placeholder("Ask Autopilot to continue a Blueprint program turn..."),
+              h.Value(model.chatInput),
+              h.OnInput((value: string) => ChangedChatInput({ value })),
+            ],
+            [],
+          ),
+          model.chatStatus.tone !== "idle"
+            ? h.p([cls(`spawn-status spawn-${model.chatStatus.tone}`)], [
+                model.chatStatus.text,
+              ])
+            : h.p([cls("spawn-status")], [" "]),
+          h.div(
+            [cls("chat-actions")],
+            [
+              h.button(
+                [
+                  cls("primary-button"),
+                  h.Type("button"),
+                  h.Disabled(model.chatPending),
+                  h.OnClick(ClickedChatSubmit()),
+                ],
+                [model.chatPending ? "Sending..." : "Send turn"],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  )
+
 const composerPane = (model: Model): Html => {
   const node = modelNode(model)
   const hasActive = model.composerSessionRef !== null
@@ -4985,6 +5159,8 @@ const paneView = (model: Model): Html => {
       return spawnPane(model)
     case "composer":
       return composerPane(model)
+    case "chat":
+      return chatPane(model)
     case "settings":
       return settingsPane(model)
     case "session-detail":

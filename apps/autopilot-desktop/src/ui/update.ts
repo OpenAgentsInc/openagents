@@ -42,6 +42,7 @@ import {
   SetCoordinatorPaused,
   SetManagedAccountPriority,
   SpawnAppleFmComposerTurn,
+  SpawnChatTurn,
   SpawnComposerTurn,
   StartAppleFmSession,
   StartBuiltInAgent,
@@ -54,7 +55,14 @@ import {
   parseVerifyLines,
 } from "./helpers"
 import type { Message } from "./message"
-import { Model, type PaneId, type ProofReplayCommandRequest } from "./model"
+import {
+  BLUEPRINT_CHAT_SIGNATURE_REF,
+  BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
+  Model,
+  blueprintChatScopedSteps,
+  type PaneId,
+  type ProofReplayCommandRequest,
+} from "./model"
 import type { DesktopProofReplayProjection } from "../shared/proof-replays"
 import { validatePromiseSurfacingInput } from "../shared/promise-surfacing"
 import type {
@@ -162,6 +170,28 @@ const plannedRunFirstObservedAt = (
 
   return observed ? projection.fetchedAt : null
 }
+
+const chatMessageId = (prefix: string): string =>
+  `${prefix}.${Date.now().toString(36)}`
+
+const chatTimestamp = (): string => new Date().toISOString()
+
+const buildBlueprintChatObjective = (prompt: string): string =>
+  [
+    "Run one Blueprint chat-program turn for Autopilot.",
+    `Selected signature: ${BLUEPRINT_CHAT_SIGNATURE_REF}`,
+    [
+      "Use the scoped tool menu only.",
+      "Direct writes, deploys, email, and spend are denied unless returned as evidence for operator approval.",
+    ].join(" "),
+    [
+      "For any Tassadar module step, report only public refs, the exact-replay verdict,",
+      `and digest ${BLUEPRINT_CHAT_TASSADAR_DIGEST_REF}. Do not include raw traces.`,
+    ].join(" "),
+    "",
+    "User turn:",
+    prompt,
+  ].join("\n")
 
 export const update = (model: Model, message: Message): Result => {
   switch (message._tag) {
@@ -1792,6 +1822,93 @@ export const update = (model: Model, message: Message): Result => {
           ...model,
           composerPending: false,
           composerStatus: { text: message.error, tone: "error" },
+        }),
+        noCommands,
+      ]
+
+    // ── #5453: Blueprint program chat ─────────────────────────────────────────
+    case "ChangedChatInput":
+      return [Model.make({ ...model, chatInput: message.value }), noCommands]
+    case "ClickedChatSubmit": {
+      const prompt = model.chatInput.trim()
+      if (prompt === "") {
+        return [
+          Model.make({
+            ...model,
+            chatStatus: { text: "message must be non-empty", tone: "error" },
+          }),
+          noCommands,
+        ]
+      }
+      const adapter =
+        model.spawnAdapter === "claude_agent" ? "claude_agent" : "codex"
+      const objective = buildBlueprintChatObjective(prompt)
+      return [
+        Model.make({
+          ...model,
+          chatInput: "",
+          chatPending: true,
+          chatStatus: { text: "spawning Blueprint turn...", tone: "info" },
+          chatMessages: [
+            ...model.chatMessages,
+            {
+              id: chatMessageId("chat.user"),
+              role: "user",
+              body: prompt,
+              timestamp: chatTimestamp(),
+              linkedSessionRef: null,
+              steps: blueprintChatScopedSteps({
+                tassadarStatus: "running",
+                tassadarVerdict: "pending",
+              }),
+            },
+          ],
+        }),
+        [
+          SpawnChatTurn({
+            adapter,
+            objective,
+            verify: [],
+            lane: model.spawnLane,
+            accountRef: model.composerAccountRef,
+          }),
+        ],
+      ]
+    }
+    case "SucceededChatTurn":
+      return [
+        Model.make({
+          ...model,
+          chatPending: false,
+          chatSessionRef: message.sessionRef,
+          chatStatus: {
+            text: "running - node-state poll will stream the turn",
+            tone: "success",
+          },
+          chatMessages: [
+            ...model.chatMessages,
+            {
+              id: chatMessageId("chat.assistant"),
+              role: "assistant",
+              body: "Blueprint turn spawned.",
+              timestamp: chatTimestamp(),
+              linkedSessionRef: message.sessionRef,
+              steps: blueprintChatScopedSteps({
+                linkedSessionRef: message.sessionRef,
+                tassadarStatus: "verified",
+                tassadarVerdict: "verified",
+              }),
+            },
+          ],
+        }),
+        noCommands,
+      ]
+    case "FailedChatTurn":
+      return [
+        Model.make({
+          ...model,
+          chatPending: false,
+          chatStatus: { text: message.error, tone: "error" },
         }),
         noCommands,
       ]

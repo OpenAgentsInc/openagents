@@ -20,6 +20,7 @@ import {
   FailedCoordinatorToggle,
   FailedBuiltInAgent,
   FailedAppleFmSession,
+  FailedChatTurn,
   FailedComposerTurn,
   FailedSpawn,
   GotAppleFmReadiness,
@@ -53,6 +54,7 @@ import {
   GotManagedAccounts,
   SucceededBuiltInAgent,
   SucceededAppleFmSession,
+  SucceededChatTurn,
   SucceededComposerTurn,
   SucceededDeploy,
   SucceededSpawn,
@@ -1156,6 +1158,43 @@ export const SpawnComposerTurn = Command.define(
     ),
     Effect.catch((error) =>
       Effect.succeed(FailedComposerTurn({ error: errorText(error) })),
+    ),
+  ),
+)
+
+// #5453: spawn one Blueprint chat turn. This is deliberately another wrapper
+// around session.spawn, not a new desktop RPC verb; the chat pane owns distinct
+// result messages so its transcript can settle independently from Composer.
+export const SpawnChatTurn = Command.define(
+  "SpawnChatTurn",
+  {
+    adapter: S.Literals(["codex", "claude_agent"]),
+    objective: S.String,
+    verify: S.Array(S.String),
+    lane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
+    accountRef: S.NullOr(S.String),
+  },
+  SucceededChatTurn,
+  FailedChatTurn,
+)(({ adapter, objective, verify, lane, accountRef }) =>
+  Effect.tryPromise(() =>
+    getRequest().spawnSession({
+      adapter,
+      objective,
+      verify: verify.length > 0 ? [...verify] : undefined,
+      lane,
+      ...(accountRef !== null && accountRef.trim() !== ""
+        ? { accountRef: accountRef.trim() }
+        : {}),
+    }),
+  ).pipe(
+    Effect.map((r) =>
+      r.ok
+        ? SucceededChatTurn({ sessionRef: r.sessionRef })
+        : FailedChatTurn({ error: r.error ?? "spawn failed" }),
+    ),
+    Effect.catch((error) =>
+      Effect.succeed(FailedChatTurn({ error: errorText(error) })),
     ),
   ),
 )

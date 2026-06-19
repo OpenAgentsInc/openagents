@@ -1,6 +1,14 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, test } from "bun:test"
-import { initialModel, type PaneId } from "../src/ui/model"
+import {
+  BLUEPRINT_CHAT_CONTEXT_TOOL_REF,
+  BLUEPRINT_CHAT_SIGNATURE_REF,
+  BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
+  BLUEPRINT_CHAT_TASSADAR_MODULE_REF,
+  BLUEPRINT_CHAT_TASSADAR_TOOL_REF,
+  initialModel,
+  type PaneId,
+} from "../src/ui/model"
 import { sanitizeTree, view } from "../src/ui/view"
 
 // Regression for the blank-screen crash: Foldkit's element constructors strip
@@ -388,6 +396,7 @@ describe("CL-53 sanitizeTree", () => {
       "sessions",
       "decisions",
       "spawn",
+      "chat",
       "settings",
     ]
 
@@ -407,6 +416,31 @@ describe("CL-53 sanitizeTree", () => {
     for (const source of sources) {
       expect(readFileSync(source, "utf8")).not.toMatch(/\bStyle\(\s*["'`]/)
     }
+  })
+
+  test("chat pane renders Blueprint program steps and Tassadar exact replay refs", () => {
+    const document = view({ ...initialModel, pane: "chat" })
+    expect(treeContainsClass(document.body, "chat-pane")).toBe(true)
+    expect(treeContainsText(document.body, "Chat")).toBe(true)
+    expect(treeContainsClass(document.body, "chat-message-list")).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_SIGNATURE_REF)).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_CONTEXT_TOOL_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_TOOL_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_MODULE_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_DIGEST_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, "verified")).toBe(true)
+    expect(treeContainsSelector(document.body, "oa-tassadar-proof-replay")).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, "raw_trace")).toBe(false)
   })
 
   test("settings pane includes first-run health blockers (#5064)", () => {

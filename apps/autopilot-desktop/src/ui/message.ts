@@ -357,6 +357,14 @@ export const SucceededComposerTurn = m("SucceededComposerTurn", {
 })
 export const FailedComposerTurn = m("FailedComposerTurn", { error: S.String })
 
+// ── #5453: Blueprint program chat pane ─────────────────────────────────────
+// Chat turns use the existing session.spawn RPC path; these messages only own
+// the local Foldkit state for the chat transcript and spawn settlement.
+export const ChangedChatInput = m("ChangedChatInput", { value: S.String })
+export const ClickedChatSubmit = m("ClickedChatSubmit")
+export const SucceededChatTurn = m("SucceededChatTurn", { sessionRef: S.String })
+export const FailedChatTurn = m("FailedChatTurn", { error: S.String })
+
 // ── CS-A1: per-session account picker + multi-account management ────────────
 // Which provider account the composer's coding turns run under (null = default).
 export const SelectedComposerAccount = m("SelectedComposerAccount", {
@@ -504,6 +512,10 @@ export const Message = S.Union([
   ClickedComposerNewThread,
   SucceededComposerTurn,
   FailedComposerTurn,
+  ChangedChatInput,
+  ClickedChatSubmit,
+  SucceededChatTurn,
+  FailedChatTurn,
   SelectedComposerAccount,
   ClickedRefreshManagedAccounts,
   GotManagedAccounts,

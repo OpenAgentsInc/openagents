@@ -65,6 +65,9 @@ export const PaneId = S.Literals([
   // cancel) built on the existing control protocol (session.spawn/events/cancel
   // + approvals). The day-to-day Claude-Code/Codex replacement surface.
   "composer",
+  // #5453: Blueprint chat pane — routes turns through the Blueprint program
+  // runtime using the existing session.spawn + node-state-poll control path.
+  "chat",
   // CS-A2 (#5362): the swarm / multi-session view — a lane/grid over the N
   // concurrent coding sessions the runtime can run (concurrent spawner #4869,
   // control `session.list`, external-session `parentRef` nesting). A pure read
@@ -101,6 +104,57 @@ export const ComposerStatus = S.Struct({
   tone: S.Literals(["error", "info", "success", "idle"]),
 })
 export type ComposerStatus = typeof ComposerStatus.Type
+
+export const ChatStatus = S.Struct({
+  text: S.String,
+  tone: S.Literals(["error", "info", "success", "idle"]),
+})
+export type ChatStatus = typeof ChatStatus.Type
+
+export const ChatStepStatus = S.Literals([
+  "pending",
+  "running",
+  "completed",
+  "verified",
+  "blocked",
+])
+export type ChatStepStatus = typeof ChatStepStatus.Type
+
+export const ChatStepKind = S.Literals([
+  "signature",
+  "tool_scope",
+  "tassadar_module_step",
+])
+export type ChatStepKind = typeof ChatStepKind.Type
+
+export const ChatStepVerdict = S.Literals(["verified", "rejected", "pending"])
+export type ChatStepVerdict = typeof ChatStepVerdict.Type
+
+export const ChatStep = S.Struct({
+  id: S.String,
+  kind: ChatStepKind,
+  label: S.String,
+  status: ChatStepStatus,
+  signatureRef: S.NullOr(S.String),
+  toolRef: S.NullOr(S.String),
+  moduleRef: S.NullOr(S.String),
+  digestRef: S.NullOr(S.String),
+  verdict: S.NullOr(ChatStepVerdict),
+  tassadarModuleStepRef: S.NullOr(S.String),
+  proofReplayRef: S.NullOr(S.String),
+  linkedSessionRef: S.NullOr(S.String),
+})
+export type ChatStep = typeof ChatStep.Type
+
+export const ChatMessage = S.Struct({
+  id: S.String,
+  role: S.Literals(["user", "assistant", "system"]),
+  body: S.String,
+  timestamp: S.String,
+  linkedSessionRef: S.NullOr(S.String),
+  steps: S.Array(ChatStep),
+})
+export type ChatMessage = typeof ChatMessage.Type
 
 // Transient status for the Ask-Autopilot card.
 export const AskStatus = S.Struct({
@@ -337,6 +391,15 @@ export const Model = ts("AutopilotDesktop", {
   // apple_fm adapter, which has no per-account selection.
   composerAccountRef: S.NullOr(S.String),
 
+  // #5453: Blueprint chat state. The messages are persisted in the Foldkit
+  // model so pane navigation does not discard the visible conversation. Turns
+  // spawn bounded sessions and are reconciled by the node-state poll.
+  chatMessages: S.Array(ChatMessage),
+  chatInput: S.String,
+  chatStatus: ChatStatus,
+  chatPending: S.Boolean,
+  chatSessionRef: S.NullOr(S.String),
+
   // CS-A1: account-management surface state (add/select/priority over the
   // node's local dev.accounts config). `managedAccounts` holds the last
   // ManagedAccountsResponse projection (opaque, read via the typed accessor);
@@ -540,6 +603,97 @@ export const modelProofReplay = (
 ): DesktopProofReplayProjection | null =>
   model.proofReplay as DesktopProofReplayProjection | null
 
+export const BLUEPRINT_CHAT_SIGNATURE_REF =
+  "signature.openagents.autopilot_continue.v1"
+export const BLUEPRINT_CHAT_CONTEXT_TOOL_REF = "tool.context_pack.read"
+export const BLUEPRINT_CHAT_TASSADAR_TOOL_REF = "tool.tassadar.module.execute"
+export const BLUEPRINT_CHAT_TASSADAR_MODULE_REF =
+  "listing.public.tassadar_compiled_weight_module.cc1403674fc0d388"
+export const BLUEPRINT_CHAT_TASSADAR_STEP_REF =
+  "step.blueprint.tassadar.linked_dense.exact_replay.v1"
+export const BLUEPRINT_CHAT_TASSADAR_DIGEST_REF =
+  "sha256:0caa43ace27a5b86da14cfe037e65c30f250f0c0a0ac1c01f1fe3a3a45a230b2"
+export const BLUEPRINT_CHAT_TASSADAR_PROOF_REPLAY_REF =
+  DefaultDesktopProofReplaySlug
+
+export const blueprintChatScopedSteps = (
+  input: Readonly<{
+    linkedSessionRef?: string | null
+    signatureStatus?: ChatStepStatus
+    contextStatus?: ChatStepStatus
+    tassadarStatus?: ChatStepStatus
+    tassadarVerdict?: ChatStepVerdict
+  }> = {},
+): Array<ChatStep> => {
+  const linkedSessionRef = input.linkedSessionRef ?? null
+  return [
+    {
+      id: "blueprint-chat-signature",
+      kind: "signature",
+      label: "Selected signature",
+      status:
+        input.signatureStatus ??
+        (linkedSessionRef === null ? "pending" : "completed"),
+      signatureRef: BLUEPRINT_CHAT_SIGNATURE_REF,
+      toolRef: null,
+      moduleRef: null,
+      digestRef: null,
+      verdict: null,
+      tassadarModuleStepRef: null,
+      proofReplayRef: null,
+      linkedSessionRef,
+    },
+    {
+      id: "blueprint-chat-context-pack",
+      kind: "tool_scope",
+      label: "Scoped tool",
+      status:
+        input.contextStatus ??
+        (linkedSessionRef === null ? "running" : "completed"),
+      signatureRef: null,
+      toolRef: BLUEPRINT_CHAT_CONTEXT_TOOL_REF,
+      moduleRef: null,
+      digestRef: null,
+      verdict: null,
+      tassadarModuleStepRef: null,
+      proofReplayRef: null,
+      linkedSessionRef,
+    },
+    {
+      id: "blueprint-chat-tassadar-step",
+      kind: "tassadar_module_step",
+      label: "Tassadar module step",
+      status:
+        input.tassadarStatus ??
+        (linkedSessionRef === null ? "running" : "verified"),
+      signatureRef: null,
+      toolRef: BLUEPRINT_CHAT_TASSADAR_TOOL_REF,
+      moduleRef: BLUEPRINT_CHAT_TASSADAR_MODULE_REF,
+      digestRef: BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
+      verdict:
+        input.tassadarVerdict ??
+        (linkedSessionRef === null ? "pending" : "verified"),
+      tassadarModuleStepRef: BLUEPRINT_CHAT_TASSADAR_STEP_REF,
+      proofReplayRef: BLUEPRINT_CHAT_TASSADAR_PROOF_REPLAY_REF,
+      linkedSessionRef,
+    },
+  ]
+}
+
+const seededChatMessage: ChatMessage = {
+  id: "chat.seed.blueprint-tassadar",
+  role: "assistant",
+  body: "Blueprint program chat is ready.",
+  timestamp: "2026-06-18T00:00:00.000Z",
+  linkedSessionRef: null,
+  steps: blueprintChatScopedSteps({
+    signatureStatus: "completed",
+    contextStatus: "completed",
+    tassadarStatus: "verified",
+    tassadarVerdict: "verified",
+  }),
+}
+
 export const initialModel: Model = Model.make({
   node: null,
   notifications: null,
@@ -597,6 +751,11 @@ export const initialModel: Model = Model.make({
   composerStatus: { text: "", tone: "idle" },
   composerPending: false,
   composerAccountRef: null,
+  chatMessages: [seededChatMessage],
+  chatInput: "",
+  chatStatus: { text: "", tone: "idle" },
+  chatPending: false,
+  chatSessionRef: null,
   managedAccounts: null,
   managedAccountsPending: false,
   managedAccountsStatus: { text: "", tone: "idle" },

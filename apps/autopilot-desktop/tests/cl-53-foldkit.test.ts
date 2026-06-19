@@ -32,6 +32,9 @@ import { initialRuntimeState } from "../src/ui/initial-state"
 import {
   initialModel,
   Model,
+  BLUEPRINT_CHAT_SIGNATURE_REF,
+  BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
+  BLUEPRINT_CHAT_TASSADAR_TOOL_REF,
   modelAppleFmReadiness,
   modelBuiltInAgentReadiness,
   modelInstallReadiness,
@@ -89,6 +92,8 @@ import {
   ClickedSubmitIntent,
   GotAppleFmReadiness,
   GotBuiltInAgentReadiness,
+  ChangedChatInput,
+  ClickedChatSubmit,
   GotInstallReadiness,
   GotPromiseSurfacingReadiness,
   GotPromiseSurfacingResult,
@@ -118,6 +123,7 @@ import {
   SettledSubmitIntent,
   SucceededAppleFmSession,
   SucceededBuiltInAgent,
+  SucceededChatTurn,
   FailedAppleFmSession,
   ToggledEvent,
 } from "../src/ui/message"
@@ -332,6 +338,16 @@ describe("update reducer (CL-53)", () => {
     )
   })
 
+  test("NavigatedTo chat pane is local state only", () => {
+    const [model, commands] = update(
+      Model.make({ ...initialModel, expandedEvents: [1] }),
+      NavigatedTo({ pane: "chat" }),
+    )
+    expect(model.pane).toBe("chat")
+    expect(model.expandedEvents).toEqual([])
+    expect(commands).toHaveLength(0)
+  })
+
   test("SelectedTrainingSceneNode stores the selected scene node id", () => {
     const [model, commands] = update(
       initialModel,
@@ -389,6 +405,55 @@ describe("update reducer (CL-53)", () => {
     const [model] = update(withTitle, SettledSubmitIntent({ ok: true, text: "sent · received" }))
     expect(model.askTitle).toBe("")
     expect(model.askStatus.tone).toBe("success")
+  })
+
+  test("chat submit dispatches a Blueprint turn over the existing spawn path", () => {
+    const prompt = "Continue the C1 Tassadar module proof."
+    const typed = update(initialModel, ChangedChatInput({ value: prompt }))[0]
+    const [pending, commands] = update(typed, ClickedChatSubmit())
+
+    expect(pending.chatPending).toBe(true)
+    expect(pending.chatInput).toBe("")
+    expect(pending.chatStatus.tone).toBe("info")
+    expect(commands.map(command => command.name)).toEqual(["SpawnChatTurn"])
+    expect(commands[0]?.args).toMatchObject({
+      adapter: "codex",
+      accountRef: null,
+      lane: "auto",
+      verify: [],
+    })
+    expect(String(commands[0]?.args.objective)).toContain(
+      BLUEPRINT_CHAT_SIGNATURE_REF,
+    )
+    expect(String(commands[0]?.args.objective)).toContain(
+      BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
+    )
+
+    const userMessage = pending.chatMessages[pending.chatMessages.length - 1]
+    expect(userMessage?.body).toBe(prompt)
+    expect(
+      userMessage?.steps.some(
+        step => step.toolRef === BLUEPRINT_CHAT_TASSADAR_TOOL_REF,
+      ),
+    ).toBe(true)
+
+    const [settled] = update(
+      pending,
+      SucceededChatTurn({ sessionRef: "session.blueprint.chat.1" }),
+    )
+    expect(settled.chatPending).toBe(false)
+    expect(settled.chatSessionRef).toBe("session.blueprint.chat.1")
+    const assistantMessage =
+      settled.chatMessages[settled.chatMessages.length - 1]
+    expect(assistantMessage?.linkedSessionRef).toBe("session.blueprint.chat.1")
+    expect(
+      assistantMessage?.steps.some(
+        step =>
+          step.toolRef === BLUEPRINT_CHAT_TASSADAR_TOOL_REF &&
+          step.digestRef === BLUEPRINT_CHAT_TASSADAR_DIGEST_REF &&
+          step.verdict === "verified",
+      ),
+    ).toBe(true)
   })
 
   test("built-in agent pane loads readiness", () => {
