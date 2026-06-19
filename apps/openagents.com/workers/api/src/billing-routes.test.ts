@@ -196,6 +196,94 @@ describe('billing API handlers', () => {
     expect(response.status).toBe(401)
   })
 
+  test('summary renders the server credit catalog from STRIPE_CREDIT_PACKAGES_JSON', async () => {
+    const { db } = makeBillingD1()
+    const response = await makeHandlers().handleBillingSummaryApi(
+      new Request('https://openagents.com/api/billing/summary'),
+      {
+        OPENAGENTS_DB: db,
+        STRIPE_CREDIT_PACKAGES_JSON: JSON.stringify([
+          {
+            amountCents: 1000,
+            id: 'credits_10',
+            label: '$10 credits',
+            priceId: 'price_10',
+          },
+          {
+            amountCents: 5000,
+            id: 'credits_50',
+            label: '$50 credits',
+            priceId: 'price_50',
+          },
+        ]),
+      },
+      executionContext(),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      billing: {
+        packages: ReadonlyArray<{
+          amountCents: number
+          amountFormatted: string
+          currency: string
+          id: string
+          label: string
+        }>
+      }
+    }
+    // The UI buys against these exact ids, so they must equal the server
+    // catalog ids the checkout endpoint accepts (closes the hardcoded gap).
+    expect(body.billing.packages).toEqual([
+      {
+        amountCents: 1000,
+        amountFormatted: '$10.00',
+        currency: 'USD',
+        id: 'credits_10',
+        label: '$10 credits',
+      },
+      {
+        amountCents: 5000,
+        amountFormatted: '$50.00',
+        currency: 'USD',
+        id: 'credits_50',
+        label: '$50 credits',
+      },
+    ])
+  })
+
+  test('summary returns an empty catalog when Stripe is unconfigured', async () => {
+    const { db } = makeBillingD1()
+    const response = await makeHandlers().handleBillingSummaryApi(
+      new Request('https://openagents.com/api/billing/summary'),
+      { OPENAGENTS_DB: db },
+      executionContext(),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      billing: { packages: ReadonlyArray<unknown> }
+    }
+    expect(body.billing.packages).toEqual([])
+  })
+
+  test('checkout rejects a missing packageId instead of defaulting', async () => {
+    const { db } = makeBillingD1()
+    const response = await makeHandlers().handleBillingCheckoutApi(
+      new Request('https://openagents.com/api/billing/checkout', {
+        body: JSON.stringify({}),
+        method: 'POST',
+      }),
+      { OPENAGENTS_DB: db },
+      executionContext(),
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'package_required',
+    })
+  })
+
   test('requires a coupon code and refreshes session cookies', async () => {
     const { db } = makeBillingD1()
     const response = await makeHandlers().handleBillingCouponRedeemApi(

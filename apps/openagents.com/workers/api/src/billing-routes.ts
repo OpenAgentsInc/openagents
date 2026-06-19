@@ -1,7 +1,9 @@
 import {
+  type BillingSummary,
   readBillingSummary,
   redeemBillingCoupon,
   upsertBillingAutoTopUpPolicy,
+  withBillingCreditPackages,
 } from './billing'
 import { Effect } from 'effect'
 
@@ -18,12 +20,32 @@ import {
   StripeProviderError,
   StripeWebhookError,
   makeStripeCheckoutServiceForRoutes,
+  readBillingCreditPackages,
 } from './stripe-billing'
 
 type BillingEnv = Readonly<{
   OPENAGENTS_DB: D1Database
 }> &
   StripeBillingEnv
+
+// Read the billing summary AND attach the purchasable credit catalog projected
+// from the server Stripe config. Every browser-facing billing response goes
+// through here so the UI always renders buy buttons whose packageId the
+// `/api/billing/checkout` endpoint will accept (closes the hardcoded-id gap).
+const readBillingSummaryWithPackages = async (
+  environment: BillingEnv,
+  userId: string,
+): Promise<BillingSummary> => {
+  const summary = await readBillingSummary(
+    openAgentsDatabase(environment),
+    userId,
+  )
+
+  return withBillingCreditPackages(
+    summary,
+    readBillingCreditPackages(environment),
+  )
+}
 
 type BillingSession = Readonly<{
   user: Readonly<{
@@ -166,8 +188,8 @@ export const makeBillingApiHandlers = <
 
     return dependencies.appendRefreshedSessionCookies(
       noStoreJsonResponse({
-        billing: await readBillingSummary(
-          openAgentsDatabase(environment),
+        billing: await readBillingSummaryWithPackages(
+          environment,
           session.user.userId,
         ),
       }),
@@ -203,8 +225,8 @@ export const makeBillingApiHandlers = <
       return dependencies.appendRefreshedSessionCookies(
         noStoreJsonResponse(
           {
-            billing: await readBillingSummary(
-              openAgentsDatabase(environment),
+            billing: await readBillingSummaryWithPackages(
+              environment,
               session.user.userId,
             ),
             error: 'coupon_code_required',
@@ -224,7 +246,12 @@ export const makeBillingApiHandlers = <
     return dependencies.appendRefreshedSessionCookies(
       noStoreJsonResponse(
         {
-          billing: result.billing,
+          // Carry the purchasable catalog so the UI keeps its buy buttons after
+          // the model replaces `auth.billing` with this response's summary.
+          billing: withBillingCreditPackages(
+            result.billing,
+            readBillingCreditPackages(environment),
+          ),
           ...(result.ok ? {} : { error: result.error }),
           message: result.message,
         },
@@ -256,7 +283,29 @@ export const makeBillingApiHandlers = <
     const body = await readJsonObject(request).catch(
       (): Record<string, unknown> => ({}),
     )
-    const packageId = firstText(body.packageId) ?? 'starter'
+    // The packageId MUST come from the request and MUST be a real catalog id.
+    // The UI sends ids it read from the server catalog (the billing summary
+    // `packages`), so there is no defensible default: an absent or unknown id
+    // is a client/config mismatch and `createCreditCheckout` rejects it with a
+    // clear `checkout_error` rather than silently charging the wrong package.
+    const packageId = firstText(body.packageId)
+
+    if (packageId === undefined) {
+      return dependencies.appendRefreshedSessionCookies(
+        noStoreJsonResponse(
+          {
+            billing: await readBillingSummaryWithPackages(
+              environment,
+              session.user.userId,
+            ),
+            error: 'package_required',
+            message: 'Choose a credit package to purchase.',
+          },
+          { status: 400 },
+        ),
+        session,
+      )
+    }
 
     try {
       const stripe =
@@ -270,8 +319,8 @@ export const makeBillingApiHandlers = <
 
       return dependencies.appendRefreshedSessionCookies(
         noStoreJsonResponse({
-          billing: await readBillingSummary(
-            openAgentsDatabase(environment),
+          billing: await readBillingSummaryWithPackages(
+            environment,
             session.user.userId,
           ),
           checkoutUrl: checkout.checkoutUrl,
@@ -327,8 +376,8 @@ export const makeBillingApiHandlers = <
       return dependencies.appendRefreshedSessionCookies(
         noStoreJsonResponse(
           {
-            billing: await readBillingSummary(
-              openAgentsDatabase(environment),
+            billing: await readBillingSummaryWithPackages(
+              environment,
               session.user.userId,
             ),
             error: 'amount_required',
@@ -351,8 +400,8 @@ export const makeBillingApiHandlers = <
       ),
     )
 
-    const billing = await readBillingSummary(
-      openAgentsDatabase(environment),
+    const billing = await readBillingSummaryWithPackages(
+      environment,
       session.user.userId,
     )
 
@@ -476,8 +525,8 @@ export const makeBillingApiHandlers = <
 
       return dependencies.appendRefreshedSessionCookies(
         noStoreJsonResponse({
-          billing: await readBillingSummary(
-            openAgentsDatabase(environment),
+          billing: await readBillingSummaryWithPackages(
+            environment,
             session.user.userId,
           ),
           message: 'Card saved.',
@@ -551,7 +600,10 @@ export const makeBillingApiHandlers = <
 
     return dependencies.appendRefreshedSessionCookies(
       noStoreJsonResponse({
-        billing,
+        billing: withBillingCreditPackages(
+          billing,
+          readBillingCreditPackages(environment),
+        ),
         message: enabled ? 'Auto top-up enabled.' : 'Auto top-up disabled.',
       }),
       session,
@@ -593,7 +645,13 @@ export const makeBillingApiHandlers = <
 
       return dependencies.appendRefreshedSessionCookies(
         noStoreJsonResponse({
-          billing: result.billing,
+          // The service returns the post-charge summary as `unknown`; re-read it
+          // authoritatively here so the response carries a typed summary WITH
+          // the purchasable catalog the UI needs to keep its buy buttons.
+          billing: await readBillingSummaryWithPackages(
+            environment,
+            session.user.userId,
+          ),
           message:
             result.status === 'succeeded'
               ? 'Auto top-up completed.'

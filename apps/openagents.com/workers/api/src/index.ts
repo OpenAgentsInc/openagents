@@ -167,8 +167,10 @@ import {
   requireMinimumRunCredits,
   reserveOutOfCreditsNotification,
   suspendBillingAccountIfOutOfCredits,
+  withBillingCreditPackages,
 } from './billing'
 import { makeBillingApiHandlers } from './billing-routes'
+import { readBillingCreditPackages } from './stripe-billing'
 import { OpenAgentsDatabase, ThreadFileArtifacts } from './bindings'
 import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
 import { makeBlueprintRoutes } from './blueprint-routes'
@@ -3016,7 +3018,10 @@ const readAuthenticatedPageContext = async (
     providerAccounts,
     githubWriteConnections,
     tokenLeaderboards,
-    billing,
+    // Attach the purchasable credit catalog from the server Stripe config so the
+    // billing page renders buy buttons whose packageId the checkout endpoint
+    // accepts on first render, before any client-side billing refresh.
+    billing: withBillingCreditPackages(billing, readBillingCreditPackages(env)),
     onboarding,
   }
 }
