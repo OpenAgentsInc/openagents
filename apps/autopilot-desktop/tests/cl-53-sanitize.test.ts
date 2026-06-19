@@ -2,10 +2,13 @@ import { readFileSync } from "node:fs"
 import { describe, expect, test } from "bun:test"
 import {
   BLUEPRINT_CHAT_CONTEXT_TOOL_REF,
+  BLUEPRINT_CHAT_TASSADAR_EVIDENCE_REF,
   BLUEPRINT_CHAT_SIGNATURE_REF,
   BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
   BLUEPRINT_CHAT_TASSADAR_MODULE_REF,
+  BLUEPRINT_CHAT_TASSADAR_RECEIPT_REF,
   BLUEPRINT_CHAT_TASSADAR_TOOL_REF,
+  blueprintChatScopedSteps,
   initialModel,
   type PaneId,
 } from "../src/ui/model"
@@ -436,11 +439,52 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_DIGEST_REF)).toBe(
       true,
     )
-    expect(treeContainsText(document.body, "verified")).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_EVIDENCE_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_RECEIPT_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, "Verified")).toBe(true)
     expect(treeContainsSelector(document.body, "oa-tassadar-proof-replay")).toBe(
       true,
     )
     expect(treeContainsText(document.body, "raw_trace")).toBe(false)
+    expect(treeContainsText(document.body, "raw_prompt")).toBe(false)
+    expect(treeContainsText(document.body, "private_key")).toBe(false)
+  })
+
+  test("chat pane shows rejected Tassadar evidence honestly without raw traces", () => {
+    const document = view({
+      ...initialModel,
+      pane: "chat",
+      chatMessages: [
+        {
+          id: "chat.test.rejected",
+          role: "assistant",
+          body: "Blueprint turn produced a rejected exact replay.",
+          timestamp: "2026-06-19T00:00:00.000Z",
+          linkedSessionRef: "session.blueprint.chat.rejected",
+          steps: blueprintChatScopedSteps({
+            linkedSessionRef: "session.blueprint.chat.rejected",
+            tassadarStatus: "blocked",
+            tassadarVerdict: "rejected",
+            tassadarReceiptRef: null,
+          }),
+        },
+      ],
+    })
+
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_EVIDENCE_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_DIGEST_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, "Rejected")).toBe(true)
+    expect(treeContainsText(document.body, "raw_trace")).toBe(false)
+    expect(treeContainsText(document.body, "raw_prompt")).toBe(false)
+    expect(treeContainsText(document.body, "private_key")).toBe(false)
   })
 
   test("settings pane includes first-run health blockers (#5064)", () => {

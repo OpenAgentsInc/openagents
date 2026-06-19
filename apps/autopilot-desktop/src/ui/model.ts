@@ -140,8 +140,11 @@ export const ChatStep = S.Struct({
   moduleRef: S.NullOr(S.String),
   digestRef: S.NullOr(S.String),
   verdict: S.NullOr(ChatStepVerdict),
+  evidenceRef: S.NullOr(S.String),
+  receiptRef: S.NullOr(S.String),
   tassadarModuleStepRef: S.NullOr(S.String),
   proofReplayRef: S.NullOr(S.String),
+  contentRedacted: S.Boolean,
   linkedSessionRef: S.NullOr(S.String),
 })
 export type ChatStep = typeof ChatStep.Type
@@ -613,6 +616,10 @@ export const BLUEPRINT_CHAT_TASSADAR_STEP_REF =
   "step.blueprint.tassadar.linked_dense.exact_replay.v1"
 export const BLUEPRINT_CHAT_TASSADAR_DIGEST_REF =
   "sha256:0caa43ace27a5b86da14cfe037e65c30f250f0c0a0ac1c01f1fe3a3a45a230b2"
+export const BLUEPRINT_CHAT_TASSADAR_EVIDENCE_REF =
+  "evidence.openagents.blueprint_tassadar_step.cc1403674fc0d388"
+export const BLUEPRINT_CHAT_TASSADAR_RECEIPT_REF =
+  "receipt.openagents.blueprint_tassadar_step.cc1403674fc0d388"
 export const BLUEPRINT_CHAT_TASSADAR_PROOF_REPLAY_REF =
   DefaultDesktopProofReplaySlug
 
@@ -623,9 +630,17 @@ export const blueprintChatScopedSteps = (
     contextStatus?: ChatStepStatus
     tassadarStatus?: ChatStepStatus
     tassadarVerdict?: ChatStepVerdict
+    tassadarEvidenceRef?: string | null
+    tassadarReceiptRef?: string | null
   }> = {},
 ): Array<ChatStep> => {
   const linkedSessionRef = input.linkedSessionRef ?? null
+  const tassadarVerdict =
+    input.tassadarVerdict ??
+    (linkedSessionRef === null ? "pending" : "verified")
+  const tassadarReceiptRef =
+    input.tassadarReceiptRef ??
+    (tassadarVerdict === "verified" ? BLUEPRINT_CHAT_TASSADAR_RECEIPT_REF : null)
   return [
     {
       id: "blueprint-chat-signature",
@@ -639,8 +654,11 @@ export const blueprintChatScopedSteps = (
       moduleRef: null,
       digestRef: null,
       verdict: null,
+      evidenceRef: null,
+      receiptRef: null,
       tassadarModuleStepRef: null,
       proofReplayRef: null,
+      contentRedacted: false,
       linkedSessionRef,
     },
     {
@@ -655,8 +673,11 @@ export const blueprintChatScopedSteps = (
       moduleRef: null,
       digestRef: null,
       verdict: null,
+      evidenceRef: null,
+      receiptRef: null,
       tassadarModuleStepRef: null,
       proofReplayRef: null,
+      contentRedacted: false,
       linkedSessionRef,
     },
     {
@@ -670,11 +691,13 @@ export const blueprintChatScopedSteps = (
       toolRef: BLUEPRINT_CHAT_TASSADAR_TOOL_REF,
       moduleRef: BLUEPRINT_CHAT_TASSADAR_MODULE_REF,
       digestRef: BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
-      verdict:
-        input.tassadarVerdict ??
-        (linkedSessionRef === null ? "pending" : "verified"),
+      verdict: tassadarVerdict,
+      evidenceRef:
+        input.tassadarEvidenceRef ?? BLUEPRINT_CHAT_TASSADAR_EVIDENCE_REF,
+      receiptRef: tassadarReceiptRef,
       tassadarModuleStepRef: BLUEPRINT_CHAT_TASSADAR_STEP_REF,
       proofReplayRef: BLUEPRINT_CHAT_TASSADAR_PROOF_REPLAY_REF,
+      contentRedacted: true,
       linkedSessionRef,
     },
   ]

@@ -4801,6 +4801,19 @@ const chatStepRef = (label: string, value: string | null): Html =>
         ],
       )
 
+const chatVerdictLabel = (verdict: ChatStep["verdict"]): string => {
+  switch (verdict) {
+    case "verified":
+      return "Verified"
+    case "rejected":
+      return "Rejected"
+    case "pending":
+      return "Pending"
+    case null:
+      return ""
+  }
+}
+
 const chatTassadarReplayPreview = (model: Model, step: ChatStep): Html => {
   if (step.proofReplayRef === null) return h.empty
   const projection = modelProofReplay(model)
@@ -4839,6 +4852,8 @@ const chatStepView = (model: Model, step: ChatStep): Html =>
       chatStepRef("tool", step.toolRef),
       chatStepRef("module", step.moduleRef),
       chatStepRef("step", step.tassadarModuleStepRef),
+      chatStepRef("evidence", step.evidenceRef),
+      chatStepRef("receipt", step.receiptRef),
       chatStepRef("digest", step.digestRef),
       step.verdict === null
         ? h.empty
@@ -4846,9 +4861,18 @@ const chatStepView = (model: Model, step: ChatStep): Html =>
             [cls(`chat-verdict chat-verdict-${step.verdict}`)],
             [
               h.span([cls("chat-step-ref-label")], ["exact replay"]),
-              h.code([cls("detail-ref mono")], [step.verdict]),
+              h.code([cls("detail-ref mono")], [chatVerdictLabel(step.verdict)]),
             ],
           ),
+      step.contentRedacted
+        ? h.div(
+            [cls("chat-step-ref")],
+            [
+              h.span([cls("chat-step-ref-label")], ["redaction"]),
+              h.code([cls("detail-ref mono")], ["digests and public refs only"]),
+            ],
+          )
+        : h.empty,
       chatStepRef("proof replay", step.proofReplayRef),
       chatTassadarReplayPreview(model, step),
     ],
