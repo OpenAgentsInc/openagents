@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-19.1'
+export const PublicProductPromisesVersion = '2026-06-19.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -33,6 +33,8 @@ const sourceRefs = [
   'docs/promises/2026-06-18-training-monday-real-settlement-gate-met.md',
   'docs/launch/2026-06-19-autostream-settlement-visibility-capture.md',
   'docs/launch/2026-06-19-autostream-settlement-clip-manifest.json',
+  'docs/launch/2026-06-18-autopilot-desktop-availability-audit.md',
+  'docs/launch/2026-06-18-autopilot-desktop-ao6-from-dmg-runbook.md',
   'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
   'docs/labor/2026-06-14-p5-backlog-faucet-closeout.md',
   'docs/labor/2026-06-14-p7-lane-c-fanout-closeout.md',
@@ -169,6 +171,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-18.1 adds autopilot.external_repo_studying_pilot.v1 as a yellow, refs-only pilot surface. The Probe pipeline can run corpus manifesting, study-packet sectioning, graph traversal, S3 verification, S4-style lift scoring, and coder-context projection on a non-OpenAgents fixture repo, but customer-private ingestion, self-serve upload, marketplace packaging, pricing, payout eligibility, settlement, and green public copy remain blocked.',
         'Registry 2026-06-18.3: training.decentralized_training_launch.v1 stays green; this is an evidence/copy accuracy upgrade only (no scope widening, no gate flip). A second real Bitcoin run-settlement on run.tassadar.executor.20260615 is now dereferenceable: 5 sats settled to a second distinct independent contributor (pylon.81f0facfe…), native over Spark, via receipt receipt.nexus.tassadar_run_settlement.settlement.tassadar.retro.10c3b01b.trigger.v1 (realBitcoinMoved:true, moneyMovement:real_bitcoin, state:settled, adapter:spark_treasury), backed by Verified independent-validator challenge training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4. This contributor came through the rc.32 self-serve public install→register→claim→submit→independent-validation path (the first independent contributor through the self-serve door), so the promise copy moves from "one contributor paid" to "two distinct independent contributors paid". Real settled total for the run is 1,005 sats (1,000 canary + 5 self-serve); the simulation 5-sat row (realBitcoinMoved:false) is excluded. The enumerable per-run settled feed GET /api/public/training/runs/run.tassadar.executor.20260615/settlements is now live (three rows: two real + one simulation) and is added as evidence. The 5-sat self-serve settlement was operator-retro-settled via the admin settlement endpoint because the auto-stream skipped at verdict time (a payout-target resolution bug, since fixed) — the first fully-autonomous auto-stream settlement (gate firing at verdict with no operator action) has NOT happened yet. No network-scale, paid-at-scale, largest-run, canonical-model-mutation, or unbounded-payout claim is authorized. No promise_transition is required because the state does not change (green→green); if owner review wants a transition exception receipt for the copy upgrade, record it against the deployed 2026-06-18.3 version via the operator route per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-18.7: public evidence route normalization. The run settlements evidence now uses the `/api/public/training/runs/{runRef}/settlements` alias, and each exact-trace verification challenge can be dereferenced at `/api/public/training/verification-challenges/{challengeRef}`. This is URL/discovery cleanup only; no promise state flips, settlement authority, payout authority, or claim scope changes.',
+        'Registry 2026-06-19.2: copy/evidence destale only, no state flips. Autopilot Desktop auto-onboarding EPIC #5441 (AO-1..AO-6) is BUILT and tested (first-run self-register, AO-3 identity choice, AO-4 wizard projection, black-screen guard, AO-6 headless smoke against the real local node) but the final from-DMG proof on a clean Mac (rendered window, production presence, settled Tassadar Bitcoin receipt) is owner-gated and pending — desktop stays yellow. The Sites referral payout ledger is WIRED in source (RL-1 #5458: paid-event eligibility feed + readiness-gated idempotent approved->dispatched->settled dispatch via the MDK/Spark adapter, Bitcoin-only rev-share boundary) but NO real referral payout has settled — referral stays yellow and partner_payout_ledger stays red, each with a first-real-payout-pending blocker. All upgrades remain receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
       ],
     },
     promises: [
@@ -959,20 +962,27 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Sites can carry built-in referral links and later pay referrers a Bitcoin stream when referred users become paying customers.',
         safeCopy:
-          'Site referral capture records attribution; Bitcoin referral streaming is not live.',
-        unsafeCopy: 'Do not claim referral links pay Bitcoin streams now.',
+          'Site referral capture records attribution, and the 5% referral payout ledger is now wired end to end in source (RL-1, #5458): a paid customer event resolves its consumed attribution to the referring user and creates exactly one idempotent eligibility row (hooked into Stripe credit-purchase fulfillment, short-circuiting self- and no-attribution), and a dispatch path drives an eligible row approved -> dispatched -> settled by invoking the injected MDK/Spark payout adapter BEFORE recording settled, gated by the MDK payout-mode readiness projection and the Bitcoin-only rev-share asset boundary. No real referral payout has settled yet: dispatch stays readiness-gated and awaits a real Bitcoin-revenue production event, so Bitcoin referral streaming is not live.',
+        unsafeCopy:
+          'Do not claim referral links pay Bitcoin streams now or that any referrer has been paid; the ledger feed and dispatch are wired and tested with a mock adapter and in-memory D1, but no real settled referral payout exists and dispatch remains readiness-gated.',
         evidenceRefs: [
           'https://openagents.com/docs/autopilot-sites',
           'route:/r/site/{publicSourceRef}',
           'apps/openagents.com/docs/sites/2026-06-08-site-referral-reward-withdrawal-gate.md',
           'apps/openagents.com/docs/2026-06-10-site-referral-payout-policy.md',
           'route:/api/operator/sites/referrals/payout-ledger/{payoutRef}/transitions',
+          'apps/openagents.com/workers/api/src/site-referral-payout-feed.ts',
+          'apps/openagents.com/workers/api/src/site-referral-payout-dispatch.ts',
+          'apps/openagents.com/workers/api/src/site-referral-payout-wire.test.ts',
+          'apps/openagents.com/workers/api/src/site-referral-payout-ledger.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/5458',
         ],
         blockerRefs: [
           'blocker.product_promises.referral_settlement_receipts_missing',
+          'blocker.product_promises.referral_first_real_payout_pending',
         ],
         verification:
-          'Referral payout requires attribution consumption, abuse/dispute/cap policy, payout ledger, and settlement receipt projection.',
+          'Referral payout requires attribution consumption, abuse/dispute/cap policy, payout ledger, and settlement receipt projection. RL-1 (#5458) wired the eligibility feed and the readiness-gated, idempotent approved -> dispatched -> settled dispatch (settle-via-adapter, settle-at-most-once, Bitcoin-only rev-share boundary) proven by site-referral-payout-wire.test.ts against a mock adapter and in-memory D1; green still requires a real Bitcoin-revenue production event producing a dereferenceable settled referral payout receipt.',
         authorityBoundary:
           'Referral attribution is not payout eligibility or spendable settlement.',
       },
@@ -2207,12 +2217,21 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Desktop is a GUI client for observing and steering local Autopilot coding sessions.',
         safeCopy:
-          'Autopilot Desktop (Bun/Electrobun shell with a Foldkit webview reusing the shared Autopilot UI) connects to a local Pylon node over loopback and renders a live session list, decision cards, and an event timeline. The PDF-production, loopback Sites-preview, and FS/MCP asset-ingestion + ambient-auth browser-automation cores are built as runtime-agnostic src/bun cores with injected runtimes and fake-based tests (34 desktop tests pass; epic #4973 and #4993/#4994/#4995 closed 2026-06-14). It is local-only: the live runtimes (real PDF renderer, Bun.serve loopback bind, FS-MCP + browser clients, Electrobun RPC exposure) are not yet wired and cannot be headlessly verified; cloud-lane sessions (autopilot.cloud_coding_sessions.v1), remote/Tailnet control, full TUI parity, and pricing/distribution are not wired or decided.',
+          'Autopilot Desktop (Bun/Electrobun shell with a Foldkit webview reusing the shared Autopilot UI) connects to a local Pylon node over loopback and renders a live session list, decision cards, and an event timeline. The auto-onboarding EPIC (#5441, AO-1..AO-6) is built and tested: on first run a fresh node self-registers, the AO-3 identity-choice screen offers create-new (named) or detected use-existing (seed marker detected by presence only, never read or overwritten), the wizard projects identity/registered/node-online/wallet/payout/presence/Tassadar/earning from real observed signals, a black-screen Document-contract guard is in place, and an AO-6 headless smoke drives the REAL local Pylon node through the launcher against a mock Worker and asserts the whole chain converges (no GUI, no terminal, no env vars). The PDF-production, loopback Sites-preview, and FS/MCP asset-ingestion + ambient-auth browser-automation cores are built as runtime-agnostic src/bun cores with injected runtimes and fake-based tests (epic #4973 and #4993/#4994/#4995 closed 2026-06-14). It is local-only: the final from-DMG proof on a clean external Mac (rendered window from the signed DMG, real appearance on production /api/public/pylon-stats, and a real claimed+settled Tassadar window with a Bitcoin receipt) is owner-gated and pending; and the live PDF renderer, Bun.serve loopback bind, FS-MCP + browser clients, Electrobun RPC exposure, cloud-lane sessions (autopilot.cloud_coding_sessions.v1), remote/Tailnet control, full TUI parity, and pricing/distribution are not wired or decided.',
         unsafeCopy:
-          'Do not claim Autopilot Desktop administers cloud or remote multi-node sessions, runs the local PDF/preview/ingest/browser runtimes end to end, has full TUI parity, or is a priced/distributed product; the cores are built behind clean seams with fakes, not yet wired to live runtimes, and the Bun host holds the control token while the webview only sees public-safe projections.',
+          'Do not claim the auto-onboarding EPIC final from-DMG proof is complete (it is owner-gated: no clean-Mac rendered-window screenshot, production-presence entry, or settled Tassadar Bitcoin receipt from a fresh DMG install is recorded yet), and do not claim Autopilot Desktop administers cloud or remote multi-node sessions, runs the local PDF/preview/ingest/browser runtimes end to end, has full TUI parity, or is a priced/distributed product; the cores are built behind clean seams with fakes, not yet wired to live runtimes, and the Bun host holds the control token while the webview only sees public-safe projections.',
         evidenceRefs: [
           'apps/autopilot-desktop/README.md',
           'apps/autopilot-desktop/AGENTS.md',
+          'apps/autopilot-desktop/src/bun/agent-onboarding.ts',
+          'apps/autopilot-desktop/src/bun/identity-choice.ts',
+          'apps/autopilot-desktop/src/shared/onboarding-status.ts',
+          'apps/autopilot-desktop/tests/agent-onboarding.test.ts',
+          'apps/autopilot-desktop/tests/onboarding-wizard.test.ts',
+          'apps/autopilot-desktop/tests/onboarding-status.test.ts',
+          'apps/autopilot-desktop/scripts/auto-onboarding-e2e-smoke.ts',
+          'docs/launch/2026-06-18-autopilot-desktop-availability-audit.md',
+          'docs/launch/2026-06-18-autopilot-desktop-ao6-from-dmg-runbook.md',
           'docs/autopilot-coder/2026-06-13-autopilot-desktop-app-audit.md',
           'docs/autopilot-coder/2026-06-13-autopilot-desktop-reality-vs-claim-status.md',
           'docs/autopilot-coder/2026-06-14-cloud-desktop-mobile-coding-sessions-full-flow-audit.md',
@@ -2220,14 +2239,16 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/4993',
           'https://github.com/OpenAgentsInc/openagents/issues/4994',
           'https://github.com/OpenAgentsInc/openagents/issues/4995',
+          'https://github.com/OpenAgentsInc/openagents/issues/5441',
         ],
         blockerRefs: [
+          'blocker.product_promises.autopilot_desktop_from_dmg_proof_owner_gated',
           'blocker.product_promises.autopilot_desktop_live_runtimes_not_wired',
           'blocker.product_promises.autopilot_desktop_remote_cloud_lane_not_wired',
           'blocker.product_promises.autopilot_desktop_pricing_distribution_undecided',
         ],
         verification:
-          'Launch the desktop shell, pair with a local Pylon, spawn a session, and confirm the Foldkit UI renders session list, decision cards, and timeline live from public-safe projections while the Bun host holds the control token. The PDF/preview/ingest/browser cores pass fake-based tests; green requires their live runtimes wired and observed, plus cloud-lane sessions and a decided distribution/pricing path.',
+          'Launch the desktop shell, pair with a local Pylon, spawn a session, and confirm the Foldkit UI renders session list, decision cards, and timeline live from public-safe projections while the Bun host holds the control token. Auto-onboarding (#5441) is proven by the AO-6 headless smoke (bun run --cwd apps/autopilot-desktop scripts/auto-onboarding-e2e-smoke.ts) driving the real local node through self-register -> presence -> Spark payout target -> Tassadar poll plus the AO-3 identity-choice and black-screen guards; the EPIC final from-DMG proof on a clean Mac (rendered window, production /api/public/pylon-stats presence, settled Tassadar Bitcoin receipt) remains the owner-gated step recorded in the AO-6 runbook. Green additionally requires the PDF/preview/ingest/browser live runtimes wired and observed, cloud-lane sessions, and a decided distribution/pricing path.',
         authorityBoundary:
           'Desktop is a view-and-bounded-action client; it cannot supervise the Pylon node, reach remote/cloud nodes, deploy, or mutate repository/provider access.',
       },
@@ -2395,22 +2416,28 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Sites/Agency partners can earn Bitcoin payouts when their referred customers become paying OpenAgents customers.',
         safeCopy:
-          'An operator-gated partner-payout ledger and state-transition routes shipped in wave-3 (#4986): operators can move a payout through approve/dispatch/settle/reverse states. Remaining work is part product decision, part code: owner sign-off on payout percentage and caps, a partner-attribution policy (referral→customer mapping), settlement dispatch wiring to a public receipt, and a partner-facing projection or API.',
+          'An operator-gated partner-payout ledger and state-transition routes shipped in wave-3 (#4986): operators can move a payout through approve/dispatch/settle/reverse states. The adjacent Sites referral payout rail was wired in source on RL-1 (#5458) — a paid-event eligibility feed (referral attribution -> referring user) plus a readiness-gated, idempotent approved -> dispatched -> settled dispatch that invokes the MDK/Spark payout adapter before recording settled and refuses non-Bitcoin (Stripe credit) revenue — so the attribution->settlement mechanism now has a tested reference implementation (sites.referral_bitcoin_stream.v1). Remaining work is part product decision, part code: owner sign-off on payout percentage and caps, a partner-attribution policy distinct from the referral feed, settlement dispatch wiring to a public partner receipt, a real settled partner payout, and a partner-facing projection or API.',
         unsafeCopy:
-          'Do not claim partners are earning, can withdraw payouts, or have an earnings dashboard, and do not describe this as a live partner revenue stream; the ledger exists but payout percentage/caps are unsigned and settlement is unwired.',
+          'Do not claim partners are earning, can withdraw payouts, or have an earnings dashboard, and do not describe this as a live partner revenue stream; the ledger exists, the referral payout dispatch rail is wired and tested but has never settled a real payout, and partner payout percentage/caps and a partner attribution policy are still unsigned/undecided.',
         evidenceRefs: [
           'apps/openagents.com/workers/api/src/partner-payout-ledger-routes.ts',
           'apps/openagents.com/workers/api/src/partner-payout-ledger.ts',
+          'apps/openagents.com/workers/api/src/site-referral-payout-dispatch.ts',
+          'apps/openagents.com/workers/api/src/site-referral-payout-feed.ts',
+          'apps/openagents.com/workers/api/src/site-referral-payout-wire.test.ts',
           'docs/autopilot-coder/2026-06-13-cloud-remote-execution-commercial-plan.md',
           'https://github.com/OpenAgentsInc/openagents/issues/4986',
+          'https://github.com/OpenAgentsInc/openagents/issues/5458',
+          'promise:sites.referral_bitcoin_stream.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.partner_attribution_policy_missing',
           'blocker.product_promises.partner_payout_settlement_not_wired',
+          'blocker.product_promises.partner_first_real_payout_pending',
           'blocker.product_promises.partner_projection_api_missing',
         ],
         verification:
-          'Operator routes and the ledger module pass type/unit tests. Green requires partner attribution (referral→customer mapping), payout-ledger linkage to public settlement receipts, and a partner-accessible earnings projection.',
+          'Operator routes and the ledger module pass type/unit tests, and the referral payout feed + readiness-gated dispatch pass site-referral-payout-wire.test.ts against a mock adapter (RL-1 #5458). Green requires a partner-specific attribution policy (referral->customer mapping), payout-ledger linkage to a real dereferenceable public settlement receipt for an actually settled partner payout, and a partner-accessible earnings projection.',
         authorityBoundary:
           'Ledger state is not spendable value; settlement requires separate dispatch authority and public-safe settlement evidence.',
       },
@@ -2694,6 +2721,7 @@ export const publicProductPromisesDocument = () => {
       'Registry 2026-06-18.7 normalizes public evidence URLs for agent dereference. It adds no new product capability or authority; it points settlement evidence to the public settlements alias and challenge evidence to the public verification-challenge alias.',
       'Registry 2026-06-18.8 is a copy-only post-launch reconciliation. Stale pre-launch narrative that presented the decentralized-training launch as "imminent but has NOT happened" / "rails-ready is not launched" (point-in-time copy anchored to 2026-06-14) is corrected to current reality: the launch has happened, run.tassadar.executor.20260615 is live and active, self-serve claiming is open, and real Bitcoin has settled to independent contributors with public receipts. This is description/narrative accuracy only — no promise state flips, no new owner-signed transition receipt, no widened scope, and no new payout authority. Every red/yellow/planned promise keeps its state and its own receipt-first upgrade gate; the launch happening does not green any claim by itself.',
       'Registry 2026-06-19.1 aligns the product promises and launch docs with issue #5438. It records the exact auto-stream visibility capture for training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4: public activity timeline, generated replay proof_replay_bundle.public_activity.73e66071, receipt receipt.nexus.tassadar_run_settlement.idempotency.tassadar.autostream.training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4.worker, and docs/launch/2026-06-19-autostream-settlement-clip-manifest.json. It also removes the stale default-npm blocker because npm reports @openagentsinc/pylon@latest=1.0.5 on 2026-06-19. This version flips no promise green: pylon.consumer_compute_earns_bitcoin_self_serve.v1 remains red on scale methodology, Windows/WSL coverage, and Spark-helper auto-start/readiness evidence; world-first claims remain red pending owner-signed receipt-first upgrades; and no new payout, settlement, provider, wallet, deployment, or public-claim authority is created.',
+      'Registry 2026-06-19.2 is a copy/evidence destale pass against what actually shipped to main, and flips no promise state. (1) autopilot.desktop_gui_client.v1 stays yellow but records the auto-onboarding EPIC #5441 (AO-1..AO-6, commits #5442-#5448): first-run self-register, AO-3 identity choice (create-new/named or detected use-existing with the seed marker read-by-presence-only and never overwritten), AO-4 wizard live-state projection from real observed signals, a black-screen Document-contract guard, and an AO-6 headless smoke that drives the REAL local Pylon node through the launcher against a mock Worker (apps/autopilot-desktop/scripts/auto-onboarding-e2e-smoke.ts). The EPIC final from-DMG proof — a rendered window from the signed DMG on a clean external Mac, real appearance on production /api/public/pylon-stats, and a real claimed+settled Tassadar window with a Bitcoin receipt — is owner-gated and pending per docs/launch/2026-06-18-autopilot-desktop-ao6-from-dmg-runbook.md (new blocker.product_promises.autopilot_desktop_from_dmg_proof_owner_gated). (2) sites.referral_bitcoin_stream.v1 stays yellow but records RL-1 #5458 (commit 2c83afd4f): the 5% referral payout ledger is now wired — site-referral-payout-feed.ts creates exactly one idempotent eligibility row per paid event (hooked into Stripe credit-purchase fulfillment, short-circuiting self/no-attribution) and site-referral-payout-dispatch.ts drives approved -> dispatched -> settled by invoking the injected MDK/Spark payout adapter before recording settled, readiness-gated by the MDK payout-mode projection and refusing non-Bitcoin (credit/USD) revenue, proven settle-at-most-once by site-referral-payout-wire.test.ts (mock adapter + in-memory D1). No real referral payout has settled (new blocker.product_promises.referral_first_real_payout_pending); the first real settled payout awaits a real Bitcoin-revenue production event and stays readiness-gated. (3) autopilot_sites.partner_payout_ledger.v1 stays red but cross-references the now-wired referral dispatch rail as a tested attribution->settlement reference implementation (new blocker.product_promises.partner_first_real_payout_pending); green still needs a partner-specific attribution policy, a real settled partner payout receipt, and a partner-facing projection. No promise_transition is required (no state flips); any future green flip remains receipt-first per proof.claim_upgrade_receipts.v1 and requires owner sign-off.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
