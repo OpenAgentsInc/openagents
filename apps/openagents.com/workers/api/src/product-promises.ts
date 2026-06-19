@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-19.4'
+export const PublicProductPromisesVersion = '2026-06-19.5'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -181,6 +181,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-19.2: copy/evidence destale only, no state flips. Autopilot Desktop auto-onboarding EPIC #5441 (AO-1..AO-6) is BUILT and tested (first-run self-register, AO-3 identity choice, AO-4 wizard projection, black-screen guard, AO-6 headless smoke against the real local node) but the final from-DMG proof on a clean Mac (rendered window, production presence, settled Tassadar Bitcoin receipt) is owner-gated and pending — desktop stays yellow. The Sites referral payout ledger is WIRED in source (RL-1 #5458: paid-event eligibility feed + readiness-gated idempotent approved->dispatched->settled dispatch via the MDK/Spark adapter, Bitcoin-only rev-share boundary) but NO real referral payout has settled — referral stays yellow and partner_payout_ledger stays red, each with a first-real-payout-pending blocker. All upgrades remain receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-19.3: coding-agent live re-verification, copy/evidence destale only, no state flips. On 2026-06-19, from clean origin/main (b6e523a77), the three live coding-agent execution lanes were independently re-run and all passed, captured in the dereferenceable receipt docs/launch/2026-06-19-coding-agent-live-verification.md: the local Claude Agent bridge ran sessions exec (adapter claude_agent, verify.passed:true, exit 0, ~10.65s, auth on-device ~/.claude), the local Codex bridge ran sessions exec (adapter codex, workspace-write sandbox with network disabled, verify.passed:true, exit 0, ~13.17s, auth on-device ~/.codex/auth.json), and the Tassadar executor package passed bun test packages/tassadar-executor (23 pass / 0 fail across 5 files, exit 0, execute + exact_trace_replay). The three already-green coding-agent records — pylon.local_claude_agent_bridge.v1, autopilot.codex_probe_pylon_successor.v1, and compute.tassadar_executor_poc.v1 — re-anchor their evidence on this fresh independent receipt and STAY green (green→green, no flip, no promise_transition required). The yellow desktop/built-in-compute records — autopilot.builtin_compute_agent.v1 and autopilot.desktop_gui_client.v1 — are noted as green-CANDIDATES whose execution-lane dependency is now live-proven, but they DO NOT flip: their gates require more than a local single-task exec (signed/notarized recut, packaged OpenAgents compute credentials + metered from-install go-online smoke for builtin_compute_agent; the from-DMG clean-Mac render/presence/settled-Bitcoin proof plus live PDF/preview/ingest/browser runtimes for desktop_gui_client). This receipt proves local single-task execution only and authorizes no production-scale, at-volume, packaged-stable-binary, or public-settlement copy.',
         'Registry 2026-06-19.4 adds the OpenAgents inference gateway / Agent Cloud vision as five conservative new records and flips NO existing promise. The whole inference business is ROADMAP, not built: inference.gateway_credits_business.v1 (red — no gateway endpoint, no inference credit balance, no metering/pricing/routing), inference.referral_on_all_inference.v1 (planned — cross-category ongoing referral revshare is design intent, sub-EPIC #5475), cloud.agent_cloud_one_stop_revshare.v1 (planned — the one-balance one-stop Agent Cloud is the unifying vision capstone, not a shipped product), and inference.decentralized_serving_fabric.v1 (red — Pylons do not yet serve inference; shard-WAN large-model serving is Psionic-planned/hardware-blocked; first serving-node payout owner-armed). The ONLY piece with real evidence is inference.fireworks_open_model_provider.v1 (yellow), and it is scoped precisely to a verified upstream PROVIDER CONNECTION: on 2026-06-19 a real OpenAI-compatible Fireworks chat/completions call returned a proper usage object against an OpenAgents-held key (docs/inference/2026-06-19-fireworks-provider.md), with seven serverless models live on the account — this proves reachability and a cheap-tier cost basis, NOT a sellable customer inference product, so it is deliberately not green. Existing records were cross-referenced (not inflated): sites.referral_bitcoin_stream.v1 stays yellow and is explicitly distinguished from the unbuilt inference referral product; api.hosted_gemini.v1, payments.accepted_outcome_economics.v1, training.*, and compute.tassadar_executor_poc.v1 are referenced as related/spine evidence without any state change. Sources: docs/inference/ (7 docs), EPIC #5474, sub-EPIC #5475, children #5476-#5491. No promise_transition is required (new red/yellow/planned records create no state flip); any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
+        'Registry 2026-06-19.5: blocker/copy destale on the inference gateway, no green flips. The earlier "api unbuilt" framing for inference.gateway_credits_business.v1 is now STALE and corrected: the OpenAI-compatible gateway request surface is BUILT, DEPLOYED, and LIVE in prod (POST /v1/chat/completions, INFERENCE_GATEWAY_ENABLED=true), and Gemini 3.5 Flash is served end-to-end through it, verified live 2026-06-19 (docs/inference/2026-06-19-gateway-gemini-live-verification.md; an unauthenticated prod POST returns 401 not 404, confirming the route is deployed and key-auth-gated). Free inference works. The promise STAYS red/non-green because it is a CREDITS BUSINESS and the PAID-credits path is not collectable end-to-end: Stripe card->credit is wired in source but has no prod secrets, and the USD->msat bridge (#5497, merged) has no real upstream purchase to bridge, so there is no dereferenceable card->credit->inference-spend receipt. Its blocker set is rewritten from "*_unbuilt" gateway/metering/pricing/routing blockers to paid-credits blockers (inference_paid_credits_card_to_credit_not_collectable, inference_usd_to_msat_bridge_no_real_purchase, inference_card_credit_inference_spend_receipt_missing). inference.fireworks_open_model_provider.v1 evidence is honestly tightened — it is now a REGISTERED LIVE SUPPLY LANE in the deployed gateway rather than a bare provider connection, and its stale "gateway api unbuilt" blocker is dropped — but it STAYS yellow (no sellable paid open-model product, no paid receipt). NO promise changes state; zero green flips. Any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
       ],
     },
     promises: [
@@ -2709,12 +2710,14 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents offers one OpenAI/Anthropic-compatible inference API backed by a usage-based credit balance you can fund with a card or Bitcoin, routed to the cheapest viable supply OpenAgents controls.',
         safeCopy:
-          'The inference gateway + credits business is filed and designed (EPIC #5474) but NOT built. There is no live gateway endpoint, no credit balance you can fund for inference, and no customer can point a tool at an OpenAgents base URL and get metered inference today. The design reuses the existing openagents.com Worker billing/credit ledger and the revenue-loop spine (RL-1/2/3); the supply pillars are first-party Vertex Anthropic quota, the Fireworks open-model passthrough lane (provider connection verified — see inference.fireworks_open_model_provider.v1), and the planned Pylon serving fabric (inference.decentralized_serving_fabric.v1). Aggregating hosted-model inference behind one credits API is standard gateway practice; nothing here is novel, and nothing here is shipped.',
+          'The inference gateway request surface is BUILT, DEPLOYED, and LIVE in prod (EPIC #5474, INFERENCE_GATEWAY_ENABLED=true): the OpenAI-compatible POST /v1/chat/completions endpoint authenticates by key, gates on balance, routes cheapest-viable, dispatches to adapters, and decrements credits receipt-first from the real provider usage object via the pricing engine. Gemini 3.5 Flash is served end-to-end through that endpoint, verified live 2026-06-19 (docs/inference/2026-06-19-gateway-gemini-live-verification.md). FREE inference works. What is NOT yet collectable end-to-end is the PAID-CREDITS path: Stripe card->credit is fully wired in source but no Stripe secrets are on prod, and the USD->msat bridge (#5497, merged) has no real upstream purchase to bridge until card->credit is collectable. So as a CREDITS BUSINESS this stays non-green: no customer can fund a balance with a card or Bitcoin in prod and there is no dereferenceable card->credit->inference-spend receipt. The supply pillars are first-party Vertex (Gemini/Anthropic), the Fireworks open-model passthrough lane (provider connection verified — see inference.fireworks_open_model_provider.v1), and the planned Pylon serving fabric (inference.decentralized_serving_fabric.v1). Aggregating hosted-model inference behind one credits API is standard gateway practice; the gateway is shipped, the paid loop is not closed.',
         unsafeCopy:
-          'Do not claim a paid OpenAgents inference API, an inference credit balance, card-or-Bitcoin inference top-up, OpenAI/Anthropic-compatible serving, or cheapest-viable supply routing is live or usable by any customer or agent. Do not imply the verified Fireworks connection is a shipped customer inference product.',
+          'Do not claim a paid OpenAgents inference API, a card-or-Bitcoin-fundable inference credit balance, or that any customer can buy metered inference through OpenAgents today — the paid-credits path is not collectable end-to-end and no card->credit->inference-spend receipt exists. Do not say the gateway API or OpenAI-compatible serving is "unbuilt" — it is built, deployed, and live; the gap is paid credits, not the API. Do not imply the verified Fireworks connection is a shipped customer inference product.',
         evidenceRefs: [
           'docs/inference/README.md',
           'docs/inference/2026-06-19-inference-gateway-business.md',
+          'docs/inference/2026-06-19-gateway-gemini-live-verification.md',
+          'docs/launch/JUNE19_ROADMAP.md',
           'docs/inference/2026-06-19-pricing-vs-factory.md',
           'docs/inference/2026-06-19-pricing-model.md',
           'https://github.com/OpenAgentsInc/openagents/issues/5474',
@@ -2724,21 +2727,20 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/5482',
           'https://github.com/OpenAgentsInc/openagents/issues/5485',
           'https://github.com/OpenAgentsInc/openagents/issues/5486',
+          'https://github.com/OpenAgentsInc/openagents/issues/5497',
           'promise:api.hosted_gemini.v1',
           'promise:payments.accepted_outcome_economics.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.inference_gateway_api_unbuilt',
-          'blocker.product_promises.inference_credit_metering_unbuilt',
-          'blocker.product_promises.inference_pricing_engine_unbuilt',
-          'blocker.product_promises.inference_supply_routing_unbuilt',
-          'blocker.product_promises.inference_abuse_kyc_unbuilt',
+          'blocker.product_promises.inference_paid_credits_card_to_credit_not_collectable',
+          'blocker.product_promises.inference_usd_to_msat_bridge_no_real_purchase',
+          'blocker.product_promises.inference_card_credit_inference_spend_receipt_missing',
           'public_paid_model_gateway_missing',
         ],
         verification:
-          'Red until a live OpenAI/Anthropic-compatible gateway endpoint authenticates against a real inference credit balance, decrements credits receipt-first from provider usage, prices per-model with a real cost basis, routes across at least one supply lane, and a real customer/agent completes a funded metered inference request. Each must carry dereferenceable route, metering, pricing, and settlement evidence before any green or affirmative public copy.',
+          'The gateway request surface (live OpenAI-compatible /v1/chat/completions endpoint, key-auth, balance gate, cheapest-viable routing, receipt-first credit decrement from provider usage, Gemini 3.5 Flash served end-to-end) is satisfied and verified live 2026-06-19. The remaining gate for GREEN as a credits business is the PAID-CREDITS path: a real customer/agent funds a balance with a card (Stripe secrets in prod) or Bitcoin, those USD credits cross the USD->msat bridge (#5497), and a funded metered inference request settles — producing a dereferenceable card->credit->inference-spend receipt. Stays red/non-green until that paid receipt exists; free inference being live does not green the credits business.',
         authorityBoundary:
-          'A filed EPIC and design docs are roadmap evidence only. They grant no inference serving, billing, credit-balance, routing, payout, or public-product-claim authority. API-inference resale is the allowed monetization lane under the no-resale invariant, but authorization of the mechanism is not authorization of a live product claim.',
+          'A live, deployed gateway request surface plus live FREE inference grants serving-reachability and free-tier authority only. It grants no PAID billing, no card-or-Bitcoin-fundable credit-balance, no collectable-revenue, payout, or paid-product-claim authority. API-inference resale is the allowed monetization lane under the no-resale invariant, but a built+deployed endpoint and a working free tier are not authorization of a live PAID credits-business product claim.',
       },
       {
         ...basePromiseFields,
@@ -2749,23 +2751,23 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents has a verified live provider connection to Fireworks AI for open-weight model inference (DeepSeek, Kimi, GLM, Qwen, MiniMax, gpt-oss, Nemotron, embeddings, vision, image) as the open-model passthrough supply lane for the planned inference gateway.',
         safeCopy:
-          'This is a verified PROVIDER CONNECTION, not a shipped customer product. On 2026-06-19 a real OpenAI-compatible call to Fireworks (POST https://api.fireworks.ai/inference/v1/chat/completions) succeeded on accounts/fireworks/models/deepseek-v4-pro and glm-5p2, returning a proper usage object; auth + inference were confirmed against an OpenAgents-held key in .secrets/fireworks.env. Seven serverless models are live on the account. This proves OpenAgents can reach Fireworks as a supply lane and that the serverless per-token prices are a usable cheap-tier cost basis; it does NOT mean any customer can buy this inference through OpenAgents. The gateway, credit metering, pricing engine, and routing that would turn this connection into a sellable product are unbuilt (inference.gateway_credits_business.v1, red).',
+          'This is a verified provider connection now wired as a REGISTERED LIVE SUPPLY LANE in the deployed gateway, not a shipped PAID customer product. On 2026-06-19 a real OpenAI-compatible call to Fireworks (POST https://api.fireworks.ai/inference/v1/chat/completions) succeeded on accounts/fireworks/models/deepseek-v4-pro and glm-5p2, returning a proper usage object; auth + inference were confirmed against an OpenAgents-held key in .secrets/fireworks.env. Seven serverless models are live on the account. The gateway request surface that routes to this lane is now built, deployed, and live (POST /v1/chat/completions, INFERENCE_GATEWAY_ENABLED=true — see inference.gateway_credits_business.v1), so the open-model passthrough is a registered routing target with a usable cheap-tier cost basis. It still does NOT mean any customer can BUY this inference through OpenAgents: the paid-credits path (card->credit + the USD->msat bridge) is not collectable end-to-end, so there is no sellable open-model product and no dereferenceable paid receipt yet.',
         unsafeCopy:
-          'Do not claim OpenAgents sells Fireworks/open-model inference, that a customer or agent can buy Fireworks inference through OpenAgents, that there is a live inference product, or that this connection is more than a verified upstream provider link. Do not print or reference the raw Fireworks API key.',
+          'Do not claim OpenAgents SELLS Fireworks/open-model inference, that a customer or agent can BUY Fireworks inference through OpenAgents, or that there is a live PAID open-model product — the paid-credits path is not collectable end-to-end. Do not say the gateway that routes to this lane is "unbuilt" — it is built, deployed, and live. Do not print or reference the raw Fireworks API key.',
         evidenceRefs: [
           'docs/inference/2026-06-19-fireworks-provider.md',
+          'docs/inference/2026-06-19-gateway-gemini-live-verification.md',
           'docs/inference/README.md',
           'https://github.com/OpenAgentsInc/openagents/issues/5479',
           'https://github.com/OpenAgentsInc/openagents/issues/5474',
           'promise:inference.gateway_credits_business.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.inference_gateway_api_unbuilt',
-          'blocker.product_promises.inference_credit_metering_unbuilt',
-          'blocker.product_promises.inference_fireworks_adapter_unbuilt',
+          'blocker.product_promises.inference_paid_credits_card_to_credit_not_collectable',
+          'blocker.product_promises.inference_open_model_paid_product_no_receipt',
         ],
         verification:
-          'Yellow is scoped to exactly the verified upstream connection: a real Fireworks OpenAI-compatible chat/completions call returning a usage object against an OpenAgents-held key, plus the documented serverless catalog/pricing. Green (a sellable open-model inference product) additionally requires the gateway API skeleton, credit metering decremented receipt-first from the Fireworks usage object, a pricing/multiplier engine over the Fireworks cost basis, adaptive-rate-limit/429/503 overflow handling in the adapter, and a real customer-completed funded request with dereferenceable metering and settlement evidence.',
+          'Yellow is scoped to the verified upstream connection now registered as a live gateway supply lane: a real Fireworks OpenAI-compatible chat/completions call returning a usage object against an OpenAgents-held key, the documented serverless catalog/pricing, and a deployed gateway request surface that can route to it. Green (a sellable open-model inference product) additionally requires the paid-credits path to be collectable end-to-end (Stripe card->credit in prod, USD->msat bridge #5497) and a real customer-completed funded open-model request with dereferenceable metering and settlement evidence.',
         authorityBoundary:
           'A verified provider connection is upstream-reachability evidence only. It grants no customer-facing inference product, billing, credit-balance, routing, payout, or public-product-claim authority, and it is not by itself any green claim.',
       },
@@ -2795,13 +2797,13 @@ export const publicProductPromisesDocument = () => {
           'promise:sites.referral_bitcoin_stream.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.inference_gateway_api_unbuilt',
+          'blocker.product_promises.inference_paid_credits_card_to_credit_not_collectable',
           'blocker.product_promises.inference_referral_attribution_unbuilt',
           'blocker.product_promises.inference_referral_accrual_unbuilt',
           'blocker.product_promises.referral_first_real_payout_pending',
         ],
         verification:
-          'Planned until the inference gateway exists, inference referral attribution binds a funded referee account to a referrer, ongoing accrual computes a referral % off receipt-first metered inference spend, a three-way per-request margin split (OpenAgents / serving node / referrer) is implemented, and a real referred-inference referral payout settles with a dereferenceable receipt under RL-1/2/3 and the asset-boundary/no-resale guards.',
+          'Planned until the PAID inference gateway exists (the request surface is live, but no customer can fund inference spend through it end-to-end yet — inference.gateway_credits_business.v1 stays red on the paid-credits path), inference referral attribution binds a funded referee account to a referrer, ongoing accrual computes a referral % off receipt-first metered inference spend, a three-way per-request margin split (OpenAgents / serving node / referrer) is implemented, and a real referred-inference referral payout settles with a dereferenceable receipt under RL-1/2/3 and the asset-boundary/no-resale guards.',
         authorityBoundary:
           'Design intent for cross-category, indefinite referral revshare is roadmap evidence only. It grants no attribution, accrual, eligibility, payout, or settlement authority, and referral attribution is never payout eligibility or spendable settlement by itself.',
       },
@@ -2833,7 +2835,7 @@ export const publicProductPromisesDocument = () => {
         blockerRefs: [
           'blocker.product_promises.agent_cloud_unified_credit_balance_unbuilt',
           'blocker.product_promises.agent_cloud_cross_category_revshare_unbuilt',
-          'blocker.product_promises.inference_gateway_api_unbuilt',
+          'blocker.product_promises.inference_paid_credits_card_to_credit_not_collectable',
           'blocker.product_promises.referral_first_real_payout_pending',
         ],
         verification:
@@ -2869,7 +2871,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.shard_wan_large_model_serving_psionic_planned',
           'blocker.product_promises.inference_serving_node_payout_unbuilt',
           'blocker.product_promises.inference_serving_first_real_payout_owner_armed',
-          'blocker.product_promises.inference_gateway_api_unbuilt',
+          'blocker.product_promises.inference_paid_credits_card_to_credit_not_collectable',
         ],
         verification:
           'Red until a Pylon serves a real gateway inference request (whole-small-model near-term, shard-WAN large-model as Psionic hardware-backed phases land), the run carries an exact-greedy-parity receipt where a same-engine reference is feasible, the per-stage payout split is implemented against psionic.serve.pipeline_sharded_run_receipt.v1, and an owner-armed first serving-node Bitcoin payout settles with a dereferenceable receipt under RL-2/RL-3.',
