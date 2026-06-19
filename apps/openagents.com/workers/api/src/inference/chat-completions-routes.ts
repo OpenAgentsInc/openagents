@@ -31,6 +31,10 @@ import { type MeteringHook, stubMeteringHook } from './metering-hook'
 import { type FundingKind } from './pricing'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
 import { type DispatchDeps, dispatchWithOverflow } from './model-router'
+import {
+  type FairShareDecision,
+  type SpendCapDecision,
+} from './inference-abuse-controls'
 
 // AUTH SEAM ---------------------------------------------------------------
 // Resolves the per-account API key (the OpenAgents agent bearer token) to an
@@ -120,6 +124,30 @@ export type ChatCompletionsDeps = Readonly<{
   // prices per-model, any positive balance clears the gate; an account with
   // zero/negative available balance is rejected.
   minimumAvailableMsat?: number
+  // ABUSE-CONTROL SEAMS (#5486). Both default to undefined => the gate is OPEN
+  // (no-op), so the inert/flag-off path and the unconfigured-account path are
+  // byte-for-byte unchanged. The decisions are computed by the pure deciders in
+  // inference-abuse-controls.ts (`decideFairShare` / `decideSpendCap`); the
+  // Worker wires these to per-account window counters (D1/KV) so one customer
+  // cannot starve the shared Vertex quota (fair-share) or drain its whole balance
+  // via a compromised key (spend cap), both DISTINCT from the raw balance gate.
+  //
+  // PER-CUSTOMER RATE / FAIR-SHARE GATE. Returns the fair-share decision for the
+  // account in the current window. When `allowed` is false the route rejects with
+  // the decision's statusCode (429) and sets RateLimit-* headers from the
+  // bounded counters. Checked AFTER auth (so it is keyed to the account) and
+  // BEFORE provider dispatch (so a starve-attempt never reaches a provider).
+  checkFairShare?: (
+    accountRef: string,
+  ) => Promise<FairShareDecision>
+  // PER-ACCOUNT SPEND-CAP GATE. Returns the spend-cap decision for the account in
+  // the current window. When `allowed` is false the route rejects with the
+  // decision's statusCode (402, distinct from the balance gate's
+  // insufficient_credits). Checked after the balance gate; pre-flight it bounds
+  // the already-spent window total (no per-request estimate exists yet).
+  checkSpendCap?: (
+    accountRef: string,
+  ) => Promise<SpendCapDecision>
   // Deterministic id/timestamp injection for tests. `nowEpochSeconds` defaults
   // to the runtime-primitives clock; `newId` to a runtime-primitives random id.
   nowEpochSeconds?: () => number
@@ -230,6 +258,34 @@ export const handleChatCompletions = (
       )
     }
 
+    // FAIR-SHARE GATE (#5486). Keyed to the authenticated account so one customer
+    // cannot starve the shared Vertex quota / Fireworks limits. Open (no-op) when
+    // unwired. Rejected requests carry RateLimit-* headers from the bounded
+    // counters so well-behaved clients back off; nothing reaches a provider.
+    if (deps.checkFairShare !== undefined) {
+      const fairShare = yield* Effect.promise(() =>
+        deps.checkFairShare!(session.accountRef),
+      )
+      if (!fairShare.allowed) {
+        const headers = new Headers({
+          'ratelimit-limit': String(fairShare.limit),
+          'ratelimit-policy': `${fairShare.limit};w=${fairShare.windowSeconds}`,
+          'ratelimit-remaining': String(fairShare.remainingRequests),
+          'ratelimit-reset': String(fairShare.windowSeconds),
+          'retry-after': String(fairShare.windowSeconds),
+        })
+        return noStoreJsonResponse(
+          {
+            error: 'rate_limited',
+            reason: fairShare.status,
+            remainingRequests: fairShare.remainingRequests,
+            remainingTokens: fairShare.remainingTokens,
+          },
+          { headers, status: fairShare.statusCode },
+        )
+      }
+    }
+
     const rawBody = yield* Effect.promise(async () => {
       try {
         return (await request.json()) as Record<string, unknown>
@@ -263,6 +319,28 @@ export const handleChatCompletions = (
         },
         { status: 402 },
       )
+    }
+
+    // SPEND-CAP GATE (#5486). DISTINCT from the balance gate above: an account
+    // can be flush with credits yet still be capped at a configurable per-window
+    // spend ceiling so a compromised key cannot drain the whole balance. Open
+    // (no-op) when unwired or when no cap is configured for the account.
+    if (deps.checkSpendCap !== undefined) {
+      const spendCap = yield* Effect.promise(() =>
+        deps.checkSpendCap!(session.accountRef),
+      )
+      if (!spendCap.allowed) {
+        return noStoreJsonResponse(
+          {
+            error: 'spend_cap_exceeded',
+            capMsat: spendCap.capMsat,
+            remainingMsat: spendCap.remainingMsat,
+            spentMsatInWindow: spendCap.spentMsatInWindow,
+            windowSeconds: spendCap.windowSeconds,
+          },
+          { status: spendCap.statusCode },
+        )
+      }
     }
 
     // SUPPLY SELECTION (#5482) -------------------------------------------
