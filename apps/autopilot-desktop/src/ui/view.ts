@@ -5768,7 +5768,12 @@ const shellPane = (model: Model): Html =>
             h.Type("text"),
             h.Placeholder(""),
             h.Autofocus(true),
-            h.Disabled(model.shellPending),
+            // Intentionally NOT disabled while pending. A disabled <input> is
+            // blurred by the browser, which drops focus from the chat box after
+            // every send — the owner needs focus to stay on the box. The reducer
+            // already no-ops a submit while `shellPending` (and on empty input),
+            // so keeping the input enabled is safe and keeps focus where it
+            // belongs (owner directive 2026-06-19).
             h.Value(model.shellInput),
             h.OnInput((value: string) => ChangedShellInput({ value })),
             // Enter submits (without Shift); other keys fall through untouched.

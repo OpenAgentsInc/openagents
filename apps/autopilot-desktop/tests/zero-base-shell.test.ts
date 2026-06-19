@@ -103,6 +103,21 @@ describe("zero-base shell: text bar → response loop", () => {
     expect(commands).toHaveLength(1)
   })
 
+  test("a submit while pending is a no-op — so the input can stay enabled and KEEP FOCUS", () => {
+    // The input is intentionally NOT disabled while pending (a disabled input is
+    // blurred, dropping focus from the chat box after every send). That's only
+    // safe because the reducer guards a second submit while pending.
+    const [m0] = initialRuntimeState()
+    const [m1] = update(m0, ChangedShellInput({ value: "first" }))
+    const [m2] = update(m1, SubmittedShell())
+    expect(m2.shellPending).toBe(true)
+    const [m3] = update(m2, ChangedShellInput({ value: "second" }))
+    const [m4, c4] = update(m3, SubmittedShell())
+    // The pending submit did nothing: still just the first turn, no command.
+    expect(m4.shellTurns).toHaveLength(1)
+    expect(c4).toHaveLength(0)
+  })
+
   test("the response lands as an assistant turn and clears pending", () => {
     const [m0] = initialRuntimeState()
     const [m1] = update(m0, ChangedShellInput({ value: "ping" }))
