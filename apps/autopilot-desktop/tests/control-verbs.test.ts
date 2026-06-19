@@ -131,6 +131,43 @@ describe("CL-46 control verbs", () => {
     expect(captured).toMatchObject({ verify: ["true"] })
   })
 
+  // #5453: when the node rejects a command (e.g. HTTP 400 typed validation),
+  // spawnSession surfaces the node's typed error message rather than an opaque
+  // `control <status>`. This is the path the desktop composer once showed as a
+  // raw `control 500`; it now carries an honest reason.
+  test("spawnSession surfaces the node's typed error body over a bare control status", async () => {
+    const typedErrorFetch = (async (url: string) => {
+      if (String(url).endsWith("/health")) {
+        return new Response(JSON.stringify({ ok: true, schema: "openagents.pylon.control.v0.3" }), { status: 200 })
+      }
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "session.spawn must use only one workspace selector",
+          reason: "workspace_selector_conflict",
+        }),
+        { status: 400 },
+      )
+    }) as unknown as typeof fetch
+    const r = await spawnSession({ ...base, adapter: "codex", objective: "x", fetchFn: typedErrorFetch })
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe("session.spawn must use only one workspace selector")
+  })
+
+  // #5453: if the node returns a non-ok status with no parseable body, fall
+  // back to the legacy `control <status>` string so the composer still shows
+  // something honest.
+  test("spawnSession falls back to control <status> when the error body is unparseable", async () => {
+    const opaqueFetch = (async (url: string) => {
+      if (String(url).endsWith("/health")) {
+        return new Response(JSON.stringify({ ok: true, schema: "openagents.pylon.control.v0.3" }), { status: 200 })
+      }
+      return new Response("not json", { status: 503 })
+    }) as unknown as typeof fetch
+    const r = await spawnSession({ ...base, adapter: "codex", objective: "x", fetchFn: opaqueFetch })
+    expect(r).toEqual({ ok: false, sessionRef: "", error: "control 503" })
+  })
+
   test("fetchNodeState aggregates the parity surfaces", async () => {
     const state = await fetchNodeState({
       ...base,

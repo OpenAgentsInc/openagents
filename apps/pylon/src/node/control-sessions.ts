@@ -37,6 +37,7 @@ import {
   scanProofSerialization,
 } from "../proof-redaction"
 import { classifySessionError } from "../session-error-class"
+import { ControlCommandValidationError } from "./control-command-error"
 import { assertPublicProjectionSafe } from "../state"
 import {
   materializeGitCheckoutWorkspaceWithLease,
@@ -373,7 +374,10 @@ function rejectDangerFields(record: Record<string, unknown>) {
     record.codexDanger === true ||
     record.claudeDanger === true
   ) {
-    throw new Error("control sessions reject local danger modes")
+    throw new ControlCommandValidationError(
+      "danger_mode_rejected",
+      "control sessions reject local danger modes",
+    )
   }
 }
 
@@ -385,22 +389,41 @@ function parseLane(value: unknown): ControlSessionLane {
   ) {
     return value as ControlSessionLane
   }
-  throw new Error("session.spawn lane must be one of auto|local|cloud-gcp|cloud-shc")
+  throw new ControlCommandValidationError(
+    "lane_invalid",
+    "session.spawn lane must be one of auto|local|cloud-gcp|cloud-shc",
+  )
 }
 
 function parseSpawnCommand(raw: ControlSessionSpawnCommand): ControlSessionSpawnCommand {
   const record = raw as Record<string, unknown>
   rejectDangerFields(record)
   if (raw.adapter !== "codex" && raw.adapter !== "claude_agent") {
-    throw new Error("session.spawn requires adapter codex or claude_agent")
+    throw new ControlCommandValidationError(
+      "adapter_invalid",
+      "session.spawn requires adapter codex or claude_agent",
+    )
   }
   if (typeof raw.objective !== "string" || raw.objective.trim().length === 0) {
-    throw new Error("session.spawn requires a non-empty objective")
+    throw new ControlCommandValidationError(
+      "objective_required",
+      "session.spawn requires a non-empty objective",
+    )
   }
   const verify = stringArray(raw.verify)
-  if (verify === null) throw new Error("session.spawn requires non-empty verify argv")
+  if (verify === null) {
+    throw new ControlCommandValidationError(
+      "verify_required",
+      "session.spawn requires non-empty verify argv",
+    )
+  }
   const repoRef = raw.repoRef === undefined ? undefined : repositoryRefFrom(raw.repoRef)
-  if (raw.repoRef !== undefined && repoRef === null) throw new Error("session.spawn repoRef is invalid")
+  if (raw.repoRef !== undefined && repoRef === null) {
+    throw new ControlCommandValidationError(
+      "repo_ref_invalid",
+      "session.spawn repoRef is invalid",
+    )
+  }
   const worktreePath =
     typeof raw.worktreePath === "string"
       ? raw.worktreePath
@@ -409,11 +432,19 @@ function parseSpawnCommand(raw: ControlSessionSpawnCommand): ControlSessionSpawn
         : raw.worktree && typeof raw.worktree === "object" && typeof raw.worktree.path === "string"
           ? raw.worktree.path
           : undefined
-  if (repoRef === undefined && worktreePath === undefined) {
-    throw new Error("session.spawn requires repoRef or worktreePath")
-  }
+  // #5453: a Blueprint chat turn dispatches `session.spawn` with NO workspace
+  // selector (no repoRef, no worktreePath) — it is a conversational program
+  // turn, not a repo-checkout coding task. That is now valid: the node
+  // materializes a private ephemeral scratch workspace for it (see
+  // `workspaceForCommand` -> `workspaceForEphemeralScratch`). Previously this
+  // threw, and the control server turned the throw into a raw HTTP 500
+  // (`control 500`) in the desktop chat composer. Only reject the genuinely
+  // ambiguous case of BOTH selectors set at once.
   if (repoRef !== undefined && worktreePath !== undefined) {
-    throw new Error("session.spawn must use only one workspace selector")
+    throw new ControlCommandValidationError(
+      "workspace_selector_conflict",
+      "session.spawn must use only one workspace selector",
+    )
   }
   const lane = parseLane(raw.lane)
   return {
@@ -438,10 +469,16 @@ function parseReplyCommand(raw: ControlSessionReplyCommand): ControlSessionReply
   const record = raw as Record<string, unknown>
   rejectDangerFields(record)
   if (typeof raw.sessionRef !== "string" || raw.sessionRef.trim().length === 0) {
-    throw new Error("session.reply requires --session-ref")
+    throw new ControlCommandValidationError(
+      "session_ref_required",
+      "session.reply requires --session-ref",
+    )
   }
   if (typeof raw.objective !== "string" || raw.objective.trim().length === 0) {
-    throw new Error("session.reply requires a non-empty objective")
+    throw new ControlCommandValidationError(
+      "objective_required",
+      "session.reply requires a non-empty objective",
+    )
   }
   return {
     type: "session.reply",
@@ -470,10 +507,16 @@ function parseAppleFmStartCommand(raw: AppleFmSessionStartCommand): AppleFmSessi
   const record = raw as Record<string, unknown>
   rejectDangerFields(record)
   if (typeof raw.prompt !== "string" || raw.prompt.trim().length === 0) {
-    throw new Error("apple_fm.session.start requires a non-empty prompt")
+    throw new ControlCommandValidationError(
+      "prompt_required",
+      "apple_fm.session.start requires a non-empty prompt",
+    )
   }
   if (typeof raw.worktreePath !== "string" || raw.worktreePath.trim().length === 0) {
-    throw new Error("apple_fm.session.start requires worktreePath")
+    throw new ControlCommandValidationError(
+      "worktree_path_required",
+      "apple_fm.session.start requires worktreePath",
+    )
   }
   return {
     type: "apple_fm.session.start",
@@ -541,7 +584,16 @@ async function workspaceForCommand(input: {
   }
 
   const repoRef = input.command.repoRef
-  if (repoRef === undefined) throw new Error("workspace_selector_missing")
+  if (repoRef === undefined) {
+    // #5453: workspace-less turn (e.g. a Blueprint chat turn). No repo target
+    // and no caller-supplied path, so materialize a fresh private scratch
+    // directory under the node's cache for the bounded session to run in.
+    return workspaceForEphemeralScratch({
+      cacheRoot: join(input.summary.paths.cache, "control-session-scratch"),
+      runRef: input.runRef,
+      index: input.index,
+    })
+  }
   const checkout: GitCheckoutWorkspace = {
     kind: "git_checkout",
     repository: repoRef,
@@ -566,6 +618,26 @@ async function workspaceForCommand(input: {
     workspaceStateRoot: join(input.summary.paths.cache, "workspace-leases"),
     workspaceRef: materialized.workspaceRef,
   }
+}
+
+// #5453: materialize a fresh private scratch working directory for a
+// workspace-less control session (a Blueprint chat turn has no repo and no
+// caller-supplied path). The directory lives under the node's cache so it never
+// touches the user's repos, and a deterministic ref keys it for cleanup. We do
+// NOT register a workspace lease here (there is no checkout to retain); the
+// directory is bounded scratch for the bounded session.
+async function workspaceForEphemeralScratch(input: {
+  cacheRoot: string
+  runRef: string
+  index: number
+}): Promise<WorkspaceSelection> {
+  const workspaceRef = stableRef(
+    "workspace.pylon.control_session.scratch",
+    `${input.runRef}:${input.index}`,
+  )
+  const workingDirectory = join(input.cacheRoot, workspaceRef)
+  await mkdir(workingDirectory, { recursive: true })
+  return { workingDirectory, workspaceRef }
 }
 
 async function workspaceForWorktreePath(worktreePath: string): Promise<WorkspaceSelection> {

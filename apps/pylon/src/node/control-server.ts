@@ -12,6 +12,7 @@ import { Effect, PubSub, SubscriptionRef, type Scope } from "effect"
 import type { PylonEvent, PylonLogEntry, TelemetryPaneState, WalletPaneState } from "./state"
 import type { PylonNodeRuntime } from "./runtime"
 import { createBridgePairingService } from "./bridge-pairing-service"
+import { controlCommandValidationReason } from "./control-command-error"
 import { verbAllowedByCapabilities, type BridgeRequestVerb, type Capability } from "@openagentsinc/autopilot-control-protocol"
 import type {
   ControlSessionActions,
@@ -717,11 +718,20 @@ export const startControlServer = (
               try {
                 const result = await runCommand(command)
                 return Response.json({ ok: true, result: result ?? null })
-              } catch (error) {
-                return Response.json(
-                  { ok: false, error: error instanceof Error ? error.message : String(error) },
-                  { status: 500 },
-                )
+              } catch (error: unknown) {
+                // #5453: a malformed/invalid command is the caller's mistake, not
+                // a node fault. Answer 400 with the typed reason so the desktop
+                // can surface a clean message instead of a raw `control 500`.
+                // Genuine internal failures still return 500.
+                const message = error instanceof Error ? error.message : String(error)
+                const validation = controlCommandValidationReason(error)
+                if (validation !== null) {
+                  return Response.json(
+                    { ok: false, error: message, reason: validation },
+                    { status: 400 },
+                  )
+                }
+                return Response.json({ ok: false, error: message }, { status: 500 })
               }
             }
 

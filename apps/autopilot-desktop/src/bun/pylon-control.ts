@@ -923,7 +923,20 @@ export async function spawnSession(input: {
         ...(input.accountRef ? { accountRef: input.accountRef } : {}),
       }),
     })
-    if (!res.ok) return { ok: false, sessionRef: "", error: `control ${res.status}` }
+    // #5453: prefer the node's typed error body over a bare `control <status>`.
+    // The control server answers a malformed command with HTTP 400 and a clean
+    // `{ ok:false, error, reason }`; surface that message so the composer shows
+    // an honest reason instead of an opaque `control 500`/`control 400`.
+    if (!res.ok) {
+      const detail = (await res
+        .json()
+        .catch(() => null)) as { error?: unknown; reason?: unknown } | null
+      const message =
+        detail && typeof detail.error === "string" && detail.error.trim() !== ""
+          ? detail.error
+          : `control ${res.status}`
+      return { ok: false, sessionRef: "", error: message }
+    }
     const json = (await res.json()) as { ok?: unknown; result?: { sessionRef?: unknown } }
     if (json.ok !== true) return { ok: false, sessionRef: "", error: "spawn failed" }
     return { ok: true, sessionRef: String(json.result?.sessionRef ?? "spawned") }
