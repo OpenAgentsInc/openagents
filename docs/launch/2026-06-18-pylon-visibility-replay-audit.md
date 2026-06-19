@@ -987,6 +987,13 @@ fully autonomous self-serve settlement captured by timeline/replay/clip.
      promises, AGENTS/INSTALL/evidence-pack refs, and launch docs with the exact
      public refs and owner-signed upgrades where required. Keep world-firsts in
      qualified wording until their owner-signed receipt-first upgrades land.
+   - Partial cleanup on 2026-06-19: `docs/promises/registry.md` no longer
+     presents the scoped decentralized-training launch as a red/planned Monday
+     launch. It now points to live registry `2026-06-18.8`, keeps
+     `training.decentralized_training_launch.v1` green only for bounded
+     receipt-backed launch evidence, and preserves the red/yellow gates for
+     network-scale, largest-run, model-mutation, broad earning, and fully
+     autonomous auto-stream settlement claims.
 
 ---
 
