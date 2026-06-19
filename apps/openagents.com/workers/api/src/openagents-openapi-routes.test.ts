@@ -998,6 +998,10 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/operator/email-sequences',
   '/api/operator/email-sequences/{param}/enroll',
   '/api/operator/email-sequences/{param}/status',
+  // Inference referral payout dispatch (sub-EPIC #5475 / #5490): admin-gated,
+  // owner-armed dispatch of one accrued inference referral payout through the
+  // shared RL-2 rail. Operator surface; intentionally undocumented in OpenAPI.
+  '/api/operator/inference/referral/payout/{param}/dispatch',
   '/api/operator/partners/payout-ledger/{param}',
   '/api/operator/partners/payout-ledger/{param}/transitions',
   '/api/operator/sites/orchestration/{param}',
@@ -1112,6 +1116,10 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/github-write/grants/resolve',
   '/api/images/generate',
   '/api/images/{param}',
+  // Inference referral revshare dashboard (sub-EPIC #5475 / #5491): browser-
+  // session-scoped public-safe read of the signed-in referrer's inference
+  // earnings. Internal product surface; intentionally undocumented in OpenAPI.
+  '/api/inference/referral/dashboard',
   '/api/onboarding/billing/skip',
   '/api/onboarding/goal',
   '/api/share',
