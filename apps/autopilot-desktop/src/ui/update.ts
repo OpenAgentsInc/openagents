@@ -76,16 +76,21 @@ import {
   type PaletteCommand,
 } from "./nav"
 import {
-  BLUEPRINT_CHAT_SIGNATURE_REF,
   BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF,
   BLUEPRINT_CHAT_REPLAY_TOOL_REF,
-  BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
   Model,
-  blueprintChatScopedSteps,
+  type ChatMessage,
   type PaneId,
   type ProofReplayCommandRequest,
 } from "./model"
-import type { DesktopProofReplayProjection } from "../shared/proof-replays"
+// #5466 (EPIC #5461): live Blueprint chat — SEMANTIC signature routing + runtime
+// step derivation from real session events (replaces the seeded path).
+import { selectSignatureForMessage } from "./blueprint-chat-routing"
+import { liveChatScopedSteps } from "./blueprint-chat-runtime"
+import {
+  DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
+  type DesktopProofReplayProjection,
+} from "../shared/proof-replays"
 import { validatePromiseSurfacingInput } from "../shared/promise-surfacing"
 import type {
   AppleFmReadinessResponse,
@@ -204,17 +209,24 @@ const chatMessageId = (prefix: string): string =>
 
 const chatTimestamp = (): string => new Date().toISOString()
 
-const buildBlueprintChatObjective = (prompt: string): string =>
+// #5466: the objective embeds the SEMANTICALLY-selected signature ref (not a
+// hardcoded one) so the bounded session runs the program the router chose. The
+// exact-replay digest/verdict are NOT asserted here — they are derived from the
+// real session events on reconciliation (blueprint-chat-runtime.ts).
+const buildBlueprintChatObjective = (
+  prompt: string,
+  signatureRef: string,
+): string =>
   [
     "Run one Blueprint chat-program turn for Autopilot.",
-    `Selected signature: ${BLUEPRINT_CHAT_SIGNATURE_REF}`,
+    `Selected signature: ${signatureRef}`,
     [
       "Use the scoped tool menu only.",
       "Direct writes, deploys, email, and spend are denied unless returned as evidence for operator approval.",
     ].join(" "),
     [
       "For any Tassadar module step, report only public refs, the exact-replay verdict,",
-      `and digest ${BLUEPRINT_CHAT_TASSADAR_DIGEST_REF}. Do not include raw traces.`,
+      "and digest. Do not include raw traces.",
     ].join(" "),
     [
       `For proof replay modules, use signature ${BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF}`,
@@ -224,6 +236,56 @@ const buildBlueprintChatObjective = (prompt: string): string =>
     "User turn:",
     prompt,
   ].join("\n")
+
+// #5466: reconcile the live chat turn. For the assistant message linked to the
+// active chat session, re-derive its Blueprint program steps from the REAL
+// session events (`node.events[chatSessionRef]`). The semantic signature
+// selection is recomputed deterministically from the triggering user message
+// (the user turn immediately preceding the assistant message), so the rendered
+// signature stays the one the router actually chose. A step is `verified` only
+// when the real event evidence says so. Pure: a function of the model + node.
+const reconcileChatTurn = (model: Model): Model => {
+  const sessionRef = model.chatSessionRef
+  if (sessionRef === null) return model
+  const node = model.node as
+    | { events?: Record<string, ReadonlyArray<unknown>> }
+    | null
+  const events = ((node?.events?.[sessionRef] ?? []) as ReadonlyArray<{
+    eventIndex: number
+    phase: string
+    state: string
+    observedAt: string
+    detail: string
+    full?: string
+  }>)
+  const messages = model.chatMessages as ReadonlyArray<ChatMessage>
+  let changed = false
+  const next = messages.map((message, index) => {
+    if (message.role !== "assistant" || message.linkedSessionRef !== sessionRef) {
+      return message
+    }
+    // The semantic selection is derived from the user turn that triggered this
+    // assistant message (the nearest preceding user message).
+    let prompt = ""
+    for (let i = index - 1; i >= 0; i--) {
+      if (messages[i]!.role === "user") {
+        prompt = messages[i]!.body
+        break
+      }
+    }
+    const selection = selectSignatureForMessage(prompt)
+    const steps = liveChatScopedSteps({
+      selection,
+      linkedSessionRef: sessionRef,
+      events,
+      proofReplaySlug: DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
+    })
+    changed = true
+    return { ...message, steps }
+  })
+  if (!changed) return model
+  return Model.make({ ...model, chatMessages: next })
+}
 
 // #5464: the filtered palette list for the current query (also drives which
 // command Enter runs and how the selection index clamps).
@@ -274,7 +336,12 @@ export const update = (model: Model, message: Message): Result => {
   switch (message._tag) {
     // ── Inbound projections ────────────────────────────────────────────────
     case "GotNodeState":
-      return [Model.make({ ...model, node: message.node }), noCommands]
+      // #5466: each poll reconciles the live chat turn's program steps from the
+      // real session events (verified only on real terminal evidence).
+      return [
+        reconcileChatTurn(Model.make({ ...model, node: message.node })),
+        noCommands,
+      ]
     case "GotPylonStats":
       return [Model.make({ ...model, pylonStats: message.stats }), noCommands]
     case "GotNotifications":
@@ -2014,13 +2081,26 @@ export const update = (model: Model, message: Message): Result => {
       }
       const adapter =
         model.spawnAdapter === "claude_agent" ? "claude_agent" : "codex"
-      const objective = buildBlueprintChatObjective(prompt)
+      // #5466: SEMANTIC signature selection from the free-text turn (no keyword
+      // matching). The selected signature ref is embedded in the objective the
+      // bounded session runs. The user message renders the chosen signature; its
+      // exact-replay verdict stays `pending` (spawning) — nothing is verified yet.
+      const selection = selectSignatureForMessage(prompt)
+      const objective = buildBlueprintChatObjective(
+        prompt,
+        selection.signatureRef,
+      )
       return [
         Model.make({
           ...model,
           chatInput: "",
           chatPending: true,
-          chatStatus: { text: "spawning Blueprint turn...", tone: "info" },
+          chatStatus: {
+            text: selection.confident
+              ? `routing → ${selection.family} signature…`
+              : "routing → continuation signature (default)…",
+            tone: "info",
+          },
           chatMessages: [
             ...model.chatMessages,
             {
@@ -2029,9 +2109,11 @@ export const update = (model: Model, message: Message): Result => {
               body: prompt,
               timestamp: chatTimestamp(),
               linkedSessionRef: null,
-              steps: blueprintChatScopedSteps({
-                tassadarStatus: "running",
-                tassadarVerdict: "pending",
+              steps: liveChatScopedSteps({
+                selection,
+                linkedSessionRef: null,
+                events: [],
+                proofReplaySlug: DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
               }),
             },
           ],
@@ -2047,14 +2129,22 @@ export const update = (model: Model, message: Message): Result => {
         ],
       ]
     }
-    case "SucceededChatTurn":
+    case "SucceededChatTurn": {
+      // #5466: the assistant message links to the live session. Its program
+      // steps start in a queued/running state and are reconciled to real
+      // verdicts by the node-state poll (reconcileChatTurn). The signature is
+      // re-derived from the triggering user turn so it matches the route taken.
+      const lastUserPrompt = [...model.chatMessages]
+        .reverse()
+        .find((m) => m.role === "user")?.body ?? ""
+      const assistantSelection = selectSignatureForMessage(lastUserPrompt)
       return [
         Model.make({
           ...model,
           chatPending: false,
           chatSessionRef: message.sessionRef,
           chatStatus: {
-            text: "running - node-state poll will stream the turn",
+            text: "running — node-state poll streams the live verdict",
             tone: "success",
           },
           chatMessages: [
@@ -2062,19 +2152,21 @@ export const update = (model: Model, message: Message): Result => {
             {
               id: chatMessageId("chat.assistant"),
               role: "assistant",
-              body: "Blueprint turn spawned.",
+              body: "Blueprint program turn running.",
               timestamp: chatTimestamp(),
               linkedSessionRef: message.sessionRef,
-              steps: blueprintChatScopedSteps({
+              steps: liveChatScopedSteps({
+                selection: assistantSelection,
                 linkedSessionRef: message.sessionRef,
-                tassadarStatus: "verified",
-                tassadarVerdict: "verified",
+                events: [],
+                proofReplaySlug: DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
               }),
             },
           ],
         }),
         noCommands,
       ]
+    }
     case "FailedChatTurn":
       return [
         Model.make({
