@@ -760,6 +760,31 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/site-referral-policy.test.ts`, and
   `workers/api/src/site-referral-attribution-consumption.test.ts`.
 
+## Credit<->Bitcoin Asset Boundary (live guard)
+
+- The credit<->Bitcoin asset-boundary invariant is enforced by the SHARED guard
+  `workers/api/src/asset-bitcoin-boundary.ts` (`validateAssetBoundary`), not by
+  scattered inline checks. The invariant: Bitcoin revenue may create a
+  withdrawable Bitcoin revenue share; credit/USD (Stripe-credit) revenue creates
+  a credit revenue share only and may NOT create a withdrawable Bitcoin
+  liability; free/promotional spend creates no withdrawable Bitcoin share at all.
+- This guard is wired onto the LIVE value-movement paths (RL-3, #5460), so the
+  invariant is enforced at runtime, not just documented:
+  - the RL-1 referral payout dispatch (`site-referral-payout-dispatch.ts`) fails
+    closed before calling any payout adapter for non-Bitcoin revenue;
+  - the RL-1 referral eligibility feed (`site-referral-payout-feed.ts`) records a
+    revenue-matched revshare and never a credit-funded Bitcoin eligibility;
+  - the RL-2 firm-up Bitcoin settlement decision
+    (`firmup-bitcoin-settlement.ts` / `-routes.ts`) refuses a credit/USD/free-
+    funded escrow before any money moves; and
+  - the read-only commerce revenue-share projection
+    (`site-commerce-revenue-share.ts`) delegates to the same guard.
+- A boundary denial is public-safe and reason-qualified. Regression coverage:
+  `workers/api/src/asset-bitcoin-boundary.test.ts`,
+  `workers/api/src/site-referral-payout-wire.test.ts`,
+  `workers/api/src/firmup-bitcoin-settlement.test.ts`, and
+  `workers/api/src/firmup-bitcoin-settlement-routes.test.ts`.
+
 ## Provider Capacity Marketplace Gate
 
 - ChatGPT/Codex account connection is not subscription-account resale
@@ -788,6 +813,14 @@ This is the invariant ledger for `openagents`.
   refused on a subscription-auth account. `subscription_capacity_resale` is
   blocked unconditionally (non-waivable). This authorizes the mechanism only;
   it does not relax the public-copy gate in the clauses below.
+- This no-resale gate is now enforced as a LIVE guard, not just a tested
+  primitive (RL-3, #5460): the firm-up Bitcoin settlement decision
+  (`firmup-bitcoin-settlement.ts`) calls `authorizeInferenceMonetization` and
+  fails closed before any money moves. Firm-up is agent labor (`agentic_work`,
+  allowed); a `subscription_capacity_resale` is refused unconditionally. The
+  no-resale rule stays scoped to consumer SUBSCRIPTION accounts only —
+  API-inference gateway resale on an API-key account is NOT over-blocked.
+  Coverage: `workers/api/src/firmup-bitcoin-settlement.test.ts`.
 - Assignment dispatch, assignment receipt, and Bitcoin settlement are separate
   states. Assignment evidence does not imply paid settlement.
 - Public capacity marketplace or Bitcoin monetization copy remains blocked

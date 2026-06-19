@@ -6,6 +6,8 @@ import {
   transitionReferralPayout,
 } from './site-referral-payout-ledger'
 import type { SiteReferralRevenueAsset } from './site-referral-payout-feed'
+import { referralRevenueAssetToBoundaryAsset } from './site-referral-payout-feed'
+import { validateAssetBoundary } from './asset-bitcoin-boundary'
 import type { MdkPayoutModeGateProjection } from './mdk-payout-mode-gate'
 import { isoTimestampAfterIso } from './runtime-primitives'
 
@@ -169,14 +171,24 @@ export const dispatchReferralPayoutSettlement = async (
     }
   }
 
-  // Rev-share invariant: only Bitcoin revenue funds withdrawable Bitcoin. Credit
-  // and USD (Stripe credit) revenue is credit revshare and must NOT move Bitcoin.
-  if (input.revenueAsset !== 'bitcoin') {
+  // Rev-share invariant (RL-3 #5460): enforce the SHARED credit<->Bitcoin
+  // asset-boundary guard on this live payout. Only Bitcoin revenue may fund a
+  // withdrawable Bitcoin payout; credit/USD (Stripe credit) revenue is credit
+  // revshare and must NOT move Bitcoin; free/promo never creates withdrawable
+  // Bitcoin. This dispatch ALWAYS produces a withdrawable Bitcoin send, so the
+  // contributor asset is `bitcoin`. Fail closed on any violation (no money
+  // moves, the adapter is never called) with the boundary's reason ref.
+  const boundaryViolation = validateAssetBoundary({
+    contributorAsset: 'bitcoin',
+    movement: 'payout',
+    revenueAsset: referralRevenueAssetToBoundaryAsset(input.revenueAsset),
+  })
+
+  if (boundaryViolation !== null) {
     return {
       _tag: 'refused',
       entry: current,
-      reasonRef:
-        'reason.public.site_referral_payout.credit_revenue_no_bitcoin_withdrawal',
+      reasonRef: boundaryViolation.reasonRef,
     }
   }
 

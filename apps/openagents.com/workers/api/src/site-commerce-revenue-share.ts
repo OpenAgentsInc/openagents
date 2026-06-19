@@ -1,8 +1,19 @@
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Schema as S } from 'effect'
 
+import {
+  type AssetBoundaryAsset,
+  validateAssetBoundary as validateSharedAssetBoundary,
+} from './asset-bitcoin-boundary'
+
 export const SiteCommerceRevenueAsset = S.Literals(['credits', 'sats', 'usd'])
 export type SiteCommerceRevenueAsset = typeof SiteCommerceRevenueAsset.Type
+
+// Map this projection's asset vocabulary (credits/sats/usd) onto the shared
+// credit<->Bitcoin boundary asset vocabulary so the boundary stays the single
+// source of truth (RL-3 #5460).
+const toBoundaryAsset = (asset: SiteCommerceRevenueAsset): AssetBoundaryAsset =>
+  asset === 'sats' ? 'bitcoin' : asset === 'usd' ? 'usd' : 'credit'
 
 export const SiteCommerceRevenueEventKind = S.Literals([
   'signup_attributed',
@@ -151,13 +162,24 @@ const validateSignupBoundary = (
 
 const validateAssetBoundary = (
   input: SiteCommerceRevenueLinkageInput,
-): SiteCommerceRevenueLinkageError | undefined =>
-  input.asset === 'credits' && input.requestedContributorAsset === 'sats'
-    ? new SiteCommerceRevenueLinkageError({
+): SiteCommerceRevenueLinkageError | undefined => {
+  // Delegate to the SHARED credit<->Bitcoin boundary guard (RL-3 #5460) so this
+  // projection enforces the identical invariant as the live referral-dispatch
+  // and firm-up-settlement paths: only Bitcoin (sats) revenue may fund a
+  // withdrawable Bitcoin (sats) contributor share.
+  const violation = validateSharedAssetBoundary({
+    contributorAsset: toBoundaryAsset(input.requestedContributorAsset),
+    movement: 'spend',
+    revenueAsset: toBoundaryAsset(input.asset),
+  })
+
+  return violation === null
+    ? undefined
+    : new SiteCommerceRevenueLinkageError({
         reason:
           'credit spend may not silently create immediate Bitcoin withdrawal liability.',
       })
-    : undefined
+}
 
 const validatePylonReceiptBoundary = (
   input: SiteCommerceRevenueLinkageInput,
