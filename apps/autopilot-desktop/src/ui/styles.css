@@ -169,6 +169,74 @@ body {
   color: rgb(255 255 255 / 0.95);
   border-color: rgb(255 255 255 / 0.4);
 }
+
+/* ── HUD H1: the numbered hotbar (#5499) ─────────────────────────────────────
+   A StarCraft-style bottom-center command bar — the recurring OpenAgents HUD
+   launcher (Commander, WGPUI; see the 2026-06-19 previous-HUD-systems audit).
+   Fixed, blurred, high-z (below the palette backdrop at z-index 50). Slots are
+   derived from the nav registry (nav.ts HOTBAR_SLOTS); the active group's slot
+   is highlighted. White-on-black to match the zero-base shell. */
+.hotbar {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(0.9rem, 2.2vw, 1.4rem);
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+  padding: 0.4rem;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 12px;
+  background: rgb(0 0 0 / 0.62);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.45);
+  backdrop-filter: blur(16px);
+  pointer-events: auto;
+}
+/* On the otherwise-black shell the bar must clear the bottom text input. */
+.app-shell-shell .hotbar {
+  bottom: clamp(4.5rem, 9vw, 6rem);
+}
+.hotbar-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-width: 3.25rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.03);
+  color: rgb(255 255 255 / 0.62);
+  cursor: pointer;
+  font: inherit;
+}
+.hotbar-slot:hover {
+  color: rgb(255 255 255 / 0.95);
+  border-color: rgb(255 255 255 / 0.28);
+  background: rgb(255 255 255 / 0.07);
+}
+.hotbar-slot.active {
+  color: var(--primary, #fff);
+  border-color: rgb(255 255 255 / 0.5);
+  background: rgb(255 255 255 / 0.12);
+}
+.hotbar-slot-key {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+.hotbar-slot-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+.hotbar-slot-palette {
+  border-color: rgb(255 255 255 / 0.2);
+}
 .network-page {
   position: absolute;
   inset: 0;

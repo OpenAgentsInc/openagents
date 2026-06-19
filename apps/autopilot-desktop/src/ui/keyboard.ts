@@ -84,7 +84,10 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
     return { kind: "none" }
   }
 
-  // ── Cmd/Ctrl-1..5 jump to a primary nav group ─────────────────────────────
+  // ── Cmd/Ctrl-1..9 activate the matching hotbar slot (jump to its group) ────
+  // HUD H1 (#5499): the numbered hotbar slots are the nav groups keyed by accel
+  // (see nav.ts HOTBAR_SLOTS). Cmd/Ctrl-<n> works even while typing (a modified
+  // chord is never a literal character), so the slot hotkey is global.
   if (isModified(event) && /^[1-9]$/.test(key)) {
     const group = groupByAccel(Number(key))
     return group ? { kind: "navigate-group", group: group.id } : { kind: "none" }
@@ -93,6 +96,16 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
   // ── Bare nav keys are IGNORED while typing in an input/textarea (#5465) ────
   if (event.inEditable) return { kind: "none" }
   if (isModified(event)) return { kind: "none" }
+
+  // ── Bare 1..9 activate the matching hotbar slot (HUD H1 #5499) ─────────────
+  // Outside an editable field (guarded above), a bare number key is the
+  // StarCraft-style hotbar hotkey: it resolves to the SAME group jump as the
+  // hotbar slot and Cmd-<n>, via the existing `navigate-group` intent (no new
+  // verb). Numbers with no registered group fall through to `none`.
+  if (/^[1-9]$/.test(key)) {
+    const group = groupByAccel(Number(key))
+    return group ? { kind: "navigate-group", group: group.id } : { kind: "none" }
+  }
 
   // ── j / k move between sub-panes of the current group ─────────────────────
   if (key === "j") {
