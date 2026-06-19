@@ -18,6 +18,7 @@ import { renderCloudCard as cloudCardView } from "@openagentsinc/autopilot-contr
 import {
   AccountList,
   DiffReview,
+  PublicActivityStrip,
   SessionList,
   type AccountSummary,
 } from "@openagentsinc/autopilot-ui"
@@ -109,6 +110,7 @@ import {
   ClickedPlanTrainingWindow,
   ClickedQueueTrainingCloseout,
   ClickedReconcileTrainingWindow,
+  ClickedRefreshPublicActivity,
   ClickedRefreshProofReplay,
   ClickedRefreshInstallReadiness,
   ClickedRefreshPromiseSurfacing,
@@ -178,6 +180,7 @@ import {
   modelPromiseSurfacingResult,
   modelNode,
   modelNotifications,
+  modelPublicActivityTimeline,
   modelTrainingOperatorReadiness,
   modelTrainingPlan,
   modelTrainingPromiseGates,
@@ -210,6 +213,57 @@ const card = (title: string, children: ReadonlyArray<Html>): Html =>
 const emptyLine = (text: string): Html => h.p([cls("empty-state")], [text])
 
 const paneTitle = (text: string): Html => h.h1([cls("pane-title")], [text])
+
+const publicActivityEventCountLabel = (count: number): string =>
+  `${count} ${count === 1 ? "event" : "events"}`
+
+const publicActivityStatusLabel = (model: Model): string => {
+  const projection = modelPublicActivityTimeline(model)
+  if (model.publicActivityTimelinePending) return "loading"
+  if (projection?.ok === true) {
+    const count = projection.envelope?.events.length ?? 0
+    const stale =
+      projection.envelope?.sourceLag.filter(lag => lag.status !== "current")
+        .length ?? 0
+    return stale > 0
+      ? `${publicActivityEventCountLabel(count)} · ${stale} warnings`
+      : publicActivityEventCountLabel(count)
+  }
+  return "unavailable"
+}
+
+const publicActivityPane = (
+  model: Model,
+  input: Readonly<{ className: string; maxEvents: number; title: string }>,
+): Html => {
+  const projection = modelPublicActivityTimeline(model)
+  return h.div([cls(`public-activity-desktop ${input.className}`)], [
+    h.div([cls("public-activity-desktop-actions")], [
+      h.button(
+        [
+          cls("public-activity-refresh"),
+          h.Type("button"),
+          h.Disabled(model.publicActivityTimelinePending),
+          h.OnClick(ClickedRefreshPublicActivity()),
+        ],
+        [model.publicActivityTimelinePending ? "Refreshing" : "Refresh"],
+      ),
+    ]),
+    PublicActivityStrip({
+      className: "public-activity-desktop-strip",
+      emptyLabel:
+        projection?.error === undefined
+          ? "No public activity events loaded."
+          : `Public activity unavailable: ${projection.error}`,
+      envelope: projection?.envelope ?? null,
+      maxEvents: input.maxEvents,
+      pending: model.publicActivityTimelinePending,
+      sourceUrl: projection?.sourceUrl ?? null,
+      statusLabel: publicActivityStatusLabel(model),
+      title: input.title,
+    }),
+  ])
+}
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -3060,6 +3114,11 @@ const trainingPane = (model: Model): Html => {
         ),
       ]),
       h.div([cls("training-grid")], [
+        publicActivityPane(model, {
+          className: "training-public-activity-panel",
+          maxEvents: 6,
+          title: "Public Activity",
+        }),
         liveTrainingProjectionPanel(model),
         proofReplayPanel(model),
         selectedTrainingLifecyclePanel(projection),
@@ -4559,6 +4618,11 @@ const networkPane = (model: Model): Html => {
             bundle,
           ),
     ]),
+    publicActivityPane(model, {
+      className: "network-public-activity-panel",
+      maxEvents: 4,
+      title: "Live Public Activity",
+    }),
   ])
 }
 
@@ -4592,8 +4656,8 @@ const paneView = (model: Model): Html => {
 }
 
 const rootView = (model: Model): Html => {
-  // #5049: the network home is immersive — one fullscreen three-effect canvas
-  // with the stat overlay and NOTHING else (no sidebar, no shell chrome).
+  // The network home remains immersive: fullscreen replay scene, no sidebar
+  // chrome, plus the public activity strip from #5428.
   if (model.pane === "network") {
     return h.div([cls("app-shell app-shell-network")], [networkPane(model)])
   }

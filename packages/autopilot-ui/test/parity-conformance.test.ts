@@ -28,10 +28,13 @@ const parityComponents = [
   "AssignmentList",
   "EarningsPanel",
   "EventTimeline",
+  "PublicActivityStrip",
 ] as const
 
 describe("TUI parity conformance exports", () => {
-  test.each(parityComponents)("%s is exported from the barrel", (componentName) => {
-    expect(typeof autopilotUi[componentName]).toBe("function")
-  })
+  for (const componentName of parityComponents) {
+    test(`${componentName} is exported from the barrel`, () => {
+      expect(typeof autopilotUi[componentName]).toBe("function")
+    })
+  }
 })

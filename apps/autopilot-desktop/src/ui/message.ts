@@ -147,6 +147,10 @@ export const GotPromiseSurfacingResult = m("GotPromiseSurfacingResult", {
 })
 
 // ── Training launch/readiness feedback ──────────────────────────────────────
+export const ClickedRefreshPublicActivity = m("ClickedRefreshPublicActivity")
+export const GotPublicActivityTimeline = m("GotPublicActivityTimeline", {
+  projection: S.Unknown,
+})
 export const ClickedRefreshTrainingRuns = m("ClickedRefreshTrainingRuns")
 export const SelectedTrainingSceneNode = m("SelectedTrainingSceneNode", {
   nodeId: S.String,
@@ -370,6 +374,8 @@ export const Message = S.Union([
   GotPromiseSurfacingReadiness,
   ClickedSurfacePromiseGap,
   GotPromiseSurfacingResult,
+  ClickedRefreshPublicActivity,
+  GotPublicActivityTimeline,
   ClickedRefreshTrainingRuns,
   SelectedTrainingSceneNode,
   GotTrainingRuns,

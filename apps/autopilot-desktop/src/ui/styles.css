@@ -81,6 +81,165 @@ body {
 .network-replay-status {
   color: rgb(241 239 232 / 0.78);
 }
+.network-public-activity-panel {
+  position: absolute;
+  left: clamp(0.8rem, 2.4vw, 1.5rem);
+  right: clamp(0.8rem, 2.4vw, 1.5rem);
+  bottom: clamp(0.8rem, 2.4vw, 1.5rem);
+  z-index: 4;
+  max-width: 72rem;
+  margin: 0 auto;
+  pointer-events: auto;
+}
+.public-activity-desktop {
+  min-width: 0;
+}
+.public-activity-desktop-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.35rem;
+}
+.public-activity-refresh {
+  min-height: 2rem;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 0.25rem;
+  background: rgb(0 0 0 / 0.68);
+  color: #f1efe8;
+  padding: 0.35rem 0.65rem;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.public-activity-refresh:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+.public-activity-strip {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 0.45rem;
+  background: rgb(3 5 8 / 0.86);
+  color: var(--text, #d7d8e5);
+  padding: 0.75rem;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.32);
+  backdrop-filter: blur(16px);
+}
+.training-public-activity-panel .public-activity-strip {
+  background: var(--bg-secondary, #151515);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.public-activity-head,
+.public-activity-event-head,
+.public-activity-meta,
+.public-activity-refs,
+.public-activity-lag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+}
+.public-activity-head {
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.public-activity-title-group {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.public-activity-title {
+  margin: 0;
+  color: var(--primary, #fff);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.public-activity-source,
+.public-activity-empty,
+.public-activity-muted {
+  margin: 0;
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.public-activity-lag-list {
+  display: grid;
+  gap: 0.35rem;
+}
+.public-activity-lag-row {
+  gap: 0.4rem;
+  border: 1px solid rgb(255 180 0 / 0.22);
+  background: rgb(255 180 0 / 0.07);
+  padding: 0.4rem;
+}
+.public-activity-lag-text,
+.public-activity-lag-ref {
+  min-width: 0;
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+.public-activity-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+}
+.network-public-activity-panel .public-activity-list {
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  max-height: min(36vh, 18rem);
+  overflow: auto;
+}
+.public-activity-event {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-left: 3px solid rgb(141 211 199 / 0.64);
+  background: rgb(255 255 255 / 0.035);
+  padding: 0.55rem;
+}
+.public-activity-event-head {
+  gap: 0.35rem;
+}
+.public-activity-event-kind,
+.public-activity-time,
+.public-activity-inline-ref,
+.public-activity-ref {
+  min-width: 0;
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+.public-activity-copy {
+  margin: 0;
+  color: var(--text, #d7d8e5);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.public-activity-meta,
+.public-activity-refs {
+  gap: 0.35rem;
+}
+.public-activity-meta {
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.72rem;
+}
+.public-activity-link {
+  color: #8dd3c7;
+  text-decoration: underline;
+  text-underline-offset: 0.16rem;
+}
+.public-activity-link:hover,
+.public-activity-link:focus-visible {
+  color: #fff8e6;
+  outline: none;
+}
 .proof-replay-status-label {
   font-size: 0.68rem;
   letter-spacing: 0.12em;
@@ -256,6 +415,15 @@ body {
 }
 
 @media (max-width: 720px) {
+  .network-public-activity-panel {
+    left: 0.65rem;
+    right: 0.65rem;
+    bottom: 0.65rem;
+  }
+  .network-public-activity-panel .public-activity-list {
+    grid-template-columns: 1fr;
+    max-height: 30vh;
+  }
   .network-pylon-diamonds {
     width: min(80vw, 24rem);
     height: min(62vh, 34rem);

@@ -39,6 +39,7 @@ import {
   modelProofReplay,
   modelPromiseSurfacingReadiness,
   modelPromiseSurfacingResult,
+  modelPublicActivityTimeline,
   modelTrainingBootstrap,
   modelTrainingDashboard,
   modelTrainingEvidenceAdmission,
@@ -55,6 +56,7 @@ import {
   ClickedClaimTrainingLease,
   ClickedPlanTrainingWindow,
   ClickedQueueTrainingCloseout,
+  ClickedRefreshPublicActivity,
   ClickedRefreshAppleFm,
   ClickedRefreshBuiltInAgent,
   ClickedRefreshInstallReadiness,
@@ -80,6 +82,7 @@ import {
   GotPromiseSurfacingReadiness,
   GotPromiseSurfacingResult,
   GotProofReplayBundle,
+  GotPublicActivityTimeline,
   GotTrainingDashboard,
   GotTrainingEvidencePacketSummary,
   GotTrainingOperatorReadiness,
@@ -124,9 +127,11 @@ describe("helpers (CL-47..CL-58 parity, pure)", () => {
 
     expect(model.proofReplayPending).toBe(true)
     expect(model.proofReplayStatus.text).toBe("loading public replay bundle...")
+    expect(model.publicActivityTimelinePending).toBe(true)
     expect(commands.map(command => command.name)).toEqual([
       "LoadInstallReadiness",
       "LoadProofReplayBundle",
+      "LoadPublicActivityTimeline",
     ])
     expect(commands[1]?.args).toEqual({ slug: "first-real-settlement" })
   })
@@ -301,7 +306,11 @@ describe("update reducer (CL-53)", () => {
     expect(model.trainingPromiseGatesPending).toBe(true)
     expect(model.trainingOperatorReadinessPending).toBe(true)
     expect(model.trainingEvidencePacketSummaryPending).toBe(true)
-    expect(commands).toHaveLength(6)
+    expect(model.publicActivityTimelinePending).toBe(true)
+    expect(commands).toHaveLength(7)
+    expect(commands.map(command => command.name)).toContain(
+      "LoadPublicActivityTimeline",
+    )
   })
 
   test("SelectedTrainingSceneNode stores the selected scene node id", () => {
@@ -538,6 +547,71 @@ describe("update reducer (CL-53)", () => {
     expect(commands).toHaveLength(1)
   })
 
+  test("public activity refresh and result stay read-only", () => {
+    const [pending, commands] = update(
+      initialModel,
+      ClickedRefreshPublicActivity(),
+    )
+    expect(pending.publicActivityTimelinePending).toBe(true)
+    expect(commands.map(command => command.name)).toEqual([
+      "LoadPublicActivityTimeline",
+    ])
+
+    const [model] = update(
+      pending,
+      GotPublicActivityTimeline({
+        projection: {
+          ok: true,
+          fetchedAt: "2026-06-18T00:00:00.000Z",
+          sourceUrl:
+            "https://openagents.test/api/public/activity-timeline?limit=20",
+          envelope: {
+            generatedAt: "2026-06-18T00:00:00.000Z",
+            nextCursor: null,
+            events: [
+              {
+                eventRef: "activity.training.settlement.1",
+                cursor:
+                  "2026-06-18T00:00:01.000Z:settlement_receipt:activity.training.settlement.1",
+                ts: "2026-06-18T00:00:01.000Z",
+                kind: "real_bitcoin_moved",
+                sourceKind: "settlement_receipt",
+                runRef: "run.cs336.a1.demo",
+                refs: ["receipt.public.real.1"],
+                sourceRefs: ["receipt.public.real.1"],
+                blockerRefs: [],
+                caveatRefs: [],
+                amountSats: 2100,
+                realBitcoinMoved: true,
+                state: "settled",
+                text: "Receipt-backed real Bitcoin movement confirmed.",
+              },
+            ],
+            sourceLag: [
+              {
+                sourceKind: "forum",
+                status: "stale",
+                latestSourceEventAt: null,
+                observedAt: "2026-06-18T00:00:00.000Z",
+                lagSeconds: null,
+                maxStalenessSeconds: 30,
+                sourceRefs: ["forum.activity.public.1"],
+                blockerRefs: [],
+                caveatRefs: ["caveat.public.activity_timeline.source_lag"],
+              },
+            ],
+          },
+        },
+      }),
+    )
+
+    expect(model.publicActivityTimelinePending).toBe(false)
+    expect(modelPublicActivityTimeline(model)?.ok).toBe(true)
+    expect(model.publicActivityTimelineStatus.text).toContain("1 event")
+    expect(model.publicActivityTimelineStatus.text).toContain("1 source warning")
+    expect(model.publicActivityTimelineStatus.tone).toBe("info")
+  })
+
   test("promise surfacing readiness stores Forum token state", () => {
     const [model] = update(
       initialModel,
@@ -660,7 +734,10 @@ describe("update reducer (CL-53)", () => {
       trainingRunRef: "training.run.desktop.r1.test",
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(6)
+    expect(followups).toHaveLength(7)
+    expect(followups.map(command => command.name)).toContain(
+      "LoadPublicActivityTimeline",
+    )
   })
 
   test("training run projection records first observation after planning", () => {
@@ -746,15 +823,19 @@ describe("update reducer (CL-53)", () => {
     )
   })
 
-  test("training refresh loads run, dashboard, promise, readiness, packet, and proof replay projections", () => {
+  test("training refresh loads run, dashboard, promise, readiness, packet, proof replay, and activity projections", () => {
     const [pending, commands] = update(initialModel, ClickedRefreshTrainingRuns())
     expect(pending.trainingRunsPending).toBe(true)
     expect(pending.trainingDashboardPending).toBe(true)
     expect(pending.trainingPromiseGatesPending).toBe(true)
     expect(pending.trainingOperatorReadinessPending).toBe(true)
     expect(pending.trainingEvidencePacketSummaryPending).toBe(true)
+    expect(pending.publicActivityTimelinePending).toBe(true)
     expect(pending.proofReplayPending).toBe(true)
-    expect(commands).toHaveLength(6)
+    expect(commands).toHaveLength(7)
+    expect(commands.map(command => command.name)).toContain(
+      "LoadPublicActivityTimeline",
+    )
   })
 
   test("proof replay selection and refresh dispatch public bundle loads", () => {
@@ -1035,7 +1116,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingActivation).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(6)
+    expect(followups).toHaveLength(7)
   })
 
   test("training lease claim action dispatches and stores the public-safe result", () => {
@@ -1073,7 +1154,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingLease).toMatchObject({
       lease: { leaseRef: "training.lease.1" },
     })
-    expect(followups).toHaveLength(6)
+    expect(followups).toHaveLength(7)
   })
 
   test("training bootstrap action dispatches and stores the public-safe result", () => {
@@ -1119,7 +1200,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingBootstrapPending).toBe(false)
     expect(settled.trainingBootstrapStatus.tone).toBe("success")
     expect(modelTrainingBootstrap(settled)?.outcome?.kind).toBe("granted")
-    expect(followups).toHaveLength(6)
+    expect(followups).toHaveLength(7)
   })
 
   test("training bootstrap queue feedback refreshes public projections", () => {
@@ -1151,7 +1232,7 @@ describe("update reducer (CL-53)", () => {
       tone: "info",
     })
     expect(modelTrainingBootstrap(settled)?.outcome?.kind).toBe("queued")
-    expect(followups).toHaveLength(6)
+    expect(followups).toHaveLength(7)
   })
 
   test("training closeout packet action dispatches and stores local queue feedback", () => {
@@ -1181,7 +1262,7 @@ describe("update reducer (CL-53)", () => {
       text: "queued · accepted",
       tone: "success",
     })
-    expect(followups).toHaveLength(6)
+    expect(followups).toHaveLength(7)
   })
 
   test("training evidence packet build action dispatches and refreshes packet summary", () => {
@@ -1222,7 +1303,7 @@ describe("update reducer (CL-53)", () => {
     expect(modelTrainingEvidencePacketBuild(settled)?.reason).toBe(
       "packet_blocked",
     )
-    expect(followups).toHaveLength(6)
+    expect(followups).toHaveLength(7)
   })
 
   test("training evidence admission action dispatches and refreshes projections on success", () => {
@@ -1262,7 +1343,7 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingEvidenceAdmissionPending).toBe(false)
     expect(settled.trainingEvidenceAdmissionStatus.tone).toBe("success")
     expect(modelTrainingEvidenceAdmission(settled)?.receiptRefCount).toBe(3)
-    expect(followups).toHaveLength(6)
+    expect(followups).toHaveLength(7)
   })
 
   test("training reconcile action dispatches and stores the public-safe result", () => {
@@ -1297,6 +1378,6 @@ describe("update reducer (CL-53)", () => {
     expect(settled.trainingReconcile).toMatchObject({
       windowRef: "training.window.desktop.r1.test",
     })
-    expect(followups).toHaveLength(6)
+    expect(followups).toHaveLength(7)
   })
 })

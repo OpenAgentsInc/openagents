@@ -29,6 +29,7 @@ import type {
   NodeStateMessage,
   PromiseSurfacingReadinessResponse,
   PromiseSurfacingResponse,
+  PublicActivityTimelineResponse,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
@@ -129,6 +130,12 @@ export const PromiseSurfacingStatus = S.Struct({
 })
 export type PromiseSurfacingStatus = typeof PromiseSurfacingStatus.Type
 
+export const PublicActivityStatus = S.Struct({
+  text: S.String,
+  tone: S.Literals(["error", "info", "success", "idle"]),
+})
+export type PublicActivityStatus = typeof PublicActivityStatus.Type
+
 // Transient status for queueing a training launch/readiness check through the
 // existing local Pylon intent bridge. The desktop webview never receives admin
 // training authority or secrets.
@@ -185,6 +192,13 @@ export const Model = ts("AutopilotDesktop", {
   // pushed from the Bun poller. Opaque PylonStatsSnapshot; projected to the
   // home scene via projectPylonNetworkScene. Null until the first poll lands.
   pylonStats: S.NullOr(S.Unknown),
+
+  // #5428: public activity timeline projection for Network/Training. The Bun
+  // host fetches and schema-validates the Worker envelope; the webview renders
+  // it as public-safe read-only activity, independent of local-node reachability.
+  publicActivityTimeline: S.NullOr(S.Unknown),
+  publicActivityTimelineStatus: PublicActivityStatus,
+  publicActivityTimelinePending: S.Boolean,
 
   // #5063: public-safe readiness for the no-user-key built-in agent. Bun keeps
   // OpenAgents compute credentials; the webview sees only bounds/status refs.
@@ -369,6 +383,11 @@ export const modelManagedAccounts = (
 export const modelPylonStats = (model: Model): PylonStatsSnapshot | null =>
   model.pylonStats as PylonStatsSnapshot | null
 
+export const modelPublicActivityTimeline = (
+  model: Model,
+): PublicActivityTimelineResponse | null =>
+  model.publicActivityTimeline as PublicActivityTimelineResponse | null
+
 export const modelBuiltInAgentReadiness = (
   model: Model,
 ): BuiltInAgentReadinessResponse | null =>
@@ -462,6 +481,9 @@ export const initialModel: Model = Model.make({
   node: null,
   notifications: null,
   pylonStats: null,
+  publicActivityTimeline: null,
+  publicActivityTimelineStatus: { text: "not loaded", tone: "idle" },
+  publicActivityTimelinePending: false,
   builtInAgentReadiness: null,
   builtInAgentStatus: { text: "not checked", tone: "idle" },
   builtInAgentPending: false,

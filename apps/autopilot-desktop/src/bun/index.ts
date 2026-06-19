@@ -15,6 +15,7 @@ import {
   runAutoUpdateOnce,
 } from "./auto-update"
 import { fetchPublicPylonStats } from "./pylon-network-stats"
+import { fetchPublicActivityTimeline } from "./public-activity-timeline"
 import {
   promiseSurfacingReadiness as buildPromiseSurfacingReadiness,
   resolvePromiseSurfacingSettings,
@@ -73,6 +74,10 @@ const controlBaseUrl = Bun.env.PYLON_CONTROL_BASE_URL ?? "http://127.0.0.1:4716"
 const pollIntervalMs = Number(Bun.env.AUTOPILOT_DESKTOP_NODE_POLL_MS ?? "2000")
 const trainingBaseUrl =
   Bun.env.OPENAGENTS_TRAINING_BASE_URL ??
+  Bun.env.OPENAGENTS_COM_BASE_URL ??
+  "https://openagents.com"
+const activityBaseUrl =
+  Bun.env.OPENAGENTS_ACTIVITY_BASE_URL ??
   Bun.env.OPENAGENTS_COM_BASE_URL ??
   "https://openagents.com"
 const trainingAdminToken =
@@ -550,6 +555,12 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       async listTrainingEvidencePacketSummary() {
         return readTrainingEvidencePacketSummary({
           evidencePacketPath: trainingEvidencePacketPath,
+        })
+      },
+      async listPublicActivityTimeline() {
+        return fetchPublicActivityTimeline({
+          baseUrl: activityBaseUrl,
+          limit: 20,
         })
       },
       async buildTrainingEvidencePacket(params) {

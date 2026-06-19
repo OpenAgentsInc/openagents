@@ -161,6 +161,61 @@ const liveTrainingProjection = {
   ],
 }
 
+const publicActivityProjection = {
+  ok: true,
+  fetchedAt: "2026-06-18T00:00:00.000Z",
+  sourceUrl: "https://openagents.test/api/public/activity-timeline?limit=20",
+  envelope: {
+    generatedAt: "2026-06-18T00:00:00.000Z",
+    nextCursor: null,
+    sourceLag: [
+      {
+        sourceKind: "forum",
+        status: "stale",
+        latestSourceEventAt: null,
+        observedAt: "2026-06-18T00:00:00.000Z",
+        lagSeconds: null,
+        maxStalenessSeconds: 30,
+        sourceRefs: ["forum.activity.public.1"],
+        blockerRefs: ["blocker.public.activity_timeline.source_lag.forum"],
+        caveatRefs: ["caveat.public.activity_timeline.source_lag"],
+      },
+    ],
+    events: [
+      {
+        eventRef: "activity.training.settlement.1",
+        cursor:
+          "2026-06-18T00:00:01.000Z:settlement_receipt:activity.training.settlement.1",
+        ts: "2026-06-18T00:00:01.000Z",
+        kind: "real_bitcoin_moved",
+        sourceKind: "settlement_receipt",
+        runRef: "run.cs336.a1.demo",
+        refs: ["receipt.public.real.1"],
+        sourceRefs: ["receipt.public.real.1"],
+        blockerRefs: [],
+        caveatRefs: [],
+        amountSats: 2100,
+        realBitcoinMoved: true,
+        state: "settled",
+        text: "Receipt-backed real Bitcoin movement confirmed.",
+      },
+      {
+        eventRef: "activity.forum.topic.1",
+        cursor: "2026-06-18T00:00:02.000Z:forum:activity.forum.topic.1",
+        ts: "2026-06-18T00:00:02.000Z",
+        kind: "forum_topic_created",
+        sourceKind: "forum",
+        refs: ["forum.topic.public.1"],
+        sourceRefs: ["forum.topic.public.1"],
+        blockerRefs: [],
+        caveatRefs: ["caveat.public.activity_timeline.source_lag"],
+        state: "posted",
+        text: "Public Forum topic created.",
+      },
+    ],
+  },
+}
+
 describe("CL-53 sanitizeTree", () => {
   test("drops undefined / null / false children", () => {
     const out = sanitizeTree(
@@ -230,12 +285,36 @@ describe("CL-53 sanitizeTree", () => {
     const document = view(initialModel) // default pane is "network"
     expect(treeContainsSelector(document.body, "oa-tassadar-proof-replay")).toBe(false)
     expect(treeContainsClass(document.body, "network-replay-status")).toBe(true)
+    expect(treeContainsClass(document.body, "network-public-activity-panel")).toBe(true)
+    expect(treeContainsText(document.body, "Live Public Activity")).toBe(true)
     expect(treeContainsText(document.body, "Loading Tassadar replay")).toBe(true)
     expect(treeContainsSelector(document.body, "oa-training-run")).toBe(false)
     expect(treeContainsSelector(document.body, "oa-desktop-pylon-diamonds")).toBe(false)
     expect(treeContainsClass(document.body, "network-overlay")).toBe(false)
     expect(treeContainsClass(document.body, "app-shell-network")).toBe(true)
     // immersive: no sidebar chrome on the home
+    expect(treeContainsClass(document.body, "sidebar")).toBe(false)
+  })
+
+  test("network home renders public activity without a local node", () => {
+    const document = view({
+      ...initialModel,
+      node: { ok: false, schema: "desktop.test", sessions: [] },
+      publicActivityTimeline: publicActivityProjection,
+      publicActivityTimelineStatus: {
+        text: "2 events · 1 source warnings",
+        tone: "info",
+      },
+    })
+
+    expect(treeContainsClass(document.body, "network-public-activity-panel")).toBe(true)
+    expect(treeContainsText(document.body, "Receipt-backed real Bitcoin movement confirmed.")).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, "receipt.public.real.1")).toBe(true)
+    expect(treeContainsText(document.body, "blocker.public.activity_timeline.source_lag.forum")).toBe(
+      true,
+    )
     expect(treeContainsClass(document.body, "sidebar")).toBe(false)
   })
 
@@ -499,6 +578,18 @@ describe("CL-53 sanitizeTree", () => {
   test("training pane includes the training scene", () => {
     const document = view({ ...initialModel, pane: "training" })
     expect(treeContainsSelector(document.body, "oa-training-run")).toBe(true)
+  })
+
+  test("training pane includes the public activity strip", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      publicActivityTimeline: publicActivityProjection,
+    })
+    expect(treeContainsClass(document.body, "training-public-activity-panel")).toBe(true)
+    expect(treeContainsText(document.body, "Public Activity")).toBe(true)
+    expect(treeContainsText(document.body, "Public Forum topic created.")).toBe(true)
+    expect(treeContainsText(document.body, "receipt.public.real.1")).toBe(true)
   })
 
   test("training pane includes the proof replay shelf for web and desktop parity", () => {

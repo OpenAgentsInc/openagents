@@ -2,6 +2,7 @@ import type {
   NotificationCenterView,
   SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
+import type { PublicActivityTimelineEnvelope } from "@openagentsinc/public-activity-timeline"
 import type { InstallReadinessResponse } from "./install-readiness"
 import type {
   PromiseSurfacingDraft,
@@ -515,6 +516,14 @@ export type TrainingEvidenceAdmissionResponse = {
   readonly error?: string
 }
 
+export type PublicActivityTimelineResponse = {
+  readonly ok: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: string
+  readonly envelope: PublicActivityTimelineEnvelope | null
+  readonly error?: string
+}
+
 export type BuiltInAgentReadinessResponse = {
   readonly ok: boolean
   readonly fetchedAt: string
@@ -735,6 +744,12 @@ export type DesktopRPCSchema = {
       readonly listTrainingEvidencePacketSummary: {
         readonly params: Record<string, never>
         readonly response: TrainingEvidencePacketSummaryResponse
+      }
+      // Read the public activity spine directly from the Worker. This is
+      // observation-only and remains usable without a local node connection.
+      readonly listPublicActivityTimeline: {
+        readonly params: Record<string, never>
+        readonly response: PublicActivityTimelineResponse
       }
       readonly buildTrainingEvidencePacket: {
         readonly params: { trainingRunRef: string }

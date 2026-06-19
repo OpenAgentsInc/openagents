@@ -23,6 +23,7 @@ import type {
   InstallReadinessResponse,
   ManagedAccountMutationResponse,
   ManagedAccountsResponse,
+  PublicActivityTimelineResponse,
   PromiseSurfacingInput,
   PromiseSurfacingReadinessResponse,
   PromiseSurfacingResponse,
@@ -84,6 +85,9 @@ export type DesktopRequests = {
   listTrainingEvidencePacketSummary(
     p: Record<string, never>,
   ): Promise<TrainingEvidencePacketSummaryResponse>
+  listPublicActivityTimeline(
+    p: Record<string, never>,
+  ): Promise<PublicActivityTimelineResponse>
   buildTrainingEvidencePacket(p: {
     trainingRunRef: string
   }): Promise<TrainingEvidencePacketBuildResponse>

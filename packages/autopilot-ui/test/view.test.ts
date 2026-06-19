@@ -16,7 +16,13 @@ Object.assign(globalThis, {
   },
 })
 
-const { DecisionCard, EventTimeline, SessionList } = await import("../src/index")
+const {
+  DecisionCard,
+  EventTimeline,
+  PublicActivityStrip,
+  SessionList,
+  publicActivityHrefForRef,
+} = await import("../src/index")
 
 type VNodeLike = Readonly<{
   sel?: string
@@ -99,5 +105,73 @@ describe("Autopilot UI components", () => {
     expect(rendered).toContain("decision.fixture.req01")
     expect(rendered).toContain("#5")
     expect(rendered).toContain("completed")
+  })
+
+  test("renders public activity strip with source lag warnings and public refs", () => {
+    const rendered = renderHtml(
+      PublicActivityStrip({
+        sourceUrl: "https://openagents.test/api/public/activity-timeline?limit=20",
+        envelope: {
+          generatedAt: "2026-06-18T00:00:00.000Z",
+          nextCursor: null,
+          sourceLag: [
+            {
+              sourceKind: "forum",
+              status: "stale",
+              latestSourceEventAt: "2026-06-17T23:59:00.000Z",
+              observedAt: "2026-06-18T00:00:00.000Z",
+              lagSeconds: 60,
+              maxStalenessSeconds: 30,
+              sourceRefs: ["forum.activity.public.1"],
+              blockerRefs: ["blocker.public.activity_timeline.source_lag.forum"],
+              caveatRefs: ["caveat.public.activity_timeline.source_lag"],
+            },
+          ],
+          events: [
+            {
+              eventRef: "activity.training.settlement.1",
+              cursor:
+                "2026-06-18T00:00:01.000Z:settlement_receipt:activity.training.settlement.1",
+              ts: "2026-06-18T00:00:01.000Z",
+              kind: "real_bitcoin_moved",
+              sourceKind: "settlement_receipt",
+              runRef: "run.cs336.a1.demo",
+              refs: ["receipt.public.real.1"],
+              sourceRefs: ["receipt.public.real.1"],
+              blockerRefs: [],
+              caveatRefs: [],
+              amountSats: 2100,
+              realBitcoinMoved: true,
+              state: "settled",
+              text: "Receipt-backed real Bitcoin movement confirmed.",
+            },
+          ],
+        },
+      }),
+    )
+
+    expect(rendered).toContain('data-public-activity-strip=""')
+    expect(rendered).toContain('data-public-activity-category="settle"')
+    expect(rendered).toContain("Receipt-backed real Bitcoin movement confirmed.")
+    expect(rendered).toContain("2,100 sats")
+    expect(rendered).toContain('data-public-activity-source-lag="forum"')
+    expect(rendered).toContain(
+      'href="/api/public/nexus-pylon/receipts/receipt.public.real.1"',
+    )
+    expect(rendered).toContain("blocker.public.activity_timeline.source_lag.forum")
+  })
+
+  test("derives bounded public activity ref hrefs", () => {
+    expect(
+      publicActivityHrefForRef("route:/api/public/activity-timeline", {}),
+    ).toBe("/api/public/activity-timeline")
+    expect(
+      publicActivityHrefForRef("trace.public.demo", {
+        runRef: "run.cs336.a1.demo",
+      }),
+    ).toBe(
+      "/api/public/training/runs/run.cs336.a1.demo?focusRef=trace.public.demo",
+    )
+    expect(publicActivityHrefForRef("/Users/private/path", {})).toBe(null)
   })
 })

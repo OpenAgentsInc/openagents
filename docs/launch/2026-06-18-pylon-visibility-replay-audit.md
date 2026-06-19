@@ -838,6 +838,22 @@ contract; every visible event links back to timeline refs and proof URLs.
      downloaded users can see fleet/work/money/forum activity even when the
      local node is unavailable. Reuse the public timeline endpoint and keep the
      coding-surface promise separate.
+   - Implementation status (2026-06-18, issue #5428): added a shared
+     `PublicActivityStrip` in `@openagentsinc/autopilot-ui` and wired Autopilot
+     Desktop to fetch `GET /api/public/activity-timeline?limit=20` through the
+     Bun RPC host. The Bun side validates the envelope with
+     `@openagentsinc/public-activity-timeline` before the webview sees it, and
+     returns a typed unavailable projection on HTTP, schema, cursor, or
+     private-material failures. Network now shows the strip over the Tassadar
+     replay without local-node dependence, and Training shows the same public
+     strip beside the existing run/replay/operator panels. The strip exposes
+     event category/kind/source/state/time, source-lag warnings, source refs,
+     blocker/caveat refs, and bounded public hrefs for receipt, forum, pylon,
+     training, Artanis, and capacity refs while keeping coding-session state
+     separate. Validation: `bun run --cwd packages/autopilot-ui test`,
+     `bun test tests/public-activity-timeline.test.ts tests/cl-53-foldkit.test.ts
+     tests/cl-53-sanitize.test.ts` from `apps/autopilot-desktop`, and
+     `bun run --cwd apps/autopilot-desktop verify:training`.
 4. **Teach desktop replay pane generated bundle filters**
    - Body summary: Let the desktop replay pane request generated replay bundles
      by run/window/pair/range, not only curated slugs. Render source refs and

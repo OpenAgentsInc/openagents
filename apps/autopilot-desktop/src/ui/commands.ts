@@ -52,6 +52,7 @@ import {
   SucceededComposerTurn,
   SucceededDeploy,
   SucceededSpawn,
+  GotPublicActivityTimeline,
 } from "./message"
 
 const errorText = commandErrorText
@@ -156,6 +157,14 @@ const emptyTrainingEvidencePacketSummaryProjection = (error: string) => ({
   shardContributionCount: 0,
   distinctPylonCount: 0,
   blockerRefs: ["desktop.training.evidence_packet_request_failed"],
+  error,
+})
+
+const emptyPublicActivityTimelineProjection = (error: string) => ({
+  ok: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:public-activity-timeline",
+  envelope: null,
   error,
 })
 
@@ -627,6 +636,23 @@ export const LoadTrainingEvidencePacketSummary = Command.define(
           projection: emptyTrainingEvidencePacketSummaryProjection(
             errorText(error),
           ),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadPublicActivityTimeline = Command.define(
+  "LoadPublicActivityTimeline",
+  {},
+  GotPublicActivityTimeline,
+)(() =>
+  Effect.tryPromise(() => getRequest().listPublicActivityTimeline({})).pipe(
+    Effect.map((projection) => GotPublicActivityTimeline({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotPublicActivityTimeline({
+          projection: emptyPublicActivityTimelineProjection(errorText(error)),
         }),
       ),
     ),

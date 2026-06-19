@@ -1,6 +1,10 @@
 import type { Command } from "foldkit"
 
-import { LoadInstallReadiness, LoadProofReplayBundle } from "./commands"
+import {
+  LoadInstallReadiness,
+  LoadProofReplayBundle,
+  LoadPublicActivityTimeline,
+} from "./commands"
 import type { Message } from "./message"
 import { initialModel, Model } from "./model"
 
@@ -17,6 +21,11 @@ export const initialRuntimeState = (): InitialRuntimeState => {
       text: "loading public replay bundle...",
       tone: "info",
     },
+    publicActivityTimelinePending: true,
+    publicActivityTimelineStatus: {
+      text: "loading public activity...",
+      tone: "info",
+    },
   })
 
   return [
@@ -24,6 +33,7 @@ export const initialRuntimeState = (): InitialRuntimeState => {
     [
       LoadInstallReadiness(),
       LoadProofReplayBundle({ slug: model.selectedProofReplaySlug }),
+      LoadPublicActivityTimeline(),
     ],
   ]
 }

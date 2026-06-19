@@ -22,6 +22,7 @@ import {
   LoadInstallReadiness,
   LoadManagedAccounts,
   LoadPromiseSurfacingReadiness,
+  LoadPublicActivityTimeline,
   LoadProofReplayBundle,
   LoadTrainingDashboard,
   LoadTrainingEvidencePacketSummary,
@@ -59,6 +60,7 @@ import type {
   InstallReadinessResponse,
   PromiseSurfacingReadinessResponse,
   PromiseSurfacingResponse,
+  PublicActivityTimelineResponse,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
@@ -85,6 +87,7 @@ const loadTrainingProjectionCommands = (
   LoadTrainingOperatorReadiness(),
   LoadTrainingEvidencePacketSummary(),
   LoadProofReplayBundle({ slug: model.selectedProofReplaySlug }),
+  LoadPublicActivityTimeline(),
 ]
 
 const trainingBootstrapShouldRefresh = (
@@ -97,6 +100,7 @@ const trainingBootstrapShouldRefresh = (
 const isTrainingPane = (pane: PaneId): boolean =>
   pane === "training" || pane === "training-fullscreen"
 
+const isNetworkPane = (pane: PaneId): boolean => pane === "network"
 const isBuiltInAgentPane = (pane: PaneId): boolean => pane === "builtin-agent"
 const isSettingsPane = (pane: PaneId): boolean => pane === "settings"
 // CS-A1: the composer pane hosts the per-session account picker, so opening it
@@ -104,6 +108,12 @@ const isSettingsPane = (pane: PaneId): boolean => pane === "settings"
 // managed-account registry from the node's local config.
 const isAccountManagingPane = (pane: PaneId): boolean =>
   pane === "composer" || pane === "spawn" || pane === "settings"
+
+const eventCountLabel = (count: number): string =>
+  `${count} ${count === 1 ? "event" : "events"}`
+
+const sourceWarningCountLabel = (count: number): string =>
+  `${count} source ${count === 1 ? "warning" : "warnings"}`
 
 const plannedRunFirstObservedAt = (
   model: Model,
@@ -171,6 +181,11 @@ export const update = (model: Model, message: Message): Result => {
             : {}),
           ...(isTrainingPane(message.pane)
             ? {
+                publicActivityTimelinePending: true,
+                publicActivityTimelineStatus: {
+                  text: "loading public activity...",
+                  tone: "info" as const,
+                },
                 trainingRunsPending: true,
                 trainingRunsStatus: {
                   text: "loading Worker projection...",
@@ -203,6 +218,15 @@ export const update = (model: Model, message: Message): Result => {
                 },
               }
             : {}),
+          ...(isNetworkPane(message.pane)
+            ? {
+                publicActivityTimelinePending: true,
+                publicActivityTimelineStatus: {
+                  text: "loading public activity...",
+                  tone: "info" as const,
+                },
+              }
+            : {}),
           ...(isAccountManagingPane(message.pane)
             ? {
                 managedAccountsPending: true,
@@ -216,7 +240,9 @@ export const update = (model: Model, message: Message): Result => {
         [
           ...(isTrainingPane(message.pane)
             ? loadTrainingProjectionCommands(model)
-            : isBuiltInAgentPane(message.pane)
+            : isNetworkPane(message.pane)
+              ? [LoadPublicActivityTimeline()]
+              : isBuiltInAgentPane(message.pane)
               ? [LoadBuiltInAgentReadiness(), LoadAppleFmReadiness(), LoadPromiseSurfacingReadiness()]
               : isSettingsPane(message.pane)
                 ? [LoadInstallReadiness()]
@@ -685,10 +711,51 @@ export const update = (model: Model, message: Message): Result => {
     }
 
     // ── Training launch/readiness feedback ───────────────────────────────────
+    case "ClickedRefreshPublicActivity":
+      return [
+        Model.make({
+          ...model,
+          publicActivityTimelinePending: true,
+          publicActivityTimelineStatus: {
+            text: "refreshing public activity...",
+            tone: "info",
+          },
+        }),
+        [LoadPublicActivityTimeline()],
+      ]
+    case "GotPublicActivityTimeline": {
+      const projection = message.projection as PublicActivityTimelineResponse
+      const eventCount = projection.envelope?.events.length ?? 0
+      const staleCount =
+        projection.envelope?.sourceLag.filter(lag => lag.status !== "current")
+          .length ?? 0
+      return [
+        Model.make({
+          ...model,
+          publicActivityTimeline: projection,
+          publicActivityTimelinePending: false,
+          publicActivityTimelineStatus: projection.ok
+            ? {
+                text: `${eventCountLabel(eventCount)} · ${sourceWarningCountLabel(staleCount)} · ${projection.sourceUrl}`,
+                tone: staleCount === 0 ? "success" : "info",
+              }
+            : {
+                text: projection.error ?? "public activity unavailable",
+                tone: "error",
+              },
+        }),
+        noCommands,
+      ]
+    }
     case "ClickedRefreshTrainingRuns":
       return [
         Model.make({
           ...model,
+          publicActivityTimelinePending: true,
+          publicActivityTimelineStatus: {
+            text: "refreshing public activity...",
+            tone: "info",
+          },
           trainingRunsPending: true,
           trainingRunsStatus: {
             text: "refreshing Worker projection...",
