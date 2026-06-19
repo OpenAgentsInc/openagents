@@ -16,6 +16,9 @@ import {
 } from "@openagentsinc/proof-replay"
 
 import type { NotificationCenterView } from "@openagentsinc/autopilot-control-protocol"
+// #5472: functional Settings preferences — the literal schemas live in the
+// preferences module (the persistence + seam home) so the Model just re-uses them.
+import { DefaultAdapter, DefaultLane, ThemePreference } from "./preferences"
 import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
 import type { DesktopProofReplayProjection } from "../shared/proof-replays"
 import {
@@ -540,6 +543,17 @@ export const Model = ts("AutopilotDesktop", {
   commandPaletteOpen: S.Boolean,
   commandPaletteQuery: S.String,
   commandPaletteIndex: S.Number,
+
+  // #5472: functional Settings preferences (local, refs-only; persisted to
+  // localStorage by the preferences module). `themePreference` drives the live
+  // `data-theme` attribute on the app shell; `defaultAdapter`/`defaultLane` seed
+  // the spawn form at init (consumed by spawn/composer/chat through the existing
+  // spawnAdapter/spawnLane fields — no new wiring); `showNotificationPanel`
+  // gates the in-app Settings notification panel. See ui/preferences.ts.
+  themePreference: ThemePreference,
+  defaultAdapter: DefaultAdapter,
+  defaultLane: DefaultLane,
+  showNotificationPanel: S.Boolean,
 })
 export type Model = typeof Model.Type
 
@@ -953,4 +967,11 @@ export const initialModel: Model = Model.make({
   commandPaletteOpen: false,
   commandPaletteQuery: "",
   commandPaletteIndex: 0,
+  // #5472: preference defaults. The real saved values are loaded + applied at
+  // app entry (initial-state.ts); this neutral base keeps the view/update tests
+  // deterministic (matches `defaultPreferences` in ui/preferences.ts).
+  themePreference: "dark",
+  defaultAdapter: "codex",
+  defaultLane: "auto",
+  showNotificationPanel: true,
 })

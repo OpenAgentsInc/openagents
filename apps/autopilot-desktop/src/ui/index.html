@@ -12,6 +12,37 @@
       body { margin:0; font-family:-apple-system,system-ui,sans-serif; background:#0b0d12; color:#e6e9ef; min-height:100vh; }
       code { color:#7dd3fc; }
 
+      /* #5472: functional light theme. The app shell carries data-theme (set in
+         view.ts rootView from model.themePreference); these overrides restyle the
+         load-bearing dark surfaces (shell/sidebar/cards/forms/text) for light
+         mode without touching the default dark look. Switching is instant (the
+         attribute changes on the next render) and the choice is persisted. */
+      .app-shell[data-theme="light"] { color-scheme: light; background:#f7f8fa; color:#1c2230; }
+      body:has(.app-shell[data-theme="light"]) { background:#f7f8fa; color:#1c2230; }
+      .app-shell[data-theme="light"] .sidebar { background:#eef0f4; border-right-color:#d6dae2; }
+      .app-shell[data-theme="light"] .sidebar-header { border-bottom-color:#d6dae2; }
+      .app-shell[data-theme="light"] .nav-item { color:#2a3346; }
+      .app-shell[data-theme="light"] .nav-item:hover { background:#e2e6ee; }
+      .app-shell[data-theme="light"] .nav-item.active { background:#dbe6f5; color:#0b5cad; }
+      .app-shell[data-theme="light"] .nav-subitem { color:#52607a; }
+      .app-shell[data-theme="light"] .nav-subitem:hover { background:#e2e6ee; color:#1c2230; }
+      .app-shell[data-theme="light"] .nav-subitem.active { background:#dbe6f5; color:#0b5cad; }
+      .app-shell[data-theme="light"] .nav-palette { background:#fff; border-color:#d6dae2; color:#52607a; }
+      .app-shell[data-theme="light"] .card { background:#fff; border-color:#d6dae2; }
+      .app-shell[data-theme="light"] .card-title { color:#0b5cad; }
+      .app-shell[data-theme="light"] .card-body { color:#2a3346; }
+      .app-shell[data-theme="light"] p { color:#52607a; }
+      .app-shell[data-theme="light"] code { color:#0b5cad; }
+      .app-shell[data-theme="light"] .empty-state { color:#6b7488; }
+      .app-shell[data-theme="light"] .pane-title { color:#1c2230; }
+      .app-shell[data-theme="light"] .text-input,
+      .app-shell[data-theme="light"] .text-area,
+      .app-shell[data-theme="light"] .select-input { background:#fff; border-color:#c2c8d2; color:#1c2230; }
+      .app-shell[data-theme="light"] .adapter-btn { border-color:#c2c8d2; color:#52607a; }
+      .app-shell[data-theme="light"] .adapter-btn.active { border-color:#0b5cad; background:#dbe6f5; color:#0b5cad; }
+      .app-shell[data-theme="light"] .shortcut-chord { color:#0b5cad; background:#eef0f4; border-color:#d6dae2; }
+      .app-shell[data-theme="light"] .shortcut-desc { color:#2a3346; }
+
       /* CL-44/CL-53 sidebar shell layout */
       .app-shell { display:flex; min-height:100vh; }
       .sidebar { flex:0 0 240px; background:#0e1117; border-right:1px solid #1c2230; display:flex; flex-direction:column; padding:1rem .75rem; gap:.25rem; position:sticky; top:0; height:100vh; box-sizing:border-box; }

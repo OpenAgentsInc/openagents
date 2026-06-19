@@ -9,6 +9,8 @@ import { Schema as S } from "effect"
 import { m } from "foldkit/message"
 
 import { PaneId, ProofReplaySlug, SessionFilter } from "./model"
+// #5472: the preference literal schemas (single source — see ui/preferences.ts).
+import { DefaultAdapter, DefaultLane, ThemePreference } from "./preferences"
 
 // ── Inbound (Electrobun → runtime), pushed by the subscription stream ──────
 export const GotNodeState = m("GotNodeState", { node: S.Unknown })
@@ -486,6 +488,28 @@ export const SettledManagedAccountMutation = m("SettledManagedAccountMutation", 
   projection: S.Unknown,
 })
 
+// ── Settings preferences (#5472) ─────────────────────────────────────────────
+// Each one updates a Model preference field AND persists via PersistPreferences
+// (commands.ts) — no new RPC verb. ChangedDefault* also seed the live spawn
+// fields so the new default takes effect immediately, not only next launch.
+export const ChangedThemePreference = m("ChangedThemePreference", {
+  theme: ThemePreference,
+})
+export const ChangedDefaultAdapter = m("ChangedDefaultAdapter", {
+  adapter: DefaultAdapter,
+})
+export const ChangedDefaultLane = m("ChangedDefaultLane", {
+  lane: DefaultLane,
+})
+export const ToggledNotificationPanel = m("ToggledNotificationPanel", {
+  show: S.Boolean,
+})
+// Result of the (best-effort, local) preference write. Carries no payload and
+// is a no-op in the reducer — preferences are already in the Model; this only
+// closes the PersistPreferences command so side effects stay in Commands, not
+// the pure reducer. Failures are swallowed in the command (local convenience).
+export const SettledPersistPreferences = m("SettledPersistPreferences")
+
 export const Message = S.Union([
   GotNodeState,
   GotPylonStats,
@@ -632,5 +656,10 @@ export const Message = S.Union([
   ClickedRemoveManagedAccount,
   ClickedBumpManagedAccountPriority,
   SettledManagedAccountMutation,
+  ChangedThemePreference,
+  ChangedDefaultAdapter,
+  ChangedDefaultLane,
+  ToggledNotificationPanel,
+  SettledPersistPreferences,
 ])
 export type Message = typeof Message.Type
