@@ -971,6 +971,12 @@ fully autonomous self-serve settlement captured by timeline/replay/clip.
    - Body summary: Add runbook coverage for operating the timeline API, SSE
      stream, SpacetimeDB bridge, render worker, R2 outputs, failure modes, and
      rollback. Link it from `docs/DEPLOYMENT.md`.
+   - Implemented on 2026-06-19:
+     `docs/launch/2026-06-19-visibility-replay-operations-runbook.md` now
+     documents source-of-truth boundaries, projection authority, timeline/SSE
+     operations, SpacetimeDB bridge plans, render-box/R2 outputs, failure modes,
+     rollback steps, and smoke commands. `docs/DEPLOYMENT.md` links to the
+     runbook from the visibility operations section.
 4. **Capture first fully autonomous self-serve settlement in timeline/replay**
    - Body summary: When a fresh independent contributor is auto-paid at verdict
      with no operator POST, record the evidence sequence in the timeline, produce

@@ -38,6 +38,9 @@ change, update its linked runbook **and** fix the pointer here.
 
 ## Owned Visibility Freshness Smoke
 
+Full visibility/replay operations runbook:
+`docs/launch/2026-06-19-visibility-replay-operations-runbook.md`.
+
 Run the Pylon visibility/replay freshness smoke from owned local, CI, or
 container infrastructure, not GitHub Actions:
 
