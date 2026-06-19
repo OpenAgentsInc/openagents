@@ -30,13 +30,16 @@ import {
   walletSummary,
 } from "../src/ui/helpers"
 import { initialRuntimeState } from "../src/ui/initial-state"
+// #5466: live Blueprint chat refs now live in the runtime-step module, and the
+// signature is chosen by the semantic router.
+import {
+  CHAT_TASSADAR_TOOL_REF,
+  CHAT_REPLAY_TOOL_REF,
+} from "../src/ui/blueprint-chat-runtime"
+import { selectSignatureForMessage } from "../src/ui/blueprint-chat-routing"
 import {
   initialModel,
   Model,
-  BLUEPRINT_CHAT_SIGNATURE_REF,
-  BLUEPRINT_CHAT_REPLAY_TOOL_REF,
-  BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
-  BLUEPRINT_CHAT_TASSADAR_TOOL_REF,
   modelAppleFmReadiness,
   modelBuiltInAgentReadiness,
   modelInstallReadiness,
@@ -485,8 +488,13 @@ describe("update reducer (CL-53)", () => {
     expect(model.askStatus.tone).toBe("success")
   })
 
-  test("chat submit dispatches a Blueprint turn over the existing spawn path", () => {
+  // #5466 (EPIC #5461): the chat turn now routes through SEMANTIC signature
+  // selection and derives its program steps from the REAL session events. The
+  // objective carries the ROUTED signature ref (not a hardcoded one), and no
+  // step is "verified" until the live session reaches a real terminal phase.
+  test("chat submit routes semantically and stays unverified until live evidence", () => {
     const prompt = "Continue the C1 Tassadar module proof."
+    const selection = selectSignatureForMessage(prompt)
     const typed = update(initialModel, ChangedChatInput({ value: prompt }))[0]
     const [pending, commands] = update(typed, ClickedChatSubmit())
 
@@ -500,46 +508,78 @@ describe("update reducer (CL-53)", () => {
       lane: "auto",
       verify: [],
     })
-    expect(String(commands[0]?.args.objective)).toContain(
-      BLUEPRINT_CHAT_SIGNATURE_REF,
-    )
-    expect(String(commands[0]?.args.objective)).toContain(
-      BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
-    )
-    expect(String(commands[0]?.args.objective)).toContain(
-      BLUEPRINT_CHAT_REPLAY_TOOL_REF,
-    )
+    // The objective embeds the SEMANTICALLY-selected signature ref, NOT a
+    // hardcoded one, and never asserts a digest/verdict up front.
+    expect(String(commands[0]?.args.objective)).toContain(selection.signatureRef)
+    expect(String(commands[0]?.args.objective)).toContain(CHAT_REPLAY_TOOL_REF)
+    expect(String(commands[0]?.args.objective)).not.toContain("sha256:")
 
     const userMessage = pending.chatMessages[pending.chatMessages.length - 1]
     expect(userMessage?.body).toBe(prompt)
+    // The user message renders the program shape but with NO verdict yet.
     expect(
-      userMessage?.steps.some(
-        step => step.toolRef === BLUEPRINT_CHAT_TASSADAR_TOOL_REF,
-      ),
+      userMessage?.steps.some(step => step.toolRef === CHAT_TASSADAR_TOOL_REF),
     ).toBe(true)
-    expect(
-      userMessage?.steps.some(
-        step => step.toolRef === BLUEPRINT_CHAT_REPLAY_TOOL_REF,
-      ),
-    ).toBe(true)
-
-    const [settled] = update(
-      pending,
-      SucceededChatTurn({ sessionRef: "session.blueprint.chat.1" }),
+    const userTassadar = userMessage?.steps.find(
+      step => step.toolRef === CHAT_TASSADAR_TOOL_REF,
     )
+    expect(userTassadar?.verdict).toBe("pending")
+    expect(userTassadar?.digestRef).toBeNull()
+
+    // On spawn success the assistant message links to the live session and is
+    // STILL not verified — only the real node-state poll can flip the verdict.
+    const sessionRef = "session.blueprint.chat.1"
+    const [settled] = update(pending, SucceededChatTurn({ sessionRef }))
     expect(settled.chatPending).toBe(false)
-    expect(settled.chatSessionRef).toBe("session.blueprint.chat.1")
+    expect(settled.chatSessionRef).toBe(sessionRef)
     const assistantMessage =
       settled.chatMessages[settled.chatMessages.length - 1]
-    expect(assistantMessage?.linkedSessionRef).toBe("session.blueprint.chat.1")
-    expect(
-      assistantMessage?.steps.some(
-        step =>
-          step.toolRef === BLUEPRINT_CHAT_TASSADAR_TOOL_REF &&
-          step.digestRef === BLUEPRINT_CHAT_TASSADAR_DIGEST_REF &&
-          step.verdict === "verified",
-      ),
-    ).toBe(true)
+    expect(assistantMessage?.linkedSessionRef).toBe(sessionRef)
+    const assistantTassadar = assistantMessage?.steps.find(
+      step => step.toolRef === CHAT_TASSADAR_TOOL_REF,
+    )
+    expect(assistantTassadar?.verdict).toBe("pending")
+    expect(assistantTassadar?.digestRef).toBeNull()
+
+    // A node-state poll carrying a RUNNING event keeps the verdict pending.
+    const runningNode: NodeStateMessage = {
+      ok: true,
+      schema: "x",
+      sessions: [],
+      events: {
+        [sessionRef]: [
+          { eventIndex: 0, phase: "started", state: "running", observedAt: "2026-06-19T00:00:00Z", detail: "agent turn 1" },
+        ],
+      },
+    }
+    const [runningModel] = update(settled, GotNodeState({ node: runningNode }))
+    const runningStep = runningModel.chatMessages
+      .find(m => m.linkedSessionRef === sessionRef)
+      ?.steps.find(step => step.toolRef === CHAT_TASSADAR_TOOL_REF)
+    expect(runningStep?.verdict).toBe("pending")
+    expect(runningStep?.status).toBe("running")
+
+    // A terminal COMPLETED event carrying a real digest flips it to verified
+    // and surfaces the REAL digest — honest verification from live evidence.
+    const digest = `sha256:${"a".repeat(64)}`
+    const doneNode: NodeStateMessage = {
+      ok: true,
+      schema: "x",
+      sessions: [],
+      events: {
+        [sessionRef]: [
+          { eventIndex: 0, phase: "started", state: "running", observedAt: "2026-06-19T00:00:00Z", detail: "agent turn 1" },
+          { eventIndex: 1, phase: "completed", state: "completed", observedAt: "2026-06-19T00:00:05Z", detail: `exact replay ${digest}` },
+        ],
+      },
+    }
+    const [doneModel] = update(runningModel, GotNodeState({ node: doneNode }))
+    const doneStep = doneModel.chatMessages
+      .find(m => m.linkedSessionRef === sessionRef)
+      ?.steps.find(step => step.toolRef === CHAT_TASSADAR_TOOL_REF)
+    expect(doneStep?.verdict).toBe("verified")
+    expect(doneStep?.status).toBe("verified")
+    expect(doneStep?.digestRef).toBe(digest)
   })
 
   test("built-in agent pane loads readiness", () => {

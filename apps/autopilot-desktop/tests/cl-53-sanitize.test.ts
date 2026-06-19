@@ -18,6 +18,10 @@ import {
   type PaneId,
 } from "../src/ui/model"
 import { sanitizeTree, view } from "../src/ui/view"
+// #5466: a verified turn's steps are now derived from real session events, not
+// the seed. Build one to exercise the rich step view + redaction guards.
+import { liveChatScopedSteps } from "../src/ui/blueprint-chat-runtime"
+import { selectSignatureForMessage } from "../src/ui/blueprint-chat-routing"
 
 // Regression for the blank-screen crash: Foldkit's element constructors strip
 // `null` children but NOT `undefined`/`false`, so such a child reaches
@@ -426,49 +430,57 @@ describe("CL-53 sanitizeTree", () => {
     }
   })
 
-  test("chat pane renders Blueprint program steps and Tassadar exact replay refs", () => {
-    const document = view({ ...initialModel, pane: "chat" })
-    expect(treeContainsClass(document.body, "chat-pane")).toBe(true)
-    expect(treeContainsText(document.body, "Chat")).toBe(true)
+  // #5466: the FIRST-PAINT pane no longer fakes a verified Tassadar step — the
+  // honest intro carries no steps. A real, completed turn (derived from live
+  // session events with a real digest) renders the rich step view + replay
+  // refs, and surfaces "Verified" only because the live evidence says so.
+  test("chat pane renders live Blueprint program steps + exact-replay refs (no first-paint fake)", () => {
+    // Honest first paint: the intro shows no fabricated verdict.
+    const firstPaint = view({ ...initialModel, pane: "chat" })
+    expect(treeContainsClass(firstPaint.body, "chat-pane")).toBe(true)
+    expect(treeContainsText(firstPaint.body, "Verified")).toBe(false)
+
+    // A real, completed turn: steps derived from a live terminal event.
+    const digest = `sha256:${"b".repeat(64)}`
+    const selection = selectSignatureForMessage("show me the proof replay bundle")
+    const document = view({
+      ...initialModel,
+      pane: "chat",
+      chatMessages: [
+        {
+          id: "chat.test.verified",
+          role: "assistant",
+          body: "Blueprint program turn completed.",
+          timestamp: "2026-06-19T00:00:00.000Z",
+          linkedSessionRef: "session.blueprint.chat.verified",
+          steps: liveChatScopedSteps({
+            selection,
+            linkedSessionRef: "session.blueprint.chat.verified",
+            events: [
+              { eventIndex: 0, phase: "started", state: "running", observedAt: "2026-06-19T00:00:00Z", detail: "turn" },
+              { eventIndex: 1, phase: "completed", state: "completed", observedAt: "2026-06-19T00:00:05Z", detail: `exact replay ${digest}` },
+            ],
+            proofReplaySlug: initialModel.selectedProofReplaySlug,
+          }),
+        },
+      ],
+    })
     expect(treeContainsClass(document.body, "chat-message-list")).toBe(true)
-    expect(treeContainsText(document.body, BLUEPRINT_CHAT_SIGNATURE_REF)).toBe(true)
-    expect(treeContainsText(document.body, BLUEPRINT_CHAT_CONTEXT_TOOL_REF)).toBe(
-      true,
-    )
-    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_TOOL_REF)).toBe(
-      true,
-    )
-    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_MODULE_REF)).toBe(
-      true,
-    )
-    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_DIGEST_REF)).toBe(
-      true,
-    )
-    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_EVIDENCE_REF)).toBe(
-      true,
-    )
-    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_RECEIPT_REF)).toBe(
-      true,
-    )
-    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF)).toBe(
-      true,
-    )
-    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_TOOL_REF)).toBe(
-      true,
-    )
-    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_MODULE_REF)).toBe(
-      true,
-    )
-    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_EVIDENCE_REF)).toBe(
-      true,
-    )
-    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_RECEIPT_REF)).toBe(
-      true,
-    )
+    expect(treeContainsText(document.body, selection.signatureRef)).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_CONTEXT_TOOL_REF)).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_TOOL_REF)).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_MODULE_REF)).toBe(true)
+    // The rendered digest is the REAL one from the live event, not a constant.
+    expect(treeContainsText(document.body, digest)).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_EVIDENCE_REF)).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_RECEIPT_REF)).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF)).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_TOOL_REF)).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_MODULE_REF)).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_EVIDENCE_REF)).toBe(true)
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_RECEIPT_REF)).toBe(true)
     expect(treeContainsText(document.body, "Verified")).toBe(true)
-    expect(treeContainsSelector(document.body, "oa-tassadar-proof-replay")).toBe(
-      true,
-    )
+    expect(treeContainsSelector(document.body, "oa-tassadar-proof-replay")).toBe(true)
     expect(treeContainsText(document.body, "raw_trace")).toBe(false)
     expect(treeContainsText(document.body, "raw_prompt")).toBe(false)
     expect(treeContainsText(document.body, "private_key")).toBe(false)

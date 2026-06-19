@@ -791,18 +791,17 @@ export const blueprintChatScopedSteps = (
   ]
 }
 
+// #5466 (EPIC #5461): the intro message carries NO program steps and NO verdict.
+// Steps + verdicts now only appear on real turns, derived from live session
+// events (blueprint-chat-runtime.ts). Previously this seed claimed a "verified"
+// Tassadar step before any session existed — the central dishonesty #5466 fixes.
 const seededChatMessage: ChatMessage = {
-  id: "chat.seed.blueprint-tassadar",
-  role: "assistant",
-  body: "Blueprint program chat is ready.",
+  id: "chat.seed.blueprint-intro",
+  role: "system",
+  body: "Blueprint program chat is ready. Each turn is routed to a signature and runs as a bounded session; steps and exact-replay verdicts appear here as the live session reports them.",
   timestamp: "2026-06-18T00:00:00.000Z",
   linkedSessionRef: null,
-  steps: blueprintChatScopedSteps({
-    signatureStatus: "completed",
-    contextStatus: "completed",
-    tassadarStatus: "verified",
-    tassadarVerdict: "verified",
-  }),
+  steps: [],
 }
 
 export const initialModel: Model = Model.make({
