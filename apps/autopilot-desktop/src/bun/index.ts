@@ -52,6 +52,7 @@ import {
   fetchOnboardingSignals,
   readControlToken,
   resolveApproval,
+  resolveManagedWorktreeRepoRef,
   setCoordinatorPaused,
   startAppleFmSession as startAppleFmControlSession,
   spawnSession,
@@ -862,10 +863,25 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           // #4998: thread the requested execution lane through to the node.
           ...(params.lane ? { lane: params.lane } : {}),
           ...(params.timeoutSeconds ? { timeoutSeconds: params.timeoutSeconds } : {}),
-          ...(params.worktreePath ? { worktreePath: params.worktreePath } : {}),
+          // #5471: a managed worktree (repoRef) takes precedence over an
+          // existing worktree path; the two are mutually exclusive on the node.
+          ...(params.repoRef
+            ? { repoRef: params.repoRef }
+            : params.worktreePath
+              ? { worktreePath: params.worktreePath }
+              : {}),
           // CS-A1: per-session provider account. The node resolves it against
           // its registry and rejects an unknown ref.
           ...(params.accountRef ? { accountRef: params.accountRef } : {}),
+        })
+      },
+      // #5471: resolve a managed-worktree request (repo + base ref) to a
+      // concrete repoRef the webview can pass to spawnSession. Bun runs git.
+      async resolveManagedWorktree(params) {
+        return resolveManagedWorktreeRepoRef({
+          fullName: params.fullName,
+          baseRef: params.baseRef,
+          branch: params.branch,
         })
       },
       // CS-A1: spawn a bounded local Apple FM coding session from the composer.

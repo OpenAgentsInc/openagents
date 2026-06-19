@@ -39,6 +39,7 @@ import {
   RemoveManagedAccount,
   RequestTrainingBootstrapGrant,
   ResolveApproval,
+  ResolveManagedWorktree,
   SetCoordinatorPaused,
   SetManagedAccountPriority,
   SpawnAppleFmComposerTurn,
@@ -54,6 +55,11 @@ import {
   buildComposerContinuationObjective,
   parseVerifyLines,
 } from "./helpers"
+import {
+  managedWorktreeLabel,
+  parseManagedWorktreeRequest,
+  type ManagedWorktreeRequest,
+} from "./composer-workspace"
 import {
   ClickedChatSubmit,
   ClickedComposerReply,
@@ -224,6 +230,37 @@ const buildBlueprintChatObjective = (prompt: string): string =>
     "User turn:",
     prompt,
   ].join("\n")
+
+// #5471: begin a managed-worktree composer turn. Stores the fully-built
+// objective on the model and fires the node-side repoRef resolution; the
+// ResolvedComposerManagedWorktree handler then fires the actual SpawnComposerTurn
+// once a commit SHA comes back. Shared by the first-turn and reply paths so the
+// resolve→spawn handoff is identical for both.
+const startManagedComposerTurn = (
+  model: Model,
+  request: ManagedWorktreeRequest,
+  objective: string,
+  turns: ReadonlyArray<string>,
+): Result => [
+  Model.make({
+    ...model,
+    composerPending: true,
+    composerReply: "",
+    composerPendingObjective: objective,
+    composerTurns: [...turns],
+    composerStatus: {
+      text: `resolving managed worktree (${managedWorktreeLabel(request)})…`,
+      tone: "info",
+    },
+  }),
+  [
+    ResolveManagedWorktree({
+      fullName: request.fullName,
+      baseRef: request.baseRef,
+      branch: request.branch,
+    }),
+  ],
+]
 
 // #5464: the filtered palette list for the current query (also drives which
 // command Enter runs and how the selection index clamps).
@@ -1852,6 +1889,96 @@ export const update = (model: Model, message: Message): Result => {
         Model.make({ ...model, composerAccountRef: message.accountRef }),
         noCommands,
       ]
+    // #5471: repo / worktree picker inputs.
+    case "ChangedComposerWorkspaceMode":
+      return [
+        Model.make({ ...model, composerWorkspaceMode: message.mode }),
+        noCommands,
+      ]
+    case "ChangedComposerManagedRepo":
+      return [
+        Model.make({ ...model, composerManagedRepo: message.value }),
+        noCommands,
+      ]
+    case "ChangedComposerManagedBaseRef":
+      return [
+        Model.make({ ...model, composerManagedBaseRef: message.value }),
+        noCommands,
+      ]
+    // #5471: a managed-worktree request resolved (or failed) node-side. On
+    // success fire the deferred composer spawn with the resolved repoRef; on
+    // failure settle the loop with the error so the pending state clears.
+    case "ResolvedComposerManagedWorktree": {
+      const result = message.result as
+        | {
+            ok?: unknown
+            error?: unknown
+            repoRef?: {
+              provider?: unknown
+              visibility?: unknown
+              fullName?: unknown
+              branch?: unknown
+              commitSha?: unknown
+            }
+          }
+        | null
+        | undefined
+      const objective = model.composerPendingObjective
+      const repo = result?.repoRef
+      const resolvedOk =
+        result?.ok === true &&
+        repo !== undefined &&
+        repo.provider === "github" &&
+        repo.visibility === "public" &&
+        typeof repo.fullName === "string" &&
+        typeof repo.branch === "string" &&
+        typeof repo.commitSha === "string"
+      if (!resolvedOk || objective === null || model.spawnAdapter === "apple_fm") {
+        return [
+          Model.make({
+            ...model,
+            composerPending: false,
+            composerPendingObjective: null,
+            composerStatus: {
+              text:
+                typeof result?.error === "string" && result.error.trim() !== ""
+                  ? result.error
+                  : "could not resolve managed worktree",
+              tone: "error",
+            },
+          }),
+          noCommands,
+        ]
+      }
+      const verify = parseVerifyLines(model.spawnVerify)
+      return [
+        Model.make({
+          ...model,
+          composerPendingObjective: null,
+          composerStatus: {
+            text: `starting coding session in ${repo.fullName as string} @ ${repo.branch as string}…`,
+            tone: "info",
+          },
+        }),
+        [
+          SpawnComposerTurn({
+            adapter: model.spawnAdapter,
+            objective,
+            verify,
+            lane: model.spawnLane,
+            worktreePath: null,
+            repoRef: {
+              provider: "github",
+              visibility: "public",
+              fullName: repo.fullName as string,
+              branch: repo.branch as string,
+              commitSha: repo.commitSha as string,
+            },
+            accountRef: model.composerAccountRef,
+          }),
+        ],
+      ]
+    }
     case "ClickedComposerSpawn": {
       const worktreePath =
         model.composerRepoPath.trim() === "" ? null : model.composerRepoPath.trim()
@@ -1898,6 +2025,25 @@ export const update = (model: Model, message: Message): Result => {
       }
       const verify = parseVerifyLines(model.spawnVerify)
       const objective = validation.objective
+      // #5471: managed-worktree mode resolves a repoRef node-side first, then
+      // spawns (see ResolvedComposerManagedWorktree). The path mode spawns
+      // directly with worktreePath as before.
+      if (model.composerWorkspaceMode === "managed") {
+        const parsed = parseManagedWorktreeRequest({
+          repo: model.composerManagedRepo,
+          baseRef: model.composerManagedBaseRef,
+        })
+        if (!parsed.ok) {
+          return [
+            Model.make({
+              ...model,
+              composerStatus: { text: parsed.error, tone: "error" },
+            }),
+            noCommands,
+          ]
+        }
+        return startManagedComposerTurn(model, parsed.request, objective, [objective])
+      }
       return [
         Model.make({
           ...model,
@@ -1912,6 +2058,7 @@ export const update = (model: Model, message: Message): Result => {
             verify,
             lane: model.spawnLane,
             worktreePath,
+            repoRef: null,
             accountRef: model.composerAccountRef,
           }),
         ],
@@ -1947,6 +2094,28 @@ export const update = (model: Model, message: Message): Result => {
       if (model.spawnAdapter === "apple_fm") {
         return [continuing, [SpawnAppleFmComposerTurn({ objective, worktreePath })]]
       }
+      // #5471: a managed-worktree thread keeps materializing its repoRef per
+      // turn (each control session is its own bounded checkout). Resolve first,
+      // then spawn the continuation.
+      if (model.composerWorkspaceMode === "managed") {
+        const parsed = parseManagedWorktreeRequest({
+          repo: model.composerManagedRepo,
+          baseRef: model.composerManagedBaseRef,
+        })
+        if (!parsed.ok) {
+          return [
+            Model.make({
+              ...model,
+              composerStatus: { text: parsed.error, tone: "error" },
+            }),
+            noCommands,
+          ]
+        }
+        return startManagedComposerTurn(continuing, parsed.request, objective, [
+          ...model.composerTurns,
+          followUp,
+        ])
+      }
       return [
         continuing,
         [
@@ -1956,6 +2125,7 @@ export const update = (model: Model, message: Message): Result => {
             verify,
             lane: model.spawnLane,
             worktreePath,
+            repoRef: null,
             accountRef: model.composerAccountRef,
           }),
         ],
@@ -1970,6 +2140,7 @@ export const update = (model: Model, message: Message): Result => {
           composerTurns: [],
           composerStatus: { text: "", tone: "idle" },
           composerPending: false,
+          composerPendingObjective: null,
           spawnObjective: "",
         }),
         // CS-A1: a fresh thread reloads the account list so a newly added
@@ -1993,6 +2164,7 @@ export const update = (model: Model, message: Message): Result => {
         Model.make({
           ...model,
           composerPending: false,
+          composerPendingObjective: null,
           composerStatus: { text: message.error, tone: "error" },
         }),
         noCommands,

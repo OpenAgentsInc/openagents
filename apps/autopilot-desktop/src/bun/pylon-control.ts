@@ -807,6 +807,11 @@ export async function spawnSession(input: {
   lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
   timeoutSeconds?: number
   worktreePath?: string
+  // #5471: managed-worktree selector. Mutually exclusive with `worktreePath`
+  // (the node rejects both). When present, the node's workspace-materializer
+  // checks out `commitSha` for a fresh isolated worktree. Resolved node-side by
+  // `resolveManagedWorktreeRepoRef` so the webview never has to run git.
+  repoRef?: ManagedWorktreeRepoRef
   // CS-A1: run under a specific provider account (resolved against the node's
   // registry). Omitted means the node's default account selection.
   accountRef?: string
@@ -825,7 +830,13 @@ export async function spawnSession(input: {
           input.verify && input.verify.length > 0 ? input.verify : ["true"],
         ...(input.lane ? { lane: input.lane } : {}),
         ...(input.timeoutSeconds ? { timeoutSeconds: input.timeoutSeconds } : {}),
-        ...(input.worktreePath ? { worktreePath: input.worktreePath } : {}),
+        // #5471: a managed worktree (repoRef) and an existing worktree path are
+        // mutually exclusive; prefer repoRef when both are somehow set.
+        ...(input.repoRef
+          ? { repoRef: input.repoRef }
+          : input.worktreePath
+            ? { worktreePath: input.worktreePath }
+            : {}),
         ...(input.accountRef ? { accountRef: input.accountRef } : {}),
       }),
     })
@@ -835,5 +846,96 @@ export async function spawnSession(input: {
     return { ok: true, sessionRef: String(json.result?.sessionRef ?? "spawned") }
   } catch (e) {
     return { ok: false, sessionRef: "", error: e instanceof Error ? e.message : "unavailable" }
+  }
+}
+
+// #5471: managed-worktree repository ref. Exactly the shape Pylon's
+// `repositoryRefFrom` (apps/pylon/src/node/control-sessions.ts) accepts on
+// session.spawn, so what the desktop sends is what the node will check out.
+export type ManagedWorktreeRepoRef = {
+  provider: "github"
+  visibility: "public"
+  fullName: string
+  branch: string
+  commitSha: string
+}
+
+export type ResolveManagedWorktreeResult =
+  | { ok: true; repoRef: ManagedWorktreeRepoRef }
+  | { ok: false; error: string }
+
+const GITHUB_FULL_NAME = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
+const SAFE_REF = /^[A-Za-z0-9_./-]+$/
+
+// #5471: resolve a managed-worktree request (GitHub `owner/name` + base ref) to
+// a concrete repoRef the node can materialize. We resolve the 40-char commit
+// SHA with `git ls-remote` against the public GitHub remote — the same kind of
+// resolution the Pylon CLI's `--managed-worktree` does locally, but without
+// requiring a local clone, so the desktop can target any public repo/ref.
+// Bun owns this (the webview never runs git); the webview only sends the typed
+// request and receives a public-safe repoRef.
+export async function resolveManagedWorktreeRepoRef(input: {
+  fullName: string
+  baseRef: string
+  branch: string
+  gitRunner?: (args: string[]) => Promise<{ ok: boolean; stdout: string; error?: string }>
+}): Promise<ResolveManagedWorktreeResult> {
+  if (!GITHUB_FULL_NAME.test(input.fullName)) {
+    return { ok: false, error: "repo must be a GitHub owner/name" }
+  }
+  if (
+    !SAFE_REF.test(input.baseRef) ||
+    input.baseRef.includes("..") ||
+    input.baseRef.startsWith("-")
+  ) {
+    return { ok: false, error: "base ref is invalid" }
+  }
+  // `git ls-remote` takes a remote ref, not the `origin/`-prefixed local form;
+  // strip the prefix (the branch field already carries the stripped name).
+  const remoteRef = input.baseRef.replace(/^origin\//, "")
+  const runner = input.gitRunner ?? defaultGitRunner
+  const run = await runner([
+    "ls-remote",
+    `https://github.com/${input.fullName}.git`,
+    remoteRef,
+  ])
+  if (!run.ok) {
+    return { ok: false, error: run.error ?? "git ls-remote failed" }
+  }
+  // ls-remote prints `<sha>\t<ref>` lines; the first column of the first line is
+  // the resolved commit. An empty result means the ref does not exist remotely.
+  const firstLine = run.stdout.split("\n").map((l) => l.trim()).find((l) => l !== "")
+  const commitSha = firstLine?.split(/\s+/)[0] ?? ""
+  if (!/^[a-f0-9]{40}$/i.test(commitSha)) {
+    return { ok: false, error: `base ref '${input.baseRef}' did not resolve to a commit` }
+  }
+  return {
+    ok: true,
+    repoRef: {
+      provider: "github",
+      visibility: "public",
+      fullName: input.fullName,
+      branch: input.branch,
+      commitSha,
+    },
+  }
+}
+
+async function defaultGitRunner(
+  args: string[],
+): Promise<{ ok: boolean; stdout: string; error?: string }> {
+  try {
+    const proc = Bun.spawn(["git", ...args], { stderr: "pipe", stdout: "pipe" })
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    if (exitCode !== 0) {
+      return { ok: false, stdout: "", error: `git failed: ${stderr.trim()}` }
+    }
+    return { ok: true, stdout }
+  } catch (e) {
+    return { ok: false, stdout: "", error: e instanceof Error ? e.message : "git unavailable" }
   }
 }

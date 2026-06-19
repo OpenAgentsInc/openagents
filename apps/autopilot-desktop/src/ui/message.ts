@@ -376,6 +376,25 @@ export const ClickedOpenSessionInComposer = m("ClickedOpenSessionInComposer", {
 export const ChangedComposerRepoPath = m("ChangedComposerRepoPath", {
   value: S.String,
 })
+// #5471: repo / worktree picker. Switch the compact picker between pointing at
+// an existing local worktree path and requesting a Pylon-managed worktree for a
+// GitHub repo + base ref. The managed inputs build a `repoRef`; the path input
+// rides `worktreePath`. Both flow through the existing session.spawn — no new
+// control verb.
+export const ChangedComposerWorkspaceMode = m("ChangedComposerWorkspaceMode", {
+  mode: S.Literals(["worktree", "managed"]),
+})
+export const ChangedComposerManagedRepo = m("ChangedComposerManagedRepo", {
+  value: S.String,
+})
+export const ChangedComposerManagedBaseRef = m("ChangedComposerManagedBaseRef", {
+  value: S.String,
+})
+// #5471: a managed-worktree request was resolved (or failed) node-side. Carries
+// the resolved repoRef so the reducer can fire the spawn it deferred.
+export const ResolvedComposerManagedWorktree = m("ResolvedComposerManagedWorktree", {
+  result: S.Unknown,
+})
 export const ChangedComposerReply = m("ChangedComposerReply", {
   value: S.String,
 })
@@ -548,6 +567,10 @@ export const Message = S.Union([
   SettledCancelSession,
   ClickedOpenSessionInComposer,
   ChangedComposerRepoPath,
+  ChangedComposerWorkspaceMode,
+  ChangedComposerManagedRepo,
+  ChangedComposerManagedBaseRef,
+  ResolvedComposerManagedWorktree,
   ChangedComposerReply,
   ClickedComposerSpawn,
   ClickedComposerReply,
