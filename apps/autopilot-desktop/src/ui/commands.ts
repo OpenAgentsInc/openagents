@@ -53,6 +53,7 @@ import {
   SettledResolveApproval,
   SettledSubmitIntent,
   GotManagedAccounts,
+  ResolvedComposerManagedWorktree,
   SucceededBuiltInAgent,
   SucceededAppleFmSession,
   SucceededChatTurn,
@@ -1222,6 +1223,17 @@ export const CancelSession = Command.define(
 // maps to the composer-specific settled/failed messages so the iterative loop's
 // state (active session ref + turn history) updates distinctly. Reply/continue
 // turns reuse this command with a continuation objective (see helpers).
+// #5471: managed-worktree repository ref (GitHub owner/name + base ref +
+// resolved commit SHA). Optional on the composer spawn; mutually exclusive with
+// worktreePath. The exact shape Pylon's `repositoryRefFrom` accepts.
+const ComposerRepoRef = S.Struct({
+  provider: S.Literal("github"),
+  visibility: S.Literal("public"),
+  fullName: S.String,
+  branch: S.String,
+  commitSha: S.String,
+})
+
 export const SpawnComposerTurn = Command.define(
   "SpawnComposerTurn",
   {
@@ -1230,21 +1242,28 @@ export const SpawnComposerTurn = Command.define(
     verify: S.Array(S.String),
     lane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
     worktreePath: S.NullOr(S.String),
+    // #5471: managed worktree (resolved repoRef). When set it takes precedence
+    // over worktreePath. Null = use worktreePath (or node default).
+    repoRef: S.NullOr(ComposerRepoRef),
     // CS-A1: per-session provider account (null = node default selection).
     accountRef: S.NullOr(S.String),
   },
   SucceededComposerTurn,
   FailedComposerTurn,
-)(({ adapter, objective, verify, lane, worktreePath, accountRef }) =>
+)(({ adapter, objective, verify, lane, worktreePath, repoRef, accountRef }) =>
   Effect.tryPromise(() =>
     getRequest().spawnSession({
       adapter,
       objective,
       verify: verify.length > 0 ? [...verify] : undefined,
       lane,
-      ...(worktreePath !== null && worktreePath.trim() !== ""
-        ? { worktreePath: worktreePath.trim() }
-        : {}),
+      // #5471: a managed worktree (repoRef) and an existing path are mutually
+      // exclusive; prefer repoRef when present.
+      ...(repoRef !== null
+        ? { repoRef }
+        : worktreePath !== null && worktreePath.trim() !== ""
+          ? { worktreePath: worktreePath.trim() }
+          : {}),
       ...(accountRef !== null && accountRef.trim() !== ""
         ? { accountRef: accountRef.trim() }
         : {}),
@@ -1257,6 +1276,33 @@ export const SpawnComposerTurn = Command.define(
     ),
     Effect.catch((error) =>
       Effect.succeed(FailedComposerTurn({ error: errorText(error) })),
+    ),
+  ),
+)
+
+// #5471: resolve a managed-worktree request (GitHub repo + base ref) into a
+// concrete repoRef node-side, then hand it back to the reducer so it can fire
+// the deferred composer spawn. Bun runs `git ls-remote`; the webview never runs
+// git. No new control verb — the resolved repoRef rides the existing
+// session.spawn (SpawnComposerTurn). The whole result is passed back opaquely
+// (the reducer decodes it) so a resolution failure still settles the loop.
+export const ResolveManagedWorktree = Command.define(
+  "ResolveManagedWorktree",
+  {
+    fullName: S.String,
+    baseRef: S.String,
+    branch: S.String,
+  },
+  ResolvedComposerManagedWorktree,
+)(({ fullName, baseRef, branch }) =>
+  Effect.tryPromise(() => getRequest().resolveManagedWorktree({ fullName, baseRef, branch })).pipe(
+    Effect.map((result) => ResolvedComposerManagedWorktree({ result })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        ResolvedComposerManagedWorktree({
+          result: { ok: false, error: errorText(error) },
+        }),
+      ),
     ),
   ),
 )

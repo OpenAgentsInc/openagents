@@ -86,6 +86,9 @@ import {
   ChangedAskTitle,
   ChangedSessionFilter,
   ChangedComposerRepoPath,
+  ChangedComposerWorkspaceMode,
+  ChangedComposerManagedRepo,
+  ChangedComposerManagedBaseRef,
   ChangedComposerReply,
   ChangedSpawnAdapter,
   ChangedSpawnObjective,
@@ -163,6 +166,12 @@ import {
   SelectedSession,
   ToggledEvent,
 } from "./message"
+import {
+  DEFAULT_MANAGED_BASE_REF,
+  managedWorktreeLabel,
+  parseManagedWorktreeRequest,
+  worktreePathLabel,
+} from "./composer-workspace"
 import {
   NAV_GROUPS,
   SHORTCUTS,
@@ -4771,6 +4780,95 @@ const composerAccountPicker = (model: Model): Html => {
   )
 }
 
+// #5471: compact repo / worktree picker inside the composer spawn form (NOT a
+// new pane — UX constraint in the issue). Two modes, both riding the existing
+// session.spawn: "Worktree" points at an existing local path (worktreePath);
+// "Managed" requests a Pylon-managed worktree for a GitHub repo + base ref
+// (resolved to a repoRef node-side). A small hint line shows the chosen
+// repo/worktree provenance / validation up front. Apple FM has no managed
+// worktree (its own control verb takes only a worktree path), so it shows the
+// path field alone.
+const composerWorkspacePicker = (model: Model): Html => {
+  const isAppleFm = model.spawnAdapter === "apple_fm"
+  const mode = isAppleFm ? "worktree" : model.composerWorkspaceMode
+  const modeToggle = isAppleFm
+    ? h.empty
+    : h.div(
+        [cls("adapter-toggle"), h.DataAttribute("autopilot-composer-workspace-mode", mode)],
+        (
+          [
+            ["worktree", "Existing worktree"],
+            ["managed", "Managed worktree"],
+          ] as const
+        ).map(([value, label]) =>
+          h.button(
+            [
+              cls(`adapter-btn${mode === value ? " active" : ""}`),
+              h.Type("button"),
+              h.OnClick(ChangedComposerWorkspaceMode({ mode: value })),
+            ],
+            [label],
+          ),
+        ),
+      )
+
+  const worktreeFields: ReadonlyArray<Html> = [
+    h.label([cls("field-label")], ["Worktree path (optional)"]),
+    h.input([
+      cls("text-input mono"),
+      h.Type("text"),
+      h.Placeholder("/Users/you/code/your-repo"),
+      h.Value(model.composerRepoPath),
+      h.OnInput((value: string) => ChangedComposerRepoPath({ value })),
+    ]),
+    h.p([cls("field-hint")], [`Runs in: ${worktreePathLabel(model.composerRepoPath)}`]),
+  ]
+
+  // For managed mode show a parse-result hint so a bad repo/ref is caught
+  // before the spawn round-trips.
+  const managedParsed = parseManagedWorktreeRequest({
+    repo: model.composerManagedRepo,
+    baseRef: model.composerManagedBaseRef,
+  })
+  const managedHint =
+    model.composerManagedRepo.trim() === ""
+      ? "Enter a GitHub owner/name to materialize a fresh isolated worktree."
+      : managedParsed.ok
+        ? `Will materialize: ${managedWorktreeLabel(managedParsed.request)}`
+        : managedParsed.error
+  const managedHintTone = managedParsed.ok || model.composerManagedRepo.trim() === ""
+    ? "field-hint"
+    : "field-hint field-hint-error"
+  const managedFields: ReadonlyArray<Html> = [
+    h.label([cls("field-label")], ["GitHub repo (owner/name)"]),
+    h.input([
+      cls("text-input mono"),
+      h.Type("text"),
+      h.Placeholder("OpenAgentsInc/openagents"),
+      h.Value(model.composerManagedRepo),
+      h.OnInput((value: string) => ChangedComposerManagedRepo({ value })),
+    ]),
+    h.label([cls("field-label")], ["Base ref (optional)"]),
+    h.input([
+      cls("text-input mono"),
+      h.Type("text"),
+      h.Placeholder(DEFAULT_MANAGED_BASE_REF),
+      h.Value(model.composerManagedBaseRef),
+      h.OnInput((value: string) => ChangedComposerManagedBaseRef({ value })),
+    ]),
+    h.p([cls(managedHintTone)], [managedHint]),
+  ]
+
+  return h.div(
+    [cls("composer-workspace-picker")],
+    [
+      h.label([cls("field-label")], ["Repo / worktree"]),
+      modeToggle,
+      ...(mode === "managed" ? managedFields : worktreeFields),
+    ],
+  )
+}
+
 const composerSpawnForm = (model: Model): Html =>
   card("Start a coding session", [
     h.label([cls("field-label")], ["Runtime"]),
@@ -4811,14 +4909,7 @@ const composerSpawnForm = (model: Model): Html =>
             ),
           ],
         ),
-    h.label([cls("field-label")], ["Repo / worktree path (optional)"]),
-    h.input([
-      cls("text-input mono"),
-      h.Type("text"),
-      h.Placeholder("/Users/you/code/your-repo"),
-      h.Value(model.composerRepoPath),
-      h.OnInput((value: string) => ChangedComposerRepoPath({ value })),
-    ]),
+    composerWorkspacePicker(model),
     h.label([cls("field-label")], ["What should the agent do?"]),
     h.textarea(
       [

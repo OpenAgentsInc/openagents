@@ -123,9 +123,38 @@ export type DesktopRequests = {
     lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
     timeoutSeconds?: number
     worktreePath?: string
+    // #5471: managed-worktree selector (mutually exclusive with worktreePath).
+    repoRef?: {
+      provider: "github"
+      visibility: "public"
+      fullName: string
+      branch: string
+      commitSha: string
+    }
     // CS-A1: per-session provider account.
     accountRef?: string
   }): Promise<{ ok: boolean; sessionRef: string; error?: string }>
+  // #5471: resolve a managed-worktree request (GitHub owner/name + base ref) to
+  // a concrete repoRef the node can materialize. Bun runs `git ls-remote`; the
+  // webview never runs git. No new control verb — the resolved repoRef rides the
+  // existing session.spawn.
+  resolveManagedWorktree(p: {
+    fullName: string
+    baseRef: string
+    branch: string
+  }): Promise<
+    | {
+        ok: true
+        repoRef: {
+          provider: "github"
+          visibility: "public"
+          fullName: string
+          branch: string
+          commitSha: string
+        }
+      }
+    | { ok: false; error: string }
+  >
   // CS-A1: spawn a bounded local Apple FM coding session (its own control verb).
   spawnAppleFmSession(p: {
     objective: string

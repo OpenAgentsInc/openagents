@@ -391,6 +391,13 @@ export const Model = ts("AutopilotDesktop", {
   //     each turn is its own bounded control session.
   composerSessionRef: S.NullOr(S.String),
   composerRepoPath: S.String,
+  // #5471: repo / worktree picker mode. "worktree" points the session at an
+  // existing local path (composerRepoPath, the original behavior); "managed"
+  // requests a Pylon-managed worktree for a GitHub repo + base ref, resolved to
+  // a repoRef node-side. Both ride the existing session.spawn — no new verb.
+  composerWorkspaceMode: S.Literals(["worktree", "managed"]),
+  composerManagedRepo: S.String,
+  composerManagedBaseRef: S.String,
   composerReply: S.String,
   composerTurns: S.Array(S.String),
   composerStatus: ComposerStatus,
@@ -400,6 +407,10 @@ export const Model = ts("AutopilotDesktop", {
   // `accountRef` (codex/claude) — no new control contract. Ignored for the
   // apple_fm adapter, which has no per-account selection.
   composerAccountRef: S.NullOr(S.String),
+  // #5471: the fully-built objective a managed-worktree turn is waiting to send
+  // once its repoRef resolves node-side. Null when no managed resolution is in
+  // flight. Lets the resolve→spawn handoff stay a pure two-step reducer.
+  composerPendingObjective: S.NullOr(S.String),
 
   // #5469 (EPIC #5461): swarm batch-launch state. The batch form lives inside
   // the swarm pane (no new top-level button). The reducer drives a bounded
@@ -834,6 +845,10 @@ export const initialModel: Model = Model.make({
   spawnPending: false,
   composerSessionRef: null,
   composerRepoPath: "",
+  // #5471: default to the existing-worktree path mode (today's behavior).
+  composerWorkspaceMode: "worktree",
+  composerManagedRepo: "",
+  composerManagedBaseRef: "",
   composerReply: "",
   composerTurns: [],
   composerStatus: { text: "", tone: "idle" },
@@ -847,6 +862,7 @@ export const initialModel: Model = Model.make({
   swarmBatchLaunched: 0,
   swarmBatchFailed: 0,
   swarmBatchTotal: 0,
+  composerPendingObjective: null,
   chatMessages: [seededChatMessage],
   chatInput: "",
   chatStatus: { text: "", tone: "idle" },

@@ -892,6 +892,17 @@ export type DesktopRPCSchema = {
           lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
           timeoutSeconds?: number
           worktreePath?: string
+          // #5471: managed-worktree selector. Mutually exclusive with
+          // `worktreePath`; when present the node's workspace-materializer
+          // checks out `commitSha`. No new wire contract — `session.spawn`
+          // already accepts `repoRef`.
+          repoRef?: {
+            provider: "github"
+            visibility: "public"
+            fullName: string
+            branch: string
+            commitSha: string
+          }
           // CS-A1: run this session under a specific provider account. The
           // node resolves it against its registry and rejects an unknown ref;
           // omitted means the node's default account selection. No new wire
@@ -899,6 +910,29 @@ export type DesktopRPCSchema = {
           accountRef?: string
         }
         readonly response: { ok: boolean; sessionRef: string; error?: string }
+      }
+      // #5471: resolve a managed-worktree request to a concrete repoRef. Bun
+      // owns the `git ls-remote` SHA resolution; the webview only sends the
+      // GitHub owner/name + base ref + stripped branch and receives a
+      // public-safe repoRef it then passes to spawnSession.
+      readonly resolveManagedWorktree: {
+        readonly params: {
+          fullName: string
+          baseRef: string
+          branch: string
+        }
+        readonly response:
+          | {
+              ok: true
+              repoRef: {
+                provider: "github"
+                visibility: "public"
+                fullName: string
+                branch: string
+                commitSha: string
+              }
+            }
+          | { ok: false; error: string }
       }
       // CS-A1: spawn a bounded local Apple Foundation Models coding session,
       // exposed as a spawn-adapter option alongside codex/claude. The webview
