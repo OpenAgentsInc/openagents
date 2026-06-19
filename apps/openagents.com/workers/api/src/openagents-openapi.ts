@@ -89,13 +89,17 @@ const okJson = (description: string, schemaRef: string): JsonSchema => ({
   ...jsonContent(schemaRef),
 })
 
-const okEventStream = (description: string): JsonSchema => ({
+const okEventStream = (
+  description: string,
+  messageSchemaRef: string,
+): JsonSchema => ({
   description,
   content: {
     'text/event-stream': {
       schema: {
         description:
           'Server-sent events. Data frames carry public activity timeline metadata or { event } where event is PublicActivityTimelineEvent.',
+        'x-openagents-message-schema': messageSchemaRef,
         type: 'string',
       },
     },
@@ -3930,7 +3934,10 @@ const paths = (): JsonSchema => ({
         queryParam('source', 'Comma-separated or repeated source-kind filter.'),
       ],
       responses: {
-        '200': okEventStream('Public activity timeline SSE stream.'),
+        '200': okEventStream(
+          'Public activity timeline SSE stream.',
+          '#/components/schemas/PublicActivityTimelineEnvelope',
+        ),
         ...errorResponses(),
       },
     }),

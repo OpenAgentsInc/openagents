@@ -234,8 +234,8 @@ import {
 } from './http/responses'
 import { routeAccessResponse } from './http/route-access-response'
 import { routeEffect, routeEffectOrResponse } from './http/route-effects'
-import type { ExactRoute } from './http/router'
 import { makeImageGenerationRoutes } from './image-generation-routes'
+import { makeExactRouteRegistry } from './routing/exact-routes'
 import {
   cleanProductRouteRedirectLocation,
   githubWriteResultRedirectLocation,
@@ -7483,7 +7483,7 @@ const recordPublicAgentFunnelRead = (
   )
 }
 
-const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
+const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/',
     handler: (request, env, ctx) =>
@@ -8378,11 +8378,13 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         handleProgrammaticAgentHome(request, openAgentsDatabase(env)),
       ),
   },
-]
+])
+
+export const exactRoutePathManifest = exactRouteRegistry.paths
 
 const routeRequest = makeWorkerRouteRequest({
   cleanProductRouteRedirectLocation,
-  exactRoutes,
+  exactRoutes: exactRouteRegistry.routes,
   handleAppShellPage: (request, env, ctx) =>
     routeEffect('handle_app_shell_page', () =>
       handleAppShellPage(request, env, ctx),
