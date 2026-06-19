@@ -2,6 +2,7 @@ import type { Command } from "foldkit"
 
 import {
   LoadIdentityChoiceState,
+  LoadInferenceGatewayReadiness,
   LoadInstallReadiness,
   LoadOnboardingStatus,
   LoadProofReplayBundle,
@@ -31,6 +32,9 @@ export const initialRuntimeState = (): InitialRuntimeState => {
     defaultAdapter: preferences.defaultAdapter,
     defaultLane: preferences.defaultLane,
     showNotificationPanel: preferences.showNotificationPanel,
+    // #5485: apply the saved gateway-fallback intent so the routing decision
+    // (own-auth vs gateway) honours it from app entry.
+    gatewayInferenceFallback: preferences.gatewayInferenceFallback,
     spawnAdapter: preferences.defaultAdapter,
     spawnLane: preferences.defaultLane,
     // AO-4/C5 (#5441/#5445/#5454): launch starts by loading the onboarding
@@ -68,6 +72,10 @@ export const initialRuntimeState = (): InitialRuntimeState => {
         request: { mode: "catalog", slug: model.selectedProofReplaySlug },
       }),
       LoadPublicActivityTimeline(),
+      // #5485: warm the gateway readiness so the coding surfaces can route
+      // inference correctly (and surface a balance hint) without waiting for a
+      // pane enter. INERT until the gateway flag is on (then it carries credits).
+      LoadInferenceGatewayReadiness(),
     ],
   ]
 }

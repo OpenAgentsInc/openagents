@@ -20,6 +20,7 @@ import type {
   AppleFmSessionStartResponse,
   BuiltInAgentReadinessResponse,
   BuiltInAgentStartResponse,
+  InferenceGatewayReadinessResponse,
   InstallReadinessResponse,
   ManagedAccountMutationResponse,
   ManagedAccountsResponse,
@@ -63,6 +64,9 @@ export type DesktopRequests = {
   startAppleFmSession(
     p: Record<string, never>,
   ): Promise<AppleFmSessionStartResponse>
+  inferenceGatewayReadiness(
+    p: Record<string, never>,
+  ): Promise<InferenceGatewayReadinessResponse>
   installReadiness(
     p: Record<string, never>,
   ): Promise<InstallReadinessResponse>

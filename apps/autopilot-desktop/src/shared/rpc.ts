@@ -619,6 +619,33 @@ export type AppleFmSessionStartResponse = {
   readonly error?: string
 }
 
+// #5485 (EPIC #5474): public-safe OpenAgents inference-gateway readiness for the
+// desktop coding agent. The Bun host owns the OpenAgents API key + the gateway
+// base URL and reads the user's credit balance; the webview receives only the
+// server-flag state, an `apiKeyPresent` boolean, the model id, the numeric
+// credit balance, and blocker refs. NEVER the raw API key. INERT-safe: `enabled`
+// is false until the gateway is served server-side, so the routing decision
+// keeps BYO-auth behaviour until the flag flips.
+export type InferenceGatewayReadinessResponse = {
+  readonly ok: boolean
+  readonly fetchedAt: string
+  readonly sourceUrl: string
+  // Server-side flag gate: the gateway is actually served.
+  readonly enabled: boolean
+  // A Bun-host OpenAgents API key is configured (the raw key never crosses RPC).
+  readonly apiKeyPresent: boolean
+  // The chat-completions model id the gateway routes coding turns to.
+  readonly model: string
+  // Pay-as-you-go credit balance, or null when unknown (flag off / key missing
+  // / fetch failed). The unit + ledger authority is the openagents.com Worker.
+  readonly creditBalance: number | null
+  // The balance at/below which the UI surfaces a low-balance hint.
+  readonly lowBalanceThreshold: number
+  // Public-safe readiness blocker refs (gateway disabled / key missing / etc.).
+  readonly blockerRefs: readonly string[]
+  readonly error?: string
+}
+
 export type { InstallReadinessResponse } from "./install-readiness"
 export type {
   OnboardingStatusResponse,
@@ -808,6 +835,16 @@ export type DesktopRPCSchema = {
       readonly startAppleFmSession: {
         readonly params: Record<string, never>
         readonly response: AppleFmSessionStartResponse
+      }
+      // #5485: public-safe OpenAgents inference-gateway readiness (server-flag
+      // state + API-key presence + credit balance) so the desktop can route
+      // coding-session inference through the gateway when the user has no own
+      // auth. Bun owns the API key + balance read; the webview never sees the
+      // raw key. No spawn-side wire-contract change — gateway routing rides the
+      // node's existing session.spawn lane selection once the flag is on.
+      readonly inferenceGatewayReadiness: {
+        readonly params: Record<string, never>
+        readonly response: InferenceGatewayReadinessResponse
       }
       // #5064: one public-safe first-run health projection for normal installs.
       readonly installReadiness: {

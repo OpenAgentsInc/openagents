@@ -29,6 +29,7 @@ import {
   FailedSpawn,
   GotAppleFmReadiness,
   GotBuiltInAgentReadiness,
+  GotInferenceGatewayReadiness,
   GotInstallReadiness,
   GotOnboardingStatus,
   GotIdentityChoiceState,
@@ -225,6 +226,22 @@ const emptyBuiltInAgentReadinessProjection = (error: string) => ({
   meteringLabel: "unavailable",
   worktreePathPresent: false,
   blockerRefs: ["desktop.builtin_agent.readiness_request_failed"],
+  error,
+})
+
+// #5485: a public-safe "request failed" gateway readiness projection so the
+// reducer always has a typed blob even when the RPC throws. enabled:false keeps
+// the routing decision on BYO-auth (the INERT default).
+const emptyInferenceGatewayReadinessProjection = (error: string) => ({
+  ok: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:inference-gateway-readiness",
+  enabled: false,
+  apiKeyPresent: false,
+  model: "unknown",
+  creditBalance: null,
+  lowBalanceThreshold: 1,
+  blockerRefs: ["desktop.inference_gateway.readiness_request_failed"],
   error,
 })
 
@@ -441,6 +458,26 @@ export const LoadBuiltInAgentReadiness = Command.define(
       Effect.succeed(
         GotBuiltInAgentReadiness({
           projection: emptyBuiltInAgentReadinessProjection(errorText(error)),
+        }),
+      ),
+    ),
+  ),
+)
+
+// #5485: fetch the OpenAgents inference-gateway readiness (server-flag state +
+// apiKeyPresent + credit balance). Always settles with a typed projection so the
+// routing decision + the composer balance hint have data to read.
+export const LoadInferenceGatewayReadiness = Command.define(
+  "LoadInferenceGatewayReadiness",
+  {},
+  GotInferenceGatewayReadiness,
+)(() =>
+  Effect.tryPromise(() => getRequest().inferenceGatewayReadiness({})).pipe(
+    Effect.map((projection) => GotInferenceGatewayReadiness({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotInferenceGatewayReadiness({
+          projection: emptyInferenceGatewayReadinessProjection(errorText(error)),
         }),
       ),
     ),
@@ -1486,6 +1523,8 @@ export const PersistPreferences = Command.define(
     defaultAdapter: S.Literals(["codex", "claude_agent", "apple_fm"]),
     defaultLane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
     showNotificationPanel: S.Boolean,
+    // #5485: the gateway-fallback intent rides the same local-persist command.
+    gatewayInferenceFallback: S.Literals(["auto", "off"]),
   },
   SettledPersistPreferences,
 )((preferences) =>

@@ -10,7 +10,12 @@ import { m } from "foldkit/message"
 
 import { PaneId, ProofReplaySlug, SessionFilter } from "./model"
 // #5472: the preference literal schemas (single source — see ui/preferences.ts).
-import { DefaultAdapter, DefaultLane, ThemePreference } from "./preferences"
+import {
+  DefaultAdapter,
+  DefaultLane,
+  GatewayInferenceFallback,
+  ThemePreference,
+} from "./preferences"
 
 // ── Inbound (Electrobun → runtime), pushed by the subscription stream ──────
 export const GotNodeState = m("GotNodeState", { node: S.Unknown })
@@ -118,6 +123,14 @@ export const GotAppleFmReadiness = m("GotAppleFmReadiness", {
 export const ClickedStartAppleFm = m("ClickedStartAppleFm")
 export const SucceededAppleFmSession = m("SucceededAppleFmSession", {
   sessionRef: S.String,
+})
+
+// ── Inference gateway default-inference (#5485, EPIC #5474) ─────────────────
+// The Bun host's public-safe gateway readiness (server-flag + apiKeyPresent +
+// credit balance) landing back in the model; drives the routing decision + the
+// composer low-balance hint.
+export const GotInferenceGatewayReadiness = m("GotInferenceGatewayReadiness", {
+  projection: S.Unknown,
 })
 export const FailedAppleFmSession = m("FailedAppleFmSession", { error: S.String })
 export const ClickedStartBuiltInAgent = m("ClickedStartBuiltInAgent")
@@ -504,6 +517,13 @@ export const ChangedDefaultLane = m("ChangedDefaultLane", {
 export const ToggledNotificationPanel = m("ToggledNotificationPanel", {
   show: S.Boolean,
 })
+// #5485: route coding inference through the OpenAgents gateway when there is no
+// usable own auth ("auto") vs require own auth ("off"). Persisted like the
+// other preferences; applied to the live routing decision immediately.
+export const ChangedGatewayInferenceFallback = m(
+  "ChangedGatewayInferenceFallback",
+  { value: GatewayInferenceFallback },
+)
 // Result of the (best-effort, local) preference write. Carries no payload and
 // is a no-op in the reducer — preferences are already in the Model; this only
 // closes the PersistPreferences command so side effects stay in Commands, not
@@ -548,6 +568,7 @@ export const Message = S.Union([
   ClickedStartAppleFm,
   SucceededAppleFmSession,
   FailedAppleFmSession,
+  GotInferenceGatewayReadiness,
   ClickedStartBuiltInAgent,
   SucceededBuiltInAgent,
   FailedBuiltInAgent,
@@ -660,6 +681,7 @@ export const Message = S.Union([
   ChangedDefaultAdapter,
   ChangedDefaultLane,
   ToggledNotificationPanel,
+  ChangedGatewayInferenceFallback,
   SettledPersistPreferences,
 ])
 export type Message = typeof Message.Type

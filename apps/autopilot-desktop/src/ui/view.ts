@@ -48,6 +48,7 @@ import {
   desktopProofReplayCatalog,
   type DesktopProofReplayProjection,
 } from "../shared/proof-replays"
+import { isGatewayBalanceLow } from "../shared/inference-routing"
 
 import type {
   AccountRow,
@@ -99,6 +100,7 @@ import {
   ChangedDefaultAdapter,
   ChangedDefaultLane,
   ToggledNotificationPanel,
+  ChangedGatewayInferenceFallback,
   ChangedChatInput,
   ChangedAddAccountHome,
   ChangedAddAccountPriority,
@@ -249,6 +251,8 @@ import {
   modelProofReplay,
   modelAppleFmReadiness,
   modelBuiltInAgentReadiness,
+  modelInferenceDecision,
+  modelInferenceGatewayReadiness,
   modelInstallReadiness,
   modelOnboardingStatus,
   modelIdentityChoiceState,
@@ -4531,6 +4535,77 @@ const settingsToggle = <T extends string>(
     ),
   )
 
+// #5485: a compact, presentational line describing how the next coding turn's
+// inference will be paid for (own auth vs OpenAgents gateway credits) plus the
+// gateway credit balance / low-balance hint. Reads the live routing decision +
+// the gateway readiness off the model — no spend authority, no key, refs only.
+const inferenceRouteHint = (model: Model): Html => {
+  const decision = modelInferenceDecision(model)
+  const readiness = modelInferenceGatewayReadiness(model)
+  const balance = readiness?.creditBalance ?? null
+  const threshold = readiness?.lowBalanceThreshold ?? 1
+  const low = isGatewayBalanceLow(balance, threshold)
+  const routeLabel =
+    decision.route === "gateway"
+      ? "OpenAgents gateway credits (pay-as-you-go)"
+      : decision.route === "own_auth"
+        ? "Your own auth"
+        : "Unavailable"
+  const tone: "error" | "info" | "success" | "idle" =
+    decision.route === "blocked"
+      ? "error"
+      : decision.route === "gateway" && low
+        ? "info"
+        : decision.route === "gateway"
+          ? "success"
+          : "idle"
+  const balanceText =
+    balance === null
+      ? readiness?.enabled
+        ? "balance unknown"
+        : "gateway off"
+      : `${balance} credits${low ? " · low balance" : ""}`
+  return h.p(
+    [
+      cls(`field-hint inference-route-hint inference-route-${tone}`),
+      h.DataAttribute("autopilot-inference-route", decision.route),
+    ],
+    [
+      "Inference: ",
+      h.strong([], [routeLabel]),
+      decision.usedFallback ? " (no own auth — using credits)" : "",
+      " · ",
+      balanceText,
+    ],
+  )
+}
+
+// #5485: the Settings card for the gateway-fallback preference + a live readout
+// of the current routing decision and credit balance.
+const inferenceGatewayCard = (model: Model): Html => {
+  const readiness = modelInferenceGatewayReadiness(model)
+  const enabledLabel = readiness?.enabled
+    ? "gateway available"
+    : "gateway not yet enabled (server-gated)"
+  return card("Inference", [
+    h.p([cls("card-body")], [
+      "When you have no usable Claude/Codex auth, route coding-session inference through the OpenAgents gateway (pay-as-you-go credits) instead of requiring your own keys. Your own auth is always used when present.",
+    ]),
+    settingsToggle(
+      [
+        { value: "auto" as const, label: "Use credits when needed" },
+        { value: "off" as const, label: "Require own auth" },
+      ],
+      model.gatewayInferenceFallback,
+      (value) => ChangedGatewayInferenceFallback({ value }),
+    ),
+    inferenceRouteHint(model),
+    emptyLine(
+      `Status: ${enabledLabel}. The OpenAgents API key + credit ledger live server-side; this only sets your routing preference.`,
+    ),
+  ])
+}
+
 const settingsPane = (model: Model): Html => {
   const node = modelNode(model)
   const installReadiness = modelInstallReadiness(model)
@@ -4625,6 +4700,12 @@ const settingsPane = (model: Model): Html => {
           (lane) => ChangedDefaultLane({ lane }),
         ),
       ]),
+      // #5485 (EPIC #5474): OpenAgents inference gateway as the default coding
+      // inference when there is no usable own Claude/Codex auth — pay-as-you-go
+      // credits instead of requiring own keys. The toggle is the user's routing
+      // intent; BYO-auth always wins when present. INERT-safe: the live effect
+      // only kicks in once the gateway is served server-side.
+      inferenceGatewayCard(model),
       // #5472: a real Theme control (was static "read-only" copy). Persisted and
       // applied live via the `data-theme` attribute on the app shell (rootView)
       // + the [data-theme="light"] CSS overrides. Dark is the canonical default.
@@ -5084,6 +5165,9 @@ const composerSpawnForm = (model: Model): Html =>
       ),
     ),
     composerAccountPicker(model),
+    // #5485: show how this coding turn's inference is paid for (own auth vs
+    // OpenAgents gateway credits) + the credit balance / low-balance hint.
+    inferenceRouteHint(model),
     // Apple FM runs locally only — the execution-lane selector applies to the
     // codex/claude session.spawn path.
     model.spawnAdapter === "apple_fm"
