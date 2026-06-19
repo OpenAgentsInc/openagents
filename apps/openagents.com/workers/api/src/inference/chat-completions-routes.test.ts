@@ -243,6 +243,100 @@ describe('POST /v1/chat/completions', () => {
     expect(body.error).toBe('provider_error')
     expect(body.reason).toBe('upstream down')
   })
+
+  // ROUTING & SUPPLY SELECTION (#5482) -------------------------------------
+  // The route accepts a multi-lane `lanePlan` and dispatches across it with
+  // bounded-backoff overflow. These exercise the route wiring (the pure router
+  // logic itself is covered in model-router.test.ts).
+
+  const echoAdapter = (id: string): InferenceProviderAdapter => ({
+    ...stubEchoAdapter,
+    id,
+  })
+  const failing = (
+    id: string,
+    retryable: boolean,
+  ): InferenceProviderAdapter => ({
+    complete: () =>
+      Effect.fail(
+        new InferenceAdapterError({ adapterId: id, reason: `${id} down`, retryable }),
+      ),
+    id,
+    stream: () =>
+      Effect.fail(
+        new InferenceAdapterError({ adapterId: id, reason: `${id} down`, retryable }),
+      ),
+  })
+
+  test('overflows to the next lane on a retryable failure and meters the served lane', async () => {
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: false, receiptRef: null }
+      })
+    const registry = new InferenceProviderRegistry()
+    registry.register(failing('primary', true))
+    registry.register(echoAdapter('overflow'))
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          dispatch: { sleep: () => Effect.void },
+          lanePlan: () => ['primary', 'overflow'],
+          meteringHook,
+          registry,
+        }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    // Metering attributes the request to the lane that actually served it.
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.adapterId).toBe('overflow')
+  })
+
+  test('surfaces a non-retryable failure as 502 without overflow', async () => {
+    const overflow = echoAdapter('overflow')
+    let overflowCalls = 0
+    const registry = new InferenceProviderRegistry()
+    registry.register(failing('primary', false))
+    registry.register({
+      ...overflow,
+      complete: request => {
+        overflowCalls += 1
+        return overflow.complete(request)
+      },
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          dispatch: { sleep: () => Effect.void },
+          lanePlan: () => ['primary', 'overflow'],
+          registry,
+        }),
+      ),
+    )
+    expect(response.status).toBe(502)
+    expect(overflowCalls).toBe(0)
+  })
+
+  test('returns model_unavailable when no planned lane is registered', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          lanePlan: () => ['vertex-anthropic'],
+          registry: new InferenceProviderRegistry(),
+        }),
+      ),
+    )
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('model_unavailable')
+  })
 })
 
 describe('inference provider registry seam', () => {
