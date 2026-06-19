@@ -53,7 +53,10 @@ import {
   ChangedProofReplayGeneratedFrom,
   ChangedProofReplayGeneratedKind,
   ChangedProofReplayGeneratedLimit,
+  ChangedProofReplayGeneratedPairRef,
   ChangedProofReplayGeneratedRunRef,
+  ChangedProofReplayGeneratedSince,
+  ChangedProofReplayGeneratedSource,
   ChangedProofReplayGeneratedTo,
   ChangedProofReplayGeneratedWindowRef,
   ChangedAskTitle,
@@ -902,8 +905,24 @@ describe("update reducer (CL-53)", () => {
       withActor,
       ChangedProofReplayGeneratedKind({ value: "real_bitcoin_moved" }),
     )
-    const [withLimit] = update(
+    const [withPair] = update(
       withKind,
+      ChangedProofReplayGeneratedPairRef({
+        value: "pylon.448ba824b5fc879f3a59+pylon.treasury",
+      }),
+    )
+    const [withSource] = update(
+      withPair,
+      ChangedProofReplayGeneratedSource({ value: "settlement_receipt" }),
+    )
+    const [withSince] = update(
+      withSource,
+      ChangedProofReplayGeneratedSince({
+        value: "2026-06-18T12:00:00.000Z:settlement_receipt:event.1",
+      }),
+    )
+    const [withLimit] = update(
+      withSince,
       ChangedProofReplayGeneratedLimit({ value: "10" }),
     )
     const [loading, commands] = update(
@@ -921,7 +940,10 @@ describe("update reducer (CL-53)", () => {
         kind: "real_bitcoin_moved",
         limit: "10",
         mode: "generated",
+        pairRef: "pylon.448ba824b5fc879f3a59+pylon.treasury",
         runRef: "run.tassadar.executor.20260615",
+        since: "2026-06-18T12:00:00.000Z:settlement_receipt:event.1",
+        source: "settlement_receipt",
         to: "2026-06-18T12:05:00.000Z",
         windowRef: "training.window.tassadar.executor.20260615.w1",
       },

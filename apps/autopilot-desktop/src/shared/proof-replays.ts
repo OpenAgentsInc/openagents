@@ -17,10 +17,13 @@ export const DEFAULT_DESKTOP_PROOF_REPLAY_SLUG =
 export type DesktopGeneratedProofReplayFilters = Readonly<{
   from: string
   to: string
+  since?: string
   runRef?: string
   windowRef?: string
   actorRef?: string
+  pairRef?: string
   kind?: string
+  source?: string
   limit?: number
 }>
 
@@ -127,6 +130,30 @@ const optionalParam = (value: string | undefined): string | null => {
   return trimmed === "" ? null : trimmed
 }
 
+const splitList = (value: string | undefined): ReadonlyArray<string> =>
+  value === undefined
+    ? []
+    : value
+        .split(",")
+        .map(item => item.trim())
+        .filter(item => item !== "")
+
+const pairActorRefs = (value: string | undefined): ReadonlyArray<string> =>
+  splitList(value).flatMap(item =>
+    item
+      .split(/[+:]/)
+      .map(part => part.trim())
+      .filter(part => part !== ""),
+  )
+
+const actorRefsForFilters = (
+  filters: DesktopGeneratedProofReplayFilters,
+): ReadonlyArray<string> =>
+  [...new Set([
+    ...splitList(filters.actorRef),
+    ...pairActorRefs(filters.pairRef),
+  ])].sort()
+
 const safeLimit = (value: number | undefined): number => {
   if (value === undefined || !Number.isFinite(value)) return 20
   return Math.min(Math.max(1, Math.trunc(value)), 200)
@@ -149,7 +176,10 @@ export const generatedProofReplayFilterLabel = (
     optionalParam(filters.runRef),
     optionalParam(filters.windowRef),
     optionalParam(filters.actorRef),
+    optionalParam(filters.pairRef),
     optionalParam(filters.kind),
+    optionalParam(filters.source),
+    optionalParam(filters.since),
   ].filter((part): part is string => part !== null)
 
   return parts.length === 0
@@ -167,15 +197,24 @@ export const generatedProofReplayBundleEndpoint = (
   url.searchParams.set("to", filters.to.trim())
   url.searchParams.set("limit", String(safeLimit(filters.limit)))
 
+  const since = optionalParam(filters.since)
   const runRef = optionalParam(filters.runRef)
   const windowRef = optionalParam(filters.windowRef)
-  const actorRef = optionalParam(filters.actorRef)
   const kind = optionalParam(filters.kind)
+  const source = optionalParam(filters.source)
 
+  if (since !== null) url.searchParams.set("since", since)
   if (runRef !== null) url.searchParams.set("runRef", runRef)
   if (windowRef !== null) url.searchParams.set("windowRef", windowRef)
-  if (actorRef !== null) url.searchParams.set("actorRef", actorRef)
-  if (kind !== null) url.searchParams.set("kind", kind)
+  for (const actorRef of actorRefsForFilters(filters)) {
+    url.searchParams.append("actorRef", actorRef)
+  }
+  for (const filterKind of splitList(kind ?? undefined)) {
+    url.searchParams.append("kind", filterKind)
+  }
+  for (const sourceKind of splitList(source ?? undefined)) {
+    url.searchParams.append("source", sourceKind)
+  }
 
   return url.toString()
 }

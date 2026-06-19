@@ -317,7 +317,7 @@ body {
   color: var(--text-secondary, #8a8c93);
   font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 .training-replay-filter-input {

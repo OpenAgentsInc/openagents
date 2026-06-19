@@ -861,7 +861,7 @@ contract; every visible event links back to timeline refs and proof URLs.
    - Implementation status (2026-06-18, issue #5429): Autopilot Desktop replay
      loading now accepts either a curated catalog preset or a bounded generated
      public-activity request. The Training replay pane exposes range, run,
-     window, actor, event-kind, and limit filters, then calls
+     window, actor, pair, event-kind, source, cursor, and limit filters, then calls
      `GET /api/public/proof-replays?mode=activity-timeline&from=...&to=...`
      through the same desktop loader and shipment gate used by curated
      bundles. Generated projections fail closed without valid ISO bounds,

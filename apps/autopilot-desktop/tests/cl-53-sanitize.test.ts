@@ -627,6 +627,9 @@ describe("CL-53 sanitizeTree", () => {
             from: "2026-06-18T12:00:00.000Z",
             to: "2026-06-18T12:05:00.000Z",
             kind: "real_bitcoin_moved",
+            pairRef: "pylon.448ba824b5fc879f3a59+pylon.treasury",
+            since: "2026-06-18T12:00:00.000Z:settlement_receipt:event.1",
+            source: "settlement_receipt",
           },
         },
         filterLabel:
@@ -691,6 +694,9 @@ describe("CL-53 sanitizeTree", () => {
     })
 
     expect(treeContainsText(document.body, "Load generated")).toBe(true)
+    expect(treeContainsText(document.body, "Pair")).toBe(true)
+    expect(treeContainsText(document.body, "Source")).toBe(true)
+    expect(treeContainsText(document.body, "Since")).toBe(true)
     expect(treeContainsText(document.body, "Generated Public Activity Replay")).toBe(true)
     expect(treeContainsText(document.body, "receipt.public.real.1")).toBe(true)
     expect(treeContainsText(document.body, "caveat.public_activity_timeline.source_lag.forum")).toBe(true)

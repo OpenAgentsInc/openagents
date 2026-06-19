@@ -95,7 +95,10 @@ import {
   ChangedProofReplayGeneratedFrom,
   ChangedProofReplayGeneratedKind,
   ChangedProofReplayGeneratedLimit,
+  ChangedProofReplayGeneratedPairRef,
   ChangedProofReplayGeneratedRunRef,
+  ChangedProofReplayGeneratedSince,
+  ChangedProofReplayGeneratedSource,
   ChangedProofReplayGeneratedTo,
   ChangedProofReplayGeneratedWindowRef,
   ClickedAddManagedAccount,
@@ -1700,9 +1703,9 @@ const proofReplayEventRows = (
     .map(event =>
       trainingGate(
         event.kind,
-          event.amountSats === undefined
-            ? event.displayText
-            : `${replaySatsLabel(event.amountSats)} · ${event.displayText}`,
+        event.amountSats === undefined
+          ? event.displayText
+          : `${replaySatsLabel(event.amountSats)} · ${event.displayText}`,
         proofReplayEventTone(event.kind),
       ),
     )
@@ -1802,11 +1805,32 @@ const proofReplayGeneratedFilters = (model: Model): Html =>
       value => ChangedProofReplayGeneratedActorRef({ value }),
     ),
     proofReplayGeneratedField(
+      "Pair",
+      "proof-replay-pair-ref",
+      model.generatedProofReplayPairRef,
+      "pylon.one+pylon.two",
+      value => ChangedProofReplayGeneratedPairRef({ value }),
+    ),
+    proofReplayGeneratedField(
       "Kind",
       "proof-replay-kind",
       model.generatedProofReplayKind,
       "real_bitcoin_moved",
       value => ChangedProofReplayGeneratedKind({ value }),
+    ),
+    proofReplayGeneratedField(
+      "Source",
+      "proof-replay-source",
+      model.generatedProofReplaySource,
+      "settlement_receipt",
+      value => ChangedProofReplayGeneratedSource({ value }),
+    ),
+    proofReplayGeneratedField(
+      "Since",
+      "proof-replay-since",
+      model.generatedProofReplaySince,
+      "2026-06-18T12:00:00.000Z:settlement_receipt:receipt",
+      value => ChangedProofReplayGeneratedSince({ value }),
     ),
     proofReplayGeneratedField(
       "Limit",

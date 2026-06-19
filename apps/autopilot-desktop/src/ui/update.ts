@@ -88,7 +88,10 @@ const proofReplayCommandRequestForModel = (
         kind: model.generatedProofReplayKind,
         limit: model.generatedProofReplayLimit,
         mode: "generated",
+        pairRef: model.generatedProofReplayPairRef,
         runRef: model.generatedProofReplayRunRef,
+        since: model.generatedProofReplaySince,
+        source: model.generatedProofReplaySource,
         to: model.generatedProofReplayTo,
         windowRef: model.generatedProofReplayWindowRef,
       }
@@ -968,9 +971,24 @@ export const update = (model: Model, message: Message): Result => {
         Model.make({ ...model, generatedProofReplayActorRef: message.value }),
         noCommands,
       ]
+    case "ChangedProofReplayGeneratedPairRef":
+      return [
+        Model.make({ ...model, generatedProofReplayPairRef: message.value }),
+        noCommands,
+      ]
     case "ChangedProofReplayGeneratedKind":
       return [
         Model.make({ ...model, generatedProofReplayKind: message.value }),
+        noCommands,
+      ]
+    case "ChangedProofReplayGeneratedSource":
+      return [
+        Model.make({ ...model, generatedProofReplaySource: message.value }),
+        noCommands,
+      ]
+    case "ChangedProofReplayGeneratedSince":
+      return [
+        Model.make({ ...model, generatedProofReplaySince: message.value }),
         noCommands,
       ]
     case "ChangedProofReplayGeneratedLimit":

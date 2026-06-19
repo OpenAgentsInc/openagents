@@ -250,8 +250,20 @@ export const ChangedProofReplayGeneratedActorRef = m(
   "ChangedProofReplayGeneratedActorRef",
   { value: S.String },
 )
+export const ChangedProofReplayGeneratedPairRef = m(
+  "ChangedProofReplayGeneratedPairRef",
+  { value: S.String },
+)
 export const ChangedProofReplayGeneratedKind = m(
   "ChangedProofReplayGeneratedKind",
+  { value: S.String },
+)
+export const ChangedProofReplayGeneratedSource = m(
+  "ChangedProofReplayGeneratedSource",
+  { value: S.String },
+)
+export const ChangedProofReplayGeneratedSince = m(
+  "ChangedProofReplayGeneratedSince",
   { value: S.String },
 )
 export const ChangedProofReplayGeneratedLimit = m(
@@ -438,7 +450,10 @@ export const Message = S.Union([
   ChangedProofReplayGeneratedRunRef,
   ChangedProofReplayGeneratedWindowRef,
   ChangedProofReplayGeneratedActorRef,
+  ChangedProofReplayGeneratedPairRef,
   ChangedProofReplayGeneratedKind,
+  ChangedProofReplayGeneratedSource,
+  ChangedProofReplayGeneratedSince,
   ChangedProofReplayGeneratedLimit,
   ClickedLoadGeneratedProofReplay,
   ClickedRefreshProofReplay,

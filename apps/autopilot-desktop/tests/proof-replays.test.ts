@@ -163,11 +163,13 @@ describe("desktop proof replays", () => {
           "caveat.public.proof_replay.generated_from_activity_timeline_observation_only",
         ],
         input: {
-          actorRefs: ["pylon.448ba824b5fc879f3a59"],
+          actorRefs: ["pylon.448ba824b5fc879f3a59", "pylon.treasury"],
           filterKinds: ["real_bitcoin_moved"],
+          filterSources: ["settlement_receipt"],
           from: "2026-06-18T12:00:00.000Z",
           limit: 10,
           runRefs: ["run.tassadar.executor.20260615"],
+          since: "2026-06-18T12:00:00.000Z:settlement_receipt:event.1",
           to: "2026-06-18T12:05:00.000Z",
           windowRefs: ["training.window.tassadar.executor.20260615.w1"],
         },
@@ -196,7 +198,10 @@ describe("desktop proof replays", () => {
       from: "2026-06-18T12:00:00.000Z",
       kind: "real_bitcoin_moved",
       limit: 10,
+      pairRef: "pylon.448ba824b5fc879f3a59+pylon.treasury",
       runRef: "run.tassadar.executor.20260615",
+      since: "2026-06-18T12:00:00.000Z:settlement_receipt:event.1",
+      source: "settlement_receipt",
       to: "2026-06-18T12:05:00.000Z",
       windowRef: "training.window.tassadar.executor.20260615.w1",
     }
@@ -212,6 +217,15 @@ describe("desktop proof replays", () => {
     )
 
     expect(calls).toEqual([generatedProofReplayBundleEndpoint(filters)])
+    const calledUrl = new URL(calls[0] ?? "")
+    expect(calledUrl.searchParams.getAll("actorRef")).toEqual([
+      "pylon.448ba824b5fc879f3a59",
+      "pylon.treasury",
+    ])
+    expect(calledUrl.searchParams.get("source")).toBe("settlement_receipt")
+    expect(calledUrl.searchParams.get("since")).toBe(
+      "2026-06-18T12:00:00.000Z:settlement_receipt:event.1",
+    )
     expect(projection.ok).toBe(true)
     expect(projection.entry).toBe(null)
     expect(projection.request.mode).toBe("generated")
@@ -219,6 +233,9 @@ describe("desktop proof replays", () => {
     expect(projection.filterLabel).toContain("run.tassadar.executor.20260615")
     expect(projection.generatedFrom?.input?.filterKinds).toEqual([
       "real_bitcoin_moved",
+    ])
+    expect(projection.generatedFrom?.input?.filterSources).toEqual([
+      "settlement_receipt",
     ])
     expect(projection.generatedFrom?.sourceLag).toHaveLength(1)
     expect(projection.caveatRefs).toEqual(
