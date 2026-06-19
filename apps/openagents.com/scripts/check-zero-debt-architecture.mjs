@@ -308,6 +308,11 @@ const runPromiseAllowlist = new Map([
   // moves to an Effect program. Keeping it here (not in index.ts) holds the
   // index.ts bridge budget flat.
   ['workers/api/src/http/forum-social-preview.ts', 1],
+  // Added 2026-06-19 (#5497): the billing route runs the Effect-returning
+  // USD->msat credit bridge (`fundInferenceFromCredit`) once from the
+  // Promise-based `/api/billing/inference-credit` handler. Named bridge; ratchet
+  // down if the billing route handlers move to an Effect program.
+  ['workers/api/src/billing-routes.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

@@ -28,6 +28,7 @@
 // second split definition).
 
 import { type FundingKind, type PriceResult } from './pricing'
+import { DEFAULT_BTC_USD } from './usd-msat-conversion'
 
 // Default referrer share of MARGIN for inference, in basis points. The standing
 // RL-1 referral policy (`SITE_REFERRAL_PAYOUT_PERCENT_BPS`) is 5% of the
@@ -105,11 +106,11 @@ export type InferenceSplit = Readonly<{
 }>
 
 // BTC/USD reference rate for the USD→sat conversion used to feed the sat-
-// denominated referral ledger. Mirrors the metering hook's `DEFAULT_BTC_USD`
-// ($100k/BTC) so the split and the charge use one rate. !! BILLING TODO: replace
-// with a live oracle read when one is wired (same single-knob caveat as
-// metering-hook's DEFAULT_BTC_USD).
-export const SPLIT_DEFAULT_BTC_USD = 100_000 as const
+// denominated referral ledger. Pinned to the SHARED single-source rate
+// (`usd-msat-conversion.ts`, #5497) so the split, the metering charge, and the
+// USD->msat credit bridge all use one rate. !! BILLING TODO: replace with a live
+// oracle read when one is wired (the shared module is the single knob).
+export const SPLIT_DEFAULT_BTC_USD: number = DEFAULT_BTC_USD
 
 const SATS_PER_BTC = 100_000_000 as const
 

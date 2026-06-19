@@ -3,10 +3,14 @@ import {
   redeemBillingCoupon,
   upsertBillingAutoTopUpPolicy,
 } from './billing'
+import { Effect } from 'effect'
+
+import { fundInferenceFromCredit } from './inference/usd-credit-bridge'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { readJsonObject } from './json-boundary'
 import { firstText } from './omni-runs'
 import { openAgentsDatabase } from './runtime'
+import { compactRandomId } from './runtime-primitives'
 import {
   type StripeBillingEnv,
   StripeCheckoutError,
@@ -283,6 +287,100 @@ export const makeBillingApiHandlers = <
         session,
       )
     }
+  },
+
+  // POST /api/billing/inference-credit (#5497): fund inference from the caller's
+  // USD credit balance. Debits the user's USD `billing_ledger_entries` and grants
+  // the equivalent msat into their agent balance (`agent:<userId>`) as a
+  // USD-origin (inference-spendable, NOT Bitcoin-withdrawable) credit. Bounded by
+  // the available USD balance, idempotent per client-supplied grantRef, atomic.
+  handleBillingInferenceCreditApi: async (
+    request: Request,
+    environment: Env,
+    ctx: ExecutionContext,
+  ) => {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = await dependencies.requireBrowserSession(
+      request,
+      environment,
+      ctx,
+    )
+
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const amountCents = firstNumber(body.amountCents, body.amount_cents)
+    // A client may supply a stable grantRef so a retry is idempotent (one ref =
+    // one grant). Default to a per-user-stable-per-request id otherwise.
+    const grantRef =
+      firstText(body.grantRef, body.grant_ref) ??
+      `${session.user.userId}:${compactRandomId('credit')}`
+
+    if (amountCents === undefined) {
+      return dependencies.appendRefreshedSessionCookies(
+        noStoreJsonResponse(
+          {
+            billing: await readBillingSummary(
+              openAgentsDatabase(environment),
+              session.user.userId,
+            ),
+            error: 'amount_required',
+            message: 'Enter an amount of credit (in cents) to fund inference.',
+          },
+          { status: 400 },
+        ),
+        session,
+      )
+    }
+
+    const outcome = await Effect.runPromise(
+      fundInferenceFromCredit(
+        {
+          amountCents,
+          grantRef,
+          userId: session.user.userId,
+        },
+        { db: openAgentsDatabase(environment) },
+      ),
+    )
+
+    const billing = await readBillingSummary(
+      openAgentsDatabase(environment),
+      session.user.userId,
+    )
+
+    if (!outcome.ok) {
+      return dependencies.appendRefreshedSessionCookies(
+        noStoreJsonResponse(
+          {
+            billing,
+            error: outcome.reason,
+            message: outcome.message,
+          },
+          { status: 400 },
+        ),
+        session,
+      )
+    }
+
+    return dependencies.appendRefreshedSessionCookies(
+      noStoreJsonResponse({
+        billing,
+        grantedCents: outcome.grantedCents,
+        grantedMsat: outcome.grantedMsat,
+        message: 'Inference credit funded.',
+        receiptRef: outcome.receiptRef,
+        status: 'inference_credit_funded',
+      }),
+      session,
+    )
   },
 
   handleBillingStripeSetupIntentApi: async (

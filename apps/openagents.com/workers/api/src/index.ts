@@ -7474,6 +7474,10 @@ const omniRoutes = makeOmniRoutes({
     routeEffect('handle_billing_checkout_api', () =>
       billingApiHandlers.handleBillingCheckoutApi(request, env, ctx),
     ),
+  handleBillingInferenceCreditApi: (request, env, ctx) =>
+    routeEffect('handle_billing_inference_credit_api', () =>
+      billingApiHandlers.handleBillingInferenceCreditApi(request, env, ctx),
+    ),
   handleBillingAutoTopUpPolicyApi: (request, env, ctx) =>
     routeEffect('handle_billing_auto_top_up_policy_api', () =>
       billingApiHandlers.handleBillingAutoTopUpPolicyApi(request, env, ctx),

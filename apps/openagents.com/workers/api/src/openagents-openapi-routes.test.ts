@@ -1106,6 +1106,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/billing/auto-top-up/run',
   '/api/billing/checkout',
   '/api/billing/coupons/redeem',
+  '/api/billing/inference-credit',
   '/api/billing/stripe/checkout-return',
   '/api/billing/stripe/setup-intents',
   '/api/billing/stripe/setup-intents/save',

@@ -90,6 +90,7 @@ CREATE TABLE agent_balances (
   actor_ref TEXT PRIMARY KEY,
   balance_msat INTEGER NOT NULL DEFAULT 0 CHECK (balance_msat >= 0),
   held_msat INTEGER NOT NULL DEFAULT 0,
+  usd_credit_msat INTEGER NOT NULL DEFAULT 0 CHECK (usd_credit_msat >= 0),
   sweep_enabled INTEGER NOT NULL DEFAULT 1,
   sweep_threshold_sat INTEGER NOT NULL DEFAULT 210,
   send_credits_below_sat INTEGER NOT NULL DEFAULT 10,

@@ -15,6 +15,11 @@ export const PayInType = S.Literals([
   'buffer_funding',
   'reward',
   'adjustment',
+  // USD-purchased, inference-spendable credit grant (#5497). Funds the msat
+  // `agent_balances` ledger from a card (Stripe) USD purchase. The granted msat
+  // is tracked as USD-origin (`agent_balances.usd_credit_msat`) so the RL-3
+  // asset boundary keeps it inference-spendable but NOT Bitcoin-withdrawable.
+  'usd_credit_grant',
 ])
 export type PayInType = typeof PayInType.Type
 
@@ -469,9 +474,18 @@ export const retryPayInStatements = (
 
 export type AgentBalanceRow = Readonly<{
   actorRef: string
+  // Inference-spendable balance: total minus escrow-held. USD-funded credit
+  // (#5497) IS included here — a card purchase funds inference.
   availableMsat: number
   balanceMsat: number
   heldMsat: number
+  // USD-origin portion of `balance_msat` (#5497, RL-3). Inference-spendable but
+  // NOT Bitcoin-withdrawable; the sweep subtracts it.
+  usdCreditMsat: number
+  // Bitcoin-withdrawable balance: available minus the USD-origin portion,
+  // floored at 0. This is the ONLY balance the Lightning sweep may pay out as
+  // real Bitcoin (RL-3 asset boundary). A USD-purchased credit never leaks here.
+  bitcoinWithdrawableMsat: number
   sweepEnabled: boolean
   sweepThresholdSat: number
   sendCreditsBelowSat: number
@@ -482,23 +496,30 @@ export const decodeAgentBalanceRow = (row: {
   actor_ref: unknown
   balance_msat: unknown
   held_msat?: unknown
+  usd_credit_msat?: unknown
   sweep_enabled: unknown
   sweep_threshold_sat: unknown
   send_credits_below_sat: unknown
   receive_credits_below_sat: unknown
-}): AgentBalanceRow => ({
-  availableMsat: Math.max(
+}): AgentBalanceRow => {
+  const availableMsat = Math.max(
     0,
     Number(row.balance_msat) - Number(row.held_msat ?? 0),
-  ),
-  actorRef: String(row.actor_ref),
-  balanceMsat: Number(row.balance_msat),
-  heldMsat: Number(row.held_msat ?? 0),
-  receiveCreditsBelowSat: Number(row.receive_credits_below_sat),
-  sendCreditsBelowSat: Number(row.send_credits_below_sat),
-  sweepEnabled: Number(row.sweep_enabled) === 1,
-  sweepThresholdSat: Number(row.sweep_threshold_sat),
-})
+  )
+  const usdCreditMsat = Math.max(0, Number(row.usd_credit_msat ?? 0))
+  return {
+    availableMsat,
+    actorRef: String(row.actor_ref),
+    balanceMsat: Number(row.balance_msat),
+    bitcoinWithdrawableMsat: Math.max(0, availableMsat - usdCreditMsat),
+    heldMsat: Number(row.held_msat ?? 0),
+    receiveCreditsBelowSat: Number(row.receive_credits_below_sat),
+    sendCreditsBelowSat: Number(row.send_credits_below_sat),
+    sweepEnabled: Number(row.sweep_enabled) === 1,
+    sweepThresholdSat: Number(row.sweep_threshold_sat),
+    usdCreditMsat,
+  }
+}
 
 export const readAgentBalance = async (
   db: D1Database,
@@ -506,7 +527,8 @@ export const readAgentBalance = async (
 ): Promise<AgentBalanceRow | null> => {
   const row = await db
     .prepare(
-      `SELECT actor_ref, balance_msat, held_msat, sweep_enabled, sweep_threshold_sat,
+      `SELECT actor_ref, balance_msat, held_msat, usd_credit_msat,
+              sweep_enabled, sweep_threshold_sat,
               send_credits_below_sat, receive_credits_below_sat
        FROM agent_balances WHERE actor_ref = ?`,
     )
