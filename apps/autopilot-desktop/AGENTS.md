@@ -49,17 +49,23 @@ quiet and black).
   still mounts EVERY pane — keep it green.
 - **The text bar is the one surface.** Typing + submitting shows a clean
   conversation (you → answer) with NO session refs / program-step / verdict /
-  node-state jargon. The response path is the loopback seam
-  `shellLoopbackReply` in `commands.ts` (`RespondToShellInput` →
-  `RespondedShell`). **To wire a real model, replace the body of
-  `shellLoopbackReply` with an RPC call** (same pattern as `SpawnChatTurn`); the
-  reducer + view do not change.
+  node-state jargon. The response path is `RespondToShellInput` in `commands.ts`
+  (→ `RespondedShell`). **HUD H5 (#5503) wired a REAL model:** the command calls
+  the Bun `shellTurn` RPC verb (`src/bun/shell-turn.ts`), which posts to the live
+  OpenAgents inference gateway (`POST /v1/chat/completions`, Gemini 3.5 Flash on
+  the free per-agent allowance) using the desktop's configured agent token
+  (`OPENAGENTS_AGENT_TOKEN`, kept in the Bun host — never crosses to the
+  webview). No token / a gateway failure returns an HONEST plain-language
+  message, never a fabricated answer. The reducer + view are unchanged; the
+  deterministic `shellLoopbackReply` is kept as the offline/test fallback and is
+  what the proof injects so parity stays deterministic.
 - **Programmatic control + parity.** Drive the shell over the existing RPC path:
   the Bun→webview `shellControl` message (`shared/rpc.ts`, routed in `main.ts`)
   pushes the SAME inbound messages the UI dispatches (`ChangedShellInput` /
   `SubmittedShell`). Read what the owner sees with `shellTranscriptText(model)`
   (pure projection of the rendered conversation). Proof:
-  `bun run proof:shell-control`. Tests: `tests/zero-base-shell.test.ts`.
+  `bun run proof:shell-control`. Tests: `tests/zero-base-shell.test.ts`,
+  `tests/shell-turn.test.ts`.
 - **Quiet by default.** Native OS notifications are OFF unless
   `OA_DESKTOP_OS_NOTIFICATIONS=1` (see `src/bun/index.ts`). The in-app
   notification center still accumulates as a passive projection.

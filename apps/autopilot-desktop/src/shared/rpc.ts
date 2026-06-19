@@ -646,6 +646,19 @@ export type InferenceGatewayReadinessResponse = {
   readonly error?: string
 }
 
+// HUD H5 (#5503): the zero-base shell's REAL model response. The Bun host owns
+// the OpenAgents agent token + the gateway base URL and calls the
+// OpenAI-compatible `/v1/chat/completions` surface (Gemini 3.5 Flash on the free
+// per-agent allowance); the webview receives ONLY the plain assistant text (or a
+// clean, honest "how to configure"/error message when there is no token or the
+// call fails). NEVER the raw token. `ok:false` still carries a user-facing
+// `text` — it is never a fabricated model answer, just an honest plain-language
+// note with no session-ref / program-step / verdict / node-state jargon.
+export type ShellTurnResponse = {
+  readonly ok: boolean
+  readonly text: string
+}
+
 export type { InstallReadinessResponse } from "./install-readiness"
 export type {
   OnboardingStatusResponse,
@@ -845,6 +858,17 @@ export type DesktopRPCSchema = {
       readonly inferenceGatewayReadiness: {
         readonly params: Record<string, never>
         readonly response: InferenceGatewayReadinessResponse
+      }
+      // HUD H5 (#5503): one zero-base shell turn — the Bun host sends the
+      // prompt to the live OpenAgents inference gateway
+      // (`POST /v1/chat/completions`, Gemini 3.5 Flash on the free per-agent
+      // allowance) using the desktop's configured agent token and returns ONLY
+      // the plain assistant text. The raw token never crosses this boundary.
+      // No-token / failure returns `ok:false` with an honest plain-language
+      // message (never a fabricated answer).
+      readonly shellTurn: {
+        readonly params: { prompt: string }
+        readonly response: ShellTurnResponse
       }
       // #5064: one public-safe first-run health projection for normal installs.
       readonly installReadiness: {

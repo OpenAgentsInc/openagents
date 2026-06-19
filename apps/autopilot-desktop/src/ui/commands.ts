@@ -1537,18 +1537,26 @@ export const PersistPreferences = Command.define(
   }),
 )
 
-// ── Zero-base shell loopback (owner directive, 2026-06-19) ──────────────────
-// The minimal default surface's response path. We START with a deterministic
-// local loopback so the bar is provably alive end-to-end (the owner — and a
-// programmatic driver — can type, submit, and read a response with no node,
-// no provider account, no network). It is intentionally simple and honest: it
-// echoes the prompt back, labelled as a local loopback, so nothing claims to be
-// a model answer that isn't.
+// ── Zero-base shell: REAL model response (HUD H5, #5503) ────────────────────
+// The minimal default surface's response path. Typing + submitting in the bar
+// now returns a REAL model answer: `RespondToShellInput` calls the Bun host's
+// `shellTurn` RPC verb (same `getRequest()` pattern as SpawnChatTurn), which
+// talks to the now-LIVE OpenAgents inference gateway
+// (`POST /v1/chat/completions`, Gemini 3.5 Flash on the free per-agent
+// allowance) using the desktop's configured OpenAgents agent token. The Bun
+// host owns the token; the webview only ever sees the plain assistant text.
 //
-// THE SEAM TO WIRE THE REAL MODEL: replace the body of `shellLoopbackReply`
-// with an RPC call (e.g. a Bun `shellTurn` verb over getRequest(), the same
-// pattern as SpawnChatTurn) and map its result into `RespondedShell`. The
-// reducer + view do not change — they already consume `RespondedShell`.
+// The Bun handler is HONEST and NEVER FAKES: with no token configured (or on a
+// gateway/network failure) it returns `ok:false` with a clean, plain-language
+// "how to configure"/error message — never an invented answer. So the webview
+// renders `result.text` in both cases; nothing here pretends a failure is a
+// model answer.
+//
+// DETERMINISTIC SEAM PRESERVED: `shellLoopbackReply` stays exported as the pure,
+// node-free, network-free fallback. It is what the programmatic-control proof
+// (`bun run proof:shell-control`) and the headless tests inject so parity stays
+// deterministic, and it is the last-resort reply if the RPC bridge itself throws
+// before the Bun host can return its own honest message.
 export const shellLoopbackReply = (prompt: string): string =>
   `echo (local loopback): ${prompt}`
 
@@ -1557,7 +1565,14 @@ export const RespondToShellInput = Command.define(
   { prompt: S.String },
   RespondedShell,
 )(({ prompt }) =>
-  Effect.sync(() =>
-    RespondedShell({ prompt, text: shellLoopbackReply(prompt) }),
+  Effect.tryPromise(() => getRequest().shellTurn({ prompt })).pipe(
+    // The Bun host already returns honest, user-facing `text` for ok:true AND
+    // ok:false (no-token / gateway error), so we render it verbatim either way.
+    Effect.map((result) => RespondedShell({ prompt, text: result.text })),
+    // Only reached if the RPC bridge itself throws (e.g. the host is gone). Fall
+    // back to the deterministic local loopback so the bar always answers.
+    Effect.catch(() =>
+      Effect.succeed(RespondedShell({ prompt, text: shellLoopbackReply(prompt) })),
+    ),
   ),
 )

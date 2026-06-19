@@ -540,8 +540,9 @@ export const SettledPersistPreferences = m("SettledPersistPreferences")
 // ── Zero-base shell (owner directive, 2026-06-19) ───────────────────────────
 // The minimal default surface's messages. `ChangedShellInput` tracks the bottom
 // text bar; `SubmittedShell` submits the current input (a turn); `RespondedShell`
-// is the response landing back (from the loopback seam in commands.ts — the
-// clear seam where the real model gets wired). `OpenedPanes` reveals the KEPT
+// is the response landing back (HUD H5 #5503: from the real-model `shellTurn`
+// RPC in commands.ts, with the deterministic loopback as the offline/test
+// fallback). `OpenedPanes` reveals the KEPT
 // full multi-pane UI (explicit open → lands on the chat pane); `ClosedPanes`
 // returns to the black shell. These are the only verbs the shell needs.
 export const ChangedShellInput = m("ChangedShellInput", { value: S.String })

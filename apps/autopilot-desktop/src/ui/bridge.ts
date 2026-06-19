@@ -28,6 +28,7 @@ import type {
   PromiseSurfacingInput,
   PromiseSurfacingReadinessResponse,
   PromiseSurfacingResponse,
+  ShellTurnResponse,
   TrainingBootstrapGrantResponse,
   TrainingDashboardSummaryResponse,
   TrainingEvidenceAdmissionResponse,
@@ -67,6 +68,10 @@ export type DesktopRequests = {
   inferenceGatewayReadiness(
     p: Record<string, never>,
   ): Promise<InferenceGatewayReadinessResponse>
+  // HUD H5 (#5503): one zero-base shell turn against the live inference gateway.
+  // Bun owns the agent token; the webview sends only the prompt and receives the
+  // plain assistant text (or an honest configure/error message).
+  shellTurn(p: { prompt: string }): Promise<ShellTurnResponse>
   installReadiness(
     p: Record<string, never>,
   ): Promise<InstallReadinessResponse>

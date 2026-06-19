@@ -39,6 +39,7 @@ import {
 } from "../shared/builtin-agent"
 import { projectInstallReadiness } from "../shared/install-readiness"
 import { buildInferenceGatewayReadiness } from "./inference-gateway"
+import { buildShellTurn, resolveShellAgentToken } from "./shell-turn"
 import {
   addManagedAccount,
   listManagedAccounts,
@@ -769,6 +770,18 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
         return buildInferenceGatewayReadiness({
           env: Bun.env,
           apiKey: Bun.env.OPENAGENTS_INFERENCE_API_KEY ?? null,
+        })
+      },
+      // HUD H5 (#5503): one zero-base shell turn. The Bun host reads the
+      // desktop's configured OpenAgents agent token (the same OPENAGENTS_AGENT_TOKEN
+      // it already uses for openagents.com) and calls the live inference gateway;
+      // only the plain assistant text (or an honest configure/error message)
+      // crosses back to the webview. The raw token never does.
+      async shellTurn(params) {
+        return buildShellTurn({
+          prompt: params.prompt,
+          env: Bun.env,
+          agentToken: resolveShellAgentToken(Bun.env),
         })
       },
       async installReadiness() {
