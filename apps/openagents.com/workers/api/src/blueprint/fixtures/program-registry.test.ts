@@ -21,6 +21,11 @@ import {
   AUTOPILOT_CONTINUATION_PROGRAM_REGISTRY_API_SEED,
   AUTOPILOT_CONTINUATION_PROGRAM_TYPES,
 } from './program-registry'
+import {
+  BLUEPRINT_REPLAY_PROGRAM_SIGNATURE_ID,
+  BLUEPRINT_REPLAY_PROGRAM_TYPE_ID,
+  BLUEPRINT_REPLAY_TOOL_REF,
+} from './replay-signatures'
 
 const run: BlueprintProgramRunRecord = {
   actorRef: 'actor.operator.test',
@@ -57,7 +62,9 @@ const run: BlueprintProgramRunRecord = {
 describe('Blueprint Program Registry projection', () => {
   test('seeds an operator-safe registry entry for every continuation action', () => {
     expect(AUTOPILOT_CONTINUATION_PROGRAM_REGISTRY.entries).toHaveLength(
-      AUTOPILOT_CONTINUATION_ACTIONS.length + DELIVERY_PIPELINE_PROGRAMS.length,
+      AUTOPILOT_CONTINUATION_ACTIONS.length +
+        DELIVERY_PIPELINE_PROGRAMS.length +
+        1,
     )
 
     const continuationEntries =
@@ -85,6 +92,35 @@ describe('Blueprint Program Registry projection', () => {
         entry => entry.safeProjection && !entry.directMutationAllowed,
       ),
     ).toBe(true)
+  })
+
+  test('seeds the ShowReplay proof-projection signature with a replay module scope', () => {
+    const entry = AUTOPILOT_CONTINUATION_PROGRAM_REGISTRY.entries.find(
+      candidate => candidate.programTypeId === BLUEPRINT_REPLAY_PROGRAM_TYPE_ID,
+    )
+    const signature =
+      AUTOPILOT_CONTINUATION_PROGRAM_REGISTRY.programSignatures.find(
+        candidate => candidate.id === BLUEPRINT_REPLAY_PROGRAM_SIGNATURE_ID,
+      )
+
+    expect(entry).toMatchObject({
+      directMutationAllowed: false,
+      family: 'proof_projection',
+      programSignatureIds: [BLUEPRINT_REPLAY_PROGRAM_SIGNATURE_ID],
+      programTypeId: BLUEPRINT_REPLAY_PROGRAM_TYPE_ID,
+      safeProjection: true,
+    })
+    expect(signature).toMatchObject({
+      inputSchema: { schemaRef: 'schema.blueprint.ShowReplayInput.v1' },
+      outputSchema: { schemaRef: 'schema.blueprint.ShowReplayOutput.v1' },
+      supportsProofProjection: true,
+    })
+    expect(signature?.toolScopes[0]).toMatchObject({
+      replayModule: {
+        kind: 'replay_module',
+      },
+      toolRef: BLUEPRINT_REPLAY_TOOL_REF,
+    })
   })
 
   test('folds delivery-pipeline programs into the registry projection', () => {

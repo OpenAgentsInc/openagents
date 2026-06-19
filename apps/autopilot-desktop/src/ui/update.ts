@@ -57,6 +57,8 @@ import {
 import type { Message } from "./message"
 import {
   BLUEPRINT_CHAT_SIGNATURE_REF,
+  BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF,
+  BLUEPRINT_CHAT_REPLAY_TOOL_REF,
   BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
   Model,
   blueprintChatScopedSteps,
@@ -193,6 +195,10 @@ const buildBlueprintChatObjective = (prompt: string): string =>
     [
       "For any Tassadar module step, report only public refs, the exact-replay verdict,",
       `and digest ${BLUEPRINT_CHAT_TASSADAR_DIGEST_REF}. Do not include raw traces.`,
+    ].join(" "),
+    [
+      `For proof replay modules, use signature ${BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF}`,
+      `and tool ${BLUEPRINT_CHAT_REPLAY_TOOL_REF}; return public bundle refs only.`,
     ].join(" "),
     "",
     "User turn:",

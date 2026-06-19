@@ -157,6 +157,8 @@ function appleFmToolNameFromProbe(toolName: ProbeToolName): AppleFmToolName | un
     case "propose_action_submission":
       return toolName;
     case "record_evidence":
+    case "execute_tassadar_module_step":
+    case "show_proof_replay_bundle":
       return undefined;
   }
 }

@@ -18,6 +18,7 @@ import {
   type BlueprintProgramStatus as BlueprintProgramStatusType,
   BlueprintProgramToolScope,
   type BlueprintProgramToolScope as BlueprintProgramToolScopeType,
+  BlueprintReplayModuleBinding,
   BlueprintTassadarModuleStepBinding,
   type BlueprintProgramType,
   BlueprintToolAccess,
@@ -42,6 +43,12 @@ import {
   type BlueprintTassadarModuleStepEvidence as BlueprintTassadarModuleStepEvidenceType,
   executeBlueprintTassadarModuleStep,
 } from './tassadar-module-step'
+import {
+  BlueprintReplayModuleEvidence,
+  type BlueprintReplayModuleEvidence as BlueprintReplayModuleEvidenceType,
+  type BlueprintReplayModuleRuntime,
+  executeBlueprintReplayModule,
+} from './replay-module'
 
 export const BlueprintChatProgramSessionAdapter = S.Literals([
   'codex',
@@ -77,6 +84,9 @@ export const BlueprintChatProgramTurnInput = S.Struct({
   programSignatureIds: S.optional(S.Array(S.String)),
   programTypeIds: S.optional(S.Array(S.String)),
   promptSummaryRef: S.String,
+  replayIntentRef: S.optional(S.String),
+  replaySlug: S.optional(S.String),
+  replayTargetRef: S.optional(S.String),
   registryVersionRef: S.optional(S.String),
   riskCeiling: BlueprintProgramRiskClass,
   routeRef: S.String,
@@ -113,6 +123,7 @@ export const BlueprintChatProgramToolDefinition = S.Struct({
   programSignatureId: S.String,
   programTypeId: S.String,
   receiptRequirementRefs: S.Array(S.String),
+  replayModule: S.optional(BlueprintReplayModuleBinding),
   sourceAuthorityRefs: S.Array(S.String),
   tassadarModuleStep: S.optional(BlueprintTassadarModuleStepBinding),
   toolRef: S.String,
@@ -239,6 +250,7 @@ export const BlueprintChatProgramTurnResult = S.Struct({
   noSpend: S.Literal(true),
   programRun: BlueprintProgramRunRecord,
   response: BlueprintChatProgramResponse,
+  replayModuleEvidence: S.Array(BlueprintReplayModuleEvidence),
   safeProjection: S.Literal(true),
   sessionSubstrateRef: S.Literal('substrate.autopilot.session_spawn.node_state_poll'),
   tassadarModuleStepEvidence: S.Array(BlueprintTassadarModuleStepEvidence),
@@ -253,6 +265,7 @@ export const BlueprintChatProgramRuntimeStage = S.Literals([
   'signature_selection',
   'tool_menu',
   'session',
+  'replay_module',
   'tassadar_step',
   'unsafe_projection',
 ])
@@ -294,6 +307,7 @@ export type BlueprintChatProgramSessionRuntime = Readonly<{
 }>
 
 export type ExecuteBlueprintChatProgramTurnInput = Readonly<{
+  replayRuntime?: BlueprintReplayModuleRuntime | undefined
   registryProjection?: BlueprintProgramRegistryProjectionType | undefined
   registryVersionRef?: string | undefined
   runtime?: BlueprintChatProgramRuntimePrimitives | undefined
@@ -316,6 +330,8 @@ const TOOL_OUTPUT_SCHEMA_REFS: Readonly<Record<string, string>> = {
   'tool.action_submission.propose':
     'schema.blueprint.BlueprintActionSubmission.v1',
   'tool.context_pack.read': 'schema.blueprint.BlueprintContextPack.v1',
+  'tool.proof_replay.bundle.show':
+    'schema.blueprint.BlueprintReplayModuleEvidence.v1',
   'tool.tassadar.module.execute':
     'schema.blueprint.BlueprintTassadarModuleStepEvidence.v1',
 }
@@ -363,13 +379,22 @@ export const executeBlueprintChatProgramTurn = (
     })
     const tassadarModuleStepEvidence =
       yield* executeTassadarModuleStepsForMenu(input.turn, observedAt, toolMenu)
+    const replayModuleEvidence = yield* executeReplayModulesForMenu(
+      input.turn,
+      observedAt,
+      toolMenu,
+      input.replayRuntime,
+    )
     const session = yield* input.sessionRuntime.spawnSession({
       adapter: input.turn.sessionAdapter,
       menu: toolMenu,
       objectiveRef: input.turn.sessionObjectiveRef,
       selection: lookup,
       turn: input.turn,
-      verifyRefs: ['receipt.program_run'],
+      verifyRefs: uniqueStrings([
+        'receipt.program_run',
+        ...replayModuleEvidence.flatMap(evidence => evidence.receiptRefs),
+      ]),
       ...(input.turn.sessionLane === undefined
         ? {}
         : { lane: input.turn.sessionLane }),
@@ -381,6 +406,7 @@ export const executeBlueprintChatProgramTurn = (
       lookup,
       observedAt,
       programRunId: input.turn.programRunRef ?? runtime.makeProgramRunId(),
+      replayModuleEvidence,
       session,
       tassadarModuleStepEvidence,
       toolMenu,
@@ -405,6 +431,7 @@ export const executeBlueprintChatProgramTurn = (
       noSourceMutation: true,
       noSpend: true,
       programRun,
+      replayModuleEvidence,
       response: {
         contentRedacted: true,
         renderedResponseRef: session.renderedResponseRef,
@@ -675,11 +702,59 @@ const executeTassadarModuleStepsForMenu = (
       ),
   )
 
+const executeReplayModulesForMenu = (
+  turn: BlueprintChatProgramTurnInput,
+  observedAt: string,
+  menu: BlueprintChatProgramToolMenu,
+  replayRuntime: BlueprintReplayModuleRuntime | undefined,
+): Effect.Effect<
+  ReadonlyArray<BlueprintReplayModuleEvidenceType>,
+  BlueprintChatProgramRuntimeError
+> => {
+  const replayTools = menu.tools.filter(tool => tool.replayModule !== undefined)
+
+  if (replayTools.length === 0) {
+    return Effect.succeed([])
+  }
+
+  if (replayRuntime === undefined) {
+    return runtimeError(
+      turn.turnRef,
+      'replay_module',
+      'Selected Blueprint replay signature requires a proof replay runtime.',
+    )
+  }
+
+  return Effect.all(
+    replayTools.map(tool =>
+      executeBlueprintReplayModule({
+        binding: tool.replayModule!,
+        intentRef: turn.replayIntentRef ?? turn.sessionObjectiveRef,
+        observedAt,
+        replaySlug: turn.replaySlug,
+        runtime: replayRuntime,
+        targetRef: turn.replayTargetRef,
+        toolRef: tool.toolRef,
+      }).pipe(
+        Effect.mapError(
+          error =>
+            new BlueprintChatProgramRuntimeError({
+              reason: error.reason,
+              stage: 'replay_module',
+              turnRef: turn.turnRef,
+            }),
+        ),
+      ),
+    ),
+  )
+}
+
 const buildBlueprintChatProgramRunRecord = (
   input: Readonly<{
     lookup: BlueprintChatProgramSignatureSelection
     observedAt: string
     programRunId: string
+    replayModuleEvidence: ReadonlyArray<BlueprintReplayModuleEvidenceType>
     session: BlueprintChatProgramSessionResult
     tassadarModuleStepEvidence: ReadonlyArray<BlueprintTassadarModuleStepEvidenceType>
     toolMenu: BlueprintChatProgramToolMenu
@@ -690,6 +765,12 @@ const buildBlueprintChatProgramRunRecord = (
     evidence => evidence.evidenceRefs,
   )
   const tassadarReceiptRefs = input.tassadarModuleStepEvidence.flatMap(
+    evidence => evidence.receiptRefs,
+  )
+  const replayEvidenceRefs = input.replayModuleEvidence.flatMap(
+    evidence => evidence.evidenceRefs,
+  )
+  const replayReceiptRefs = input.replayModuleEvidence.flatMap(
     evidence => evidence.receiptRefs,
   )
 
@@ -708,6 +789,7 @@ const buildBlueprintChatProgramRunRecord = (
       ...input.session.events.flatMap(event => event.evidenceRefs),
       ...input.session.toolCallbackRefs,
       ...tassadarEvidenceRefs,
+      ...replayEvidenceRefs,
     ]),
     id: input.programRunId,
     idempotencyKey: `blueprint_chat_program_turn:${input.turn.turnRef}`,
@@ -727,6 +809,15 @@ const buildBlueprintChatProgramRunRecord = (
       renderedResponseRef: input.session.renderedResponseRef,
       responseRef: input.session.responseRef,
       responseSummaryRef: input.session.responseSummaryRef,
+      replayBundleRefs: input.replayModuleEvidence.map(
+        evidence => evidence.bundleRef,
+      ),
+      replayModuleStepRefs: input.replayModuleEvidence.map(
+        evidence => evidence.stepRef,
+      ),
+      replaySlugs: input.replayModuleEvidence.map(
+        evidence => evidence.replaySlug,
+      ),
       runnerRef: input.turn.runnerRef,
       sessionRef: input.session.sessionRef,
       sessionSubstrateRef:
@@ -757,6 +848,7 @@ const buildBlueprintChatProgramRunRecord = (
       ...input.session.receiptRefs,
       ...input.session.events.flatMap(event => event.receiptRefs),
       ...tassadarReceiptRefs,
+      ...replayReceiptRefs,
     ]),
     routeRef: input.turn.routeRef,
     typedOutput: {
@@ -765,6 +857,13 @@ const buildBlueprintChatProgramRunRecord = (
       renderedResponseRef: input.session.renderedResponseRef,
       responseRef: input.session.responseRef,
       responseSummaryRef: input.session.responseSummaryRef,
+      replayBundles: input.replayModuleEvidence.map(evidence => ({
+        bundle: evidence.bundle,
+        bundleRef: evidence.bundleRef,
+        renderPlan: evidence.renderPlan,
+        replaySlug: evidence.replaySlug,
+        replayViewSpec: evidence.replayViewSpec,
+      })),
       selectedProgramSignatureId: input.lookup.programSignatureIds[0],
       sessionRef: input.session.sessionRef,
       tassadarModuleStepVerdicts: input.tassadarModuleStepEvidence.map(
@@ -944,6 +1043,7 @@ const uniqueToolScopes = (
       scope.toolRef,
       scope.access,
       scope.requiresApproval,
+      scope.replayModule?.stepRef ?? '',
       scope.tassadarModuleStep?.stepRef ?? '',
     ].join(':')
     if (seen.has(key)) {
@@ -996,6 +1096,9 @@ const toolDefinitionFromScope = (
   ...(input.scope.tassadarModuleStep === undefined
     ? {}
     : { tassadarModuleStep: input.scope.tassadarModuleStep }),
+  ...(input.scope.replayModule === undefined
+    ? {}
+    : { replayModule: input.scope.replayModule }),
 })
 
 const riskWithinCeiling = (

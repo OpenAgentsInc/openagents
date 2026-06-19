@@ -34,6 +34,7 @@ import {
   initialModel,
   Model,
   BLUEPRINT_CHAT_SIGNATURE_REF,
+  BLUEPRINT_CHAT_REPLAY_TOOL_REF,
   BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
   BLUEPRINT_CHAT_TASSADAR_TOOL_REF,
   modelAppleFmReadiness,
@@ -486,12 +487,20 @@ describe("update reducer (CL-53)", () => {
     expect(String(commands[0]?.args.objective)).toContain(
       BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
     )
+    expect(String(commands[0]?.args.objective)).toContain(
+      BLUEPRINT_CHAT_REPLAY_TOOL_REF,
+    )
 
     const userMessage = pending.chatMessages[pending.chatMessages.length - 1]
     expect(userMessage?.body).toBe(prompt)
     expect(
       userMessage?.steps.some(
         step => step.toolRef === BLUEPRINT_CHAT_TASSADAR_TOOL_REF,
+      ),
+    ).toBe(true)
+    expect(
+      userMessage?.steps.some(
+        step => step.toolRef === BLUEPRINT_CHAT_REPLAY_TOOL_REF,
       ),
     ).toBe(true)
 

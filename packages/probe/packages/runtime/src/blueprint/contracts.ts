@@ -75,6 +75,16 @@ export const BlueprintTassadarModuleStepBinding = S.Struct({
 });
 export type BlueprintTassadarModuleStepBinding = typeof BlueprintTassadarModuleStepBinding.Type;
 
+export const BlueprintReplayModuleBinding = S.Struct({
+  allowedReplaySlugs: S.Array(S.String),
+  defaultReplaySlug: S.String,
+  expectedRuntimeRef: S.String,
+  kind: S.Literal("replay_module"),
+  moduleRef: S.String,
+  stepRef: S.String,
+});
+export type BlueprintReplayModuleBinding = typeof BlueprintReplayModuleBinding.Type;
+
 export const BlueprintObjectiveSurface = S.Literals([
   "agent_api",
   "customer_dashboard",
@@ -139,6 +149,7 @@ export const BlueprintProgramToolScope = S.Struct({
   access: BlueprintToolAccess,
   allowedSurfaces: S.Array(BlueprintObjectiveSurface),
   requiresApproval: S.Boolean,
+  replayModule: S.optional(BlueprintReplayModuleBinding),
   tassadarModuleStep: S.optional(BlueprintTassadarModuleStepBinding),
   toolRef: S.String,
 });
@@ -349,6 +360,45 @@ export const BlueprintTassadarModuleStepEvidence = S.Struct({
   verdict: BlueprintTassadarModuleStepVerdict,
 });
 export type BlueprintTassadarModuleStepEvidence = typeof BlueprintTassadarModuleStepEvidence.Type;
+
+export const BlueprintReplayModuleViewSpec = S.Struct({
+  bundleEndpoint: S.String,
+  bundleRef: S.String,
+  replaySlug: S.String,
+  socialPath: S.optional(S.String),
+  websitePath: S.String,
+});
+export type BlueprintReplayModuleViewSpec = typeof BlueprintReplayModuleViewSpec.Type;
+
+export const BlueprintReplayModuleEvidence = S.Struct({
+  authorityBoundary: S.Literal("evidence_only"),
+  bundle: S.Record(S.String, S.Unknown),
+  bundleEndpoint: S.String,
+  bundleRef: S.String,
+  contentRedacted: S.Literal(true),
+  directMutationDisabled: S.Literal(true),
+  evidenceRefs: S.Array(S.String),
+  intentRef: S.String,
+  kind: S.Literal("blueprint_replay_module_evidence"),
+  moduleRef: S.String,
+  noDeploy: S.Literal(true),
+  noEmail: S.Literal(true),
+  noSourceMutation: S.Literal(true),
+  noSpend: S.Literal(true),
+  observedAt: S.String,
+  receiptRefs: S.Array(S.String),
+  renderPlan: S.Record(S.String, S.Unknown),
+  replaySlug: S.String,
+  replayViewSpec: BlueprintReplayModuleViewSpec,
+  sourceAuthority: S.String,
+  sourceRefs: S.Array(S.String),
+  stepRef: S.String,
+  summary: S.String,
+  targetRef: S.String,
+  title: S.String,
+  toolRef: S.String,
+});
+export type BlueprintReplayModuleEvidence = typeof BlueprintReplayModuleEvidence.Type;
 
 export const BlueprintTassadarModuleRegistryEntry = S.Struct({
   artifactRefs: S.Array(S.String),

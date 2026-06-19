@@ -2,6 +2,11 @@ import { readFileSync } from "node:fs"
 import { describe, expect, test } from "bun:test"
 import {
   BLUEPRINT_CHAT_CONTEXT_TOOL_REF,
+  BLUEPRINT_CHAT_REPLAY_EVIDENCE_REF,
+  BLUEPRINT_CHAT_REPLAY_MODULE_REF,
+  BLUEPRINT_CHAT_REPLAY_RECEIPT_REF,
+  BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF,
+  BLUEPRINT_CHAT_REPLAY_TOOL_REF,
   BLUEPRINT_CHAT_TASSADAR_EVIDENCE_REF,
   BLUEPRINT_CHAT_SIGNATURE_REF,
   BLUEPRINT_CHAT_TASSADAR_DIGEST_REF,
@@ -443,6 +448,21 @@ describe("CL-53 sanitizeTree", () => {
       true,
     )
     expect(treeContainsText(document.body, BLUEPRINT_CHAT_TASSADAR_RECEIPT_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_TOOL_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_MODULE_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_EVIDENCE_REF)).toBe(
+      true,
+    )
+    expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_RECEIPT_REF)).toBe(
       true,
     )
     expect(treeContainsText(document.body, "Verified")).toBe(true)

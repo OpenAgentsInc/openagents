@@ -384,6 +384,7 @@ export const STATIC_BLUEPRINT_CONTRACT_EXPORT: BlueprintContractExportSeed = {
     jsonSchema("BlueprintProgramSignature", "public_refs_only"),
     jsonSchema("BlueprintProgramRegistryProjection", "operator_refs_only"),
     jsonSchema("BlueprintProgramRunDetailProjection", "operator_refs_only"),
+    jsonSchema("BlueprintReplayModuleEvidence", "operator_refs_only"),
     jsonSchema("BlueprintTassadarModuleStepEvidence", "operator_refs_only"),
     jsonSchema("BlueprintTassadarModuleRegistryProjection", "operator_refs_only"),
     jsonSchema("ProbeToolMenuPlan", "operator_refs_only"),

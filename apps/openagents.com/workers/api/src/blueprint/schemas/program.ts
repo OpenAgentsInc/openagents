@@ -120,6 +120,17 @@ export const BlueprintTassadarModuleStepBinding = S.Struct({
 export type BlueprintTassadarModuleStepBinding =
   typeof BlueprintTassadarModuleStepBinding.Type
 
+export const BlueprintReplayModuleBinding = S.Struct({
+  allowedReplaySlugs: S.Array(S.String),
+  defaultReplaySlug: S.String,
+  expectedRuntimeRef: S.String,
+  kind: S.Literal('replay_module'),
+  moduleRef: S.String,
+  stepRef: S.String,
+})
+export type BlueprintReplayModuleBinding =
+  typeof BlueprintReplayModuleBinding.Type
+
 export const BlueprintProgramSchemaRef = S.Struct({
   kind: BlueprintSchemaRefKind,
   schemaRef: S.String,
@@ -157,6 +168,7 @@ export const BlueprintProgramToolScope = S.Struct({
   access: BlueprintToolAccess,
   allowedSurfaces: S.Array(BlueprintObjectiveSurface),
   requiresApproval: S.Boolean,
+  replayModule: S.optional(BlueprintReplayModuleBinding),
   tassadarModuleStep: S.optional(BlueprintTassadarModuleStepBinding),
   toolRef: S.String,
 })

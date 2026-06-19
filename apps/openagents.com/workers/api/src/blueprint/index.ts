@@ -69,6 +69,8 @@ export {
   type BlueprintProgramSignature as BlueprintProgramSignatureType,
   BlueprintProgramStatus,
   type BlueprintProgramStatus as BlueprintProgramStatusType,
+  BlueprintReplayModuleBinding,
+  type BlueprintReplayModuleBinding as BlueprintReplayModuleBindingType,
   BlueprintTassadarModuleStepBinding,
   type BlueprintTassadarModuleStepBinding as BlueprintTassadarModuleStepBindingType,
   BlueprintTassadarModuleStepExecutionMode,
@@ -315,6 +317,19 @@ export {
   executeBlueprintTassadarModuleStep,
   type BlueprintTassadarModuleStepError,
 } from './services/tassadar-module-step'
+
+export {
+  BlueprintReplayModuleError,
+  BlueprintReplayModuleEvidence,
+  type BlueprintReplayModuleEvidence as BlueprintReplayModuleEvidenceType,
+  type BlueprintReplayModuleRuntime,
+  type BlueprintReplayModuleRuntimeInput,
+  BlueprintReplayModuleViewSpec,
+  type BlueprintReplayModuleViewSpec as BlueprintReplayModuleViewSpecType,
+  DEFAULT_BLUEPRINT_REPLAY_SLUG,
+  executeBlueprintReplayModule,
+  makePublicProofReplayModuleRuntime,
+} from './services/replay-module'
 
 export {
   assertBlueprintContinuationDecisionEvidenceOnly,

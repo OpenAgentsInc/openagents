@@ -124,6 +124,7 @@ export const ChatStepKind = S.Literals([
   "signature",
   "tool_scope",
   "tassadar_module_step",
+  "replay_module",
 ])
 export type ChatStepKind = typeof ChatStepKind.Type
 
@@ -622,6 +623,16 @@ export const BLUEPRINT_CHAT_TASSADAR_RECEIPT_REF =
   "receipt.openagents.blueprint_tassadar_step.cc1403674fc0d388"
 export const BLUEPRINT_CHAT_TASSADAR_PROOF_REPLAY_REF =
   DefaultDesktopProofReplaySlug
+export const BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF =
+  "program_signature.blueprint.show_replay.v1"
+export const BLUEPRINT_CHAT_REPLAY_TOOL_REF =
+  "tool.proof_replay.bundle.show"
+export const BLUEPRINT_CHAT_REPLAY_MODULE_REF =
+  "module.openagents.public_proof_replay_runtime"
+export const BLUEPRINT_CHAT_REPLAY_EVIDENCE_REF =
+  "evidence.openagents.blueprint_replay_module.first-real-settlement"
+export const BLUEPRINT_CHAT_REPLAY_RECEIPT_REF =
+  "receipt.public_proof_replay_bundle"
 
 export const blueprintChatScopedSteps = (
   input: Readonly<{
@@ -632,6 +643,7 @@ export const blueprintChatScopedSteps = (
     tassadarVerdict?: ChatStepVerdict
     tassadarEvidenceRef?: string | null
     tassadarReceiptRef?: string | null
+    replayStatus?: ChatStepStatus
   }> = {},
 ): Array<ChatStep> => {
   const linkedSessionRef = input.linkedSessionRef ?? null
@@ -696,6 +708,25 @@ export const blueprintChatScopedSteps = (
         input.tassadarEvidenceRef ?? BLUEPRINT_CHAT_TASSADAR_EVIDENCE_REF,
       receiptRef: tassadarReceiptRef,
       tassadarModuleStepRef: BLUEPRINT_CHAT_TASSADAR_STEP_REF,
+      proofReplayRef: BLUEPRINT_CHAT_TASSADAR_PROOF_REPLAY_REF,
+      contentRedacted: true,
+      linkedSessionRef,
+    },
+    {
+      id: "blueprint-chat-replay-module",
+      kind: "replay_module",
+      label: "Proof replay bundle",
+      status:
+        input.replayStatus ??
+        (linkedSessionRef === null ? "running" : "verified"),
+      signatureRef: BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF,
+      toolRef: BLUEPRINT_CHAT_REPLAY_TOOL_REF,
+      moduleRef: BLUEPRINT_CHAT_REPLAY_MODULE_REF,
+      digestRef: null,
+      verdict: null,
+      evidenceRef: BLUEPRINT_CHAT_REPLAY_EVIDENCE_REF,
+      receiptRef: BLUEPRINT_CHAT_REPLAY_RECEIPT_REF,
+      tassadarModuleStepRef: null,
       proofReplayRef: BLUEPRINT_CHAT_TASSADAR_PROOF_REPLAY_REF,
       contentRedacted: true,
       linkedSessionRef,

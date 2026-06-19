@@ -15,6 +15,7 @@ export const ProbeToolName = S.Literals([
   "record_evidence",
   "propose_action_submission",
   "execute_tassadar_module_step",
+  "show_proof_replay_bundle",
 ]);
 export type ProbeToolName = typeof ProbeToolName.Type;
 
@@ -180,6 +181,22 @@ const TOOL_CATALOG: Readonly<Record<string, ToolCatalogEntry>> = {
     inputSchemaRef: "schema.blueprint.tassadar_module_step.input.v1",
     name: "execute_tassadar_module_step",
     outputSchemaRef: "schema.blueprint.BlueprintTassadarModuleStepEvidence.v1",
+  },
+  "tool.proof_replay.bundle.show": {
+    description: "Load a public-safe proof replay bundle through the Blueprint replay module.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        intentRef: { type: "string" },
+        replaySlug: { type: "string" },
+        targetRef: { type: "string" },
+      },
+      required: ["replaySlug", "intentRef"],
+      additionalProperties: false,
+    },
+    inputSchemaRef: "schema.blueprint.ShowReplayInput.v1",
+    name: "show_proof_replay_bundle",
+    outputSchemaRef: "schema.blueprint.BlueprintReplayModuleEvidence.v1",
   },
 };
 

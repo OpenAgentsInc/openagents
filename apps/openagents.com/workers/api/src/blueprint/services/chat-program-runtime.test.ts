@@ -1,6 +1,7 @@
 import {
   TASSADAR_EXECUTOR_CAPABILITY_REF,
 } from '@openagentsinc/tassadar-executor'
+import { LAUNCH_RECOGNITION_REPLAY_SLUG } from '@openagentsinc/proof-replay'
 import {
   tassadarDenseProgramFixture,
   tassadarDenseWeightModuleDigest,
@@ -18,6 +19,11 @@ import {
   AUTOPILOT_CONTINUATION_PROGRAM_REGISTRY,
   AUTOPILOT_CONTINUATION_PROGRAM_REGISTRY_VERSION_REF,
 } from '../fixtures/program-registry'
+import {
+  BLUEPRINT_REPLAY_PROGRAM_SIGNATURE_ID,
+  BLUEPRINT_REPLAY_PROGRAM_TYPE_ID,
+  BLUEPRINT_REPLAY_TOOL_REF,
+} from '../fixtures/replay-signatures'
 import { blueprintProgramRegistryProjection } from '../schemas/program-registry'
 import {
   BLUEPRINT_TASSADAR_DENSE_FIXTURE_MODULE_REF,
@@ -34,6 +40,7 @@ import {
   type BlueprintChatProgramTurnInput,
   executeBlueprintChatProgramTurn,
 } from './chat-program-runtime'
+import { makePublicProofReplayModuleRuntime } from './replay-module'
 
 const deterministicRuntime: BlueprintChatProgramRuntimePrimitives = {
   makeLookupId: () => 'blueprint_signature_lookup.chat.test',
@@ -259,6 +266,76 @@ describe('Blueprint chat-program runtime', () => {
         ref.startsWith('receipt.openagents.blueprint_tassadar_step.'),
       ),
     ).toBe(true)
+  })
+
+  test('selects ShowReplay through typed proof-projection constraints and returns the real proof replay bundle', async () => {
+    const harness = makeSessionRuntime()
+    const turn = baseTurn({
+      contextPackRef: undefined,
+      preferredFamily: 'proof_projection',
+      programSignatureIds: undefined,
+      programTypeIds: undefined,
+      promptSummaryRef: 'prompt_summary.chat.bundle_turn',
+      replayIntentRef: 'intent.blueprint.show_public_bundle',
+      replaySlug: LAUNCH_RECOGNITION_REPLAY_SLUG,
+      replayTargetRef: 'proof_replay.launch_recognition',
+      sessionObjectiveRef: 'objective_ref.chat.bundle_turn',
+      supportedToolRefs: [BLUEPRINT_REPLAY_TOOL_REF],
+    })
+
+    expect(
+      `${turn.promptSummaryRef} ${turn.sessionObjectiveRef} ${turn.replayIntentRef}`,
+    ).not.toMatch(/\breplay\b/i)
+
+    const result = await Effect.runPromise(
+      executeBlueprintChatProgramTurn({
+        registryProjection: AUTOPILOT_CONTINUATION_PROGRAM_REGISTRY,
+        replayRuntime: makePublicProofReplayModuleRuntime({} as never),
+        runtime: deterministicRuntime,
+        sessionRuntime: harness.sessionRuntime,
+        turn,
+      }),
+    )
+
+    expect(result.lookup.programSignatureIds).toEqual([
+      BLUEPRINT_REPLAY_PROGRAM_SIGNATURE_ID,
+    ])
+    expect(result.lookup.programTypeIds).toEqual([
+      BLUEPRINT_REPLAY_PROGRAM_TYPE_ID,
+    ])
+    expect(result.toolMenu.tools.map(tool => tool.toolRef)).toEqual([
+      BLUEPRINT_REPLAY_TOOL_REF,
+    ])
+    expect(result.replayModuleEvidence).toHaveLength(1)
+    expect(result.replayModuleEvidence[0]).toMatchObject({
+      bundleRef: expect.stringContaining(
+        'proof_replay_bundle.launch_recognition',
+      ),
+      kind: 'blueprint_replay_module_evidence',
+      replaySlug: LAUNCH_RECOGNITION_REPLAY_SLUG,
+      sourceAuthority: 'worker_d1_public',
+    })
+    expect(
+      (result.replayModuleEvidence[0]!.bundle as { schemaVersion?: string })
+        .schemaVersion,
+    ).toBe('proof_replay_bundle.v1')
+    expect(
+      (result.replayModuleEvidence[0]!.bundle as { events?: unknown[] }).events
+        ?.length,
+    ).toBeGreaterThan(0)
+    expect(result.programRun.typedOutput.replayBundles).toEqual([
+      expect.objectContaining({
+        replaySlug: LAUNCH_RECOGNITION_REPLAY_SLUG,
+      }),
+    ])
+    expect(result.programRun.receiptRefs).toEqual(
+      expect.arrayContaining(
+        result.replayModuleEvidence[0]!.receiptRefs as Array<string>,
+      ),
+    )
+    expect(harness.calls[0]?.verifyRefs).toEqual(
+      expect.arrayContaining(['receipt.public_proof_replay_bundle']),
+    )
   })
 
   test('denies direct write effects from the Program Run path', async () => {
