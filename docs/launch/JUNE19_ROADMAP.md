@@ -20,7 +20,26 @@ the section below for the live-verification record.
 
 ---
 
-## P0 (afternoon) — NEW HEADLINE: stand up the inference business + COLLECT MONEY NOW
+## P0 — CLOSE THE REVENUE LOOP ($1 in → >$1 out)
+
+**THE priority, full stop. If we close the revenue loop we have a company; if not, we're
+wasting time.** Grounded in the "Let's Make Money" thesis
+(`../../../launch-videos/2026-06-18-video-2-referral-revenue-share.md`): OpenAgents has
+repeatedly shipped *supply* and left the *buy-side* open — agentic coding is the first demand
+people already pay for. The loop has three legs; honest status as of 2026-06-19:
+
+- **MONEY IN** — credits purchase. Stripe checkout is real + fully wired; gated only on keys
+  (NEEDS-OWNER: Stripe test keys → staging, live → prod; no Stripe secrets on prod yet). BTC
+  top-up is future. **#5497 (MERGED)** bridges purchased USD credits → inference-spendable msat
+  (asset-boundary enforced: USD-funded balance is spendable on inference, never withdrawable as
+  Bitcoin).
+- **VALUE — 🟢 LIVE:** the inference gateway is enabled in prod (Gemini 3.5 Flash free tier,
+  $10/owner-claim Sybil-resistant pool) and the Autopilot coding agent is the demand wedge.
+- **MONEY OUT / MARGIN** — serving-node + referral revshare (built, owner-armed); margin = the
+  spread over our owned supply cost.
+- **CLOSED =** real $/sat in → value delivered → margin + revshare out, end-to-end. Today value
+  is LIVE; money-in waits on Stripe keys; the full buy→fund→spend loop is exercisable now on the
+  isolated **staging** env (own D1/KV/R2, migration 0211 applied, inference keys set).
 
 The afternoon thrust turned the day's product spine toward the **buy-side**. Two pieces:
 
