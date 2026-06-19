@@ -37,6 +37,9 @@ import {
 import { fireworksAdapter } from './inference/fireworks-adapter'
 import { selectAdapterPlan } from './inference/model-router'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
+import { withReferralAccrual } from './inference/inference-referral-accrual'
+import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
+import { hostedMdkDirectPayoutDisabledGate } from './mdk-payout-mode-gate'
 import {
   InferenceAdapterError,
   InferenceProviderRegistry,
@@ -6491,6 +6494,35 @@ const siteReferralPayoutLedgerRoutes = makeSiteReferralPayoutLedgerRoutes({
   requireAdminApiToken,
 })
 
+// Inference referral revshare routes (sub-EPIC #5475: #5491 dashboard read +
+// #5490 dispatch). The dispatch readiness gate defaults to the OWNER-ARMED OFF
+// gate (`hostedMdkDirectPayoutDisabledGate` -> `livePayoutClaimAllowed: false`),
+// so the first real inference referral payout is owner-armed: dispatch REFUSES
+// (no money moves, the adapter is never called) until the owner arms a live
+// payout mode. The adapter is a placeholder that throws if ever reached; the
+// readiness gate refuses first, so it is unreachable on the owner-armed path.
+const inferenceReferralRoutes = makeInferenceReferralRoutes({
+  appendRefreshedSessionCookies,
+  dispatchDependencies: {
+    adapter: {
+      adapterKind: 'inference_referral_owner_armed_placeholder',
+      // Unreachable on the owner-armed path: the readiness gate below refuses
+      // before the adapter is ever called. If it were somehow reached, reject so
+      // NO money moves and the dispatcher records no settled state.
+      dispatch: () =>
+        Promise.reject(
+          new Error(
+            'inference referral payout adapter not armed: owner must enable a live payout mode',
+          ),
+        ),
+    },
+    nowIso: currentIsoTimestamp,
+    readReadiness: async () => hostedMdkDirectPayoutDisabledGate(),
+  },
+  requireAdminApiToken,
+  requireBrowserSession,
+})
+
 const agentGoalRoutes = makeAgentGoalRoutes({
   appendRefreshedSessionCookies,
   authenticateRequestActor,
@@ -8608,7 +8640,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // The route never reaches the hook on the inert (flag-off) path, so this
         // is safe to wire unconditionally; it only fires when the gateway is on
         // AND a real adapter served a completion.
-        meteringHook: makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
+        //
+        // Referral accrual on ALL inference (#5488): wrap the live ledger hook so
+        // that AFTER a real, non-zero charge settles, the referrer's ongoing cut
+        // (the referrer share of the three-way margin split, #5489) is recorded
+        // into the existing RL-1 referral payout ledger — ongoing/indefinite, one
+        // accrual per paid request, idempotent, and never failing the inference
+        // call. INERT when no real charge occurred (stub hook / zero charge / flag
+        // off) and a no-op when the account was not referred.
+        meteringHook: withReferralAccrual(
+          makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
+          { db: openAgentsDatabase(env) },
+        ),
         readAvailableMsat: async accountRef => {
           const balance = await readAgentBalance(
             openAgentsDatabase(env),
@@ -8770,6 +8813,8 @@ const routeRequest = makeWorkerRouteRequest({
     siteReferralInspectionRoutes.routeSiteReferralInspectionRequest,
   routeSiteReferralPayoutLedgerRequest:
     siteReferralPayoutLedgerRoutes.routeSiteReferralPayoutLedgerRequest,
+  routeInferenceReferralRequest:
+    inferenceReferralRoutes.routeInferenceReferralRequest,
   routeSiteReferralRequest: siteReferralRoutes.routeSiteReferralRequest,
   routeOperatorAdjutantRequest:
     operatorAdjutantRoutes.routeOperatorAdjutantRequest,
