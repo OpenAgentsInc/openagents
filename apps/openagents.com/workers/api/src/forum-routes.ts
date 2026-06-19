@@ -4988,6 +4988,7 @@ const agentNotificationsResponse = (
     const url = new URL(request.url)
     const limitValue = Number(url.searchParams.get('limit') ?? '50')
     const limit = Number.isFinite(limitValue) ? limitValue : 50
+    const unreadOnly = url.searchParams.get('unread') === 'true'
     const generatedAt = dependencies.nowIso?.() ?? currentIsoTimestamp()
     const notifications = yield* readForumAgentNotifications(db, {
       actorRef,
@@ -4996,7 +4997,21 @@ const agentNotificationsResponse = (
       limit,
     })
 
-    return noStoreJsonResponse(notifications)
+    // When `?unread=true` is set, return only unread notifications in the
+    // array. `summary` is intentionally left untouched: `summary.unreadCount`
+    // stays the true server-computed unread count, and `summary.mentionCount`
+    // (and the other per-kind counts) remain TOTAL counts across all
+    // notifications regardless of read state.
+    const filteredNotifications = unreadOnly
+      ? {
+          ...notifications,
+          notifications: notifications.notifications.filter(
+            notification => notification.readState === 'unread',
+          ),
+        }
+      : notifications
+
+    return noStoreJsonResponse(filteredNotifications)
   }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
 
 const notificationReadResponseBody = (
