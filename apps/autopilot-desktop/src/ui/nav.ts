@@ -84,12 +84,22 @@ export const NAV_GROUPS: ReadonlyArray<NavGroup> = [
       {
         pane: "decisions",
         label: "Decisions",
-        keywords: ["approvals", "approve", "deny", "auto-approve", "autonomous", "intent", "loop"],
+        keywords: ["approvals", "approve", "deny", "auto-approve", "intent"],
       },
-      // Accounts/managed accounts + the Ask/autonomous-loop card live in the
-      // `nodes` pane today (view.ts accountsSection / askCard). Surfaced here so
-      // the Supervise group covers accounts + the autonomous loop without a new
-      // top-level button. #5468/#5470 deepen these in place.
+      // #5467: the autonomous coordinator loop is now a first-class view (its own
+      // pane module, autonomous-loop-pane.ts) — intent → plan → fanout →
+      // reconcile → ship gate, read-only over intent.list + coordinator.status,
+      // reusing the existing pause/resume. A secondary entry in Supervise, NOT a
+      // new top-level button (audit §5.2).
+      {
+        pane: "autonomous-loop",
+        label: "Autonomous loop",
+        keywords: ["autonomous", "loop", "intent", "coordinator", "afk", "fanout", "ship", "plan"],
+      },
+      // Accounts/managed accounts + the Ask card live in the `nodes` pane today
+      // (view.ts accountsSection / askCard). Surfaced here so the Supervise group
+      // covers accounts without a new top-level button. #5468/#5470 deepen these
+      // in place.
       { pane: "nodes", label: "Accounts", keywords: ["accounts", "providers", "node", "wallet", "deploy"] },
     ],
   },

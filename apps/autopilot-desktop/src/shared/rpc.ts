@@ -649,6 +649,14 @@ export type IntentRow = {
   readonly title: string
   readonly status: string
   readonly submittedByClientRef: string
+  // #5467: the real per-intent lifecycle timeline + timestamps from the node's
+  // `intent.list` projection (intent-intake `statusHistory`/`createdAt`/
+  // `updatedAt`). Optional so older nodes that omit them still decode; the
+  // autonomous-loop view derives the intent → plan → fanout → reconcile → ship
+  // stage progression from this REAL history, not a fabricated one.
+  readonly statusHistory?: ReadonlyArray<{ readonly status: string; readonly observedAt: string }>
+  readonly createdAt?: string
+  readonly updatedAt?: string
 }
 
 // CL-48: a pending approval/decision the node is waiting on.

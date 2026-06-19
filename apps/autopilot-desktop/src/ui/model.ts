@@ -74,6 +74,12 @@ export const PaneId = S.Literals([
   // projection over node-state + a per-cell open-in-composer / cancel quick
   // action + a top-level pending-approvals roll-up. No new wire verb.
   "swarm",
+  // #5467 (EPIC #5461): the Autonomous loop view — a first-class, read-only
+  // projection of the autonomous coordinator loop (intent → plan → fanout →
+  // reconcile → ship gate) over `intent.list` + `coordinator.status`. Lives in
+  // the Supervise nav group (nav.ts); reuses the existing pause/resume. No new
+  // spend/execution authority. Pane module: autonomous-loop-pane.ts.
+  "autonomous-loop",
   "settings",
   "session-detail",
 ])

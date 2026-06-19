@@ -35,6 +35,8 @@ import {
 } from "@openagentsinc/three-effect/core"
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
+// #5467: the Autonomous loop view's own pane module (Supervise group).
+import { autonomousLoopPane } from "./autonomous-loop-pane"
 import {
   OPENAGENTS_PUBLIC_ORIGIN,
   TASSADAR_REPLAY_ORIGIN_DATA_KEY,
@@ -5305,6 +5307,9 @@ const paneView = (model: Model): Html => {
       return composerPane(model)
     case "chat":
       return chatPane(model)
+    case "autonomous-loop":
+      // #5467: the Autonomous loop view (Supervise group). Own pane module.
+      return autonomousLoopPane(model)
     case "settings":
       return settingsPane(model)
     case "session-detail":

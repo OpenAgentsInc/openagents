@@ -323,6 +323,21 @@ async function fetchIntentRows(input: { baseUrl: string; token: string; fetchFn:
       title: String(i.title ?? ""),
       status: String(i.status ?? "received"),
       submittedByClientRef: String(i.submittedByClientRef ?? ""),
+      // #5467: carry the REAL lifecycle timeline + timestamps from the projection
+      // so the autonomous-loop view can show the intent → plan → fanout →
+      // reconcile → ship progression honestly. Refs-only — no plaintext body.
+      ...(Array.isArray(i.statusHistory)
+        ? {
+            statusHistory: i.statusHistory
+              .filter((e: any) => e && typeof e.status === "string")
+              .map((e: any) => ({
+                status: String(e.status),
+                observedAt: String(e.observedAt ?? ""),
+              })),
+          }
+        : {}),
+      ...(typeof i.createdAt === "string" ? { createdAt: i.createdAt } : {}),
+      ...(typeof i.updatedAt === "string" ? { updatedAt: i.updatedAt } : {}),
     }))
   } catch {
     return []
