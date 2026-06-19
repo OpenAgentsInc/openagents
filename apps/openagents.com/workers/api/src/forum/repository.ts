@@ -2138,6 +2138,57 @@ export const readForumAgentPublicProfile = (
     )
   })
 
+// Batched sibling of readForumTipRecipientReadinessForActor: fetch the wallet
+// records for many authors in ONE chunked `actor_ref IN (...)` query instead of
+// one query per post. Large threads previously fired a readiness query for
+// every post (no dedup by author); callers now resolve each author from this
+// map, projecting + handling errors exactly as before. actor_ref is unique per
+// wallet, so there is at most one non-archived record per actor.
+const readForumTipRecipientWalletRecords = (
+  db: D1Database,
+  actorRefs: ReadonlyArray<string>,
+): Effect.Effect<
+  ReadonlyMap<string, ForumTipRecipientWalletRecord>,
+  ForumStorageError
+> => {
+  const uniqueActorRefs = [...new Set(actorRefs)].filter(
+    actorRef => actorRef !== '',
+  )
+
+  if (uniqueActorRefs.length === 0) {
+    return Effect.succeed(new Map())
+  }
+
+  return Effect.forEach(
+    chunkForD1Params(uniqueActorRefs),
+    batch =>
+      d1Effect('forum.readTipRecipientWallets.batch', () =>
+        db
+          .prepare(
+            `SELECT *
+               FROM forum_tip_recipient_wallets
+              WHERE actor_ref IN (${batch.map(() => '?').join(', ')})
+                AND archived_at IS NULL`,
+          )
+          .bind(...batch)
+          .all<ForumTipRecipientWalletRow>(),
+      ),
+    { concurrency: 'unbounded' },
+  ).pipe(
+    Effect.map(
+      results =>
+        new Map(
+          results.flatMap(result =>
+            (result.results ?? []).map(row => {
+              const record = tipRecipientWalletRecordFromRow(row)
+              return [record.actorRef, record] as const
+            }),
+          ),
+        ),
+    ),
+  )
+}
+
 export const readForumTipRecipientReadinessForActor = (
   db: D1Database,
   actorRef: string,
@@ -2680,10 +2731,20 @@ export const readForumTopicDetail = (
     const topicPostsWithoutTipReadiness = (posts.results ?? [])
       .map(postFromRow)
       .map(post => postWithSubject(post, topic.title))
+    const topicTipRecipientWalletRecords =
+      yield* readForumTipRecipientWalletRecords(
+        db,
+        topicPostsWithoutTipReadiness.map(post => post.author.actorRef),
+      )
     const topicPostTipRecipientReadiness = yield* Effect.all(
-      topicPostsWithoutTipReadiness.map(post =>
-        readForumTipRecipientReadinessForActor(db, post.author.actorRef),
-      ),
+      topicPostsWithoutTipReadiness.map(post => {
+        const record = topicTipRecipientWalletRecords.get(post.author.actorRef)
+        return record === undefined
+          ? Effect.succeed(
+              missingForumTipRecipientReadiness(post.author.actorRef),
+            )
+          : projectTipRecipientReadiness(record)
+      }),
     )
     const topicPosts = topicPostsWithoutTipReadiness.map((post, index) =>
       postWithTipRecipientReadiness(
@@ -2901,9 +2962,23 @@ export const readForumPostList = (
             postId: lastVisibleRow.id,
           })
     const postsWithoutTipReadiness = visibleRows.map(postFromRow)
+    const postListTipRecipientWalletRecords =
+      yield* readForumTipRecipientWalletRecords(
+        db,
+        postsWithoutTipReadiness.map(post => post.author.actorRef),
+      )
     const postTipRecipientReadiness = yield* Effect.all(
-      postsWithoutTipReadiness.map(post =>
-        readForumTipRecipientReadinessForActor(db, post.author.actorRef).pipe(
+      postsWithoutTipReadiness.map(post => {
+        const record = postListTipRecipientWalletRecords.get(
+          post.author.actorRef,
+        )
+        return (
+          record === undefined
+            ? Effect.succeed(
+                missingForumTipRecipientReadiness(post.author.actorRef),
+              )
+            : projectTipRecipientReadiness(record)
+        ).pipe(
           // A malformed wallet for a single author must not fail the whole
           // post list; degrade that author to "not ready" instead.
           Effect.catchTag('ForumValidationError', () =>
@@ -2911,8 +2986,8 @@ export const readForumPostList = (
               missingForumTipRecipientReadiness(post.author.actorRef),
             ),
           ),
-        ),
-      ),
+        )
+      }),
     )
     const posts = postsWithoutTipReadiness.map((post, index) =>
       postWithTipRecipientReadiness(
