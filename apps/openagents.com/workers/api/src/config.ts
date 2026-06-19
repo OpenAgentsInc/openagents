@@ -7,6 +7,12 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // `/v1/chat/completions` route is inert on the live Worker until the
   // inference build lands. Set "true"/"1"/"on" to enable.
   INFERENCE_GATEWAY_ENABLED?: string | undefined
+  // Cloud primitive scaffold feature flags (EPIC #5510, #5516/#5517). Default
+  // OFF: the `/v1/fine_tuning/jobs` and `/v1/sandboxes` routes are inert on the
+  // live Worker until those builds land. Set "true"/"1"/"on" to enable. The
+  // related promises stay red until a dereferenceable paid receipt exists.
+  CLOUD_FINE_TUNING_ENABLED?: string | undefined
+  CLOUD_SANDBOX_COMPUTE_ENABLED?: string | undefined
   // Partner passthrough adapter secrets (EPIC #5474, #5481). Worker secrets,
   // never committed/logged. Each enables the corresponding passthrough adapter
   // when the gateway flag is on; absent => that partner adapter stays inert.
