@@ -4,20 +4,23 @@ Date: 2026-06-19. Status: **vision capstone.** This connects the inference gatew
 referral work (the rest of `docs/inference/`) to the broader **OpenAgents Cloud** and the
 "Let's Make Money" revenue thesis.
 
-**The wedge is coding, not inference.** The agentic coding product — **Autopilot**, on the
-verge of rolling out — is the wedge into the market. Inference (and the rest of the stack)
-**supports** that wedge: **Autopilot is the primary buyer of all of it.** Every coding
-session it runs consumes inference, sandboxes, and agentic compute from our own stack, on our
-own economics — so the stack has a large, captive, first-party demand source from day one
-instead of waiting for external API adoption.
+**What we're actually doing: booting up the Agent Cloud — putting open primitives into the
+hands of all agents.** Inference, fine-tuning, training, sandboxes, agentic compute, tasks,
+data — a single API + one balance (USD or Bitcoin) + revshare throughout — exposed openly so
+**agents can combine these building blocks into their own products** and point their own work,
+or their own customers, at them. We're making this open and putting out a video aimed at
+**agents**, telling them what primitives they now have access to. They build; we supply the
+blocks.
 
-The API is **also** available — independently buyable by any agent or business (and
-discoverable via `openagents.com/AGENTS.md` so agents can buy inference or any other piece when
-they want compute beyond what Autopilot gives them). But that's additive. The point is **one
-single stack**: every part accessible to agents who want to buy any piece of it, **all on the
-same economics** (one balance, USD or Bitcoin, revshare throughout), each part **mutually
-reinforcing** the others and letting us **undercut parts of the market where our cost edge
-allows** — the Agent Cloud, the one-stop shop for every agent need.
+Our own product strategy is, in that frame, almost beside the point. Yes, **coding (Autopilot)
+is our wedge** and Autopilot is a heavy first-party buyer of the stack — that's a good proof
+that the primitives are real and the economics work, and a captive demand source from day one.
+But the *thesis* isn't our strategy; it's the **open primitive set for the whole agent
+ecosystem**. Whatever any given agent builds on top, they buy the same building blocks on the
+**same economics** (one balance, USD or Bitcoin, revshare throughout) — each primitive
+**mutually reinforcing** the others, and our cost edge letting everyone (us and them) undercut
+parts of the market. The Agent Cloud is the one-stop shop for every agent need; we're just
+turning it on and handing agents the keys.
 
 References: root `docs/cloud/README.md` ("OpenAgents Cloud is **the Agent Cloud for accepted
 outcomes**") + `docs/cloud/cloud3.md` (canonical product def) + `docs/cloud/architecture.md`
@@ -83,11 +86,11 @@ the buy-side, generalized: customers and businesses **already pay** for inferenc
 sandboxes, and agent task work elsewhere — we offer one aggregated, settleable, Bitcoin-native
 place to buy all of it, priced over our real (low) cost, with the margin fanning to the network.
 A dollar in returns more than a dollar of value (aggregated, cheaper, one bill, one balance),
-and the spread + fan-out is the business. **Coding (Autopilot) is the wedge that pulls the
-demand**; inference and the rest of the stack are what that demand *buys*. Autopilot being the
-primary buyer means the stack has immediate captive demand (every coding session) on day one —
-and our supply (Vertex quota + Fireworks + our fabric) is already in hand to serve it — while
-the same stack stays open for any agent/business to buy directly.
+and the spread + fan-out is the business. We seed the demand with our own coding product
+(Autopilot) — useful proof + captive day-one demand, with our supply (Vertex quota + Fireworks
++ our fabric) already in hand to serve it — but the durable buy-side is **every agent building
+on the open primitives** and pointing their own work and customers at the stack. We supply the
+blocks; the agent ecosystem brings the demand.
 
 ## 5. How it ties into OpenAgents Cloud (reuse, don't rebuild)
 
@@ -120,6 +123,8 @@ product on one rail, not a separate business. Cross-category referral attributio
 
 ## 7. One-line vision
 
-**The Agent Cloud: one balance, paid in Bitcoin or dollars, for every agent need — inference,
-fine-tuning, training, sandboxes, agentic compute, tasks, data — with revshare throughout to
-the contributor who served it and the referrer who brought the demand, forever.**
+**The Agent Cloud: open primitives in the hands of every agent — inference, fine-tuning,
+training, sandboxes, agentic compute, tasks, data — one balance (Bitcoin or dollars), one API,
+revshare throughout to the contributor who served it and the referrer who brought the demand,
+forever. Agents combine the building blocks into their own products; we just turn it on and
+hand them the keys.**
