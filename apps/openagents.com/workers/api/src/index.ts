@@ -35,6 +35,7 @@ import {
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
 import { fireworksAdapter } from './inference/fireworks-adapter'
+import { selectAdapterPlan } from './inference/model-router'
 import {
   InferenceAdapterError,
   InferenceProviderRegistry,
@@ -8608,6 +8609,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           )
           return balance === null ? 0 : balance.availableMsat
         },
+        // Routing & supply selection (#5482): cheapest-viable lane plan per
+        // model with bounded-backoff overflow to the next viable lane on a
+        // retryable provider failure (429 / 503 / 5xx / transport). INERT
+        // regardless — the gateway is gated by INFERENCE_GATEWAY_ENABLED above.
+        lanePlan: selectAdapterPlan,
         registry: inferenceProviderRegistry,
       })
     },

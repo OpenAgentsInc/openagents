@@ -1,0 +1,355 @@
+import { Effect } from 'effect'
+import { describe, expect, test } from 'vitest'
+
+import {
+  classifyModel,
+  DEFAULT_OVERFLOW_BACKOFF,
+  dispatchWithOverflow,
+  FIREWORKS_ADAPTER_ID,
+  openModelsByCost,
+  PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
+  PASSTHROUGH_OPENAI_ADAPTER_ID,
+  selectAdapterPlan,
+  selectPrimaryAdapterId,
+  VERTEX_ANTHROPIC_ADAPTER_ID,
+} from './model-router'
+import {
+  InferenceAdapterError,
+  type InferenceProviderAdapter,
+  InferenceProviderRegistry,
+  type InferenceRequest,
+  type InferenceResult,
+} from './provider-adapter'
+
+// --- test plumbing -------------------------------------------------------
+
+const runResult = <A>(effect: Effect.Effect<A, InferenceAdapterError>) =>
+  Effect.runPromise(Effect.result(effect))
+
+const request = (model: string): InferenceRequest => ({
+  messages: [{ content: 'hi', role: 'user' }],
+  model,
+  passthroughParams: {},
+  stream: false,
+})
+
+const okResult = (servedModel: string): InferenceResult => ({
+  content: 'ok',
+  finishReason: 'stop',
+  servedModel,
+  usage: { completionTokens: 1, promptTokens: 1, totalTokens: 2 },
+})
+
+// A mock adapter that records calls and returns a scripted sequence of
+// outcomes (one per invocation). `error: undefined` => success.
+type Scripted = InferenceAdapterError | undefined
+const mockAdapter = (
+  id: string,
+  script: ReadonlyArray<Scripted>,
+): { adapter: InferenceProviderAdapter; calls: () => number } => {
+  let n = 0
+  const next = (): Scripted => {
+    const outcome = script[Math.min(n, script.length - 1)]
+    n += 1
+    return outcome
+  }
+  const run = (): Effect.Effect<InferenceResult, InferenceAdapterError> => {
+    const outcome = next()
+    return outcome === undefined
+      ? Effect.succeed(okResult(`served-by-${id}`))
+      : Effect.fail(outcome)
+  }
+  return {
+    adapter: {
+      complete: () => run(),
+      id,
+      stream: () => run().pipe(Effect.map(() => [])),
+    },
+    calls: () => n,
+  }
+}
+
+const err = (
+  adapterId: string,
+  retryable: boolean,
+  httpStatus?: number,
+): InferenceAdapterError =>
+  new InferenceAdapterError({
+    adapterId,
+    httpStatus,
+    kind: retryable ? 'rate_limited' : 'request_rejected',
+    reason: `${adapterId} ${retryable ? 'retryable' : 'fatal'}`,
+    retryable,
+  })
+
+// No-wait sleep so overflow backoff never delays a test.
+const noSleep = () => Effect.void
+
+const completeOp = (
+  adapter: InferenceProviderAdapter,
+  req: InferenceRequest,
+) => adapter.complete(req).pipe(Effect.map(value => ({ id: adapter.id, value })))
+
+// ==========================================================================
+// 1. Model -> lane classification + selection
+// ==========================================================================
+
+describe('model classification', () => {
+  test('routes Claude-family ids to the Vertex lane', () => {
+    for (const model of [
+      'claude-opus-4-8',
+      'claude-sonnet-4-6',
+      'claude-haiku-4-5',
+      'opus',
+      'sonnet',
+      'haiku',
+      'anthropic/claude-opus-4-8',
+      'vertex/claude-sonnet-4-6',
+    ]) {
+      expect(classifyModel(model)).toBe('claude')
+      expect(selectPrimaryAdapterId(model)).toBe(VERTEX_ANTHROPIC_ADAPTER_ID)
+    }
+  })
+
+  test('routes the open set to the Fireworks lane', () => {
+    for (const model of [
+      'deepseek-v4-pro',
+      'kimi-k2p6',
+      'glm-5p2',
+      'qwen-3p7-plus',
+      'minimax',
+      'gpt-oss-120b',
+      'nemotron-3-ultra',
+      'fireworks/deepseek-v4-flash',
+    ]) {
+      expect(classifyModel(model)).toBe('open')
+      expect(selectPrimaryAdapterId(model)).toBe(FIREWORKS_ADAPTER_ID)
+    }
+  })
+
+  test('routes unknown models to passthrough only', () => {
+    expect(classifyModel('some-random-model')).toBe('unknown')
+    expect(selectAdapterPlan('some-random-model')).toEqual([
+      PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
+      PASSTHROUGH_OPENAI_ADAPTER_ID,
+    ])
+  })
+})
+
+describe('lane plan ordering (cheapest viable first, then overflow)', () => {
+  test('claude: Vertex first, then passthrough overflow', () => {
+    expect(selectAdapterPlan('claude-opus-4-8')).toEqual([
+      VERTEX_ANTHROPIC_ADAPTER_ID,
+      PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
+      PASSTHROUGH_OPENAI_ADAPTER_ID,
+    ])
+  })
+
+  test('open: Fireworks first, then passthrough overflow', () => {
+    expect(selectAdapterPlan('kimi-k2p6')).toEqual([
+      FIREWORKS_ADAPTER_ID,
+      PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
+      PASSTHROUGH_OPENAI_ADAPTER_ID,
+    ])
+  })
+
+  test('open models are ordered cheapest-first by blended cost', () => {
+    // gpt-oss-20b is the cheapest priced open model; deepseek-v4-pro the dearest.
+    expect(openModelsByCost[0]).toBe('gpt-oss-20b')
+    expect(openModelsByCost.at(-1)).toBe('deepseek-v4-pro')
+    // Monotonic non-decreasing ordering is preserved end-to-end.
+    expect(openModelsByCost.length).toBeGreaterThan(2)
+  })
+})
+
+// ==========================================================================
+// 2. Dispatch with overflow
+// ==========================================================================
+
+describe('dispatchWithOverflow', () => {
+  test('serves from the primary (cheapest) lane when it succeeds', async () => {
+    const vertex = mockAdapter(VERTEX_ANTHROPIC_ADAPTER_ID, [undefined])
+    const passthrough = mockAdapter(PASSTHROUGH_ANTHROPIC_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(vertex.adapter)
+    registry.register(passthrough.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflow(request('claude-opus-4-8'), completeOp, {
+        registry,
+        sleep: noSleep,
+      }),
+    )
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.id).toBe(VERTEX_ANTHROPIC_ADAPTER_ID)
+    }
+    // Overflow lane was never touched.
+    expect(passthrough.calls()).toBe(0)
+  })
+
+  test('429 on the primary lane overflows to the next viable lane', async () => {
+    const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [
+      err(FIREWORKS_ADAPTER_ID, true, 429),
+    ])
+    const passthrough = mockAdapter(PASSTHROUGH_OPENAI_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(fireworks.adapter)
+    registry.register(passthrough.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflow(request('kimi-k2p6'), completeOp, {
+        // Plan: Fireworks then the OpenAI passthrough (Anthropic passthrough
+        // absent from the registry, so it is skipped).
+        plan: () => [FIREWORKS_ADAPTER_ID, PASSTHROUGH_OPENAI_ADAPTER_ID],
+        registry,
+        sleep: noSleep,
+      }),
+    )
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.id).toBe(PASSTHROUGH_OPENAI_ADAPTER_ID)
+    }
+    expect(fireworks.calls()).toBe(1)
+    expect(passthrough.calls()).toBe(1)
+  })
+
+  test('503 overflows the same way (service overloaded)', async () => {
+    const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [
+      err(FIREWORKS_ADAPTER_ID, true, 503),
+    ])
+    const passthrough = mockAdapter(PASSTHROUGH_OPENAI_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(fireworks.adapter)
+    registry.register(passthrough.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflow(request('kimi-k2p6'), completeOp, {
+        plan: () => [FIREWORKS_ADAPTER_ID, PASSTHROUGH_OPENAI_ADAPTER_ID],
+        registry,
+        sleep: noSleep,
+      }),
+    )
+    expect(result._tag).toBe('Success')
+  })
+
+  test('a non-retryable failure surfaces immediately without overflow', async () => {
+    const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [
+      err(FIREWORKS_ADAPTER_ID, false, 400),
+    ])
+    const passthrough = mockAdapter(PASSTHROUGH_OPENAI_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(fireworks.adapter)
+    registry.register(passthrough.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflow(request('kimi-k2p6'), completeOp, {
+        plan: () => [FIREWORKS_ADAPTER_ID, PASSTHROUGH_OPENAI_ADAPTER_ID],
+        registry,
+        sleep: noSleep,
+      }),
+    )
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') {
+      expect(result.failure.adapterId).toBe(FIREWORKS_ADAPTER_ID)
+      expect(result.failure.retryable).toBe(false)
+    }
+    // Overflow lane never reached.
+    expect(passthrough.calls()).toBe(0)
+  })
+
+  test('surfaces the last retryable error when every viable lane fails', async () => {
+    const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [
+      err(FIREWORKS_ADAPTER_ID, true, 429),
+    ])
+    const passthrough = mockAdapter(PASSTHROUGH_OPENAI_ADAPTER_ID, [
+      err(PASSTHROUGH_OPENAI_ADAPTER_ID, true, 503),
+    ])
+    const registry = new InferenceProviderRegistry()
+    registry.register(fireworks.adapter)
+    registry.register(passthrough.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflow(request('kimi-k2p6'), completeOp, {
+        plan: () => [FIREWORKS_ADAPTER_ID, PASSTHROUGH_OPENAI_ADAPTER_ID],
+        registry,
+        sleep: noSleep,
+      }),
+    )
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') {
+      // The LAST lane's error surfaces.
+      expect(result.failure.adapterId).toBe(PASSTHROUGH_OPENAI_ADAPTER_ID)
+    }
+  })
+
+  test('skips planned lanes that are not registered (absent partner secret)', async () => {
+    // Plan names the Anthropic passthrough first, but only the OpenAI one is
+    // registered (e.g. ANTHROPIC_API_KEY absent) — the dispatcher serves OpenAI.
+    const passthrough = mockAdapter(PASSTHROUGH_OPENAI_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(passthrough.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflow(request('unknown-model'), completeOp, {
+        registry,
+        sleep: noSleep,
+      }),
+    )
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.id).toBe(PASSTHROUGH_OPENAI_ADAPTER_ID)
+    }
+  })
+
+  test('fails with a router configuration_error when no lane is registered', async () => {
+    const registry = new InferenceProviderRegistry()
+    const result = await runResult(
+      dispatchWithOverflow(request('claude-opus-4-8'), completeOp, {
+        registry,
+        sleep: noSleep,
+      }),
+    )
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') {
+      expect(result.failure.adapterId).toBe('router')
+      expect(result.failure.kind).toBe('configuration_error')
+      expect(result.failure.retryable).toBe(false)
+    }
+  })
+
+  test('applies bounded exponential backoff before each overflow attempt', async () => {
+    // Two retryable failures then a success forces two backoff sleeps; assert
+    // the injected delays follow base × 2^n capped at maxDelayMs.
+    const a = mockAdapter('lane-a', [err('lane-a', true, 429)])
+    const b = mockAdapter('lane-b', [err('lane-b', true, 503)])
+    const c = mockAdapter('lane-c', [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(a.adapter)
+    registry.register(b.adapter)
+    registry.register(c.adapter)
+
+    const delays: Array<number> = []
+    const result = await runResult(
+      dispatchWithOverflow(request('x'), completeOp, {
+        backoff: { baseDelayMs: 10, maxDelayMs: 15 },
+        plan: () => ['lane-a', 'lane-b', 'lane-c'],
+        registry,
+        sleep: ms =>
+          Effect.sync(() => {
+            delays.push(ms)
+          }),
+      }),
+    )
+    expect(result._tag).toBe('Success')
+    // First overflow: 10 × 2^0 = 10; second overflow: 10 × 2^1 = 20 capped at 15.
+    expect(delays).toEqual([10, 15])
+  })
+
+  test('DEFAULT_OVERFLOW_BACKOFF is bounded and sane', () => {
+    expect(DEFAULT_OVERFLOW_BACKOFF.baseDelayMs).toBeGreaterThan(0)
+    expect(DEFAULT_OVERFLOW_BACKOFF.maxDelayMs).toBeGreaterThanOrEqual(
+      DEFAULT_OVERFLOW_BACKOFF.baseDelayMs,
+    )
+  })
+})

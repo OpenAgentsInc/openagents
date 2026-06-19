@@ -29,6 +29,7 @@ import {
 } from './provider-adapter'
 import { type MeteringHook, stubMeteringHook } from './metering-hook'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
+import { type DispatchDeps, dispatchWithOverflow } from './model-router'
 
 // AUTH SEAM ---------------------------------------------------------------
 // Resolves the per-account API key (the OpenAgents agent bearer token) to an
@@ -47,13 +48,23 @@ export type InferenceBalanceReader = (
 ) => Promise<number>
 
 // ROUTING SEAM ------------------------------------------------------------
-// Resolves a requested model alias to an adapter id. #5482 (routing & supply
-// selection) replaces this with cheapest-viable selection across Vertex /
-// Fireworks / passthrough / Pylon. #5476 ships a resolver that always selects
-// the stub/echo adapter so the route is exercisable end-to-end.
+// Resolves a requested model alias to an adapter id. #5476 shipped a resolver
+// that always selects the stub/echo adapter so the route is exercisable
+// end-to-end. #5482 (routing & supply selection) adds the real cheapest-viable
+// path via `lanePlan` below; the single-id `router` seam is retained for the
+// stub/test path and as the gate when no `lanePlan` is supplied.
 export type ModelRouter = (model: string) => string | undefined
 
 export const stubModelRouter: ModelRouter = () => STUB_ECHO_ADAPTER_ID
+
+// SUPPLY-SELECTION SEAM (#5482) -------------------------------------------
+// Resolves a requested model to an ORDERED list of candidate adapter ids
+// (cheapest viable lane first, then overflow fallbacks). When supplied, the
+// route dispatches across this plan with bounded-backoff overflow on retryable
+// provider failures (429 / 503 / 5xx / transport) — see `dispatchWithOverflow`
+// in model-router.ts. The Worker wires this to `selectAdapterPlan`; when it is
+// absent the route falls back to the single-id `router` seam (the #5476 path).
+export type ModelLanePlanner = (model: string) => ReadonlyArray<string>
 
 // Parse the INFERENCE_GATEWAY_ENABLED flag value. Default OFF: anything other
 // than an explicit truthy token leaves the gateway inert.
@@ -73,8 +84,18 @@ export type ChatCompletionsDeps = Readonly<{
   authenticate: InferenceAuth
   readAvailableMsat: InferenceBalanceReader
   registry: InferenceProviderRegistry
-  // Defaults to the stub router (always selects the stub/echo adapter).
+  // Single-id router seam. Defaults to the stub router (always selects the
+  // stub/echo adapter). Used to gate `model_unavailable` and to dispatch when
+  // no multi-lane `lanePlan` is supplied (#5476 path).
   router?: ModelRouter
+  // Ordered multi-lane plan for cheapest-viable selection + overflow (#5482).
+  // When present, the route dispatches across the plan with bounded-backoff
+  // overflow on retryable failures. The Worker wires this to `selectAdapterPlan`.
+  lanePlan?: ModelLanePlanner
+  // Routing overflow knobs (backoff + injected sleep) forwarded to
+  // `dispatchWithOverflow`. Tests inject `sleep: () => Effect.void` so overflow
+  // never waits. Ignored unless `lanePlan` is supplied.
+  dispatch?: Omit<DispatchDeps, 'registry' | 'plan'>
   // Defaults to the no-op/log metering stub (#5477 supplies the live hook).
   meteringHook?: MeteringHook
   // Minimum available balance (msat) required to accept a request. Until #5477
@@ -226,12 +247,25 @@ export const handleChatCompletions = (
       )
     }
 
-    // ADAPTER DISPATCH via the registry seam.
-    const router = deps.router ?? stubModelRouter
-    const adapterId = router(body.model)
-    const adapter =
-      adapterId === undefined ? undefined : deps.registry.resolve(adapterId)
-    if (adapter === undefined) {
+    // SUPPLY SELECTION (#5482) -------------------------------------------
+    // Resolve the ordered candidate adapter ids for this model. When a
+    // multi-lane `lanePlan` is supplied (the Worker wires `selectAdapterPlan`)
+    // the route dispatches across it with bounded-backoff overflow; otherwise
+    // it falls back to the single-id `router` seam (the #5476 / stub path).
+    const planFor: ModelLanePlanner =
+      deps.lanePlan ??
+      (model => {
+        const id = (deps.router ?? stubModelRouter)(model)
+        return id === undefined ? [] : [id]
+      })
+    const plannedIds = planFor(body.model)
+    // model_unavailable when no lane is configured OR none of the planned lanes
+    // is actually registered (e.g. an absent partner secret leaves the plan but
+    // no resolvable adapter).
+    const hasViableLane = plannedIds.some(
+      id => deps.registry.resolve(id) !== undefined,
+    )
+    if (!hasViableLane) {
       return noStoreJsonResponse(
         { error: 'model_unavailable', model: body.model },
         { status: 400 },
@@ -245,9 +279,32 @@ export const handleChatCompletions = (
     const created = nowEpochSeconds()
     const responseId = newId()
 
+    // Dispatch deps for the overflow loop. The plan is pinned to `plannedIds`
+    // (already resolved from lanePlan/router above) so selection + dispatch use
+    // exactly the same ordering.
+    const dispatchDeps: DispatchDeps = {
+      registry: deps.registry,
+      plan: () => plannedIds,
+      ...(deps.dispatch?.backoff === undefined
+        ? {}
+        : { backoff: deps.dispatch.backoff }),
+      ...(deps.dispatch?.sleep === undefined
+        ? {}
+        : { sleep: deps.dispatch.sleep }),
+    }
+
     if (inferenceRequest.stream) {
-      const chunks = yield* adapter.stream(inferenceRequest).pipe(
-        Effect.map(value => ({ ok: true as const, value })),
+      // Run the stream op across the lane plan; the served adapter id rides
+      // alongside the chunks so metering reports the lane that actually served.
+      const chunks = yield* dispatchWithOverflow(
+        inferenceRequest,
+        (adapter, request) =>
+          adapter
+            .stream(request)
+            .pipe(Effect.map(value => ({ adapterId: adapter.id, value }))),
+        dispatchDeps,
+      ).pipe(
+        Effect.map(served => ({ ok: true as const, served })),
         Effect.catch(error =>
           Effect.succeed({ ok: false as const, reason: error.reason }),
         ),
@@ -258,14 +315,15 @@ export const handleChatCompletions = (
           { status: 502 },
         )
       }
+      const servedChunks = chunks.served.value
       // Settle metering from the terminal usage frame (receipt-first).
-      const terminal = [...chunks.value]
+      const terminal = [...servedChunks]
         .reverse()
         .find(chunk => chunk.usage !== undefined)
       if (terminal?.usage !== undefined) {
         yield* meteringHook({
           accountRef: session.accountRef,
-          adapterId: adapter.id,
+          adapterId: chunks.served.adapterId,
           requestedModel: body.model,
           servedModel: body.model,
           streamed: true,
@@ -273,7 +331,7 @@ export const handleChatCompletions = (
         })
       }
 
-      const body_sse = chunks.value
+      const body_sse = servedChunks
         .map(chunk =>
           sseFrame({
             choices: [
@@ -304,8 +362,15 @@ export const handleChatCompletions = (
       })
     }
 
-    const result = yield* adapter.complete(inferenceRequest).pipe(
-      Effect.map(value => ({ ok: true as const, value })),
+    const result = yield* dispatchWithOverflow(
+      inferenceRequest,
+      (adapter, request) =>
+        adapter
+          .complete(request)
+          .pipe(Effect.map(value => ({ adapterId: adapter.id, value }))),
+      dispatchDeps,
+    ).pipe(
+      Effect.map(served => ({ ok: true as const, served })),
       Effect.catch(error =>
         Effect.succeed({ ok: false as const, reason: error.reason }),
       ),
@@ -319,11 +384,11 @@ export const handleChatCompletions = (
 
     yield* meteringHook({
       accountRef: session.accountRef,
-      adapterId: adapter.id,
+      adapterId: result.served.adapterId,
       requestedModel: body.model,
-      servedModel: result.value.servedModel,
+      servedModel: result.served.value.servedModel,
       streamed: false,
-      usage: result.value.usage,
+      usage: result.served.value.usage,
     })
 
     return noStoreJsonResponse(
@@ -331,7 +396,7 @@ export const handleChatCompletions = (
         created,
         id: responseId,
         model: body.model,
-        result: result.value,
+        result: result.served.value,
       }),
     )
   })
