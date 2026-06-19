@@ -16,7 +16,12 @@ import { Effect, Queue, Stream } from "effect"
 import { Subscription } from "foldkit"
 
 import { setEmit } from "./bridge"
-import { PressedKey, type Message } from "./message"
+import {
+  EndedPaneDrag,
+  MovedPaneDragPointer,
+  PressedKey,
+  type Message,
+} from "./message"
 import type { Model } from "./model"
 
 // The inbound push stream. We stash a queue-backed emitter in the bridge so the
@@ -116,8 +121,53 @@ const keyboardStream: Stream.Stream<Message> = Stream.callback<Message>((queue) 
   ).pipe(Effect.flatMap(() => Effect.never)),
 )
 
+// HUD H3 (#5501): the managed pane-layer drag tracker. A title-bar / resize-handle
+// pointerdown captures the gesture (StartedPaneDrag, in view.ts); the actual MOVE
+// must be tracked at the WINDOW level so the pointer can leave the small handle
+// without dropping the drag — exactly how Commander's `@use-gesture` drag worked
+// (audit §4.6). A persistent `pointermove`/`pointerup` listener feeds the pure
+// reducer: `MovedPaneDragPointer` only while a button is held (so idle pointer
+// motion costs nothing), and `EndedPaneDrag` on release. The reducer no-ops both
+// when no drag is in flight, so this is safe even with no panes open.
+const pointerStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =>
+  Effect.acquireRelease(
+    Effect.sync(() => {
+      const target = globalThis as unknown as {
+        addEventListener?: (t: string, h: (e: unknown) => void, o?: unknown) => void
+        removeEventListener?: (t: string, h: (e: unknown) => void) => void
+      }
+      const onMove = (raw: unknown): void => {
+        const event = raw as { clientX?: number; clientY?: number; buttons?: number }
+        // Only forward motion while a button is held — that bounds the message
+        // rate to an active drag. The reducer ignores it if no pane drag exists.
+        if ((event.buttons ?? 0) === 0) return
+        Queue.offerUnsafe(
+          queue,
+          MovedPaneDragPointer({ pointerX: event.clientX ?? 0, pointerY: event.clientY ?? 0 }),
+        )
+      }
+      const onUp = (): void => {
+        Queue.offerUnsafe(queue, EndedPaneDrag())
+      }
+      target.addEventListener?.("pointermove", onMove)
+      target.addEventListener?.("pointerup", onUp)
+      // A cancelled gesture (window blur / pointer capture loss) also ends it.
+      target.addEventListener?.("pointercancel", onUp)
+      return { target, onMove, onUp }
+    }),
+    ({ target, onMove, onUp }) =>
+      Effect.sync(() => {
+        target.removeEventListener?.("pointermove", onMove)
+        target.removeEventListener?.("pointerup", onUp)
+        target.removeEventListener?.("pointercancel", onUp)
+      }),
+  ).pipe(Effect.flatMap(() => Effect.never)),
+)
+
 export const subscriptions = Subscription.make<Model, Message>()(() => ({
   inbound: Subscription.persistent(inboundStream),
   // #5465: route window keydown into the reducer as PressedKey.
   keyboard: Subscription.persistent(keyboardStream),
+  // HUD H3 (#5501): route window pointer move/up into the pane-layer drag reducer.
+  paneDrag: Subscription.persistent(pointerStream),
 }))

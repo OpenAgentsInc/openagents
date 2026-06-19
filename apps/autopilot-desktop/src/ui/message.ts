@@ -9,6 +9,11 @@ import { Schema as S } from "effect"
 import { m } from "foldkit/message"
 
 import { PaneId, ProofReplaySlug, SessionFilter } from "./model"
+// HUD H3 (#5501): the drag/handle literal schemas for the managed pane-layer
+// messages. Imported as VALUES (the `m()` constructors need the runtime schema);
+// pane-manager imports only the `PaneId` value from model.ts, so there is no
+// cycle back to message.ts.
+import { PaneDragKind, PaneResizeHandle } from "./pane-manager"
 // #5472: the preference literal schemas (single source — see ui/preferences.ts).
 import {
   DefaultAdapter,
@@ -554,6 +559,35 @@ export const RespondedShell = m("RespondedShell", {
 export const OpenedPanes = m("OpenedPanes")
 export const ClosedPanes = m("ClosedPanes")
 
+// ── HUD H3: the managed pane layer (#5501) ──────────────────────────────────
+// Open/close/focus a managed pane (pane-as-data) + the drag/resize gesture
+// verbs. Each maps to one `PaneLayerAction` in update.ts (the pure PaneManager
+// reducer in pane-manager.ts is the only thing that mutates the layer). The
+// pointer coordinates ride on the messages so the pure reducer stays DOM-free.
+//
+// `OpenedManagedPane` opens the EXISTING pane content (by `PaneId`) as a floating
+// managed window over the current base surface; the shell is rejected by the
+// reducer (it is the base, never a window). `StartedPaneDrag.handle` is null for
+// a title-bar move, or one of the 8 resize handles. A persistent window
+// pointermove/up subscription (subscriptions.ts) drives `MovedPaneDragPointer` /
+// `EndedPaneDrag` while a drag is in flight.
+export const OpenedManagedPane = m("OpenedManagedPane", { pane: PaneId })
+export const ClosedManagedPane = m("ClosedManagedPane", { paneId: S.String })
+export const FocusedManagedPane = m("FocusedManagedPane", { paneId: S.String })
+export const ClosedAllManagedPanes = m("ClosedAllManagedPanes")
+export const StartedPaneDrag = m("StartedPaneDrag", {
+  paneId: S.String,
+  drag: PaneDragKind,
+  handle: S.NullOr(PaneResizeHandle),
+  pointerX: S.Number,
+  pointerY: S.Number,
+})
+export const MovedPaneDragPointer = m("MovedPaneDragPointer", {
+  pointerX: S.Number,
+  pointerY: S.Number,
+})
+export const EndedPaneDrag = m("EndedPaneDrag")
+
 export const Message = S.Union([
   GotNodeState,
   GotPylonStats,
@@ -713,5 +747,12 @@ export const Message = S.Union([
   RespondedShell,
   OpenedPanes,
   ClosedPanes,
+  OpenedManagedPane,
+  ClosedManagedPane,
+  FocusedManagedPane,
+  ClosedAllManagedPanes,
+  StartedPaneDrag,
+  MovedPaneDragPointer,
+  EndedPaneDrag,
 ])
 export type Message = typeof Message.Type

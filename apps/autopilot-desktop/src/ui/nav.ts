@@ -197,6 +197,22 @@ const navigateCommands: ReadonlyArray<PaletteCommand> = NAV_DESTINATIONS.map((de
   keywords: ["go", "open", "navigate", dest.label.toLowerCase(), ...(dest.keywords ?? [])],
 }))
 
+// HUD H3 (#5501): "Open <X> as a pane" — open the same destination as a managed,
+// draggable/resizable FLOATING window (the pane layer) instead of swapping the
+// single-pane router. Also derived from the registry (one entry → both a "Go to"
+// and an "Open as a pane" row), so the pane layer plugs into the SAME source of
+// truth as the sidebar/palette/hotbar (audit §4 / §5.2). Dispatches the existing
+// `OpenedManagedPane` verb (mapped in update.ts) — no new control verb.
+const openPaneCommands: ReadonlyArray<PaletteCommand> = NAV_DESTINATIONS.map((dest) => ({
+  kind: "action" as const,
+  id: `pane.${dest.pane}`,
+  label: `Open ${dest.label} as a pane`,
+  group: dest.groupId,
+  messageTag: "OpenedManagedPane",
+  args: { pane: dest.pane },
+  keywords: ["pane", "window", "float", "open", dest.label.toLowerCase(), ...(dest.keywords ?? [])],
+}))
+
 // Action commands map to EXISTING messages (audit §5.3): no new control verbs.
 // Phase-2 agents add their key action here (one entry) rather than a button.
 const actionCommands: ReadonlyArray<PaletteCommand> = [
@@ -260,6 +276,7 @@ const actionCommands: ReadonlyArray<PaletteCommand> = [
 
 export const paletteCommands: ReadonlyArray<PaletteCommand> = [
   ...navigateCommands,
+  ...openPaneCommands,
   ...actionCommands,
 ]
 
