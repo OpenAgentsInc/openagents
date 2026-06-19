@@ -771,3 +771,62 @@ body {
   color: var(--danger, #d32f2f);
   border-color: var(--danger, #d32f2f);
 }
+
+/* #5470: session-detail diff browser controls + artifact & receipt browser.
+ * Refs-only; legibility cosmetics over the shared DiffReview component and the
+ * inspectable artifact refs. */
+.diff-browse-controls {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+.diff-file-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+.diff-file-toggles .adapter-btn {
+  justify-content: flex-start;
+  text-align: left;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+}
+.artifact-browser {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.artifact-browser-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.artifact-ref-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.artifact-ref-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  min-width: 0;
+}
+.artifact-ref-label {
+  color: var(--text-secondary, #8a8c93);
+  flex-shrink: 0;
+}
+.artifact-ref-value {
+  color: var(--text, #d7d8e5);
+  font-family: var(--font-mono, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

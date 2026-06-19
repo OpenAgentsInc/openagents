@@ -61,6 +61,13 @@ export const ChangedSessionFilter = m("ChangedSessionFilter", {
 })
 export const ToggledEvent = m("ToggledEvent", { eventIndex: S.Number })
 
+// #5470 session-detail diff/artifact browser: expand a single diff file's hunk
+// body, flip the unified/split layout, and expand the artifact ref browser. All
+// are pure model toggles — no control verb / RPC.
+export const ToggledDiffFile = m("ToggledDiffFile", { path: S.String })
+export const ToggledDiffViewMode = m("ToggledDiffViewMode")
+export const ToggledArtifactBrowser = m("ToggledArtifactBrowser")
+
 // ── Coordinator pause/resume ────────────────────────────────────────────────
 export const ClickedCoordinatorToggle = m("ClickedCoordinatorToggle", {
   paused: S.Boolean,
@@ -451,6 +458,9 @@ export const Message = S.Union([
   SelectedSession,
   ChangedSessionFilter,
   ToggledEvent,
+  ToggledDiffFile,
+  ToggledDiffViewMode,
+  ToggledArtifactBrowser,
   ClickedCoordinatorToggle,
   SettledCoordinatorToggle,
   FailedCoordinatorToggle,

@@ -193,6 +193,81 @@ export function artifactLineText(
   return parts.join(" · ")
 }
 
+// ── #5470 session-detail artifact & receipt browser ───────────────────────────
+//
+// Build the inspectable ref rows for a session's retained artifact. Each row is
+// a (label, value) pair where the value is ALWAYS a ref/digest/enum the node
+// already deemed public-projection-safe — never a seed, token, raw path, or raw
+// secret. Null/empty fields are dropped so the browser shows only what exists.
+// Pure + DOM-free so it is unit-testable without a runtime.
+export type ArtifactBrowserRow = Readonly<{ label: string; value: string }>
+
+export type ArtifactBrowserSection = Readonly<{
+  // A stable id for the section (artifact kind / receipts).
+  id: string
+  title: string
+  rows: ReadonlyArray<ArtifactBrowserRow>
+}>
+
+export function artifactBrowserSections(
+  stats: SessionArtifactStats | undefined | null,
+): ReadonlyArray<ArtifactBrowserSection> {
+  if (!stats) return []
+  const detail = stats.detail
+  const sections: Array<ArtifactBrowserSection> = []
+
+  // The artifact section: the proof/failure refs and provenance enums.
+  const artifactRows: Array<ArtifactBrowserRow> = []
+  const push = (label: string, value: string | null | undefined): void => {
+    if (value != null && value.length > 0) artifactRows.push({ label, value })
+  }
+  push("kind", stats.kind === "none" ? null : stats.kind)
+  push("outcome", stats.outcome)
+  if (detail) {
+    push("schema", detail.schema)
+    push("objective", detail.objectiveDigestRef)
+    push("verify", detail.verifyRef)
+    push("response", detail.responseDigestRef)
+    push("external session", detail.externalSessionRef)
+    push("execution path", detail.executionPathRef)
+    push("execution mode", detail.executionMode)
+    push("sandbox", detail.sandboxMode)
+    push("permission", detail.permissionMode)
+    push("dev-check", detail.devCheckState)
+    push("redaction", detail.redactionState)
+    push("workspace", detail.workspaceRef)
+    push("error class", detail.errorClass)
+    push("error digest", detail.errorDigestRef)
+    for (const deviation of detail.deviationRefs) {
+      artifactRows.push({ label: "deviation", value: deviation })
+    }
+  }
+  if (artifactRows.length > 0) {
+    const isFailure = stats.kind === "failure"
+    sections.push({
+      id: stats.kind,
+      title: isFailure ? "Failure artifact" : "Proof artifact",
+      rows: artifactRows,
+    })
+  }
+
+  // The receipts section: the dereferenceable receipt-style refs (digest +
+  // verify refs that act as the session's replay receipts). Refs only — the
+  // browser never fetches or renders the receipt body.
+  if (detail) {
+    const receiptRows: Array<ArtifactBrowserRow> = []
+    if (detail.responseDigestRef) receiptRows.push({ label: "response digest", value: detail.responseDigestRef })
+    if (detail.objectiveDigestRef) receiptRows.push({ label: "objective digest", value: detail.objectiveDigestRef })
+    if (detail.errorDigestRef) receiptRows.push({ label: "error digest", value: detail.errorDigestRef })
+    if (detail.verifyRef) receiptRows.push({ label: "verify ref", value: detail.verifyRef })
+    if (receiptRows.length > 0) {
+      sections.push({ id: "receipts", title: "Receipt refs", rows: receiptRows })
+    }
+  }
+
+  return sections
+}
+
 // ── Session-detail: is an event row expandable / cancellable session ──────────
 export function eventExpandable(event: SessionEventRow): boolean {
   return (event.full != null && event.full.length > 0) || event.detail.length > 30

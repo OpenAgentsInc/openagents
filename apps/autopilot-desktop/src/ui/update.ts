@@ -511,6 +511,20 @@ export const update = (model: Model, message: Message): Result => {
       else set.add(message.eventIndex)
       return [Model.make({ ...model, expandedEvents: [...set] }), noCommands]
     }
+    // #5470 session-detail diff browser: per-file expand, layout flip, browser.
+    case "ToggledDiffFile": {
+      const set = new Set(model.expandedDiffFiles)
+      if (set.has(message.path)) set.delete(message.path)
+      else set.add(message.path)
+      return [Model.make({ ...model, expandedDiffFiles: [...set] }), noCommands]
+    }
+    case "ToggledDiffViewMode":
+      return [
+        Model.make({ ...model, diffViewMode: model.diffViewMode === "split" ? "unified" : "split" }),
+        noCommands,
+      ]
+    case "ToggledArtifactBrowser":
+      return [Model.make({ ...model, artifactBrowserOpen: !model.artifactBrowserOpen }), noCommands]
 
     // ── Coordinator toggle ───────────────────────────────────────────────────
     case "ClickedCoordinatorToggle":
