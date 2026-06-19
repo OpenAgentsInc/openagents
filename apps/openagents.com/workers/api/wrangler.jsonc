@@ -203,6 +203,7 @@
       "routes": [],
       "vars": {
         "ARTANIS_SCHEDULED_RUNNER_ENABLED": "false",
+        "INFERENCE_GATEWAY_ENABLED": "true",
         "GITHUB_CLIENT_ID": "Ov23lirHI1DWTzZ1zT1u",
         "GITHUB_CLIENT_SECRET": "staging-unconfigured",
         "OPENAUTH_CLIENT_ID": "openagents-web",
@@ -221,8 +222,8 @@
       "kv_namespaces": [
         {
           "binding": "AUTH_STORAGE",
-          "id": "d6b40d28e0a640bfb29d50c7afe458b1",
-          "preview_id": "02566e7567b6479ebdada57c93991383",
+          "id": "586eb41c0d69448a96ffabaa5fc9bafd",
+          "preview_id": "586eb41c0d69448a96ffabaa5fc9bafd",
         },
       ],
       "assets": {
@@ -240,26 +241,33 @@
       "d1_databases": [
         {
           "binding": "OPENAGENTS_DB",
-          "database_name": "openagents-autopilot",
-          "database_id": "9644ea09-f682-4971-98de-e0c791cb67fb",
+          "database_name": "openagents-autopilot-staging",
+          "database_id": "b30c43fa-fa39-4e56-8b95-f90d5b58292d",
           "migrations_dir": "migrations",
         },
       ],
       "r2_buckets": [
         {
           "binding": "ARTIFACTS",
-          "bucket_name": "openagents-autopilot-artifacts",
+          "bucket_name": "openagents-autopilot-artifacts-staging",
         },
       ],
       "queues": {
         "producers": [
           {
             "binding": "RUNNER_EVENTS",
-            "queue": "openagents-autopilot-runner-events",
+            "queue": "openagents-autopilot-runner-events-staging",
           },
           {
             "binding": "ADJUTANT_ENRICHMENT_QUEUE",
-            "queue": "openagents-adjutant-enrichment-jobs",
+            "queue": "openagents-adjutant-enrichment-jobs-staging",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "openagents-adjutant-enrichment-jobs-staging",
+            "max_batch_size": 1,
+            "max_retries": 3,
           },
         ],
       },
