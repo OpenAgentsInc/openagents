@@ -771,3 +771,106 @@ body {
   color: var(--danger, #d32f2f);
   border-color: var(--danger, #d32f2f);
 }
+
+/* #5468 (EPIC #5461): bounded auto-approve surface in the Decisions roll-up. */
+.auto-approve-status {
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+.auto-approve-failclosed {
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.85rem;
+  margin: 0 0 0.75rem;
+}
+.auto-approve-legend {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.auto-approve-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.auto-approve-legend-desc {
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.8rem;
+}
+.auto-approve-chip {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--outline, #525458);
+  white-space: nowrap;
+}
+.auto-approve-chip-allow {
+  color: var(--success, #00c853);
+  border-color: var(--success, #00c853);
+}
+.auto-approve-chip-escalate {
+  color: var(--warning, #ffb400);
+  border-color: var(--warning, #ffb400);
+}
+.auto-approve-chip-deny {
+  color: var(--danger, #d32f2f);
+  border-color: var(--danger, #d32f2f);
+}
+.auto-approve-bounds {
+  border-top: 1px solid var(--border-muted, #21262d);
+  padding-top: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.auto-approve-bounds-line {
+  font-size: 0.82rem;
+  color: var(--text-secondary, #8a8c93);
+  margin: 0 0 0.3rem;
+}
+.auto-approve-escalates {
+  color: var(--warning, #ffb400);
+}
+.auto-approve-policy-ref {
+  font-size: 0.75rem;
+  color: var(--outline, #525458);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin: 0.3rem 0 0;
+}
+.auto-approve-audit-empty {
+  font-size: 0.82rem;
+}
+.auto-approve-audit-title {
+  font-size: 0.85rem;
+  margin: 0 0 0.4rem;
+}
+.auto-approve-audit-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.auto-approve-audit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--border-muted, #21262d);
+}
+.auto-approve-audit-kind {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text, #d7d8e5);
+}
+.auto-approve-audit-reason {
+  color: var(--text-secondary, #8a8c93);
+  flex: 1 1 auto;
+}
+.auto-approve-audit-ref {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--outline, #525458);
+  font-size: 0.72rem;
+}

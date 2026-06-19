@@ -700,6 +700,25 @@ export type NodeStateMessage = {
   readonly assignments?: AssignmentRow[]
   // CL-51: node coordinator paused flag (null when the node doesn't expose it).
   readonly coordinatorPaused?: boolean | null
+  // #5468 (EPIC #5461): the BOUNDED auto-approve audit trail, refs-only. Present
+  // only when a session ran under `pylon sessions exec --on-approval auto`; the
+  // node relays the policy's `autoApprovals[]` (approvalRef / kind / category /
+  // decision / reason ref — never raw command/path/prompt text). Absent/empty
+  // by default (manual approve-deny is the default and the desktop does not
+  // enable auto-approve itself). The Supervise/Decisions surface shows the
+  // policy bounds regardless and the trail when it exists.
+  readonly autoApprovals?: readonly AutoApprovalAuditEntry[]
+}
+
+// #5468: one refs-only entry of the bounded auto-approve audit trail. Mirrors
+// the Pylon exec result `autoApprovals[]` shape (apps/pylon/src/node/
+// auto-approval-policy.ts → sessions-exec.ts). No raw command/path/prompt text.
+export type AutoApprovalAuditEntry = {
+  readonly approvalRef: string
+  readonly kind: string
+  readonly category: "allow" | "escalate" | "deny"
+  readonly decision: string
+  readonly reason: string
 }
 
 export type DesktopRPCSchema = {

@@ -192,6 +192,12 @@ import {
   verifyLineText,
   walletSummary,
 } from "./helpers"
+// #5468 (EPIC #5461): bounded auto-approve policy + audit-trail projection.
+import {
+  boundedAutoApprovalPolicySummary,
+  projectAutoApprovalAudit,
+  summarizeAutoApprovalAudit,
+} from "./auto-approval-view"
 import {
   type Model,
   type ChatMessage,
@@ -3683,6 +3689,94 @@ const swarmPane = (model: Model): Html => {
   )
 }
 
+// ── Bounded auto-approve surface (#5468, EPIC #5461) ────────────────────────
+// Surfaced INSIDE the Decisions/Supervise roll-up (not a new pane/button). It
+// shows, honestly: that the bounded `--on-approval auto` policy is fail-closed,
+// its allow-list + default caps/window, the categories that ALWAYS escalate,
+// and — when a session ran under it — the refs-only audit trail of what the
+// policy actually decided. Manual approve/deny stays the default; this never
+// implies the desktop is auto-approving when no audit trail is present.
+
+const autoApproveCategoryRow = (
+  category: (typeof boundedAutoApprovalPolicySummary.categories)[number],
+): Html =>
+  h.li(
+    [cls("auto-approve-legend-row"), h.DataAttribute("autopilot-auto-approve-category", category.id)],
+    [
+      h.span([cls(`auto-approve-chip auto-approve-chip-${category.id}`)], [category.label]),
+      h.span([cls("auto-approve-legend-desc")], [category.description]),
+    ],
+  )
+
+const autoApproveAuditRowView = (
+  row: ReturnType<typeof projectAutoApprovalAudit>[number],
+): Html =>
+  h.div(
+    [
+      cls("auto-approve-audit-row"),
+      h.DataAttribute("autopilot-auto-approval-ref", row.approvalRef),
+      h.DataAttribute("autopilot-auto-approval-category", row.category),
+    ],
+    [
+      h.span([cls(`auto-approve-chip auto-approve-chip-${row.category}`)], [row.categoryLabel]),
+      h.span([cls("auto-approve-audit-kind")], [row.kind]),
+      h.span([cls("auto-approve-audit-reason")], [row.reasonGloss]),
+      h.span([cls("auto-approve-audit-ref")], [row.approvalRef]),
+    ],
+  )
+
+const boundedAutoApproveCard = (model: Model): Html => {
+  const policy = boundedAutoApprovalPolicySummary
+  const auditRows = projectAutoApprovalAudit(modelNode(model)?.autoApprovals)
+  const summary = summarizeAutoApprovalAudit(auditRows)
+
+  // Honest status line: off by default; "active" only when a real audit trail
+  // exists (the desktop does not enable auto-approve itself today).
+  const statusLine = summary.active
+    ? `Auto-approve active — ${summary.autoApproved} auto-approved, ${summary.escalated} escalated to you, ${summary.denied} denied.`
+    : "Auto-approve is OFF by default. Sessions use manual approve/deny unless a run opts into the bounded policy via the CLI."
+
+  return card("Bounded auto-approve", [
+    h.p([cls("auto-approve-status")], [statusLine]),
+    h.p(
+      [cls("auto-approve-failclosed")],
+      [
+        "Fail-closed: an approval is auto-approved only when its kind is allow-listed, in-scope, and within caps. ",
+        "Destructive, spend/secret, and network actions always escalate or deny — never silently approved.",
+      ],
+    ),
+    h.ul([cls("auto-approve-legend")], policy.categories.map(autoApproveCategoryRow)),
+    h.div(
+      [cls("auto-approve-bounds")],
+      [
+        h.p([cls("auto-approve-bounds-line")], [
+          `Allow-list: ${policy.allowKinds.join(", ")}.`,
+        ]),
+        h.p([cls("auto-approve-bounds-line")], [
+          `Caps: up to ${policy.defaultMaxAutoApprovals} auto-approvals within a ${policy.defaultWindowMinutes}-minute window; over either cap escalates to you.`,
+        ]),
+        h.p([cls("auto-approve-bounds-line auto-approve-escalates")], [
+          `Always escalates / denies: ${policy.alwaysEscalates.join("; ")}.`,
+        ]),
+        h.p([cls("auto-approve-policy-ref")], [
+          `Policy: ${policy.cliFlag} (${policy.policyRef}).`,
+        ]),
+      ],
+    ),
+    auditRows.length === 0
+      ? h.p([cls("empty-state auto-approve-audit-empty")], [
+          "No auto-approve decisions recorded. When a session runs under the bounded policy, each decision appears here with its approval ref, category, and reason.",
+        ])
+      : h.div(
+          [cls("auto-approve-audit")],
+          [
+            h.h3([cls("auto-approve-audit-title")], [`Audit trail (${summary.total})`]),
+            h.div([cls("auto-approve-audit-rows")], auditRows.map(autoApproveAuditRowView)),
+          ],
+        ),
+  ])
+}
+
 // ── Decisions pane ────────────────────────────────────────────────────────────
 
 const decisionsPane = (model: Model): Html => {
@@ -3694,6 +3788,8 @@ const decisionsPane = (model: Model): Html => {
       approvals.length === 0
         ? emptyLine("Nothing needs you right now.")
         : h.div([cls("decisions-queue")], approvals.map(approvalRowView)),
+      // #5468: the bounded auto-approve policy + audit trail, in the roll-up.
+      boundedAutoApproveCard(model),
     ],
   )
 }

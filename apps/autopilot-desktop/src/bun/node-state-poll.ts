@@ -33,6 +33,8 @@ export async function pollNodeStateOnce(input: {
       ...(state.wallet !== undefined ? { wallet: state.wallet } : {}),
       ...(state.assignments ? { assignments: state.assignments } : {}),
       ...(state.coordinatorPaused !== undefined ? { coordinatorPaused: state.coordinatorPaused } : {}),
+      // #5468: pass through the bounded auto-approve audit trail when present.
+      ...(state.autoApprovals ? { autoApprovals: state.autoApprovals } : {}),
     }
   } catch {
     return offlineNodeState(input.fallbackSchema)
