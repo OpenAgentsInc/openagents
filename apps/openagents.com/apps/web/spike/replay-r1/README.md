@@ -131,6 +131,43 @@ validated as a public HTTPS URL. Missing bucket credentials fail closed with a
 typed `needs_owner.replay_clip.r2_bucket_not_provisioned` blocker; the script
 does not print secret values.
 
+## Regression renders
+
+`render-regression-smoke.mjs` is the #5434 owned-infra/local regression check.
+It renders:
+
+- the curated `first-real-settlement` replay with the primary camera path,
+- the same curated replay with `camera-path-alt.example.json`, and
+- a generated public activity timeline replay bundle from
+  `GET /api/public/proof-replays?mode=activity-timeline`.
+
+The command fails if the first frames are blank, the render manifest does not
+record an available `data-proof-replay-webgl` surface, the two curated camera
+paths produce the same first-frame sha256, or any generated clip manifest lacks
+source refs/caveats/public HTTPS artifact refs.
+
+```sh
+cd apps/openagents.com/apps/web
+node spike/replay-r1/render-regression-smoke.mjs \
+  --out /tmp/openagents-replay-clip-regression \
+  --duration 1 \
+  --fps 1 \
+  --width 640 \
+  --height 360
+```
+
+Outputs are intentionally inspectable:
+
+- `curated-main.mp4`, `curated-alt-camera.mp4`, and
+  `generated-timeline.mp4`
+- retained `*.frames/frame_00000.png` screenshots
+- `*.render.json` render manifests with WebGL surface probes
+- `*.clip-manifest.json` public-safe clip manifests
+- `regression-summary.json` with frame hashes and manifest refs
+
+This is a render-box / owned-infra smoke. It does not depend on GitHub-hosted
+CI, and it must not run inside the Cloudflare Worker.
+
 New dev dependency: **playwright** (added to the repo root `package.json`).
 This is a **render-box / CI workload** (headless Chrome), NOT a Cloudflare
 Worker workload — the Worker can trigger a render and serve the mp4 from R2, it

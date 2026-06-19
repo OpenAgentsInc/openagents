@@ -914,6 +914,22 @@ infrastructure, never inside the Cloudflare Worker.
    - Body summary: Add owned-infra/local render checks for one curated story and
      one generated timeline bundle. Verify nonblank WebGL frames, differing
      camera paths produce differing frames, and manifests carry source refs.
+   - Implementation status (2026-06-19, issue #5434): Added
+     `render-regression-smoke.mjs`, an owned-infra/local render-box smoke that
+     renders the curated `first-real-settlement` replay, the same replay through
+     an alternate camera path, and a generated public activity replay bundle from
+     `GET /api/public/proof-replays?mode=activity-timeline`. The smoke inspects
+     retained PNG frames at pixel level, requires available WebGL surface
+     metadata from `render-clip.mjs`, verifies primary/alternate camera frame
+     hashes differ, builds public-safe `openagents.replay_clip_manifest.v1`
+     manifests, and fails closed when source refs, caveats, public HTTPS storage
+     refs, sha256s, or positive frame counts are missing. Outputs stay
+     inspectable under the chosen output directory and the command is explicitly
+     a local/owned-infra render-box workload, not a GitHub-hosted CI or
+     Cloudflare Worker workload. Validation: `bun run --cwd
+     apps/openagents.com/apps/web test -- spike/replay-r1/render-regression-smoke.test.mjs`,
+     1-second local smoke to `/tmp/openagents-5434-regression`, and
+     `git diff --check`.
 
 #### EPIC 6 — Operations, gates, and launch proof
 

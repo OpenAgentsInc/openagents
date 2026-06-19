@@ -345,6 +345,35 @@ const runCommand = (command, args, options = {}) =>
     })
   })
 
+const probeRenderSurface = async page =>
+  page.evaluate(() => {
+    const host = document.getElementById('replay-spike-scene')
+    const root = host?.shadowRoot ?? null
+    if (root === null) return { hasShadow: false }
+
+    const stage = root.querySelector('[data-replay-stage]')
+    const canvases = Array.from(root.querySelectorAll('canvas'))
+    const projectionNodeCount = root.querySelectorAll(
+      '.plane .stage, .plane .actor, .plane .zap, .plane .marker',
+    ).length
+
+    return {
+      canvasCount: canvases.length,
+      canvasInfo: canvases.map(canvas => ({
+        camera: canvas.getAttribute('data-proof-replay-camera'),
+        height: canvas.height,
+        proofReplayWebgl: canvas.getAttribute('data-proof-replay-webgl'),
+        second: canvas.getAttribute('data-proof-replay-second'),
+        width: canvas.width,
+      })),
+      hasShadow: true,
+      projectionNodeCount,
+      stageCamera: stage?.getAttribute('data-camera-mode') ?? null,
+      stagePose: stage?.getAttribute('data-camera-pose') ?? null,
+      webglState: stage?.getAttribute('data-proof-replay-webgl') ?? null,
+    }
+  })
+
 const ensureFfmpeg = async ffmpeg => {
   try {
     await runCommand(ffmpeg, ['-version'])
@@ -448,6 +477,7 @@ const renderFrames = async ({
         },
       )
       await page.waitForTimeout(30)
+      const renderSurface = await probeRenderSurface(page)
       const path = join(framesDir, `frame_${padFrameIndex(index)}.png`)
       await page.screenshot({
         animations: 'disabled',
@@ -459,6 +489,7 @@ const renderFrames = async ({
         computedPose,
         index,
         path,
+        renderSurface,
         requestedPose: camera.requestedPose,
         second,
       })
