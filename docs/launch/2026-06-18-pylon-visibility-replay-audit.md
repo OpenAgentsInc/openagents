@@ -982,6 +982,25 @@ fully autonomous self-serve settlement captured by timeline/replay/clip.
      with no operator POST, record the evidence sequence in the timeline, produce
      a generated replay bundle, and render a clip. This is an evidence capture
      issue, not a new settlement authority issue.
+   - Implementation status (2026-06-19, issue #5438): Recorded
+     `docs/launch/2026-06-19-autostream-settlement-visibility-capture.md`.
+     The capture documents the public activity sequence for
+     `training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4`:
+     `trace_submitted` at `2026-06-18T13:47:40.322Z`,
+     `verification_verified` at `2026-06-18T13:47:40.412Z`, and receipt-backed
+     `real_bitcoin_moved` + `settlement_recorded` at
+     `2026-06-18T13:47:40.555Z`. The public receipt dereferences with
+     `realBitcoinMoved: true`, `movementMode: real_bitcoin`, and
+     `settlement.state: settled`; the generated replay bundle
+     `proof_replay_bundle.public_activity.73e66071` includes the same sequence;
+     and a local render-box clip/manifest was produced at
+     `/tmp/openagents-5438-autostream.mp4` with sha256
+     `aa2689c520bca782681b3cc4db9478aba5d06ac29fd7c03e29cb436b00ffda8b`;
+     the manifest is committed at
+     `docs/launch/2026-06-19-autostream-settlement-clip-manifest.json`.
+     The capture preserves the caveat that replay source refs still include
+     `operator_approval.tassadar.autostream.worker` and that R2 upload remains
+     owner-gated (`needs_owner.replay_clip.r2_bucket_not_provisioned`).
 5. **Align product promises and launch docs to visibility evidence**
    - Body summary: Once the autonomous sequence is captured, update the product
      promises, AGENTS/INSTALL/evidence-pack refs, and launch docs with the exact
