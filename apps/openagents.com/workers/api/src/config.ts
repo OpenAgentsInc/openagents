@@ -29,6 +29,11 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   EXA_REQUEST_TIMEOUT_MS?: string | undefined
   EXA_RETRY_LIMIT?: string | undefined
   EXA_RATE_LIMIT_BACKOFF_MS?: string | undefined
+  // Fireworks AI provider adapter key (EPIC #5474, #5479). Worker secret; the
+  // Fireworks open-model supply lane. Never logged. The gateway stays inert
+  // under INFERENCE_GATEWAY_ENABLED, so this is only read when the adapter is
+  // actually dispatched by routing (#5482).
+  FIREWORKS_API_KEY?: string | undefined
   GITHUB_CLIENT_ID?: string | undefined
   GITHUB_CLIENT_SECRET?: string | undefined
   MDK_ACCESS_TOKEN?: string | undefined
