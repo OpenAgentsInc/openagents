@@ -34,6 +34,7 @@ import {
   handleChatCompletions,
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
+import { fireworksAdapter } from './inference/fireworks-adapter'
 import { InferenceProviderRegistry } from './inference/provider-adapter'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
 import { readAgentBalance } from './payments-ledger'
@@ -7562,6 +7563,7 @@ const recordPublicAgentFunnelRead = (
 //   #5479 Fireworks, #5480 Vertex Anthropic, #5481 partner passthrough.
 const inferenceProviderRegistry = new InferenceProviderRegistry()
 inferenceProviderRegistry.register(stubEchoAdapter)
+inferenceProviderRegistry.register(fireworksAdapter)
 
 const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {

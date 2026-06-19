@@ -75,16 +75,43 @@ export type InferenceStreamChunk = Readonly<{
 
 // Typed adapter failure. Adapters surface provider/transport problems as this
 // rather than throwing, so the route can map them to a stable JSON error.
+//
+// The retry classification fields (`retryable`, `httpStatus`, `kind`) are the
+// typed signal routing (#5482) consumes to decide backoff + overflow to another
+// supply lane. They are OPTIONAL and default to a non-retryable, unclassified
+// failure so existing `{ adapterId, reason }` constructions stay valid and the
+// route can keep reading `error.reason` unchanged.
 export class InferenceAdapterError extends Error {
   readonly _tag = 'InferenceAdapterError'
   readonly adapterId: string
   readonly reason: string
+  // Whether routing may safely retry the request or overflow it to another
+  // supply lane (e.g. provider 429/503 or a transport fault). Defaults false.
+  readonly retryable: boolean
+  // The upstream HTTP status when the failure came from a provider response
+  // (e.g. 429, 503, 500); undefined for transport/config/parse failures.
+  readonly httpStatus: number | undefined
+  // Stable, neutral failure classification for routing/metrics, e.g.
+  // "rate_limited", "service_overloaded", "upstream_error", "transport_error",
+  // "configuration_error", "malformed_response", "request_rejected".
+  readonly kind: string | undefined
 
-  constructor(input: Readonly<{ adapterId: string; reason: string }>) {
+  constructor(
+    input: Readonly<{
+      adapterId: string
+      reason: string
+      retryable?: boolean | undefined
+      httpStatus?: number | undefined
+      kind?: string | undefined
+    }>,
+  ) {
     super(`[${input.adapterId}] ${input.reason}`)
     this.name = 'InferenceAdapterError'
     this.adapterId = input.adapterId
     this.reason = input.reason
+    this.retryable = input.retryable ?? false
+    this.httpStatus = input.httpStatus
+    this.kind = input.kind
   }
 }
 
