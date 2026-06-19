@@ -54,7 +54,27 @@ import {
   buildComposerContinuationObjective,
   parseVerifyLines,
 } from "./helpers"
-import type { Message } from "./message"
+import {
+  ClickedChatSubmit,
+  ClickedComposerReply,
+  ClickedComposerSpawn,
+  ClickedCoordinatorToggle,
+  ClickedSubmitIntent,
+  ClosedCommandPalette,
+  MovedCommandPaletteSelection,
+  NavigatedTo,
+  NavigatedToGroup,
+  OpenedCommandPalette,
+  RanPaletteCommand,
+  type Message,
+} from "./message"
+import { interpretKey } from "./keyboard"
+import {
+  filterPaletteCommands,
+  groupById,
+  paletteCommands,
+  type PaletteCommand,
+} from "./nav"
 import {
   BLUEPRINT_CHAT_SIGNATURE_REF,
   BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF,
@@ -205,6 +225,51 @@ const buildBlueprintChatObjective = (prompt: string): string =>
     prompt,
   ].join("\n")
 
+// #5464: the filtered palette list for the current query (also drives which
+// command Enter runs and how the selection index clamps).
+const paletteMatchesForModel = (model: Model): ReadonlyArray<PaletteCommand> =>
+  filterPaletteCommands(model.commandPaletteQuery).map((match) => match.command)
+
+const clampPaletteIndex = (index: number, length: number): number => {
+  if (length <= 0) return 0
+  if (index < 0) return 0
+  if (index >= length) return length - 1
+  return index
+}
+
+// Map a registry PaletteCommand to the EXISTING Message it dispatches (audit
+// §5.2/§5.3 — no new control verb). `navigate` → NavigatedTo; `action` → the
+// message named by `messageTag` (currently NavigatedTo / ClickedSubmitIntent /
+// ClickedCoordinatorToggle). Unknown tags resolve to null (defensive no-op).
+const messageForPaletteCommand = (command: PaletteCommand): Message | null => {
+  if (command.kind === "navigate") return NavigatedTo({ pane: command.pane })
+  switch (command.messageTag) {
+    case "NavigatedTo": {
+      const pane = (command.args?.pane ?? null) as PaneId | null
+      return pane ? NavigatedTo({ pane }) : null
+    }
+    case "ClickedSubmitIntent":
+      return ClickedSubmitIntent()
+    case "ClickedCoordinatorToggle":
+      return ClickedCoordinatorToggle({ paused: Boolean(command.args?.paused) })
+    default:
+      return null
+  }
+}
+
+// #5465: the submit message for the current Chat/Composer turn. Composer's first
+// turn spawns (ClickedComposerSpawn); subsequent turns continue the thread
+// (ClickedComposerReply). Chat always uses ClickedChatSubmit.
+const submitTurnMessage = (model: Model, pane: PaneId): Message | null => {
+  if (pane === "chat") return ClickedChatSubmit()
+  if (pane === "composer") {
+    return model.composerSessionRef === null
+      ? ClickedComposerSpawn()
+      : ClickedComposerReply()
+  }
+  return null
+}
+
 export const update = (model: Model, message: Message): Result => {
   switch (message._tag) {
     // ── Inbound projections ────────────────────────────────────────────────
@@ -336,6 +401,98 @@ export const update = (model: Model, message: Message): Result => {
           ...(isAccountManagingPane(message.pane) ? [LoadManagedAccounts()] : noCommands),
         ],
       ]
+
+    // #5463: a group jump resolves to the group's default pane, then reuses the
+    // full NavigatedTo handler above (so per-pane projection loads still fire).
+    case "NavigatedToGroup": {
+      const group = groupById(message.group)
+      if (!group) return [model, noCommands]
+      return update(model, NavigatedTo({ pane: group.defaultPane }))
+    }
+
+    // ── Command palette (#5464) ─────────────────────────────────────────────
+    case "OpenedCommandPalette":
+      return [
+        Model.make({
+          ...model,
+          commandPaletteOpen: true,
+          commandPaletteQuery: "",
+          commandPaletteIndex: 0,
+        }),
+        noCommands,
+      ]
+    case "ClosedCommandPalette":
+      return [Model.make({ ...model, commandPaletteOpen: false }), noCommands]
+    case "ChangedCommandPaletteQuery":
+      // A new query re-filters the list, so reset the highlight to the top.
+      return [
+        Model.make({
+          ...model,
+          commandPaletteQuery: message.value,
+          commandPaletteIndex: 0,
+        }),
+        noCommands,
+      ]
+    case "MovedCommandPaletteSelection": {
+      const length = paletteMatchesForModel(model).length
+      return [
+        Model.make({
+          ...model,
+          commandPaletteIndex: clampPaletteIndex(
+            model.commandPaletteIndex + message.delta,
+            length,
+          ),
+        }),
+        noCommands,
+      ]
+    }
+    case "RanPaletteCommand": {
+      // Resolve the command: by explicit id (a click) or the highlighted row
+      // (Enter). Close the palette, then re-dispatch the command's existing
+      // Message so all real handlers/effects run unchanged.
+      const command =
+        message.commandId === null
+          ? (paletteMatchesForModel(model)[model.commandPaletteIndex] ?? null)
+          : (paletteCommands.find((c) => c.id === message.commandId) ?? null)
+      const closed = Model.make({ ...model, commandPaletteOpen: false })
+      if (!command) return [closed, noCommands]
+      const next = messageForPaletteCommand(command)
+      return next ? update(closed, next) : [closed, noCommands]
+    }
+
+    // ── Keyboard layer (#5465) ──────────────────────────────────────────────
+    // PressedKey is interpreted purely (keyboard.ts) then re-dispatched as an
+    // existing Message, so every shortcut reuses a real handler (no no-ops).
+    case "PressedKey": {
+      const intent = interpretKey(model, {
+        key: message.key,
+        meta: message.meta,
+        ctrl: message.ctrl,
+        shift: message.shift,
+        inEditable: message.inEditable,
+      })
+      switch (intent.kind) {
+        case "none":
+          return [model, noCommands]
+        case "open-palette":
+          return update(model, OpenedCommandPalette())
+        case "close-palette":
+          return update(model, ClosedCommandPalette())
+        case "palette-move":
+          return update(model, MovedCommandPaletteSelection({ delta: intent.delta }))
+        case "palette-run":
+          return update(model, RanPaletteCommand({ commandId: null }))
+        case "navigate-group":
+          return update(model, NavigatedToGroup({ group: intent.group }))
+        case "navigate-pane":
+          return update(model, NavigatedTo({ pane: intent.pane }))
+        case "submit-turn": {
+          const submit = submitTurnMessage(model, intent.pane)
+          return submit ? update(model, submit) : [model, noCommands]
+        }
+      }
+    }
+
     case "SelectedSession":
       return [
         Model.make({

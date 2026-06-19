@@ -20,6 +20,41 @@ export const GotNodeLaunchStatus = m("GotNodeLaunchStatus", { status: S.String }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
 export const NavigatedTo = m("NavigatedTo", { pane: PaneId })
+
+// #5463: jump to a primary nav group (clicking a group header / Cmd-1..5). The
+// reducer maps the group id to its `defaultPane` via the nav registry.
+export const NavigatedToGroup = m("NavigatedToGroup", { group: S.String })
+
+// ── Command palette (#5464) ──────────────────────────────────────────────────
+export const OpenedCommandPalette = m("OpenedCommandPalette")
+export const ClosedCommandPalette = m("ClosedCommandPalette")
+export const ChangedCommandPaletteQuery = m("ChangedCommandPaletteQuery", {
+  value: S.String,
+})
+// Move the highlighted row by `delta` (±1) through the current filtered list.
+export const MovedCommandPaletteSelection = m("MovedCommandPaletteSelection", {
+  delta: S.Number,
+})
+// Run a specific command by registry id (click a row) or the highlighted one
+// (Enter, commandId null → reducer reads commandPaletteIndex).
+export const RanPaletteCommand = m("RanPaletteCommand", {
+  commandId: S.NullOr(S.String),
+})
+
+// ── Keyboard layer (#5465) ────────────────────────────────────────────────────
+// The keyboard subscription emits ONE raw key event; the pure reducer
+// (update.ts) interprets it against the active pane + palette state. Keeping the
+// interpretation in the reducer makes the whole shortcut layer unit-testable
+// without a DOM. `inEditable` is true when focus is in a text input/textarea so
+// nav keys never fire mid-typing (#5465 scoping rule).
+export const PressedKey = m("PressedKey", {
+  key: S.String,
+  meta: S.Boolean,
+  ctrl: S.Boolean,
+  shift: S.Boolean,
+  inEditable: S.Boolean,
+})
+
 export const SelectedSession = m("SelectedSession", { sessionRef: S.String })
 export const ChangedSessionFilter = m("ChangedSessionFilter", {
   filter: SessionFilter,
@@ -406,6 +441,13 @@ export const Message = S.Union([
   GotNotifications,
   GotNodeLaunchStatus,
   NavigatedTo,
+  NavigatedToGroup,
+  OpenedCommandPalette,
+  ClosedCommandPalette,
+  ChangedCommandPaletteQuery,
+  MovedCommandPaletteSelection,
+  RanPaletteCommand,
+  PressedKey,
   SelectedSession,
   ChangedSessionFilter,
   ToggledEvent,

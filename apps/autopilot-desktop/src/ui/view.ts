@@ -150,9 +150,21 @@ import {
   SelectedTrainingSceneNode,
   type Message,
   NavigatedTo,
+  NavigatedToGroup,
+  OpenedCommandPalette,
+  ClosedCommandPalette,
+  ChangedCommandPaletteQuery,
+  RanPaletteCommand,
   SelectedSession,
   ToggledEvent,
 } from "./message"
+import {
+  NAV_GROUPS,
+  SHORTCUTS,
+  filterPaletteCommands,
+  groupForPane,
+  type NavGroup,
+} from "./nav"
 import {
   approvalLabel,
   artifactLineText,
@@ -289,28 +301,14 @@ const publicActivityPane = (
   ])
 }
 
-// ── Sidebar ──────────────────────────────────────────────────────────────────
-
-const NAV: ReadonlyArray<{ id: PaneId; label: string }> = [
-  // #5355: Composer is the foreground "code in the app" surface — listed first
-  // so the day-to-day coding loop is the primary entry, not a buried tab.
-  { id: "composer", label: "Composer" },
-  { id: "chat", label: "Chat" },
-  // AO-4 (#5445): the first-run onboarding wizard / live status surface, listed
-  // near the top so a new user finds the "literally on Autopilot" chain.
-  { id: "onboarding", label: "Get started" },
-  { id: "network", label: "Network" },
-  { id: "builtin-agent", label: "Agent" },
-  { id: "nodes", label: "Nodes" },
-  { id: "training", label: "Training" },
-  { id: "training-fullscreen", label: "Training Live" },
-  { id: "sessions", label: "Sessions" },
-  // CS-A2 (#5362): the swarm / multi-session grid over N concurrent sessions.
-  { id: "swarm", label: "Swarm" },
-  { id: "decisions", label: "Decisions" },
-  { id: "spawn", label: "Spawn" },
-  { id: "settings", label: "Settings" },
-]
+// ── Sidebar (grouped, #5463; audit §5.2) ─────────────────────────────────────
+//
+// The primary sidebar shows the ~5 intent-named GROUPS from the nav registry
+// (nav.ts), never a flat per-pane wall. The active group also renders a
+// secondary in-section strip of its destinations, so every pane stays reachable
+// without growing the top level. Group buttons / sub-pane buttons all dispatch
+// the existing NavigatedTo / NavigatedToGroup messages — Phase-2 panes appear
+// here automatically by adding one registry entry (see nav.ts seam comment).
 
 const sidebarStatusLabel = (node: NodeStateMessage | null): string => {
   if (!node) return "connecting…"
@@ -336,9 +334,59 @@ const coordinatorToggle = (node: NodeStateMessage | null): Html => {
   )
 }
 
+// The pending-approvals badge follows the pane it belongs to (decisions), so it
+// surfaces on whichever group owns that pane (Supervise) — preserving the old
+// badge without a flat Decisions button.
+const groupPendingCount = (group: NavGroup, pendingCount: number): number =>
+  group.destinations.some((dest) => dest.pane === "decisions") ? pendingCount : 0
+
+const primaryNavButton = (
+  model: Model,
+  group: NavGroup,
+  activeGroupId: string | null,
+  pendingCount: number,
+): Html => {
+  const badge = groupPendingCount(group, pendingCount)
+  const isActive = group.id === activeGroupId
+  return h.button(
+    [
+      cls(`nav-item nav-group${isActive ? " active" : ""}`),
+      h.Type("button"),
+      h.OnClick(NavigatedToGroup({ group: group.id })),
+    ],
+    [
+      h.span([cls("nav-accel")], [`⌘${group.accel}`]),
+      h.span([cls("nav-group-label")], [group.label]),
+      badge > 0 ? h.span([cls("nav-badge")], [String(badge)]) : h.empty,
+    ],
+  )
+}
+
+// The secondary in-section strip for the active group. Only rendered when the
+// group has more than one destination (a single-destination group like Chat
+// needs no strip).
+const secondaryNavStrip = (model: Model, group: NavGroup | null): Html => {
+  if (!group || group.destinations.length <= 1) return h.empty
+  return h.div(
+    [cls("nav-subgroup")],
+    group.destinations.map((dest) =>
+      h.button(
+        [
+          cls(`nav-subitem${model.pane === dest.pane ? " active" : ""}`),
+          h.Type("button"),
+          h.OnClick(NavigatedTo({ pane: dest.pane })),
+        ],
+        [dest.label],
+      ),
+    ),
+  )
+}
+
 const sidebar = (model: Model): Html => {
   const node = modelNode(model)
   const pendingCount = node?.approvals?.length ?? 0
+  const activeGroup = groupForPane(model.pane)
+  const activeGroupId = activeGroup?.id ?? null
 
   return h.nav(
     [cls("sidebar")],
@@ -353,18 +401,73 @@ const sidebar = (model: Model): Html => {
           ),
         ],
       ),
+      // The command palette release valve (#5464): one always-visible affordance
+      // that opens the "everything" surface, so depth lives in search.
+      h.button(
+        [cls("nav-palette"), h.Type("button"), h.OnClick(OpenedCommandPalette())],
+        [h.span([cls("nav-palette-label")], ["Search commands"]), h.span([cls("nav-accel")], ["⌘K"])],
+      ),
       coordinatorToggle(node),
-      ...NAV.map((item) =>
-        h.button(
-          [
-            cls(`nav-item${model.pane === item.id ? " active" : ""}`),
-            h.Type("button"),
-            h.OnClick(NavigatedTo({ pane: item.id })),
-          ],
-          item.id === "decisions" && pendingCount > 0
-            ? [item.label, h.span([cls("nav-badge")], [String(pendingCount)])]
-            : [item.label],
-        ),
+      ...NAV_GROUPS.map((group) =>
+        primaryNavButton(model, group, activeGroupId, pendingCount),
+      ),
+      secondaryNavStrip(model, activeGroup),
+    ],
+  )
+}
+
+// ── Command palette overlay (#5464) ──────────────────────────────────────────
+// A searchable overlay over the typed command registry (nav.ts). The query +
+// highlighted index live in the Model, so this is a pure function of state; keys
+// (↑/↓/Enter/Esc) are handled by the keyboard layer (#5465). Clicking a row
+// dispatches the existing RanPaletteCommand (which also closes); clicking the
+// backdrop closes. No new control verb (audit §5.2).
+//
+// Foldkit's OnClick has no stopPropagation variant, so the dialog itself carries
+// NO click handler — only the backdrop closes, and only an actual backdrop click
+// (outside the dialog box) reaches it. Esc (the keyboard layer) is the primary
+// dismiss. Clicks on the input/rows hit their own handlers; they do bubble to the
+// backdrop, but the input is the only inert inner target and a stray close there
+// is recoverable (Cmd-K reopens), so we accept that over a brittle no-op guard.
+const commandPalette = (model: Model): Html => {
+  if (!model.commandPaletteOpen) return h.empty
+  const matches = filterPaletteCommands(model.commandPaletteQuery)
+  const selected =
+    matches.length === 0
+      ? -1
+      : Math.min(Math.max(model.commandPaletteIndex, 0), matches.length - 1)
+  return h.div(
+    [cls("palette-backdrop"), h.OnClick(ClosedCommandPalette())],
+    [
+      h.div(
+        [cls("palette-dialog"), h.Role("dialog")],
+        [
+          h.input([
+            cls("palette-input"),
+            h.Type("text"),
+            h.Placeholder("Type a command or destination…"),
+            h.Value(model.commandPaletteQuery),
+            h.Autofocus(true),
+            h.OnInput((value: string) => ChangedCommandPaletteQuery({ value })),
+          ]),
+          matches.length === 0
+            ? h.div([cls("palette-empty")], ["No matching commands."])
+            : h.ul(
+                [cls("palette-list")],
+                matches.map((match, index) =>
+                  h.li(
+                    [
+                      cls(`palette-row${index === selected ? " active" : ""}`),
+                      h.OnClick(RanPaletteCommand({ commandId: match.command.id })),
+                    ],
+                    [
+                      h.span([cls("palette-row-label")], [match.command.label]),
+                      h.span([cls("palette-row-group")], [match.command.group]),
+                    ],
+                  ),
+                ),
+              ),
+        ],
       ),
     ],
   )
@@ -4153,6 +4256,23 @@ const settingsPane = (model: Model): Html => {
     [],
     [
       paneTitle("Settings"),
+      // #5465: the shortcut listing, read from the single source of truth
+      // (nav.ts SHORTCUTS) so it can never drift from the keyboard layer.
+      card("Keyboard shortcuts", [
+        h.p([cls("card-body")], [
+          "Press ⌘K (Ctrl-K on non-mac) any time to open the command palette — the searchable list of every destination and action.",
+        ]),
+        h.ul(
+          [cls("shortcut-list")],
+          SHORTCUTS.map((shortcut) =>
+            h.li([cls("shortcut-row")], [
+              h.kbd([cls("shortcut-chord")], [shortcut.chord]),
+              h.span([cls("shortcut-desc")], [shortcut.description]),
+              h.span([cls("shortcut-when")], [shortcut.when]),
+            ]),
+          ),
+        ),
+      ]),
       card("First-run Health", [
         h.p([cls("card-body")], [
           "Status: ",
@@ -5194,9 +5314,13 @@ const paneView = (model: Model): Html => {
 
 const rootView = (model: Model): Html => {
   // The network home remains immersive: fullscreen replay scene, no sidebar
-  // chrome, plus the public activity strip from #5428.
+  // chrome, plus the public activity strip from #5428. The command palette
+  // (#5464) still overlays it so Cmd-K works everywhere.
   if (model.pane === "network") {
-    return h.div([cls("app-shell app-shell-network")], [networkPane(model)])
+    return h.div(
+      [cls("app-shell app-shell-network")],
+      [networkPane(model), commandPalette(model)],
+    )
   }
   const fullscreenTraining = model.pane === "training-fullscreen"
   return h.div(
@@ -5224,6 +5348,7 @@ const rootView = (model: Model): Html => {
           ),
         ],
       ),
+      commandPalette(model),
     ],
   )
 }

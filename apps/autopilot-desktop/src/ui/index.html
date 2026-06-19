@@ -28,6 +28,33 @@
       .nav-item:hover { background:#161b25; }
       .nav-item.active { background:#1c2230; color:#7dd3fc; font-weight:600; }
       .nav-badge { background:#ff6b6b; color:#0b0d12; font-size:.7rem; font-weight:700; border-radius:.6rem; padding:.05rem .4rem; }
+      /* #5463 grouped nav + #5464 palette launcher */
+      .nav-palette { display:flex; align-items:center; justify-content:space-between; gap:.5rem; width:100%; font:inherit; font-size:.82rem; color:#8b93a7; background:#0b0d12; border:1px solid #1c2230; border-radius:.4rem; padding:.45rem .6rem; cursor:pointer; margin-bottom:.5rem; }
+      .nav-palette:hover { color:#cdd3e0; border-color:#2a3346; }
+      .nav-accel { font-family:ui-monospace,monospace; font-size:.72rem; color:#5b6273; }
+      .nav-group .nav-accel { opacity:.7; }
+      .nav-group-label { flex:1 1 auto; }
+      .nav-subgroup { display:flex; flex-direction:column; gap:.1rem; margin:.15rem 0 .35rem .55rem; padding-left:.55rem; border-left:1px solid #1c2230; }
+      .nav-subitem { width:100%; text-align:left; font:inherit; font-size:.84rem; color:#9aa1b2; background:transparent; border:none; border-radius:.35rem; padding:.32rem .5rem; cursor:pointer; }
+      .nav-subitem:hover { background:#11151d; color:#cdd3e0; }
+      .nav-subitem.active { background:#161b25; color:#7dd3fc; font-weight:600; }
+      /* #5464 command palette overlay */
+      .palette-backdrop { position:fixed; inset:0; z-index:50; background:rgb(0 0 0 / 0.5); display:flex; align-items:flex-start; justify-content:center; padding-top:12vh; }
+      .palette-dialog { width:min(640px,92vw); max-height:70vh; overflow:hidden; display:flex; flex-direction:column; background:#0e1117; border:1px solid #2a3346; border-radius:.6rem; box-shadow:0 18px 48px rgb(0 0 0 / 0.55); }
+      .palette-input { font:inherit; font-size:1rem; color:#e6e9f2; background:transparent; border:none; border-bottom:1px solid #1c2230; padding:.85rem 1rem; outline:none; }
+      .palette-empty { color:#8b93a7; font-size:.88rem; padding:1rem; }
+      .palette-list { list-style:none; margin:0; padding:.35rem; overflow-y:auto; display:grid; gap:.1rem; }
+      .palette-row { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.5rem .65rem; border-radius:.4rem; cursor:pointer; }
+      .palette-row:hover { background:#11151d; }
+      .palette-row.active { background:#1c2230; }
+      .palette-row-label { color:#cdd3e0; font-size:.9rem; }
+      .palette-row-group { color:#5b6273; font-size:.72rem; font-family:ui-monospace,monospace; text-transform:uppercase; letter-spacing:.04em; }
+      /* #5465 shortcut listing */
+      .shortcut-list { list-style:none; margin:.5rem 0 0; padding:0; display:grid; gap:.35rem; }
+      .shortcut-row { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:.75rem; font-size:.84rem; }
+      .shortcut-chord { font-family:ui-monospace,monospace; font-size:.78rem; color:#7dd3fc; background:#11151d; border:1px solid #1c2230; border-radius:.3rem; padding:.12rem .4rem; white-space:nowrap; }
+      .shortcut-desc { color:#cdd3e0; }
+      .shortcut-when { color:#5b6273; font-size:.74rem; white-space:nowrap; }
       .content { flex:1 1 auto; overflow-y:auto; height:100vh; box-sizing:border-box; }
       .pane { max-width:720px; margin:0 auto; padding:2rem; }
       .pane-title { font-size:1.5rem; margin:0 0 .4rem; }

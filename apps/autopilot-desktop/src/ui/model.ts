@@ -483,6 +483,15 @@ export const Model = ts("AutopilotDesktop", {
   // Deploy feedback (null until the card has been interacted with or a deploy
   // projection has landed).
   deployFeedback: S.NullOr(DeployFeedback),
+
+  // #5464: Cmd-K command-palette state. `commandPaletteOpen` toggles the
+  // overlay; `commandPaletteQuery` is the live fuzzy query; `commandPaletteIndex`
+  // is the keyboard-highlighted row into the CURRENT filtered list (clamped in
+  // the reducer). Kept in the Model so the palette is a pure function of state —
+  // no hidden DOM. See nav.ts for the registry these read against.
+  commandPaletteOpen: S.Boolean,
+  commandPaletteQuery: S.String,
+  commandPaletteIndex: S.Number,
 })
 export type Model = typeof Model.Type
 
@@ -878,4 +887,7 @@ export const initialModel: Model = Model.make({
   proofReplayStatus: { text: "not loaded", tone: "idle" },
   proofReplayPending: false,
   deployFeedback: null,
+  commandPaletteOpen: false,
+  commandPaletteQuery: "",
+  commandPaletteIndex: 0,
 })
