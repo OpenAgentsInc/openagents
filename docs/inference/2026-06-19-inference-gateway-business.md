@@ -26,6 +26,16 @@ node — we can fan a cut back to that contributor (closing the revenue loop int
 same accepted-outcome → receipt → settle spine the revenue-loop wiring RL-1/2/3 already
 built).
 
+**Referral revshare on ALL inference, always.** Beyond the serving-node cut, anyone who
+**refers a user, agent, or business that signs up** earns an ongoing referral cut on
+**all of that account's inference spend, indefinitely** — not a one-time bounty. Point a
+business at us and you keep earning a percentage of everything they ever run through the
+gateway. This rides the same referral ledger (RL-1: attribution → eligibility →
+dispatch) and pays in credits or Bitcoin per the asset-boundary/no-resale guards (RL-3).
+So every dollar of inference can split three ways — OpenAgents margin, the serving node,
+and the referrer — turning the whole network into a distribution channel that's paid to
+bring demand in.
+
 ## 2. Who it's for (the demand)
 
 - **Autopilot app users with no usable subscription** — the desktop app's coding agent
