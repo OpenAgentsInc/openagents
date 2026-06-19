@@ -221,6 +221,18 @@ export const BillingAutoTopUpState = S.Struct({
 })
 export type BillingAutoTopUpState = typeof BillingAutoTopUpState.Type
 
+// One purchasable credit package, projected from the server-configured Stripe
+// catalog. `id` is the real catalog id the billing page POSTs to
+// `/api/billing/checkout`, so the UI never sends an id the server cannot honor.
+export const BillingCreditPackage = S.Struct({
+  id: S.String,
+  label: S.String,
+  amountCents: S.Number,
+  amountFormatted: S.String,
+  currency: S.Literal('USD'),
+})
+export type BillingCreditPackage = typeof BillingCreditPackage.Type
+
 export const BillingSummary = S.Struct({
   currency: S.Literal('USD'),
   status: S.Literals(['active', 'suspended']),
@@ -232,6 +244,10 @@ export const BillingSummary = S.Struct({
     containerCentsPerMinute: S.Number,
     codexCentsPerThousandTokens: S.Number,
   }),
+  // The purchasable catalog the billing page renders buy buttons from. Every
+  // server producer of a summary attaches this (empty when card checkout is
+  // not configured), so it is a required field rather than an optional.
+  packages: S.Array(BillingCreditPackage),
   recentEntries: S.Array(BillingLedgerEntry),
   activeRuns: S.Array(BillingActiveRun),
   autoTopUp: BillingAutoTopUpState,
@@ -249,6 +265,7 @@ export const emptyBillingSummary = (): BillingSummary => ({
     containerCentsPerMinute: 5,
     codexCentsPerThousandTokens: 2,
   },
+  packages: [],
   recentEntries: [],
   activeRuns: [],
   autoTopUp: {

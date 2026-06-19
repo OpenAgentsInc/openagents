@@ -4,9 +4,11 @@ import Stripe from 'stripe'
 
 import {
   BILLING_CURRENCY,
+  type BillingCreditPackageDisplay,
   type BillingSummary,
   applyStripeAutoTopUpCredit,
   applyStripeCheckoutCredit,
+  formatUsdCents,
   pauseBillingAutoTopUpPolicy,
   readBillingBalanceCents,
   readBillingSummary,
@@ -474,6 +476,42 @@ const readPackages = (
 
     return new Map(packages.map(item => [item.id, item]))
   })
+
+// Project the server-configured Stripe credit catalog into display-ready items
+// for the billing UI. This is catalog-only: it reads `STRIPE_CREDIT_PACKAGES_JSON`
+// WITHOUT requiring the Stripe API key or webhook secret, so the billing summary
+// keeps working (and simply offers the configured packages) even on an
+// environment where card checkout is otherwise unconfigured. Best-effort by
+// design: any missing/invalid catalog yields an empty list rather than an error,
+// because a billing summary read must never fail on catalog shape. The `id`
+// returned is the real catalog id the checkout endpoint accepts, so the UI can
+// never send a packageId the server does not recognize.
+export const readBillingCreditPackages = (
+  env: StripeBillingEnv,
+): ReadonlyArray<BillingCreditPackageDisplay> => {
+  const packagesJson = trimmed(env.STRIPE_CREDIT_PACKAGES_JSON)
+
+  if (packagesJson === undefined) {
+    return []
+  }
+
+  return Effect.runSync(
+    readPackages(packagesJson).pipe(
+      Effect.map(catalog =>
+        Array.from(catalog.values()).map(
+          (pack): BillingCreditPackageDisplay => ({
+            id: pack.id,
+            label: pack.label,
+            amountCents: pack.amountCents,
+            amountFormatted: formatUsdCents(pack.amountCents),
+            currency: pack.currency,
+          }),
+        ),
+      ),
+      Effect.orElseSucceed(() => []),
+    ),
+  )
+}
 
 export const decodeStripeConfig = (
   env: StripeBillingEnv,

@@ -84,6 +84,19 @@ export type BillingAutoTopUpState = Readonly<{
   savedPaymentMethod: BillingSavedPaymentMethod | null
 }>
 
+// The purchasable credit catalog, as the UI should render it. This is the
+// projection of the server-configured Stripe catalog
+// (`STRIPE_CREDIT_PACKAGES_JSON`) into display-ready fields so the billing page
+// always offers exactly the package ids the checkout endpoint accepts. The
+// price `id` here is the real catalog id POSTed back to `/api/billing/checkout`.
+export type BillingCreditPackageDisplay = Readonly<{
+  id: string
+  label: string
+  amountCents: number
+  amountFormatted: string
+  currency: 'USD'
+}>
+
 export type BillingSummary = Readonly<{
   currency: 'USD'
   status: 'active' | 'suspended'
@@ -95,6 +108,12 @@ export type BillingSummary = Readonly<{
     containerCentsPerMinute: number
     codexCentsPerThousandTokens: number
   }>
+  // The purchasable catalog the UI renders buy buttons from. Defaults to an
+  // empty list; only browser-facing producers that can read the Stripe config
+  // (the billing routes and the authenticated bootstrap) populate it. An empty
+  // catalog means "card checkout is not configured here" and the UI shows no
+  // purchasable packages rather than a stale hardcoded list.
+  packages: ReadonlyArray<BillingCreditPackageDisplay>
   recentEntries: ReadonlyArray<BillingLedgerEntry>
   activeRuns: ReadonlyArray<BillingActiveRun>
   autoTopUp: BillingAutoTopUpState
@@ -647,11 +666,24 @@ export const readBillingSummary = async (
       containerCentsPerMinute: CONTAINER_RATE_CENTS_PER_MINUTE,
       codexCentsPerThousandTokens: CODEX_RATE_CENTS_PER_THOUSAND_TOKENS,
     },
+    // The catalog is owned by the Stripe config, which is not available on this
+    // pure D1 read path. Browser-facing producers attach the real catalog with
+    // `withBillingCreditPackages` before returning to the client.
+    packages: [],
     recentEntries,
     activeRuns,
     autoTopUp,
   }
 }
+
+// Attach the purchasable credit catalog to a billing summary for browser
+// responses. Pure and total: it never reads I/O and simply replaces the
+// (default empty) `packages` projection so the UI renders buy buttons that
+// match exactly what `/api/billing/checkout` will accept.
+export const withBillingCreditPackages = (
+  summary: BillingSummary,
+  packages: ReadonlyArray<BillingCreditPackageDisplay>,
+): BillingSummary => ({ ...summary, packages })
 
 export const requireMinimumRunCredits = async (
   db: D1Database,

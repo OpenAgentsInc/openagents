@@ -589,6 +589,7 @@ describe('Omni Effect services', () => {
           currency: 'USD',
           minimumRunCreditCents: 5,
           minimumRunCreditFormatted: '$0.05',
+          packages: [],
           rates: {
             codexCentsPerThousandTokens: 2,
             containerCentsPerMinute: 5,

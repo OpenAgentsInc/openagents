@@ -76,41 +76,23 @@ export const view = (model: Model): Html => {
     ...(message === undefined ? {} : { actionMessage: message }),
     couponFormAttrs: [h.OnSubmit(SubmittedBillingCoupon())],
     couponInputAttrs: [h.OnInput(value => UpdatedBillingCouponCode({ value }))],
-    packages: [
-      {
-        id: 'starter',
-        label: 'Starter',
-        amount: '$25',
-        detail: 'Light testing and short computer turns.',
-        attrs: [
-          h.Type('button'),
-          ...(busy ? [h.Disabled(true)] : []),
-          h.OnClick(ClickedBillingPackage({ packageId: 'starter' })),
-        ],
-      },
-      {
-        id: 'builder',
-        label: 'Builder',
-        amount: '$100',
-        detail: 'Frequent repo work and longer Autopilot runs.',
-        attrs: [
-          h.Type('button'),
-          ...(busy ? [h.Disabled(true)] : []),
-          h.OnClick(ClickedBillingPackage({ packageId: 'builder' })),
-        ],
-      },
-      {
-        id: 'team',
-        label: 'Team',
-        amount: '$500',
-        detail: 'Shared team usage across sustained workrooms.',
-        attrs: [
-          h.Type('button'),
-          ...(busy ? [h.Disabled(true)] : []),
-          h.OnClick(ClickedBillingPackage({ packageId: 'team' })),
-        ],
-      },
-    ],
+    // Render purchasable packages from the SERVER catalog
+    // (`billing.packages`, projected from `STRIPE_CREDIT_PACKAGES_JSON`) instead
+    // of a hardcoded list. The buy button posts the real catalog `id`, so the
+    // UI can never send a packageId the `/api/billing/checkout` endpoint does
+    // not recognize. An empty catalog (Stripe not configured here) renders no
+    // buy buttons rather than stale, unpurchasable options.
+    packages: billing.packages.map(pack => ({
+      id: pack.id,
+      label: pack.label,
+      amount: pack.amountFormatted,
+      detail: `Adds ${pack.amountFormatted} of credit to your balance.`,
+      attrs: [
+        h.Type('button'),
+        ...(busy ? [h.Disabled(true)] : []),
+        h.OnClick(ClickedBillingPackage({ packageId: pack.id })),
+      ],
+    })),
     recentEntries: billing.recentEntries.map(entry => ({
       id: entry.id,
       description: entry.description,
