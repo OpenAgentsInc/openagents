@@ -31,6 +31,81 @@
   --warning: #ffb400;
   --danger: #d32f2f;
   --info: #2979ff;
+
+  /*
+   * HUD H4 (#5502): the Arwes / WGPUI sci-fi HUD skin palette. White-on-black
+   * with a cyan primary — the recurring OpenAgents HUD look (see
+   * docs/launch/2026-06-19-previous-hud-systems-audit.md §4.5). These hex
+   * values MIRROR `HUD_STATUS_COLORS` in @openagentsinc/three-effect/core (the
+   * H2 kit) and the local copy in src/shared/hud-skin.ts — kept in lockstep by
+   * the hud-skin.test.ts `kit parity` + `css tokens` cases so the HTML chrome
+   * and the three-effect canvas accents read as one HUD. Token names match
+   * HUD_SKIN_CSS_VARS in hud-skin.ts.
+   */
+  --hud-primary: #00f0ff;
+  --hud-secondary: #7dd3fc;
+  --hud-success: #2bd576;
+  --hud-info: #4ca3ff;
+  --hud-warning: #f5c542;
+  --hud-error: #ff4d4d;
+  --hud-neutral: #9aa6b2;
+  --hud-line: #e6e9ef;
+  --hud-bg: #0b0d12;
+}
+
+/*
+ * HUD H4 (#5502): shared sci-fi-HUD surface ingredients, reused by the hotbar,
+ * the pane windows, and the full-UI chrome so every skinned surface speaks the
+ * same Arwes vocabulary:
+ *   - .hud-corners — four corner-bracket notches (Arwes `FrameCorners`), drawn
+ *     with layered linear-gradient slices so they cost no extra DOM nodes;
+ *   - .hud-scanlines — a faint dot-grid + horizontal scanline backdrop (the
+ *     WGPUI `DotGridBackground` / scanline surface), confined to the element.
+ * Both are decorative ::before/::after layers and are pointer-transparent, so
+ * they never affect layout or interaction.
+ */
+.hud-corners {
+  position: relative;
+}
+.hud-corners::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  /* Four ~14px L-shaped brackets, one per corner, in the cyan primary. */
+  --hud-corner: 14px;
+  --hud-corner-w: 1px;
+  --hud-corner-c: color-mix(in srgb, var(--hud-primary) 55%, transparent);
+  background:
+    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) top left / var(--hud-corner) var(--hud-corner-w) no-repeat,
+    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) top left / var(--hud-corner-w) var(--hud-corner) no-repeat,
+    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) top right / var(--hud-corner) var(--hud-corner-w) no-repeat,
+    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) top right / var(--hud-corner-w) var(--hud-corner) no-repeat,
+    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) bottom left / var(--hud-corner) var(--hud-corner-w) no-repeat,
+    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) bottom left / var(--hud-corner-w) var(--hud-corner) no-repeat,
+    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) bottom right / var(--hud-corner) var(--hud-corner-w) no-repeat,
+    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) bottom right / var(--hud-corner-w) var(--hud-corner) no-repeat;
+}
+.hud-scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0.5;
+  /* A faint cyan dot-grid (radial) over horizontal scanlines (repeating
+     linear) — the WGPUI DotGrid + scanline surface, dialed way down. */
+  background-image:
+    radial-gradient(color-mix(in srgb, var(--hud-primary) 22%, transparent) 0.5px, transparent 0.5px),
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--hud-line) 5%, transparent) 0px,
+      color-mix(in srgb, var(--hud-line) 5%, transparent) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  background-size: 16px 16px, 100% 3px;
 }
 
 body {
@@ -125,8 +200,13 @@ body {
 .shell-input::placeholder {
   color: rgb(255 255 255 / 0.25);
 }
+/* HUD H4 (#5502): the ONLY accent the minimal black shell gets — a very subtle
+   cyan focus ring on the text bar. The empty zero-base shell stays clean black
+   (no corner brackets, no scanlines, no frame); the HUD skin lives on the
+   hotbar / panes / full UI, not on the quiet default surface. */
 .shell-input:focus {
-  border-color: rgb(255 255 255 / 0.3);
+  border-color: color-mix(in srgb, var(--hud-primary) 32%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--hud-primary) 14%, transparent);
 }
 .shell-input:disabled {
   opacity: 0.55;
@@ -144,8 +224,8 @@ body {
   padding: 0.5rem 0.6rem;
 }
 .shell-open-panes:hover {
-  color: rgb(255 255 255 / 0.7);
-  border-color: rgb(255 255 255 / 0.25);
+  color: var(--hud-secondary, #7dd3fc);
+  border-color: color-mix(in srgb, var(--hud-primary) 35%, transparent);
 }
 /* Always-visible return to the zero-base shell from the full UI (owner
    directive 2026-06-19). Fixed top-left, above the sidebar, so it can never be
@@ -176,6 +256,10 @@ body {
    Fixed, blurred, high-z (below the palette backdrop at z-index 50). Slots are
    derived from the nav registry (nav.ts HOTBAR_SLOTS); the active group's slot
    is highlighted. White-on-black to match the zero-base shell. */
+/* HUD H4 (#5502): the Arwes-skinned command bar. Cyan corner brackets +
+   scanline backdrop over the blurred black bar; the active slot lights up in the
+   HUD primary; the ⌘K palette slot reads as the cyan accent slot. White-on-black
+   base preserved so it sits cleanly on the shell. */
 .hotbar {
   position: fixed;
   left: 50%;
@@ -185,11 +269,13 @@ body {
   display: flex;
   align-items: stretch;
   gap: 0.4rem;
-  padding: 0.4rem;
-  border: 1px solid rgb(255 255 255 / 0.12);
+  padding: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--hud-primary) 22%, transparent);
   border-radius: 12px;
-  background: rgb(0 0 0 / 0.62);
-  box-shadow: 0 16px 48px rgb(0 0 0 / 0.45);
+  background: rgb(4 7 11 / 0.72);
+  box-shadow:
+    0 16px 48px rgb(0 0 0 / 0.45),
+    inset 0 0 0 1px rgb(255 255 255 / 0.02);
   backdrop-filter: blur(16px);
   pointer-events: auto;
 }
@@ -198,6 +284,7 @@ body {
   bottom: clamp(4.5rem, 9vw, 6rem);
 }
 .hotbar-slot {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -211,16 +298,22 @@ body {
   color: rgb(255 255 255 / 0.62);
   cursor: pointer;
   font: inherit;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .hotbar-slot:hover {
-  color: rgb(255 255 255 / 0.95);
-  border-color: rgb(255 255 255 / 0.28);
-  background: rgb(255 255 255 / 0.07);
+  color: var(--hud-line, #e6e9ef);
+  border-color: color-mix(in srgb, var(--hud-primary) 45%, transparent);
+  background: rgb(255 255 255 / 0.06);
 }
 .hotbar-slot.active {
-  color: var(--primary, #fff);
-  border-color: rgb(255 255 255 / 0.5);
-  background: rgb(255 255 255 / 0.12);
+  color: var(--hud-primary, #00f0ff);
+  border-color: color-mix(in srgb, var(--hud-primary) 70%, transparent);
+  background: color-mix(in srgb, var(--hud-primary) 12%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--hud-primary) 28%, transparent);
 }
 .hotbar-slot-key {
   font-size: 0.8rem;
@@ -230,12 +323,19 @@ body {
 }
 .hotbar-slot-label {
   font-size: 0.62rem;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1;
 }
+/* The ⌘K palette slot is the always-cyan accent slot (the StarCraft command
+   slot), distinguishing the launcher from the numbered group slots. */
 .hotbar-slot-palette {
-  border-color: rgb(255 255 255 / 0.2);
+  border-color: color-mix(in srgb, var(--hud-primary) 40%, transparent);
+  color: var(--hud-secondary, #7dd3fc);
+}
+.hotbar-slot-palette:hover {
+  color: var(--hud-primary, #00f0ff);
+  border-color: color-mix(in srgb, var(--hud-primary) 65%, transparent);
 }
 /* HUD H7 (#5504): the live status/meters overlay. A small top-right corner card
    (the game-HUD status layer) rendered by the three-effect H2 kit. Sits clear of
@@ -272,16 +372,74 @@ body {
   z-index: 30;
   pointer-events: none;
 }
+/* HUD H4 (#5502): Arwes-skinned floating window. Every pane gets the cyan
+   corner-bracket frame (.hud-corners is added in the view) over a faint
+   dot-grid/scanline body (.hud-scanlines on the body). The FOCUSED pane (top of
+   the z-stack) gets a brighter accent border + glow whose color echoes the live
+   node status tone via .pane-window-accent-<tone> (see hud-skin.ts), so the HUD
+   reads as one vocabulary with the H7 status overlay. */
 .pane-window {
+  --pane-accent: var(--hud-neutral, #9aa6b2);
   position: absolute;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid rgb(255 255 255 / 0.16);
   border-radius: 12px;
-  background: rgb(8 8 10 / 0.96);
+  background: rgb(6 9 13 / 0.96);
   box-shadow: 0 24px 64px rgb(0 0 0 / 0.6);
   pointer-events: auto;
+  transition:
+    border-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+/* The focused pane (highest z) lights its frame in the live status tone. The
+   accent color comes from .pane-window-accent-<tone>; this rule applies it. */
+.pane-window.pane-window-focused {
+  border-color: color-mix(in srgb, var(--pane-accent) 60%, transparent);
+  box-shadow:
+    0 24px 64px rgb(0 0 0 / 0.6),
+    0 0 20px color-mix(in srgb, var(--pane-accent) 26%, transparent);
+}
+.pane-window-focused.hud-corners::before {
+  --hud-corner-c: color-mix(in srgb, var(--pane-accent) 75%, transparent);
+}
+/* Tone → accent color (mirrors hud-skin.ts paneWindowAccentClass). */
+.pane-window-accent-success {
+  --pane-accent: var(--hud-success, #2bd576);
+}
+.pane-window-accent-info {
+  --pane-accent: var(--hud-info, #4ca3ff);
+}
+.pane-window-accent-warning {
+  --pane-accent: var(--hud-warning, #f5c542);
+}
+.pane-window-accent-error {
+  --pane-accent: var(--hud-error, #ff4d4d);
+}
+.pane-window-accent-neutral {
+  --pane-accent: var(--hud-neutral, #9aa6b2);
+}
+/* Keep the decorative HUD layers BEHIND the window's real content: the
+   scanline/dot-grid backdrop sits at z 0, the window's children (titlebar,
+   body, resize handles) lift above it, and the corner brackets stay crisp on
+   top of the edges. This makes the skin a pure backdrop — text is never dimmed
+   and clicks are never intercepted. */
+.pane-window.hud-scanlines::after {
+  z-index: 0;
+}
+.pane-window > .pane-window-titlebar,
+.pane-window > .pane-window-body {
+  position: relative;
+  z-index: 1;
+}
+/* Resize handles stay absolutely positioned (their geometry depends on it);
+   only lift their stacking so they remain grabbable above the backdrop. */
+.pane-window > .pane-window-resize {
+  z-index: 3;
+}
+.pane-window.hud-corners::before {
+  z-index: 2;
 }
 .pane-window-titlebar {
   flex: 0 0 auto;
@@ -290,8 +448,14 @@ body {
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid rgb(255 255 255 / 0.1);
-  background: rgb(255 255 255 / 0.04);
+  border-bottom: 1px solid color-mix(in srgb, var(--hud-primary) 16%, transparent);
+  background:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--pane-accent) 10%, transparent),
+      transparent 60%
+    ),
+    rgb(255 255 255 / 0.03);
   /* The title bar is the move handle. */
   cursor: move;
   user-select: none;
@@ -299,9 +463,12 @@ body {
 }
 .pane-window-title {
   font-size: 0.72rem;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: rgb(255 255 255 / 0.7);
+  color: var(--hud-secondary, #7dd3fc);
+}
+.pane-window-focused .pane-window-title {
+  color: color-mix(in srgb, var(--pane-accent) 80%, var(--hud-line));
 }
 .pane-window-close {
   flex: 0 0 auto;
@@ -319,9 +486,9 @@ body {
   line-height: 1;
 }
 .pane-window-close:hover {
-  color: rgb(255 255 255 / 0.95);
-  border-color: rgb(255 255 255 / 0.35);
-  background: rgb(255 255 255 / 0.08);
+  color: var(--hud-primary, #00f0ff);
+  border-color: color-mix(in srgb, var(--hud-primary) 50%, transparent);
+  background: color-mix(in srgb, var(--hud-primary) 12%, transparent);
 }
 .pane-window-body {
   flex: 1 1 auto;
