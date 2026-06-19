@@ -14,6 +14,7 @@ import type {
   ApprovalRow,
   AssignmentRow,
   IntentRow,
+  SessionArtifactDetail,
   SessionArtifactStats,
   SessionEventRow,
   WalletStatusRow,
@@ -293,16 +294,56 @@ async function fetchArtifactStats(input: {
     const json = (await res.json()) as { ok?: unknown; result?: { kind?: unknown; artifact?: any } }
     const result = json.ok === true ? json.result : undefined
     if (!result || result.kind === "none") return null
-    const ex = result.artifact && typeof result.artifact === "object" ? result.artifact.executor : undefined
+    const artifact = result.artifact && typeof result.artifact === "object" ? result.artifact : undefined
+    const ex = artifact && typeof artifact.executor === "object" ? artifact.executor : undefined
     return {
       kind: String(result.kind ?? "none"),
       outcome: ex && typeof ex.outcome === "string" ? ex.outcome : null,
       editedFileCount: ex && typeof ex.editedFileCount === "number" ? ex.editedFileCount : null,
       commandCount: ex && typeof ex.commandCount === "number" ? ex.commandCount : null,
       totalTokens: ex && typeof ex.totalTokens === "number" ? ex.totalTokens : null,
+      // #5470: surface the redaction-safe, ref-only detail for the artifact &
+      // receipt browser. The node already proved this payload public-projection
+      // -safe before writing it; we still defensively keep ONLY refs/digests/
+      // enums (string|number) and never copy through any free-text/raw field.
+      detail: extractArtifactDetail(artifact),
     }
   } catch {
     return null
+  }
+}
+
+// #5470: pull the public-safe refs out of a retained proof/failure artifact for
+// the browser. Every value is read through a string/array guard so a malformed
+// or unexpectedly-shaped payload degrades to null/[] rather than leaking through
+// raw content. `undefined` when there's no artifact object.
+function extractArtifactDetail(artifact: any): SessionArtifactDetail | undefined {
+  if (!artifact || typeof artifact !== "object") return undefined
+  const str = (value: unknown): string | null => (typeof value === "string" ? value : null)
+  const task = artifact.task && typeof artifact.task === "object" ? artifact.task : {}
+  const ex = artifact.executor && typeof artifact.executor === "object" ? artifact.executor : {}
+  const devCheck = artifact.devCheck && typeof artifact.devCheck === "object" ? artifact.devCheck : {}
+  const redaction =
+    artifact.redactionScan && typeof artifact.redactionScan === "object" ? artifact.redactionScan : {}
+  const deviationRefs = Array.isArray(artifact.deviations)
+    ? artifact.deviations.filter((d: unknown): d is string => typeof d === "string")
+    : []
+  return {
+    schema: str(artifact.schema),
+    objectiveDigestRef: str(task.objectiveDigestRef),
+    verifyRef: str(task.verifyRef),
+    responseDigestRef: str(ex.responseDigestRef),
+    externalSessionRef: str(ex.externalSessionRef),
+    executionPathRef: str(ex.executionPathRef),
+    executionMode: str(ex.executionMode),
+    sandboxMode: str(ex.sandboxMode),
+    permissionMode: str(ex.permissionMode),
+    devCheckState: str(devCheck.state),
+    deviationRefs,
+    redactionState: str(redaction.state),
+    errorClass: str(artifact.errorClass),
+    errorDigestRef: str(artifact.errorDigestRef),
+    workspaceRef: str(artifact.workspaceRef),
   }
 }
 

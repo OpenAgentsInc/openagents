@@ -70,6 +70,45 @@ export type SessionArtifactStats = {
   readonly editedFileCount: number | null
   readonly commandCount: number | null
   readonly totalTokens: number | null
+  // #5470: the redaction-safe, ref-only detail of the retained `session.artifact`
+  // payload (proof for completed, failure for failed). Every field here is a
+  // ref/digest/enum the node already deemed public-projection-safe (the proof
+  // JSON passes `assertPublicProjectionSafe` + the redaction scan before it is
+  // written) — never a seed, token, raw path, or raw secret. Optional /
+  // back-compat: absent on older projections (which only carried the stats
+  // above), so consumers must tolerate `detail === undefined`.
+  readonly detail?: SessionArtifactDetail
+}
+
+// #5470: dereferenceable refs surfaced in the artifact & receipt browser. These
+// mirror the proof/failure artifact JSON fields written by
+// apps/pylon/src/node/control-sessions.ts (writeRetainedArtifact /
+// writeFailureArtifact). The browser shows these as inspectable rows; it never
+// fetches or renders the raw artifact body.
+export type SessionArtifactDetail = {
+  // The artifact schema id (e.g. the control-session proof/failure schema).
+  readonly schema: string | null
+  // The session's task refs (objective digest + verify ref).
+  readonly objectiveDigestRef: string | null
+  readonly verifyRef: string | null
+  // The agent's response digest + any external (nested) session ref.
+  readonly responseDigestRef: string | null
+  readonly externalSessionRef: string | null
+  // Execution provenance (path/mode/sandbox/permission/network) — bounded enums.
+  readonly executionPathRef: string | null
+  readonly executionMode: string | null
+  readonly sandboxMode: string | null
+  readonly permissionMode: string | null
+  // The dev-check (verify) state the artifact recorded, and any deviation refs.
+  readonly devCheckState: string | null
+  readonly deviationRefs: readonly string[]
+  // The redaction-scan posture the node attached to this artifact.
+  readonly redactionState: string | null
+  // Failure artifacts: the error class + its digest ref (no raw error text).
+  readonly errorClass: string | null
+  readonly errorDigestRef: string | null
+  // The workspace ref the session ran in (a public ref, not a path).
+  readonly workspaceRef: string | null
 }
 
 // CL-26 "Deploy to Cloud": read-only projection of the node's last deploy.

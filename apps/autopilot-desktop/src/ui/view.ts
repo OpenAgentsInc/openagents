@@ -63,6 +63,7 @@ import type {
   OnboardingStepStatus,
   PromiseSurfacingReadinessResponse,
   PromiseSurfacingResponse,
+  SessionArtifactStats,
   SessionEventRow,
   TrainingEvidencePacketSummaryResponse,
   TrainingLeaderboardLaneSummary,
@@ -165,6 +166,9 @@ import {
   RanPaletteCommand,
   SelectedSession,
   ToggledEvent,
+  ToggledDiffFile,
+  ToggledDiffViewMode,
+  ToggledArtifactBrowser,
 } from "./message"
 import {
   DEFAULT_MANAGED_BASE_REF,
@@ -181,6 +185,7 @@ import {
 } from "./nav"
 import {
   approvalLabel,
+  artifactBrowserSections,
   artifactLineText,
   assignmentMeta,
   diffReviewProvenance,
@@ -4666,7 +4671,12 @@ const sessionDetailPane = (model: Model): Html => {
             ["Cancel session"],
           )
         : h.empty,
-      sessionDiffCard(events, stats?.editedFileCount),
+      sessionDiffCard(events, stats?.editedFileCount, {
+        fileTree: true,
+        viewMode: model.diffViewMode,
+        expandedFiles: model.expandedDiffFiles,
+      }),
+      artifactBrowserCard(stats, model.artifactBrowserOpen),
       eventTimeline(model, events),
     ],
   )
@@ -4697,18 +4707,121 @@ const sessionDetailPane = (model: Model): Html => {
 // session and the session-detail pane so a coding turn's file edits read as a
 // per-file +/- diff, not a flat transcript row. Hidden when no file changes were
 // reported (the diff would be empty / misleading).
+// #5470: when called from session-detail we pass the model-driven browse
+// options (file tree, side-by-side, per-file expand) + a header toggle row, so
+// a coding turn's diff is browsable by file with hunks and large diffs stay
+// legible. The composer keeps the simple default rendering (no `browse`).
+type DiffBrowseOptions = Readonly<{
+  fileTree: boolean
+  viewMode: "unified" | "split"
+  expandedFiles: ReadonlyArray<string>
+}>
+
+const diffBrowseControls = (viewMode: "unified" | "split"): Html =>
+  h.div([cls("diff-browse-controls"), h.DataAttribute("autopilot-diff-browse-controls", "")], [
+    h.button(
+      [
+        cls("adapter-btn"),
+        h.Type("button"),
+        h.DataAttribute("autopilot-diff-view-toggle", viewMode),
+        h.OnClick(ToggledDiffViewMode()),
+      ],
+      [viewMode === "split" ? "Side-by-side ✓" : "Side-by-side"],
+    ),
+  ])
+
 const sessionDiffCard = (
   events: ReadonlyArray<SessionEventRow>,
   artifactEditedFileCount: number | null | undefined,
+  browse?: DiffBrowseOptions,
 ): Html => {
   const changeSet = parseChangeSetFromEvents(events)
   if (changeSet.files.length === 0) return h.empty
   return card("Diff", [
+    ...(browse ? [diffBrowseControls(browse.viewMode)] : []),
     DiffReview({
       files: changeSet.files,
       summary: changeSet.summary,
       provenance: diffReviewProvenance(changeSet, artifactEditedFileCount),
+      ...(browse
+        ? {
+            fileTree: browse.fileTree,
+            viewMode: browse.viewMode,
+            expandedFiles: browse.expandedFiles,
+          }
+        : {}),
     }),
+    // #5470: a per-file expand strip so a reviewer can open the hunk body of the
+    // files they care about (the rest stay collapsed). Only when browsing and
+    // some file actually has hunk lines (otherwise there's nothing to expand).
+    ...(browse && changeSet.files.some((f) => f.hunkLines && f.hunkLines.length > 0)
+      ? [
+          h.div(
+            [cls("diff-file-toggles"), h.DataAttribute("autopilot-diff-file-toggles", "")],
+            changeSet.files
+              .filter((f) => f.hunkLines && f.hunkLines.length > 0)
+              .map((f) =>
+                h.button(
+                  [
+                    cls(`adapter-btn${browse.expandedFiles.includes(f.path) ? " active" : ""}`),
+                    h.Type("button"),
+                    h.DataAttribute("autopilot-diff-file-toggle", f.path),
+                    h.OnClick(ToggledDiffFile({ path: f.path })),
+                  ],
+                  [`${browse.expandedFiles.includes(f.path) ? "▾" : "▸"} ${f.path}`],
+                ),
+              ),
+          ),
+        ]
+      : []),
+  ])
+}
+
+// ── #5470: artifact & receipt browser ─────────────────────────────────────────
+//
+// An expand-on-demand inspector over `session.artifact` (proof for completed,
+// failure for failed). It renders the redaction-safe, ref-only detail the node
+// retained — refs/digests/enums only, never a seed/token/raw path/raw secret.
+// Inspection lives INSIDE session-detail (audit UX constraint): collapsed by
+// default behind a toggle so the pane stays uncluttered.
+const artifactBrowserCard = (
+  stats: SessionArtifactStats | undefined | null,
+  open: boolean,
+): Html => {
+  const sections = artifactBrowserSections(stats)
+  if (sections.length === 0) return h.empty
+  return card("Artifacts & receipts", [
+    h.button(
+      [
+        cls("adapter-btn"),
+        h.Type("button"),
+        h.DataAttribute("autopilot-artifact-browser-toggle", open ? "open" : "closed"),
+        h.OnClick(ToggledArtifactBrowser()),
+      ],
+      [open ? "Hide refs ▾" : "Inspect refs ▸"],
+    ),
+    open
+      ? h.div(
+          [cls("artifact-browser"), h.DataAttribute("autopilot-artifact-browser", "")],
+          sections.map((section) =>
+            h.div(
+              [cls("artifact-browser-section"), h.DataAttribute("autopilot-artifact-section", section.id)],
+              [
+                h.p([cls("card-body")], [h.strong([], [section.title])]),
+                h.ul(
+                  [cls("artifact-ref-list")],
+                  section.rows.map((row) =>
+                    h.li([cls("artifact-ref-row"), h.DataAttribute("autopilot-artifact-ref-label", row.label)], [
+                      h.span([cls("artifact-ref-label")], [`${row.label}: `]),
+                      h.code([cls("artifact-ref-value"), h.Title(row.value)], [row.value]),
+                    ]),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        )
+      : h.empty,
   ])
 }
 

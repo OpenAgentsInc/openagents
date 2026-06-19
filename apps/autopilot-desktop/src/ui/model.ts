@@ -362,6 +362,18 @@ export const Model = ts("AutopilotDesktop", {
   // Session-detail: which event indices are expanded (click-to-expand).
   expandedEvents: S.Array(S.Number),
 
+  // #5470 session-detail diff browser: which diff file paths are expanded
+  // (per-file hunk body open). Empty = collapsed-by-default for files with
+  // hunks. Keyed by the public-safe file ref the node emits.
+  expandedDiffFiles: S.Array(S.String),
+
+  // #5470 session-detail: side-by-side vs unified diff hunk layout.
+  diffViewMode: S.Literals(["unified", "split"]),
+
+  // #5470 session-detail: whether the artifact & receipt browser detail is
+  // expanded (the ref rows under the artifact summary line).
+  artifactBrowserOpen: S.Boolean,
+
   // Approvals optimistically resolved this session (hidden until the next poll
   // confirms). Keyed by approvalRef.
   resolvedApprovals: S.Array(S.String),
@@ -836,6 +848,9 @@ export const initialModel: Model = Model.make({
   selectedTrainingSceneNodeId: null,
   sessionFilter: "all",
   expandedEvents: [],
+  expandedDiffFiles: [],
+  diffViewMode: "unified",
+  artifactBrowserOpen: false,
   resolvedApprovals: [],
   spawnAdapter: "codex",
   spawnObjective: "",
