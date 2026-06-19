@@ -10,6 +10,7 @@ import { LAUNCH_RECOGNITION_REPLAY_SLUG } from "@openagentsinc/proof-replay"
 import type {
   AssignmentRow,
   NodeStateMessage,
+  OnboardingStatusResponse,
   TrainingRunsResponse,
   WalletStatusRow,
 } from "../src/shared/rpc"
@@ -106,6 +107,7 @@ import {
   GotTrainingRuns,
   GotNodeState,
   GotNodeLaunchStatus,
+  GotOnboardingStatus,
   NavigatedTo,
   SelectedAgentMode,
   SelectedProofReplay,
@@ -138,10 +140,33 @@ const session = (sessionRef: string, state: string) =>
     updatedAt: "2026-06-13T00:00:00.000Z",
   }) as never
 
+const onboardingProjection = (
+  complete: boolean,
+): OnboardingStatusResponse => ({
+  ok: true,
+  fetchedAt: "2026-06-19T00:00:00.000Z",
+  sourceUrl: "desktop:onboarding-status",
+  complete,
+  currentStepId: complete ? null : "identity",
+  hasRetryableFailure: false,
+  steps: [
+    {
+      id: complete ? "earned" : "identity",
+      label: complete ? "First sats earned" : "Identity",
+      status: complete ? "done" : "active",
+      message: complete
+        ? "Your first earned sats are visible."
+        : "Choose an identity.",
+      retryable: false,
+    },
+  ],
+})
+
 describe("helpers (CL-47..CL-58 parity, pure)", () => {
   test("desktop startup loads install readiness and the first proof replay bundle", () => {
     const [model, commands] = initialRuntimeState()
 
+    expect(model.pane).toBe("onboarding")
     expect(model.proofReplayPending).toBe(true)
     expect(model.proofReplayStatus.text).toBe("loading public replay bundle...")
     expect(model.publicActivityTimelinePending).toBe(true)
@@ -346,6 +371,39 @@ describe("update reducer (CL-53)", () => {
     expect(model.pane).toBe("chat")
     expect(model.expandedEvents).toEqual([])
     expect(commands).toHaveLength(0)
+  })
+
+  test("incomplete onboarding status keeps the onboarding pane", () => {
+    const [start] = initialRuntimeState()
+    const [model, commands] = update(
+      start,
+      GotOnboardingStatus({ projection: onboardingProjection(false) }),
+    )
+    expect(model.pane).toBe("onboarding")
+    expect(model.onboardingPending).toBe(false)
+    expect(model.onboardingStatusLine.tone).toBe("info")
+    expect(commands).toHaveLength(0)
+  })
+
+  test("complete onboarding status auto-navigates startup to chat", () => {
+    const [start] = initialRuntimeState()
+    const [model, commands] = update(
+      start,
+      GotOnboardingStatus({ projection: onboardingProjection(true) }),
+    )
+    expect(model.pane).toBe("chat")
+    expect(model.onboardingPending).toBe(false)
+    expect(model.onboardingStatusLine.tone).toBe("success")
+    expect(commands).toHaveLength(0)
+  })
+
+  test("complete onboarding status does not steal focus outside onboarding", () => {
+    const [model] = update(
+      Model.make({ ...initialModel, pane: "training" }),
+      GotOnboardingStatus({ projection: onboardingProjection(true) }),
+    )
+    expect(model.pane).toBe("training")
+    expect(model.onboardingStatusLine.tone).toBe("success")
   })
 
   test("SelectedTrainingSceneNode stores the selected scene node id", () => {

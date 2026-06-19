@@ -145,6 +145,12 @@ const isOnboardingPane = (pane: PaneId): boolean => pane === "onboarding"
 const isAccountManagingPane = (pane: PaneId): boolean =>
   pane === "composer" || pane === "spawn" || pane === "settings"
 
+const onboardingCompletionPane = (
+  currentPane: PaneId,
+  projection: OnboardingStatusResponse,
+): PaneId =>
+  projection.complete && currentPane === "onboarding" ? "chat" : currentPane
+
 const eventCountLabel = (count: number): string =>
   `${count} ${count === 1 ? "event" : "events"}`
 
@@ -661,6 +667,7 @@ export const update = (model: Model, message: Message): Result => {
       return [
         Model.make({
           ...model,
+          pane: onboardingCompletionPane(model.pane, projection),
           onboardingStatus: projection,
           onboardingPending: false,
           onboardingStatusLine: projection.complete
