@@ -195,6 +195,14 @@ import {
   type PaneLayer,
   type PaneResizeHandle,
 } from "./pane-manager"
+// HUD H4 (#5502): the pure skin helpers — which pane is focused (top of the
+// z-stack) + the live-status-tone → accent CSS class — so the focused pane
+// window's Arwes corner-bracket frame echoes the H7 status tone (one HUD
+// vocabulary). DOM-free + Three.js-free; unit-tested in hud-skin.test.ts.
+import { focusedPaneId, paneWindowAccentClass } from "../shared/hud-skin"
+// HUD H7 (#5504): the same pure projection the status overlay uses, reused here
+// only to read the node light's tone for the focused-pane accent.
+import { hudStatusProjection } from "../shared/hud-status-projection"
 import {
   DEFAULT_MANAGED_BASE_REF,
   managedWorktreeLabel,
@@ -585,8 +593,15 @@ const hotbarSlotView = (slot: HotbarSlot, activeGroup: string | null): Html => {
 
 const hotbar = (model: Model): Html => {
   const activeGroup = groupForPane(model.pane)?.id ?? null
+  // HUD H4 (#5502): the Arwes skin — cyan corner brackets + a faint scanline /
+  // dot-grid backdrop on the command bar (decorative ::before/::after, pointer-
+  // transparent; see styles.css .hud-corners / .hud-scanlines).
   return h.div(
-    [cls("hotbar"), h.Role("toolbar"), h.AriaLabel("Hotbar")],
+    [
+      cls("hotbar hud-corners hud-scanlines"),
+      h.Role("toolbar"),
+      h.AriaLabel("Hotbar"),
+    ],
     HOTBAR_SLOTS.map((slot) => hotbarSlotView(slot, activeGroup)),
   )
 }
