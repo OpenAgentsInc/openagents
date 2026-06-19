@@ -60,6 +60,17 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
    across all of it, on the accepted-outcome → receipt → settle spine. Ties to root
    `docs/cloud/` + the "Let's Make Money" thesis.
 
+7. **[`2026-06-19-leyten-compute-shard-audit.md`](./2026-06-19-leyten-compute-shard-audit.md)**
+   — audit of leyten's `shard` (WAN-pipeline inference engine) + `c0mpute` (the two-sided
+   compute marketplace that runs it), harvested for ideas/code to bring into OpenAgents. Two
+   distinct repos with a one-way `c0mpute → shard` dependency — the **same engine/marketplace
+   split we already draw** (Psionic execution vs product/Pylon surfaces). Top harvest items map
+   onto the shard-WAN serving lane: Held-Karp topology solver, sealed activation-frame
+   discipline, spec-decode acceptance + lazy-KV-crop + async pipelining, verifiable run
+   receipts, and canary anti-cheat + graded reputation. **No Solana** — every settlement edge
+   is mapped to **Bitcoin/Lightning + our exact-execution/replay verification + dereferenceable
+   receipts**.
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)
