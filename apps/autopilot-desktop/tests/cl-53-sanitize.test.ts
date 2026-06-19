@@ -380,6 +380,7 @@ describe("CL-53 sanitizeTree", () => {
   test("all rendered panes use style objects, not CSS strings", () => {
     const panes: ReadonlyArray<PaneId> = [
       "network",
+      "onboarding",
       "builtin-agent",
       "nodes",
       "training",

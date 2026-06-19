@@ -7,6 +7,7 @@ import {
   autoSlug,
   buildOnboardingChildEnv,
   loadPersistedCredential,
+  normalizeDisplayName,
   persistCredential,
   readNodeIdentity,
   redactToken,
@@ -283,6 +284,67 @@ describe("selfRegisterAgent (AO-1)", () => {
         }) as RegisterFetch,
       })
       expect(sentBody.bolt12Offer).toBe("lno1qtipoffer")
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("normalizeDisplayName (AO-3)", () => {
+  it("trims, collapses whitespace, and clamps to 120 chars", () => {
+    expect(normalizeDisplayName("  My   Studio  Agent ")).toBe("My Studio Agent")
+    expect(normalizeDisplayName("x".repeat(200))?.length).toBe(120)
+  })
+  it("returns null for blank/missing input (falls back to auto name)", () => {
+    expect(normalizeDisplayName("   ")).toBeNull()
+    expect(normalizeDisplayName(null)).toBeNull()
+    expect(normalizeDisplayName(undefined)).toBeNull()
+  })
+})
+
+describe("selfRegisterAgent display name (AO-3)", () => {
+  it("a user-chosen name REPLACES the auto display name in the registration", async () => {
+    const home = mkdtempSync(join(tmpdir(), "ao-reg-name-"))
+    try {
+      writeFileSync(
+        join(home, "identity.json"),
+        JSON.stringify({ npub: identity.npub, nodeLabel: identity.nodeLabel }),
+      )
+      let sentBody: Record<string, unknown> = {}
+      const result = await selfRegisterAgent({
+        home,
+        displayName: "  Chris's Studio Node  ",
+        fetchImpl: (async (_url, init) => {
+          sentBody = JSON.parse(init.body) as Record<string, unknown>
+          return okRegisterResponse("oa_agent_named")
+        }) as RegisterFetch,
+      })
+      expect(result.outcome).toBe("registered")
+      // The chosen, normalized name is what registers — not the auto default.
+      expect(sentBody.displayName).toBe("Chris's Studio Node")
+      expect(sentBody.displayName).not.toBe(autoDisplayName(identity))
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it("a blank chosen name falls back to the neutral auto display name", async () => {
+    const home = mkdtempSync(join(tmpdir(), "ao-reg-name-"))
+    try {
+      writeFileSync(
+        join(home, "identity.json"),
+        JSON.stringify({ npub: identity.npub, nodeLabel: identity.nodeLabel }),
+      )
+      let sentBody: Record<string, unknown> = {}
+      await selfRegisterAgent({
+        home,
+        displayName: "   ",
+        fetchImpl: (async (_url, init) => {
+          sentBody = JSON.parse(init.body) as Record<string, unknown>
+          return okRegisterResponse()
+        }) as RegisterFetch,
+      })
+      expect(sentBody.displayName).toBe(autoDisplayName(identity))
     } finally {
       rmSync(home, { recursive: true, force: true })
     }

@@ -9,6 +9,15 @@ import {
 } from "./node-launcher"
 import { createNodeStatePoller } from "./node-state-poll"
 import { persistAndMergeTranscripts } from "./transcript-store"
+import { loadPersistedCredential } from "./agent-onboarding"
+import {
+  detectExistingPylonIdentity,
+  detectedIdentityShortLabel,
+  loadIdentityChoice,
+  projectIdentityChoiceState,
+  saveIdentityChoice,
+} from "./identity-choice"
+import { projectOnboardingStatus } from "../shared/onboarding-status"
 import {
   autoUpdateDisabledReason,
   autoUpdateIntervalMs,
@@ -39,6 +48,7 @@ import {
   deployToCloud,
   fetchAppleFmReadiness,
   fetchNodeState,
+  fetchOnboardingSignals,
   readControlToken,
   resolveApproval,
   setCoordinatorPaused,
@@ -64,8 +74,12 @@ import type {
   AppleFmSessionStartResponse,
   BuiltInAgentReadinessResponse,
   BuiltInAgentStartResponse,
+  ChooseIdentityParams,
+  ChooseIdentityResponse,
   DesktopRPCSchema,
+  IdentityChoiceStateResponse,
   InstallReadinessResponse,
+  OnboardingStatusResponse,
   TrainingOperatorReadinessPylonRefSource,
   TrainingOperatorReadinessResponse,
 } from "../shared/rpc"
@@ -374,6 +388,116 @@ async function installReadinessProjection(): Promise<InstallReadinessResponse> {
   })
 }
 
+// AO-3 (#5444): the home the onboarding credential lives in. Prefer the
+// supervisor's launched/adopted home (the managed home or a chosen existing
+// home), falling back to discovery. Used to read the persisted agent credential
+// (presence) and to build the onboarding status.
+function onboardingHome(): string | null {
+  return managedNode?.home() ?? resolveHome()
+}
+
+// AO-3 (#5444): public-safe first-run identity-choice projection.
+function identityChoiceProjection(): IdentityChoiceStateResponse {
+  return projectIdentityChoiceState()
+}
+
+// AO-4 (#5445): assemble the live onboarding chain status from REAL state — the
+// persisted identity choice (AO-3), the persisted agent credential (AO-1), the
+// honest node launch status, and a fail-soft read-only wallet/assignment poll
+// (CL-49/CL-50). The agent token never crosses into the projection (only the
+// boolean "registered"). Public-safe display only.
+async function onboardingStatusProjection(): Promise<OnboardingStatusResponse> {
+  const home = onboardingHome()
+  const controlToken = home === null ? null : readControlToken(home)
+  const localPylonReady = home !== null && controlToken !== null
+  const credential = home === null ? null : loadPersistedCredential(home)
+  const agentRegistered = credential !== null
+
+  // AO-3: a public-safe label for the chosen identity.
+  const choice = loadIdentityChoice()
+  let identityLabel: string | null = null
+  if (choice !== null) {
+    if (choice.kind === "create_new") {
+      identityLabel =
+        choice.displayName !== null ? `new: ${choice.displayName}` : "new identity"
+    } else {
+      const detected = detectExistingPylonIdentity()
+      identityLabel =
+        detected !== null
+          ? `existing ${detectedIdentityShortLabel(detected)}`
+          : "existing Pylon"
+    }
+  }
+
+  // AO-2: presence/payout/assignment are un-gated once a token is persisted and
+  // the product base URL is set. The desktop sets the base URL by default in the
+  // supervisor (autoOnboarding); a persisted token is the remaining gate.
+  const onboardingEnvConfigured = agentRegistered
+
+  // Read-only wallet + assignment signals (fail-soft: dormant when offline).
+  let walletReceiveReady = false
+  let walletBalanceSats: number | null = null
+  let openAssignmentCount = 0
+  if (localPylonReady && controlToken !== null) {
+    try {
+      const signals = await fetchOnboardingSignals({
+        baseUrl: controlBaseUrl,
+        token: controlToken,
+      })
+      walletReceiveReady = signals.walletReceiveReady
+      walletBalanceSats = signals.walletBalanceSats
+      openAssignmentCount = signals.openAssignmentCount
+    } catch {
+      // Fail-soft: leave the dormant snapshot so the wizard never shows fake
+      // progress; the next poll re-reads once the node is reachable.
+    }
+  }
+
+  return projectOnboardingStatus({
+    fetchedAt: new Date().toISOString(),
+    identityChoiceMade: choice !== null,
+    identityLabel,
+    agentRegistered,
+    nodeLaunchStatus: managedNode?.status() ?? null,
+    localPylonReady,
+    onboardingEnvConfigured,
+    walletReceiveReady,
+    walletBalanceSats,
+    openAssignmentCount,
+  })
+}
+
+// AO-3 (#5444): record the user's first-run identity choice. The save path
+// re-verifies an existing home's seed marker before adopting it and never
+// overwrites a different home. Returns the refreshed public-safe state.
+function chooseIdentityHandler(params: ChooseIdentityParams): ChooseIdentityResponse {
+  if (params.kind === "use_existing") {
+    const detected = detectExistingPylonIdentity()
+    if (detected === null) {
+      return {
+        ok: false,
+        state: identityChoiceProjection(),
+        error: "no existing Pylon identity detected",
+      }
+    }
+    const result = saveIdentityChoice({ kind: "use_existing", home: detected.home })
+    return {
+      ok: result.ok,
+      state: identityChoiceProjection(),
+      ...(result.ok ? {} : { error: result.reason }),
+    }
+  }
+  const result = saveIdentityChoice({
+    kind: "create_new",
+    displayName: params.displayName,
+  })
+  return {
+    ok: result.ok,
+    state: identityChoiceProjection(),
+    ...(result.ok ? {} : { error: result.reason }),
+  }
+}
+
 async function startBuiltInAgentSession(): Promise<BuiltInAgentStartResponse> {
   const readiness = builtInAgentReadinessProjection()
   const home = resolveHome()
@@ -528,6 +652,19 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       async installReadiness() {
         return installReadinessProjection()
+      },
+      // AO-4 (#5445): the live onboarding chain status for the first-run wizard.
+      async onboardingStatus() {
+        return onboardingStatusProjection()
+      },
+      // AO-3 (#5444): first-run identity-choice state (detect existing vs ask).
+      async identityChoiceState() {
+        return identityChoiceProjection()
+      },
+      // AO-3 (#5444): record the user's identity choice (use existing / create
+      // new named). Bun re-verifies the seed marker; never overwrites a home.
+      async chooseIdentity(params) {
+        return chooseIdentityHandler(params)
       },
       async promiseSurfacingReadiness() {
         return buildPromiseSurfacingReadiness(
@@ -722,10 +859,33 @@ const notifier = createSessionNotifier({ raise: raiseOsNotification })
 // #5064: launch status also refreshes the public-safe installReadiness
 // projection, so normal first-run failures become visible in Settings instead
 // of requiring log spelunking.
+// AO-3 (#5444): consult the persisted first-run identity choice BEFORE bring-up.
+// "use existing" boots the detected seed-bearing home (wallet/payout/history
+// carry over, no fork); "create new" mints a fresh managed home and registers
+// under the user's chosen name. Until the user has chosen, the supervisor boots
+// the default managed home (the wizard's first screen gates the choice in the
+// UI; the launcher never overwrites a different home). Re-verify the seed marker
+// for "use existing" so a stale choice can never adopt the wrong home.
+const firstRunChoice = loadIdentityChoice()
+let chosenExistingHome: string | null = null
+let chosenDisplayName: string | null = null
+if (firstRunChoice?.kind === "use_existing" && firstRunChoice.home !== null) {
+  const detected = detectExistingPylonIdentity()
+  if (detected !== null && detected.home === firstRunChoice.home) {
+    chosenExistingHome = firstRunChoice.home
+  }
+} else if (firstRunChoice?.kind === "create_new") {
+  chosenDisplayName = firstRunChoice.displayName
+}
+
 managedNode = superviseManagedNode({
   cwd: process.cwd(),
   env: Bun.env,
   controlBaseUrl,
+  // AO-3 (#5444): the chosen existing home to boot (null => fresh create-new
+  // managed home) and the chosen create-new display name (null => neutral auto).
+  useExistingHome: chosenExistingHome,
+  onboardingDisplayName: chosenDisplayName,
   // #5027: in a packaged `.app` the dev repo entry is unreachable; the launcher
   // falls back to the bundled Pylon node under the app's Resources. In dev this
   // dir holds no `app/pylon-node/` bundle, so the dev path is still used.

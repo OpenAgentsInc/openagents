@@ -1,7 +1,9 @@
 import type { Command } from "foldkit"
 
 import {
+  LoadIdentityChoiceState,
   LoadInstallReadiness,
+  LoadOnboardingStatus,
   LoadProofReplayBundle,
   LoadPublicActivityTimeline,
 } from "./commands"
@@ -26,12 +28,20 @@ export const initialRuntimeState = (): InitialRuntimeState => {
       text: "loading public activity...",
       tone: "info",
     },
+    // AO-3/AO-4 (#5444/#5445): warm the first-run onboarding wizard on startup
+    // so the "Get started" surface reflects the real identity-choice + chain
+    // state immediately, not only after the user opens the pane.
+    identityChoicePending: true,
+    onboardingPending: true,
+    onboardingStatusLine: { text: "loading onboarding status...", tone: "info" },
   })
 
   return [
     model,
     [
       LoadInstallReadiness(),
+      LoadIdentityChoiceState(),
+      LoadOnboardingStatus(),
       LoadProofReplayBundle({
         request: { mode: "catalog", slug: model.selectedProofReplaySlug },
       }),

@@ -24,8 +24,10 @@ import {
 import type {
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
+  IdentityChoiceStateResponse,
   InstallReadinessResponse,
   ManagedAccountsResponse,
+  OnboardingStatusResponse,
   NodeStateMessage,
   PromiseSurfacingReadinessResponse,
   PromiseSurfacingResponse,
@@ -47,6 +49,10 @@ import type {
 // plus the focused session-detail leaf.
 export const PaneId = S.Literals([
   "network",
+  // AO-4 (#5445): the first-run onboarding wizard / live status surface. Shows
+  // the identity choice (AO-3) and the live chain (registered → online → wallet
+  // → payout → presence → Tassadar → claimed → earned) with retry on failure.
+  "onboarding",
   "builtin-agent",
   "nodes",
   "training",
@@ -240,6 +246,17 @@ export const Model = ts("AutopilotDesktop", {
   installReadiness: S.NullOr(S.Unknown),
   installReadinessStatus: InstallReadinessStatus,
   installReadinessPending: S.Boolean,
+
+  // AO-3/AO-4 (#5444/#5445): first-run onboarding wizard. `onboardingStatus`
+  // is the live chain projection; `identityChoiceState` is the first-screen
+  // detect-existing-vs-create-new state; `newIdentityName` is the create-new
+  // name input; `onboardingPending`/`identityChoicePending` gate their refreshes.
+  onboardingStatus: S.NullOr(S.Unknown),
+  identityChoiceState: S.NullOr(S.Unknown),
+  newIdentityName: S.String,
+  onboardingPending: S.Boolean,
+  identityChoicePending: S.Boolean,
+  onboardingStatusLine: InstallReadinessStatus,
 
   // #5065: Product Promises Forum surfacing flow. The webview carries only
   // public-safe report fields; Bun owns the registered-agent token and posting.
@@ -439,6 +456,16 @@ export const modelInstallReadiness = (
 ): InstallReadinessResponse | null =>
   model.installReadiness as InstallReadinessResponse | null
 
+export const modelOnboardingStatus = (
+  model: Model,
+): OnboardingStatusResponse | null =>
+  model.onboardingStatus as OnboardingStatusResponse | null
+
+export const modelIdentityChoiceState = (
+  model: Model,
+): IdentityChoiceStateResponse | null =>
+  model.identityChoiceState as IdentityChoiceStateResponse | null
+
 export const modelPromiseSurfacingReadiness = (
   model: Model,
 ): PromiseSurfacingReadinessResponse | null =>
@@ -530,6 +557,12 @@ export const initialModel: Model = Model.make({
   installReadiness: null,
   installReadinessStatus: { text: "not checked", tone: "idle" },
   installReadinessPending: false,
+  onboardingStatus: null,
+  identityChoiceState: null,
+  newIdentityName: "",
+  onboardingPending: false,
+  identityChoicePending: false,
+  onboardingStatusLine: { text: "not loaded", tone: "idle" },
   promiseSurfacingReadiness: null,
   promiseSurfacingResult: null,
   promiseSurfacingStatus: { text: "not checked", tone: "idle" },

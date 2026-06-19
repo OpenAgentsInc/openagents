@@ -113,12 +113,26 @@ export type EnsureManagedNodeOptions = {
   // The product base URL to register + announce presence against. Defaults to
   // https://openagents.com (see agent-onboarding DEFAULT_OPENAGENTS_BASE_URL).
   readonly onboardingBaseUrl?: string
+  // AO-3 (#5444): when the user chose "use your existing Pylon identity", this is
+  // the detected seed-bearing home to boot against (so the existing wallet /
+  // payout target / history carry over instead of being forked). When set, the
+  // launcher forces PYLON_HOME to it and skips minting a fresh managed home. The
+  // home is verified to hold an identity seed BEFORE it reaches here
+  // (saveIdentityChoice re-checks the marker); we never adopt the wrong home.
+  // Null/absent => the default fresh "create new" managed-home path.
+  readonly useExistingHome?: string | null
+  // AO-3 (#5444): the display name the user chose for a freshly created identity
+  // ("create new" path). Threaded into self-registration so the agent registers
+  // under the user's chosen name rather than the neutral auto default. Ignored
+  // for the `useExistingHome` path (that identity is already named/registered).
+  readonly onboardingDisplayName?: string | null
   // Injectable self-registration (defaults to the real `selfRegisterAgent`).
   // Returns the outcome so the supervisor can decide whether a restart (to pick
   // up a freshly minted token in the child env) is warranted.
   readonly registerAgent?: (input: {
     readonly home: string
     readonly baseUrl: string
+    readonly displayName: string | null
   }) => Promise<SelfRegisterResult>
   // Injectable persisted-token reader (defaults to `loadPersistedCredential`).
   readonly readPersistedToken?: (home: string) => string | null
@@ -279,8 +293,20 @@ export const ensureManagedNode = async (
   const readinessIntervalMs = options.readinessIntervalMs ?? 500
   const emit = (status: NodeLaunchStatus): void => options.onStatus?.(status)
 
+  // AO-3 (#5444): when the user chose "use existing identity", that detected
+  // seed-bearing home is authoritative — it overrides PYLON_HOME for both
+  // discovery (adopt an already-running existing node) and launch (boot the
+  // existing home so its wallet/payout/history carry over, no fork). An explicit
+  // env PYLON_HOME still wins (operator override), matching bootstrap.ts.
+  const chosenExistingHome =
+    typeof options.useExistingHome === "string" &&
+    options.useExistingHome.length > 0
+      ? options.useExistingHome
+      : null
+  const discoveryEnvHome = options.env.PYLON_HOME ?? chosenExistingHome ?? undefined
+
   // 1. Adopt an already-running node — never double-spawn.
-  const discovered = discover({ env: options.env.PYLON_HOME, cwd: options.cwd })
+  const discovered = discover({ env: discoveryEnvHome, cwd: options.cwd })
   if (discovered !== null) {
     emit("adopted")
     return adopted(discovered)
@@ -320,7 +346,12 @@ export const ensureManagedNode = async (
   }
 
   emit("launching")
-  const managedHome = plan.managedHome
+  // AO-3 (#5444): boot the user's chosen existing home when "use existing" was
+  // selected; otherwise the freshly minted managed home ("create new"). We only
+  // ever launch INTO the chosen home — never overwrite a different one. An
+  // explicit env PYLON_HOME still wins (operator override).
+  const managedHome =
+    options.env.PYLON_HOME ?? chosenExistingHome ?? plan.managedHome
   const childEnv: Record<string, string> = {}
   for (const [key, value] of Object.entries(options.env)) {
     if (value !== undefined) childEnv[key] = value
@@ -389,15 +420,27 @@ export const ensureManagedNode = async (
   if (ready && options.autoOnboarding === true) {
     const baseUrl =
       options.onboardingBaseUrl ?? "https://openagents.com"
+    // AO-3 (#5444): a user-chosen "create new" name flows into registration so
+    // the agent registers under it. Ignored for "use existing" (the existing
+    // identity already has its own name/registration).
+    const displayName =
+      chosenExistingHome === null
+        ? (options.onboardingDisplayName ?? null)
+        : null
     const registerAgent =
       options.registerAgent ??
-      ((input: { home: string; baseUrl: string }) =>
+      ((input: {
+        home: string
+        baseUrl: string
+        displayName: string | null
+      }) =>
         selfRegisterAgent({
           home: input.home,
           baseUrl: input.baseUrl,
+          displayName: input.displayName,
         }))
     try {
-      const result = await registerAgent({ home: managedHome, baseUrl })
+      const result = await registerAgent({ home: managedHome, baseUrl, displayName })
       if (result.outcome === "registered") {
         // A token now exists but the running child booted without it. Ask the
         // supervisor to restart so the child re-reads the env with the token.

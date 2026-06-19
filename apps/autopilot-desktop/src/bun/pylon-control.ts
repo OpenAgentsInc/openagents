@@ -401,6 +401,33 @@ async function fetchAssignmentRows(input: { baseUrl: string; token: string; fetc
   }
 }
 
+// AO-4 (#5445): a lightweight read of just the signals the onboarding wizard
+// needs — wallet receive-readiness/balance + open assignment count — without the
+// full `fetchNodeState` session/event/artifact sweep. Read-only; fail-soft
+// (a failed read returns the dormant snapshot so the wizard never shows fake
+// progress). Never returns or logs seeds/tokens/raw addresses.
+export async function fetchOnboardingSignals(input: {
+  baseUrl: string
+  token: string
+  fetchFn?: typeof fetch
+}): Promise<{
+  walletReceiveReady: boolean
+  walletBalanceSats: number | null
+  openAssignmentCount: number
+}> {
+  const fetchFn = input.fetchFn ?? fetch
+  const [wallet, assignments] = await Promise.all([
+    fetchWalletRow({ baseUrl: input.baseUrl, token: input.token, fetchFn }),
+    fetchAssignmentRows({ baseUrl: input.baseUrl, token: input.token, fetchFn }),
+  ])
+  return {
+    walletReceiveReady: wallet?.receiveReady === true,
+    walletBalanceSats:
+      typeof wallet?.balanceSats === "number" ? wallet.balanceSats : null,
+    openAssignmentCount: assignments.length,
+  }
+}
+
 // CL-51: node coordinator paused flag (coordinator.status). Null if unexposed.
 async function fetchCoordinatorPausedFlag(input: { baseUrl: string; token: string; fetchFn: typeof fetch }): Promise<boolean | null> {
   try {

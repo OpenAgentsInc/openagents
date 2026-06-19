@@ -4,6 +4,7 @@ import type {
 } from "@openagentsinc/autopilot-control-protocol"
 import type { PublicActivityTimelineEnvelope } from "@openagentsinc/public-activity-timeline"
 import type { InstallReadinessResponse } from "./install-readiness"
+import type { OnboardingStatusResponse } from "./onboarding-status"
 import type {
   PromiseSurfacingDraft,
   PromiseSurfacingInput,
@@ -581,9 +582,44 @@ export type AppleFmSessionStartResponse = {
 
 export type { InstallReadinessResponse } from "./install-readiness"
 export type {
+  OnboardingStatusResponse,
+  OnboardingStep,
+  OnboardingStepStatus,
+} from "./onboarding-status"
+export type {
   PromiseSurfacingDraft,
   PromiseSurfacingInput,
 } from "./promise-surfacing"
+
+// AO-3 (#5444): public-safe first-run identity-choice projection for the
+// webview. No seeds, no tokens — only detection booleans + public labels.
+export type IdentityChoiceKind = "use_existing" | "create_new"
+export type IdentityChoiceStateResponse = {
+  readonly choiceNeeded: boolean
+  readonly detected: {
+    readonly present: boolean
+    readonly shortLabel: string | null
+    readonly npub: string | null
+    readonly source: string | null
+  }
+  readonly chosen: {
+    readonly kind: IdentityChoiceKind
+    readonly displayName: string | null
+  } | null
+  readonly createNewAvailable: true
+}
+
+// AO-3 (#5444): the webview asks the Bun host to record the user's choice. The
+// Bun host re-verifies the seed marker before adopting an existing home; the
+// webview never names a raw home path for create-new (Bun owns the managed home).
+export type ChooseIdentityParams =
+  | { readonly kind: "use_existing" }
+  | { readonly kind: "create_new"; readonly displayName: string }
+export type ChooseIdentityResponse = {
+  readonly ok: boolean
+  readonly state: IdentityChoiceStateResponse
+  readonly error?: string
+}
 
 export type PromiseSurfacingReadinessResponse = {
   readonly ok: boolean
@@ -711,6 +747,26 @@ export type DesktopRPCSchema = {
       readonly installReadiness: {
         readonly params: Record<string, never>
         readonly response: InstallReadinessResponse
+      }
+      // AO-4 (#5445): the live onboarding chain status for the first-run wizard
+      // (identity → registered → online → wallet → payout → presence → Tassadar
+      // → claimed → earned). Public-safe; reflects real node/registration state.
+      readonly onboardingStatus: {
+        readonly params: Record<string, never>
+        readonly response: OnboardingStatusResponse
+      }
+      // AO-3 (#5444): read the first-run identity-choice state (detect existing
+      // Pylon vs needs-choice). Public-safe (npub/refs only; never the seed).
+      readonly identityChoiceState: {
+        readonly params: Record<string, never>
+        readonly response: IdentityChoiceStateResponse
+      }
+      // AO-3 (#5444): record the user's first-run identity choice. The Bun host
+      // re-verifies an existing home's seed marker before adopting it and never
+      // overwrites a different home.
+      readonly chooseIdentity: {
+        readonly params: ChooseIdentityParams
+        readonly response: ChooseIdentityResponse
       }
       // #5065: build and optionally post an Orrery-style Product Promises Forum
       // report. Bun owns the registered-agent token; the webview sends only

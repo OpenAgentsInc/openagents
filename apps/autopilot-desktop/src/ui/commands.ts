@@ -25,6 +25,9 @@ import {
   GotAppleFmReadiness,
   GotBuiltInAgentReadiness,
   GotInstallReadiness,
+  GotOnboardingStatus,
+  GotIdentityChoiceState,
+  SettledChooseIdentity,
   GotPromiseSurfacingReadiness,
   GotPromiseSurfacingResult,
   GotProofReplayBundle,
@@ -510,6 +513,97 @@ export const LoadInstallReadiness = Command.define(
       Effect.succeed(
         GotInstallReadiness({
           projection: emptyInstallReadinessProjection(errorText(error)),
+        }),
+      ),
+    ),
+  ),
+)
+
+// AO-4 (#5445): load the live onboarding chain status (wizard steps). Fail-soft:
+// a failed request becomes a single failed+retryable step so the wizard never
+// dead-ends to a blank screen.
+const emptyOnboardingProjection = (error: string) => ({
+  ok: false,
+  fetchedAt: new Date().toISOString(),
+  sourceUrl: "desktop:onboarding-status" as const,
+  complete: false,
+  currentStepId: "node-online",
+  hasRetryableFailure: true,
+  steps: [
+    {
+      id: "node-online",
+      label: "Node online",
+      status: "failed" as const,
+      message: `Could not read onboarding status: ${error}. Retry.`,
+      retryable: true,
+    },
+  ],
+})
+
+export const LoadOnboardingStatus = Command.define(
+  "LoadOnboardingStatus",
+  {},
+  GotOnboardingStatus,
+)(() =>
+  Effect.tryPromise(() => getRequest().onboardingStatus({})).pipe(
+    Effect.map((projection) => GotOnboardingStatus({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotOnboardingStatus({
+          projection: emptyOnboardingProjection(errorText(error)),
+        }),
+      ),
+    ),
+  ),
+)
+
+// AO-3 (#5444): load the first-run identity-choice state (detect existing vs ask).
+const emptyIdentityChoiceState = () => ({
+  choiceNeeded: false,
+  detected: { present: false, shortLabel: null, npub: null, source: null },
+  chosen: null,
+  createNewAvailable: true as const,
+})
+
+export const LoadIdentityChoiceState = Command.define(
+  "LoadIdentityChoiceState",
+  {},
+  GotIdentityChoiceState,
+)(() =>
+  Effect.tryPromise(() => getRequest().identityChoiceState({})).pipe(
+    Effect.map((state) => GotIdentityChoiceState({ state })),
+    Effect.catch(() =>
+      Effect.succeed(GotIdentityChoiceState({ state: emptyIdentityChoiceState() })),
+    ),
+  ),
+)
+
+// AO-3 (#5444): record the user's identity choice. The Bun host re-verifies the
+// seed marker and never overwrites a home. On settle the wizard re-loads status.
+export const ChooseIdentity = Command.define(
+  "ChooseIdentity",
+  {
+    kind: S.Literals(["use_existing", "create_new"]),
+    displayName: S.String,
+  },
+  SettledChooseIdentity,
+)((input) =>
+  Effect.tryPromise(() =>
+    getRequest().chooseIdentity(
+      input.kind === "create_new"
+        ? { kind: "create_new", displayName: input.displayName }
+        : { kind: "use_existing" },
+    ),
+  ).pipe(
+    Effect.map((result) => SettledChooseIdentity({ result })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledChooseIdentity({
+          result: {
+            ok: false,
+            state: emptyIdentityChoiceState(),
+            error: errorText(error),
+          },
         }),
       ),
     ),

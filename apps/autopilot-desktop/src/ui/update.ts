@@ -16,11 +16,14 @@ import {
   BuildTrainingEvidencePacket,
   CancelSession,
   ClaimTrainingWindowLease,
+  ChooseIdentity,
   DeployCloud,
   LoadAppleFmReadiness,
   LoadBuiltInAgentReadiness,
+  LoadIdentityChoiceState,
   LoadInstallReadiness,
   LoadManagedAccounts,
+  LoadOnboardingStatus,
   LoadPromiseSurfacingReadiness,
   LoadPublicActivityTimeline,
   LoadProofReplayBundle,
@@ -57,7 +60,10 @@ import { validatePromiseSurfacingInput } from "../shared/promise-surfacing"
 import type {
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
+  ChooseIdentityResponse,
+  IdentityChoiceStateResponse,
   InstallReadinessResponse,
+  OnboardingStatusResponse,
   PromiseSurfacingReadinessResponse,
   PromiseSurfacingResponse,
   PublicActivityTimelineResponse,
@@ -122,6 +128,9 @@ const isTrainingPane = (pane: PaneId): boolean =>
 const isNetworkPane = (pane: PaneId): boolean => pane === "network"
 const isBuiltInAgentPane = (pane: PaneId): boolean => pane === "builtin-agent"
 const isSettingsPane = (pane: PaneId): boolean => pane === "settings"
+// AO-4 (#5445): the onboarding wizard pane refreshes the identity-choice state +
+// the live onboarding chain status whenever it is opened.
+const isOnboardingPane = (pane: PaneId): boolean => pane === "onboarding"
 // CS-A1: the composer pane hosts the per-session account picker, so opening it
 // (and the Spawn pane / Settings, which also surface accounts) refreshes the
 // managed-account registry from the node's local config.
@@ -166,7 +175,11 @@ export const update = (model: Model, message: Message): Result => {
     case "GotNodeLaunchStatus":
       return [
         Model.make({ ...model, nodeLaunchStatus: message.status }),
-        [LoadInstallReadiness()],
+        // AO-4 (#5445): a node lifecycle transition also refreshes the live
+        // onboarding chain when the wizard is open, so steps move in real time.
+        isOnboardingPane(model.pane)
+          ? [LoadInstallReadiness(), LoadOnboardingStatus()]
+          : [LoadInstallReadiness()],
       ]
 
     // ── Navigation ─────────────────────────────────────────────────────────
@@ -246,6 +259,16 @@ export const update = (model: Model, message: Message): Result => {
                 },
               }
             : {}),
+          ...(isOnboardingPane(message.pane)
+            ? {
+                onboardingPending: true,
+                identityChoicePending: true,
+                onboardingStatusLine: {
+                  text: "loading onboarding status...",
+                  tone: "info" as const,
+                },
+              }
+            : {}),
           ...(isAccountManagingPane(message.pane)
             ? {
                 managedAccountsPending: true,
@@ -265,7 +288,9 @@ export const update = (model: Model, message: Message): Result => {
               ? [LoadBuiltInAgentReadiness(), LoadAppleFmReadiness(), LoadPromiseSurfacingReadiness()]
               : isSettingsPane(message.pane)
                 ? [LoadInstallReadiness()]
-                : noCommands),
+                : isOnboardingPane(message.pane)
+                  ? [LoadIdentityChoiceState(), LoadOnboardingStatus()]
+                  : noCommands),
           ...(isAccountManagingPane(message.pane) ? [LoadManagedAccounts()] : noCommands),
         ],
       ]
@@ -573,6 +598,98 @@ export const update = (model: Model, message: Message): Result => {
               },
         }),
         noCommands,
+      ]
+    }
+
+    // ── AO-3/AO-4 first-run onboarding wizard (#5444 / #5445) ───────────────
+    case "ClickedRefreshOnboarding":
+      return [
+        Model.make({
+          ...model,
+          onboardingPending: true,
+          onboardingStatusLine: {
+            text: "refreshing onboarding status...",
+            tone: "info",
+          },
+        }),
+        [LoadIdentityChoiceState(), LoadOnboardingStatus()],
+      ]
+    // AO-4: retry a failed step — re-loads the chain. The Bun supervisor keeps
+    // converging (restart-on-crash + offline-tolerant registration), so a retry
+    // is "re-read the real state now" rather than a dead/blank screen.
+    case "ClickedRetryOnboarding":
+      return [
+        Model.make({
+          ...model,
+          onboardingPending: true,
+          onboardingStatusLine: { text: "retrying...", tone: "info" },
+        }),
+        [LoadOnboardingStatus()],
+      ]
+    case "GotOnboardingStatus": {
+      const projection = message.projection as OnboardingStatusResponse
+      return [
+        Model.make({
+          ...model,
+          onboardingStatus: projection,
+          onboardingPending: false,
+          onboardingStatusLine: projection.complete
+            ? { text: "earning — onboarding complete", tone: "success" }
+            : projection.hasRetryableFailure
+              ? { text: "a step needs a retry", tone: "error" }
+              : {
+                  text: `current step: ${projection.currentStepId ?? "—"}`,
+                  tone: "info",
+                },
+        }),
+        noCommands,
+      ]
+    }
+    case "GotIdentityChoiceState":
+      return [
+        Model.make({
+          ...model,
+          identityChoiceState: message.state as IdentityChoiceStateResponse,
+          identityChoicePending: false,
+        }),
+        noCommands,
+      ]
+    case "ChangedNewIdentityName":
+      return [
+        Model.make({ ...model, newIdentityName: message.value }),
+        noCommands,
+      ]
+    case "ClickedUseExistingIdentity":
+      return [
+        Model.make({ ...model, identityChoicePending: true }),
+        [ChooseIdentity({ kind: "use_existing", displayName: "" })],
+      ]
+    case "ClickedCreateNewIdentity":
+      return [
+        Model.make({ ...model, identityChoicePending: true }),
+        [
+          ChooseIdentity({
+            kind: "create_new",
+            displayName: model.newIdentityName.trim(),
+          }),
+        ],
+      ]
+    case "SettledChooseIdentity": {
+      const result = message.result as ChooseIdentityResponse
+      return [
+        Model.make({
+          ...model,
+          identityChoiceState: result.state,
+          identityChoicePending: false,
+          onboardingStatusLine: result.ok
+            ? { text: "identity chosen", tone: "success" }
+            : {
+                text: result.error ?? "could not record choice",
+                tone: "error",
+              },
+        }),
+        // Re-load the chain so the wizard advances past the identity step.
+        result.ok ? [LoadOnboardingStatus()] : noCommands,
       ]
     }
 

@@ -727,6 +727,92 @@ describe("ensureManagedNode auto-onboarding (AO-1/AO-2)", () => {
     expect(env.OPENAGENTS_AGENT_TOKEN).toBeUndefined()
     expect(env.PYLON_ASSIGNMENT_WORKER).toBeUndefined()
   })
+
+  // AO-3 (#5444): identity-choice threading into the launcher.
+  it("create-new (default): boots the managed home and passes the chosen name to registration", async () => {
+    const spawnCalls: SpawnNodeInput[] = []
+    let registeredName: string | null | undefined = undefined
+    await ensureManagedNode({
+      ...baseOptions,
+      discover: () => null,
+      autoOnboarding: true,
+      readPersistedToken: () => null,
+      onboardingDisplayName: "My Studio Agent",
+      // useExistingHome omitted/null -> create-new managed home.
+      registerAgent: async input => {
+        registeredName = input.displayName
+        return { outcome: "identity_pending" }
+      },
+      spawnNode: (input: SpawnNodeInput): LaunchedProcess => {
+        spawnCalls.push(input)
+        return { pid: 1, kill: () => {} }
+      },
+    })
+    // Fresh managed home (not an existing Pylon).
+    expect(spawnCalls[0]!.env.PYLON_HOME).toBe(join(repoRoot, ".pylon-local"))
+    // The chosen name reaches self-registration.
+    expect(registeredName).toBe("My Studio Agent")
+  })
+
+  it("use-existing: boots the chosen existing home (not the managed home) and does not pass a name", async () => {
+    const existingHome = "/Users/example/.openagents/pylon"
+    const spawnCalls: SpawnNodeInput[] = []
+    let registeredHome: string | undefined
+    let registeredName: string | null | undefined = "unset"
+    await ensureManagedNode({
+      ...baseOptions,
+      discover: () => null, // existing node not currently running -> launch it
+      autoOnboarding: true,
+      readPersistedToken: () => null,
+      useExistingHome: existingHome,
+      onboardingDisplayName: "ignored-for-existing",
+      registerAgent: async input => {
+        registeredHome = input.home
+        registeredName = input.displayName
+        return { outcome: "reused", credential: {
+          token: "oa_agent_existing",
+          tokenPrefix: "oa_agent_exi",
+          userId: "u",
+          externalId: "npub1existing",
+          registeredAt: "2026-06-18T00:00:00.000Z",
+        } }
+      },
+      spawnNode: (input: SpawnNodeInput): LaunchedProcess => {
+        spawnCalls.push(input)
+        return { pid: 1, kill: () => {} }
+      },
+    })
+    // The existing seed-bearing home is what we launch into (carry-over), not a
+    // fresh managed home (no fork, no overwrite of a different home).
+    expect(spawnCalls[0]!.env.PYLON_HOME).toBe(existingHome)
+    expect(registeredHome).toBe(existingHome)
+    // A name is never forced onto an existing (already-named) identity.
+    expect(registeredName).toBeNull()
+  })
+
+  it("use-existing: adopts an already-running existing node via its home (never double-spawns)", async () => {
+    const existingHome = "/Users/example/.openagents/pylon"
+    let spawned = 0
+    const discoverArgs: Array<string | undefined> = []
+    const node = await ensureManagedNode({
+      ...baseOptions,
+      autoOnboarding: true,
+      useExistingHome: existingHome,
+      discover: opts => {
+        discoverArgs.push(opts.env)
+        return existingHome // already running at the chosen home
+      },
+      spawnNode: () => {
+        spawned += 1
+        return { pid: 1, kill: () => {} }
+      },
+    })
+    expect(node.mode).toBe("adopted")
+    expect(node.home).toBe(existingHome)
+    // Discovery was offered the chosen existing home, and nothing was spawned.
+    expect(discoverArgs[0]).toBe(existingHome)
+    expect(spawned).toBe(0)
+  })
 })
 
 describe("superviseManagedNode token-minted restart (AO-1/AO-2)", () => {

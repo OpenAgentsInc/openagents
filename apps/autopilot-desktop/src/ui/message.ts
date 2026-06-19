@@ -88,6 +88,27 @@ export const GotInstallReadiness = m("GotInstallReadiness", {
   projection: S.Unknown,
 })
 
+// ── AO-3/AO-4 first-run onboarding wizard (#5444 / #5445) ──────────────────
+// Live onboarding chain status (the wizard steps).
+export const ClickedRefreshOnboarding = m("ClickedRefreshOnboarding")
+export const GotOnboardingStatus = m("GotOnboardingStatus", {
+  projection: S.Unknown,
+})
+// Identity-choice state (first screen of the wizard).
+export const GotIdentityChoiceState = m("GotIdentityChoiceState", {
+  state: S.Unknown,
+})
+export const ChangedNewIdentityName = m("ChangedNewIdentityName", {
+  value: S.String,
+})
+export const ClickedUseExistingIdentity = m("ClickedUseExistingIdentity")
+export const ClickedCreateNewIdentity = m("ClickedCreateNewIdentity")
+export const SettledChooseIdentity = m("SettledChooseIdentity", {
+  result: S.Unknown,
+})
+// Retry a failed onboarding step (re-loads status; the supervisor converges).
+export const ClickedRetryOnboarding = m("ClickedRetryOnboarding")
+
 // ── Product Promises Forum surfacing (#5065) ──────────────────────────────
 export const ChangedPromiseSurfacingPromiseId = m(
   "ChangedPromiseSurfacingPromiseId",
@@ -404,6 +425,14 @@ export const Message = S.Union([
   FailedBuiltInAgent,
   ClickedRefreshInstallReadiness,
   GotInstallReadiness,
+  ClickedRefreshOnboarding,
+  GotOnboardingStatus,
+  GotIdentityChoiceState,
+  ChangedNewIdentityName,
+  ClickedUseExistingIdentity,
+  ClickedCreateNewIdentity,
+  SettledChooseIdentity,
+  ClickedRetryOnboarding,
   ChangedPromiseSurfacingPromiseId,
   ChangedPromiseSurfacingSurface,
   ChangedPromiseSurfacingClaimText,

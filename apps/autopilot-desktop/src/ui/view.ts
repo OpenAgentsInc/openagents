@@ -57,6 +57,8 @@ import type {
   InstallReadinessResponse,
   ManagedAccountRow,
   NodeStateMessage,
+  OnboardingStep,
+  OnboardingStepStatus,
   PromiseSurfacingReadinessResponse,
   PromiseSurfacingResponse,
   SessionEventRow,
@@ -124,6 +126,11 @@ import {
   ClickedRefreshPublicActivity,
   ClickedRefreshProofReplay,
   ClickedRefreshInstallReadiness,
+  ClickedRefreshOnboarding,
+  ClickedRetryOnboarding,
+  ClickedUseExistingIdentity,
+  ClickedCreateNewIdentity,
+  ChangedNewIdentityName,
   ClickedRefreshPromiseSurfacing,
   ClickedRefreshBuiltInAgent,
   ClickedRefreshAppleFm,
@@ -186,6 +193,8 @@ import {
   modelAppleFmReadiness,
   modelBuiltInAgentReadiness,
   modelInstallReadiness,
+  modelOnboardingStatus,
+  modelIdentityChoiceState,
   modelManagedAccounts,
   modelPromiseSurfacingReadiness,
   modelPromiseSurfacingResult,
@@ -282,6 +291,9 @@ const NAV: ReadonlyArray<{ id: PaneId; label: string }> = [
   // #5355: Composer is the foreground "code in the app" surface — listed first
   // so the day-to-day coding loop is the primary entry, not a buried tab.
   { id: "composer", label: "Composer" },
+  // AO-4 (#5445): the first-run onboarding wizard / live status surface, listed
+  // near the top so a new user finds the "literally on Autopilot" chain.
+  { id: "onboarding", label: "Get started" },
   { id: "network", label: "Network" },
   { id: "builtin-agent", label: "Agent" },
   { id: "nodes", label: "Nodes" },
@@ -4800,10 +4812,161 @@ const networkPane = (model: Model): Html => {
   ])
 }
 
+// ── AO-3/AO-4 onboarding wizard pane (#5444 / #5445) ────────────────────────
+
+const onboardingStepTone = (status: OnboardingStepStatus): string => {
+  switch (status) {
+    case "done":
+      return "ready"
+    case "active":
+      return "waiting"
+    case "failed":
+      return "blocked"
+    case "pending":
+      return "watch"
+  }
+}
+
+const onboardingStepGlyph = (status: OnboardingStepStatus): string => {
+  switch (status) {
+    case "done":
+      return "✓"
+    case "active":
+      return "…"
+    case "failed":
+      return "!"
+    case "pending":
+      return "·"
+  }
+}
+
+const onboardingStepRow = (step: OnboardingStep): Html =>
+  h.li(
+    [cls(`readiness-row readiness-${onboardingStepTone(step.status)}`)],
+    [
+      h.span([cls("readiness-name")], [
+        `${onboardingStepGlyph(step.status)} ${step.label}`,
+      ]),
+      h.span([cls("readiness-detail")], [step.message]),
+      h.code([cls("readiness-status")], [step.status]),
+    ],
+  )
+
+// AO-3: the first screen — detect existing Pylon vs create a new named identity.
+// Create-new is ALWAYS offered (even when an existing Pylon is detected).
+const identityChoiceCard = (model: Model): Html => {
+  const state = modelIdentityChoiceState(model)
+  const pending = model.identityChoicePending
+  const detectedPresent = state?.detected.present ?? false
+  const detectedLabel = state?.detected.shortLabel ?? null
+
+  const useExisting = detectedPresent
+    ? h.div([cls("onboarding-choice")], [
+        h.p([cls("card-body")], [
+          "Use your existing Pylon identity",
+          detectedLabel ? ` (${detectedLabel})` : "",
+          " — your wallet, payout target, and history carry over.",
+        ]),
+        h.button(
+          [
+            cls("adapter-btn"),
+            h.Type("button"),
+            h.Disabled(pending),
+            h.OnClick(ClickedUseExistingIdentity()),
+          ],
+          [pending ? "Working…" : "Use existing identity"],
+        ),
+      ])
+    : h.empty
+
+  const createNew = h.div([cls("onboarding-choice")], [
+    h.p([cls("card-body")], [
+      "Create a new Autopilot identity — name it, and we set everything up from scratch.",
+    ]),
+    h.input([
+      cls("text-input"),
+      h.Type("text"),
+      h.Placeholder("Name your agent (e.g. Studio Mac)"),
+      h.Value(model.newIdentityName),
+      h.OnInput((value: string) => ChangedNewIdentityName({ value })),
+    ]),
+    h.button(
+      [
+        cls("adapter-btn"),
+        h.Type("button"),
+        h.Disabled(pending || model.newIdentityName.trim().length === 0),
+        h.OnClick(ClickedCreateNewIdentity()),
+      ],
+      [pending ? "Working…" : "Create new identity"],
+    ),
+  ])
+
+  return card("Choose your identity", [
+    useExisting,
+    createNew,
+  ])
+}
+
+const onboardingPane = (model: Model): Html => {
+  const status = modelOnboardingStatus(model)
+  const choice = modelIdentityChoiceState(model)
+  const choiceNeeded = choice?.choiceNeeded ?? false
+
+  const stepList =
+    status === null
+      ? [emptyLine("Loading onboarding status…")]
+      : status.steps.map(onboardingStepRow)
+
+  const retryRow =
+    status?.hasRetryableFailure === true
+      ? h.div([cls("adapter-toggle")], [
+          h.button(
+            [
+              cls("adapter-btn"),
+              h.Type("button"),
+              h.Disabled(model.onboardingPending),
+              h.OnClick(ClickedRetryOnboarding()),
+            ],
+            [model.onboardingPending ? "Retrying…" : "Retry"],
+          ),
+        ])
+      : h.empty
+
+  return h.div(
+    [],
+    [
+      paneTitle("Get started"),
+      // AO-3: the identity choice is the FIRST screen, ahead of the chain.
+      choiceNeeded ? identityChoiceCard(model) : h.empty,
+      card("Onboarding", [
+        h.p([cls("card-body")], [
+          "Status: ",
+          h.strong([], [model.onboardingStatusLine.text]),
+        ]),
+        h.ul([cls("training-gates install-readiness-list")], stepList),
+        retryRow,
+        h.div([cls("adapter-toggle")], [
+          h.button(
+            [
+              cls("adapter-btn"),
+              h.Type("button"),
+              h.Disabled(model.onboardingPending),
+              h.OnClick(ClickedRefreshOnboarding()),
+            ],
+            [model.onboardingPending ? "Refreshing…" : "Refresh"],
+          ),
+        ]),
+      ]),
+    ],
+  )
+}
+
 const paneView = (model: Model): Html => {
   switch (model.pane) {
     case "network":
       return networkPane(model)
+    case "onboarding":
+      return onboardingPane(model)
     case "builtin-agent":
       return builtInAgentPane(model)
     case "nodes":

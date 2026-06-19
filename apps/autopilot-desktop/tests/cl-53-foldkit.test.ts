@@ -139,12 +139,18 @@ describe("helpers (CL-47..CL-58 parity, pure)", () => {
     expect(model.proofReplayPending).toBe(true)
     expect(model.proofReplayStatus.text).toBe("loading public replay bundle...")
     expect(model.publicActivityTimelinePending).toBe(true)
+    // AO-3/AO-4 (#5444/#5445): startup also warms the onboarding wizard.
     expect(commands.map(command => command.name)).toEqual([
       "LoadInstallReadiness",
+      "LoadIdentityChoiceState",
+      "LoadOnboardingStatus",
       "LoadProofReplayBundle",
       "LoadPublicActivityTimeline",
     ])
-    expect(commands[1]?.args).toEqual({
+    const proofReplay = commands.find(
+      command => command.name === "LoadProofReplayBundle",
+    )
+    expect(proofReplay?.args).toEqual({
       request: { mode: "catalog", slug: "first-real-settlement" },
     })
   })

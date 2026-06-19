@@ -198,6 +198,19 @@ export const autoDisplayName = (identity: NodeIdentity): string => {
   return `${base} (${suffix})`.slice(0, 120)
 }
 
+// AO-3 (#5444): normalize a user-chosen display name to the agent-registration
+// schema (non-empty, max 120 chars; collapse whitespace). Returns null when the
+// user supplied nothing usable, so the caller falls back to `autoDisplayName`.
+// Never throws — a blank/over-long name is just clamped/rejected, never a crash.
+export const normalizeDisplayName = (
+  raw: string | null | undefined,
+): string | null => {
+  if (typeof raw !== "string") return null
+  const collapsed = raw.replace(/\s+/g, " ").trim()
+  if (collapsed.length === 0) return null
+  return collapsed.slice(0, 120)
+}
+
 // Derive a registration slug candidate (lowercase, [a-z0-9-], 3..80) from the
 // pylon ref or npub. The server treats slug as optional + best-effort-unique; a
 // collision just means the server assigns its own — registration still succeeds.
@@ -231,6 +244,12 @@ export type SelfRegisterOptions = {
   readonly home: string
   // Product base URL to register against (default openagents.com).
   readonly baseUrl?: string
+  // AO-3 (#5444): the display name the user chose when creating a new Autopilot
+  // identity ("Create a new Autopilot identity" → user names it). When provided
+  // and non-empty it REPLACES the auto-derived display name, so the agent
+  // registers under the user's chosen name. Omitted/empty falls back to the
+  // neutral `autoDisplayName` default (Phase 1 behavior).
+  readonly displayName?: string | null
   // Optional BOLT12 offer to attach for tip-readiness (audit notes this is
   // optional). Omitted when the wallet has not produced one yet.
   readonly bolt12Offer?: string | null
@@ -292,8 +311,12 @@ export const selfRegisterAgent = async (
   //    deterministic externalId, so a retry after a partial success (token lost
   //    before persist) returns a 409 conflict instead of a duplicate agent.
   const slug = autoSlug(identity)
+  // AO-3 (#5444): a user-chosen name (from "Create a new Autopilot identity")
+  // replaces the auto-derived default. Empty/blank falls back to the neutral
+  // per-home default so a fresh from-scratch run still registers a sane name.
+  const chosenName = normalizeDisplayName(options.displayName)
   const body: Record<string, unknown> = {
-    displayName: autoDisplayName(identity),
+    displayName: chosenName ?? autoDisplayName(identity),
     externalId: identity.npub,
     metadata: {
       source: "autopilot-desktop",
