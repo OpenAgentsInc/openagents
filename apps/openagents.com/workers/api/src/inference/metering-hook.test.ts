@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import { projectMdkPayoutModeGate } from '../mdk-payout-mode-gate'
 import { readAgentBalance } from '../payments-ledger'
 import {
   DEFAULT_BTC_USD,
@@ -12,8 +13,10 @@ import {
   type MeteringContext,
   usdToMsatCeil,
 } from './metering-hook'
+import { type ServingReceipt } from './openagents-network-adapter'
 import { priceRequest } from './pricing'
 import { type InferenceUsage } from './provider-adapter'
+import { type ServingNodePayoutDecision } from './serving-node-payout'
 
 const run = <A>(effect: Effect.Effect<A>): Promise<A> =>
   Effect.runPromise(effect)
@@ -349,5 +352,105 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
 
   test('DEFAULT_BTC_USD is the documented fixed reference rate', () => {
     expect(DEFAULT_BTC_USD).toBe(100_000)
+  })
+})
+
+// ==========================================================================
+// Serving-node payout seam (#5484) — wired-but-dormant
+// ==========================================================================
+
+const servingReceipt: ServingReceipt = {
+  parityMode: 'exact_greedy_parity',
+  parityVerified: true,
+  servedModel: 'kimi-k2p6',
+  sharded: false,
+  servingRunRef: 'serve.run.metering',
+  stages: [{ layerEnd: 32, layerStart: 0, nodeRef: 'pylon.alpha', role: 'stage' }],
+}
+
+const armedHostedGate = projectMdkPayoutModeGate({
+  hostedFundedKeyVerified: true,
+  hostedProgrammaticPayoutsEnabled: true,
+  requestedMode: 'hosted_mdk_direct_payout',
+})
+
+describe('serving-node payout seam in the metering hook (#5484)', () => {
+  test('no serving receipt => the seam never fires (ordinary charge only)', async () => {
+    const db = makeDb()
+    await seedBalance(db, FUNDED)
+    let sinkCalls = 0
+    const hook = makeLedgerMeteringHook({
+      db,
+      nowIso: () => NOW,
+      recordServingPayout: () =>
+        Effect.sync(() => {
+          sinkCalls += 1
+        }),
+      servingPayoutGate: armedHostedGate,
+    })
+    const outcome = await run(hook(context()))
+    expect(outcome.metered).toBe(true)
+    // No serving receipt on the context => the sink is never invoked.
+    expect(sinkCalls).toBe(0)
+  })
+
+  test('serving receipt present but default DISABLED gate => decision NOT armed, sink not called', async () => {
+    const db = makeDb()
+    await seedBalance(db, FUNDED)
+    let sinkCalls = 0
+    // Default gate (no servingPayoutGate supplied) is DISABLED => no live payout.
+    const hook = makeLedgerMeteringHook({
+      db,
+      nowIso: () => NOW,
+      recordServingPayout: () =>
+        Effect.sync(() => {
+          sinkCalls += 1
+        }),
+    })
+    const outcome = await run(
+      hook(
+        context({
+          adapterId: 'openagents-network',
+          fundingKind: 'bitcoin',
+          servedModel: 'kimi-k2p6',
+          servingReceipt,
+        }),
+      ),
+    )
+    expect(outcome.metered).toBe(true)
+    // The decision is computed + logged, but unarmed => the sink never dispatches.
+    expect(sinkCalls).toBe(0)
+  })
+
+  test('even with an armed owner gate + bitcoin funding, the hook never self-arms a live payout', async () => {
+    const db = makeDb()
+    await seedBalance(db, FUNDED)
+    let dispatched: ServingNodePayoutDecision | undefined
+    const hook = makeLedgerMeteringHook({
+      db,
+      nowIso: () => NOW,
+      recordServingPayout: decision =>
+        Effect.sync(() => {
+          dispatched = decision
+        }),
+      servingPayoutGate: armedHostedGate,
+    })
+    const outcome = await run(
+      hook(
+        context({
+          adapterId: 'openagents-network',
+          fundingKind: 'bitcoin',
+          servedModel: 'kimi-k2p6',
+          servingReceipt,
+        }),
+      ),
+    )
+    expect(outcome.metered).toBe(true)
+    // The RL-3 resale ref chain (provider-grant / settlement-receipt / ...) does
+    // NOT exist inside the metering hook, so the api_inference_gateway_resale lane
+    // cannot authorize from here: the decision is NOT armed and the sink never
+    // dispatches. This is the honest gate — the first real dispatched payout is
+    // owner-armed with the full ref chain, never auto-armed from metering.
+    expect(dispatched).toBeUndefined()
   })
 })

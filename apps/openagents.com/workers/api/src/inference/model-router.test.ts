@@ -6,6 +6,7 @@ import {
   DEFAULT_OVERFLOW_BACKOFF,
   dispatchWithOverflow,
   FIREWORKS_ADAPTER_ID,
+  OPENAGENTS_NETWORK_ADAPTER_ID,
   openModelsByCost,
   PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
   PASSTHROUGH_OPENAI_ADAPTER_ID,
@@ -13,6 +14,7 @@ import {
   selectPrimaryAdapterId,
   VERTEX_ANTHROPIC_ADAPTER_ID,
 } from './model-router'
+import { openAgentsNetworkAdapter } from './openagents-network-adapter'
 import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
@@ -145,12 +147,57 @@ describe('lane plan ordering (cheapest viable first, then overflow)', () => {
     ])
   })
 
-  test('open: Fireworks first, then passthrough overflow', () => {
+  test('open: Fireworks first, then OpenAgents serving fabric, then passthrough overflow', () => {
+    // #5483: the serving-fabric lane (`openagents-network`) is inserted into the
+    // open-class plan AHEAD of partner passthrough (our own compute is preferred).
     expect(selectAdapterPlan('kimi-k2p6')).toEqual([
       FIREWORKS_ADAPTER_ID,
+      OPENAGENTS_NETWORK_ADAPTER_ID,
       PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
       PASSTHROUGH_OPENAI_ADAPTER_ID,
     ])
+  })
+
+  test('the inert network lane is SKIPPED at dispatch when no adapter is registered (#5483)', async () => {
+    // The lane id is in the plan, but with no `openagents-network` adapter
+    // registered, dispatchWithOverflow filters it out and falls through to the
+    // next viable lane — a real selectable insert point, never a faked serve.
+    const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [
+      new InferenceAdapterError({
+        adapterId: FIREWORKS_ADAPTER_ID,
+        reason: 'retryable: rate limited',
+        retryable: true,
+      }),
+    ])
+    const passthrough = mockAdapter(PASSTHROUGH_OPENAI_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(fireworks.adapter)
+    registry.register(passthrough.adapter)
+    // Note: NO openagents-network adapter registered.
+
+    const outcome = await runResult(
+      dispatchWithOverflow(
+        request('kimi-k2p6'),
+        (adapter, req) => adapter.complete(req),
+        { plan: selectAdapterPlan, registry, sleep: () => Effect.void },
+      ),
+    )
+    expect(outcome._tag).toBe('Success')
+    // Fireworks (retryable fail) then straight to passthrough — the network lane
+    // contributed no dispatch attempt because it is unregistered.
+    expect(fireworks.calls()).toBe(1)
+    expect(passthrough.calls()).toBe(1)
+  })
+
+  test('a REGISTERED inert network adapter typed-fails non-retryably (#5483 honest-scope)', async () => {
+    // When the inert adapter IS registered (e.g. a future probe), it honestly
+    // typed-fails `network_dispatch_unavailable` rather than faking a serve.
+    const outcome = await runResult(openAgentsNetworkAdapter.complete(request('kimi-k2p6')))
+    expect(outcome._tag).toBe('Failure')
+    if (outcome._tag === 'Failure') {
+      expect(outcome.failure.kind).toBe('network_dispatch_unavailable')
+      expect(outcome.failure.retryable).toBe(false)
+    }
   })
 
   test('open models are ordered cheapest-first by blended cost', () => {

@@ -26,6 +26,10 @@
 
 import { Effect } from 'effect'
 
+import {
+  hostedMdkDirectPayoutDisabledGate,
+  type MdkPayoutModeGateProjection,
+} from '../mdk-payout-mode-gate'
 import { workerLogEntry } from '../observability'
 import {
   createPayInStatements,
@@ -33,8 +37,15 @@ import {
   runLedgerStatements,
 } from '../payments-ledger'
 import { currentIsoTimestamp } from '../runtime-primitives'
+import { type ServingReceipt } from './openagents-network-adapter'
 import { type FundingKind, priceRequest } from './pricing'
 import { type InferenceUsage } from './provider-adapter'
+import {
+  type ServingNodePayoutDecision,
+  decideServingNodePayout,
+  type ServingRevenueAsset,
+  servingContributorCutMsat,
+} from './serving-node-payout'
 
 // Context handed to the metering hook when a request completes.
 export type MeteringContext = Readonly<{
@@ -62,6 +73,13 @@ export type MeteringContext = Readonly<{
   // True for a batch request (Fireworks batch = −50% both directions). Optional;
   // routing/adapters set it once batch lands. Defaults false.
   batch?: boolean | undefined
+  // The serving-fabric receipt (#5483), present ONLY when the OpenAgents serving
+  // fabric (`openagents-network`) served this request. It is the apportionment +
+  // parity proof the serving-node payout split (#5484) settles against. Absent for
+  // every Vertex / Fireworks / passthrough request, and absent today because the
+  // fabric lane is inert — the seam is wired-but-dormant so the money plumbing is
+  // already shaped to receive serving payouts as the Psionic fabric lands.
+  servingReceipt?: ServingReceipt | undefined
 }>
 
 // Outcome of a metering attempt. The stub returns `metered: false`; the live
@@ -153,6 +171,26 @@ export type LedgerMeteringDeps = Readonly<{
   // USD -> msat conversion. Defaults to `usdToMsatCeil` at `DEFAULT_BTC_USD`.
   // Tests inject a fixed conversion; a live oracle injects a real one.
   usdToMsat?: (chargeUsd: number, fundingKind: FundingKind) => number
+  // SERVING-NODE PAYOUT SINK (#5484) — the wired-but-dormant seam. When the
+  // OpenAgents serving fabric served the request (`context.servingReceipt`
+  // present), the hook computes the per-stage serving-payout DECISION (pure,
+  // owner-armed-gated) AFTER the customer charge settles, and forwards it here.
+  // Default UNDEFINED => the decision is computed and logged but nothing is
+  // dispatched (no live payout). A live wiring passes a sink that records the
+  // decision's PayIn-shaped legs through the revenue-loop spine — but only when
+  // the decision is `armed` (owner-armed gate). The serving fabric is inert today,
+  // so no receipt flows and this never fires; the seam is shaped to receive it.
+  recordServingPayout?: (
+    decision: ServingNodePayoutDecision,
+  ) => Effect.Effect<void>
+  // The owner-armed payout-mode gate (mdk-payout-mode-gate.ts) the serving-payout
+  // decision consults. Defaults to a DISABLED gate (no live payout) so the seam
+  // is inert unless the owner arms it explicitly.
+  servingPayoutGate?: MdkPayoutModeGateProjection
+  // The revenue asset of the served request for the RL-3 asset-boundary check.
+  // Resolved from how the account funds (bitcoin funding => bitcoin revenue).
+  // Defaults to mapping `fundingKind` (bitcoin -> 'bitcoin', card -> 'usd').
+  servingRevenueAsset?: (fundingKind: FundingKind) => ServingRevenueAsset
 }>
 
 // Stable, public-safe idempotency key for an inference charge. One key per served
@@ -208,12 +246,74 @@ export const inferenceChargePayInPlan = (
 // the pure pricing engine and decrements the account's credit balance through
 // the existing PayIn-shaped ledger. Receipt-first, idempotent per request, and
 // never goes negative (the ledger CHECK fails the batch if it would).
+// Default revenue-asset resolver for the serving-payout RL-3 boundary check:
+// Bitcoin-funded accounts produce Bitcoin revenue (the only asset that may fund a
+// withdrawable Bitcoin serving share); card-funded accounts produce USD/credit
+// revenue (no withdrawable Bitcoin share). Conservative by construction.
+const defaultServingRevenueAsset = (
+  fundingKind: FundingKind,
+): ServingRevenueAsset => (fundingKind === 'bitcoin' ? 'bitcoin' : 'usd')
+
 export const makeLedgerMeteringHook = (
   deps: LedgerMeteringDeps,
 ): MeteringHook => {
   const nowIso = deps.nowIso ?? currentIsoTimestamp
   const usdToMsat =
     deps.usdToMsat ?? ((chargeUsd: number) => usdToMsatCeil(chargeUsd))
+  // The owner-armed serving-payout gate. Defaults DISABLED so serving payout is
+  // inert unless the owner arms it (the first real dispatched payout is owner-armed).
+  const servingPayoutGate =
+    deps.servingPayoutGate ?? hostedMdkDirectPayoutDisabledGate()
+  const servingRevenueAsset =
+    deps.servingRevenueAsset ?? defaultServingRevenueAsset
+
+  // SERVING-NODE PAYOUT (#5484). After the customer charge settles, if the
+  // OpenAgents serving fabric served the request, compute the per-stage payout
+  // DECISION from the receipt-first priced margin and the receipt, then forward it
+  // to the (dormant-by-default) sink. PURE + owner-armed-gated: nothing dispatches
+  // unless the decision is `armed` AND a sink is wired. Always logs a public-safe,
+  // bounded diagnostic (refs + parity + node count only — never amounts split per
+  // node, never payment material). Returns void; never fails the charge.
+  const settleServingPayout = (
+    context: MeteringContext,
+    priced: ReturnType<typeof priceRequest>,
+  ): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const receipt = context.servingReceipt
+      if (receipt === undefined) {
+        return
+      }
+      // Contributor cut from the request MARGIN (gross sell − our cost), converted
+      // to msat with the same conversion the charge uses, then the published
+      // serving-fabric contributor share.
+      const marginMsat = usdToMsat(
+        Math.max(0, priced.grossChargeUsd - priced.costUsd),
+        context.fundingKind,
+      )
+      const decision = decideServingNodePayout({
+        contributorCutMsat: servingContributorCutMsat(marginMsat),
+        payoutGate: servingPayoutGate,
+        receipt,
+        revenueAsset: servingRevenueAsset(context.fundingKind),
+      })
+      yield* Effect.logInfo(
+        workerLogEntry('inference.serving_payout.decided', {
+          adapterId: context.adapterId,
+          armed: decision.armed,
+          blockerRefs: decision.blockerRefs.join(','),
+          requestId: context.requestId,
+          servingRunRef: decision.servingRunRef,
+          stageCount: receipt.stages.length,
+          totalMsat: decision.split.totalMsat,
+        }),
+      )
+      // Forward to the dormant-by-default sink ONLY when armed. The sink owns the
+      // actual ledger write/dispatch through the revenue-loop spine; the default
+      // (undefined) path dispatches nothing — no live payout.
+      if (decision.armed && deps.recordServingPayout !== undefined) {
+        yield* deps.recordServingPayout(decision)
+      }
+    })
 
   return (context: MeteringContext) =>
     Effect.gen(function* () {
@@ -288,6 +388,10 @@ export const makeLedgerMeteringHook = (
             totalTokens: context.usage.totalTokens,
           }),
         )
+        // Serving-node payout (#5484): compute + (dormant) forward the per-stage
+        // split now that the customer charge has settled. Inert unless the fabric
+        // served this request AND the owner has armed live payout.
+        yield* settleServingPayout(context, priced)
         return { metered: true, receiptRef } satisfies MeteringOutcome
       }
 
