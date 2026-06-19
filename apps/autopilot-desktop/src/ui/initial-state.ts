@@ -18,6 +18,13 @@ type InitialRuntimeState = readonly [
 export const initialRuntimeState = (): InitialRuntimeState => {
   const model = Model.make({
     ...initialModel,
+    // AO-4 (#5441/#5445): the onboarding wizard is the FIRST screen on launch.
+    // A fresh — or existing/adopted — user lands on the identity choice + the
+    // live chain (registered → node → wallet → presence → Tassadar → earning),
+    // NOT the replay/network viz. The sidebar nav lets them leave anytime.
+    // Set here (the real app entry) rather than in `initialModel` so the shared
+    // neutral base stays "network" for the view/update tests.
+    pane: "onboarding",
     proofReplayPending: true,
     proofReplayStatus: {
       text: "loading public replay bundle...",
