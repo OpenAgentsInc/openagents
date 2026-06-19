@@ -109,3 +109,15 @@ The deployed Worker reads provider keys as **Worker secrets** (`wrangler secret
 put …`), separate from the local `~/work/.secrets/` files (e.g.
 `fireworks.env`). No provider key is committed or hardcoded in this repo; the
 adapter child issues (#5479/#5480/#5481) wire their secret reads when they land.
+
+## References
+
+- **[`speculative-decoding-article.md`](./speculative-decoding-article.md)** — primer on
+  speculative decoding (draft+verify: a small fast model proposes K tokens, the target model
+  verifies them in one parallel forward pass): why it works, the verify loop, draft-model
+  selection, and the major variants (EAGLE 1/2/3, Medusa, lookahead, draft-attention) plus how
+  production engines (SGLang / vLLM / TensorRT-LLM) deploy it. Relevant on two fronts: it's the
+  latency-hiding technique the **decentralized shard-WAN serving** lane leans on (see
+  `2026-06-19-decentralized-serving-shard-wan.md` — speculative decode hides WAN round-trips),
+  and it's a low-batch / single-user latency win for any lane the gateway serves. Background
+  reference, not an OpenAgents implementation claim.
