@@ -32,7 +32,9 @@ export const initialRuntimeState = (): InitialRuntimeState => {
     model,
     [
       LoadInstallReadiness(),
-      LoadProofReplayBundle({ slug: model.selectedProofReplaySlug }),
+      LoadProofReplayBundle({
+        request: { mode: "catalog", slug: model.selectedProofReplaySlug },
+      }),
       LoadPublicActivityTimeline(),
     ],
   ]

@@ -230,6 +230,37 @@ export const SettledQueueTrainingCloseout = m("SettledQueueTrainingCloseout", {
 export const SelectedProofReplay = m("SelectedProofReplay", {
   slug: ProofReplaySlug,
 })
+export const ChangedProofReplayGeneratedFrom = m(
+  "ChangedProofReplayGeneratedFrom",
+  { value: S.String },
+)
+export const ChangedProofReplayGeneratedTo = m(
+  "ChangedProofReplayGeneratedTo",
+  { value: S.String },
+)
+export const ChangedProofReplayGeneratedRunRef = m(
+  "ChangedProofReplayGeneratedRunRef",
+  { value: S.String },
+)
+export const ChangedProofReplayGeneratedWindowRef = m(
+  "ChangedProofReplayGeneratedWindowRef",
+  { value: S.String },
+)
+export const ChangedProofReplayGeneratedActorRef = m(
+  "ChangedProofReplayGeneratedActorRef",
+  { value: S.String },
+)
+export const ChangedProofReplayGeneratedKind = m(
+  "ChangedProofReplayGeneratedKind",
+  { value: S.String },
+)
+export const ChangedProofReplayGeneratedLimit = m(
+  "ChangedProofReplayGeneratedLimit",
+  { value: S.String },
+)
+export const ClickedLoadGeneratedProofReplay = m(
+  "ClickedLoadGeneratedProofReplay",
+)
 export const ClickedRefreshProofReplay = m("ClickedRefreshProofReplay")
 export const GotProofReplayBundle = m("GotProofReplayBundle", {
   projection: S.Unknown,
@@ -402,6 +433,14 @@ export const Message = S.Union([
   ClickedQueueTrainingCloseout,
   SettledQueueTrainingCloseout,
   SelectedProofReplay,
+  ChangedProofReplayGeneratedFrom,
+  ChangedProofReplayGeneratedTo,
+  ChangedProofReplayGeneratedRunRef,
+  ChangedProofReplayGeneratedWindowRef,
+  ChangedProofReplayGeneratedActorRef,
+  ChangedProofReplayGeneratedKind,
+  ChangedProofReplayGeneratedLimit,
+  ClickedLoadGeneratedProofReplay,
   ClickedRefreshProofReplay,
   GotProofReplayBundle,
   ChangedSpawnAdapter,

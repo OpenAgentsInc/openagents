@@ -51,7 +51,7 @@ import {
   parseVerifyLines,
 } from "./helpers"
 import type { Message } from "./message"
-import { Model, type PaneId } from "./model"
+import { Model, type PaneId, type ProofReplayCommandRequest } from "./model"
 import type { DesktopProofReplayProjection } from "../shared/proof-replays"
 import { validatePromiseSurfacingInput } from "../shared/promise-surfacing"
 import type {
@@ -78,6 +78,22 @@ type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
 const noCommands: ReadonlyArray<Command.Command<Message>> = []
 
+const proofReplayCommandRequestForModel = (
+  model: Model,
+): ProofReplayCommandRequest =>
+  model.selectedProofReplayMode === "generated"
+    ? {
+        actorRef: model.generatedProofReplayActorRef,
+        from: model.generatedProofReplayFrom,
+        kind: model.generatedProofReplayKind,
+        limit: model.generatedProofReplayLimit,
+        mode: "generated",
+        runRef: model.generatedProofReplayRunRef,
+        to: model.generatedProofReplayTo,
+        windowRef: model.generatedProofReplayWindowRef,
+      }
+    : { mode: "catalog", slug: model.selectedProofReplaySlug }
+
 const loadTrainingProjectionCommands = (
   model: Model,
 ): ReadonlyArray<Command.Command<Message>> => [
@@ -86,7 +102,7 @@ const loadTrainingProjectionCommands = (
   LoadTrainingPromiseGates(),
   LoadTrainingOperatorReadiness(),
   LoadTrainingEvidencePacketSummary(),
-  LoadProofReplayBundle({ slug: model.selectedProofReplaySlug }),
+  LoadProofReplayBundle({ request: proofReplayCommandRequestForModel(model) }),
   LoadPublicActivityTimeline(),
 ]
 
@@ -916,6 +932,7 @@ export const update = (model: Model, message: Message): Result => {
       return [
         Model.make({
           ...model,
+          selectedProofReplayMode: "catalog",
           selectedProofReplaySlug: message.slug,
           proofReplay: null,
           proofReplayPending: true,
@@ -924,8 +941,59 @@ export const update = (model: Model, message: Message): Result => {
             tone: "info",
           },
         }),
-        [LoadProofReplayBundle({ slug: message.slug })],
+        [LoadProofReplayBundle({ request: { mode: "catalog", slug: message.slug } })],
       ]
+    case "ChangedProofReplayGeneratedFrom":
+      return [
+        Model.make({ ...model, generatedProofReplayFrom: message.value }),
+        noCommands,
+      ]
+    case "ChangedProofReplayGeneratedTo":
+      return [
+        Model.make({ ...model, generatedProofReplayTo: message.value }),
+        noCommands,
+      ]
+    case "ChangedProofReplayGeneratedRunRef":
+      return [
+        Model.make({ ...model, generatedProofReplayRunRef: message.value }),
+        noCommands,
+      ]
+    case "ChangedProofReplayGeneratedWindowRef":
+      return [
+        Model.make({ ...model, generatedProofReplayWindowRef: message.value }),
+        noCommands,
+      ]
+    case "ChangedProofReplayGeneratedActorRef":
+      return [
+        Model.make({ ...model, generatedProofReplayActorRef: message.value }),
+        noCommands,
+      ]
+    case "ChangedProofReplayGeneratedKind":
+      return [
+        Model.make({ ...model, generatedProofReplayKind: message.value }),
+        noCommands,
+      ]
+    case "ChangedProofReplayGeneratedLimit":
+      return [
+        Model.make({ ...model, generatedProofReplayLimit: message.value }),
+        noCommands,
+      ]
+    case "ClickedLoadGeneratedProofReplay": {
+      const next = Model.make({
+        ...model,
+        selectedProofReplayMode: "generated",
+        proofReplay: null,
+        proofReplayPending: true,
+        proofReplayStatus: {
+          text: "loading generated public replay bundle...",
+          tone: "info",
+        },
+      })
+      return [
+        next,
+        [LoadProofReplayBundle({ request: proofReplayCommandRequestForModel(next) })],
+      ]
+    }
     case "ClickedRefreshProofReplay":
       return [
         Model.make({
@@ -936,11 +1004,15 @@ export const update = (model: Model, message: Message): Result => {
             tone: "info",
           },
         }),
-        [LoadProofReplayBundle({ slug: model.selectedProofReplaySlug })],
+        [LoadProofReplayBundle({ request: proofReplayCommandRequestForModel(model) })],
       ]
     case "GotProofReplayBundle": {
       const projection = message.projection as DesktopProofReplayProjection
-      const sourceLabel = projection.entry?.title ?? projection.sourceUrl
+      const sourceLabel =
+        projection.entry?.title ??
+        projection.bundle?.title ??
+        projection.filterLabel ??
+        projection.sourceUrl
       const amount = projection.summary?.confirmedZapSats ?? 0
       return [
         Model.make({

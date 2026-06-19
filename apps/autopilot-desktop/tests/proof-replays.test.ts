@@ -7,6 +7,7 @@ import {
 
 import {
   desktopProofReplayCatalog,
+  generatedProofReplayBundleEndpoint,
   loadDesktopProofReplayProjection,
 } from "../src/shared/proof-replays"
 
@@ -151,6 +152,98 @@ describe("desktop proof replays", () => {
     expect(projection.cacheState).toBe("live_https")
     expect(projection.summary?.confirmedZapSats).toBe(1000)
     expect(projection.summary?.eventCount).toBe(2)
+  })
+
+  test("loads generated public activity replay bundles with bounded filters", async () => {
+    const generatedBundle = {
+      ...bundle,
+      bundleRef: "proof_replay_bundle.public_activity.test",
+      generatedFrom: {
+        caveatRefs: [
+          "caveat.public.proof_replay.generated_from_activity_timeline_observation_only",
+        ],
+        input: {
+          actorRefs: ["pylon.448ba824b5fc879f3a59"],
+          filterKinds: ["real_bitcoin_moved"],
+          from: "2026-06-18T12:00:00.000Z",
+          limit: 10,
+          runRefs: ["run.tassadar.executor.20260615"],
+          to: "2026-06-18T12:05:00.000Z",
+          windowRefs: ["training.window.tassadar.executor.20260615.w1"],
+        },
+        source: {
+          route: "/api/public/activity-timeline",
+          url: "https://openagents.com/api/public/activity-timeline?from=2026-06-18T12%3A00%3A00.000Z&to=2026-06-18T12%3A05%3A00.000Z",
+        },
+        sourceLag: [{ sourceKind: "forum", status: "stale" }],
+      },
+      gaps: [
+        {
+          affectedRefs: ["forum"],
+          gapRef: "gap.source_lag.1.forum",
+          reason: "Public activity source forum is stale",
+          sourceRefs: [
+            "caveat.public_activity_timeline.source_lag.forum",
+          ],
+        },
+      ],
+      title: "Generated Public Activity Replay",
+    } satisfies ProofReplayBundle & {
+      generatedFrom: Record<string, unknown>
+    }
+    const filters = {
+      actorRef: "pylon.448ba824b5fc879f3a59",
+      from: "2026-06-18T12:00:00.000Z",
+      kind: "real_bitcoin_moved",
+      limit: 10,
+      runRef: "run.tassadar.executor.20260615",
+      to: "2026-06-18T12:05:00.000Z",
+      windowRef: "training.window.tassadar.executor.20260615.w1",
+    }
+    const calls: Array<string> = []
+    const projection = await loadDesktopProofReplayProjection(
+      { mode: "generated", filters },
+      {
+        fetcher: async input => {
+          calls.push(String(input))
+          return jsonResponse(generatedBundle)
+        },
+      },
+    )
+
+    expect(calls).toEqual([generatedProofReplayBundleEndpoint(filters)])
+    expect(projection.ok).toBe(true)
+    expect(projection.entry).toBe(null)
+    expect(projection.request.mode).toBe("generated")
+    expect(projection.sourceUrl).toContain("mode=activity-timeline")
+    expect(projection.filterLabel).toContain("run.tassadar.executor.20260615")
+    expect(projection.generatedFrom?.input?.filterKinds).toEqual([
+      "real_bitcoin_moved",
+    ])
+    expect(projection.generatedFrom?.sourceLag).toHaveLength(1)
+    expect(projection.caveatRefs).toEqual(
+      expect.arrayContaining([
+        "caveat.public.proof_replay.generated_from_activity_timeline_observation_only",
+        "caveat.public_activity_timeline.source_lag.forum",
+      ]),
+    )
+  })
+
+  test("fails generated replay requests closed without a valid bounded range", async () => {
+    const projection = await loadDesktopProofReplayProjection({
+      filters: {
+        from: "",
+        to: "",
+      },
+      mode: "generated",
+    })
+
+    expect(projection.ok).toBe(false)
+    expect(projection.bundle).toBe(null)
+    expect(projection.blockerRefs).toContain(
+      "desktop.proof_replay.generated_range_required",
+    )
+    expect(projection.sourceUrl).toContain("mode=activity-timeline")
   })
 
   test("blocks unsafe replay material before desktop rendering", async () => {

@@ -157,6 +157,28 @@ export const ProofReplaySlug = S.Literals([
 ])
 export type ProofReplaySlug = typeof ProofReplaySlug.Type
 
+export const ProofReplayMode = S.Literals(["catalog", "generated"])
+export type ProofReplayMode = typeof ProofReplayMode.Type
+
+export const ProofReplayCommandRequest = S.Union([
+  S.Struct({
+    mode: S.Literal("catalog"),
+    slug: ProofReplaySlug,
+  }),
+  S.Struct({
+    actorRef: S.String,
+    from: S.String,
+    kind: S.String,
+    limit: S.String,
+    mode: S.Literal("generated"),
+    runRef: S.String,
+    to: S.String,
+    windowRef: S.String,
+  }),
+])
+export type ProofReplayCommandRequest =
+  typeof ProofReplayCommandRequest.Type
+
 export const ProofReplayStatus = S.Struct({
   text: S.String,
   tone: S.Literals(["error", "info", "success", "idle"]),
@@ -355,7 +377,15 @@ export const Model = ts("AutopilotDesktop", {
   trainingLaunchPending: S.Boolean,
   trainingCloseoutStatus: TrainingLaunchStatus,
   trainingCloseoutPending: S.Boolean,
+  selectedProofReplayMode: ProofReplayMode,
   selectedProofReplaySlug: ProofReplaySlug,
+  generatedProofReplayFrom: S.String,
+  generatedProofReplayTo: S.String,
+  generatedProofReplayRunRef: S.String,
+  generatedProofReplayWindowRef: S.String,
+  generatedProofReplayActorRef: S.String,
+  generatedProofReplayKind: S.String,
+  generatedProofReplayLimit: S.String,
   proofReplay: S.NullOr(S.Unknown),
   proofReplayStatus: ProofReplayStatus,
   proofReplayPending: S.Boolean,
@@ -580,7 +610,15 @@ export const initialModel: Model = Model.make({
   trainingLaunchPending: false,
   trainingCloseoutStatus: { text: "", tone: "idle" },
   trainingCloseoutPending: false,
+  selectedProofReplayMode: "catalog",
   selectedProofReplaySlug: DefaultDesktopProofReplaySlug,
+  generatedProofReplayFrom: "2026-06-18T00:00:00.000Z",
+  generatedProofReplayTo: "2026-06-19T00:00:00.000Z",
+  generatedProofReplayRunRef: "",
+  generatedProofReplayWindowRef: "",
+  generatedProofReplayActorRef: "",
+  generatedProofReplayKind: "",
+  generatedProofReplayLimit: "20",
   proofReplay: null,
   proofReplayStatus: { text: "not loaded", tone: "idle" },
   proofReplayPending: false,

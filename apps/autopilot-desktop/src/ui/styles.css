@@ -301,6 +301,54 @@ body {
   width: 100%;
   height: 100%;
 }
+.training-replay-generated-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  gap: 0.55rem;
+  align-items: end;
+  min-width: 0;
+}
+.training-replay-filter-field {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.training-replay-filter-label {
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.training-replay-filter-input {
+  min-height: 2.15rem;
+  min-width: 0;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 0.25rem;
+  background: rgb(255 255 255 / 0.045);
+  color: var(--text, #d7d8e5);
+  padding: 0.42rem 0.55rem;
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  outline: none;
+  overflow-wrap: anywhere;
+}
+.training-replay-filter-input:focus-visible {
+  border-color: rgb(141 211 199 / 0.65);
+  box-shadow: 0 0 0 2px rgb(141 211 199 / 0.2);
+}
+.training-replay-filter-input::placeholder {
+  color: rgb(138 140 147 / 0.72);
+}
+.training-replay-generated-load {
+  min-height: 2.15rem;
+}
+.training-replay-generated,
+.training-replay-caveats,
+.training-replay-sources {
+  overflow-wrap: anywhere;
+}
 .network-overlay {
   position: absolute;
   inset: 0;

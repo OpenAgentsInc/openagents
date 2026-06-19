@@ -606,6 +606,97 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsText(document.body, ".secrets")).toBe(false)
   })
 
+  test("training pane renders generated replay filters, source refs, and caveats", () => {
+    const document = view({
+      ...initialModel,
+      pane: "training",
+      selectedProofReplayMode: "generated",
+      proofReplayStatus: {
+        text: "Generated Public Activity Replay · 1 event · 1,000 sats",
+        tone: "success",
+      },
+      proofReplay: {
+        ok: true,
+        fetchedAt: "2026-06-18T12:03:00.000Z",
+        sourceUrl:
+          "https://openagents.com/api/public/proof-replays?mode=activity-timeline&from=2026-06-18T12%3A00%3A00.000Z&to=2026-06-18T12%3A05%3A00.000Z",
+        entry: null,
+        request: {
+          mode: "generated",
+          filters: {
+            from: "2026-06-18T12:00:00.000Z",
+            to: "2026-06-18T12:05:00.000Z",
+            kind: "real_bitcoin_moved",
+          },
+        },
+        filterLabel:
+          "2026-06-18T12:00:00.000Z → 2026-06-18T12:05:00.000Z · real_bitcoin_moved",
+        generatedFrom: {
+          caveatRefs: [
+            "caveat.public.proof_replay.generated_from_activity_timeline_observation_only",
+          ],
+          source: {
+            route: "/api/public/activity-timeline",
+            url: "https://openagents.com/api/public/activity-timeline?from=2026-06-18T12%3A00%3A00.000Z&to=2026-06-18T12%3A05%3A00.000Z",
+          },
+          sourceLag: [{ sourceKind: "forum", status: "stale" }],
+        },
+        caveatRefs: [
+          "caveat.public.proof_replay.generated_from_activity_timeline_observation_only",
+          "caveat.public_activity_timeline.source_lag.forum",
+        ],
+        bundle: {
+          title: "Generated Public Activity Replay",
+          events: [
+            {
+              amountSats: 1000,
+              displayText: "Receipt-backed real Bitcoin movement confirmed.",
+              kind: "payment_zap_confirmed",
+              sourceRefs: ["receipt.public.real.1"],
+            },
+          ],
+          gaps: [
+            {
+              gapRef: "gap.source_lag.1.forum",
+              reason: "Public activity source forum is stale",
+              sourceRefs: [
+                "caveat.public_activity_timeline.source_lag.forum",
+              ],
+            },
+          ],
+          sourceRefs: [
+            {
+              kind: "receipt",
+              ref: "receipt.public.real.1",
+            },
+            {
+              kind: "api",
+              ref: "public_activity_timeline.generated.range",
+              url: "https://openagents.com/api/public/activity-timeline?from=2026-06-18T12%3A00%3A00.000Z&to=2026-06-18T12%3A05%3A00.000Z",
+            },
+          ],
+        },
+        summary: {
+          actorCount: 2,
+          confirmedZapSats: 1000,
+          durationSecond: 12,
+          eventCount: 1,
+          gapCount: 1,
+          sourceRefCount: 1,
+        },
+        blockerRefs: [],
+        cacheState: "live_https",
+        cacheLabel: "live HTTPS read from openagents.com; no offline snapshot",
+      },
+    })
+
+    expect(treeContainsText(document.body, "Load generated")).toBe(true)
+    expect(treeContainsText(document.body, "Generated Public Activity Replay")).toBe(true)
+    expect(treeContainsText(document.body, "receipt.public.real.1")).toBe(true)
+    expect(treeContainsText(document.body, "caveat.public_activity_timeline.source_lag.forum")).toBe(true)
+    expect(treeContainsText(document.body, "Open activity API")).toBe(true)
+  })
+
   test("fullscreen training pane keeps sidebar and overlays stats on the scene", () => {
     const document = view({
       ...initialModel,

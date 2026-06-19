@@ -14,6 +14,44 @@ import {
 export const DEFAULT_DESKTOP_PROOF_REPLAY_SLUG =
   FIRST_REAL_SETTLEMENT_REPLAY_SLUG
 
+export type DesktopGeneratedProofReplayFilters = Readonly<{
+  from: string
+  to: string
+  runRef?: string
+  windowRef?: string
+  actorRef?: string
+  kind?: string
+  limit?: number
+}>
+
+export type DesktopProofReplayRequest =
+  | Readonly<{ mode: "catalog"; slug: ProofReplayCatalogSlug }>
+  | Readonly<{
+      mode: "generated"
+      filters: DesktopGeneratedProofReplayFilters
+    }>
+
+export type DesktopGeneratedProofReplayManifest = Readonly<{
+  input?: {
+    actorRefs?: ReadonlyArray<string>
+    filterKinds?: ReadonlyArray<string>
+    filterSources?: ReadonlyArray<string>
+    from?: string | null
+    limit?: number
+    runRefs?: ReadonlyArray<string>
+    since?: string | null
+    to?: string | null
+    windowRefs?: ReadonlyArray<string>
+  }
+  caveatRefs?: ReadonlyArray<string>
+  source?: {
+    route?: string
+    url?: string
+  }
+  sourceLag?: ReadonlyArray<unknown>
+  staleness?: unknown
+}>
+
 export type DesktopProofReplaySummary = Readonly<{
   actorCount: number
   confirmedZapSats: number
@@ -28,6 +66,10 @@ export type DesktopProofReplayProjection = Readonly<{
   fetchedAt: string
   sourceUrl: string
   entry: ProofReplayCatalogEntry | null
+  request: DesktopProofReplayRequest
+  filterLabel: string
+  generatedFrom: DesktopGeneratedProofReplayManifest | null
+  caveatRefs: ReadonlyArray<string>
   bundle: ProofReplayBundle | null
   summary: DesktopProofReplaySummary | null
   blockerRefs: ReadonlyArray<string>
@@ -58,6 +100,10 @@ export const desktopProofReplayEntryForSlug = (
 ): ProofReplayCatalogEntry | null =>
   proofReplayCatalogEntryForSlug(slug, origin) ?? null
 
+export const desktopProofReplayCatalogRequest = (
+  slug: ProofReplayCatalogSlug,
+): DesktopProofReplayRequest => ({ mode: "catalog", slug })
+
 export const summarizeProofReplayBundle = (
   bundle: ProofReplayBundle,
 ): DesktopProofReplaySummary => {
@@ -76,45 +122,184 @@ export const summarizeProofReplayBundle = (
   }
 }
 
+const optionalParam = (value: string | undefined): string | null => {
+  const trimmed = value?.trim() ?? ""
+  return trimmed === "" ? null : trimmed
+}
+
+const safeLimit = (value: number | undefined): number => {
+  if (value === undefined || !Number.isFinite(value)) return 20
+  return Math.min(Math.max(1, Math.trunc(value)), 200)
+}
+
+const isSafeIsoRange = (from: string, to: string): boolean => {
+  const fromMillis = Date.parse(from)
+  const toMillis = Date.parse(to)
+  return (
+    Number.isFinite(fromMillis) &&
+    Number.isFinite(toMillis) &&
+    fromMillis <= toMillis
+  )
+}
+
+export const generatedProofReplayFilterLabel = (
+  filters: DesktopGeneratedProofReplayFilters,
+): string => {
+  const parts = [
+    optionalParam(filters.runRef),
+    optionalParam(filters.windowRef),
+    optionalParam(filters.actorRef),
+    optionalParam(filters.kind),
+  ].filter((part): part is string => part !== null)
+
+  return parts.length === 0
+    ? `${filters.from} → ${filters.to}`
+    : `${filters.from} → ${filters.to} · ${parts.join(" · ")}`
+}
+
+export const generatedProofReplayBundleEndpoint = (
+  filters: DesktopGeneratedProofReplayFilters,
+  origin: string = OPENAGENTS_PUBLIC_ORIGIN,
+): string => {
+  const url = new URL("/api/public/proof-replays", origin)
+  url.searchParams.set("mode", "activity-timeline")
+  url.searchParams.set("from", filters.from.trim())
+  url.searchParams.set("to", filters.to.trim())
+  url.searchParams.set("limit", String(safeLimit(filters.limit)))
+
+  const runRef = optionalParam(filters.runRef)
+  const windowRef = optionalParam(filters.windowRef)
+  const actorRef = optionalParam(filters.actorRef)
+  const kind = optionalParam(filters.kind)
+
+  if (runRef !== null) url.searchParams.set("runRef", runRef)
+  if (windowRef !== null) url.searchParams.set("windowRef", windowRef)
+  if (actorRef !== null) url.searchParams.set("actorRef", actorRef)
+  if (kind !== null) url.searchParams.set("kind", kind)
+
+  return url.toString()
+}
+
+const normalizeProofReplayRequest = (
+  request: ProofReplayCatalogSlug | DesktopProofReplayRequest,
+): DesktopProofReplayRequest =>
+  typeof request === "string" ? desktopProofReplayCatalogRequest(request) : request
+
+const generatedManifestFromBundle = (
+  bundle: ProofReplayBundle,
+): DesktopGeneratedProofReplayManifest | null => {
+  const generatedFrom = (bundle as ProofReplayBundle & {
+    generatedFrom?: DesktopGeneratedProofReplayManifest
+  }).generatedFrom
+  return generatedFrom === undefined ? null : generatedFrom
+}
+
+const caveatRefsFrom = (
+  bundle: ProofReplayBundle | null,
+  generatedFrom: DesktopGeneratedProofReplayManifest | null,
+): ReadonlyArray<string> => {
+  const eventCaveats =
+    bundle?.events.flatMap(event =>
+      event.caveat === undefined ? [] : event.caveat.split(","),
+    ) ?? []
+  const gapCaveats = bundle?.gaps.flatMap(gap => gap.sourceRefs) ?? []
+  return [
+    ...new Set(
+      [
+        ...eventCaveats,
+        ...gapCaveats,
+        ...(generatedFrom?.caveatRefs ?? []),
+      ].map(ref => ref.trim()).filter(ref => ref !== ""),
+    ),
+  ].sort()
+}
+
 export const blockedDesktopProofReplayProjection = (
-  slug: string,
+  request: ProofReplayCatalogSlug | DesktopProofReplayRequest,
   error: string,
   origin: string = OPENAGENTS_PUBLIC_ORIGIN,
-): DesktopProofReplayProjection => ({
-  blockerRefs: ["desktop.proof_replay.bundle_unavailable"],
-  bundle: null,
-  cacheLabel: "no offline snapshot; live public bundle unavailable",
-  cacheState: "stale_snapshot_unavailable",
-  entry: desktopProofReplayEntryForSlug(slug, origin),
-  error,
-  fetchedAt: new Date().toISOString(),
-  ok: false,
-  sourceUrl: proofReplayBundleEndpointForSlug(slug, origin),
-  summary: null,
-})
+): DesktopProofReplayProjection => {
+  const normalized = normalizeProofReplayRequest(request)
+  const entry =
+    normalized.mode === "catalog"
+      ? desktopProofReplayEntryForSlug(normalized.slug, origin)
+      : null
+  return {
+    request: normalized,
+    blockerRefs: ["desktop.proof_replay.bundle_unavailable"],
+    bundle: null,
+    cacheLabel: "no offline snapshot; live public bundle unavailable",
+    cacheState: "stale_snapshot_unavailable",
+    caveatRefs: [],
+    entry,
+    error,
+    fetchedAt: new Date().toISOString(),
+    filterLabel:
+      normalized.mode === "generated"
+        ? generatedProofReplayFilterLabel(normalized.filters)
+        : "catalog preset",
+    generatedFrom: null,
+    ok: false,
+    sourceUrl:
+      normalized.mode === "generated"
+        ? generatedProofReplayBundleEndpoint(normalized.filters, origin)
+        : proofReplayBundleEndpointForSlug(normalized.slug, origin),
+    summary: null,
+  }
+}
 
 export const loadDesktopProofReplayProjection = async (
-  slug: ProofReplayCatalogSlug,
+  requestOrSlug: ProofReplayCatalogSlug | DesktopProofReplayRequest,
   options: Readonly<{
     fetcher?: ProofReplayFetch
     origin?: string
   }> = {},
 ): Promise<DesktopProofReplayProjection> => {
   const origin = options.origin ?? OPENAGENTS_PUBLIC_ORIGIN
-  const entry = desktopProofReplayEntryForSlug(slug, origin)
-  if (entry === null) {
+  const request = normalizeProofReplayRequest(requestOrSlug)
+  const entry =
+    request.mode === "catalog"
+      ? desktopProofReplayEntryForSlug(request.slug, origin)
+      : null
+  if (request.mode === "catalog" && entry === null) {
     return blockedDesktopProofReplayProjection(
-      slug,
-      `unknown proof replay: ${slug}`,
+      request,
+      `unknown proof replay: ${request.slug}`,
       origin,
     )
   }
 
+  if (
+    request.mode === "generated" &&
+    !isSafeIsoRange(request.filters.from.trim(), request.filters.to.trim())
+  ) {
+    return {
+      blockerRefs: ["desktop.proof_replay.generated_range_required"],
+      bundle: null,
+      cacheLabel: "generated replay requires a bounded public ISO range",
+      cacheState: "stale_snapshot_unavailable",
+      caveatRefs: [],
+      entry: null,
+      error: "generated replay requires valid from/to ISO bounds",
+      fetchedAt: new Date().toISOString(),
+      filterLabel: generatedProofReplayFilterLabel(request.filters),
+      generatedFrom: null,
+      ok: false,
+      request,
+      sourceUrl: generatedProofReplayBundleEndpoint(request.filters, origin),
+      summary: null,
+    }
+  }
+
   const fetcher = options.fetcher ?? fetch
   const fetchedAt = new Date().toISOString()
+  const sourceUrl =
+    request.mode === "generated"
+      ? generatedProofReplayBundleEndpoint(request.filters, origin)
+      : entry?.bundleEndpoint ?? proofReplayBundleEndpointForSlug(request.slug, origin)
 
   try {
-    const response = await fetcher(entry.bundleEndpoint, {
+    const response = await fetcher(sourceUrl, {
       headers: { accept: "application/json" },
     })
     if (!response.ok) {
@@ -123,27 +308,42 @@ export const loadDesktopProofReplayProjection = async (
         bundle: null,
         cacheLabel: "no offline snapshot; live public bundle unavailable",
         cacheState: "stale_snapshot_unavailable",
+        caveatRefs: [],
         entry,
         error: `HTTP ${response.status}`,
         fetchedAt,
+        filterLabel:
+          request.mode === "generated"
+            ? generatedProofReplayFilterLabel(request.filters)
+            : entry?.title ?? "catalog preset",
+        generatedFrom: null,
         ok: false,
-        sourceUrl: entry.bundleEndpoint,
+        request,
+        sourceUrl,
         summary: null,
       }
     }
 
     const bundle = (await response.json()) as ProofReplayBundle
     assertProofReplayBundleShipmentGate(bundle)
+    const generatedFrom = generatedManifestFromBundle(bundle)
 
     return {
       blockerRefs: [],
       bundle,
       cacheLabel: "live HTTPS read from openagents.com; no offline snapshot",
       cacheState: "live_https",
+      caveatRefs: caveatRefsFrom(bundle, generatedFrom),
       entry,
       fetchedAt,
+      filterLabel:
+        request.mode === "generated"
+          ? generatedProofReplayFilterLabel(request.filters)
+          : entry?.title ?? "catalog preset",
+      generatedFrom,
       ok: true,
-      sourceUrl: entry.bundleEndpoint,
+      request,
+      sourceUrl,
       summary: summarizeProofReplayBundle(bundle),
     }
   } catch (error) {
@@ -152,11 +352,18 @@ export const loadDesktopProofReplayProjection = async (
       bundle: null,
       cacheLabel: "no offline snapshot; live public bundle rejected",
       cacheState: "stale_snapshot_unavailable",
+      caveatRefs: [],
       entry,
       error: publicErrorText(error),
       fetchedAt,
+      filterLabel:
+        request.mode === "generated"
+          ? generatedProofReplayFilterLabel(request.filters)
+          : entry?.title ?? "catalog preset",
+      generatedFrom: null,
       ok: false,
-      sourceUrl: entry.bundleEndpoint,
+      request,
+      sourceUrl,
       summary: null,
     }
   }

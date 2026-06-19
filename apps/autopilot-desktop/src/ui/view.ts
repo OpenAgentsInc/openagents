@@ -91,8 +91,16 @@ import {
   ChangedAddAccountPriority,
   ChangedAddAccountProvider,
   ChangedAddAccountRef,
+  ChangedProofReplayGeneratedActorRef,
+  ChangedProofReplayGeneratedFrom,
+  ChangedProofReplayGeneratedKind,
+  ChangedProofReplayGeneratedLimit,
+  ChangedProofReplayGeneratedRunRef,
+  ChangedProofReplayGeneratedTo,
+  ChangedProofReplayGeneratedWindowRef,
   ClickedAddManagedAccount,
   ClickedBumpManagedAccountPriority,
+  ClickedLoadGeneratedProofReplay,
   ClickedRefreshManagedAccounts,
   ClickedRemoveManagedAccount,
   SelectedComposerAccount,
@@ -1669,35 +1677,43 @@ const liveTrainingProjectionPanel = (model: Model): Html => {
 const replaySatsLabel = (amount: number): string =>
   `${amount.toLocaleString()} sats`
 
+const proofReplayEventTone = (
+  kind: ProofReplayBundle["events"][number]["kind"],
+): "blocked" | "ready" | "watch" => {
+  if (
+    kind === "payment_zap_confirmed" ||
+    kind === "recipient_confirmation_recorded" ||
+    kind === "proof_verified"
+  ) {
+    return "ready"
+  }
+  if (kind === "settlement_blocked_closed") return "blocked"
+  return "watch"
+}
+
 const proofReplayEventRows = (
   projection: DesktopProofReplayProjection | null,
 ): ReadonlyArray<Html> => {
   const events = projection?.bundle?.events ?? []
   return events
-    .filter(event =>
-      event.kind === "payment_zap_confirmed" ||
-      event.kind === "settlement_blocked_closed" ||
-      event.kind === "payment_zap_simulated" ||
-      event.kind === "recognition_reward_recorded" ||
-      event.kind === "recipient_confirmation_recorded" ||
-      event.kind === "overpayment_detected",
-    )
     .slice(0, 6)
     .map(event =>
       trainingGate(
         event.kind,
-        event.amountSats === undefined
-          ? event.displayText
-          : `${replaySatsLabel(event.amountSats)} · ${event.displayText}`,
-        event.kind === "payment_zap_confirmed" ||
-          event.kind === "recipient_confirmation_recorded"
-          ? "ready"
-          : event.kind === "settlement_blocked_closed"
-            ? "blocked"
-            : "watch",
+          event.amountSats === undefined
+            ? event.displayText
+            : `${replaySatsLabel(event.amountSats)} · ${event.displayText}`,
+        proofReplayEventTone(event.kind),
       ),
     )
 }
+
+const proofReplayGapRows = (
+  projection: DesktopProofReplayProjection | null,
+): ReadonlyArray<Html> =>
+  (projection?.bundle?.gaps ?? [])
+    .slice(0, 5)
+    .map(gap => trainingGate(gap.gapRef, gap.reason, "watch"))
 
 const proofReplaySourceRows = (
   projection: DesktopProofReplayProjection | null,
@@ -1712,6 +1728,103 @@ const proofReplaySourceRows = (
     ]),
   )
 }
+
+const proofReplayCaveatRows = (
+  projection: DesktopProofReplayProjection | null,
+): ReadonlyArray<Html> =>
+  (projection?.caveatRefs ?? []).slice(0, 5).map(ref =>
+    h.li([], [h.code([], [ref])]),
+  )
+
+const proofReplaySceneSlug = (
+  projection: DesktopProofReplayProjection | null,
+  fallback: string,
+): string =>
+  projection?.request?.mode === "generated"
+    ? "generated-public-activity"
+    : projection?.entry?.slug ?? fallback
+
+const proofReplayGeneratedField = (
+  label: string,
+  name: string,
+  value: string,
+  placeholder: string,
+  onInput: (value: string) => Message,
+): Html =>
+  h.label([cls("training-replay-filter-field")], [
+    h.span([cls("training-replay-filter-label")], [label]),
+    h.input([
+      cls("training-replay-filter-input"),
+      h.Type("text"),
+      h.Name(name),
+      h.AriaLabel(label),
+      h.Placeholder(placeholder),
+      h.Value(value),
+      h.OnInput(onInput),
+    ]),
+  ])
+
+const proofReplayGeneratedFilters = (model: Model): Html =>
+  h.div([cls("training-replay-generated-filters")], [
+    proofReplayGeneratedField(
+      "From",
+      "proof-replay-from",
+      model.generatedProofReplayFrom,
+      "2026-06-18T00:00:00.000Z",
+      value => ChangedProofReplayGeneratedFrom({ value }),
+    ),
+    proofReplayGeneratedField(
+      "To",
+      "proof-replay-to",
+      model.generatedProofReplayTo,
+      "2026-06-19T00:00:00.000Z",
+      value => ChangedProofReplayGeneratedTo({ value }),
+    ),
+    proofReplayGeneratedField(
+      "Run",
+      "proof-replay-run-ref",
+      model.generatedProofReplayRunRef,
+      "run.tassadar.executor.20260615",
+      value => ChangedProofReplayGeneratedRunRef({ value }),
+    ),
+    proofReplayGeneratedField(
+      "Window",
+      "proof-replay-window-ref",
+      model.generatedProofReplayWindowRef,
+      "training.window.tassadar.executor.20260615.w1",
+      value => ChangedProofReplayGeneratedWindowRef({ value }),
+    ),
+    proofReplayGeneratedField(
+      "Actor",
+      "proof-replay-actor-ref",
+      model.generatedProofReplayActorRef,
+      "pylon.448ba824b5fc879f3a59",
+      value => ChangedProofReplayGeneratedActorRef({ value }),
+    ),
+    proofReplayGeneratedField(
+      "Kind",
+      "proof-replay-kind",
+      model.generatedProofReplayKind,
+      "real_bitcoin_moved",
+      value => ChangedProofReplayGeneratedKind({ value }),
+    ),
+    proofReplayGeneratedField(
+      "Limit",
+      "proof-replay-limit",
+      model.generatedProofReplayLimit,
+      "20",
+      value => ChangedProofReplayGeneratedLimit({ value }),
+    ),
+    h.button(
+      [
+        cls("training-action-button secondary training-replay-generated-load"),
+        h.Type("button"),
+        h.Disabled(model.proofReplayPending),
+        h.OnClick(ClickedLoadGeneratedProofReplay()),
+      ],
+      [model.proofReplayPending ? "Loading..." : "Load generated"],
+    ),
+  ])
 
 const proofReplayUnavailableText = (
   projection: DesktopProofReplayProjection | null,
@@ -1767,11 +1880,20 @@ const proofReplayPanel = (model: Model): Html => {
   const selectedEntry =
     entries.find(entry => entry.slug === model.selectedProofReplaySlug) ?? entries[0]
   const selectedProjection =
-    projection?.entry?.slug === selectedEntry?.slug ? projection : null
+    projection?.request?.mode === "generated" &&
+    model.selectedProofReplayMode === "generated"
+      ? projection
+      : projection?.entry?.slug === selectedEntry?.slug
+        ? projection
+        : null
   const summary = selectedProjection?.summary ?? null
   const sourceRows = proofReplaySourceRows(selectedProjection)
   const eventRows = proofReplayEventRows(selectedProjection)
+  const gapRows = proofReplayGapRows(selectedProjection)
+  const caveatRows = proofReplayCaveatRows(selectedProjection)
   const selectedBundle = selectedProjection?.bundle ?? null
+  const generatedFrom = selectedProjection?.generatedFrom ?? null
+  const generatedSourceUrl = generatedFrom?.source?.url ?? null
 
   return h.section([cls("training-panel training-proof-replay-panel")], [
     h.div([cls("training-panel-heading")], [
@@ -1796,7 +1918,7 @@ const proofReplayPanel = (model: Model): Html => {
         h.button(
           [
             cls(
-              `training-action-button secondary${entry.slug === model.selectedProofReplaySlug ? " active" : ""}`,
+              `training-action-button secondary${model.selectedProofReplayMode === "catalog" && entry.slug === model.selectedProofReplaySlug ? " active" : ""}`,
             ),
             h.Type("button"),
             h.Disabled(model.proofReplayPending),
@@ -1806,8 +1928,11 @@ const proofReplayPanel = (model: Model): Html => {
         ),
       ),
     ),
+    proofReplayGeneratedFilters(model),
     h.p([cls("training-panel-copy")], [
-      selectedEntry?.summary ?? "Receipt-backed replay shelf.",
+      model.selectedProofReplayMode === "generated"
+        ? selectedProjection?.filterLabel ?? "Generated public activity replay"
+        : selectedEntry?.summary ?? "Receipt-backed replay shelf.",
     ]),
     h.div([cls("training-proof-replay-viewport")], [
       selectedBundle === null
@@ -1818,7 +1943,10 @@ const proofReplayPanel = (model: Model): Html => {
           )
         : tassadarProofReplayScene(
             "training-proof-replay-scene",
-            selectedEntry?.slug ?? DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
+            proofReplaySceneSlug(
+              selectedProjection,
+              selectedEntry?.slug ?? DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
+            ),
             selectedBundle,
           ),
     ]),
@@ -1844,21 +1972,43 @@ const proofReplayPanel = (model: Model): Html => {
         ? [trainingGate("events", "not loaded", "watch")]
         : eventRows,
     ),
+    gapRows.length === 0
+      ? h.empty
+      : h.ul([cls("training-gates training-proof-replay-gaps")], gapRows),
     h.div([cls("training-replay-links")], [
-      selectedEntry === undefined
+      model.selectedProofReplayMode === "generated" || selectedEntry === undefined
         ? h.empty
         : h.a([h.Href(selectedEntry.websitePath)], ["Open web replay"]),
+      model.selectedProofReplayMode === "generated" ||
       selectedEntry?.socialPath === undefined
         ? h.empty
         : h.a([h.Href(selectedEntry.socialPath)], ["Open social cut"]),
       selectedProjection === null
         ? h.empty
         : h.a([h.Href(selectedProjection.sourceUrl)], ["Open bundle API"]),
+      generatedSourceUrl === null
+        ? h.empty
+        : h.a([h.Href(generatedSourceUrl)], ["Open activity API"]),
     ]),
     h.p([cls("training-panel-copy")], [
       selectedProjection?.cacheLabel ??
         "No offline snapshot is cached; the desktop shelf waits for the live public bundle.",
     ]),
+    generatedFrom === null
+      ? h.empty
+      : h.ul([cls("training-api-list training-replay-generated")], [
+          h.li([], [
+            "generated · ",
+            selectedProjection?.filterLabel ?? "public activity range",
+          ]),
+          h.li([], [
+            "source lag · ",
+            String(generatedFrom.sourceLag?.length ?? 0),
+          ]),
+        ]),
+    caveatRows.length === 0
+      ? h.empty
+      : h.ul([cls("training-api-list training-replay-caveats")], caveatRows),
     sourceRows.length === 0
       ? h.empty
       : h.ul([cls("training-api-list training-replay-sources")], sourceRows),
@@ -4614,7 +4764,7 @@ const networkPane = (model: Model): Html => {
           )
         : tassadarProofReplayScene(
             "desktop-tassadar-replay",
-            model.selectedProofReplaySlug,
+            proofReplaySceneSlug(projection, model.selectedProofReplaySlug),
             bundle,
           ),
     ]),

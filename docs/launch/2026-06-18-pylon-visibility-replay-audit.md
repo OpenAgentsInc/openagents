@@ -858,6 +858,19 @@ contract; every visible event links back to timeline refs and proof URLs.
    - Body summary: Let the desktop replay pane request generated replay bundles
      by run/window/pair/range, not only curated slugs. Render source refs and
      caveats consistently with web and CLI.
+   - Implementation status (2026-06-18, issue #5429): Autopilot Desktop replay
+     loading now accepts either a curated catalog preset or a bounded generated
+     public-activity request. The Training replay pane exposes range, run,
+     window, actor, event-kind, and limit filters, then calls
+     `GET /api/public/proof-replays?mode=activity-timeline&from=...&to=...`
+     through the same desktop loader and shipment gate used by curated
+     bundles. Generated projections fail closed without valid ISO bounds,
+     preserve `generatedFrom`, source-lag, source refs, caveat refs, and bundle
+     API/activity API links, and remain `public_safe` /
+     `evidence_presentation_only`. Validation: `bun test
+     tests/proof-replays.test.ts tests/cl-53-foldkit.test.ts
+     tests/cl-53-sanitize.test.ts` from `apps/autopilot-desktop`, plus
+     `bun run --cwd apps/autopilot-desktop verify:training`.
 
 #### EPIC 5 — Replay clips production service
 

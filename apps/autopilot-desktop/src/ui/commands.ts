@@ -12,9 +12,10 @@ import { getRequest } from "./bridge"
 import { commandErrorText } from "./helpers"
 import {
   blockedDesktopProofReplayProjection,
+  type DesktopProofReplayRequest,
   loadDesktopProofReplayProjection,
 } from "../shared/proof-replays"
-import { ProofReplaySlug } from "./model"
+import { ProofReplayCommandRequest } from "./model"
 import {
   FailedCoordinatorToggle,
   FailedBuiltInAgent,
@@ -167,6 +168,31 @@ const emptyPublicActivityTimelineProjection = (error: string) => ({
   envelope: null,
   error,
 })
+
+const generatedReplayLimitFrom = (value: string): number | undefined => {
+  const trimmed = value.trim()
+  if (trimmed === "") return undefined
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+const proofReplayRequestFromCommand = (
+  request: ProofReplayCommandRequest,
+): DesktopProofReplayRequest =>
+  request.mode === "catalog"
+    ? { mode: "catalog", slug: request.slug }
+    : {
+        mode: "generated",
+        filters: {
+          actorRef: request.actorRef,
+          from: request.from,
+          kind: request.kind,
+          limit: generatedReplayLimitFrom(request.limit),
+          runRef: request.runRef,
+          to: request.to,
+          windowRef: request.windowRef,
+        },
+      }
 
 const emptyBuiltInAgentReadinessProjection = (error: string) => ({
   ok: false,
@@ -661,23 +687,24 @@ export const LoadPublicActivityTimeline = Command.define(
 
 export const LoadProofReplayBundle = Command.define(
   "LoadProofReplayBundle",
-  { slug: ProofReplaySlug },
+  { request: ProofReplayCommandRequest },
   GotProofReplayBundle,
-)(({ slug }) =>
-  Effect.tryPromise(() => loadDesktopProofReplayProjection(slug)).pipe(
+)(({ request }) => {
+  const replayRequest = proofReplayRequestFromCommand(request)
+  return Effect.tryPromise(() => loadDesktopProofReplayProjection(replayRequest)).pipe(
     Effect.map((projection) => GotProofReplayBundle({ projection })),
     Effect.catch((error) =>
       Effect.succeed(
         GotProofReplayBundle({
           projection: blockedDesktopProofReplayProjection(
-            slug,
+            replayRequest,
             errorText(error),
           ),
         }),
       ),
     ),
-  ),
-)
+  )
+})
 
 export const PlanTrainingRunWindow = Command.define(
   "PlanTrainingRunWindow",

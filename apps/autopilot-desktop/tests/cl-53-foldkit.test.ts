@@ -49,11 +49,19 @@ import {
   modelTrainingPromiseGates,
 } from "../src/ui/model"
 import {
+  ChangedProofReplayGeneratedActorRef,
+  ChangedProofReplayGeneratedFrom,
+  ChangedProofReplayGeneratedKind,
+  ChangedProofReplayGeneratedLimit,
+  ChangedProofReplayGeneratedRunRef,
+  ChangedProofReplayGeneratedTo,
+  ChangedProofReplayGeneratedWindowRef,
   ChangedAskTitle,
   ClickedActivateTrainingWindow,
   ClickedAdmitTrainingEvidence,
   ClickedBuildTrainingEvidencePacket,
   ClickedClaimTrainingLease,
+  ClickedLoadGeneratedProofReplay,
   ClickedPlanTrainingWindow,
   ClickedQueueTrainingCloseout,
   ClickedRefreshPublicActivity,
@@ -133,7 +141,9 @@ describe("helpers (CL-47..CL-58 parity, pure)", () => {
       "LoadProofReplayBundle",
       "LoadPublicActivityTimeline",
     ])
-    expect(commands[1]?.args).toEqual({ slug: "first-real-settlement" })
+    expect(commands[1]?.args).toEqual({
+      request: { mode: "catalog", slug: "first-real-settlement" },
+    })
   })
 
   test("commandErrorText unwraps Effect.tryPromise causes", () => {
@@ -844,9 +854,16 @@ describe("update reducer (CL-53)", () => {
       SelectedProofReplay({ slug: LAUNCH_RECOGNITION_REPLAY_SLUG }),
     )
     expect(selected.selectedProofReplaySlug).toBe(LAUNCH_RECOGNITION_REPLAY_SLUG)
+    expect(selected.selectedProofReplayMode).toBe("catalog")
     expect(selected.proofReplayPending).toBe(true)
     expect(selected.proofReplayStatus.tone).toBe("info")
     expect(selectedCommands).toHaveLength(1)
+    expect(selectedCommands[0]?.args).toEqual({
+      request: {
+        mode: "catalog",
+        slug: LAUNCH_RECOGNITION_REPLAY_SLUG,
+      },
+    })
 
     const [refreshing, refreshCommands] = update(
       selected,
@@ -854,6 +871,61 @@ describe("update reducer (CL-53)", () => {
     )
     expect(refreshing.proofReplayPending).toBe(true)
     expect(refreshCommands).toHaveLength(1)
+  })
+
+  test("generated proof replay filters dispatch bounded activity replay loads", () => {
+    const [withFrom] = update(
+      initialModel,
+      ChangedProofReplayGeneratedFrom({ value: "2026-06-18T12:00:00.000Z" }),
+    )
+    const [withTo] = update(
+      withFrom,
+      ChangedProofReplayGeneratedTo({ value: "2026-06-18T12:05:00.000Z" }),
+    )
+    const [withRun] = update(
+      withTo,
+      ChangedProofReplayGeneratedRunRef({ value: "run.tassadar.executor.20260615" }),
+    )
+    const [withWindow] = update(
+      withRun,
+      ChangedProofReplayGeneratedWindowRef({
+        value: "training.window.tassadar.executor.20260615.w1",
+      }),
+    )
+    const [withActor] = update(
+      withWindow,
+      ChangedProofReplayGeneratedActorRef({
+        value: "pylon.448ba824b5fc879f3a59",
+      }),
+    )
+    const [withKind] = update(
+      withActor,
+      ChangedProofReplayGeneratedKind({ value: "real_bitcoin_moved" }),
+    )
+    const [withLimit] = update(
+      withKind,
+      ChangedProofReplayGeneratedLimit({ value: "10" }),
+    )
+    const [loading, commands] = update(
+      withLimit,
+      ClickedLoadGeneratedProofReplay(),
+    )
+
+    expect(loading.selectedProofReplayMode).toBe("generated")
+    expect(loading.proofReplayPending).toBe(true)
+    expect(commands).toHaveLength(1)
+    expect(commands[0]?.args).toEqual({
+      request: {
+        actorRef: "pylon.448ba824b5fc879f3a59",
+        from: "2026-06-18T12:00:00.000Z",
+        kind: "real_bitcoin_moved",
+        limit: "10",
+        mode: "generated",
+        runRef: "run.tassadar.executor.20260615",
+        to: "2026-06-18T12:05:00.000Z",
+        windowRef: "training.window.tassadar.executor.20260615.w1",
+      },
+    })
   })
 
   test("proof replay bundle projection is stored with replay status", () => {
