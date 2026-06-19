@@ -1060,6 +1060,15 @@ class ForumRepositoryStatement implements D1PreparedStatement {
       return Promise.resolve({ results: rows } as unknown as D1Result<T>)
     }
 
+    if (this.query.includes('FROM forum_tip_recipient_wallets')) {
+      const actorRefs = new Set(this.values.map(value => String(value)))
+      const rows = this.store.tipRecipientWallets.filter(
+        item => actorRefs.has(item.actor_ref) && item.archived_at === null,
+      )
+
+      return Promise.resolve({ results: rows } as unknown as D1Result<T>)
+    }
+
     if (this.query.includes('FROM forum_private_messages')) {
       const actorRef = String(this.values[0])
       const rows = this.store.privateMessages.filter(
