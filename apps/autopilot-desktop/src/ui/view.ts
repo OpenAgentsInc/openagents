@@ -38,6 +38,8 @@ import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 // #5467: the Autonomous loop view's own pane module (Supervise group).
 import { autonomousLoopPane } from "./autonomous-loop-pane"
+// HUD H7 (#5504): the live status/meters HUD overlay (three-effect H2 kit).
+import { statusHudView } from "./hud-status-element"
 import {
   OPENAGENTS_PUBLIC_ORIGIN,
   TASSADAR_REPLAY_ORIGIN_DATA_KEY,
@@ -6072,6 +6074,29 @@ const paneView = (model: Model): Html => {
   }
 }
 
+// HUD H7 (#5504): the small live status/meters HUD overlay. A non-intrusive
+// corner card (the "game-HUD status layer") that renders REAL desktop state via
+// the H2 three-effect kit: the node online/heartbeat as a status light, active
+// sessions as a meter+count, and the wallet balance as a meter. It is fed a
+// public-safe `HudStatusInput` (the honest node launch status + the node-state
+// projection); the element derives the element states with the SAME pure
+// projection the tests use, and shows an explicit offline/unknown state when a
+// signal is absent (never a fabricated value).
+//
+// It is deliberately NOT shown on the black launch shell (keeping that screen
+// quiet/black per the zero-base directive) nor over the immersive fullscreen
+// training scene — only on the full multi-pane UI where there is state to read.
+const statusHudOverlay = (model: Model): Html =>
+  h.div(
+    [cls("status-hud-overlay")],
+    [
+      statusHudView<Message>([], {
+        nodeLaunchStatus: model.nodeLaunchStatus,
+        node: modelNode(model),
+      }),
+    ],
+  )
+
 const rootView = (model: Model): Html => {
   // #5472: the live theme attribute. Both app-shell roots carry `data-theme` so
   // the (central) CSS can restyle for light mode; `dark` matches the hard-coded
@@ -6144,6 +6169,9 @@ const rootView = (model: Model): Html => {
       // sync with the sidebar + current pane. Hidden in the immersive training
       // fullscreen so it does not occlude the scene.
       fullscreenTraining ? h.empty : hotbar(model),
+      // HUD H7 (#5504): the live status/meters overlay, top-right corner. Hidden
+      // in fullscreen training (same anti-occlusion rule as the hotbar).
+      fullscreenTraining ? h.empty : statusHudOverlay(model),
       commandPalette(model),
     ],
   )

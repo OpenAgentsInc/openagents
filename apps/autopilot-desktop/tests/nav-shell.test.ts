@@ -383,3 +383,28 @@ describe("#5499 HUD H1 hotbar — derived from the SAME nav registry", () => {
     expect(HOTBAR_SLOTS.length).toBe(NAV_GROUPS.length + 1)
   })
 })
+
+// ── HUD H7: the live status/meters overlay placement (#5504) ─────────────────
+describe("#5504 HUD H7 status/meters overlay — placed on the full UI only", () => {
+  test("renders the status HUD overlay element on the full multi-pane UI", () => {
+    const tree = serializeView(
+      view(Model.make({ ...initialModel, pane: "composer" })).body,
+    )
+    expect(tree).toContain("status-hud-overlay")
+    expect(tree).toContain("oa-desktop-status-hud")
+  })
+
+  test("is NOT on the black zero-base shell (keep the launch screen quiet/black)", () => {
+    const tree = serializeView(
+      view(Model.make({ ...initialModel, pane: "shell" })).body,
+    )
+    expect(tree).not.toContain("status-hud-overlay")
+  })
+
+  test("is hidden in immersive training fullscreen (does not occlude the scene)", () => {
+    const tree = serializeView(
+      view(Model.make({ ...initialModel, pane: "training-fullscreen" })).body,
+    )
+    expect(tree).not.toContain("status-hud-overlay")
+  })
+})
