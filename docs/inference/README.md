@@ -45,6 +45,13 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
    exact-parity receipts) and the Psionic boundary (Psionic = execution substrate + evidence;
    product layer = pricing/payout/referral/marketplace).
 
+5. **[`2026-06-19-fireworks-provider.md`](./2026-06-19-fireworks-provider.md)**
+   — Fireworks AI provider integration (**verified live 2026-06-19**). The passthrough lane
+   for open-weight models Vertex lacks (DeepSeek/Kimi/GLM/Qwen/MiniMax/gpt-oss/Nemotron +
+   embeddings/vision/image); OpenAI-compatible, key in `.secrets/fireworks.env`. Real
+   serverless per-token pricing (our cheap-tier **cost basis**), billing dimensions, prompt
+   caching, adaptive rate limits, and serving paths — what the adapter must handle.
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)

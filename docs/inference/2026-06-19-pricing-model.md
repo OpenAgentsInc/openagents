@@ -31,7 +31,13 @@ like Factory's.
 | Sonnet (4.x) | 3.00 | 15.00 |
 | Haiku (4.5) | 1.00 | 5.00 |
 | Fable | *unknown — premium; Factory prices it 4×* | |
-| Open models (our network / self-host) | ~0.10–0.50 blended (our infra cost) | |
+| Open models — **Fireworks (real cost, verified 2026-06-19)** | 0.07–1.74 | 0.28–4.40 |
+
+Open-tier cost is now **real**, not a guess — from the Fireworks serverless price list (see
+`2026-06-19-fireworks-provider.md`): e.g. **gpt-oss-120b $0.15 in / $0.60 out**, MiniMax/DeepSeek-Flash
+~$0.14–0.30 in, GLM/DeepSeek-Pro/Kimi ~$1.4–1.74 in / $3.5–4.4 out, all per Mtok; batch −50%;
+prompt-cache hits ~−50% input. This is our marginal cost for the open lane (our own
+Pylon-fabric serving is cheaper still where it runs).
 
 For a single legible multiplier we blend input:output at a **coding-typical 4:1** mix:
 `blended = (4·in + 1·out) / 5`.
