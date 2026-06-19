@@ -107,6 +107,7 @@ export const startupRouteForLoggedOut = (
       'Moksha',
       'Moksha2',
       'Pylon',
+      'Download',
       'Workspace',
       route =>
         LoggedOutStartupRoute({
@@ -152,6 +153,7 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
       'Moksha',
       'Moksha2',
       'Pylon',
+      'Download',
       'Activity',
       'Workspace',
       route =>
@@ -245,6 +247,7 @@ const startupRouteForCompleteOnboarding = (
       'Moksha',
       'Moksha2',
       'Pylon',
+      'Download',
       'Activity',
       route =>
         LoggedOutStartupRoute({

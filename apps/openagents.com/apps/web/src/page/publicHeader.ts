@@ -6,6 +6,7 @@ import {
   blogRouter,
   chatRouter,
   docsRouter,
+  downloadRouter,
   forumRouter,
   homeRouter,
 } from '../route'
@@ -26,6 +27,7 @@ type PublicNavItem = {
 }
 
 const navItems: ReadonlyArray<PublicNavItem> = [
+  { label: 'Download', href: downloadRouter() },
   { label: 'Docs', href: docsRouter() },
   { label: 'Blog', href: blogRouter() },
   { label: 'Forum', href: forumRouter() },

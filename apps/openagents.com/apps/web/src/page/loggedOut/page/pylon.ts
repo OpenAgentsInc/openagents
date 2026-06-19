@@ -1,6 +1,7 @@
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
+import { downloadRouter } from '../../../route'
 import { pylonBezierNetworkView } from '../../../scene/pylonBezierNetworkElement'
 import { pylonView } from '../../../scene/pylonElement'
 import { pylonLaunchGateView } from '../../../scene/pylonLaunchGateElement'
@@ -56,6 +57,19 @@ const pylonInstallCta = (): Html => {
               ),
             ],
             [h.code([], [PYLON_INSTALL_COMMAND])],
+          ),
+          // AO-5 (#5446): a single discoverable link to the Mac app download
+          // page. The homepage stays Pylon-CLI-first; this is a link only, not
+          // a marketing-copy rewrite.
+          h.a(
+            [
+              h.Href(downloadRouter()),
+              h.DataAttribute('cta', 'download-autopilot-link'),
+              Ui.className<Message>(
+                'text-[0.6rem] uppercase leading-none tracking-[0.08em] text-white/55 underline underline-offset-2 hover:text-white',
+              ),
+            ],
+            ['Or download the Mac app'],
           ),
         ],
       ),
