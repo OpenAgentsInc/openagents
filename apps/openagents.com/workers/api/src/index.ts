@@ -27,6 +27,11 @@ import {
   handleOpenMarketsSurfaceApi,
   handleRiskMarketSkeletonApi,
 } from './open-markets-routes'
+import {
+  MarketplaceComposeListEndpoint,
+  handleMarketplaceCompositionApi,
+  isMarketplaceComposeAndListEnabled,
+} from './marketplace-composition-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
@@ -7874,6 +7879,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/markets/risk/skeleton',
     handler: request => handleRiskMarketSkeletonApi(request),
+  },
+  {
+    // Compose-and-list marketplace MVP listing surface (#5510, #5515). INERT:
+    // the store is empty unless MARKETPLACE_COMPOSE_AND_LIST_ENABLED is armed,
+    // and the response always reports inert/planned. Read-only.
+    path: MarketplaceComposeListEndpoint,
+    handler: (request, env) =>
+      handleMarketplaceCompositionApi(request, {
+        enabled: isMarketplaceComposeAndListEnabled(
+          env.MARKETPLACE_COMPOSE_AND_LIST_ENABLED,
+        ),
+      }),
   },
   {
     path: CustomerOneCohortEndpoint,

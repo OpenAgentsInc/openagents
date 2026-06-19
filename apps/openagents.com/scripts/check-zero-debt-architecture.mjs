@@ -232,7 +232,12 @@ const budgetChecks = [
     // the #5497 self-serve bridge), which returns `Promise<Response>` like the
     // sibling credits handler already counted. Ratchet back down when the
     // operator billing handlers are extracted behind route mappers.
-    budget: 84,
+    // Raised 84 -> 85 on 2026-06-19 (#5515) for the INERT compose-and-list
+    // marketplace listing handler (`handleMarketplaceCompositionApi`), which
+    // returns `Effect.Effect<Response>` like the sibling public read handlers.
+    // Ratchet back down when the marketplace handlers are extracted behind
+    // route mappers.
+    budget: 85,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -525,6 +530,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/open-markets-skeletons.ts',
     route: '/api/public/markets/risk/skeleton',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/marketplace-product-composition.ts',
+    route: '/api/public/marketplace/composed-products',
     status: 'staleness_declared',
   },
   {

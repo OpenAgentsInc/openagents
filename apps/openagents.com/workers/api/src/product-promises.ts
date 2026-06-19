@@ -3096,6 +3096,8 @@ export const publicProductPromisesDocument = () => {
           'promise:marketplace.wasm_plugins.v1',
           'promise:cloud.primitives_suite.v1',
           'promise:markets.open_protocol_markets.v1',
+          'apps/openagents.com/workers/api/src/marketplace-product-composition.ts',
+          'apps/openagents.com/workers/api/src/marketplace-composition-routes.ts',
         ],
         blockerRefs: [
           'blocker.product_promises.marketplace_composition_runtime_unbuilt',
@@ -3128,6 +3130,8 @@ export const publicProductPromisesDocument = () => {
           'promise:markets.open_protocol_markets.v1',
           'promise:payments.accepted_outcome_economics.v1',
           'promise:provider.compliant_usage_labor.v1',
+          'apps/openagents.com/workers/api/src/marketplace-monetize-any-layer.ts',
+          'apps/openagents.com/workers/api/src/inference-resale-authorization.ts',
         ],
         blockerRefs: [
           'blocker.product_promises.monetize_any_layer_access_product_unbuilt',
