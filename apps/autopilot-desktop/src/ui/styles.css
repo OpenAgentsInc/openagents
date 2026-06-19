@@ -147,6 +147,28 @@ body {
   color: rgb(255 255 255 / 0.7);
   border-color: rgb(255 255 255 / 0.25);
 }
+/* Always-visible return to the zero-base shell from the full UI (owner
+   directive 2026-06-19). Fixed top-left, above the sidebar, so it can never be
+   scrolled out of reach; Escape does the same. */
+.shell-return {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 9999;
+  background: rgb(0 0 0 / 0.6);
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 8px;
+  color: rgb(255 255 255 / 0.6);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  padding: 0.35rem 0.6rem;
+}
+.shell-return:hover {
+  color: rgb(255 255 255 / 0.95);
+  border-color: rgb(255 255 255 / 0.4);
+}
 .network-page {
   position: absolute;
   inset: 0;

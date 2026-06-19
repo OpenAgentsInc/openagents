@@ -640,6 +640,8 @@ export const update = (model: Model, message: Message): Result => {
           return update(model, NavigatedToGroup({ group: intent.group }))
         case "navigate-pane":
           return update(model, NavigatedTo({ pane: intent.pane }))
+        case "back-to-shell":
+          return update(model, ClosedPanes())
         case "submit-turn": {
           const submit = submitTurnMessage(model, intent.pane)
           return submit ? update(model, submit) : [model, noCommands]

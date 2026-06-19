@@ -6043,6 +6043,18 @@ const rootView = (model: Model): Html => {
   return h.div(
     [cls("app-shell"), themeData],
     [
+      // Always-available return to the zero-base shell (owner directive
+      // 2026-06-19). The shell is home; this + Escape mean opening the full UI
+      // is never a trap.
+      h.button(
+        [
+          cls("shell-return"),
+          h.Type("button"),
+          h.Title("Back to the shell (Esc)"),
+          h.OnClick(ClosedPanes()),
+        ],
+        ["← Shell"],
+      ),
       sidebar(model),
       h.main(
         [

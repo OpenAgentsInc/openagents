@@ -28,6 +28,7 @@ import {
   SubmittedShell,
 } from "../src/ui/message"
 import { shellLoopbackReply } from "../src/ui/commands"
+import { interpretKey } from "../src/ui/keyboard"
 
 // Serialize a rendered view tree to a string so we can assert what is / is NOT
 // present without a DOM. The tree is plain objects (foldkit Html) — JSON.stringify
@@ -160,6 +161,24 @@ describe("zero-base shell: open / close the hidden full UI", () => {
     const [closed] = update(opened, ClosedPanes())
     expect(closed.pane).toBe("shell")
     expect(closed.commandPaletteOpen).toBe(false)
+  })
+
+  test("Escape from any pane returns to the shell — you can never get trapped", () => {
+    // The bug: opening the full UI (Cmd-K / open-panes) left no way back.
+    const inPane = Model.make({ ...initialModel, pane: "chat", commandPaletteOpen: false })
+    const esc = { key: "Escape", meta: false, ctrl: false, shift: false, inEditable: false }
+    expect(interpretKey(inPane, esc)).toEqual({ kind: "back-to-shell" })
+    // ...and the reducer takes it home (ClosedPanes → shell).
+    const [home] = update(inPane, ClosedPanes())
+    expect(home.pane).toBe("shell")
+    // On the shell itself, Escape is not a back-to-shell (nothing to escape).
+    const onShell = Model.make({ ...initialModel, pane: "shell", commandPaletteOpen: false })
+    expect(interpretKey(onShell, esc)).not.toEqual({ kind: "back-to-shell" })
+  })
+
+  test("the full UI always renders a visible 'back to shell' control", () => {
+    const tree = serialize(view(Model.make({ ...initialModel, pane: "chat" })).body)
+    expect(tree).toContain("shell-return")
   })
 
   test("ALL panes still mount when opened (the kept UI is not broken)", () => {

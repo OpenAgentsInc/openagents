@@ -31,6 +31,10 @@ export type KeyIntent =
   // never-no-op navigation action available in any grouped pane). `pane` is the
   // resolved destination the reducer should navigate to.
   | Readonly<{ kind: "navigate-pane"; pane: PaneId }>
+  // Escape from any non-shell pane returns to the zero-base shell — the
+  // explicit "open panes" can always be undone, so you never get trapped in
+  // the full UI (owner directive 2026-06-19).
+  | Readonly<{ kind: "back-to-shell" }>
 
 const isModified = (event: KeyEvent): boolean => event.meta || event.ctrl
 
@@ -62,6 +66,12 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
     if (key === "Enter") return { kind: "palette-run" }
     return { kind: "none" }
   }
+
+  // ── Escape returns to the zero-base shell from anywhere in the full UI ────
+  // The shell is the home surface; once you've opened the panes (Cmd-K or the
+  // affordance), Escape always takes you back so you can never get stranded.
+  // Works even while typing (inEditable) — it's a deliberate global escape.
+  if (key === "Escape" && model.pane !== "shell") return { kind: "back-to-shell" }
 
   // ── Cmd/Ctrl-K opens the palette from anywhere (even while typing) ────────
   if (key.toLowerCase() === "k" && isModified(event)) return { kind: "open-palette" }
