@@ -130,6 +130,32 @@ openagents.public_activity_timeline.v1`.
 Every event must carry `sourceRefs` or `blockerRefs`. A fresh `generatedAt`
 does not mean each source family is current; inspect `sourceLag`.
 
+Proof URL derivation used by `/activity`:
+
+| Ref shape | Public URL |
+|---|---|
+| `route:/path` | `/path` |
+| `receipt.nexus.*`, `receipt.nexus_*`, `receipt.nexus-pylon.*` | `/api/public/nexus-pylon/receipts/{receiptRef}` |
+| `receipt.forum.*` | `/api/forum/receipts/{receiptRef}` |
+| `training.verification.challenge.*` | `/api/public/training/verification-challenges/{challengeRef}` |
+| `training.window.*` or `trace.public.*` with `runRef` | `/api/public/training/runs/{runRef}?focusRef={ref}` |
+| `run.*` | `/api/public/training/runs/{runRef}` |
+| `pylon.*` or `pylon_*` | `/api/public/pylon-stats` |
+| `artanis.*` | `/api/public/artanis/admin-ticks` |
+| `capacity*` | `/api/public/pylon-capacity-funnel/history` |
+| `product-promises` or `product_promise*` | `/api/public/product-promises` |
+
+Template refs such as `/api/public/nexus-pylon/receipts/{receiptRef}` describe
+route shape only. Generic historical `receipt.*` refs outside the listed public
+namespaces are also refs, not links. Both must be skipped by smokes and proof
+drawers until a concrete public URL is available.
+
+Agents can validate the current same-origin proof links with:
+
+```sh
+bun run --cwd apps/openagents.com smoke:activity:proof-links
+```
+
 ## Activity Timeline Stream
 
 Request:

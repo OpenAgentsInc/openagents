@@ -12,8 +12,8 @@
 // settled, never a faked value. The web app intentionally does NOT import the
 // worker's internal types; this is a narrow structural view of the public summary.
 import {
-  SpatialHashGrid,
   type SpatialBounds2,
+  SpatialHashGrid,
   type TrainingRunBurstDefinition,
   type TrainingRunEntityDefinition,
   type TrainingRunNodeDefinition,
@@ -25,6 +25,7 @@ import {
 } from '@openagentsinc/three-effect/core'
 import * as Three from 'three'
 
+import { parseJsonRecord } from '../json-boundary'
 import type {
   AgentAvatar,
   AvatarPosition,
@@ -275,8 +276,9 @@ const publicRefs = (
 
 const uniquePublicRefs = (
   refs: ReadonlyArray<string | undefined>,
-): ReadonlyArray<string> =>
-  [...new Set(refs.map(ref => ref?.trim() ?? '').filter(ref => ref !== ''))]
+): ReadonlyArray<string> => [
+  ...new Set(refs.map(ref => ref?.trim() ?? '').filter(ref => ref !== '')),
+]
 
 const lossOrNull = (value: number | null | undefined): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
@@ -348,7 +350,9 @@ export const applyWorldEntitySpatialLayout = (
   entities: ReadonlyArray<TrainingRunEntityDefinition>,
 ): ReadonlyArray<TrainingRunEntityDefinition> => {
   const positioned = entities.filter(
-    (entity): entity is TrainingRunEntityDefinition & {
+    (
+      entity,
+    ): entity is TrainingRunEntityDefinition & {
       readonly position: TrainingRunVector
     } => entity.position !== undefined,
   )
@@ -784,7 +788,9 @@ const chatBubbleEntities = (
         ? undefined
         : layoutPositions.get(stationEntityId(station.pylonRef))
     const avatarLayoutPosition =
-      position === undefined ? undefined : layoutPositions.get(position.avatarRef)
+      position === undefined
+        ? undefined
+        : layoutPositions.get(position.avatarRef)
     const speakerLayoutPosition =
       speakerPosition === undefined
         ? undefined
@@ -852,7 +858,9 @@ const activityBurstsFromSummary = (
         atId: motion.atId,
         cursor: motion.cursor,
         eventRef: motion.eventRef,
-        ...(motion.expiresAt === undefined ? {} : { expiresAt: motion.expiresAt }),
+        ...(motion.expiresAt === undefined
+          ? {}
+          : { expiresAt: motion.expiresAt }),
         generatedAt: motion.generatedAt,
         motionId: motion.motionId,
         motionKind: motion.motionKind,
@@ -920,18 +928,22 @@ const labelOrdinal = (label: string, prefix: string): number => {
   return match?.[1] === undefined ? Number.POSITIVE_INFINITY : Number(match[1])
 }
 
-const rowSort = <Row extends { readonly label?: string; readonly entityRef: string }>(
-  prefix: string,
-) => (left: Row, right: Row): number => {
-  const labelCompare =
-    labelOrdinal(rowText(left.label), prefix) -
-    labelOrdinal(rowText(right.label), prefix)
-  return labelCompare === 0
-    ? left.entityRef.localeCompare(right.entityRef)
-    : labelCompare
-}
+const rowSort =
+  <Row extends { readonly label?: string; readonly entityRef: string }>(
+    prefix: string,
+  ) =>
+  (left: Row, right: Row): number => {
+    const labelCompare =
+      labelOrdinal(rowText(left.label), prefix) -
+      labelOrdinal(rowText(right.label), prefix)
+    return labelCompare === 0
+      ? left.entityRef.localeCompare(right.entityRef)
+      : labelCompare
+  }
 
-const sortedRows = <Row extends { readonly label?: string; readonly entityRef: string }>(
+const sortedRows = <
+  Row extends { readonly label?: string; readonly entityRef: string },
+>(
   rows: ReadonlyArray<Row>,
   prefix: string,
 ): ReadonlyArray<Row> => [...rows].sort(rowSort(prefix))
@@ -966,20 +978,10 @@ const safeActivitySummaryText = (value: string): boolean =>
   !unsafeActivityMotionMaterialPattern.test(value)
 
 const jsonRecord = (value: string): Record<string, unknown> | null => {
-  try {
-    const parsed = JSON.parse(value) as unknown
-    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null
-  } catch {
-    return null
-  }
+  return parseJsonRecord(value) ?? null
 }
 
-const recordString = (
-  record: Record<string, unknown>,
-  key: string,
-): string => {
+const recordString = (record: Record<string, unknown>, key: string): string => {
   const value = record[key]
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -1057,9 +1059,7 @@ const activityMotionsFromWorldEvents = (
         row.eventRef.startsWith('world_event.public_activity.'),
     )
     .map(activityMotionFromWorldEvent)
-    .filter(
-      (motion): motion is TassadarWorldActivityMotion => motion !== null,
-    )
+    .filter((motion): motion is TassadarWorldActivityMotion => motion !== null)
     .sort((left, right) => left.motionId.localeCompare(right.motionId))
 
 const numberFromU64 = (value: SettlementRef['amountSats']): number =>
@@ -1070,11 +1070,7 @@ const numberFromU64 = (value: SettlementRef['amountSats']): number =>
       : 0
 
 const numberFromInteger = (value: bigint | number): number =>
-  typeof value === 'bigint'
-    ? Number(value)
-    : Number.isFinite(value)
-      ? value
-      : 0
+  typeof value === 'bigint' ? Number(value) : Number.isFinite(value) ? value : 0
 
 const worldRegionsFromRows = (
   rows: ReadonlyArray<WorldRegion>,
@@ -1173,7 +1169,9 @@ const worldPylonAttentionFromRows = (
   avatarRefs: ReadonlySet<string>,
 ): ReadonlyArray<TassadarWorldPylonAttention> =>
   [...rows]
-    .filter(row => stationRefs.has(row.pylonRef) && avatarRefs.has(row.avatarRef))
+    .filter(
+      row => stationRefs.has(row.pylonRef) && avatarRefs.has(row.avatarRef),
+    )
     .sort((left, right) => left.attentionRef.localeCompare(right.attentionRef))
     .map(row => ({
       attentionKind: rowText(row.attentionKind) || 'nearby',
@@ -1305,7 +1303,9 @@ const pairRowsFromWorld = (
             ? []
             : sourceRefsForEntity(validator, proofs, edges, events)),
         ]),
-        ...(validator === undefined ? {} : { validatorRef: validator.entityRef }),
+        ...(validator === undefined
+          ? {}
+          : { validatorRef: validator.entityRef }),
         verdictRefs: proofs
           .filter(
             proof =>
@@ -1341,7 +1341,8 @@ const settlementRowsFromWorld = (
           edge.toEntityRef === row.entityRef,
       )?.fromEntityRef ?? null
     const settlementState =
-      entity?.status === 'simulation_settled' || entity?.status === 'real_settled'
+      entity?.status === 'simulation_settled' ||
+      entity?.status === 'real_settled'
         ? 'settled'
         : entity?.status === 'failed_or_expired'
           ? 'failed'
@@ -1366,7 +1367,9 @@ export const spacetimeWorldSummaryFromRows = (
   rows: TassadarSpacetimeWorldRows,
 ): TassadarRunPublicSummary => {
   const runRef = runRefForSummary(baseSummary)
-  const trainingRun = (rows.trainingRuns ?? []).find(row => row.runRef === runRef)
+  const trainingRun = (rows.trainingRuns ?? []).find(
+    row => row.runRef === runRef,
+  )
   const entities = (rows.runEntities ?? []).filter(row => row.runRef === runRef)
   const proofs = (rows.proofRefs ?? []).filter(row => row.runRef === runRef)
   const edges = (rows.worldEdges ?? []).filter(row => row.runRef === runRef)

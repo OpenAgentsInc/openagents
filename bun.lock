@@ -86,6 +86,7 @@
         "@openagentsinc/mullet-sim": "workspace:*",
         "@openagentsinc/proof-replay": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
+        "@openagentsinc/public-activity-timeline": "workspace:*",
         "@openagentsinc/sync-client": "workspace:*",
         "@openagentsinc/sync-schema": "workspace:*",
         "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#19013aece99d94cb0e703321cff16f9b4e68e988",
@@ -220,7 +221,7 @@
     },
     "apps/pylon": {
       "name": "@openagentsinc/pylon",
-      "version": "1.0.3",
+      "version": "1.0.5",
       "bin": {
         "pylon": "src/index.ts",
         "pylon-foundation-bridge": "bin/foundation-bridge",
@@ -327,7 +328,7 @@
     },
     "packages/nip90": {
       "name": "@openagentsinc/nip90",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "nostr-effect": "github:OpenAgentsInc/nostr-effect#4c52847",
       },

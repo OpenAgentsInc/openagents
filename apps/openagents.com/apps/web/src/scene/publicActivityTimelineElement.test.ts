@@ -1,6 +1,6 @@
 import {
-  orderPublicActivityTimelineEvents,
   type PublicActivityTimelineEnvelope,
+  orderPublicActivityTimelineEvents,
 } from '@openagentsinc/public-activity-timeline'
 import {
   activeTimelineFixture,
@@ -103,9 +103,8 @@ describe('public activity timeline element', () => {
   })
 
   test('renders Fleet, Money Loop, Forum, Timeline, and Proof Drawer panes', async () => {
-    const { fetchMock, handle, root } = await mountWithPayload(
-      dashboardEnvelope(),
-    )
+    const { fetchMock, handle, root } =
+      await mountWithPayload(dashboardEnvelope())
 
     await waitForState(root, 'ok')
 
@@ -113,20 +112,20 @@ describe('public activity timeline element', () => {
       cache: 'no-store',
       headers: { accept: 'application/json' },
     })
-    expect(root.querySelector('[data-activity-pane="fleet"]')?.textContent).toContain(
-      'Pylon heartbeat observed.',
-    )
-    expect(root.querySelector('[data-activity-pane="money"]')?.textContent).toContain(
-      'Receipt-backed real Bitcoin movement confirmed.',
-    )
-    expect(root.querySelector('[data-activity-pane="forum"]')?.textContent).toContain(
-      'Public Forum topic created.',
-    )
+    expect(
+      root.querySelector('[data-activity-pane="fleet"]')?.textContent,
+    ).toContain('Pylon heartbeat observed.')
+    expect(
+      root.querySelector('[data-activity-pane="money"]')?.textContent,
+    ).toContain('Receipt-backed real Bitcoin movement confirmed.')
+    expect(
+      root.querySelector('[data-activity-pane="forum"]')?.textContent,
+    ).toContain('Public Forum topic created.')
     expect(root.querySelector('[data-activity-pane="timeline"]')).not.toBeNull()
     expect(root.querySelector('[data-proof-drawer]')).not.toBeNull()
-    expect(root.querySelector('[data-source-status="stale"]')?.textContent).toContain(
-      'forum',
-    )
+    expect(
+      root.querySelector('[data-source-status="stale"]')?.textContent,
+    ).toContain('forum')
 
     handle.dispose()
   })
@@ -159,9 +158,9 @@ describe('public activity timeline element', () => {
     expect(proof?.querySelector('[data-proof-source-api]')?.textContent).toBe(
       PUBLIC_ACTIVITY_TIMELINE_ENDPOINT,
     )
-    expect(proof?.querySelector('[data-proof-event-json]')?.textContent).toContain(
-      '"realBitcoinMoved": true',
-    )
+    expect(
+      proof?.querySelector('[data-proof-event-json]')?.textContent,
+    ).toContain('"realBitcoinMoved": true')
 
     handle.dispose()
   })
@@ -181,10 +180,12 @@ describe('public activity timeline element', () => {
     expect(settleTimeline?.textContent).toContain(
       'Receipt-backed real Bitcoin movement confirmed.',
     )
-    expect(settleTimeline?.textContent).not.toContain('Pylon heartbeat observed.')
-    expect(root.querySelector('[data-source-status="stale"]')?.textContent).toContain(
-      'forum',
+    expect(settleTimeline?.textContent).not.toContain(
+      'Pylon heartbeat observed.',
     )
+    expect(
+      root.querySelector('[data-source-status="stale"]')?.textContent,
+    ).toContain('forum')
 
     const forumFilter = root.querySelector<HTMLButtonElement>(
       '[data-activity-filter="forum"]',
@@ -224,9 +225,22 @@ describe('public activity timeline element', () => {
     )
     expect(event).toBeDefined()
 
-    const urls = publicActivityEventUrls(event!)
+    const urls = publicActivityEventUrls({
+      ...event!,
+      sourceRefs: [
+        ...event!.sourceRefs,
+        'route:/api/public/nexus-pylon/receipts/{receiptRef}',
+        'receipt.tassadar_poc.live_m1_closeout.assignment.example',
+      ],
+    })
     expect(urls.map(url => url.href)).toContain(
       '/api/public/nexus-pylon/receipts/receipt.public.real.1',
+    )
+    expect(urls.map(url => url.href)).not.toContain(
+      '/api/public/nexus-pylon/receipts/{receiptRef}',
+    )
+    expect(urls.map(url => url.href)).not.toContain(
+      '/api/public/nexus-pylon/receipts/receipt.tassadar_poc.live_m1_closeout.assignment.example',
     )
 
     const fetchMock = vi.fn(async (href: string) =>
@@ -265,7 +279,8 @@ describe('public activity timeline element', () => {
     const element = document.createElement(PUBLIC_ACTIVITY_TIMELINE_TAG)
     document.body.append(element)
 
-    const styleText = element.shadowRoot?.querySelector('style')?.textContent ?? ''
+    const styleText =
+      element.shadowRoot?.querySelector('style')?.textContent ?? ''
 
     expect(element.shadowRoot?.querySelector('div')).not.toBeNull()
     expect(styleText).toContain('overflow-wrap: anywhere')

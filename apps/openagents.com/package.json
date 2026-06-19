@@ -39,6 +39,7 @@
     "smoke:pylon:install-to-bitcoin": "node scripts/pylon-install-to-bitcoin-smoke.mjs",
     "smoke:forum:void": "node scripts/forum-void-smoke.mjs",
     "smoke:tassadar:live-page": "node scripts/tassadar-live-page-smoke.mjs",
+    "smoke:activity:proof-links": "node scripts/public-activity-proof-links-smoke.mjs",
     "lint": "eslint .",
     "format": "prettier -w .",
     "sync:icons": "bun scripts/sync-fireball-icons.mjs",

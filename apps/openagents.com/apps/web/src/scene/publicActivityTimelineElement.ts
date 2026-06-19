@@ -1,9 +1,9 @@
 import {
-  assertPublicActivityTimelineEnvelopeSafe,
-  publicActivityTimelineHasUnsafeMaterial,
   type PublicActivityTimelineEnvelope,
   type PublicActivityTimelineEvent,
   type PublicActivityTimelineSourceLag,
+  assertPublicActivityTimelineEnvelopeSafe,
+  publicActivityTimelineHasUnsafeMaterial,
 } from '@openagentsinc/public-activity-timeline'
 import { define as defineCustomElement } from 'foldkit/customElement'
 import type { Attribute, Html } from 'foldkit/html'
@@ -14,7 +14,14 @@ export const PUBLIC_ACTIVITY_TIMELINE_ENDPOINT =
 export const PUBLIC_ACTIVITY_TIMELINE_REFRESH_MS = 15_000
 
 type ActivityPaneId = 'fleet' | 'forum' | 'money' | 'proof' | 'timeline'
-type ActivityFilter = 'all' | 'boot' | 'forum' | 'operator' | 'settle' | 'verify' | 'work'
+type ActivityFilter =
+  | 'all'
+  | 'boot'
+  | 'forum'
+  | 'operator'
+  | 'settle'
+  | 'verify'
+  | 'work'
 type ActivityTimelineDataState = 'loading' | 'ok' | 'empty' | 'error'
 
 export type PublicActivityEventUrl = Readonly<{
@@ -484,7 +491,9 @@ const operatorKinds = new Set<PublicActivityTimelineEvent['kind']>([
   'projection_gap',
 ])
 
-const activityFilters: ReadonlyArray<Readonly<{ id: ActivityFilter; label: string }>> = [
+const activityFilters: ReadonlyArray<
+  Readonly<{ id: ActivityFilter; label: string }>
+> = [
   { id: 'all', label: 'All' },
   { id: 'boot', label: 'Boot' },
   { id: 'work', label: 'Work' },
@@ -512,7 +521,10 @@ const filterForEvent = (event: PublicActivityTimelineEvent): ActivityFilter => {
     return 'work'
   }
 
-  if (verifyKinds.has(event.kind) || event.sourceKind === 'training_verification') {
+  if (
+    verifyKinds.has(event.kind) ||
+    event.sourceKind === 'training_verification'
+  ) {
     return 'verify'
   }
 
@@ -541,7 +553,8 @@ const filterMatchesEvent = (
 ): boolean => filter === 'all' || filterForEvent(event) === filter
 
 const filterLabel = (filter: ActivityFilter): string =>
-  activityFilters.find(item => item.id === filter)?.label ?? displayLabel(filter)
+  activityFilters.find(item => item.id === filter)?.label ??
+  displayLabel(filter)
 
 const create = <Tag extends keyof HTMLElementTagNameMap>(
   tag: Tag,
@@ -592,10 +605,7 @@ const lagLabel = (lag: PublicActivityTimelineSourceLag): string => {
 const sourceStatusBadge = (
   lag: PublicActivityTimelineSourceLag,
 ): HTMLElement => {
-  const badge = create(
-    'span',
-    `source-status source-status-${lag.status}`,
-  )
+  const badge = create('span', `source-status source-status-${lag.status}`)
   badge.dataset.sourceStatus = lag.status
   badge.dataset.sourceKind = lag.sourceKind
   const source = create('strong', undefined, displayLabel(lag.sourceKind))
@@ -663,6 +673,8 @@ const safePublicPath = (href: string): string | null => {
     trimmed.length === 0 ||
     !trimmed.startsWith('/') ||
     trimmed.startsWith('//') ||
+    trimmed.includes('{') ||
+    trimmed.includes('}') ||
     publicActivityTimelineHasUnsafeMaterial(trimmed)
   ) {
     return null
@@ -684,11 +696,13 @@ const publicHrefForRef = (
     return safePublicPath(trimmed)
   }
 
-  if (/^receipt\./i.test(trimmed)) {
+  if (/^receipt\.forum\./i.test(trimmed)) {
+    return safePublicPath(`/api/forum/receipts/${encodeURIComponent(trimmed)}`)
+  }
+
+  if (/^receipt\.(nexus\.|nexus_|nexus-pylon\.|public\.)/i.test(trimmed)) {
     return safePublicPath(
-      trimmed.startsWith('receipt.forum.')
-        ? `/api/forum/receipts/${encodeURIComponent(trimmed)}`
-        : `/api/public/nexus-pylon/receipts/${encodeURIComponent(trimmed)}`,
+      `/api/public/nexus-pylon/receipts/${encodeURIComponent(trimmed)}`,
     )
   }
 
@@ -798,7 +812,10 @@ const eventContent = (
     head,
     create('p', 'event-text', event.text),
     meta,
-    refsView(event.refs.length > 0 ? event.refs : event.sourceRefs, options.refLimit ?? 3),
+    refsView(
+      event.refs.length > 0 ? event.refs : event.sourceRefs,
+      options.refLimit ?? 3,
+    ),
   ]
 }
 
@@ -812,7 +829,10 @@ const selectableEventItem = (
     timeline?: boolean
   }>,
 ): HTMLElement => {
-  const item = create('li', input.timeline === true ? 'timeline-row' : 'event-item')
+  const item = create(
+    'li',
+    input.timeline === true ? 'timeline-row' : 'event-item',
+  )
   item.dataset.eventKind = input.event.kind
   item.dataset.eventSource = input.event.sourceKind
 
@@ -824,7 +844,10 @@ const selectableEventItem = (
   button.dataset.activityEvent = input.event.cursor
   button.setAttribute(
     'aria-pressed',
-    String(input.event.cursor === selectedEventFor(input.envelope, input.state.selectedCursor)?.cursor),
+    String(
+      input.event.cursor ===
+        selectedEventFor(input.envelope, input.state.selectedCursor)?.cursor,
+    ),
   )
   button.addEventListener('click', () => {
     input.state.selectedCursor = input.event.cursor
@@ -863,7 +886,8 @@ const eventsForPane = (
 
   if (pane === 'money') {
     return events.filter(
-      event => moneyKinds.has(event.kind) || event.sourceKind === 'settlement_receipt',
+      event =>
+        moneyKinds.has(event.kind) || event.sourceKind === 'settlement_receipt',
     )
   }
 
@@ -888,7 +912,10 @@ const renderPane = (
   section.dataset.activityPane = input.pane
 
   const head = create('div', 'pane-head')
-  head.append(create('h2', undefined, input.title), create('span', 'count', input.countLabel))
+  head.append(
+    create('h2', undefined, input.title),
+    create('span', 'count', input.countLabel),
+  )
   section.append(head)
 
   if (input.events.length === 0) {
@@ -930,7 +957,9 @@ const eventsForFilter = (
   envelope: PublicActivityTimelineEnvelope,
   filter: ActivityFilter,
 ): ReadonlyArray<PublicActivityTimelineEvent> =>
-  latestFirst(envelope.events).filter(event => filterMatchesEvent(filter, event))
+  latestFirst(envelope.events).filter(event =>
+    filterMatchesEvent(filter, event),
+  )
 
 const publicEventProofPayload = (
   event: PublicActivityTimelineEvent,
@@ -1065,7 +1094,9 @@ const renderProofDrawer = (
     appendField(
       lagFields,
       'Lag seconds',
-      lag.lagSeconds === null ? 'none' : formatCount(Math.round(lag.lagSeconds)),
+      lag.lagSeconds === null
+        ? 'none'
+        : formatCount(Math.round(lag.lagSeconds)),
     )
     appendField(
       lagFields,
@@ -1114,10 +1145,17 @@ const renderTimelinePane = (
 
   const filterBar = create('div', 'filter-bar')
   for (const filter of activityFilters) {
-    const button = create('button', 'filter-button', filter.label) as HTMLButtonElement
+    const button = create(
+      'button',
+      'filter-button',
+      filter.label,
+    ) as HTMLButtonElement
     button.type = 'button'
     button.dataset.activityFilter = filter.id
-    button.setAttribute('aria-pressed', String(state.activeFilter === filter.id))
+    button.setAttribute(
+      'aria-pressed',
+      String(state.activeFilter === filter.id),
+    )
     button.addEventListener('click', () => {
       state.activeFilter = filter.id
       const nextEvents = eventsForFilter(envelope, state.activeFilter)
@@ -1306,12 +1344,16 @@ const readTimelineEnvelope = async (
   })
 
   if (!response.ok) {
-    throw new Error(`Public activity timeline returned HTTP ${response.status}.`)
+    throw new Error(
+      `Public activity timeline returned HTTP ${response.status}.`,
+    )
   }
 
   const payload = await response.json()
   if (publicActivityTimelineHasUnsafeMaterial(payload)) {
-    throw new Error('Public activity timeline payload contains unsafe material.')
+    throw new Error(
+      'Public activity timeline payload contains unsafe material.',
+    )
   }
 
   return assertPublicActivityTimelineEnvelopeSafe(payload)

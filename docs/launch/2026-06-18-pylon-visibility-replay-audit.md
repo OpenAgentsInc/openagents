@@ -826,6 +826,13 @@ contract; every visible event links back to timeline refs and proof URLs.
      src/scene/publicActivityTimelineElement.test.ts src/main.test.ts`,
      `bun run --cwd apps/openagents.com/apps/web typecheck`, and
      `git diff --check`.
+   - Follow-up validation (2026-06-18): added the
+     `smoke:activity:proof-links` script for live same-origin 2xx checks over
+     concrete proof URLs from `/api/public/activity-timeline`, documented proof
+     URL derivation for agents, and filtered route-template refs such as
+     `{receiptRef}` plus non-public historical `receipt.*` refs out of proof
+     drawers/smokes because they are route-shape docs or refs, not
+     dereferenceable evidence.
 3. **Add Autopilot Desktop activity pane/strip**
    - Body summary: Add a live activity pane or strip to Network/Training so
      downloaded users can see fleet/work/money/forum activity even when the
