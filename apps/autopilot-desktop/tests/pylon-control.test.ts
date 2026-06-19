@@ -3,7 +3,7 @@ import {
   healthFixture,
   sessionListFixture,
 } from "@openagentsinc/autopilot-control-protocol/fixtures"
-import { fetchNodeState, readControlToken } from "../src/bun/pylon-control.ts"
+import { fetchNodeState, probeControlToken, readControlToken } from "../src/bun/pylon-control.ts"
 
 const bearerToken = "local-bearer-token-fixture"
 
@@ -41,5 +41,45 @@ describe("Pylon control client", () => {
 
   test("returns null for a missing control token path", () => {
     expect(readControlToken("/tmp/openagents-autopilot-desktop-missing-token")).toBeNull()
+  })
+
+  // CL-45b: the control-server token probe used to fall through a stale token.
+  describe("probeControlToken", () => {
+    const baseUrl = "http://127.0.0.1:4716"
+
+    test("rejects a 401 (stale/wrong token)", async () => {
+      const fetchFn: typeof fetch = async (input, init) => {
+        expect(String(input)).toBe(`${baseUrl}/command`)
+        expect(init?.method).toBe("POST")
+        expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer stale")
+        expect(JSON.parse(String(init?.body))).toEqual({ type: "session.list" })
+        return new Response("unauthorized", { status: 401 })
+      }
+      expect(await probeControlToken({ baseUrl, token: "stale", fetchFn })).toBe(false)
+    })
+
+    test("accepts a 200 (server authenticated the token)", async () => {
+      const fetchFn: typeof fetch = async () =>
+        Response.json({ ok: true, result: sessionListFixture })
+      expect(await probeControlToken({ baseUrl, token: "good", fetchFn })).toBe(true)
+    })
+
+    test("accepts any non-401 status (e.g. 500) — reachable + authenticated", async () => {
+      const fetchFn: typeof fetch = async () => new Response("boom", { status: 500 })
+      expect(await probeControlToken({ baseUrl, token: "good", fetchFn })).toBe(true)
+    })
+
+    test("treats a transport error as not-accepted", async () => {
+      const fetchFn: typeof fetch = async () => {
+        throw new Error("ECONNREFUSED")
+      }
+      expect(await probeControlToken({ baseUrl, token: "good", fetchFn })).toBe(false)
+    })
+
+    test("never echoes the token in any thrown/returned value", async () => {
+      const fetchFn: typeof fetch = async () => new Response(null, { status: 401 })
+      const result = await probeControlToken({ baseUrl, token: "super-secret", fetchFn })
+      expect(JSON.stringify(result)).not.toContain("super-secret")
+    })
   })
 })
