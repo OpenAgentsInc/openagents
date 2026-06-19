@@ -1,10 +1,10 @@
-// Replay clip render-box job runner (EPIC #5411, issue #5431 — SCAFFOLD).
+// Replay clip render-box job runner (EPIC #5411, issue #5431).
 //
 // Promotes the `render-clip.mjs` spike toward a production render-box path:
 // it takes a typed clip job (the `openagents.replay_clip_job.v1` shape from
 // `@openagentsinc/replay-clips`), drives the existing headless-Chromium +
 // ffmpeg renderer, builds a public-safe `openagents.replay_clip_manifest.v1`,
-// and computes the R2 upload plan.
+// and uploads the mp4 + manifest to R2 through the S3-compatible API.
 //
 // RENDER-BOX WORKLOAD ONLY. This must run on owned local/CI/Container
 // infrastructure with Node, headless Chromium (Playwright), and ffmpeg. It
@@ -15,7 +15,7 @@
 //   1. An R2 bucket (e.g. `oa-replay-clips`) and a public read host
 //      (e.g. `https://clips.openagents.com`) for finished mp4 + manifest
 //      objects. Until it exists, this runner renders + builds the manifest
-//      locally and reports the upload plan as `needs_owner`, never uploading.
+//      locally and reports the upload plan as `needs_owner`.
 //   2. Render-box runtime: Node + Playwright Chromium + ffmpeg. The runner
 //      preflights these and reports a typed blocker if they are missing.
 //   3. A queue/worker process (local/CI/Container) that claims `queued` clip
@@ -35,16 +35,17 @@ import { createHash } from 'node:crypto'
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { AwsClient } from 'aws4fetch'
 
-const here = dirname(fileURLToPath(import.meta.url))
-const renderClipScript = resolve(here, 'render-clip.mjs')
+export const here = dirname(fileURLToPath(import.meta.url))
+export const renderClipScript = resolve(here, 'render-clip.mjs')
 
-const REPLAY_CLIP_MANIFEST_SCHEMA_VERSION =
+export const REPLAY_CLIP_MANIFEST_SCHEMA_VERSION =
   'openagents.replay_clip_manifest.v1'
-const REPLAY_CLIP_JOB_SCHEMA_VERSION = 'openagents.replay_clip_job.v1'
-const REPLAY_CLIP_CLAIM_SCOPE = 'evidence_presentation_only'
+export const REPLAY_CLIP_JOB_SCHEMA_VERSION = 'openagents.replay_clip_job.v1'
+export const REPLAY_CLIP_CLAIM_SCOPE = 'evidence_presentation_only'
 
-const RENDERER = {
+export const RENDERER = {
   pixelFormat: 'yuv420p',
   renderer: 'playwright-chromium-screenshot-plus-ffmpeg',
   rendererVersion: 'replay-r1',
@@ -54,7 +55,7 @@ const RENDERER = {
 }
 
 // The bounded camera verbs from the #5433 DSL and their render-box camera mode.
-const VERB_TO_MODE = {
+export const VERB_TO_MODE = {
   follow: 'follow_actor',
   frame_actor: 'follow_actor',
   frame_settlement: 'zap_focus',
@@ -62,10 +63,10 @@ const VERB_TO_MODE = {
   orbit: 'orbit_proof',
 }
 
-const outputPathFor = value =>
+export const outputPathFor = value =>
   isAbsolute(value) ? value : resolve(process.cwd(), value)
 
-const parseArgs = argv => {
+export const parseArgs = argv => {
   const args = { upload: false }
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
@@ -94,7 +95,7 @@ const parseArgs = argv => {
 // Validate a clip job against the #5430 contract. This mirrors the Effect
 // Schema validation in `@openagentsinc/replay-clips`; the render box stays
 // dependency-light so it can run anywhere Node + ffmpeg exist.
-const validateJob = job => {
+export const validateJob = job => {
   if (job === null || typeof job !== 'object') {
     throw new Error('Clip job must be an object')
   }
@@ -151,7 +152,7 @@ const validateJob = job => {
 }
 
 // Compile the #5433 DSL camera path into the `render-clip.mjs` camera JSON.
-const compileCameraPath = cameraPath => ({
+export const compileCameraPath = cameraPath => ({
   keyframes: [...cameraPath.keyframes]
     .map(keyframe => {
       const mode = VERB_TO_MODE[keyframe.verb]
@@ -167,7 +168,7 @@ const compileCameraPath = cameraPath => ({
     .sort((left, right) => left.second - right.second),
 })
 
-const runCommand = (command, commandArgs, options = {}) =>
+export const runCommand = (command, commandArgs, options = {}) =>
   new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(command, commandArgs, {
       stdio: ['ignore', 'inherit', 'inherit'],
@@ -183,37 +184,86 @@ const runCommand = (command, commandArgs, options = {}) =>
     })
   })
 
-const sha256File = async path => {
+export const sha256File = async path => {
   const bytes = await readFile(path)
   return createHash('sha256').update(bytes).digest('hex')
 }
 
-// NEEDS-OWNER: R2 is not provisioned here. This preflight reports whether the
-// render box has R2 credentials configured. It never invents a bucket.
-const preflightUpload = () => {
-  const bucket = process.env.R2_REPLAY_CLIPS_BUCKET
-  const publicHost = process.env.R2_REPLAY_CLIPS_PUBLIC_HOST
-  const accountId = process.env.R2_REPLAY_CLIPS_ACCOUNT_ID
-  const accessKeyId = process.env.R2_REPLAY_CLIPS_ACCESS_KEY_ID
-  const secretAccessKey = process.env.R2_REPLAY_CLIPS_SECRET_ACCESS_KEY
-  if (
-    bucket === undefined ||
-    publicHost === undefined ||
-    accountId === undefined ||
-    accessKeyId === undefined ||
-    secretAccessKey === undefined
-  ) {
+const envValue = (env, key) => {
+  const value = env[key]?.trim()
+  return value === undefined || value === '' ? undefined : value
+}
+
+// R2 credentials are read only from the render-box environment. The runner
+// never provisions a bucket and never prints secrets.
+export const preflightUpload = (env = process.env) => {
+  const bucket = envValue(env, 'R2_REPLAY_CLIPS_BUCKET')
+  const publicHost = envValue(env, 'R2_REPLAY_CLIPS_PUBLIC_HOST')
+  const accountId = envValue(env, 'R2_REPLAY_CLIPS_ACCOUNT_ID')
+  const accessKeyId = envValue(env, 'R2_REPLAY_CLIPS_ACCESS_KEY_ID')
+  const secretAccessKey = envValue(env, 'R2_REPLAY_CLIPS_SECRET_ACCESS_KEY')
+  const prefix = envValue(env, 'R2_REPLAY_CLIPS_PREFIX') ?? 'replay-clips'
+  const missing = [
+    ['R2_REPLAY_CLIPS_BUCKET', bucket],
+    ['R2_REPLAY_CLIPS_PUBLIC_HOST', publicHost],
+    ['R2_REPLAY_CLIPS_ACCOUNT_ID', accountId],
+    ['R2_REPLAY_CLIPS_ACCESS_KEY_ID', accessKeyId],
+    ['R2_REPLAY_CLIPS_SECRET_ACCESS_KEY', secretAccessKey],
+  ]
+    .filter(([, value]) => value === undefined)
+    .map(([key]) => key)
+
+  if (missing.length > 0) {
     return {
       configured: false,
       blockerRef: 'needs_owner.replay_clip.r2_bucket_not_provisioned',
       detail:
-        'Set R2_REPLAY_CLIPS_BUCKET, R2_REPLAY_CLIPS_PUBLIC_HOST, R2_REPLAY_CLIPS_ACCOUNT_ID, R2_REPLAY_CLIPS_ACCESS_KEY_ID, R2_REPLAY_CLIPS_SECRET_ACCESS_KEY after the owner provisions the R2 bucket.',
+        `Set ${missing.join(', ')} after the owner provisions the R2 bucket.`,
     }
   }
-  return { configured: true, bucket, publicHost }
+  if (!/^https:\/\//i.test(publicHost)) {
+    return {
+      configured: false,
+      blockerRef: 'config.replay_clip.r2_public_host_invalid',
+      detail: 'R2_REPLAY_CLIPS_PUBLIC_HOST must be a public https URL.',
+    }
+  }
+  return {
+    configured: true,
+    accessKeyId,
+    accountId,
+    bucket,
+    prefix,
+    publicHost: publicHost.replace(/\/+$/, ''),
+    secretAccessKey,
+  }
 }
 
-const buildManifest = ({ artifacts, bundleRef, frameCount, job, publicHost }) => ({
+const safeObjectKeySegment = value =>
+  String(value)
+    .replace(/[^A-Za-z0-9._=-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 160) || 'local'
+
+export const objectKeysForRender = ({ job, out, prefix = 'replay-clips' }) => {
+  const jobRef = job.jobRef ?? `replay_clip_job.${job.source.bundleRef ?? 'local'}`
+  const folder = [prefix.replace(/^\/+|\/+$/g, ''), safeObjectKeySegment(jobRef)]
+    .filter(part => part !== '')
+    .join('/')
+  const mp4ObjectKey = `${folder}/${basename(out)}`
+  return {
+    manifestObjectKey: `${mp4ObjectKey}.clip-manifest.json`,
+    mp4ObjectKey,
+  }
+}
+
+export const publicStorageUrl = (publicHost, objectKey) =>
+  `${publicHost.replace(/\/+$/, '')}/${objectKey
+    .split('/')
+    .map(part => encodeURIComponent(part))
+    .join('/')}`
+
+export const buildManifest = ({ artifacts, bundleRef, frameCount, job, publicHost }) => ({
   artifacts: artifacts.map(artifact => ({
     byteSize: artifact.byteSize,
     kind: 'mp4',
@@ -221,7 +271,7 @@ const buildManifest = ({ artifacts, bundleRef, frameCount, job, publicHost }) =>
     storageUrl:
       publicHost === null
         ? `local:${artifact.objectKey}`
-        : `${publicHost.replace(/\/$/, '')}/${artifact.objectKey}`,
+        : publicStorageUrl(publicHost, artifact.objectKey),
   })),
   bundleRef,
   cameraPath: job.cameraPath,
@@ -242,7 +292,80 @@ const buildManifest = ({ artifacts, bundleRef, frameCount, job, publicHost }) =>
   sourceRefs: job.sourceRefs,
 })
 
-const main = async () => {
+export const r2ObjectEndpoint = (upload, objectKey) =>
+  `https://${upload.accountId}.r2.cloudflarestorage.com/${encodeURIComponent(upload.bucket)}/${objectKey
+    .split('/')
+    .map(part => encodeURIComponent(part))
+    .join('/')}`
+
+export const createR2Client = upload =>
+  new AwsClient({
+    accessKeyId: upload.accessKeyId,
+    region: 'auto',
+    secretAccessKey: upload.secretAccessKey,
+    service: 's3',
+  })
+
+export const uploadR2Object = async ({
+  body,
+  client,
+  contentType,
+  objectKey,
+  upload,
+}) => {
+  const response = await client.fetch(r2ObjectEndpoint(upload, objectKey), {
+    body,
+    headers: {
+      'content-type': contentType,
+      'x-amz-meta-openagents-claim-scope': REPLAY_CLIP_CLAIM_SCOPE,
+    },
+    method: 'PUT',
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(
+      `R2 upload failed for ${objectKey}: HTTP ${response.status}${text === '' ? '' : ` ${text.slice(0, 240)}`}`,
+    )
+  }
+  return {
+    etag: response.headers.get('etag') ?? null,
+    objectKey,
+    storageUrl: publicStorageUrl(upload.publicHost, objectKey),
+  }
+}
+
+export const uploadReplayClipOutputs = async ({
+  client = createR2Client(upload),
+  manifestObjectKey,
+  manifestPath,
+  mp4ObjectKey,
+  mp4Path,
+  upload,
+}) => {
+  const [mp4Body, manifestBody] = await Promise.all([
+    readFile(mp4Path),
+    readFile(manifestPath),
+  ])
+  const [mp4, manifest] = await Promise.all([
+    uploadR2Object({
+      body: mp4Body,
+      client,
+      contentType: 'video/mp4',
+      objectKey: mp4ObjectKey,
+      upload,
+    }),
+    uploadR2Object({
+      body: manifestBody,
+      client,
+      contentType: 'application/json; charset=utf-8',
+      objectKey: manifestObjectKey,
+      upload,
+    }),
+  ])
+  return { manifest, mp4 }
+}
+
+export const main = async () => {
   const args = parseArgs(process.argv.slice(2))
   if (args.help || args.job === undefined) {
     console.log(
@@ -291,10 +414,14 @@ const main = async () => {
 
   const renderManifest = JSON.parse(await readFile(`${out}.render.json`, 'utf8'))
   const fileStat = await stat(out)
-  const objectKey = basename(out)
+  const { manifestObjectKey, mp4ObjectKey } = objectKeysForRender({
+    job,
+    out,
+    prefix: upload.configured ? upload.prefix : 'replay-clips',
+  })
   const artifact = {
     byteSize: fileStat.size,
-    objectKey,
+    objectKey: mp4ObjectKey,
     sha256: await sha256File(out),
   }
 
@@ -314,23 +441,30 @@ const main = async () => {
   if (!args.upload) {
     console.log(
       '[render-job] upload skipped (pass --upload). Upload plan:\n' +
-        `  object: ${objectKey}\n` +
+        `  mp4: ${mp4ObjectKey}\n` +
+        `  manifest: ${manifestObjectKey}\n` +
         '  destination: R2 bucket (NEEDS-OWNER: not provisioned in this repo)',
     )
   } else {
-    // NEEDS-OWNER: actual R2 PutObject is intentionally not implemented until
-    // the owner provisions the bucket + credentials. The preflight above
-    // already gated on credentials; wiring S3/R2 PutObject is the owner step.
     console.log(
-      `[render-job] R2 upload target: ${upload.bucket}/${objectKey} -> ${manifest.artifacts[0].storageUrl}`,
+      `[render-job] uploading to R2 bucket ${upload.bucket}: ${mp4ObjectKey}, ${manifestObjectKey}`,
     )
+    const uploaded = await uploadReplayClipOutputs({
+      manifestObjectKey,
+      manifestPath,
+      mp4ObjectKey,
+      mp4Path: out,
+      upload,
+    })
     console.log(
-      '[render-job] NEEDS-OWNER: R2 PutObject wiring is deferred to the owner-provisioned bucket step (#5431).',
+      `[render-job] upload complete: ${uploaded.mp4.storageUrl} ; ${uploaded.manifest.storageUrl}`,
     )
   }
 }
 
-main().catch(error => {
-  console.error('[render-job] FAILED:', error)
-  process.exit(1)
-})
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch(error => {
+    console.error('[render-job] FAILED:', error)
+    process.exit(1)
+  })
+}

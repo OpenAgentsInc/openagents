@@ -90,6 +90,47 @@ Dependencies for clip rendering:
 - Playwright Chromium (`bunx playwright install chromium`).
 - `ffmpeg` on the render box PATH, or pass `--ffmpeg <path>`.
 
+## Render job + R2 upload
+
+`render-job.mjs` is the production render-box wrapper for the typed
+`openagents.replay_clip_job.v1` contract. It validates a job, compiles the
+camera-path DSL into the existing renderer's camera input, writes the mp4 plus
+`openagents.replay_clip_manifest.v1`, and, when `--upload` is present, uploads
+both objects to R2 through Cloudflare's S3-compatible API.
+
+```sh
+cd apps/openagents.com/apps/web
+node spike/replay-r1/render-job.mjs \
+  --job spike/replay-r1/job.example.json \
+  --out spike/replay-r1/out/clip.mp4
+```
+
+Upload mode requires owner-provisioned R2 credentials on the render box:
+
+```sh
+export R2_REPLAY_CLIPS_BUCKET=oa-replay-clips
+export R2_REPLAY_CLIPS_PUBLIC_HOST=https://clips.openagents.com
+export R2_REPLAY_CLIPS_ACCOUNT_ID=<cloudflare-account-id>
+export R2_REPLAY_CLIPS_ACCESS_KEY_ID=<r2-access-key-id>
+export R2_REPLAY_CLIPS_SECRET_ACCESS_KEY=<r2-secret-access-key>
+export R2_REPLAY_CLIPS_PREFIX=replay-clips # optional
+
+node spike/replay-r1/render-job.mjs \
+  --job spike/replay-r1/job.example.json \
+  --out spike/replay-r1/out/clip.mp4 \
+  --upload
+```
+
+The job uploads:
+
+- `replay-clips/<jobRef>/clip.mp4`
+- `replay-clips/<jobRef>/clip.mp4.clip-manifest.json`
+
+The manifest artifact URL is built from `R2_REPLAY_CLIPS_PUBLIC_HOST` and is
+validated as a public HTTPS URL. Missing bucket credentials fail closed with a
+typed `needs_owner.replay_clip.r2_bucket_not_provisioned` blocker; the script
+does not print secret values.
+
 New dev dependency: **playwright** (added to the repo root `package.json`).
 This is a **render-box / CI workload** (headless Chrome), NOT a Cloudflare
 Worker workload — the Worker can trigger a render and serve the mp4 from R2, it

@@ -888,6 +888,20 @@ infrastructure, never inside the Cloudflare Worker.
    - Body summary: Turn `render-clip.mjs` into a production-owned render worker
      or wrapper that writes mp4 + manifest and uploads to R2/object storage.
      Keep Chrome/ffmpeg out of the Worker and document required runtime.
+   - Implementation status (2026-06-18, issue #5431): `render-job.mjs` is now
+     the owned render-box wrapper around the existing headless Chrome + ffmpeg
+     renderer. It validates typed clip jobs, compiles the camera-path DSL,
+     writes an mp4 and `openagents.replay_clip_manifest.v1`, builds stable
+     `replay-clips/<jobRef>/...` object keys, and uploads both mp4 and manifest
+     to Cloudflare R2 through the S3-compatible API when the owner-provisioned
+     `R2_REPLAY_CLIPS_*` environment is present. Missing bucket credentials fail
+     closed with a typed owner blocker and no secret values are printed. Chrome
+     and ffmpeg remain render-box-only; the Cloudflare Worker only hosts job/read
+     APIs and finished refs. Validation: `bun install --frozen-lockfile` from
+     repo root, `bun run --cwd apps/openagents.com/apps/web test --
+     spike/replay-r1/render-job.test.mjs`, `bun run --cwd packages/replay-clips
+     test`, 1-second local `render-job.mjs` smoke to `/tmp/openagents-5431-render/clip.mp4`,
+     and `git diff --check`.
 3. **Add Worker clip job/read API**
    - Body summary: Add routes to create/list/read clip jobs and serve finished
      manifests/clips. The Worker may trigger or serve jobs only; it must not
