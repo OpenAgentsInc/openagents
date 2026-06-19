@@ -784,6 +784,19 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/site-referral-payout-wire.test.ts`,
   `workers/api/src/firmup-bitcoin-settlement.test.ts`, and
   `workers/api/src/firmup-bitcoin-settlement-routes.test.ts`.
+- USD->msat inference-credit bridge (#5497): a card (Stripe) USD purchase may be
+  converted into an inference-spendable msat `agent_balances` credit
+  (`usd_credit_grant` pay-in) via `POST /api/billing/inference-credit`, but the
+  granted msat is tagged USD-origin in `agent_balances.usd_credit_msat`. That
+  USD-origin balance is inference-spendable (the gateway gate + metering hook
+  read `balance_msat`/`availableMsat`) but is NOT Bitcoin-withdrawable: the
+  Lightning sweep (`tips-sweep.ts`, the live Bitcoin-withdrawal path) subtracts
+  `usd_credit_msat` from the sweepable amount, so a card dollar can never leave
+  as real Bitcoin. The bridge debits the USD `billing_ledger_entries` and grants
+  the equivalent msat atomically (one D1 batch), idempotent per grant ref, and
+  bounded by the available USD balance; the conversion is the single-source rate
+  in `workers/api/src/inference/usd-msat-conversion.ts`. Regression coverage:
+  `workers/api/src/inference/usd-credit-bridge.test.ts`.
 
 ## Provider Capacity Marketplace Gate
 

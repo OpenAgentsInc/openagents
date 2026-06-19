@@ -120,10 +120,17 @@ export const selectSweepCandidates = async (
     Date.parse(nowIso) - TIPS_SWEEP_FAILURE_BACKOFF_MINUTES * 60_000,
   )
 
+  // RL-3 asset boundary (#5497): the sweep is the live Bitcoin-withdrawal path,
+  // so it pays out only the Bitcoin-WITHDRAWABLE balance:
+  //   balance_msat - held_msat - usd_credit_msat
+  // USD-purchased credit (`usd_credit_msat`) is inference-spendable but NEVER a
+  // Bitcoin liability, so it is subtracted from the sweepable amount here and
+  // from the threshold gate below. A USD credit can never leak into a sweep.
   const result = await db
     .prepare(
       `SELECT b.actor_ref,
-              b.balance_msat - COALESCE(b.held_msat, 0) AS available_balance_msat,
+              b.balance_msat - COALESCE(b.held_msat, 0)
+                - COALESCE(b.usd_credit_msat, 0) AS available_balance_msat,
               b.sweep_threshold_sat,
               w.wallet_ref, w.lightning_address, w.bolt12_offer
          FROM agent_balances b
@@ -134,6 +141,7 @@ export const selectSweepCandidates = async (
           AND (w.lightning_address IS NOT NULL OR w.bolt12_offer IS NOT NULL)
         WHERE b.sweep_enabled = 1
           AND b.balance_msat - COALESCE(b.held_msat, 0)
+                - COALESCE(b.usd_credit_msat, 0)
                 >= (b.sweep_threshold_sat + ?) * 1000
           AND NOT EXISTS (
             SELECT 1 FROM pay_ins p

@@ -130,36 +130,16 @@ export const stubMeteringHook: MeteringHook = (context: MeteringContext) =>
 // Live ledger metering (#5477)
 // ----------------------------------------------------------------------------
 
-// USD -> msat conversion (the ONE conversion the ledger owns; the pricing module
-// stays currency-pure in USD and defers msat conversion to here, per its header
-// note). The `agent_balances` ledger is denominated in msat, so a USD charge must
-// land as msat to decrement the same balance the route's gate reads.
-//
-// !! BILLING TODO: there is no live BTC/USD oracle wired into this Worker yet, so
-// this uses a fixed reference rate. Replace `DEFAULT_BTC_USD` with a live oracle
-// read (or inject `usdToMsat` from a price service) before publishing real
-// prices; the rate is a single tunable knob and the rest of metering re-solves.
-export const DEFAULT_BTC_USD = 100_000 as const
-
-const MSAT_PER_BTC = 100_000_000_000 as const
-
-// Convert a USD charge to integer msat at a given BTC/USD rate, rounding UP so a
-// nonzero charge never rounds away to a free request (the ledger CHECK requires
-// cost_msat > 0). A zero/negative/non-finite USD charge maps to 0 msat (no row).
-export const usdToMsatCeil = (
-  chargeUsd: number,
-  btcUsd: number = DEFAULT_BTC_USD,
-): number => {
-  if (!Number.isFinite(chargeUsd) || chargeUsd <= 0) return 0
-  if (!Number.isFinite(btcUsd) || btcUsd <= 0) return 0
-  const msat = (chargeUsd / btcUsd) * MSAT_PER_BTC
-  // Round away binary floating-point dust before ceiling so an exact-integer
-  // charge (e.g. $1 @ $100k/BTC = 1_000_000 msat) is not pushed up by 1 from a
-  // ...0001 representation error, while a genuinely fractional charge still
-  // rounds UP (a nonzero charge is never free; the ledger CHECK needs > 0).
-  const FLOAT_DUST = 1e-6
-  return Math.max(1, Math.ceil(msat - FLOAT_DUST))
-}
+// USD -> msat conversion lives in the shared single-source module
+// (`usd-msat-conversion.ts`, #5497) so the metering charge and the USD->msat
+// credit bridge convert at the IDENTICAL rate with identical rounding. The
+// pricing module stays currency-pure in USD and defers msat conversion to that
+// module; the `agent_balances` ledger is msat-denominated, so a USD charge must
+// land as msat to decrement the same balance the route's gate reads. Re-exported
+// here so the existing metering importers/tests that read `DEFAULT_BTC_USD` /
+// `usdToMsatCeil` from this module keep working unchanged.
+export { DEFAULT_BTC_USD, usdToMsatCeil } from './usd-msat-conversion'
+import { usdToMsatCeil } from './usd-msat-conversion'
 
 // Deps for the live ledger metering hook.
 export type LedgerMeteringDeps = Readonly<{

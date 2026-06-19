@@ -24,6 +24,7 @@ type OmniRouteDependencies = Readonly<{
   handleAutopilotFleetApi: OmniSessionRouteHandler
   handleAutopilotTokenLeaderboardsApi: OmniSessionRouteHandler
   handleBillingCheckoutApi: OmniSessionRouteHandler
+  handleBillingInferenceCreditApi: OmniSessionRouteHandler
   handleBillingAutoTopUpPolicyApi: OmniSessionRouteHandler
   handleBillingAutoTopUpRunApi: OmniSessionRouteHandler
   handleBillingCouponRedeemApi: OmniSessionRouteHandler
@@ -93,6 +94,12 @@ export const makeOmniRoutes = (dependencies: OmniRouteDependencies) => ({
     if (url.pathname === '/api/billing/checkout') {
       return routeEffectOrResponse(
         dependencies.handleBillingCheckoutApi(request, env, ctx),
+      )
+    }
+
+    if (url.pathname === '/api/billing/inference-credit') {
+      return routeEffectOrResponse(
+        dependencies.handleBillingInferenceCreditApi(request, env, ctx),
       )
     }
 
