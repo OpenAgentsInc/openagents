@@ -52,6 +52,14 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
    serverless per-token pricing (our cheap-tier **cost basis**), billing dimensions, prompt
    caching, adaptive rate limits, and serving paths — what the adapter must handle.
 
+6. **[`2026-06-19-agent-cloud-revshare-everywhere.md`](./2026-06-19-agent-cloud-revshare-everywhere.md)**
+   — the capstone. Inference is one surface of **OpenAgents Cloud — the Agent Cloud, the
+   one-stop shop for every agent need**: inference, fine-tuning, training, sandboxes, agentic
+   compute, tasks, data. The same model (one credit balance, USD or Bitcoin, **revshare
+   throughout** to the contributor + the referrer **on everything, forever**) generalizes
+   across all of it, on the accepted-outcome → receipt → settle spine. Ties to root
+   `docs/cloud/` + the "Let's Make Money" thesis.
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)
