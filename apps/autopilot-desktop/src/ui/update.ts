@@ -42,6 +42,7 @@ import {
   SetCoordinatorPaused,
   SetManagedAccountPriority,
   SpawnAppleFmComposerTurn,
+  SpawnBatchSession,
   SpawnChatTurn,
   SpawnComposerTurn,
   StartAppleFmSession,
@@ -54,6 +55,13 @@ import {
   buildComposerContinuationObjective,
   parseVerifyLines,
 } from "./helpers"
+import {
+  advanceSwarmBatch,
+  clampSwarmBatchConcurrency,
+  parseSwarmBatchObjectives,
+  startSwarmBatch,
+  type SwarmBatchState,
+} from "./swarm-batch"
 import {
   ClickedChatSubmit,
   ClickedComposerReply,
@@ -113,6 +121,29 @@ import type {
 type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
 const noCommands: ReadonlyArray<Command.Command<Message>> = []
+
+// #5469: bridge the flat swarm-batch Model fields ↔ the pure SwarmBatchState the
+// swarm-batch.ts queue logic operates on, so the reducer stays a thin mapping
+// over the (unit-tested) pure functions.
+const readSwarmBatchState = (model: Model): SwarmBatchState => ({
+  queue: model.swarmBatchQueue,
+  active: model.swarmBatchActive,
+  concurrency: clampSwarmBatchConcurrency(Number(model.swarmBatchConcurrency)),
+  launched: model.swarmBatchLaunched,
+  failed: model.swarmBatchFailed,
+  total: model.swarmBatchTotal,
+})
+
+const writeSwarmBatchState = (model: Model, state: SwarmBatchState): Model =>
+  Model.make({
+    ...model,
+    swarmBatchQueue: state.queue,
+    swarmBatchActive: state.active,
+    swarmBatchConcurrency: String(state.concurrency),
+    swarmBatchLaunched: state.launched,
+    swarmBatchFailed: state.failed,
+    swarmBatchTotal: state.total,
+  })
 
 const proofReplayCommandRequestForModel = (
   model: Model,
@@ -1841,6 +1872,71 @@ export const update = (model: Model, message: Message): Result => {
         }),
         [LoadManagedAccounts()],
       ]
+
+    // ── #5469 (EPIC #5461): swarm batch launch ──────────────────────────────────
+    case "ChangedSwarmBatchObjectives":
+      return [
+        Model.make({ ...model, swarmBatchObjectives: message.value }),
+        noCommands,
+      ]
+    case "ChangedSwarmBatchConcurrency":
+      return [
+        Model.make({ ...model, swarmBatchConcurrency: message.value }),
+        noCommands,
+      ]
+    case "ClickedSwarmBatchLaunch": {
+      // A batch already in flight must drain before a new one starts (the
+      // bounded-concurrency guarantee). The button is disabled in the view too.
+      if (model.swarmBatchActive > 0 || model.swarmBatchQueue.length > 0) {
+        return [model, noCommands]
+      }
+      // Apple FM has no per-account/failover semantics and a different verb, so
+      // batch launch is codex/claude only (matches SpawnBatchSession's adapter).
+      const adapter = model.spawnAdapter === "apple_fm" ? "claude_agent" : model.spawnAdapter
+      const objectives = parseSwarmBatchObjectives(model.swarmBatchObjectives)
+      if (objectives.length === 0) {
+        return [model, noCommands]
+      }
+      const concurrency = clampSwarmBatchConcurrency(
+        Number(model.swarmBatchConcurrency),
+      )
+      const verify = parseVerifyLines(model.spawnVerify)
+      const { state, toDispatch } = startSwarmBatch(objectives, concurrency)
+      return [
+        writeSwarmBatchState(model, state),
+        toDispatch.map((objective) =>
+          SpawnBatchSession({
+            adapter,
+            objective,
+            verify,
+            lane: model.spawnLane,
+            accountRef: model.composerAccountRef,
+          }),
+        ),
+      ]
+    }
+    case "SucceededSwarmBatchSpawn":
+    case "FailedSwarmBatchSpawn": {
+      const outcome =
+        message._tag === "SucceededSwarmBatchSpawn" ? "launched" : "failed"
+      const { state, next } = advanceSwarmBatch(readSwarmBatchState(model), outcome)
+      const adapter = model.spawnAdapter === "apple_fm" ? "claude_agent" : model.spawnAdapter
+      const verify = parseVerifyLines(model.spawnVerify)
+      return [
+        writeSwarmBatchState(model, state),
+        next === null
+          ? noCommands
+          : [
+              SpawnBatchSession({
+                adapter,
+                objective: next,
+                verify,
+                lane: model.spawnLane,
+                accountRef: model.composerAccountRef,
+              }),
+            ],
+      ]
+    }
 
     // ── #5355: coding composer ──────────────────────────────────────────────────
     case "ChangedComposerRepoPath":
