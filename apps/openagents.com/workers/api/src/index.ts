@@ -35,12 +35,20 @@ import {
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
 import { fireworksAdapter } from './inference/fireworks-adapter'
-import { InferenceProviderRegistry } from './inference/provider-adapter'
+import {
+  InferenceAdapterError,
+  InferenceProviderRegistry,
+} from './inference/provider-adapter'
 import {
   type PassthroughAdapterConfig,
   makePassthroughAdapter,
 } from './inference/passthrough-adapter'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
+import {
+  VERTEX_ANTHROPIC_ADAPTER_ID,
+  makeVertexAnthropicAdapter,
+} from './inference/vertex-anthropic-adapter'
+import { tokenProviderFromSecret } from './inference/vertex-token'
 import { readAgentBalance } from './payments-ledger'
 import { makeAgentGoalRoutes } from './agent-goal-routes'
 import {
@@ -7619,6 +7627,53 @@ const registerPassthroughAdapters = (
   }
 }
 
+// Per-request env holder for env-dependent inference adapters. A Cloudflare
+// Worker has no env at module scope, so the module-level adapter registry reads
+// the live env (set by the /v1/chat/completions handler before dispatch) when
+// it needs to mint credentials. Within a single request the isolate is
+// single-threaded, so this is not racy.
+// Typed as OpenAgentsWorkerConfigEnv (a subset of the full worker env) so this
+// holder reads only the VERTEX_* config fields it needs, not the full
+// Cloudflare binding surface.
+let inferenceAdapterEnv: OpenAgentsWorkerConfigEnv | undefined
+const setInferenceAdapterEnv = (env: OpenAgentsWorkerConfigEnv): void => {
+  inferenceAdapterEnv = env
+}
+
+// #5480 Vertex Anthropic (Claude lane) — registered exactly once. INERT until
+// the VERTEX_SA_KEY Worker secret is present: with no key, `tokenProvider` is
+// undefined and every call returns a typed non-retryable error (mapped by the
+// route to a stable provider_error). The route itself stays flag-gated off via
+// INFERENCE_GATEWAY_ENABLED. Project/location/key are read from the live env at
+// call time via the per-request holder above.
+inferenceProviderRegistry.register(
+  makeVertexAnthropicAdapter({
+    // Lane defaults: project openagentsgemini, global location (broadest
+    // shared-lineage quota, no regional premium — gateway business doc §3a).
+    // VERTEX_PROJECT_ID / VERTEX_LOCATION env overrides are reserved for a
+    // follow-up; the module-level registry is constructed once, before any env
+    // is captured, so it pins these defaults.
+    location: 'global',
+    project: 'openagentsgemini',
+    resolveModelId: undefined,
+    tokenProvider: () => {
+      const env = inferenceAdapterEnv
+      const provider =
+        env === undefined ? undefined : tokenProviderFromSecret(env.VERTEX_SA_KEY)
+      return provider === undefined
+        ? Effect.fail(
+            new InferenceAdapterError({
+              adapterId: VERTEX_ANTHROPIC_ADAPTER_ID,
+              reason:
+                'Vertex Anthropic adapter is not configured (missing VERTEX_SA_KEY).',
+              retryable: false,
+            }),
+          )
+        : provider()
+    },
+  }),
+)
+
 const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/',
@@ -8527,6 +8582,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/v1/chat/completions',
     handler: (request, env) => {
       registerPassthroughAdapters(inferenceProviderRegistry, env)
+      // Capture the live env so env-dependent adapters (Vertex #5480) can mint
+      // credentials from Worker secrets at call time. INERT regardless: the
+      // gateway is gated by INFERENCE_GATEWAY_ENABLED below.
+      setInferenceAdapterEnv(env)
       return handleChatCompletions(request, {
         authenticate: async authRequest => {
           const token = readBearerToken(authRequest)
