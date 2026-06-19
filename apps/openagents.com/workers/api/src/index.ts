@@ -39,6 +39,17 @@ import {
   handleChatCompletions,
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
+// Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
+// promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
+// STAY red until a dereferenceable paid receipt lands. No green flip here.
+import {
+  handleFineTuningJobSubmit,
+  isFineTuningServiceEnabled,
+} from './cloud/fine-tuning-service-routes'
+import {
+  handleSandboxRequest,
+  isSandboxComputeServiceEnabled,
+} from './cloud/sandbox-compute-service-routes'
 import { fireworksAdapter } from './inference/fireworks-adapter'
 import { selectAdapterPlan } from './inference/model-router'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
@@ -8815,6 +8826,60 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         registry: inferenceProviderRegistry,
       })
     },
+  },
+  {
+    // Fine-tuning service (EPIC #5510, #5516) — sellable Cloud primitive
+    // SCAFFOLD. INERT by default: gated behind CLOUD_FINE_TUNING_ENABLED
+    // (default off). Ships wired to the stub/accepting runtime adapter + no-op
+    // metering stub; #5516 registers the real training-lane runtime adapter and
+    // live credit metering. The promise `cloud.fine_tuning_service.v1` STAYS red
+    // — this surface produces no paid/servable result and no green flip lands
+    // without a dereferenceable paid receipt.
+    path: '/v1/fine_tuning/jobs',
+    handler: (request, env) =>
+      handleFineTuningJobSubmit(request, {
+        authenticate: async authRequest => {
+          const token = readBearerToken(authRequest)
+          if (token === undefined) {
+            return undefined
+          }
+          const session = await authenticateProgrammaticAgent(
+            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            token,
+          )
+          return session === undefined
+            ? undefined
+            : { accountRef: `agent:${session.user.id}` }
+        },
+        enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
+      }),
+  },
+  {
+    // Sandbox compute service (EPIC #5510, #5517) — sellable Cloud primitive
+    // SCAFFOLD. INERT by default: gated behind CLOUD_SANDBOX_COMPUTE_ENABLED
+    // (default off). Ships wired to the stub/accepting runtime adapter + no-op
+    // metering stub; #5517 registers the real isolated-session runtime adapter
+    // and live credit metering. The promise `cloud.sandbox_compute_service.v1`
+    // STAYS red — this surface provisions no real sandbox and no green flip
+    // lands without a dereferenceable paid receipt.
+    path: '/v1/sandboxes',
+    handler: (request, env) =>
+      handleSandboxRequest(request, {
+        authenticate: async authRequest => {
+          const token = readBearerToken(authRequest)
+          if (token === undefined) {
+            return undefined
+          }
+          const session = await authenticateProgrammaticAgent(
+            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            token,
+          )
+          return session === undefined
+            ? undefined
+            : { accountRef: `agent:${session.user.id}` }
+        },
+        enabled: isSandboxComputeServiceEnabled(env.CLOUD_SANDBOX_COMPUTE_ENABLED),
+      }),
   },
 ])
 
