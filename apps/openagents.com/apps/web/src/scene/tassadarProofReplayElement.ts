@@ -83,7 +83,7 @@ const HOST_STYLE =
   '.top{position:relative;z-index:8;display:flex;justify-content:space-between;gap:1rem;padding:0.9rem 1rem 0;color:#f1efe8;pointer-events:auto}' +
   '.shell.social .top{position:absolute;left:1.4rem;right:1.4rem;top:1rem;padding:0;z-index:6}' +
   '.top dl{display:grid;grid-template-columns:repeat(4,minmax(0,auto));gap:0.55rem 1rem;margin:0;min-width:0}.top div{min-width:0}.top dt{margin:0 0 0.16rem;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.34)}' +
-  '.top dd{margin:0;max-width:20rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.72rem;color:rgba(255,255,255,0.78);text-shadow:0 1px 8px rgba(0,0,0,0.9)}' +
+  '.top dd{margin:0;max-width:min(20rem,26vw);overflow-wrap:anywhere;white-space:normal;font-size:0.72rem;line-height:1.25;color:rgba(255,255,255,0.78);text-shadow:0 1px 8px rgba(0,0,0,0.9)}' +
   '.top a{position:relative;z-index:9;align-self:start;justify-self:end;width:max-content;margin-left:auto;white-space:nowrap;pointer-events:auto;color:rgba(255,255,255,0.86);font-size:0.72rem;text-underline-offset:0.2rem;touch-action:manipulation}.top a:hover{color:#fff}' +
   '.world{position:relative;min-height:0;margin:0 1rem;border-top:1px solid rgba(255,255,255,0.08);border-bottom:1px solid rgba(255,255,255,0.08);overflow:hidden;perspective:900px}' +
   '.shell.social .world{margin:0;border:0;min-height:100%;aspect-ratio:16/9;background:#000}' +

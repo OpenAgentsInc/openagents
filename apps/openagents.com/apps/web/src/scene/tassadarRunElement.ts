@@ -94,7 +94,7 @@ const HOST_STYLE =
   'justify-content:space-between;gap:0.75rem;padding:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;pointer-events:none}' +
   '.status dl{display:grid;grid-template-columns:repeat(5,minmax(0,auto));gap:0.55rem 1rem;margin:0;min-width:0}' +
   '.status div{min-width:0;text-shadow:0 1px 8px rgba(0,0,0,0.85)}.status dt{margin:0 0 0.18rem;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.34)}' +
-  '.status dd{margin:0;max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.72rem;color:rgba(255,255,255,0.76)}' +
+  '.status dd{margin:0;max-width:min(18rem,24vw);overflow-wrap:anywhere;white-space:normal;font-size:0.72rem;line-height:1.25;color:rgba(255,255,255,0.76)}' +
   '.status .legend{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:0.35rem 0.6rem;max-width:46rem;margin:0;padding:0;list-style:none;text-shadow:0 1px 8px rgba(0,0,0,0.85)}' +
   '.status .legend li{display:inline-flex;gap:0.32rem;align-items:baseline;min-width:0;font-size:0.62rem;line-height:1.25;color:rgba(255,255,255,0.58)}' +
   '.status .legend strong{font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.34)}.status .legend span{color:rgba(255,255,255,0.72)}' +

@@ -959,6 +959,14 @@ fully autonomous self-serve settlement captured by timeline/replay/clip.
    - Body summary: Add browser-capable smokes for `/tassadar`, replay pages, and
      the live-activity page: nonblank WebGL, no anonymous motion, proof drawer
      public route returns 200, and text fits desktop/mobile viewports.
+   - Implemented on 2026-06-18: `bun run --cwd apps/openagents.com
+     smoke:visibility:browser` launches Chromium against `https://openagents.com`
+     by default, checks `/tassadar`, `/tassadar/replay/first-real-settlement`,
+     and `/activity` at desktop and mobile viewports, verifies nonblank canvases,
+     source-bound replay bundle motion, proof drawer public links, and visible
+     text overflow. The smoke is observation-only and can be pointed at local or
+     owned infra with `--base-url`; local UI runs can proxy live public API data
+     with `--api-base-url`.
 3. **Document timeline/stream/world/render operations in deployment docs**
    - Body summary: Add runbook coverage for operating the timeline API, SSE
      stream, SpacetimeDB bridge, render worker, R2 outputs, failure modes, and
