@@ -130,6 +130,7 @@ import {
   FailedAppleFmSession,
   ToggledEvent,
 } from "../src/ui/message"
+import { degradedOnboardingProjection } from "../src/ui/commands"
 import { update } from "../src/ui/update"
 
 const session = (sessionRef: string, state: string) =>
@@ -383,6 +384,24 @@ describe("update reducer (CL-53)", () => {
     expect(model.pane).toBe("onboarding")
     expect(model.onboardingPending).toBe(false)
     expect(model.onboardingStatusLine.tone).toBe("info")
+    expect(commands).toHaveLength(0)
+  })
+
+  test("degraded onboarding status keeps the full chain without faking node failure", () => {
+    const [start] = initialRuntimeState()
+    const projection = degradedOnboardingProjection("timeout")
+    const [model, commands] = update(
+      start,
+      GotOnboardingStatus({ projection }),
+    )
+    expect(projection.steps).toHaveLength(9)
+    expect(projection.steps.find(step => step.id === "node-online")?.status).toBe(
+      "active",
+    )
+    expect(model.onboardingStatusLine).toEqual({
+      text: "status refresh needs a retry",
+      tone: "error",
+    })
     expect(commands).toHaveLength(0)
   })
 

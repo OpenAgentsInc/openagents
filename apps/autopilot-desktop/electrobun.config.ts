@@ -8,7 +8,7 @@ export default {
   // #5040: default-on OTA. Electrobun's Updater fetches the per-platform
   // update.json + BSDIFF/tarball artifacts from our GCP feed (the oa-updates
   // Cloud Run service on updates.openagents.com). RC builds use the canary
-  // channel; stable is owner-gated.
+  // channel; stable is the production release channel.
   release: {
     baseUrl: "https://updates.openagents.com/desktop"
   },

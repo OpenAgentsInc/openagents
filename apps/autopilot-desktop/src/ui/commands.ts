@@ -15,6 +15,7 @@ import {
   type DesktopProofReplayRequest,
   loadDesktopProofReplayProjection,
 } from "../shared/proof-replays"
+import type { OnboardingStatusResponse } from "../shared/rpc"
 import { ProofReplayCommandRequest } from "./model"
 import {
   FailedCoordinatorToggle,
@@ -522,22 +523,78 @@ export const LoadInstallReadiness = Command.define(
 )
 
 // AO-4 (#5445): load the live onboarding chain status (wizard steps). Fail-soft:
-// a failed request becomes a single failed+retryable step so the wizard never
-// dead-ends to a blank screen.
-const emptyOnboardingProjection = (error: string) => ({
+// a failed request keeps the full ladder visible and marks only the status read
+// itself as retryable, rather than inventing a failed local-node step.
+export const degradedOnboardingProjection = (error: string): OnboardingStatusResponse => ({
   ok: false,
   fetchedAt: new Date().toISOString(),
   sourceUrl: "desktop:onboarding-status" as const,
   complete: false,
-  currentStepId: "node-online",
+  currentStepId: "wallet",
   hasRetryableFailure: true,
   steps: [
     {
+      id: "identity",
+      label: "Identity",
+      status: "done" as const,
+      message: "Identity status was already loaded by the local app.",
+      retryable: false,
+    },
+    {
+      id: "registered",
+      label: "Agent registered",
+      status: "pending" as const,
+      message: "Waiting for a fresh onboarding status read.",
+      retryable: false,
+    },
+    {
       id: "node-online",
       label: "Node online",
-      status: "failed" as const,
-      message: `Could not read onboarding status: ${error}. Retry.`,
-      retryable: true,
+      status: "active" as const,
+      message: `Status read timed out: ${error}. Retry the status refresh.`,
+      retryable: false,
+    },
+    {
+      id: "wallet",
+      label: "Wallet receive-ready",
+      status: "pending" as const,
+      message: "Waiting for a fresh wallet status read.",
+      retryable: false,
+    },
+    {
+      id: "payout",
+      label: "Payout target registered",
+      status: "pending" as const,
+      message: "Waiting for a fresh status read.",
+      retryable: false,
+    },
+    {
+      id: "presence",
+      label: "Presence live",
+      status: "pending" as const,
+      message: "Waiting for a fresh status read.",
+      retryable: false,
+    },
+    {
+      id: "tassadar",
+      label: "Joined Tassadar",
+      status: "pending" as const,
+      message: "Waiting for a fresh assignment status read.",
+      retryable: false,
+    },
+    {
+      id: "claimed",
+      label: "First work claimed",
+      status: "pending" as const,
+      message: "Waiting for a fresh assignment status read.",
+      retryable: false,
+    },
+    {
+      id: "earned",
+      label: "First sats earned",
+      status: "pending" as const,
+      message: "Waiting for a fresh wallet balance read.",
+      retryable: false,
     },
   ],
 })
@@ -552,7 +609,7 @@ export const LoadOnboardingStatus = Command.define(
     Effect.catch((error) =>
       Effect.succeed(
         GotOnboardingStatus({
-          projection: emptyOnboardingProjection(errorText(error)),
+          projection: degradedOnboardingProjection(errorText(error)),
         }),
       ),
     ),

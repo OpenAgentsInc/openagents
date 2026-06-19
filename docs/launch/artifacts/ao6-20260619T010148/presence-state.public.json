@@ -1,0 +1,10 @@
+{
+  "registered": true,
+  "stale": false,
+  "pylonRef": "pylon.fa4e9049a4329f3d56e2",
+  "registrationRef": "registration.pylon.fa4e9049a4329f3d56e2",
+  "latestHeartbeatAt": null,
+  "heartbeatSequence": 3,
+  "blockerRefs": [],
+  "sparkPayoutTargetRef": "payout.spark.3596dd0026ab64132e90ed1d"
+}

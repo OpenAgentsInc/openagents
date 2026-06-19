@@ -409,20 +409,20 @@ export type OnboardingChildEnvInput = {
  *
  * Only sets the agent-token-gated switches when a token is present — a node
  * without a token boots in its prior isolated (but honest) mode rather than
- * announcing presence it cannot authenticate. `PYLON_OPENAGENTS_BASE_URL` is
- * always set (it is the product surface), but presence/assignment additionally
- * require the token at the Pylon layer, so the gate stays honest either way.
+ * announcing presence it cannot authenticate or looking partially configured.
+ * Explicit operator-provided product env is preserved, but first-run auto setup
+ * waits until registration has produced a persisted token.
  */
 export const buildOnboardingChildEnv = (
   input: OnboardingChildEnvInput,
 ): Record<string, string> => {
   const baseUrl = input.baseUrl ?? DEFAULT_OPENAGENTS_BASE_URL
   const env: Record<string, string> = { ...input.base }
-  // Respect an explicit operator override if one is already present.
-  if (!env.PYLON_OPENAGENTS_BASE_URL) {
-    env.PYLON_OPENAGENTS_BASE_URL = baseUrl
-  }
   if (input.agentToken !== null && input.agentToken.length > 0) {
+    // Respect an explicit operator override if one is already present.
+    if (!env.PYLON_OPENAGENTS_BASE_URL) {
+      env.PYLON_OPENAGENTS_BASE_URL = baseUrl
+    }
     env.OPENAGENTS_AGENT_TOKEN = input.agentToken
     // Turn on the assignment/Tassadar work-claim loop. Only meaningful with a
     // token + base URL, both of which are now set.

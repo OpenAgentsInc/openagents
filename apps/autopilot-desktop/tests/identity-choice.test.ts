@@ -17,6 +17,7 @@ import {
   projectIdentityChoiceState,
   saveIdentityChoice,
 } from "../src/bun/identity-choice"
+import { resolveFirstRunLaunchChoice } from "../src/bun/first-run-launch-choice"
 
 // AO-3 (#5444): identity detection + choice. The seed marker is
 // `identity.mnemonic` (matches apps/pylon/src/bootstrap.ts HOME_SEED_MARKER); we
@@ -252,6 +253,56 @@ describe("projectIdentityChoiceState (AO-3)", () => {
       expect(state.choiceNeeded).toBe(false)
       expect(state.chosen?.kind).toBe("create_new")
       expect(state.chosen?.displayName).toBe("Named One")
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("resolveFirstRunLaunchChoice (AO-3)", () => {
+  it("does not auto-onboard before the user chooses an identity", () => {
+    const homeDir = makeHomeDir()
+    try {
+      expect(resolveFirstRunLaunchChoice({ homeDir })).toEqual({
+        choiceMade: false,
+        chosenExistingHome: null,
+        chosenDisplayName: null,
+      })
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true })
+    }
+  })
+
+  it("threads a create-new display name into launcher startup", () => {
+    const homeDir = makeHomeDir()
+    try {
+      saveIdentityChoice(
+        { kind: "create_new", displayName: "Studio Mac" },
+        { homeDir },
+      )
+      expect(resolveFirstRunLaunchChoice({ homeDir })).toEqual({
+        choiceMade: true,
+        chosenExistingHome: null,
+        chosenDisplayName: "Studio Mac",
+      })
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true })
+    }
+  })
+
+  it("refuses a stale use-existing choice when the detected seed home changed", () => {
+    const homeDir = makeHomeDir()
+    try {
+      const chosen = seedHome(homeDir, ".pylon", { pylonRef: "pylon.old" })
+      saveIdentityChoice({ kind: "use_existing", home: chosen }, { homeDir })
+      // A later ~/.openagents/pylon seed now wins detection, so the old choice
+      // must not be auto-adopted.
+      seedHome(homeDir, ".openagents/pylon", { pylonRef: "pylon.new" })
+      expect(resolveFirstRunLaunchChoice({ homeDir })).toEqual({
+        choiceMade: false,
+        chosenExistingHome: null,
+        chosenDisplayName: null,
+      })
     } finally {
       rmSync(homeDir, { recursive: true, force: true })
     }

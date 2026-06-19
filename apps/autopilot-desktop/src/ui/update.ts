@@ -678,6 +678,8 @@ export const update = (model: Model, message: Message): Result => {
           onboardingPending: false,
           onboardingStatusLine: projection.complete
             ? { text: "earning — onboarding complete", tone: "success" }
+            : projection.ok === false
+              ? { text: "status refresh needs a retry", tone: "error" }
             : projection.hasRetryableFailure
               ? { text: "a step needs a retry", tone: "error" }
               : {

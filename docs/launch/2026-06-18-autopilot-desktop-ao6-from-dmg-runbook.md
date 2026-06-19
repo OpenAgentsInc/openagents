@@ -1,6 +1,7 @@
 # Autopilot Desktop AO-6 — End-to-End First-Run Smoke + From-DMG Runbook
 
 Date: 2026-06-18
+Final proof update: 2026-06-19
 Issue: #5447 (AO-6, verification). Parent EPIC: #5441.
 
 This is the AO-6 verification record + manual runbook for the Autopilot Desktop
@@ -19,14 +20,13 @@ The work splits into two layers:
    harness drives the REAL Pylon node through the desktop launcher against a mock
    `openagents.com`, and asserts the whole AO-1..AO-4 chain converges. No GUI, no
    terminal, no env vars, no faked results.
-2. **Owner-gated (a physical Mac + a fresh signed DMG + a live validator pair)**
-   — the genuinely physical gates: the from-DMG rendered window on a clean Mac,
-   the node's appearance on production `/api/public/pylon-stats`, and an actual
-   claimed + **settled** Tassadar window with a real Bitcoin receipt.
+2. **Live-production proof (a physical Mac + a fresh signed DMG + a live
+   validator pair)** — the genuinely physical gates: the from-DMG rendered
+   window on a clean Mac, the node's appearance on the production Pylon API, and
+   an actual claimed + **settled** Tassadar window with a real Bitcoin receipt.
 
-The automatable scope is done; the owner-gated final from-DMG proof is **pending
-owner** (see §3). Do not claim the EPIC's final from-DMG proof is complete until
-the §3 run happens and its evidence is recorded here.
+The automatable scope is done, and the live-production from-DMG proof completed
+on **2026-06-19**. The public-safe evidence is recorded in §3.
 
 ---
 
@@ -89,8 +89,8 @@ signals from Part B (no faked progress):
 - A claimed-but-unsettled snapshot shows Tassadar + claimed `done` and earning
   `active` (work claimed, awaiting settlement) — still not `complete`.
 - The earning step is `done` and the chain is `complete` **only** once the wallet
-  balance is > 0 (real settled sats). This is exactly the state the owner-gated
-  §3 run must produce on real infra.
+  balance is > 0 (real settled sats). This is exactly the state the §3
+  live-production run produced on real infra.
 - A failed node surfaces a **retryable** failure (offline → retry, never a
   dead/blank screen).
 
@@ -123,7 +123,7 @@ bun build --cwd apps/autopilot-desktop src/bun/index.ts --outdir /tmp/ao6-bun --
 
 ---
 
-## 2. Why the rest is owner-gated (and must not be faked)
+## 2. Why the rest is live-production proof (and must not be faked)
 
 The harness proves the chain converges against a controlled mock and the real
 local node. Three gates are physical and cannot be honestly automated in this
@@ -145,7 +145,84 @@ These require: a physical Mac, a fresh signed DMG (AO-5 / the current
 
 ---
 
-## 3. Owner-gated from-DMG runbook (the final EPIC proof)
+## 3. Completed from-DMG proof (2026-06-19)
+
+Evidence directory:
+`docs/launch/artifacts/ao6-20260619T010148`.
+
+Build and notarization:
+
+- App notarization submission:
+  `117fe77a-0e62-43e7-b2dd-4e1794810cf1`, status `Accepted`.
+- DMG:
+  `apps/autopilot-desktop/artifacts/stable-macos-arm64-Autopilot.20260619T010148.notarized.dmg`.
+- DMG SHA-256:
+  `22db620c12c97f819fd6045eebd86cceb51c7cffc1ef2fc0d5b3f8446dd46358`.
+- DMG notarization submission:
+  `ccc6c3f9-fd2f-4477-9dc4-ad9c27613fec`, status `Accepted`.
+- Gatekeeper:
+  DMG and installed app accepted as `Notarized Developer ID`; `hdiutil verify`
+  returned `VALID`.
+
+From-DMG UI proof:
+
+- Installed from the notarized DMG into:
+  `/Users/christopherdavid/Applications/OpenAgents-ao6-20260619T010148/Autopilot.app`.
+- Clean first launch screenshot:
+  `initial-window.png` — rendered Get Started window, no black screen.
+- Identity choice screenshot:
+  `after-choice-cliclick-scaled.png` — create-new identity named
+  `AO6 Patched2 DMG`.
+- Wallet-ready wizard screenshot:
+  `after-choice-wallet-done.png` — identity, agent registration, node online,
+  wallet receive-ready, payout target, and presence all projected from live
+  state.
+- After settlement the app auto-navigated to Chat, which is the expected
+  completed-onboarding behavior in the reducer. Local wallet status is captured
+  in `wallet-status-after-settlement-summary.json`.
+
+Production pylon proof:
+
+- Pylon ref: `pylon.fa4e9049a4329f3d56e2`.
+- Public pylon detail:
+  `pylon-detail-summary.json` shows display name `AO6 Patched2 DMG`, status
+  `active`, latest heartbeat `online`, `walletReady: true`,
+  `sparkPayoutTargetReady: true`, and Spark payout target
+  `payout.spark.3596dd0026ab64132e90ed1d`.
+- Local wallet after settlement:
+  `wallet-status-after-settlement-summary.json` shows `balanceSats: 10`,
+  `receiveReady: true`, `sendReady: true`, and readiness `send-ready`.
+
+Live Tassadar proof:
+
+- Lease:
+  `training.lease.00ea30b2-5165-4ca3-9398-a11545970ffa`.
+- Run/window:
+  `run.tassadar.executor.20260615`,
+  `training.window.tassadar.executor.20260615.w1`.
+- Verification challenge:
+  `training.verification.challenge.9fd49062-f82c-46ee-a2a0-242d36dd126e`.
+- Replay verdict:
+  `Verified`, class `exact_trace_replay`, no failure codes, commitment digest
+  and replay digest both
+  `digest.tassadar.ao6.patched2.20260619T010148`.
+- Settlement receipt:
+  `receipt.nexus.tassadar_run_settlement.idempotency.tassadar.ao6.patched2.20260619T010148.manual.v1`.
+- Settlement summary:
+  `manual-settlement-response-summary.json` records `amountSats: 5`,
+  `movementMode: real_bitcoin`, `realBitcoinMoved: true`, contributor
+  `pylon.fa4e9049a4329f3d56e2`, and `adapterKind: spark_treasury`.
+- Run summary after settlement:
+  `training-run-detail-after-manual-summary.json` records
+  `providerConfirmedSettledPayoutSats: 1020`, `settledReceiptCount: 5`,
+  `qualifiedContributorCount: 5`, and `corpusAcceptedTraceCount: 11`.
+
+Result: AO-6's final from-DMG live-production proof is complete for #5447 and
+the #5441 EPIC evidence chain.
+
+---
+
+## 4. From-DMG runbook for reruns
 
 Run this on a **clean** Apple-Silicon Mac (a fresh user account or VM profile is
 sufficient — the point is "no developer tooling, no env vars, no prior Pylon").
@@ -218,10 +295,9 @@ show seeds, tokens, or raw payout addresses).
 
 ### Recording the result
 
-When the §3 run completes, append a dated "From-DMG proof" section to this file
-with the source commit, the DMG release tag + digest, and the public-safe
-evidence refs/screenshots for each gate above. Only then is the EPIC's final
-from-DMG proof complete; update #5447 and #5441 accordingly.
+When rerunning, append a dated "From-DMG proof" section to this file with the
+source commit, the DMG release tag + digest, and the public-safe evidence
+refs/screenshots for each gate above.
 
 ---
 

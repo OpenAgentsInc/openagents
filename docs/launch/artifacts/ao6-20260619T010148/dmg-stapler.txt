@@ -1,0 +1,3 @@
+Processing: /Users/christopherdavid/work/openagents/apps/autopilot-desktop/artifacts/stable-macos-arm64-Autopilot.20260619T010148.notarized.dmg
+Processing: /Users/christopherdavid/work/openagents/apps/autopilot-desktop/artifacts/stable-macos-arm64-Autopilot.20260619T010148.notarized.dmg
+The staple and validate action worked!

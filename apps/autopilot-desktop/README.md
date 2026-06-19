@@ -178,15 +178,15 @@ earning-ready node. Two proofs cover this:
   overwrites a home), asserts the AO-3 chosen name flows into registration, and
   asserts the AO-4 wizard projects each step from real state (incl. the
   not-complete-until-settled and offline → retry behaviors). The from-DMG
-  rendered window, production `/api/public/pylon-stats` presence, and a real
-  settled Bitcoin receipt are **owner-gated** — the smoke marks them
-  pending-owner and never fakes them.
+  rendered window, production pylon detail, and real settled Bitcoin receipt
+  are recorded in the live-production verification record; the smoke still
+  never fakes those physical gates.
 
 Black-screen regression guard (commit `73cada159`): `view`/`crashView` must
 return a Foldkit `Document` (`{ title, body }`), not a bare `Html`, or the window
 never mounts. `bun test tests/black-screen-guard.test.ts` fails on a regression.
 
-The AO-6 verification record + the owner-gated from-DMG runbook live at
+The AO-6 verification record + the from-DMG rerun runbook live at
 `docs/launch/2026-06-18-autopilot-desktop-ao6-from-dmg-runbook.md`.
 
 ## Built-in Agent (#5063)

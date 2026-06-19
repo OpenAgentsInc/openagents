@@ -17,6 +17,7 @@ import {
   projectIdentityChoiceState,
   saveIdentityChoice,
 } from "./identity-choice"
+import { resolveFirstRunLaunchChoice } from "./first-run-launch-choice"
 import { projectOnboardingStatus } from "../shared/onboarding-status"
 import {
   autoUpdateDisabledReason,
@@ -121,6 +122,71 @@ const localAppleFmPrompt =
   "Run entirely locally through Apple Foundation Models. Use list_files on '.', then read_file on README.md if it exists, and answer with a concise summary of the local workspace. Refuse shell, write, network, deployment, and out-of-workspace requests."
 
 let managedNode: SupervisedNode | null = null
+
+type OnboardingSignals = Awaited<ReturnType<typeof fetchOnboardingSignals>>
+type CachedOnboardingSignals = {
+  readonly key: string
+  readonly signals: OnboardingSignals
+}
+type PendingOnboardingSignals = {
+  readonly key: string
+  readonly promise: Promise<OnboardingSignals>
+}
+
+const onboardingSignalWaitMs = Number(
+  Bun.env.AUTOPILOT_DESKTOP_ONBOARDING_SIGNAL_WAIT_MS ?? "650",
+)
+let cachedOnboardingSignals: CachedOnboardingSignals | null = null
+let pendingOnboardingSignals: PendingOnboardingSignals | null = null
+
+const defaultOnboardingSignals = (): OnboardingSignals => ({
+  walletReceiveReady: false,
+  walletBalanceSats: null,
+  openAssignmentCount: 0,
+})
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise(resolve => setTimeout(resolve, ms))
+
+const onboardingSignalKey = (input: {
+  readonly baseUrl: string
+  readonly token: string
+}): string => `${input.baseUrl}\0${input.token}`
+
+async function readOnboardingSignalsFast(input: {
+  readonly baseUrl: string
+  readonly token: string
+}): Promise<OnboardingSignals> {
+  const key = onboardingSignalKey(input)
+  if (pendingOnboardingSignals === null || pendingOnboardingSignals.key !== key) {
+    const promise = fetchOnboardingSignals(input)
+      .then(signals => {
+        if (pendingOnboardingSignals?.key === key) {
+          cachedOnboardingSignals = { key, signals }
+        }
+        return signals
+      })
+      .finally(() => {
+        if (pendingOnboardingSignals?.key === key) {
+          pendingOnboardingSignals = null
+        }
+      })
+    pendingOnboardingSignals = { key, promise }
+  }
+
+  if (cachedOnboardingSignals?.key === key) return cachedOnboardingSignals.signals
+
+  const waitMs =
+    Number.isFinite(onboardingSignalWaitMs) && onboardingSignalWaitMs > 0
+      ? onboardingSignalWaitMs
+      : 650
+  const timeout = sleep(waitMs).then(() => null)
+  const first = await Promise.race([pendingOnboardingSignals.promise, timeout])
+  if (first !== null) return first
+  return cachedOnboardingSignals?.key === key
+    ? cachedOnboardingSignals.signals
+    : defaultOnboardingSignals()
+}
 
 // CL-45: resolve the node home once per call so a node that starts after the app
 // (or rotates its home) is picked up without a restart. Falls back to the env
@@ -440,7 +506,7 @@ async function onboardingStatusProjection(): Promise<OnboardingStatusResponse> {
   let openAssignmentCount = 0
   if (localPylonReady && controlToken !== null) {
     try {
-      const signals = await fetchOnboardingSignals({
+      const signals = await readOnboardingSignalsFast({
         baseUrl: controlBaseUrl,
         token: controlToken,
       })
@@ -467,10 +533,19 @@ async function onboardingStatusProjection(): Promise<OnboardingStatusResponse> {
   })
 }
 
+async function restartManagedNodeForIdentityChoice(): Promise<void> {
+  cachedOnboardingSignals = null
+  pendingOnboardingSignals = null
+  managedNode?.stop()
+  managedNode = null
+  await sleep(300)
+  startManagedNodeSupervisor()
+}
+
 // AO-3 (#5444): record the user's first-run identity choice. The save path
 // re-verifies an existing home's seed marker before adopting it and never
 // overwrites a different home. Returns the refreshed public-safe state.
-function chooseIdentityHandler(params: ChooseIdentityParams): ChooseIdentityResponse {
+async function chooseIdentityHandler(params: ChooseIdentityParams): Promise<ChooseIdentityResponse> {
   if (params.kind === "use_existing") {
     const detected = detectExistingPylonIdentity()
     if (detected === null) {
@@ -481,6 +556,7 @@ function chooseIdentityHandler(params: ChooseIdentityParams): ChooseIdentityResp
       }
     }
     const result = saveIdentityChoice({ kind: "use_existing", home: detected.home })
+    if (result.ok) await restartManagedNodeForIdentityChoice()
     return {
       ok: result.ok,
       state: identityChoiceProjection(),
@@ -491,6 +567,7 @@ function chooseIdentityHandler(params: ChooseIdentityParams): ChooseIdentityResp
     kind: "create_new",
     displayName: params.displayName,
   })
+  if (result.ok) await restartManagedNodeForIdentityChoice()
   return {
     ok: result.ok,
     state: identityChoiceProjection(),
@@ -862,53 +939,40 @@ const notifier = createSessionNotifier({ raise: raiseOsNotification })
 // AO-3 (#5444): consult the persisted first-run identity choice BEFORE bring-up.
 // "use existing" boots the detected seed-bearing home (wallet/payout/history
 // carry over, no fork); "create new" mints a fresh managed home and registers
-// under the user's chosen name. Until the user has chosen, the supervisor boots
-// the default managed home (the wizard's first screen gates the choice in the
-// UI; the launcher never overwrites a different home). Re-verify the seed marker
-// for "use existing" so a stale choice can never adopt the wrong home.
-const firstRunChoice = loadIdentityChoice()
-let chosenExistingHome: string | null = null
-let chosenDisplayName: string | null = null
-if (firstRunChoice?.kind === "use_existing" && firstRunChoice.home !== null) {
-  const detected = detectExistingPylonIdentity()
-  if (detected !== null && detected.home === firstRunChoice.home) {
-    chosenExistingHome = firstRunChoice.home
-  }
-} else if (firstRunChoice?.kind === "create_new") {
-  chosenDisplayName = firstRunChoice.displayName
+// under the user's chosen name. Until the user has chosen, auto-onboarding stays
+// off so the app does not pre-claim the pylon or leak product env into a child
+// before the identity choice.
+function startManagedNodeSupervisor(): void {
+  const firstRunChoice = resolveFirstRunLaunchChoice()
+  managedNode = superviseManagedNode({
+    cwd: process.cwd(),
+    env: Bun.env,
+    controlBaseUrl,
+    // AO-3 (#5444): the chosen existing home to boot (null => fresh create-new
+    // managed home) and the chosen create-new display name (null => neutral auto).
+    useExistingHome: firstRunChoice.chosenExistingHome,
+    onboardingDisplayName: firstRunChoice.chosenDisplayName,
+    // #5027: in a packaged `.app` the dev repo entry is unreachable; the launcher
+    // falls back to the bundled Pylon node under the app's Resources. In dev this
+    // dir holds no `app/pylon-node/` bundle, so the dev path is still used.
+    resourcesDir: PATHS.RESOURCES_FOLDER,
+    // AO-1/AO-2 (#5442/#5443, EPIC #5441): once an identity is chosen, converge
+    // to a registered, presence-live, payout-target-registered node. An explicit
+    // operator OPENAGENTS_AGENT_TOKEN / PYLON_OPENAGENTS_BASE_URL is still
+    // respected by the child-env builder.
+    autoOnboarding: firstRunChoice.choiceMade,
+    onStatus(status: NodeLaunchStatus) {
+      console.log(
+        `[autopilot-desktop] local node status: ${status}` +
+          (managedNode?.home() ? ` (home: ${managedNode.home()})` : ""),
+      )
+      // #5025: surface the honest launch-lifecycle status as a webview badge.
+      rpc.send.nodeLaunchStatus({ status })
+    },
+  })
 }
 
-managedNode = superviseManagedNode({
-  cwd: process.cwd(),
-  env: Bun.env,
-  controlBaseUrl,
-  // AO-3 (#5444): the chosen existing home to boot (null => fresh create-new
-  // managed home) and the chosen create-new display name (null => neutral auto).
-  useExistingHome: chosenExistingHome,
-  onboardingDisplayName: chosenDisplayName,
-  // #5027: in a packaged `.app` the dev repo entry is unreachable; the launcher
-  // falls back to the bundled Pylon node under the app's Resources. In dev this
-  // dir holds no `app/pylon-node/` bundle, so the dev path is still used.
-  resourcesDir: PATHS.RESOURCES_FOLDER,
-  // AO-1/AO-2 (#5442/#5443, EPIC #5441): converge a fresh install headlessly to
-  // a registered, presence-live, payout-target-registered, Tassadar-joined node.
-  // The launcher self-registers the agent on first run (persisting the
-  // `oa_agent_...` token in the managed home, never logged) and injects the
-  // onboarding env switches (PYLON_OPENAGENTS_BASE_URL / OPENAGENTS_AGENT_TOKEN /
-  // PYLON_ASSIGNMENT_WORKER=1) into the node child, so the existing Pylon runtime
-  // lights up presence + payout + the Tassadar assignment worker — no new node
-  // code. An explicit OPENAGENTS_AGENT_TOKEN / PYLON_OPENAGENTS_BASE_URL in the
-  // environment is respected (operator override).
-  autoOnboarding: true,
-  onStatus(status: NodeLaunchStatus) {
-    console.log(
-      `[autopilot-desktop] local node status: ${status}` +
-        (managedNode?.home() ? ` (home: ${managedNode.home()})` : ""),
-    )
-    // #5025: surface the honest launch-lifecycle status as a webview badge.
-    rpc.send.nodeLaunchStatus({ status })
-  },
-})
+startManagedNodeSupervisor()
 
 const poller = createNodeStatePoller({
   intervalMs: Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 2000,

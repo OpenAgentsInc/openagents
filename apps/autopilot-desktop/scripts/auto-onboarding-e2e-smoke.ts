@@ -22,13 +22,13 @@
 //     to the right per-step states (identity → registered → node online → wallet
 //     → payout → presence → Tassadar → claimed → earned), with no faked progress.
 //
-// HONEST SCOPE — the genuinely OWNER-GATED gates are NOT faked here. The real
-// from-DMG run on a clean Apple-Silicon Mac, the node's appearance on production
-// `/api/public/pylon-stats`, and an actual claimed + SETTLED Tassadar window
-// with a real Bitcoin receipt require a physical Mac + a fresh signed DMG (AO-5)
-// + a live validator pair. This harness automates everything UP TO that boundary
-// and prints the exact manual steps + expected public-safe evidence for the
-// owner to run those final gates. See
+// HONEST SCOPE — the live-production / live-proof gates are NOT faked here. The
+// real from-DMG run on a clean Apple-Silicon Mac, the node's appearance on
+// production `/api/public/pylon-stats`, and an actual claimed + SETTLED Tassadar
+// window with a real Bitcoin receipt require a physical Mac + a fresh signed DMG
+// (AO-5) + a live validator pair. This harness automates everything UP TO that
+// boundary and prints the exact manual steps + expected public-safe evidence for
+// the live proof run. See
 // `docs/launch/2026-06-18-autopilot-desktop-ao6-from-dmg-runbook.md`.
 //
 // Secrets boundary: the mock NEVER receives or echoes a real secret; the only
@@ -366,6 +366,10 @@ check(
   presenceHits.some(h => h.bearer === `Bearer ${FAKE_TOKEN}`),
 )
 check(
+  "Gate 6b — no pre-token presence request claimed the pylon",
+  presenceHits.every(h => h.bearer === `Bearer ${FAKE_TOKEN}`),
+)
+check(
   "Gate 7 — payout target registered (POST .../spark-payout-target)",
   seen(h => h.path.endsWith("/spark-payout-target") && h.method === "POST"),
 )
@@ -397,7 +401,7 @@ const localPylonReady = identity !== null && agentRegistered
 // C.1 the converged, earning-ready state the chain reaches by the end of the run
 // (presence + payout fired, assignment loop polling). We assert the wizard
 // projects each step to a sane, non-faked status. We do NOT assert "earned"
-// done — that requires a settled receipt (owner-gated, Part D).
+// done — that requires a settled receipt (live-proof, Part D).
 const convergedInput: OnboardingStatusInput = {
   fetchedAt: new Date().toISOString(),
   identityChoiceMade: true,
@@ -473,7 +477,7 @@ check(
 )
 
 // C.3 the FULLY-EARNED snapshot (sats > 0): the only state where complete=true.
-// This is what the owner-gated Part D run must produce on real infra.
+// This is what the live-production Part D run must produce on real infra.
 const earnedInput: OnboardingStatusInput = {
   ...claimedInput,
   walletBalanceSats: 21,
@@ -503,21 +507,21 @@ check(
 )
 
 // ===========================================================================
-// PART D — OWNER-GATED gates. NOT automatable here; NOT faked. Listed so the
-// run output is honest about what remains. The owner runs these on a physical
-// Mac with a fresh signed DMG + a live validator pair, per the runbook.
+// PART D — LIVE-PRODUCTION gates. NOT claimed by the mock harness; NOT faked.
+// Listed so the run output is honest about what remains for a physical Mac with
+// a fresh signed DMG + a live validator pair, per the runbook.
 // ===========================================================================
-console.log("\n-- Part D: OWNER-GATED gates (pending-owner; NOT faked here) --")
-const ownerGated = [
+console.log("\n-- Part D: LIVE-PRODUCTION gates (live-proof; NOT faked here) --")
+const liveProofGates = [
   "From-DMG on a clean Apple-Silicon Mac: install + open the signed DMG, NO terminal, window RENDERS (no black screen) — visual confirmation on a stranger's machine.",
   "Production presence: the node appears on https://openagents.com/api/public/pylon-stats (real, not a mock).",
   "Real Tassadar settlement: a claimed window SETTLES against a live validator pair, producing a real Bitcoin receipt (balance > 0).",
 ]
-for (const g of ownerGated) {
-  console.log(`PENDING-OWNER  ${g}`)
+for (const g of liveProofGates) {
+  console.log(`LIVE-PROOF  ${g}`)
 }
 console.log(
-  "\nRunbook for the owner-gated gates: docs/launch/2026-06-18-autopilot-desktop-ao6-from-dmg-runbook.md",
+  "\nRunbook for the live-production gates: docs/launch/2026-06-18-autopilot-desktop-ao6-from-dmg-runbook.md",
 )
 
 // --- final result -----------------------------------------------------------
@@ -526,7 +530,7 @@ cleanup()
 console.log()
 if (ok) {
   console.log(
-    "RESULT: the AO-1..AO-4 auto-onboarding chain converges end-to-end, headlessly, no GUI / no terminal / no env vars: AO-3 identity choice (both paths, never overwrites a home), the full register → presence → payout → assignment chain (with the chosen name), and the AO-4 wizard projecting each step from REAL state. The from-DMG render, production pylon-stats, and a settled Bitcoin receipt remain OWNER-GATED (see runbook) and are NOT claimed done.",
+    "RESULT: the AO-1..AO-4 auto-onboarding chain converges end-to-end, headlessly, no GUI / no terminal / no env vars: AO-3 identity choice (both paths, never overwrites a home), the full register → presence → payout → assignment chain (with the chosen name), and the AO-4 wizard projecting each step from REAL state. The mock harness does not claim the from-DMG render, production pylon-stats, or settled Bitcoin receipt; those are live-production proof gates (see runbook).",
   )
   process.exit(0)
 } else {

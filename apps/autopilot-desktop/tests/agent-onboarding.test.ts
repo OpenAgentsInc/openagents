@@ -363,12 +363,12 @@ describe("buildOnboardingChildEnv (AO-2)", () => {
     expect(env.PYLON_ASSIGNMENT_WORKER).toBe("1")
   })
 
-  it("stays honest with no token: base URL only, no token, no assignment worker", () => {
+  it("stays isolated with no token: no product URL, no token, no assignment worker", () => {
     const env = buildOnboardingChildEnv({
       base: { PYLON_HOME: "/home/.pylon-local" },
       agentToken: null,
     })
-    expect(env.PYLON_OPENAGENTS_BASE_URL).toBe("https://openagents.com")
+    expect(env.PYLON_OPENAGENTS_BASE_URL).toBeUndefined()
     expect(env.OPENAGENTS_AGENT_TOKEN).toBeUndefined()
     expect(env.PYLON_ASSIGNMENT_WORKER).toBeUndefined()
   })

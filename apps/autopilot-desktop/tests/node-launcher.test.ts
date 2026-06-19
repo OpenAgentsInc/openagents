@@ -594,7 +594,7 @@ describe("ensureManagedNode auto-onboarding (AO-1/AO-2)", () => {
     readinessTimeoutMs: 5,
   }
 
-  it("injects only the base URL into the child env when no token is persisted (first run)", async () => {
+  it("keeps the child isolated when no token is persisted (first run)", async () => {
     const spawnCalls: SpawnNodeInput[] = []
     await ensureManagedNode({
       ...baseOptions,
@@ -609,8 +609,8 @@ describe("ensureManagedNode auto-onboarding (AO-1/AO-2)", () => {
     })
     const env = spawnCalls[0]!.env
     expect(env.PYLON_HOME).toBe(join(repoRoot, ".pylon-local"))
-    expect(env.PYLON_OPENAGENTS_BASE_URL).toBe("https://openagents.com")
-    // No token yet -> presence/assignment stay gated (honest).
+    // No token yet -> no product env, presence, or assignment worker.
+    expect(env.PYLON_OPENAGENTS_BASE_URL).toBeUndefined()
     expect(env.OPENAGENTS_AGENT_TOKEN).toBeUndefined()
     expect(env.PYLON_ASSIGNMENT_WORKER).toBeUndefined()
   })
