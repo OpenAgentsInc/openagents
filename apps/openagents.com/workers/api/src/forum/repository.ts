@@ -2357,6 +2357,31 @@ export const readForumTopicById = (
       .first<TopicRow>(),
   ).pipe(Effect.map(row => (row === null ? null : topicFromRow(row))))
 
+// Resolve a topic by either its topicId (UUID primary key) or its slug. Topic
+// IDs are UUIDs and slugs are human strings, so they never collide on a single
+// row; slugs are unique per forum, not globally, so an exact id match is
+// preferred first and a slug match falls back to the most recently updated
+// topic. This lets pretty `/forum/t/<slug>` URLs resolve the same as
+// `/forum/t/<topicId>` URLs (the same id-or-slug pattern used by
+// `readForumSummaryByRef`).
+export const readForumTopicByRef = (
+  db: D1Database,
+  topicRef: string,
+): Effect.Effect<ForumTopicSummary | null, ForumStorageError> =>
+  d1Effect('forum.readTopicByRef', () =>
+    db
+      .prepare(
+        `SELECT *
+           FROM forum_topics
+          WHERE (id = ? OR slug = ?)
+            AND archived_at IS NULL
+          ORDER BY (id = ?) DESC, updated_at DESC
+          LIMIT 1`,
+      )
+      .bind(topicRef, topicRef, topicRef)
+      .first<TopicRow>(),
+  ).pipe(Effect.map(row => (row === null ? null : topicFromRow(row))))
+
 export const readForumPostById = (
   db: D1Database,
   postId: string,
@@ -2615,7 +2640,7 @@ export const readForumTopicList = (
 
 export const readForumTopicDetail = (
   db: D1Database,
-  topicId: string,
+  topicRef: string,
   options: Readonly<{
     limit?: number
     postSortDirection?: ForumTopicPostSortDirection
@@ -2625,7 +2650,9 @@ export const readForumTopicDetail = (
   ForumStorageError | ForumReadAccessDenied | ForumValidationError
 > =>
   Effect.gen(function* () {
-    const maybeTopic = yield* readForumTopicById(db, topicId)
+    // Resolve by topicId or slug so both `/forum/t/<topicId>` and
+    // `/forum/t/<slug>` URLs render the same topic.
+    const maybeTopic = yield* readForumTopicByRef(db, topicRef)
 
     if (maybeTopic === null) {
       return null

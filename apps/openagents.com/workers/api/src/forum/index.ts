@@ -145,6 +145,7 @@ export {
   searchForumPublicContent,
   readForumTopicDetail,
   readForumTopicById,
+  readForumTopicByRef,
   readForumTopicByIdempotencyKey,
   readForumTopicList,
   readForumWatchByIdempotencyKey,
