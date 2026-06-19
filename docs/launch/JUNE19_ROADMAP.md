@@ -20,6 +20,55 @@ the section below for the live-verification record.
 
 ---
 
+## P0 (afternoon) — NEW HEADLINE: stand up the inference business + COLLECT MONEY NOW
+
+The afternoon thrust turned the day's product spine toward the **buy-side**. Two pieces:
+
+### Inference gateway — ✅ BUILT (EPIC #5474 CLOSED), now going live (not inert)
+
+The entire OpenAgents inference gateway shipped to `main` behind
+`INFERENCE_GATEWAY_ENABLED` (12 issues): OpenAI-compatible `/v1/chat/completions` →
+key-auth → balance gate → **cheapest-viable routing** (claude→Vertex, open→Fireworks,
++passthrough) with 429/503 overflow → adapter dispatch → **live credit decrement metered
+from real `usage`** via the pricing engine (idempotent, never-negative); plus the
+`openagents-network` **fabric supply lane** + **serving-node payout** (parity-gated,
+owner-armed), the **referral subsystem** (#5475: attribution → ongoing-accrual-on-ALL →
+three-way split → payout → dashboard), and **abuse/KYC/rate-limit** controls. Design +
+strategy: `docs/inference/` (7 docs incl. the Agent-Cloud capstone). Docs `pricing-vs-factory`
++ `pricing-model` set the multiplier/margin/BTC-discount mechanics.
+
+**Go-live (in flight):** enable Autopilot's **free inference on Gemini 3.5 Flash** — free
+until **$10 per verified owner-claim identity** (Sybil-resistant shared pool; unclaimed gets
+only a taste), earn more via contribution, **premium models (Opus/etc.) owner-grant
+allowlist only**. Server build (Vertex Gemini adapter + free pool + allowlist) + the
+Autopilot client (#5485) are landing; then flip the flag + deploy + live-verify a real
+free-Gemini call. **Posture: nothing stays inert — we enable it.**
+
+### Collect money now — credits purchase path (audit in flight)
+
+Owner mandate: we must be able to **collect money now**. There is real payment infra on
+`main` (`stripe-billing.ts`, `/api/billing/checkout|summary|stripe/webhook|setup-intents|
+auto-top-up|coupons`, `payments-ledger`/`buyer-payment-ledger`; web `credits-panel.ts` +
+`page/loggedIn/billing/`). An audit (`docs/launch/2026-06-19-credits-purchase-collect-money-audit.md`)
+is determining whether a real card/BTC payment → usable credit balance → inference-spend
+loop is **live today or stubbed**, and the exact gap list to turn collection on. This is
+the top near-term priority: a customer/business can pay → get credits → use inference.
+
+### Mobile remote-control gap — EPIC #5492 Wave-1 (in progress)
+
+Audit `docs/launch/2026-06-19-desktop-mobile-remote-control-gap-audit.md`. G2 (live
+session streaming) + G1 (6 steer-actions onto the secure bridge) merged; G3 (artifact/diff
+viewer) reconciling. G4 (chat/turn.steer) is a follow-on. Goal: mobile steers all relevant
+desktop capabilities over the capability-scoped bridge (no dev token on the wire).
+
+### Desktop chat UX + auth fixes — ✅ LANDED
+
+Owner-reported chat-pane cleanup (`c57585a45`: replay out of chat, scoped-steps collapsed,
+palette unified to openagents.com) + the durable control-token **401 fix** (`7b844170f`:
+canonical Pylon homes + server-probe fall-through). Chat now works and looks right.
+
+---
+
 ## P0 — HEADLINE: Autopilot Desktop → full coding agent (EPIC #5461) — ✅ COMPLETE (be2378066)
 
 **DONE 2026-06-19.** Phase 1 nav shell #5462 (grouped nav + Cmd-K palette + shortcuts +
