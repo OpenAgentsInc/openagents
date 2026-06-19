@@ -59,6 +59,8 @@ import {
   setCoordinatorPausedViaBridge,
   spawnSession as spawnSessionCall,
   spawnSessionViaBridge,
+  steerTurn as steerTurnCall,
+  steerTurnViaBridge,
   submitIntent as submitIntentCall,
   submitIntentViaBridge,
 } from "../control/control-client"
@@ -114,6 +116,7 @@ export type ConnectionValue = {
     verify?: string[]
     lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
   }): Promise<string>
+  steerTurn(input: { sessionRef: string; instruction: string; timeoutSeconds?: number }): Promise<string>
   deploy(input: { target: DeployTarget; ref: string; env?: DeployEnv }): Promise<DeployResult>
   fetchSessionEvents(sessionRef: string): Promise<ControlSessionEventRow[]>
   fetchSessionArtifact(sessionRef: string): Promise<SessionArtifact>
@@ -549,6 +552,27 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [conn, poll],
   )
 
+  const steerTurn = useCallback(
+    async (input: { sessionRef: string; instruction: string; timeoutSeconds?: number }) => {
+      if (conn === null) throw new Error("not connected")
+      const session = bridge.current
+      let ref: string | null = null
+      if (session !== null) {
+        try {
+          ref = (await steerTurnViaBridge(session, input)).sessionRef
+        } catch {
+          ref = null
+        }
+      }
+      if (ref === null || ref.length === 0) {
+        ref = (await steerTurnCall(conn, input)).sessionRef
+      }
+      await poll(conn)
+      return ref
+    },
+    [conn, poll],
+  )
+
   const deploy = useCallback(
     async (input: { target: DeployTarget; ref: string; env?: DeployEnv }) => {
       if (conn === null) return { accepted: false, reason: "not connected", errors: [] }
@@ -635,6 +659,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setCoordinatorPaused,
     cancelSession,
     spawnSession,
+    steerTurn,
     deploy,
     fetchSessionEvents,
     fetchSessionArtifact,

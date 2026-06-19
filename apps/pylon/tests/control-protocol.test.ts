@@ -23,6 +23,7 @@ import {
 import {
   codexControlSessionExecutionSettings,
   createControlSessionActions,
+  type ControlSessionActions,
   type ControlSessionExecutor,
 } from "../src/node/control-sessions"
 import type { PylonEvent } from "../src/node/state"
@@ -738,6 +739,156 @@ describe("control protocol", () => {
         ),
       )
     })
+  })
+
+  test("bridge turn.steer routes to session.reply under send_instruction capability", async () => {
+    const calls: Array<{ sessionRef: string; objective: string; timeoutSeconds?: number }> = []
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          const sessions: ControlSessionActions = {
+            spawn: async () => ({ sessionRef: "session.spawned", state: "queued" }),
+            reply: async (command) => {
+              calls.push({
+                sessionRef: command.sessionRef,
+                objective: command.objective,
+                ...(command.timeoutSeconds === undefined ? {} : { timeoutSeconds: command.timeoutSeconds }),
+              })
+              return {
+                sessionRef: "session.child.1",
+                parentSessionRef: command.sessionRef,
+                state: "queued",
+              }
+            },
+            startAppleFm: async () => ({
+              ok: false,
+              sessionRef: "",
+              blockerRefs: ["blocker.test.apple_fm.unavailable"],
+              error: "unavailable",
+            }),
+            list: async () => [],
+            cancel: async (sessionRef) => ({
+              sessionRef,
+              parentSessionRef: null,
+              adapter: "codex",
+              lane: "auto",
+              account: null,
+              accountRefHash: null,
+              objectiveRef: "objective",
+              workspaceRef: "workspace",
+              workspaceCleanupRef: null,
+              workspaceCleanupReceiptRef: null,
+              workspaceRetentionReasonRef: null,
+              objectiveDigestRef: "objective",
+              verifyRef: "verify",
+              state: "cancelled",
+              artifactRef: null,
+              resultRef: null,
+              errorClass: null,
+              errorDigestRef: null,
+              createdAt: "2026-06-19T00:00:00.000Z",
+              startedAt: null,
+              completedAt: "2026-06-19T00:00:01.000Z",
+              updatedAt: "2026-06-19T00:00:01.000Z",
+              eventCount: 0,
+              latestActivity: "",
+              cloudRunner: null,
+              resourceUsageReceiptRef: null,
+            }),
+            events: async (sessionRef) => ({
+              sessionRef,
+              eventsPath: "",
+              state: "queued",
+              recentEvents: [],
+            }),
+            artifact: async (sessionRef) => ({
+              sessionRef,
+              kind: "none",
+              artifact: null,
+            }),
+            eventStream: () => new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.close()
+              },
+            }),
+          }
+          const server = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: { ...stubActions([]), sessions },
+            port: 0,
+          })
+
+          const boot = (yield* Effect.promise(() =>
+            sendControlCommand(server.url, "test-token-0123456789abcdef", {
+              type: "bridge.issueBootstrap",
+            }),
+          )) as { bootstrapId: string; secret: string }
+          const pair = yield* Effect.promise(() =>
+            fetch(`${server.url}/bridge/pair`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                bootstrapId: boot.bootstrapId,
+                secret: boot.secret,
+                clientId: "mobile",
+                deviceClass: "ios",
+                capabilities: ["observe_public", "send_instruction"],
+                projectionLevel: "public_safe",
+              }),
+            }),
+          )
+          expect(pair.status).toBe(200)
+          const pairJson = (yield* Effect.promise(() => pair.json())) as {
+            ok?: boolean
+            claims?: { pairingRef?: unknown; jti?: unknown }
+          }
+          expect(pairJson.ok).toBe(true)
+          const pairingRef = String(pairJson.claims?.pairingRef ?? "")
+          const jti = String(pairJson.claims?.jti ?? "")
+
+          const steer = yield* Effect.promise(() =>
+            fetch(`${server.url}/bridge`, {
+              method: "POST",
+              headers: {
+                authorization: `Bridge ${pairingRef}:${jti}`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({
+                verb: "turn.steer",
+                clientRequestId: "client.turn.1",
+                idempotencyKey: "client.turn.1",
+                pairingRef,
+                capabilityRef: "send_instruction",
+                sessionRef: "session.parent.1",
+                instruction: "continue with the regression test",
+                timeoutSeconds: 120,
+              }),
+            }),
+          )
+          expect(steer.status).toBe(200)
+          const steerJson = (yield* Effect.promise(() => steer.json())) as {
+            ok?: boolean
+            result?: { sessionRef?: unknown; parentSessionRef?: unknown; state?: unknown }
+          }
+          expect(steerJson).toMatchObject({
+            ok: true,
+            result: {
+              sessionRef: "session.child.1",
+              parentSessionRef: "session.parent.1",
+              state: "queued",
+            },
+          })
+          expect(calls).toEqual([
+            {
+              sessionRef: "session.parent.1",
+              objective: "continue with the regression test",
+              timeoutSeconds: 120,
+            },
+          ])
+        }),
+      ),
+    )
   })
 
   test("repoRef sessions release clean managed worktrees and retain dirty closeouts", async () => {

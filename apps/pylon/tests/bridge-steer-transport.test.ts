@@ -11,8 +11,8 @@ import {
 
 // #5494 (epic #5492 G1) end-to-end proof: the four steer-actions that mobile
 // previously reached only over the dev-token /command path — spawn,
-// submit-intent, pause/resume, deploy — now ride the shared capability-scoped
-// bridge transport (pairBridge + createBridgeTransport) against the REAL node
+// submit-intent, turn.steer, pause/resume, deploy — now ride the shared
+// capability-scoped bridge transport (pairBridge + createBridgeTransport) against the REAL node
 // pairing service + capability gating. Only HTTP routing + the action results
 // are stubbed; the bootstrap exchange, authorize, and capability enforcement are
 // the exact node code paths from apps/pylon/src/node/control-server.ts.
@@ -72,6 +72,10 @@ describe("bridge steer transport (#5494)", () => {
           calls.push({ verb, title: body.title, body: body.body, submittedByClientRef: body.submittedByClientRef })
           return Response.json({ ok: true, result: { status: "received" } })
         }
+        if (verb === "turn.steer") {
+          calls.push({ verb, sessionRef: body.sessionRef, instruction: body.instruction, timeoutSeconds: body.timeoutSeconds })
+          return Response.json({ ok: true, result: { sessionRef: "session.child.1", parentSessionRef: body.sessionRef, state: "queued" } })
+        }
         if (verb === "coordinator.pause") {
           calls.push({ verb })
           return Response.json({ ok: true, result: { paused: true } })
@@ -109,7 +113,7 @@ describe("bridge steer transport (#5494)", () => {
     return { pairingRef: pair.claims.pairingRef, jti: pair.claims.jti }
   }
 
-  test("a steer-scoped credential reaches all four promoted steer verbs", async () => {
+  test("a steer-scoped credential reaches all promoted steer verbs", async () => {
     const service = createBridgePairingService()
     const calls: Array<Record<string, unknown>> = []
     const fetchImpl = makeFetch(service, calls)
@@ -128,6 +132,14 @@ describe("bridge steer transport (#5494)", () => {
     })) as { status: string }
     expect(intent.status).toBe("received")
 
+    const turn = (await transport.steerTurn({
+      sessionRef: "session.spawned.1",
+      instruction: "continue with tests",
+      timeoutSeconds: 120,
+    })) as { sessionRef: string; parentSessionRef: string }
+    expect(turn.sessionRef).toBe("session.child.1")
+    expect(turn.parentSessionRef).toBe("session.spawned.1")
+
     const paused = (await transport.pauseCoordinator()) as { paused: boolean }
     expect(paused.paused).toBe(true)
     const resumed = (await transport.resumeCoordinator()) as { paused: boolean }
@@ -141,6 +153,7 @@ describe("bridge steer transport (#5494)", () => {
     expect(calls.map((c) => c.verb)).toEqual([
       "session.spawn",
       "intent.submit",
+      "turn.steer",
       "coordinator.pause",
       "coordinator.resume",
       "deploy.cloud",
@@ -149,7 +162,8 @@ describe("bridge steer transport (#5494)", () => {
     // the dev token).
     expect(calls[0]).toMatchObject({ adapter: "codex", objective: "ship it" })
     expect(calls[1]).toMatchObject({ title: "Ask", body: "do it", submittedByClientRef: "mobile" })
-    expect(calls[4]).toMatchObject({ target: "cloudrun", ref: "main", env: "production" })
+    expect(calls[2]).toMatchObject({ sessionRef: "session.spawned.1", instruction: "continue with tests", timeoutSeconds: 120 })
+    expect(calls[5]).toMatchObject({ target: "cloudrun", ref: "main", env: "production" })
   })
 
   test("a read-only credential is denied every promoted steer verb", async () => {
@@ -161,6 +175,7 @@ describe("bridge steer transport (#5494)", () => {
 
     await expect(transport.spawn({ adapter: "codex", objective: "x" })).rejects.toThrow()
     await expect(transport.submitIntent({ title: "t", body: "b" })).rejects.toThrow()
+    await expect(transport.steerTurn({ sessionRef: "s1", instruction: "next" })).rejects.toThrow()
     await expect(transport.pauseCoordinator()).rejects.toThrow()
     await expect(transport.resumeCoordinator()).rejects.toThrow()
     await expect(transport.deployCloud({ target: "cloudrun", ref: "main" })).rejects.toThrow()

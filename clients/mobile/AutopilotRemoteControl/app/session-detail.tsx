@@ -6,7 +6,7 @@
 // directly for its events + artifact.
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { useNavigation, useRoute } from "@react-navigation/native"
 
 import type { ControlSessionEventRow, SessionArtifact } from "../src/control/control-client"
@@ -51,6 +51,9 @@ export default function SessionDetailScreen() {
   const [events, setEvents] = useState<ControlSessionEventRow[]>([])
   const [artifact, setArtifact] = useState<SessionArtifact | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [turnText, setTurnText] = useState("")
+  const [turnSending, setTurnSending] = useState(false)
+  const [turnError, setTurnError] = useState<string | null>(null)
   const eventsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const pollEvents = useCallback(
@@ -75,6 +78,8 @@ export default function SessionDetailScreen() {
     setEvents([])
     setArtifact(null)
     setExpanded(null)
+    setTurnText("")
+    setTurnError(null)
     void pollEvents(sessionRef)
     void c
       .fetchSessionArtifact(sessionRef)
@@ -143,6 +148,43 @@ export default function SessionDetailScreen() {
           >
             <Text style={styles.cancelText}>Cancel session</Text>
           </Pressable>
+        ) : null}
+        {session && sessionRef !== null ? (
+          <View style={styles.turnBox}>
+            <TextInput
+              style={styles.turnInput}
+              placeholder="Next instruction"
+              placeholderTextColor={C.textSecondary}
+              multiline
+              value={turnText}
+              onChangeText={setTurnText}
+            />
+            {turnError ? <Text style={styles.turnError}>{turnError}</Text> : null}
+            <Pressable
+              disabled={turnSending || turnText.trim().length === 0}
+              style={[
+                styles.turnBtn,
+                turnSending || turnText.trim().length === 0 ? styles.turnBtnDisabled : null,
+              ]}
+              onPress={() => {
+                const instruction = turnText.trim()
+                if (instruction.length === 0) return
+                setTurnSending(true)
+                setTurnError(null)
+                void c
+                  .steerTurn({ sessionRef, instruction })
+                  .then((childRef) => {
+                    setTurnText("")
+                    c.refresh()
+                    navigation.navigate("SessionDetail", { sessionRef: childRef })
+                  })
+                  .catch((e) => setTurnError(e instanceof Error ? e.message : "turn failed"))
+                  .finally(() => setTurnSending(false))
+              }}
+            >
+              <Text style={styles.turnText}>{turnSending ? "Sending..." : "Send turn"}</Text>
+            </Pressable>
+          </View>
         ) : null}
         {events.length === 0 ? (
           <View style={styles.card}>
@@ -225,6 +267,32 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   cancelText: { color: C.danger, fontSize: 14, fontWeight: "600" },
+  turnBox: {
+    backgroundColor: C.bgSecondary,
+    borderColor: C.outline,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 16,
+    padding: 12,
+  },
+  turnInput: {
+    color: C.text,
+    fontFamily: "Courier",
+    fontSize: 14,
+    lineHeight: 20,
+    minHeight: 76,
+    textAlignVertical: "top",
+  },
+  turnBtn: {
+    alignItems: "center",
+    backgroundColor: C.info,
+    borderRadius: 6,
+    marginTop: 10,
+    padding: 10,
+  },
+  turnBtnDisabled: { opacity: 0.45 },
+  turnText: { color: C.bg, fontSize: 14, fontWeight: "700" },
+  turnError: { color: C.danger, fontSize: 12, marginTop: 8 },
   eventRow: {
     alignItems: "center",
     backgroundColor: C.bgSecondary,

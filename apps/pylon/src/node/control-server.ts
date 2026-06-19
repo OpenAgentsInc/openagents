@@ -437,6 +437,8 @@ export const startControlServer = (
                   // Canonical protocol decision shape (buildDecisionResolveEnvelope).
                   requestId?: unknown
                   decisionVerb?: unknown
+                  instruction?: unknown
+                  timeoutSeconds?: unknown
                 }
                 const verb = typeof envelope.verb === "string" ? envelope.verb : ""
                 if (!verbAllowedByCapabilities(verb as BridgeRequestVerb, claims.capabilities)) {
@@ -577,6 +579,28 @@ export const startControlServer = (
                     return Response.json({ error: "sessionRef required" }, { status: 400 })
                   }
                   return Response.json({ ok: true, result: await options.actions.sessions.cancel(envelope.sessionRef) })
+                }
+                // G4 (#5496): chat / turn.steer over the capability-scoped
+                // bridge. The node maps a session-bound instruction onto the
+                // existing session.reply continuation path, preserving parent
+                // refs, account/workspace context, receipts, and projections.
+                if (verb === "turn.steer") {
+                  if (typeof envelope.sessionRef !== "string") {
+                    return Response.json({ error: "sessionRef required" }, { status: 400 })
+                  }
+                  const instruction = typeof envelope.instruction === "string" ? envelope.instruction.trim() : ""
+                  if (instruction.length === 0) {
+                    return Response.json({ error: "instruction required" }, { status: 400 })
+                  }
+                  const result = await options.actions.sessions.reply({
+                    type: "session.reply",
+                    sessionRef: envelope.sessionRef,
+                    objective: instruction,
+                    ...(typeof envelope.timeoutSeconds === "number" && Number.isFinite(envelope.timeoutSeconds)
+                      ? { timeoutSeconds: envelope.timeoutSeconds }
+                      : {}),
+                  })
+                  return Response.json({ ok: true, result })
                 }
                 // #5494 (epic #5492 G1): session.spawn over the bridge
                 // (spawn_session). Routes to the same node spawn action the

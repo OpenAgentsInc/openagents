@@ -13,6 +13,7 @@ import {
   buildDeployCloudEnvelope,
   buildIntentSubmitEnvelope,
   buildSpawnEnvelope,
+  buildTurnSteerEnvelope,
   type SpawnLane,
 } from "./bridge-steer-client"
 import type { Capability, PairingCredentialClaims, ProjectionLevel } from "./bridge"
@@ -87,6 +88,7 @@ export type BridgeTransport = {
   // classes selects the right one per verb. Throw on a non-ok response.
   spawn: (input: { adapter: "codex" | "claude_agent"; objective: string; verify?: string[]; lane?: SpawnLane }) => Promise<unknown>
   submitIntent: (input: { title: string; body: string; scopeHint?: string; submittedByClientRef?: string }) => Promise<unknown>
+  steerTurn: (input: { sessionRef: string; instruction: string; timeoutSeconds?: number }) => Promise<unknown>
   pauseCoordinator: () => Promise<unknown>
   resumeCoordinator: () => Promise<unknown>
   deployCloud: (input: { target: string; ref: string; env?: string }) => Promise<unknown>
@@ -191,6 +193,17 @@ export function createBridgeTransport(input: {
       return send(
         buildIntentSubmitEnvelope({
           ...intentInput,
+          pairingRef: input.credential.pairingRef,
+          capabilityRef: "send_instruction",
+          clientRequestId,
+        }),
+      )
+    },
+    async steerTurn(turnInput) {
+      const clientRequestId = nextId()
+      return send(
+        buildTurnSteerEnvelope({
+          ...turnInput,
           pairingRef: input.credential.pairingRef,
           capabilityRef: "send_instruction",
           clientRequestId,

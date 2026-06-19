@@ -681,6 +681,28 @@ export async function submitIntentViaBridge(
   return String(result?.status ?? "received")
 }
 
+export type TurnSteerResult = {
+  sessionRef: string
+  parentSessionRef: string
+  state: string
+}
+
+export async function steerTurnViaBridge(
+  bridge: BridgeSession,
+  input: { sessionRef: string; instruction: string; timeoutSeconds?: number },
+): Promise<TurnSteerResult> {
+  const result = (await bridge.transport.steerTurn({
+    sessionRef: input.sessionRef,
+    instruction: input.instruction,
+    ...(input.timeoutSeconds === undefined ? {} : { timeoutSeconds: input.timeoutSeconds }),
+  })) as { sessionRef?: unknown; parentSessionRef?: unknown; state?: unknown }
+  return {
+    sessionRef: String(result?.sessionRef ?? ""),
+    parentSessionRef: String(result?.parentSessionRef ?? input.sessionRef),
+    state: String(result?.state ?? "queued"),
+  }
+}
+
 export async function setCoordinatorPausedViaBridge(bridge: BridgeSession, paused: boolean): Promise<boolean> {
   const result = (paused
     ? await bridge.transport.pauseCoordinator()
@@ -712,6 +734,24 @@ export async function cancelSession(conn: ConnectInfo, sessionRef: string): Prom
   }
   if (json.ok !== true) throw new Error("cancel failed")
   return String(json.result?.state ?? "cancelled")
+}
+
+export async function steerTurn(
+  conn: ConnectInfo,
+  input: { sessionRef: string; instruction: string; timeoutSeconds?: number },
+): Promise<TurnSteerResult> {
+  const json = (await command(conn, {
+    type: "session.reply",
+    sessionRef: input.sessionRef,
+    objective: input.instruction,
+    ...(input.timeoutSeconds === undefined ? {} : { timeoutSeconds: input.timeoutSeconds }),
+  })) as { ok?: boolean; result?: { sessionRef?: unknown; parentSessionRef?: unknown; state?: unknown } }
+  if (json.ok !== true) throw new Error("turn steer failed")
+  return {
+    sessionRef: String(json.result?.sessionRef ?? ""),
+    parentSessionRef: String(json.result?.parentSessionRef ?? input.sessionRef),
+    state: String(json.result?.state ?? "queued"),
+  }
 }
 
 export type ControlSessionEventRow = {

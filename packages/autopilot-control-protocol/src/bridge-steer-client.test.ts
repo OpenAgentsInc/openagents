@@ -6,10 +6,12 @@ import {
   buildDeployCloudEnvelope,
   buildIntentSubmitEnvelope,
   buildSpawnEnvelope,
+  buildTurnSteerEnvelope,
   canDeployCloud,
   canPauseResumeCoordinator,
   canSpawnSession,
   canSubmitIntent,
+  canSteerTurn,
 } from "./bridge-steer-client"
 import { verbAllowedByCapabilities, type Capability } from "./bridge"
 
@@ -73,6 +75,37 @@ describe("bridge steer client — #5494 capability-scoped steer envelopes", () =
     expect("submittedByClientRef" in e).toBe(false)
   })
 
+  test("buildTurnSteerEnvelope carries sessionRef and instruction", () => {
+    expect(
+      buildTurnSteerEnvelope({
+        ...base,
+        capabilityRef: "send_instruction",
+        sessionRef: "session.parent.1",
+        instruction: "continue with the regression test",
+        timeoutSeconds: 120,
+      }),
+    ).toEqual({
+      verb: "turn.steer",
+      clientRequestId: "client.request.fixture.0001",
+      idempotencyKey: "client.request.fixture.0001",
+      pairingRef: "pairing.fixture.0001",
+      capabilityRef: "send_instruction",
+      sessionRef: "session.parent.1",
+      instruction: "continue with the regression test",
+      timeoutSeconds: 120,
+    })
+  })
+
+  test("buildTurnSteerEnvelope omits undefined timeoutSeconds", () => {
+    const e = buildTurnSteerEnvelope({
+      ...base,
+      capabilityRef: "send_instruction",
+      sessionRef: "session.parent.1",
+      instruction: "next",
+    })
+    expect("timeoutSeconds" in e).toBe(false)
+  })
+
   test("buildCoordinatorPause/Resume build the matching verbs", () => {
     expect(buildCoordinatorPauseEnvelope({ ...base, capabilityRef: "pause_resume" }).verb).toBe("coordinator.pause")
     expect(buildCoordinatorResumeEnvelope({ ...base, capabilityRef: "pause_resume" }).verb).toBe("coordinator.resume")
@@ -111,6 +144,9 @@ describe("bridge steer client — #5494 capability-scoped steer envelopes", () =
     expect(canSubmitIntent(["send_instruction"])).toBe(true)
     expect(canSubmitIntent(["observe_public"])).toBe(false)
 
+    expect(canSteerTurn(["send_instruction"])).toBe(true)
+    expect(canSteerTurn(["observe_public"])).toBe(false)
+
     expect(canPauseResumeCoordinator(["pause_resume"])).toBe(true)
     expect(canPauseResumeCoordinator(["observe_public"])).toBe(false)
 
@@ -128,6 +164,7 @@ describe("bridge steer client — #5494 capability-scoped steer envelopes", () =
     ]
     expect(verbAllowedByCapabilities("session.spawn", caps)).toBe(true)
     expect(verbAllowedByCapabilities("intent.submit", caps)).toBe(true)
+    expect(verbAllowedByCapabilities("turn.steer", caps)).toBe(true)
     expect(verbAllowedByCapabilities("coordinator.pause", caps)).toBe(true)
     expect(verbAllowedByCapabilities("coordinator.resume", caps)).toBe(true)
     expect(verbAllowedByCapabilities("deploy.cloud", caps)).toBe(true)
@@ -135,7 +172,7 @@ describe("bridge steer client — #5494 capability-scoped steer envelopes", () =
 
   test("a read-only credential is denied every promoted steer verb", () => {
     const readOnly: Capability[] = ["observe_public", "read_artifact"]
-    for (const verb of ["session.spawn", "intent.submit", "coordinator.pause", "coordinator.resume", "deploy.cloud"] as const) {
+    for (const verb of ["session.spawn", "intent.submit", "turn.steer", "coordinator.pause", "coordinator.resume", "deploy.cloud"] as const) {
       expect(verbAllowedByCapabilities(verb, readOnly)).toBe(false)
     }
   })

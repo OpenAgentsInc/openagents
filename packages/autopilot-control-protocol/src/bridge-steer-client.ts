@@ -89,6 +89,28 @@ export function buildIntentSubmitEnvelope(input: BuildIntentSubmitEnvelopeInput)
   }
 }
 
+// ── turn.steer (send_instruction) ─────────────────────────────────────────
+export type BuildTurnSteerEnvelopeInput = BaseSteerInput & {
+  sessionRef: string
+  instruction: string
+  timeoutSeconds?: number
+}
+
+export type TurnSteerEnvelope = BridgeRequestEnvelope & {
+  sessionRef: string
+  instruction: string
+  timeoutSeconds?: number
+}
+
+export function buildTurnSteerEnvelope(input: BuildTurnSteerEnvelopeInput): TurnSteerEnvelope {
+  return {
+    ...baseEnvelope("turn.steer", input),
+    sessionRef: input.sessionRef,
+    instruction: input.instruction,
+    ...(input.timeoutSeconds === undefined ? {} : { timeoutSeconds: input.timeoutSeconds }),
+  }
+}
+
 // ── coordinator.pause / coordinator.resume (pause_resume) ──────────────────
 export function buildCoordinatorPauseEnvelope(input: BaseSteerInput): BridgeRequestEnvelope {
   return baseEnvelope("coordinator.pause", input)
@@ -128,6 +150,10 @@ export function canSpawnSession(capabilities: ReadonlyArray<Capability>): boolea
 
 export function canSubmitIntent(capabilities: ReadonlyArray<Capability>): boolean {
   return verbAllowedByCapabilities("intent.submit", capabilities)
+}
+
+export function canSteerTurn(capabilities: ReadonlyArray<Capability>): boolean {
+  return verbAllowedByCapabilities("turn.steer", capabilities)
 }
 
 export function canPauseResumeCoordinator(capabilities: ReadonlyArray<Capability>): boolean {
