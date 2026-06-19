@@ -15,9 +15,17 @@ shipped record.
 
 ---
 
-## P0 — HEADLINE: Autopilot Desktop → full coding agent (EPIC #5461)
+## P0 — HEADLINE: Autopilot Desktop → full coding agent (EPIC #5461) — ✅ COMPLETE (be2378066)
 
-This is the day's main thrust. Past onboarding (now proven from a clean-Mac DMG),
+**DONE 2026-06-19.** Phase 1 nav shell #5462 (grouped nav + Cmd-K palette + shortcuts +
+pane-registration seam, b0c3aa554) and all 7 Phase-2 connection issues integrated to main:
+#5466 chat-live, #5467 autonomous-loop view, #5468 bounded auto-approve, #5469 swarm
+batch/failover/nesting, #5470 diff/artifact browser, #5471 repo/worktree picker, #5472
+functional settings. Built in parallel on branches, integrated serially against the seam;
+every merge kept builds + the full desktop test suite + the black-screen guard green; no
+GitHub Actions. EPIC #5461 closed.
+
+This was the day's main thrust. Past onboarding (now proven from a clean-Mac DMG),
 turn the Electrobun desktop app (`apps/autopilot-desktop`, Bun + Foldkit) into a
 real day-to-day coding agent by **connecting** the runtime systems we already
 built to clean, uncluttered UI. The runtime substrate is real and most panes are
