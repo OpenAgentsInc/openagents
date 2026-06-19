@@ -8,7 +8,7 @@
 
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react"
 
-import { createActionQueue } from "@openagentsinc/autopilot-control-protocol"
+import { acceptEvent, createActionQueue, initialCursor, type SessionEvent, type StreamCursor } from "@openagentsinc/autopilot-control-protocol"
 import {
   type AccountRow,
   type ApprovalRow,
@@ -38,6 +38,7 @@ import {
   fetchIntents,
   fetchSessionArtifact as fetchSessionArtifactCall,
   fetchSessionEvents as fetchSessionEventsCall,
+  fetchSessionEventBatchViaBridge,
   fetchSessionEventsViaBridge,
   fetchSessionRowsViaBridge,
   fetchSessions,
@@ -54,8 +55,20 @@ import { parseNodesResponse, pickConnect } from "../control/discovery-client"
 // Owner is single-tenant for now ("fine for now security-wise").
 const BROKER = "https://oa-updates-ezxz4mgdsq-uc.a.run.app"
 const OWNER = "chris"
+// Backstop polling cadence. Used as the live-streaming fallback (and the only
+// loop before a bridge credential exists). #5493 drives the UI off the bridge
+// `session.subscribe` cursor stream when one is available; this 4s timer only
+// reasserts the list when the stream is unavailable/dropped.
 const POLL_MS = 4000
+// Live-stream sweep cadence (#5493). While a bridge credential is healthy the
+// Sessions list refreshes off detected event batches at this tighter interval
+// instead of the 4s blind poll, so state transitions surface promptly.
+const STREAM_MS = 1500
 const WALLET_POLL_MS = 8000
+
+// Sessions in these states are done — no further events arrive, so the stream
+// sweep skips them rather than subscribing to a closed timeline.
+const TERMINAL_STATES = new Set(["completed", "failed", "cancelled"])
 
 export type ConnectionStatus = "discovering" | "manual" | "connecting" | "connected" | "error"
 
@@ -91,6 +104,16 @@ export type ConnectionValue = {
   deploy(input: { target: DeployTarget; ref: string; env?: DeployEnv }): Promise<DeployResult>
   fetchSessionEvents(sessionRef: string): Promise<ControlSessionEventRow[]>
   fetchSessionArtifact(sessionRef: string): Promise<SessionArtifact>
+  // #5493 live streaming. Subscribe to a session's `session.subscribe` cursor
+  // stream over the capability-scoped bridge: `onBatch` fires whenever the node
+  // replays one or more *new* (cursor-advancing, deduped) events. Returns a
+  // disposer plus `streaming` — false when no bridge credential is available, so
+  // the caller keeps its own poll as the graceful fallback. Idempotent to call;
+  // each call owns its own cursor.
+  subscribeSession(
+    sessionRef: string,
+    onBatch: (events: SessionEvent[]) => void,
+  ): { streaming: boolean; dispose: () => void }
 }
 
 const ConnectionContext = createContext<ConnectionValue | null>(null)
@@ -109,6 +132,11 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [approvals, setApprovals] = useState<ApprovalRow[]>([])
   const [coordPaused, setCoordPaused] = useState<boolean | null>(null)
   const [deployStatus, setDeployStatus] = useState<DeployStatus | null>(null)
+  // #5493: flips true once the capability-scoped bridge credential is paired, so
+  // the live `session.subscribe` stream can drive the Sessions list (and detail
+  // screen) instead of the blind poll. Stays a render-triggering state (the
+  // credential itself lives in the `bridge` ref) so streaming effects re-run.
+  const [bridgeReady, setBridgeReady] = useState(false)
 
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   // #5001: a scoped bridge credential for capability-gated reads. Established
@@ -150,6 +178,55 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // #5493: subscribe to one session's `session.subscribe` cursor stream over the
+  // capability-scoped bridge. A tight loop fetches the next cursor-resumable
+  // event batch; the shared `acceptEvent` cursor dedups + advances, and `onBatch`
+  // fires only with genuinely-new events. When no bridge credential exists we
+  // return `{ streaming: false }` so the caller falls back to its own poll. On a
+  // network drop the loop keeps retrying at the same cadence; the caller's poll
+  // backstop covers any gap. `dispose()` stops the loop. Declared before the
+  // streaming effects that consume it.
+  const subscribeSession = useCallback(
+    (sessionRef: string, onBatch: (events: SessionEvent[]) => void) => {
+      const bridgeSession = bridge.current
+      if (bridgeSession === null) return { streaming: false, dispose: () => {} }
+
+      let stopped = false
+      let cursor: StreamCursor = initialCursor()
+      let timer: ReturnType<typeof setTimeout> | null = null
+
+      const tick = async () => {
+        if (stopped) return
+        try {
+          const batch = await fetchSessionEventBatchViaBridge(bridgeSession, sessionRef, cursor.lastSequence)
+          if (stopped) return
+          const accepted: SessionEvent[] = []
+          for (const event of [...batch].sort((l, r) => l.sequence - r.sequence)) {
+            const result = acceptEvent(cursor, event)
+            cursor = result.cursor
+            if (result.accepted) accepted.push(event)
+          }
+          if (accepted.length > 0) onBatch(accepted)
+        } catch {
+          // Transient stream drop: the caller's poll backstop covers the gap;
+          // keep retrying on the same cadence.
+        } finally {
+          if (!stopped) timer = setTimeout(() => void tick(), STREAM_MS)
+        }
+      }
+
+      void tick()
+      return {
+        streaming: true,
+        dispose: () => {
+          stopped = true
+          if (timer) clearTimeout(timer)
+        },
+      }
+    },
+    [],
+  )
+
   // Auto-detect: on launch, ask the broker for this owner's nodes and connect to
   // the first reachable one (tailnet-first). Falls back to manual paste.
   useEffect(() => {
@@ -177,7 +254,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     }
   }, [poll])
 
-  // Session list poll.
+  // Session list poll — the graceful fallback / backstop. Before a bridge is
+  // paired this is the only refresh; once #5493 streaming is live below it keeps
+  // running at the slower cadence so the list still reasserts if the stream drops.
   useEffect(() => {
     if (conn === null) return
     timer.current = setInterval(() => void poll(conn), POLL_MS)
@@ -186,6 +265,43 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     }
   }, [conn, poll])
 
+  // #5493 live Sessions list: drive list refresh off the bridge
+  // `session.subscribe` stream. While a bridge credential is healthy, subscribe
+  // to every non-terminal session; whenever the node replays a new event
+  // (state/progress transition) refresh the full list immediately, so the
+  // Sessions screen advances within ~STREAM_MS instead of waiting on the 4s
+  // poll. The poll effect above remains the fallback when no bridge exists or
+  // the stream drops. We key the subscriptions on the set of running refs so a
+  // newly-spawned (or newly-terminal) session re-subscribes without thrashing.
+  const runningRefsKey = sessions
+    .filter((s) => !TERMINAL_STATES.has(s.state))
+    .map((s) => s.sessionRef)
+    .sort()
+    .join("|")
+  useEffect(() => {
+    if (conn === null || !bridgeReady) return
+    const refs = runningRefsKey.length > 0 ? runningRefsKey.split("|") : []
+    if (refs.length === 0) return
+    let refreshing = false
+    const refreshNow = () => {
+      if (refreshing) return
+      refreshing = true
+      void poll(conn).finally(() => {
+        refreshing = false
+      })
+    }
+    const subs = refs.map((ref) => subscribeSession(ref, () => refreshNow()))
+    // If the bridge could not actually stream (credential vanished mid-flight),
+    // bail out and let the poll backstop carry it.
+    if (!subs.some((s) => s.streaming)) {
+      for (const s of subs) s.dispose()
+      return
+    }
+    return () => {
+      for (const s of subs) s.dispose()
+    }
+  }, [conn, bridgeReady, runningRefsKey, poll, subscribeSession])
+
   // #5001: pair onto the capability-scoped bridge once per connection. Reads
   // (the session event stream) prefer this credential over the dev token; if
   // the node doesn't expose bridge pairing, connectBridge returns null and the
@@ -193,6 +309,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (conn === null) {
       bridge.current = null
+      setBridgeReady(false)
       return
     }
     let cancelled = false
@@ -200,12 +317,16 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     // decisions and cancel sessions over the bridge (owner's own phone).
     void connectBridge(conn, { capabilities: ["observe_public", "answer_decision", "cancel"] })
       .then((session) => {
-        if (!cancelled) bridge.current = session
+        if (cancelled) return
+        bridge.current = session
+        // #5493: signal readiness so the live `session.subscribe` stream lights up.
+        setBridgeReady(session !== null)
       })
       .catch(() => {})
     return () => {
       cancelled = true
       bridge.current = null
+      setBridgeReady(false)
     }
   }, [conn])
 
@@ -420,6 +541,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     deploy,
     fetchSessionEvents,
     fetchSessionArtifact,
+    subscribeSession,
   }
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>

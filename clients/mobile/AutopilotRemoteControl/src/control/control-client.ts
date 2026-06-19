@@ -5,13 +5,16 @@
 // is wired below and supersedes the dev token for read access.
 
 import {
+  buildSubscribeRequest,
   pairBridge,
+  parseEventBatch,
   createBridgeTransport,
   decodeBootstrapPayload,
   resolveBaseUrls,
   type BridgeCredential,
   type Capability,
   type ProjectionLevel,
+  type SessionEvent,
   type SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
 
@@ -41,7 +44,14 @@ export function decodeConnectCode(code: string): ConnectInfo | null {
 // token on the wire. Uses the shared `@openagentsinc/autopilot-control-protocol`
 // transport (same code path as desktop).
 
-export type BridgeSession = { transport: ReturnType<typeof createBridgeTransport>; credential: BridgeCredential }
+export type BridgeSession = {
+  transport: ReturnType<typeof createBridgeTransport>
+  credential: BridgeCredential
+  // The node base URL this credential is bound to. Tracked so the live
+  // `session.subscribe` stream (#5493) can POST its cursor envelopes over the
+  // same /bridge endpoint the transport uses, without re-deriving it.
+  baseUrl: string
+}
 
 // Mint a single-use bridge bootstrap from the node (dev-token authed). The
 // secret is exchanged immediately at /bridge/pair and never re-used.
@@ -97,7 +107,7 @@ async function pairBridgeWithBootstrap(
     jti: pair.claims.jti,
     capabilityRef: opts.capabilities?.[0] ?? "observe_public",
   }
-  return { transport: createBridgeTransport({ baseUrl, credential }), credential }
+  return { transport: createBridgeTransport({ baseUrl, credential }), credential, baseUrl }
 }
 
 // Dev-token-FREE pairing: pair onto the bridge using an externally supplied
@@ -175,6 +185,48 @@ export async function fetchSessionEventsViaBridge(
     detail: typeof e.messageText === "string" && e.messageText.length > 0 ? e.messageText : "",
     full: typeof e.messageFull === "string" ? e.messageFull : "",
   }))
+}
+
+// #5493 live streaming: fetch the next batch of a session's ordered events over
+// the capability-scoped bridge using the `session.subscribe` cursor verb. This
+// is the bridge-native streaming read the mobile `session-subscription` cursor
+// machine consumes — pass the cursor's `lastSequence` and the node replays only
+// events after it (empty batch when nothing new), so the timeline advances with
+// no full re-fetch and no long-lived dev token on the wire. Pure-ish: builds the
+// envelope from the shared protocol, POSTs over the same /bridge endpoint as the
+// transport, and decodes the typed event batch. Throws on a non-ok response so
+// the caller can classify the drop and fall back to polling.
+let bridgeSubscribeCounter = 0
+
+export async function fetchSessionEventBatchViaBridge(
+  bridge: BridgeSession,
+  sessionRef: string,
+  cursor: number,
+): Promise<SessionEvent[]> {
+  const clientRequestId = `mobile.subscribe.${++bridgeSubscribeCounter}`
+  const envelope = buildSubscribeRequest({
+    sessionRef,
+    pairingRef: bridge.credential.pairingRef,
+    capabilityRef: bridge.credential.capabilityRef ?? "observe_public",
+    clientRequestId,
+    idempotencyKey: clientRequestId,
+    // The cursor is the resume point; omit it for a fresh subscribe so the node
+    // replays from the start of its retained window.
+    ...(cursor > 0 ? { cursor } : {}),
+  })
+  const res = await fetch(`${bridge.baseUrl.replace(/\/+$/, "")}/bridge`, {
+    method: "POST",
+    headers: {
+      authorization: `Bridge ${bridge.credential.pairingRef}:${bridge.credential.jti}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(envelope),
+  })
+  const json = (await res.json()) as { ok?: unknown; result?: unknown; error?: unknown }
+  if (!res.ok || json.ok !== true) {
+    throw new Error(typeof json.error === "string" ? json.error : `bridge subscribe failed (${res.status})`)
+  }
+  return parseEventBatch(json.result)
 }
 
 export type ControlSessionRow = {
