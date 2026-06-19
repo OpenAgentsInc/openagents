@@ -726,6 +726,21 @@ async function startComposerAppleFmSession(input: {
 const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
   handlers: {
     requests: {
+      // Open an external URL in the system browser. The webview routes every
+      // external anchor click here so it can never navigate the app away from
+      // the local UI (which would strand the user off-app, e.g. on github.com).
+      // Only http(s) is honored; spawned as argv (no shell) so the URL can't
+      // inject. Best-effort: a failure to launch the browser is swallowed.
+      async openExternal({ url }) {
+        if (/^https?:\/\//i.test(url)) {
+          try {
+            Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" })
+          } catch {
+            // best-effort; never throw back into the webview
+          }
+        }
+        return { ok: true }
+      },
       // CL-26: the webview's "Deploy to Cloud" button routes here. We read the
       // node's control token and forward the gated deploy.cloud command — the
       // node enforces the OA_DEPLOY_ENABLE=1 fail-safe, so nothing deploys by

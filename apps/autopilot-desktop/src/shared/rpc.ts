@@ -798,6 +798,14 @@ export type AutoApprovalAuditEntry = {
 export type DesktopRPCSchema = {
   readonly bun: {
     readonly requests: {
+      // Open an external URL in the system browser. The webview must NEVER
+      // navigate to external URLs itself — doing so strands the user off the
+      // local app (e.g. on github.com) with no way back. The webview click
+      // guard routes every external anchor here instead.
+      readonly openExternal: {
+        readonly params: { url: string }
+        readonly response: { ok: boolean }
+      }
       // CL-26: trigger a deploy of the node's own cloud service. The node
       // fail-safe-gates execution behind OA_DEPLOY_ENABLE=1.
       readonly deployCloud: {

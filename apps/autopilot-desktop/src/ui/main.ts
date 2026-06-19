@@ -133,6 +133,30 @@ new Electroview({ rpc })
 // rpc.request mirrors the DesktopRequests surface (webview → Bun verbs).
 setRequest(rpc.request as unknown as DesktopRequests)
 
+// External links MUST open in the system browser — never navigate this webview.
+// A raw `<a href="https://…">` click would otherwise load the external page
+// INSIDE the app, stranding the user off the local UI (e.g. on github.com) with
+// no way back (the app's keyboard + "← Shell" handlers no longer run once the
+// webview has navigated away). Intercept every external anchor click and route
+// it to the Bun `openExternal` verb instead. Capture phase so it wins before any
+// default navigation; only http(s) is intercepted (in-app `views://` etc. pass
+// through untouched).
+document.addEventListener(
+  "click",
+  (event) => {
+    const anchor = (event.target as HTMLElement | null)?.closest?.("a[href]") as
+      | HTMLAnchorElement
+      | null
+    if (!anchor) return
+    const href = anchor.getAttribute("href") ?? ""
+    if (/^https?:\/\//i.test(href)) {
+      event.preventDefault()
+      void (rpc.request as unknown as DesktopRequests).openExternal({ url: href })
+    }
+  },
+  true,
+)
+
 function start(): void {
   Runtime.run(
     Runtime.makeProgram({
