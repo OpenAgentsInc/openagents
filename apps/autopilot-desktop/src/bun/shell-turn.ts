@@ -54,15 +54,36 @@ export type BuildShellTurnInput = Readonly<{
   fetchFn?: typeof fetch
 }>
 
-// Resolve the agent token the shell turn authenticates with. A shell-specific
-// override is allowed but the normal source is the same OPENAGENTS_AGENT_TOKEN
-// the desktop already stores/uses for openagents.com (see promise-surfacing,
-// node-launcher).
-export const resolveShellAgentToken = (env: ShellTurnEnv): string | null => {
-  const token =
+// Resolve the agent token the shell turn authenticates with.
+//
+// Order (#5503 live-gateway fix):
+//   1. An explicit env override — OPENAGENTS_SHELL_AGENT_TOKEN, then the same
+//      OPENAGENTS_AGENT_TOKEN the desktop uses for openagents.com elsewhere
+//      (promise-surfacing, node-launcher).
+//   2. The persisted agent credential the desktop already mints + stores during
+//      auto-onboarding (AO-1, `<PYLON_HOME>/agent-credential.json`). On a normal
+//      install nothing sets the env var, so WITHOUT this fallback every shell
+//      turn hit the no-token path. This makes the chat authenticate as the
+//      owner's real agent identity with zero manual configuration.
+//
+// `readPersistedToken` is injected (and optional) so this stays a pure,
+// env-only function for unit tests; the Bun host wires it to
+// `loadPersistedCredential(onboardingHome())?.token`. The token is returned to
+// the host only — it is never logged and never crosses to the webview.
+export const resolveShellAgentToken = (
+  env: ShellTurnEnv,
+  readPersistedToken?: () => string | null,
+): string | null => {
+  const envToken =
     env.OPENAGENTS_SHELL_AGENT_TOKEN ?? env.OPENAGENTS_AGENT_TOKEN ?? null
-  const trimmed = token?.trim()
-  return trimmed && trimmed.length > 0 ? trimmed : null
+  const trimmedEnv = envToken?.trim()
+  if (trimmedEnv && trimmedEnv.length > 0) return trimmedEnv
+
+  const persisted = readPersistedToken?.() ?? null
+  const trimmedPersisted = persisted?.trim()
+  return trimmedPersisted && trimmedPersisted.length > 0
+    ? trimmedPersisted
+    : null
 }
 
 // Pull the assistant text out of an OpenAI-compatible chat-completions body.

@@ -1552,13 +1552,24 @@ export const PersistPreferences = Command.define(
 // renders `result.text` in both cases; nothing here pretends a failure is a
 // model answer.
 //
-// DETERMINISTIC SEAM PRESERVED: `shellLoopbackReply` stays exported as the pure,
-// node-free, network-free fallback. It is what the programmatic-control proof
-// (`bun run proof:shell-control`) and the headless tests inject so parity stays
-// deterministic, and it is the last-resort reply if the RPC bridge itself throws
-// before the Bun host can return its own honest message.
+// DETERMINISTIC SEAM PRESERVED — TEST/PROOF ONLY: `shellLoopbackReply` stays
+// exported purely as the deterministic injection used by the
+// programmatic-control proof (`bun run proof:shell-control`) and the headless
+// tests, which dispatch `RespondedShell` with it directly so parity stays
+// deterministic and node-free. It is NEVER the live runtime reply: the shell
+// must never show a fabricated echo answer in place of a real model response or
+// an honest error (#5503). The live path renders the Bun host's own honest text
+// for ok:true AND ok:false, and falls back to a plain connection-error message
+// (not an echo) only if the RPC bridge itself throws.
 export const shellLoopbackReply = (prompt: string): string =>
   `echo (local loopback): ${prompt}`
+
+// Honest plain-language message shown ONLY when the Bun<->webview RPC bridge
+// itself throws before the host can return its own message (e.g. the host went
+// away). It carries no fabricated answer and no internal jargon.
+const SHELL_BRIDGE_ERROR_TEXT =
+  "I couldn't reach the local app service to answer that. Please try again in " +
+  "a moment."
 
 export const RespondToShellInput = Command.define(
   "RespondToShellInput",
@@ -1569,10 +1580,13 @@ export const RespondToShellInput = Command.define(
     // The Bun host already returns honest, user-facing `text` for ok:true AND
     // ok:false (no-token / gateway error), so we render it verbatim either way.
     Effect.map((result) => RespondedShell({ prompt, text: result.text })),
-    // Only reached if the RPC bridge itself throws (e.g. the host is gone). Fall
-    // back to the deterministic local loopback so the bar always answers.
+    // Only reached if the RPC bridge itself throws (e.g. the host is gone). The
+    // Bun host already returns honest text for both ok:true and ok:false (no
+    // token / gateway error), so we NEVER fabricate an echo answer here — that
+    // silent masquerade made a failing chat look like a working one (#5503).
+    // Surface a clean, honest connection-error message instead.
     Effect.catch(() =>
-      Effect.succeed(RespondedShell({ prompt, text: shellLoopbackReply(prompt) })),
+      Effect.succeed(RespondedShell({ prompt, text: SHELL_BRIDGE_ERROR_TEXT })),
     ),
   ),
 )
