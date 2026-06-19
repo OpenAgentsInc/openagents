@@ -1,4 +1,93 @@
-# JUNE 18 ROADMAP - launch rc.31 and test the real Tassadar run logic
+# JUNE 18 ROADMAP — CLOSED 2026-06-19
+
+> **CLOSED 2026-06-19.** This roadmap is closed. The day's work shipped (summary
+> immediately below); the live thrust continues in
+> [`JUNE19_ROADMAP.md`](./JUNE19_ROADMAP.md), headlined by the coding EPIC
+> [#5461](https://github.com/OpenAgentsInc/openagents/issues/5461) (Autopilot
+> Desktop → full coding agent). Nothing below is deleted — it is the authoritative
+> June 18 record plus the overnight-into-June-19 close.
+
+## CLOSE-OUT SUMMARY (what shipped June 18 → overnight June 19) — AUTHORITATIVE
+
+All facts below are real and on `main`. This is the completion record for June 18
+plus the overnight work that landed before the June 19 roll.
+
+### Revenue loop — EPIC #5457 CLOSED (the clearing layer is wired)
+
+The "$1 in → >$1 verified value out, fanned to the network" clearing layer is now
+wired on live paths (was tested primitives imported on no live path):
+
+- **RL-1 #5458 (CLOSED, `2c83afd4f`)** — referral payout ledger feed + dispatch:
+  a paid event resolves attribution → one idempotent eligibility row →
+  readiness-gated `approved → dispatched → settled` via the injected MDK/Spark
+  adapter (settle-at-most-once, Bitcoin-only rev-share boundary).
+- **RL-2 #5459 (CLOSED, `e9581e34a`)** — firm-up escrow → Bitcoin payout on an
+  executed verification (fails closed through the shared gates).
+- **RL-3 #5460 (CLOSED, `471be0f61`)** — `validateAssetBoundary` (credit↔Bitcoin)
+  + no-resale (`authorizeInferenceMonetization`) now enforced as **live guards**
+  on the value-movement paths, not just policy/tests.
+- **Honest gap:** the **first real referral/firm-up payout is an owner-armed gated
+  step** — no real dispatched payout receipt exists yet, so the matching promises
+  (`sites.referral_bitcoin_stream.v1` yellow, `payments.accepted_outcome_economics.v1`
+  red) do **not** flip. Carried to June 19 owner-action items.
+
+### Desktop auto-onboarding — EPIC #5441 PROVEN + CLOSED (#5447 CLOSED)
+
+The owner ran the **real from-DMG clean-Mac proof** (`cc27f122e`):
+
+- Signed + **notarized DMG** (`...20260619T010148`, SHA-256
+  `22db620c…`, app + DMG notarization `Accepted`, Gatekeeper `Notarized
+  Developer ID`, `hdiutil verify` VALID).
+- Clean first-launch rendered window (no black screen), AO-3 identity choice
+  (create-new named), wallet receive-ready, payout target, presence — all from
+  live observed state.
+- **Production presence:** `pylon.fa4e9049a4329f3d56e2` active on
+  the public pylon detail (`walletReady`, `sparkPayoutTargetReady`).
+- **Verified Tassadar work + settled receipt:** challenge
+  `training.verification.challenge.9fd49062-f82c-46ee-a2a0-242d36dd126e` →
+  `Verified` (`exact_trace_replay`); settled receipt
+  `receipt.nexus.tassadar_run_settlement.idempotency.tassadar.ao6.patched2.20260619T010148.manual.v1`
+  (`amountSats:5`, `realBitcoinMoved:true`, `adapter:spark_treasury`). Artifacts
+  in `docs/launch/artifacts/ao6-20260619T010148/`; runbook §3.
+- **Honest caveat:** the settlement was the **manual/owner-driven** admin path
+  (still not the first fully-autonomous auto-stream live receipt).
+
+### product-promises registry → `2026-06-19.2` (destale only, no green flips)
+
+`f4a97f73a` destaled the registry to `2026-06-19.2` (desktop onboarding #5441 +
+referral RL-1 #5458 copy/evidence accuracy). **No gate flips.** (Earlier same-day
+`.3`/`.4`/`.5` copy upgrades are recorded in the sections below.)
+
+### Desktop → full coding agent roadmap filed (the June 19 main thrust)
+
+EPIC **#5461** (Autopilot Desktop → full coding agent) + nav sub-EPIC **#5462**
+(children **#5463** grouped nav / **#5464** Cmd-K palette / **#5465** shortcuts) +
+connection children **#5466** chat-live / **#5467** autonomous-loop view / **#5468**
+bounded auto-approve / **#5469** swarm batch/failover/nesting / **#5470**
+diff-artifact fidelity / **#5471** repo/worktree picker / **#5472** functional
+settings. Audit: `docs/launch/2026-06-19-autopilot-desktop-coding-agent-audit.md`.
+
+### Blueprint × Tassadar chat — EPIC #5449 CLOSED
+
+The Blueprint × Tassadar chat EPIC (#5449, + #5450–5456) is CLOSED — the backend
+seams + presentational chat pane landed there. The **chat-live wiring** (drive the
+pane from the real Blueprint chat-program runtime) continues as **#5466** under the
+coding EPIC.
+
+### Platform: Lathe — MERGED + deployed
+
+Lathe route-dedup **#5448** and forum-theme **#5473** merged + deployed.
+
+### Still open carrying into June 19
+
+Open issue set (13): the coding EPIC **#5461** + nav sub-EPIC **#5462** + their 10
+children (**#5463–5472**), and the hygiene/refactoring EPIC **#5335**. Owner-action
+items (AO-5 download flip, first real revenue-loop payout, Windows Authenticode
+cert) and the 8 pre-existing api-suite test failures carry to `JUNE19_ROADMAP.md`.
+
+---
+
+# JUNE 18 ROADMAP - launch rc.31 and test the real Tassadar run logic (historical record)
 
 Date: 2026-06-18, 07:18 CT. Carries forward the still-live launch/test work
 from [`JUNE17_ROADMAP.md`](./JUNE17_ROADMAP.md), now that the Tassadar
