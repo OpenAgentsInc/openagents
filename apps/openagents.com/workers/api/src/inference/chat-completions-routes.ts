@@ -28,6 +28,7 @@ import {
   type InferenceResult,
 } from './provider-adapter'
 import { type MeteringHook, stubMeteringHook } from './metering-hook'
+import { type FundingKind } from './pricing'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
 
 // AUTH SEAM ---------------------------------------------------------------
@@ -45,6 +46,19 @@ export type InferenceAuth = (
 export type InferenceBalanceReader = (
   accountRef: string,
 ) => Promise<number>
+
+// FUNDING-KIND SEAM -------------------------------------------------------
+// Resolves how an account funds its balance (card | bitcoin) so the metering
+// hook (#5477) applies the Bitcoin funding discount in `priceRequest`. Defaults
+// to card. A real per-account card-vs-Bitcoin funding preference wires here once
+// the credit top-up paths record it; until then every account is treated as
+// card-funded (the conservative, no-discount default).
+export type InferenceFundingResolver = (
+  accountRef: string,
+) => Promise<FundingKind>
+
+export const defaultCardFundingResolver: InferenceFundingResolver = async () =>
+  'card'
 
 // ROUTING SEAM ------------------------------------------------------------
 // Resolves a requested model alias to an adapter id. #5482 (routing & supply
@@ -75,8 +89,12 @@ export type ChatCompletionsDeps = Readonly<{
   registry: InferenceProviderRegistry
   // Defaults to the stub router (always selects the stub/echo adapter).
   router?: ModelRouter
-  // Defaults to the no-op/log metering stub (#5477 supplies the live hook).
+  // Defaults to the no-op/log metering stub. The Worker supplies the live
+  // ledger hook (`makeLedgerMeteringHook`, #5477) when the gateway is enabled.
   meteringHook?: MeteringHook
+  // Resolves the account's funding kind (card | bitcoin) for the metering hook.
+  // Defaults to card (no Bitcoin discount).
+  resolveFundingKind?: InferenceFundingResolver
   // Minimum available balance (msat) required to accept a request. Until #5477
   // prices per-model, any positive balance clears the gate; an account with
   // zero/negative available balance is rejected.
@@ -240,10 +258,17 @@ export const handleChatCompletions = (
 
     const inferenceRequest = toInferenceRequest(body, rawBody)
     const meteringHook = deps.meteringHook ?? stubMeteringHook
+    const resolveFundingKind =
+      deps.resolveFundingKind ?? defaultCardFundingResolver
     const nowEpochSeconds = deps.nowEpochSeconds ?? currentEpochSeconds
     const newId = deps.newId ?? defaultId
     const created = nowEpochSeconds()
     const responseId = newId()
+    // Funding kind (card | bitcoin) for the metering charge. Resolved once per
+    // request so the Bitcoin discount in `priceRequest` applies; defaults card.
+    const fundingKind = yield* Effect.promise(() =>
+      resolveFundingKind(session.accountRef),
+    )
 
     if (inferenceRequest.stream) {
       const chunks = yield* adapter.stream(inferenceRequest).pipe(
@@ -266,6 +291,8 @@ export const handleChatCompletions = (
         yield* meteringHook({
           accountRef: session.accountRef,
           adapterId: adapter.id,
+          fundingKind,
+          requestId: responseId,
           requestedModel: body.model,
           servedModel: body.model,
           streamed: true,
@@ -320,6 +347,8 @@ export const handleChatCompletions = (
     yield* meteringHook({
       accountRef: session.accountRef,
       adapterId: adapter.id,
+      fundingKind,
+      requestId: responseId,
       requestedModel: body.model,
       servedModel: result.value.servedModel,
       streamed: false,

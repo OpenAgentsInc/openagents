@@ -191,6 +191,33 @@ describe('POST /v1/chat/completions', () => {
     expect(context?.requestedModel).toBe('stub-model')
     expect(context?.streamed).toBe(false)
     expect(context?.usage.totalTokens).toBe(4)
+    // Funding kind defaults to card, and the request id is threaded for
+    // idempotency-keyed metering.
+    expect(context?.fundingKind).toBe('card')
+    expect(typeof context?.requestId).toBe('string')
+    expect((context?.requestId ?? '').length).toBeGreaterThan(0)
+  })
+
+  test('threads the resolved bitcoin funding kind into the metering hook', async () => {
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: false, receiptRef: null }
+      })
+
+    await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          meteringHook,
+          resolveFundingKind: async () => 'bitcoin',
+        }),
+      ),
+    )
+
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.fundingKind).toBe('bitcoin')
   })
 
   test('streams OpenAI-compatible SSE frames and meters from the terminal usage frame', async () => {
