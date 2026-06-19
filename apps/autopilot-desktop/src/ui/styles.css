@@ -237,6 +237,24 @@ body {
 .hotbar-slot-palette {
   border-color: rgb(255 255 255 / 0.2);
 }
+/* HUD H7 (#5504): the live status/meters overlay. A small top-right corner card
+   (the game-HUD status layer) rendered by the three-effect H2 kit. Sits clear of
+   the left sidebar and the bottom-center hotbar so it never occludes the shell
+   text bar or the hotbar; pointer-events are off so it never steals clicks. */
+.status-hud-overlay {
+  position: fixed;
+  top: clamp(0.9rem, 2.2vw, 1.4rem);
+  right: clamp(0.9rem, 2.2vw, 1.4rem);
+  z-index: 30;
+  width: 220px;
+  height: 280px;
+  pointer-events: none;
+}
+.status-hud-overlay oa-desktop-status-hud {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 .network-page {
   position: absolute;
   inset: 0;

@@ -32,7 +32,8 @@
     "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#e960d79e6bc66fd791bd36fa3005ada30c2115fd",
     "effect": "catalog:",
     "electrobun": "1.18.1",
-    "foldkit": "^0.102.1"
+    "foldkit": "^0.102.1",
+    "three": "0.184.0"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.1",
