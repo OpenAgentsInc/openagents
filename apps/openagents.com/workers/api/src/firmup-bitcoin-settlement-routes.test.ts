@@ -480,6 +480,64 @@ describe('POST /api/firmup-lane/settlement-receipt (firm-up -> bitcoin, #5459)',
     expect(json.reason).toContain('not_firmup_lane_run_ref')
   })
 
+  it('RL-3 boundary: a credit-funded escrow may NOT settle to withdrawable Bitcoin (refused, no dispatch)', async () => {
+    const ledger = makeLedgerStore()
+    const spark = new CountingSparkAdapter()
+    const routes = makeRoutes(
+      {
+        resolveSettleableEscrow: async () => ({
+          ...settleableEscrow,
+          // A credit-funded escrow: the shared credit<->Bitcoin boundary refuses
+          // turning it into a withdrawable Bitcoin payout.
+          revenueAsset: 'credit',
+        }),
+      },
+      ledger,
+      spark,
+    )
+
+    const response = await runRoute(
+      routes.routeFirmupLaneSettlementRequest(
+        jsonRequest(settlementBody()),
+        enabledGateEnv(),
+      ),
+    )
+
+    expect(response.status).toBe(409)
+    expect(spark.dispatchCalls).toBe(0)
+    const json = (await response.json()) as { reason: string }
+    expect(json.reason).toContain('asset_boundary_violation')
+  })
+
+  it('RL-3 boundary: a Bitcoin-funded escrow (default) settles normally — the valid crossing', async () => {
+    const ledger = makeLedgerStore()
+    const spark = new CountingSparkAdapter()
+    const routes = makeRoutes(
+      {
+        resolveSettleableEscrow: async () => ({
+          ...settleableEscrow,
+          revenueAsset: 'bitcoin',
+        }),
+      },
+      ledger,
+      spark,
+    )
+
+    const response = await runRoute(
+      routes.routeFirmupLaneSettlementRequest(
+        jsonRequest(settlementBody()),
+        enabledGateEnv(),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(spark.dispatchCalls).toBe(1)
+    const json = (await response.json()) as {
+      settlement: { realAuthorized: boolean }
+    }
+    expect(json.settlement.realAuthorized).toBe(true)
+  })
+
   it('hashes escrow refs before deriving settlement receipt refs (no raw ref leakage)', async () => {
     const routes = makeRoutes()
 

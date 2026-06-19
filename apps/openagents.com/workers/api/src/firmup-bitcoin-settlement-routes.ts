@@ -1,6 +1,7 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import { sha256Hex } from './agent-registration'
+import type { AssetBoundaryAsset } from './asset-bitcoin-boundary'
 import {
   FirmupExecutedVerificationVerdict,
   FirmupSettlementUnsafe,
@@ -91,6 +92,12 @@ export type FirmupSettleableEscrowProjection = Readonly<{
   escrowRef: string
   // The worker (provider) actor whose registered Spark target is paid.
   providerActorRef: string
+  // RL-3 (#5460): the asset the escrow's qualifying REVENUE was sourced in,
+  // resolved server-side from the escrow funding (never asserted by the request
+  // body). A firm-up labor escrow is Bitcoin-funded, so this defaults to
+  // `bitcoin` when omitted; a credit/USD/free-funded escrow can never settle to
+  // withdrawable Bitcoin (the shared boundary guard refuses it).
+  revenueAsset?: AssetBoundaryAsset | undefined
   // The verification command ref the job declared (must match the verdict).
   verificationCommandRef: string
   // The work request public ref.
@@ -280,6 +287,13 @@ const routeFirmupLaneSettlement = <
           gate,
           providerActorRef: escrow.providerActorRef,
           requestedAdapterKind,
+          // RL-3 (#5460): the boundary + no-resale guards run inside the
+          // decision. The revenue asset comes from the server-resolved escrow
+          // (default `bitcoin` for a Bitcoin-funded firm-up labor escrow); the
+          // monetization kind is `agentic_work` (firm-up is agent labor, the
+          // allowed no-resale path). A credit/USD/free-funded escrow is refused
+          // by the shared boundary before any money moves.
+          revenueAsset: escrow.revenueAsset ?? 'bitcoin',
           trainingRunRef: body.trainingRunRef,
           verdict: body.verdict,
         }),
@@ -298,6 +312,8 @@ const routeFirmupLaneSettlement = <
     ) {
       return yield* new TrainingAuthorityStoreError({
         kind:
+          decision.blockedReason === 'asset_boundary_violation' ||
+          decision.blockedReason === 'monetization_not_authorized' ||
           decision.blockedReason === 'not_executed_verification' ||
           decision.blockedReason === 'verification_rejected' ||
           decision.blockedReason === 'worker_validator_not_distinct'

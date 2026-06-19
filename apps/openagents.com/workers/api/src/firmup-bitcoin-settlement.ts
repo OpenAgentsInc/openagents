@@ -2,6 +2,15 @@ import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-
 import { Schema as S } from 'effect'
 
 import {
+  type AssetBoundaryAsset,
+  validateAssetBoundary,
+} from './asset-bitcoin-boundary'
+import {
+  type InferenceMonetizationKind,
+  type ProviderAccountAuthMode,
+  authorizeInferenceMonetization,
+} from './inference-resale-authorization'
+import {
   type NexusPaymentAuthorityReceiptRecord,
   type NexusPayoutTargetApprovalRecord,
   NexusTreasuryPayoutAdapterKind,
@@ -177,7 +186,9 @@ export const classifyFirmupReleaseVerdict = (
 export type FirmupSettlementBlockedReason =
   | 'amount_not_positive'
   | 'amount_over_hard_cap'
+  | 'asset_boundary_violation'
   | 'gate_decision_blocked'
+  | 'monetization_not_authorized'
   | 'not_executed_verification'
   | 'not_firmup_lane_run_ref'
   | 'verification_rejected'
@@ -193,6 +204,22 @@ export type FirmupSettlementDecisionInput = Readonly<{
   // The contributor's resolved adapter request (always the Spark treasury rail
   // for a real firm-up settlement; defaults to simulation).
   requestedAdapterKind?: typeof NexusTreasuryPayoutAdapterKind.Type | undefined
+  // RL-3 (#5460): the asset the firm-up job's qualifying REVENUE was sourced in.
+  // A firm-up labor settlement is a Bitcoin-revenue / Bitcoin-share crossing, so
+  // it defaults to `bitcoin`. A non-Bitcoin revenue basis (credit/USD/free) is
+  // refused by the shared credit<->Bitcoin boundary: a Bitcoin payout may never
+  // be funded by credit-class or free/promo revenue.
+  revenueAsset?: AssetBoundaryAsset | undefined
+  // RL-3 (#5460): the kind of inference monetization this labor stream is, for
+  // the no-resale gate. Firm-up labor is AGENT LABOR (a worker uses their own
+  // tools to produce + sell a verified result), so it defaults to
+  // `agentic_work` (the allowed path). A `subscription_capacity_resale` is
+  // refused unconditionally (non-waivable, scoped to subscription accounts).
+  monetizationKind?: InferenceMonetizationKind | undefined
+  // The provider's account auth mode, only consulted when the monetization kind
+  // is `api_inference_gateway_resale` (API-key accounts only). Irrelevant for
+  // agentic work; defaults to `api_key`.
+  accountAuthMode?: ProviderAccountAuthMode | undefined
   // The firm-up lane run-ref the gate must allowlist (run.firmup.lane.YYYYMMDD).
   trainingRunRef: string
   // The executed verification verdict for the firm-up job.
@@ -282,6 +309,38 @@ export const decideFirmupBitcoinSettlement = (
   // 3. FIRM-UP LANE RUN-REF. The run allowlist boundary the gate keys on.
   if (!isFirmupLaneRunRef(input.trainingRunRef)) {
     return blocked('not_firmup_lane_run_ref', null)
+  }
+
+  // 3a. CREDIT<->BITCOIN ASSET BOUNDARY (RL-3 #5460, shared guard). A firm-up
+  //     settlement always pays withdrawable Bitcoin, so the contributor asset is
+  //     `bitcoin`. The revenue basis must be Bitcoin: credit/USD (Stripe-credit)
+  //     or free/promo revenue may NOT fund a withdrawable Bitcoin payout. Fail
+  //     closed on any violation before touching the owner gate or any money.
+  const boundaryViolation = validateAssetBoundary({
+    contributorAsset: 'bitcoin',
+    movement: 'payout',
+    revenueAsset: input.revenueAsset ?? 'bitcoin',
+  })
+
+  if (boundaryViolation !== null) {
+    return blocked('asset_boundary_violation', null)
+  }
+
+  // 3b. NO-RESALE GATE (RL-3 #5460, shared guard). Firm-up is AGENT LABOR (the
+  //     worker uses their own tools to produce + sell a verified result), the
+  //     allowed `agentic_work` path. A consumer SUBSCRIPTION-seat resale is
+  //     refused unconditionally (non-waivable, scoped to subscription accounts);
+  //     API-inference gateway resale stays allowed on an API-key account with
+  //     the full ref chain. Fail closed if the monetization is not authorized.
+  const monetizationDecision = authorizeInferenceMonetization({
+    kind: input.monetizationKind ?? 'agentic_work',
+    ...(input.accountAuthMode === undefined
+      ? {}
+      : { accountAuthMode: input.accountAuthMode }),
+  })
+
+  if (!monetizationDecision.authorized) {
+    return blocked('monetization_not_authorized', null)
   }
 
   if (!Number.isInteger(amountSats) || amountSats <= 0) {

@@ -473,10 +473,72 @@ describe('RL-1: referral payout dispatch', () => {
       throw new Error('expected refused')
     }
 
+    // RL-3 (#5460): the live dispatch now refuses via the SHARED credit<->Bitcoin
+    // boundary guard, so the reason ref is the boundary's, not the old inline ref.
     expect(outcome.reasonRef).toBe(
-      'reason.public.site_referral_payout.credit_revenue_no_bitcoin_withdrawal',
+      'reason.public.asset_boundary.credit_revenue_no_bitcoin_share',
     )
     expect(calls).toHaveLength(0)
+  })
+
+  test('RL-3 asset boundary: credit revenue refuses Bitcoin dispatch via the shared guard (no adapter call)', async () => {
+    const store = new WireStore()
+    seedAttribution(store, { user_id: 'github:buyer' })
+    const db = wireDb(store)
+    const { adapter, calls } = makeStubAdapter()
+
+    const fed = await recordReferralPayoutForPaidEvent(
+      db,
+      bitcoinPaidEvent('github:buyer'),
+    )
+
+    if (fed._tag !== 'recorded') {
+      throw new Error('expected recorded')
+    }
+
+    const outcome = await dispatchReferralPayoutSettlement(
+      db,
+      { adapter, nowIso: () => '2026-06-18T12:05:00.000Z', readReadiness: readyGate },
+      { payoutRef: fed.entry.payoutRef, revenueAsset: 'credit' },
+    )
+
+    expect(outcome._tag).toBe('refused')
+
+    if (outcome._tag !== 'refused') {
+      throw new Error('expected refused')
+    }
+
+    expect(outcome.reasonRef).toBe(
+      'reason.public.asset_boundary.credit_revenue_no_bitcoin_share',
+    )
+    expect(calls).toHaveLength(0)
+  })
+
+  test('RL-3 asset boundary: Bitcoin revenue still settles through the live path (the valid crossing)', async () => {
+    const store = new WireStore()
+    seedAttribution(store, { user_id: 'github:buyer' })
+    const db = wireDb(store)
+    const { adapter, calls } = makeStubAdapter()
+
+    const fed = await recordReferralPayoutForPaidEvent(
+      db,
+      bitcoinPaidEvent('github:buyer'),
+    )
+
+    if (fed._tag !== 'recorded') {
+      throw new Error('expected recorded')
+    }
+
+    const outcome = await dispatchReferralPayoutSettlement(
+      db,
+      { adapter, nowIso: () => '2026-06-18T12:05:00.000Z', readReadiness: readyGate },
+      { payoutRef: fed.entry.payoutRef, revenueAsset: 'bitcoin' },
+    )
+
+    // Bitcoin revenue -> Bitcoin share is the ALLOWED crossing: it settles and
+    // calls the (mock) adapter exactly once.
+    expect(outcome._tag).toBe('settled')
+    expect(calls).toHaveLength(1)
   })
 
   test('unknown payout ref refuses cleanly', async () => {

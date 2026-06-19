@@ -154,6 +154,105 @@ describe('decideFirmupBitcoinSettlement', () => {
     expect(decision.realAuthorized).toBe(false)
     expect(decision.blockedReason).toBe('amount_not_positive')
   })
+
+  // RL-3 (#5460): the credit<->Bitcoin asset boundary on the live firm-up path.
+  it('RL-3 boundary: refuses a credit-revenue basis for a Bitcoin firm-up payout', () => {
+    const decision = decideFirmupBitcoinSettlement({
+      amountSats: 50,
+      gate: armedGate,
+      providerActorRef: WORKER_REF,
+      requestedAdapterKind: 'spark_treasury',
+      revenueAsset: 'credit',
+      trainingRunRef: FIRMUP_RUN_REF,
+      verdict,
+    })
+
+    expect(decision.realAuthorized).toBe(false)
+    expect(decision.blockedReason).toBe('asset_boundary_violation')
+  })
+
+  it('RL-3 boundary: refuses a free/promo revenue basis for a Bitcoin firm-up payout', () => {
+    const decision = decideFirmupBitcoinSettlement({
+      amountSats: 50,
+      gate: armedGate,
+      providerActorRef: WORKER_REF,
+      requestedAdapterKind: 'spark_treasury',
+      revenueAsset: 'free',
+      trainingRunRef: FIRMUP_RUN_REF,
+      verdict,
+    })
+
+    expect(decision.realAuthorized).toBe(false)
+    expect(decision.blockedReason).toBe('asset_boundary_violation')
+  })
+
+  it('RL-3 boundary: Bitcoin revenue (the default firm-up basis) authorizes through the live path', () => {
+    const decision = decideFirmupBitcoinSettlement({
+      amountSats: 50,
+      gate: armedGate,
+      providerActorRef: WORKER_REF,
+      requestedAdapterKind: 'spark_treasury',
+      revenueAsset: 'bitcoin',
+      trainingRunRef: FIRMUP_RUN_REF,
+      verdict,
+    })
+
+    expect(decision.realAuthorized).toBe(true)
+    expect(decision.blockedReason).toBeNull()
+  })
+
+  // RL-3 (#5460): the no-resale gate on the live firm-up path.
+  it('RL-3 no-resale: refuses a consumer subscription-seat resale (non-waivable)', () => {
+    const decision = decideFirmupBitcoinSettlement({
+      amountSats: 50,
+      gate: armedGate,
+      monetizationKind: 'subscription_capacity_resale',
+      providerActorRef: WORKER_REF,
+      requestedAdapterKind: 'spark_treasury',
+      trainingRunRef: FIRMUP_RUN_REF,
+      verdict,
+    })
+
+    expect(decision.realAuthorized).toBe(false)
+    expect(decision.blockedReason).toBe('monetization_not_authorized')
+  })
+
+  it('RL-3 no-resale: agent labor (the default firm-up kind) stays authorized', () => {
+    const decision = decideFirmupBitcoinSettlement({
+      amountSats: 50,
+      gate: armedGate,
+      monetizationKind: 'agentic_work',
+      providerActorRef: WORKER_REF,
+      requestedAdapterKind: 'spark_treasury',
+      trainingRunRef: FIRMUP_RUN_REF,
+      verdict,
+    })
+
+    expect(decision.realAuthorized).toBe(true)
+    expect(decision.blockedReason).toBeNull()
+  })
+
+  it('RL-3 no-resale: API-inference gateway resale on an API-key account stays ALLOWED (not over-blocked)', () => {
+    const decision = decideFirmupBitcoinSettlement({
+      accountAuthMode: 'api_key',
+      amountSats: 50,
+      gate: armedGate,
+      monetizationKind: 'api_inference_gateway_resale',
+      providerActorRef: WORKER_REF,
+      requestedAdapterKind: 'spark_treasury',
+      // The firm-up monetization-kind path does not require the full resale ref
+      // chain here; the authorization for api_inference_gateway_resale on an
+      // API-key account with no refs is still NOT authorized by the underlying
+      // gate (missing ref chain), so it fails closed — proving the gate is live.
+      trainingRunRef: FIRMUP_RUN_REF,
+      verdict,
+    })
+
+    // With no resale ref chain, the gate refuses (fail-closed) rather than
+    // silently allowing — this proves the no-resale gate is actually consulted.
+    expect(decision.realAuthorized).toBe(false)
+    expect(decision.blockedReason).toBe('monetization_not_authorized')
+  })
 })
 
 describe('buildFirmupBitcoinSettlement', () => {

@@ -5,6 +5,10 @@ import {
   type SiteReferralPayoutLedgerValidationError,
   createReferralPayoutEligibility,
 } from './site-referral-payout-ledger'
+import {
+  type AssetBoundaryAsset,
+  validateAssetBoundary,
+} from './asset-bitcoin-boundary'
 
 /**
  * RL-1 (openagents #5458): FEED the referral payout ledger from a real paid
@@ -40,6 +44,18 @@ import {
 export type SiteReferralRevenueAsset = 'bitcoin' | 'credit' | 'usd'
 
 /**
+ * Map a referral rev-share asset onto the shared credit<->Bitcoin boundary asset
+ * (RL-3 #5460). The referral path has no `free` source (the ledger refuses a
+ * zero/no-qualifying-amount event before it reaches dispatch), so the three
+ * referral assets map 1:1: `bitcoin` -> `bitcoin`, `credit` -> `credit`, `usd`
+ * -> `usd`. Centralizing the mapping keeps the boundary the single source of
+ * truth on both the feed (eligibility) and dispatch (payout) sides.
+ */
+export const referralRevenueAssetToBoundaryAsset = (
+  asset: SiteReferralRevenueAsset,
+): AssetBoundaryAsset => asset
+
+/**
  * A real paid event for an attributed customer. The caller supplies the public-
  * safe qualifying event ref (e.g. a Stripe checkout-session-derived ref), the
  * sat-denominated qualifying amount used for the 5% calculation, and the
@@ -62,9 +78,23 @@ export type ReferralPaidEventResult =
   | Readonly<{ _tag: 'no_attribution' }>
   | Readonly<{ _tag: 'self_attribution' }>
   | Readonly<{
+      _tag: 'boundary_refused'
+      reasonRef: string
+    }>
+  | Readonly<{
       _tag: 'recorded'
       entry: SiteReferralPayoutLedgerEntry
     }>
+
+/**
+ * The asset the recorded revshare eligibility is denominated in. Bitcoin revenue
+ * creates a Bitcoin-withdrawable-eligible revshare; credit/USD revenue creates a
+ * credit revshare (never a Bitcoin liability). This is the contributor-side asset
+ * the shared boundary guard checks against the revenue asset.
+ */
+const revshareContributorAssetFor = (
+  revenueAsset: SiteReferralRevenueAsset,
+): AssetBoundaryAsset => (revenueAsset === 'bitcoin' ? 'bitcoin' : 'credit')
 
 export type ReferralPaidEventError =
   | SiteReferralPayoutLedgerStorageError
@@ -140,6 +170,22 @@ export const recordReferralPayoutForPaidEvent = async (
 
   if (attribution.referrer_user_id === input.userId) {
     return { _tag: 'self_attribution' }
+  }
+
+  // RL-3 (#5460): enforce the SHARED credit<->Bitcoin asset boundary at
+  // eligibility (revshare) creation, not only at dispatch. The recorded revshare
+  // is denominated to match the revenue source (Bitcoin -> Bitcoin; credit/USD
+  // -> credit), so this never silently records a credit-funded Bitcoin
+  // liability. Fail closed (record NO eligibility) if a mapping ever violated
+  // the boundary.
+  const boundaryViolation = validateAssetBoundary({
+    contributorAsset: revshareContributorAssetFor(input.revenueAsset),
+    movement: 'revshare',
+    revenueAsset: referralRevenueAssetToBoundaryAsset(input.revenueAsset),
+  })
+
+  if (boundaryViolation !== null) {
+    return { _tag: 'boundary_refused', reasonRef: boundaryViolation.reasonRef }
   }
 
   const createInput: CreateReferralPayoutEligibilityInput = {
