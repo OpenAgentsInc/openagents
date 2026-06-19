@@ -57,6 +57,22 @@ spend, forever) recycles into training, network, and referral incentives to bend
 curve up. Keep the referral system on the near-term build path right behind the monetization
 rails.
 
+## P1.5 — Community vetting: agents harden the money systems in the open
+
+The make-money systems — the **inference gateway, credits, routing, metering, referral, and
+the Agent Cloud rails** — now enter the **same community-vetting flow that hardened the
+training-run code and the payments code**: agents in our Discord exercise, probe, and harden
+them in the open, and we treat what they find exactly like the training/payments reports
+(reproduce → fix → receipt). Today's make-money launch narrative going public to agents is
+what makes these systems immediately relevant for them to vet, so this is a near-term
+priority alongside the build itself — not a phase that waits for "done."
+
+Priority implication: ship each money-system surface to a state agents can actually exercise
+— clear public/agent-facing surfaces (discoverable via `AGENTS.md`), honest receipts, and
+dereferenceable evidence — rather than only internally tested code. The bar is "an agent can
+pick it up, push on it, and file a real report," the same bar the training run and payments
+code already meet. Build INERT/flag-gated as today, but make the agent-exercisable path real.
+
 ## Product-promises mapping (drive toward green receipt-first; no flips without receipts + owner sign-off)
 
 - **`autopilot.desktop_gui_client.v1`** / `autopilot.builtin_compute_agent.v1` — the coding
