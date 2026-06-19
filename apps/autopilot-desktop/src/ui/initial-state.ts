@@ -1,13 +1,5 @@
 import type { Command } from "foldkit"
 
-import {
-  LoadIdentityChoiceState,
-  LoadInferenceGatewayReadiness,
-  LoadInstallReadiness,
-  LoadOnboardingStatus,
-  LoadProofReplayBundle,
-  LoadPublicActivityTimeline,
-} from "./commands"
 import type { Message } from "./message"
 import { initialModel, Model } from "./model"
 // #5472: load the locally-persisted Settings preferences and apply them to the
@@ -21,6 +13,14 @@ type InitialRuntimeState = readonly [
   ReadonlyArray<Command.Command<Message>>,
 ]
 
+// ZERO-BASE SHELL (owner directive, 2026-06-19): the app launches to a black
+// screen with NOTHING on it except the bottom text bar — the `shell` pane. We
+// deliberately fire NO warm-up commands at entry (no onboarding/proof/activity/
+// gateway loaders), so the default screen stays quiet and black and nothing
+// pulls the user onto another surface. Every pane the old UI had is KEPT and
+// still mounts; each warms ITS OWN projections lazily on open (the NavigatedTo
+// handler in update.ts already loads per-pane data when a pane is entered via
+// the Cmd-K palette / "open panes"). One thing at a time.
 export const initialRuntimeState = (): InitialRuntimeState => {
   const preferences = loadPreferences()
   const model = Model.make({
@@ -33,49 +33,15 @@ export const initialRuntimeState = (): InitialRuntimeState => {
     defaultLane: preferences.defaultLane,
     showNotificationPanel: preferences.showNotificationPanel,
     // #5485: apply the saved gateway-fallback intent so the routing decision
-    // (own-auth vs gateway) honours it from app entry.
+    // (own-auth vs gateway) honours it once the user opens a coding surface.
     gatewayInferenceFallback: preferences.gatewayInferenceFallback,
     spawnAdapter: preferences.defaultAdapter,
     spawnLane: preferences.defaultLane,
-    // AO-4/C5 (#5441/#5445/#5454): launch starts by loading the onboarding
-    // projection. Fresh users see the identity choice + live chain; returning
-    // users whose projection is already complete auto-route to Chat when
-    // GotOnboardingStatus arrives. The sidebar nav lets them leave anytime.
-    // Set here (the real app entry) rather than in `initialModel` so the shared
-    // neutral base stays "network" for the view/update tests.
-    pane: "onboarding",
-    proofReplayPending: true,
-    proofReplayStatus: {
-      text: "loading public replay bundle...",
-      tone: "info",
-    },
-    publicActivityTimelinePending: true,
-    publicActivityTimelineStatus: {
-      text: "loading public activity...",
-      tone: "info",
-    },
-    // AO-3/AO-4 (#5444/#5445): warm the first-run onboarding wizard on startup
-    // so the "Get started" surface reflects the real identity-choice + chain
-    // state immediately, not only after the user opens the pane.
-    identityChoicePending: true,
-    onboardingPending: true,
-    onboardingStatusLine: { text: "loading onboarding status...", tone: "info" },
+    // The dead-simple default surface: black + the bottom text bar.
+    pane: "shell",
   })
 
-  return [
-    model,
-    [
-      LoadInstallReadiness(),
-      LoadIdentityChoiceState(),
-      LoadOnboardingStatus(),
-      LoadProofReplayBundle({
-        request: { mode: "catalog", slug: model.selectedProofReplaySlug },
-      }),
-      LoadPublicActivityTimeline(),
-      // #5485: warm the gateway readiness so the coding surfaces can route
-      // inference correctly (and surface a balance hint) without waiting for a
-      // pane enter. INERT until the gateway flag is on (then it carries credits).
-      LoadInferenceGatewayReadiness(),
-    ],
-  ]
+  // No entry commands: the shell needs nothing loaded to render its black
+  // screen + input. Panes warm lazily on open (NavigatedTo in update.ts).
+  return [model, []]
 }

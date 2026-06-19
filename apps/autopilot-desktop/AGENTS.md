@@ -31,6 +31,39 @@ Reference: `docs/autopilot-coder/2026-06-13-autopilot-desktop-app-audit.md` and
 the web app under `apps/openagents.com/apps/web` (its `entry.ts` / `view.ts` show
 the `Runtime.makeProgram` + `view()` pattern).
 
+## Default surface: the zero-base shell (owner directive, 2026-06-19)
+
+**The app launches to a dead-simple shell: a black screen with NOTHING on it
+except a single text bar at the bottom** (and the clean conversation above it
+once there is a response). This is the `shell` pane (`PaneId`), the default set
+by `initial-state.ts` (`pane: "shell"`, NO warm-up commands — the screen stays
+quiet and black).
+
+- **All the old UI is KEPT, just hidden.** The full multi-pane UI
+  (network/chat/code/supervise/explore/settings + nav + Cmd-K palette) still
+  mounts and works; it just does not render by default. It is reachable only via
+  an explicit open: Cmd-K (the palette overlays the shell) or the small "open
+  panes" affordance (`OpenedPanes` → lands on chat). `ClosedPanes` returns to the
+  black shell. Settings specifically is behind that explicit open, never on the
+  default screen. The black-screen guard (`tests/black-screen-guard.test.ts`)
+  still mounts EVERY pane — keep it green.
+- **The text bar is the one surface.** Typing + submitting shows a clean
+  conversation (you → answer) with NO session refs / program-step / verdict /
+  node-state jargon. The response path is the loopback seam
+  `shellLoopbackReply` in `commands.ts` (`RespondToShellInput` →
+  `RespondedShell`). **To wire a real model, replace the body of
+  `shellLoopbackReply` with an RPC call** (same pattern as `SpawnChatTurn`); the
+  reducer + view do not change.
+- **Programmatic control + parity.** Drive the shell over the existing RPC path:
+  the Bun→webview `shellControl` message (`shared/rpc.ts`, routed in `main.ts`)
+  pushes the SAME inbound messages the UI dispatches (`ChangedShellInput` /
+  `SubmittedShell`). Read what the owner sees with `shellTranscriptText(model)`
+  (pure projection of the rendered conversation). Proof:
+  `bun run proof:shell-control`. Tests: `tests/zero-base-shell.test.ts`.
+- **Quiet by default.** Native OS notifications are OFF unless
+  `OA_DESKTOP_OS_NOTIFICATIONS=1` (see `src/bun/index.ts`). The in-app
+  notification center still accumulates as a passive projection.
+
 ## Visualizations: `three-effect` (Three.js) first (owner mandate, 2026-06-14)
 
 **When you build UI, reach for `@openagentsinc/three-effect` first, and do as

@@ -33,6 +33,7 @@ import {
   type TrainingRunPromiseSignalDefinition,
   type TrainingRunVisualizationOptions,
 } from "@openagentsinc/three-effect/core"
+import { Option } from "effect"
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 // #5467: the Autonomous loop view's own pane module (Supervise group).
@@ -176,6 +177,10 @@ import {
   ToggledDiffViewMode,
   ToggledArtifactBrowser,
   ToggledChatMessageDetails,
+  ChangedShellInput,
+  SubmittedShell,
+  OpenedPanes,
+  ClosedPanes,
 } from "./message"
 import {
   DEFAULT_MANAGED_BASE_REF,
@@ -5723,6 +5728,73 @@ const composerPane = (model: Model): Html => {
   )
 }
 
+// ── Zero-base shell (owner directive, 2026-06-19) ───────────────────────────
+// The minimal default surface: a black screen with NOTHING on it except a single
+// text bar at the bottom, and — once there is a response — the clean conversation
+// above it (what you typed → the answer). No sidebar, no nav, no panes, no
+// settings, no status chrome. The bar submits on Enter (Shift+Enter is left for
+// a newline if the owner ever wants it; today it is a single-line input).
+//
+// One tiny affordance opens the KEPT full multi-pane UI: the "open panes" link
+// (it dispatches OpenedPanes → lands on the chat pane). Cmd-K also still works
+// (the palette overlays the shell) as the primary explicit open. Everything the
+// old UI did is preserved and reachable; it just no longer renders by default.
+const shellTurnView = (turn: { role: string; text: string }): Html =>
+  h.div(
+    [cls(`shell-turn shell-turn-${turn.role}`)],
+    [
+      h.div([cls("shell-turn-role")], [turn.role]),
+      h.div([cls("shell-turn-text")], [turn.text]),
+    ],
+  )
+
+const shellPane = (model: Model): Html =>
+  h.div(
+    [cls("shell-pane")],
+    [
+      // The conversation (empty until the first response → truly black on launch).
+      model.shellTurns.length === 0
+        ? h.empty
+        : h.div(
+            [cls("shell-conversation")],
+            model.shellTurns.map((turn) => shellTurnView(turn)),
+          ),
+      // The single bottom text bar.
+      h.div(
+        [cls("shell-bar")],
+        [
+          h.input([
+            cls("shell-input"),
+            h.Type("text"),
+            h.Placeholder(""),
+            h.Autofocus(true),
+            h.Disabled(model.shellPending),
+            h.Value(model.shellInput),
+            h.OnInput((value: string) => ChangedShellInput({ value })),
+            // Enter submits (without Shift); other keys fall through untouched.
+            h.OnKeyDownPreventDefault((key, mods) =>
+              key === "Enter" && !mods.shiftKey
+                ? Option.some(SubmittedShell())
+                : Option.none(),
+            ),
+          ]),
+          // A tiny, unobtrusive "open panes" affordance (the explicit open for
+          // the hidden full UI). Kept minimal so the screen stays essentially
+          // black; Cmd-K is the primary open.
+          h.button(
+            [
+              cls("shell-open-panes"),
+              h.Type("button"),
+              h.Title("Open the full Autopilot UI (or press ⌘K)"),
+              h.OnClick(OpenedPanes()),
+            ],
+            ["⌘K"],
+          ),
+        ],
+      ),
+    ],
+  )
+
 // ── Pane router + top-level view ────────────────────────────────────────────────
 
 // ── Network home ─────────────────────────────────────────────────────────
@@ -5906,6 +5978,8 @@ const onboardingPane = (model: Model): Html => {
 
 const paneView = (model: Model): Html => {
   switch (model.pane) {
+    case "shell":
+      return shellPane(model)
     case "network":
       return networkPane(model)
     case "onboarding":
@@ -5946,6 +6020,16 @@ const rootView = (model: Model): Html => {
   // dark palette so it's a visual no-op, and switching to `light` takes effect
   // immediately (no reload). See index.html `[data-theme="light"]` overrides.
   const themeData = h.DataAttribute("theme", themeAttr(model.themePreference))
+  // ZERO-BASE SHELL (owner directive): the DEFAULT surface is a black screen
+  // with nothing on it except the bottom text bar (and the conversation once
+  // there is a response). No sidebar, no nav, no panes — just the shell. The
+  // command palette (#5464) still overlays it so Cmd-K opens the hidden full UI.
+  if (model.pane === "shell") {
+    return h.div(
+      [cls("app-shell app-shell-shell"), themeData],
+      [shellPane(model), commandPalette(model)],
+    )
+  }
   // The network home remains immersive: fullscreen replay scene, no sidebar
   // chrome, plus the public activity strip from #5428. The command palette
   // (#5464) still overlays it so Cmd-K works everywhere.

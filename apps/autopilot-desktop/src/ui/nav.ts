@@ -129,7 +129,12 @@ export const NAV_GROUPS: ReadonlyArray<NavGroup> = [
 
 // Panes that are reachable but never sit in the primary nav (intentional leaves
 // per the audit). `session-detail` is opened by selecting a session row.
-export const NAV_LEAF_PANES: ReadonlyArray<PaneId> = ["session-detail"]
+// ZERO-BASE SHELL (owner directive, 2026-06-19): `shell` is the dead-simple
+// DEFAULT surface (black + bottom text bar). It is reached by launch, by the
+// "open panes ← back" path (ClosedPanes), and by Esc — never by a nav button —
+// so it is an intentional leaf, not a nav destination, and it is deliberately
+// kept OUT of the palette/sidebar (the shell hides the nav, it is not part of it).
+export const NAV_LEAF_PANES: ReadonlyArray<PaneId> = ["shell", "session-detail"]
 
 // Flattened destination list (used by the palette + lookups).
 export const NAV_DESTINATIONS: ReadonlyArray<NavDestination & { groupId: string }> =

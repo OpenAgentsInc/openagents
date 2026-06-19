@@ -975,8 +975,19 @@ const window = new BrowserWindow({
 
 // CL-30: each poll, fold the session list into the notifier so a session that
 // newly enters a notify-worthy state (needs_decision / failed / completed)
-// raises a native OS notification and updates the in-app notification center.
-const notifier = createSessionNotifier({ raise: raiseOsNotification })
+// updates the in-app notification center.
+//
+// QUIET BY DEFAULT (zero-base directive, 2026-06-19): native OS notifications
+// are OFF by default — no auto / cross-session notification spam while the owner
+// is looking at the dead-simple shell. The in-app notification center still
+// accumulates (it is a passive projection the hidden UI can show), but nothing
+// pops a desktop banner unless the owner explicitly opts in with
+// `OA_DESKTOP_OS_NOTIFICATIONS=1`. Flip the env var to restore OS banners.
+const osNotificationsEnabled =
+  process.env.OA_DESKTOP_OS_NOTIFICATIONS === "1"
+const notifier = createSessionNotifier({
+  raise: osNotificationsEnabled ? raiseOsNotification : () => {},
+})
 
 // #5011/#5027 (the §0 install seam): adopt an already-running local node, or
 // launch the local Pylon runtime when none is discovered, so a fresh install

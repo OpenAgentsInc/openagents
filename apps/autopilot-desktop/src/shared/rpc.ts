@@ -1066,6 +1066,18 @@ export type DesktopRPCSchema = {
       // from the live node-state poll: this reflects whether the app launched /
       // adopted / failed to bring up the local node. No fake "online".
       readonly nodeLaunchStatus: { readonly status: NodeLaunchStatus }
+      // ZERO-BASE SHELL programmatic control (owner directive, 2026-06-19): a
+      // Bun→webview push that drives the dead-simple shell's text bar so an
+      // operator / headless control path (autopilotctl, the Bun control surface)
+      // can set the input and submit it WITHOUT a human at the keyboard. The
+      // webview routes this to the SAME inbound messages the UI dispatches
+      // (ChangedShellInput / SubmittedShell), so a driver sees exactly the state
+      // the owner sees. Public-safe: it carries only the literal text the owner
+      // could type. `set-input` replaces the bar; `submit` sends the current bar.
+      readonly shellControl: {
+        readonly action: "set-input" | "submit"
+        readonly value?: string
+      }
     }
   }
 }

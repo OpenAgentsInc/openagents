@@ -168,29 +168,19 @@ const onboardingProjection = (
 })
 
 describe("helpers (CL-47..CL-58 parity, pure)", () => {
-  test("desktop startup loads install readiness and the first proof replay bundle", () => {
+  test("desktop startup lands on the dead-simple shell with NO warm-up commands", () => {
+    // ZERO-BASE SHELL (owner directive, 2026-06-19): the app launches to a
+    // black screen with nothing on it except the bottom text bar (the `shell`
+    // pane). Startup deliberately fires NO warm-up commands — the screen stays
+    // quiet and black; every pane warms ITS OWN projections lazily on open
+    // (NavigatedTo in update.ts). The old onboarding-on-launch + 6 startup
+    // loaders are intentionally gone.
     const [model, commands] = initialRuntimeState()
 
-    expect(model.pane).toBe("onboarding")
-    expect(model.proofReplayPending).toBe(true)
-    expect(model.proofReplayStatus.text).toBe("loading public replay bundle...")
-    expect(model.publicActivityTimelinePending).toBe(true)
-    // AO-3/AO-4 (#5444/#5445): startup also warms the onboarding wizard.
-    expect(commands.map(command => command.name)).toEqual([
-      "LoadInstallReadiness",
-      "LoadIdentityChoiceState",
-      "LoadOnboardingStatus",
-      "LoadProofReplayBundle",
-      "LoadPublicActivityTimeline",
-      // #5485: startup also warms the inference-gateway readiness.
-      "LoadInferenceGatewayReadiness",
-    ])
-    const proofReplay = commands.find(
-      command => command.name === "LoadProofReplayBundle",
-    )
-    expect(proofReplay?.args).toEqual({
-      request: { mode: "catalog", slug: "first-real-settlement" },
-    })
+    expect(model.pane).toBe("shell")
+    expect(commands).toHaveLength(0)
+    expect(model.shellTurns).toHaveLength(0)
+    expect(model.shellInput).toBe("")
   })
 
   test("commandErrorText unwraps Effect.tryPromise causes", () => {
@@ -384,7 +374,10 @@ describe("update reducer (CL-53)", () => {
   })
 
   test("incomplete onboarding status keeps the onboarding pane", () => {
-    const [start] = initialRuntimeState()
+    // The auto-advance contract is scoped to the onboarding pane (the user must
+    // have opened it). Zero-base launch now lands on `shell`, so start the user
+    // on the onboarding pane explicitly to exercise this guard.
+    const start = Model.make({ ...initialModel, pane: "onboarding" })
     const [model, commands] = update(
       start,
       GotOnboardingStatus({ projection: onboardingProjection(false) }),
@@ -413,8 +406,11 @@ describe("update reducer (CL-53)", () => {
     expect(commands).toHaveLength(0)
   })
 
-  test("complete onboarding status auto-navigates startup to chat", () => {
-    const [start] = initialRuntimeState()
+  test("complete onboarding status auto-navigates the onboarding pane to chat", () => {
+    // From the onboarding pane, a completed chain auto-advances to chat. (Zero-
+    // base launch lands on `shell`, not onboarding, so start on onboarding to
+    // exercise the auto-advance the way a returning user reaches it.)
+    const start = Model.make({ ...initialModel, pane: "onboarding" })
     const [model, commands] = update(
       start,
       GotOnboardingStatus({ projection: onboardingProjection(true) }),

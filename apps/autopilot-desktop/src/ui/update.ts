@@ -40,6 +40,7 @@ import {
   ReconcileTrainingWindow,
   RemoveManagedAccount,
   RequestTrainingBootstrapGrant,
+  RespondToShellInput,
   ResolveApproval,
   ResolveManagedWorktree,
   SetCoordinatorPaused,
@@ -82,6 +83,7 @@ import {
   NavigatedToGroup,
   OpenedCommandPalette,
   RanPaletteCommand,
+  RespondedShell,
   type Message,
 } from "./message"
 import { interpretKey } from "./keyboard"
@@ -2537,6 +2539,59 @@ export const update = (model: Model, message: Message): Result => {
           chatPending: false,
           chatStatus: { text: message.error, tone: "error" },
         }),
+        noCommands,
+      ]
+
+    // ── Zero-base shell (owner directive, 2026-06-19) ───────────────────────
+    // The minimal default surface. The whole loop is a pure reducer + one
+    // loopback command, so a programmatic driver (Claude) can set the input,
+    // submit, and read the rendered conversation, seeing exactly what the owner
+    // sees (model.shellTurns → shellTranscriptText).
+    case "ChangedShellInput":
+      return [Model.make({ ...model, shellInput: message.value }), noCommands]
+    case "SubmittedShell": {
+      const prompt = model.shellInput.trim()
+      // Empty submit is a no-op (no error chrome on the clean surface).
+      if (prompt === "" || model.shellPending) return [model, noCommands]
+      return [
+        Model.make({
+          ...model,
+          shellInput: "",
+          shellPending: true,
+          shellTurns: [
+            ...model.shellTurns,
+            { id: chatMessageId("shell.you"), role: "you", text: prompt },
+          ],
+        }),
+        [RespondToShellInput({ prompt })],
+      ]
+    }
+    case "RespondedShell":
+      return [
+        Model.make({
+          ...model,
+          shellPending: false,
+          shellTurns: [
+            ...model.shellTurns,
+            {
+              id: chatMessageId("shell.assistant"),
+              role: "assistant",
+              text: message.text,
+            },
+          ],
+        }),
+        noCommands,
+      ]
+    // The explicit open: reveal the KEPT full multi-pane UI. Lands on the chat
+    // pane (the closest single-surface match to the shell bar) and warms it via
+    // the existing NavigatedTo handler (its per-pane projection loads fire).
+    case "OpenedPanes":
+      return update(model, NavigatedTo({ pane: "chat" }))
+    // Return to the black shell. Pure pane switch; the panes stay mounted and
+    // reopenable. Closes the palette if it was open.
+    case "ClosedPanes":
+      return [
+        Model.make({ ...model, pane: "shell", commandPaletteOpen: false }),
         noCommands,
       ]
 
