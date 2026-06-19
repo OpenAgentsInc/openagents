@@ -255,6 +255,140 @@ body {
   width: 100%;
   height: 100%;
 }
+
+/* ── HUD H3: the managed pane layer (#5501) ──────────────────────────────────
+   Floating, draggable + resizable windows over the current base surface — the
+   durable OpenAgents pane-as-data HUD (AutoDev/Commander/Foldkit; see the
+   2026-06-19 previous-HUD-systems audit §4.1/§4.6). The layer is a fixed,
+   pointer-transparent overlay that establishes ONE stacking context at z-index
+   30 (above base content, BELOW the hotbar at 40 and the palette at 50). Each
+   window's inline z-index stacks it WITHIN this context, so panes never cover
+   the launcher chrome. Windows re-enable pointer events; the rest of the layer
+   stays click-through so the base surface underneath is still usable. White-on-
+   black to match the shell. */
+.pane-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+.pane-window {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 12px;
+  background: rgb(8 8 10 / 0.96);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.6);
+  pointer-events: auto;
+}
+.pane-window-titlebar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.04);
+  /* The title bar is the move handle. */
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+.pane-window-title {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.7);
+}
+.pane-window-close {
+  flex: 0 0 auto;
+  width: 1.4rem;
+  height: 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 6px;
+  background: transparent;
+  color: rgb(255 255 255 / 0.55);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+.pane-window-close:hover {
+  color: rgb(255 255 255 / 0.95);
+  border-color: rgb(255 255 255 / 0.35);
+  background: rgb(255 255 255 / 0.08);
+}
+.pane-window-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 0.75rem;
+  color: var(--text, #e6e9ef);
+}
+/* The 8 resize handles (Commander's edge/corner set, audit §4.6). Small grab
+   zones on each edge/corner; corners get the diagonal cursors. */
+.pane-window-resize {
+  position: absolute;
+  touch-action: none;
+}
+.pane-window-resize-top,
+.pane-window-resize-bottom {
+  left: 8px;
+  right: 8px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.pane-window-resize-top {
+  top: -3px;
+}
+.pane-window-resize-bottom {
+  bottom: -3px;
+}
+.pane-window-resize-left,
+.pane-window-resize-right {
+  top: 8px;
+  bottom: 8px;
+  width: 6px;
+  cursor: ew-resize;
+}
+.pane-window-resize-left {
+  left: -3px;
+}
+.pane-window-resize-right {
+  right: -3px;
+}
+.pane-window-resize-topleft,
+.pane-window-resize-topright,
+.pane-window-resize-bottomleft,
+.pane-window-resize-bottomright {
+  width: 12px;
+  height: 12px;
+}
+.pane-window-resize-topleft {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+.pane-window-resize-topright {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+.pane-window-resize-bottomleft {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+.pane-window-resize-bottomright {
+  bottom: -4px;
+  right: -4px;
+  cursor: nwse-resize;
+}
+
 .network-page {
   position: absolute;
   inset: 0;

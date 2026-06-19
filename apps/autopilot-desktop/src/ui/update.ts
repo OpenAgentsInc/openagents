@@ -82,6 +82,7 @@ import {
   NavigatedTo,
   NavigatedToGroup,
   OpenedCommandPalette,
+  OpenedManagedPane,
   RanPaletteCommand,
   RespondedShell,
   type Message,
@@ -93,10 +94,16 @@ import {
   paletteCommands,
   type PaletteCommand,
 } from "./nav"
+// HUD H3 (#5501): the pure PaneManager reducer + the layer accessor. update.ts
+// maps each managed-pane Message to one `PaneLayerAction` and stores the result
+// back on the Model. The viewport is read here (real window when present, a fixed
+// fallback under test) so cascade/clamp use the live size.
+import { reducePaneLayer, type PaneLayerAction, type Viewport } from "./pane-manager"
 import {
   BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF,
   BLUEPRINT_CHAT_REPLAY_TOOL_REF,
   Model,
+  modelPaneLayer,
   type ChatMessage,
   type PaneId,
   type ProofReplayCommandRequest,
@@ -136,6 +143,30 @@ import type {
 type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
 const noCommands: ReadonlyArray<Command.Command<Message>> = []
+
+// HUD H3 (#5501): the live viewport for managed-pane cascade/clamp. Reads the
+// real webview window when present; falls back to a fixed desktop size under
+// test / SSR so the pure reducer always has finite bounds. Defensive about a
+// zero/NaN size (a not-yet-laid-out window) by flooring to the fallback.
+const PANE_FALLBACK_VIEWPORT: Viewport = { width: 1440, height: 900 }
+const currentViewport = (): Viewport => {
+  const g = globalThis as unknown as { innerWidth?: number; innerHeight?: number }
+  const width = typeof g.innerWidth === "number" && g.innerWidth > 0
+    ? g.innerWidth
+    : PANE_FALLBACK_VIEWPORT.width
+  const height = typeof g.innerHeight === "number" && g.innerHeight > 0
+    ? g.innerHeight
+    : PANE_FALLBACK_VIEWPORT.height
+  return { width, height }
+}
+
+// Run one PaneLayerAction through the pure PaneManager reducer and store the new
+// layer back on the opaque `paneLayer` field. The managed-pane verbs are pure
+// state changes (no RPC), so they never emit a command.
+const applyPaneLayerAction = (model: Model, action: PaneLayerAction): Result => {
+  const next = reducePaneLayer(modelPaneLayer(model), action, currentViewport())
+  return [Model.make({ ...model, paneLayer: next }), noCommands]
+}
 
 // #5469: bridge the flat swarm-batch Model fields ↔ the pure SwarmBatchState the
 // swarm-batch.ts queue logic operates on, so the reducer stays a thin mapping
@@ -391,6 +422,12 @@ const messageForPaletteCommand = (command: PaletteCommand): Message | null => {
     case "NavigatedTo": {
       const pane = (command.args?.pane ?? null) as PaneId | null
       return pane ? NavigatedTo({ pane }) : null
+    }
+    // HUD H3 (#5501): "Open <X> as a pane" — open the destination as a managed
+    // floating window (the pane layer) rather than swap the single-pane router.
+    case "OpenedManagedPane": {
+      const pane = (command.args?.pane ?? null) as PaneId | null
+      return pane ? OpenedManagedPane({ pane }) : null
     }
     case "ClickedSubmitIntent":
       return ClickedSubmitIntent()
@@ -2604,6 +2641,41 @@ export const update = (model: Model, message: Message): Result => {
         Model.make({ ...model, pane: "shell", commandPaletteOpen: false }),
         noCommands,
       ]
+
+    // ── HUD H3: the managed pane layer (#5501) ──────────────────────────────
+    // Each verb maps to ONE PaneLayerAction; the pure PaneManager reducer
+    // (pane-manager.ts) is the only thing that mutates the layer (open/close/
+    // focus/move/resize + cascade/clamp). The result is stored back on the
+    // opaque `paneLayer` field. No new control/RPC verb, no other Model state
+    // touched — the managed panes float OVER the current base surface, so the
+    // shell + single-pane router never regress.
+    case "OpenedManagedPane":
+      return applyPaneLayerAction(model, { kind: "open", pane: message.pane })
+    case "ClosedManagedPane":
+      return applyPaneLayerAction(model, { kind: "close", paneId: message.paneId })
+    case "FocusedManagedPane":
+      return applyPaneLayerAction(model, { kind: "focus", paneId: message.paneId })
+    case "ClosedAllManagedPanes":
+      return applyPaneLayerAction(model, { kind: "close-all" })
+    case "StartedPaneDrag":
+      return applyPaneLayerAction(model, {
+        kind: "drag-start",
+        paneId: message.paneId,
+        drag: message.drag,
+        handle: message.handle,
+        pointerX: message.pointerX,
+        pointerY: message.pointerY,
+      })
+    case "MovedPaneDragPointer":
+      // The window pointermove subscription fires continuously; the reducer
+      // no-ops when no drag is in flight, so this is cheap when idle.
+      return applyPaneLayerAction(model, {
+        kind: "drag-move",
+        pointerX: message.pointerX,
+        pointerY: message.pointerY,
+      })
+    case "EndedPaneDrag":
+      return applyPaneLayerAction(model, { kind: "drag-end" })
 
     // ── CS-A1: account management (node-local dev.accounts) ─────────────────────
     case "ClickedRefreshManagedAccounts":

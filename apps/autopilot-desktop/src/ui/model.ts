@@ -28,6 +28,12 @@ import {
   decideInference,
   type InferenceRoutingDecision,
 } from "../shared/inference-routing"
+// HUD H3 (#5501): the managed pane-layer state. Stored on the Model as
+// `S.Unknown` and re-narrowed by `modelPaneLayer` (same opaque-sub-state idiom as
+// `node`/`notifications`). This keeps the import TYPE-ONLY here, so model.ts and
+// pane-manager.ts do NOT form a runtime cycle (pane-manager imports the `PaneId`
+// VALUE from this file; this file imports only the `PaneLayer` TYPE from there).
+import type { PaneLayer } from "./pane-manager"
 import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
 import type { DesktopProofReplayProjection } from "../shared/proof-replays"
 import {
@@ -611,8 +617,23 @@ export const Model = ts("AutopilotDesktop", {
   shellInput: S.String,
   shellTurns: S.Array(ShellTurn),
   shellPending: S.Boolean,
+
+  // ── HUD H3: the managed pane layer (#5501) ────────────────────────────────
+  // The set of open managed panes (pane-as-data: id, kind, rect, z) + the
+  // monotonic seq + the in-flight drag, opaque to the Codec (S.Unknown) and
+  // re-narrowed by `modelPaneLayer`. EMPTY by default — the shell stays black
+  // until a pane is explicitly opened (hotbar / palette). This is ORTHOGONAL to
+  // `pane` (the single-pane router above): the managed panes float OVER whatever
+  // base surface `pane` is showing, so neither the shell nor the full UI regress.
+  paneLayer: S.Unknown,
 })
 export type Model = typeof Model.Type
+
+// Re-narrow the opaque pane-layer field at its single read boundary (mirrors
+// modelNode / modelNotifications). Defaults to an empty layer if (impossibly)
+// unset, so the view never has to null-check.
+export const modelPaneLayer = (model: Model): PaneLayer =>
+  (model.paneLayer as PaneLayer | null) ?? { panes: [], seq: 0, drag: null }
 
 // ── Zero-base shell introspection (programmatic-control parity) ─────────────
 // A pure, plain-text projection of exactly what the shell screen shows the user
@@ -1079,4 +1100,6 @@ export const initialModel: Model = Model.make({
   shellInput: "",
   shellTurns: [],
   shellPending: false,
+  // HUD H3 (#5501): no managed panes open by default (the shell stays black).
+  paneLayer: { panes: [], seq: 0, drag: null },
 })

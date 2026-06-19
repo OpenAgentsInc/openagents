@@ -183,7 +183,18 @@ import {
   SubmittedShell,
   OpenedPanes,
   ClosedPanes,
+  // HUD H3 (#5501): managed pane-layer verbs.
+  ClosedManagedPane,
+  FocusedManagedPane,
+  StartedPaneDrag,
 } from "./message"
+// HUD H3 (#5501): the layer geometry/types + the 8 resize handles, all pure.
+import {
+  PANE_RESIZE_HANDLES,
+  type ManagedPane,
+  type PaneLayer,
+  type PaneResizeHandle,
+} from "./pane-manager"
 import {
   DEFAULT_MANAGED_BASE_REF,
   managedWorktreeLabel,
@@ -267,6 +278,7 @@ import {
   modelOnboardingStatus,
   modelIdentityChoiceState,
   modelManagedAccounts,
+  modelPaneLayer,
   modelPromiseSurfacingReadiness,
   modelPromiseSurfacingResult,
   modelNode,
@@ -6036,8 +6048,13 @@ const onboardingPane = (model: Model): Html => {
   )
 }
 
-const paneView = (model: Model): Html => {
-  switch (model.pane) {
+// HUD H3 (#5501): the body for a GIVEN pane kind (not just `model.pane`), so the
+// managed pane layer can render the SAME existing pane content inside a floating
+// window (audit §4.1 — reuse the content, key it by kind). `paneView` is the
+// single-pane router; it delegates here for `model.pane`, and `managedPaneLayer`
+// (below) delegates here per open pane.
+const paneContent = (model: Model, kind: PaneId): Html => {
+  switch (kind) {
     case "shell":
       return shellPane(model)
     case "network":
@@ -6097,6 +6114,123 @@ const statusHudOverlay = (model: Model): Html =>
     ],
   )
 
+const paneView = (model: Model): Html => paneContent(model, model.pane)
+
+// ── HUD H3: the managed pane layer (#5501) ──────────────────────────────────
+// Floating, draggable + resizable windows over the current base surface. Each
+// window is pane-as-data (`ManagedPane`): its `rect` positions it absolutely, its
+// `z` stacks it, and its body reuses `paneContent` keyed by `kind` (the kept
+// full-UI panes, rendered inside a window — audit §4.1). The title bar is the
+// drag handle; the 8 edge/corner handles resize (Commander's 8-handle set, audit
+// §4.6). Pointer-down captures the gesture (StartedPaneDrag) with the pointer's
+// client coords; a window pointermove/up subscription (subscriptions.ts) drives
+// the move + end. The layer renders ONLY when panes are open, so the black shell
+// stays black by default.
+
+// A human label for a pane kind, sourced from the nav registry where possible
+// (one source of truth) with a readable fallback for leaves not in a group.
+const PANE_KIND_LABELS: ReadonlyMap<PaneId, string> = (() => {
+  const map = new Map<PaneId, string>()
+  for (const group of NAV_GROUPS) {
+    for (const dest of group.destinations) map.set(dest.pane, dest.label)
+  }
+  map.set("session-detail", "Session")
+  map.set("shell", "Shell")
+  return map
+})()
+
+const paneKindLabel = (kind: PaneId): string =>
+  PANE_KIND_LABELS.get(kind) ?? kind
+
+// One resize handle: a small grab target on an edge/corner. Pointer-down starts a
+// resize gesture for THIS handle (the reducer captures the pane's start rect).
+const paneResizeHandleView = (pane: ManagedPane, handle: PaneResizeHandle): Html =>
+  h.div(
+    [
+      cls(`pane-window-resize pane-window-resize-${handle}`),
+      h.OnPointerDown((_pointerType, button, _sx, _sy, _ts, clientX, clientY) =>
+        button === 0
+          ? Option.some(
+              StartedPaneDrag({
+                paneId: pane.id,
+                drag: "resize",
+                handle,
+                pointerX: clientX,
+                pointerY: clientY,
+              }),
+            )
+          : Option.none(),
+      ),
+    ],
+    [],
+  )
+
+const managedPaneWindow = (model: Model, pane: ManagedPane): Html =>
+  h.div(
+    [
+      cls("pane-window"),
+      // Absolute geometry straight from the pane data; z stacks focused on top.
+      h.Style({
+        left: `${pane.rect.x}px`,
+        top: `${pane.rect.y}px`,
+        width: `${pane.rect.w}px`,
+        height: `${pane.rect.h}px`,
+        "z-index": String(100 + pane.z),
+      }),
+      // Clicking anywhere in the window focuses (brings to front).
+      h.OnMouseDown(FocusedManagedPane({ paneId: pane.id })),
+    ],
+    [
+      // Title bar — the move handle. Pointer-down starts a move gesture.
+      h.div(
+        [
+          cls("pane-window-titlebar"),
+          h.OnPointerDown((_pointerType, button, _sx, _sy, _ts, clientX, clientY) =>
+            button === 0
+              ? Option.some(
+                  StartedPaneDrag({
+                    paneId: pane.id,
+                    drag: "move",
+                    handle: null,
+                    pointerX: clientX,
+                    pointerY: clientY,
+                  }),
+                )
+              : Option.none(),
+          ),
+        ],
+        [
+          h.span([cls("pane-window-title")], [paneKindLabel(pane.kind)]),
+          h.button(
+            [
+              cls("pane-window-close"),
+              h.Type("button"),
+              h.Title("Close pane"),
+              h.OnClick(ClosedManagedPane({ paneId: pane.id })),
+            ],
+            ["×"],
+          ),
+        ],
+      ),
+      // The pane body: the SAME existing content, rendered inside the window.
+      h.div([cls("pane-window-body")], [paneContent(model, pane.kind)]),
+      // The 8 resize handles.
+      ...PANE_RESIZE_HANDLES.map((handle) => paneResizeHandleView(pane, handle)),
+    ],
+  )
+
+// The layer overlay. Renders nothing when no panes are open (so the shell stays
+// truly black). Panes are rendered in id order; z-index (from the data) does the
+// real stacking, so DOM order does not matter.
+const managedPaneLayer = (model: Model): Html => {
+  const layer: PaneLayer = modelPaneLayer(model)
+  if (layer.panes.length === 0) return h.empty
+  return h.div(
+    [cls("pane-layer"), h.AriaLabel("Open panes")],
+    layer.panes.map((pane) => managedPaneWindow(model, pane)),
+  )
+}
+
 const rootView = (model: Model): Html => {
   // #5472: the live theme attribute. Both app-shell roots carry `data-theme` so
   // the (central) CSS can restyle for light mode; `dark` matches the hard-coded
@@ -6113,7 +6247,11 @@ const rootView = (model: Model): Html => {
     // the (kept, hidden) full UI. The command palette still overlays it too.
     return h.div(
       [cls("app-shell app-shell-shell"), themeData],
-      [shellPane(model), hotbar(model), commandPalette(model)],
+      // HUD H3 (#5501): the managed pane layer floats OVER the black shell. It
+      // renders nothing until a pane is opened (hotbar / palette), so the default
+      // shell stays truly black — the panes are a managed layer, not the old
+      // free-floating default sprawl.
+      [shellPane(model), managedPaneLayer(model), hotbar(model), commandPalette(model)],
     )
   }
   // The network home remains immersive: fullscreen replay scene, no sidebar
@@ -6123,7 +6261,7 @@ const rootView = (model: Model): Html => {
   if (model.pane === "network") {
     return h.div(
       [cls("app-shell app-shell-network"), themeData],
-      [networkPane(model), hotbar(model), commandPalette(model)],
+      [networkPane(model), managedPaneLayer(model), hotbar(model), commandPalette(model)],
     )
   }
   const fullscreenTraining = model.pane === "training-fullscreen"
@@ -6172,6 +6310,10 @@ const rootView = (model: Model): Html => {
       // HUD H7 (#5504): the live status/meters overlay, top-right corner. Hidden
       // in fullscreen training (same anti-occlusion rule as the hotbar).
       fullscreenTraining ? h.empty : statusHudOverlay(model),
+      // HUD H3 (#5501): the managed pane layer also floats over the full UI (a
+      // pane opened from the hotbar/palette appears as a window above the
+      // sidebar+content), hidden in immersive training fullscreen.
+      fullscreenTraining ? h.empty : managedPaneLayer(model),
       commandPalette(model),
     ],
   )

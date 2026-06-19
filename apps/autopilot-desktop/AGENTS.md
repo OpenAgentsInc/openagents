@@ -47,6 +47,23 @@ quiet and black).
   black shell. Settings specifically is behind that explicit open, never on the
   default screen. The black-screen guard (`tests/black-screen-guard.test.ts`)
   still mounts EVERY pane — keep it green.
+- **HUD H3 (#5501) — the managed pane layer.** Panes are also available as a
+  MANAGED layer of draggable + resizable floating windows OVER the base surface,
+  the durable OpenAgents pane-as-data pattern (audit
+  `docs/launch/2026-06-19-previous-hud-systems-audit.md` §4.1/§4.6), NOT the old
+  free-floating default sprawl. A pane is plain data (`{id, kind, rect, z}`) in
+  `src/ui/pane-manager.ts`; the pure `reducePaneLayer` (open/close/focus/move/
+  resize + cascade placement + viewport clamp) is the ONLY mutator, stored on the
+  opaque `paneLayer` Model field (`modelPaneLayer`). Panes open via the command
+  palette ("Open <X> as a pane", derived from the SAME nav registry as everything
+  else), float over the shell/network/full UI, and the shell stays BLACK until one
+  is opened. Drag/resize uses `h.OnPointerDown` to capture a gesture
+  (`StartedPaneDrag`) plus a window `pointermove`/`pointerup` subscription
+  (`subscriptions.ts` → `MovedPaneDragPointer`/`EndedPaneDrag`); the 8 resize
+  handles match Commander's edge/corner set. Cascade + clamp are the anti-sprawl
+  guard (§5.2): a new pane never stacks exactly on the last, and no pane can be
+  dragged off-screen. Parity: `paneLayerText(layer)`. Tests:
+  `tests/pane-layer.test.ts`.
 - **The text bar is the one surface.** Typing + submitting shows a clean
   conversation (you → answer) with NO session refs / program-step / verdict /
   node-state jargon. The response path is `RespondToShellInput` in `commands.ts`
