@@ -75,16 +75,30 @@ export type InferenceStreamChunk = Readonly<{
 
 // Typed adapter failure. Adapters surface provider/transport problems as this
 // rather than throwing, so the route can map them to a stable JSON error.
+//
+// `retryable` marks failures that routing/overflow (#5482) may fail over to
+// another supply lane: provider rate-limit/quota (HTTP 429) and transient
+// transport/5xx errors. Permanent errors (bad request, unconfigured adapter,
+// parse failures) are non-retryable. Defaults to false so existing call sites
+// stay non-retryable without change.
 export class InferenceAdapterError extends Error {
   readonly _tag = 'InferenceAdapterError'
   readonly adapterId: string
   readonly reason: string
+  readonly retryable: boolean
 
-  constructor(input: Readonly<{ adapterId: string; reason: string }>) {
+  constructor(
+    input: Readonly<{
+      adapterId: string
+      reason: string
+      retryable?: boolean | undefined
+    }>,
+  ) {
     super(`[${input.adapterId}] ${input.reason}`)
     this.name = 'InferenceAdapterError'
     this.adapterId = input.adapterId
     this.reason = input.reason
+    this.retryable = input.retryable ?? false
   }
 }
 

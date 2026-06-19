@@ -7,6 +7,16 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // `/v1/chat/completions` route is inert on the live Worker until the
   // inference build lands. Set "true"/"1"/"on" to enable.
   INFERENCE_GATEWAY_ENABLED?: string | undefined
+  // Vertex Anthropic adapter (EPIC #5474, #5480) — Claude lane on Google Cloud
+  // Vertex AI. VERTEX_SA_KEY is the full service-account key JSON (a Worker
+  // secret; NEVER committed) used to mint a short-lived GCP access token via a
+  // JWT->token exchange. VERTEX_PROJECT_ID / VERTEX_LOCATION are optional
+  // overrides (default project "openagentsgemini", default location "global").
+  // The adapter is inert without VERTEX_SA_KEY; the route stays flag-gated off
+  // via INFERENCE_GATEWAY_ENABLED regardless.
+  VERTEX_SA_KEY?: string | undefined
+  VERTEX_PROJECT_ID?: string | undefined
+  VERTEX_LOCATION?: string | undefined
   EXA_API_KEY?: string | undefined
   EXA_BASE_URL?: string | undefined
   EXA_DEFAULT_NUM_RESULTS?: string | undefined
