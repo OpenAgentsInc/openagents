@@ -20,6 +20,11 @@ import {
   type RecordBlueprintProgramRunInput,
 } from './blueprint/repositories/program-runs'
 import {
+  type BlueprintTassadarModuleRegistryResolveError,
+  listBlueprintTassadarModuleRegistry,
+  resolveBlueprintTassadarModuleRegistryEntry,
+} from './blueprint/repositories/tassadar-module-registry'
+import {
   BlueprintActionSubmission,
   type BlueprintActionSubmission as BlueprintActionSubmissionType,
   type BlueprintActionSubmissionKind,
@@ -269,6 +274,33 @@ const actionSubmissionStorageErrorResponse = () =>
     { error: 'blueprint_action_submission_storage_error' },
     { status: 500 },
   )
+
+const tassadarRegistryErrorResponse = (
+  error: BlueprintTassadarModuleRegistryResolveError,
+) => {
+  if (error.kind === 'module_not_found') {
+    return noStoreJsonResponse(
+      { error: 'tassadar_module_not_found', reason: error.reason },
+      { status: 404 },
+    )
+  }
+
+  if (
+    error.kind === 'claim_class_refused' ||
+    error.kind === 'module_kind_refused' ||
+    error.kind === 'trust_posture_refused'
+  ) {
+    return noStoreJsonResponse(
+      { error: 'tassadar_module_refused', reason: error.reason },
+      { status: 409 },
+    )
+  }
+
+  return noStoreJsonResponse(
+    { error: 'unsafe_tassadar_module_registry', reason: error.reason },
+    { status: 500 },
+  )
+}
 
 const PROGRAM_RUN_EVIDENCE_PROHIBITED_TEXT_PATTERN =
   /\b(access_token|auth[_ -]?grant|callback[_ -]?(token|url)|callbackToken|callbackUrl|customer[_ -]?(email|name)|customerEmail|customerName|email[_ -]?body|gho_[a-z0-9_]+|ghp_[a-z0-9_]+|lnbc[0-9a-z]*|lntb[0-9a-z]*|lnbcrt[0-9a-z]*|lno1[0-9a-z]*|mdk_access_token|mnemonic|payment[_ -]?(preimage|secret)|private[_ -]?(file|key|repo)|provider[_ -]?(account|payload|token)|raw[_ -]?(file|prompt|run[_ -]?log|source)|refresh_token|sk-[a-z0-9]+|wallet[_ -]?secret|webhook[_ -]?secret|xprv)\b|@/i
@@ -981,6 +1013,78 @@ const routeContractExport = <Bindings>(
   )
 }
 
+const optionalModuleKind = (
+  value: string | null,
+): 'dense_weight_module' | 'linked_dense_module' | undefined => {
+  if (value === null) {
+    return undefined
+  }
+
+  if (value === 'dense_weight_module' || value === 'linked_dense_module') {
+    return value
+  }
+
+  return undefined
+}
+
+const routeTassadarModuleRegistry = <Bindings>(
+  dependencies: BlueprintRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+) => {
+  if (request.method !== 'GET') {
+    return Effect.succeed(methodNotAllowed(['GET']))
+  }
+
+  return withOperatorRead(
+    dependencies,
+    request,
+    env,
+    Effect.gen(function* () {
+      const url = new URL(request.url)
+      const moduleRef = url.searchParams.get('moduleRef')?.trim()
+
+      if (moduleRef === undefined || moduleRef === '') {
+        const projection = yield* listBlueprintTassadarModuleRegistry()
+        return noStoreJsonResponse(projection, {
+          headers: {
+            'x-blueprint-tassadar-module-registry-version-ref':
+              projection.registryVersionRef,
+          },
+        })
+      }
+
+      const module = yield* resolveBlueprintTassadarModuleRegistryEntry({
+        moduleRef,
+        requiredClaimClass:
+          url.searchParams.get('requiredClaimClass') ?? undefined,
+        requiredModuleKind: optionalModuleKind(
+          url.searchParams.get('requiredModuleKind'),
+        ),
+        requiredTrustPosture:
+          url.searchParams.get('requiredTrustPosture') ?? undefined,
+      })
+
+      return noStoreJsonResponse(
+        {
+          module,
+          registryVersionRef: module.registryVersionRef,
+        },
+        {
+          headers: {
+            'x-blueprint-tassadar-module-registry-version-ref':
+              module.registryVersionRef,
+          },
+        },
+      )
+    }).pipe(
+      Effect.catch(error =>
+        Effect.succeed(tassadarRegistryErrorResponse(error)),
+      ),
+    ),
+  )
+}
+
 export const makeBlueprintRoutes = <Bindings>(
   dependencies: BlueprintRoutesDependencies<Bindings>,
 ) => ({
@@ -1001,4 +1105,9 @@ export const makeBlueprintRoutes = <Bindings>(
     request: Request,
     env: Bindings,
   ): Effect.Effect<HttpResponse> => routeProgramRegistry(dependencies, request, env),
+  handleBlueprintTassadarModuleRegistryApi: (
+    request: Request,
+    env: Bindings,
+  ): Effect.Effect<HttpResponse> =>
+    routeTassadarModuleRegistry(dependencies, request, env),
 })

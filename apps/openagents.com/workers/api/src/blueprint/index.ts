@@ -233,6 +233,26 @@ export {
 } from './repositories/program-runs'
 
 export {
+  BLUEPRINT_TASSADAR_DENSE_MODULE_CLAIM_CLASS,
+  BLUEPRINT_TASSADAR_MODULE_REGISTRY_SCHEMA_VERSION,
+  BLUEPRINT_TASSADAR_MODULE_REGISTRY_VERSION_REF,
+  BLUEPRINT_TASSADAR_MODULE_REQUIRED_TRUST_POSTURE,
+  BlueprintTassadarModuleRegistryEntry,
+  type BlueprintTassadarModuleRegistryEntry as BlueprintTassadarModuleRegistryEntryType,
+  type BlueprintTassadarModuleRegistryModuleKind as BlueprintTassadarModuleRegistryModuleKindType,
+  BlueprintTassadarModuleRegistryProjection,
+  type BlueprintTassadarModuleRegistryProjection as BlueprintTassadarModuleRegistryProjectionType,
+  BlueprintTassadarModuleRegistryResolveError,
+  BlueprintTassadarModuleRegistryResolveInput,
+  type BlueprintTassadarModuleRegistryResolveInput as BlueprintTassadarModuleRegistryResolveInputType,
+  type BlueprintTassadarModuleRegistryResolver,
+  blueprintTassadarModuleRegistryProjectionIsSafe,
+  listBlueprintTassadarModuleRegistry,
+  resolveBlueprintTassadarModuleRegistryEntry,
+  seedBlueprintTassadarModuleRegistryEntries,
+} from './repositories/tassadar-module-registry'
+
+export {
   assertProgramRunEvidenceOnly,
   BlueprintProgramRunDirectEffectDenied,
   BlueprintProgramRunDirectEffectKind,

@@ -40,6 +40,7 @@ describe("Blueprint consumer contracts", () => {
     expect(seed.consumers).toContain("probe");
     expect(seed.consumers).toContain("pylon");
     expect(seed.openApi.map((entry) => entry.path)).toContain("/api/blueprint/program-registry");
+    expect(seed.openApi.map((entry) => entry.path)).toContain("/api/blueprint/tassadar-modules");
     expect(seed.receiptCatalog.map((entry) => entry.receiptRef)).toContain("receipt.program_run");
     expect(blueprintContractExportSeedIsPrivateDataSafe(seed)).toBe(true);
   });

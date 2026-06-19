@@ -181,6 +181,10 @@ export const BLUEPRINT_CONTRACT_EXPORT_SEED: BlueprintContractExportSeed = {
     jsonSchema('BlueprintModuleVersion', 'operator_refs_only'),
     jsonSchema('BlueprintProgramRunRecord', 'operator_refs_only'),
     jsonSchema('BlueprintTassadarModuleStepEvidence', 'operator_refs_only'),
+    jsonSchema(
+      'BlueprintTassadarModuleRegistryProjection',
+      'operator_refs_only',
+    ),
     jsonSchema('ProbeBlueprintProgramRunEvidence', 'operator_refs_only'),
     jsonSchema(
       'BlueprintProgramRunEvidenceIntakeResponse',
@@ -225,6 +229,18 @@ export const BLUEPRINT_CONTRACT_EXPORT_SEED: BlueprintContractExportSeed = {
       privacyPolicy: 'operator_refs_only',
       requestSchemaRef: null,
       responseSchemaRef: 'schema.blueprint.BlueprintContractExportSeed.v1',
+      stability: 'seed',
+    },
+    {
+      consumers: operatorConsumers(),
+      id: 'blueprint_openapi.tassadar_modules.get.v1',
+      method: 'GET',
+      operationRef: 'operation.blueprint.tassadar_modules.get',
+      path: '/api/blueprint/tassadar-modules',
+      privacyPolicy: 'operator_refs_only',
+      requestSchemaRef: null,
+      responseSchemaRef:
+        'schema.blueprint.BlueprintTassadarModuleRegistryProjection.v1',
       stability: 'seed',
     },
     {

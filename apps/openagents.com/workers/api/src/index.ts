@@ -8226,6 +8226,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       blueprintRoutes.handleBlueprintContractExportApi(request, env),
   },
   {
+    path: '/api/blueprint/tassadar-modules',
+    handler: (request, env) =>
+      blueprintRoutes.handleBlueprintTassadarModuleRegistryApi(request, env),
+  },
+  {
     path: '/.well-known/openagents.json',
     handler: (request, env, ctx) => {
       recordPublicAgentFunnelRead(

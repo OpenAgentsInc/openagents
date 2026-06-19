@@ -350,6 +350,36 @@ export const BlueprintTassadarModuleStepEvidence = S.Struct({
 });
 export type BlueprintTassadarModuleStepEvidence = typeof BlueprintTassadarModuleStepEvidence.Type;
 
+export const BlueprintTassadarModuleRegistryEntry = S.Struct({
+  artifactRefs: S.Array(S.String),
+  blockerRefs: S.Array(S.String),
+  capabilityRef: S.String,
+  caveatRefs: S.Array(S.String),
+  claimBoundary: S.String,
+  claimClass: S.String,
+  compileReceiptRefs: S.Array(S.String),
+  fixtureRef: S.String,
+  moduleDigest: S.String,
+  moduleId: S.String,
+  moduleKind: BlueprintTassadarModuleStepKind,
+  moduleRef: S.String,
+  publicSafe: S.Literal(true),
+  registryVersionRef: S.String,
+  traceDigest: S.String,
+  trustPosture: S.String,
+});
+export type BlueprintTassadarModuleRegistryEntry = typeof BlueprintTassadarModuleRegistryEntry.Type;
+
+export const BlueprintTassadarModuleRegistryProjection = S.Struct({
+  caveatRefs: S.Array(S.String),
+  generatedAt: S.String,
+  modules: S.Array(BlueprintTassadarModuleRegistryEntry),
+  registryVersionRef: S.String,
+  safeProjection: S.Literal(true),
+  schemaVersion: S.String,
+});
+export type BlueprintTassadarModuleRegistryProjection = typeof BlueprintTassadarModuleRegistryProjection.Type;
+
 export const BlueprintProgramRegistryEntry = S.Struct({
   approvalRequired: S.Boolean,
   backendKinds: S.Array(S.String),

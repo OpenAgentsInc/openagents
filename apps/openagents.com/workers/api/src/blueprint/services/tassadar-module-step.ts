@@ -17,6 +17,13 @@ import {
 import { Effect, Schema as S } from 'effect'
 
 import {
+  BLUEPRINT_TASSADAR_DENSE_MODULE_CLAIM_CLASS,
+  BLUEPRINT_TASSADAR_MODULE_REQUIRED_TRUST_POSTURE,
+  resolveBlueprintTassadarModuleRegistryEntry,
+  type BlueprintTassadarModuleRegistryEntry,
+  type BlueprintTassadarModuleRegistryResolver,
+} from '../repositories/tassadar-module-registry'
+import {
   type BlueprintProgramToolScope,
   BlueprintTassadarModuleStepKind,
 } from '../schemas/program'
@@ -28,10 +35,10 @@ export const BLUEPRINT_TASSADAR_DENSE_FIXTURE_MODULE_REF =
   tassadarDenseProgramFixture.denseModule.moduleId
 export const BLUEPRINT_TASSADAR_LINKED_FIXTURE_MODULE_REF =
   TASSADAR_COMPILED_WEIGHT_MODULE_LISTING_REF
-export const BLUEPRINT_TASSADAR_DENSE_MODULE_CLAIM_CLASS =
-  'compiled dense ALM module / exact replay gate'
-export const BLUEPRINT_TASSADAR_MODULE_REQUIRED_TRUST_POSTURE =
-  TASSADAR_ALM_LINKED_DENSE_REQUIRED_TRUST_POSTURE
+export {
+  BLUEPRINT_TASSADAR_DENSE_MODULE_CLAIM_CLASS,
+  BLUEPRINT_TASSADAR_MODULE_REQUIRED_TRUST_POSTURE,
+}
 
 export const BlueprintTassadarModuleStepVerdict = S.Literals([
   'verified',
@@ -125,7 +132,10 @@ const failUnsafe = (
 
 export const executeBlueprintTassadarModuleStep = (
   scope: BlueprintProgramToolScope,
-  input?: Readonly<{ observedAt?: string }>,
+  input?: Readonly<{
+    observedAt?: string
+    resolveModule?: BlueprintTassadarModuleRegistryResolver
+  }>,
 ): Effect.Effect<
   BlueprintTassadarModuleStepEvidence,
   BlueprintTassadarModuleStepError
@@ -146,13 +156,6 @@ export const executeBlueprintTassadarModuleStep = (
       )
     }
 
-    if (binding.executionMode !== 'fixture_bound') {
-      return yield* failRefused(
-        scope,
-        'Live registry resolution belongs to the Tassadar module registry service',
-      )
-    }
-
     if (binding.expectedCapabilityRef !== TASSADAR_EXECUTOR_CAPABILITY_REF) {
       return yield* failRefused(
         scope,
@@ -169,10 +172,26 @@ export const executeBlueprintTassadarModuleStep = (
     }
 
     const observedAt = input?.observedAt ?? currentIsoTimestamp()
+    const registryEntry = yield* (
+      input?.resolveModule ?? resolveBlueprintTassadarModuleRegistryEntry
+    )({
+      moduleRef: binding.moduleRef,
+      requiredClaimClass: binding.expectedClaimClass,
+      requiredModuleKind: binding.moduleKind,
+      requiredTrustPosture: binding.expectedTrustPosture,
+    }).pipe(
+      Effect.mapError(
+        error =>
+          new BlueprintTassadarModuleStepRefused({
+            reason: error.reason,
+            stepRef: binding.stepRef,
+          }),
+      ),
+    )
     const evidence =
       binding.moduleKind === 'dense_weight_module'
-        ? yield* executeDenseStep(scope, observedAt)
-        : yield* executeLinkedStep(scope, observedAt)
+        ? yield* executeDenseStep(scope, observedAt, registryEntry)
+        : yield* executeLinkedStep(scope, observedAt, registryEntry)
 
     if (!blueprintTassadarStepProjectionIsSafe(evidence)) {
       return yield* failUnsafe(
@@ -188,6 +207,7 @@ export const executeBlueprintTassadarModuleStep = (
 const executeDenseStep = (
   scope: BlueprintProgramToolScope,
   observedAt: string,
+  registryEntry: BlueprintTassadarModuleRegistryEntry,
 ): Effect.Effect<BlueprintTassadarModuleStepEvidence, BlueprintTassadarModuleStepRefused> =>
   Effect.gen(function* () {
     const binding = scope.tassadarModuleStep
@@ -211,9 +231,11 @@ const executeDenseStep = (
         ),
     })
     const moduleDigestMatches =
-      binding.expectedModuleDigest === tassadarDenseWeightModuleDigest
+      binding.expectedModuleDigest === registryEntry.moduleDigest &&
+      registryEntry.moduleDigest === tassadarDenseWeightModuleDigest
     const traceDigestMatches =
-      binding.expectedTraceDigest === tassadarDenseProgramFixture.expectedTraceDigest &&
+      binding.expectedTraceDigest === registryEntry.traceDigest &&
+      registryEntry.traceDigest === tassadarDenseProgramFixture.expectedTraceDigest &&
       trace.traceDigest === tassadarDenseProgramFixture.expectedTraceDigest
     const envelopeMatches =
       binding.expectedClaimClass === BLUEPRINT_TASSADAR_DENSE_MODULE_CLAIM_CLASS &&
@@ -235,10 +257,10 @@ const executeDenseStep = (
       authorityBoundary: 'evidence_only',
       blockerRefs,
       capabilityRef: binding.expectedCapabilityRef,
-      claimClass: binding.expectedClaimClass,
+      claimClass: registryEntry.claimClass,
       contentRedacted: true,
       directMutationDisabled: true,
-      evidenceRefs: uniqueSorted(tassadarDenseProgramFixture.runArtifactRefs),
+      evidenceRefs: uniqueSorted(registryEntry.artifactRefs),
       expectedModuleDigest: binding.expectedModuleDigest,
       expectedTraceDigest: binding.expectedTraceDigest,
       kind: 'blueprint_tassadar_module_step_evidence',
@@ -256,7 +278,7 @@ const executeDenseStep = (
             `receipt.openagents.blueprint_tassadar_step.${trace.traceDigest.slice(0, 16)}`,
           ])
         : [],
-      registryRef: binding.registryRef,
+      registryRef: registryEntry.registryVersionRef,
       replayedTraceDigest: trace.traceDigest,
       result: {
         halted: tassadarDenseProgramFixture.halted,
@@ -265,7 +287,7 @@ const executeDenseStep = (
       },
       stepRef: binding.stepRef,
       toolRef: scope.toolRef,
-      trustPosture: binding.expectedTrustPosture,
+      trustPosture: registryEntry.trustPosture,
       verdict: verified ? 'verified' : 'rejected',
     }
   })
@@ -273,6 +295,7 @@ const executeDenseStep = (
 const executeLinkedStep = (
   scope: BlueprintProgramToolScope,
   observedAt: string,
+  registryEntry: BlueprintTassadarModuleRegistryEntry,
 ): Effect.Effect<BlueprintTassadarModuleStepEvidence, BlueprintTassadarModuleStepRefused> =>
   Effect.gen(function* () {
     const binding = scope.tassadarModuleStep
@@ -293,9 +316,11 @@ const executeLinkedStep = (
         verifyTassadarLinkedDenseComposition(tassadarLinkedDenseProgramFixture),
     })
     const moduleDigestMatches =
-      binding.expectedModuleDigest === TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST
+      binding.expectedModuleDigest === registryEntry.moduleDigest &&
+      registryEntry.moduleDigest === TASSADAR_ALM_LINKED_DENSE_MODULE_DIGEST
     const traceDigestMatches =
-      binding.expectedTraceDigest ===
+      binding.expectedTraceDigest === registryEntry.traceDigest &&
+      registryEntry.traceDigest ===
         tassadarLinkedDenseProgramFixture.composedTraceDigest &&
       verification.composedTraceDigest ===
         tassadarLinkedDenseProgramFixture.composedTraceDigest
@@ -320,12 +345,10 @@ const executeLinkedStep = (
       authorityBoundary: 'evidence_only',
       blockerRefs,
       capabilityRef: binding.expectedCapabilityRef,
-      claimClass: binding.expectedClaimClass,
+      claimClass: registryEntry.claimClass,
       contentRedacted: true,
       directMutationDisabled: true,
-      evidenceRefs: uniqueSorted(
-        tassadarLinkedDenseProgramFixture.marketplaceArtifactRefs,
-      ),
+      evidenceRefs: uniqueSorted(registryEntry.artifactRefs),
       expectedModuleDigest: binding.expectedModuleDigest,
       expectedTraceDigest: binding.expectedTraceDigest,
       kind: 'blueprint_tassadar_module_step_evidence',
@@ -346,7 +369,7 @@ const executeLinkedStep = (
             `receipt.openagents.blueprint_tassadar_step.${verification.linkedModuleDigest.slice(0, 16)}`,
           ])
         : [],
-      registryRef: binding.registryRef,
+      registryRef: registryEntry.registryVersionRef,
       replayedTraceDigest: verification.composedTraceDigest,
       result: {
         compositionVerificationCleared:
@@ -357,7 +380,7 @@ const executeLinkedStep = (
       },
       stepRef: binding.stepRef,
       toolRef: scope.toolRef,
-      trustPosture: binding.expectedTrustPosture,
+      trustPosture: registryEntry.trustPosture,
       verdict: verified ? 'verified' : 'rejected',
     }
   })

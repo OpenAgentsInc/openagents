@@ -16,6 +16,11 @@ import { describe, expect, test } from 'vitest'
 
 import type { BlueprintProgramToolScope } from '../schemas/program'
 import {
+  BLUEPRINT_TASSADAR_MODULE_REGISTRY_VERSION_REF,
+  type BlueprintTassadarModuleRegistryResolveInput,
+  resolveBlueprintTassadarModuleRegistryEntry,
+} from '../repositories/tassadar-module-registry'
+import {
   BLUEPRINT_TASSADAR_DENSE_FIXTURE_MODULE_REF,
   BLUEPRINT_TASSADAR_DENSE_MODULE_CLAIM_CLASS,
   BLUEPRINT_TASSADAR_LINKED_FIXTURE_MODULE_REF,
@@ -123,6 +128,40 @@ describe('Blueprint Tassadar module step service', () => {
     expect(evidence.receiptRefs).toContain(
       'receipt.openagents.tassadar_linked_dense_composition.cc1403674fc0d388',
     )
+  })
+
+  test('resolves a module binding through the registry service at runtime', async () => {
+    let capturedInput: BlueprintTassadarModuleRegistryResolveInput | undefined
+    const evidence = await Effect.runPromise(
+      executeBlueprintTassadarModuleStep(
+        {
+          ...linkedScope(),
+          tassadarModuleStep: {
+            ...linkedScope().tassadarModuleStep!,
+            executionMode: 'registry_resolved',
+            registryRef: BLUEPRINT_TASSADAR_MODULE_REGISTRY_VERSION_REF,
+          },
+        },
+        {
+          observedAt: '2026-06-18T00:00:00.000Z',
+          resolveModule: input => {
+            capturedInput = input
+            return resolveBlueprintTassadarModuleRegistryEntry(input)
+          },
+        },
+      ),
+    )
+
+    expect(capturedInput).toMatchObject({
+      moduleRef: BLUEPRINT_TASSADAR_LINKED_FIXTURE_MODULE_REF,
+      requiredClaimClass: TASSADAR_ALM_LINKED_DENSE_MODULE_CLAIM_CLASS,
+      requiredModuleKind: 'linked_dense_module',
+      requiredTrustPosture: TASSADAR_ALM_LINKED_DENSE_REQUIRED_TRUST_POSTURE,
+    })
+    expect(evidence.registryRef).toBe(
+      BLUEPRINT_TASSADAR_MODULE_REGISTRY_VERSION_REF,
+    )
+    expect(evidence.verdict).toBe('verified')
   })
 
   test('rejects digest mismatches without issuing step receipts', async () => {

@@ -49,6 +49,7 @@ describe('Blueprint contract export seed', () => {
     ).toEqual([
       '/api/blueprint/program-registry',
       '/api/blueprint/contracts',
+      '/api/blueprint/tassadar-modules',
       '/api/blueprint/program-runs',
       '/api/blueprint/action-submissions',
       '/api/blueprint/action-submissions',
