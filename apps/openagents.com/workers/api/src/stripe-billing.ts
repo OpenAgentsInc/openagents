@@ -15,6 +15,7 @@ import {
 } from './billing'
 import { WorkerSecret, redactedValue } from './config'
 import { parseJsonWithSchema } from './json-boundary'
+import { recordReferralPayoutForPaidEvent } from './site-referral-payout-feed'
 
 export const STRIPE_API_VERSION = '2026-05-27.dahlia'
 
@@ -690,6 +691,29 @@ const fulfillCheckoutSession = async (
     sessionId: input.sessionId,
     userId,
   })
+
+  // RL-1 (openagents #5458): FEED the referral payout ledger from this real
+  // paid event. A Stripe credit purchase is USD/credit revenue, so per the
+  // rev-share invariant it records a credit-revshare eligibility (qualifying
+  // sats = 0 -> the ledger marks it `refused:no_qualifying_paid_amount`), which
+  // never creates a withdrawable-Bitcoin liability. The dispatch path
+  // (`site-referral-payout-dispatch.ts`) only moves Bitcoin for Bitcoin
+  // revenue. This is best-effort: a referral-feed failure must never block
+  // billing fulfillment, and the call is idempotent per checkout session.
+  try {
+    await recordReferralPayoutForPaidEvent(input.db, {
+      idempotencyKey: `site_referral_payout.stripe_checkout.${input.sessionId}`,
+      nowIso: now,
+      periodKey: now.slice(0, 7),
+      qualifyingAmountSats: 0,
+      qualifyingEventKind: 'stripe_credit_purchase',
+      qualifyingEventRef: `evidence.stripe_checkout_paid.${input.sessionId}`,
+      revenueAsset: 'usd',
+      userId,
+    })
+  } catch {
+    // Swallow: referral feed is non-authoritative for billing fulfillment.
+  }
 
   await input.db
     .prepare(
