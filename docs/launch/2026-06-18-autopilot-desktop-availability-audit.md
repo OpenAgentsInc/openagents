@@ -318,7 +318,28 @@ with live status, reusing the **First-run Health** projection
 node/built-in-agent/apple-fm/auto-update only — no identity/register/wallet/
 presence/Tassadar items). This is the visible "literally on Autopilot" surface.
 
-### P1 — Surface the download to humans again
+### P1 — First-run identity choice: detect existing vs create new + name it (owner requirement)
+On first launch, **before** the node auto-generates a fresh identity (step a), the
+app should **auto-detect whether the user already has a Pylon identity** — scan the
+known node homes for a seed marker (`~/.openagents/pylon`, `~/.pylon`, the
+historical-config identity path). The detection logic already exists: reuse Pylon
+v1.0.3's `selectPylonHomeResolution` (`apps/pylon/src/bootstrap.ts`), which already
+prefers the seed-bearing home and never reads it (marker-file presence only).
+
+Then present a clear choice:
+- **"Use your existing Pylon identity"** (show the detected npub / `pylon.<short>` so
+  they recognize it) — boot the app against that home, so an existing contributor's
+  wallet, payout target, and history carry over instead of being forked.
+- **"Create a new Autopilot identity"** — and let the user **name it** (a display
+  name for the agent). This mints a fresh `PYLON_HOME` + identity under that name and
+  runs the clean from-scratch chain (self-register → wallet → presence → join). It
+  must be available **even when an existing Pylon is detected**, so (1) a user can
+  run more than one identity, and (2) the from-scratch onboarding is demoable/testable
+  on a machine that already has a Pylon.
+
+Hard rule (the v1.0.3/Orwell lesson): **never silently overwrite or adopt the wrong
+home** — detect, ask, and only then act on the chosen home. This decision is the very
+front of the onboarding wizard (the first screen, ahead of identity→register→join).
 The product currently hides the desktop app (homepage is Pylon-CLI-only after
 `b85391e2b`). For a "non-technical user installs it" story, re-expose a
 discoverable, signed-DMG download on a product page — *after* the onboarding
