@@ -208,6 +208,15 @@ const routeErrorResponse = (error: TrainingRunWindowRouteError): HttpResponse =>
     M.exhaustive,
   )
 
+const requireMethod = (
+  request: Request,
+  allowed: ReadonlyArray<string>,
+  handler: () => Effect.Effect<HttpResponse>,
+): Effect.Effect<HttpResponse> =>
+  allowed.some(method => method === request.method)
+    ? handler()
+    : Effect.succeed(methodNotAllowed([...allowed]))
+
 const decodeBody = <A>(
   request: Request,
   schema: S.Decoder<A>,
@@ -2100,22 +2109,18 @@ export const makeTrainingRunWindowRoutes = <
     }
 
     if (url.pathname === '/api/training/leaderboards/a1') {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
-      }
-
-      return routeA1Leaderboard(dependencies, env).pipe(
-        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      return requireMethod(request, ['GET'], () =>
+        routeA1Leaderboard(dependencies, env).pipe(
+          Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+        ),
       )
     }
 
     if (url.pathname === '/api/training/leaderboards') {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
-      }
-
-      return routeTrainingLeaderboards(dependencies, env).pipe(
-        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      return requireMethod(request, ['GET'], () =>
+        routeTrainingLeaderboards(dependencies, env).pipe(
+          Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+        ),
       )
     }
 
@@ -2123,27 +2128,25 @@ export const makeTrainingRunWindowRoutes = <
       /^\/api\/training\/leaderboards\/([^/]+)$/.exec(url.pathname)
 
     if (leaderboardLaneMatch !== null) {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
-      }
+      return requireMethod(request, ['GET'], () => {
+        const lane = decodeURIComponent(leaderboardLaneMatch[1]!)
 
-      const lane = decodeURIComponent(leaderboardLaneMatch[1]!)
+        if (!TrainingLeaderboardLanes.some(knownLane => knownLane === lane)) {
+          return Effect.succeed(
+            noStoreJsonResponse(
+              {
+                error: 'training_leaderboard_lane_not_found',
+                reason: 'Training leaderboard lane not found.',
+              },
+              { status: 404 },
+            ),
+          )
+        }
 
-      if (!TrainingLeaderboardLanes.some(knownLane => knownLane === lane)) {
-        return Effect.succeed(
-          noStoreJsonResponse(
-            {
-              error: 'training_leaderboard_lane_not_found',
-              reason: 'Training leaderboard lane not found.',
-            },
-            { status: 404 },
-          ),
+        return routeTrainingLeaderboards(dependencies, env, lane).pipe(
+          Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
         )
-      }
-
-      return routeTrainingLeaderboards(dependencies, env, lane).pipe(
-        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
-      )
+      })
     }
 
     // Public alias for the per-run settlements feed (#5403 gap 2). The data is
@@ -2157,16 +2160,14 @@ export const makeTrainingRunWindowRoutes = <
       /^\/api\/public\/training\/runs\/([^/]+)\/settlements$/.exec(url.pathname)
 
     if (publicRunSettlementsListMatch !== null) {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
-      }
-
-      return routeReadRunSettlements(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(publicRunSettlementsListMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['GET'], () =>
+        routeReadRunSettlements(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(publicRunSettlementsListMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     const publicRunReadMatch = /^\/api\/public\/training\/runs\/([^/]+)$/.exec(
@@ -2174,74 +2175,60 @@ export const makeTrainingRunWindowRoutes = <
     )
 
     if (publicRunReadMatch !== null) {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
-      }
-
-      return routeReadPublicRun(
-        dependencies,
-        env,
-        decodeURIComponent(publicRunReadMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['GET'], () =>
+        routeReadPublicRun(
+          dependencies,
+          env,
+          decodeURIComponent(publicRunReadMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     if (url.pathname === '/api/training/device-capabilities/a2') {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
-      }
-
-      return routeA2DeviceCapabilities(dependencies, env).pipe(
-        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      return requireMethod(request, ['GET'], () =>
+        routeA2DeviceCapabilities(dependencies, env).pipe(
+          Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+        ),
       )
     }
 
     if (url.pathname === '/api/training/evals/a5') {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
-      }
-
-      return routeA5EvalSuites(dependencies, env).pipe(
-        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      return requireMethod(request, ['GET'], () =>
+        routeA5EvalSuites(dependencies, env).pipe(
+          Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+        ),
       )
     }
 
     if (url.pathname === '/api/training/isoflop/a3') {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
-      }
-
-      return routeA3IsoFlop(dependencies, env).pipe(
-        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      return requireMethod(request, ['GET'], () =>
+        routeA3IsoFlop(dependencies, env).pipe(
+          Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+        ),
       )
     }
 
     if (url.pathname === '/api/training/refinery/a4') {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
-      }
-
-      return routeA4DataRefinery(dependencies, env).pipe(
-        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      return requireMethod(request, ['GET'], () =>
+        routeA4DataRefinery(dependencies, env).pipe(
+          Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+        ),
       )
     }
 
     if (url.pathname === '/api/training/windows/plan') {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
-
-      return routePlanWindow(dependencies, request, env).pipe(
-        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      return requireMethod(request, ['POST'], () =>
+        routePlanWindow(dependencies, request, env).pipe(
+          Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+        ),
       )
     }
 
     if (url.pathname === '/api/training/leases/claim') {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
-
-      return routeClaimLease(dependencies, request, env).pipe(
-        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      return requireMethod(request, ['POST'], () =>
+        routeClaimLease(dependencies, request, env).pipe(
+          Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+        ),
       )
     }
 
@@ -2249,16 +2236,14 @@ export const makeTrainingRunWindowRoutes = <
       /^\/api\/training\/runs\/([^/]+)\/bootstrap-grant$/.exec(url.pathname)
 
     if (bootstrapGrantMatch !== null) {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
-
-      return routeBootstrapGrant(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(bootstrapGrantMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['POST'], () =>
+        routeBootstrapGrant(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(bootstrapGrantMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     const runEvidenceMatch =
@@ -2267,16 +2252,14 @@ export const makeTrainingRunWindowRoutes = <
       )
 
     if (runEvidenceMatch !== null) {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
-
-      return routeAttachDeviceBenchmarkEvidence(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(runEvidenceMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['POST'], () =>
+        routeAttachDeviceBenchmarkEvidence(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(runEvidenceMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     const sweepEvidenceMatch =
@@ -2285,16 +2268,14 @@ export const makeTrainingRunWindowRoutes = <
       )
 
     if (sweepEvidenceMatch !== null) {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
-
-      return routeAttachScalingSweepEvidence(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(sweepEvidenceMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['POST'], () =>
+        routeAttachScalingSweepEvidence(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(sweepEvidenceMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     const realGradientEvidenceMatch =
@@ -2303,16 +2284,14 @@ export const makeTrainingRunWindowRoutes = <
       )
 
     if (realGradientEvidenceMatch !== null) {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
-
-      return routeAttachRealGradientEvidence(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(realGradientEvidenceMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['POST'], () =>
+        routeAttachRealGradientEvidence(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(realGradientEvidenceMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     const refineryEvidenceMatch =
@@ -2321,16 +2300,14 @@ export const makeTrainingRunWindowRoutes = <
       )
 
     if (refineryEvidenceMatch !== null) {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
-
-      return routeAttachDataRefineryEvidence(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(refineryEvidenceMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['POST'], () =>
+        routeAttachDataRefineryEvidence(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(refineryEvidenceMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     const alignmentEvidenceMatch =
@@ -2339,16 +2316,14 @@ export const makeTrainingRunWindowRoutes = <
       )
 
     if (alignmentEvidenceMatch !== null) {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
-
-      return routeAttachAlignmentEvalEvidence(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(alignmentEvidenceMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['POST'], () =>
+        routeAttachAlignmentEvalEvidence(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(alignmentEvidenceMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     const runTransitionMatch =
@@ -2357,25 +2332,23 @@ export const makeTrainingRunWindowRoutes = <
       )
 
     if (runTransitionMatch !== null) {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
+      return requireMethod(request, ['POST'], () => {
+        const action = runTransitionMatch[2]!
+        const nextState: TrainingRunState =
+          action === 'activate'
+            ? 'active'
+            : action === 'seal'
+              ? 'sealed'
+              : 'reconciled'
 
-      const action = runTransitionMatch[2]!
-      const nextState: TrainingRunState =
-        action === 'activate'
-          ? 'active'
-          : action === 'seal'
-            ? 'sealed'
-            : 'reconciled'
-
-      return routeTransitionRun(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(runTransitionMatch[1]!),
-        nextState,
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+        return routeTransitionRun(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(runTransitionMatch[1]!),
+          nextState,
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      })
     }
 
     const runAdmitMatch = /^\/api\/training\/runs\/([^/]+)\/admit$/.exec(
@@ -2383,16 +2356,14 @@ export const makeTrainingRunWindowRoutes = <
     )
 
     if (runAdmitMatch !== null) {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
-
-      return routeAdmitRunContributor(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(runAdmitMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['POST'], () =>
+        routeAdmitRunContributor(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(runAdmitMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     const executorTraceCloseoutMatch =
@@ -2401,62 +2372,54 @@ export const makeTrainingRunWindowRoutes = <
       )
 
     if (executorTraceCloseoutMatch !== null) {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
-
-      return routeExecutorTraceCloseout(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(executorTraceCloseoutMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['POST'], () =>
+        routeExecutorTraceCloseout(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(executorTraceCloseoutMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     const runSettlementMatch =
       /^\/api\/training\/runs\/([^/]+)\/settlement-receipt$/.exec(url.pathname)
 
     if (runSettlementMatch !== null) {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
-
-      return routeRunSettlementReceipt(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(runSettlementMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['POST'], () =>
+        routeRunSettlementReceipt(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(runSettlementMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     const runSettlementsListMatch =
       /^\/api\/training\/runs\/([^/]+)\/settlements$/.exec(url.pathname)
 
     if (runSettlementsListMatch !== null) {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
-      }
-
-      return routeReadRunSettlements(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(runSettlementsListMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['GET'], () =>
+        routeReadRunSettlements(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(runSettlementsListMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     const runReadMatch = /^\/api\/training\/runs\/([^/]+)$/.exec(url.pathname)
 
     if (runReadMatch !== null) {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
-      }
-
-      return routeReadRun(
-        dependencies,
-        env,
-        decodeURIComponent(runReadMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['GET'], () =>
+        routeReadRun(
+          dependencies,
+          env,
+          decodeURIComponent(runReadMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     const windowTransitionMatch =
@@ -2465,26 +2428,24 @@ export const makeTrainingRunWindowRoutes = <
       )
 
     if (windowTransitionMatch !== null) {
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
-      }
+      return requireMethod(request, ['POST'], () => {
+        const action = windowTransitionMatch[2]!
+        const nextState =
+          action === 'activate'
+            ? 'active'
+            : action === 'seal'
+              ? 'sealed'
+              : 'reconciled'
 
-      const action = windowTransitionMatch[2]!
-      const nextState =
-        action === 'activate'
-          ? 'active'
-          : action === 'seal'
-            ? 'sealed'
-            : 'reconciled'
-
-      return routeTransitionWindow(
-        dependencies,
-        request,
-        env,
-        decodeURIComponent(windowTransitionMatch[1]!),
-        `window_${action}`,
-        nextState,
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+        return routeTransitionWindow(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(windowTransitionMatch[1]!),
+          `window_${action}`,
+          nextState,
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      })
     }
 
     const windowReadMatch = /^\/api\/training\/windows\/([^/]+)$/.exec(
@@ -2492,15 +2453,13 @@ export const makeTrainingRunWindowRoutes = <
     )
 
     if (windowReadMatch !== null) {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
-      }
-
-      return routeReadWindow(
-        dependencies,
-        env,
-        decodeURIComponent(windowReadMatch[1]!),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      return requireMethod(request, ['GET'], () =>
+        routeReadWindow(
+          dependencies,
+          env,
+          decodeURIComponent(windowReadMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
     }
 
     return undefined
