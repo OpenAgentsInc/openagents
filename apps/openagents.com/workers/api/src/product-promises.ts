@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-19.5'
+export const PublicProductPromisesVersion = '2026-06-19.6'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -56,6 +56,10 @@ const sourceRefs = [
   'docs/inference/2026-06-19-pricing-model.md',
   'docs/inference/2026-06-19-decentralized-serving-shard-wan.md',
   'docs/inference/2026-06-19-agent-cloud-revshare-everywhere.md',
+  'docs/transcripts/239.md',
+  'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+  'docs/launch/2026-06-19-credits-purchase-collect-money-audit.md',
+  'docs/launch/2026-06-19-near-term-product-priorities.md',
 ]
 
 const basePromiseFields = {
@@ -2878,6 +2882,319 @@ export const publicProductPromisesDocument = () => {
         authorityBoundary:
           'Serving-fabric design honors the Psionic boundary: pricing, payout, marketplace, and identity authority stay outside Psionic, which emits evidence/receipts only. This record grants no serving, routing, payout, or public-product-claim authority, and large-model fabric claims stay blocked until a hardware-backed receipt or a typed refusal exists.',
       },
+      {
+        ...basePromiseFields,
+        promiseId: 'referral.refer_once_earn_forever.v1',
+        productArea: 'referral',
+        audience: ['agent', 'user', 'customer', 'contributor', 'public'],
+        state: 'red',
+        claim:
+          'Refer once, earn forever: share a link, the person or agent who joins is your referral forever, and any time that referral ever buys ANYTHING in the OpenAgents ecosystem (Autopilot, inference, training, sandboxes, marketplace products, any layer) you earn an ongoing cut, settled in Bitcoin.',
+        safeCopy:
+          'Ecosystem-wide refer-once-earn-forever is the Episode 239 referral vision (docs/transcripts/239.md), and it is NOT yet a live product. What is real: attribution capture and ONE narrow ledger. The Autopilot Sites 5% referral payout ledger is wired end to end in source (RL-1 #5458, sites.referral_bitcoin_stream.v1, yellow) — a paid event creates an idempotent eligibility row and a dispatch path drives approved -> dispatched -> settled via the injected MDK/Spark adapter, readiness-gated and Bitcoin-only — but NO real referral payout has ever settled, and that ledger covers only Sites referrals, not all-ecosystem purchases. There is no permanent cross-category referral binding, no per-purchase accrual spanning inference/training/marketplace/sandbox/Autopilot, and no dereferenceable purchase -> referral-payout receipt. The video itself qualifies the claim: "as long as OpenAgents remains solvent."',
+        unsafeCopy:
+          'Do not claim anyone earns from referred ecosystem purchases today, that refer-once-earn-forever is live, that referral revshare spans all products, or that any referrer has ever been paid. Do not present the wired-but-unsettled Sites referral ledger, or the planned inference referral slice, as proof this ecosystem-wide claim is live. Referral attribution is never payout eligibility or spendable settlement.',
+        evidenceRefs: [
+          'docs/transcripts/239.md',
+          'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'docs/launch/2026-06-19-near-term-product-priorities.md',
+          'apps/openagents.com/workers/api/src/site-referral-payout-feed.ts',
+          'apps/openagents.com/workers/api/src/site-referral-payout-dispatch.ts',
+          'apps/openagents.com/workers/api/src/site-referral-payout-ledger.ts',
+          'apps/openagents.com/workers/api/src/site-referral-payout-wire.test.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/5458',
+          'promise:sites.referral_bitcoin_stream.v1',
+          'promise:inference.referral_on_all_inference.v1',
+          'promise:cloud.agent_cloud_one_stop_revshare.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.referral_first_real_payout_pending',
+          'blocker.product_promises.referral_ecosystem_wide_attribution_binding_unbuilt',
+          'blocker.product_promises.referral_cross_category_accrual_unbuilt',
+          'blocker.product_promises.referral_purchase_to_payout_receipt_missing',
+        ],
+        verification:
+          'Red until: (1) a permanent referrer<->referee binding exists across categories, (2) ongoing accrual computes a referral % off receipt-first metered spend in MORE than the Sites category, (3) a real paid ecosystem purchase produces a settled Bitcoin referral payout, and (4) that payout is a dereferenceable receipt under RL-1/2/3 and the asset-boundary/no-resale guards. The first real settled referral payout (even Sites-only) clears the headline blocker; the ecosystem-wide claim additionally needs cross-category accrual evidence.',
+        authorityBoundary:
+          'A referral vision and a wired single-category ledger grant no attribution, accrual, eligibility, payout, or settlement authority. Cross-category referral revshare is roadmap intent until each category emits its own real settled referral receipt.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot.all_in_one_business_system.v1',
+        productArea: 'Autopilot',
+        audience: ['user', 'agent', 'customer', 'public'],
+        state: 'planned',
+        claim:
+          'Autopilot is the all-in-one business system that businesses run on, composed of the OpenAgents Cloud primitives (inference, fine-tuning, training, agentic tasks, sandbox compute, web services) and the open markets beneath them, with referral revenue earned for bringing others onto Autopilot.',
+        safeCopy:
+          'Autopilot-as-all-in-one-business-system is the Episode 239 composition vision (docs/transcripts/239.md). Real, separately-gated pieces exist — Autopilot Sites, the decision queue, the mission briefing, the coding-agent execution lanes, and a wired (unsettled) referral ledger — but there is no single composed "business system" product where the primitives are provisioned, run, and billed from one balance for a real business. Each underlying primitive is gated by its own promise record (see cloud.primitives_suite.v1, markets.open_protocol_markets.v1, referral.refer_once_earn_forever.v1).',
+        unsafeCopy:
+          'Do not claim a business can run end to end on Autopilot today, that Autopilot composes inference/fine-tuning/training/sandbox/web-services into one bought-and-billed product, or that referral-on-Autopilot-signups pays anyone now. Do not let one shipped sub-surface (Sites, a coding session) stand in for the whole business system.',
+        evidenceRefs: [
+          'docs/transcripts/239.md',
+          'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'docs/launch/2026-06-19-near-term-product-priorities.md',
+          'promise:cloud.primitives_suite.v1',
+          'promise:cloud.agent_cloud_one_stop_revshare.v1',
+          'promise:markets.open_protocol_markets.v1',
+          'promise:referral.refer_once_earn_forever.v1',
+          'promise:autopilot.cloud_coding_sessions.v1',
+          'promise:autopilot.decision_queue.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.autopilot_business_system_composition_unbuilt',
+          'blocker.product_promises.autopilot_business_system_unified_billing_unbuilt',
+          'blocker.product_promises.autopilot_business_system_real_business_receipt_missing',
+        ],
+        verification:
+          'Planned until a real business provisions and runs at least two composed primitives through Autopilot against one balance and a dereferenceable receipt shows composed usage billed and (where revenue applies) settled. Per proof.demand_provenance.v1, internal first-party use is plumbing proof, not market proof.',
+        authorityBoundary:
+          'A composition vision grants no provisioning, unified-billing, cross-primitive routing, or public all-in-one-product-claim authority. Each primitive and market remains gated by its own promise record.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'cloud.primitives_suite.v1',
+        productArea: 'OpenAgents Cloud',
+        audience: ['agent', 'developer', 'customer', 'operator', 'public'],
+        state: 'planned',
+        claim:
+          'OpenAgents Cloud exposes the full primitive set agents and humans build products from — inference, fine-tuning, training, agentic tasks, sandbox compute, and standard web services (a layer on top of Cloudflare, shipped as Autopilot Sites).',
+        safeCopy:
+          'The Cloud primitive SUITE is the Episode 239 build-from-primitives vision (docs/transcripts/239.md); as a single buyable suite it is roadmap. The primitives are at very different stages: inference gateway request surface is live but free-only (inference.gateway_credits_business.v1, red); decentralized training is green only for one bounded settled scope (training.decentralized_training_launch.v1); agentic tasks / labor is green for one settled job (labor.forum_work_requests.v1); web services exist as Autopilot Sites (partly live); fine-tuning (cloud.fine_tuning_service.v1, red) and sandbox compute as a sellable service (cloud.sandbox_compute_service.v1, red) are not built. There is no one credit balance spanning the suite and no customer has bought multiple primitives end to end.',
+        unsafeCopy:
+          'Do not claim a complete OpenAgents Cloud primitive suite is buyable, that fine-tuning or sandbox compute are sellable services, or that the primitives can be composed-and-billed from one balance today. Do not let one green primitive (a settled training run) imply the whole suite is live.',
+        evidenceRefs: [
+          'docs/transcripts/239.md',
+          'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'docs/inference/2026-06-19-agent-cloud-revshare-everywhere.md',
+          'promise:inference.gateway_credits_business.v1',
+          'promise:cloud.fine_tuning_service.v1',
+          'promise:cloud.sandbox_compute_service.v1',
+          'promise:training.decentralized_training_launch.v1',
+          'promise:labor.forum_work_requests.v1',
+          'promise:cloud.agent_cloud_one_stop_revshare.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.cloud_fine_tuning_service_unbuilt',
+          'blocker.product_promises.cloud_sandbox_compute_service_unbuilt',
+          'blocker.product_promises.cloud_primitives_unified_balance_unbuilt',
+          'blocker.product_promises.inference_paid_credits_card_to_credit_not_collectable',
+        ],
+        verification:
+          'Planned until every named primitive is at least individually buyable with a dereferenceable receipt and at least two are buyable from one shared balance, with per-primitive metering and (where revenue applies) settlement evidence. The suite claim does not go green on the strength of any single primitive.',
+        authorityBoundary:
+          'Listing the primitive set grants no provisioning, billing, routing, payout, or public-suite-product-claim authority. Each primitive is gated by its own promise record.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'cloud.fine_tuning_service.v1',
+        productArea: 'OpenAgents Cloud',
+        audience: ['agent', 'developer', 'customer', 'public'],
+        state: 'red',
+        claim:
+          'OpenAgents Cloud offers fine-tuning as a buyable primitive: submit a base model + dataset, run a fine-tune on the network, and use the resulting model through the inference gateway, billed from a credit balance.',
+        safeCopy:
+          'Fine-tuning as a sellable Cloud primitive (named in Episode 239, docs/transcripts/239.md) is NOT built. OpenAgents has a decentralized TRAINING lane (training.* records; decentralized_training_launch.v1 is green only for one bounded settled executor-trace scope) and an inference gateway request surface, but there is no customer fine-tuning intake, no fine-tune job runtime as a product, no fine-tuned-model registration into the gateway, and no paid fine-tuning receipt.',
+        unsafeCopy:
+          'Do not claim OpenAgents sells fine-tuning, that a customer can submit a model + dataset and buy a fine-tune, or that fine-tuned models are servable/billable through OpenAgents today. Do not present the training run or the inference gateway as a fine-tuning product.',
+        evidenceRefs: [
+          'docs/transcripts/239.md',
+          'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'promise:training.decentralized_training_launch.v1',
+          'promise:training.full_pipeline_program.v1',
+          'promise:inference.gateway_credits_business.v1',
+          'promise:cloud.primitives_suite.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.cloud_fine_tuning_intake_unbuilt',
+          'blocker.product_promises.cloud_fine_tuning_job_runtime_unbuilt',
+          'blocker.product_promises.cloud_fine_tuning_billing_settlement_missing',
+        ],
+        verification:
+          'Red until a customer submits a fine-tune job, it runs on the network, the resulting model is registered and servable through the gateway, and a dereferenceable paid fine-tuning receipt (metering + settlement) exists. Per proof.demand_provenance.v1, internal fine-tunes are plumbing proof, not market proof.',
+        authorityBoundary:
+          'Naming fine-tuning as a primitive grants no fine-tune intake, runtime, model-registration, billing, payout, or public-product-claim authority.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'cloud.sandbox_compute_service.v1',
+        productArea: 'OpenAgents Cloud',
+        audience: ['agent', 'developer', 'customer', 'public'],
+        state: 'red',
+        claim:
+          'OpenAgents Cloud offers sandbox compute as a buyable primitive: agents and humans rent isolated, metered execution sandboxes to run code and agentic tasks, billed from a credit balance.',
+        safeCopy:
+          'Sandbox compute as a sellable Cloud primitive (named in Episode 239, docs/transcripts/239.md) is NOT a shipped product. Bounded execution exists internally — the Codex/Claude bridges run sandboxed workspace-write-with-network-disabled sessions, and Autopilot cloud coding sessions are red (autopilot.cloud_coding_sessions.v1, the desktop->GCE loop is not demonstrable) — but there is no customer-facing rentable sandbox product, no metered sandbox billing, and no paid sandbox receipt.',
+        unsafeCopy:
+          'Do not claim OpenAgents sells sandbox compute, that a customer can rent a metered execution sandbox, or that sandbox compute is a live billable primitive. Do not present the internal coding-agent sandbox or the unbuilt cloud-coding loop as a sandbox-compute product.',
+        evidenceRefs: [
+          'docs/transcripts/239.md',
+          'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'promise:autopilot.cloud_coding_sessions.v1',
+          'promise:autopilot.codex_probe_pylon_successor.v1',
+          'promise:cloud.primitives_suite.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.cloud_sandbox_rentable_product_unbuilt',
+          'blocker.product_promises.cloud_sandbox_metering_billing_unbuilt',
+          'blocker.product_promises.cloud_sandbox_paid_receipt_missing',
+        ],
+        verification:
+          'Red until a customer rents a metered sandbox, runs work in it, and a dereferenceable paid sandbox receipt (metering + settlement) exists, with isolation/abuse controls evidenced. Per proof.demand_provenance.v1, internal sandbox use is plumbing proof, not market proof.',
+        authorityBoundary:
+          'Naming sandbox compute as a primitive grants no sandbox provisioning, metering, billing, payout, or public-product-claim authority.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'markets.open_protocol_markets.v1',
+        productArea: 'markets',
+        audience: ['agent', 'developer', 'contributor', 'public'],
+        state: 'planned',
+        claim:
+          'The six Episode 213 markets — compute, data, labor, liquidity, risk, and verification — are exposed as open protocols / open markets that agents can dip into to do things like build an agentic insurance policy, offer new compute, or sell data.',
+        safeCopy:
+          'The open-markets vision (Episode 213, restated in Episode 239) is partly real and mostly roadmap. Live/scoped: the LABOR market crossed its first end-to-end settled milestone (labor.forum_work_requests.v1 / labor.nostr_negotiation_market.v1, green; first job #4777) and VERIFICATION exists as exact-trace replay (compute.tassadar_executor_poc.v1, green for a bounded PoC). The COMPUTE and DATA market rails shipped over NIP-90 in earlier releases (in repo history) but are not broadly live as paid markets. The LIQUIDITY and RISK markets are not built. There is no unified open-markets surface and no settled receipts across the full six-market set.',
+        unsafeCopy:
+          'Do not claim all six markets are live, that liquidity or risk markets exist, that compute/data are broadly live paid markets, or that an agentic insurance policy can be built and settled today. Do not let the green labor and verification scopes stand in for the whole market set.',
+        evidenceRefs: [
+          'docs/transcripts/239.md',
+          'docs/transcripts/213.md',
+          'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'packages/nip90',
+          'promise:labor.forum_work_requests.v1',
+          'promise:labor.nostr_negotiation_market.v1',
+          'promise:compute.tassadar_executor_poc.v1',
+          'promise:pylon.five_bitcoin_revenue_streams.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.liquidity_market_unbuilt',
+          'blocker.product_promises.risk_market_unbuilt',
+          'blocker.product_promises.compute_data_markets_not_broadly_live',
+          'blocker.product_promises.open_markets_unified_surface_missing',
+        ],
+        verification:
+          'Planned until each of the six markets is at least individually exercisable with a dereferenceable receipt for a real participant transaction, and a unified open-markets surface documents the protocols. Liquidity and risk markets each need a built protocol, a real transaction, and a settlement receipt before any market-set green claim.',
+        authorityBoundary:
+          'Naming the six markets grants no market-making, matching, settlement, custody, insurance-underwriting, or public-market-claim authority. Each market is gated by its own evidence.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'marketplace.compose_and_list_products.v1',
+        productArea: 'marketplace',
+        audience: ['agent', 'developer', 'contributor', 'public'],
+        state: 'planned',
+        claim:
+          'Agents and humans build their own products out of the OpenAgents Cloud primitives and open markets, then list those products for sale in the OpenAgents marketplace.',
+        safeCopy:
+          'Compose-your-own-product-and-list-it-for-sale is the Episode 239 marketplace vision (docs/transcripts/239.md), and it is roadmap. Adjacent planned lanes exist — the agentic-npm module registry (marketplace.agentic_npm_module_registry.v1) and WASM plugins (marketplace.wasm_plugins.v1) — but there is no composition runtime that assembles primitives into a product, no listing/discovery/install lifecycle, no marketplace billing, attribution, rev-share, or settlement. Nobody has composed a product from the primitives and sold it through OpenAgents.',
+        unsafeCopy:
+          'Do not claim users or agents can build a product from the primitives and list it for sale today, that an OpenAgents product marketplace is live, or that composed products are discoverable, installable, billable, or revenue-bearing. Do not present the planned module/plugin lanes as a live compose-and-sell marketplace.',
+        evidenceRefs: [
+          'docs/transcripts/239.md',
+          'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'promise:marketplace.agentic_npm_module_registry.v1',
+          'promise:marketplace.wasm_plugins.v1',
+          'promise:cloud.primitives_suite.v1',
+          'promise:markets.open_protocol_markets.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.marketplace_composition_runtime_unbuilt',
+          'blocker.product_promises.marketplace_listing_lifecycle_unbuilt',
+          'blocker.product_promises.marketplace_billing_settlement_missing',
+        ],
+        verification:
+          'Planned until a composed product can be assembled from primitives, listed, discovered, installed/used by a buyer, and produce a dereferenceable paid receipt with attribution and rev-share to the builder. Per proof.demand_provenance.v1, an internally-built listing is plumbing proof, not market proof.',
+        authorityBoundary:
+          'A compose-and-list vision grants no composition runtime, listing, discovery, install, billing, rev-share, payout, or public-marketplace-claim authority.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'marketplace.monetize_any_layer_with_referral.v1',
+        productArea: 'marketplace',
+        audience: ['agent', 'developer', 'contributor', 'customer', 'public'],
+        state: 'planned',
+        claim:
+          'Anyone (or their agents) can monetize or sell access to ANY layer of the stack — inference, compute, data, labor, training, sandboxes, markets — and earn referrals on it (e.g. refer a big bulk-inference client and get a piece).',
+        safeCopy:
+          'Monetize-or-sell-access-to-any-layer-with-referrals is the Episode 239 vision (docs/transcripts/239.md); it is roadmap, not a live product. The pieces it would compose are themselves gated: the accepted-outcome -> receipt -> settle spine exists (payments.accepted_outcome_economics.v1, red), the Sites referral ledger is wired but unsettled (sites.referral_bitcoin_stream.v1, yellow), and the ecosystem-wide referral and per-layer products are themselves unbuilt (referral.refer_once_earn_forever.v1, red; cloud.primitives_suite.v1, planned; markets.open_protocol_markets.v1, planned). No layer can be resold-with-referral end to end and no such referral payout has settled.',
+        unsafeCopy:
+          'Do not claim anyone can sell access to a layer and earn referrals today, that reselling inference/compute/data/labor with a referral cut is live, or that pointing a bulk client at OpenAgents pays the referrer now. API-inference resale is the allowed monetization lane under the no-resale invariant (resale of SUBSCRIPTION provider access stays prohibited), but the build does not exist yet and no resale-with-referral receipt exists.',
+        evidenceRefs: [
+          'docs/transcripts/239.md',
+          'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'promise:referral.refer_once_earn_forever.v1',
+          'promise:marketplace.compose_and_list_products.v1',
+          'promise:cloud.primitives_suite.v1',
+          'promise:markets.open_protocol_markets.v1',
+          'promise:payments.accepted_outcome_economics.v1',
+          'promise:provider.compliant_usage_labor.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.monetize_any_layer_access_product_unbuilt',
+          'blocker.product_promises.monetize_any_layer_referral_accrual_unbuilt',
+          'blocker.product_promises.monetize_any_layer_resale_receipt_missing',
+        ],
+        verification:
+          'Planned until a real seller monetizes access to at least one layer, a referral cut accrues to a distinct referrer off that layer\'s metered spend, and a dereferenceable settled receipt exists under the asset-boundary/no-resale guards (subscription-account resale stays prohibited; API-inference resale is allowed).',
+        authorityBoundary:
+          'A monetize-any-layer vision grants no access-selling, metering, referral-accrual, payout, or public-product-claim authority, and never waives the no-resale invariant for subscription accounts.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'claims.pursued_world_first_largest_agentic_sales_force.v1',
+        productArea: 'world-first claims',
+        audience: ['agent', 'user', 'public'],
+        state: 'planned',
+        claim:
+          'OpenAgents is PURSUING (not claiming) a world first: the largest agentic sales force — hiring and equipping sales agents to sell OpenAgents products. This is an aspiration, not an achieved or verified record.',
+        safeCopy:
+          'This is an explicitly PURSUED, aspirational target from Episode 239 (docs/transcripts/239.md): "we don\'t have any relevant world firsts to report to you here aside from we\'re pursuing two world firsts ... largest agentic sales force." It is NOT achieved and must never be presented as a met or verified claim. No agentic sales force exists yet; "we\'ll have that world record pretty quickly" is forward-looking intent, not a record.',
+        unsafeCopy:
+          'Do not state OpenAgents HAS the largest agentic sales force, that the world record is held, achieved, or verified, or imply the sales force exists at scale. Present it only as a clearly-labeled pursuit/aspiration, never as a green/met world-first.',
+        evidenceRefs: [
+          'docs/transcripts/239.md',
+          'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'promise:referral.refer_once_earn_forever.v1',
+          'promise:claims.world_first_ai_training_paid_bitcoin.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.world_first_agentic_sales_force_not_achieved',
+          'blocker.product_promises.world_first_agentic_sales_force_no_sized_verifiable_force',
+          'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+        ],
+        verification:
+          'This record is intentionally never green from aspiration. Any future non-aspirational claim would require a real, sized, independently-countable agentic sales force, an independent prior-art / record review, a dereferenceable evidence pack, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1. Until then it stays a labeled pursuit.',
+        authorityBoundary:
+          'A pursued world first grants no record-holder status, no marketing-claim authority, and no sales, payout, or settlement authority. Aspiration is not achievement.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'claims.pursued_world_first_largest_sales_force.v1',
+        productArea: 'world-first claims',
+        audience: ['agent', 'user', 'public'],
+        state: 'planned',
+        claim:
+          'OpenAgents is PURSUING (not claiming) a world first: the largest sales force of any kind — the named bar in Episode 239 is roughly seven million selling-or-sell-equipped agents (vs the cited Avon ~6.5M human reference). This is an aspiration, not an achieved or verified record.',
+        safeCopy:
+          'This is an explicitly PURSUED, aspirational target from Episode 239 (docs/transcripts/239.md): "as soon as we hit seven million agents ... selling or equipped to sell then we\'ll have the largest sales force in the world." The Avon ~6.5M figure is attributed in the video to ChatGPT, not an OpenAgents-verified statistic. It is NOT achieved and must never be presented as a met or verified claim.',
+        unsafeCopy:
+          'Do not state OpenAgents HAS the largest sales force, that the ~7M-agent bar is met, that the world record is held/achieved/verified, or treat the cited Avon ~6.5M figure as an OpenAgents-verified statistic. Present it only as a clearly-labeled pursuit/aspiration, never as a green/met world-first.',
+        evidenceRefs: [
+          'docs/transcripts/239.md',
+          'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'promise:claims.pursued_world_first_largest_agentic_sales_force.v1',
+          'promise:claims.world_first_public_llm_computer_training_run.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.world_first_largest_sales_force_not_achieved',
+          'blocker.product_promises.world_first_largest_sales_force_seven_million_bar_unmet',
+          'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+        ],
+        verification:
+          'This record is intentionally never green from aspiration. Any future non-aspirational claim would require independently verified counts crossing the stated bar, an independent prior-art / record review (with the comparison figure independently sourced, not ChatGPT-attributed), a dereferenceable evidence pack, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'A pursued world first grants no record-holder status, no marketing-claim authority, and no sales, payout, or settlement authority. Aspiration is not achievement.',
+      },
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
@@ -2915,6 +3232,7 @@ export const publicProductPromisesDocument = () => {
       'Registry 2026-06-19.1 aligns the product promises and launch docs with issue #5438. It records the exact auto-stream visibility capture for training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4: public activity timeline, generated replay proof_replay_bundle.public_activity.73e66071, receipt receipt.nexus.tassadar_run_settlement.idempotency.tassadar.autostream.training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4.worker, and docs/launch/2026-06-19-autostream-settlement-clip-manifest.json. It also removes the stale default-npm blocker because npm reports @openagentsinc/pylon@latest=1.0.5 on 2026-06-19. This version flips no promise green: pylon.consumer_compute_earns_bitcoin_self_serve.v1 remains red on scale methodology, Windows/WSL coverage, and Spark-helper auto-start/readiness evidence; world-first claims remain red pending owner-signed receipt-first upgrades; and no new payout, settlement, provider, wallet, deployment, or public-claim authority is created.',
       'Registry 2026-06-19.2 is a copy/evidence destale pass against what actually shipped to main, and flips no promise state. (1) autopilot.desktop_gui_client.v1 stays yellow but records the auto-onboarding EPIC #5441 (AO-1..AO-6, commits #5442-#5448): first-run self-register, AO-3 identity choice (create-new/named or detected use-existing with the seed marker read-by-presence-only and never overwritten), AO-4 wizard live-state projection from real observed signals, a black-screen Document-contract guard, and an AO-6 headless smoke that drives the REAL local Pylon node through the launcher against a mock Worker (apps/autopilot-desktop/scripts/auto-onboarding-e2e-smoke.ts). The EPIC final from-DMG proof — a rendered window from the signed DMG on a clean external Mac, real appearance on production /api/public/pylon-stats, and a real claimed+settled Tassadar window with a Bitcoin receipt — is owner-gated and pending per docs/launch/2026-06-18-autopilot-desktop-ao6-from-dmg-runbook.md (new blocker.product_promises.autopilot_desktop_from_dmg_proof_owner_gated). (2) sites.referral_bitcoin_stream.v1 stays yellow but records RL-1 #5458 (commit 2c83afd4f): the 5% referral payout ledger is now wired — site-referral-payout-feed.ts creates exactly one idempotent eligibility row per paid event (hooked into Stripe credit-purchase fulfillment, short-circuiting self/no-attribution) and site-referral-payout-dispatch.ts drives approved -> dispatched -> settled by invoking the injected MDK/Spark payout adapter before recording settled, readiness-gated by the MDK payout-mode projection and refusing non-Bitcoin (credit/USD) revenue, proven settle-at-most-once by site-referral-payout-wire.test.ts (mock adapter + in-memory D1). No real referral payout has settled (new blocker.product_promises.referral_first_real_payout_pending); the first real settled payout awaits a real Bitcoin-revenue production event and stays readiness-gated. (3) autopilot_sites.partner_payout_ledger.v1 stays red but cross-references the now-wired referral dispatch rail as a tested attribution->settlement reference implementation (new blocker.product_promises.partner_first_real_payout_pending); green still needs a partner-specific attribution policy, a real settled partner payout receipt, and a partner-facing projection. No promise_transition is required (no state flips); any future green flip remains receipt-first per proof.claim_upgrade_receipts.v1 and requires owner sign-off.',
       'The OpenAgents inference gateway / Agent Cloud vision (docs/inference/, EPIC #5474 + sub-EPIC #5475 + children #5476-#5491) is recorded across five records at registry 2026-06-19.4: it is roadmap, not a shipped product. There is no live inference API, no inference credit balance, and no customer-buyable inference today. The single piece with real evidence is a VERIFIED Fireworks provider connection (a real usage-returning OpenAI-compatible call on an OpenAgents-held key), which is upstream reachability and a cost basis only — not a sellable inference product, and deliberately not green. Cross-category referral-on-everything-forever and the one-balance one-stop Agent Cloud are design intent. Report inference-product copy gaps in the Product Promises Forum.',
+      'Registry 2026-06-19.6 makes the registry reflect Episode 239 ("Let\'s Make Money" / Closing the Revenue Loop, docs/transcripts/239.md) HONESTLY, and flips NO existing promise — the green count stays 20. It adds nine conservative new records, all red or planned, never green: referral.refer_once_earn_forever.v1 (red — the ecosystem-wide refer-once-earn-forever vision; only the Sites 5% ledger is wired and it has settled NO real payout, distinct from the planned inference referral slice); autopilot.all_in_one_business_system.v1 (planned — Autopilot-as-composed-business-system); cloud.primitives_suite.v1 (planned — the inference/fine-tuning/training/agentic-tasks/sandbox/web-services primitive set as one buyable suite); cloud.fine_tuning_service.v1 (red — fine-tuning as a sellable primitive, unbuilt); cloud.sandbox_compute_service.v1 (red — sandbox compute as a sellable primitive, unbuilt); markets.open_protocol_markets.v1 (planned — the six Episode 213 markets compute/data/labor/liquidity/risk/verification; labor and verification are green only in their own bounded scopes, liquidity and risk are unbuilt); marketplace.compose_and_list_products.v1 (planned — build-your-own-product-and-list-it-for-sale); marketplace.monetize_any_layer_with_referral.v1 (planned — sell access to any layer + earn referrals, never waiving the no-resale invariant for subscription accounts); and the two PURSUED, aspirational world firsts claims.pursued_world_first_largest_agentic_sales_force.v1 and claims.pursued_world_first_largest_sales_force.v1 (both planned and intentionally never-green-from-aspiration — the video states them as pursuits, not achievements). The headline gap to make the video real is wiring the referral payout end-to-end (a real paid event -> the wired ledger -> a dispatched MDK/Spark settlement -> a dereferenceable receipt). Sources: docs/transcripts/239.md, docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md, docs/launch/2026-06-19-credits-purchase-collect-money-audit.md, docs/launch/2026-06-19-near-term-product-priorities.md. No promise_transition is required (new red/planned records create no state flip); any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

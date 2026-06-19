@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-19.5')
+    expect(decoded.version).toBe('2026-06-19.6')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -108,6 +108,12 @@ describe('public product promises document', () => {
     expect(decoded.verificationSummary.promiseCount).toBe(
       decoded.promises.length,
     )
+    // Honest green count: no green flip may land without a dereferenceable
+    // receipt. The Episode 239 (registry 2026-06-19.6) records are all
+    // red/planned, so the green count must stay exactly 20.
+    expect(
+      decoded.promises.filter(promise => promise.state === 'green').length,
+    ).toBe(20)
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
     expect(
@@ -238,6 +244,62 @@ describe('public product promises document', () => {
           state: 'planned',
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.agentic_npm_registry_not_live',
+          ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'referral.refer_once_earn_forever.v1',
+          state: 'red',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.referral_first_real_payout_pending',
+            'blocker.product_promises.referral_cross_category_accrual_unbuilt',
+          ]),
+          evidenceRefs: expect.arrayContaining(['docs/transcripts/239.md']),
+        }),
+        expect.objectContaining({
+          promiseId: 'autopilot.all_in_one_business_system.v1',
+          state: 'planned',
+        }),
+        expect.objectContaining({
+          promiseId: 'cloud.primitives_suite.v1',
+          state: 'planned',
+        }),
+        expect.objectContaining({
+          promiseId: 'cloud.fine_tuning_service.v1',
+          state: 'red',
+        }),
+        expect.objectContaining({
+          promiseId: 'cloud.sandbox_compute_service.v1',
+          state: 'red',
+        }),
+        expect.objectContaining({
+          promiseId: 'markets.open_protocol_markets.v1',
+          state: 'planned',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.liquidity_market_unbuilt',
+            'blocker.product_promises.risk_market_unbuilt',
+          ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'marketplace.compose_and_list_products.v1',
+          state: 'planned',
+        }),
+        expect.objectContaining({
+          promiseId: 'marketplace.monetize_any_layer_with_referral.v1',
+          state: 'planned',
+        }),
+        expect.objectContaining({
+          promiseId:
+            'claims.pursued_world_first_largest_agentic_sales_force.v1',
+          state: 'planned',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.world_first_agentic_sales_force_not_achieved',
+          ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'claims.pursued_world_first_largest_sales_force.v1',
+          state: 'planned',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.world_first_largest_sales_force_not_achieved',
           ]),
         }),
         expect.objectContaining({
@@ -518,12 +580,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-19.5', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-19.6', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-19.5',
+      expectedVersion: '2026-06-19.6',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-19.5',
+      servedVersion: '2026-06-19.6',
       status: 'ready',
     })
     expect(
@@ -533,7 +595,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-19.5',
+      servedVersion: '2026-06-19.6',
       status: 'blocked',
     })
   })
