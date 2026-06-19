@@ -443,27 +443,46 @@ describe("CL-53 sanitizeTree", () => {
     // A real, completed turn: steps derived from a live terminal event.
     const digest = `sha256:${"b".repeat(64)}`
     const selection = selectSignatureForMessage("show me the proof replay bundle")
+    const messageId = "chat.test.verified"
+    const completedMessage = {
+      id: messageId,
+      role: "assistant" as const,
+      body: "Blueprint program turn completed.",
+      timestamp: "2026-06-19T00:00:00.000Z",
+      linkedSessionRef: "session.blueprint.chat.verified",
+      steps: liveChatScopedSteps({
+        selection,
+        linkedSessionRef: "session.blueprint.chat.verified",
+        events: [
+          { eventIndex: 0, phase: "started", state: "running", observedAt: "2026-06-19T00:00:00Z", detail: "turn" },
+          { eventIndex: 1, phase: "completed", state: "completed", observedAt: "2026-06-19T00:00:05Z", detail: `exact replay ${digest}` },
+        ],
+        proofReplaySlug: initialModel.selectedProofReplaySlug,
+      }),
+    }
+
+    // Collapsed-by-default (#5466 chat-UX fix): the conversation text shows, but
+    // the Blueprint/Tassadar scoped-step scaffolding stays behind the per-message
+    // "program details" disclosure. The toggle is present; the refs are not yet.
+    const collapsed = view({
+      ...initialModel,
+      pane: "chat",
+      chatMessages: [completedMessage],
+      expandedChatMessages: [],
+    })
+    expect(treeContainsClass(collapsed.body, "chat-message-list")).toBe(true)
+    expect(treeContainsText(collapsed.body, completedMessage.body)).toBe(true)
+    expect(treeContainsText(collapsed.body, "program details")).toBe(true)
+    expect(treeContainsText(collapsed.body, selection.signatureRef)).toBe(false)
+    expect(treeContainsText(collapsed.body, "Verified")).toBe(false)
+
+    // Expanded: the same message id is in `expandedChatMessages`, so the scoped
+    // steps + exact-replay refs render.
     const document = view({
       ...initialModel,
       pane: "chat",
-      chatMessages: [
-        {
-          id: "chat.test.verified",
-          role: "assistant",
-          body: "Blueprint program turn completed.",
-          timestamp: "2026-06-19T00:00:00.000Z",
-          linkedSessionRef: "session.blueprint.chat.verified",
-          steps: liveChatScopedSteps({
-            selection,
-            linkedSessionRef: "session.blueprint.chat.verified",
-            events: [
-              { eventIndex: 0, phase: "started", state: "running", observedAt: "2026-06-19T00:00:00Z", detail: "turn" },
-              { eventIndex: 1, phase: "completed", state: "completed", observedAt: "2026-06-19T00:00:05Z", detail: `exact replay ${digest}` },
-            ],
-            proofReplaySlug: initialModel.selectedProofReplaySlug,
-          }),
-        },
-      ],
+      chatMessages: [completedMessage],
+      expandedChatMessages: [messageId],
     })
     expect(treeContainsClass(document.body, "chat-message-list")).toBe(true)
     expect(treeContainsText(document.body, selection.signatureRef)).toBe(true)
@@ -480,7 +499,10 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_EVIDENCE_REF)).toBe(true)
     expect(treeContainsText(document.body, BLUEPRINT_CHAT_REPLAY_RECEIPT_REF)).toBe(true)
     expect(treeContainsText(document.body, "Verified")).toBe(true)
-    expect(treeContainsSelector(document.body, "oa-tassadar-proof-replay")).toBe(true)
+    // The Tassadar REPLAY timeline is NOT rendered inline in chat anymore — it
+    // lives on the Network home scene and the Training Proof Replays panel. The
+    // chat disclosure shows only the public-safe ref.
+    expect(treeContainsSelector(document.body, "oa-tassadar-proof-replay")).toBe(false)
     expect(treeContainsText(document.body, "raw_trace")).toBe(false)
     expect(treeContainsText(document.body, "raw_prompt")).toBe(false)
     expect(treeContainsText(document.body, "private_key")).toBe(false)
@@ -490,6 +512,9 @@ describe("CL-53 sanitizeTree", () => {
     const document = view({
       ...initialModel,
       pane: "chat",
+      // Expanded so the rejected-evidence refs in the per-message "program
+      // details" disclosure render (collapsed-by-default after the #5466 fix).
+      expandedChatMessages: ["chat.test.rejected"],
       chatMessages: [
         {
           id: "chat.test.rejected",

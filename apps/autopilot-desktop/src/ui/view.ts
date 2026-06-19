@@ -173,6 +173,7 @@ import {
   ToggledDiffFile,
   ToggledDiffViewMode,
   ToggledArtifactBrowser,
+  ToggledChatMessageDetails,
 } from "./message"
 import {
   DEFAULT_MANAGED_BASE_REF,
@@ -5463,27 +5464,13 @@ const chatVerdictLabel = (verdict: ChatStep["verdict"]): string => {
   }
 }
 
-const chatTassadarReplayPreview = (model: Model, step: ChatStep): Html => {
-  if (step.proofReplayRef === null) return h.empty
-  const projection = modelProofReplay(model)
-  const bundle =
-    projection?.request?.mode === "catalog" &&
-    projection.request.slug === step.proofReplayRef
-      ? projection.bundle
-      : null
-  return h.div(
-    [cls("chat-proof-replay")],
-    [
-      tassadarProofReplayScene(
-        "chat-proof-replay-scene",
-        step.proofReplayRef,
-        bundle,
-      ),
-    ],
-  )
-}
-
-const chatStepView = (model: Model, step: ChatStep): Html =>
+// A single scoped step rendered inside the per-message "program details"
+// disclosure. The Blueprint/Tassadar scaffolding (signature / scoped tool /
+// module step / exact-replay / redaction / proof-replay refs) lives here, not
+// inline in the conversation. The Tassadar REPLAY timeline itself is NOT
+// rendered in chat — it lives on the Network home scene and the Training pane's
+// Proof Replays panel; here we only show the public-safe ref.
+const chatStepView = (step: ChatStep): Html =>
   h.li(
     [
       cls(`chat-step chat-step-${step.kind} chat-step-${chatStepTone(step.status)}`),
@@ -5523,9 +5510,39 @@ const chatStepView = (model: Model, step: ChatStep): Html =>
           )
         : h.empty,
       chatStepRef("proof replay", step.proofReplayRef),
-      chatTassadarReplayPreview(model, step),
     ],
   )
+
+// Per-message disclosure for the scoped-step / Tassadar scaffolding. Collapsed
+// by default (only the small "▸ program details" toggle shows) so the chat
+// pane opens to a clean conversation + composer. Expand state flows through the
+// Foldkit model (`expandedChatMessages`) via `ToggledChatMessageDetails`.
+const chatMessageDetails = (model: Model, message: ChatMessage): Html => {
+  if (message.steps.length === 0) return h.empty
+  const expanded = model.expandedChatMessages.includes(message.id)
+  const stepCount = message.steps.length
+  const summary = `program details · ${stepCount} ${stepCount === 1 ? "step" : "steps"}`
+  return h.div(
+    [cls(`chat-message-details${expanded ? " expanded" : ""}`)],
+    [
+      h.button(
+        [
+          cls("chat-message-details-toggle"),
+          h.Type("button"),
+          h.DataAttribute("autopilot-chat-details-toggle", message.id),
+          h.OnClick(ToggledChatMessageDetails({ messageId: message.id })),
+        ],
+        [`${expanded ? "▾" : "▸"} ${summary}`],
+      ),
+      expanded
+        ? h.ul(
+            [cls("chat-step-list")],
+            message.steps.map(step => chatStepView(step)),
+          )
+        : h.empty,
+    ],
+  )
+}
 
 const chatMessageView = (model: Model, message: ChatMessage): Html =>
   h.li(
@@ -5545,12 +5562,7 @@ const chatMessageView = (model: Model, message: ChatMessage): Html =>
         ],
       ),
       h.p([cls("chat-message-body")], [message.body]),
-      message.steps.length === 0
-        ? h.empty
-        : h.ul(
-            [cls("chat-step-list")],
-            message.steps.map(step => chatStepView(model, step)),
-          ),
+      chatMessageDetails(model, message),
     ],
   )
 

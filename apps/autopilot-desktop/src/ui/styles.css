@@ -74,12 +74,12 @@ body {
   gap: 0.75rem;
   padding: 2rem;
   text-align: center;
-  background:
-    radial-gradient(circle at 50% 48%, rgb(42 181 161 / 0.16), transparent 34%),
-    #000;
+  /* Brand-neutral dark surface (no green wash). Matches the openagents.com
+     dark scheme via the shared darkTokens (--bg). */
+  background: var(--bg, #000);
 }
 .network-replay-status {
-  color: rgb(241 239 232 / 0.78);
+  color: var(--text, #d7d8e5);
 }
 .network-public-activity-panel {
   position: absolute;
@@ -627,18 +627,30 @@ body {
 .chat-verdict-pending code {
   color: var(--warning, #d29922);
 }
-.chat-proof-replay {
-  width: 100%;
-  min-height: 8rem;
-  max-height: 12rem;
-  overflow: hidden;
-  border: 1px solid var(--border-muted, #21262d);
-  border-radius: 8px;
+/* Per-message "program details" disclosure. Collapsed by default: only the
+ * small toggle shows, so the chat reads as a clean conversation. The scoped
+ * step list renders below it when expanded. */
+.chat-message-details {
+  display: grid;
+  gap: 0.45rem;
 }
-.chat-proof-replay-scene {
-  display: block;
-  width: 100%;
-  height: 12rem;
+.chat-message-details-toggle {
+  justify-self: start;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--text-secondary, #8a8c93);
+  font: inherit;
+  font-size: 0.74rem;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+.chat-message-details-toggle:hover {
+  color: var(--text, #d7d8e5);
+}
+.chat-message-details.expanded .chat-message-details-toggle {
+  color: var(--text, #d7d8e5);
 }
 .chat-composer {
   display: flex;
