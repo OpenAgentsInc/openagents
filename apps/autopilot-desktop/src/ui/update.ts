@@ -678,6 +678,15 @@ export const update = (model: Model, message: Message): Result => {
     case "ToggledArtifactBrowser":
       return [Model.make({ ...model, artifactBrowserOpen: !model.artifactBrowserOpen }), noCommands]
 
+    // Chat: flip a single message's "program details" disclosure (scoped-step /
+    // Tassadar scaffolding). Collapsed by default; pure model toggle.
+    case "ToggledChatMessageDetails": {
+      const set = new Set(model.expandedChatMessages)
+      if (set.has(message.messageId)) set.delete(message.messageId)
+      else set.add(message.messageId)
+      return [Model.make({ ...model, expandedChatMessages: [...set] }), noCommands]
+    }
+
     // ── Coordinator toggle ───────────────────────────────────────────────────
     case "ClickedCoordinatorToggle":
       return [model, [SetCoordinatorPaused({ paused: message.paused })]]

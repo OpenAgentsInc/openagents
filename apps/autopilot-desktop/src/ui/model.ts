@@ -465,6 +465,11 @@ export const Model = ts("AutopilotDesktop", {
   // model so pane navigation does not discard the visible conversation. Turns
   // spawn bounded sessions and are reconciled by the node-state poll.
   chatMessages: S.Array(ChatMessage),
+  // Which chat messages have their per-message "program details" disclosure
+  // expanded (the scoped-step / Tassadar scaffolding). Empty = collapsed by
+  // default; the conversation text is what shows by default. Keyed by message
+  // id, mirroring the `expandedEvents` / `expandedDiffFiles` toggle pattern.
+  expandedChatMessages: S.Array(S.String),
   chatInput: S.String,
   chatStatus: ChatStatus,
   chatPending: S.Boolean,
@@ -943,6 +948,7 @@ export const initialModel: Model = Model.make({
   swarmBatchTotal: 0,
   composerPendingObjective: null,
   chatMessages: [seededChatMessage],
+  expandedChatMessages: [],
   chatInput: "",
   chatStatus: { text: "", tone: "idle" },
   chatPending: false,

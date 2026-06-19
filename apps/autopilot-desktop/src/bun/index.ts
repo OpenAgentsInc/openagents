@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { BrowserView, BrowserWindow, PATHS, Updater } from "electrobun/bun"
-import { discoverPylonHome } from "./node-home"
+import { createControlTokenResolver, discoverPylonHome } from "./node-home"
 import {
   type NodeLaunchStatus,
   type SupervisedNode,
@@ -51,6 +51,7 @@ import {
   fetchAppleFmReadiness,
   fetchNodeState,
   fetchOnboardingSignals,
+  probeControlToken,
   readControlToken,
   resolveApproval,
   resolveManagedWorktreeRepoRef,
@@ -198,9 +199,32 @@ function resolveHome(): string | null {
   return discoverPylonHome({ env: Bun.env.PYLON_HOME, cwd: process.cwd() })
 }
 
-function tokenForCommand(): string | null {
-  const home = resolveHome()
-  return home === null ? null : readControlToken(home)
+// CL-45b: clear, actionable blocker copy when NO candidate-home control token is
+// accepted by the live control server — surfaced instead of a bare `control
+// 401` (the symptom of a stale token in an earlier candidate home shadowing the
+// canonical Pylon home).
+const CONTROL_TOKEN_NOT_ACCEPTED =
+  "node control token not found or not accepted — is your Pylon node running? (start it with `pylon node`)"
+
+// CL-45b: server-validated control-token resolution for control-plane CALLS.
+// `discoverPylonHome`/`readControlToken` first-match on a *readable* token,
+// which dead-ends auth when an earlier candidate home (e.g. a stale
+// `<repo>/.pylon-tailnet/control-token`) shadows the canonical
+// `~/.openagents/pylon` home the running control server actually accepts. The
+// resolver probes candidate-home tokens against the live server (POST /command
+// {type:"session.list"}; 401 = reject, non-401 = accept) and uses the first
+// accepted one, caching the result so it doesn't probe on every command.
+const controlTokenResolver = createControlTokenResolver(() => ({
+  env: Bun.env.PYLON_HOME,
+  cwd: process.cwd(),
+  probe: (token: string) => probeControlToken({ baseUrl: controlBaseUrl, token }),
+}))
+
+// Resolve a control token the live server accepts, or null when none of the
+// candidate homes hold an accepted token. Used by every control-call handler.
+async function acceptedControlTokenForCommand(): Promise<string | null> {
+  const accepted = await controlTokenResolver.resolve()
+  return accepted?.token ?? null
 }
 
 function readIdentityPylonRef(home: string): string | null {
@@ -580,14 +604,17 @@ async function chooseIdentityHandler(params: ChooseIdentityParams): Promise<Choo
 async function startBuiltInAgentSession(): Promise<BuiltInAgentStartResponse> {
   const readiness = builtInAgentReadinessProjection()
   const home = resolveHome()
-  const token = tokenForCommand()
+  const token = await acceptedControlTokenForCommand()
   const worktreePath = builtInAgentWorktreePath()
   if (!readiness.ok || token === null || worktreePath === null || home === null) {
     return {
       ok: false,
       sessionRef: "",
       readiness,
-      error: readiness.blockerRefs[0] ?? "built-in agent unavailable",
+      error:
+        token === null && readiness.ok
+          ? CONTROL_TOKEN_NOT_ACCEPTED
+          : readiness.blockerRefs[0] ?? "built-in agent unavailable",
     }
   }
   const settings = resolveBuiltInAgentSettings(Bun.env)
@@ -614,7 +641,7 @@ async function startBuiltInAgentSession(): Promise<BuiltInAgentStartResponse> {
 
 async function startLocalAppleFmSession(): Promise<AppleFmSessionStartResponse> {
   const readiness = await appleFmReadinessProjection()
-  const token = tokenForCommand()
+  const token = await acceptedControlTokenForCommand()
   const worktreePath = builtInAgentWorktreePath()
   if (!readiness.ok || token === null || worktreePath === null) {
     return {
@@ -624,7 +651,10 @@ async function startLocalAppleFmSession(): Promise<AppleFmSessionStartResponse> 
       blockerRefs: readiness.blockerRefs.length > 0
         ? readiness.blockerRefs
         : ["blocker.autopilot.apple_fm.worktree_unavailable"],
-      error: readiness.message ?? readiness.unavailableReason ?? "local Apple FM unavailable",
+      error:
+        token === null && readiness.ok
+          ? CONTROL_TOKEN_NOT_ACCEPTED
+          : readiness.message ?? readiness.unavailableReason ?? "local Apple FM unavailable",
     }
   }
   const result = await startAppleFmControlSession({
@@ -650,7 +680,7 @@ async function startComposerAppleFmSession(input: {
   worktreePath?: string
 }): Promise<AppleFmSessionStartResponse> {
   const readiness = await appleFmReadinessProjection()
-  const token = tokenForCommand()
+  const token = await acceptedControlTokenForCommand()
   const worktreePath =
     input.worktreePath && input.worktreePath.trim() !== ""
       ? input.worktreePath.trim()
@@ -670,7 +700,9 @@ async function startComposerAppleFmSession(input: {
       error:
         objective.length === 0
           ? "objective is required"
-          : readiness.message ?? readiness.unavailableReason ?? "local Apple FM unavailable",
+          : token === null && readiness.ok
+            ? CONTROL_TOKEN_NOT_ACCEPTED
+            : readiness.message ?? readiness.unavailableReason ?? "local Apple FM unavailable",
     }
   }
   const prompt = [
@@ -699,9 +731,9 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       // node enforces the OA_DEPLOY_ENABLE=1 fail-safe, so nothing deploys by
       // default.
       async deployCloud(params) {
-        const token = tokenForCommand()
+        const token = await acceptedControlTokenForCommand()
         if (token === null) {
-          return { accepted: false, reason: "control token unavailable", errors: [] }
+          return { accepted: false, reason: CONTROL_TOKEN_NOT_ACCEPTED, errors: [] }
         }
         return deployToCloud({
           baseUrl: controlBaseUrl,
@@ -713,8 +745,8 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       // CL-47: submit an "ask" (work intent) to the node.
       async submitIntent(params) {
-        const token = tokenForCommand()
-        if (token === null) return { ok: false, status: "error", error: "control token unavailable" }
+        const token = await acceptedControlTokenForCommand()
+        if (token === null) return { ok: false, status: "error", error: CONTROL_TOKEN_NOT_ACCEPTED }
         return submitIntent({ baseUrl: controlBaseUrl, token, title: params.title, body: params.body })
       },
       async builtinAgentReadiness() {
@@ -845,26 +877,26 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       // CL-48: resolve a pending approval (approve/deny).
       async resolveApproval(params) {
-        const token = tokenForCommand()
+        const token = await acceptedControlTokenForCommand()
         if (token === null) return { applied: false, duplicate: false, decision: params.decision }
         return resolveApproval({ baseUrl: controlBaseUrl, token, approvalRef: params.approvalRef, decision: params.decision })
       },
       // CL-51: pause/resume the node's autonomous coordinator loop.
       async setCoordinatorPaused(params) {
-        const token = tokenForCommand()
+        const token = await acceptedControlTokenForCommand()
         if (token === null) return { paused: params.paused }
         return setCoordinatorPaused({ baseUrl: controlBaseUrl, token, paused: params.paused })
       },
       // CL-52: cancel a running/queued session.
       async cancelSession(params) {
-        const token = tokenForCommand()
+        const token = await acceptedControlTokenForCommand()
         if (token === null) return { ok: false, state: "error" }
         return cancelSession({ baseUrl: controlBaseUrl, token, sessionRef: params.sessionRef })
       },
       // CL-57: directly spawn a bounded session on the node.
       async spawnSession(params) {
-        const token = tokenForCommand()
-        if (token === null) return { ok: false, sessionRef: "", error: "control token unavailable" }
+        const token = await acceptedControlTokenForCommand()
+        if (token === null) return { ok: false, sessionRef: "", error: CONTROL_TOKEN_NOT_ACCEPTED }
         return spawnSession({
           baseUrl: controlBaseUrl,
           token,
@@ -1013,8 +1045,12 @@ const poller = createNodeStatePoller({
     rpc.send.notifications(notifier.ingest(message.sessions))
   },
   async fetchNodeState() {
-    const token = tokenForCommand()
-    if (token === null) throw new Error("Pylon control token is not available")
+    // CL-45b: use the server-validated token so a stale token in an earlier
+    // candidate home doesn't dead-end the poll at `control 401`. The resolver
+    // caches the accepted token (re-validated with a cheap probe), so this stays
+    // a bounded, side-effect-light call on the 2s cadence.
+    const token = await acceptedControlTokenForCommand()
+    if (token === null) throw new Error(CONTROL_TOKEN_NOT_ACCEPTED)
     return fetchNodeState({
       baseUrl: controlBaseUrl,
       token,

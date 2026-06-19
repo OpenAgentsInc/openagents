@@ -75,6 +75,13 @@ export const ToggledDiffFile = m("ToggledDiffFile", { path: S.String })
 export const ToggledDiffViewMode = m("ToggledDiffViewMode")
 export const ToggledArtifactBrowser = m("ToggledArtifactBrowser")
 
+// Chat: expand/collapse a single chat message's "program details" disclosure
+// (the scoped-step / Tassadar scaffolding). Collapsed by default so the chat
+// opens to a clean conversation. Pure model toggle — no control verb / RPC.
+export const ToggledChatMessageDetails = m("ToggledChatMessageDetails", {
+  messageId: S.String,
+})
+
 // ── Coordinator pause/resume ────────────────────────────────────────────────
 export const ClickedCoordinatorToggle = m("ClickedCoordinatorToggle", {
   paused: S.Boolean,
@@ -549,6 +556,7 @@ export const Message = S.Union([
   ToggledDiffFile,
   ToggledDiffViewMode,
   ToggledArtifactBrowser,
+  ToggledChatMessageDetails,
   ClickedCoordinatorToggle,
   SettledCoordinatorToggle,
   FailedCoordinatorToggle,
