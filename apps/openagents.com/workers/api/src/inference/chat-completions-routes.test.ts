@@ -484,3 +484,115 @@ describe('inference provider registry seam', () => {
     expect(registry.ids()).toEqual([STUB_ECHO_ADAPTER_ID])
   })
 })
+
+describe('default model + premium gate (free-tier enablement §2)', () => {
+  // Route everything to the stub adapter regardless of model so the default
+  // model resolves to a viable lane.
+  const stubLanePlan = () => [STUB_ECHO_ADAPTER_ID]
+
+  test('an omitted model defaults to gemini-3.5-flash in the echoed response', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({ messages: [{ content: 'hi', role: 'user' }] }),
+        baseDeps({ lanePlan: stubLanePlan }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { model: string }
+    expect(body.model).toBe('gemini-3.5-flash')
+  })
+
+  test('a blank model also defaults to gemini-3.5-flash', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: '   ',
+        }),
+        baseDeps({ lanePlan: stubLanePlan }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { model: string }
+    expect(body.model).toBe('gemini-3.5-flash')
+  })
+
+  test('premium gate DENIES a non-allowlisted premium request (403) before dispatch', async () => {
+    let dispatched = false
+    const denyGate: ChatCompletionsDeps['checkPremiumAccess'] = async (
+      _accountRef,
+      model,
+    ) => ({
+      allowed: false,
+      message: `Model "${model}" is a premium model and requires an owner grant.`,
+      premium: true,
+      reasonRef: 'reason.inference_premium.owner_not_allowlisted',
+    })
+    const meteringHook: MeteringHook = () =>
+      Effect.sync(() => {
+        dispatched = true
+        return { metered: false, receiptRef: null }
+      })
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: 'claude-sonnet',
+        }),
+        baseDeps({
+          checkPremiumAccess: denyGate,
+          lanePlan: stubLanePlan,
+          meteringHook,
+        }),
+      ),
+    )
+    expect(response.status).toBe(403)
+    const body = (await response.json()) as { error: string; message: string }
+    expect(body.error).toBe('premium_model_not_allowed')
+    expect(body.message).toContain('premium')
+    expect(dispatched).toBe(false) // never reached the provider/metering
+  })
+
+  test('premium gate ALLOWS an allowlisted premium request (200)', async () => {
+    const allowGate: ChatCompletionsDeps['checkPremiumAccess'] = async () => ({
+      allowed: true,
+      message: '',
+      premium: true,
+      reasonRef: 'reason.inference_premium.owner_allowlisted',
+    })
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: 'claude-sonnet',
+        }),
+        baseDeps({ checkPremiumAccess: allowGate, lanePlan: stubLanePlan }),
+      ),
+    )
+    expect(response.status).toBe(200)
+  })
+
+  test('premium gate is consulted for a non-premium model and allows it', async () => {
+    let checked = false
+    const gate: ChatCompletionsDeps['checkPremiumAccess'] = async () => {
+      checked = true
+      return {
+        allowed: true,
+        message: '',
+        premium: false,
+        reasonRef: 'reason.inference_premium.non_premium_model',
+      }
+    }
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: 'gemini-3.5-flash',
+        }),
+        baseDeps({ checkPremiumAccess: gate, lanePlan: stubLanePlan }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(checked).toBe(true)
+  })
+})
