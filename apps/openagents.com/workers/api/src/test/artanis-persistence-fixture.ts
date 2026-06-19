@@ -121,7 +121,10 @@ class ArtanisPersistenceTestStatement implements D1PreparedStatement {
     }
 
     if (this.query.includes('UPDATE artanis_loop_ticks')) {
-      const recordRef = String(this.values[4])
+      // Bind order mirrors closeArtanisPersistedLoopTick:
+      //   state, closeout_json, record_json, public_projection_json,
+      //   content_hash, updated_at, closed_at, record_ref (WHERE).
+      const recordRef = String(this.values[7])
       const index = rows.findIndex(
         row => row.record_ref === recordRef && row.closed_at === null,
       )
@@ -130,10 +133,13 @@ class ArtanisPersistenceTestStatement implements D1PreparedStatement {
         const existing = rows[index]!
         rows[index] = {
           ...existing,
-          closed_at: String(this.values[3]),
+          closed_at: String(this.values[6]),
           closeout_json: String(this.values[1]),
+          content_hash: String(this.values[4]),
+          public_projection_json: String(this.values[3]),
+          record_json: String(this.values[2]),
           state: String(this.values[0]),
-          updated_at: String(this.values[2]),
+          updated_at: String(this.values[5]),
         }
       }
 

@@ -228,6 +228,12 @@ class DeliveryStatement implements D1PreparedStatement {
       return Promise.resolve(post as T | null)
     }
 
+    if (this.query.includes('FROM forum_tip_recipient_wallets')) {
+      // The Artanis actor has no seeded tip-recipient wallet in this fixture,
+      // so delivery resolves to the missing-readiness projection and proceeds.
+      return Promise.resolve(null)
+    }
+
     return Promise.reject(new Error(`Unexpected first query: ${this.query}`))
   }
 
