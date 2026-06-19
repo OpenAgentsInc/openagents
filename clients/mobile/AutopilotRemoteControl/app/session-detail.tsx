@@ -40,7 +40,10 @@ const toneColor = (tone: "ok" | "bad" | "muted"): string =>
 export default function SessionDetailScreen() {
   const route = useRoute()
   const sessionRef = (route.params as { sessionRef?: string } | undefined)?.sessionRef ?? null
-  const navigation = useNavigation<{ goBack: () => void }>()
+  const navigation = useNavigation<{
+    goBack: () => void
+    navigate: (screen: string, params?: { sessionRef: string }) => void
+  }>()
   const c = useConnection()
 
   const session = sessionRef === null ? undefined : c.sessions.find((s) => s.sessionRef === sessionRef)
@@ -103,6 +106,16 @@ export default function SessionDetailScreen() {
             {artifact.commandCount !== null ? ` · ${artifact.commandCount} cmds` : ""}
             {artifact.totalTokens !== null ? ` · ${artifact.totalTokens} tok` : ""}
           </Text>
+        ) : null}
+        {/* G3 (#5495): open the read-only artifact/diff viewer (changed files,
+            verify transcript, raw artifact) for this session. */}
+        {artifact && sessionRef !== null ? (
+          <Pressable
+            style={styles.viewArtifactBtn}
+            onPress={() => navigation.navigate("ArtifactViewer", { sessionRef })}
+          >
+            <Text style={styles.viewArtifactText}>View artifact & diff ›</Text>
+          </Pressable>
         ) : null}
         {cancellable && sessionRef !== null ? (
           <Pressable
@@ -179,6 +192,16 @@ const styles = StyleSheet.create({
   detailRef: { color: C.text, fontFamily: "Courier", fontSize: 13, marginTop: 10 },
   verifyLine: { fontFamily: "Courier", fontSize: 13, marginTop: 8 },
   artifactLine: { color: C.textSecondary, fontFamily: "Courier", fontSize: 12, marginTop: 4 },
+  viewArtifactBtn: {
+    alignSelf: "flex-start",
+    borderColor: C.info,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  viewArtifactText: { color: C.info, fontSize: 13, fontWeight: "600" },
   cancelBtn: {
     alignItems: "center",
     borderColor: C.danger,

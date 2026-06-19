@@ -55,6 +55,15 @@ export function buildCancelRequest(input: SessionReadRequestInput): BridgeReques
   return buildReadRequest("session.cancel", input)
 }
 
+// artifact.read is a session-scoped read verb (read_artifact capability). It
+// returns the retained proof/failure artifact a completed session produced —
+// projection-safe + redaction-scanned at write time, so safe to render inline.
+// Same envelope shape as the other reads; the node gates it on the stored
+// credential's read_artifact capability.
+export function buildArtifactReadRequest(input: SessionReadRequestInput): BridgeRequestEnvelope {
+  return buildReadRequest("artifact.read", input)
+}
+
 export function parseListResponse(raw: unknown): SessionSummary[] {
   if (!Array.isArray(raw)) throw new TypeError("Expected session list response to be an array")
   return raw.map((row) => decodeSessionSummary(row))

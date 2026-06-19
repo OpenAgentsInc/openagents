@@ -8,7 +8,7 @@
 
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react"
 
-import { createActionQueue } from "@openagentsinc/autopilot-control-protocol"
+import { createActionQueue, type ArtifactContentView } from "@openagentsinc/autopilot-control-protocol"
 import {
   type AccountRow,
   type ApprovalRow,
@@ -37,6 +37,8 @@ import {
   fetchDeployStatus,
   fetchIntents,
   fetchSessionArtifact as fetchSessionArtifactCall,
+  fetchSessionArtifactContent as fetchSessionArtifactContentCall,
+  fetchSessionArtifactContentViaBridge,
   fetchSessionEvents as fetchSessionEventsCall,
   fetchSessionEventsViaBridge,
   fetchSessionRowsViaBridge,
@@ -91,6 +93,10 @@ export type ConnectionValue = {
   deploy(input: { target: DeployTarget; ref: string; env?: DeployEnv }): Promise<DeployResult>
   fetchSessionEvents(sessionRef: string): Promise<ControlSessionEventRow[]>
   fetchSessionArtifact(sessionRef: string): Promise<SessionArtifact>
+  // G3 (#5495): the full artifact/diff content (changed files, dev-check
+  // transcript, deviations, verbatim text). Bridge read_artifact preferred,
+  // dev-token session.artifact fallback. null when the session has no artifact.
+  fetchSessionArtifactContent(sessionRef: string): Promise<ArtifactContentView | null>
 }
 
 const ConnectionContext = createContext<ConnectionValue | null>(null)
@@ -198,7 +204,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     // #5002: request write capabilities so the scoped credential can resolve
     // decisions and cancel sessions over the bridge (owner's own phone).
-    void connectBridge(conn, { capabilities: ["observe_public", "answer_decision", "cancel"] })
+    // #5495 (G3): also request read_artifact so the artifact/diff viewer can
+    // read retained proof/failure artifacts over the bridge (still read-only).
+    void connectBridge(conn, { capabilities: ["observe_public", "answer_decision", "cancel", "read_artifact"] })
       .then((session) => {
         if (!cancelled) bridge.current = session
       })
@@ -396,6 +404,24 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [conn],
   )
 
+  const fetchSessionArtifactContent = useCallback(
+    async (sessionRef: string): Promise<ArtifactContentView | null> => {
+      if (conn === null) return null
+      // Prefer the capability-scoped bridge (#5495 read_artifact); fall back to
+      // the dev-token session.artifact path if no bridge credential or it fails.
+      const session = bridge.current
+      if (session !== null) {
+        try {
+          return await fetchSessionArtifactContentViaBridge(session, sessionRef)
+        } catch {
+          // fall through to dev-token path
+        }
+      }
+      return fetchSessionArtifactContentCall(conn, sessionRef)
+    },
+    [conn],
+  )
+
   const value: ConnectionValue = {
     status,
     conn,
@@ -420,6 +446,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     deploy,
     fetchSessionEvents,
     fetchSessionArtifact,
+    fetchSessionArtifactContent,
   }
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>

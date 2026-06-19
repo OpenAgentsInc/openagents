@@ -4,8 +4,9 @@
 // (POST /bridge with `Authorization: Bridge <pairingRef>:<jti>`). Pure +
 // transport-agnostic (inject fetch) so web / desktop / mobile share it.
 
-import { buildCancelRequest, buildHistoryRequest, buildListRequest } from "./bridge-client"
+import { buildArtifactReadRequest, buildCancelRequest, buildHistoryRequest, buildListRequest } from "./bridge-client"
 import { buildDecisionResolveEnvelope } from "./bridge-decision-client"
+import { parseArtifactReadResponse, type ArtifactReadResponse } from "./artifact-content-view"
 import type { Capability, PairingCredentialClaims, ProjectionLevel } from "./bridge"
 import type { DecisionVerb } from "./decision"
 import { decodeSessionSummary, type SessionSummary } from "./control"
@@ -63,6 +64,11 @@ export type BridgeTransport = {
   // non-ok response; callers classify the error via classifyActionOutcome.
   resolveDecision: (input: { requestId: string; verb: DecisionVerb; answer?: string }) => Promise<unknown>
   cancel: (sessionRef: string) => Promise<unknown>
+  // G3 (#5495) read action: the retained proof/failure artifact a completed
+  // session produced (read_artifact capability). Returns the typed
+  // { sessionRef, kind, artifact } envelope; run projectArtifactContentView over
+  // it to render the diff/transcript/text view. Throws on a non-ok response.
+  readArtifact: (sessionRef: string) => Promise<ArtifactReadResponse>
 }
 
 // A transport bound to a pairing credential. Sends capability-scoped read
@@ -136,6 +142,17 @@ export function createBridgeTransport(input: {
         idempotencyKey: clientRequestId,
       })
       return send(envelope)
+    },
+    async readArtifact(sessionRef) {
+      const requestId = nextId()
+      const envelope = buildArtifactReadRequest({
+        sessionRef,
+        pairingRef: input.credential.pairingRef,
+        capabilityRef: "read_artifact",
+        clientRequestId: requestId,
+        idempotencyKey: requestId,
+      })
+      return parseArtifactReadResponse(await send(envelope))
     },
   }
 }

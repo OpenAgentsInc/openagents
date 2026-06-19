@@ -8,7 +8,9 @@ import {
   pairBridge,
   createBridgeTransport,
   decodeBootstrapPayload,
+  projectArtifactContentView,
   resolveBaseUrls,
+  type ArtifactContentView,
   type BridgeCredential,
   type Capability,
   type ProjectionLevel,
@@ -177,6 +179,21 @@ export async function fetchSessionEventsViaBridge(
   }))
 }
 
+// G3 (#5495) artifact/diff viewer over the bridge: read the retained
+// proof/failure artifact a completed session produced (read_artifact
+// capability), projected into the render-ready ArtifactContentView (changed-file
+// list, dev-check command transcript, deviations, verbatim text). No long-lived
+// dev token on the wire. Returns null if the node has no artifact for the
+// session (kind "none") or the read fails.
+export async function fetchSessionArtifactContentViaBridge(
+  bridge: BridgeSession,
+  sessionRef: string,
+): Promise<ArtifactContentView | null> {
+  const envelope = await bridge.transport.readArtifact(sessionRef)
+  if (envelope.kind === "none") return null
+  return projectArtifactContentView({ kind: envelope.kind, artifact: envelope.artifact })
+}
+
 export type ControlSessionRow = {
   sessionRef: string
   adapter: string
@@ -253,6 +270,29 @@ export async function fetchSessionArtifact(conn: ConnectInfo, sessionRef: string
     editedFileCount: ex && typeof ex.editedFileCount === "number" ? ex.editedFileCount : null,
     commandCount: ex && typeof ex.commandCount === "number" ? ex.commandCount : null,
     totalTokens: ex && typeof ex.totalTokens === "number" ? ex.totalTokens : null,
+  }
+}
+
+// G3 (#5495) dev-token fallback for the artifact/diff viewer: read the full
+// retained artifact body via the `session.artifact` /command verb and project it
+// into the render-ready ArtifactContentView. Used when no bridge credential is
+// established (the bridge read_artifact path is preferred). Returns null on a
+// "none"/absent artifact or transport failure.
+export async function fetchSessionArtifactContent(
+  conn: ConnectInfo,
+  sessionRef: string,
+): Promise<ArtifactContentView | null> {
+  try {
+    const json = (await command(conn, { type: "session.artifact", sessionRef })) as {
+      ok?: boolean
+      result?: { kind?: unknown; artifact?: unknown }
+    }
+    const result = json.ok === true ? json.result : undefined
+    const kind = result?.kind === "proof" || result?.kind === "failure" ? result.kind : "none"
+    if (kind === "none") return null
+    return projectArtifactContentView({ kind, artifact: result?.artifact ?? null })
+  } catch {
+    return null
   }
 }
 

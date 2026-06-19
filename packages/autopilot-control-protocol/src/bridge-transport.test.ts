@@ -57,4 +57,43 @@ describe("client bridge transport (CL-14)", () => {
     expect(body.sessionRef).toBe("sess.42")
     expect(result.recentEvents.length).toBe(1)
   })
+
+  test("transport.readArtifact sends artifact.read + read_artifact cap and parses the envelope", async () => {
+    let body: any = null
+    let auth: string | null = null
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      auth = (init!.headers as Record<string, string>).authorization
+      body = JSON.parse(init!.body as string)
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          result: { sessionRef: "sess.42", kind: "proof", artifact: { schema: "x", executor: { outcome: "completed" } } },
+        }),
+        { status: 200 },
+      )
+    }) as unknown as typeof fetch
+    const t = createBridgeTransport({
+      baseUrl: "https://node.example",
+      credential: { pairingRef: "p1", jti: "j1" },
+      fetchImpl,
+    })
+    const result = await t.readArtifact("sess.42")
+    expect(auth).toBe("Bridge p1:j1")
+    expect(body.verb).toBe("artifact.read")
+    expect(body.capabilityRef).toBe("read_artifact")
+    expect(body.sessionRef).toBe("sess.42")
+    expect(result.kind).toBe("proof")
+    expect(result.sessionRef).toBe("sess.42")
+
+    const errFetch = (async () =>
+      new Response(JSON.stringify({ ok: false, error: "capability not granted" }), {
+        status: 403,
+      })) as unknown as typeof fetch
+    const t2 = createBridgeTransport({
+      baseUrl: "https://node.example",
+      credential: { pairingRef: "p1", jti: "j1" },
+      fetchImpl: errFetch,
+    })
+    await expect(t2.readArtifact("sess.42")).rejects.toThrow(/capability not granted/)
+  })
 })
