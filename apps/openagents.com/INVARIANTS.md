@@ -784,6 +784,42 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/site-referral-payout-wire.test.ts`,
   `workers/api/src/firmup-bitcoin-settlement.test.ts`, and
   `workers/api/src/firmup-bitcoin-settlement-routes.test.ts`.
+
+## Referral Payout Settlement Adapter (owner-armed) + Cross-Category Accrual
+
+- The referral payout dispatcher (`site-referral-payout-dispatch.ts`) invokes the
+  production settlement adapter `workers/api/src/site-referral-payout-adapter.ts`
+  (`makeSiteReferralPayoutAdapter`) to record a `settled` payout. The adapter
+  wraps the hosted-MDK programmatic-payout rail and returns a sha256-redacted
+  `receipt.site_referral_payout.hosted_mdk.<hash>` ref — never raw payment
+  material (preimage/hash/invoice) and never a fabricated receipt (a receipt
+  exists only after the rail confirms a non-FAILED payout). It refuses a
+  non-reusable (single-use bolt11) destination so an idempotent retry cannot
+  double-pay.
+- The first real referral payout stays OWNER-ARMED (#5511/#5512). Two
+  independent gates keep the production wiring inert: the injected readiness gate
+  (`hostedMdkDirectPayoutDisabledGate` -> `livePayoutClaimAllowed: false`) refuses
+  before the dispatcher reaches the adapter, AND the adapter is wired with a null
+  payout client + a null-returning destination resolver, so it FAILS CLOSED
+  (throws a tagged `SiteReferralPayoutAdapterError`, no money moves, NO settled
+  state recorded) even if reached. Arming requires the owner to enable a live
+  payout mode AND configure a funded client + a registered referrer destination.
+  Do NOT relax either gate or flip `referral.refer_once_earn_forever.v1` /
+  `sites.referral_bitcoin_stream.v1` green without an owner-signed, receipt-first
+  upgrade per `proof.claim_upgrade_receipts.v1`.
+- Refer-once-earn-forever is permanent and cross-category: the referrer<->referee
+  binding is the consume-once attribution spine (`user_referral_attributions` /
+  `agent_referral_attributions` joined to `site_referral_sources`), which names
+  the referrer for that account regardless of purchase category. The category-
+  agnostic accrual primitive `workers/api/src/referral-cross-category-accrual.ts`
+  (`accrueCrossCategoryReferral`) is the single entry every category routes
+  through to feed the ONE RL-1 payout ledger. It is usage-funded only (a real
+  metered paid event; never on signups; a zero/below-1-sat-cut event accrues
+  nothing), idempotent per `(category, eventId)`, and enforces the same shared
+  asset boundary (Bitcoin->Bitcoin, credit/USD->credit, never a credit-funded
+  Bitcoin liability). It records eligibility only — it moves no money.
+- Regression coverage: `workers/api/src/site-referral-payout-adapter.test.ts` and
+  `workers/api/src/referral-cross-category-accrual.test.ts`.
 - USD->msat inference-credit bridge (#5497): a card (Stripe) USD purchase may be
   converted into an inference-spendable msat `agent_balances` credit
   (`usd_credit_grant` pay-in) via `POST /api/billing/inference-credit`, but the
