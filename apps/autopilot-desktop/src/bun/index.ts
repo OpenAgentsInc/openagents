@@ -730,6 +730,16 @@ managedNode = superviseManagedNode({
   // falls back to the bundled Pylon node under the app's Resources. In dev this
   // dir holds no `app/pylon-node/` bundle, so the dev path is still used.
   resourcesDir: PATHS.RESOURCES_FOLDER,
+  // AO-1/AO-2 (#5442/#5443, EPIC #5441): converge a fresh install headlessly to
+  // a registered, presence-live, payout-target-registered, Tassadar-joined node.
+  // The launcher self-registers the agent on first run (persisting the
+  // `oa_agent_...` token in the managed home, never logged) and injects the
+  // onboarding env switches (PYLON_OPENAGENTS_BASE_URL / OPENAGENTS_AGENT_TOKEN /
+  // PYLON_ASSIGNMENT_WORKER=1) into the node child, so the existing Pylon runtime
+  // lights up presence + payout + the Tassadar assignment worker — no new node
+  // code. An explicit OPENAGENTS_AGENT_TOKEN / PYLON_OPENAGENTS_BASE_URL in the
+  // environment is respected (operator override).
+  autoOnboarding: true,
   onStatus(status: NodeLaunchStatus) {
     console.log(
       `[autopilot-desktop] local node status: ${status}` +

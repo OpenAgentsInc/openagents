@@ -1,6 +1,12 @@
 import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
+import {
+  buildOnboardingChildEnv,
+  loadPersistedCredential,
+  selfRegisterAgent,
+  type SelfRegisterResult,
+} from "./agent-onboarding"
 import { discoverPylonHome } from "./node-home"
 import { readControlToken } from "./pylon-control"
 import type { NodeLaunchStatus } from "../shared/rpc"
@@ -97,6 +103,30 @@ export type EnsureManagedNodeOptions = {
   readonly onStatus?: (status: NodeLaunchStatus) => void
   // Forwarded to the spawned child so a supervisor can restart on crash.
   readonly onChildExit?: (info: { readonly code: number | null }) => void
+  // AO-1/AO-2 (#5442/#5443): auto-onboarding. When enabled (the default in the
+  // app), the launcher (a) injects the onboarding env switches
+  // (PYLON_OPENAGENTS_BASE_URL / OPENAGENTS_AGENT_TOKEN / PYLON_ASSIGNMENT_WORKER)
+  // into the node child from a persisted token before spawn, and (b) after the
+  // node reports online, self-registers the agent if no token is persisted yet.
+  // Disabled (`false`) keeps the prior isolated-node behavior for tests/dev.
+  readonly autoOnboarding?: boolean
+  // The product base URL to register + announce presence against. Defaults to
+  // https://openagents.com (see agent-onboarding DEFAULT_OPENAGENTS_BASE_URL).
+  readonly onboardingBaseUrl?: string
+  // Injectable self-registration (defaults to the real `selfRegisterAgent`).
+  // Returns the outcome so the supervisor can decide whether a restart (to pick
+  // up a freshly minted token in the child env) is warranted.
+  readonly registerAgent?: (input: {
+    readonly home: string
+    readonly baseUrl: string
+  }) => Promise<SelfRegisterResult>
+  // Injectable persisted-token reader (defaults to `loadPersistedCredential`).
+  readonly readPersistedToken?: (home: string) => string | null
+  // Fired after a *fresh* registration mints a token so the supervisor can
+  // restart the child with the token injected (the env is read once at boot).
+  // Not fired when a token was already persisted before spawn (no restart
+  // needed — the env already carried it).
+  readonly onTokenMinted?: () => void
 }
 
 const MANAGED_HOME_SUBDIR = ".pylon-local"
@@ -297,6 +327,30 @@ export const ensureManagedNode = async (
   }
   childEnv.PYLON_HOME = managedHome
 
+  // AO-2 (#5443): when auto-onboarding is on, inject the env switches the
+  // existing Pylon runtime reads at boot so presence / payout-target / the
+  // Tassadar assignment worker light up — reusing the already-built runtime, no
+  // new node code. The agent token comes from a *persisted* credential
+  // (AO-1/#5442) when one already exists for this home; on the very first run
+  // there is no token yet, so this boot carries only the base URL and the
+  // supervisor restarts the child with the token after registration. The env is
+  // read once at node boot (apps/pylon/src/index.ts), which is why a fresh
+  // registration needs a restart rather than an in-place env mutation.
+  if (options.autoOnboarding === true) {
+    const readPersistedToken =
+      options.readPersistedToken ??
+      ((home: string) => loadPersistedCredential(home)?.token ?? null)
+    const persistedToken = readPersistedToken(managedHome)
+    const onboarded = buildOnboardingChildEnv({
+      base: childEnv,
+      agentToken: persistedToken,
+      ...(options.onboardingBaseUrl
+        ? { baseUrl: options.onboardingBaseUrl }
+        : {}),
+    })
+    for (const [key, value] of Object.entries(onboarded)) childEnv[key] = value
+  }
+
   const child = spawnNode({
     command: plan.command,
     cwd: plan.cwd,
@@ -325,6 +379,36 @@ export const ensureManagedNode = async (
   }
   emit(ready ? "online" : "failed")
 
+  // AO-1 (#5442): once the node is online (its identity.json is written), self-
+  // register the agent if no token is persisted yet, then persist the minted
+  // token. Idempotent + offline-tolerant: a reused token is a no-op; a deferred
+  // (offline) result just retries on the next bring-up. When a token is *freshly*
+  // minted we fire onTokenMinted so the supervisor restarts the child with the
+  // token in its env (presence/assignment read env once at boot). This never
+  // throws and never logs the token (selfRegisterAgent redacts).
+  if (ready && options.autoOnboarding === true) {
+    const baseUrl =
+      options.onboardingBaseUrl ?? "https://openagents.com"
+    const registerAgent =
+      options.registerAgent ??
+      ((input: { home: string; baseUrl: string }) =>
+        selfRegisterAgent({
+          home: input.home,
+          baseUrl: input.baseUrl,
+        }))
+    try {
+      const result = await registerAgent({ home: managedHome, baseUrl })
+      if (result.outcome === "registered") {
+        // A token now exists but the running child booted without it. Ask the
+        // supervisor to restart so the child re-reads the env with the token.
+        options.onTokenMinted?.()
+      }
+    } catch {
+      // Defensive: registerAgent is contractually non-throwing, but never let a
+      // registration hiccup crash the launcher / kill the node.
+    }
+  }
+
   return {
     mode: "launched",
     home: managedHome,
@@ -349,7 +433,7 @@ export type SupervisedNode = {
 
 export type SuperviseManagedNodeOptions = Omit<
   EnsureManagedNodeOptions,
-  "onChildExit"
+  "onChildExit" | "onTokenMinted"
 > & {
   // Backoff schedule for crash restarts. Defaults to a bounded exponential.
   readonly restartBackoffMs?: ReadonlyArray<number>
@@ -408,6 +492,15 @@ export const superviseManagedNode = (
     if (stopped) return
     current = null
 
+    // AO-1/AO-2: a deliberate token-minted restart is not a crash. Restart
+    // immediately and do not consume the crash budget. The flag is cleared in
+    // bringUp once the restarted child is live.
+    if (restartingForToken) {
+      setStatus("launching")
+      void bringUp()
+      return
+    }
+
     // If the child stayed up long enough, treat this as a fresh failure and
     // reset the restart budget so an unrelated later crash gets full retries.
     if (startedAt > 0 && now() - startedAt >= stableUptimeMs) {
@@ -428,13 +521,32 @@ export const superviseManagedNode = (
     }, delay)
   }
 
+  // AO-1/AO-2 (#5442/#5443): when the post-online self-registration mints a
+  // *fresh* token, the running child booted without it (env is read once at
+  // boot). We restart the child once so it re-reads its env with the token,
+  // which un-gates presence / payout-target / the Tassadar assignment worker.
+  // A deliberate restart, not a crash: it must not consume the crash budget and
+  // must not loop (a reused token on the next bring-up returns no "minted").
+  //
+  // `onTokenMinted` fires from *inside* `ensureManagedNode` (post-online,
+  // before it returns), so `current` is not yet assigned. We record the intent
+  // and act on it in `bringUp` once `current` is set.
+  let restartingForToken = false
+  let tokenRestartPending = false
+  const onTokenMinted = (): void => {
+    if (stopped || restartingForToken) return
+    tokenRestartPending = true
+  }
+
   const bringUp = async (): Promise<void> => {
     if (stopped) return
+    tokenRestartPending = false
     const node = await ensureManagedNode({
       ...options,
       onStatus: setStatus,
       // Only a *launched* child gets a restart hook; adopt/unavailable don't.
       onChildExit,
+      onTokenMinted,
     })
     if (stopped) {
       // Lost the race with stop(): kill anything we just launched.
@@ -442,8 +554,17 @@ export const superviseManagedNode = (
       return
     }
     current = node
+    restartingForToken = false
     if (node.mode === "launched") {
       startedAt = now()
+    }
+    // A fresh token was minted while this child was booting without it. Restart
+    // it once so it re-reads the env (now including OPENAGENTS_AGENT_TOKEN +
+    // PYLON_ASSIGNMENT_WORKER). The kill triggers onChildExit, which restarts.
+    if (tokenRestartPending && node.mode === "launched") {
+      tokenRestartPending = false
+      restartingForToken = true
+      node.stop()
     }
   }
 

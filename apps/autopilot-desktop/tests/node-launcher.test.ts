@@ -576,3 +576,255 @@ describe("superviseManagedNode (restart / lifecycle)", () => {
     sup.stop()
   })
 })
+
+// AO-1/AO-2 (#5442/#5443, EPIC #5441): the launcher self-registers the agent on
+// first run and injects the onboarding env switches into the node child so the
+// existing Pylon runtime lights up presence / payout-target / Tassadar.
+describe("ensureManagedNode auto-onboarding (AO-1/AO-2)", () => {
+  const baseOptions = {
+    controlBaseUrl: "http://127.0.0.1:4716",
+    cwd: deepCwd,
+    env: {} as Record<string, string | undefined>,
+    fileExists: (path: string) => path === pylonEntry,
+    probeReady: async () => true,
+    sleep: async () => {},
+    bunBin: "/usr/bin/bun",
+    readToken: () => "tok",
+    readinessIntervalMs: 1,
+    readinessTimeoutMs: 5,
+  }
+
+  it("injects only the base URL into the child env when no token is persisted (first run)", async () => {
+    const spawnCalls: SpawnNodeInput[] = []
+    await ensureManagedNode({
+      ...baseOptions,
+      discover: () => null,
+      autoOnboarding: true,
+      readPersistedToken: () => null,
+      registerAgent: async () => ({ outcome: "identity_pending" }),
+      spawnNode: (input: SpawnNodeInput): LaunchedProcess => {
+        spawnCalls.push(input)
+        return { pid: 1, kill: () => {} }
+      },
+    })
+    const env = spawnCalls[0]!.env
+    expect(env.PYLON_HOME).toBe(join(repoRoot, ".pylon-local"))
+    expect(env.PYLON_OPENAGENTS_BASE_URL).toBe("https://openagents.com")
+    // No token yet -> presence/assignment stay gated (honest).
+    expect(env.OPENAGENTS_AGENT_TOKEN).toBeUndefined()
+    expect(env.PYLON_ASSIGNMENT_WORKER).toBeUndefined()
+  })
+
+  it("injects all three onboarding switches when a token is already persisted (relaunch)", async () => {
+    const spawnCalls: SpawnNodeInput[] = []
+    await ensureManagedNode({
+      ...baseOptions,
+      discover: () => null,
+      autoOnboarding: true,
+      readPersistedToken: () => "oa_agent_persisted",
+      registerAgent: async () => ({
+        outcome: "reused",
+        credential: {
+          token: "oa_agent_persisted",
+          tokenPrefix: "oa_agent_per",
+          userId: "u",
+          externalId: "npub1x",
+          registeredAt: "2026-06-18T00:00:00.000Z",
+        },
+      }),
+      spawnNode: (input: SpawnNodeInput): LaunchedProcess => {
+        spawnCalls.push(input)
+        return { pid: 1, kill: () => {} }
+      },
+    })
+    const env = spawnCalls[0]!.env
+    expect(env.OPENAGENTS_AGENT_TOKEN).toBe("oa_agent_persisted")
+    expect(env.PYLON_OPENAGENTS_BASE_URL).toBe("https://openagents.com")
+    expect(env.PYLON_ASSIGNMENT_WORKER).toBe("1")
+  })
+
+  it("self-registers after online and fires onTokenMinted on a fresh registration", async () => {
+    let registered = 0
+    let minted = 0
+    await ensureManagedNode({
+      ...baseOptions,
+      discover: () => null,
+      autoOnboarding: true,
+      readPersistedToken: () => null,
+      registerAgent: async () => {
+        registered += 1
+        return {
+          outcome: "registered",
+          credential: {
+            token: "oa_agent_new",
+            tokenPrefix: "oa_agent_new",
+            userId: "u",
+            externalId: "npub1x",
+            registeredAt: "2026-06-18T00:00:00.000Z",
+          },
+        }
+      },
+      onTokenMinted: () => (minted += 1),
+      spawnNode: () => ({ pid: 1, kill: () => {} }),
+    })
+    expect(registered).toBe(1)
+    expect(minted).toBe(1)
+  })
+
+  it("does not fire onTokenMinted when the token was reused (no restart needed)", async () => {
+    let minted = 0
+    await ensureManagedNode({
+      ...baseOptions,
+      discover: () => null,
+      autoOnboarding: true,
+      readPersistedToken: () => "oa_agent_persisted",
+      registerAgent: async () => ({
+        outcome: "reused",
+        credential: {
+          token: "oa_agent_persisted",
+          tokenPrefix: "oa_agent_per",
+          userId: "u",
+          externalId: "npub1x",
+          registeredAt: "2026-06-18T00:00:00.000Z",
+        },
+      }),
+      onTokenMinted: () => (minted += 1),
+      spawnNode: () => ({ pid: 1, kill: () => {} }),
+    })
+    expect(minted).toBe(0)
+  })
+
+  it("does not register when the node never reaches online (failed readiness)", async () => {
+    let registered = 0
+    await ensureManagedNode({
+      ...baseOptions,
+      discover: () => null,
+      autoOnboarding: true,
+      readToken: () => null, // token never lands -> readiness fails
+      probeReady: async () => false,
+      registerAgent: async () => {
+        registered += 1
+        return { outcome: "identity_pending" }
+      },
+      spawnNode: () => ({ pid: 1, kill: () => {} }),
+    })
+    expect(registered).toBe(0)
+  })
+
+  it("leaves the env untouched when auto-onboarding is disabled", async () => {
+    const spawnCalls: SpawnNodeInput[] = []
+    await ensureManagedNode({
+      ...baseOptions,
+      discover: () => null,
+      // autoOnboarding omitted (defaults off)
+      spawnNode: (input: SpawnNodeInput): LaunchedProcess => {
+        spawnCalls.push(input)
+        return { pid: 1, kill: () => {} }
+      },
+    })
+    const env = spawnCalls[0]!.env
+    expect(env.PYLON_OPENAGENTS_BASE_URL).toBeUndefined()
+    expect(env.OPENAGENTS_AGENT_TOKEN).toBeUndefined()
+    expect(env.PYLON_ASSIGNMENT_WORKER).toBeUndefined()
+  })
+})
+
+describe("superviseManagedNode token-minted restart (AO-1/AO-2)", () => {
+  const baseOptions = {
+    controlBaseUrl: "http://127.0.0.1:4716",
+    cwd: deepCwd,
+    env: {} as Record<string, string | undefined>,
+    fileExists: (path: string) => path === pylonEntry,
+    probeReady: async () => true,
+    sleep: async () => {},
+    bunBin: "/usr/bin/bun",
+    readinessIntervalMs: 1,
+    readinessTimeoutMs: 5,
+  }
+
+  const flush = async () => {
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+  }
+
+  it("restarts the child once (with the token injected) after a fresh registration, without consuming the crash budget", async () => {
+    let spawned = 0
+    let killed = 0
+    let registerCalls = 0
+    const tokenSeen: Array<string | undefined> = []
+    const exitCallbacks: Array<(info: { code: number | null }) => void> = []
+
+    const sup = superviseManagedNode({
+      ...baseOptions,
+      discover: () => null,
+      readToken: () => "tok",
+      autoOnboarding: true,
+      // No token on the first spawn; a token exists after the first registration.
+      readPersistedToken: () =>
+        registerCalls > 0 ? "oa_agent_minted" : null,
+      registerAgent: async () => {
+        registerCalls += 1
+        // First call mints; subsequent calls (after restart) reuse.
+        return registerCalls === 1
+          ? {
+              outcome: "registered",
+              credential: {
+                token: "oa_agent_minted",
+                tokenPrefix: "oa_agent_min",
+                userId: "u",
+                externalId: "npub1x",
+                registeredAt: "2026-06-18T00:00:00.000Z",
+              },
+            }
+          : {
+              outcome: "reused",
+              credential: {
+                token: "oa_agent_minted",
+                tokenPrefix: "oa_agent_min",
+                userId: "u",
+                externalId: "npub1x",
+                registeredAt: "2026-06-18T00:00:00.000Z",
+              },
+            }
+      },
+      spawnNode: (input: SpawnNodeInput): LaunchedProcess => {
+        spawned += 1
+        tokenSeen.push(input.env.OPENAGENTS_AGENT_TOKEN)
+        if (input.onExit) exitCallbacks.push(input.onExit)
+        const onExit = input.onExit
+        return {
+          pid: 1000 + spawned,
+          // Real spawn: a kill causes the child to exit, firing onExit (which
+          // the supervisor uses to perform the restart). Mirror that here.
+          kill: () => {
+            killed++
+            onExit?.({ code: null })
+          },
+        }
+      },
+      maxRestarts: 1, // a crash restart budget of 1; the token restart must NOT consume it
+      restartBackoffMs: [5],
+      schedule: (fn, _ms) => {
+        fn()
+        return { cancel: () => {} }
+      },
+    })
+
+    await flush()
+    // First spawn (no token) + a token-minted restart (with the token).
+    expect(spawned).toBe(2)
+    expect(tokenSeen[0]).toBeUndefined()
+    expect(tokenSeen[1]).toBe("oa_agent_minted")
+    expect(sup.mode()).toBe("launched")
+    expect(sup.status()).toBe("online")
+
+    // The token restart must not have consumed the crash budget: a real crash
+    // still restarts once more.
+    const lastExit = exitCallbacks[exitCallbacks.length - 1]!
+    lastExit({ code: 1 })
+    await flush()
+    expect(spawned).toBe(3)
+
+    sup.stop()
+    expect(killed).toBeGreaterThan(0)
+  })
+})
