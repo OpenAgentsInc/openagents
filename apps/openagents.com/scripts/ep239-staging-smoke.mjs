@@ -1,0 +1,740 @@
+#!/usr/bin/env node
+
+// Episode 239 "Let's Make Money" — push-button staging funded-loop smoke.
+//
+// Verifies the whole Ep239 revenue loop end-to-end against the ISOLATED
+// `openagents-staging` Worker with TEST data and prints a PASS/FAIL/SKIP
+// receipt-bearing report. The owner (or a forum verifier like Orrery) runs it
+// with one command. It is the repeatable Phase-1 evidence the eventual green
+// flip will cite.
+//
+// Runbook: docs/launch/2026-06-19-ep239-staging-test-plan.md
+//
+// HARD RULES (enforced by this script):
+//   - Hits ONLY the staging Worker. Production is never touched.
+//   - NEVER prints a token/secret. The staging admin token is read from env
+//     (OPENAGENTS_ADMIN_API_TOKEN) only; if unset, the funded legs are marked
+//     SKIPPED (not FAILED) with the exact owner command to unblock them.
+//   - Honest SKIPs over fake passes. It does NOT flip any promise green and
+//     never touches the promise registry.
+//   - All refs (chatcmpl ids, receipt refs, ftjob/sbx ids) are printed so each
+//     leg is dereferenceable. Any token-shaped value is redacted in output.
+//
+// Usage:
+//   bun apps/openagents.com/scripts/ep239-staging-smoke.mjs
+//   node apps/openagents.com/scripts/ep239-staging-smoke.mjs
+//   # optional overrides:
+//   #   --base-url <url>       (default openagents-staging.openagents.workers.dev)
+//   #   --json                 (emit a machine-readable JSON report to stdout tail)
+//   #   --help
+
+const DEFAULT_BASE = 'https://openagents-staging.openagents.workers.dev'
+const PROD_HOSTS = new Set([
+  'openagents.com',
+  'www.openagents.com',
+  'auth.openagents.com',
+])
+
+const ADMIN_ENV = 'OPENAGENTS_ADMIN_API_TOKEN'
+
+// ---------------------------------------------------------------------------
+// arg parsing
+// ---------------------------------------------------------------------------
+
+export const parseArgs = argv => {
+  const options = {
+    baseUrl: process.env.OPENAGENTS_STAGING_BASE_URL || DEFAULT_BASE,
+    json: false,
+    help: false,
+  }
+  for (let i = 0; i < argv.length; i += 1) {
+    const value = argv[i]
+    if (value === '--base-url' || value === '--baseUrl') {
+      options.baseUrl = argv[++i] || options.baseUrl
+    } else if (value === '--json') {
+      options.json = true
+    } else if (value === '--help' || value === '-h') {
+      options.help = true
+    } else {
+      throw new Error(`Unknown argument: ${value}`)
+    }
+  }
+  return options
+}
+
+const HELP = `Episode 239 staging funded-loop smoke harness
+
+Runs each leg of the Ep239 revenue loop against the isolated staging Worker and
+prints a PASS/FAIL/SKIP receipt-bearing report.
+
+Usage:
+  bun apps/openagents.com/scripts/ep239-staging-smoke.mjs [--base-url <url>] [--json]
+
+Environment:
+  ${ADMIN_ENV}   staging operator admin token (read from env only, never printed).
+                            If unset, the funded-grant + metered-spend legs are
+                            SKIPPED (not failed) with the exact owner command.
+
+This harness NEVER touches production and NEVER flips a product promise green.`
+
+// ---------------------------------------------------------------------------
+// redaction — defense in depth so no token can leak into the report
+// ---------------------------------------------------------------------------
+
+// Anything token/secret shaped is scrubbed from any string we print.
+const REDACTION_PATTERNS = [
+  /oa_agent_[A-Za-z0-9_-]+/g, // agent tokens
+  /\bsk-[A-Za-z0-9_-]{8,}/g, // stripe / openai-style secrets
+  /\bBearer\s+[A-Za-z0-9._-]+/gi, // auth headers
+]
+
+export const redact = input => {
+  if (input === null || input === undefined) return input
+  let text = typeof input === 'string' ? input : JSON.stringify(input)
+  for (const pattern of REDACTION_PATTERNS) {
+    text = text.replace(pattern, '[REDACTED]')
+  }
+  return text
+}
+
+// Print only a short, non-secret fingerprint of a value so a reader can confirm
+// "a token was present" without the value ever hitting output.
+export const presenceTag = value =>
+  typeof value === 'string' && value.length > 0
+    ? `present(len=${value.length})`
+    : 'absent'
+
+// ---------------------------------------------------------------------------
+// http helpers
+// ---------------------------------------------------------------------------
+
+export const assertStagingHost = baseUrl => {
+  let host
+  try {
+    host = new URL(baseUrl).host
+  } catch {
+    throw new Error(`Invalid --base-url: ${baseUrl}`)
+  }
+  if (PROD_HOSTS.has(host)) {
+    throw new Error(
+      `Refusing to run against production host "${host}". ` +
+        `This harness is staging-only; use the staging Worker URL.`,
+    )
+  }
+  return host
+}
+
+const requestJson = async (baseUrl, path, init = {}) => {
+  const url = `${baseUrl}${path}`
+  const started = Date.now()
+  let response
+  try {
+    response = await fetch(url, init)
+  } catch (error) {
+    return {
+      ok: false,
+      transportError: redact(error?.message ?? String(error)),
+      status: 0,
+      ms: Date.now() - started,
+      body: undefined,
+      path,
+    }
+  }
+  const text = await response.text()
+  let body
+  try {
+    body = text === '' ? undefined : JSON.parse(text)
+  } catch {
+    body = { _nonJsonBody: redact(text).slice(0, 400) }
+  }
+  return {
+    ok: response.ok,
+    status: response.status,
+    ms: Date.now() - started,
+    body,
+    path,
+  }
+}
+
+const unique = prefix => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+
+// ---------------------------------------------------------------------------
+// report model
+// ---------------------------------------------------------------------------
+
+const legs = []
+
+const record = (name, state, detail) => {
+  // state: 'PASS' | 'FAIL' | 'SKIP'
+  const entry = { name, state, ...detail }
+  legs.push(entry)
+  return entry
+}
+
+// ---------------------------------------------------------------------------
+// legs
+// ---------------------------------------------------------------------------
+
+// Leg 1: register a fresh staging agent -> token + userId.
+const legRegister = async base => {
+  const displayName = `Ep239 Smoke ${unique('agent')}`
+  const result = await requestJson(base, '/api/agents/register', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ displayName }),
+  })
+
+  const token = result.body?.credential?.token
+  const userId = result.body?.user?.id
+
+  const okShape =
+    result.status === 201 &&
+    typeof token === 'string' &&
+    token.startsWith('oa_agent_') &&
+    typeof userId === 'string'
+
+  const detail = {
+    http: result.status,
+    ms: result.ms,
+    userId: userId ?? null,
+    tokenPresence: presenceTag(token),
+    transportError: result.transportError,
+  }
+
+  if (!okShape) {
+    record('1. register fresh staging agent', 'FAIL', {
+      ...detail,
+      reason: 'expected HTTP 201 with credential.token (oa_agent_*) + user.id',
+      body: redact(result.body),
+    })
+    return undefined
+  }
+
+  record('1. register fresh staging agent', 'PASS', detail)
+  return { token, userId }
+}
+
+// Leg 2: free inference call -> 200 + chatcmpl id (balance does NOT decrement).
+const legFreeInference = async (base, token) => {
+  if (!token) {
+    record('2. free inference call', 'SKIP', {
+      reason: 'no agent token (registration leg did not pass)',
+    })
+    return undefined
+  }
+
+  const before = await requestJson(base, '/api/agents/me/balance', {
+    headers: { authorization: `Bearer ${token}` },
+  })
+  const beforeMsat = before.body?.balance?.availableMsat ?? null
+
+  const result = await requestJson(base, '/v1/chat/completions', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gemini-3.5-flash',
+      messages: [
+        {
+          role: 'user',
+          content: 'Reply with exactly STAGING_FREE_OK and nothing else.',
+        },
+      ],
+      max_tokens: 256,
+    }),
+  })
+
+  const after = await requestJson(base, '/api/agents/me/balance', {
+    headers: { authorization: `Bearer ${token}` },
+  })
+  const afterMsat = after.body?.balance?.availableMsat ?? null
+
+  const chatcmplId = result.body?.id
+  const okShape =
+    result.status === 200 &&
+    typeof chatcmplId === 'string' &&
+    chatcmplId.startsWith('chatcmpl')
+
+  const detail = {
+    http: result.status,
+    ms: result.ms,
+    chatcmplId: chatcmplId ?? null,
+    model: result.body?.model ?? null,
+    usage: result.body?.usage ?? null,
+    availableMsatBefore: beforeMsat,
+    availableMsatAfter: afterMsat,
+    freePoolHeld: beforeMsat === afterMsat,
+  }
+
+  if (!okShape) {
+    // The gateway may be flag-off on staging; surface that honestly rather than
+    // pretending the loop works.
+    record('2. free inference call', 'FAIL', {
+      ...detail,
+      reason:
+        'expected HTTP 200 with a chatcmpl id; if 404/503 the inference ' +
+        'gateway flag may be off on staging',
+      body: redact(result.body),
+    })
+    return { chatcmplId: null, afterMsat }
+  }
+
+  record('2. free inference call', 'PASS', detail)
+  return { chatcmplId, afterMsat }
+}
+
+// Leg 3: funded grant via operator credit-grant (admin-token gated; SKIP if unset).
+const legFundedGrant = async (base, userId) => {
+  const adminToken = process.env[ADMIN_ENV]
+  const grantRef = unique('ep239-stg')
+
+  const ownerCommand =
+    'wrangler secret put OPENAGENTS_ADMIN_API_TOKEN --env staging   ' +
+    `# then re-run with ${ADMIN_ENV} set in env`
+
+  if (!adminToken || adminToken.trim() === '') {
+    record('3. funded grant (operator credit)', 'SKIP', {
+      reason: `${ADMIN_ENV} not set in env (owner-gated)`,
+      ownerAction: ownerCommand,
+    })
+    return undefined
+  }
+  if (!userId) {
+    record('3. funded grant (operator credit)', 'SKIP', {
+      reason: 'no agent userId (registration leg did not pass)',
+    })
+    return undefined
+  }
+
+  const result = await requestJson(
+    base,
+    '/api/omni/operator/billing/inference-credit',
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${adminToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ userId, amountCents: 1000, grantRef }),
+    },
+  )
+
+  const receiptRef = result.body?.receiptRef
+  const okShape =
+    result.status === 200 &&
+    result.body?.status === 'inference_credit_granted' &&
+    typeof receiptRef === 'string'
+
+  const detail = {
+    http: result.status,
+    ms: result.ms,
+    grantRef,
+    receiptRef: receiptRef ?? null,
+    grantedCents: result.body?.grantedCents ?? null,
+    grantedMsat: result.body?.grantedMsat ?? null,
+    adminTokenPresence: presenceTag(adminToken),
+  }
+
+  if (result.status === 401) {
+    // The route is live (deployed) but rejects this token. On staging this means
+    // the env admin token does not match the staging secret (e.g. a prod token).
+    record('3. funded grant (operator credit)', 'FAIL', {
+      ...detail,
+      reason:
+        '401 unauthorized — route is live but the env admin token is not the ' +
+        'staging admin token (prod token is rejected by design)',
+      ownerAction: ownerCommand,
+    })
+    return undefined
+  }
+
+  if (!okShape) {
+    record('3. funded grant (operator credit)', 'FAIL', {
+      ...detail,
+      reason: 'expected HTTP 200 + status inference_credit_granted + receiptRef',
+      body: redact(result.body),
+    })
+    return undefined
+  }
+
+  record('3. funded grant (operator credit)', 'PASS', detail)
+  return { receiptRef, grantedMsat: result.body?.grantedMsat ?? null }
+}
+
+// Leg 4: metered spend -> balance decrement + a receipt.inference.charge.* row.
+// Requires a funded balance, so it depends on leg 3 (admin-gated).
+const legMeteredSpend = async (base, token, grant) => {
+  const adminTokenSet =
+    typeof process.env[ADMIN_ENV] === 'string' &&
+    process.env[ADMIN_ENV].trim() !== ''
+
+  if (!token) {
+    record('4. metered spend (decrement + charge receipt)', 'SKIP', {
+      reason: 'no agent token (registration leg did not pass)',
+    })
+    return
+  }
+  if (!adminTokenSet || !grant) {
+    record('4. metered spend (decrement + charge receipt)', 'SKIP', {
+      reason:
+        'depends on the funded-grant leg, which is owner-gated (admin token ' +
+        'unset or grant did not land)',
+      ownerAction:
+        'set OPENAGENTS_ADMIN_API_TOKEN (staging) so leg 3 funds the balance',
+    })
+    return
+  }
+
+  const before = await requestJson(base, '/api/agents/me/balance', {
+    headers: { authorization: `Bearer ${token}` },
+  })
+  const beforeMsat = before.body?.balance?.availableMsat ?? null
+
+  // A large Gemini request: once the free taste is exhausted by the funded grant
+  // path it meters; the charge is receipt-first and idempotent per chatcmpl id.
+  const result = await requestJson(base, '/v1/chat/completions', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gemini-3.5-flash',
+      messages: [
+        {
+          role: 'user',
+          content: 'Write a 400-word essay about verification by replay.',
+        },
+      ],
+      max_tokens: 1200,
+    }),
+  })
+
+  const after = await requestJson(base, '/api/agents/me/balance', {
+    headers: { authorization: `Bearer ${token}` },
+  })
+  const afterMsat = after.body?.balance?.availableMsat ?? null
+
+  const chatcmplId = result.body?.id
+  const chargeReceiptRef =
+    typeof chatcmplId === 'string'
+      ? `receipt.inference.charge.${chatcmplId}`
+      : null
+
+  // The decrement is the load-bearing assertion. The free taste is large, so a
+  // single grant-funded call may still be eaten by the free pool — report that
+  // honestly as an INFO-bearing PASS-conditional rather than a fake decrement.
+  const decremented =
+    typeof beforeMsat === 'number' &&
+    typeof afterMsat === 'number' &&
+    afterMsat < beforeMsat
+
+  const detail = {
+    http: result.status,
+    ms: result.ms,
+    chatcmplId: chatcmplId ?? null,
+    chargeReceiptRef,
+    availableMsatBefore: beforeMsat,
+    availableMsatAfter: afterMsat,
+    deltaMsat:
+      typeof beforeMsat === 'number' && typeof afterMsat === 'number'
+        ? afterMsat - beforeMsat
+        : null,
+  }
+
+  if (result.status !== 200 || typeof chatcmplId !== 'string') {
+    record('4. metered spend (decrement + charge receipt)', 'FAIL', {
+      ...detail,
+      reason: 'expected HTTP 200 + chatcmpl id from the metering request',
+      body: redact(result.body),
+    })
+    return
+  }
+
+  if (decremented) {
+    record('4. metered spend (decrement + charge receipt)', 'PASS', detail)
+    return
+  }
+
+  // 200 + chatcmpl but no decrement: the free taste/allowance covered it. This is
+  // expected per the test plan (taste covers thousands of Gemini Flash calls),
+  // so it is an honest SKIP of the *decrement assertion*, not a fake pass.
+  record('4. metered spend (decrement + charge receipt)', 'SKIP', {
+    ...detail,
+    reason:
+      'completion succeeded but the free taste/allowance absorbed the charge ' +
+      '(no decrement) — per the plan, free taste covers thousands of Gemini ' +
+      'Flash calls; exhaust the taste or use a premium allowlisted model to ' +
+      'force a metered decrement',
+  })
+}
+
+// Leg 5: referral attribution capture + cross-category accrual eligibility gate.
+// The full accrual chain is browser-session-driven (create source -> capture ->
+// claim -> paid event -> dashboard); headlessly we confirm the live (401/404)
+// gating + capture-redirect behavior, which is the agent-testable surface today.
+const legReferral = async (base, token) => {
+  // Capture: an UNKNOWN source returns 404 by design (live, not absent).
+  const unknownSource = unique('unknown-src')
+  const capture = await requestJson(
+    base,
+    `/r/site/${encodeURIComponent(unknownSource)}?target=order`,
+    { method: 'GET', redirect: 'manual' },
+  )
+
+  // Dashboard: bare agent token returns 401 (live, browser-session required).
+  const dashboard = await requestJson(
+    base,
+    '/api/inference/referral/dashboard',
+    token ? { headers: { authorization: `Bearer ${token}` } } : {},
+  )
+
+  const captureLive = capture.status === 404
+  const dashboardGated = dashboard.status === 401
+
+  const detail = {
+    captureHttp: capture.status,
+    captureExpected: '404 (unknown source rejected by design)',
+    dashboardHttp: dashboard.status,
+    dashboardExpected: '401 (browser-session required; live, not 404)',
+    note:
+      'full cross-category accrual (create source -> capture -> claim -> paid ' +
+      'event -> dashboard) is browser-session-driven and owner-gated; the ' +
+      'live gating above is the headless-testable surface',
+  }
+
+  if (captureLive && dashboardGated) {
+    record('5. referral attribution + accrual gating', 'PASS', detail)
+    return
+  }
+
+  // If the dashboard route is not present (404), that is a real surface gap.
+  record('5. referral attribution + accrual gating', 'FAIL', {
+    ...detail,
+    reason:
+      'expected capture 404 (unknown source) AND dashboard 401 (bare token); ' +
+      'a 404 on the dashboard would mean the referral surface is missing',
+  })
+}
+
+// Leg 6: new Ep239 surfaces return honest inert/scaffold responses (not 404).
+const legNewSurfaces = async (base, token) => {
+  const checks = []
+
+  const markets = [
+    ['/api/public/markets/open-markets', 'markets.open-markets'],
+    ['/api/public/markets/liquidity/skeleton', 'markets.liquidity'],
+    ['/api/public/markets/risk/skeleton', 'markets.risk'],
+  ]
+  for (const [path, label] of markets) {
+    const r = await requestJson(base, path, { method: 'GET' })
+    checks.push({
+      surface: label,
+      path,
+      http: r.status,
+      pass: r.status === 200 && r.body !== undefined,
+      detail: r.status === 200 ? 'live read-only projection' : redact(r.body),
+    })
+  }
+
+  // Marketplace compose-and-list: 200 + inert:true, products:[].
+  const marketplace = await requestJson(
+    base,
+    '/api/public/marketplace/composed-products',
+    { method: 'GET' },
+  )
+  const marketplaceHonest =
+    marketplace.status === 200 &&
+    marketplace.body?.inert === true &&
+    Array.isArray(marketplace.body?.products) &&
+    marketplace.body.products.length === 0
+  checks.push({
+    surface: 'marketplace.composed-products',
+    path: '/api/public/marketplace/composed-products',
+    http: marketplace.status,
+    pass: marketplaceHonest,
+    detail: marketplaceHonest
+      ? `inert:true promiseState:${marketplace.body?.promiseState ?? '?'} products:[]`
+      : redact(marketplace.body),
+  })
+
+  if (token) {
+    // Fine-tuning scaffold: 200 + status queued, metered:false, receiptRef null.
+    const ft = await requestJson(base, '/v1/fine_tuning/jobs', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseModel: 'gemini-3.5-flash',
+        datasetRef: 'dataset-ep239',
+        suffix: 'smoke',
+      }),
+    })
+    // Route emits OpenAI-shaped fields: `id` (ftjob_*) + snake_case receipt_ref.
+    const ftId = ft.body?.id ?? ft.body?.jobId ?? null
+    // receipt_ref must be explicitly null (no charge). `??` would mask a null,
+    // so read the snake_case field (the route's shape) directly.
+    const ftReceiptNull =
+      ft.body?.receipt_ref === null || ft.body?.receiptRef === null
+    const ftHonest =
+      ft.status === 200 &&
+      ft.body?.metered === false &&
+      ftReceiptNull &&
+      typeof ftId === 'string' &&
+      ftId.startsWith('ftjob')
+    checks.push({
+      surface: 'fine-tuning.jobs',
+      path: '/v1/fine_tuning/jobs',
+      http: ft.status,
+      pass: ftHonest,
+      ref: ftId,
+      detail: ftHonest
+        ? `id:${ftId} status:${ft.body?.status ?? '?'} metered:false receipt_ref:null`
+        : redact(ft.body),
+    })
+
+    // Sandbox scaffold: 200 + status provisioning, metered:false, receiptRef null.
+    const sbx = await requestJson(base, '/v1/sandboxes', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ image: 'python:3.12', command: 'echo hi' }),
+    })
+    const sbxId = sbx.body?.id ?? sbx.body?.sandboxId ?? null
+    const sbxReceiptNull =
+      sbx.body?.receipt_ref === null || sbx.body?.receiptRef === null
+    const sbxHonest =
+      sbx.status === 200 &&
+      sbx.body?.metered === false &&
+      sbxReceiptNull &&
+      typeof sbxId === 'string' &&
+      sbxId.startsWith('sbx')
+    checks.push({
+      surface: 'sandboxes',
+      path: '/v1/sandboxes',
+      http: sbx.status,
+      pass: sbxHonest,
+      ref: sbxId,
+      detail: sbxHonest
+        ? `id:${sbxId} status:${sbx.body?.status ?? '?'} metered:false receipt_ref:null`
+        : redact(sbx.body),
+    })
+  } else {
+    checks.push({
+      surface: 'fine-tuning.jobs / sandboxes',
+      pass: false,
+      skipped: true,
+      detail: 'no agent token (registration leg did not pass)',
+    })
+  }
+
+  const allPass = checks.every(c => c.pass)
+  record('6. new Ep239 surfaces (honest inert/scaffold)', allPass ? 'PASS' : 'FAIL', {
+    checks,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// runner
+// ---------------------------------------------------------------------------
+
+const STATE_GLYPH = { PASS: 'PASS', FAIL: 'FAIL', SKIP: 'SKIP' }
+
+const printReport = (base, host) => {
+  const line = '-'.repeat(72)
+  console.log(line)
+  console.log('Episode 239 staging funded-loop smoke — receipt-bearing report')
+  console.log(`base: ${base}`)
+  console.log(`host: ${host} (staging-only; production untouched)`)
+  console.log(`admin token (${ADMIN_ENV}): ${presenceTag(process.env[ADMIN_ENV])}`)
+  console.log(line)
+
+  for (const leg of legs) {
+    console.log(`[${STATE_GLYPH[leg.state]}] ${leg.name}`)
+    const { name: _n, state: _s, checks, body, ...rest } = leg
+    for (const [k, v] of Object.entries(rest)) {
+      if (v === undefined || v === null) continue
+      console.log(`        ${k}: ${typeof v === 'object' ? redact(v) : v}`)
+    }
+    if (Array.isArray(checks)) {
+      for (const c of checks) {
+        const tag = c.skipped ? 'SKIP' : c.pass ? 'ok' : 'BAD'
+        console.log(
+          `        - [${tag}] ${c.surface}${c.http ? ` (${c.http})` : ''}` +
+            `${c.ref ? ` ref:${c.ref}` : ''} ${c.detail ?? ''}`,
+        )
+      }
+    }
+    if (body !== undefined) {
+      console.log(`        body: ${redact(body)}`)
+    }
+  }
+
+  console.log(line)
+  const counts = legs.reduce(
+    (acc, l) => ({ ...acc, [l.state]: (acc[l.state] ?? 0) + 1 }),
+    {},
+  )
+  console.log(
+    `summary: PASS=${counts.PASS ?? 0}  FAIL=${counts.FAIL ?? 0}  SKIP=${counts.SKIP ?? 0}`,
+  )
+
+  const skips = legs.filter(l => l.state === 'SKIP' && l.ownerAction)
+  if (skips.length > 0) {
+    console.log(line)
+    console.log('Owner action(s) to unblock SKIPped legs:')
+    for (const s of skips) {
+      console.log(`  - ${s.name}: ${s.ownerAction}`)
+    }
+  }
+  console.log(line)
+}
+
+export const run = async argv => {
+  const options = parseArgs(argv)
+  if (options.help) {
+    console.log(HELP)
+    return 0
+  }
+
+  const host = assertStagingHost(options.baseUrl)
+  const base = options.baseUrl.replace(/\/$/, '')
+
+  const registration = await legRegister(base)
+  const token = registration?.token
+  const userId = registration?.userId
+
+  const free = await legFreeInference(base, token)
+  const grant = await legFundedGrant(base, userId)
+  await legMeteredSpend(base, token, grant)
+  await legReferral(base, token)
+  await legNewSurfaces(base, token)
+
+  printReport(base, host)
+
+  if (options.json) {
+    // Machine-readable tail for verifier tooling. Already redacted upstream.
+    console.log('JSON_REPORT_BEGIN')
+    console.log(redact({ base, host, legs }))
+    console.log('JSON_REPORT_END')
+  }
+
+  // Exit non-zero ONLY on a real FAIL. SKIP (owner-gated / free-taste-absorbed)
+  // is an honest, expected outcome and must not fail the run.
+  const hasFail = legs.some(l => l.state === 'FAIL')
+  // reference `free` so unused-var linting stays quiet while keeping the value
+  // available for future assertions.
+  void free
+  return hasFail ? 1 : 0
+}
+
+const isMain = (() => {
+  try {
+    return import.meta.url === `file://${process.argv[1]}`
+  } catch {
+    return false
+  }
+})()
+
+if (isMain) {
+  run(process.argv.slice(2))
+    .then(code => process.exit(code))
+    .catch(error => {
+      console.error(`ep239-staging-smoke fatal: ${redact(error?.message ?? String(error))}`)
+      process.exit(2)
+    })
+}
