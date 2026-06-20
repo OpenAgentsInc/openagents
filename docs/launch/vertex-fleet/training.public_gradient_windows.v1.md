@@ -126,3 +126,48 @@ receipts exist where real money moved.
 No public window was accepted, no checkpoint was mutated, no assignment, spend,
 or settlement occurred, no receipt-backed promotion row exists, and no green
 transition is created by this slice.
+
+## 2026-06-20 quarantine-record format (post-admission persistence edge)
+
+The intake admission predicate
+(`tassadar-gradient-window-intake.ts`) decides whether a freshly submitted
+candidate MAY enter quarantine and returns a decision carrying a
+`quarantineRecordRef`. What it did not produce was the durable artifact a
+quarantine store would actually persist — the canonical row representing one
+admitted window living in quarantine and the verification work it still owes
+before it could promote. That persisted-record format is the next edge after
+admission for
+`blocker.product_promises.public_gradient_live_window_runtime_missing`.
+
+This change adds it:
+
+- `tassadar-gradient-window-quarantine-record.ts`
+  - `TassadarGradientWindowQuarantineRecord` schema (schema version
+    `openagents.training.public_gradient_window.quarantine_record.v1`).
+  - `buildTassadarGradientWindowQuarantineRecord(submission, { admittedAt? })`
+    — a pure, deterministic function. It re-runs the admission predicate and
+    **refuses** (throws `TassadarGradientWindowQuarantineRecordUnsafe`, carrying
+    the rejection reasons) for any submission that was not admitted, so a record
+    can never be fabricated for a window that did not pass intake. The record
+    grants **quarantine residency only** — no promotion, settlement,
+    canonical-checkpoint mutation, compiled-core-gradient mutation, or
+    direct-submission authority — and surfaces
+    `pendingVerificationStages` (`recomputed → replicated → canary_passed →
+    promoted`) so a runtime knows exactly what work the admitted window awaits.
+  - `tassadarGradientWindowQuarantineRecordRef(windowRef)` — deterministic,
+    public-safe record-id derivation matching the intake admission decision.
+- `tassadar-gradient-window-quarantine-record.test.ts` — exercises record
+  emission for a clean submission and the refusal paths (compiled-core
+  targeting, frozen-core mutation, malformed input, missing evidence).
+- `GET /api/public/training/public-gradient-windows` now reports
+  `intakeSurface.quarantineRecordFormatAvailable: true` and
+  `intakeSurface.quarantineRecordSchemaVersion:
+  openagents.training.public_gradient_window.quarantine_record.v1`, while
+  `quarantineRouteAvailable`, `acceptedSubmissionCount`, and
+  `admittedQuarantineRecordCount` stay `false`/`0`.
+
+This advances the live-window-runtime blocker by building the runtime's
+quarantine persistence format. It does **not** clear it: no live store persists
+these records, no route serves them, and no public window has been accepted,
+promoted, paid, or settled. The blocker stays listed and the promise stays
+**planned**.

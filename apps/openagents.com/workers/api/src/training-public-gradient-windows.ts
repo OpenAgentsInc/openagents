@@ -8,6 +8,7 @@ import {
 import { currentIsoTimestamp } from './runtime-primitives'
 import { TassadarGradientWindowIntakeSchemaVersion } from './tassadar-gradient-window-intake'
 import { TassadarGradientWindowPromotionReceiptSchemaVersion } from './tassadar-gradient-window-promotion-receipt'
+import { TassadarGradientWindowQuarantineRecordSchemaVersion } from './tassadar-gradient-window-quarantine-record'
 
 export const TrainingPublicGradientWindowsEndpoint =
   '/api/public/training/public-gradient-windows'
@@ -61,6 +62,10 @@ export class TrainingPublicGradientWindowsProjection extends S.Class<TrainingPub
     acceptedSubmissionCount: S.Int,
     admittedQuarantineRecordCount: S.Int,
     predicateAvailable: S.Boolean,
+    quarantineRecordFormatAvailable: S.Boolean,
+    quarantineRecordSchemaVersion: S.Literal(
+      TassadarGradientWindowQuarantineRecordSchemaVersion,
+    ),
     quarantineRouteAvailable: S.Boolean,
     schemaVersion: S.Literal(TassadarGradientWindowIntakeSchemaVersion),
     sourceRefs: S.Array(S.String),
@@ -129,11 +134,16 @@ export const projectTrainingPublicGradientWindows = (
       acceptedSubmissionCount: 0,
       admittedQuarantineRecordCount: 0,
       predicateAvailable: true,
+      quarantineRecordFormatAvailable: true,
+      quarantineRecordSchemaVersion:
+        TassadarGradientWindowQuarantineRecordSchemaVersion,
       quarantineRouteAvailable: false,
       schemaVersion: TassadarGradientWindowIntakeSchemaVersion,
       sourceRefs: [
         'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.ts',
         'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.test.ts',
+        'apps/openagents.com/workers/api/src/tassadar-gradient-window-quarantine-record.ts',
+        'apps/openagents.com/workers/api/src/tassadar-gradient-window-quarantine-record.test.ts',
       ],
     },
     receiptSurface: {
@@ -163,6 +173,7 @@ export const projectTrainingPublicGradientWindows = (
       'docs/launch/vertex-fleet/training.public_gradient_windows.v1.md',
       'apps/openagents.com/workers/api/src/tassadar-gradient-window-regime.ts',
       'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.ts',
+      'apps/openagents.com/workers/api/src/tassadar-gradient-window-quarantine-record.ts',
       'apps/openagents.com/workers/api/src/tassadar-gradient-window-promotion-receipt.ts',
       'apps/openagents.com/workers/api/src/training-public-gradient-windows.ts',
     ],
