@@ -798,6 +798,11 @@ const publicProjectionSurfaces = [
     route: '/api/public/home',
     status: 'static_contract_exempt',
   },
+  {
+    module: 'workers/api/src/ecommerce-campaign-receipt-routes.ts',
+    route: '/api/public/ecommerce-campaign/receipts',
+    status: 'static_contract_exempt',
+  },
   // Legacy surfaces that predate the invariant (frozen budget; shrink only).
   {
     module: 'workers/api/src/public-otec-proof.ts',

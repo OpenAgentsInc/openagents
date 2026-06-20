@@ -531,6 +531,8 @@ import {
 } from './public-activity-timeline-routes'
 import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-routes'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
+import { makeEcommerceCampaignReceiptRoutes } from "./ecommerce-campaign-receipt-routes"
+import { makeD1EcommerceCampaignReceiptStore } from "./ecommerce-campaign-receipt-store"
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { handlePublicProofReplayBundleRequest } from './public-proof-replay-routes'
@@ -7040,6 +7042,11 @@ const operatorBuyModeRoutes = makeOperatorBuyModeRoutes<Env>({
   requireAdminApiToken,
 })
 
+
+const ecommerceCampaignReceiptRoutes = makeEcommerceCampaignReceiptRoutes<Env>({
+  makeStore: env => makeD1EcommerceCampaignReceiptStore(openAgentsDatabase(env), currentIsoTimestamp),
+})
+
 const publicNip90MarketReceiptRoutes = makePublicNip90MarketReceiptRoutes<Env>({
   makeStore: env => makeD1Nip90MarketReceiptStore(openAgentsDatabase(env)),
 })
@@ -9737,6 +9744,9 @@ const routeRequest = makeWorkerRouteRequest({
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,
   routePublicNip90MarketReceiptRequest:
     publicNip90MarketReceiptRoutes.routePublicNip90MarketReceiptRequest,
+  routeEcommerceCampaignReceiptRequest:
+    ecommerceCampaignReceiptRoutes.routeEcommerceCampaignReceiptRequest,
+
   routePylonApiRequest: pylonApiRoutes.routePylonApiRequest,
   routeSiteCommerceRequest: (request, _env, _ctx) =>
     siteCommerceRoutesForEnv(_env).routeSiteCommerceRequest(request),
