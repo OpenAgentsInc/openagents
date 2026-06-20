@@ -72,6 +72,11 @@ not show the shell target tabs, `Claude Code`, or `Codex`.
   public source refs or a measured live state transition. Dense training
   controls stay in Training Live and overlays/drawers, not in the first-paint
   chat surface.
+- **The user's Pylon is a base, not just another fleet dot.** First paint should
+  include the local public `pylonRef` when available, one clear identity-missing
+  blocker when absent, and a distinct `My Pylon Base` projection derived from
+  identity choice, onboarding, training-operator readiness, live Pylon state,
+  and receipt-backed settled sats. Keep fleet growth and my-Pylon growth split.
 - **Programmatic shell control + parity stay intact.** Drive the fallback shell
   over the existing RPC path: Bun→webview `shellControl` (`shared/rpc.ts`,
   routed in `main.ts`) pushes the same inbound messages the UI dispatches

@@ -126,6 +126,7 @@ describe("onboarding wizard view (AO-4)", () => {
         present: true,
         shortLabel: "pylon.ab12cd",
         npub: "npub1existing",
+        pylonRef: "pylon.ab12cd",
         source: "discovered_openagents_pylon",
       },
       chosen: null,
@@ -143,7 +144,7 @@ describe("onboarding wizard view (AO-4)", () => {
   test("identity choice screen: fresh machine defaults to create-new only", () => {
     const choice: IdentityChoiceStateResponse = {
       choiceNeeded: true,
-      detected: { present: false, shortLabel: null, npub: null, source: null },
+      detected: { present: false, shortLabel: null, npub: null, pylonRef: null, source: null },
       chosen: null,
       createNewAvailable: true,
     }
@@ -158,7 +159,7 @@ describe("onboarding wizard view (AO-4)", () => {
   test("once a choice is made, the choice screen is gone and the chain shows", () => {
     const choice: IdentityChoiceStateResponse = {
       choiceNeeded: false,
-      detected: { present: false, shortLabel: null, npub: null, source: null },
+      detected: { present: false, shortLabel: null, npub: null, pylonRef: null, source: null },
       chosen: { kind: "create_new", displayName: "Studio" },
       createNewAvailable: true,
     }

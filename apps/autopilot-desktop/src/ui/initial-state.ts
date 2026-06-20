@@ -2,7 +2,9 @@ import type { Command } from "foldkit"
 
 import type { Message } from "./message"
 import {
+  LoadIdentityChoiceState,
   LoadOnboardingStatus,
+  LoadTrainingOperatorReadiness,
   LoadTrainingPromiseGates,
   LoadTrainingRuns,
 } from "./commands"
@@ -40,13 +42,21 @@ export const initialRuntimeState = (): InitialRuntimeState => {
     spawnLane: preferences.defaultLane,
     // The hands-off default surface: the Verse world plus one chat bar.
     pane: "chat",
+    identityChoicePending: true,
     onboardingPending: true,
+    trainingOperatorReadinessPending: true,
   })
 
   // Warm character creation plus the lightweight public Tassadar run/gate
   // projections so the Verse scene can show an honest run core immediately.
   return [
     model,
-    [LoadOnboardingStatus(), LoadTrainingRuns(), LoadTrainingPromiseGates()],
+    [
+      LoadIdentityChoiceState(),
+      LoadOnboardingStatus(),
+      LoadTrainingRuns(),
+      LoadTrainingPromiseGates(),
+      LoadTrainingOperatorReadiness(),
+    ],
   ]
 }

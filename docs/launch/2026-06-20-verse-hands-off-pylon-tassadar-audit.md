@@ -36,13 +36,18 @@ not authority.
   exact replay, verdict, settlement, recipient confirmation, and blockers, and
   pins training motion to `motionPolicy.evidence = required`. First paint also
   warms the public training run and promise-gate projections.
+- 2026-06-20: #5823 bound the local Pylon identity into the default Verse as
+  "My Pylon Base." The Desktop identity-choice projection now preserves the
+  public `pylonRef`, first paint warms identity/onboarding/operator readiness,
+  and `projectPylonBase` splits local readiness, mana, blockers, and
+  receipt-backed settled sats from fleet-wide Pylon growth.
 
 ## Executive read
 
 The Verse is conceptually correct and now has real implementation seams. After
-#5819-#5822 it is the default first surface and includes Tassadar training
-state, but it is not yet the complete hands-off experience the owner is asking
-for.
+#5819-#5823 it is the default first surface, includes Tassadar training state,
+and shows a distinct local Pylon base, but it is not yet the complete hands-off
+experience the owner is asking for.
 
 What exists:
 
@@ -57,6 +62,9 @@ What exists:
   `three-effect` run visualization.
 - A default Verse scene with a central Tassadar run core and public-ref-backed
   training/benchmark stages.
+- A distinct "My Pylon Base" layer in the Verse scene, derived from public-safe
+  local identity, onboarding, training-operator readiness, live Pylon state, and
+  receipt-backed payment particles.
 - A SpacetimeDB `openagents-world` module with public projection tables,
   interaction tables, service-only projection reducers, and browser-safe
   interaction reducers.
@@ -171,12 +179,16 @@ Working pieces:
   size, source refs, timestamp, and text.
 - `withChatWorldPaymentLayer` forces `motionPolicy.evidence = "required"` so
   beams/bursts cannot animate without refs.
+- `projectPylonBase` detects the local public `pylonRef`, matches it against
+  live Pylon nodes, projects online/presence/wallet/assignment readiness into
+  mana, and keeps one clear identity-missing blocker when no local ref exists.
+- `withPylonBaseLayer` adds a distinct `My Pylon Base` node connected to the
+  Tassadar core while leaving fleet Pylons in their own ring.
+- My-Pylon growth now comes only from matching payment particles with public
+  source refs. Fleet growth remains the network-wide settled-sats tier.
 
 Missing for hands-off:
 
-- Pylon identity is not yet the visible "my base" in first paint.
-- The center Pylon growth tier is fleet-wide, not clearly "my Pylon" vs "the
-  network."
 - Pylon station positions from SpacetimeDB are not yet driving the Desktop
   scene.
 - Activity particles are endpoint-ring overlays, not resolved to actual Pylon
@@ -461,6 +473,8 @@ Implementation shape:
 - Keep semantic routing, but route to conversational/model response first.
 
 ### P3 - Bind "my Pylon" as the user's base
+
+Status: landed by #5823 on 2026-06-20.
 
 Acceptance:
 

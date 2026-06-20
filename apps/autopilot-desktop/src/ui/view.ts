@@ -70,6 +70,12 @@ import {
   withVerseTrainingLayer,
 } from "../shared/verse-training-visualization"
 import {
+  PYLON_BASE_NODE_PREFIX,
+  projectPylonBase,
+  withPylonBaseLayer,
+  type PylonBaseProjection,
+} from "../shared/pylon-base-scene"
+import {
   agentCharacterCreationFlag,
   chatWorldBuildFlags,
 } from "../shared/chat-world-flags"
@@ -5842,15 +5848,26 @@ const chatSceneVisualization = (model: Model): TrainingRunVisualizationOptions =
   // Live pylons replace the seed once a non-empty snapshot has landed.
   const liveScene = liveChatWorldNetworkScene(modelChatWorldScene(model))
   const base = pylonNetworkVisualizationOptions(liveScene ?? CHAT_SCENE)
+  const pylonBase = pylonBaseProjectionFor(model)
   const withTraining = withVerseTrainingLayer(base, {
     promiseGates: modelTrainingPromiseGates(model),
     trainingRuns: modelTrainingRuns(model),
   })
+  const withBase = withPylonBaseLayer(withTraining, pylonBase)
   // Payment particles only when their flag is on; each is already evidence-bound.
   return CHAT_WORLD_PAYMENTS
-    ? withChatWorldPaymentLayer(withTraining, modelChatWorldParticles(model))
-    : withTraining
+    ? withChatWorldPaymentLayer(withBase, modelChatWorldParticles(model))
+    : withBase
 }
+
+const pylonBaseProjectionFor = (model: Model): PylonBaseProjection =>
+  projectPylonBase({
+    chatWorldScene: modelChatWorldScene(model),
+    identityChoice: modelIdentityChoiceState(model),
+    onboardingStatus: modelOnboardingStatus(model),
+    particles: modelChatWorldParticles(model),
+    trainingOperatorReadiness: modelTrainingOperatorReadiness(model),
+  })
 
 // A small inspector chip naming the receipt the last-clicked payment beam ties
 // to (evidence-bound: every beam carries a real sourceRef). Absent until a click.
@@ -5864,20 +5881,53 @@ const chatSceneInspector = (model: Model): Html =>
       ])
     : h.div([cls("chat-scene-inspector chat-scene-inspector-empty")], [])
 
+const pylonBaseStatus = (model: Model): Html => {
+  const base = pylonBaseProjectionFor(model)
+  const detail =
+    base.nextAction ??
+    (base.readiness.assignmentReady
+      ? "ready for Tassadar"
+      : base.readiness.walletReady
+        ? "wallet ready"
+        : base.readiness.online
+          ? "online"
+          : "waiting")
+  return h.div([cls(`pylon-base-status pylon-base-status-${base.status}`)], [
+    h.div([cls("pylon-base-status-top")], [
+      h.span([cls("pylon-base-status-label")], [base.label]),
+      h.span([cls("pylon-base-status-mana mono")], [
+        `${base.mana.current}/${base.mana.total}`,
+      ]),
+    ]),
+    h.div([cls("pylon-base-status-meter")], [
+      h.span([
+        cls("pylon-base-status-meter-fill"),
+        h.Style({ transform: `scaleX(${base.mana.ratio})` }),
+      ], []),
+    ]),
+    h.div([cls("pylon-base-status-detail")], [
+      `${detail} · ${base.settledSats} sats`,
+    ]),
+  ])
+}
+
 const chatSceneBackground = (model: Model): Html =>
   h.div([cls("chat-scene-background")], [
     trainingRunView<Message>(
       [cls("three-effect-chat-scene")],
       chatSceneVisualization(model),
       // Click a payment endpoint → surface its receipt ref in the inspector.
-      (node) =>
-        SelectedChatWorldNode({
+      (node) => {
+        const hasDetailInspector =
+          node.id.startsWith(VERSE_TRAINING_NODE_PREFIX) ||
+          node.id.startsWith(PYLON_BASE_NODE_PREFIX)
+        return SelectedChatWorldNode({
           id: node.id,
-          label: node.id.startsWith(VERSE_TRAINING_NODE_PREFIX)
-            ? node.detail
-            : node.label,
-        }),
+          label: hasDetailInspector ? node.detail : node.label,
+        })
+      },
     ),
+    pylonBaseStatus(model),
     chatSceneInspector(model),
   ])
 

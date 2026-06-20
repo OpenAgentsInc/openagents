@@ -218,6 +218,7 @@ describe("projectIdentityChoiceState (AO-3)", () => {
       const state = projectIdentityChoiceState({ homeDir })
       expect(state.choiceNeeded).toBe(true)
       expect(state.detected.present).toBe(false)
+      expect(state.detected.pylonRef).toBeNull()
       expect(state.chosen).toBeNull()
       // The default on a fresh machine is create-new, and it is always offered.
       expect(state.createNewAvailable).toBe(true)
@@ -235,6 +236,7 @@ describe("projectIdentityChoiceState (AO-3)", () => {
       // "Use existing" is offered (detected present)…
       expect(state.detected.present).toBe(true)
       expect(state.detected.shortLabel).toBe("pylon.bothopts")
+      expect(state.detected.pylonRef).toBe("pylon.bothopts")
       // …and "create new" is STILL available even with an existing Pylon.
       expect(state.createNewAvailable).toBe(true)
     } finally {

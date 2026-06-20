@@ -333,6 +333,7 @@ export type IdentityChoiceState = {
     readonly present: boolean
     readonly shortLabel: string | null
     readonly npub: string | null
+    readonly pylonRef: string | null
     readonly source: DetectedHomeSource | null
   }
   // The persisted choice, if one was already made (public-safe; no displayName
@@ -363,6 +364,7 @@ export const projectIdentityChoiceState = (
       present: detected !== null,
       shortLabel: detected ? detectedIdentityShortLabel(detected) : null,
       npub: detected?.npub ?? null,
+      pylonRef: detected?.pylonRef ?? null,
       source: detected?.source ?? null,
     },
     chosen:

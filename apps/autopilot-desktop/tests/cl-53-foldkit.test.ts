@@ -172,18 +172,23 @@ const onboardingProjection = (
 describe("helpers (CL-47..CL-58 parity, pure)", () => {
   test("desktop startup lands on the Verse chat home and warms public training context", () => {
     // VERSE HOME (owner directive, 2026-06-20): the app now launches to the
-    // Pylon/Tassadar Verse surface. It warms onboarding plus lightweight public
-    // training projections so the default scene can render the Tassadar run
-    // core without opening Training Live; the older multi-loader startup remains gone.
+    // Pylon/Tassadar Verse surface. It warms local identity/readiness plus
+    // lightweight public training projections so the default scene can render
+    // the user's Pylon base and the Tassadar run core without opening Training
+    // Live; the older multi-loader startup remains gone.
     const [model, commands] = initialRuntimeState()
 
     expect(model.pane).toBe("chat")
     expect(commands.map(command => command.name)).toEqual([
+      "LoadIdentityChoiceState",
       "LoadOnboardingStatus",
       "LoadTrainingRuns",
       "LoadTrainingPromiseGates",
+      "LoadTrainingOperatorReadiness",
     ])
+    expect(model.identityChoicePending).toBe(true)
     expect(model.onboardingPending).toBe(true)
+    expect(model.trainingOperatorReadinessPending).toBe(true)
     expect(model.shellTurns).toHaveLength(0)
     expect(model.shellInput).toBe("")
   })
@@ -368,15 +373,18 @@ describe("update reducer (CL-53)", () => {
     )
   })
 
-  test("NavigatedTo chat pane refreshes onboarding for character creation", () => {
+  test("NavigatedTo chat pane refreshes Pylon base readiness", () => {
     const [model, commands] = update(
       Model.make({ ...initialModel, expandedEvents: [1] }),
       NavigatedTo({ pane: "chat" }),
     )
     expect(model.pane).toBe("chat")
     expect(model.expandedEvents).toEqual([])
-    expect(commands).toHaveLength(1)
-    expect(commands[0]?.name).toBe("LoadOnboardingStatus")
+    expect(commands.map(command => command.name)).toEqual([
+      "LoadIdentityChoiceState",
+      "LoadOnboardingStatus",
+      "LoadTrainingOperatorReadiness",
+    ])
   })
 
   test("incomplete onboarding status keeps the onboarding pane", () => {

@@ -929,14 +929,22 @@ export const update = (model: Model, message: Message): Result => {
             : isNetworkPane(message.pane)
               ? [LoadPublicActivityTimeline()]
               : isBuiltInAgentPane(message.pane)
-              ? [LoadBuiltInAgentReadiness(), LoadAppleFmReadiness(), LoadPromiseSurfacingReadiness()]
+              ? [
+                  LoadBuiltInAgentReadiness(),
+                  LoadAppleFmReadiness(),
+                  LoadPromiseSurfacingReadiness(),
+                ]
               : isSettingsPane(message.pane)
                 ? [LoadInstallReadiness()]
                 : message.pane === "chat"
-                  ? [LoadOnboardingStatus()]
+                  ? [
+                      LoadIdentityChoiceState(),
+                      LoadOnboardingStatus(),
+                      LoadTrainingOperatorReadiness(),
+                    ]
                   : isOnboardingPane(message.pane)
-                  ? [LoadIdentityChoiceState(), LoadOnboardingStatus()]
-                  : noCommands),
+                    ? [LoadIdentityChoiceState(), LoadOnboardingStatus()]
+                    : noCommands),
           ...(isAccountManagingPane(message.pane)
             ? // #5485: the account-managing panes (composer/spawn/settings) are
               // exactly where the own-auth-vs-gateway routing matters, so refresh

@@ -667,7 +667,13 @@ export const LoadOnboardingStatus = Command.define(
 // AO-3 (#5444): load the first-run identity-choice state (detect existing vs ask).
 const emptyIdentityChoiceState = () => ({
   choiceNeeded: false,
-  detected: { present: false, shortLabel: null, npub: null, source: null },
+  detected: {
+    present: false,
+    shortLabel: null,
+    npub: null,
+    pylonRef: null,
+    source: null,
+  },
   chosen: null,
   createNewAvailable: true as const,
 })

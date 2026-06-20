@@ -730,6 +730,7 @@ export type IdentityChoiceStateResponse = {
     readonly present: boolean
     readonly shortLabel: string | null
     readonly npub: string | null
+    readonly pylonRef: string | null
     readonly source: string | null
   }
   readonly chosen: {
