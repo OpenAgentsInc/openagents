@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.24')
+    expect(decoded.version).toBe('2026-06-20.25')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -214,6 +214,9 @@ describe('public product promises document', () => {
     // participant-methodology and comparable-run blockers while leaving the
     // comparable-scale public contributor receipts blocker in place, so green
     // remains exactly 24.
+    // The 2026-06-20.25 Tassadar Percepta executor spec pass clears only the
+    // model-spec blocker while architecture and CPU-transform training receipts
+    // stay blocked, so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -476,7 +479,18 @@ describe('public product promises document', () => {
           state: 'red',
           evidenceRefs: expect.arrayContaining([
             'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
+            'docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md',
           ]),
+          blockerRefs: [
+            'blocker.product_promises.percepta_executor_architecture_receipts_missing',
+            'blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing',
+          ],
+          safeCopy: expect.stringContaining(
+            'model/spec boundary is now written down',
+          ),
+          verification: expect.stringContaining(
+            'tassadar_model_spec_missing',
+          ),
         }),
         expect.objectContaining({
           promiseId: 'pylon.v0_3_multi_earning_node.v1',
@@ -943,12 +957,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.24', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.25', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.24',
+      expectedVersion: '2026-06-20.25',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.24',
+      servedVersion: '2026-06-20.25',
       status: 'ready',
     })
     expect(
@@ -958,7 +972,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.24',
+      servedVersion: '2026-06-20.25',
       status: 'blocked',
     })
   })
