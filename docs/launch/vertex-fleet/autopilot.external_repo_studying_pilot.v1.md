@@ -123,3 +123,53 @@ The remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missi
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
 untouched. No promise state changed; any future green flip remains receipt-first
 and owner-signed.
+
+---
+
+## Update (2026-06-20): upload ↔ privacy-review binding
+
+Blocker advanced: **`blocker.product_promises.external_repo_studying_self_serve_upload_missing`**
+(partially — see "What remains"; blocker NOT dropped).
+
+This closes the seam between the two existing sibling preflights. Before this
+change the self-serve upload preflight's privacy-review gate was only a STRING
+PRESENCE check (`privacyReviewPresent = (privacyReviewRef ?? "").trim().length > 0`):
+any non-empty string satisfied it, including a forged or stale ref. The privacy
+review preflight already derives a real `privacyReviewRef` ONLY when a review
+would clear, but nothing forced the upload to consume THAT ref.
+
+### What was built
+
+- `packages/probe/packages/runtime/src/benchmark/external-repo-studying-upload-privacy-binding.ts`
+  - `buildOpenAgentsExternalRepoStudyUploadPrivacyBinding(...)`
+  - Schema `openagents.external_repo_study_upload_privacy_binding.v0`, decoded
+    through `validateProbeBenchmarkPublicProjection` + a deterministic
+    `bindingHash`.
+  - Takes a privacy-review preflight verdict and an upload request **with its
+    `privacyReviewRef` omitted from the input type** (`Omit<…, "privacyReviewRef">`),
+    so a caller cannot inject their own ref. The binding derives the ref FROM a
+    review that (a) covers the SAME `customerRef` + `repo` and (b) is in
+    `review_ready_held` (non-null derived ref), then builds the upload preflight
+    from it. A blocked or mismatched review binds NO ref, so the upload blocks on
+    `…self_serve_upload.privacy_review_missing` instead of trusting a string.
+  - **Inert by construction**: `intakeAdmitted`, `ingested`, `effectsApplied`
+    are ALWAYS false (asserted on both the binding and the nested upload
+    preflight); `customerPublicClaimAllowed` / `marketplacePackageAllowed` /
+    `payoutEligible` are ALWAYS false. `sourceBoundary = "customer_refs_withheld"`.
+    Refuses `OpenAgentsInc/openagents` as a target.
+- `packages/probe/packages/runtime/tests/external-repo-studying-upload-privacy-binding.test.ts`
+  — 7 passing tests (bound-held inert, blocked-review→unbound + upload blocked,
+  customer-ref mismatch, repo mismatch, armed-still-inert, OpenAgents rejection,
+  no-leak serialization).
+- Exported from `packages/probe/packages/runtime/src/index.ts`.
+
+### What genuinely remains (blocker NOT dropped)
+
+The binding is still the *decision/control* layer only. The self-serve upload
+blocker stays listed because it still requires, all owner/product-gated and out
+of scope here: real durable, access-controlled upload storage + signed-URL
+intake; real malware/secret-scan execution; a real customer-data privacy review
+backing an ARMED clearance; and an ARMED ingestion against a real customer upload
+with a dereferenceable closeout receipt and owner sign-off per
+`proof.claim_upgrade_receipts.v1`. No promise state changed; any future green
+flip remains receipt-first and owner-signed.
