@@ -91,7 +91,7 @@ HARD RULES (violating any of these fails the task)
 WORKFLOW
 1. Briefly explore the repo to locate where this promise's evidence/docs/code live (grep for the promiseId and the blocker keywords).
 2. Implement the smallest genuine piece for ONE blocker. Create a short markdown note at docs/launch/vertex-fleet/${id}.md describing what you built, which blocker it advances, and what remains — UNLESS a more natural home exists, in which case use that and still leave a one-line pointer.
-3. Run \`bun run check:deploy\` from the repo root. It MUST pass. If it fails because of your change, fix it. If it fails for an unrelated pre-existing reason, note that precisely in your final message.
+3. Validate — ALL THREE must be clean before you commit:\n   (a) \`cd apps/openagents.com/workers/api && bunx tsc -p tsconfig.json --noEmit\` MUST report 0 errors (check:deploy does NOT cover workers/api typecheck — you must run this yourself; fix every TS error your change introduced, no \`any\`/\`@ts-ignore\`).\n   (b) \`cd apps/openagents.com && bun run check:deploy\` MUST pass; fix it if your change broke it (note any unrelated pre-existing failure precisely).\n   (c) \`git diff --check\` MUST be clean — remove any trailing whitespace you added.
 4. Commit your work with \`git add -A && git commit -m "vertex-fleet(${id}): <concise summary>"\`. Do NOT push.
 5. End with a 3-5 line summary: which blocker you advanced, what you built (file paths), whether check:deploy passed, and what genuinely remains.
 
