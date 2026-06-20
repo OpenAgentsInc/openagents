@@ -2,6 +2,55 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — crawl-shard assignment re-derivation authenticity gate
+
+**Blocker advanced:** `blocker.product_promises.crawl_scale_corpus_missing`.
+
+`deriveCs336A4CrawlShardAssignment` mints a deterministic, content-addressed
+`assignmentRef` (backed by a `contentDigestRef`) for one plan shard, and
+everything downstream binds to that ref BY VALUE: the dispatch-coverage gate
+explicitly "does NOT re-derive assignment refs", the provenance-binding gate
+matches a receipt's `assignmentRef` against the assignment's, and the
+eval-delta settlement receipt pays against that same ref. None of them
+recompute the ref from the plan — they trust the value the assignment carries.
+That left one unguarded forgery: an assignment handed back over the wire can
+carry the right `planRef`, source provenance, and segment range while carrying
+a FORGED or STALE `assignmentRef` / `contentDigestRef` (even one whose digest
+is self-consistent with a tampered body), defeating the point of content-
+addressing. This change adds the re-derivation gate that closes that hole:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-assignment-authenticity.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-assignment-authenticity.test.ts` (13 tests)
+
+`verifyCs336A4CrawlShardAssignmentAuthenticity` re-derives the expected
+assignment from `(plan, assignment.index)` via `deriveCs336A4CrawlShardAssignment`
+and compares the handed-back assignment field by field against it, reporting the
+first mismatch with a typed reason: `index_out_of_range`, `plan_ref_mismatch`,
+`acquisition_mode_mismatch`, `input_shard_ref_mismatch`, `segment_range_mismatch`,
+`provenance_source_mismatch`, `schema_version_mismatch`,
+`content_digest_ref_mismatch`, then `assignment_ref_mismatch`. Structural fields
+are checked before the recomputed digest, so a self-consistent forgery (digest
+re-hashed over a tampered body) is caught by the field comparison against the
+trusted plan, not merely by a digest mismatch. `assertCs336A4CrawlShardAssignmentAuthenticity`
+is the fail-closed wrapper for a dispatch/closeout path: it throws
+`Cs336A4CrawlShardAssignmentAuthenticityError` (carrying the reason) on a forged
+assignment and returns the recomputed `assignmentRef` on success. The gate
+deliberately does NOT verify a SET tiles the plan (dispatch-coverage's job),
+does NOT bind a returned provenance receipt (provenance-binding's job), and
+does NOT settle payment.
+
+### What genuinely remains (blocker NOT cleared)
+
+`crawl_scale_corpus_missing` stays listed. This is the deterministic
+*authenticity check* of one assignment against its plan — it acquires nothing,
+dispatches nothing, and is not yet wired into the A4 dispatch/admission path.
+No real crawl snapshot has been acquired, no assignment set has been dispatched
+as PAID work or run through the deterministic refinery. The promise's green
+criterion — refinery shards dispatched as paid assignments at crawl scale with
+deterministic-recompute verification — is unmet.
+`corpus_provenance_receipts_missing` and `eval_delta_payment_missing` are
+untouched by this update.
+
 ## 2026-06-20 update — crawl-shard dispatch coverage gate
 
 **Blocker advanced:** `blocker.product_promises.crawl_scale_corpus_missing`.
