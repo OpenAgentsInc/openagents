@@ -37,6 +37,11 @@ import {
   handleAutopilotComposedRunApi,
   isAutopilotComposedRunEnabled,
 } from './autopilot-composed-run-routes'
+import {
+  AgenticLaborProductEndpoint,
+  handleAgenticLaborProductApi,
+  isAgenticLaborProductsEnabled,
+} from './agentic-labor-product-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
@@ -7936,6 +7941,21 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleAutopilotComposedRunApi(request, {
         enabled: isAutopilotComposedRunEnabled(
           env.AUTOPILOT_COMPOSED_RUN_ENABLED,
+        ),
+      }),
+  },
+  {
+    // Agentic labor-product flow scaffold (promise
+    // autopilot.agentic_labor_products.v1, yellow). INERT: the store is empty
+    // unless AGENTIC_LABOR_PRODUCTS_ENABLED is armed, and the response always
+    // reports inert/yellow. It models the end-to-end labor-product flow (post ->
+    // order -> dispatch -> deliver -> settle) with a settlement receipt seam that
+    // is flag-gated INERT and owner-gated; it makes no live-sale claim. Read-only.
+    path: AgenticLaborProductEndpoint,
+    handler: (request, env) =>
+      handleAgenticLaborProductApi(request, {
+        enabled: isAgenticLaborProductsEnabled(
+          env.AGENTIC_LABOR_PRODUCTS_ENABLED,
         ),
       }),
   },

@@ -15,6 +15,13 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // autopilot.all_in_one_business_system.v1 + cloud.primitives_suite.v1 promises
   // stay planned regardless.
   AUTOPILOT_COMPOSED_RUN_ENABLED?: string | undefined
+  // Agentic labor-product flow flag (promise autopilot.agentic_labor_products.v1,
+  // yellow). Default OFF: the `/api/public/autopilot/labor-products` listing
+  // surface is INERT (empty store) and the settlement seam never settles. Set
+  // "true"/"1"/"on" to arm the (still yellow/inert) surface. The flow makes no
+  // live-sale claim and the promise stays yellow regardless; a green flip stays
+  // receipt-first and owner-signed with a dereferenceable settlement receipt.
+  AGENTIC_LABOR_PRODUCTS_ENABLED?: string | undefined
   // Inference gateway feature flag (EPIC #5474, #5476). Default OFF: the
   // `/v1/chat/completions` route is inert on the live Worker until the
   // inference build lands. Set "true"/"1"/"on" to enable.
