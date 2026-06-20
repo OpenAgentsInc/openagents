@@ -40,13 +40,43 @@ paid credits/settlement loops it would reference are themselves not collectable
 end-to-end — see `inference.gateway_credits_business.v1` and
 `payments.autopilot_credits_purchase.v1`).
 
+## Update 2026-06-20 — intake -> quick-win scope router
+
+Advances `blocker.product_promises.business_quick_win_self_serve_delivery_missing`
+(**advanced, NOT cleared**) by building the first automated segment of a
+self-serve delivery loop: the step that today an operator does by hand — reading
+a `/business` intake's free-text "what do you need help with" and deciding which
+menu offering backs it and what "done" means.
+
+New files (under `apps/openagents.com/workers/api/src/`):
+
+- `business-quick-win-scope.ts` — pure/deterministic `scopeQuickWinFromIntake`
+  that routes a `BusinessSignupRecord` (`signupId` + `helpWith`) to a backing
+  offering promiseId, the menu availability, a delivery mode, and a
+  definition-of-done checklist. It is honest by construction: NO route emits
+  `self_serve` (the `self_serve` literal exists only so closing the blocker is a
+  route-level data change with a verifier, not a rewrite), `needsOperator` is
+  always true today, roadmap offerings route to `not_deliverable`, and an intake
+  that matches nothing routes to `unmatched_operator_triage` with an open
+  question instead of being force-fit. Its `quickWinScopedRef` feeds
+  `buildBusinessQuickWinReceipt`'s `quick_win_scoped` line, joining the two
+  pieces into one intake -> scope -> receipt chain.
+- `business-quick-win-scope.test.ts` — 13 tests covering per-category routing,
+  specificity ordering (batch before generic inference), the unmatched/blank
+  fallback, the self-serve honesty invariant, determinism, and the
+  scope->receipt handoff.
+
 ## What genuinely remains
 
-- A self-serve delivery loop that scopes a quick win from an intake and drives
-  it through delivery + acceptance
-  (`blocker.product_promises.business_quick_win_self_serve_delivery_missing`).
-- Persistence + a public route for these receipts (this change is the
-  pure contract only; no D1 table or HTTP surface was added).
+- The rest of the self-serve delivery loop after scoping: actually driving a
+  scoped quick win through delivery + acceptance WITHOUT an operator. This change
+  automates only routing; `needsOperator` stays true for every route. Closing
+  `business_quick_win_self_serve_delivery_missing` means flipping at least one
+  route to `self_serve` backed by a proven hands-off delivery path.
+- Persistence + a public route for scopes and receipts (both modules are pure
+  contracts only; no D1 table or HTTP surface was added).
 - A real first paid quick win that produces a receipt passing
-  `assertFirstPaidQuickWinReceipt`, then a receipt-first upgrade per
-  `proof.claim_upgrade_receipts.v1` before any green flip.
+  `assertFirstPaidQuickWinReceipt`
+  (`blocker.product_promises.business_first_paid_quick_win_receipt_missing`),
+  then a receipt-first upgrade per `proof.claim_upgrade_receipts.v1` before any
+  green flip.
