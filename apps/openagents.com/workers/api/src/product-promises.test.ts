@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.37')
+    expect(decoded.version).toBe('2026-06-20.38')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -368,6 +368,8 @@ describe('public product promises document', () => {
           state: 'planned',
           evidenceRefs: expect.arrayContaining([
             'docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md',
+            'apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.ts',
+            'apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.test.ts',
             'apps/openagents.com/workers/api/src/cs336-a4-provenance.ts',
             'apps/openagents.com/workers/api/src/cs336-a4-provenance.test.ts',
             'apps/openagents.com/workers/api/src/training-data-refinery.ts',
@@ -379,9 +381,9 @@ describe('public product promises document', () => {
             'blocker.product_promises.corpus_provenance_receipts_missing',
             'blocker.product_promises.eval_delta_payment_missing',
           ],
-          safeCopy: expect.stringContaining('corpusProvenanceReceipt'),
+          safeCopy: expect.stringContaining('evalDeltaPaymentGate'),
           verification: expect.stringContaining(
-            'no live paid refinery shard closeout',
+            'paymentComputationAvailable=true',
           ),
         }),
         expect.objectContaining({
@@ -1162,12 +1164,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.37', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.38', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.37',
+      expectedVersion: '2026-06-20.38',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.37',
+      servedVersion: '2026-06-20.38',
       status: 'ready',
     })
     expect(
@@ -1177,7 +1179,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.37',
+      servedVersion: '2026-06-20.38',
       status: 'blocked',
     })
   })

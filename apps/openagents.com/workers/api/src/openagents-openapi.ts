@@ -1069,7 +1069,7 @@ const schemaComponents = (): JsonSchema => ({
     'Admission result envelope with the updated public-safe run projection and the recomputed CS336 A3 IsoFLOP sweep projection for that run.',
   ),
   TrainingA4DataRefineryDashboardEnvelope: objectSummary(
-    'Public-safe CS336 A4 data-refinery dashboard envelope with receipt-backed deterministic refinery shards (pii_masking, gopher_rules, exact_line_dedup, minhash_dedup), each shard carrying its output-digest commitment, verification refs, and optional public pylon provenance. Settlement stays zero unless provider-confirmed payout receipts are linked. The eval-delta quality bonus is reported as a separate blocked design, never a fabricated score.',
+    'Public-safe CS336 A4 data-refinery dashboard envelope with receipt-backed deterministic refinery shards (pii_masking, gopher_rules, exact_line_dedup, minhash_dedup), each shard carrying its output-digest commitment, verification refs, and optional public pylon provenance. Settlement stays zero unless provider-confirmed payout receipts are linked. The eval-delta quality bonus is reported through evalDeltaPaymentGate: the deterministic payment computation can be available while fixed-trainer measurements, operator funding parameters, settlement receipts, and greenGateSatisfied remain false; no fabricated score or payout is emitted.',
   ),
   TrainingA4DataRefineryEvidenceRequest: objectSummary(
     'Admin-only request to admit receipted CS336 A4 data-refinery shards into a training run projection. Each shard names one deterministic stage, its public output-digest commitment, receipt refs, verification refs, optional input document count, and optional public pylon provenance. Unreceipted shards are not admissible, and wallet, payment, invoice, raw-shard, and private-path material are rejected by the public-safety guard at admission time. No eval-delta scores are admitted by this route.',
@@ -5506,7 +5506,7 @@ const paths = (): JsonSchema => ({
       operationId: 'readTrainingA4DataRefineryDashboard',
       summary: 'Read CS336 A4 data-refinery dashboard',
       description:
-        'Reads the public-safe CS336 A4 data-refinery dashboard feed. The feed is built from Worker training-run projection evidence and verified deterministic_recompute shard refs across the refinery stages; it does not count pending payouts and reports the eval-delta quality bonus as a separate blocked design rather than a fabricated score.',
+        'Reads the public-safe CS336 A4 data-refinery dashboard feed. The feed is built from Worker training-run projection evidence and verified deterministic_recompute shard refs across the refinery stages; it does not count pending payouts and reports the eval-delta quality bonus through a typed evalDeltaPaymentGate rather than a fabricated score or payout.',
       tags: ['Training'],
       security: publicRead,
       responses: {

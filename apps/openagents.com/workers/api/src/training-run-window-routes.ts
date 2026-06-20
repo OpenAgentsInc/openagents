@@ -40,6 +40,7 @@ import {
   Cs336A4DataRefineryEvidenceRequest,
   Cs336A4RequiredVerifiedStageCount,
   admitCs336A4DataRefineryEvidence,
+  aggregateDataRefineryEvalDeltaPaymentGate,
   corpusProvenanceReceiptBlockerRefs,
   corpusProvenanceReceiptStatus,
   publicDataRefineryProjection,
@@ -1681,6 +1682,8 @@ const routeA4DataRefinery = <Bindings extends TrainingRunWindowRouteEnv>(
         'blocker.cs336_a4.operator_funding_required_for_bonus_settlement',
         'blocker.cs336_a4.psionic_classifier_adapters_partial',
       ],
+      evalDeltaPaymentGate:
+        aggregateDataRefineryEvalDeltaPaymentGate(projections),
       observedVerifiedStages: verifiedStages,
       projections,
       requiredVerifiedStageCount: Cs336A4RequiredVerifiedStageCount,

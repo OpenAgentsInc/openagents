@@ -13,6 +13,12 @@ import {
   type Cs336A4HomeworkStage,
 } from './cs336-a4-data-refinery'
 import {
+  Cs336A4EvalDeltaBonusPolicyRef,
+  Cs336A4EvalDeltaBoundaryRef,
+  Cs336A4EvalDeltaMeasurementRef,
+  Cs336A4EvalDeltaPaymentSchemaVersion,
+} from './cs336-a4-eval-delta-payment'
+import {
   Cs336A4AcquisitionModes,
   Cs336A4ProvenanceSchemaVersion,
   type Cs336A4ProvenanceReceipt,
@@ -42,12 +48,34 @@ export type DataRefineryShard = Readonly<{
   verified: boolean
 }>
 
+export type DataRefineryEvalDeltaPaymentGate = Readonly<{
+  blockerRefs: ReadonlyArray<string>
+  bonusPolicyRef: typeof Cs336A4EvalDeltaBonusPolicyRef
+  boundaryRef: typeof Cs336A4EvalDeltaBoundaryRef
+  clearsBlockerRefs: ReadonlyArray<string>
+  fixedTrainerEvalMeasurementAvailable: boolean
+  greenGateSatisfied: false
+  leaderboardLane: 'a4_eval_delta'
+  operatorFundingParametersAvailable: boolean
+  payableSettlementCount: number
+  paymentComputationAvailable: boolean
+  paymentSchemaVersion: typeof Cs336A4EvalDeltaPaymentSchemaVersion
+  remainingProductBlockerRefs: ReadonlyArray<
+    'blocker.product_promises.eval_delta_payment_missing'
+  >
+  settlementReceiptAvailable: boolean
+  settledBonusSats: number
+  sourceRefs: ReadonlyArray<string>
+  verifiedMeasurementRowCount: number
+}>
+
 export type DataRefineryProjection = Readonly<{
   blockerRefs: ReadonlyArray<string>
   corpusProvenanceReceiptBlockerRefs: ReadonlyArray<string>
   corpusProvenanceReceiptRefs: ReadonlyArray<string>
   corpusProvenanceReceiptStatus: 'missing' | 'partial' | 'available'
   evalDeltaBonusBlockerRefs: ReadonlyArray<string>
+  evalDeltaPaymentGate: DataRefineryEvalDeltaPaymentGate
   observedVerifiedShardCount: number
   observedVerifiedStages: ReadonlyArray<Cs336A4HomeworkStage>
   psionicLaneRef: string
@@ -533,6 +561,78 @@ const evalDeltaBonusBlockerRefs = (): ReadonlyArray<string> => [
   'blocker.cs336_a4.psionic_classifier_adapters_partial',
 ]
 
+const evalDeltaLeaderboardMeasurementRowCount = (
+  evidence: Record<string, unknown> | undefined,
+): number => {
+  const rows = evidence?.leaderboardRows
+
+  if (!Array.isArray(rows)) {
+    return 0
+  }
+
+  return rows.filter(row => {
+    if (!isRecord(row)) {
+      return false
+    }
+
+    return (
+      typeof row.contributorRef === 'string' &&
+      typeof row.evalDelta === 'number' &&
+      stringArrayFromUnknown(row.verificationRefs).length > 0
+    )
+  }).length
+}
+
+const evalDeltaPaymentBlockerRefs = (
+  verifiedMeasurementRowCount: number,
+): ReadonlyArray<string> =>
+  uniqueRefs([
+    ...(verifiedMeasurementRowCount > 0
+      ? []
+      : ['blocker.cs336_a4.fixed_trainer_eval_loop_required_for_quality_bonus']),
+    'blocker.cs336_a4.operator_funding_required_for_bonus_settlement',
+    'blocker.cs336_a4.psionic_classifier_adapters_partial',
+  ])
+
+export const dataRefineryEvalDeltaPaymentGate = (
+  input: Readonly<{ verifiedMeasurementRowCount: number }>,
+): DataRefineryEvalDeltaPaymentGate => ({
+  blockerRefs: evalDeltaPaymentBlockerRefs(input.verifiedMeasurementRowCount),
+  bonusPolicyRef: Cs336A4EvalDeltaBonusPolicyRef,
+  boundaryRef: Cs336A4EvalDeltaBoundaryRef,
+  clearsBlockerRefs: [],
+  fixedTrainerEvalMeasurementAvailable:
+    input.verifiedMeasurementRowCount > 0,
+  greenGateSatisfied: false,
+  leaderboardLane: 'a4_eval_delta',
+  operatorFundingParametersAvailable: false,
+  payableSettlementCount: 0,
+  paymentComputationAvailable: true,
+  paymentSchemaVersion: Cs336A4EvalDeltaPaymentSchemaVersion,
+  remainingProductBlockerRefs: [
+    'blocker.product_promises.eval_delta_payment_missing',
+  ],
+  settlementReceiptAvailable: false,
+  settledBonusSats: 0,
+  sourceRefs: [
+    'apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.ts',
+    'apps/openagents.com/docs/2026-06-10-cs336-a4-data-refinery-payment-policy.md',
+    'route:/api/training/leaderboards/a4_eval_delta',
+  ],
+  verifiedMeasurementRowCount: input.verifiedMeasurementRowCount,
+})
+
+export const aggregateDataRefineryEvalDeltaPaymentGate = (
+  projections: ReadonlyArray<DataRefineryProjection>,
+): DataRefineryEvalDeltaPaymentGate =>
+  dataRefineryEvalDeltaPaymentGate({
+    verifiedMeasurementRowCount: projections.reduce(
+      (total, projection) =>
+        total + projection.evalDeltaPaymentGate.verifiedMeasurementRowCount,
+      0,
+    ),
+  })
+
 export const corpusProvenanceReceiptStatus = (
   shards: ReadonlyArray<DataRefineryShard>,
 ): DataRefineryProjection['corpusProvenanceReceiptStatus'] => {
@@ -576,6 +676,8 @@ export const publicDataRefineryProjection = (
 ): DataRefineryProjection => {
   const evidence = refineryEvidenceRecord(input.run)
   const shards = shardsFromEvidence({ ...input, evidence })
+  const verifiedMeasurementRowCount =
+    evalDeltaLeaderboardMeasurementRowCount(evidence)
   const verifiedShards = shards.filter(shard => shard.verified)
   const observedVerifiedStages = [
     ...new Set(verifiedShards.map(shard => shard.stage)),
@@ -608,6 +710,9 @@ export const publicDataRefineryProjection = (
     ),
     corpusProvenanceReceiptStatus: corpusProvenanceReceiptStatus(shards),
     evalDeltaBonusBlockerRefs: evalDeltaBonusBlockerRefs(),
+    evalDeltaPaymentGate: dataRefineryEvalDeltaPaymentGate({
+      verifiedMeasurementRowCount,
+    }),
     observedVerifiedShardCount: verifiedShards.length,
     observedVerifiedStages,
     psionicLaneRef:

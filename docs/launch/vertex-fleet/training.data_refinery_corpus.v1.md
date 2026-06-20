@@ -33,6 +33,31 @@ funding parameters) returns `funding_parameters_unset`. Enforced boundaries:
 No wallet/invoice/preimage material is accepted or emitted; the function
 computes a public-safe sats amount and basis, not a payment instrument.
 
+## 2026-06-20 update — eval-delta payment gate projection
+
+The A4 refinery projection now reports the payment computation as a typed,
+blocked gate instead of leaving it as prose in the promise registry:
+
+- `publicDataRefineryProjection` exposes `evalDeltaPaymentGate` on each A4
+  shard projection.
+- `GET /api/training/refinery/a4` exposes an aggregate
+  `evalDeltaPaymentGate` for the dashboard.
+- The gate links to the deterministic
+  `openagents.training.data_refinery.eval_delta_payment.v1` computation and the
+  `a4_eval_delta` leaderboard lane.
+
+The live projection is deliberately conservative. With no verified
+fixed-trainer eval rows, no operator funding parameters, and no settlement
+receipt, it reports `paymentComputationAvailable=true` but
+`fixedTrainerEvalMeasurementAvailable=false`,
+`operatorFundingParametersAvailable=false`, `settlementReceiptAvailable=false`,
+`payableSettlementCount=0`, `settledBonusSats=0`, and
+`greenGateSatisfied=false`.
+
+`eval_delta_payment_missing` remains blocked. This projection makes the missing
+receipt boundary inspectable; it does not fabricate eval scores, spend, bonus
+payouts, or a green transition.
+
 ### What genuinely remains (blocker NOT cleared)
 
 `eval_delta_payment_missing` stays listed: this is the settlement *computation*,
