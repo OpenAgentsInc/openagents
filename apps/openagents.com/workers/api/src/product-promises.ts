@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.24'
+export const PublicProductPromisesVersion = '2026-06-20.25'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -803,24 +803,24 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The Tassadar model direction uses a Percepta Executor Class architecture, with CPU computation transformation support added to Pylon v1.0 for experimental training.',
         safeCopy:
-          'Episode 236 names a Tassadar/Percepta Executor Class direction. Existing code and product records use Tassadar for the executor lane; treat the model spec, Pylon integration, training plan, and public evidence as unresolved until receipts exist. The bounded executor proof of concept is green (compute.tassadar_executor_poc.v1) but proves exact replay only, not a model. The 2026-06-14 W3 student-program report validated the frozen-analytic-executor-plus-learned-interface research direction (baseline D reached exact-rollout pass@1 while purely-learned baselines failed) but is explicitly research/evaluation only: it creates no public model claim and does not move this promise.',
+          'Episode 236 names a Tassadar/Percepta Executor Class direction. The public model/spec boundary is now written down in docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md: model name, runtime boundary, Pylon integration shape, training/eval plan, artifact-lineage requirements, and safety notes. Treat Pylon integration receipts, architecture receipts, CPU-transform training receipts, and public model evidence as unresolved until receipts exist. The bounded executor proof of concept is green (compute.tassadar_executor_poc.v1) but proves exact replay only, not a model. The 2026-06-14 W3 student-program report validated the frozen-analytic-executor-plus-learned-interface research direction (baseline D reached exact-rollout pass@1 while purely-learned baselines failed) but is explicitly research/evaluation only: it creates no public model claim and does not move this promise.',
         unsafeCopy:
           'Do not claim a Tassadar trained model exists, is trained, outperforms CPUs, replaces a CPU, or is earning contributors Bitcoin, and do not present the W3 student-program results or the executor PoC as proof of a trained Percepta model.',
         evidenceRefs: [
           'docs/transcripts/236.md',
           'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
           'docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
+          'docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md',
           'docs/tassadar/2026-06-14-w3-student-program-report.md',
           'promise:compute.tassadar_executor_poc.v1',
           'promise:artanis.tassadar_evolution_loop.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.tassadar_model_spec_missing',
           'blocker.product_promises.percepta_executor_architecture_receipts_missing',
           'blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing',
         ],
         verification:
-          'Green requires the model name/spec, runtime boundary, Pylon integration, training/eval plan, artifact lineage, safety notes, and public-safe evidence refs.',
+          'The public model/spec boundary is now documented at docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md: model name, runtime boundary, Pylon integration shape, staged training/eval plan, artifact-lineage requirements, safety notes, and remaining receipt gates. This clears blocker.product_promises.tassadar_model_spec_missing. Green still requires Percepta executor architecture receipts and Pylon CPU-transform training receipts carrying public-safe refs for model profile/config/checkpoint/eval digests, accepted work, verifier verdicts, and settlement where real money moved.',
         authorityBoundary:
           'The scoped Tassadar executor PoC proves bounded exact replay only; it does not prove a model-training architecture, general model capability, or paid earning path.',
       },
@@ -3501,6 +3501,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.22 is an artanis.tassadar_evolution_loop.v1 distillation-dataset receipt pass and flips NO promise state (stays yellow, green count unchanged at 24). GET /api/public/artanis/tassadar-distillation-dataset now projects a public-safe, refs-only dataset-curation receipt over accepted Artanis admin executor-trace closeouts. The receipt is available only when at least 10 accepted exact-replay closeouts exist; production already has the source material via GET /api/public/artanis/tick-streak (longestStreak 12, targetReached true, 16 verified tick closeouts in the scanned window). The projection exposes assignment refs, digest prefixes, and dereferenceable closeout receipt refs only, and clears blocker.product_promises.tassadar_distillation_dataset_receipt_missing. It creates no raw trace export, training run, eval, settlement, model promotion, or model-capability claim. The promise stays yellow pending owner-signed green transition per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-20.23 is a training.model_ladder.v1 blocker-cleanup pass and flips NO promise state (stays planned, green count unchanged at 24). The per-rung economics-gate report format and R1 closeout criteria were already published and cited at docs/training/2026-06-19-model-ladder-rung-economics.md, and the verification copy already states that rung_economics_gate_format_missing is documented. This drops blocker.product_promises.rung_economics_gate_format_missing as stale. The remaining real blocker is blocker.product_promises.r1_full_rehearsal_missing: no rung above R0 has run to a closeout receipt. No rung run, training dispatch, spend, settlement, model artifact, eval, or capability claim is created.',
         'Registry 2026-06-20.24 is a pylon.largest_decentralized_training_claim.v1 blocker-cleanup pass and flips NO promise state (stays red, green count unchanged at 24). The participant-count methodology and comparable-run research were already published and cited at docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md and docs/training/2026-06-19-comparable-decentralized-training-runs-research.md, and the verification copy already states that those gaps are cleared as written evidence. This drops blocker.product_promises.largest_training_participant_methodology_missing and blocker.product_promises.comparable_training_run_evidence_missing as stale. The remaining real blocker is blocker.product_promises.public_training_contributor_receipts_missing: the current live run has five counted realBitcoinMoved:true contributors, far below the cited comparable scale. No largest-run, 200-contributor, at-scale, training-performance, settlement, or world-first claim is created.',
+        'Registry 2026-06-20.25 is a models.tassadar_percepta_executor.v1 model/spec pass and flips NO promise state (stays red, green count unchanged at 24). docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md now names the Tassadar Percepta Executor lane, its runtime boundary, Pylon integration shape, staged training/eval plan, artifact-lineage requirements, safety notes, and remaining receipt gates. This clears blocker.product_promises.tassadar_model_spec_missing only. The remaining blockers are blocker.product_promises.percepta_executor_architecture_receipts_missing and blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing. No trained model, architecture receipt, CPU-transform training receipt, inference endpoint, settlement, model promotion, or model-capability claim is created.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
