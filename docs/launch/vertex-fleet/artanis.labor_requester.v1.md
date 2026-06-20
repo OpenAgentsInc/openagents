@@ -119,22 +119,47 @@ exactly what this blocker names.
     not), tampered-receipt refusal, non-GET rejection (405), GET list ordering,
     single-ref point dereference, and the unknown-ref empty-feed contract.
 
+## What this run adds (durable backing + live route registration)
+
+This run cleared remaining items (1) and (2) of the previous "What remains":
+
+- `apps/openagents.com/workers/api/migrations/0215_artanis_labor_unattended_receipts.sql`
+  — durable D1 table `artanis_labor_unattended_receipts`: one row per
+  content-addressed receipt ref (PK), the canonical serialized bytes as source
+  of truth, a denormalized `terminal_state` for audit/query, and `created_at`.
+  Idempotent by construction (the ref is the primary key).
+- `apps/openagents.com/workers/api/src/artanis-labor-receipt-store.ts` (extended)
+  — `makeD1ArtanisLaborUnattendedReceiptStore(db, nowIso)` implements the
+  existing `ArtanisLaborUnattendedReceiptStore` interface against D1, mirroring
+  `makeD1HygieneDebtReceiptStore`. `put` uses `INSERT OR IGNORE` on the
+  content-addressed PK (idempotent: a re-put returns `already_stored` via
+  `meta.changes === 0`), refusing an inconsistent sealed receipt first.
+  `get`/`list` re-verify the persisted bytes against the ref they are keyed
+  under (`verifyArtanisLaborUnattendedRequestReceipt`), so a corrupted/edited
+  row can never be served — tamper-evident reads. `list` is `created_at, rowid`
+  ordered. Mints no payment, identity, or settlement authority.
+- `apps/openagents.com/workers/api/src/artanis-labor-receipt-store-d1.test.ts`
+  — 6 cases over a minimal in-memory D1 fake: put/get round-trip, idempotent put
+  on the content-addressed ref, created-at-ordered list, unknown-ref miss, the
+  tamper-evident read (a corrupted persisted row rejects), and the
+  inconsistent-sealed-receipt refusal.
+- `apps/openagents.com/workers/api/src/index.ts` (wired) — registered the
+  read-only feed route `GET /api/public/artanis/labor-receipts` backed by the
+  durable D1 store, no longer theater because the store survives across requests.
+- Ledger/inventory: added the route as `staleness_declared` in
+  `scripts/check-zero-debt-architecture.mjs` and to the Public Projection
+  Staleness Declaration inventory in `INVARIANTS.md`.
+
 ## What remains
 
-- The receipt now has a canonical wire form, a content-addressed ref, a
-  validating read/verify path (`parse` + `verify`), a one-shot `seal`, an
-  in-memory tick-ledger **store** with idempotent writes and tamper-evident
-  reads, and a public-safe **read projection + GET handler** that dereferences
-  the whole feed or a single receipt by ref. So the receipt is now
-  **persistable, dereferenceable through a route handler, and tamper-evident**
-  end to end at the library layer. What still remains before the blocker can be
-  dropped: (1) registering the handler on a concrete path in `index.ts` backed
-  by a **durable store** — the in-memory store is per-request, so registering it
-  on its own would always serve an empty feed (theater), which is why this run
-  stops at the handler; (2) a durable backing (D1/KV) behind the
-  `ArtanisLaborUnattendedReceiptStore` interface, mirroring
-  `makeD1HygieneDebtReceiptStore`; and (3) a real unattended tick producing one
-  of these receipts end-to-end.
+- The receipt is now **persistable, dereferenceable, tamper-evident, durable,
+  and publicly readable**: canonical wire form, content-addressed ref,
+  `parse`/`verify`, `seal`, an in-memory AND a durable D1 store, the feed
+  projection + GET handler, and a live registered route. The one remaining item
+  before the blocker can be dropped is (3): **a real unattended tick producing
+  one of these receipts end-to-end** — the requester surface sealing a receipt
+  into the durable store on each gated tick — so the route serves a receipt
+  minted by an actual run rather than only fixtures.
 - `blocker.product_promises.artanis_labor_live_enablement_missing` is untouched and
   still open: Artanis is not operator-enabled for a live unattended labor request.
 
