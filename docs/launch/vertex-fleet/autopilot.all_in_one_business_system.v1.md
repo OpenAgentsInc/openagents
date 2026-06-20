@@ -130,6 +130,32 @@ clears with no outstanding artifact, the inert report fails honestly and names t
 outstanding artifacts (= the unsatisfied lines), and outstanding artifacts carry
 their governing proof primitives.
 
+## Follow-up: real-business-receipt readiness DIGEST (this run)
+
+`apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-readiness-digest.ts`
+— a PURE renderer that turns the structured readiness report into the LITERAL
+human-readable artifact a reviewer reads. The readiness module describes itself as
+"the ONE reviewer-facing artifact", but it emits a structured object, not the
+markdown a human reads. `renderRealBusinessReceiptReadinessDigest(report)` renders
+one report into a stable, ordered, public-safe markdown digest: a header (run,
+blocker, verdict, satisfied/total, billed/settled/inert posture), the public-safe
+receipt context (balance, envelope, referral state, surface↔settlement component
+refs), one checkbox line per criterion (with the owed artifact + governing ref
+when unsatisfied), the outstanding-artifacts list, and the uncleared blockers.
+
+It is PURE PRESENTATION: it reads only the report's existing fields (refs +
+booleans + prose), introduces NO new pass/fail rule, and the digest verdict
+mirrors `report.clearsBlocker` exactly. The output is deterministic (no
+timestamps/randomness) and carries a stable trailing newline, so it is safe to
+snapshot or concatenate into a runbook. It DECIDES NOTHING IRREVERSIBLE: flips no
+promise, drops no blocker, moves no money.
+
+Tests: `apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-readiness-digest.test.ts`
+(4 tests) — the inert digest renders DOES NOT CLEAR and names every unmet
+criterion + owed artifact, the armed digest renders CLEARS with no outstanding
+artifacts and no unchecked markers, no per-component amounts leak (public-safe),
+and the render is deterministic with no trailing whitespace.
+
 ## What remains (blocker stays listed)
 
 This is the receipt **shape**, reconciled over an INERT execution. The blocker stays
