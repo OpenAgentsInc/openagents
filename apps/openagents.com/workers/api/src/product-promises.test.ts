@@ -115,11 +115,11 @@ describe('public product promises document', () => {
     // decision-queue transport pass (a pure composing capability + evidence refs
     // on autopilot.decision_queue.v1 / mobile.autopilot_remote_control.v1), and
     // the 2026-06-19.10 passes — workrooms source-authority + approval-gated
-    // business-object writes, and the registry completeness audit (two new
-    // records for built-but-unregistered capabilities:
+    // business-object writes, the registry completeness audit (two new records:
     // payments.autopilot_credits_purchase.v1 red +
-    // autopilot_sites.site_build_and_host.v1 yellow) — flip nothing, so the
-    // green count must stay exactly 20.
+    // autopilot_sites.site_build_and_host.v1 yellow), and the composed-run
+    // capstone (a flag-gated INERT execution composition wiring the real metering
+    // + referral seams) — flip nothing, so the green count must stay exactly 20.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(20)
