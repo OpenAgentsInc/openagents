@@ -138,6 +138,7 @@ import {
   handleModelsList,
   routeModelRetrieveRequest,
 } from './inference/models-routes'
+import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
 import { resolveSupplyLaneArming } from './inference/model-serving-policy'
 import { handleQuote } from './inference/quote-routes'
 // Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
@@ -9476,6 +9477,24 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/v1/quote',
     handler: (request, env) =>
       handleQuote(request, {
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        laneArming: resolveSupplyLaneArming(env),
+      }),
+  },
+  {
+    // Public gateway readiness summary (GET /v1/gateway/readiness). INERT by
+    // default: gated behind the SAME INFERENCE_GATEWAY_ENABLED flag as the rest
+    // of the gateway, so it 404s when the gateway is off. Public, unauthenticated,
+    // public-safe — it exposes the SINGLE readiness fact projected from the SAME
+    // catalog + serving policy the /v1/models, /v1/quote, and /v1/chat/completions
+    // surfaces gate on (servable/hidden model COUNTS + per-lane arming booleans +
+    // dereferenceable reason refs only; no prompts/credentials/prices/balances).
+    // So an operator (or the launch dashboard) can verify "can the paid gateway
+    // serve anything right now, and how degraded is its catalog?" in one read
+    // instead of replaying each surface. No promise state changes.
+    path: '/v1/gateway/readiness',
+    handler: (request, env) =>
+      handleGatewayReadiness(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         laneArming: resolveSupplyLaneArming(env),
       }),
