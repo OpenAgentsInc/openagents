@@ -41,7 +41,17 @@ const hasScannedExtension = path =>
   scannedFileExtensions.some(extension => path.endsWith(extension))
 
 const trackedSourceFiles = async () => {
-  const { stdout } = await execFileAsync('git', ['ls-files'], { cwd: repoRoot })
+  // Resolve tracked files relative to repoRoot regardless of any inherited
+  // GIT_DIR / GIT_WORK_TREE. A `git push` hook exports GIT_DIR, which would
+  // otherwise make `git ls-files` enumerate from the true repo root and yield
+  // paths that then resolve incorrectly against repoRoot. Stripping those env
+  // vars and using `-C repoRoot` keeps this script correct in both the normal
+  // chained `check:deploy` run and the pre-push hook context.
+  const { GIT_DIR, GIT_WORK_TREE, ...cleanEnv } = process.env
+  const { stdout } = await execFileAsync('git', ['-C', repoRoot, 'ls-files'], {
+    cwd: repoRoot,
+    env: cleanEnv,
+  })
 
   return stdout
     .split('\n')

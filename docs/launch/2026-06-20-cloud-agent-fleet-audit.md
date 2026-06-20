@@ -436,12 +436,41 @@ claude-code's background calls fail.
 
 ## Test implementation — obstacles found (2026-06-20)
 
-**Did `claude -p` run on Vertex? NO — blocked by one expired-ADC reauth, with the
-underlying Vertex wire path *proven correct*.** The raw Vertex API works (200 OK,
-real completion). Claude Code dispatched to the correct model and region but
-could not mint a Vertex token because this machine's ADC needs an interactive
-re-login. This is a **one-command, needs-owner** blocker, not a model/region/
-quota/IAM problem.
+> **UPDATE 2026-06-20 (RESOLVED — `claude -p` ran the full agent loop on Vertex,
+> on Opus, on `locations/global`).** The earlier "NO — blocked by ADC reauth"
+> verdict below was a *point-in-time* result on an expired-RAPT machine. After the
+> owner ran `gcloud auth application-default login`, the end-to-end test
+> **passed**: `claude --bare -p` drove a real multi-turn agent loop (including the
+> `Read` tool) against Vertex, on **`claude-opus-4-8`** at `CLOUD_ML_REGION=global`,
+> produced a correct result, and billed **~$0.023** for a tiny task. Haiku and
+> Sonnet on `global` were also confirmed working via `claude --bare -p`
+> (`VERTEX_OK` / `PONG`, exit 0, `total_cost_usd` reported in the JSON output).
+>
+> **Two specific corrections to the obstacle list below:**
+> 1. **The ADC-reauth blocker is resolved.** Locally it was a one-command
+>    interactive `gcloud auth application-default login` (done). For an unattended
+>    fleet it is *avoided entirely* by the GCE service-account metadata-server ADC
+>    (no RAPT, no interactive reauth) — same as `oa-codex-control`.
+> 2. **"Opus = 0 RPM / effectively unavailable" was WRONG for our actual call
+>    path.** That `0 RPM granted` figure is the **US-multi-region** quota
+>    *preference*, not the path we use. Our calls go to **`locations/global`**,
+>    where `claude-opus-4-8` serves fine — verified by a full `claude -p` agent
+>    loop on Opus (above) and by the runbook's `global` probe (haiku / sonnet /
+>    opus all 200-OK on `global`,
+>    `docs/2026-06-13-vertex-ai-anthropic-claude-runbook.md`). You **can** run a
+>    fleet on Opus on `global` today; the US-multiregion grant is irrelevant to it.
+>    See the corrected quota item (#4) and the Opus-quota note inline below.
+>
+> A minimal PR-per-agent fleet runner built on this verified path now lives at
+> `scripts/vertex-fleet/` (`assign.mjs` / `worker.sh` / `run.sh` / `README.md`).
+
+**Did `claude -p` run on Vertex? — As of the original spike, NO** (point-in-time;
+**now YES, see the RESOLVED update above**). At spike time it was blocked by one
+expired-ADC reauth, with the underlying Vertex wire path *proven correct*: the raw
+Vertex API worked (200 OK, real completion) and Claude Code dispatched to the
+correct model and region but could not mint a Vertex token because that machine's
+ADC needed an interactive re-login. That was a **one-command, needs-owner**
+blocker, not a model/region/quota/IAM problem — and it has since been cleared.
 
 ### What proved correct (raw Vertex sanity, bypassing claude-code)
 
@@ -492,6 +521,33 @@ auth on all 11 retries (redacted):
 mint. The "hang" was simply claude-code grinding through 11 exponential-backoff
 retries; it never reaches the model.
 
+### What claude-code did after the reauth (the passing test, 2026-06-20)
+
+After `gcloud auth application-default login`, the same env block **completed**:
+
+```bash
+# tiny smoke (haiku / sonnet on global) — exit 0, correct output
+env CLAUDE_CODE_USE_VERTEX=1 ANTHROPIC_VERTEX_PROJECT_ID=openagentsgemini \
+    CLOUD_ML_REGION=global ANTHROPIC_MODEL=claude-haiku-4-5 \
+    ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4-5 \
+    claude --bare -p "Reply with exactly the token: VERTEX_OK"
+# → VERTEX_OK   (exit 0)
+# with --output-format json the result also reports total_cost_usd (e.g. ~0.0023)
+
+# full agent loop on OPUS (Read tool, multi-turn), result correct, ~$0.023
+env CLAUDE_CODE_USE_VERTEX=1 ANTHROPIC_VERTEX_PROJECT_ID=openagentsgemini \
+    CLOUD_ML_REGION=global ANTHROPIC_MODEL=claude-opus-4-8 \
+    ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4-5 \
+    claude --bare -p "<tiny multi-step task>"
+# → correct result; total_cost_usd ≈ 0.023
+```
+
+This confirms the **complete** path end-to-end: model-id + `global` mapping,
+auth (post-reauth ADC), the agent tool loop, and per-call cost reporting all
+work — on Opus, Sonnet, and Haiku alike. Auth is the only thing that was ever
+broken, and it is now resolved (locally via reauth; on the fleet via SA metadata
+ADC).
+
 ### Obstacle list (symptom → root cause → fix → status)
 
 1. **ADC reauth (`invalid_rapt`) — THE blocker that stopped the test.**
@@ -511,9 +567,11 @@ retries; it never reaches the model.
      unattended fleet, avoid this class entirely by using a **service-account
      identity via GCE metadata-server ADC** (no RAPT, no interactive reauth) —
      exactly what `oa-codex-control` already does.
-   - *Status:* **needs-owner** (one interactive command on this Mac), or
-     **needs-infra** done-right (SA + metadata ADC on the GCE runner). Not a code
-     bug.
+   - *Status:* **RESOLVED.** The owner ran `gcloud auth application-default login`
+     and `claude -p` then drove a full agent loop on Vertex (verified on Opus,
+     Sonnet, Haiku at `global`). For the unattended fleet this class is avoided
+     entirely by the GCE SA metadata ADC (no RAPT) — same as `oa-codex-control`.
+     Not a code bug; auth-only, and now cleared.
 
 2. **Model-id + region mapping.**
    - *Symptom:* (none observed — this worked.)
@@ -541,14 +599,23 @@ retries; it never reaches the model.
      independent budgets — they contend for one RPM/TPM pool per model per
      endpoint class. Live numbers pulled via the Cloud Quotas API on 2026-06-20
      (`cloudquotas.googleapis.com/.../157437760789/locations/global/quotaPreferences`):
-     - **US multi-region, granted:** haiku-4-5 = **120 RPM / 5M in-TPM / 500k
-       out-TPM**; sonnet-4-6 = **60 RPM / 2M in-TPM / 200k out-TPM**;
-       opus-4-8 = **0 RPM granted** (preferred 30, denied/reconciling — Opus on
-       US-multiregion is effectively unavailable right now); a legacy
-       `anthropic-claude-opus` bucket shows 3500 RPM granted.
-     - **Global endpoint:** **no explicit `Global*` quota preference is set**, so
-       the `global` path runs on Google's default per-model quota until a
-       preference is created.
+     - **US multi-region quota *preferences*:** haiku-4-5 = **120 RPM / 5M in-TPM
+       / 500k out-TPM**; sonnet-4-6 = **60 RPM / 2M in-TPM / 200k out-TPM**;
+       opus-4-8 preference = **0 RPM granted** (preferred 30, denied/reconciling);
+       a legacy `anthropic-claude-opus` bucket shows 3500 RPM granted.
+       **IMPORTANT (correction):** this `opus-4-8 = 0 RPM` figure is the
+       **US-multi-region** quota *preference* — **not the path we use, and it does
+       NOT mean Opus is unavailable.** The earlier reading of this as "Opus is
+       effectively unavailable" was wrong. Our calls go to **`locations/global`**.
+     - **Global endpoint (the path we actually use):** **no explicit `Global*`
+       quota preference is set**, so the `global` path runs on Google's default
+       per-model quota. Opus serves fine here: a full `claude -p` agent loop ran on
+       `claude-opus-4-8` at `CLOUD_ML_REGION=global` on 2026-06-20 (~$0.023), and
+       the runbook's `global` probe returns 200-OK for haiku **and sonnet and
+       opus** (`docs/2026-06-13-vertex-ai-anthropic-claude-runbook.md`). So **Opus
+       on `global` is usable today**; the US-multiregion `0 RPM` preference is
+       irrelevant to it. Only set/raise a `Global*` preference deliberately if you
+       want a *higher-than-default* ceiling for fleet width.
    - *Fix / how to raise:* create a Cloud Quotas preference per
      `quotaId` × `base_model` (global IDs:
      `GlobalOnlinePredictionRequestsPerMinutePerProjectPerBaseModel`,
@@ -559,8 +626,12 @@ retries; it never reaches the model.
      (filter service `aiplatform.googleapis.com`, metric "online prediction
      requests per minute per base model"). *Concurrency math for a "few-instance"
      start:* haiku's granted 120 RPM comfortably covers ~5–10 agents at a sane
-     request rate; sonnet's 60 RPM is the tighter bound; **Opus is the real cap —
-     do not plan a fleet on Opus until its quota is granted (>0).** (Note: the
+     request rate; sonnet's 60 RPM is the tighter bound (those US-multiregion
+     numbers are a *floor* reference — the `global` path runs on Google's default
+     per-model quota). **Opus is NOT a hard cap on `global`:** the `0 RPM` figure
+     applies only to the unused US-multiregion preference, and a real Opus agent
+     loop ran on `global` (above). Plan Opus waves on `global`; raise a `Global*`
+     preference only if you need width beyond the default ceiling. (Note: the
      repo path `apps/openagents.com/docs/cloud/quotas/2026-06-19-vertex-ai-anthropic-opus-quota-request.md`
      referenced in planning **does not yet exist on `origin/main`** — the live
      quota state above and the console are the authority.)
