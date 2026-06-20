@@ -1,7 +1,11 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { handleModelRetrieve, handleModelsList } from './models-routes'
+import {
+  handleModelRetrieve,
+  handleModelsList,
+  routeModelRetrieveRequest,
+} from './models-routes'
 import { MODEL_PRICING_TABLE } from './pricing'
 
 const run = (request: Request, deps: Parameters<typeof handleModelsList>[1]) =>
@@ -115,5 +119,91 @@ describe('handleModelRetrieve', () => {
     expect(response.status).toBe(404)
     const body = (await response.json()) as { error: { code: string } }
     expect(body.error.code).toBe('model_not_found')
+  })
+})
+
+describe('routeModelRetrieveRequest dispatcher', () => {
+  const servedModelId = MODEL_PRICING_TABLE[0]!.model
+
+  it('does NOT match the list path /v1/models (exact route owns it)', () => {
+    const effect = routeModelRetrieveRequest(
+      new Request('https://x/v1/models', { method: 'GET' }),
+      { enabled: true },
+    )
+    expect(effect).toBeUndefined()
+  })
+
+  it('does NOT match a trailing-slash-only path (falls through)', () => {
+    const effect = routeModelRetrieveRequest(
+      new Request('https://x/v1/models/', { method: 'GET' }),
+      { enabled: true },
+    )
+    expect(effect).toBeUndefined()
+  })
+
+  it('does NOT match a nested path (no served id has a slash)', () => {
+    const effect = routeModelRetrieveRequest(
+      new Request('https://x/v1/models/accounts/fireworks', { method: 'GET' }),
+      { enabled: true },
+    )
+    expect(effect).toBeUndefined()
+  })
+
+  it('does NOT match an unrelated path', () => {
+    const effect = routeModelRetrieveRequest(
+      new Request('https://x/v1/chat/completions', { method: 'POST' }),
+      { enabled: true },
+    )
+    expect(effect).toBeUndefined()
+  })
+
+  it('routes a served model id to the retrieve handler', async () => {
+    const effect = routeModelRetrieveRequest(
+      new Request(`https://x/v1/models/${servedModelId}`, { method: 'GET' }),
+      { enabled: true, nowEpochSeconds: () => 1_700_000_000 },
+    )
+    expect(effect).toBeDefined()
+    const response = await Effect.runPromise(effect!)
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { id: string; object: string }
+    expect(body.id).toBe(servedModelId)
+    expect(body.object).toBe('model')
+  })
+
+  it('decodes a percent-encoded model id before lookup', async () => {
+    const effect = routeModelRetrieveRequest(
+      new Request(`https://x/v1/models/${encodeURIComponent(servedModelId)}`, {
+        method: 'GET',
+      }),
+      { enabled: true },
+    )
+    expect(effect).toBeDefined()
+    const response = await Effect.runPromise(effect!)
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { id: string }
+    expect(body.id).toBe(servedModelId)
+  })
+
+  it('routes an unknown model to the handler (model_not_found, not fall-through)', async () => {
+    const effect = routeModelRetrieveRequest(
+      new Request('https://x/v1/models/nope-not-served', { method: 'GET' }),
+      { enabled: true },
+    )
+    expect(effect).toBeDefined()
+    const response = await Effect.runPromise(effect!)
+    expect(response.status).toBe(404)
+    const body = (await response.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('model_not_found')
+  })
+
+  it('routes a matching path to the handler even when the gateway is off (inert 404)', async () => {
+    const effect = routeModelRetrieveRequest(
+      new Request(`https://x/v1/models/${servedModelId}`, { method: 'GET' }),
+      { enabled: false },
+    )
+    expect(effect).toBeDefined()
+    const response = await Effect.runPromise(effect!)
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({ error: 'inference_gateway_disabled' })
   })
 })

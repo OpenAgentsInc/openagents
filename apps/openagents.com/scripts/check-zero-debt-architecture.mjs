@@ -300,7 +300,16 @@ const budgetChecks = [
     // clears nothing. It returns `Effect.Effect<Response>` like the sibling
     // public read handlers. Ratchet back down when these public-projection
     // handlers are extracted behind shared route mappers.
-    budget: 94,
+    // +1 (94 -> 95) for the OpenAI-compatible single-model retrieve dispatcher
+    // (inference/models-routes.ts, inference.gateway_credits_business.v1, red):
+    // routeModelRetrieveRequest dispatches the path-param GET /v1/models/{model}
+    // (the exact-route registry is exact-match only) to the already-built
+    // handleModelRetrieve, advancing but NOT clearing
+    // blocker.product_promises.public_paid_model_gateway_missing. It returns
+    // `Effect.Effect<Response> | undefined` like the sibling cloud-coding-session
+    // dispatcher. Ratchet back down when these path-param dispatchers are
+    // extracted behind a shared prefix-route mapper.
+    budget: 95,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(

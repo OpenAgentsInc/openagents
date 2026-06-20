@@ -166,3 +166,39 @@ The handler + lookup + projection + tests are review-stable here; the remaining
 step is to register a `/v1/models/{model}` path-param route in the worker
 dispatcher (the exact-route registry is exact-match only). This does NOT by
 itself let a customer buy inference, so the blocker stays listed.
+
+## Single-model retrieve dispatcher wiring (this run)
+
+Blocker advanced: `public_paid_model_gateway_missing` — *partially advanced*
+(left listed; see "What remains" below).
+
+The `handleModelRetrieve` handler above was built and fully tested but
+**unreachable in prod**: the exact-route registry is exact-match only, so
+`GET /v1/models/{model}` fell through to a 404. This run wires it in, closing the
+"remaining step" noted directly above:
+
+- `inference/models-routes.ts`: `routeModelRetrieveRequest` — a prefix
+  dispatcher mirroring `routeCloudCodingSessionRequest`. It matches only the
+  path-param `/v1/models/{model}` (the LIST `/v1/models` stays an exact route),
+  decodes the model id, falls through (`undefined`) for the bare list path /
+  trailing-slash / nested paths (every served model id is a slash-free canonical
+  slug), and otherwise hands off to `handleModelRetrieve`. The INERT gate +
+  method check live in the handler, so a matching path with the gateway off
+  still returns the typed inert 404 rather than a router fall-through.
+- `worker-routes.ts`: new `routeModelRetrieveRequest` dependency + dispatch call
+  in `makeWorkerRouteRequest`, placed after the exact-route pass so the LIST
+  route keeps priority.
+- `index.ts`: wires the dependency, gated by the SAME `INFERENCE_GATEWAY_ENABLED`
+  flag; public + unauthenticated (published price/policy only).
+- `models-routes.test.ts`: +8 dispatcher tests (16 total pass) covering match /
+  no-match / decode / unknown-model / inert-off behaviour.
+- `scripts/check-zero-debt-architecture.mjs`: Worker Response-return-surface
+  budget ratcheted 94 → 95 with a justification comment, following the
+  established per-surface ratchet pattern.
+
+`GET /v1/models/{model}` is now a live (flag-gated) route: off-the-shelf OpenAI
+clients can resolve a single model and a credits customer can read one model's
+published price before funding a balance. This does NOT by itself let a customer
+buy inference — the paid-credits funding loop is still secrets-gated — so the
+blocker stays listed. No promise state changed; any future green flip remains
+receipt-first and owner-signed.
