@@ -2,7 +2,31 @@
 
 **Promise state:** `planned` (no state change this run — Hard Rule 1)
 
-## Latest run (2026-06-20) — worker-api closeout ledger (accumulation + audit)
+## Latest run (2026-06-20) — closeout completeness verification (audit-gap detection)
+
+**Blocker advanced:** `blocker.product_promises.receipt_backed_command_closeout_missing`
+
+**New files:**
+
+| File | Purpose |
+|---|---|
+| `apps/openagents.com/workers/api/src/autopilot-decision-closeout-audit.ts` | `reconcileAutopilotDecisionCloseoutCoverage()` — the verification primitive the receipt-backed claim was still missing. Earlier runs proved closeouts can be *built* and *accumulated*; neither proved every resolved decision actually *has* a closeout. A decision can be recorded as resolved in the work store while its closeout was never appended (a crash between record+append, a missed call site, a future non-review act path) and no audit would notice. This pure reconciler takes the set of decisions the store reports as RESOLVED plus a closeout ledger (read through its public `get`/`list` contract — a D1/KV ledger satisfying the same interface reconciles identically) and reports `covered` / `missing` (audit GAP — the invariant is broken) / `orphans` (ledger closeouts with no resolved decision) / `complete` (true iff no gaps). It derives each decision's exactly-once key via the new single-source `autopilotDecisionCloseoutRef()` helper (extracted from the builder), so an idempotent replay collapses to one expected key and never shows as a duplicate gap. |
+| `apps/openagents.com/workers/api/src/autopilot-decision-closeout-audit.test.ts` | 7 tests: empty/complete, covered-with-outcome, gap detection (no `outcome` on missing), orphan detection, mixed-batch sorted partition, idempotent-replay collapse, distinct actions on one work order as distinct keys. |
+
+**Minimal supporting change:** `autopilot-decision-closeout.ts` now exports
+`autopilotDecisionCloseoutRef(action, workOrderRef)` (the `decision.closeout.*`
+key format) and the builder calls it, so the builder and the reconciler share one
+source of truth for the exactly-once key (no behavior change; closeout tests still
+pass).
+
+**What it proves:** "receipt-backed command closeout" is now *verifiable*, not
+just *producible* — an audit can assert that every resolved decision is backed by
+a dereferenceable closeout (`complete: true`) and pinpoint any gap. No promise
+state changes; no persistence/HTTP wiring is claimed (see "What remains").
+
+---
+
+## Earlier run (2026-06-20) — worker-api closeout ledger (accumulation + audit)
 
 **Blocker advanced:** `blocker.product_promises.receipt_backed_command_closeout_missing`
 
@@ -189,7 +213,12 @@ and is shared across desktop / web / Expo (the three client surfaces).
   *in-memory* accumulation/audit layer now also exists and is tested
   (`autopilot-decision-closeout-ledger.ts`, `createAutopilotDecisionCloseoutLedger`):
   it converges idempotent replays and refuses conflicting closeouts keyed by
-  `closeoutRef`. The remaining gap is a *persistent* backing store (D1/KV)
-  wrapping that same contract, the `actOnDecision` call site that appends the
-  built receipt into the ledger, and a proof of at least one real receipt
-  produced by a live paired-node resolution.
+  `closeoutRef`. The completeness *verifier* now also exists and is tested
+  (`autopilot-decision-closeout-audit.ts`,
+  `reconcileAutopilotDecisionCloseoutCoverage`): given the resolved decisions and
+  a ledger it reports covered / missing (gap) / orphan / complete, so an audit can
+  assert every resolved decision is receipt-backed. The remaining gap is a
+  *persistent* backing store (D1/KV) wrapping the ledger contract, the
+  `actOnDecision` call site that appends the built receipt into the ledger (and a
+  reconcile pass over the live resolved set), and a proof of at least one real
+  receipt produced by a live paired-node resolution.

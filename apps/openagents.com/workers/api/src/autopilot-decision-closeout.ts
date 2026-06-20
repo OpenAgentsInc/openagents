@@ -109,6 +109,15 @@ const formatCloseoutLine = (input: {
   `${input.outcome} (${input.resolvedState}) by ${input.actorAgentUserId} ` +
   `at ${input.decidedAt}.`
 
+// The exactly-once closeout key for a resolved review decision. A re-recorded
+// (idempotent) decision yields the SAME ref, so a downstream ledger dedups it to
+// one canonical closeout. Exported as the single source of truth so the audit
+// reconciler derives the same key the builder stamps.
+export const autopilotDecisionCloseoutRef = (
+  action: AutopilotWorkReviewAction,
+  workOrderRef: string,
+): string => `decision.closeout.${action}.${workOrderRef}`
+
 export type BuildAutopilotDecisionCloseoutReceiptInput = Readonly<{
   decisionRef: string
   workOrderRef: string
@@ -138,7 +147,7 @@ export const buildAutopilotDecisionCloseoutReceipt = (
     actorAgentUserId: reviewDecision.actorAgentUserId,
     // Exactly-once key: a re-recorded (idempotent) decision yields the SAME
     // closeoutRef, so a downstream ledger dedups it to one canonical closeout.
-    closeoutRef: `decision.closeout.${reviewDecision.action}.${workOrderRef}`,
+    closeoutRef: autopilotDecisionCloseoutRef(reviewDecision.action, workOrderRef),
     decidedAt: input.decidedAt,
     receiptRefs: reviewReceiptRefs(reviewDecision, workOrderRef),
     hasAnswer: false,
