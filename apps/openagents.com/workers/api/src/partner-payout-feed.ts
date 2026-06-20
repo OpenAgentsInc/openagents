@@ -25,7 +25,12 @@
  * The agreement reader and the ledger writer are injectable so the product rules
  * remain independently testable without a live D1; the defaults bind to D1.
  */
-import { type PartnerAgreement } from './partner-attribution-policy'
+import { Schema as S } from 'effect'
+
+import {
+  type PartnerAgreement,
+  assessPartnerAgreementSeed,
+} from './partner-attribution-policy'
 import {
   type PartnerPayoutEligibilityResolution,
   type PartnerQualifyingPaidEvent,
@@ -33,7 +38,7 @@ import {
 } from './partner-attribution-eligibility'
 import {
   type PartnerPayoutLedgerEntry,
-  type PartnerPayoutLedgerStorageError,
+  PartnerPayoutLedgerStorageError,
   type PartnerPayoutLedgerValidationError,
   type PartnerPayoutRole,
   createPartnerPayoutEligibility,
@@ -110,6 +115,165 @@ export const readActivePartnerAgreementsForCustomer: PartnerAgreementReader =
 
     return (result.results ?? []).map(rowToAgreement)
   }
+
+/**
+ * Raised when an agreement fails the attribution policy's write-boundary
+ * invariants or carries a non-public-safe ref/id. Distinct from the ledger's own
+ * validation error: this guards what may be STORED as an agreement, before any
+ * payout exists.
+ */
+export class PartnerAgreementValidationError extends S.TaggedErrorClass<PartnerAgreementValidationError>()(
+  'PartnerAgreementValidationError',
+  {
+    reason: S.String,
+  },
+) {}
+
+const wrapStorage = async <T>(
+  operation: string,
+  run: () => Promise<T>,
+): Promise<T> => {
+  try {
+    return await run()
+  } catch (error) {
+    throw new PartnerPayoutLedgerStorageError({ error, operation })
+  }
+}
+
+const readAgreementByRef = async (
+  db: D1Database,
+  agreementRef: string,
+): Promise<PartnerAgreement | null> => {
+  const row = await db
+    .prepare(
+      `SELECT agreement_ref AS agreement_ref,
+              partner_ref AS partner_ref,
+              partner_user_id AS partner_user_id,
+              role AS role,
+              effective_from AS effective_from,
+              effective_until AS effective_until
+         FROM partner_agreements
+        WHERE agreement_ref = ?
+          AND archived_at IS NULL
+        LIMIT 1`,
+    )
+    .bind(agreementRef)
+    .first<PartnerAgreementRow>()
+
+  return row === null ? null : rowToAgreement(row)
+}
+
+/**
+ * Input for seeding ONE explicit partner agreement (migration 0214). The
+ * attribution policy reads these rows; without one, no partner is ever credited
+ * for the named customer (the no-fallback rule). Holds only public-safe
+ * refs/ids — no payout destinations, invoices, preimages, or provider payloads.
+ */
+export type CreatePartnerAgreementInput = Readonly<{
+  agreementRef: string
+  customerUserId: string
+  effectiveFromIso: string
+  effectiveUntilIso?: string | null
+  id?: string
+  nowIso: string
+  partnerRef: string
+  partnerUserId: string
+  role: PartnerPayoutRole
+}>
+
+const SAFE_AGREEMENT_FIELDS = [
+  'agreementRef',
+  'partnerRef',
+  'partnerUserId',
+  'customerUserId',
+] as const
+
+/**
+ * Seed (or idempotently return) one explicit partner agreement.
+ *
+ * This is the writer the feed's reader had no counterpart for: it is the only
+ * sanctioned way a row enters `partner_agreements`, and it enforces the
+ * attribution policy at the WRITE boundary so a policy-violating agreement can
+ * never be stored and later credited. Rejects non-public-safe refs/ids, then
+ * applies `assessPartnerAgreementSeed` (role attributability incl. the referral
+ * exclusion, self-agreement exclusion, and window consistency). Idempotent on
+ * `agreementRef`. Never moves money; it only records who MAY be attributed.
+ */
+export const recordPartnerAgreement = async (
+  db: D1Database,
+  input: CreatePartnerAgreementInput,
+): Promise<PartnerAgreement> => {
+  const values: Record<(typeof SAFE_AGREEMENT_FIELDS)[number], string> = {
+    agreementRef: input.agreementRef,
+    customerUserId: input.customerUserId,
+    partnerRef: input.partnerRef,
+    partnerUserId: input.partnerUserId,
+  }
+
+  for (const field of SAFE_AGREEMENT_FIELDS) {
+    if (!SAFE_USER_ID_PATTERN.test(values[field])) {
+      throw new PartnerAgreementValidationError({
+        reason: `${field} must be a public-safe ref.`,
+      })
+    }
+  }
+
+  const effectiveUntilIso = input.effectiveUntilIso ?? null
+  const decision = assessPartnerAgreementSeed({
+    customerUserId: input.customerUserId,
+    effectiveFromIso: input.effectiveFromIso,
+    effectiveUntilIso,
+    partnerUserId: input.partnerUserId,
+    role: input.role,
+  })
+
+  if (decision._tag === 'rejected') {
+    throw new PartnerAgreementValidationError({ reason: decision.reason })
+  }
+
+  const existing = await wrapStorage('partnerAgreements.byRef.read', () =>
+    readAgreementByRef(db, input.agreementRef),
+  )
+
+  if (existing !== null) {
+    return existing
+  }
+
+  await wrapStorage('partnerAgreements.insert', () =>
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO partner_agreements (
+          id, agreement_ref, partner_ref, partner_user_id, customer_user_id,
+          role, effective_from, effective_until, policy_state, created_at,
+          archived_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NULL)`,
+      )
+      .bind(
+        input.id ?? `partner_agreement_${input.agreementRef}`,
+        input.agreementRef,
+        input.partnerRef,
+        input.partnerUserId,
+        input.customerUserId,
+        input.role,
+        input.effectiveFromIso,
+        effectiveUntilIso,
+        input.nowIso,
+      )
+      .run(),
+  )
+
+  const stored = await wrapStorage('partnerAgreements.readback', () =>
+    readAgreementByRef(db, input.agreementRef),
+  )
+
+  if (stored === null) {
+    throw new PartnerAgreementValidationError({
+      reason: 'partner agreement was not persisted.',
+    })
+  }
+
+  return stored
+}
 
 /**
  * Result of feeding a qualifying paid event into the partner payout ledger.

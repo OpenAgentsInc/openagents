@@ -4,6 +4,8 @@ import {
   PARTNER_ATTRIBUTION_ELIGIBLE_ROLES,
   PARTNER_ATTRIBUTION_POLICY_REF,
   type PartnerAgreement,
+  type PartnerAgreementSeed,
+  assessPartnerAgreementSeed,
   decidePartnerAttribution,
 } from './partner-attribution-policy'
 
@@ -144,5 +146,60 @@ describe('decidePartnerAttribution', () => {
         [agreement({ role: 'design_partner' })],
       ),
     ).toEqual({ _tag: 'self_attribution', partnerRef: 'partner.partner_a' })
+  })
+})
+
+describe('assessPartnerAgreementSeed', () => {
+  const seed = (
+    overrides: Partial<PartnerAgreementSeed> &
+      Pick<PartnerAgreementSeed, 'role'>,
+  ): PartnerAgreementSeed => ({
+    customerUserId: 'user_customer',
+    effectiveFromIso: '2026-01-01T00:00:00.000Z',
+    effectiveUntilIso: null,
+    partnerUserId: 'user_partner_a',
+    ...overrides,
+  })
+
+  test('an attributable role with a consistent open-ended window is seedable', () => {
+    expect(assessPartnerAgreementSeed(seed({ role: 'design_partner' }))).toEqual(
+      { _tag: 'seedable' },
+    )
+  })
+
+  test('a non-attributable role (referral) is rejected at the write boundary', () => {
+    expect(
+      assessPartnerAgreementSeed(
+        seed({ role: 'referral' as PartnerAgreementSeed['role'] }),
+      ),
+    ).toMatchObject({ _tag: 'rejected' })
+  })
+
+  test('a self-agreement (partner == customer) is rejected', () => {
+    expect(
+      assessPartnerAgreementSeed(
+        seed({ customerUserId: 'user_partner_a', role: 'affiliate' }),
+      ),
+    ).toMatchObject({ _tag: 'rejected' })
+  })
+
+  test('an inverted window (until <= from) is rejected', () => {
+    expect(
+      assessPartnerAgreementSeed(
+        seed({
+          effectiveFromIso: '2026-06-01T00:00:00.000Z',
+          effectiveUntilIso: '2026-01-01T00:00:00.000Z',
+          role: 'affiliate',
+        }),
+      ),
+    ).toMatchObject({ _tag: 'rejected' })
+  })
+
+  test('an unparseable effectiveFromIso is rejected', () => {
+    expect(
+      assessPartnerAgreementSeed(
+        seed({ effectiveFromIso: 'not-a-date', role: 'design_partner' }),
+      ),
+    ).toMatchObject({ _tag: 'rejected' })
   })
 })

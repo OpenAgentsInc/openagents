@@ -8,8 +8,11 @@ import {
   createPartnerPayoutEligibility,
 } from './partner-payout-ledger'
 import {
+  type CreatePartnerAgreementInput,
+  PartnerAgreementValidationError,
   type PartnerAgreementReader,
   readActivePartnerAgreementsForCustomer,
+  recordPartnerAgreement,
   recordPartnerPayoutForPaidEvent,
 } from './partner-payout-feed'
 
@@ -274,5 +277,156 @@ describe('readActivePartnerAgreementsForCustomer', () => {
 
     expect(agreements).toEqual([])
     expect(calls).toHaveLength(0)
+  })
+})
+
+// Minimal in-memory D1 mock for the agreement writer: INSERT OR IGNORE keyed on
+// agreement_ref, SELECT ... WHERE agreement_ref = ? returns the stored row.
+type StoredAgreementRow = Readonly<{
+  agreement_ref: string
+  effective_from: string
+  effective_until: string | null
+  partner_ref: string
+  partner_user_id: string
+  role: 'affiliate' | 'design_partner'
+}>
+
+const agreementWriterDb = (
+  store: Map<string, StoredAgreementRow>,
+  ops: Array<string>,
+): D1Database => {
+  const statement = (
+    query: string,
+    bound: ReadonlyArray<unknown> = [],
+  ): D1PreparedStatement => {
+    return ({
+      bind: (...values: ReadonlyArray<unknown>) => statement(query, values),
+      first: <T,>() => {
+        ops.push('first')
+        const ref = String(bound[0] ?? '')
+        const row = store.get(ref) ?? null
+
+        return Promise.resolve((row as unknown) as T | null)
+      },
+      run: () => {
+        ops.push('run')
+        const [, agreementRef, partnerRef, partnerUserId, , role, from, until] =
+          bound
+
+        if (!store.has(String(agreementRef))) {
+          store.set(String(agreementRef), {
+            agreement_ref: String(agreementRef),
+            effective_from: String(from),
+            effective_until: until === null ? null : String(until),
+            partner_ref: String(partnerRef),
+            partner_user_id: String(partnerUserId),
+            role: role as 'affiliate' | 'design_partner',
+          })
+        }
+
+        return Promise.resolve(({
+          meta: {} as D1Meta,
+          results: [],
+          success: true,
+        } as unknown) as D1Result)
+      },
+      all: () => Promise.reject(new Error('all should not be used')),
+      raw: () => Promise.reject(new Error('raw should not be used')),
+    } as unknown) as D1PreparedStatement
+  }
+
+  return {
+    batch: () => Promise.reject(new Error('batch should not be used')),
+    dump: () => Promise.reject(new Error('dump should not be used')),
+    exec: () => Promise.reject(new Error('exec should not be used')),
+    prepare: (query: string) => statement(query),
+    withSession: () => {
+      throw new Error('session should not be used')
+    },
+  } as unknown as D1Database
+}
+
+const baseAgreementInput: CreatePartnerAgreementInput = {
+  agreementRef: 'partner_agreement_acme',
+  customerUserId: 'github:client',
+  effectiveFromIso: '2026-01-01T00:00:00.000Z',
+  effectiveUntilIso: null,
+  nowIso: '2026-01-01T00:00:00.000Z',
+  partnerRef: 'design_partner_acme',
+  partnerUserId: 'github:acme_agency',
+  role: 'design_partner',
+}
+
+describe('recordPartnerAgreement', () => {
+  test('seeds a policy-conformant agreement and reads it back', async () => {
+    const store = new Map<string, StoredAgreementRow>()
+    const ops: Array<string> = []
+    const db = agreementWriterDb(store, ops)
+
+    const agreement = await recordPartnerAgreement(db, baseAgreementInput)
+
+    expect(agreement).toEqual({
+      agreementRef: 'partner_agreement_acme',
+      effectiveFromIso: '2026-01-01T00:00:00.000Z',
+      effectiveUntilIso: null,
+      partnerRef: 'design_partner_acme',
+      partnerUserId: 'github:acme_agency',
+      role: 'design_partner',
+    })
+    expect(ops).toContain('run')
+  })
+
+  test('is idempotent on agreementRef (no second insert)', async () => {
+    const store = new Map<string, StoredAgreementRow>()
+    const ops: Array<string> = []
+    const db = agreementWriterDb(store, ops)
+
+    await recordPartnerAgreement(db, baseAgreementInput)
+    const runsAfterFirst = ops.filter(op => op === 'run').length
+    await recordPartnerAgreement(db, baseAgreementInput)
+
+    expect(ops.filter(op => op === 'run').length).toBe(runsAfterFirst)
+  })
+
+  test('rejects the referral role before touching storage', async () => {
+    const store = new Map<string, StoredAgreementRow>()
+    const ops: Array<string> = []
+    const db = agreementWriterDb(store, ops)
+
+    await expect(
+      recordPartnerAgreement(db, {
+        ...baseAgreementInput,
+        role: 'referral' as CreatePartnerAgreementInput['role'],
+      }),
+    ).rejects.toBeInstanceOf(PartnerAgreementValidationError)
+    expect(ops).toHaveLength(0)
+  })
+
+  test('rejects a self-agreement (partner == customer)', async () => {
+    const store = new Map<string, StoredAgreementRow>()
+    const ops: Array<string> = []
+    const db = agreementWriterDb(store, ops)
+
+    await expect(
+      recordPartnerAgreement(db, {
+        ...baseAgreementInput,
+        customerUserId: 'github:acme_agency',
+      }),
+    ).rejects.toBeInstanceOf(PartnerAgreementValidationError)
+    expect(ops).toHaveLength(0)
+  })
+
+  test('rejects a non-public-safe ref before touching storage', async () => {
+    const store = new Map<string, StoredAgreementRow>()
+    const ops: Array<string> = []
+    const db = agreementWriterDb(store, ops)
+
+    await expect(
+      recordPartnerAgreement(db, {
+        ...baseAgreementInput,
+        agreementRef: 'not a safe ref!!',
+      }),
+    ).rejects.toBeInstanceOf(PartnerAgreementValidationError)
+    expect(ops).toHaveLength(0)
   })
 })
