@@ -3108,6 +3108,41 @@ const schemaComponents = (): JsonSchema => ({
       },
     },
   },
+  LaborEarningsResponse: {
+    type: 'object',
+    description: 'Public-safe projection of a provider\'s labor earnings, including total released amount and a feed of recent escrow release receipts.',
+    required: ['schemaVersion', 'providerActorRef', 'publicSafe', 'summary', 'rows', 'authorityBoundary'],
+    properties: {
+      schemaVersion: { type: 'string', enum: ['openagents.labor_earnings.v1'] },
+      providerActorRef: { type: 'string' },
+      publicSafe: { type: 'boolean', enum: [true] },
+      summary: {
+        type: 'object',
+        required: ['releasedEscrowCount', 'totalReleasedMsat'],
+        properties: {
+          releasedEscrowCount: { type: 'number' },
+          totalReleasedMsat: { type: 'number' },
+        },
+      },
+      rows: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['amountMsat', 'escrowRef', 'jobEventRef', 'receiptRef', 'requesterActorRef', 'workRequestRef', 'releasedAtIso'],
+          properties: {
+            amountMsat: { type: 'number' },
+            escrowRef: { type: 'string' },
+            jobEventRef: { type: 'string' },
+            receiptRef: { type: 'string' },
+            requesterActorRef: { type: 'string' },
+            workRequestRef: { type: 'string' },
+            releasedAtIso: { type: 'string' },
+          },
+        },
+      },
+      authorityBoundary: { type: 'string' },
+    },
+  },
   ArtanisLaborReceiptFeedProjection: {
     type: 'object',
     additionalProperties: true,
@@ -4595,6 +4630,26 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Artanis report.',
           '#/components/schemas/PublicArtanisReport',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/labor-earnings': {
+    get: operation({
+      operationId: 'getPublicLaborEarnings',
+      summary: 'Get public labor earnings',
+      description: 'Public read-only projection of a provider\'s labor earnings, including escrow release receipts and total earned. This feed is public-safe and grants no spend, settlement, or payout authority.',
+      tags: ['Labor'],
+      security: publicRead,
+      parameters: [
+        queryParam('providerRef', 'Provider actor ref to fetch earnings for.'),
+        queryParam('limit', 'Optional limit for recent release receipts (default 50).'),
+      ],
+      responses: {
+        '200': okJson(
+          'Public labor earnings projection.',
+          '#/components/schemas/LaborEarningsResponse',
         ),
         ...errorResponses(),
       },
