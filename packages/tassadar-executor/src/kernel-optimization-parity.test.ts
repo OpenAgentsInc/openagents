@@ -12,8 +12,11 @@ import {
 
 // Anchored on the historical March-2026 Psionic/Qwen 3.5 0.5B result
 // (docs/transcripts/217.md): baseline runtime ~328 tok/s, optimized ~523 tok/s.
+// The parity verdict below replayed graph "b".repeat(64); the optimized record's
+// graphDigest must match it for the tok/s number to be bound to that proof.
 const baseline: KernelThroughputRecord = {
   device: "cuda",
+  graphDigest: "d".repeat(64),
   hardwareRef: "single-machine-demo-gpu",
   kernelRef: "baseline-runtime",
   opRef: "rmsnorm",
@@ -22,6 +25,7 @@ const baseline: KernelThroughputRecord = {
 }
 const optimized: KernelThroughputRecord = {
   device: "cuda",
+  graphDigest: "b".repeat(64),
   hardwareRef: "single-machine-demo-gpu",
   kernelRef: "psionic-custom-cuda",
   opRef: "rmsnorm",
@@ -182,6 +186,66 @@ describe("kernel-optimization throughput-parity verdict", () => {
     })
     expect(verdict.outcome).toBe("rejected")
     expect(verdict.rejection?.reason).toBe("kernel_not_optimized")
+  })
+
+  test("binds the optimized tok/s record to the replayed parity-trace graph", () => {
+    // The optimized record's graph matches verifiedParity.graphDigest, so the
+    // tok/s number is bound to the artifact the validator actually replayed.
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized,
+      optimizedOpRef: "rmsnorm",
+      parityVerdict: verifiedParity,
+    })
+    expect(verdict.outcome).toBe("accepted")
+  })
+
+  test("trace binding is trim/case-insensitive on the graph digest", () => {
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized: { ...optimized, graphDigest: `  ${"B".repeat(64)}  ` },
+      optimizedOpRef: "rmsnorm",
+      parityVerdict: verifiedParity,
+    })
+    expect(verdict.outcome).toBe("accepted")
+  })
+
+  test("rejects a tok/s record measured on a different graph than was replayed", () => {
+    // The optimized number was measured on graph "e..." but the validator
+    // replayed graph "b..."; the proof does not pertain to the measured kernel.
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized: { ...optimized, graphDigest: "e".repeat(64) },
+      optimizedOpRef: "rmsnorm",
+      parityVerdict: verifiedParity,
+    })
+    expect(verdict.outcome).toBe("rejected")
+    expect(verdict.rejection?.reason).toBe("parity_trace_unbound")
+  })
+
+  test("rejects a blank optimized graph digest (nothing to bind the proof to)", () => {
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized: { ...optimized, graphDigest: "   " },
+      optimizedOpRef: "rmsnorm",
+      parityVerdict: verifiedParity,
+    })
+    expect(verdict.outcome).toBe("rejected")
+    expect(verdict.rejection?.reason).toBe("parity_trace_unbound")
+  })
+
+  test("trace binding is structural: an unbound graph wins over a verified-but-irrelevant parity", () => {
+    // Even though this parity verdict reads "verified", it replayed a different
+    // graph than the optimized kernel was measured on, so it proves nothing about
+    // that kernel — binding is checked before the parity outcome gate.
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized: { ...optimized, graphDigest: "e".repeat(64) },
+      optimizedOpRef: "rmsnorm",
+      parityVerdict: { ...verifiedParity, graphDigest: "f".repeat(64) },
+    })
+    expect(verdict.outcome).toBe("rejected")
+    expect(verdict.rejection?.reason).toBe("parity_trace_unbound")
   })
 
   test("speed never overrides correctness: faster-but-wrong is rejected", () => {

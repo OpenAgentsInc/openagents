@@ -70,6 +70,7 @@ const verdictFor = (
   verifyKernelOptimizationParity({
     baseline: {
       device: 'cuda',
+      graphDigest: parityVerdict.graphDigest,
       hardwareRef: 'nvidia-a10g',
       kernelRef: 'baseline-runtime',
       opRef: optimizedOpRef,
@@ -78,6 +79,7 @@ const verdictFor = (
     },
     optimized: {
       device: 'cuda',
+      graphDigest: parityVerdict.graphDigest,
       hardwareRef: 'nvidia-a10g',
       kernelRef: `${optimizedOpRef}-optimized`,
       opRef: optimizedOpRef,
