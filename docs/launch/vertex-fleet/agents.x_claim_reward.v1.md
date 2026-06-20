@@ -150,6 +150,31 @@ missing run-level gate.
   — a "Worker-side dispatch run outcome audit" section wiring the auditor in
   before the per-row post-settlement receipt audit for flag-gated smoke runs.
 
+## Follow-up: composite run+row smoke completion gate (this run)
+
+The run-level outcome auditor inspects the dispatch *summary* and the
+transition-request builder inspects the settled *row*, but nothing required BOTH
+before proposing the green flip. That left a hole: a worker-side run that settled
+the wrong number of rewards, left a payment pending, or skipped on
+liquidity/daily-cap could still produce a green transition proposal as long as
+the single inspected row happened to look clean. This run adds the composite gate
+that closes that hole.
+
+- `apps/openagents.com/workers/api/src/x-claim-reward-smoke-completion.ts`
+  — `assertXClaimRewardSmokeCompletion({ summary, reward })` plus the
+  `XClaimRewardSmokeCompletionReport` / `XClaimRewardSmokeCompletionInput` types.
+  It runs `assertXClaimRewardSmokeDispatchOutcome(summary)` (run-level) AND
+  `buildXClaimRewardSmokeTransitionRequest(reward)` (row-level) and emits the
+  public-safe `transitionRequest` only when BOTH pass; `blockingReasonRefs` is
+  the deduped union of both gates' reasons. It moves no funds and flips no state.
+- `apps/openagents.com/workers/api/src/x-claim-reward-smoke-completion.test.ts`
+  — covers the both-pass emit, run-not-clean withhold (clean row), pending-payment
+  withhold, settled-row-not-ready withhold (clean run), both-fail aggregation, and
+  a no-payment-material assertion on the serialized report.
+- `apps/openagents.com/docs/2026-06-09-x-claim-reward-dispatch-runbook.md`
+  — a "Smoke completion gate (run + row, one go/no-go)" section directing the
+  operator to use this composite instead of the row-only builder.
+
 ## What remains
 
 The blocker is still open: an operator must run the live single-reward smoke —

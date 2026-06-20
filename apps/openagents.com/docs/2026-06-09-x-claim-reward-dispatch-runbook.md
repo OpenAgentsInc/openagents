@@ -244,6 +244,27 @@ route re-evaluates blockers on submit, and the green flip still requires owner
 sign-off. A non-empty `blockingReasonRefs` means do not submit until each listed
 reason clears.
 
+## Smoke completion gate (run + row, one go/no-go)
+
+For the flag-gated worker-side path, run the composite completion gate
+(`assertXClaimRewardSmokeCompletion` in
+`apps/openagents.com/workers/api/src/x-claim-reward-smoke-completion.ts`) instead
+of calling the transition-receipt builder directly. The standalone builder only
+inspects the settled *row*; this gate also requires the worker-side dispatch
+*run* to have been a clean bounded single-reward smoke before it will emit the
+transition request. That closes the hole where a run that settled the wrong
+number of rewards, left a payment pending, or skipped on liquidity/daily-cap
+could still produce a green proposal as long as the single inspected row looked
+clean.
+
+Feed it `{ summary, reward }` — the `runXClaimRewardTreasuryDispatch` summary plus
+the settled reward row. It runs the run-level outcome audit
+(`assertXClaimRewardSmokeDispatchOutcome`) AND the per-row transition builder
+(`buildXClaimRewardSmokeTransitionRequest`), and emits `transitionRequest` only
+when BOTH pass. A non-empty `blockingReasonRefs` (the union of run-level and
+row-level reasons) means do not submit until each listed reason clears. It moves
+no funds and flips no promise state.
+
 After the settled response, verify the public promise remains honest until the
 operator records the transition receipt:
 
