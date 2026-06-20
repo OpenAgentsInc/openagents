@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.2'
+export const PublicProductPromisesVersion = '2026-06-20.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -399,7 +399,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'pylon.v03_release_candidate.v1',
         productArea: 'Pylon',
         audience: ['contributor', 'agent', 'operator'],
-        state: 'yellow',
+        state: 'green',
         claim:
           'Pylon is in the monorepo as the v1.0 contributor node and includes the former Probe runtime surface.',
         safeCopy:
@@ -410,6 +410,8 @@ export const publicProductPromisesDocument = () => {
           'apps/pylon/package.json',
           'apps/pylon/scripts/build-rc-binaries.sh',
           'apps/oa-updates/keys/release-pubkey.json',
+          'https://updates.openagents.com/pylon/rc/darwin-arm64/feed.json',
+          'route:/api/pylons#pylon.33afd48282a649047e3a',
           'apps/oa-updates/docs/release-signing-runbook.md',
           'apps/oa-updates/scripts/publish-pylon-release.ts',
           'apps/openagents.com/apps/web/public/INSTALL.md',
@@ -418,12 +420,9 @@ export const publicProductPromisesDocument = () => {
           'docs/autopilot-coder/2026-06-15-rc-tester-install-guide.md',
           'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
         ],
-        blockerRefs: [
-          'blocker.product_promises.pylon_v1_live_network_smokes_incomplete',
-          'blocker.product_promises.pylon_v1_signed_binary_feed_rollout_incomplete',
-        ],
+        blockerRefs: [],
         verification:
-          'apps/pylon package metadata reports @openagentsinc/pylon@1.0.5, and npm view @openagentsinc/pylon reports latest=1.0.5 on 2026-06-19. Keep yellow until live network smokes and signed-binary/feed rollout are current for the public install guide.',
+          'apps/pylon package metadata reports @openagentsinc/pylon@1.0.5, and npm view @openagentsinc/pylon reports latest=1.0.5 on 2026-06-19. Green (MET, owner-authorized 2026-06-20): v1.0.5 signed-binary feed live at updates.openagents.com (Cloud Run oa-updates-00041-b7b, verified sha256+ed25519 vs the pinned release-pubkey, fail-closed/tamper-rejected) + a live network smoke (pylon.33afd48282a649047e3a online, openagents.pylon@1.0.5). macOS+Linux only (Windows out of scope); network-scale earning remains separate gates.',
         authorityBoundary:
           'A local package install does not prove live OpenAgents network registration, paid work, payout, settlement, or marketplace authority.',
       },
@@ -432,7 +431,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'pylon.release_tomorrow.v1',
         productArea: 'Pylon',
         audience: ['contributor', 'public'],
-        state: 'yellow',
+        state: 'green',
         claim: 'A new version of Pylon releases.',
         safeCopy:
           'The Pylon v1.0 source cut has landed for macOS and Linux, @openagentsinc/pylon@latest resolves to the v1.0 line, and the install guide is Pylon-first. Signed-binary/feed rollout, live deployment, and earning readiness are separate gates. Windows/WSL is not covered by current install evidence and must not be folded into broad "anybody" copy.',
@@ -447,11 +446,9 @@ export const publicProductPromisesDocument = () => {
           'apps/oa-updates/docs/release-signing-runbook.md',
           'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
         ],
-        blockerRefs: [
-          'blocker.product_promises.pylon_v1_signed_binary_feed_rollout_incomplete',
-        ],
+        blockerRefs: [],
         verification:
-          'npm view @openagentsinc/pylon reports latest=1.0.5 on 2026-06-19. Run apps/pylon local release gates, signed-binary/feed checks, and separate install smokes before changing this to green.',
+          'npm view @openagentsinc/pylon reports latest=1.0.5 on 2026-06-19. Green (MET, owner-authorized 2026-06-20): the v1.0.5 signed-binary release published + verified on the live feed (Cloud Run oa-updates-00041-b7b) with a live network smoke (pylon.33afd48282a649047e3a, openagents.pylon@1.0.5). macOS+Linux only.',
         authorityBoundary:
           'Release-package availability does not imply assignment readiness, wallet readiness, or earning readiness.',
       },
@@ -3434,6 +3431,7 @@ export const publicProductPromisesDocument = () => {
       'Registry 2026-06-19.13: FIRST green flip of the weekend assault — agents.nostr_fallback_coordination.v1 yellow -> green, owner-authorized 2026-06-19. The gate ("a demonstrated end-to-end outage-coordination drill") is MET by PR #5535 (merged 4c2242f8): apps/openagents.com/scripts/nostr-fallback-drill.ts runs the full outage sequence — NIP-38 liveness -> NIP-65/02 discovery -> NIP-17 encrypted DM -> NIP-90 LBR job lifecycle -> reconcile on recovery — with ephemeral per-run keys, an assertNoSecrets guard before every publish, and 11 fetchable public-safe event ids on wss://nos.lol recorded in docs/nostr/2026-06-20-outage-coordination-drill.md. Both blockers (nostr_outage_coordination_drill_missing, agent_nostr_messaging_tooling_incomplete) are cleared. The flip is applied in source ahead of the operator-route transition receipt (per the 2026-06-14 reconciliation pattern); the matching owner-signed promise_transition exception receipt is recorded against the deployed registry via POST /api/operator/product-promises/transitions, dereferenceable at /api/public/product-promises/transitions. Honest scope: a drill on a public relay demonstrates the coordination flow, not survival of a real production outage at scale. Green count 20 -> 21.',
       'Registry 2026-06-20.1 updates agents.cursor_forum_wallet.v1 to match the Spark-first Forum tip-recipient implementation (#5539). No state changes: the promise stays green, but the registration/default-readiness copy now names sparkAddress and directPayment.kind = "spark_address" as the primary rail, with BOLT 12 retained only as a fallback compatibility rail.',
         'Registry 2026-06-20.2: owner-decided green — training.verification_classes.v1 yellow -> green. The last open gate (#4674 aggregate-only vs per-contribution sampling) is decided in writing: per-contribution sampling default per class, aggregate-only deprecated (docs/promises/2026-06-20-verification-class-sampling-policy.md, owner-approved 2026-06-20). Other criteria already met (registry live; exact_trace_replay/deterministic_recompute/freivalds_merkle on real work; paid weak-device validator closeout #4676; exact_trace_replay already per-contribution across five paid contributors on run.tassadar.executor.20260615). Blocker cleared. Green 21 -> 22. Honest bound: not all five classes on real work / not at-scale. promise_transition via operator route per proof.claim_upgrade_receipts.v1.',
+        'Registry 2026-06-20.3: Pylon v1.0.5 signed-binary release shipped + verified — pylon.v03_release_candidate.v1 + pylon.release_tomorrow.v1 yellow -> green (owner-authorized 2026-06-20). Signed binaries (macOS+Linux, 4 targets) signed with pinned ed25519 kid 2dbe811d19f67528, published to updates.openagents.com (Cloud Run oa-updates-00041-b7b, rollout 100, full rc history preserved); live feed verified serving v1.0.5 with sha256+ed25519 against apps/oa-updates/keys/release-pubkey.json (fail-closed, tamper rejected); live network smoke registered+heartbeated online in /api/pylons as pylon.33afd48282a649047e3a (openagents.pylon@1.0.5). Both blockers cleared. Green 22 -> 24. Honest bound: macOS+Linux only (Windows out of scope); network-scale earning separate. Flip applied in source ahead of the operator-route transition receipt.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
