@@ -179,6 +179,7 @@ export const projectTrainingMarathonOperations = (
       schemaVersion: DurableCheckpointSealSchemaVersion,
       sourceRefs: [
         'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal.ts',
+        'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt.ts',
         'apps/openagents.com/workers/api/src/training-run-window-authority.ts',
         'apps/openagents.com/workers/api/src/training-window-bootstrap.ts',
         worklogRef,
