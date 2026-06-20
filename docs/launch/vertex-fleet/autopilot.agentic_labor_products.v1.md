@@ -152,3 +152,43 @@ real ledger* and is the one path a real sale invokes, but a REAL external sale
 (demand provenance per `proof.demand_provenance.v1`) settled under an armed,
 owner-signed seam with a **published** receipt on the `labor` stream is still
 required for green.
+
+## Follow-up run (2026-06-20): settlement-receipt dereference read path
+
+A settled order MINTED a typed `LaborProductSettlementReceipt`
+(`recordLaborProductSettlement` / `carryLaborProductOrderToSettlement`), but
+nothing could **resolve a receipt back from its public-safe `receiptRef`** — the
+flow store only reads flows by `orderId`. A receipt's entire purpose is to be
+looked up by its ref (the value a claim-upgrade review under
+`proof.claim_upgrade_receipts.v1` is handed). Without a read path a real sale
+could settle and mint a receipt that no public surface could resolve —
+"dereferenceable" in name only.
+
+This run adds the read seam:
+
+- `LaborProductReceiptStore` + `emptyLaborProductReceiptStore` /
+  `makeInMemoryLaborProductReceiptStore` and
+  `readLaborProductSettlementReceipt(store, receiptRef)` in
+  `apps/openagents.com/workers/api/src/agentic-labor-product.ts` — a read-only,
+  injected store and a pure dereference (returns the receipt or `null`).
+- `listLaborProductSettlementReceipts(store)` — an honest public projection
+  (`yellow`, `live_at_read`, surfaces the uncleared real-sale-receipt blocker).
+- `GET /api/public/autopilot/labor-products?receiptRef=<ref>` in
+  `agentic-labor-product-routes.ts` dereferences a published receipt. The store
+  is **empty in production** (no real receipt has been published), so the route
+  returns `receipt: null` and stays INERT; it is only non-empty when a real
+  settled receipt is deliberately published into the injected store.
+
+Tests: new `settlement-receipt dereference (read-only, INERT)` block in
+`agentic-labor-product.test.ts` (hit/miss/empty-store/projection) and three new
+route cases in `agentic-labor-product-routes.test.ts` (armed dereference, unknown
+ref -> null, disabled -> INERT null).
+
+Validation: `bunx tsc -p tsconfig.json --noEmit` (workers/api) **0 errors**;
+`bun run check:deploy` **passed**; `git diff --check` clean.
+
+Still does **not** clear the blocker: this makes a published receipt
+*resolvable*, but the production store is empty and no REAL external sale
+(demand provenance) has been settled under an armed, owner-signed seam and
+published. That published, real, dereferenceable receipt + owner sign-off is
+still required for green.

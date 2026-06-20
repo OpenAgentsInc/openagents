@@ -3,7 +3,10 @@ import { describe, expect, test } from 'vitest'
 
 import {
   buildLaborProductFlowPlan,
+  laborProductOrderReceiptRef,
   makeInMemoryLaborProductFlowStore,
+  makeInMemoryLaborProductReceiptStore,
+  recordLaborProductSettlement,
   type LaborProductListing,
 } from './agentic-labor-product'
 import {
@@ -34,6 +37,31 @@ const flowStore = () => {
     throw new Error(result.error.reason)
   }
   return makeInMemoryLaborProductFlowStore([result.plan])
+}
+
+const receiptRef = laborProductOrderReceiptRef('order-1')
+
+const receiptStore = () => {
+  const built = buildLaborProductFlowPlan({
+    orderId: 'order-1',
+    buyerRef: 'agent:buyer',
+    listing,
+    stage: 'delivered',
+    workerRef: 'agent:worker',
+    artifactRef: 'artifact.repo_triage.order-1',
+  })
+  if (!built.ok) {
+    throw new Error(built.error.reason)
+  }
+  const recorded = recordLaborProductSettlement(built.plan, {
+    _tag: 'settled',
+    receiptRef,
+    outcome: { metered: true, receiptRef },
+  })
+  if (!recorded.ok) {
+    throw new Error(recorded.error.reason)
+  }
+  return makeInMemoryLaborProductReceiptStore([recorded.receipt])
 }
 
 const request = (suffix = '') =>
@@ -112,6 +140,51 @@ describe('agentic labor-product route', () => {
     )
     const body = (await response.json()) as { flow: unknown }
     expect(body.flow).toBeNull()
+  })
+
+  test('dereferences a published settlement receipt by receiptRef when armed', async () => {
+    const response = await Effect.runPromise(
+      handleAgenticLaborProductApi(
+        request(`?receiptRef=${encodeURIComponent(receiptRef)}`),
+        { enabled: true, receiptStore: receiptStore() },
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    const body = (await response.json()) as {
+      promiseState: string
+      unclearedBlockerRefs: ReadonlyArray<string>
+      receipt: { receiptRef: string; settled: boolean; streamKind: string } | null
+    }
+    expect(body.promiseState).toBe('yellow')
+    expect(body.receipt?.receiptRef).toBe(receiptRef)
+    expect(body.receipt?.settled).toBe(true)
+    expect(body.receipt?.streamKind).toBe('labor')
+    expect(body.unclearedBlockerRefs).toEqual([
+      'blocker.product_promises.agentic_labor_product_real_sale_receipt_missing',
+    ])
+  })
+
+  test('returns null receipt for an unknown receiptRef', async () => {
+    const response = await Effect.runPromise(
+      handleAgenticLaborProductApi(request('?receiptRef=receipt.unknown'), {
+        enabled: true,
+        receiptStore: receiptStore(),
+      }),
+    )
+    const body = (await response.json()) as { receipt: unknown }
+    expect(body.receipt).toBeNull()
+  })
+
+  test('is INERT for receiptRef when disabled (empty receipt store)', async () => {
+    const response = await Effect.runPromise(
+      handleAgenticLaborProductApi(
+        request(`?receiptRef=${encodeURIComponent(receiptRef)}`),
+        { enabled: false, receiptStore: receiptStore() },
+      ),
+    )
+    const body = (await response.json()) as { receipt: unknown }
+    expect(body.receipt).toBeNull()
   })
 
   test('rejects an unsupported method (DELETE)', async () => {

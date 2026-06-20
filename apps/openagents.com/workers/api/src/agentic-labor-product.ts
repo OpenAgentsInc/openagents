@@ -925,3 +925,84 @@ export const readLaborProductFlow = (
   orderId: string,
 ): LaborProductFlowPlan | null =>
   store.list().find(flow => flow.orderId === orderId) ?? null
+
+// ---------------------------------------------------------------------------
+// Settlement-receipt dereference (read-only, INERT)
+// ---------------------------------------------------------------------------
+//
+// Advances the real-sale-receipt blocker
+// (blocker.product_promises.agentic_labor_product_real_sale_receipt_missing) by
+// supplying the missing READ PATH that makes a recorded settlement receipt
+// actually DEREFERENCEABLE. `recordLaborProductSettlement` /
+// `carryLaborProductOrderToSettlement` MINT a typed `LaborProductSettlementReceipt`
+// when money genuinely moves, but nothing could resolve one back from its
+// public-safe `receiptRef`: the flow store reads flows by `orderId`, and a
+// receipt's whole point is to be looked up by its receipt ref (the value a
+// claim-upgrade review under proof.claim_upgrade_receipts.v1 is handed). Without
+// this, a real sale could settle and mint a receipt that no public surface could
+// resolve — "dereferenceable" in name only.
+//
+// It does NOT clear the blocker: it adds the read seam, but the store is EMPTY in
+// production (no real receipt has ever been published), so this dereferences
+// nothing live. Green still needs a REAL external sale (demand provenance)
+// settled under an armed, owner-signed seam whose minted receipt is published
+// into a store this read path can then resolve.
+
+/**
+ * A read-only settlement-receipt store. Injected so the surface stays pure and
+ * testable; the live Worker passes the empty store while the flow is INERT (no
+ * real settled receipt has ever been published).
+ */
+export type LaborProductReceiptStore = {
+  list: () => ReadonlyArray<LaborProductSettlementReceipt>
+}
+
+export const emptyLaborProductReceiptStore: LaborProductReceiptStore = {
+  list: () => [],
+}
+
+export const makeInMemoryLaborProductReceiptStore = (
+  receipts: ReadonlyArray<LaborProductSettlementReceipt>,
+): LaborProductReceiptStore => ({
+  list: () => receipts,
+})
+
+/**
+ * Dereference ONE settlement receipt by its public-safe `receiptRef`, or null
+ * when no settled receipt with that ref exists. This is the resolution a
+ * claim-upgrade review performs against a published receipt ref. Read-only and
+ * INERT: it moves no money and reads no ledger.
+ */
+export const readLaborProductSettlementReceipt = (
+  store: LaborProductReceiptStore,
+  receiptRef: string,
+): LaborProductSettlementReceipt | null =>
+  store.list().find(receipt => receipt.receiptRef === receiptRef) ?? null
+
+/**
+ * Public-safe settlement-receipt listing projection. Honest: in production the
+ * store is empty (no real settled receipt has been published), so `receipts` is
+ * `[]`, the promise stays yellow, and the uncleared real-sale-receipt blocker is
+ * surfaced. `live_at_read` (rebuilt from the store each request).
+ */
+export const listLaborProductSettlementReceipts = (
+  store: LaborProductReceiptStore,
+): {
+  schema: typeof AGENTIC_LABOR_PRODUCT_SETTLEMENT_RECEIPT_SCHEMA
+  promiseIds: readonly [typeof AGENTIC_LABOR_PRODUCTS_PROMISE]
+  promiseState: 'yellow'
+  generatedAt: string
+  maxStalenessSeconds: number
+  staleness: PublicProjectionStalenessContract
+  unclearedBlockerRefs: ReadonlyArray<string>
+  receipts: ReadonlyArray<LaborProductSettlementReceipt>
+} => ({
+  schema: AGENTIC_LABOR_PRODUCT_SETTLEMENT_RECEIPT_SCHEMA,
+  promiseIds: [AGENTIC_LABOR_PRODUCTS_PROMISE],
+  promiseState: 'yellow',
+  generatedAt: currentIsoTimestamp(),
+  maxStalenessSeconds: LaborProductFlowStaleness.maxStalenessSeconds,
+  staleness: LaborProductFlowStaleness,
+  unclearedBlockerRefs: [LABOR_PRODUCT_NO_REAL_SALE_RECEIPT_REF],
+  receipts: store.list(),
+})

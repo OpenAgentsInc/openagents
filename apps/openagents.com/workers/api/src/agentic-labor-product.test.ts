@@ -11,9 +11,12 @@ import {
   laborProductOrderReceiptRef,
   laborProductStageIndex,
   listLaborProductFlows,
+  listLaborProductSettlementReceipts,
   makeInMemoryLaborProductFlowStore,
+  makeInMemoryLaborProductReceiptStore,
   planSelfServeLaborProductOrder,
   readLaborProductFlow,
+  readLaborProductSettlementReceipt,
   recordLaborProductSettlement,
   settleLaborProductOrder,
   type LaborProductListing,
@@ -497,5 +500,49 @@ describe('recordLaborProductSettlement (PURE)', () => {
     expect(recorded.receipt.receiptRef).toBe(
       delivered.plan.settlement.receiptRef,
     )
+  })
+})
+
+describe('settlement-receipt dereference (read-only, INERT)', () => {
+  const receiptRef = laborProductOrderReceiptRef('order-1')
+  const mint = () => {
+    const recorded = recordLaborProductSettlement(okPlan(), {
+      _tag: 'settled',
+      receiptRef,
+      outcome: { metered: true, receiptRef },
+    })
+    if (!recorded.ok) throw new Error(recorded.error.reason)
+    return recorded.receipt
+  }
+
+  test('dereferences a published receipt by its receiptRef', () => {
+    const store = makeInMemoryLaborProductReceiptStore([mint()])
+    const found = readLaborProductSettlementReceipt(store, receiptRef)
+    expect(found?.receiptRef).toBe(receiptRef)
+    expect(found?.settled).toBe(true)
+    expect(found?.streamKind).toBe('labor')
+    expect(found?.promiseState).toBe('yellow')
+  })
+
+  test('returns null for an unknown receiptRef', () => {
+    const store = makeInMemoryLaborProductReceiptStore([mint()])
+    expect(readLaborProductSettlementReceipt(store, 'receipt.unknown')).toBeNull()
+  })
+
+  test('empty production store dereferences nothing (INERT)', () => {
+    const store = makeInMemoryLaborProductReceiptStore([])
+    expect(readLaborProductSettlementReceipt(store, receiptRef)).toBeNull()
+  })
+
+  test('projection is honest: yellow, live_at_read, uncleared blocker surfaced', () => {
+    const projection = listLaborProductSettlementReceipts(
+      makeInMemoryLaborProductReceiptStore([mint()]),
+    )
+    expect(projection.promiseState).toBe('yellow')
+    expect(projection.maxStalenessSeconds).toBe(0)
+    expect(projection.unclearedBlockerRefs).toContain(
+      'blocker.product_promises.agentic_labor_product_real_sale_receipt_missing',
+    )
+    expect(projection.receipts.map(r => r.receiptRef)).toEqual([receiptRef])
   })
 })
