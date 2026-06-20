@@ -2,6 +2,60 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — crawl-shard dispatch manifest (composes authenticity + coverage)
+
+**Blocker advanced:** `blocker.product_promises.crawl_scale_corpus_missing`.
+
+Two deterministic crawl-scale dispatch gates already exist but nothing composed
+them, so an operator about to pay for a BATCH of crawl-shard assignments had no
+single, auditable record that the batch is both genuine AND complete:
+
+1. `verifyCs336A4CrawlShardDispatchCoverage` proves a SET tiles the plan with no
+   gap/overlap — but it explicitly "does NOT re-derive assignment refs": it
+   trusts each `assignmentRef`/`contentDigestRef` BY VALUE, so a batch can pass
+   coverage while one assignment carries a FORGED or STALE content-addressed ref
+   (the very identifier payment and a provenance receipt later bind to).
+2. `verifyCs336A4CrawlShardAssignmentAuthenticity` re-derives ONE assignment and
+   catches a forged/stale ref — but says nothing about whether the SET covers
+   the snapshot, so every individual assignment can be authentic while the batch
+   still has a gap (corpus never acquired) or overlap (operator paid twice).
+
+This change adds the fail-closed composition that closes both at once:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-dispatch-manifest.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-dispatch-manifest.test.ts` (5 tests)
+
+`buildCs336A4CrawlShardDispatchManifest` is the single entry point a dispatch
+path should call before paying for a batch. It (1) asserts EVERY assignment is
+the genuine content-addressed unit the plan derives via
+`assertCs336A4CrawlShardAssignmentAuthenticity` — run BEFORE coverage so a
+forged/stale ref cannot slip into a "complete" batch coverage trusts by value;
+(2) asserts the batch is an exact non-overlapping cover via
+`assertCs336A4CrawlShardDispatchCoverage`; and (3) only then emits a
+deterministic, content-addressed `Cs336A4CrawlShardDispatchManifest` (planRef,
+ordered authentic assignment refs sorted by segment range, snapshot provenance)
+— the auditable "this verified batch is ready to dispatch as paid crawl-scale
+work" record. The `manifestRef` is content-addressed via SHA-256 over a
+canonical body, so the same plan + batch (in any input order) always yields the
+same ref. Failures re-raise the underlying typed errors wrapped as
+`Cs336A4CrawlShardDispatchManifestError` carrying the originating `stage`
+(`authenticity`/`coverage`) and that gate's own `reason`. It acquires nothing,
+fetches nothing, and settles nothing; the public-safety guard fails closed
+before any unsafe material is committed.
+
+### What genuinely remains (blocker NOT cleared)
+
+`crawl_scale_corpus_missing` stays listed. This is the deterministic
+*composition* of two existing gates into one dispatch-admission record — it
+acquires no snapshot, dispatches no paid work, and is not yet wired into the
+live A4 dispatch/admission path (`training-data-refinery.ts`) or the public
+projection. No real crawl snapshot has been acquired and no assignment batch has
+been dispatched as PAID work or run through the deterministic refinery. The
+promise's green criterion — refinery shards dispatched as paid assignments at
+crawl scale with deterministic-recompute verification — is unmet.
+`corpus_provenance_receipts_missing` and `eval_delta_payment_missing` are
+untouched by this update.
+
 ## 2026-06-20 update — decontamination gate wired into the settlement closeout
 
 **Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
