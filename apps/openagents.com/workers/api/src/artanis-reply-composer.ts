@@ -1,8 +1,15 @@
 import { Effect } from 'effect'
 
-import { artanisMindComplete } from './artanis-mind'
+import {
+  ArtanisMindEscalatedMaxOutputTokens,
+  artanisMindComplete,
+} from './artanis-mind'
+import { artanisOperationalGrounding } from './artanis-operational-grounding'
 import { publicProductPromisesDocument } from './product-promises'
-import { artanisResponderTipReceiptRef } from './tip-ladder'
+import {
+  artanisResponderTipReceiptRef,
+  isTipLadderReceiptRef,
+} from './tip-ladder'
 
 // The Artanis grounded reply composer + tip budget (issue #4715;
 // promise artanis.pylon_support_responder.v1). For each proposed
@@ -139,6 +146,11 @@ export const runArtanisComposerTick = async (
     const topicId = String(proposal.topic_id)
     const actionId = String(proposal.id)
     const grounding = {
+      // Operational runbook facts come FIRST so the mind answers the
+      // concrete how-to question (e.g. making payout-target ready, keeping
+      // executor-trace capability refs live through heartbeat) instead of
+      // restating promise-registry copy (#5540 defect 2).
+      operationalDocs: artanisOperationalGrounding(),
       promiseRegistry: groundingPromises(),
       question: {
         bodyText: String(proposal.body_text).slice(0, 3000),
@@ -152,12 +164,17 @@ export const runArtanisComposerTick = async (
       ...(deps.gatewayToken === undefined || deps.gatewayToken === ''
         ? {}
         : { gatewayToken: deps.gatewayToken }),
+      // Grounded replies are long (150-350 words over a rich grounding
+      // payload); give them headroom up front and let the mind escalate
+      // once more on truncation rather than posting a cut-off answer (#5540
+      // defect 3).
+      maxOutputTokens: ArtanisMindEscalatedMaxOutputTokens,
       prompt: [
-        'Compose a reply to this Pylon contributor question. GROUNDING RULES (absolute): every claim about the platform, promises, capabilities, dispatch, or payments must come from the grounding JSON below - if the grounding does not answer part of the question, say so plainly rather than inventing. Device facts come only from the question body (the Pylon embedded its own inventory there). Be specific, useful, and honest about what is yellow vs green. 150-350 words, plain text. End with: - Artanis (automated responder; the mind proposes, schemas validate, gates hold)',
+        'Compose a reply to this Pylon contributor question. GROUNDING RULES (absolute): every claim about the platform, promises, capabilities, dispatch, or payments must come from the grounding JSON below - if the grounding does not answer part of the question, say so plainly rather than inventing. When the question is a concrete operational how-to (e.g. making payout-target/send readiness true, keeping capability refs live through heartbeat, running a no-spend lane), answer it directly from operationalDocs with the specific commands, blocker names, and readiness states - do NOT just restate promiseRegistry status copy. Device facts come only from the question body (the Pylon embedded its own inventory there). Be specific, useful, and honest about what is yellow vs green. 150-350 words, plain text. End with: - Artanis (automated responder; the mind proposes, schemas validate, gates hold)',
         `GROUNDING: ${JSON.stringify(grounding)}`,
       ].join('\n\n'),
       system:
-        'You are Artanis, the Nexus administrator of OpenAgents - the AI agent that distributes work to Pylons and keeps devices utilized. You answer contributor questions with grounded platform facts only.',
+        'You are Artanis, the Nexus administrator of OpenAgents - the AI agent that distributes work to Pylons and keeps devices utilized. You answer contributor questions with grounded platform facts only, preferring the concrete operational runbook facts when the question is operational.',
     })
 
     if ('error' in mindResult) {
@@ -177,11 +194,43 @@ export const runArtanisComposerTick = async (
       continue
     }
 
-    const tipReceiptRef = artanisResponderTipReceiptRef(topicId)
+    // Receipt honesty (#5540 defect 1): a reply may carry a tip-receipt ref
+    // ONLY if the tip actually settled and the ref the ladder returned is a
+    // dereferenceable public receipt ref. So we attempt the tip FIRST, then
+    // decide whether to embed a ref. The previous code embedded a synthetic
+    // ref keyed on topicId before the tip ran, leaving a non-dereferenceable
+    // ref in the public reply whenever the tip failed (the cinder-atlas 404
+    // with tipStats stuck at 0).
     const shouldTip = tipBudgetLeftSat >= ARTANIS_TIP_AMOUNT_SAT
-    const replyBodyText = shouldTip
-      ? `${mindResult.text}\n\nResponder tip receipt: ${tipReceiptRef}`
-      : mindResult.text
+
+    type SettledTip = {
+      ladderReason: string
+      payInId: string
+      receiptRef: string
+      rung: string
+    }
+    let settledTip: SettledTip | null = null
+    if (shouldTip) {
+      const tipResult = await deps.tip({
+        amountSat: ARTANIS_TIP_AMOUNT_SAT,
+        idempotencyKey: `artanis-responder-tip:${topicId}`,
+        postId: String(proposal.first_post_id),
+        publicReceiptRef: artanisResponderTipReceiptRef(topicId),
+      })
+      // Trust only a settled tip whose returned ref is a well-formed tip
+      // ladder receipt ref; anything else gets no ref in the public reply.
+      if (
+        !('error' in tipResult) &&
+        isTipLadderReceiptRef(tipResult.receiptRef)
+      ) {
+        settledTip = tipResult
+      }
+    }
+
+    const replyBodyText =
+      settledTip === null
+        ? mindResult.text
+        : `${mindResult.text}\n\nResponder tip receipt: ${settledTip.receiptRef}`
 
     const posted = await deps.forumPost({
       bodyText: replyBodyText,
@@ -200,6 +249,11 @@ export const runArtanisComposerTick = async (
         .bind(
           JSON.stringify({
             reason: `forum_post_failed:${posted.error}`.slice(0, 200),
+            // The tip (if any) already settled on-ledger and remains
+            // dereferenceable; we just could not deliver the reply this tick.
+            ...(settledTip === null
+              ? {}
+              : { tipReceiptRef: settledTip.receiptRef }),
           }),
           deps.nowIso,
           actionId,
@@ -227,39 +281,29 @@ export const runArtanisComposerTick = async (
       .bind(deps.nowIso.slice(0, 10), deps.nowIso.slice(0, 10), deps.nowIso)
       .run()
 
-    // Tip the question post under the budget; failure to tip never blocks
-    // the response.
-    if (shouldTip) {
-      const tipResult = await deps.tip({
-        amountSat: ARTANIS_TIP_AMOUNT_SAT,
-        idempotencyKey: `artanis-responder-tip:${topicId}`,
-        postId: String(proposal.first_post_id),
-        publicReceiptRef: tipReceiptRef,
-      })
-      if (!('error' in tipResult)) {
-        tipped += 1
-        tipBudgetLeftSat -= ARTANIS_TIP_AMOUNT_SAT
-        await db
-          .prepare(
-            `UPDATE artanis_responder_actions
-             SET state = 'tipped',
-                 tip_receipt_ref = ?,
-                 tip_pay_in_id = ?,
-                 tip_ladder_rung = ?,
-                 tip_ladder_reason = ?,
-                 updated_at = ?
-             WHERE id = ?`,
-          )
-          .bind(
-            tipResult.receiptRef,
-            tipResult.payInId,
-            tipResult.rung,
-            tipResult.ladderReason,
-            deps.nowIso,
-            actionId,
-          )
-          .run()
-      }
+    if (settledTip !== null) {
+      tipped += 1
+      tipBudgetLeftSat -= ARTANIS_TIP_AMOUNT_SAT
+      await db
+        .prepare(
+          `UPDATE artanis_responder_actions
+           SET state = 'tipped',
+               tip_receipt_ref = ?,
+               tip_pay_in_id = ?,
+               tip_ladder_rung = ?,
+               tip_ladder_reason = ?,
+               updated_at = ?
+           WHERE id = ?`,
+        )
+        .bind(
+          settledTip.receiptRef,
+          settledTip.payInId,
+          settledTip.rung,
+          settledTip.ladderReason,
+          deps.nowIso,
+          actionId,
+        )
+        .run()
     }
   }
 
