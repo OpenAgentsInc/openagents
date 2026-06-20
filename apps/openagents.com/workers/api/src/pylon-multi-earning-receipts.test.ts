@@ -9,6 +9,7 @@ import {
   makeInMemoryPylonModeWorkReceiptStore,
   recordModeWorkReceipt,
   verifyWorkReceiptSettlementCoverage,
+  verifyWorkReceiptWorkUnitCoverage,
 } from './pylon-multi-earning-receipts'
 
 const okReceipt = (input: Parameters<typeof recordModeWorkReceipt>[0]) => {
@@ -341,5 +342,145 @@ describe('pylon multi-earning settlement coverage (#5527)', () => {
     expect(coverage.allModesSettlementCovered).toBe(true)
     expect(coverage.perMode).toHaveLength(0)
     expect(coverage.totalSettledReceiptCount).toBe(0)
+  })
+})
+
+describe('pylon multi-earning work-unit coverage (#5527)', () => {
+  test('empty receipts are trivially distinct', () => {
+    const coverage = verifyWorkReceiptWorkUnitCoverage([])
+    expect(coverage.allWorkUnitsDistinct).toBe(true)
+    expect(coverage.perMode).toHaveLength(0)
+    expect(coverage.totalReceiptCount).toBe(0)
+    expect(coverage.totalDistinctAssignmentRefCount).toBe(0)
+    expect(coverage.crossModeWorkUnitReuse).toBe(false)
+  })
+
+  test('distinct work units across two modes are fully covered', () => {
+    const coverage = verifyWorkReceiptWorkUnitCoverage([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }),
+      okReceipt({
+        mode: 'training',
+        amountClass: 'paid',
+        assignmentRef: 'assignment.public.pylon.training.b',
+        receiptRef: 'receipt.public.pylon.training.work_b',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.compute.a',
+        receiptRef: 'receipt.public.pylon.compute.work_a',
+      }),
+    ])
+    expect(coverage.allWorkUnitsDistinct).toBe(true)
+    expect(coverage.totalReceiptCount).toBe(3)
+    expect(coverage.totalDistinctAssignmentRefCount).toBe(3)
+    expect(coverage.crossModeWorkUnitReuse).toBe(false)
+    expect(coverage.perMode).toEqual([
+      {
+        mode: 'training',
+        receiptCount: 2,
+        distinctAssignmentRefCount: 2,
+        workUnitCoverageComplete: true,
+      },
+      {
+        mode: 'compute',
+        receiptCount: 1,
+        distinctAssignmentRefCount: 1,
+        workUnitCoverageComplete: true,
+      },
+    ])
+  })
+
+  test('flags an in-mode shared work unit as incomplete coverage', () => {
+    // Two distinct receipts (distinct receiptRefs) re-counting ONE work unit:
+    // observedCount would read 2 behind a single real assignment.
+    const coverage = verifyWorkReceiptWorkUnitCoverage([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.training.shared',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }),
+      okReceipt({
+        mode: 'training',
+        amountClass: 'paid',
+        assignmentRef: 'assignment.public.pylon.training.shared',
+        receiptRef: 'receipt.public.pylon.training.work_b',
+      }),
+    ])
+    expect(coverage.allWorkUnitsDistinct).toBe(false)
+    expect(coverage.perMode[0]).toEqual({
+      mode: 'training',
+      receiptCount: 2,
+      distinctAssignmentRefCount: 1,
+      workUnitCoverageComplete: false,
+    })
+  })
+
+  test('flags a cross-mode shared work unit', () => {
+    const coverage = verifyWorkReceiptWorkUnitCoverage([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.shared.unit',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.shared.unit',
+        receiptRef: 'receipt.public.pylon.compute.work_a',
+      }),
+    ])
+    expect(coverage.allWorkUnitsDistinct).toBe(false)
+    expect(coverage.crossModeWorkUnitReuse).toBe(true)
+  })
+})
+
+describe('pylon multi-earning fold work-unit integrity (#5527)', () => {
+  test('rejects an in-mode work-unit over-claim (receipts > distinct work units)', () => {
+    const folded = foldWorkReceiptsIntoEarningStore([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.training.shared',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }),
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.training.shared',
+        receiptRef: 'receipt.public.pylon.training.work_b',
+      }),
+    ])
+    expect(folded.ok).toBe(false)
+    if (folded.ok) return
+    expect(folded.error.reason).toMatch(/work-unit over-claim/)
+    expect(folded.error.reason).toMatch(/distinct/)
+  })
+
+  test('rejects a cross-mode work-unit reuse', () => {
+    const folded = foldWorkReceiptsIntoEarningStore([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.shared.unit',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.shared.unit',
+        receiptRef: 'receipt.public.pylon.compute.work_a',
+      }),
+    ])
+    expect(folded.ok).toBe(false)
+    if (folded.ok) return
+    expect(folded.error.reason).toMatch(/across earning modes/)
   })
 })
