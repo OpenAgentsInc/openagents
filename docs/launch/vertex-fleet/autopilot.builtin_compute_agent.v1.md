@@ -1,7 +1,7 @@
 # autopilot.builtin_compute_agent.v1 — vertex-fleet work note
 
-Date: 2026-06-20  
-Worker: vertex-fleet/autopilot.builtin_compute_agent.v1  
+Date: 2026-06-20
+Worker: vertex-fleet/autopilot.builtin_compute_agent.v1
 Promise state: **yellow** (no flip this pass — hard rule honoured)
 
 ## Blocker advanced

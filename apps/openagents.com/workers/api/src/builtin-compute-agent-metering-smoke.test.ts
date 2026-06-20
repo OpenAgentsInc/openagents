@@ -9,7 +9,6 @@ import {
 import {
   BuiltinComputeAgentMeteringSmokeInput,
   BuiltinComputeAgentMeteringSmokeProjection,
-  BuiltinComputeAgentMeteringSmokeUnsafe,
   builtinComputeAgentMeteringSmokeHasPrivateMaterial,
   planBuiltinComputeAgentMeteringSmoke,
 } from './builtin-compute-agent-metering-smoke'

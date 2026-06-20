@@ -127,6 +127,9 @@ const windowRefFromRows = (
   rows: ReadonlyArray<ErcotLmpRow>,
 ): string => {
   const first = rows[0]
+  if (first === undefined) {
+    return `window.public.ercot.${settlementPoint.toLowerCase()}.unknown`
+  }
   // Take only the date portion and strip hyphens → YYYYMMDD
   const datePart = first.SCEDTimestamp.slice(0, 10).replace(/-/g, '')
   return `window.public.ercot.${settlementPoint.toLowerCase()}.${datePart}`
