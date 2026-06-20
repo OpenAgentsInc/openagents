@@ -49,3 +49,50 @@ dropped from the registry.
 - Tests: `apps/openagents.com/workers/api/src/kernel-optimization-campaign.test.ts`
 - Protocol: `docs/tassadar/2026-06-19-agentic-kernel-optimization-work-definition-and-parity-protocol.md`
 - Parity engine: `packages/tassadar-executor/src/kernel-optimization-parity.ts`
+
+---
+
+## 2026-06-20 update — market dispatch boundary (blocker: market_dispatch_missing)
+
+State: **red** (unchanged — no flip).
+
+Advances **`blocker.product_promises.agentic_kernel_optimization_market_dispatch_missing`**
+by binding the already-built throughput-parity acceptance verdict
+(`packages/tassadar-executor/src/kernel-optimization-parity.ts`) to the
+verified-work labor rail, so the two market boundaries from the work definition
+are mechanically checkable instead of paper-only:
+
+- `packages/tassadar-executor/src/kernel-optimization-dispatch.ts`
+  - `buildKernelOptimizationWorkRequest(spec)` — turns a named target + named
+    baseline tok/s record into a **public, public-safe kernel-optimization work
+    request** shaped like the green labor market (`labor.forum_work_requests.v1`):
+    it names the target model+device, the baseline throughput record, the
+    required parity capability, the independent validator device, and the **dual
+    acceptance criteria** (throughput improvement vs the named baseline AND
+    output parity via exact-trace-replay). Refuses target/op mismatch against the
+    baseline, non-positive budget, and any embedded secret/path/credential
+    material (mirrors the green `apps/pylon/src/work-requester.ts` guard).
+  - `buildKernelOptimizationSettlementClaim(verdict)` — turns a kernel
+    optimization acceptance verdict into a **born-verified settlement claim** for
+    the verified-work rail (`labor.nostr_negotiation_market.v1`). A claim is
+    produced ONLY for an `accepted` verdict with a verified parity outcome and a
+    finite positive speedup — a faster-but-wrong or non-improving kernel never
+    yields a payable claim. Correctness/throughput dominate at the money
+    boundary, not just at verification.
+- Tests: `packages/tassadar-executor/src/kernel-optimization-dispatch.test.ts`
+  (8 tests: dispatch happy path; baseline target/op mismatch refusals; budget
+  refusal; unsafe-material refusal; born-verified settlement; rejected-verdict
+  refusal; missing-speedup refusal). Exported from the package index.
+
+Moves no money and creates no serving claim — it produces the public request
+body a dispatcher would post and the settlement claim a verified-work clear
+would consume.
+
+### What remains (still red)
+
+A live network run (real agents authoring kernels and posting these requests to
+the live rail), real tok/s records vs named baselines on declared hardware with
+independent-device `Verified` parity and **settled** receipts, the at-scale
+across-the-mesh run (`agentic_kernel_optimization_at_scale_run_missing`), and
+owner sign-off. The March-2026 Psionic/Qwen 3.5 result stays historical-demo
+evidence only. No promise state changed; no blocker dropped from the registry.
