@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
 import type { XClaimRewardRecord } from './agent-owner-claim-routes'
-import { auditXClaimRewardSmokeReceipt } from './x-claim-reward-smoke-receipt-audit'
+import {
+  auditXClaimRewardSmokeReceipt,
+  buildXClaimRewardSmokeTransitionRequest,
+} from './x-claim-reward-smoke-receipt-audit'
 
 const settledReward = (
   overrides: Partial<XClaimRewardRecord> = {},
@@ -126,6 +129,61 @@ describe('X claim reward smoke receipt audit', () => {
   test('transition receipt summary carries no payment id or destination', () => {
     const serialized = JSON.stringify(
       auditXClaimRewardSmokeReceipt(settledReward()).transitionReceiptSummary,
+    )
+
+    expect(serialized).not.toContain('payment_secret_1')
+    expect(serialized).not.toContain('lnbc')
+  })
+})
+
+describe('X claim reward smoke transition request', () => {
+  test('builds a public-safe green-flip proposal from a clean settled reward', () => {
+    const proposal = buildXClaimRewardSmokeTransitionRequest(settledReward())
+
+    expect(proposal.ready).toBe(true)
+    expect(proposal.blockingReasonRefs).toEqual([])
+    expect(proposal.transitionRequest).toEqual({
+      evidenceRefs: [
+        'x_claim_reward_receipt_x_claim_reward_1',
+        'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
+      ],
+      promiseId: 'agents.x_claim_reward.v1',
+      toState: 'green',
+    })
+  })
+
+  test('withholds a proposal until the post-settlement audit passes', () => {
+    const proposal = buildXClaimRewardSmokeTransitionRequest(
+      settledReward({ state: 'dispatched' }),
+    )
+
+    expect(proposal.ready).toBe(false)
+    expect(proposal.transitionRequest).toBeNull()
+    expect(proposal.blockingReasonRefs).toContain(
+      'reason.public.x_claim_reward_smoke_unexpected_state',
+    )
+  })
+
+  test('refuses to propose when payment material leaks into evidence', () => {
+    const proposal = buildXClaimRewardSmokeTransitionRequest(
+      settledReward({
+        evidenceRefs: [
+          'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
+          'lnbc1000n1psomeinvoicepayload',
+        ],
+      }),
+    )
+
+    expect(proposal.ready).toBe(false)
+    expect(proposal.transitionRequest).toBeNull()
+    expect(proposal.blockingReasonRefs).toContain(
+      'reason.public.x_claim_reward_smoke_payment_material_leaked',
+    )
+  })
+
+  test('the proposed transition request leaks no payment material', () => {
+    const serialized = JSON.stringify(
+      buildXClaimRewardSmokeTransitionRequest(settledReward()),
     )
 
     expect(serialized).not.toContain('payment_secret_1')

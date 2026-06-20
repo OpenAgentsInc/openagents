@@ -51,6 +51,29 @@ settled reward row before publishing the issue #4626 transition receipt.
   — a "Post-settlement receipt audit" section wiring the auditor in before the
   transition-receipt step.
 
+## Follow-up: transition-receipt proposal builder (this run)
+
+The preflight gates before the smoke and the receipt auditor gates the settled
+row after it, but nothing assembled the actual registry-transition payload from a
+passing audit. This run adds that final pure, fund-free bridge.
+
+- `apps/openagents.com/workers/api/src/x-claim-reward-smoke-receipt-audit.ts`
+  — `buildXClaimRewardSmokeTransitionRequest(reward)` plus the
+  `XClaimRewardSmokeTransitionProposal` / `XClaimRewardSmokeTransitionRequest`
+  types. It runs the post-settlement audit and, only when it passes, emits the
+  public-safe `POST /api/operator/product-promises/transitions` body
+  (`promiseId: agents.x_claim_reward.v1`, `toState: green`, deduped public
+  evidence refs) with a defensive re-scan for leaked payment material. It flips
+  no promise state and moves no funds — the registry route re-checks blockers and
+  the green flip still needs owner sign-off.
+- `apps/openagents.com/workers/api/src/x-claim-reward-smoke-receipt-audit.test.ts`
+  — a `transition request` suite covering the ready proposal, audit-gated
+  withholding, payment-material refusal, and a no-payment-material assertion on
+  the serialized proposal.
+- `apps/openagents.com/docs/2026-06-09-x-claim-reward-dispatch-runbook.md`
+  — a "Transition-receipt proposal" section wiring the builder between the
+  post-settlement audit and the registry transition call.
+
 ## What remains
 
 The blocker is still open: an operator must run the live single-reward smoke —

@@ -1,6 +1,10 @@
 import type { XClaimRewardRecord } from './agent-owner-claim-routes'
 import { X_CLAIM_REWARD_AMOUNT_SATS } from './agent-owner-claim-routes'
 
+const X_CLAIM_REWARD_PROMISE_ID = 'agents.x_claim_reward.v1'
+const SmokeNotReadyReasonRef =
+  'reason.public.x_claim_reward_smoke_transition_not_ready'
+
 const SettledExpectedStateReasonRef =
   'reason.public.x_claim_reward_smoke_unexpected_state'
 const AmountMismatchReasonRef =
@@ -145,5 +149,87 @@ export const auditXClaimRewardSmokeReceipt = (
       state: reward.state,
     },
     violationReasonRefs,
+  }
+}
+
+export type XClaimRewardSmokeTransitionRequest = Readonly<{
+  evidenceRefs: ReadonlyArray<string>
+  promiseId: typeof X_CLAIM_REWARD_PROMISE_ID
+  toState: 'green'
+}>
+
+export type XClaimRewardSmokeTransitionProposal = Readonly<{
+  audit: XClaimRewardSmokeReceiptAudit
+  blockingReasonRefs: ReadonlyArray<string>
+  ready: boolean
+  /**
+   * The public-safe `POST /api/operator/product-promises/transitions` body the
+   * operator submits to PROPOSE the green flip. It is `null` until the
+   * post-settlement audit passes. Building it changes no promise state and moves
+   * no funds: the registry route still re-evaluates blockers, and the green flip
+   * additionally requires owner sign-off.
+   */
+  transitionRequest: XClaimRewardSmokeTransitionRequest | null
+}>
+
+/**
+ * Assembles the public-safe transition-receipt PROPOSAL that bridges a passing
+ * post-settlement audit to `POST /api/operator/product-promises/transitions`.
+ *
+ * It is the final pure, fund-free step of the live single-reward smoke: it runs
+ * the post-settlement audit, and only when that audit passes does it emit a
+ * deduped evidence-ref bundle (public receipt ref + public settlement evidence
+ * refs) re-scanned for leaked payment material. It never flips a promise state —
+ * the registry route re-checks blockers and the green flip still needs operator
+ * submission plus owner sign-off.
+ */
+export const buildXClaimRewardSmokeTransitionRequest = (
+  reward: XClaimRewardRecord,
+): XClaimRewardSmokeTransitionProposal => {
+  const audit = auditXClaimRewardSmokeReceipt(reward)
+
+  if (!audit.ok) {
+    return {
+      audit,
+      blockingReasonRefs: audit.violationReasonRefs,
+      ready: false,
+      transitionRequest: null,
+    }
+  }
+
+  const evidenceRefs = Array.from(
+    new Set([
+      audit.transitionReceiptSummary.receiptRef,
+      ...audit.transitionReceiptSummary.settlementEvidenceRefs,
+    ]),
+  )
+
+  // Defensive re-scan: never let payment material reach the registry payload,
+  // even if a future evidence ref slips past the upstream audit.
+  const leakedInProposal = PaymentMaterialPatterns.filter(({ pattern }) =>
+    evidenceRefs.some(ref => pattern.test(ref)),
+  )
+
+  if (leakedInProposal.length > 0 || evidenceRefs.length === 0) {
+    return {
+      audit,
+      blockingReasonRefs:
+        leakedInProposal.length > 0
+          ? [PaymentMaterialLeakedReasonRef]
+          : [SmokeNotReadyReasonRef],
+      ready: false,
+      transitionRequest: null,
+    }
+  }
+
+  return {
+    audit,
+    blockingReasonRefs: [],
+    ready: true,
+    transitionRequest: {
+      evidenceRefs,
+      promiseId: X_CLAIM_REWARD_PROMISE_ID,
+      toState: 'green',
+    },
   }
 }
