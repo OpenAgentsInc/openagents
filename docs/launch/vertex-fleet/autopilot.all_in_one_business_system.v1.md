@@ -74,6 +74,32 @@ Tests: `apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-gate.
 ref, revenue-applies-but-unsettled fails, revenue-N/A passes, and a single-primitive
 receipt fails the composition criterion.
 
+## Follow-up: real-business-receipt evidence manifest (this run)
+
+`apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-manifest.ts` —
+a PURE, INERT manifest that turns each acceptance-gate criterion into the concrete,
+dereferenceable EVIDENCE a real armed run must produce. The gate decides whether
+supplied evidence clears the blocker; it does not say WHERE each piece of evidence
+comes from. The manifest closes that gap: per criterion it records the evidence
+field(s) the gate reads, the governing ref (an existing proof primitive, e.g.
+`proof.claim_upgrade_receipts.v1` / `proof.demand_provenance.v1`, or the real
+in-repo seam that emits the artifact, e.g. `cloud/cloud-metering.ts`,
+`marketplace-monetize-any-layer-accrual.ts`), the required artifact, and a
+human-readable requirement.
+
+It is keyed by the gate's own `RealBusinessReceiptCriterionId` union, so TypeScript
+enforces the manifest stays 1:1 with the gate — you cannot add a gate criterion
+without adding its evidence requirement (and vice versa). Helpers:
+`unmetEvidenceRequirements(result)` maps a gate result's unsatisfied criteria to the
+artifacts still owed; `reconcileManifestWithGate(result)` proves alignment at
+runtime. It DECIDES NOTHING IRREVERSIBLE: flips no promise, drops no blocker, moves
+no money.
+
+Tests: `apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-manifest.test.ts`
+(4 tests) — every entry self-keys with non-empty refs, the manifest is 1:1 with the
+gate criteria, the inert receipt names exactly the honest unmet artifacts with their
+governing proof primitives, and fully-armed evidence owes no outstanding artifact.
+
 ## What remains (blocker stays listed)
 
 This is the receipt **shape**, reconciled over an INERT execution. The blocker stays
