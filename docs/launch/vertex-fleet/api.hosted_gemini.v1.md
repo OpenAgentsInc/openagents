@@ -106,10 +106,49 @@ production binding shape the harness was missing.
   wired into the worker dependency graph, and there is still no registered-agent
   production smoke. The blocker REMAINS listed.
 
+### 2026-06-20 update — work-order → adapter Effect→Promise runner
+
+- `blocker.product_promises.production_hosted_gemini_executor_binding_missing`
+  — **further advanced, still NOT cleared.** The bridge's
+  `createVertexGeminiHostedCaller` consumed an injected `runInference` seam that
+  had no implementation: the chain `work order → ??? → InferenceResult` had a
+  hole exactly where a request had to be built from the work order and the
+  adapter Effect driven to a Promise. This change fills that hole:
+  - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-request-runner.ts`
+    — `buildHostedGeminiInferenceRequest(input, options)` turns a work-order
+    input into a non-streaming, REFS-ONLY `InferenceRequest` (a fixed public-safe
+    system frame + a user frame carrying only the work-order/assignment/task/
+    objective refs), declining (`undefined`) when the order has no work-order or
+    task ref. `createHostedGeminiRequestRunner(config)` wraps an INJECTED
+    `InferenceProviderAdapter` (e.g. `makeVertexGeminiAdapter(...)`) into the
+    `runInference` seam: FLAG-GATED + INERT by default (disabled → returns
+    `undefined`, never touches the adapter), and it folds the typed
+    `InferenceAdapterError` channel into a clean `undefined` via
+    `Effect.runPromiseExit` so no throw escapes the bridge's contract.
+  - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-request-runner.test.ts`
+    (new, 10 cases): request is non-streaming + refs-only (no raw content),
+    carries the work-order refs, omits an empty objectives line, declines on an
+    empty work-order/task ref; the runner is INERT when disabled, drives the
+    adapter + returns the result when armed, defaults model + max_tokens,
+    declines without calling the adapter on an unframeable order, and folds a
+    typed adapter failure into `undefined`.
+
+  **Honest scope:** the runner is still INJECTED (not wired into the worker
+  dependency graph behind an armed flag), the request prompt is built from REFS
+  only — the upstream resolver that dereferences task/acceptance refs into the
+  real content the adapter should act on is still missing — and there is no
+  registered-agent production smoke. The blocker REMAINS listed.
+
 ## What remains (for green)
 
 - A real deployed `HostedGeminiInferenceCaller` (the hosted Gemini inference
-  call) wired into the worker dependency graph behind an armed flag.
+  call) wired into the worker dependency graph behind an armed flag. The
+  work-order → `InferenceRequest` → adapter Effect→Promise runner now exists
+  (`createHostedGeminiRequestRunner`, 2026-06-20 update above), but it is still
+  injected, not bound in the live worker graph.
+- An upstream ref-resolver that dereferences task/acceptance refs into the real
+  content the hosted Gemini adapter should act on (the runner currently builds a
+  refs-only prompt).
 - A registered-agent production smoke proving a paid hosted Gemini work order
   delivered end-to-end.
 - `blocker.product_promises.public_paid_model_gateway_missing` — the hosted
