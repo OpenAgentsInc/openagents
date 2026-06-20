@@ -8,6 +8,7 @@ import {
   buildSparkHelperAutostartReceipt,
   classifySparkHelperAutostart,
   SPARK_AUTOSTART_ENV,
+  verifySparkHelperAutostartReceipt,
 } from "./spark-helper-autostart.js"
 
 function receive(
@@ -152,5 +153,85 @@ describe("buildSparkHelperAutostartReceipt", () => {
     expect(receipt?.ref).toBe(
       "receipt.pylon.spark_helper_autostart.address-ready.v0.1",
     )
+  })
+})
+
+describe("verifySparkHelperAutostartReceipt", () => {
+  function buildReady() {
+    const ready = classifySparkHelperAutostart(
+      receive({ state: "address-ready", credentialReady: true, helperReady: true }),
+      { enabled: true },
+    )
+    const receipt = buildSparkHelperAutostartReceipt(ready, "2026-06-19T00:00:00.000Z")
+    if (receipt === null) throw new Error("expected a receipt")
+    return receipt
+  }
+
+  it("accepts a freshly built autostart receipt and reports it clears the blocker", () => {
+    const result = verifySparkHelperAutostartReceipt(buildReady())
+    expect(result.valid).toBe(true)
+    expect(result.clearsBlocker).toBe(true)
+    expect(result.reasons).toEqual([])
+  })
+
+  it("round-trips through JSON (the captured-artifact path)", () => {
+    const parsed = JSON.parse(JSON.stringify(buildReady()))
+    expect(verifySparkHelperAutostartReceipt(parsed).valid).toBe(true)
+  })
+
+  it("rejects non-objects", () => {
+    expect(verifySparkHelperAutostartReceipt(null).valid).toBe(false)
+    expect(verifySparkHelperAutostartReceipt("receipt").valid).toBe(false)
+    expect(verifySparkHelperAutostartReceipt([buildReady()]).valid).toBe(false)
+  })
+
+  it("rejects any unexpected key (leak-prone field) and does not clear the blocker", () => {
+    const tampered = { ...buildReady(), detectedBalanceSats: 12345 }
+    const result = verifySparkHelperAutostartReceipt(tampered)
+    expect(result.valid).toBe(false)
+    expect(result.clearsBlocker).toBe(false)
+    expect(result.reasons).toContain("unexpected-key:detectedBalanceSats")
+  })
+
+  it("rejects a receipt whose ref encodes a non-payout-ready state", () => {
+    const bad = { ...buildReady(), ref: "receipt.pylon.spark_helper_autostart.claim-pending.v0.1" }
+    const result = verifySparkHelperAutostartReceipt(bad)
+    expect(result.valid).toBe(false)
+    expect(result.reasons).toContain("ref-state-not-payout-ready")
+  })
+
+  it("rejects a ref whose state disagrees with derivedFromReceiveState", () => {
+    const bad = {
+      ...buildReady(),
+      ref: "receipt.pylon.spark_helper_autostart.cached-address-ready.v0.1",
+    }
+    const result = verifySparkHelperAutostartReceipt(bad)
+    expect(result.valid).toBe(false)
+    expect(result.reasons).toContain("ref-state-mismatch")
+  })
+
+  it("rejects a receipt that requires an operator hand-start", () => {
+    const bad = { ...buildReady(), operatorHandStartRequired: true }
+    const result = verifySparkHelperAutostartReceipt(bad)
+    expect(result.valid).toBe(false)
+    expect(result.reasons).toContain("operator-hand-start-required")
+  })
+
+  it("rejects a receipt that is not payout-ready or not redacted", () => {
+    expect(
+      verifySparkHelperAutostartReceipt({ ...buildReady(), payoutReady: false }).reasons,
+    ).toContain("not-payout-ready")
+    expect(
+      verifySparkHelperAutostartReceipt({ ...buildReady(), contentRedacted: false }).reasons,
+    ).toContain("not-redacted")
+  })
+
+  it("rejects a non-canonical or missing observedAt timestamp", () => {
+    expect(
+      verifySparkHelperAutostartReceipt({ ...buildReady(), observedAt: "2026-06-19" }).reasons,
+    ).toContain("bad-observed-at")
+    expect(
+      verifySparkHelperAutostartReceipt({ ...buildReady(), observedAt: "not-a-date" }).reasons,
+    ).toContain("bad-observed-at")
   })
 })
