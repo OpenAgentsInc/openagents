@@ -43,25 +43,20 @@ const inboundStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =
 // the PURE reducer (update.ts) decides what it means against the active pane +
 // palette state, so the whole shortcut layer is unit-testable without a DOM.
 //
-// We translate only the keys the reducer cares about (Cmd/Ctrl-K, Cmd/Ctrl-1..5,
+// We translate only the keys the reducer cares about (Cmd/Ctrl-K,
 // Cmd/Ctrl-Enter, Escape, Arrow Up/Down, Enter, j/k) and `preventDefault` those
 // so the webview never swallows them; everything else passes through untouched.
 // `inEditable` reflects focus so the reducer can ignore bare nav keys mid-typing.
-// Digit keys 1..9 are forwarded both as Cmd/Ctrl chords (group jump) AND, for
-// HUD H1 (#5499), as BARE hotbar-slot hotkeys outside an editable field. Cover
-// the full 1..9 range so a future 6th+ nav group automatically gets its slot
-// hotkey without another edit here (the registry stays the source of truth).
-const DIGIT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const
+// The hotbar's numbered cells are intentionally inert, so digit keys are not
+// captured here.
 const KEYBOARD_KEYS = new Set([
   "k",
-  ...DIGIT_KEYS,
   "Enter",
   "Escape",
   "ArrowUp",
   "ArrowDown",
   "j",
 ])
-const isDigitKey = (key: string): boolean => key.length === 1 && key >= "1" && key <= "9"
 
 const isEditableTarget = (target: EventTarget | null): boolean => {
   const el = target as { tagName?: string; isContentEditable?: boolean } | null
@@ -94,19 +89,17 @@ const keyboardStream: Stream.Stream<Message> = Stream.callback<Message>((queue) 
         // Only consider keys the reducer might act on (cheap pre-filter). A bare
         // letter (j/k) is a candidate too, but only acted on outside inputs.
         const modified = meta || ctrl
-        // A bare 1..9 outside an input is the HUD H1 hotbar hotkey (#5499); a
-        // bare j/k navigates sub-panes. Both are only candidates outside inputs.
-        const bareNavKey =
-          !inEditable && (key === "j" || key === "k" || isDigitKey(key))
+        // Bare j/k navigates sub-panes only outside inputs.
+        const bareNavKey = !inEditable && (key === "j" || key === "k")
         const isCandidate =
           KEYBOARD_KEYS.has(key) &&
           (modified || key === "Escape" || key === "ArrowUp" || key === "ArrowDown" ||
             key === "Enter" || bareNavKey)
         if (!isCandidate) return
-        // Stop the webview from acting on shortcut chords (e.g. Cmd-K) and on
-        // bare hotbar / sub-pane nav keys. Bare keys in an editable field are
-        // left alone (so typing digits/letters in the text bar is unaffected).
-        if (modified || bareNavKey) {
+        // Stop the webview from acting on shortcut chords (e.g. Cmd-K), Escape
+        // (prevents the macOS/browser error beep), and bare sub-pane nav keys.
+        // Bare keys in an editable field are left alone unless they are Escape.
+        if (modified || bareNavKey || key === "Escape") {
           event.preventDefault?.()
         }
         Queue.offerUnsafe(

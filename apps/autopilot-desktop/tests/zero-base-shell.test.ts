@@ -66,6 +66,9 @@ describe("zero-base shell: the minimal default surface", () => {
     // The one surface: the bottom text bar exists.
     expect(tree).toContain("shell-input")
     expect(tree).toContain("shell-bar")
+    expect(tree).toContain("hotbar-inline")
+    expect(tree.indexOf("hotbar-inline")).toBeLessThan(tree.indexOf("shell-input"))
+    expect(tree).not.toContain("shell-open-panes")
     // The hidden full UI does NOT render by default: no sidebar, no pane chrome,
     // no settings surface on the default screen.
     expect(tree).not.toContain("sidebar")

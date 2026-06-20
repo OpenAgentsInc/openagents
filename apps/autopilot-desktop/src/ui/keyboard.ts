@@ -6,7 +6,7 @@
 // Message named by the intent, so the shortcut layer reuses real handlers and
 // never invents a new control verb (audit §5.2).
 
-import { groupByAccel, groupForPane } from "./nav"
+import { groupForPane } from "./nav"
 import type { Model, PaneId } from "./model"
 
 // Raw key event the subscription forwards (mirrors the PressedKey payload).
@@ -25,7 +25,6 @@ export type KeyIntent =
   | Readonly<{ kind: "close-palette" }>
   | Readonly<{ kind: "palette-move"; delta: number }>
   | Readonly<{ kind: "palette-run" }>
-  | Readonly<{ kind: "navigate-group"; group: string }>
   | Readonly<{ kind: "submit-turn"; pane: PaneId }>
   // Move to the previous/next sub-pane within the current nav group (a real,
   // never-no-op navigation action available in any grouped pane). `pane` is the
@@ -84,28 +83,9 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
     return { kind: "none" }
   }
 
-  // ── Cmd/Ctrl-1..9 activate the matching hotbar slot (jump to its group) ────
-  // HUD H1 (#5499): the numbered hotbar slots are the nav groups keyed by accel
-  // (see nav.ts HOTBAR_SLOTS). Cmd/Ctrl-<n> works even while typing (a modified
-  // chord is never a literal character), so the slot hotkey is global.
-  if (isModified(event) && /^[1-9]$/.test(key)) {
-    const group = groupByAccel(Number(key))
-    return group ? { kind: "navigate-group", group: group.id } : { kind: "none" }
-  }
-
   // ── Bare nav keys are IGNORED while typing in an input/textarea (#5465) ────
   if (event.inEditable) return { kind: "none" }
   if (isModified(event)) return { kind: "none" }
-
-  // ── Bare 1..9 activate the matching hotbar slot (HUD H1 #5499) ─────────────
-  // Outside an editable field (guarded above), a bare number key is the
-  // StarCraft-style hotbar hotkey: it resolves to the SAME group jump as the
-  // hotbar slot and Cmd-<n>, via the existing `navigate-group` intent (no new
-  // verb). Numbers with no registered group fall through to `none`.
-  if (/^[1-9]$/.test(key)) {
-    const group = groupByAccel(Number(key))
-    return group ? { kind: "navigate-group", group: group.id } : { kind: "none" }
-  }
 
   // ── j / k move between sub-panes of the current group ─────────────────────
   if (key === "j") {

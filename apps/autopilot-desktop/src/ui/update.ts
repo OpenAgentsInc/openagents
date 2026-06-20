@@ -673,8 +673,6 @@ export const update = (model: Model, message: Message): Result => {
           return update(model, MovedCommandPaletteSelection({ delta: intent.delta }))
         case "palette-run":
           return update(model, RanPaletteCommand({ commandId: null }))
-        case "navigate-group":
-          return update(model, NavigatedToGroup({ group: intent.group }))
         case "navigate-pane":
           return update(model, NavigatedTo({ pane: intent.pane }))
         case "back-to-shell":

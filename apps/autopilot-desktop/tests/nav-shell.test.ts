@@ -2,12 +2,6 @@ import { describe, expect, test } from "bun:test"
 
 import { interpretKey, type KeyEvent } from "../src/ui/keyboard"
 import {
-  IconCount,
-  iconNames,
-  iconSvg,
-  type IconName,
-} from "../src/shared/openagents-icon-catalog"
-import {
   ChangedCommandPaletteQuery,
   ClosedCommandPalette,
   MovedCommandPaletteSelection,
@@ -27,7 +21,6 @@ import {
   filterPaletteCommands,
   groupByAccel,
   groupForPane,
-  hotbarGroupForNumber,
   paletteCommands,
 } from "../src/ui/nav"
 import { update } from "../src/ui/update"
@@ -210,10 +203,10 @@ describe("#5465 keyboard layer", () => {
     expect(interpretKey(open, key({ key: "Escape" })).kind).toBe("close-palette")
   })
 
-  test("Cmd-1..5 jump to the primary groups", () => {
+  test("Cmd-number no longer jumps to hotbar groups", () => {
     for (const n of [1, 2, 3, 4, 5]) {
       const intent = interpretKey(initialModel, key({ key: String(n), meta: true }))
-      expect(intent.kind).toBe("navigate-group")
+      expect(intent.kind).toBe("none")
     }
   })
 
@@ -250,11 +243,12 @@ describe("#5465 keyboard layer", () => {
     expect(model.commandPaletteOpen).toBe(true)
   })
 
-  test("the Settings shortcut listing is non-empty and includes the palette + groups", () => {
+  test("the Settings shortcut listing is non-empty and does not advertise hotbar number jumps", () => {
     expect(SHORTCUTS.length).toBeGreaterThan(0)
     const text = SHORTCUTS.map((s) => `${s.chord} ${s.description}`).join(" | ")
     expect(text).toContain("command palette")
-    expect(text).toContain("Jump to Chat")
+    expect(text).not.toContain("Jump to Chat")
+    expect(text).not.toContain("1 … 9")
   })
 })
 
@@ -281,7 +275,7 @@ describe("nav shell keeps the view mountable (black-screen guard holds)", () => 
   })
 })
 
-// ── HUD H1: the numbered hotbar (#5499) ──────────────────────────────────────
+// ── HUD H1: the blank hotbar (#5499) ─────────────────────────────────────────
 // Cycle-safe serialize so we can assert what the hotbar renders without a DOM
 // (plain foldkit Html objects — same approach as zero-base-shell.test.ts).
 const serializeView = (node: unknown): string => {
@@ -296,10 +290,9 @@ const serializeView = (node: unknown): string => {
   })
 }
 
-describe("#5499 HUD H1 hotbar — derived from the SAME nav registry", () => {
-  test("the numbered slots ARE the nav groups (no parallel list), keyed by accel", () => {
+describe("#5499 HUD H1 hotbar — blank group cells plus ⌘K", () => {
+  test("the blank group cells still mirror the nav group count/order", () => {
     const groupSlots = HOTBAR_SLOTS.filter((s) => s.kind === "group")
-    // One numbered slot per group, in accel order, matching the registry.
     expect(groupSlots.length).toBe(NAV_GROUPS.length)
     for (const slot of groupSlots) {
       if (slot.kind !== "group") continue
@@ -311,102 +304,65 @@ describe("#5499 HUD H1 hotbar — derived from the SAME nav registry", () => {
     }
   })
 
-  test("a dedicated Cmd-K command-palette slot sits alongside the numbered slots", () => {
+  test("a dedicated ⌘K command-palette slot sits alongside the blank cells", () => {
     const palette = HOTBAR_SLOTS.filter((s) => s.kind === "palette")
     expect(palette.length).toBe(1)
     if (palette[0]?.kind === "palette") expect(palette[0].chord).toBe("⌘K")
-    // The palette slot is last (the prior-HUD layout: numbers then ⌘K).
     expect(HOTBAR_SLOTS[HOTBAR_SLOTS.length - 1]?.kind).toBe("palette")
   })
 
-  test("each group slot resolves to the EXISTING NavigatedToGroup → defaultPane action", () => {
-    for (const slot of HOTBAR_SLOTS) {
-      if (slot.kind !== "group") continue
-      const group = groupByAccel(slot.number)
-      // The slot dispatches NavigatedToGroup({group}); the reducer lands on the
-      // group's default pane (the same path the sidebar/palette/Cmd-<n> use).
-      const [model] = update(initialModel, NavigatedToGroup({ group: slot.group }))
-      expect(model.pane).toBe(group?.defaultPane)
-    }
-  })
-
-  test("hotbarGroupForNumber matches groupByAccel and is null for unmapped digits", () => {
-    for (const n of [1, 2, 3, 4, 5]) {
-      expect(hotbarGroupForNumber(n)?.id).toBe(groupByAccel(n)?.id)
-    }
-    expect(hotbarGroupForNumber(8)).toBeNull()
-    expect(hotbarGroupForNumber(0)).toBeNull()
-  })
-
-  test("a bare number key (outside inputs) activates the matching slot's group", () => {
-    // Slot 2 = Code group → composer; bare "2" jumps there (StarCraft hotkey).
+  test("bare and modified number keys do nothing; blank hotbar cells are not shortcuts", () => {
     const intent = interpretKey(initialModel, key({ key: "2" }))
-    expect(intent).toEqual({ kind: "navigate-group", group: "code" })
+    expect(intent).toEqual({ kind: "none" })
     const [model] = update(initialModel, PressedKey({
       key: "2", meta: false, ctrl: false, shift: false, inEditable: false,
     }))
-    expect(model.pane).toBe("composer")
+    expect(model.pane).toBe(initialModel.pane)
+    expect(
+      interpretKey(initialModel, key({ key: "3", meta: true, inEditable: true })),
+    ).toEqual({ kind: "none" })
   })
 
   test("a bare number key is IGNORED while typing in an input (no slot jump)", () => {
     expect(interpretKey(initialModel, key({ key: "3", inEditable: true })).kind).toBe("none")
   })
 
-  test("Cmd/Ctrl-number still activates the slot even while typing (global chord)", () => {
-    expect(
-      interpretKey(initialModel, key({ key: "3", meta: true, inEditable: true })),
-    ).toEqual({ kind: "navigate-group", group: "supervise" })
-  })
-
   test("an unmapped bare number (no group) is a no-op", () => {
     expect(interpretKey(initialModel, key({ key: "8" })).kind).toBe("none")
   })
 
-  test("the hotbar renders on the zero-base shell (the launcher grows from the bar)", () => {
+  test("the shell renders the bottom-left hotbar with the text input to its right", () => {
     const tree = serializeView(view(Model.make({ ...initialModel, pane: "shell" })).body)
+    expect(tree).toContain("shell-bar")
     expect(tree).toContain("hotbar")
+    expect(tree).toContain("hotbar-inline")
+    expect(tree).toContain("shell-input")
+    expect(tree.indexOf("hotbar-inline")).toBeLessThan(tree.indexOf("shell-input"))
     expect(tree).toContain("hotbar-slot")
-    expect(tree).toContain("hotbar-slot-icon")
-    expect(tree).toContain("hotbar-slot-key")
-    expect(tree).toContain("hotbar-slot-tooltip")
+    expect(tree).toContain("hotbar-slot-empty")
+    expect(tree).toContain("hotbar-slot-chord")
+    expect(tree).not.toContain("hotbar-slot-icon")
+    expect(tree).not.toContain("hotbar-slot-key")
     expect(tree).not.toContain("hotbar-slot-label")
-    // The ⌘K slot is present on the shell.
     expect(tree).toContain("⌘K")
   })
 
-  test("the desktop hotbar uses the Fireball/Vortex OpenAI SVG icon catalog", () => {
-    expect(IconCount).toBe(755)
-    const hotbarIcons = [
-      "Chat",
-      "Code",
-      "CheckCircle",
-      "Globe",
-      "Settings",
-      "Search",
-    ] satisfies ReadonlyArray<IconName>
-    for (const name of hotbarIcons) {
-      expect(iconNames).toContain(name)
-      expect(iconSvg(name)).toContain("<svg")
-    }
-  })
-
-  test("the hotbar slot face is icon-only, with the shortcut badge and label tooltip", () => {
+  test("the hotbar face is blank except the command-palette control", () => {
     const tree = serializeView(view(Model.make({ ...initialModel, pane: "composer" })).body)
-    // Slot 2 = Code group. The face uses a catalog SVG and a top-right 2 badge;
-    // the actual label is exposed through the tooltip/title rather than printed below the icon.
-    expect(tree).toContain("viewBox")
-    expect(tree).toContain("Code — press 2 or ⌘2")
+    expect(tree).toContain("hotbar-slot-empty")
+    expect(tree).toContain("hotbar-slot-palette")
     expect(tree).toContain("Command palette (⌘K)")
     expect(tree).toContain("hotbar-slot-tooltip")
+    expect(tree).not.toContain("viewBox")
+    expect(tree).not.toContain("Code — press")
     expect(tree).not.toContain("hotbar-slot-label")
   })
 
-  test("the hotbar renders on the full UI and highlights the active group's slot", () => {
-    // composer → Code group (accel 2) is the active slot. Foldkit serializes the
-    // class set as an object, so the active group slot carries both flags true.
+  test("the hotbar renders on the full UI as a bottom-left floating strip without active group highlighting", () => {
     const tree = serializeView(view(Model.make({ ...initialModel, pane: "composer" })).body)
     expect(tree).toContain("hotbar")
-    expect(tree).toContain('"hotbar-slot-group":true,"active":true')
+    expect(tree).toContain("hotbar-floating")
+    expect(tree).not.toContain("hotbar-slot-group")
   })
 
   test("the hotbar is hidden in immersive training fullscreen (does not occlude the scene)", () => {

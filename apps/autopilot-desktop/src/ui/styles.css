@@ -183,22 +183,6 @@ body {
 .shell-input:disabled {
   opacity: 0.55;
 }
-.shell-open-panes {
-  flex: 0 0 auto;
-  background: transparent;
-  border: 1px solid rgb(255 255 255 / 0.1);
-  border-radius: 8px;
-  color: rgb(255 255 255 / 0.4);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
-  padding: 0.5rem 0.6rem;
-}
-.shell-open-panes:hover {
-  color: var(--hud-secondary, #f2f4f8);
-  border-color: color-mix(in srgb, var(--hud-primary) 35%, transparent);
-}
 /* Always-visible return to the zero-base shell from the full UI (owner
    directive 2026-06-19). Fixed top-left, above the sidebar, so it can never be
    scrolled out of reach; Escape does the same. */
@@ -222,19 +206,13 @@ body {
   border-color: rgb(255 255 255 / 0.4);
 }
 
-/* ── HUD H1: the numbered hotbar (#5499) ─────────────────────────────────────
-   A StarCraft-style bottom-center command bar — the recurring OpenAgents HUD
-   launcher (Commander, WGPUI; see the 2026-06-19 previous-HUD-systems audit).
-   Fixed, blurred, high-z (below the palette backdrop at z-index 50). Slots are
-   derived from the nav registry (nav.ts HOTBAR_SLOTS); the active group's slot
-   is highlighted. White-on-black to match the zero-base shell. */
-/* HUD H4 (#5502): Commander-style square icon slots. The face shows only the
-   icon + top-right shortcut badge; labels live in the hover/focus tooltip. */
+/* ── HUD H1: the hotbar (#5499) ──────────────────────────────────────────────
+   A compact bottom-left command strip. Per owner directive, numbered group
+   cells are blank/inert placeholders; only the ⌘K command-palette slot is live. */
 .hotbar {
   position: fixed;
-  left: 50%;
+  left: clamp(0.75rem, 2vw, 1.25rem);
   bottom: clamp(0.9rem, 2.2vw, 1.4rem);
-  transform: translateX(-50%);
   z-index: 40;
   display: flex;
   align-items: stretch;
@@ -250,9 +228,15 @@ body {
   backdrop-filter: blur(16px);
   pointer-events: auto;
 }
-/* On the otherwise-black shell the bar must clear the bottom text input. */
-.app-shell-shell .hotbar {
-  bottom: clamp(4.5rem, 9vw, 6rem);
+.hotbar-inline {
+  position: static;
+  left: auto;
+  bottom: auto;
+  z-index: auto;
+  flex: 0 0 auto;
+  background: rgb(255 255 255 / 0.03);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.03);
+  backdrop-filter: none;
 }
 .hotbar-slot {
   position: relative;
@@ -266,53 +250,30 @@ body {
   border-radius: 2px;
   background: rgb(255 255 255 / 0.04);
   color: rgb(255 255 255 / 0.62);
-  cursor: pointer;
   font: inherit;
   overflow: visible;
 }
-.hotbar-slot:hover,
-.hotbar-slot:focus-visible {
+.hotbar-slot-button {
+  cursor: pointer;
+}
+.hotbar-slot-button:hover,
+.hotbar-slot-button:focus-visible {
   color: var(--hud-line, #e6e9ef);
   border-color: color-mix(in srgb, var(--hud-primary) 45%, transparent);
   background: rgb(255 255 255 / 0.06);
   outline: none;
 }
-.hotbar-slot.active {
-  color: var(--hud-primary, #fff);
-  border-color: color-mix(in srgb, var(--hud-primary) 70%, transparent);
-  background: color-mix(in srgb, var(--hud-primary) 12%, transparent);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--hud-primary) 28%, transparent);
-}
-.hotbar-slot-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.35rem;
-  height: 1.35rem;
-  color: currentColor;
+.hotbar-slot-empty {
+  cursor: default;
   pointer-events: none;
 }
-.hotbar-slot-icon > svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-  flex: 0 0 auto;
-}
-.hotbar-slot-key {
-  position: absolute;
-  top: 0.18rem;
-  right: 0.22rem;
+.hotbar-slot-chord {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 0.82rem;
-  height: 0.72rem;
-  border: 1px solid rgb(255 255 255 / 0.14);
-  border-radius: 2px;
-  background: rgb(0 0 0 / 0.46);
-  color: rgb(255 255 255 / 0.72);
+  color: currentColor;
   font-family: ui-monospace, monospace;
-  font-size: 0.58rem;
+  font-size: 0.78rem;
   font-weight: 700;
   line-height: 1;
 }
@@ -347,8 +308,8 @@ body {
   background: rgb(6 9 13 / 0.98);
   transform: translate(-50%, -50%) rotate(45deg);
 }
-.hotbar-slot:hover .hotbar-slot-tooltip,
-.hotbar-slot:focus-visible .hotbar-slot-tooltip {
+.hotbar-slot-button:hover .hotbar-slot-tooltip,
+.hotbar-slot-button:focus-visible .hotbar-slot-tooltip {
   opacity: 1;
 }
 /* The ⌘K palette slot is the always-white accent slot (the StarCraft command

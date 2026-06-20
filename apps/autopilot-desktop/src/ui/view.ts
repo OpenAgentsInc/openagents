@@ -52,7 +52,6 @@ import {
   type DesktopProofReplayProjection,
 } from "../shared/proof-replays"
 import { isGatewayBalanceLow } from "../shared/inference-routing"
-import { iconSvg, type IconName } from "../shared/openagents-icon-catalog"
 
 import type {
   AccountRow,
@@ -182,7 +181,6 @@ import {
   ToggledChatMessageDetails,
   ChangedShellInput,
   SubmittedShell,
-  OpenedPanes,
   ClosedPanes,
   // HUD H3 (#5501): managed pane-layer verbs.
   ClosedManagedPane,
@@ -547,90 +545,45 @@ const commandPalette = (model: Model): Html => {
 // docs/launch/2026-06-19-previous-hud-systems-audit.md §3/§7). It is the FOURTH
 // consumer of the one nav registry: slots come straight from `HOTBAR_SLOTS`
 // (derived from `NAV_GROUPS` in nav.ts), NOT a parallel list. Each slot
-// dispatches an EXISTING message — `NavigatedToGroup` for a numbered group slot,
-// `OpenedCommandPalette` for the ⌘K slot — exactly what the sidebar / palette /
-// keyboard already use (no new control verb, audit §5.2/§5.3).
+// dispatches an EXISTING message only for the ⌘K command-palette slot. The
+// numbered group cells are intentionally blank/inert placeholders per the
+// owner directive (2026-06-19): no click action, no icon, no label, no pane open.
 //
-// Rendered on the zero-base shell AND the full UI so the command bar is always
-// the launcher. The active group's slot is highlighted from `groupForPane` so
-// the hotbar, sidebar, and current pane never disagree.
-const hotbarSlotIconName = (slot: HotbarSlot): IconName => {
-  if (slot.kind === "palette") return "Search"
-  switch (slot.group) {
-    case "chat":
-      return "Chat"
-    case "code":
-      return "Code"
-    case "supervise":
-      return "CheckCircle"
-    case "explore":
-      return "Globe"
-    case "settings":
-      return "Settings"
-    default:
-      return "Circle"
-  }
-}
-
-const hotbarSlotIconView = (slot: HotbarSlot): Html =>
-  h.span(
-    [
-      cls("hotbar-slot-icon"),
-      h.AriaHidden(true),
-      h.InnerHTML(iconSvg(hotbarSlotIconName(slot))),
-    ],
-    [],
-  )
-
-const hotbarSlotView = (slot: HotbarSlot, activeGroup: string | null): Html => {
+// Rendered inside the zero-base shell input row on the bottom-left, and as a
+// floating bottom-left compact strip on the full UI. Group slots are decorative
+// blanks; ⌘K remains clickable.
+const hotbarSlotView = (slot: HotbarSlot): Html => {
   if (slot.kind === "palette") {
     const title = `${slot.label} (${slot.chord})`
     return h.button(
       [
-        cls("hotbar-slot hotbar-slot-palette"),
+        cls("hotbar-slot hotbar-slot-button hotbar-slot-palette"),
         h.Type("button"),
         h.Title(title),
         h.AriaLabel(title),
         h.OnClick(OpenedCommandPalette()),
       ],
       [
-        hotbarSlotIconView(slot),
-        h.span([cls("hotbar-slot-key"), h.AriaHidden("true")], ["K"]),
+        h.span([cls("hotbar-slot-chord"), h.AriaHidden("true")], [slot.chord]),
         h.span([cls("hotbar-slot-tooltip")], [title]),
       ],
     )
   }
-  const active = slot.group === activeGroup
-  const title = `${slot.label} — press ${slot.number} or ⌘${slot.number}`
-  return h.button(
-    [
-      cls(`hotbar-slot hotbar-slot-group${active ? " active" : ""}`),
-      h.Type("button"),
-      h.Title(title),
-      h.AriaLabel(title),
-      h.OnClick(NavigatedToGroup({ group: slot.group })),
-    ],
-    [
-      hotbarSlotIconView(slot),
-      h.span([cls("hotbar-slot-key"), h.AriaHidden("true")], [String(slot.number)]),
-      h.span([cls("hotbar-slot-tooltip")], [title]),
-    ],
+  return h.div(
+    [cls("hotbar-slot hotbar-slot-empty"), h.AriaHidden(true)],
+    [],
   )
 }
 
-const hotbar = (model: Model): Html => {
-  const activeGroup = groupForPane(model.pane)?.id ?? null
-  // HUD H4 (#5502): Commander-style square icon slots. Text labels stay in the
-  // hover/focus tooltip so the bar stays compact.
-  return h.div(
+const hotbar = (placement: "floating" | "inline" = "floating"): Html =>
+  h.div(
     [
-      cls("hotbar"),
+      cls(`hotbar hotbar-${placement}`),
       h.Role("toolbar"),
       h.AriaLabel("Hotbar"),
     ],
-    HOTBAR_SLOTS.map((slot) => hotbarSlotView(slot, activeGroup)),
+    HOTBAR_SLOTS.map((slot) => hotbarSlotView(slot)),
   )
-}
 
 // ── Nodes pane ────────────────────────────────────────────────────────────────
 
@@ -5843,10 +5796,9 @@ const composerPane = (model: Model): Html => {
 // settings, no status chrome. The bar submits on Enter (Shift+Enter is left for
 // a newline if the owner ever wants it; today it is a single-line input).
 //
-// One tiny affordance opens the KEPT full multi-pane UI: the "open panes" link
-// (it dispatches OpenedPanes → lands on the chat pane). Cmd-K also still works
-// (the palette overlays the shell) as the primary explicit open. Everything the
-// old UI did is preserved and reachable; it just no longer renders by default.
+// The bottom-left ⌘K hotbar slot opens the command palette over the shell.
+// Everything the old UI did is preserved and reachable through the palette/sidebar
+// once open; it just no longer renders by default.
 const shellTurnView = (turn: { role: string; text: string }): Html =>
   h.div(
     [cls(`shell-turn shell-turn-${turn.role}`)],
@@ -5871,6 +5823,9 @@ const shellPane = (model: Model): Html =>
       h.div(
         [cls("shell-bar")],
         [
+          // Bottom-left hotbar; blank cells are inert, and the chat input sits
+          // immediately to its right.
+          hotbar("inline"),
           h.input([
             cls("shell-input"),
             h.Type("text"),
@@ -5891,18 +5846,6 @@ const shellPane = (model: Model): Html =>
                 : Option.none(),
             ),
           ]),
-          // A tiny, unobtrusive "open panes" affordance (the explicit open for
-          // the hidden full UI). Kept minimal so the screen stays essentially
-          // black; Cmd-K is the primary open.
-          h.button(
-            [
-              cls("shell-open-panes"),
-              h.Type("button"),
-              h.Title("Open the full Autopilot UI (or press ⌘K)"),
-              h.OnClick(OpenedPanes()),
-            ],
-            ["⌘K"],
-          ),
         ],
       ),
     ],
@@ -6283,16 +6226,9 @@ const rootView = (model: Model): Html => {
   // there is a response). No sidebar, no nav, no panes — just the shell. The
   // command palette (#5464) still overlays it so Cmd-K opens the hidden full UI.
   if (model.pane === "shell") {
-    // HUD H1 (#5499): the numbered hotbar IS the launcher that grows from the
-    // text bar — render it on the otherwise-black shell so slots 1..N + ⌘K open
-    // the (kept, hidden) full UI. The command palette still overlays it too.
     return h.div(
       [cls("app-shell app-shell-shell"), themeData],
-      // HUD H3 (#5501): the managed pane layer floats OVER the black shell. It
-      // renders nothing until a pane is opened (hotbar / palette), so the default
-      // shell stays truly black — the panes are a managed layer, not the old
-      // free-floating default sprawl.
-      [shellPane(model), managedPaneLayer(model), hotbar(model), commandPalette(model)],
+      [shellPane(model), managedPaneLayer(model), commandPalette(model)],
     )
   }
   // The network home remains immersive: fullscreen replay scene, no sidebar
@@ -6302,7 +6238,7 @@ const rootView = (model: Model): Html => {
   if (model.pane === "network") {
     return h.div(
       [cls("app-shell app-shell-network"), themeData],
-      [networkPane(model), managedPaneLayer(model), hotbar(model), commandPalette(model)],
+      [networkPane(model), managedPaneLayer(model), hotbar(), commandPalette(model)],
     )
   }
   const fullscreenTraining = model.pane === "training-fullscreen"
@@ -6343,11 +6279,9 @@ const rootView = (model: Model): Html => {
           ),
         ],
       ),
-      // HUD H1 (#5499): the same bottom command bar across the full UI. The
-      // active group's slot is highlighted (groupForPane), keeping the hotbar in
-      // sync with the sidebar + current pane. Hidden in the immersive training
-      // fullscreen so it does not occlude the scene.
-      fullscreenTraining ? h.empty : hotbar(model),
+      // HUD H1 (#5499): the same blank bottom-left command strip across the full
+      // UI. Hidden in immersive training fullscreen so it does not occlude the scene.
+      fullscreenTraining ? h.empty : hotbar(),
       // HUD H7 (#5504): the live status/meters overlay, top-right corner. Hidden
       // in fullscreen training (same anti-occlusion rule as the hotbar).
       fullscreenTraining ? h.empty : statusHudOverlay(model),
