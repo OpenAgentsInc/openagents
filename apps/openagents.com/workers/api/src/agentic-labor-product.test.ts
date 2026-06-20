@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 import {
   AGENTIC_LABOR_PRODUCT_PRIMITIVE,
   AGENTIC_LABOR_PRODUCTS_PROMISE,
+  advanceLaborProductFlow,
   buildLaborProductFlowPlan,
   decodeLaborProductOrderRequest,
   laborProductOrderReceiptRef,
@@ -227,6 +228,101 @@ describe('self-serve order planning (PURE, INERT)', () => {
       listing,
     })
     expect(planned.ok).toBe(false)
+  })
+})
+
+describe('advanceLaborProductFlow (forward-only, PURE/INERT)', () => {
+  const orderedPlan = () =>
+    okPlan({ stage: 'ordered', workerRef: null, artifactRef: null })
+
+  test('carries a self-serve order forward: ordered -> dispatched -> delivered', () => {
+    const ordered = planSelfServeLaborProductOrder(
+      { orderId: 'order-1', buyerRef: 'agent:buyer', listing },
+      { createdAt: '2026-06-20T00:00:00.000Z' },
+    )
+    expect(ordered.ok).toBe(true)
+    if (!ordered.ok) return
+
+    const dispatched = advanceLaborProductFlow(ordered.plan, {
+      kind: 'dispatch',
+      workerRef: 'agent:worker',
+    })
+    expect(dispatched.ok).toBe(true)
+    if (!dispatched.ok) return
+    expect(dispatched.plan.stage).toBe('dispatched')
+    expect(dispatched.plan.workerRef).toBe('agent:worker')
+    expect(dispatched.plan.artifactRef).toBeNull()
+
+    const delivered = advanceLaborProductFlow(dispatched.plan, {
+      kind: 'deliver',
+      artifactRef: 'artifact.repo_triage.order-1',
+    })
+    expect(delivered.ok).toBe(true)
+    if (!delivered.ok) return
+    expect(delivered.plan.stage).toBe('delivered')
+    expect(delivered.plan.workerRef).toBe('agent:worker')
+    expect(delivered.plan.artifactRef).toBe('artifact.repo_triage.order-1')
+
+    // Identity carried unchanged across the whole carry-through.
+    expect(delivered.plan.orderId).toBe('order-1')
+    expect(delivered.plan.buyerRef).toBe('agent:buyer')
+    expect(delivered.plan.createdAt).toBe('2026-06-20T00:00:00.000Z')
+    expect(delivered.plan.settlement.receiptRef).toBe(
+      laborProductOrderReceiptRef('order-1'),
+    )
+    // Still honest at every step.
+    expect(delivered.plan.inert).toBe(true)
+    expect(delivered.plan.promiseState).toBe('yellow')
+  })
+
+  test('dispatch requires an ordered flow', () => {
+    const result = advanceLaborProductFlow(okPlan(), {
+      kind: 'dispatch',
+      workerRef: 'agent:worker',
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.reason).toContain('ordered')
+    }
+  })
+
+  test('dispatch rejects an empty workerRef', () => {
+    const result = advanceLaborProductFlow(orderedPlan(), {
+      kind: 'dispatch',
+      workerRef: ' ',
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.reason).toContain('workerRef')
+    }
+  })
+
+  test('deliver requires a dispatched flow', () => {
+    const result = advanceLaborProductFlow(orderedPlan(), {
+      kind: 'deliver',
+      artifactRef: 'artifact.x',
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.reason).toContain('dispatched')
+    }
+  })
+
+  test('deliver rejects an empty artifactRef', () => {
+    const dispatched = advanceLaborProductFlow(orderedPlan(), {
+      kind: 'dispatch',
+      workerRef: 'agent:worker',
+    })
+    expect(dispatched.ok).toBe(true)
+    if (!dispatched.ok) return
+    const result = advanceLaborProductFlow(dispatched.plan, {
+      kind: 'deliver',
+      artifactRef: '',
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.reason).toContain('artifactRef')
+    }
   })
 })
 
