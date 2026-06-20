@@ -147,6 +147,37 @@ type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
 const noCommands: ReadonlyArray<Command.Command<Message>> = []
 
+// #5730: how many active payment particles the chat-world scene keeps at once.
+// Bounds the live beam/burst count behind chat and the scene-options signature
+// the renderer diffs on, so a busy stream cannot grow the set without limit.
+const MAX_CHAT_WORLD_PARTICLES = 24
+
+// Append a new payment particle to the bounded active set, de-duped by id and
+// keeping the most recent MAX_CHAT_WORLD_PARTICLES. Opaque in/out (the runtime
+// stores PaymentParticle as S.Unknown); we read only the `id` for dedupe.
+const appendChatWorldParticle = (
+  current: ReadonlyArray<unknown>,
+  particle: unknown,
+): ReadonlyArray<unknown> => {
+  const id = (particle as { id?: unknown } | null)?.id
+  const withoutDup =
+    typeof id === "string"
+      ? current.filter((p) => (p as { id?: unknown } | null)?.id !== id)
+      : current
+  const next = [...withoutDup, particle]
+  return next.length > MAX_CHAT_WORLD_PARTICLES
+    ? next.slice(next.length - MAX_CHAT_WORLD_PARTICLES)
+    : next
+}
+
+// #5730: recover the receipt sourceRef from a payment-endpoint entity label.
+// Labels are `<ref> · <sats> sats` (target) or a bare `<ref>` (from), so the
+// ref is everything before the first " · " separator, trimmed.
+const chatWorldRefFromLabel = (label: string): string => {
+  const sep = label.indexOf(" · ")
+  return (sep >= 0 ? label.slice(0, sep) : label).trim()
+}
+
 const SHELL_TARGET_ORDER: ReadonlyArray<ShellTarget> = [
   "current",
   "claude_code",
@@ -723,6 +754,41 @@ export const update = (model: Model, message: Message): Result => {
       ]
     case "GotPylonStats":
       return [Model.make({ ...model, pylonStats: message.stats }), noCommands]
+    case "GotChatWorldScene":
+      // #5730: latest projected live chat-world pylon scene. Stored opaque;
+      // chatPane reads it via modelChatWorldScene and falls back to the static
+      // seed on null/empty.
+      return [
+        Model.make({ ...model, chatWorldScene: message.scene }),
+        noCommands,
+      ]
+    case "GotChatWorldPaymentParticle":
+      // #5730: a new evidence-bound payment particle. Append to the bounded
+      // active set, de-duped by id (the backfill poll and the live stream can
+      // both surface the same event), keeping the most recent ones.
+      return [
+        Model.make({
+          ...model,
+          chatWorldParticles: appendChatWorldParticle(
+            model.chatWorldParticles,
+            message.particle,
+          ),
+        }),
+        noCommands,
+      ]
+    case "SelectedChatWorldNode":
+      // #5730: surface the clicked payment endpoint's receipt ref in the
+      // inspector. Only payment endpoints carry a ref (id `pay:…`); other scene
+      // nodes clear the inspector. The label is `<ref> · <sats> sats` or `<ref>`.
+      return [
+        Model.make({
+          ...model,
+          chatWorldInspectedRef: message.id.startsWith("pay:")
+            ? chatWorldRefFromLabel(message.label)
+            : null,
+        }),
+        noCommands,
+      ]
     case "GotNotifications":
       return [Model.make({ ...model, notifications: message.view }), noCommands]
     case "GotNodeLaunchStatus":

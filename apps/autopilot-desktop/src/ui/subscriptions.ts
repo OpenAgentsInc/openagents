@@ -18,11 +18,18 @@ import { Subscription } from "foldkit"
 import { setEmit } from "./bridge"
 import {
   EndedPaneDrag,
+  GotChatWorldPaymentParticle,
+  GotChatWorldScene,
   MovedPaneDragPointer,
   PressedKey,
   type Message,
 } from "./message"
 import type { Model } from "./model"
+import {
+  subscribePaymentParticles,
+  subscribePylonScene,
+} from "./chat-world-subscriptions"
+import { chatWorldBuildFlags } from "../shared/chat-world-flags"
 
 // The inbound push stream. We stash a queue-backed emitter in the bridge so the
 // Electroview handlers can feed messages in; teardown clears it.
@@ -200,30 +207,58 @@ const pointerStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =
   ).pipe(Effect.flatMap(() => Effect.never)),
 )
 
+// P2.5 chat-world wiring (#5730): connect the P1/P2 live feeds (#5736/#5737)
+// into the reducer. The chat-world scene mounts/unmounts with the chat pane, but
+// the desktop runtime owns ONE persistent inbound stream per concern (mirroring
+// `inbound`/`keyboard`/`paneDrag`), so we model each chat-world feed as a
+// persistent Foldkit subscription whose acquire calls the hook and whose release
+// calls the returned unsubscribe() — the same mount/unmount contract the old
+// TODO described, expressed in Effect acquireRelease.
+//
+// Both feeds are FLAG-GATED on the SAME build flags the view uses
+// (chatWorldBuildFlags), passed explicitly into the hooks so there is no hidden
+// global. With the flags OFF the hooks return noop immediately (no fetch, no
+// EventSource, no timers), so the only cost of registering them is two acquired
+// resources that do nothing — and the reducer never sees a chat-world message,
+// keeping the flag-OFF model + view byte-identical to current main.
+//
+// Evidence-bound (§5): subscribePaymentParticles only ever dispatches particles
+// that carry a real sourceRef (activityEventToParticle drops the rest), so every
+// GotChatWorldPaymentParticle the reducer stores is clickable to a real receipt.
+
+const pylonSceneStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =>
+  Effect.acquireRelease(
+    Effect.sync(() =>
+      subscribePylonScene(
+        (scene) => Queue.offerUnsafe(queue, GotChatWorldScene({ scene })),
+        { flags: chatWorldBuildFlags() },
+      ),
+    ),
+    (unsubscribe) => Effect.sync(() => unsubscribe()),
+  ).pipe(Effect.flatMap(() => Effect.never)),
+)
+
+const paymentParticleStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =>
+  Effect.acquireRelease(
+    Effect.sync(() =>
+      subscribePaymentParticles(
+        (particle) =>
+          Queue.offerUnsafe(queue, GotChatWorldPaymentParticle({ particle })),
+        { flags: chatWorldBuildFlags() },
+      ),
+    ),
+    (unsubscribe) => Effect.sync(() => unsubscribe()),
+  ).pipe(Effect.flatMap(() => Effect.never)),
+)
+
 export const subscriptions = Subscription.make<Model, Message>()(() => ({
   inbound: Subscription.persistent(inboundStream),
   // #5465: route window keydown into the reducer as PressedKey.
   keyboard: Subscription.persistent(keyboardStream),
   // HUD H3 (#5501): route window pointer move/up into the pane-layer drag reducer.
   paneDrag: Subscription.persistent(pointerStream),
+  // #5730: live pylon scene + Bitcoin payment particles behind chat. Both noop
+  // (no I/O) unless their build flag is on, so flag-OFF behavior is unchanged.
+  chatWorldScene: Subscription.persistent(pylonSceneStream),
+  chatWorldPayments: Subscription.persistent(paymentParticleStream),
 }))
-
-// TODO(P0 chat-world wiring · #5736 #5737): the live chat-world scene owns its
-// own feed lifecycle (it mounts/unmounts with the canvas), so its subscriptions
-// are NOT registered here. When P0 mounts the pylon scene behind chatPane
-// (flag CHAT_WORLD_SCENE) and the payment layer (flag CHAT_WORLD_PAYMENTS),
-// call these from the scene's mount and store the returned unsubscribe() to call
-// on unmount:
-//
-//   import {
-//     subscribePylonScene,
-//     subscribePaymentParticles,
-//   } from "./chat-world-subscriptions"
-//
-//   const stopPylons   = subscribePylonScene(scene.applyPylonScene)
-//   const stopPayments = subscribePaymentParticles(scene.spawnPaymentParticle)
-//   // ... on unmount: stopPylons(); stopPayments()
-//
-// Both are flag-gated (default OFF) and return noop when their flag is unset, so
-// wiring them in is safe before the flags flip on. The pure mappers they use
-// live in shared/chat-world-scene.ts (unit-tested in tests/chat-world-scene.test.ts).

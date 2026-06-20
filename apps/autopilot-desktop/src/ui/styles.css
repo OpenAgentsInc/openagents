@@ -1110,6 +1110,44 @@ body {
   gap: 0.75rem;
   min-height: 0;
 }
+/* #5730 (P2.5): the chat-world scene container positions the inspector chip
+ * (absolute) relative to itself without changing the P0 full-bleed layout. */
+.chat-scene-background {
+  position: relative;
+}
+/* #5730 (P2.5): the receipt inspector chip over the chat-world scene. Only
+ * visible behind the CHAT_WORLD_PAYMENTS flag, after a payment beam is clicked. */
+.chat-scene-inspector {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 3;
+  display: flex;
+  gap: 0.25rem;
+  align-items: baseline;
+  max-width: min(90%, 32rem);
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--border, #30363d);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg, #0c0f13) 80%, transparent);
+  color: var(--fg, #e6e9ef);
+  font-size: 0.72rem;
+  pointer-events: none;
+}
+.chat-scene-inspector-empty {
+  display: none;
+}
+.chat-scene-inspector-label {
+  color: var(--muted, #8b93a7);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.chat-scene-inspector-ref {
+  color: var(--accent, #f5b73a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chat-thread-shell {
   min-height: 18rem;
   max-height: min(58vh, 38rem);
