@@ -95,9 +95,13 @@ This is the rule implemented for the live metric, verbatim from the metric's own
     or `{ ok:true, verdict }` with the conformance result. This removes the
     footgun of skipping the parse boundary by type-asserting a raw document
     straight into `verifyQualifiedContributorMethodology` — the boundary is
-    unbypassable for the real-evidence run. Covered by
-    `qualified-contributor-methodology.test.ts` (33 tests, wired into
-    `check:deploy`).
+    unbypassable for the real-evidence run. The cross-contributor shared-ref
+    checks compare each contributor's **distinct** refs (deduped within that
+    contributor) before flattening, so a single legitimate contributor whose own
+    evidence harmlessly lists a ref twice is never falsely flagged
+    `*-across-contributors`, while genuine reuse across two contributors is still
+    caught. Covered by `qualified-contributor-methodology.test.ts` (35 tests,
+    wired into `check:deploy`).
 
 ## Public dereference path
 

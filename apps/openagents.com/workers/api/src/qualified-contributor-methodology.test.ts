@@ -281,6 +281,58 @@ describe('verifyQualifiedContributorMethodology', () => {
     expect(result.reasons).not.toContain(QualifiedRunReason.SharedVerifiedWork)
   })
 
+  test('a single contributor that repeats its OWN refs still conforms (no false cross-contributor sharing)', () => {
+    // Harmless within-contributor repetition: the same lease, verified-work
+    // challenge, and settlement receipt each listed twice on ONE contributor.
+    // This must NOT be read as the same ref shared across two contributors.
+    const result = verifyQualifiedContributorMethodology({
+      claimedQualifiedContributorCount: 1,
+      contributors: [
+        qualified({
+          pylonRef: 'pylon.solo',
+          leaseRefs: ['lease.solo', 'lease.solo'],
+          verifiedExactTraceReplayChallengeRefs: [
+            'challenge.solo',
+            'challenge.solo',
+          ],
+          settlementReceipts: [
+            realSettlement({ receiptRef: 'receipt.solo' }),
+            realSettlement({ receiptRef: 'receipt.solo' }),
+          ],
+        }),
+      ],
+    })
+    expect(result.conforms).toBe(true)
+    expect(result.qualifiedContributorCount).toBe(1)
+    expect(result.reasons).toEqual([])
+  })
+
+  test('still flags genuine cross-contributor sharing even when each contributor repeats its own refs', () => {
+    // Both contributors repeat their own lease internally AND share the SAME
+    // lease across each other. Per-contributor dedup must not mask the real
+    // cross-contributor reuse.
+    const sharedLease = 'lease.window.shared'
+    const result = verifyQualifiedContributorMethodology({
+      claimedQualifiedContributorCount: 2,
+      contributors: [
+        qualified({
+          pylonRef: 'pylon.a',
+          leaseRefs: [sharedLease, sharedLease],
+          settlementReceipts: [realSettlement({ receiptRef: 'receipt.a' })],
+        }),
+        qualified({
+          pylonRef: 'pylon.b',
+          leaseRefs: [sharedLease, sharedLease],
+          verifiedExactTraceReplayChallengeRefs: ['challenge.b.1'],
+          settlementReceipts: [realSettlement({ receiptRef: 'receipt.b' })],
+        }),
+      ],
+    })
+    expect(result.qualifiedContributorCount).toBe(2)
+    expect(result.conforms).toBe(false)
+    expect(result.reasons).toContain(QualifiedRunReason.SharedLease)
+  })
+
   test('an empty run conforms only to a claimed count of zero', () => {
     expect(
       verifyQualifiedContributorMethodology({

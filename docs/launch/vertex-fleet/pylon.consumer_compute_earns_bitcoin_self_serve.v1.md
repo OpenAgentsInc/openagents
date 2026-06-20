@@ -3,6 +3,40 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (m) — scale methodology: cross-contributor check no longer false-flags within-contributor repeats
+
+Blocker advanced this run:
+`blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing`
+
+Updates (d)/(g) added the cross-contributor evidence-integrity checks
+(`SharedLease`/`SharedVerifiedWork`/`SharedSettlementReceipt`), but they flattened
+each counted contributor's RAW ref arrays and ran `hasSharedRef` over the result.
+That had a real false-negative: a single legitimate contributor whose own
+evidence harmlessly lists the same ref twice (the same lease recorded from two
+evidence sources, one receipt cited twice, etc.) makes the flattened array contain
+a duplicate, so a real, conforming run is flagged non-conforming with a misleading
+`*-across-contributors` reason. This is exactly the kind of harmless redundancy
+the documented remaining step ("run the verifier against the live run's REAL
+evidence") would hit, falsely failing a sound run.
+
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.ts` —
+  the three shared-ref checks now operate on each contributor's DISTINCT refs
+  (deduped within that contributor via `flattenPerContributorDistinct`) before
+  flattening. Genuine cross-contributor reuse is still caught (each sharer
+  contributes one copy of the shared ref → a duplicate across the flattened set);
+  harmless within-contributor repeats collapse. No reason codes, types, or public
+  surface changed.
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
+  — +2 vitest cases (single contributor repeating its own lease/work/receipt
+  conforms; two contributors that each repeat their own lease AND share it across
+  each other still fail `SharedLease`). 33→35 tests, wired into `check:deploy`.
+- Methodology doc updated to document the per-contributor dedup (33→35 tests).
+
+No promise state changed; no scale claim asserted. Still listed: clearing it
+needs running the verifier against the live run's REAL evidence file and citing
+the `ok:true` `verdict.conforms === true`, plus owner sign-off. This run closes a
+correctness gap that would have falsely failed a sound real-evidence run.
+
 ## Update 2026-06-20 (l) — scale methodology: fused safe parse→verify entry
 
 Blocker advanced this run:

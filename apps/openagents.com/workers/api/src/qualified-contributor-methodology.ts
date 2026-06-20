@@ -212,16 +212,45 @@ export const verifyQualifiedContributorMethodology = (
   // across two counted contributors inflates the qualified count even when their
   // pylonRefs differ, so the run does not conform to the rule. Distinct pylonRefs
   // are necessary but not sufficient — the underlying work must be distinct too.
+  //
+  // The shared-ref test must compare refs ACROSS contributors, so it operates on
+  // each contributor's DISTINCT refs (deduped within that contributor) before
+  // flattening. Otherwise a single legitimate contributor whose own evidence
+  // harmlessly lists the same ref twice (e.g. the same lease recorded from two
+  // evidence sources, or one receipt cited twice) would trip the cross-contributor
+  // check and a real, conforming run would be falsely flagged
+  // `*-across-contributors`. Deduping per contributor keeps genuine cross-
+  // contributor sharing caught (each sharer still contributes one copy of the
+  // shared ref → a duplicate across the flattened set) while collapsing harmless
+  // within-contributor repeats.
   const counted = verdicts.filter(verdict => verdict.counts)
   const hasSharedRef = (refs: ReadonlyArray<string>): boolean =>
     new Set(refs).size !== refs.length
-  if (hasSharedRef(counted.flatMap(verdict => verdict.countedLeaseRefs))) {
+  const flattenPerContributorDistinct = (
+    perContributor: ReadonlyArray<ReadonlyArray<string>>,
+  ): ReadonlyArray<string> =>
+    perContributor.flatMap(refs => [...new Set(refs)])
+  if (
+    hasSharedRef(
+      flattenPerContributorDistinct(counted.map(v => v.countedLeaseRefs)),
+    )
+  ) {
     reasons.push(QualifiedRunReason.SharedLease)
   }
-  if (hasSharedRef(counted.flatMap(verdict => verdict.countedVerifiedWorkRefs))) {
+  if (
+    hasSharedRef(
+      flattenPerContributorDistinct(counted.map(v => v.countedVerifiedWorkRefs)),
+    )
+  ) {
     reasons.push(QualifiedRunReason.SharedVerifiedWork)
   }
-  if (hasSharedRef(counted.flatMap(verdict => verdict.countedSettlementReceiptRefs))) {
+  if (
+    hasSharedRef(
+      flattenPerContributorDistinct(
+        counted.map(v => v.countedSettlementReceiptRefs),
+      ),
+    )
+  ) {
     reasons.push(QualifiedRunReason.SharedSettlementReceipt)
   }
 
