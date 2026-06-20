@@ -74,6 +74,29 @@ passing audit. This run adds that final pure, fund-free bridge.
   — a "Transition-receipt proposal" section wiring the builder between the
   post-settlement audit and the registry transition call.
 
+## Follow-up: pre-dispatch candidate gate (this run)
+
+The aggregate preflight inspects ledger-wide stats and the post-settlement audit
+inspects the settled row, but nothing validated the *specific* `eligible` row
+chosen for the smoke before the operator runs `approve_dispatch`. This run adds
+the front bookend — a pure, public-safe per-row candidate gate.
+
+- `apps/openagents.com/workers/api/src/x-claim-reward-smoke-candidate.ts`
+  — `assertXClaimRewardSmokeCandidate(reward)` plus the
+  `XClaimRewardSmokeCandidateGate` / `XClaimRewardSmokeCandidateCheck` types.
+  Checks: state is `eligible`, bounded 1000-sat amount, well-formed public
+  receipt ref, no treasury payment id attached yet (clean start), and no leaked
+  payment material (lightning invoice, BOLT12 offer, lightning address,
+  preimage, or payment hash) in any public-facing field. Emits a public-safe
+  `candidateSummary` (rewardId, state, amountSats, receiptRef only). It moves no
+  funds and flips no state.
+- `apps/openagents.com/workers/api/src/x-claim-reward-smoke-candidate.test.ts`
+  — covers the clean pass, each blocking reason, every leaked-material pattern,
+  and a no-secret assertion on the serialized candidate summary.
+- `apps/openagents.com/docs/2026-06-09-x-claim-reward-dispatch-runbook.md`
+  — a "Candidate pre-dispatch gate" section wiring the gate in before the
+  `approve_dispatch` step.
+
 ## What remains
 
 The blocker is still open: an operator must run the live single-reward smoke —
