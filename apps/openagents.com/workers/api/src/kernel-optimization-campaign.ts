@@ -754,3 +754,112 @@ export const reconcileKernelOptimizationCampaignOps = (
     unmatchedSlugs,
   }
 }
+
+/**
+ * The single all-gates-must-hold verdict for releasing an at-scale campaign's
+ * payouts and refunds.
+ *
+ * Each of the four reconcilers above guards a DIFFERENT at-scale failure mode,
+ * and none subsumes another:
+ *
+ *   - totals (`reconcileKernelOptimizationCampaignSettlement`): job count + total
+ *     escrow conserve, and the settlement is for THIS campaign.
+ *   - per-job (`reconcileKernelOptimizationCampaignPerJob`): every dispatched
+ *     slug settled exactly once with its dispatched escrow (catches offsetting
+ *     drift the totals are blind to).
+ *   - target (`reconcileKernelOptimizationCampaignTargets`): each settled
+ *     verdict's model/device/hardware matches the slug it is filed under.
+ *   - op (`reconcileKernelOptimizationCampaignOps`): each settled verdict's op
+ *     matches the slug it is filed under (catches same-target op swaps).
+ *
+ * Releasing money safely requires ALL FOUR to hold. Until now a caller had to
+ * remember to run each one and AND the results by hand; forgetting any single
+ * gate (most easily the op reconciler, which only matters when one target hosts
+ * several ops) silently re-opens exactly the drift that gate exists to catch.
+ * This gate makes the "safe to release" decision atomic and auditable: it runs
+ * all four against ONE (spec, keyed settlement) pair, derives the campaign and
+ * settlement once, and is `ok` iff every constituent report is `ok`. It also
+ * surfaces the settlement ledger so payout/refund totals are visible alongside
+ * the verdict.
+ *
+ * It moves no money and never throws on a reconciliation finding (those are
+ * reported); it only re-raises a `KernelOptimizationDispatchError` when the spec
+ * itself is structurally invalid (the same contract the campaign builder
+ * enforces), because an unbuildable campaign has nothing to release.
+ */
+export type KernelOptimizationCampaignReleaseGate = Readonly<{
+  classId: typeof KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID
+  campaignRef: string
+  /** True iff EVERY constituent reconciler is ok — safe to release at scale. */
+  ok: boolean
+  /** The settlement ledger the gate evaluated (payout/refund totals). */
+  settlement: KernelOptimizationCampaignSettlement
+  /** Totals-level (job count + escrow conservation) reconciliation. */
+  totals: KernelOptimizationCampaignReconciliation
+  /** Per-job (slug + escrow) reconciliation. */
+  perJob: KernelOptimizationCampaignPerJobReconciliation
+  /** Per-job verdict-target (model/device/hardware) reconciliation. */
+  targets: KernelOptimizationCampaignTargetReconciliation
+  /** Per-job verdict-op reconciliation. */
+  ops: KernelOptimizationCampaignOpReconciliation
+  /**
+   * Every constituent discrepancy, each prefixed with the gate that raised it,
+   * so a single read tells an operator exactly which gate(s) failed and why.
+   */
+  discrepancies: ReadonlyArray<string>
+}>
+
+/**
+ * Compose all four campaign reconcilers (plus the settlement ledger) into one
+ * release gate whose `ok` must hold before any at-scale payout or refund.
+ *
+ * Pass the campaign SPEC (the target/op reconcilers need the structured targets
+ * only the spec carries) and the slug-keyed settlement items (budget + parity
+ * verdict per dispatched slug). The campaign fan-out and the settlement summary
+ * are derived internally so the four gates provably evaluate the SAME campaign
+ * and the SAME settlement — a caller cannot accidentally reconcile mismatched
+ * pairs.
+ */
+export const evaluateKernelOptimizationCampaignRelease = (
+  spec: KernelOptimizationCampaignSpec,
+  items: ReadonlyArray<KernelOptimizationKeyedSettlementItem>,
+): KernelOptimizationCampaignReleaseGate => {
+  // Build once: validates the spec (non-empty, unique targets, unique slugs) and
+  // yields the dispatch set every gate below reconciles against. An unbuildable
+  // spec throws here — there is nothing to release.
+  const campaign = buildKernelOptimizationCampaign(spec)
+
+  // The keyed items are a superset of plain settlement items, so they summarize
+  // directly; this is the SAME ledger the totals gate reconciles against.
+  const settlement = summarizeKernelOptimizationCampaignSettlement(
+    campaign.campaignRef,
+    items,
+  )
+
+  const totals = reconcileKernelOptimizationCampaignSettlement(
+    campaign,
+    settlement,
+  )
+  const perJob = reconcileKernelOptimizationCampaignPerJob(campaign, items)
+  const targets = reconcileKernelOptimizationCampaignTargets(spec, items)
+  const ops = reconcileKernelOptimizationCampaignOps(spec, items)
+
+  const discrepancies: string[] = [
+    ...totals.discrepancies.map((d) => `totals: ${d}`),
+    ...perJob.discrepancies.map((d) => `per-job: ${d}`),
+    ...targets.discrepancies.map((d) => `target: ${d}`),
+    ...ops.discrepancies.map((d) => `op: ${d}`),
+  ]
+
+  return {
+    campaignRef: campaign.campaignRef,
+    classId: KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID,
+    discrepancies,
+    ok: totals.ok && perJob.ok && targets.ok && ops.ok,
+    ops,
+    perJob,
+    settlement,
+    targets,
+    totals,
+  }
+}

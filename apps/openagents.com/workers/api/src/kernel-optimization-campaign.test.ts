@@ -15,6 +15,7 @@ import {
   type KernelOptimizationKeyedSettlementItem,
   type KernelOptimizationSettlementItem,
   buildKernelOptimizationCampaign,
+  evaluateKernelOptimizationCampaignRelease,
   reconcileKernelOptimizationCampaignOps,
   reconcileKernelOptimizationCampaignPerJob,
   reconcileKernelOptimizationCampaignSettlement,
@@ -656,6 +657,108 @@ describe('kernel-optimization campaign op reconciliation', () => {
   test('rejects a spec the campaign builder would reject (empty jobs)', () => {
     expect(() =>
       reconcileKernelOptimizationCampaignOps({ campaignRef, jobs: [] }, []),
+    ).toThrow(KernelOptimizationDispatchError)
+  })
+})
+
+describe('kernel-optimization campaign release gate', () => {
+  // A campaign hosting two ops on the SAME target, so every gate is exercised:
+  // the totals/per-job gates are blind to op swaps, and the coarse target gate
+  // is blind to them too — only the op gate tells the two jobs apart.
+  const opJob = (
+    targetModel: string,
+    kernelRef: string,
+  ): KernelOptimizationJobSpec => ({
+    baselineRecordRef: `record.public.${targetModel}.cuda.a10g.${kernelRef}.328tps`,
+    baselineTokensPerSecond: 328,
+    budgetSats: 50_000,
+    deadlineRef: 'deadline.public.2026-07-01',
+    device: 'cuda',
+    hardwareRef: 'nvidia-a10g',
+    kernelRef,
+    targetModel,
+    validatorDeviceRef: 'device.public.validator.metal.m3',
+  })
+
+  const campaignRef = 'campaign.qwen35-0.5b-release-gate'
+  const spec = {
+    campaignRef,
+    jobs: [
+      opJob('qwen-3.5-0.5b', 'rmsnorm'),
+      opJob('qwen-3.5-0.5b', 'attention.flash'),
+    ],
+  }
+  const campaign = buildKernelOptimizationCampaign(spec)
+
+  const keyedFor = (
+    index: number,
+    op: string,
+    overrides: Partial<KernelOptimizationKeyedSettlementItem> = {},
+  ): KernelOptimizationKeyedSettlementItem => ({
+    budgetSats: 50_000,
+    requestedSlug: campaign.requests[index]!.requestedSlug ?? '',
+    verdict: verdictFor('qwen-3.5-0.5b', 523, verifiedParity, op),
+    ...overrides,
+  })
+
+  test('is ok and surfaces the settlement when every gate holds', () => {
+    const items = [keyedFor(0, 'rmsnorm'), keyedFor(1, 'attention.flash')]
+    const gate = evaluateKernelOptimizationCampaignRelease(spec, items)
+
+    expect(gate.classId).toBe(KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID)
+    expect(gate.campaignRef).toBe(campaignRef)
+    expect(gate.ok).toBe(true)
+    expect(gate.discrepancies).toHaveLength(0)
+    expect(gate.totals.ok).toBe(true)
+    expect(gate.perJob.ok).toBe(true)
+    expect(gate.targets.ok).toBe(true)
+    expect(gate.ops.ok).toBe(true)
+    // The settlement the gate evaluated is exposed: both accepted, full payout.
+    expect(gate.settlement.acceptedCount).toBe(2)
+    expect(gate.settlement.payoutOwedSats).toBe(100_000)
+    expect(gate.settlement.refundedSats).toBe(0)
+  })
+
+  test('fails when only the op gate catches a same-target op swap', () => {
+    // Both items filed under their dispatched slug with the dispatched escrow and
+    // the dispatched (model/device/hardware) target, but the verdict under the
+    // rmsnorm slug actually optimized attention.flash. Totals + per-job + target
+    // all pass; only the op gate catches it — proving the composite gate is not
+    // redundant with any single reconciler.
+    const items = [
+      keyedFor(0, 'attention.flash'),
+      keyedFor(1, 'attention.flash'),
+    ]
+    const gate = evaluateKernelOptimizationCampaignRelease(spec, items)
+
+    expect(gate.ok).toBe(false)
+    expect(gate.totals.ok).toBe(true)
+    expect(gate.perJob.ok).toBe(true)
+    expect(gate.targets.ok).toBe(true)
+    expect(gate.ops.ok).toBe(false)
+    expect(gate.discrepancies.some((d) => d.startsWith('op: '))).toBe(true)
+    expect(gate.discrepancies.some((d) => d.includes('op swap'))).toBe(true)
+  })
+
+  test('fails and prefixes per-job drift when a job is settled twice', () => {
+    // rmsnorm settled twice, attention.flash never => per-job catches the
+    // duplicate + the unsettled job, but total job count and escrow still match
+    // (2 items, 100_000 sat), so the totals gate is blind to it.
+    const items = [
+      keyedFor(0, 'rmsnorm'),
+      keyedFor(0, 'rmsnorm'),
+    ]
+    const gate = evaluateKernelOptimizationCampaignRelease(spec, items)
+
+    expect(gate.ok).toBe(false)
+    expect(gate.totals.ok).toBe(true)
+    expect(gate.perJob.ok).toBe(false)
+    expect(gate.discrepancies.some((d) => d.startsWith('per-job: '))).toBe(true)
+  })
+
+  test('rejects a structurally invalid spec the builder would reject', () => {
+    expect(() =>
+      evaluateKernelOptimizationCampaignRelease({ campaignRef, jobs: [] }, []),
     ).toThrow(KernelOptimizationDispatchError)
   })
 })
