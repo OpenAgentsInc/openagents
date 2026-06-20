@@ -6,7 +6,9 @@ import { handleOperatorTreasuryStatusApi } from './treasury-routes'
 import {
   type XClaimRewardTreasuryClient,
   type XClaimRewardTreasuryDispatchConfig,
+  type XClaimRewardTreasuryDispatchStats,
   type XClaimRewardTreasuryDispatchStore,
+  evaluateXClaimRewardSmokePreflight,
   readXClaimRewardTreasuryDispatchConfig,
   runXClaimRewardTreasuryDispatch,
   xClaimRewardDispatchDayStartIso,
@@ -375,6 +377,112 @@ describe('X claim reward treasury dispatcher', () => {
     expect(first.requested + second.requested).toBe(1)
     expect(treasury.paidDestinations).toHaveLength(1)
     expect(store.rewards.get('x_claim_reward_1')?.state).toBe('settled')
+  })
+
+  describe('live smoke preflight', () => {
+    const readyStats = (
+      overrides: Partial<XClaimRewardTreasuryDispatchStats> = {},
+    ): XClaimRewardTreasuryDispatchStats => ({
+      dailySatsCap: 5000,
+      enabled: true,
+      liquidityBufferSats: 11,
+      pendingPaymentCount: 0,
+      perRunRewardCap: 1,
+      requestedDispatchCount: 1,
+      todayReservedSats: 0,
+      ...overrides,
+    })
+
+    test('reports ready when one approved reward and bounded liquidity are present', () => {
+      const report = evaluateXClaimRewardSmokePreflight({
+        balanceMaxSendableSat: 2500,
+        stats: readyStats(),
+      })
+
+      expect(report.ready).toBe(true)
+      expect(report.blockingReasonRefs).toEqual([])
+      expect(report.checks.every(check => check.ok)).toBe(true)
+    })
+
+    test('blocks when the dispatch flag is still off', () => {
+      const report = evaluateXClaimRewardSmokePreflight({
+        balanceMaxSendableSat: 2500,
+        stats: readyStats({ enabled: false }),
+      })
+
+      expect(report.ready).toBe(false)
+      expect(report.blockingReasonRefs).toContain(
+        'reason.public.x_claim_reward_treasury_dispatch_disabled',
+      )
+    })
+
+    test('blocks unless exactly one reward is approved for the first smoke', () => {
+      const none = evaluateXClaimRewardSmokePreflight({
+        balanceMaxSendableSat: 2500,
+        stats: readyStats({ requestedDispatchCount: 0 }),
+      })
+      const many = evaluateXClaimRewardSmokePreflight({
+        balanceMaxSendableSat: 2500,
+        stats: readyStats({ requestedDispatchCount: 2 }),
+      })
+
+      expect(none.blockingReasonRefs).toContain(
+        'reason.public.x_claim_reward_no_approved_reward',
+      )
+      expect(many.ready).toBe(false)
+    })
+
+    test('blocks when a pending payment is still in flight', () => {
+      const report = evaluateXClaimRewardSmokePreflight({
+        balanceMaxSendableSat: 2500,
+        stats: readyStats({ pendingPaymentCount: 1 }),
+      })
+
+      expect(report.blockingReasonRefs).toContain(
+        'reason.public.x_claim_reward_treasury_payment_pending',
+      )
+    })
+
+    test('blocks on insufficient or unavailable treasury liquidity', () => {
+      const thin = evaluateXClaimRewardSmokePreflight({
+        balanceMaxSendableSat: 1000,
+        stats: readyStats(),
+      })
+      const unavailable = evaluateXClaimRewardSmokePreflight({
+        balanceMaxSendableSat: null,
+        stats: readyStats(),
+      })
+
+      expect(thin.blockingReasonRefs).toContain(
+        'reason.public.x_claim_reward_treasury_liquidity_insufficient',
+      )
+      expect(unavailable.blockingReasonRefs).toContain(
+        'reason.public.x_claim_reward_treasury_balance_unavailable',
+      )
+    })
+
+    test('blocks when the daily sats cap leaves no headroom for one reward', () => {
+      const report = evaluateXClaimRewardSmokePreflight({
+        balanceMaxSendableSat: 2500,
+        stats: readyStats({ dailySatsCap: 5000, todayReservedSats: 4500 }),
+      })
+
+      expect(report.blockingReasonRefs).toContain(
+        'reason.public.x_claim_reward_treasury_daily_cap_reached',
+      )
+    })
+
+    test('preflight report carries no payment material', () => {
+      const serialized = JSON.stringify(
+        evaluateXClaimRewardSmokePreflight({
+          balanceMaxSendableSat: 2500,
+          stats: readyStats(),
+        }),
+      )
+
+      expect(serialized).not.toContain(safeOffer)
+      expect(serialized).not.toContain('payment_secret')
+    })
   })
 
   test('operator treasury status includes aggregate dispatch stats only', async () => {
