@@ -206,6 +206,31 @@ export const LaborProductRealSaleClaimStaleness: PublicProjectionStalenessContra
  * real-sale claim is substantiated, and the uncleared real-sale-receipt blocker is
  * surfaced. The promise stays yellow.
  */
+/**
+ * A read-only store of the evidence bundles (receipt + demand attestation +
+ * owner sign-off) a claim-upgrade review weighs. Injected so the public surface
+ * stays INERT by default: in production the Worker passes the EMPTY store (no
+ * real external settled receipt has been published), so the verdict surface
+ * honestly reports nothing substantiated. It is only non-empty when real
+ * evidence bundles are deliberately published into it.
+ */
+export type LaborProductRealSaleClaimStore = {
+  list: () => ReadonlyArray<LaborProductRealSaleClaimInput>
+}
+
+/** The default, empty claim-evidence store used while the surface is INERT. */
+export const emptyLaborProductRealSaleClaimStore: LaborProductRealSaleClaimStore =
+  {
+    list: () => [],
+  }
+
+/** Build a fixed in-memory claim-evidence store (tests / deliberate publish). */
+export const makeInMemoryLaborProductRealSaleClaimStore = (
+  inputs: ReadonlyArray<LaborProductRealSaleClaimInput>,
+): LaborProductRealSaleClaimStore => ({
+  list: () => inputs,
+})
+
 export const projectLaborProductRealSaleClaims = (
   inputs: ReadonlyArray<LaborProductRealSaleClaimInput>,
   options?: { generatedAt?: string },

@@ -14,6 +14,8 @@ import {
   handleAgenticLaborProductApi,
   isAgenticLaborProductsEnabled,
 } from './agentic-labor-product-routes'
+import { classifyLaborProductSaleDemand } from './agentic-labor-product-demand'
+import { makeInMemoryLaborProductRealSaleClaimStore } from './agentic-labor-product-claim-upgrade'
 
 const listing: LaborProductListing = {
   listingId: 'listing-1',
@@ -62,6 +64,38 @@ const receiptStore = () => {
     throw new Error(recorded.error.reason)
   }
   return makeInMemoryLaborProductReceiptStore([recorded.receipt])
+}
+
+// A FULLY-substantiated real-sale evidence bundle: a settled receipt (external
+// buyer != seller), a matching `external` demand attestation, and an owner
+// sign-off. Used to prove the verdict surface CAN report a substantiated claim
+// once real evidence is deliberately published — it is empty in production.
+const claimStore = () => {
+  const built = buildLaborProductFlowPlan({
+    orderId: 'order-1',
+    buyerRef: 'agent:buyer',
+    listing,
+    stage: 'delivered',
+    workerRef: 'agent:worker',
+    artifactRef: 'artifact.repo_triage.order-1',
+  })
+  if (!built.ok) {
+    throw new Error(built.error.reason)
+  }
+  const recorded = recordLaborProductSettlement(built.plan, {
+    _tag: 'settled',
+    receiptRef,
+    outcome: { metered: true, receiptRef },
+  })
+  if (!recorded.ok) {
+    throw new Error(recorded.error.reason)
+  }
+  const demand = classifyLaborProductSaleDemand(recorded.receipt, {
+    externalDemandRef: 'invoice:ext-1',
+  })
+  return makeInMemoryLaborProductRealSaleClaimStore([
+    { receipt: recorded.receipt, demand, ownerSignOffRef: 'owner:signed-1' },
+  ])
 }
 
 const request = (suffix = '') =>
@@ -290,5 +324,71 @@ describe('agentic labor-product self-serve POST', () => {
     expect(response.status).toBe(400)
     const body = (await response.json()) as { error: string }
     expect(body.error).toBe('invalid_request')
+  })
+})
+
+describe('agentic labor-product real-sale claim verdict surface', () => {
+  test('is INERT when disabled: nothing substantiated, blocker surfaced', async () => {
+    const response = await Effect.runPromise(
+      handleAgenticLaborProductApi(request('?view=real-sale-claims'), {
+        enabled: false,
+        // Even with a populated claim store, disabled => empty store is used.
+        claimStore: claimStore(),
+      }),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    const body = (await response.json()) as {
+      promiseState: string
+      realSaleClaimSubstantiated: boolean
+      totals: { assessedCount: number; substantiatedCount: number }
+      unclearedBlockerRefs: ReadonlyArray<string>
+    }
+    expect(body.promiseState).toBe('yellow')
+    expect(body.realSaleClaimSubstantiated).toBe(false)
+    expect(body.totals.assessedCount).toBe(0)
+    expect(body.unclearedBlockerRefs).toEqual([
+      'blocker.product_promises.agentic_labor_product_real_sale_receipt_missing',
+    ])
+  })
+
+  test('empty store when armed: still nothing substantiated (no published evidence)', async () => {
+    const response = await Effect.runPromise(
+      handleAgenticLaborProductApi(request('?view=real-sale-claims'), {
+        enabled: true,
+      }),
+    )
+    const body = (await response.json()) as {
+      realSaleClaimSubstantiated: boolean
+      totals: { assessedCount: number }
+    }
+    expect(body.realSaleClaimSubstantiated).toBe(false)
+    expect(body.totals.assessedCount).toBe(0)
+  })
+
+  test('substantiates a real sale when a full evidence bundle is published, staying yellow', async () => {
+    const response = await Effect.runPromise(
+      handleAgenticLaborProductApi(request('?view=real-sale-claims'), {
+        enabled: true,
+        claimStore: claimStore(),
+      }),
+    )
+    const body = (await response.json()) as {
+      promiseState: string
+      realSaleClaimSubstantiated: boolean
+      totals: { assessedCount: number; substantiatedCount: number }
+      claims: ReadonlyArray<{
+        realSaleSubstantiated: boolean
+        failingGateRefs: ReadonlyArray<string>
+      }>
+    }
+    // The verdict can report a substantiated claim once real evidence exists —
+    // but it NEVER flips the promise: state stays yellow.
+    expect(body.promiseState).toBe('yellow')
+    expect(body.realSaleClaimSubstantiated).toBe(true)
+    expect(body.totals.assessedCount).toBe(1)
+    expect(body.totals.substantiatedCount).toBe(1)
+    expect(body.claims[0]?.realSaleSubstantiated).toBe(true)
+    expect(body.claims[0]?.failingGateRefs).toEqual([])
   })
 })

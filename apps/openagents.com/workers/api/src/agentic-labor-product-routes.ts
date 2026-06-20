@@ -2,6 +2,11 @@
 // (promise autopilot.agentic_labor_products.v1, yellow; docs/transcripts/239.md).
 //
 // GET  — read-only listing of flows from the injected store.
+// GET ?view=real-sale-claims — read-only verdict surface: the claim-upgrade gate
+//        (proof.claim_upgrade_receipts.v1) over the published evidence bundles.
+//        EMPTY in production (no real external settled receipt has been
+//        published), so it honestly reports nothing substantiated and surfaces
+//        the uncleared real-sale-receipt blocker. It NEVER flips a promise.
 // POST — SELF-SERVE order planning: a buyer/agent posts a listing and orders it
 //        in one request and gets back the typed flow plan, with NO operator
 //        staging in the loop (closes blocker.product_promises
@@ -34,6 +39,11 @@ import {
   readLaborProductFlow,
   readLaborProductSettlementReceipt,
 } from './agentic-labor-product'
+import {
+  type LaborProductRealSaleClaimStore,
+  emptyLaborProductRealSaleClaimStore,
+  projectLaborProductRealSaleClaims,
+} from './agentic-labor-product-claim-upgrade'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { currentIsoTimestamp } from './runtime-primitives'
 
@@ -60,6 +70,9 @@ export type AgenticLaborProductDeps = Readonly<{
   // The settlement-receipt store a `?receiptRef=` GET dereferences against. The
   // Worker passes the empty store while INERT (no real receipt is published).
   receiptStore?: LaborProductReceiptStore
+  // The claim-evidence store a `?view=real-sale-claims` GET assesses. The Worker
+  // passes the empty store while INERT (no real evidence bundle is published).
+  claimStore?: LaborProductRealSaleClaimStore
 }>
 
 const resolveStore = (
@@ -75,6 +88,13 @@ const resolveReceiptStore = (
   deps.enabled && deps.receiptStore !== undefined
     ? deps.receiptStore
     : emptyLaborProductReceiptStore
+
+const resolveClaimStore = (
+  deps: AgenticLaborProductDeps,
+): LaborProductRealSaleClaimStore =>
+  deps.enabled && deps.claimStore !== undefined
+    ? deps.claimStore
+    : emptyLaborProductRealSaleClaimStore
 
 /**
  * SELF-SERVE POST: plan a labor-product order from the buyer's own request body
@@ -179,8 +199,22 @@ export const handleAgenticLaborProductApi = (
 
   const store = resolveStore(deps)
   const url = new URL(request.url)
+  const view = url.searchParams.get('view')
   const receiptRef = url.searchParams.get('receiptRef')
   const orderId = url.searchParams.get('orderId')
+
+  // The claim-upgrade verdict surface: assess the published evidence bundles
+  // under proof.claim_upgrade_receipts.v1. Read-only and INERT — in production
+  // the claim store is empty (no real external settled receipt has been
+  // published), so nothing is substantiated and the blocker is surfaced. It can
+  // only WITHHOLD a claim; it never flips a promise.
+  if (view === 'real-sale-claims') {
+    return Effect.succeed(
+      noStoreJsonResponse(
+        projectLaborProductRealSaleClaims(resolveClaimStore(deps).list()),
+      ),
+    )
+  }
 
   // Dereference a published settlement receipt by its public-safe receiptRef.
   // Read-only and INERT: in production the receipt store is empty (no real

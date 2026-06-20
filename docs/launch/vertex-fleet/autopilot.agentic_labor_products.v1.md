@@ -276,3 +276,42 @@ Still does **not** clear the blocker: this assembles and cross-validates the
 has been published and signed, so `realSaleClaimSubstantiated` is `false`
 everywhere live. A published, real, external, owner-signed settled receipt that
 clears every gate is still required for green.
+
+## Follow-up run (2026-06-20): real-sale claim verdict surface (public read route)
+
+The claim-upgrade gate (`assessLaborProductRealSaleClaim` /
+`projectLaborProductRealSaleClaims`) and the demand classifier existed and were
+tested, but they were **unreachable from any public surface** — built code that
+no route, dashboard, or reviewer could query. The verdict a claim-upgrade review
+under `proof.claim_upgrade_receipts.v1` is handed had no live endpoint, so a
+reviewer/owner had no honest, dereferenceable place to read "does the system
+currently substantiate a real external sale?"
+
+This run wires that verdict surface into the already-mounted live route:
+
+- `LaborProductRealSaleClaimStore` + `emptyLaborProductRealSaleClaimStore` /
+  `makeInMemoryLaborProductRealSaleClaimStore` in
+  `apps/openagents.com/workers/api/src/agentic-labor-product-claim-upgrade.ts` —
+  a read-only, injected store of the evidence bundles (receipt + matching demand
+  attestation + owner sign-off) a review weighs.
+- `GET /api/public/autopilot/labor-products?view=real-sale-claims` in
+  `agentic-labor-product-routes.ts` returns `projectLaborProductRealSaleClaims`
+  over that store. The store is **empty in production** (no real external settled
+  receipt has been published), so the surface honestly reports
+  `realSaleClaimSubstantiated: false`, `assessedCount: 0`, and surfaces the
+  uncleared real-sale-receipt blocker. It **never flips a promise** —
+  `promiseState: 'yellow'` always.
+
+Tests: three new cases in `agentic-labor-product-routes.test.ts` — disabled (INERT,
+nothing substantiated even with a populated store), armed-but-empty (nothing
+substantiated), and a deliberately-published full evidence bundle (the verdict
+CAN report `realSaleClaimSubstantiated: true` while STILL staying yellow).
+
+Validation: `bunx tsc -p tsconfig.json --noEmit` (workers/api) **0 errors**;
+`bun run check:deploy` **passed**; `git diff --check` clean.
+
+Still does **not** clear the blocker: this makes the reviewer's verdict
+*reachable and queryable*, but the production claim store is empty — no REAL
+external settled receipt + owner sign-off has been published. A published, real,
+external, owner-signed settled receipt that clears every gate is still required
+for green.
