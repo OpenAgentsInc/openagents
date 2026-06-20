@@ -74,7 +74,7 @@ import {
   type ControlCommandActions,
   type ControlCommand,
 } from "./node/control-server.js"
-import { collectPylonAppleFmStatus } from "./node/apple-fm-status.js"
+import { createSupervisedAppleFmStatusAction } from "./node/apple-fm-supervised-status.js"
 import {
   createControlSessionActions,
   type ControlSessionSpawnCommand,
@@ -1076,7 +1076,10 @@ const runHeadlessNode = Effect.gen(function* () {
       sessions: headlessSessionsWithExternal,
       intents: makeIntentActions(headlessIntentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
-      appleFmStatus: () => collectPylonAppleFmStatus({ summary: bootstrapSummary, env: Bun.env }),
+      // Supervisor-status provider is wired here once a live launcher is
+      // constructed on this host; until then this is the unsupervised projection
+      // unchanged. See node/apple-fm-supervised-status.ts.
+      appleFmStatus: createSupervisedAppleFmStatusAction({ summary: bootstrapSummary, env: Bun.env }),
       approvals: makeApprovalActions(localState.paths),
       coordinator: makeCoordinatorActions(headlessCoordinatorHolder),
     },

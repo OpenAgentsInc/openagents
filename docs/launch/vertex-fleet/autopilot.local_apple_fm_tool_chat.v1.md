@@ -233,13 +233,54 @@ Advances (does **not** clear)
   `withAppleFmSupervisorStatus`. This run supplies the production assembly seam
   that final host call will use.
 
+## Follow-up run (2026-06-20): `apple_fm.status` action now accepts a live supervisor-status provider
+
+Advances (does **not** clear)
+`blocker.product_promises.local_apple_fm_helper_supervision_missing`.
+
+- What was missing: every supervision piece existed in isolation
+  (`createDefaultAppleFmBridgeLauncher` assembles a launcher whose `status()`
+  returns the public-safe phase; `withAppleFmSupervisorStatus` merges that phase
+  onto the projection), but the Pylon node host's `apple_fm.status` action
+  (`src/index.ts`) still called bare `collectPylonAppleFmStatus(...)` — there was
+  no seam at the action where a live launcher's `status()` could be attached, so
+  the supervisor phase could never reach the surface even once a launcher exists.
+- `apps/pylon/src/node/apple-fm-supervised-status.ts` —
+  `createSupervisedAppleFmStatusAction(baseInput, { supervisorStatus?, collect? })`
+  returns the `() => Promise<PylonAppleFmStatusProjection>` action the control
+  server registers. On each call it collects the base capability projection, then
+  — when a supervisor-status provider is supplied and returns a phase — merges it
+  via `withAppleFmSupervisorStatus`. With no provider (or one returning
+  null/undefined, e.g. a host where `createDefaultAppleFmBridgeLauncher` returned
+  `null`), the action is byte-for-byte the previous unsupervised projection. Both
+  the collector and the provider are injectable, so the seam is deterministic in
+  tests; it reads no wall clock and introduces no prompts, file contents, paths,
+  tokens, URLs, or bearer material.
+- `apps/pylon/src/index.ts` — the `appleFmStatus` action is now built with
+  `createSupervisedAppleFmStatusAction({ summary, env })` (behaviour-preserving:
+  no provider is wired yet, so the projection is unchanged), creating the single
+  point where a constructed launcher's `status` will plug in.
+- `apps/pylon/tests/apple-fm-supervised-status.test.ts` — 6 tests: no-provider
+  pass-through, null-provider pass-through, running supervisor attaches phase
+  without adding blockers, crash-looped supervisor merges its blocker even when
+  the capability probe reads ready, collector receives the base input on each
+  call, and a no-sensitive-content assertion. `bun test` green (6 pass /
+  15 assertions).
+- Still open: the host does not yet *construct* a launcher
+  (`createDefaultAppleFmBridgeLauncher()`), call `start()`, or route the live
+  bridge heartbeat into `notifyHealthy()` — so no `supervisorStatus` provider is
+  passed in production yet. That launcher-lifecycle wiring (which needs a real
+  process and admitted-Mac validation) is the remaining step; this run supplies
+  the action seam it will plug its `status()` into.
+
 ## What genuinely remains (blocker NOT cleared)
 
-- Call `createDefaultAppleFmBridgeLauncher()` from the Pylon node host, route the
-  live bridge heartbeat into `notifyHealthy()`, and register the launcher's
-  `status()` with the Pylon `apple_fm.status` action so the supervisor phase
-  reaches the surface from a real process (the assembly seam and the projection
-  plumbing — `withAppleFmSupervisorStatus` — already exist).
+- Construct a launcher via `createDefaultAppleFmBridgeLauncher()` in the Pylon
+  node host, call `start()`, route the live bridge heartbeat into
+  `notifyHealthy()`, and pass the launcher's `status` as the `supervisorStatus`
+  provider to `createSupervisedAppleFmStatusAction(...)` so the supervisor phase
+  reaches the surface from a real process (the assembly seam, the action seam,
+  and the projection plumbing — `withAppleFmSupervisorStatus` — now all exist).
 - Repeat the admitted-Mac smoke with supervised launch (and the still-open
   `blocker.product_promises.local_apple_fm_signed_installer_recut_missing`:
   signed/notarized installer that bundles or supervises the helper, plus a
