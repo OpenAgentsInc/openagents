@@ -182,6 +182,7 @@ export const projectTrainingMarathonOperations = (
         'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt.ts',
         'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-verifier.ts',
         'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-feed.ts',
+        'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-feed-verifier.ts',
         'apps/openagents.com/workers/api/src/training-run-window-authority.ts',
         'apps/openagents.com/workers/api/src/training-window-bootstrap.ts',
         worklogRef,
