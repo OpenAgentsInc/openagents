@@ -173,6 +173,111 @@ export const makeInMemoryPylonModeWorkReceiptStore = (
 }
 
 /**
+ * Per-mode settlement-coverage report for a set of work receipts. INERT. For one
+ * mode it states how many settled receipts the mode carries and how many
+ * DISTINCT settlement-receipt refs back them. Coverage is `complete` only when
+ * those two numbers are equal — i.e. every settled unit in the mode points at
+ * its own dereferenceable settlement receipt, never sharing one.
+ */
+export type ModeSettlementCoverage = {
+  mode: string
+  settledReceiptCount: number
+  distinctSettlementRefCount: number
+  settlementCoverageComplete: boolean
+}
+
+/**
+ * Whole-install settlement-coverage report. INERT and public-safe: it carries
+ * only neutral mode labels and integer counts. `crossModeSettlementReuse` is
+ * true when one settlement-receipt ref is claimed by settled receipts in more
+ * than one mode (a cross-mode over-claim). `allModesSettlementCovered` is the
+ * single honest gate the fold trusts: every mode is per-mode complete AND no
+ * settlement ref is reused across modes.
+ */
+export type WorkReceiptSettlementCoverage = {
+  schema: typeof PYLON_MULTI_EARNING_RECEIPT_SCHEMA
+  perMode: ReadonlyArray<ModeSettlementCoverage>
+  totalSettledReceiptCount: number
+  totalDistinctSettlementRefCount: number
+  crossModeSettlementReuse: boolean
+  allModesSettlementCovered: boolean
+}
+
+/**
+ * Verify that a set of work receipts does not over-claim settlement. PURE /
+ * INERT. Receipts are first deduped by receiptRef (so a receipt counts once),
+ * then settled receipts are audited: within each mode the number of settled
+ * receipts must equal the number of distinct settlement-receipt refs, and no
+ * settlement-receipt ref may be shared across modes. This is the integrity
+ * check that lets the projection's per-mode `settledCount` be TRUSTED as backed
+ * by that many distinct, dereferenceable settlements — without it, two settled
+ * receipts could silently share one settlement and inflate the count.
+ */
+export const verifyWorkReceiptSettlementCoverage = (
+  receipts: ReadonlyArray<PylonModeWorkReceipt>,
+): WorkReceiptSettlementCoverage => {
+  const deduped = makeInMemoryPylonModeWorkReceiptStore(receipts).list()
+  const settled = deduped.filter(r => r.amountClass === 'settled')
+
+  // Preserve first-seen mode order for a stable report.
+  const order: string[] = []
+  const refsByMode = new Map<string, string[]>()
+  for (const receipt of settled) {
+    // A settled receipt always carries a settlementReceiptRef (enforced by
+    // recordModeWorkReceipt); guard defensively for hand-built inputs.
+    const ref = receipt.settlementReceiptRef
+    if (ref === undefined) {
+      continue
+    }
+    const existing = refsByMode.get(receipt.mode)
+    if (existing === undefined) {
+      order.push(receipt.mode)
+      refsByMode.set(receipt.mode, [ref])
+    } else {
+      existing.push(ref)
+    }
+  }
+
+  const perMode: ModeSettlementCoverage[] = []
+  const refToModes = new Map<string, Set<string>>()
+  for (const mode of order) {
+    const refs = refsByMode.get(mode) ?? []
+    const distinct = new Set(refs)
+    perMode.push({
+      mode,
+      settledReceiptCount: refs.length,
+      distinctSettlementRefCount: distinct.size,
+      settlementCoverageComplete: refs.length === distinct.size,
+    })
+    for (const ref of distinct) {
+      const modes = refToModes.get(ref)
+      if (modes === undefined) {
+        refToModes.set(ref, new Set([mode]))
+      } else {
+        modes.add(mode)
+      }
+    }
+  }
+
+  const totalSettledReceiptCount = settled.length
+  const totalDistinctSettlementRefCount = refToModes.size
+  const crossModeSettlementReuse = [...refToModes.values()].some(
+    modes => modes.size > 1,
+  )
+  const allModesSettlementCovered =
+    perMode.every(m => m.settlementCoverageComplete) && !crossModeSettlementReuse
+
+  return {
+    schema: PYLON_MULTI_EARNING_RECEIPT_SCHEMA,
+    perMode,
+    totalSettledReceiptCount,
+    totalDistinctSettlementRefCount,
+    crossModeSettlementReuse,
+    allModesSettlementCovered,
+  }
+}
+
+/**
  * Fold a set of per-mode work receipts into the projection's earning store.
  * PURE. Receipts are first deduped by receiptRef, then grouped by mode; each
  * mode's amount-class counts come from its receipts, and a mode that carries any
@@ -180,6 +285,11 @@ export const makeInMemoryPylonModeWorkReceiptStore = (
  * as the per-mode representative ref (the full per-receipt detail stays in the
  * work-receipt store). The resulting store feeds projectPylonMultiEarningNode
  * unchanged, so the projection's counts are now backed by receipts.
+ *
+ * Before folding, settlement coverage is verified: if any settled count would
+ * not be backed by that many DISTINCT settlement receipts (within a mode or
+ * reused across modes), the fold REJECTS rather than emit a projection that
+ * over-claims settlement.
  *
  * `modeledCount` is always 0 here: `modeled` is an estimate with no work event,
  * so it has no receipt and cannot be folded in.
@@ -190,6 +300,18 @@ export const foldWorkReceiptsIntoEarningStore = (
   | { ok: true; store: PylonMultiEarningStore }
   | { ok: false; error: PylonMultiEarningError } => {
   const deduped = makeInMemoryPylonModeWorkReceiptStore(receipts).list()
+
+  const coverage = verifyWorkReceiptSettlementCoverage(deduped)
+  if (!coverage.allModesSettlementCovered) {
+    return {
+      ok: false,
+      error: new PylonMultiEarningError({
+        reason: coverage.crossModeSettlementReuse
+          ? 'settlement over-claim: a settlementReceiptRef is reused across earning modes; each settled unit requires its own distinct settlement receipt'
+          : 'settlement over-claim: a mode has more settled receipts than distinct settlement receipts; each settled unit requires its own distinct settlement receipt',
+      }),
+    }
+  }
 
   // Preserve first-seen mode order for a stable projection.
   const order: string[] = []
