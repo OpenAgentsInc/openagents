@@ -80,6 +80,52 @@ export type KernelOptimizationBudgetMismatch = Readonly<{
   settledSats: number
 }>
 
+/** A target identity: the model + device + hardware a verdict/job names. */
+export type KernelOptimizationTarget = Readonly<{
+  targetModel: string
+  device: string
+  hardwareRef: string
+}>
+
+/**
+ * One per-job disagreement between the target a settlement's parity verdict
+ * names and the target the dispatched job (named by the same `requestedSlug`)
+ * actually optimizes — a "target swap".
+ */
+export type KernelOptimizationTargetMismatch = Readonly<{
+  requestedSlug: string
+  dispatchedTarget: KernelOptimizationTarget
+  settledVerdictTarget: KernelOptimizationTarget
+}>
+
+/**
+ * The result of binding each settlement's parity verdict back to the SPECIFIC
+ * dispatched job it claims to settle, by target.
+ *
+ * The slug-keyed `reconcileKernelOptimizationCampaignPerJob` confirms a
+ * settlement is filed under a dispatched slug with the dispatched escrow, but it
+ * never inspects the parity verdict the settlement carries: a verdict for a
+ * DIFFERENT target (e.g. a verified accept on the cheap `qwen-3.5-0.5b` job)
+ * could be filed under another job's slug with that job's exact budget and clear
+ * both the totals and per-job reconcilers. This report closes that end-to-end
+ * wiring gap — it checks the verdict's own `target` (model/device/hardware)
+ * equals the target the dispatched job under that slug actually optimizes.
+ */
+export type KernelOptimizationCampaignTargetReconciliation = Readonly<{
+  classId: typeof KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID
+  campaignRef: string
+  /** True iff every settled verdict's target matched its dispatched job. */
+  ok: boolean
+  /** Slugs whose settled verdict target matched the dispatched job's target. */
+  matchedSlugs: ReadonlyArray<string>
+  /** Slugs settled but not dispatched by this campaign (target unknowable). */
+  unmatchedSlugs: ReadonlyArray<string>
+  /** Slugs whose settled verdict optimizes a different target than dispatched. */
+  targetMismatches: ReadonlyArray<KernelOptimizationTargetMismatch>
+  /** Human-readable reasons the reconciliation failed; empty iff `ok`. */
+  discrepancies: ReadonlyArray<string>
+}>
+
 /**
  * The result of matching each settlement item to its specific dispatched job.
  *
@@ -464,5 +510,116 @@ export const reconcileKernelOptimizationCampaignPerJob = (
     ok: discrepancies.length === 0,
     unexpectedSlugs,
     unsettledSlugs,
+  }
+}
+
+/** Normalize a target for comparison: trim + lowercase every component. */
+const normalizeTarget = (
+  target: KernelOptimizationTarget,
+): KernelOptimizationTarget => ({
+  device: target.device.trim().toLowerCase(),
+  hardwareRef: target.hardwareRef.trim().toLowerCase(),
+  targetModel: target.targetModel.trim().toLowerCase(),
+})
+
+const sameTarget = (
+  a: KernelOptimizationTarget,
+  b: KernelOptimizationTarget,
+): boolean => {
+  const na = normalizeTarget(a)
+  const nb = normalizeTarget(b)
+  return (
+    na.targetModel === nb.targetModel &&
+    na.device === nb.device &&
+    na.hardwareRef === nb.hardwareRef
+  )
+}
+
+/**
+ * Bind each settlement's parity verdict back to the specific dispatched job it
+ * claims to settle, BY TARGET.
+ *
+ * This is the end-to-end wiring the prior reconcilers explicitly deferred: the
+ * slug-keyed and totals-level reconcilers trust the `requestedSlug` a settlement
+ * is filed under, but never inspect the verdict that settlement carries. A
+ * settlement filed under job A's slug with job A's exact budget but carrying a
+ * parity verdict for target B (e.g. a verified accept on a different, cheaper
+ * model) clears BOTH of them — the accounting conserves while the wrong work is
+ * paid. This reconciler recomputes each dispatched job's requested slug from the
+ * campaign spec (via the same dispatch encoder, so it cannot drift from the
+ * actual slug) to learn that slug's true target, then checks the verdict's own
+ * `target` (model/device/hardware) matches it.
+ *
+ * It takes the campaign SPEC (not the built campaign) because the dispatched
+ * request bodies do not carry the structured target — only the spec does, and
+ * the spec is what produced the slugs. It moves no money and never throws: a
+ * disagreement is a finding to surface. The `ok` gate must hold before the
+ * verified-work rail releases any payout/refund.
+ */
+export const reconcileKernelOptimizationCampaignTargets = (
+  spec: KernelOptimizationCampaignSpec,
+  items: ReadonlyArray<KernelOptimizationKeyedSettlementItem>,
+): KernelOptimizationCampaignTargetReconciliation => {
+  // Build the campaign once: this validates the spec (non-empty, unique targets,
+  // unique slugs) and yields the slug per job in spec order.
+  const campaign = buildKernelOptimizationCampaign(spec)
+
+  // Map each unique requested slug to the structured target the dispatched job
+  // under it actually optimizes. spec.jobs[i] <-> campaign.requests[i] by order.
+  const dispatchedTargetBySlug = new Map<string, KernelOptimizationTarget>()
+  spec.jobs.forEach((job, index) => {
+    const slug = campaign.requests[index]?.requestedSlug ?? ''
+    dispatchedTargetBySlug.set(slug, {
+      device: job.device,
+      hardwareRef: job.hardwareRef,
+      targetModel: job.targetModel,
+    })
+  })
+
+  const matchedSlugs: string[] = []
+  const unmatchedSlugs: string[] = []
+  const targetMismatches: KernelOptimizationTargetMismatch[] = []
+
+  for (const item of items) {
+    const slug = item.requestedSlug.trim()
+    const dispatchedTarget = dispatchedTargetBySlug.get(slug)
+    if (dispatchedTarget === undefined) {
+      unmatchedSlugs.push(slug)
+      continue
+    }
+    const settledVerdictTarget = item.verdict.target
+    if (sameTarget(dispatchedTarget, settledVerdictTarget)) {
+      matchedSlugs.push(slug)
+    } else {
+      targetMismatches.push({
+        dispatchedTarget,
+        requestedSlug: slug,
+        settledVerdictTarget,
+      })
+    }
+  }
+
+  const discrepancies: string[] = []
+  if (unmatchedSlugs.length > 0) {
+    discrepancies.push(
+      `settlement(s) for slug(s) this campaign never dispatched: ${unmatchedSlugs.join(', ')}`,
+    )
+  }
+  for (const mismatch of targetMismatches) {
+    const want = normalizeTarget(mismatch.dispatchedTarget)
+    const got = normalizeTarget(mismatch.settledVerdictTarget)
+    discrepancies.push(
+      `target swap on "${mismatch.requestedSlug}": dispatched ${want.targetModel}/${want.device}/${want.hardwareRef} but settled verdict optimizes ${got.targetModel}/${got.device}/${got.hardwareRef}`,
+    )
+  }
+
+  return {
+    campaignRef: campaign.campaignRef,
+    classId: KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID,
+    discrepancies,
+    matchedSlugs,
+    ok: discrepancies.length === 0,
+    targetMismatches,
+    unmatchedSlugs,
   }
 }
