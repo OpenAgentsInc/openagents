@@ -102,13 +102,45 @@ Advances (does **not** clear)
   non-existent source would break non-Mac `bun run build`). Real signing,
   notarization, and a from-install smoke on admitted hardware remain.
 
+## Follow-up run (2026-06-20): supervisor phase now reaches the `apple_fm.status` surface
+
+Advances (does **not** clear)
+`blocker.product_promises.local_apple_fm_helper_supervision_missing`.
+
+- What was missing: `summarizeAppleFmBridgeSupervisor(...)` existed but nothing
+  fed it into the `apple_fm.status` projection that Autopilot Desktop and the
+  Pylon readiness gate actually read (`control-sessions.ts` `startAppleFm`
+  refuses unless `status.blockerRefs.length === 0`). Supervision could be in a
+  crash-loop give-up while the surface still looked startable.
+- `apps/pylon/src/node/apple-fm-status.ts` — `PylonAppleFmStatusProjection` gains
+  an optional, public-safe `supervisor` field; `collectPylonAppleFmStatus` takes
+  an optional `supervisorState` (summarized with the same `now`), and
+  `pylonAppleFmStatusFromReport(report, supervisor?)` folds the summary in and
+  **unions** any supervision blocker (e.g. the crash-loop ref) into
+  `blockerRefs` via a deduped, stably-sorted `mergeBlockerRefs`. When no
+  supervisor is supplied the projection is byte-for-byte unchanged (backward
+  compatible; existing callers pass nothing).
+- Net effect: a crash-looped supervisor now flips `blockerRefs` non-empty, so the
+  readiness gate refuses to start a local session while supervision itself is
+  broken — and the coarse phase is observable to the desktop.
+- `apps/pylon/tests/apple-fm-status-supervisor.test.ts` — 5 tests (omit-when-absent
+  + unchanged blockers, healthy-running surfaced without new blockers, crash-loop
+  give-up unions the blocker, dedupe+sort when both sources contribute, and a
+  no-sensitive-keys assertion). `bun test` green (5 pass / 17 assertions).
+- Still open: the live launcher that feeds `process_started`/`process_exited`/
+  `health_ok` and performs the emitted `spawn`/`schedule_restart`/`give_up`
+  actions does not exist, so `control-sessions.ts` still calls
+  `collectPylonAppleFmStatus` without a `supervisorState`. Wiring is in place;
+  the I/O-bearing driver and its admitted-Mac smoke remain.
+
 ## What genuinely remains (blocker NOT cleared)
 
 - Wire a real launcher (`Bun.spawn`/`child_process`) on top of this policy that
   feeds `process_started`/`process_exited`/`health_ok` events from the live
   bridge and performs the emitted `spawn`/`schedule_restart`/`give_up` actions,
-  then embed `summarizeAppleFmBridgeSupervisor(...)` output into the
-  `apple_fm.status` projection so the supervisor phase reaches the surface.
+  then pass its `supervisorState` into `collectPylonAppleFmStatus` (the
+  projection plumbing now accepts it) so the live supervisor phase reaches the
+  surface in production, not just tests.
 - Repeat the admitted-Mac smoke with supervised launch (and the still-open
   `blocker.product_promises.local_apple_fm_signed_installer_recut_missing`:
   signed/notarized installer that bundles or supervises the helper, plus a

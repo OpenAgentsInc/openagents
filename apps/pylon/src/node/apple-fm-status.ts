@@ -5,6 +5,11 @@ import {
   type ProbeBackendCapabilityReport,
   type ProbeRunnerIdentity,
 } from "../../packages/runtime/src/index.js"
+import type { AppleFmBridgeSupervisorState } from "./apple-fm-bridge-supervisor.js"
+import {
+  summarizeAppleFmBridgeSupervisor,
+  type PylonAppleFmSupervisorStatus,
+} from "./apple-fm-bridge-supervisor-status.js"
 
 export const PYLON_APPLE_FM_STATUS_SCHEMA = "openagents.pylon.apple_fm.status.v0.1" as const
 
@@ -30,6 +35,12 @@ export type PylonAppleFmStatusProjection = {
   readonly blueprintSupport: ProbeBackendCapabilityReport["blueprintSupport"]
   readonly receipt: ProbeBackendCapabilityReport["receipt"]
   readonly blockerRefs: ReadonlyArray<string>
+  /**
+   * Public-safe summary of the local bridge restart/backoff supervisor, when a
+   * supervisor is being driven for this runner. Absent when supervision is not
+   * wired (e.g. hosted readiness probes that never launch a local helper).
+   */
+  readonly supervisor?: PylonAppleFmSupervisorStatus
   readonly observedAt: string
   readonly contentRedacted: true
 }
@@ -39,6 +50,14 @@ export interface CollectPylonAppleFmStatusInput {
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly fetch?: typeof fetch
   readonly now?: Date
+  /**
+   * Current internal state of the local Apple FM bridge supervisor, if a
+   * launcher is driving one. When provided, its public-safe summary is folded
+   * into the projection and any supervision blocker (e.g. crash-loop give-up)
+   * is unioned into `blockerRefs` so the readiness gate refuses to start a
+   * local session while supervision itself is broken.
+   */
+  readonly supervisorState?: AppleFmBridgeSupervisorState
 }
 
 export async function collectPylonAppleFmStatus(
@@ -54,11 +73,17 @@ export async function collectPylonAppleFmStatus(
     }),
   )
 
-  return pylonAppleFmStatusFromReport(report)
+  const supervisor =
+    input.supervisorState === undefined
+      ? undefined
+      : summarizeAppleFmBridgeSupervisor(input.supervisorState, now.getTime())
+
+  return pylonAppleFmStatusFromReport(report, supervisor)
 }
 
 export function pylonAppleFmStatusFromReport(
   report: ProbeBackendCapabilityReport,
+  supervisor?: PylonAppleFmSupervisorStatus,
 ): PylonAppleFmStatusProjection {
   return {
     schema: PYLON_APPLE_FM_STATUS_SCHEMA,
@@ -81,10 +106,27 @@ export function pylonAppleFmStatusFromReport(
     support: report.support,
     blueprintSupport: report.blueprintSupport,
     receipt: report.receipt,
-    blockerRefs: appleFmBlockerRefs(report),
+    blockerRefs: mergeBlockerRefs(
+      appleFmBlockerRefs(report),
+      supervisor?.blockerRefs ?? [],
+    ),
+    ...(supervisor === undefined ? {} : { supervisor }),
     observedAt: report.observedAt,
     contentRedacted: true,
   }
+}
+
+/**
+ * Union the capability-derived blockers with any supervision blockers,
+ * de-duplicated and stably sorted so the readiness gate and Autopilot Desktop
+ * see a single deterministic set.
+ */
+function mergeBlockerRefs(
+  capabilityRefs: ReadonlyArray<string>,
+  supervisorRefs: ReadonlyArray<string>,
+): ReadonlyArray<string> {
+  if (supervisorRefs.length === 0) return capabilityRefs
+  return [...new Set([...capabilityRefs, ...supervisorRefs])].sort()
 }
 
 function makePylonAppleFmRunner(summary: BootstrapSummary, now: Date): ProbeRunnerIdentity {
