@@ -15,6 +15,7 @@ import {
   type KernelOptimizationKeyedSettlementItem,
   type KernelOptimizationSettlementItem,
   buildKernelOptimizationCampaign,
+  reconcileKernelOptimizationCampaignOps,
   reconcileKernelOptimizationCampaignPerJob,
   reconcileKernelOptimizationCampaignSettlement,
   reconcileKernelOptimizationCampaignTargets,
@@ -64,6 +65,7 @@ const verdictFor = (
   targetModel: string,
   optimizedTokensPerSecond: number,
   parityVerdict: TassadarReplayVerdict,
+  optimizedOpRef = 'rmsnorm',
 ) =>
   verifyKernelOptimizationParity({
     baseline: {
@@ -76,10 +78,11 @@ const verdictFor = (
     optimized: {
       device: 'cuda',
       hardwareRef: 'nvidia-a10g',
-      kernelRef: 'rmsnorm-optimized',
+      kernelRef: `${optimizedOpRef}-optimized`,
       targetModel,
       tokensPerSecond: optimizedTokensPerSecond,
     },
+    optimizedOpRef,
     parityVerdict,
   })
 
@@ -508,6 +511,141 @@ describe('kernel-optimization campaign target reconciliation', () => {
         { campaignRef, jobs: [] },
         [],
       ),
+    ).toThrow(KernelOptimizationDispatchError)
+  })
+})
+
+describe('kernel-optimization campaign op reconciliation', () => {
+  // Two ops dispatched against the SAME (model, device, hardware) target — the
+  // case the model/device/hardware target reconciler cannot tell apart.
+  const opJob = (
+    targetModel: string,
+    kernelRef: string,
+  ): KernelOptimizationJobSpec => ({
+    baselineRecordRef: `record.public.${targetModel}.cuda.a10g.${kernelRef}.328tps`,
+    baselineTokensPerSecond: 328,
+    budgetSats: 50_000,
+    deadlineRef: 'deadline.public.2026-07-01',
+    device: 'cuda',
+    hardwareRef: 'nvidia-a10g',
+    kernelRef,
+    targetModel,
+    validatorDeviceRef: 'device.public.validator.metal.m3',
+  })
+
+  const campaignRef = 'campaign.qwen35-0.5b-two-ops'
+  const spec = {
+    campaignRef,
+    jobs: [
+      opJob('qwen-3.5-0.5b', 'rmsnorm'),
+      opJob('qwen-3.5-0.5b', 'attention.flash'),
+    ],
+  }
+  const buildTwoOpCampaign = () => buildKernelOptimizationCampaign(spec)
+
+  const keyedFor = (
+    campaign: ReturnType<typeof buildTwoOpCampaign>,
+    index: number,
+    op: string,
+  ): KernelOptimizationKeyedSettlementItem => ({
+    budgetSats: 50_000,
+    requestedSlug: campaign.requests[index]!.requestedSlug ?? '',
+    verdict: verdictFor('qwen-3.5-0.5b', 523, verifiedParity, op),
+  })
+
+  test('passes when every settled verdict optimizes its dispatched op', () => {
+    const campaign = buildTwoOpCampaign()
+    const items = [
+      keyedFor(campaign, 0, 'rmsnorm'),
+      keyedFor(campaign, 1, 'attention.flash'),
+    ]
+    const report = reconcileKernelOptimizationCampaignOps(spec, items)
+
+    expect(report.classId).toBe(KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID)
+    expect(report.campaignRef).toBe(campaignRef)
+    expect(report.ok).toBe(true)
+    expect(report.matchedSlugs).toHaveLength(2)
+    expect(report.opMismatches).toEqual([])
+    expect(report.unmatchedSlugs).toEqual([])
+    expect(report.discrepancies).toEqual([])
+  })
+
+  test('catches an op swap the model/device/hardware target check misses', () => {
+    const campaign = buildTwoOpCampaign()
+    // File the attention.flash verdict under the rmsnorm job's slug, keeping
+    // that job's exact target and budget. Both jobs share the same target, so
+    // the target reconciler and the per-job (slug + escrow) reconciler pass.
+    const swapped: KernelOptimizationKeyedSettlementItem[] = [
+      {
+        budgetSats: 50_000,
+        requestedSlug: campaign.requests[0]!.requestedSlug ?? '',
+        verdict: verdictFor('qwen-3.5-0.5b', 523, verifiedParity, 'attention.flash'),
+      },
+      keyedFor(campaign, 1, 'attention.flash'),
+    ]
+
+    // The coarse target reconciler is blind to it (same model/device/hardware).
+    const target = reconcileKernelOptimizationCampaignTargets(spec, swapped)
+    expect(target.ok).toBe(true)
+    // The per-job slug + escrow reconciler is blind to it too.
+    const perJob = reconcileKernelOptimizationCampaignPerJob(campaign, swapped)
+    expect(perJob.ok).toBe(true)
+
+    // Only the op reconciler catches it.
+    const report = reconcileKernelOptimizationCampaignOps(spec, swapped)
+    expect(report.ok).toBe(false)
+    expect(report.matchedSlugs).toHaveLength(1)
+    expect(report.opMismatches).toHaveLength(1)
+    expect(report.opMismatches[0]?.requestedSlug).toBe(
+      campaign.requests[0]!.requestedSlug ?? '',
+    )
+    expect(report.opMismatches[0]?.dispatchedOpRef).toBe('rmsnorm')
+    expect(report.opMismatches[0]?.settledVerdictOpRef).toBe('attention.flash')
+    expect(report.discrepancies.some((d) => d.includes('op swap'))).toBe(true)
+  })
+
+  test('treats a blank verdict op as a mismatch', () => {
+    const campaign = buildTwoOpCampaign()
+    const items: KernelOptimizationKeyedSettlementItem[] = [
+      {
+        budgetSats: 50_000,
+        requestedSlug: campaign.requests[0]!.requestedSlug ?? '',
+        verdict: verdictFor('qwen-3.5-0.5b', 523, verifiedParity, '   '),
+      },
+      keyedFor(campaign, 1, 'attention.flash'),
+    ]
+    const report = reconcileKernelOptimizationCampaignOps(spec, items)
+
+    expect(report.ok).toBe(false)
+    expect(report.opMismatches).toHaveLength(1)
+    expect(report.opMismatches[0]?.settledVerdictOpRef).toBe('')
+    expect(report.discrepancies.some((d) => d.includes('(blank)'))).toBe(true)
+  })
+
+  test('flags a settlement for a slug this campaign never dispatched', () => {
+    const campaign = buildTwoOpCampaign()
+    const items: KernelOptimizationKeyedSettlementItem[] = [
+      keyedFor(campaign, 0, 'rmsnorm'),
+      {
+        budgetSats: 50_000,
+        requestedSlug: 'kernel-opt-rmsnorm-not-in-this-campaign-cuda',
+        verdict: verdictFor('qwen-3.5-0.5b', 523, verifiedParity),
+      },
+    ]
+    const report = reconcileKernelOptimizationCampaignOps(spec, items)
+
+    expect(report.ok).toBe(false)
+    expect(report.unmatchedSlugs).toEqual([
+      'kernel-opt-rmsnorm-not-in-this-campaign-cuda',
+    ])
+    expect(
+      report.discrepancies.some((d) => d.includes('never dispatched')),
+    ).toBe(true)
+  })
+
+  test('rejects a spec the campaign builder would reject (empty jobs)', () => {
+    expect(() =>
+      reconcileKernelOptimizationCampaignOps({ campaignRef, jobs: [] }, []),
     ).toThrow(KernelOptimizationDispatchError)
   })
 })

@@ -55,6 +55,15 @@ export type KernelOptimizationVerdict = Readonly<{
   outcome: "accepted" | "rejected"
   rejection: KernelOptimizationRejection | null
   target: Readonly<{ targetModel: string; device: string; hardwareRef: string }>
+  /**
+   * The op this optimization job targets (e.g. "rmsnorm", "attention.flash"),
+   * matching the dispatched job's `kernelRef`. Distinct from the throughput
+   * records' `kernelRef` (which name the baseline vs optimized *implementations*
+   * of this op). Surfaced so a settlement can be bound back to the specific
+   * dispatched job by OP, not just by model/device/hardware: two jobs can share
+   * a target but optimize different ops, and only this field tells them apart.
+   */
+  optimizedOpRef: string
   baselineTokensPerSecond: number
   optimizedTokensPerSecond: number
   /** optimized / baseline tok/s when both are valid, else null. */
@@ -77,6 +86,8 @@ const isPositiveFinite = (value: number): boolean =>
  */
 export const verifyKernelOptimizationParity = (
   input: Readonly<{
+    /** The op being optimized (e.g. "rmsnorm"); the dispatched job's kernelRef. */
+    optimizedOpRef: string
     baseline: KernelThroughputRecord
     optimized: KernelThroughputRecord
     parityVerdict: TassadarReplayVerdict
@@ -91,6 +102,7 @@ export const verifyKernelOptimizationParity = (
   const base = {
     baselineTokensPerSecond: baseline.tokensPerSecond,
     classId: KERNEL_OPTIMIZATION_PARITY_CLASS_ID,
+    optimizedOpRef: input.optimizedOpRef.trim(),
     optimizedTokensPerSecond: optimized.tokensPerSecond,
     parityOutcome: parityVerdict.outcome,
     parityValidatorDeviceRef: parityVerdict.validatorDeviceRef,

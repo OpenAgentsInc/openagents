@@ -244,6 +244,61 @@ verdict already carries (no change to the green parity engine).
   different kernel *implementations*), so op-granular target binding would need
   the verdict to carry the optimized *op* distinctly. Spec-side slug recompute
   covers op implicitly (the slug encodes it) but the verdict does not assert it.
+  (Addressed by the 2026-06-20 update below.)
+- Everything from the prior updates still stands: live dispatch through the
+  forum route, real worker tok/s + replayed output traces, and real escrow
+  settled into dereferenceable receipts + owner sign-off. The March 2026 result
+  stays historical-demo only. No promise state changed; no blocker dropped.
+
+## Update 2026-06-20 — verdict-op ↔ dispatched-job binding (op-swap guard)
+
+Further advances `blocker.product_promises.agentic_kernel_optimization_at_scale_run_missing`
+by closing the gap the prior update explicitly named: the model/device/hardware
+target reconciler binds a settlement's verdict to its dispatched job by
+`(model, device, hardware)`, but a single campaign can dispatch SEVERAL ops
+against the SAME target — e.g. `rmsnorm` and `attention.flash` both on
+`qwen-3.5-0.5b`/`cuda`/`a10g`. At scale this leaves a hole that conserves
+escrow and passes BOTH the per-job (slug + escrow) and the model/device/hardware
+target reconcilers: a settlement filed under the `rmsnorm` job's slug, with that
+job's exact budget, but carrying a verdict that actually optimized
+`attention.flash`. The accounting balances and the coarse target matches; the
+wrong op gets paid.
+
+New artifacts:
+
+- `packages/tassadar-executor/src/kernel-optimization-parity.ts` — the parity
+  verdict now carries `optimizedOpRef`, the op the job targets (matching the
+  dispatched job's `kernelRef`), surfaced (trimmed) from a new required verifier
+  input field. It is distinct from the throughput records' `kernelRef`, which
+  name the baseline vs optimized *implementations* of that op. No new rejection
+  reason and no change to the green exact-trace-replay engine.
+- `apps/openagents.com/workers/api/src/kernel-optimization-campaign.ts` —
+  `reconcileKernelOptimizationCampaignOps(spec, items)` binds each settlement's
+  verdict back to the specific dispatched job by OP. It recomputes each
+  dispatched job's requested slug from the campaign spec via the same dispatch
+  encoder (so it cannot drift from the real slug), learns that slug's true op
+  (`kernelRef`), and checks the settled verdict's own `optimizedOpRef` matches it
+  (trim + case-normalized; a blank verdict op never matches). It returns a
+  `KernelOptimizationCampaignOpReconciliation` whose `ok` gate must hold before
+  any per-op payout/refund release, naming `matchedSlugs`, `unmatchedSlugs`, and
+  `opMismatches` (the slug, its dispatched op, and the settled verdict's op). It
+  moves no money and never throws.
+- Tests: `kernel-optimization-parity.test.ts` gains the op-surfaced/trim
+  assertions (6 tests); `kernel-optimization-campaign.test.ts` gains a 5-test
+  op-reconciliation block (25 total) including a two-ops-on-one-target campaign
+  whose op-swap passes BOTH the per-job and model/device/hardware reconcilers
+  while this one fails it, plus blank-op, unmatched-slug, and spec-validation
+  reuse cases.
+
+This is the op-granular "wire the verdict's op back to the dispatched job" piece
+the prior update deferred — now done on the op the verdict carries explicitly.
+
+### What still remains for the at-scale run (blocker NOT cleared)
+
+- Op binding compares the dispatched job's single `kernelRef` (op) to the
+  verdict's `optimizedOpRef`; it does not yet assert the baseline/optimized
+  throughput records both pertain to that op (they intentionally name different
+  implementations). Cross-checking record provenance against the op remains.
 - Everything from the prior updates still stands: live dispatch through the
   forum route, real worker tok/s + replayed output traces, and real escrow
   settled into dereferenceable receipts + owner sign-off. The March 2026 result
