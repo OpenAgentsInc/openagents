@@ -2,6 +2,55 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — eval-delta funding-budget ledger (batch-level overspend + per-shard authorization gate)
+
+**Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
+
+`settleCs336A4EvalDeltaPayment` prices ONE bonus and `closeCs336A4EvalDeltaSettlement`
+records ONE bonus against ONE shard — both reason about a single shard in
+isolation. Pricing checks that the per-shard funding parameters are positive, but
+nothing bounds what an operator actually pays across a whole dispatched BATCH, so
+a batch of individually-valid settlements could silently (1) OVERSPEND — the SUM
+of correctly-priced bonuses exceeds the fixed budget the operator authorized — or
+(2) carry an UNAUTHORISED per-shard price — a settlement priced under different,
+larger funding parameters than the operator approved charges above the authorized
+per-shard maximum. This change adds the fail-closed gate that closes both:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-funding-budget.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-funding-budget.test.ts` (13 tests)
+
+`buildCs336A4EvalDeltaFundingBudgetLedger` takes one operator funding
+AUTHORIZATION (authority + total `budgetCapSats` + the authorized funding
+parameters) and the batch of already-priced settlements, and emits a
+deterministic, content-addressed `Cs336A4EvalDeltaFundingBudgetLedger` binding the
+authorization to ordered per-shard charges and the remaining budget. It fails
+closed (typed `Cs336A4EvalDeltaFundingBudgetError` carrying the reason) on an
+empty authority ref, a non-positive-integer budget cap, invalid funding
+parameters, a per-shard maximum (`round(deltaCap * bonusRateSatsPerUnit)`)
+exceeding the whole budget, a duplicate assignment (shard double-charged), a
+payable bonus that is not a non-negative integer or that exceeds the authorized
+per-shard maximum (priced under unauthorized funding), and a cumulative payable
+bonus exceeding the authorized budget. Blocked settlements are recorded as a 0
+charge so the ledger is a complete batch record. The `ledgerRef` is
+content-addressed via SHA-256, so the same authorization + settlements yield the
+same ref. It prices nothing, binds no provenance, and settles no payment
+instrument; the public-safety guard fails closed on wallet/payment/private
+material first.
+
+### What genuinely remains (blocker NOT cleared)
+
+`eval_delta_payment_missing` stays listed. This is the deterministic batch
+*budget-accounting* gate over already-priced settlements — it funds nothing,
+measures nothing, and pays nothing. No operator has set a real funding
+authorization, no fixed-trainer eval loop has produced a real measurement, and
+this ledger is not yet wired into `closeCs336A4EvalDeltaSettlement`, the live A4
+admission/closeout path (`training-data-refinery.ts`), the A4 public projection,
+or the `a4_eval_delta` leaderboard. The promise's green criterion — at least one
+eval-delta payment computed from a fixed reference model and backed by a Verified
+`deterministic_recompute` shard, with operator funding set — is unmet.
+`crawl_scale_corpus_missing` and `corpus_provenance_receipts_missing` are
+untouched by this update.
+
 ## 2026-06-20 update — crawl-shard batch closeout receipt (composes dispatch manifest + provenance binding)
 
 **Blocker advanced:** `blocker.product_promises.corpus_provenance_receipts_missing`.
