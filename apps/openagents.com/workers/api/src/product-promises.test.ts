@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-19.12')
+    expect(decoded.version).toBe('2026-06-19.13')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -127,11 +127,13 @@ describe('public product promises document', () => {
     // (GET /api/public/site-referral-payouts) turning the referral ledger from
     // "wired in source" into "wired + dereferenceable" on
     // referral.refer_once_earn_forever.v1 (stays red) and
-    // autopilot_sites.partner_payout_ledger.v1 (stays red) — flip nothing, so the
-    // green count must stay exactly 20.
+    // autopilot_sites.partner_payout_ledger.v1 (stays red) — flip nothing. The
+    // 2026-06-19.13 pass is the FIRST green flip of the assault:
+    // agents.nostr_fallback_coordination.v1 yellow -> green (owner-authorized
+    // 2026-06-19, outage-coordination drill PR #5535), so green is now exactly 21.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
-    ).toBe(20)
+    ).toBe(21)
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
     expect(
@@ -652,12 +654,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-19.12', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-19.13', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-19.12',
+      expectedVersion: '2026-06-19.13',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-19.12',
+      servedVersion: '2026-06-19.13',
       status: 'ready',
     })
     expect(
@@ -667,7 +669,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-19.12',
+      servedVersion: '2026-06-19.13',
       status: 'blocked',
     })
   })
