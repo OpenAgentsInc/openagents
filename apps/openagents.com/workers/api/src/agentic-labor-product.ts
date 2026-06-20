@@ -381,6 +381,147 @@ export const settleLaborProductOrder = (
 }
 
 // ---------------------------------------------------------------------------
+// Settled-receipt recording (PURE)
+// ---------------------------------------------------------------------------
+//
+// Advances the real-sale-receipt blocker
+// (blocker.product_promises.agentic_labor_product_real_sale_receipt_missing) by
+// supplying the LAST missing piece of the carry-through: the settlement seam
+// (`settleLaborProductOrder`) returns a `settled` RESULT with a public-safe
+// receipt ref, but nothing turned that result into (a) a `settled`-stage flow
+// plan — the lifecycle's terminal stage was never produced anywhere — or (b) a
+// typed, dereferenceable SETTLEMENT RECEIPT artifact. Without that, a real sale
+// could settle on the ledger yet never surface as a settled order with a receipt
+// a claim-upgrade review could dereference. This PURE function closes that loop.
+//
+// It does NOT clear the blocker: it only records a settlement that already
+// happened. Green still needs a REAL external sale (demand provenance) settled
+// under an armed, owner-signed seam — this just makes that settlement
+// expressible as a settled order + receipt.
+
+export const AGENTIC_LABOR_PRODUCT_SETTLEMENT_RECEIPT_SCHEMA =
+  'openagents.agentic_labor_product.settlement_receipt.v1' as const
+
+/**
+ * A public-safe, dereferenceable settlement receipt for ONE labor-product order
+ * that genuinely settled on the ledger. Neutral refs only — no amount,
+ * destination, or payment material; the price is intentionally absent (it lives
+ * on the listing/ledger, never on the public receipt). Unlike a flow PLAN this
+ * is NOT inert: it records that money moved, so it carries no `inert` field. The
+ * promise still reports yellow — one settled order does not flip the promise.
+ */
+export const LaborProductSettlementReceipt = S.Struct({
+  schema: S.Literal(AGENTIC_LABOR_PRODUCT_SETTLEMENT_RECEIPT_SCHEMA),
+  /** The order this receipt settles. */
+  orderId: S.String,
+  /** The listing the order was placed against. */
+  listingId: S.String,
+  /** Neutral seller ref (the agent that posted the product). */
+  sellerRef: S.String,
+  /** Neutral buyer ref (the ordering account/agent). */
+  buyerRef: S.String,
+  /** Neutral account ref that was debited. */
+  accountRef: S.String,
+  /** The NIP-90 market stream the order settled on. */
+  streamKind: S.Literal(AGENTIC_LABOR_PRODUCT_STREAM_KIND),
+  /** Dereferenceable public-safe receipt ref the order settled under. */
+  receiptRef: S.String,
+  /** Always true — a receipt is only minted for a genuine settlement. */
+  settled: S.Literal(true),
+  promiseIds: S.Tuple([S.Literal(AGENTIC_LABOR_PRODUCTS_PROMISE)]),
+  /** Always yellow — one settled order is not a green promise. */
+  promiseState: S.Literal('yellow'),
+  /** ISO timestamp the receipt was recorded. */
+  settledAt: S.String,
+})
+export type LaborProductSettlementReceipt =
+  typeof LaborProductSettlementReceipt.Type
+
+/**
+ * Record a genuinely settled labor-product order: turn the settlement seam's
+ * `settled` result into (a) a `settled`-stage flow plan and (b) a public-safe,
+ * dereferenceable settlement receipt. PURE — it moves no money and reads no
+ * ledger; it only transforms a settlement that ALREADY happened.
+ *
+ * Rejects anything that is not a genuine, metered settlement:
+ *   - the seam result must be `settled` (not `disabled`/`not_authorized`);
+ *   - the outcome must be `metered` with a non-null receipt ref (a zero-charge
+ *     or under-funded outcome moved no money, so it mints no receipt);
+ *   - that receipt ref must match the order's own settlement receipt ref;
+ *   - the order must be `delivered` (or already `settled`, for idempotent
+ *     re-recording).
+ * The settled flow plan is rebuilt through `buildLaborProductFlowPlan`, so every
+ * lifecycle-coherence guarantee still holds.
+ */
+export const recordLaborProductSettlement = (
+  plan: LaborProductFlowPlan,
+  result: SettleLaborProductOrderResult,
+  options?: { settledAt?: string },
+):
+  | {
+      ok: true
+      plan: LaborProductFlowPlan
+      receipt: LaborProductSettlementReceipt
+    }
+  | { ok: false; error: LaborProductValidationError } => {
+  const fail = (
+    reason: string,
+  ): { ok: false; error: LaborProductValidationError } => ({
+    ok: false,
+    error: new LaborProductValidationError({ reason }),
+  })
+
+  if (result._tag !== 'settled') {
+    return fail(
+      `only a settled order mints a receipt; settlement was ${result._tag}`,
+    )
+  }
+  if (!result.outcome.metered || result.outcome.receiptRef === null) {
+    return fail(
+      'only a metered settlement (money moved) mints a dereferenceable receipt',
+    )
+  }
+  if (result.outcome.receiptRef !== plan.settlement.receiptRef) {
+    return fail('settlement receipt ref does not match the order receipt ref')
+  }
+  if (plan.stage !== 'delivered' && plan.stage !== 'settled') {
+    return fail(`only a delivered order can settle; order is ${plan.stage}`)
+  }
+
+  const built = buildLaborProductFlowPlan({
+    orderId: plan.orderId,
+    buyerRef: plan.buyerRef,
+    listing: plan.listing,
+    stage: 'settled',
+    workerRef: plan.workerRef,
+    artifactRef: plan.artifactRef,
+    createdAt: plan.createdAt,
+  })
+  if (!built.ok) {
+    return built
+  }
+
+  return {
+    ok: true,
+    plan: built.plan,
+    receipt: {
+      schema: AGENTIC_LABOR_PRODUCT_SETTLEMENT_RECEIPT_SCHEMA,
+      orderId: plan.orderId,
+      listingId: plan.listing.listingId,
+      sellerRef: plan.listing.sellerRef,
+      buyerRef: plan.buyerRef,
+      accountRef: plan.settlement.accountRef,
+      streamKind: AGENTIC_LABOR_PRODUCT_STREAM_KIND,
+      receiptRef: result.outcome.receiptRef,
+      settled: true,
+      promiseIds: [AGENTIC_LABOR_PRODUCTS_PROMISE],
+      promiseState: 'yellow',
+      settledAt: options?.settledAt ?? currentIsoTimestamp(),
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Self-serve order planning (PURE, INERT)
 // ---------------------------------------------------------------------------
 //

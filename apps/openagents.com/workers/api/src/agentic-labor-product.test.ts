@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 import {
   AGENTIC_LABOR_PRODUCT_PRIMITIVE,
   AGENTIC_LABOR_PRODUCTS_PROMISE,
+  AGENTIC_LABOR_PRODUCT_SETTLEMENT_RECEIPT_SCHEMA,
   advanceLaborProductFlow,
   buildLaborProductFlowPlan,
   decodeLaborProductOrderRequest,
@@ -13,8 +14,10 @@ import {
   makeInMemoryLaborProductFlowStore,
   planSelfServeLaborProductOrder,
   readLaborProductFlow,
+  recordLaborProductSettlement,
   settleLaborProductOrder,
   type LaborProductListing,
+  type SettleLaborProductOrderResult,
 } from './agentic-labor-product'
 import { cloudChargeReceiptRef } from './cloud/cloud-metering'
 
@@ -382,5 +385,117 @@ describe('settleLaborProductOrder (FLAG-GATED INERT)', () => {
     if (result._tag === 'not_authorized') {
       expect(result.reason).toContain('delivered')
     }
+  })
+})
+
+describe('recordLaborProductSettlement (PURE)', () => {
+  const receiptRef = laborProductOrderReceiptRef('order-1')
+  const meteredResult: SettleLaborProductOrderResult = {
+    _tag: 'settled',
+    receiptRef,
+    outcome: { metered: true, receiptRef },
+  }
+
+  test('mints a settled flow plan + dereferenceable receipt from a metered settlement', () => {
+    const recorded = recordLaborProductSettlement(okPlan(), meteredResult, {
+      settledAt: '2026-06-20T01:00:00.000Z',
+    })
+    expect(recorded.ok).toBe(true)
+    if (!recorded.ok) return
+
+    // The terminal stage is now produced, with identity + receipt carried.
+    expect(recorded.plan.stage).toBe('settled')
+    expect(recorded.plan.orderId).toBe('order-1')
+    expect(recorded.plan.workerRef).toBe('agent:worker')
+    expect(recorded.plan.artifactRef).toBe('artifact.repo_triage.order-1')
+
+    expect(recorded.receipt.schema).toBe(
+      AGENTIC_LABOR_PRODUCT_SETTLEMENT_RECEIPT_SCHEMA,
+    )
+    expect(recorded.receipt.receiptRef).toBe(receiptRef)
+    expect(recorded.receipt.settled).toBe(true)
+    expect(recorded.receipt.streamKind).toBe('labor')
+    expect(recorded.receipt.sellerRef).toBe('agent:raynor')
+    expect(recorded.receipt.buyerRef).toBe('agent:buyer')
+    expect(recorded.receipt.settledAt).toBe('2026-06-20T01:00:00.000Z')
+    // Still yellow — one settled order does not flip the promise.
+    expect(recorded.receipt.promiseState).toBe('yellow')
+  })
+
+  test('rejects a non-settled seam result (disabled / not_authorized)', () => {
+    const recorded = recordLaborProductSettlement(okPlan(), {
+      _tag: 'disabled',
+      receiptRef,
+    })
+    expect(recorded.ok).toBe(false)
+    if (!recorded.ok) {
+      expect(recorded.error.reason).toContain('settled')
+    }
+  })
+
+  test('rejects an unmetered settlement (no money moved => no receipt)', () => {
+    const recorded = recordLaborProductSettlement(okPlan(), {
+      _tag: 'settled',
+      receiptRef,
+      outcome: { metered: false, receiptRef: null },
+    })
+    expect(recorded.ok).toBe(false)
+    if (!recorded.ok) {
+      expect(recorded.error.reason).toContain('metered')
+    }
+  })
+
+  test('rejects a receipt ref that does not match the order', () => {
+    const recorded = recordLaborProductSettlement(okPlan(), {
+      _tag: 'settled',
+      receiptRef,
+      outcome: { metered: true, receiptRef: 'receipt.someone.else' },
+    })
+    expect(recorded.ok).toBe(false)
+    if (!recorded.ok) {
+      expect(recorded.error.reason).toContain('does not match')
+    }
+  })
+
+  test('rejects settling an order that was never delivered', () => {
+    const ordered = okPlan({
+      stage: 'ordered',
+      workerRef: null,
+      artifactRef: null,
+    })
+    const recorded = recordLaborProductSettlement(ordered, meteredResult)
+    expect(recorded.ok).toBe(false)
+    if (!recorded.ok) {
+      expect(recorded.error.reason).toContain('delivered')
+    }
+  })
+
+  test('closes the full carry-through: order -> dispatch -> deliver -> settle -> receipt', () => {
+    const ordered = planSelfServeLaborProductOrder(
+      { orderId: 'order-1', buyerRef: 'agent:buyer', listing },
+      { createdAt: '2026-06-20T00:00:00.000Z' },
+    )
+    expect(ordered.ok).toBe(true)
+    if (!ordered.ok) return
+    const dispatched = advanceLaborProductFlow(ordered.plan, {
+      kind: 'dispatch',
+      workerRef: 'agent:worker',
+    })
+    expect(dispatched.ok).toBe(true)
+    if (!dispatched.ok) return
+    const delivered = advanceLaborProductFlow(dispatched.plan, {
+      kind: 'deliver',
+      artifactRef: 'artifact.repo_triage.order-1',
+    })
+    expect(delivered.ok).toBe(true)
+    if (!delivered.ok) return
+
+    const recorded = recordLaborProductSettlement(delivered.plan, meteredResult)
+    expect(recorded.ok).toBe(true)
+    if (!recorded.ok) return
+    expect(recorded.plan.stage).toBe('settled')
+    expect(recorded.receipt.receiptRef).toBe(
+      delivered.plan.settlement.receiptRef,
+    )
   })
 })
