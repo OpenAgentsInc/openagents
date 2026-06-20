@@ -1748,6 +1748,24 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     revenue gate to its `metered` rung; it meters no payload, prices nothing,
     debits no balance, and settles nothing — `signature_settlement_missing`
     stays owner-gated and is surfaced as `remainingOwnerGatedBlocker` (#5529).
+  - `GET /api/public/pylon/multi-earning-node` — live at read over the INERT
+    Pylon multi-earning store (promise `pylon.v0_3_multi_earning_node.v1`, red)
+    — compliant (`generatedAt`, `live_at_read` contract). The surface is
+    flag-gated (`PYLON_MULTI_EARNING_PROJECTION_ENABLED`, default off => empty
+    store) and the payload always reports `inert: true` / `promiseState: 'red'`.
+    It distinguishes the five amount classes (`modeled` / `observed` /
+    `pending` / `paid` / `settled`) per earning mode and reports the
+    `settledModeCount` against the `>=2`-modes-in-one-install bar for green, but
+    never asserts the bar met as authority and never reports a settled mode
+    without a public-safe `settlementReceiptRef`. It is the safe public
+    projection deliverable (clearing
+    `blocker.product_promises.safe_public_projection_missing`); the three
+    install/receipt/settlement blockers
+    (`pylon_v1_default_install_not_fully_closed`,
+    `multi_earning_mode_receipts_missing`,
+    `multi_earning_settlement_refs_missing`) stay owner-gated and are surfaced
+    as `remainingOwnerGatedBlockers`. It records no real earnings, moves no
+    money, and admits no install as closed (#5527).
   - `GET /api/public/customer-one-cohort` — live at read over Customer #1
     cohort source rows and privacy-review evidence — compliant (`generatedAt`,
     contract, evidence-only opaque cohort refs, generic labels, counts, blockers,

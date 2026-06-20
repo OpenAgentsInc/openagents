@@ -260,7 +260,15 @@ const budgetChecks = [
     // `Effect.Effect<Response>` like the sibling public read handlers. Ratchet
     // back down when these public-projection handlers are extracted behind
     // shared route mappers.
-    budget: 89,
+    // +1 (89 -> 90) for the Pylon multi-earning-node surface
+    // (pylon-multi-earning-node-routes.ts, pylon.v0_3_multi_earning_node.v1,
+    // red): a flag-gated INERT read-only projection that distinguishes
+    // modeled/observed/pending/paid/settled amounts per earning mode, clearing
+    // only blocker.product_promises.safe_public_projection_missing. It returns
+    // `Effect.Effect<Response>` like the sibling public read handlers. Ratchet
+    // back down when these public-projection handlers are extracted behind
+    // shared route mappers.
+    budget: 90,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -582,6 +590,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/signature-usage-metering.ts',
     route: '/api/public/markets/signature-monetization/metering',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/pylon-multi-earning-node.ts',
+    route: '/api/public/pylon/multi-earning-node',
     status: 'staleness_declared',
   },
   {
