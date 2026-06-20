@@ -14,7 +14,7 @@ import {
   resolveProbeWorkspaceRoot,
   resolveWorkspacePath,
 } from "./workspace.js";
-import { marked } from "marked";
+import { marked, type Tokens } from "marked";
 import {
   AppleFmBackendError,
   makeAppleFmClient,
@@ -1187,29 +1187,45 @@ const ansi = {
 
 function renderMarkdown(text: string): string {
   const renderer = new (class extends marked.Renderer {
-    strong(t: string): string { return `${ansi.bold}${t}${ansi.reset}`; }
-    em(t: string): string { return `${ansi.dim}${t}${ansi.reset}`; }
-    codespan(t: string): string { return `${ansi.green}${t}${ansi.reset}`; }
-    del(t: string): string { return `${ansi.dim}${t}${ansi.reset}`; }
-    link(href: string, _title: string | null, t: string): string {
-      return `${t} ${ansi.blue}${href}${ansi.reset}`;
+    strong({ tokens }: Tokens.Strong): string {
+      return `${ansi.bold}${this.parser.parseInline(tokens)}${ansi.reset}`;
     }
-    image(_href: string, _title: string | null, t: string): string {
-      return t;
+    em({ tokens }: Tokens.Em): string {
+      return `${ansi.dim}${this.parser.parseInline(tokens)}${ansi.reset}`;
     }
-    heading(t: string): string { return `${ansi.bold}${t}${ansi.reset}\n`; }
-    paragraph(t: string): string { return `${t}\n`; }
-    listitem(t: string): string { return `  • ${t}\n`; }
-    blockquote(t: string): string { return `${ansi.yellow}> ${t}${ansi.reset}\n`; }
-    codes(t: string, _language?: string): string {
-      return `${ansi.gray}${t}${ansi.reset}\n`;
+    codespan({ text }: Tokens.Codespan): string {
+      return `${ansi.green}${text}${ansi.reset}`;
+    }
+    del({ tokens }: Tokens.Del): string {
+      return `${ansi.dim}${this.parser.parseInline(tokens)}${ansi.reset}`;
+    }
+    link({ href, tokens }: Tokens.Link): string {
+      return `${this.parser.parseInline(tokens)} ${ansi.blue}${href}${ansi.reset}`;
+    }
+    image({ text }: Tokens.Image): string {
+      return text;
+    }
+    heading({ tokens }: Tokens.Heading): string {
+      return `${ansi.bold}${this.parser.parseInline(tokens)}${ansi.reset}\n`;
+    }
+    paragraph({ tokens }: Tokens.Paragraph): string {
+      return `${this.parser.parseInline(tokens)}\n`;
+    }
+    listitem(item: Tokens.ListItem): string {
+      return `  • ${this.parser.parseInline(item.tokens)}\n`;
+    }
+    blockquote({ tokens }: Tokens.Blockquote): string {
+      return `${ansi.yellow}> ${this.parser.parse(tokens)}${ansi.reset}\n`;
+    }
+    code({ text }: Tokens.Code): string {
+      return `${ansi.gray}${text}${ansi.reset}\n`;
     }
     hr(): string { return `${ansi.gray}---${ansi.reset}\n`; }
     br(): string { return "\n"; }
-    html(t: string): string { return t; }
-    text(t: string): string { return t; }
+    html({ text }: Tokens.HTML | Tokens.Tag): string { return text; }
+    text(token: Tokens.Text | Tokens.Escape): string { return token.text; }
   })();
-  return marked.parse(text, { renderer });
+  return marked.parse(text, { renderer, async: false });
 }
 
 function formatInlineMarkdown(text: string): string {
@@ -1634,7 +1650,7 @@ function writeAnyWorkspaceFile(
       return { path, content: `written to ${resolved.relativePath}` };
     }
 
-    return { path, error: written };
+    return { path, error: String(written) };
   });
 }
 
@@ -1706,7 +1722,7 @@ function searchWorkspaceCode(
         return text;
       },
       catch: (error) => `failed to search ${path}: ${String(error)}`,
-    });
+    }).pipe(Effect.catch((error) => Effect.succeed(error)));
     const allMatches = output.split("\n").filter((line) => line.length > 0);
     const matches = allMatches.slice(0, limit);
 
@@ -2161,8 +2177,8 @@ async function runGeminiTuiChat(input: {
         if (event.type === "tool-error") {
           const errorLabel = new BoxRenderable(renderer, {
             border: true,
-            borderType: "single",
-            borderFg: parseColor("#FF7B72"),
+            borderStyle: "single",
+            borderColor: parseColor("#FF7B72"),
             width: "100%",
           });
           const errorText = new TextRenderable(renderer, {
@@ -2204,8 +2220,8 @@ async function runGeminiTuiChat(input: {
       if (result instanceof GeminiClientError) {
         const errorLabel = new BoxRenderable(renderer, {
           border: true,
-          borderType: "single",
-          borderFg: parseColor("#FF7B72"),
+          borderStyle: "single",
+          borderColor: parseColor("#FF7B72"),
           width: "100%",
         });
         const errorText = new TextRenderable(renderer, {

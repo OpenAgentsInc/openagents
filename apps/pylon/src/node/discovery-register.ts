@@ -16,7 +16,9 @@ export type BuildNodeRegistrationInput = {
 export class NodeRegistration {
   readonly nodeRef: string
   readonly addresses: NodeRegistrationAddresses
-  readonly controlToken: string
+  // Assigned via Object.defineProperty in the constructor (non-enumerable for
+  // redaction), so the compiler cannot see the assignment directly.
+  readonly controlToken!: string
   readonly updatedAt: string
 
   constructor(input: {

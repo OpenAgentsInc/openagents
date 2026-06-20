@@ -18,7 +18,7 @@ export function assembleContext<Ref = string>(
   const pinnedItems = items.filter((item) => item.pinned === true)
   const candidates = items
     .filter((item) => item.pinned !== true)
-    .toSorted(compareByPriorityThenRef)
+    .sort(compareByPriorityThenRef)
 
   const includedItems: Array<ContextAssemblyItem<Ref>> = [...pinnedItems]
   const droppedRefs: Ref[] = []

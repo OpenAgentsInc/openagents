@@ -544,7 +544,7 @@ export function validateProbeBenchmarkRouteScorecard(
 }
 
 function decodeBenchmarkSchema<A, I>(
-  schema: S.Schema<A, I>,
+  schema: S.Codec<A, I>,
   value: unknown,
   path: string,
 ): Effect.Effect<A, ProbeBenchmarkContractError> {

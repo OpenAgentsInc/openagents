@@ -132,7 +132,7 @@ function requestOmegaJson(
 }
 
 function decodeOmegaPayload<A, I, R>(
-  schema: S.Schema<A, I, R>,
+  schema: S.Codec<A, I, R>,
   payload: unknown,
   label: string,
 ): Effect.Effect<A, OmegaAccountClientError, R> {

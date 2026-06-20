@@ -39,7 +39,7 @@ export function buildPairingOffer(input: BuildPairingOfferInput): PairingOffer {
 function classifyAddresses(
   binds: ReadonlyArray<Pick<BindAddress, "address" | "requiresAuth">>,
 ): BootstrapPayload["addresses"] {
-  const addresses: Partial<BootstrapPayload["addresses"]> = {}
+  const addresses: { -readonly [K in keyof BootstrapPayload["addresses"]]?: BootstrapPayload["addresses"][K] } = {}
 
   for (const bind of binds) {
     if (bind.address.startsWith("127.")) {

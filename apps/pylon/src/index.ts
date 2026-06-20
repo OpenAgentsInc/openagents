@@ -157,6 +157,7 @@ import {
   parseBootstrapArgs,
   selectPylonHomeResolution,
   writeBootstrapFiles,
+  type BootstrapSummary,
 } from "./bootstrap.js"
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState } from "./state.js"
 import {
