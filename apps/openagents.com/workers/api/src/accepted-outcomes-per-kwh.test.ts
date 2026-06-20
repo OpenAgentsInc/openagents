@@ -46,6 +46,45 @@ describe('Accepted Outcomes per kWh metric', () => {
     )
   })
 
+  test('labels demand provenance internal/external and forbids unlabeled market-demand claims', () => {
+    const projection = projectAcceptedOutcomesPerKwh({
+      generatedAt: '2026-06-15T22:15:00.000Z',
+    })
+
+    // proof.demand_provenance.v1: the revenue-bearing projection carries a
+    // typed internal/external split serving real data.
+    expect(projection.demandProvenance.contractRef).toBe(
+      'promise:proof.demand_provenance.v1',
+    )
+    expect(projection.demandProvenance.rule).toBe(
+      'no_external_dollar_no_demand_claim',
+    )
+    // The only accepted outcome (#4777) was operator-staged → internal demand.
+    expect(projection.demandProvenance.internalAcceptedOutcomeCount).toBe(1)
+    expect(projection.demandProvenance.externalAcceptedOutcomeCount).toBe(0)
+    // No external dollar yet → no market-demand claim allowed.
+    expect(projection.demandProvenance.externalDemandClaimAllowed).toBe(false)
+
+    // Every datapoint must carry a provenance kind.
+    for (const datapoint of projection.datapoints) {
+      expect(['internal', 'external']).toContain(
+        datapoint.demandProvenance.kind,
+      )
+    }
+    expect(projection.datapoints[0]?.demandProvenance.kind).toBe('internal')
+
+    // The internal/external counts must reconcile to the accepted-outcome total
+    // so an aggregate can never silently include unlabeled demand.
+    expect(
+      projection.demandProvenance.internalAcceptedOutcomeCount +
+        projection.demandProvenance.externalAcceptedOutcomeCount,
+    ).toBe(projection.acceptedOutcomeCounter.count)
+
+    // Copy gate: the unsafeCopy must forbid presenting internal demand as market
+    // demand under the no-external-dollar rule.
+    expect(projection.unsafeCopy).toContain('no external dollar, no demand claim')
+  })
+
   test('computes the modeled datapoint from public acceptance→result timing', () => {
     const datapoint = modeledLabor4777AoKwhDatapoint()
 

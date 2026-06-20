@@ -86,6 +86,30 @@ are not AO/kWh unless joined to a verified accepted-outcome receipt. A local
 Apple FM tool/chat smoke is raw session activity; by itself it must not be
 counted as an accepted outcome.
 
+## 5b. Demand provenance (internal vs external) — `proof.demand_provenance.v1`
+
+AO/kWh is a revenue-bearing public number, so every datapoint now carries a
+typed **demand-provenance** label under the rule
+**`no_external_dollar_no_demand_claim`**:
+
+- `internal` — first-party / operator-staged demand (ablation, sweep,
+  conformance, credit-ledger settlement). This is *plumbing proof*, not market
+  proof.
+- `external` — a third party paid real dollars for the accepted work.
+
+The projection at `/api/public/metrics/accepted-outcomes-per-kwh` serves a
+reconciling split (`internalAcceptedOutcomeCount` +
+`externalAcceptedOutcomeCount` == accepted-outcome total) plus
+`externalDemandClaimAllowed`, which stays `false` until at least one external
+(real-dollar) accepted outcome exists.
+
+The current seed (`#4777`) is labeled **internal**: it was operator-staged and
+settled on the internal credit ledger (1 sat), not driven by an external paying
+customer. The metric's `unsafeCopy` copy-gate forbids presenting it as external
+market demand. This makes AO/kWh the first revenue-bearing projection serving a
+real internal/external demand split — see
+`apps/openagents.com/workers/api/src/accepted-outcomes-per-kwh.ts` and its test.
+
 ## 6. Path to a real number (green gate)
 
 `metrics.accepted_outcomes_per_kwh.v1` goes green only with:

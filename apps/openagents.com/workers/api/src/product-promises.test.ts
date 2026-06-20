@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-19.6')
+    expect(decoded.version).toBe('2026-06-19.7')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -109,7 +109,7 @@ describe('public product promises document', () => {
       decoded.promises.length,
     )
     // Honest green count: no green flip may land without a dereferenceable
-    // receipt. The Episode 239 (registry 2026-06-19.6) records are all
+    // receipt. The Episode 239 (registry 2026-06-19.7) records are all
     // red/planned, so the green count must stay exactly 20.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
@@ -580,12 +580,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-19.6', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-19.7', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-19.6',
+      expectedVersion: '2026-06-19.7',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-19.6',
+      servedVersion: '2026-06-19.7',
       status: 'ready',
     })
     expect(
@@ -595,7 +595,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-19.6',
+      servedVersion: '2026-06-19.7',
       status: 'blocked',
     })
   })

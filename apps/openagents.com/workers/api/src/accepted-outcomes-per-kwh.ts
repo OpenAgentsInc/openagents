@@ -17,6 +17,31 @@ export const AcceptedOutcomesPerKwhStaleness = liveAtReadStaleness([
   'product_promise_registry_updated',
 ])
 
+// Demand provenance (proof.demand_provenance.v1): every revenue-bearing public
+// number must label whether the demand behind it was internal (first-party,
+// operator-staged, ablation/sweep/conformance plumbing) or external (a third
+// party paying real dollars). The rule is: no external dollar, no demand claim.
+export const AcceptedOutcomesPerKwhDemandProvenanceKind = S.Literals([
+  'internal',
+  'external',
+])
+export type AcceptedOutcomesPerKwhDemandProvenanceKind = S.Schema.Type<
+  typeof AcceptedOutcomesPerKwhDemandProvenanceKind
+>
+
+export class AcceptedOutcomesPerKwhDemandProvenance extends S.Class<AcceptedOutcomesPerKwhDemandProvenance>(
+  'AcceptedOutcomesPerKwhDemandProvenance',
+)({
+  // 'internal' = first-party / operator-staged demand (plumbing proof, not
+  // market proof). 'external' = a third party paid real dollars for the work.
+  kind: AcceptedOutcomesPerKwhDemandProvenanceKind,
+  // Why this datapoint carries the kind it does, in public-safe terms.
+  rationale: S.String,
+  // Refs that substantiate the provenance label (e.g. evidence bundle showing
+  // the job was operator-staged, or an external buyer settlement receipt).
+  evidenceRefs: S.Array(S.String),
+}) {}
+
 export class AcceptedOutcomesPerKwhEnergyModel extends S.Class<AcceptedOutcomesPerKwhEnergyModel>(
   'AcceptedOutcomesPerKwhEnergyModel',
 )({
@@ -40,6 +65,7 @@ export class AcceptedOutcomesPerKwhDatapoint extends S.Class<AcceptedOutcomesPer
   acceptedOutcomeRefs: S.Array(S.String),
   verificationRefs: S.Array(S.String),
   settlementReceiptRefs: S.Array(S.String),
+  demandProvenance: AcceptedOutcomesPerKwhDemandProvenance,
   energyEvidenceState: S.Literal('modeled'),
   energyModel: AcceptedOutcomesPerKwhEnergyModel,
   acceptedOutcomesPerKwh: S.Number,
@@ -79,6 +105,18 @@ export class AcceptedOutcomesPerKwhProjection extends S.Class<AcceptedOutcomesPe
     measuredDatapointCount: S.Int,
     modeledDatapointCount: S.Int,
     sourceRefs: S.Array(S.String),
+  }),
+  // proof.demand_provenance.v1: typed internal/external split so this
+  // revenue-bearing projection never presents internal demand as market demand.
+  demandProvenance: S.Struct({
+    contractRef: S.Literal('promise:proof.demand_provenance.v1'),
+    internalAcceptedOutcomeCount: S.Int,
+    externalAcceptedOutcomeCount: S.Int,
+    // True only when at least one external (real-dollar) accepted outcome
+    // backs the metric. Until then no market-demand claim may be made.
+    externalDemandClaimAllowed: S.Boolean,
+    rule: S.Literal('no_external_dollar_no_demand_claim'),
+    caveatRefs: S.Array(S.String),
   }),
   gate: AcceptedOutcomesPerKwhGate,
   datapoints: S.Array(AcceptedOutcomesPerKwhDatapoint),
@@ -140,6 +178,15 @@ export const modeledLabor4777AoKwhDatapoint =
         'caveat.ao_kwh.seed.provider_power_assumption_replace_with_telemetry',
       ],
       datapointId: 'ao_kwh.seed.labor_4777.modeled',
+      demandProvenance: new AcceptedOutcomesPerKwhDemandProvenance({
+        evidenceRefs: [
+          'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
+          'promise:provider.compliant_usage_labor.v1',
+        ],
+        kind: 'internal',
+        rationale:
+          'The first settled labor job (#4777) was operator-staged and settled on the internal credit ledger (1 sat), not driven by an external paying customer over the reliable-tips ladder. It is internal demand (plumbing proof), not market demand.',
+      }),
       energyEvidenceState: 'modeled',
       energyModel: new AcceptedOutcomesPerKwhEnergyModel({
         assumptionRefs: [...ACCEPTED_LABOR_4777.assumptionRefs],
@@ -163,6 +210,13 @@ export const projectAcceptedOutcomesPerKwh = (
 ): AcceptedOutcomesPerKwhProjection => {
   const datapoints = [modeledLabor4777AoKwhDatapoint()]
 
+  const internalAcceptedOutcomeCount = datapoints
+    .filter(datapoint => datapoint.demandProvenance.kind === 'internal')
+    .reduce((sum, datapoint) => sum + datapoint.acceptedOutcomeCount, 0)
+  const externalAcceptedOutcomeCount = datapoints
+    .filter(datapoint => datapoint.demandProvenance.kind === 'external')
+    .reduce((sum, datapoint) => sum + datapoint.acceptedOutcomeCount, 0)
+
   return new AcceptedOutcomesPerKwhProjection({
     acceptedOutcomeCounter: {
       count: datapoints.reduce(
@@ -176,6 +230,17 @@ export const projectAcceptedOutcomesPerKwh = (
       'AO/kWh is a public efficiency metric projection only. It grants no assignment, payout, settlement, dispatch, treasury, energy-market, investment, or grid-operations authority.',
     datapoints,
     definitionRef: 'docs/metrics/2026-06-15-accepted-outcomes-per-kwh.md',
+    demandProvenance: {
+      caveatRefs: [
+        'caveat.demand_provenance.internal_demand_is_plumbing_not_market',
+        'caveat.demand_provenance.no_external_dollar_no_demand_claim',
+      ],
+      contractRef: 'promise:proof.demand_provenance.v1',
+      externalAcceptedOutcomeCount,
+      externalDemandClaimAllowed: externalAcceptedOutcomeCount > 0,
+      internalAcceptedOutcomeCount,
+      rule: 'no_external_dollar_no_demand_claim',
+    },
     energyAccounting: {
       evidenceState: 'modeled_seed',
       measuredDatapointCount: datapoints.filter(
@@ -217,6 +282,6 @@ export const projectAcceptedOutcomesPerKwh = (
     statusLabel:
       'AO/kWh has one receipt-backed modeled seed datapoint; measured energy telemetry remains missing.',
     unsafeCopy:
-      'Do not describe the seed datapoint as measured, broadly representative, a ranking, a provider efficiency claim, investment advice, grid advice, or proof that production energy routing is live.',
+      'Do not describe the seed datapoint as measured, broadly representative, a ranking, a provider efficiency claim, investment advice, grid advice, or proof that production energy routing is live. Do not present the internal, operator-staged accepted outcome as external market demand or revenue: no external dollar, no demand claim.',
   })
 }
