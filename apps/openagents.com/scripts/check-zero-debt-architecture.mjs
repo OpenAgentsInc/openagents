@@ -268,7 +268,14 @@ const budgetChecks = [
     // `Effect.Effect<Response>` like the sibling public read handlers. Ratchet
     // back down when these public-projection handlers are extracted behind
     // shared route mappers.
-    budget: 90,
+    // +1 (90 -> 91) for the enterprise claim-upgrade audit projection
+    // (promise-transition-audit-routes.ts, proof.claim_upgrade_receipts.v1): a
+    // read-only public projection joining the transition-receipt feed against
+    // the live registry so a third party can audit every green flip. It returns
+    // `Effect.Effect<Response>` like the sibling public read handlers. Ratchet
+    // back down when these public-projection handlers are extracted behind
+    // shared route mappers.
+    budget: 91,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(

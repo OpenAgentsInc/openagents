@@ -346,6 +346,9 @@ const schemaComponents = (): JsonSchema => ({
   ProductPromiseTransitions: objectSummary(
     'Public-safe promise transition receipt feed: receiptId, promiseId, from/to state, registry version, typed checks, result (passed/failed/exception), evidence refs, and timestamps. Receipts are transition evidence, not transitions.',
   ),
+  ProductPromiseClaimUpgradeAudit: objectSummary(
+    'Public-safe enterprise claim-upgrade audit projection (proof.claim_upgrade_receipts.v1). Joins the transition-receipt feed against the live product-promise registry so a third party can audit every state change, especially every green flip. Per promise: promiseId, productArea, currentState, lastVerifiedAt, blockerRefs, and the transition receipts backing it (from->to, registryVersion, receiptRef, result, evidenceRefs, owner signoff, alreadyApplied/isGreenFlip flags). A registry-wide summary reports promiseCount, transitionReceiptCount, greenPromiseCount, greenPromisesReceiptBacked, the explicit greenPromisesWithoutReceipt list (green promises with no recorded green-flip receipt), greenFlipReceiptCount, ownerSignedExceptionCount, and failedReceiptCount. Filterable by promiseId, state, and greenOnly. Carries generatedAt and a live_at_read staleness contract (maxStalenessSeconds 0, rebuildsOn registry/receipt transitions) because it is composed live at read from the registry and receipt feed. Read-only: exposes no private data, moves no money, and changes no registry state.',
+  ),
   AcceptedOutcomesPerKwhProjection: objectSummary(
     'Public-safe Accepted Outcomes per Kilowatt-Hour projection. Includes generatedAt, the declared staleness contract, the frozen metric definition ref, receipt-backed accepted-outcome counter, modeled/measured energy evidence labels, a typed internal/external demand-provenance split (proof.demand_provenance.v1, rule no_external_dollar_no_demand_claim, with externalDemandClaimAllowed gating market-demand claims), gate state, blocker refs, caveats, and published datapoints. Modeled seed datapoints are clearly labeled and do not grant payout, settlement, dispatch, energy-market, investment, or grid-operation authority, and internal demand is never presented as external market demand.',
   ),
@@ -5880,6 +5883,34 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Promise transition receipt feed.',
           '#/components/schemas/ProductPromiseTransitions',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/product-promises/audit': {
+    get: operation({
+      operationId: 'getProductPromiseClaimUpgradeAudit',
+      summary: 'Enterprise claim-upgrade audit projection',
+      description:
+        'Returns a read-only audit projection joining the promise transition-receipt feed against the live product-promise registry, so a third party can audit every state change — especially every green flip — without trusting narrative copy. Per promise it returns promiseId, productArea, currentState, lastVerifiedAt, blockerRefs, and the transition receipts backing it (from->to state, registryVersion, receiptRef, result, evidence refs, owner signoff). A registry-wide summary reports how many green promises are receipt-backed and explicitly lists any green promises with no recorded green-flip receipt (greenPromisesWithoutReceipt). Filterable via promiseId, state, and greenOnly query parameters. Read-only: exposes no private data, moves no money, and changes no registry state.',
+      tags: ['Public Proof'],
+      security: [],
+      parameters: [
+        queryParam('promiseId', 'Filter rows to a single promise id.'),
+        queryParam(
+          'state',
+          'Filter rows to a single current registry state (green, yellow, red, degraded, planned, withdrawn).',
+        ),
+        queryParam(
+          'greenOnly',
+          'Set to true or 1 to include only promises whose current state is green.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Claim-upgrade audit projection.',
+          '#/components/schemas/ProductPromiseClaimUpgradeAudit',
         ),
         ...errorResponses(),
       },

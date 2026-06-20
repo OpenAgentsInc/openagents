@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.5')
+    expect(decoded.version).toBe('2026-06-20.6')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -140,7 +140,11 @@ describe('public product promises document', () => {
     // v1.0.5 signed release shipped + verified, owner-authorized), so green is
     // now exactly 24. The 2026-06-20.4 Pylon green-quality pass and
     // 2026-06-20.5 signature-metering de-stale pass flip no promise state, so
-    // green remains exactly 24.
+    // green remains exactly 24. The 2026-06-20.6 pass ships the enterprise
+    // claim-upgrade audit panel for proof.claim_upgrade_receipts.v1
+    // (GET /api/public/product-promises/audit) and drops that promise's
+    // enterprise_audit_panel_missing blocker, but the promise STAYS yellow
+    // (green flip is owner-gated), so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -700,12 +704,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.5', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.6', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.5',
+      expectedVersion: '2026-06-20.6',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.5',
+      servedVersion: '2026-06-20.6',
       status: 'ready',
     })
     expect(
@@ -715,7 +719,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.5',
+      servedVersion: '2026-06-20.6',
       status: 'blocked',
     })
   })

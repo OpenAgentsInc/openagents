@@ -422,6 +422,7 @@ import {
   makePrivateProjectWorkspaceRoutes,
 } from './private-project-workspace-routes'
 import { publicProductPromisesDocument } from './product-promises'
+import { handlePublicPromiseAuditApi } from './promise-transition-audit-routes'
 import {
   handleOperatorPromiseTransitionApi,
   handlePublicPromiseTransitionsApi,
@@ -7977,6 +7978,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/product-promises/transitions',
     handler: (request, env) =>
       handlePublicPromiseTransitionsApi(request, {
+        store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    // Enterprise claim-upgrade audit projection (proof.claim_upgrade_receipts.v1).
+    // Read-only: joins the transition-receipt feed against the live registry so
+    // a third party can audit every green flip (promiseId, from->to,
+    // registryVersion, receiptRef, lastVerifiedAt) with filtering + summary.
+    path: '/api/public/product-promises/audit',
+    handler: (request, env) =>
+      handlePublicPromiseAuditApi(request, {
         store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
       }),
   },
