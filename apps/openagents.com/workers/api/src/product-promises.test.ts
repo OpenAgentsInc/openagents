@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.21')
+    expect(decoded.version).toBe('2026-06-20.22')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -203,6 +203,10 @@ describe('public product promises document', () => {
     // whether an external contributor's study may be admitted for a customer,
     // flag-gated default-OFF, admitted/effectsApplied always false); the
     // promise STAYS yellow, so green remains exactly 24.
+    // The 2026-06-20.22 Artanis distillation-dataset receipt pass clears
+    // tassadar_distillation_dataset_receipt_missing on
+    // artanis.tassadar_evolution_loop.v1, but the promise stays yellow pending
+    // owner-signed green transition, so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -289,6 +293,23 @@ describe('public product promises document', () => {
             '/api/public/training/ablation-derisking-ledger',
           ),
           verification: expect.stringContaining('one-delta manifest harness'),
+        }),
+        expect.objectContaining({
+          promiseId: 'artanis.tassadar_evolution_loop.v1',
+          state: 'yellow',
+          blockerRefs: [],
+          evidenceRefs: expect.arrayContaining([
+            'route:/api/public/artanis/tassadar-distillation-dataset',
+            'apps/openagents.com/workers/api/src/artanis-distillation-dataset-receipt.ts',
+            'apps/openagents.com/workers/api/src/artanis-distillation-dataset-receipt.test.ts',
+            'docs/training/2026-06-20-artanis-distillation-dataset-receipt.md',
+          ]),
+          safeCopy: expect.stringContaining(
+            '/api/public/artanis/tassadar-distillation-dataset',
+          ),
+          verification: expect.stringContaining(
+            'tassadar_distillation_dataset_receipt_missing are therefore cleared',
+          ),
         }),
         expect.objectContaining({
           promiseId: 'training.model_ladder.v1',
@@ -898,12 +919,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.21', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.22', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.21',
+      expectedVersion: '2026-06-20.22',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.21',
+      servedVersion: '2026-06-20.22',
       status: 'ready',
     })
     expect(
@@ -913,7 +934,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.21',
+      servedVersion: '2026-06-20.22',
       status: 'blocked',
     })
   })

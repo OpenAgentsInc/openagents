@@ -191,6 +191,10 @@ import { runArtanisComposerScheduled } from './artanis-reply-composer'
 import { runArtanisScheduledTickForWorker } from './artanis-scheduled-runner'
 import { runArtanisSpendDecision } from './artanis-spend'
 import {
+  boundedDistillationDatasetLimit,
+  readArtanisDistillationDatasetReceipt,
+} from './artanis-distillation-dataset-receipt'
+import {
   boundedTickMonitorLimit,
   readArtanisTickMonitor,
 } from './artanis-tick-monitor'
@@ -8893,6 +8897,27 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           nowIso: currentIsoTimestamp(),
         })
         return Response.json(streak, {
+          headers: { 'cache-control': 'no-store' },
+        })
+      }),
+  },
+  {
+    path: '/api/public/artanis/tassadar-distillation-dataset',
+    handler: (request, env) =>
+      Effect.promise(async () => {
+        if (request.method !== 'GET') {
+          return Response.json({ error: 'method_not_allowed' }, { status: 405 })
+        }
+        const receipt = await readArtanisDistillationDatasetReceipt(
+          openAgentsDatabase(env),
+          {
+            limit: boundedDistillationDatasetLimit(
+              new URL(request.url).searchParams.get('limit'),
+            ),
+            nowIso: currentIsoTimestamp(),
+          },
+        )
+        return Response.json(receipt, {
           headers: { 'cache-control': 'no-store' },
         })
       }),

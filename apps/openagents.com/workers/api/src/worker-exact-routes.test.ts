@@ -83,6 +83,7 @@ const approvedExactRoutePaths = [
   '/api/public/artanis/report',
   '/api/public/artanis/admin-ticks',
   '/api/public/artanis/tick-streak',
+  '/api/public/artanis/tassadar-distillation-dataset',
   '/api/public/artanis/responder-support',
   '/api/blueprint/program-registry',
   '/api/blueprint/program-runs',

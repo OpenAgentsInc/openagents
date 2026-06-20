@@ -117,6 +117,13 @@ describe('OpenAgents OpenAPI route', () => {
       'getPublicOtecProof',
     )
     expect(
+      operationAt(
+        body,
+        '/api/public/artanis/tassadar-distillation-dataset',
+        'get',
+      ).operationId,
+    ).toBe('getPublicArtanisTassadarDistillationDatasetReceipt')
+    expect(
       operationAt(body, '/api/training/device-capabilities/a2', 'get')
         .operationId,
     ).toBe('readTrainingA2DeviceCapabilityDashboard')
