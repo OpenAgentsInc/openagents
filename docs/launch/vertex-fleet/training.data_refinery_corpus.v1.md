@@ -88,3 +88,26 @@ This is the receipt *format and integrity check*, not the receipts themselves.
   out of scope for this run.
 
 No promise state was changed; no blocker was dropped from any tracking doc.
+
+## 2026-06-20 live A4 admission/projection wiring
+
+The provenance receipt is now part of the live A4 refinery evidence contract:
+
+- `Cs336A4RefineryStageEvidence` requires `corpusProvenanceReceipt` for newly
+  admitted shards.
+- `admitCs336A4DataRefineryEvidence` rejects shards when the receipt final
+  output digest does not match the shard `outputDigestRef`, when the transform
+  chain is not linked, when a recomputed digest differs from the committed
+  output, or when the receipt carries private/payment/raw-shard material.
+- `publicDataRefineryProjection` exposes each shard's
+  `corpusProvenanceReceiptRef`, `corpusProvenanceVerified`, and public-safe
+  `corpusProvenanceReceipt` object.
+- `GET /api/training/refinery/a4` now reports
+  `corpusProvenanceReceiptStatus`, `corpusProvenanceReceiptRefs`, and
+  `corpusProvenanceReceiptBlockerRefs` across the dashboard.
+
+This wires the receipt shape into the admission/projection boundary. It still
+does **not** clear `corpus_provenance_receipts_missing`: there is no live paid
+refinery shard closeout whose deterministic-recompute verifier and provider
+settlement produced one of these provenance receipts. `crawl_scale_corpus_missing`
+and `eval_delta_payment_missing` are also unchanged.

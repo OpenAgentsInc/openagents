@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.34')
+    expect(decoded.version).toBe('2026-06-20.35')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -112,6 +112,9 @@ describe('public product promises document', () => {
     )
     expect(decoded.sourceRefs).toContain(
       'docs/training/2026-06-20-cs336-a2-same-class-replication-status.md',
+    )
+    expect(decoded.sourceRefs).toContain(
+      'docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md',
     )
     expect(decoded.promises.length).toBeGreaterThan(0)
     expect(decoded.verificationSummary.promiseCount).toBe(
@@ -257,6 +260,9 @@ describe('public product promises document', () => {
     // The 2026-06-20.34 device-capability pass exposes same-class replication
     // status but keeps same-host and thermal blockers active, so green remains
     // exactly 24.
+    // The 2026-06-20.35 data-refinery pass wires corpus-provenance receipts
+    // into A4 admission/projection but no live paid shard closeout exists, so
+    // green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -354,6 +360,27 @@ describe('public product promises document', () => {
             '/api/public/training/ablation-derisking-ledger',
           ),
           verification: expect.stringContaining('one-delta manifest harness'),
+        }),
+        expect.objectContaining({
+          promiseId: 'training.data_refinery_corpus.v1',
+          state: 'planned',
+          evidenceRefs: expect.arrayContaining([
+            'docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md',
+            'apps/openagents.com/workers/api/src/cs336-a4-provenance.ts',
+            'apps/openagents.com/workers/api/src/cs336-a4-provenance.test.ts',
+            'apps/openagents.com/workers/api/src/training-data-refinery.ts',
+            'apps/openagents.com/workers/api/src/training-data-refinery.test.ts',
+            'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
+          ]),
+          blockerRefs: [
+            'blocker.product_promises.crawl_scale_corpus_missing',
+            'blocker.product_promises.corpus_provenance_receipts_missing',
+            'blocker.product_promises.eval_delta_payment_missing',
+          ],
+          safeCopy: expect.stringContaining('corpusProvenanceReceipt'),
+          verification: expect.stringContaining(
+            'no live paid refinery shard closeout',
+          ),
         }),
         expect.objectContaining({
           promiseId: 'training.marathon_operations.v1',
@@ -1117,12 +1144,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.34', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.35', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.34',
+      expectedVersion: '2026-06-20.35',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.34',
+      servedVersion: '2026-06-20.35',
       status: 'ready',
     })
     expect(
@@ -1132,7 +1159,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.34',
+      servedVersion: '2026-06-20.35',
       status: 'blocked',
     })
   })
