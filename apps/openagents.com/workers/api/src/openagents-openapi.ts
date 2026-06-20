@@ -24,6 +24,7 @@ import { PublicLaunchDashboardEndpoint } from './public-launch-dashboard'
 import { TassadarPerceptaArchitectureReceiptsEndpoint } from './tassadar-percepta-architecture-receipts'
 import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-derisking-ledger'
 import { TrainingFullPipelineProgramEndpoint } from './training-full-pipeline-program'
+import { TrainingMarathonOperationsEndpoint } from './training-marathon-operations'
 import { TrainingModelLadderRungsEndpoint } from './training-model-ladder-rungs'
 import { TrainingPublicGradientWindowsEndpoint } from './training-public-gradient-windows'
 import { TrainingPostTrainingDpoPreferenceWorkloadEndpoint } from './training-post-training-dpo-preference-workload'
@@ -543,6 +544,129 @@ export const TrainingFullPipelineProgramEnvelope: JsonSchema = {
           stageId: { type: 'string' },
           statusLabel: { type: 'string' },
         },
+      },
+    },
+    staleness: { type: 'object' },
+    status: { type: 'string' },
+    unsafeCopy: { type: 'string' },
+  },
+}
+
+export const TrainingMarathonOperationsEnvelope: JsonSchema = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Public-safe marathon-operations status projection for training.marathon_operations.v1. Carries generatedAt, registryVersion, a live_at_read staleness contract, durable-checkpoint status, standby-dispatch status, curtailment-drill status, and explicit blocker refs. It keeps durableCheckpointRemoteReadbackReceiptAvailable=false, liveStandbyPromotionReceiptAvailable=false, curtailmentDrillReceiptAvailable=false, marathonCloseoutReceiptAvailable=false, and greenGateSatisfied=false until real receipts exist. It exposes refs and status only: no checkpoint bytes, private runner logs, provider payloads, wallet material, payment material, dispatch authority, settlement, energy-market claim, flexible-load claim, or green product-promise authority.',
+  required: [
+    'authorityBoundary',
+    'checkpointSurface',
+    'curtailmentSurface',
+    'endpoint',
+    'gate',
+    'generatedAt',
+    'operationsSummary',
+    'promiseRef',
+    'promiseState',
+    'registryVersion',
+    'schemaVersion',
+    'sourceRefs',
+    'standbySurface',
+    'staleness',
+    'status',
+    'unsafeCopy',
+  ],
+  properties: {
+    authorityBoundary: { type: 'string' },
+    checkpointSurface: {
+      type: 'object',
+      additionalProperties: true,
+      required: [
+        'bootstrapSelectsOnlyDurableSeal',
+        'durableCheckpointSealReceiptAvailable',
+        'liveSealBoundaryWired',
+        'predicateAvailable',
+        'remoteCheckpointStoreReadbackReceiptAvailable',
+      ],
+      properties: {
+        bootstrapSelectsOnlyDurableSeal: { type: 'boolean' },
+        durableCheckpointSealReceiptAvailable: { type: 'boolean' },
+        liveSealBoundaryWired: { type: 'boolean' },
+        predicateAvailable: { type: 'boolean' },
+        remoteCheckpointStoreReadbackReceiptAvailable: { type: 'boolean' },
+      },
+    },
+    curtailmentSurface: {
+      type: 'object',
+      additionalProperties: true,
+      required: [
+        'checkpointResumeReceiptAvailable',
+        'curtailmentDrillReceiptAvailable',
+        'drillScheduled',
+        'flexibleLoadEvidenceCreated',
+      ],
+      properties: {
+        checkpointResumeReceiptAvailable: { type: 'boolean' },
+        curtailmentDrillReceiptAvailable: { type: 'boolean' },
+        drillScheduled: { type: 'boolean' },
+        flexibleLoadEvidenceCreated: { type: 'boolean' },
+      },
+    },
+    endpoint: {
+      type: 'string',
+      enum: [TrainingMarathonOperationsEndpoint],
+    },
+    gate: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'clearsBlockerRefs',
+        'curtailmentDrillReceiptAvailable',
+        'durableCheckpointRemoteReadbackReceiptAvailable',
+        'greenGateSatisfied',
+        'liveStandbyPromotionReceiptAvailable',
+        'marathonCloseoutReceiptAvailable',
+        'publicProjectionAvailable',
+        'remainingBlockerRefs',
+      ],
+      properties: {
+        clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
+        curtailmentDrillReceiptAvailable: { type: 'boolean' },
+        durableCheckpointRemoteReadbackReceiptAvailable: { type: 'boolean' },
+        greenGateSatisfied: { type: 'boolean' },
+        liveStandbyPromotionReceiptAvailable: { type: 'boolean' },
+        marathonCloseoutReceiptAvailable: { type: 'boolean' },
+        publicProjectionAvailable: { type: 'boolean' },
+        remainingBlockerRefs: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    generatedAt: { type: 'string' },
+    operationsSummary: { type: 'object', additionalProperties: true },
+    promiseRef: {
+      type: 'string',
+      enum: ['promise:training.marathon_operations.v1'],
+    },
+    promiseState: { type: 'string', enum: ['planned'] },
+    registryVersion: { type: 'string' },
+    schemaVersion: { type: 'string' },
+    sourceRefs: { type: 'array', items: { type: 'string' } },
+    standbySurface: {
+      type: 'object',
+      additionalProperties: true,
+      required: [
+        'liveHeartbeatTelemetryFeedAvailable',
+        'livePromotionReceiptAvailable',
+        'liveVacancyTelemetryFeedAvailable',
+        'predicateAvailable',
+        'preflightRouteAvailable',
+        'receiptBackedPromotionAvailable',
+      ],
+      properties: {
+        liveHeartbeatTelemetryFeedAvailable: { type: 'boolean' },
+        livePromotionReceiptAvailable: { type: 'boolean' },
+        liveVacancyTelemetryFeedAvailable: { type: 'boolean' },
+        predicateAvailable: { type: 'boolean' },
+        preflightRouteAvailable: { type: 'boolean' },
+        receiptBackedPromotionAvailable: { type: 'boolean' },
       },
     },
     staleness: { type: 'object' },
@@ -1260,6 +1384,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe CS336 per-assignment leaderboard envelope keyed by lanes such as a1_loss, a2_throughput, a3_isoflop, a4_eval_delta, and a5_accuracy. Rows rank only verified closeout-backed entries, expose public-safe contributor refs, receipt refs, provenance labels, settledPayoutSats linked only from provider-confirmed settlement receipts, and source refs, and exclude unverified results from ranking. Pending, offered, claimed, or wallet-side records never count as paid.',
   ),
   TrainingFullPipelineProgramEnvelope,
+  TrainingMarathonOperationsEnvelope,
   TrainingModelLadderRungsEnvelope,
   TrainingPublicGradientWindowsEnvelope,
   TrainingAblationDeriskingLedgerEnvelope,
@@ -5267,6 +5392,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Full training-pipeline program status.',
           '#/components/schemas/TrainingFullPipelineProgramEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TrainingMarathonOperationsEndpoint]: {
+    get: operation({
+      operationId: 'getTrainingMarathonOperationsStatus',
+      summary: 'Read marathon operations status',
+      description:
+        'Returns the public-safe marathon-operations status projection for training.marathon_operations.v1. It exposes durable-checkpoint and standby-dispatch predicates plus curtailment-drill status while keeping durableCheckpointRemoteReadbackReceiptAvailable=false, liveStandbyPromotionReceiptAvailable=false, curtailmentDrillReceiptAvailable=false, marathonCloseoutReceiptAvailable=false, and greenGateSatisfied=false. Read-only; grants no training dispatch, standby promotion, checkpoint storage authority, spend, settlement, energy-market claim, flexible-load claim, model promotion, or public-claim authority.',
+      tags: ['Training', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Marathon operations status.',
+          '#/components/schemas/TrainingMarathonOperationsEnvelope',
         ),
         ...errorResponses(),
       },
