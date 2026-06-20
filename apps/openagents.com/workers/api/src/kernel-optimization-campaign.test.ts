@@ -17,6 +17,7 @@ import {
   buildKernelOptimizationCampaign,
   reconcileKernelOptimizationCampaignPerJob,
   reconcileKernelOptimizationCampaignSettlement,
+  reconcileKernelOptimizationCampaignTargets,
   summarizeKernelOptimizationCampaignSettlement,
 } from './kernel-optimization-campaign'
 
@@ -407,5 +408,106 @@ describe('kernel-optimization campaign per-job reconciliation', () => {
     expect(
       report.discrepancies.some((d) => d.includes('per-job escrow drift')),
     ).toBe(true)
+  })
+})
+
+describe('kernel-optimization campaign target reconciliation', () => {
+  const campaignRef = 'campaign.qwen35-smallest-4'
+  const spec = { campaignRef, jobs: models.map(job) }
+  const buildFourJobCampaign = () => buildKernelOptimizationCampaign(spec)
+
+  // A clean settlement: each slug carries a verdict for its own dispatched
+  // target (same model/device/hardware the job optimizes).
+  const cleanKeyedItems = (
+    campaign: ReturnType<typeof buildFourJobCampaign>,
+  ): KernelOptimizationKeyedSettlementItem[] =>
+    models.map((model, index) => ({
+      budgetSats: 50_000,
+      requestedSlug: campaign.requests[index]!.requestedSlug ?? '',
+      verdict: verdictFor(model, 523, verifiedParity),
+    }))
+
+  test('passes when every settled verdict optimizes its dispatched target', () => {
+    const campaign = buildFourJobCampaign()
+    const report = reconcileKernelOptimizationCampaignTargets(
+      spec,
+      cleanKeyedItems(campaign),
+    )
+
+    expect(report.classId).toBe(KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID)
+    expect(report.campaignRef).toBe(campaignRef)
+    expect(report.ok).toBe(true)
+    expect(report.matchedSlugs).toHaveLength(4)
+    expect(report.targetMismatches).toEqual([])
+    expect(report.unmatchedSlugs).toEqual([])
+    expect(report.discrepancies).toEqual([])
+  })
+
+  test('catches a target swap that the slug + escrow checks both miss', () => {
+    const campaign = buildFourJobCampaign()
+    const items = cleanKeyedItems(campaign)
+    // File a verdict for the qwen-3.5-7b target under the qwen-3.5-0.5b job's
+    // slug, keeping that job's exact budget. The per-job (slug + escrow)
+    // reconciler still passes; only the target reconciler catches it.
+    const swapped: KernelOptimizationKeyedSettlementItem[] = [
+      {
+        budgetSats: 50_000,
+        requestedSlug: items[0]!.requestedSlug,
+        verdict: verdictFor('qwen-3.5-7b', 523, verifiedParity),
+      },
+      items[1]!,
+      items[2]!,
+      items[3]!,
+    ]
+
+    const perJob = reconcileKernelOptimizationCampaignPerJob(campaign, swapped)
+    expect(perJob.ok).toBe(true)
+
+    const report = reconcileKernelOptimizationCampaignTargets(spec, swapped)
+    expect(report.ok).toBe(false)
+    expect(report.matchedSlugs).toHaveLength(3)
+    expect(report.targetMismatches).toHaveLength(1)
+    expect(report.targetMismatches[0]?.requestedSlug).toBe(
+      campaign.requests[0]!.requestedSlug ?? '',
+    )
+    expect(report.targetMismatches[0]?.dispatchedTarget.targetModel).toBe(
+      'qwen-3.5-0.5b',
+    )
+    expect(report.targetMismatches[0]?.settledVerdictTarget.targetModel).toBe(
+      'qwen-3.5-7b',
+    )
+    expect(report.discrepancies.some((d) => d.includes('target swap'))).toBe(
+      true,
+    )
+  })
+
+  test('flags a settlement for a slug this campaign never dispatched', () => {
+    const campaign = buildFourJobCampaign()
+    const items: KernelOptimizationKeyedSettlementItem[] = [
+      ...cleanKeyedItems(campaign).slice(0, 3),
+      {
+        budgetSats: 50_000,
+        requestedSlug: 'kernel-opt-rmsnorm-not-in-this-campaign-cuda',
+        verdict: verdictFor('qwen-3.5-7b', 523, verifiedParity),
+      },
+    ]
+    const report = reconcileKernelOptimizationCampaignTargets(spec, items)
+
+    expect(report.ok).toBe(false)
+    expect(report.unmatchedSlugs).toEqual([
+      'kernel-opt-rmsnorm-not-in-this-campaign-cuda',
+    ])
+    expect(
+      report.discrepancies.some((d) => d.includes('never dispatched')),
+    ).toBe(true)
+  })
+
+  test('rejects a spec the campaign builder would reject (empty jobs)', () => {
+    expect(() =>
+      reconcileKernelOptimizationCampaignTargets(
+        { campaignRef, jobs: [] },
+        [],
+      ),
+    ).toThrow(KernelOptimizationDispatchError)
   })
 })

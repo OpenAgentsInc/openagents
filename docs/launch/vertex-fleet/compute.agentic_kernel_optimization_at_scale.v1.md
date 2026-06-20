@@ -196,7 +196,54 @@ New artifact (in `apps/openagents.com/workers/api`):
 
 - Matching is by `requestedSlug` (the on-rail job id), not by the parity
   verdict's own target — wiring the verdict's target back to the dispatched job
-  end-to-end remains.
+  end-to-end remains. (Addressed by the 2026-06-20 update below.)
+- Everything from the prior updates still stands: live dispatch through the
+  forum route, real worker tok/s + replayed output traces, and real escrow
+  settled into dereferenceable receipts + owner sign-off. The March 2026 result
+  stays historical-demo only. No promise state changed; no blocker dropped.
+
+## Update 2026-06-20 — verdict-target ↔ dispatched-job binding (target-swap guard)
+
+Further advances `blocker.product_promises.agentic_kernel_optimization_at_scale_run_missing`
+by closing the gap every prior update explicitly named: the slug-keyed and
+totals-level reconcilers trust the `requestedSlug` a settlement is *filed under*
+but never inspect the **parity verdict** that settlement carries. At scale this
+leaves a hole that conserves escrow and passes both existing reconcilers: a
+settlement filed under job A's slug, with job A's exact budget, but carrying a
+verdict that optimizes a DIFFERENT target B (e.g. a verified accept on a cheaper
+model). The accounting balances; the wrong work gets paid.
+
+New artifact (in `apps/openagents.com/workers/api`):
+
+- `reconcileKernelOptimizationCampaignTargets(spec, items)` (added to
+  `src/kernel-optimization-campaign.ts`) binds each settlement's verdict back to
+  the specific dispatched job by **target**. It recomputes each dispatched job's
+  requested slug from the campaign spec via the same dispatch encoder (so it
+  cannot drift from the real slug), learns that slug's true `(model, device,
+  hardware)` target, and checks the settled verdict's own `target` matches it
+  (trim + case-normalized). It returns a
+  `KernelOptimizationCampaignTargetReconciliation` whose `ok` gate must hold
+  before any payout/refund release, naming `matchedSlugs`, `unmatchedSlugs`
+  (settled under a slug this campaign never dispatched), and `targetMismatches`
+  (the slug, its dispatched target, and the settled verdict's target). It takes
+  the campaign SPEC (not the built campaign) because only the spec carries the
+  structured target; it moves no money and never throws.
+- `src/kernel-optimization-campaign.test.ts` — 4 new tests (20 total): the clean
+  four-job pass, the target-swap case that the per-job reconciler explicitly
+  still passes while this one fails, an unmatched-slug settlement, and spec
+  validation reuse (empty campaign rejected).
+
+This is the end-to-end "wire the verdict's target back to the dispatched job"
+piece the prior update deferred — now done on the model/device/hardware the
+verdict already carries (no change to the green parity engine).
+
+### What still remains for the at-scale run (blocker NOT cleared)
+
+- Binding is on model/device/hardware; the op-level kernel ref is still not in
+  the parity verdict (baseline and optimized records intentionally name
+  different kernel *implementations*), so op-granular target binding would need
+  the verdict to carry the optimized *op* distinctly. Spec-side slug recompute
+  covers op implicitly (the slug encodes it) but the verdict does not assert it.
 - Everything from the prior updates still stands: live dispatch through the
   forum route, real worker tok/s + replayed output traces, and real escrow
   settled into dereferenceable receipts + owner sign-off. The March 2026 result
