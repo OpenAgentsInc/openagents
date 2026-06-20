@@ -1735,6 +1735,19 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     cloud-metering helper). The settlement seam (`settleLaborProductOrder`) is
     flag-gated INERT and owner-gated and is unreachable from this read-only
     route; the surface debits no balance and makes no live-sale claim.
+  - `GET /api/public/markets/signature-monetization/metering` — live at read
+    over the INERT signature usage-metering store (promise
+    `marketplace.signature_monetization.v1`, red) — compliant (`generatedAt`,
+    `live_at_read` contract). The surface is flag-gated
+    (`SIGNATURE_USAGE_METERING_ENABLED`, default off => empty store) and the
+    payload always reports `inert: true` / `promiseState: 'red'`, surfacing the
+    public-safe usage-evidence refs (`usageEventRefs`, `usageIdempotencyRefs`,
+    `exactUsageSubjectRefs`) the signature revenue gate consumes. Metering
+    PRODUCES those refs (clearing
+    `blocker.product_promises.signature_usage_metering_missing`) and drives the
+    revenue gate to its `metered` rung; it meters no payload, prices nothing,
+    debits no balance, and settles nothing — `signature_settlement_missing`
+    stays owner-gated and is surfaced as `remainingOwnerGatedBlocker` (#5529).
   - `GET /api/public/customer-one-cohort` — live at read over Customer #1
     cohort source rows and privacy-review evidence — compliant (`generatedAt`,
     contract, evidence-only opaque cohort refs, generic labels, counts, blockers,

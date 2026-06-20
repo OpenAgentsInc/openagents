@@ -253,7 +253,14 @@ const budgetChecks = [
     // dispatch->deliver->settle flow scaffold, mirroring the composed-run
     // listing pattern. Ratchet back down when these public-projection handlers
     // are extracted behind shared route mappers.
-    budget: 88,
+    // +1 (88 -> 89) for the signature usage-metering surface
+    // (signature-usage-metering-routes.ts, marketplace.signature_monetization.v1,
+    // red): a flag-gated INERT read-only metering projection mirroring the
+    // compose-and-list/labor-product listing pattern. It returns
+    // `Effect.Effect<Response>` like the sibling public read handlers. Ratchet
+    // back down when these public-projection handlers are extracted behind
+    // shared route mappers.
+    budget: 89,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -561,6 +568,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/agentic-labor-product.ts',
     route: '/api/public/autopilot/labor-products',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/signature-usage-metering.ts',
+    route: '/api/public/markets/signature-monetization/metering',
     status: 'staleness_declared',
   },
   {

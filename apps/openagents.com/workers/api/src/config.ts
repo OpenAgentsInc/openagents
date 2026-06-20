@@ -22,6 +22,13 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // live-sale claim and the promise stays yellow regardless; a green flip stays
   // receipt-first and owner-signed with a dereferenceable settlement receipt.
   AGENTIC_LABOR_PRODUCTS_ENABLED?: string | undefined
+  // Signature usage-metering surface flag (EPIC #5523 / DE-6 #5529; promise
+  // marketplace.signature_monetization.v1, red). Default OFF: the
+  // `/api/public/markets/signature-monetization/metering` surface is INERT
+  // (empty store) on the live Worker. Set "true"/"1"/"on" to arm the (still
+  // red/inert) surface. Metering clears only the usage-metering blocker; the
+  // settlement blocker stays owner-gated and the promise stays red regardless.
+  SIGNATURE_USAGE_METERING_ENABLED?: string | undefined
   // Inference gateway feature flag (EPIC #5474, #5476). Default OFF: the
   // `/v1/chat/completions` route is inert on the live Worker until the
   // inference build lands. Set "true"/"1"/"on" to enable.
