@@ -267,7 +267,7 @@ compose-and-list MVP).
 | Promise id | State | Work to EARN green | Dereferenceable-receipt acceptance | Claimability |
 |---|---|---|---|---|
 | `markets.open_protocol_markets.v1` | planned | Turn liquidity + risk skeletons into real markets; broaden compute/data live | All six markets dippable via open protocol + dereferenceable participant transaction and settlement receipts | Agent-claimable only for more scaffolding; live transactions/settlement owner-gated; see `packages/nip90` |
-| `marketplace.compose_and_list_products.v1` | planned | Composition runtime + listing lifecycle + billing/settlement | Compose primitives → list → sell → settled receipt | Agent-claimable (MVP) |
+| `marketplace.compose_and_list_products.v1` | planned | Live composition runtime + self-serve listing write/install lifecycle + billing/settlement | Compose primitives → self-serve list → buyer uses/installs → settled receipt | Agent-claimable for scaffold/read surfaces; sale/settlement owner-gated |
 | `marketplace.agentic_npm_module_registry.v1` | planned | Agentic-npm registry + module composition runtime + billing | Verified module published, composed, and billed with a receipt | Agent-claimable |
 | `marketplace.wasm_plugins.v1` | planned | WASM-plugin registry + execution sandbox + billing | WASM plugin published, sandbox-executed, billed with a receipt | Agent-claimable (see `agent-os`, `firecracker` refs) |
 | `marketplace.signature_monetization.v1` | red | DSPy/GEPA signature usage metering + settlement | Signature listed, metered on use, settled with a receipt | Agent-claimable |
@@ -408,7 +408,7 @@ revenue ring), then ship the anchor product, then broaden the rails.
 ### Wave 3 — capstones (depend on Waves 0-2 receipts; mostly owner-gated)
 15. **DE-1: cross-category referral binding** → `referral.refer_once_earn_forever.v1`.
 16. **DE-2: unified credit balance + one-stop Agent Cloud revshare**.
-17. **DE-6: compose-and-list + monetize-any-layer-with-referral**.
+17. **DE-6: compose-and-list self-serve sale + monetize-any-layer-with-referral**.
 18. **DE-3: all-in-one business system**.
 19. **DE-5: public distributed run at participant scale → largest-run claim**.
 20. **DE-10: world-first evidence packs** (require the underlying receipts to
