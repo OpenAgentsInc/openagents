@@ -8,6 +8,8 @@ import {
   admitPayoutTarget,
   appendLedgerEvent,
   classifyMdkReceiveFailure,
+  describeMdkPortConflict,
+  DEFAULT_MDK_WALLET_PORT,
   classifyMdkWallet,
   classifySparkBackupReceive,
   mdkScopedAgentWalletStatus,
@@ -775,6 +777,48 @@ describe("Spark backup receive (slice 1: inert, opt-in, receive-only)", () => {
     expect(classifyMdkReceiveFailure({ exitCode: 1, stdout: "", stderr: "invalid amount" }).class).toBe("validation")
     expect(classifyMdkReceiveFailure({ exitCode: 1, stdout: "", stderr: "connection refused" }).class).toBe("offline")
     expect(classifyMdkReceiveFailure({ exitCode: 1, stdout: "", stderr: "init timed out" }).class).toBe("offline")
+  })
+
+  test("MDK wallet port conflict surfaces actionable MDK_WALLET_PORT guidance (#5505)", () => {
+    const env: NodeJS.ProcessEnv = {}
+
+    // EADDRINUSE-class bind failure on the default :3456 (the Orange-wallet
+    // first-run collision Larry reported) → detected + clear remediation.
+    const eaddr = describeMdkPortConflict(
+      { exitCode: 1, stdout: "", stderr: "Error: listen EADDRINUSE: address already in use 127.0.0.1:3456" },
+      env,
+    )
+    expect(eaddr.isPortConflict).toBe(true)
+    expect(eaddr.port).toBe(DEFAULT_MDK_WALLET_PORT)
+    expect(eaddr.portConfigured).toBe(false)
+    expect(eaddr.message).toContain("MDK_WALLET_PORT")
+    expect(eaddr.message).toContain("3456")
+    // Public-safe: env var name + port only, no secrets.
+    expect(eaddr.ref.startsWith("wallet.mdk_port_conflict.")).toBe(true)
+
+    // Phrasing variants are recognized too.
+    expect(
+      describeMdkPortConflict({ exitCode: 1, stdout: "", stderr: "failed to bind: port 3456 in use" }, env)
+        .isPortConflict,
+    ).toBe(true)
+
+    // A configured port is echoed back in the guidance.
+    const configured = describeMdkPortConflict(
+      { exitCode: 1, stdout: "", stderr: "EADDRINUSE 127.0.0.1:3458" },
+      { MDK_WALLET_PORT: "3458" },
+    )
+    expect(configured.isPortConflict).toBe(true)
+    expect(configured.port).toBe(3458)
+    expect(configured.portConfigured).toBe(true)
+    expect(configured.message).toContain("3458")
+
+    // Unrelated failures are NOT misclassified as a port conflict.
+    const unrelated = describeMdkPortConflict({ exitCode: 1, stdout: "", stderr: "invalid amount" }, env)
+    expect(unrelated.isPortConflict).toBe(false)
+    expect(unrelated.message).toBe(null)
+    expect(describeMdkPortConflict({ exitCode: 1, stdout: "", stderr: "connection refused" }, env).isPortConflict).toBe(
+      false,
+    )
   })
 
   test("offline failure with the OFF override stays on MDK (#5304)", async () => {
