@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest'
 import {
   ArtanisLaborReceiptError,
   buildArtanisLaborUnattendedRequestReceipt,
+  deriveArtanisLaborUnattendedRequestReceiptRef,
+  serializeArtanisLaborUnattendedRequestReceipt,
 } from './artanis-labor-request-receipt'
 import type {
   ArtanisLaborAcceptanceOutcome,
@@ -132,6 +134,66 @@ describe('artanis unattended labor request receipt', () => {
         tickRef: '   ',
       }),
     ).toThrow(ArtanisLaborReceiptError)
+  })
+
+  test('serialization is canonical: key order is fixed regardless of input', () => {
+    const receipt = buildArtanisLaborUnattendedRequestReceipt({
+      ...base,
+      requestOutcome: requestedOutcome,
+    })
+    expect(serializeArtanisLaborUnattendedRequestReceipt(receipt)).toBe(
+      JSON.stringify({
+        artanisActorRef: base.artanisActorRef,
+        budgetMsat: 2_000_000,
+        issuedAtIso: base.nowIso,
+        lifecycleRefs: [
+          'stage.artanis_labor_request.proposed',
+          'work_request.public.work_request_1',
+          `nostr.event.${'a'.repeat(64)}`,
+          'receipt.labor_escrow.reserve.artanis_1',
+        ],
+        schema: 'artanis.labor.unattended_request_receipt.v1',
+        terminalState: 'requested_pending_delivery',
+        tickRef: base.tickRef,
+        workRequestId: 'work_request_1',
+      }),
+    )
+  })
+
+  test('the derived ref is content-addressed and stable across builds', () => {
+    const first = buildArtanisLaborUnattendedRequestReceipt({
+      ...base,
+      requestOutcome: requestedOutcome,
+    })
+    const second = buildArtanisLaborUnattendedRequestReceipt({
+      ...base,
+      requestOutcome: requestedOutcome,
+    })
+    const ref = deriveArtanisLaborUnattendedRequestReceiptRef(first)
+    expect(ref).toMatch(
+      /^receipt\.artanis_labor\.unattended_request\.[a-f0-9]{16}$/,
+    )
+    expect(deriveArtanisLaborUnattendedRequestReceiptRef(second)).toBe(ref)
+  })
+
+  test('distinct terminal states derive distinct refs', () => {
+    const pending = deriveArtanisLaborUnattendedRequestReceiptRef(
+      buildArtanisLaborUnattendedRequestReceipt({
+        ...base,
+        requestOutcome: requestedOutcome,
+      }),
+    )
+    const released = deriveArtanisLaborUnattendedRequestReceiptRef(
+      buildArtanisLaborUnattendedRequestReceipt({
+        ...base,
+        acceptanceOutcome: {
+          kind: 'accepted',
+          releaseReceiptRef: 'receipt.labor_escrow.release.artanis_1',
+        },
+        requestOutcome: requestedOutcome,
+      }),
+    )
+    expect(pending).not.toBe(released)
   })
 
   test('a non-public-safe ref anywhere is refused', () => {

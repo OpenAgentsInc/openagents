@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import {
   assertArtanisLaborPublicSafe,
   type ArtanisLaborAcceptanceOutcome,
@@ -166,4 +168,43 @@ export const buildArtanisLaborUnattendedRequestReceipt = (
 
   assertArtanisLaborPublicSafe(receipt)
   return receipt
+}
+
+// Canonical, deterministic wire form of a consolidated receipt. Top-level keys
+// are emitted in a fixed (alphabetical) order so the same lifecycle always
+// serializes to the same bytes; `lifecycleRefs` keeps its array order because
+// that order encodes the propose -> reserve -> validate -> release/refund
+// sequence and is meaningful, not incidental. Re-runs the public-safety guard so
+// nothing private can leak into a persisted or transported form.
+export const serializeArtanisLaborUnattendedRequestReceipt = (
+  receipt: ArtanisLaborUnattendedRequestReceipt,
+): string => {
+  assertArtanisLaborPublicSafe(receipt)
+  const canonical = {
+    artanisActorRef: receipt.artanisActorRef,
+    budgetMsat: receipt.budgetMsat,
+    issuedAtIso: receipt.issuedAtIso,
+    lifecycleRefs: [...receipt.lifecycleRefs],
+    schema: receipt.schema,
+    terminalState: receipt.terminalState,
+    tickRef: receipt.tickRef,
+    workRequestId: receipt.workRequestId,
+  }
+  return JSON.stringify(canonical)
+}
+
+// Content-addressed identity for a consolidated receipt. The receipt projection
+// itself carries no id, so it could not be persisted alongside the tick ledger
+// nor dereferenced from a public route. This mints a stable, collision-resistant
+// ref over the canonical serialization (same lifecycle -> same ref) so an
+// operator or reviewer can address one unattended tick's receipt by name. It
+// derives no payment, identity, or settlement authority - it is a name for an
+// already public-safe artifact.
+export const deriveArtanisLaborUnattendedRequestReceiptRef = (
+  receipt: ArtanisLaborUnattendedRequestReceipt,
+): string => {
+  const digest = createHash('sha256')
+    .update(serializeArtanisLaborUnattendedRequestReceipt(receipt), 'utf8')
+    .digest('hex')
+  return `receipt.artanis_labor.unattended_request.${digest.slice(0, 16)}`
 }
