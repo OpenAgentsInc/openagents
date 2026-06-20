@@ -295,7 +295,7 @@ import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-route
 import { makeImageGenerationRoutes } from './image-generation-routes'
 import { makeD1InferenceReceiptStore } from './inference-receipts'
 import { makeD1CardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
-import { handleBatchJobsSubmit } from './inference/batch-job-routes'
+import { handleBatchJobsSubmit, handleBatchJobReceiptRead } from './inference/batch-job-routes'
 import {
   handleChatCompletions,
   isInferenceGatewayEnabled,
@@ -9430,6 +9430,16 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       Effect.promise(() =>
         handleProgrammaticAgentHome(request, openAgentsDatabase(env)),
       ),
+  },
+  {
+    path: '/api/public/inference/batch-job-receipts/:receiptRef',
+    handler: (request, env) =>
+      handleBatchJobReceiptRead(request, {
+        authenticate: async () => undefined,
+        db: openAgentsDatabase(env),
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        nowIso: currentIsoTimestamp,
+      }),
   },
   {
     path: '/v1/inference/batches',
