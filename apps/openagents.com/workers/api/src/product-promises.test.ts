@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.22')
+    expect(decoded.version).toBe('2026-06-20.23')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -207,6 +207,9 @@ describe('public product promises document', () => {
     // tassadar_distillation_dataset_receipt_missing on
     // artanis.tassadar_evolution_loop.v1, but the promise stays yellow pending
     // owner-signed green transition, so green remains exactly 24.
+    // The 2026-06-20.23 model-ladder cleanup drops the already-documented
+    // rung_economics_gate_format_missing blocker while leaving the R1 rehearsal
+    // blocker in place, so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -314,9 +317,13 @@ describe('public product promises document', () => {
         expect.objectContaining({
           promiseId: 'training.model_ladder.v1',
           state: 'planned',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.r1_full_rehearsal_missing',
+          blockerRefs: ['blocker.product_promises.r1_full_rehearsal_missing'],
+          evidenceRefs: expect.arrayContaining([
+            'docs/training/2026-06-19-model-ladder-rung-economics.md',
           ]),
+          verification: expect.stringContaining(
+            'rung_economics_gate_format_missing dimension is documented',
+          ),
         }),
         expect.objectContaining({
           promiseId: 'training.public_distributed_training_run.v1',
@@ -919,12 +926,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.22', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.23', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.22',
+      expectedVersion: '2026-06-20.23',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.22',
+      servedVersion: '2026-06-20.23',
       status: 'ready',
     })
     expect(
@@ -934,7 +941,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.22',
+      servedVersion: '2026-06-20.23',
       status: 'blocked',
     })
   })
