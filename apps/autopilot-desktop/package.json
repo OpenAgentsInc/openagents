@@ -20,7 +20,7 @@
     "proof:shell-control": "bun --preload ./tests/preload.ts scripts/shell-control-proof.ts",
     "smoke:auto-onboarding-e2e": "bun scripts/auto-onboarding-e2e-smoke.ts",
     "verify:training": "bun test tests/cl-53-foldkit.test.ts tests/cl-53-sanitize.test.ts && bun run build:css && bun build src/ui/main.ts --outdir /tmp/autopilot-desktop-ui-build --target browser && bun build src/bun/index.ts --outdir /tmp/autopilot-desktop-bun-build --target bun && bun run smoke:training-scene",
-    "verify:deploy": "bun test tests/electrobun-config.test.ts && bun run verify:training && bun run build && asset=\"$(find build -path '*/Resources/app/views/autopilot-desktop/assets/moksha/diamond.glb' -type f -print -quit)\" && test -n \"$asset\" && test -s \"$asset\"",
+    "verify:deploy": "bun test tests/electrobun-config.test.ts && bun run verify:training && bun run build && bun scripts/verify-packaged-moksha-asset.ts",
     "test": "bash scripts/run-tests.sh",
     "notarize:macos": "bash scripts/notarize-macos.sh"
   },

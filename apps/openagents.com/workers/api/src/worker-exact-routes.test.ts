@@ -21,6 +21,7 @@ const approvedExactRoutePaths = [
   '/api/public/marketplace/composed-products',
   '/api/public/markets/signature-monetization/metering',
   '/api/public/pylon/multi-earning-node',
+  '/api/mobile/workroom-approval-projection',
   '/api/mobile/voice-sessions/ingest',
   '/api/public/autopilot/composed-runs',
   '/api/public/autopilot/labor-products',
