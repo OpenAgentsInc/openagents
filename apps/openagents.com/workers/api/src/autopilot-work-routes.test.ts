@@ -3761,6 +3761,49 @@ describe('Autopilot work routes', () => {
     )
   })
 
+  test('composed hosted Gemini binding threads an injected ref-resolver into the adapter prompt', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const { adapter, requests } = hostedGeminiSpyAdapter({
+      content: 'public-safe hosted Gemini closeout summary',
+      finishReason: 'stop',
+      servedModel: 'gemini-3.5-flash',
+      usage: { completionTokens: 7, promptTokens: 11, totalTokens: 18 },
+    })
+    const resolvedRefs: Array<string> = []
+    const { paid, paidJson } = await driveHostedGeminiBinding(
+      store,
+      createHostedGeminiExecutorBinding({
+        adapter,
+        enabled: true,
+        // A datastore-backed resolver shape: dereference the task ref to real,
+        // public-safe content the live adapter should act on.
+        resolveRefContent: async (ref: string) => {
+          resolvedRefs.push(ref)
+          return ref === 'task.product_promise_docs_hosted_gemini_binding'
+            ? 'Document the hosted Gemini binding seam in the launch worklog.'
+            : undefined
+        },
+      }),
+      'idem-autopilot-work-hosted-gemini-composed-resolver',
+      'payment_proof.autopilot_work.hosted_gemini_composed_resolver',
+    )
+
+    expect(paid.status).toBe(200)
+    expect(paidJson.work?.state).toBe('delivered')
+    // The injected resolver was consulted for the task ref...
+    expect(resolvedRefs).toContain(
+      'task.product_promise_docs_hosted_gemini_binding',
+    )
+    // ...and its resolved (public-safe) content reached the adapter prompt,
+    // proving the resolver threads through the single composition root rather
+    // than the request staying refs-only.
+    expect(requests).toHaveLength(1)
+    const userContent = requests[0]?.messages[1]?.content ?? ''
+    expect(userContent).toContain(
+      'task_content: Document the hosted Gemini binding seam in the launch worklog.',
+    )
+  })
+
   test('composed hosted Gemini binding stays INERT (no delivery, adapter untouched) when the single flag is off', async () => {
     const store = new MemoryAutopilotWorkStore()
     const { adapter, requests } = hostedGeminiSpyAdapter({
@@ -3845,6 +3888,41 @@ describe('Autopilot work routes', () => {
     })
     expect(requests).toHaveLength(1)
     expect(requests[0]?.stream).toBe(false)
+  })
+
+  test('env-gated hosted Gemini executor threads an injected ref-resolver into the adapter prompt when armed', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const { adapter, requests } = hostedGeminiSpyAdapter({
+      content: 'public-safe hosted Gemini closeout summary',
+      finishReason: 'stop',
+      servedModel: 'gemini-3.5-flash',
+      usage: { completionTokens: 7, promptTokens: 11, totalTokens: 18 },
+    })
+    // A deployment provisions a datastore-backed resolver via the env seam deps.
+    const resolve = makeHostedGeminiExecuteReadyWork({
+      buildAdapter: () => adapter,
+      resolveRefContent: async (ref: string) =>
+        ref === 'task.product_promise_docs_hosted_gemini_binding'
+          ? 'Resolve the env-seam task content for the live adapter.'
+          : undefined,
+    })
+    const armedEnv = {
+      HOSTED_GEMINI_EXECUTOR_ENABLED: 'true',
+      VERTEX_SA_KEY: '{"client_email":"x"}',
+    }
+    const { paid, paidJson } = await driveHostedGeminiBinding(
+      store,
+      input => resolve(armedEnv, input),
+      'idem-autopilot-work-hosted-gemini-env-resolver',
+      'payment_proof.autopilot_work.hosted_gemini_env_resolver',
+    )
+
+    expect(paid.status).toBe(200)
+    expect(paidJson.work?.state).toBe('delivered')
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.messages[1]?.content ?? '').toContain(
+      'task_content: Resolve the env-seam task content for the live adapter.',
+    )
   })
 
   test('env-gated hosted Gemini executor stays INERT (no delivery, adapter untouched) when the flag is off', async () => {

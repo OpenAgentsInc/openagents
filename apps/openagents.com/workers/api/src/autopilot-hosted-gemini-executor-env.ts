@@ -37,6 +37,7 @@
 import { Effect } from 'effect'
 
 import { createHostedGeminiExecutorBinding } from './autopilot-hosted-gemini-binding'
+import type { HostedGeminiRefContentResolver } from './autopilot-hosted-gemini-content-resolver'
 import type { AutopilotWorkExecutor } from './autopilot-work-routes'
 import type { InferenceProviderAdapter } from './inference/provider-adapter'
 import { InferenceAdapterError } from './inference/provider-adapter'
@@ -111,6 +112,13 @@ const buildVertexGeminiAdapterFromEnv = (
 export type HostedGeminiExecuteReadyWorkDeps = Readonly<{
   /** Override the adapter builder (tests inject a spy adapter). */
   buildAdapter?: (env: HostedGeminiExecutorEnv) => InferenceProviderAdapter
+  /**
+   * Optional INJECTED resolver that dereferences the work order's task +
+   * acceptance refs into public-safe content for the prompt. A deployment with a
+   * datastore-backed resolver passes it here; when omitted the bound executor
+   * keeps the existing refs-only frame (current production behaviour).
+   */
+  resolveRefContent?: HostedGeminiRefContentResolver | undefined
 }>
 
 /**
@@ -131,6 +139,7 @@ export const resolveHostedGeminiExecutor = (
     adapter: buildAdapter(env),
     enabled: true,
     model: env.HOSTED_GEMINI_MODEL,
+    resolveRefContent: deps.resolveRefContent,
   })
 }
 

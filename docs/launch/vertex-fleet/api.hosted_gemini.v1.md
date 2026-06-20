@@ -322,6 +322,39 @@ production binding shape the harness was missing.
   arming is still PRESENCE-derived (it does not prove a lane's credential
   authenticates upstream). The gateway blocker REMAINS listed.
 
+### 2026-06-20 update — thread the ref-resolver through the single binding seam
+
+- `blocker.product_promises.production_hosted_gemini_executor_binding_missing`
+  — **further advanced, still NOT cleared.** The public-safe ref-resolver SEAM
+  existed and the request RUNNER consumed `resolveRefContent`, but the
+  composition root (`createHostedGeminiExecutorBinding`) and the env seam
+  (`resolveHostedGeminiExecutor` / `makeHostedGeminiExecuteReadyWork`) did NOT
+  accept or thread a resolver through — so a deployment had **no path** to
+  provision a live datastore-backed resolver via the single public factory
+  (it would have had to hand-wire the four-layer chain to inject one). This
+  change closes that threading gap:
+  - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-binding.ts`
+    — `HostedGeminiExecutorBindingConfig` gains an optional
+    `resolveRefContent?: HostedGeminiRefContentResolver`, propagated to
+    `createHostedGeminiRequestRunner`. Omitted → existing refs-only frame
+    (current production behaviour); no other layer changes.
+  - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-executor-env.ts`
+    — `HostedGeminiExecuteReadyWorkDeps` gains the same optional
+    `resolveRefContent`, passed straight into the composed binding, so a
+    deployment can inject a resolver alongside the spy/real adapter builder.
+  - 2 new route-harness cases in
+    `apps/openagents.com/workers/api/src/autopilot-work-routes.test.ts`: the
+    composed binding and the env seam each thread an injected resolver so the
+    dereferenced (public-safe) task content reaches the spy adapter's prompt
+    (`task_content: ...`) end-to-end through the paid route, instead of the
+    request staying refs-only.
+
+  **Honest scope:** this is the threading SEAM only. It does NOT provision a
+  concrete `HostedGeminiRefContentResolver` in `index.ts` (prod still passes
+  none, so the live prompt stays refs-only), does not arm the executor, and
+  there is still no registered-agent production smoke. The blocker REMAINS
+  listed.
+
 ## What remains (for green)
 
 - Arm the bound executor on a real deployment (`HOSTED_GEMINI_EXECUTOR_ENABLED`
@@ -332,10 +365,12 @@ production binding shape the harness was missing.
   (`index.ts`, 2026-06-20 update above) — but it is INERT until an operator both
   arms the flag and provisions the secret for this lane.
 - A LIVE, datastore-backed ref-resolver implementation wired into the worker
-  dependency graph. The resolver SEAM + public-safe gate now exist and the runner
-  consumes them (`autopilot-hosted-gemini-content-resolver.ts`, 2026-06-20 update
-  above), but no concrete `HostedGeminiRefContentResolver` is provisioned in
-  `index.ts`, so prod still frames the prompt refs-only.
+  dependency graph. The resolver SEAM + public-safe gate exist, the runner
+  consumes them, and the resolver now threads through the single binding +
+  env factories (`resolveRefContent` on `createHostedGeminiExecutorBinding` /
+  `makeHostedGeminiExecuteReadyWork`, 2026-06-20 update above) — but no concrete
+  `HostedGeminiRefContentResolver` is provisioned in `index.ts`, so prod still
+  frames the prompt refs-only.
 - A registered-agent production smoke proving a paid hosted Gemini work order
   delivered end-to-end.
 - `blocker.product_promises.public_paid_model_gateway_missing` — the hosted
