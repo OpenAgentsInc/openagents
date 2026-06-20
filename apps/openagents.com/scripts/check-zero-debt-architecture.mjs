@@ -570,6 +570,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/demand-provenance.ts',
+    route: '/api/public/demand-provenance',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/open-markets-surface.ts',
     route: '/api/public/markets/open-markets',
     status: 'staleness_declared',

@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.13'
+export const PublicProductPromisesVersion = '2026-06-20.14'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1943,25 +1943,29 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'proof.demand_provenance.v1',
         productArea: 'public proof',
         audience: ['agent', 'operator', 'public'],
-        state: 'planned',
+        state: 'yellow',
         claim:
           'Every revenue-bearing public number carries demand provenance — internal versus external dollars — as strictly as modeled versus measured versus settled, under the rule: no external dollar, no demand claim.',
         safeCopy:
-          'Provenance discipline already exists for promise states and settlement evidence, and the training program explicitly labels its own internal demand (ablations, sweeps, corpus work, conformance runs) as plumbing proof rather than market proof. First serving surface: the AO/kWh metric (GET /api/public/metrics/accepted-outcomes-per-kwh) now carries a typed internal/external demand split with the rule no_external_dollar_no_demand_claim — every datapoint is labeled internal or external, the projection serves reconciling internal/external counts, externalDemandClaimAllowed stays false until a real external dollar backs an outcome, and the copy gate forbids presenting the operator-staged #4777 outcome as market demand. Broad coverage across the other revenue-bearing projections (stats, leaderboards, run pages, economics gates) is still planned.',
+          'Demand provenance is partially live. GET /api/public/demand-provenance summarizes revenue-bearing public surfaces that carry typed internal/external demand splits, currently starting with AO/kWh (GET /api/public/metrics/accepted-outcomes-per-kwh). It reports the operator-staged #4777 outcome as internal demand, zero external accepted outcomes, zero unlabeled outcomes, externalDemandClaimAllowed:false, and the rule no_external_dollar_no_demand_claim. Broad coverage across the other revenue-bearing projections (stats, leaderboards, run pages, economics gates) is still missing.',
         unsafeCopy:
           'Do not present first-party or internally-dispatched demand as market demand, and do not aggregate internal and external revenue into one undifferentiated public number.',
         evidenceRefs: [
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'docs/promises/2026-06-09-product-promises-gap-audit.md',
+          'route:/api/public/demand-provenance',
+          'apps/openagents.com/workers/api/src/demand-provenance.ts',
+          'apps/openagents.com/workers/api/src/demand-provenance-routes.ts',
+          'apps/openagents.com/workers/api/src/demand-provenance.test.ts',
           'route:/api/public/metrics/accepted-outcomes-per-kwh',
           'apps/openagents.com/workers/api/src/accepted-outcomes-per-kwh.ts',
           'apps/openagents.com/workers/api/src/accepted-outcomes-per-kwh.test.ts',
         ],
         blockerRefs: [
-          'blocker.product_promises.demand_provenance_projection_missing',
+          'blocker.product_promises.demand_provenance_broad_projection_coverage_missing',
         ],
         verification:
-          'Green requires revenue-bearing public projections (stats, leaderboards, run pages, economics gates) to carry a typed internal/external demand field, with at least one surface serving real split data and a copy gate forbidding unlabeled aggregates. First serving surface met by the AO/kWh metric (accepted-outcomes-per-kwh.test.ts: demand-provenance split reconciles to the accepted-outcome total, externalDemandClaimAllowed is false, copy gate present); green still requires the remaining revenue-bearing projections to carry the same typed split and a transition receipt.',
+          'Yellow is supported by GET /api/public/demand-provenance and demand-provenance.test.ts: the route is no-store, live-at-read, public-safe, summarizes the AO/kWh internal/external split, reconciles internal/external/unlabeled counts, keeps externalDemandClaimAllowed false, and names remaining coverage gaps. Green still requires the remaining revenue-bearing projections (stats, leaderboards, run pages, economics gates) to carry the same typed split plus a receipt-first transition.',
         authorityBoundary:
           'Demand provenance is a labeling discipline; it does not validate any revenue claim by itself and grants no settlement or reporting authority.',
       },
@@ -3474,6 +3478,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.9 advances mobile.voice_approval_companion.v1 from planned to yellow without clearing the remaining command/sync blockers. The live read-only mobile workroom approval projection (GET /api/mobile/workroom-approval-projection) returns projectionAvailable:true, mutation permissions false, and blockerCleared:blocker.product_promises.mobile_projection_missing, so the promise is no longer roadmap-only. Voice command approval receipts and cross-device workroom sync remain blocked; no approval mutation, command execution, notification, spend, deployment, or green claim is created.',
         'Registry 2026-06-20.11 is a training.ablation_system.v1 derisking-ledger projection pass and flips NO promise state. GET /api/public/training/ablation-derisking-ledger now serves a public-safe, read-only, live-at-read candidate ledger with publicProjectionAvailable=true and greenGateSatisfied=false. This clears blocker.product_promises.ablation_ledger_projection_missing only; blocker.product_promises.ablation_harness_missing and blocker.product_promises.eval_suite_reproduction_missing remain. No ablation execution, paid dispatch, spend, settlement, eval reproduction, accepted verdict, model promotion, or public capability claim is created, so the green count remains exactly 24.',
         'Registry 2026-06-20.12 builds the missing piece of the Artanis unattended-tick-streak gate on artanis.tassadar_evolution_loop.v1 and flips NO promise state (stays yellow; green count unchanged at 24). The registry verification gate requires "at least ten consecutive unattended ticks whose receipts include executor dispatch and exact-replay verdicts", but nothing computed that CONSECUTIVE streak — the tick monitor (artanis-tick-monitor.ts) projected individual decisions and counts-by-state only. This pass adds the counter/projection: apps/openagents.com/workers/api/src/artanis-tick-streak.ts joins the tick-decision ledger (artanis_admin_tick_decisions) to the exact-replay closeout-verdict ledger (artanis_closeout_verdicts) and computes currentStreak / longestStreak / verifiedTickCount over the window, where a tick QUALIFIES only when it is a dispatched admin-tick decision whose assignment carries an ACCEPTED exact-replay verdict (outcome=verified, accept_state=accepted); a pending, rejected, or unverified tick can only shorten the streak, never lengthen it, and the projection cannot create a tick or a verdict. It is exposed read-only and public-safe at GET /api/public/artanis/tick-streak (registered in the OpenAPI as getPublicArtanisTickStreak and in the exact-route registry), returning streakTarget (10), targetReached, and currentStreakAssignmentRefs — each dereferenceable as receipt.nexus_pylon.artanis_admin_closeout.<assignmentRef> for independent replay-verdict inspection. New tests: 8 in artanis-tick-streak.test.ts (qualifying run, head-break, pending/rejected non-qualification, target flip at 10, longest>current, smuggled-value redaction, bounded limits, the join reader). blocker.product_promises.artanis_unattended_tick_streak_missing STAYS on the record: this ships the tracking + public surface, but NO real ten-tick streak has been driven live (that requires the production cron running over eligible fleet Pylons across consecutive ticks, which this environment cannot drive). What the live surface now shows is the honest current streak; green for this dimension requires the deployed /api/public/artanis/tick-streak surface to report longestStreak >= 10 on real dereferenceable closeout receipts, plus owner sign-off per proof.claim_upgrade_receipts.v1. blocker.product_promises.tassadar_distillation_dataset_receipt_missing is untouched. Zero green flips.',
+        'Registry 2026-06-20.14 advances proof.demand_provenance.v1 from planned to yellow and flips NO promise green. GET /api/public/demand-provenance is now a public-safe live-at-read projection summarizing revenue-bearing public surfaces with typed internal/external demand splits, currently the AO/kWh surface. It reports one internal accepted outcome, zero external accepted outcomes, zero unlabeled outcomes, externalDemandClaimAllowed:false, and the rule no_external_dollar_no_demand_claim. This clears blocker.product_promises.demand_provenance_projection_missing only; broad coverage across remaining revenue-bearing projections stays blocked on blocker.product_promises.demand_provenance_broad_projection_coverage_missing. No revenue, demand, payout, settlement, reporting, or public-claim upgrade authority is created.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
