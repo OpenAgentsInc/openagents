@@ -162,6 +162,9 @@ type TrainingDeviceCapabilityJson = Readonly<{
     verified: boolean
   }>
   schemaVersion: string
+  thermalThrottleBlockerRefs: ReadonlyArray<string>
+  thermalThrottleDetectionStatus: string
+  thermalThrottleSignals: ReadonlyArray<Readonly<{ state: string }>>
 }>
 
 type TrainingA5EvalJson = Readonly<{
@@ -529,6 +532,11 @@ describe('training run window routes', () => {
         },
       ],
       schemaVersion: 'openagents.training.device_capability_dashboard.v1',
+      thermalThrottleBlockerRefs: [
+        'blocker.cs336_a2.requires_sustained_vs_burst_thermal_probe',
+      ],
+      thermalThrottleDetectionStatus: 'missing',
+      thermalThrottleSignals: [],
     })
 
     store._testSeedRun({
@@ -2094,6 +2102,11 @@ describe('training run window routes', () => {
         },
       ],
       schemaVersion: 'openagents.training.device_capability_dataset.v1',
+      thermalThrottleBlockerRefs: [
+        'blocker.cs336_a2.requires_sustained_vs_burst_thermal_probe',
+      ],
+      thermalThrottleDetectionStatus: 'missing',
+      thermalThrottleSignals: [],
     })
 
     const dashboard = await runRoute(
@@ -2116,6 +2129,11 @@ describe('training run window routes', () => {
           verified: true,
         },
       ],
+      thermalThrottleBlockerRefs: [
+        'blocker.cs336_a2.requires_sustained_vs_burst_thermal_probe',
+      ],
+      thermalThrottleDetectionStatus: 'missing',
+      thermalThrottleSignals: [],
     })
   })
 

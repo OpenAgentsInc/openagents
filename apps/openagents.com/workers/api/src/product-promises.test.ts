@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.25')
+    expect(decoded.version).toBe('2026-06-20.26')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -217,6 +217,10 @@ describe('public product promises document', () => {
     // The 2026-06-20.25 Tassadar Percepta executor spec pass clears only the
     // model-spec blocker while architecture and CPU-transform training receipts
     // stay blocked, so green remains exactly 24.
+    // The 2026-06-20.26 device-capability thermal-classifier pass exposes
+    // thermalThrottleSignals/status/blockers from sustained-vs-burst rows but
+    // keeps thermal_throttle_detection_missing because no live verified thermal
+    // probe row exists, so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -957,12 +961,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.25', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.26', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.25',
+      expectedVersion: '2026-06-20.26',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.25',
+      servedVersion: '2026-06-20.26',
       status: 'ready',
     })
     expect(
@@ -972,7 +976,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.25',
+      servedVersion: '2026-06-20.26',
       status: 'blocked',
     })
   })

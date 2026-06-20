@@ -46,6 +46,27 @@ export const Cs336A2HostProbeMeasurements = [
 export type Cs336A2HostProbeMeasurement =
   (typeof Cs336A2HostProbeMeasurements)[number]
 
+export const Cs336A2ThermalThrottleRatioFloor = 0.8
+export const Cs336A2ThermalThrottleMetric =
+  'sustained_vs_burst_throughput_ratio'
+
+export const DeviceCapabilityThermalThrottleStates = [
+  'thermal_probe_needs_verification',
+  'thermal_throttle_not_observed',
+  'thermal_throttle_observed',
+] as const
+export type DeviceCapabilityThermalThrottleState =
+  (typeof DeviceCapabilityThermalThrottleStates)[number]
+
+export const DeviceCapabilityThermalThrottleDetectionStatuses = [
+  'missing',
+  'needs_verified_thermal_probe',
+  'thermal_throttle_not_observed',
+  'thermal_throttle_observed',
+] as const
+export type DeviceCapabilityThermalThrottleDetectionStatus =
+  (typeof DeviceCapabilityThermalThrottleDetectionStatuses)[number]
+
 export const Cs336A2QualificationProbeMeasurements = [
   ...Cs336A2BenchmarkMeasurements,
   ...Cs336A2HostProbeMeasurements,
@@ -124,6 +145,30 @@ export type DeviceCapabilityDistribution = Readonly<{
   workClass: string
 }>
 
+export type DeviceCapabilityThermalThrottleSignal = Readonly<{
+  blockerRefs: ReadonlyArray<string>
+  crossCheckState: DeviceCapabilityDistribution['crossCheckState']
+  deviceClassRef: string
+  maxRatio: number
+  measurementProvenance: DeviceCapabilityMeasurementProvenance
+  measurementRef: string
+  metric: typeof Cs336A2ThermalThrottleMetric
+  minRatio: number
+  p50Ratio: number
+  p90Ratio: number
+  ratioFloor: typeof Cs336A2ThermalThrottleRatioFloor
+  reasonCode:
+    | 'device_capability.public.thermal_probe_needs_statistical_cross_check'
+    | 'device_capability.public.thermal_throttle_not_observed_sustained_ratio_at_or_above_floor'
+    | 'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor'
+  sampleCount: number
+  sourceRefs: ReadonlyArray<string>
+  state: DeviceCapabilityThermalThrottleState
+  unit: 'ratio'
+  verified: boolean
+  workClass: string
+}>
+
 export type DeviceCapabilityDatasetProjection = Readonly<{
   benchmarkSuiteRef: typeof Cs336A2DeviceBenchmarkSuiteRef
   blockerRefs: ReadonlyArray<string>
@@ -137,6 +182,9 @@ export type DeviceCapabilityDatasetProjection = Readonly<{
   schemaVersion: 'openagents.training.device_capability_dataset.v1'
   scopeBoundaryRefs: ReadonlyArray<string>
   sourceRefs: ReadonlyArray<string>
+  thermalThrottleBlockerRefs: ReadonlyArray<string>
+  thermalThrottleDetectionStatus: DeviceCapabilityThermalThrottleDetectionStatus
+  thermalThrottleSignals: ReadonlyArray<DeviceCapabilityThermalThrottleSignal>
 }>
 
 const TrimmedString = S.Trim
@@ -427,6 +475,91 @@ const distributionsFromEvidence = (
   )
 }
 
+export const buildDeviceCapabilityThermalThrottleSignals = (
+  distributions: ReadonlyArray<DeviceCapabilityDistribution>,
+): ReadonlyArray<DeviceCapabilityThermalThrottleSignal> =>
+  distributions.flatMap(
+    (distribution): ReadonlyArray<DeviceCapabilityThermalThrottleSignal> => {
+      if (distribution.metric !== Cs336A2ThermalThrottleMetric) {
+        return []
+      }
+
+      const needsVerification = !distribution.verified
+      const throttled =
+        distribution.verified &&
+        distribution.p50 < Cs336A2ThermalThrottleRatioFloor
+      const state: DeviceCapabilityThermalThrottleState = needsVerification
+        ? 'thermal_probe_needs_verification'
+        : throttled
+          ? 'thermal_throttle_observed'
+          : 'thermal_throttle_not_observed'
+      const blockerRefs =
+        state === 'thermal_probe_needs_verification'
+          ? ['blocker.cs336_a2.requires_verified_sustained_vs_burst_thermal_probe']
+          : []
+      const reasonCode =
+        state === 'thermal_probe_needs_verification'
+          ? 'device_capability.public.thermal_probe_needs_statistical_cross_check'
+          : state === 'thermal_throttle_observed'
+            ? 'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor'
+            : 'device_capability.public.thermal_throttle_not_observed_sustained_ratio_at_or_above_floor'
+      const signal: DeviceCapabilityThermalThrottleSignal = {
+        blockerRefs,
+        crossCheckState: distribution.crossCheckState,
+        deviceClassRef: distribution.deviceClassRef,
+        maxRatio: distribution.max,
+        measurementProvenance: distribution.measurementProvenance,
+        measurementRef: distribution.measurementRef,
+        metric: Cs336A2ThermalThrottleMetric,
+        minRatio: distribution.min,
+        p50Ratio: distribution.p50,
+        p90Ratio: distribution.p90,
+        ratioFloor: Cs336A2ThermalThrottleRatioFloor,
+        reasonCode,
+        sampleCount: distribution.sampleCount,
+        sourceRefs: distribution.sourceRefs,
+        state,
+        unit: 'ratio',
+        verified: distribution.verified,
+        workClass: distribution.workClass,
+      }
+
+      publicSafeJson(signal)
+
+      return [signal]
+    },
+  )
+
+export const thermalThrottleDetectionStatus = (
+  signals: ReadonlyArray<DeviceCapabilityThermalThrottleSignal>,
+): DeviceCapabilityThermalThrottleDetectionStatus => {
+  if (signals.length === 0) {
+    return 'missing'
+  }
+
+  if (signals.some(signal => signal.state === 'thermal_throttle_observed')) {
+    return 'thermal_throttle_observed'
+  }
+
+  if (
+    signals.some(signal => signal.state === 'thermal_probe_needs_verification')
+  ) {
+    return 'needs_verified_thermal_probe'
+  }
+
+  return 'thermal_throttle_not_observed'
+}
+
+export const thermalThrottleBlockerRefs = (
+  signals: ReadonlyArray<DeviceCapabilityThermalThrottleSignal>,
+): ReadonlyArray<string> => {
+  if (signals.length === 0) {
+    return ['blocker.cs336_a2.requires_sustained_vs_burst_thermal_probe']
+  }
+
+  return uniqueRefs(signals.flatMap(signal => signal.blockerRefs))
+}
+
 export const buildCs336A2DeviceBenchmarkPayload = (
   input: Readonly<{ assignmentRef: string }>,
 ): Cs336A2DeviceBenchmarkPayload => {
@@ -485,6 +618,15 @@ const assertAdmissibleMeasurement = (
   ) {
     throw new DeviceCapabilityEvidenceValidationError(
       'CS336 A2 measurement evidence requires an integer sampleCount >= 1.',
+    )
+  }
+
+  if (
+    measurement.metric === Cs336A2ThermalThrottleMetric &&
+    measurement.unit !== 'ratio'
+  ) {
+    throw new DeviceCapabilityEvidenceValidationError(
+      'CS336 A2 sustained-vs-burst thermal evidence requires unit ratio.',
     )
   }
 
@@ -592,6 +734,8 @@ export const publicDeviceCapabilityProjection = (
       .filter(distribution => distribution.verified)
       .map(distribution => distribution.deviceClassRef),
   ).size
+  const thermalThrottleSignals =
+    buildDeviceCapabilityThermalThrottleSignals(classDistributions)
 
   return {
     benchmarkSuiteRef: Cs336A2DeviceBenchmarkSuiteRef,
@@ -619,6 +763,7 @@ export const publicDeviceCapabilityProjection = (
       'scope.cs336_a2.benchmark_measurement_not_assignment_settlement',
       'scope.cs336_a2.earning_estimates_modeled_from_measured',
       'scope.cs336_a2.psionic_kernel_and_transport_parity_external',
+      'scope.cs336_a2.thermal_probe_classifier_not_continuous_fleet_monitoring',
     ],
     sourceRefs: uniqueRefs([
       'route:/api/training/device-capabilities/a2',
@@ -627,5 +772,10 @@ export const publicDeviceCapabilityProjection = (
       ...input.windows.flatMap(window => window.sourceRefs),
       ...input.leases.map(lease => lease.leaseRef),
     ]),
+    thermalThrottleBlockerRefs:
+      thermalThrottleBlockerRefs(thermalThrottleSignals),
+    thermalThrottleDetectionStatus:
+      thermalThrottleDetectionStatus(thermalThrottleSignals),
+    thermalThrottleSignals,
   }
 }
