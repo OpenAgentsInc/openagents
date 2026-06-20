@@ -54,20 +54,27 @@ export const defaultBusinessIntakeFieldNames: BusinessIntakeFieldNames = {
 const theme = (mode: BusinessLandingMode = 'dark') =>
   mode === 'light'
     ? {
-        canvas: 'bg-[#f7f8fa] text-[#101318]',
-        surface: 'border-zinc-200 bg-white text-[#101318]',
-        raised: 'border-zinc-200 bg-white text-[#101318] shadow-sm',
-        inset: 'border-zinc-200 bg-zinc-50 text-[#101318]',
-        heading: 'text-[#101318]',
-        body: 'text-zinc-600',
-        muted: 'text-zinc-500',
-        faint: 'text-zinc-400',
-        border: 'border-zinc-200',
-        divider: 'border-zinc-200',
-        accent: 'text-[#8a5a00]',
-        warningText: 'text-[#8a5a00]',
+        canvas: 'bg-public-landing-page text-public-landing-text',
+        surface:
+          'border-public-landing-border bg-public-landing-surface text-public-landing-text',
+        raised:
+          'border-public-landing-border bg-public-landing-surface text-public-landing-text shadow-sm',
+        inset:
+          'border-public-landing-border bg-public-landing-surface-muted text-public-landing-text',
+        heading: 'text-public-landing-text',
+        body: 'text-public-landing-muted',
+        muted: 'text-public-landing-muted',
+        faint: 'text-public-landing-faint',
+        border: 'border-public-landing-border',
+        divider: 'border-public-landing-border',
+        accent: 'text-public-landing-accent',
+        warningText: 'text-public-landing-warning',
+        fieldInput:
+          '!border-public-landing-border !bg-public-landing-surface !text-public-landing-text placeholder:!text-public-landing-faint focus:!border-public-landing-accent focus:!ring-public-landing-accent',
+        fieldLabel: '!text-public-landing-muted',
+        fieldHelp: '!text-public-landing-faint',
         strongButton:
-          'border-[#101318] bg-[#101318] text-white hover:bg-black',
+          'border-public-landing-text bg-public-landing-text text-public-landing-page hover:opacity-90',
       }
     : {
         canvas: 'bg-[#000] text-[#f1efe8]',
@@ -82,6 +89,9 @@ const theme = (mode: BusinessLandingMode = 'dark') =>
         divider: 'border-[#222]',
         accent: 'text-[#ffb400]',
         warningText: 'text-[#ffd54a]/85',
+        fieldInput: '',
+        fieldLabel: '',
+        fieldHelp: '',
         strongButton:
           'border-[#f1efe8] bg-[#f1efe8] text-[#000] hover:bg-white',
       }
@@ -106,12 +116,14 @@ const availabilityBadgeClass = (
 ): string => {
   if (mode === 'light') {
     return clsx({
-      'border-emerald-200 bg-emerald-50 text-emerald-700':
+      'border-public-landing-positive bg-public-landing-surface-muted text-public-landing-positive':
         availability === 'available_now',
-      'border-amber-200 bg-amber-50 text-amber-800':
+      'border-public-landing-warning bg-public-landing-surface-muted text-public-landing-warning':
         availability === 'operator_assisted',
-      'border-zinc-200 bg-zinc-50 text-zinc-600': availability === 'roadmap',
-      'border-red-200 bg-red-50 text-red-700': availability === 'blocked',
+      'border-public-landing-border bg-public-landing-surface-muted text-public-landing-muted':
+        availability === 'roadmap',
+      'border-public-landing-negative bg-public-landing-surface-muted text-public-landing-negative':
+        availability === 'blocked',
     })
   }
 
@@ -494,6 +506,8 @@ export const businessIntakeForm = <Message>(input: {
           h.Required(true),
           h.Attribute('autocomplete', 'organization'),
         ],
+        className: t.fieldInput,
+        labelClassName: t.fieldLabel,
       }),
       inputGroup<Message>({
         id: 'business-email',
@@ -506,6 +520,8 @@ export const businessIntakeForm = <Message>(input: {
           h.Attribute('autocomplete', 'email'),
           h.Attribute('inputmode', 'email'),
         ],
+        className: t.fieldInput,
+        labelClassName: t.fieldLabel,
       }),
       inputGroup<Message>({
         id: 'business-website',
@@ -518,6 +534,9 @@ export const businessIntakeForm = <Message>(input: {
           h.Attribute('autocomplete', 'url'),
           h.Attribute('inputmode', 'url'),
         ],
+        className: t.fieldInput,
+        labelClassName: t.fieldLabel,
+        helpClassName: t.fieldHelp,
       }),
       inputGroup<Message>({
         id: 'business-phone',
@@ -531,6 +550,9 @@ export const businessIntakeForm = <Message>(input: {
           h.Attribute('autocomplete', 'tel'),
           h.Attribute('inputmode', 'tel'),
         ],
+        className: t.fieldInput,
+        labelClassName: t.fieldLabel,
+        helpClassName: t.fieldHelp,
       }),
       textareaGroup<Message>({
         id: 'business-help',
@@ -538,6 +560,8 @@ export const businessIntakeForm = <Message>(input: {
         label: 'What do you want help with?',
         placeholder: 'Describe the work you want done, in your own words.',
         rows: 4,
+        className: t.fieldInput,
+        labelClassName: t.fieldLabel,
       }),
       h.label(
         [

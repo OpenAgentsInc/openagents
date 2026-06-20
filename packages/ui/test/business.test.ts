@@ -90,7 +90,8 @@ describe('business landing components', () => {
     expect(rendered).toContain('data-ui-family="business/availability-badges"')
     expect(rendered).toContain('data-business-availability="available_now"')
     expect(rendered).toContain('Available now')
-    expect(rendered).toContain('bg-emerald-50')
+    expect(rendered).toContain('bg-public-landing-surface-muted')
+    expect(rendered).toContain('text-public-landing-positive')
   })
 
   test('renders business offering menus and cards in dark and light modes', () => {
@@ -115,7 +116,8 @@ describe('business landing components', () => {
     expect(dark).toContain('Current caveat:')
     expect(dark).toContain('business.coding_quick_win.v1')
     expect(light).toContain('Light menu')
-    expect(light).toContain('bg-white')
+    expect(light).toContain('bg-public-landing-surface')
+    expect(light).toContain('text-public-landing-text')
   })
 
   test('renders the quick-win ladder and proof caveat family markers', () => {

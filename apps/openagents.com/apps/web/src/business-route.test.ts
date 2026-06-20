@@ -95,6 +95,9 @@ describe('business route', () => {
     const rendered = renderHtml(Business.view({ _tag: 'LoggedOut' }))
 
     // Required signup fields, including a first-class phone field.
+    expect(rendered).toContain('action="/api/public/business-signup"')
+    expect(rendered).toContain('data-ui-family="business/intake-forms"')
+    expect(rendered).toContain('data-ui-family="forms/input-groups"')
     expect(rendered).toContain('name="businessName"')
     expect(rendered).toContain('name="contactEmail"')
     expect(rendered).toContain('type="email"')
@@ -125,6 +128,11 @@ describe('business route', () => {
   test('renders the offering menu with honest availability badges', () => {
     const rendered = renderHtml(Business.view({ _tag: 'LoggedOut' }))
 
+    expect(rendered).toContain('data-ui-family="business/offering-menus"')
+    expect(rendered).toContain('data-ui-family="business/offering-cards"')
+    expect(rendered).toContain(
+      'data-ui-family="business/availability-badges"',
+    )
     expect(rendered).toContain('What we can do')
     // Offering buckets from the intake spec.
     expect(rendered).toContain('Coding & agent work')
@@ -149,11 +157,30 @@ describe('business route', () => {
     const rendered = renderHtml(Business.view({ _tag: 'LoggedOut' }))
 
     expect(rendered).toContain(
-      'Quick win → put your business on Autopilot',
+      'Quick win -> put your business on Autopilot',
     )
-    expect(rendered).toContain('Day 1 — Quick win')
-    expect(rendered).toContain('Week 1 — Repeatable lane')
-    expect(rendered).toContain('Ongoing — On Autopilot')
+    expect(rendered).toContain('data-ui-family="business/quick-win-ladders"')
+    expect(rendered).toContain('data-business-ladder-step="Day 1"')
+    expect(rendered).toContain('Day 1 - Quick win')
+    expect(rendered).toContain('Week 1 - Repeatable lane')
+    expect(rendered).toContain('Ongoing - On Autopilot')
+  })
+
+  test('renders the public landing theme shell in light and dark variants', () => {
+    const light = renderHtml(Business.view({ _tag: 'LoggedOut' }))
+    const dark = renderHtml(Business.businessLandingShell('dark'))
+
+    expect(light).toContain('data-public-landing-shell=""')
+    expect(light).toContain('data-business-landing-shell=""')
+    expect(light).toContain('data-public-landing-theme="light"')
+    expect(light).toContain('data-public-landing-theme-preference="system"')
+    expect(light).toContain('data-public-landing-theme-select=""')
+    expect(light).toContain('oa.publicLanding.v1:theme')
+    expect(light).toContain("matchMedia('(prefers-color-scheme: dark)')")
+
+    expect(dark).toContain('data-public-landing-theme="dark"')
+    expect(dark).toContain('data-ui-family="business/landing-heroes"')
+    expect(dark).toContain('data-ui-family="business/project-invites"')
   })
 
   test('renders the hidden referral-code field for referral attribution', () => {

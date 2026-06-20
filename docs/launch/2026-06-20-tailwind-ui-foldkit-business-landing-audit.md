@@ -22,9 +22,10 @@ The useful answer is therefore:
 
 - **Yes, we have Foldkit versions of Tailwind UI families.** They live in
   `packages/ui/src/*`.
-- **No, `/business` is not yet composed from those new component versions.** It
-  imports `../ui`, but almost every page section is still locally hand-built
-  with `Ui.className(...)` class strings.
+- **Yes, `/business` is now composed from those new component versions.** The
+  page still keeps its auth-aware public header, but the landing body uses the
+  shared public theme shell, business hero, offering menu/cards, quick-win
+  ladder, project invite, and intake form.
 - **The current `/business` page is already newer than the original June 16 C3
   page.** It now has the June 20 business offering menu, quick-win ladder,
   hidden referral-code capture, workspace invite copy, pricing note, Slack
@@ -48,6 +49,12 @@ The useful answer is therefore:
   script keeps the Forum preference model but scopes resolved attributes to
   `[data-public-landing-shell]` instead of writing to `<html>`, so light public
   pages can coexist with the dark-only app root and Forum's own theme tokens.
+- 2026-06-20 / #5835: Recomposed `/business` from the shared UI families. The
+  route now defaults to a light public landing shell, exposes a light/dark/system
+  selector, preserves the live `/api/public/business-signup` field contract
+  (`businessName`, `contactEmail`, `website`, `phone`, `helpWith`,
+  `requestSlackChannel`, `referralCode`), and route tests assert the major
+  `data-ui-family` markers plus light/dark shell rendering.
 
 ## Sources Reviewed
 
@@ -173,16 +180,19 @@ What is good:
   Connect as `manual_invite_pending`, and keeps referral binding public-safe.
 - The route tests for `/business` still pass.
 
-What is not yet on the new component system:
+What changed in the recomposition:
 
-- `business.ts` has **47 `Ui.className(...)` sites** and no meaningful calls to
-  `Ui.marketingHero`, `Ui.inputGroup`, `Ui.textareaGroup`, `Ui.button`,
-  `Ui.section`, `Ui.card`, or the public marketing composites.
-- The page emits no `data-ui-family` markers from `kitFamily`, so the live DOM
-  does not tell us which Tailwind UI family each section is composed from.
-- `labelledField`, `pricingNoteView`, `workspaceInviteView`, `slackOptInView`,
-  `offeringCardView`, `offeringsView`, and `ladderView` are all local page
-  components. Several are useful enough to promote into the shared UI package.
+- `business.ts` no longer owns page-local hero, offering card, ladder, project
+  invite, pricing note, Slack opt-in, or field helper components.
+- The route emits `data-ui-family` markers for the public theme shell, business
+  hero, offering menu/cards, availability badges, quick-win ladder, project
+  invite, proof caveat, intake form, and shared form groups.
+- The issue text for #5835 still referenced an older form contract
+  (`goal/email/company/contact_name/use_case/notes/referral_code` and
+  `/api/business-signups`). The live Worker and tests use
+  `/api/public/business-signup` with the June 20 field names listed above, so
+  the implementation preserved the live contract rather than reviving stale
+  names.
 
 ## Copy / Promise Drift To Fix Before A Visual Rebuild
 

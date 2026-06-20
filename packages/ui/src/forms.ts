@@ -46,6 +46,8 @@ export const inputGroup = <Message>(input: {
   placeholder?: string
   help?: string
   className?: string
+  labelClassName?: string
+  helpClassName?: string
   attrs?: ReadonlyArray<Attribute<Message>>
 }): Html => {
   const h = html<Message>()
@@ -57,7 +59,9 @@ export const inputGroup = <Message>(input: {
       h.Class('grid gap-1.5'),
     ],
     [
-      h.span([h.Class(eyebrowClass)], [input.label]),
+      h.span([h.Class(clsx(eyebrowClass, input.labelClassName))], [
+        input.label,
+      ]),
       h.input([
         ...(input.attrs ?? []),
         h.Id(input.id),
@@ -71,7 +75,9 @@ export const inputGroup = <Message>(input: {
       ]),
       input.help === undefined
         ? null
-        : h.span([h.Class(metaClass)], [input.help]),
+        : h.span([h.Class(clsx(metaClass, input.helpClassName))], [
+            input.help,
+          ]),
     ],
   )
 }
@@ -153,6 +159,8 @@ export const textareaGroup = <Message>(input: {
   value?: string
   placeholder?: string
   rows?: number
+  className?: string
+  labelClassName?: string
   attrs?: ReadonlyArray<Attribute<Message>>
 }): Html => {
   const h = html<Message>()
@@ -164,7 +172,9 @@ export const textareaGroup = <Message>(input: {
       h.Class('grid gap-1.5'),
     ],
     [
-      h.span([h.Class(eyebrowClass)], [input.label]),
+      h.span([h.Class(clsx(eyebrowClass, input.labelClassName))], [
+        input.label,
+      ]),
       h.textarea(
         [
           ...(input.attrs ?? []),
@@ -174,7 +184,7 @@ export const textareaGroup = <Message>(input: {
             ? []
             : [h.Placeholder(input.placeholder)]),
           ...(input.rows === undefined ? [] : [h.Rows(input.rows)]),
-          h.Class(textareaClass),
+          h.Class(clsx(textareaClass, input.className)),
         ],
         [input.value ?? ''],
       ),
