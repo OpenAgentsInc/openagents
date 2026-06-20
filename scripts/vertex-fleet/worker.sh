@@ -97,12 +97,21 @@ log "model:    $MODEL (Vertex, region=$CLOUD_ML_REGION, project=$ANTHROPIC_VERTE
 log "worktree: $WORKTREE  branch: $BRANCH"
 
 # Fresh worktree from origin/main on a new branch.
+# Serialize git-worktree setup: concurrent `git worktree add` on one repo races
+# on git's index/worktree locks (the real cause of parallel worktree_add_failed).
+# Agent runs stay parallel; only this fast setup is mutually exclusive (mkdir = atomic, macOS-safe).
+VF_GIT_LOCK="${SRC_REPO}/.git/vf-worktree.lock"
+_vf_n=0
+while ! mkdir "$VF_GIT_LOCK" 2>/dev/null; do sleep 0.5; _vf_n=$((_vf_n+1)); [ "$_vf_n" -gt 600 ] && { log "WARN: worktree lock wait timeout; proceeding"; break; }; done
 git -C "$SRC_REPO" fetch origin main --quiet 2>>"$AGENT_LOG" || true
 git -C "$SRC_REPO" worktree remove "$WORKTREE" --force >/dev/null 2>&1 || true
 git -C "$SRC_REPO" worktree prune >/dev/null 2>&1 || true
 git -C "$SRC_REPO" branch -D "$BRANCH" >/dev/null 2>&1 || true
-if ! git -C "$SRC_REPO" worktree add -b "$BRANCH" "$WORKTREE" "$BASE" >>"$AGENT_LOG" 2>&1; then
-  log "FATAL: could not create worktree"
+git -C "$SRC_REPO" worktree add -b "$BRANCH" "$WORKTREE" "$BASE" >>"$AGENT_LOG" 2>&1
+VF_ADD_RC=$?
+rmdir "$VF_GIT_LOCK" 2>/dev/null || true
+if [ "$VF_ADD_RC" != 0 ]; then
+  log "FATAL: could not create worktree (rc=$VF_ADD_RC)"
   emit "$(result_json error "" skipped null "worktree_add_failed")"; exit 1
 fi
 
