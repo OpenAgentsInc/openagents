@@ -175,17 +175,21 @@ const stageDefinitions: ReadonlyArray<StageDefinition> = [
       'Seal/bootstrap contracts exist; durable remote checkpoint storage, standby dispatch, and curtailment drill receipts remain missing.',
   },
   {
-    endpointRefs: ['/api/public/training/post-training-arc/instruct-sft-lane'],
+    endpointRefs: [
+      '/api/public/training/post-training-arc/instruct-sft-lane',
+      '/api/public/training/post-training-arc/dpo-preference-workload',
+    ],
     evidenceRefs: [
       'docs/training/2026-06-20-psion-instruct-sft-lane-receipt.md',
       'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
+      'docs/launch/vertex-fleet/training.post_training_arc.v1.md',
     ],
     promiseId: 'training.post_training_arc.v1',
     receiptState: 'partial_receipt_surface_live',
     role: 'Instruct SFT, preference rollout, and vibe-test artifacts.',
     stageId: 'post_training',
     statusLabel:
-      'Fixture-scale instruct-SFT lane and fixture sync receipts exist; paid SFT dispatch, preference work, and vibe-test artifact remain missing.',
+      'Fixture-scale instruct-SFT lane, fixture sync, and deterministic DPO reference workload receipts exist; paid SFT dispatch, paid preference work, and vibe-test artifact remain missing.',
   },
   {
     endpointRefs: [],

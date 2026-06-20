@@ -25,6 +25,7 @@ import { TassadarPerceptaArchitectureReceiptsEndpoint } from './tassadar-percept
 import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-derisking-ledger'
 import { TrainingFullPipelineProgramEndpoint } from './training-full-pipeline-program'
 import { TrainingPublicGradientWindowsEndpoint } from './training-public-gradient-windows'
+import { TrainingPostTrainingDpoPreferenceWorkloadEndpoint } from './training-post-training-dpo-preference-workload'
 import { TrainingPostTrainingInstructSftEndpoint } from './training-post-training-instruct-sft'
 
 export const OpenAgentsOpenApiEndpoint = '/api/openapi.json'
@@ -764,6 +765,126 @@ export const TrainingPostTrainingInstructSftEnvelope: JsonSchema = {
   },
 }
 
+export const TrainingPostTrainingDpoPreferenceWorkloadEnvelope: JsonSchema = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Public-safe DPO preference-pair reference workload projection for training.post_training_arc.v1. Carries generatedAt, a live_at_read staleness contract, one deterministic_recompute receipt for the bounded CS336 A5 DPO reference-grading workload, its public output digest and aggregate stats, plus explicit gate fields showing deterministicReferenceWorkloadAvailable=true while paidPreferenceDispatchAvailable=false, realModelLogprobMeasurementAvailable=false, verifiedChallengeAvailable=false, settlementReceiptAvailable=false, preferenceRolloutWorkAvailable=false, and greenGateSatisfied=false. It exposes refs, counts, and digests only: no raw prompts, completions, private runner logs, provider payloads, wallet material, payment material, model-service claim, model-update claim, dispatch authority, settlement, or green product-promise authority.',
+  required: [
+    'authorityBoundary',
+    'endpoint',
+    'gate',
+    'generatedAt',
+    'promiseRef',
+    'promiseState',
+    'receiptSummary',
+    'receipts',
+    'schemaVersion',
+    'sourceRefs',
+    'staleness',
+    'status',
+    'unsafeCopy',
+  ],
+  properties: {
+    authorityBoundary: { type: 'string' },
+    endpoint: {
+      type: 'string',
+      enum: [TrainingPostTrainingDpoPreferenceWorkloadEndpoint],
+    },
+    gate: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'clearsBlockerRefs',
+        'deterministicReferenceWorkloadAvailable',
+        'dpoUpdateAvailable',
+        'greenGateSatisfied',
+        'paidPreferenceDispatchAvailable',
+        'preferenceRolloutWorkAvailable',
+        'publicProjectionAvailable',
+        'realModelLogprobMeasurementAvailable',
+        'remainingBlockerRefs',
+        'remainingProductBlockerRefs',
+        'settlementReceiptAvailable',
+        'verifiedChallengeAvailable',
+      ],
+      properties: {
+        clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
+        deterministicReferenceWorkloadAvailable: { type: 'boolean' },
+        dpoUpdateAvailable: { type: 'boolean' },
+        greenGateSatisfied: { type: 'boolean' },
+        paidPreferenceDispatchAvailable: { type: 'boolean' },
+        preferenceRolloutWorkAvailable: { type: 'boolean' },
+        publicProjectionAvailable: { type: 'boolean' },
+        realModelLogprobMeasurementAvailable: { type: 'boolean' },
+        remainingBlockerRefs: { type: 'array', items: { type: 'string' } },
+        remainingProductBlockerRefs: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+        settlementReceiptAvailable: { type: 'boolean' },
+        verifiedChallengeAvailable: { type: 'boolean' },
+      },
+    },
+    generatedAt: { type: 'string' },
+    promiseRef: {
+      type: 'string',
+      enum: ['promise:training.post_training_arc.v1'],
+    },
+    promiseState: { type: 'string', enum: ['planned'] },
+    receiptSummary: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'paidPreferenceDispatchCount',
+        'referenceWorkloadReceiptCount',
+        'settlementReceiptCount',
+        'verifiedChallengeCount',
+      ],
+      properties: {
+        paidPreferenceDispatchCount: { type: 'integer', minimum: 0 },
+        referenceWorkloadReceiptCount: { type: 'integer', minimum: 0 },
+        settlementReceiptCount: { type: 'integer', minimum: 0 },
+        verifiedChallengeCount: { type: 'integer', minimum: 0 },
+      },
+    },
+    receipts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        required: [
+          'deterministicRecomputeAvailable',
+          'jobKind',
+          'outputDigestHex',
+          'paidDispatchState',
+          'pairCount',
+          'receiptRef',
+          'splitRef',
+          'verificationClass',
+          'workloadRef',
+        ],
+        properties: {
+          deterministicRecomputeAvailable: { type: 'boolean' },
+          jobKind: { type: 'string' },
+          outputDigestHex: { type: 'string' },
+          paidDispatchState: { type: 'string' },
+          pairCount: { type: 'integer' },
+          receiptRef: { type: 'string' },
+          splitRef: { type: 'string' },
+          verificationClass: { type: 'string' },
+          workloadRef: { type: 'string' },
+        },
+      },
+    },
+    schemaVersion: { type: 'string' },
+    sourceRefs: { type: 'array', items: { type: 'string' } },
+    staleness: { type: 'object' },
+    status: { type: 'string' },
+    unsafeCopy: { type: 'string' },
+  },
+}
+
 const hygieneDebtReceiptRef = (description: string): JsonSchema => ({
   type: 'string',
   minLength: 1,
@@ -1044,6 +1165,7 @@ const schemaComponents = (): JsonSchema => ({
   TrainingAblationDeriskingLedgerEnvelope,
   TassadarPerceptaArchitectureReceiptsEnvelope,
   TrainingPostTrainingInstructSftEnvelope,
+  TrainingPostTrainingDpoPreferenceWorkloadEnvelope,
   TrainingA2DeviceCapabilityDashboardEnvelope: objectSummary(
     'Public-safe CS336 A2 device-capability dashboard envelope with anonymized device-class distributions, benchmark measurement refs, statistical cross-check state, blocker refs, privacy boundary refs, earning estimates explicitly labeled modeled-from-measured, and thermalThrottleSignals derived only from sustained_vs_burst_throughput_ratio rows. Each distribution carries a measurementProvenance (settled_cross_checked or measured_unsettled) and a crossCheckState; measured_unsettled rows are genuinely measured but not paid and not cross-check verified (verified:false, no earning estimate). The envelope reports observedDeviceClassCount (total observed classes), observedSettledDeviceClassCount (classes with at least one settled, cross-checked, verified row), thermalThrottleDetectionStatus, and thermalThrottleBlockerRefs. It excludes device identifiers, owner linkage, wallet material, payment material, and raw benchmark payloads.',
   ),
@@ -5096,6 +5218,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Post-training instruct SFT lane receipt.',
           '#/components/schemas/TrainingPostTrainingInstructSftEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TrainingPostTrainingDpoPreferenceWorkloadEndpoint]: {
+    get: operation({
+      operationId: 'getTrainingPostTrainingDpoPreferenceWorkload',
+      summary: 'Read post-training DPO preference workload projection',
+      description:
+        'Returns the public-safe DPO preference-pair reference workload projection for training.post_training_arc.v1. The bounded CS336 A5 receipt proves deterministic reference-grading math, pair-count, digest, and aggregate stats for the cs336_a5_dpo_grading workload. It is prerequisite evidence only: paid OpenAgents preference dispatch, real policy/reference-model log-prob measurements, verified challenge, settlement, DPO update, vibe-test artifact, and greenGateSatisfied remain false. Read-only; grants no assignment, spend, settlement, model promotion, model-service, fine-tuning-service, or green product-promise authority.',
+      tags: ['Training', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Post-training DPO preference workload projection.',
+          '#/components/schemas/TrainingPostTrainingDpoPreferenceWorkloadEnvelope',
         ),
         ...errorResponses(),
       },

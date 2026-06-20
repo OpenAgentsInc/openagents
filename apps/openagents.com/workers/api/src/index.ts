@@ -45,6 +45,10 @@ import {
   handleTrainingPostTrainingInstructSftApi,
 } from './training-post-training-instruct-sft-routes'
 import {
+  TrainingPostTrainingDpoPreferenceWorkloadEndpoint,
+  handleTrainingPostTrainingDpoPreferenceWorkloadApi,
+} from './training-post-training-dpo-preference-workload-routes'
+import {
   TassadarPerceptaArchitectureReceiptsEndpoint,
   handleTassadarPerceptaArchitectureReceiptsApi,
 } from './tassadar-percepta-architecture-receipts-routes'
@@ -8087,6 +8091,16 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // assignment, spend, settlement, model promotion, service, or green claim.
     path: TrainingPostTrainingInstructSftEndpoint,
     handler: request => handleTrainingPostTrainingInstructSftApi(request),
+  },
+  {
+    // Post-training DPO preference workload projection (#5523 / DE-5 #5528;
+    // promise training.post_training_arc.v1, planned). Read-only deterministic
+    // reference grading receipt: exposes the DPO pair workload while paid
+    // preference dispatch, real log-probs, settlement, and green gates remain
+    // false. No assignment, spend, model update, service, or green claim.
+    path: TrainingPostTrainingDpoPreferenceWorkloadEndpoint,
+    handler: request =>
+      handleTrainingPostTrainingDpoPreferenceWorkloadApi(request),
   },
   {
     // Tassadar Percepta executor architecture receipts (#5523 / DE-5 #5528;
