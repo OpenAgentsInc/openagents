@@ -12,8 +12,10 @@ import {
 } from './kernel-optimization-work-dispatch'
 import {
   KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID,
+  type KernelOptimizationKeyedSettlementItem,
   type KernelOptimizationSettlementItem,
   buildKernelOptimizationCampaign,
+  reconcileKernelOptimizationCampaignPerJob,
   reconcileKernelOptimizationCampaignSettlement,
   summarizeKernelOptimizationCampaignSettlement,
 } from './kernel-optimization-campaign'
@@ -265,5 +267,145 @@ describe('kernel-optimization campaign reconciliation', () => {
     expect(report.discrepancies.some((d) => d.includes('campaignRef mismatch'))).toBe(
       true,
     )
+  })
+})
+
+describe('kernel-optimization campaign per-job reconciliation', () => {
+  const campaignRef = 'campaign.qwen35-smallest-4'
+  const buildFourJobCampaign = () =>
+    buildKernelOptimizationCampaign({ campaignRef, jobs: models.map(job) })
+
+  // Key each settlement to its dispatched job by the campaign's unique slug.
+  const keyedItem = (
+    campaign: ReturnType<typeof buildFourJobCampaign>,
+    index: number,
+    item: KernelOptimizationSettlementItem,
+  ): KernelOptimizationKeyedSettlementItem => ({
+    ...item,
+    requestedSlug: campaign.requests[index]!.requestedSlug ?? '',
+  })
+
+  const fullKeyedItems = (campaign: ReturnType<typeof buildFourJobCampaign>) => [
+    keyedItem(campaign, 0, {
+      budgetSats: 50_000,
+      verdict: verdictFor('qwen-3.5-0.5b', 523, verifiedParity),
+    }),
+    keyedItem(campaign, 1, {
+      budgetSats: 50_000,
+      verdict: verdictFor('qwen-3.5-1.8b', 410, verifiedParity),
+    }),
+    keyedItem(campaign, 2, {
+      budgetSats: 50_000,
+      verdict: verdictFor('qwen-3.5-4b', 600, rejectedParity),
+    }),
+    keyedItem(campaign, 3, {
+      budgetSats: 50_000,
+      verdict: verdictFor('qwen-3.5-7b', 300, verifiedParity),
+    }),
+  ]
+
+  test('matches every settlement to its dispatched job', () => {
+    const campaign = buildFourJobCampaign()
+    const report = reconcileKernelOptimizationCampaignPerJob(
+      campaign,
+      fullKeyedItems(campaign),
+    )
+
+    expect(report.classId).toBe(KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID)
+    expect(report.ok).toBe(true)
+    expect(report.discrepancies).toEqual([])
+    expect(report.matchedSlugs).toHaveLength(4)
+    expect(report.unsettledSlugs).toEqual([])
+    expect(report.unexpectedSlugs).toEqual([])
+    expect(report.duplicateSlugs).toEqual([])
+    expect(report.budgetMismatches).toEqual([])
+  })
+
+  test('names the specific dispatched job that was never settled', () => {
+    const campaign = buildFourJobCampaign()
+    const items = fullKeyedItems(campaign).slice(0, 3)
+    const report = reconcileKernelOptimizationCampaignPerJob(campaign, items)
+
+    expect(report.ok).toBe(false)
+    expect(report.matchedSlugs).toHaveLength(3)
+    expect(report.unsettledSlugs).toEqual([
+      campaign.requests[3]!.requestedSlug ?? '',
+    ])
+    expect(
+      report.discrepancies.some((d) => d.includes('never settled')),
+    ).toBe(true)
+  })
+
+  test('catches the offsetting double-settle the totals check misses', () => {
+    const campaign = buildFourJobCampaign()
+    const items = fullKeyedItems(campaign)
+    // Settle job 0 twice and drop job 3: job COUNT (4) and total escrow
+    // (200_000) both still match, so the totals reconciler would pass.
+    const tampered = [items[0]!, items[1]!, items[2]!, items[0]!]
+
+    const totals = reconcileKernelOptimizationCampaignSettlement(
+      campaign,
+      summarizeKernelOptimizationCampaignSettlement(
+        campaignRef,
+        tampered,
+      ),
+    )
+    expect(totals.jobCountReconciled).toBe(true)
+    expect(totals.escrowConserved).toBe(true)
+    expect(totals.ok).toBe(true)
+
+    const perJob = reconcileKernelOptimizationCampaignPerJob(campaign, tampered)
+    expect(perJob.ok).toBe(false)
+    expect(perJob.duplicateSlugs).toEqual([
+      campaign.requests[0]!.requestedSlug ?? '',
+    ])
+    expect(perJob.unsettledSlugs).toEqual([
+      campaign.requests[3]!.requestedSlug ?? '',
+    ])
+  })
+
+  test('flags a settlement for a job the campaign never dispatched', () => {
+    const campaign = buildFourJobCampaign()
+    const items = [
+      ...fullKeyedItems(campaign).slice(0, 3),
+      {
+        budgetSats: 50_000,
+        requestedSlug: 'kernel-opt-rmsnorm-not-in-this-campaign-cuda',
+        verdict: verdictFor('qwen-3.5-7b', 300, verifiedParity),
+      },
+    ]
+    const report = reconcileKernelOptimizationCampaignPerJob(campaign, items)
+
+    expect(report.ok).toBe(false)
+    expect(report.unexpectedSlugs).toEqual([
+      'kernel-opt-rmsnorm-not-in-this-campaign-cuda',
+    ])
+    expect(report.unsettledSlugs).toEqual([
+      campaign.requests[3]!.requestedSlug ?? '',
+    ])
+    expect(
+      report.discrepancies.some((d) => d.includes('never dispatched')),
+    ).toBe(true)
+  })
+
+  test('flags per-job escrow drift even when the slug matches', () => {
+    const campaign = buildFourJobCampaign()
+    const items = fullKeyedItems(campaign)
+    const tampered = [
+      items[0]!,
+      items[1]!,
+      items[2]!,
+      { ...items[3]!, budgetSats: 49_999 },
+    ]
+    const report = reconcileKernelOptimizationCampaignPerJob(campaign, tampered)
+
+    expect(report.ok).toBe(false)
+    expect(report.matchedSlugs).toHaveLength(3)
+    expect(report.budgetMismatches).toHaveLength(1)
+    expect(report.budgetMismatches[0]?.dispatchedSats).toBe(50_000)
+    expect(report.budgetMismatches[0]?.settledSats).toBe(49_999)
+    expect(
+      report.discrepancies.some((d) => d.includes('per-job escrow drift')),
+    ).toBe(true)
   })
 })

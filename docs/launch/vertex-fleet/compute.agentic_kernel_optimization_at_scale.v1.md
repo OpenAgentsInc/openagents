@@ -159,6 +159,45 @@ New artifact (in `apps/openagents.com/workers/api`):
 - The reconciliation is totals/count-level (escrow conservation + job count); it
   does not yet match each settlement item to its specific dispatched job, because
   the parity verdict carries no `kernelRef`. Per-target reconciliation remains.
+  (Addressed by the 2026-06-20 update below.)
 - Everything from the prior update still stands: live dispatch through the forum
   route, real worker tok/s + replayed output traces, and real escrow settled
   into dereferenceable receipts + owner sign-off.
+
+## Update 2026-06-20 — per-job (per-target) settlement reconciliation
+
+Further advances `blocker.product_promises.agentic_kernel_optimization_at_scale_run_missing`
+by closing the gap the prior update explicitly named: the existing
+reconciliation was totals-level (job count + escrow conservation) and could not
+say WHICH job drifted, nor catch offsetting errors that net to zero. The parity
+verdict carries the target model/device/hardware but not the dispatched job's
+identity, so matching is keyed instead on the campaign's already-guaranteed-
+unique `requestedSlug`.
+
+New artifact (in `apps/openagents.com/workers/api`):
+
+- `reconcileKernelOptimizationCampaignPerJob(campaign, items)` (added to
+  `src/kernel-optimization-campaign.ts`) matches each
+  `KernelOptimizationKeyedSettlementItem` (a settlement item plus the
+  `requestedSlug` it settles) to its specific dispatched request. It returns a
+  `KernelOptimizationCampaignPerJobReconciliation` whose `ok` gate must hold
+  before the rail releases any per-job payout/refund, naming: `matchedSlugs`
+  (settled exactly once with the dispatched escrow), `unsettledSlugs`
+  (dispatched but never settled), `unexpectedSlugs` (settled but never
+  dispatched by this campaign), `duplicateSlugs` (settled more than once), and
+  `budgetMismatches` (per-job settled escrow != dispatched escrow). It moves no
+  money and never throws.
+- `src/kernel-optimization-campaign.test.ts` — 5 new tests (16 total),
+  including a case that double-settles one job and drops another so the
+  totals-level reconciler still passes (job count 4, escrow 200_000 both match)
+  while the per-job reconciler correctly fails it.
+
+### What still remains for the at-scale run (blocker NOT cleared)
+
+- Matching is by `requestedSlug` (the on-rail job id), not by the parity
+  verdict's own target — wiring the verdict's target back to the dispatched job
+  end-to-end remains.
+- Everything from the prior updates still stands: live dispatch through the
+  forum route, real worker tok/s + replayed output traces, and real escrow
+  settled into dereferenceable receipts + owner sign-off. The March 2026 result
+  stays historical-demo only. No promise state changed; no blocker dropped.
