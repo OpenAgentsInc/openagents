@@ -2,7 +2,49 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
-## What this change adds
+## 2026-06-20 update — eval-delta payment settlement computation
+
+**Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
+
+The payment policy (`apps/openagents.com/docs/2026-06-10-cs336-a4-data-refinery-payment-policy.md`,
+"Eval-Delta Bonus Design") documented the bonus formula
+`bonus_sats = round(clamp(delta, 0, delta_cap) * bonus_rate_sats_per_unit)`
+and its anti-gaming boundaries as **prose only** — no code turned a measured
+eval delta into a settlement decision. This change adds that deterministic,
+fail-closed function:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.test.ts` (10 tests)
+
+`settleCs336A4EvalDeltaPayment` takes a real held-constant-trainer measurement
+(filtered vs unfiltered baseline downstream eval score on the same source) plus
+the producing stage's recompute-verified flag and optional operator funding
+parameters, and returns either a `payable` settlement (with `settledBonusSats`)
+or a `blocked` settlement carrying the documented reason + blocker refs. It
+**fabricates nothing**: it never invents a delta, and the default path (no
+funding parameters) returns `funding_parameters_unset`. Enforced boundaries:
+
+- the producing stage must be `deterministic_recompute` verified;
+- `delta > 0` is required (no penalty for neutral filtering, no bonus for
+  regressions);
+- the delta is clamped to `deltaCap` before pricing;
+- funding parameters must be set and positive — unset until funding is approved.
+
+No wallet/invoice/preimage material is accepted or emitted; the function
+computes a public-safe sats amount and basis, not a payment instrument.
+
+### What genuinely remains (blocker NOT cleared)
+
+`eval_delta_payment_missing` stays listed: this is the settlement *computation*,
+not a real payment. No fixed-trainer eval loop has produced a real eval-delta
+measurement, no operator funding parameters are set, and this function is not
+yet wired into A4 closeout, the `a4_eval_delta` leaderboard, or a settlement
+receipt. The promise's green criterion — "at least one eval-delta payment
+computed from a fixed reference model" backed by a Verified
+`deterministic_recompute` shard — is unmet. `crawl_scale_corpus_missing` is
+untouched.
+
+## 2026-06-19 — corpus provenance receipt builder
 
 **Blocker advanced:** `blocker.product_promises.corpus_provenance_receipts_missing`.
 
