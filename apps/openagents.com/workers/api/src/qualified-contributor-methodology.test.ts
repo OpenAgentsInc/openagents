@@ -2,6 +2,8 @@
 //
 // Promise: pylon.consumer_compute_earns_bitcoin_self_serve.v1
 // Blocker:  blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing
+import { readFileSync } from 'node:fs'
+
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -639,5 +641,76 @@ describe('verifyQualifiedContributorMethodologyDocument', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.errors).toContain('not-an-object:$')
+  })
+})
+
+// The documented remaining step for this blocker is running
+// `verifyQualifiedContributorMethodologyDocument` against the live run's REAL
+// evidence FILE. Every test above builds the document in-memory; these tests
+// exercise the actual file -> JSON.parse -> verify path against the checked-in
+// public-safe SHAPE TEMPLATE, so the harness is proven for the real evidence
+// file (the template is synthetic and asserts no real claim — see its README).
+describe('qualified-contributor methodology — evidence document template', () => {
+  const loadTemplate = (): unknown =>
+    JSON.parse(
+      readFileSync(
+        new URL(
+          './fixtures/qualified-contributor-methodology-evidence.template.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    )
+
+  test('the checked-in template parses and conforms via the fused entry', () => {
+    const result = verifyQualifiedContributorMethodologyDocument(loadTemplate())
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.verdict.conforms).toBe(true)
+    expect(result.verdict.qualifiedContributorCount).toBe(2)
+    expect(result.verdict.reasons).toEqual([])
+  })
+
+  test('the template uses only synthetic placeholder refs (no live evidence)', () => {
+    const parsed = parseQualifiedContributorMethodologyInput(loadTemplate())
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    for (const contributor of parsed.value.contributors) {
+      expect(contributor.pylonRef.startsWith('pylon.example.')).toBe(true)
+      for (const leaseRef of contributor.leaseRefs) {
+        expect(leaseRef.startsWith('lease.example.')).toBe(true)
+      }
+      for (const receipt of contributor.settlementReceipts) {
+        expect(receipt.receiptRef.startsWith('receipt.example.')).toBe(true)
+      }
+    }
+  })
+
+  test('an evidence file with a leak-prone extra field fails the boundary on disk', () => {
+    const doc = loadTemplate() as {
+      contributors: Array<Record<string, unknown>>
+    }
+    const firstContributor = doc.contributors[0]
+    if (firstContributor === undefined) throw new Error('template missing contributor')
+    firstContributor.rawSparkAddress = 'sp1qexample'
+    const result = verifyQualifiedContributorMethodologyDocument(doc)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors).toContain(
+      'unexpected-key:$.contributors[0].rawSparkAddress',
+    )
+  })
+
+  test('an evidence file with an inflated claimed count parses but does not conform', () => {
+    const doc = loadTemplate() as { claimedQualifiedContributorCount: number }
+    doc.claimedQualifiedContributorCount = 3
+    const result = verifyQualifiedContributorMethodologyDocument(doc)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.verdict.conforms).toBe(false)
+    expect(result.verdict.qualifiedContributorCount).toBe(2)
+    expect(result.verdict.reasons).toContain(
+      QualifiedRunReason.ClaimedCountMismatch,
+    )
   })
 })
