@@ -582,3 +582,70 @@ remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
 untouched. No promise state changed; any future green flip remains receipt-first
 and owner-signed.
+
+---
+
+## Update (2026-06-20): customer-authorization registry (lawful-basis anchor)
+
+Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
+(partially — see "What remains"; blocker NOT dropped).
+
+Section 3 ("Lawful basis and authorization") of the published privacy policy
+(`docs/legal/external-repo-studying-privacy-policy.v0.md`) states OpenAgents
+processes a customer's external repo ONLY with the customer's recorded
+authorization (`customerAuthorizationRef`), and Section 6 says a customer may
+WITHDRAW it. But every gate consuming that ref (privacy-review, self-serve upload,
+and data-subject-request preflights) checked only that it was a non-empty
+STRING — any string passed, including a forged or stale one, and nothing modeled
+withdrawal. This change introduces the verification primitive that closes that
+forgeable-string seam on the lawful-basis anchor, mirroring the scan-attestation
+and privacy-policy registries.
+
+### What was built
+
+- `packages/probe/packages/runtime/src/benchmark/external-repo-studying-customer-authorization-registry.ts`
+  - `buildOpenAgentsExternalRepoStudyCustomerAuthorizationRegistry(...)`
+  - Schema `openagents.external_repo_study_customer_authorization_registry.v0`,
+    decoded through `validateProbeBenchmarkPublicProjection` + a deterministic
+    `registryHash`. Records issued authorizations as refs/enums/dates only, each
+    bound to a SPECIFIC `(customerRef, repo)` with a `scope`
+    (`external_repo_study`) and `status` (`active | withdrawn`), pinned with a
+    deterministic `authorizationDigest`
+    (`externalRepoStudyCustomerAuthorizationDigest`) from which `authorizationRef`
+    is derived — so a recorded grant cannot drift from the customer/repo/grant/
+    status it covered.
+  - `isActiveCustomerAuthorizationRef(registry, ref, { customerRef, repo })`
+    closes the forgeable-string seam exactly as `isCleanScanAttestationRef` did:
+    a study's `customerAuthorizationRef` must match a KNOWN, ACTIVE authorization
+    for THAT exact customer + repo. A WITHDRAWN authorization (Section 6
+    revocation), an unknown/empty ref, or any customer/repo mismatch returns
+    false.
+  - Validator enforces unique refs, sha256 digests, digest/ref recomputation,
+    and refuses `OpenAgentsInc/openagents`.
+  - **Inert by construction**: `effectsApplied` / `customerPublicClaimAllowed` /
+    `marketplacePackageAllowed` / `payoutEligible` are ALWAYS false. Recording
+    (or withdrawing) an authorization obtains no consent, processes no customer
+    data, reads no repo bytes, and grants no ingestion.
+    `sourceBoundary = "customer_refs_withheld"`.
+- `packages/probe/packages/runtime/tests/external-repo-studying-customer-authorization-registry.test.ts`
+  — 6 passing tests (inert active record, empty registry verifies nothing,
+  known-active-ref-only matching with forged/mismatch rejection, withdrawn never
+  verifies active, OpenAgents-repo rejection, no-leak serialization).
+- Exported from `packages/probe/packages/runtime/src/index.ts`.
+
+### What genuinely remains (blocker NOT dropped)
+
+This registry is the *verification primitive* only. The next step (mirroring how
+the policy registry was consumed by the review↔policy binding and the
+scan-attestation registry by the scan↔upload binding) is a binding that DERIVES
+the privacy-review / upload / DSR preflights' `customerAuthorizationRef` from a
+registry-known ACTIVE authorization, so those gates can no longer accept a
+caller-supplied string. The privacy-policy blocker also still requires a real
+human/legal review against a real customer study, durable access-controlled
+storage that enforces the declared retention window and real revocation, and an
+owner-signed armed clearance with a dereferenceable closeout receipt per
+`proof.claim_upgrade_receipts.v1` — all owner/legal-gated and out of scope here.
+The remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
+`pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
+untouched. No promise state changed; any future green flip remains receipt-first
+and owner-signed.
