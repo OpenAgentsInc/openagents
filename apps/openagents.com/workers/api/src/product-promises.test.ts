@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.50')
+    expect(decoded.version).toBe('2026-06-20.51')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -1142,24 +1142,29 @@ describe('public product promises document', () => {
     expect(partnerPromise).toMatchObject({
       state: 'red',
       blockerRefs: [
-        'blocker.product_promises.partner_attribution_policy_missing',
         'blocker.product_promises.partner_payout_settlement_not_wired',
         'blocker.product_promises.partner_first_real_payout_pending',
       ],
       evidenceRefs: expect.arrayContaining([
         'apps/openagents.com/workers/api/src/partner-payout-public-projection.ts',
         'apps/openagents.com/workers/api/src/partner-payout-public-routes.ts',
+        'apps/openagents.com/workers/api/src/partner-attribution-policy.ts',
+        'apps/openagents.com/workers/api/src/partner-agreement-routes.ts',
+        'route:/api/operator/partners/agreements',
         'route:/api/public/partner-payouts',
       ]),
     })
     expect(partnerPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.partner_projection_api_missing',
     )
+    expect(partnerPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.partner_attribution_policy_missing',
+    )
     expect(partnerPromise?.safeCopy).toContain(
-      'public-safe count-only partner-payout projection API',
+      'explicit-agreement-only attribution policy',
     )
     expect(partnerPromise?.verification).toContain(
-      'clears the projection API blocker only',
+      'clears the projection API and partner-attribution-policy blockers only',
     )
     expect(partnerPromise?.authorityBoundary).toContain(
       'public aggregate projections are not spendable value',
@@ -1303,12 +1308,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.50', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.51', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.50',
+      expectedVersion: '2026-06-20.51',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.50',
+      servedVersion: '2026-06-20.51',
       status: 'ready',
     })
     expect(
@@ -1318,7 +1323,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.50',
+      servedVersion: '2026-06-20.51',
       status: 'blocked',
     })
   })

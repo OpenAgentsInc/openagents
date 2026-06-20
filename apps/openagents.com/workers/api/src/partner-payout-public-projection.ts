@@ -36,7 +36,6 @@ const PARTNER_PAYOUT_PUBLIC_CAVEAT_REFS = [
 ] as const
 
 const PARTNER_PAYOUT_PUBLIC_BLOCKER_REFS = [
-  'blocker.product_promises.partner_attribution_policy_missing',
   'blocker.product_promises.partner_payout_settlement_not_wired',
   'blocker.product_promises.partner_first_real_payout_pending',
 ] as const

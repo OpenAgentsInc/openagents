@@ -743,6 +743,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Operator-only public-safe query for consumed Site referral attributions: claimed captures with first verification timestamps and no private referred-user contact data, token hashes, wallet material, payment payloads, or provider grants.',
       },
       {
+        id: 'operator_partner_agreements',
+        href: 'https://openagents.com/api/operator/partners/agreements',
+        method: 'GET/POST',
+        auth: 'admin_api_token',
+        description:
+          'Operator-only partner agreement seed/readback route for the explicit-agreement partner-attribution policy. It records or lists who may be attributed for a paying customer and does not create payout eligibility by itself, move money, expose payout destinations, or grant settlement authority.',
+      },
+      {
         id: 'operator_site_referral_payout_ledger_transition',
         href: 'https://openagents.com/api/operator/sites/referrals/payout-ledger/{payoutRef}/transitions',
         method: 'POST',

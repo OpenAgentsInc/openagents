@@ -3,10 +3,20 @@ import { Effect } from 'effect'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { publicOmniContributorAccrualBundleProjection } from './omni-contributor-accrual-bundle'
 import { dereferenceOmniContributorAccrualBundle } from './omni-contributor-accrual-bundle-store'
-import { liveAtReadStaleness } from './public-projection-staleness'
+import {
+  liveAtReadStaleness,
+  type PublicProjectionStalenessContract,
+} from './public-projection-staleness'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
+
+export type OmniContributorAccrualBundleEnvelope = Readonly<{
+  bundle: ReturnType<typeof publicOmniContributorAccrualBundleProjection>
+  economicsId: string
+  generatedAt: string
+  staleness: PublicProjectionStalenessContract
+}>
 
 /**
  * Staleness contract (epic #4751). This surface is composed live from the

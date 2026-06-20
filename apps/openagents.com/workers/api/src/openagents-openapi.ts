@@ -3033,6 +3033,164 @@ const schemaComponents = (): JsonSchema => ({
       totalCurrentPayouts: { type: 'integer', minimum: 0 },
     },
   },
+  CreatePartnerAgreementRequest: {
+    type: 'object',
+    additionalProperties: false,
+    description:
+      'Operator-only seed for an explicit partner agreement. The writer enforces referral-role exclusion, self-agreement exclusion, effective-window consistency, and public-safe refs. It does not create payout eligibility or move money.',
+    required: [
+      'agreementRef',
+      'customerUserId',
+      'effectiveFromIso',
+      'partnerRef',
+      'partnerUserId',
+      'role',
+    ],
+    properties: {
+      agreementRef: { type: 'string', minLength: 1, maxLength: 220 },
+      customerUserId: { type: 'string', minLength: 1, maxLength: 220 },
+      effectiveFromIso: { type: 'string', format: 'date-time' },
+      effectiveUntilIso: {
+        anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
+      },
+      id: { type: 'string', minLength: 1, maxLength: 220 },
+      partnerRef: { type: 'string', minLength: 1, maxLength: 220 },
+      partnerUserId: { type: 'string', minLength: 1, maxLength: 220 },
+      role: {
+        type: 'string',
+        enum: ['design_partner', 'referral', 'affiliate'],
+      },
+    },
+  },
+  PartnerAgreementProjection: {
+    type: 'object',
+    additionalProperties: false,
+    description:
+      'Operator readback projection of a stored partner agreement. The customer user id is intentionally not echoed.',
+    required: [
+      'agreementRef',
+      'effectiveFromIso',
+      'effectiveUntilIso',
+      'partnerRef',
+      'partnerRole',
+      'partnerUserId',
+    ],
+    properties: {
+      agreementRef: { type: 'string' },
+      effectiveFromIso: { type: 'string', format: 'date-time' },
+      effectiveUntilIso: {
+        anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
+      },
+      partnerRef: { type: 'string' },
+      partnerRole: {
+        type: 'string',
+        enum: ['design_partner', 'referral', 'affiliate'],
+      },
+      partnerUserId: { type: 'string' },
+    },
+  },
+  PartnerAgreementResponse: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['agreement'],
+    properties: {
+      agreement: { $ref: '#/components/schemas/PartnerAgreementProjection' },
+    },
+  },
+  PartnerAgreementListResponse: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['agreements'],
+    properties: {
+      agreements: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/PartnerAgreementProjection' },
+      },
+    },
+  },
+  ArtanisLaborReceiptFeedProjection: {
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'Public-safe Artanis unattended labor receipt feed. It projects content-addressed labor request receipts and summary counts without granting dispatch, spend, settlement, moderation, or registry authority.',
+    required: [
+      'authorityBoundary',
+      'filter',
+      'generatedAt',
+      'kind',
+      'publicSafe',
+      'rows',
+      'schemaVersion',
+      'staleness',
+      'summary',
+    ],
+    properties: {
+      authorityBoundary: { type: 'string' },
+      filter: { type: 'object' },
+      generatedAt: { type: 'string', format: 'date-time' },
+      kind: {
+        type: 'string',
+        enum: ['artanis_labor_unattended_request_receipt_feed'],
+      },
+      publicSafe: { type: 'boolean' },
+      rows: { type: 'array', items: { type: 'object' } },
+      schemaVersion: {
+        type: 'string',
+        enum: ['openagents.artanis_labor_receipt_feed.v1'],
+      },
+      staleness: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'composition',
+          'contractVersion',
+          'maxStalenessSeconds',
+          'rebuildsOn',
+        ],
+        properties: {
+          composition: { type: 'string', enum: ['live_at_read'] },
+          contractVersion: {
+            type: 'string',
+            enum: ['projection_staleness.v1'],
+          },
+          maxStalenessSeconds: { type: 'integer', enum: [0] },
+          rebuildsOn: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      summary: { type: 'object' },
+    },
+  },
+  OmniContributorAccrualBundleEnvelope: {
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'Public-safe accepted-outcome contributor accrual bundle envelope. It dereferences contributor accrual provenance and staleness for one accepted-outcome economics id without making accruals payable balances or settlement evidence.',
+    required: ['bundle', 'economicsId', 'generatedAt', 'staleness'],
+    properties: {
+      bundle: { type: 'object' },
+      economicsId: { type: 'string' },
+      generatedAt: { type: 'string', format: 'date-time' },
+      staleness: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'composition',
+          'contractVersion',
+          'maxStalenessSeconds',
+          'rebuildsOn',
+        ],
+        properties: {
+          composition: { type: 'string', enum: ['live_at_read'] },
+          contractVersion: {
+            type: 'string',
+            enum: ['projection_staleness.v1'],
+          },
+          maxStalenessSeconds: { type: 'integer', enum: [0] },
+          rebuildsOn: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    },
+  },
   SiteReferralPayoutTransitionRequest: objectSummary(
     'Operator-only append-only Site referral payout ledger transition request.',
   ),
@@ -4390,6 +4548,41 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/public/payments/contributor-accrual-bundle': {
+    get: operation({
+      operationId: 'getPublicContributorAccrualBundle',
+      summary: 'Get contributor accrual bundle',
+      description:
+        'Public read-only dereference route for an accepted-outcome contributor accrual bundle. It requires an economicsId query parameter and returns public-safe provenance plus a live-at-read staleness contract. It does not make accruals payable, settle contributors, move money, or expose private payout material.',
+      tags: ['Payments'],
+      security: publicRead,
+      parameters: [
+        queryParam(
+          'economicsId',
+          'Required accepted-outcome economics identifier to dereference.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Public contributor accrual bundle envelope.',
+          '#/components/schemas/OmniContributorAccrualBundleEnvelope',
+        ),
+        '400': okJson(
+          'economicsId query parameter is missing.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        '404': okJson(
+          'Accepted-outcome economics record was not found.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        '422': okJson(
+          'Contributor provenance is incomplete.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/public/artanis/report': {
     get: operation({
       operationId: 'getPublicArtanisReport',
@@ -4402,6 +4595,30 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Artanis report.',
           '#/components/schemas/PublicArtanisReport',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/artanis/labor-receipts': {
+    get: operation({
+      operationId: 'getPublicArtanisLaborReceipts',
+      summary: 'Get public Artanis labor receipt feed',
+      description:
+        'Public read-only feed for content-addressed Artanis unattended labor request receipts. Optional receiptRef performs a point read, and optional terminalState narrows listed rows. The feed re-verifies receipt bytes against their refs and grants no dispatch, spend, settlement, moderation, or registry authority.',
+      tags: ['Artanis'],
+      security: publicRead,
+      parameters: [
+        queryParam('receiptRef', 'Optional exact Artanis labor receipt ref.'),
+        queryParam(
+          'terminalState',
+          'Optional terminal state filter for listed rows.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Public Artanis labor receipt feed projection.',
+          '#/components/schemas/ArtanisLaborReceiptFeedProjection',
         ),
         ...errorResponses(),
       },
@@ -10201,6 +10418,67 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public count-only partner payout ledger projection.',
           '#/components/schemas/PartnerPayoutsPublicProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/partners/agreements': {
+    get: operation({
+      operationId: 'listPartnerAgreements',
+      summary: 'List active partner agreements',
+      description:
+        'Operator-only readback for explicit partner agreements covering a customer. This supports the no-inferred-fallback partner-attribution policy and returns operator fields only; it does not create payout eligibility, expose payout destinations, or move money.',
+      tags: ['Sites'],
+      security: adminBearer,
+      parameters: [
+        queryParam(
+          'customerUserId',
+          'Required paying-customer user id whose active partner agreements should be listed.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Active partner agreement projections.',
+          '#/components/schemas/PartnerAgreementListResponse',
+        ),
+        '400': okJson(
+          'customerUserId is missing or malformed.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        '401': okJson(
+          'Admin bearer token is missing or invalid.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'createPartnerAgreement',
+      summary: 'Seed partner agreement',
+      description:
+        'Operator-only writer for an explicit partner agreement. The route validates the agreement against the partner-attribution policy, is idempotent on agreementRef, and records who may be attributed for a future paid customer event. It does not create payout eligibility or move money.',
+      tags: ['Sites'],
+      security: adminBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/CreatePartnerAgreementRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Stored partner agreement projection.',
+          '#/components/schemas/PartnerAgreementResponse',
+        ),
+        '400': okJson(
+          'Request body failed schema decoding.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        '401': okJson(
+          'Admin bearer token is missing or invalid.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        '422': okJson(
+          'Agreement was rejected by the attribution policy.',
+          '#/components/schemas/ErrorResponse',
         ),
         ...errorResponses(),
       },
