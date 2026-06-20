@@ -210,6 +210,42 @@ production binding shape the harness was missing.
   prompt), and there is no registered-agent production smoke. The blocker
   REMAINS listed.
 
+### 2026-06-20 update — upstream public-safe ref-resolver for the prompt
+
+- `blocker.product_promises.production_hosted_gemini_executor_binding_missing`
+  — **further advanced, still NOT cleared.** Every layer was wired, but the
+  request runner framed the prompt REFS-ONLY: the user message carried only the
+  work-order/task/objective refs, so a live adapter could not act on the actual
+  task. The documented missing piece was the resolver that dereferences those
+  refs into real content. This change adds it (and its public-safe gate):
+  - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-content-resolver.ts`
+    — `HostedGeminiRefContentResolver` (an INJECTED `(ref) => Promise<string |
+    undefined>` seam, so the module reaches no datastore by itself),
+    `sanitizeResolvedSnippet` (strips control chars, collapses whitespace, bounds
+    length to `MAX_HOSTED_GEMINI_SNIPPET_CHARS`, and DROPS whole any snippet
+    matching a known secret fingerprint — PEM keys, `sk-`/`AKIA`/`ghp_`/Slack/
+    Google/JWT tokens — so credentials in referenced content never reach the
+    prompt), and `resolveHostedGeminiPromptContext` (dereferences task + objective
+    refs into sanitized content, declining when the task ref yields no safe
+    content, best-effort skipping empty/unresolvable/unsafe objective refs).
+  - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-request-runner.ts`
+    — `buildHostedGeminiInferenceRequest` accepts an optional `resolvedContext`
+    and appends the public-safe `task_content` + `objective_content[i]` lines
+    (refs retained for provenance); the runner config gains an optional
+    `resolveRefContent` resolver that, when armed, enriches the prompt and
+    otherwise falls back to the existing refs-only frame.
+  - Tests: `autopilot-hosted-gemini-content-resolver.test.ts` (new, 11 cases:
+    whitespace/control collapse, length bound, secret-fingerprint drops for PEM +
+    token shapes, full dereference, decline on unresolvable/secret-only task,
+    skip of empty/missing/unsafe objectives, blank-task short-circuit) and 2 new
+    runner cases (resolved content embedded when armed; refs-only frame retained
+    when the resolver yields nothing safe). Resolver + runner suites: 22 pass.
+
+  **Honest scope:** the resolver remains INJECTED — no live datastore-backed
+  implementation is wired into the worker dependency graph (the bound executor
+  still passes no resolver, so prod stays refs-only), and there is no
+  registered-agent production smoke. The blocker REMAINS listed.
+
 ## What remains (for green)
 
 - Arm the bound executor on a real deployment (`HOSTED_GEMINI_EXECUTOR_ENABLED`
@@ -219,9 +255,11 @@ production binding shape the harness was missing.
   (`makeHostedGeminiExecuteReadyWork`), and BOUND in the live worker graph
   (`index.ts`, 2026-06-20 update above) — but it is INERT until an operator both
   arms the flag and provisions the secret for this lane.
-- An upstream ref-resolver that dereferences task/acceptance refs into the real
-  content the hosted Gemini adapter should act on (the runner currently builds a
-  refs-only prompt).
+- A LIVE, datastore-backed ref-resolver implementation wired into the worker
+  dependency graph. The resolver SEAM + public-safe gate now exist and the runner
+  consumes them (`autopilot-hosted-gemini-content-resolver.ts`, 2026-06-20 update
+  above), but no concrete `HostedGeminiRefContentResolver` is provisioned in
+  `index.ts`, so prod still frames the prompt refs-only.
 - A registered-agent production smoke proving a paid hosted Gemini work order
   delivered end-to-end.
 - `blocker.product_promises.public_paid_model_gateway_missing` — the hosted
