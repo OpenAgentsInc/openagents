@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.31')
+    expect(decoded.version).toBe('2026-06-20.32')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -242,6 +242,10 @@ describe('public product promises document', () => {
     // The 2026-06-20.31 fixture-sync receipt pass clears only the fixture-sync
     // blocker; paid dispatch, preference rollout, and vibe-test gates remain
     // blocked, so green remains exactly 24.
+    // The 2026-06-20.32 LLM-computer definition-spec pass clears only the
+    // llm_computer_training_run_definition_missing blocker on the (red)
+    // world-first claim; the evidence-pack and owner-signed-upgrade blockers
+    // remain, so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -432,11 +436,12 @@ describe('public product promises document', () => {
         expect.objectContaining({
           promiseId: 'claims.world_first_public_llm_computer_training_run.v1',
           state: 'red',
-          blockerRefs: expect.arrayContaining([
+          blockerRefs: expect.not.arrayContaining([
             'blocker.product_promises.llm_computer_training_run_definition_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
             'promise:compute.tassadar_executor_poc.v1',
+            'docs/launch/2026-06-20-llm-computer-training-run-definition.md',
           ]),
         }),
         expect.objectContaining({
@@ -1054,12 +1059,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.31', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.32', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.31',
+      expectedVersion: '2026-06-20.32',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.31',
+      servedVersion: '2026-06-20.32',
       status: 'ready',
     })
     expect(
@@ -1069,7 +1074,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.31',
+      servedVersion: '2026-06-20.32',
       status: 'blocked',
     })
   })
