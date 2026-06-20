@@ -363,6 +363,34 @@ const readByIdempotencyKey = (
       .first<EconomicsRow>(),
   ).pipe(Effect.map(row => (row === null ? null : rowToRecord(row))))
 
+/**
+ * Read one stored accepted-outcome economics record by its accepted-outcome id.
+ *
+ * Mirrors readByIdempotencyKey but keys on the record id, which is the identity a
+ * downstream view (gross-margin receipt, contributor accrual bundle) dereferences
+ * by. Returns null for an unknown or archived id rather than failing, so callers
+ * can distinguish "no such outcome" from a storage fault. Read-only.
+ */
+export const readOmniAcceptedOutcomeEconomicsById = (
+  db: D1Database,
+  id: string,
+): Effect.Effect<
+  OmniAcceptedOutcomeEconomicsRecord | null,
+  OmniAcceptedOutcomeEconomicsStorageError
+> =>
+  d1Effect('omniAcceptedOutcomeEconomics.byId', () =>
+    db
+      .prepare(
+        `SELECT *
+           FROM omni_accepted_outcome_economics
+          WHERE id = ?
+            AND archived_at IS NULL
+          LIMIT 1`,
+      )
+      .bind(id)
+      .first<EconomicsRow>(),
+  ).pipe(Effect.map(row => (row === null ? null : rowToRecord(row))))
+
 const readWorkroom = (
   db: D1Database,
   workroomId: string,

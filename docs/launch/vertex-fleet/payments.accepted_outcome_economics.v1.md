@@ -201,6 +201,41 @@ events, and the `not_yet_evidenced` payable/settlement evidence that depends on
 the untouched `settlement_state_machine_incomplete` blocker. The blocker stays
 listed in the registry.
 
+## Follow-on change: persisted bundle dereference seam (by id)
+
+`apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle-store.ts` —
+the step that goes from an accepted-outcome **id** to its reconciled bundle. The
+pure pipeline already turned ONE record into the receipt + accrual ledger
+(`buildOmniContributorAccrualBundleFromRecord`), but every caller had to already
+hold the record; nothing read it from storage by id. This closes that gap:
+
+- `readOmniAcceptedOutcomeEconomicsById(db, id)` is added to
+  `omni-accepted-outcome-economics.ts` (previously only `readByIdempotencyKey`
+  existed) — a read-only `SELECT ... WHERE id = ? AND archived_at IS NULL` that
+  returns `null` for an unknown/archived id rather than failing.
+- `dereferenceOmniContributorAccrualBundle(db, economicsId)` reads that record and
+  builds the reconciled bundle. It returns `null` for an unknown outcome (so a
+  caller distinguishes "no such outcome" from a storage fault), and fails with a
+  tagged `OmniContributorAccrualBundleDereferenceError` when a record EXISTS but
+  cannot be attributed (e.g. it names no contributor parties) — the absence of
+  provenance is surfaced honestly, never papered over. It writes nothing and moves
+  no money; it is a query path only, and the no-collapse / settlement-disclaimed
+  discipline is preserved by the underlying builders.
+
+Tests: `apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle-store.test.ts`
+(6 tests, passing) cover id→bundle dereference with reconciled margin and sourced
+contributors, settlement staying disclaimed across both halves, `null` for unknown
+and for archived ids, the honest failure when parties are absent, and determinism.
+
+This advances `blocker.product_promises.contributor_ledger_missing` —
+**partially advanced, NOT cleared.** It closes the "queryable by accepted-outcome
+id" half of the persisted-dereference gap. What STILL remains: an HTTP read route
+that exposes this seam over the wire (the dereference is an Effect, not yet wired
+into a Worker route); the producer side that WRITES `metadata.contributors` from
+real workroom/contract events; and the `not_yet_evidenced` payable/settlement
+evidence that depends on the untouched `settlement_state_machine_incomplete`
+blocker. The blocker stays listed in the registry.
+
 ## What genuinely remains (blocker stays listed)
 
 - A persisted/queryable receipt record and a read route so a reviewer can
