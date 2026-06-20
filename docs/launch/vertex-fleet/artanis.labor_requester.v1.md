@@ -234,6 +234,37 @@ that gap:
     clean feed verified-and-counted, empty feed verifies to zero, and a feed with
     one forged row throws on that row.
 
+## What this run adds (untrusted-bytes consumer parse boundary)
+
+The consumer-side verifier (`verifyArtanisLaborReceiptFeed` /
+`verifyArtanisLaborReceiptFeedRow`) re-derives each row's content-address from
+its public fields, but it took an **already-typed**
+`ArtanisLaborReceiptFeedProjection`. A real third party does not start with a
+typed projection — it starts with raw JSON bytes downloaded from `GET
+/api/public/artanis/labor-receipts`. To use the verifier it had to cast that
+untrusted JSON to the typed shape (an unchecked `as`), which defeats the point of
+independent verification. This run closes that gap:
+
+- `apps/openagents.com/workers/api/src/artanis-labor-receipt-feed-verify.ts` (extended)
+  - `parseArtanisLaborReceiptFeed(serialized)` is the untrusted-bytes parse
+    boundary: it decodes through the sanctioned `parseJsonUnknown` json-boundary,
+    validates the envelope (`schemaVersion`) and every row's field types and the
+    terminal-state enum, and returns typed
+    `ArtanisLaborReceiptFeedRow`s — or throws `ArtanisLaborReceiptError`. It does
+    only structural validation; it does not re-derive content-addresses.
+  - `parseAndVerifyArtanisLaborReceiptFeed(serialized)` is the one-call third-party
+    entry point: parse the raw feed bytes, then re-derive every row's
+    content-address and confirm it matches the served ref. A non-throwing return
+    means every served receipt is structurally valid AND self-consistent under its
+    own content address — all from untrusted bytes, with no `as`-cast and no trust
+    in the server. Mints no payment, identity, or settlement authority; reads only
+    public fields.
+- `apps/openagents.com/workers/api/src/artanis-labor-receipt-feed-verify.test.ts` (extended)
+  - 9 new cases: raw bytes parse+verify end to end, parse-only typed rows, empty
+    feed, non-JSON rejection, non-object envelope rejection, unrecognized
+    `schemaVersion`, non-array `rows`, unrecognized row `terminalState`, and a
+    structurally-valid-but-tampered row that parses yet fails verification.
+
 ## What remains
 
 - The receipt is now **minted by a run, persistable, dereferenceable,
