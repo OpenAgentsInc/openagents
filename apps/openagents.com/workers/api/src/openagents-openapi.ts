@@ -24,6 +24,7 @@ import { PublicLaunchDashboardEndpoint } from './public-launch-dashboard'
 import { TassadarPerceptaArchitectureReceiptsEndpoint } from './tassadar-percepta-architecture-receipts'
 import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-derisking-ledger'
 import { TrainingFullPipelineProgramEndpoint } from './training-full-pipeline-program'
+import { TrainingModelLadderRungsEndpoint } from './training-model-ladder-rungs'
 import { TrainingPublicGradientWindowsEndpoint } from './training-public-gradient-windows'
 import { TrainingPostTrainingDpoPreferenceWorkloadEndpoint } from './training-post-training-dpo-preference-workload'
 import { TrainingPostTrainingInstructSftEndpoint } from './training-post-training-instruct-sft'
@@ -544,6 +545,104 @@ export const TrainingFullPipelineProgramEnvelope: JsonSchema = {
         },
       },
     },
+    staleness: { type: 'object' },
+    status: { type: 'string' },
+    unsafeCopy: { type: 'string' },
+  },
+}
+
+export const TrainingModelLadderRungsEnvelope: JsonSchema = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Public-safe model-ladder rung status projection for training.model_ladder.v1. Carries generatedAt, registryVersion, a live_at_read staleness contract, R0-R4 rung rows, R1 closeout criteria, the published economics-gate format, and explicit blockers. It keeps r1FullRehearsalAvailable=false, r1CloseoutReceiptAvailable=false, r2NetworkRungReceiptAvailable=false, and greenGateSatisfied=false until real closeout receipts exist. It exposes refs and status only: no raw datasets, private runner logs, provider payloads, wallet material, payment material, dispatch authority, settlement, schedule commitment, network-training claim, capability claim, model promotion, or green product-promise authority.',
+  required: [
+    'authorityBoundary',
+    'economicsGate',
+    'endpoint',
+    'gate',
+    'generatedAt',
+    'promiseRef',
+    'promiseState',
+    'r1CloseoutCriteria',
+    'registryVersion',
+    'rungSummary',
+    'rungs',
+    'schemaVersion',
+    'sourceRefs',
+    'staleness',
+    'status',
+    'unsafeCopy',
+  ],
+  properties: {
+    authorityBoundary: { type: 'string' },
+    economicsGate: {
+      type: 'object',
+      additionalProperties: true,
+      required: [
+        'fieldCount',
+        'fields',
+        'formatAvailable',
+        'formatDocRef',
+        'gateOutcomeAvailable',
+        'r1PopulatedReportAvailable',
+        'settledNetworkEconomicsAvailable',
+      ],
+      properties: {
+        fieldCount: { type: 'integer' },
+        fields: { type: 'array', items: { type: 'object' } },
+        formatAvailable: { type: 'boolean' },
+        formatDocRef: { type: 'string' },
+        gateOutcomeAvailable: { type: 'boolean' },
+        r1PopulatedReportAvailable: { type: 'boolean' },
+        settledNetworkEconomicsAvailable: { type: 'boolean' },
+      },
+    },
+    endpoint: {
+      type: 'string',
+      enum: [TrainingModelLadderRungsEndpoint],
+    },
+    gate: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'clearsBlockerRefs',
+        'greenGateSatisfied',
+        'networkRungRemainingBlockerRefs',
+        'publicProjectionAvailable',
+        'r1CloseoutReceiptAvailable',
+        'r1FullRehearsalAvailable',
+        'r2NetworkRungReceiptAvailable',
+        'remainingBlockerRefs',
+        'rungEconomicsGateFormatAvailable',
+      ],
+      properties: {
+        clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
+        greenGateSatisfied: { type: 'boolean' },
+        networkRungRemainingBlockerRefs: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+        publicProjectionAvailable: { type: 'boolean' },
+        r1CloseoutReceiptAvailable: { type: 'boolean' },
+        r1FullRehearsalAvailable: { type: 'boolean' },
+        r2NetworkRungReceiptAvailable: { type: 'boolean' },
+        remainingBlockerRefs: { type: 'array', items: { type: 'string' } },
+        rungEconomicsGateFormatAvailable: { type: 'boolean' },
+      },
+    },
+    generatedAt: { type: 'string' },
+    promiseRef: {
+      type: 'string',
+      enum: ['promise:training.model_ladder.v1'],
+    },
+    promiseState: { type: 'string', enum: ['planned'] },
+    r1CloseoutCriteria: { type: 'array', items: { type: 'object' } },
+    registryVersion: { type: 'string' },
+    rungSummary: { type: 'object', additionalProperties: true },
+    rungs: { type: 'array', items: { type: 'object' } },
+    schemaVersion: { type: 'string' },
+    sourceRefs: { type: 'array', items: { type: 'string' } },
     staleness: { type: 'object' },
     status: { type: 'string' },
     unsafeCopy: { type: 'string' },
@@ -1161,6 +1260,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe CS336 per-assignment leaderboard envelope keyed by lanes such as a1_loss, a2_throughput, a3_isoflop, a4_eval_delta, and a5_accuracy. Rows rank only verified closeout-backed entries, expose public-safe contributor refs, receipt refs, provenance labels, settledPayoutSats linked only from provider-confirmed settlement receipts, and source refs, and exclude unverified results from ranking. Pending, offered, claimed, or wallet-side records never count as paid.',
   ),
   TrainingFullPipelineProgramEnvelope,
+  TrainingModelLadderRungsEnvelope,
   TrainingPublicGradientWindowsEnvelope,
   TrainingAblationDeriskingLedgerEnvelope,
   TassadarPerceptaArchitectureReceiptsEnvelope,
@@ -5167,6 +5267,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Full training-pipeline program status.',
           '#/components/schemas/TrainingFullPipelineProgramEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TrainingModelLadderRungsEndpoint]: {
+    get: operation({
+      operationId: 'getTrainingModelLadderRungsStatus',
+      summary: 'Read model-ladder rung status',
+      description:
+        'Returns the public-safe model-ladder rung status projection for training.model_ladder.v1. It exposes R0-R4 rung definitions, the retained R0 rehearsal, the R1 closeout criteria, and the economics-gate format while keeping r1FullRehearsalAvailable=false, r1CloseoutReceiptAvailable=false, r2NetworkRungReceiptAvailable=false, and greenGateSatisfied=false. Read-only; grants no training dispatch, spend, settlement, schedule commitment, network-training claim, capability claim, model promotion, or public-claim authority.',
+      tags: ['Training', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Model-ladder rung status.',
+          '#/components/schemas/TrainingModelLadderRungsEnvelope',
         ),
         ...errorResponses(),
       },

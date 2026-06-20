@@ -168,6 +168,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(
         body,
+        '/api/public/training/model-ladder-rungs',
+        'get',
+      ).operationId,
+    ).toBe('getTrainingModelLadderRungsStatus')
+    expect(
+      operationAt(
+        body,
         '/api/public/training/public-gradient-windows',
         'get',
       ).operationId,
@@ -599,6 +606,13 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(
         body,
         '/api/public/training/verification-challenges/{challengeRef}',
+        'get',
+      ).security,
+    ).toEqual([])
+    expect(
+      operationAt(
+        body,
+        '/api/public/training/model-ladder-rungs',
         'get',
       ).security,
     ).toEqual([])

@@ -9,6 +9,7 @@ import {
   liveAtReadStaleness,
 } from './public-projection-staleness'
 import { currentIsoTimestamp } from './runtime-primitives'
+import { TrainingModelLadderRungsEndpoint } from './training-model-ladder-rungs'
 
 export const TrainingFullPipelineProgramEndpoint =
   '/api/public/training/full-pipeline-program'
@@ -192,17 +193,18 @@ const stageDefinitions: ReadonlyArray<StageDefinition> = [
       'Fixture-scale instruct-SFT lane, fixture sync, and deterministic DPO reference workload receipts exist; paid SFT dispatch, paid preference work, and vibe-test artifact remain missing.',
   },
   {
-    endpointRefs: [],
+    endpointRefs: [TrainingModelLadderRungsEndpoint],
     evidenceRefs: [
       'docs/training/2026-06-19-model-ladder-rung-economics.md',
+      'apps/openagents.com/workers/api/src/training-model-ladder-rungs.ts',
       'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
     ],
     promiseId: 'training.model_ladder.v1',
-    receiptState: 'methodology_only',
+    receiptState: 'partial_receipt_surface_live',
     role: 'R0 through R4 rung sequencing and economics gates.',
     stageId: 'model_ladder',
     statusLabel:
-      'R0 is retained and the R1 closeout/economics format is documented; no rung above R0 has run to a closeout receipt.',
+      'R0 is retained and the R1 closeout/economics format is publicly projected; no rung above R0 has run to a closeout receipt.',
   },
   {
     endpointRefs: ['/api/training/device-capabilities/a2'],
