@@ -598,10 +598,15 @@ export function enqueueLaborApproval(input: { approvalRef: string; jobType?: str
   })
 }
 
+type ExternalSessionStore = {
+  list: () => ExternalSession[]
+  find: (ref: string) => ExternalSession | undefined
+}
+
 // #4951 external agent sessions: poll the host Claude Code logs and expose them
 // as read-only sessions, merged into session.list / session.events so the MAIN
 // conversation (Pylon-managed or not) + its sub-agents show in Autopilot.
-function startExternalSessionTailer(): { list: () => ExternalSession[]; find: (ref: string) => ExternalSession | undefined } {
+function startExternalSessionTailer(): ExternalSessionStore {
   let sessions: ExternalSession[] = []
   const projectsRoot = `${homedir()}/.claude/projects`
   const codexRoot = `${homedir()}/.codex/sessions`
@@ -622,7 +627,7 @@ function startExternalSessionTailer(): { list: () => ExternalSession[]; find: (r
     sessions = [...claude, ...codex]
   }
   poll()
-  const timer = setInterval(poll, 5000)
+  const timer = setInterval(poll, 1000)
   timer.unref?.()
   return {
     list: () => sessions,
@@ -633,11 +638,66 @@ function startExternalSessionTailer(): { list: () => ExternalSession[]; find: (r
   }
 }
 
+function externalSessionEventStream(
+  ref: string,
+  store: ExternalSessionStore,
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  const sseFrame = (payload: unknown) => `data: ${JSON.stringify(payload)}\n\n`
+  const seen = new Set<string>()
+  let timer: ReturnType<typeof setInterval> | undefined
+  let closed = false
+
+  const close = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+    if (closed) return
+    closed = true
+    if (timer !== undefined) clearInterval(timer)
+    try {
+      controller.close()
+    } catch {
+      // already closed
+    }
+  }
+
+  const flush = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+    const session = store.find(ref)
+    if (session === undefined) {
+      close(controller)
+      return
+    }
+    for (const row of toEventRows(session)) {
+      const key = `${row.observedAt}\0${row.phase}\0${row.messageText}\0${row.messageFull ?? ""}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      controller.enqueue(encoder.encode(sseFrame(row)))
+    }
+    if (session.state !== "running") close(controller)
+  }
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      flush(controller)
+      if (closed) return
+      timer = setInterval(() => flush(controller), 500)
+      timer.unref?.()
+    },
+    cancel() {
+      closed = true
+      if (timer !== undefined) clearInterval(timer)
+    },
+  })
+}
+
 // Wrap the Pylon session actions so the control API also serves external
-// sessions (read-only). spawn/cancel/artifact/eventStream stay Pylon-only.
-function wrapSessionsWithExternal<T extends { list: () => Promise<any[]>; events: (ref: string) => Promise<any> }>(
+// sessions (read-only). spawn/cancel/artifact stay Pylon-only; eventStream
+// tails the read-only external projection.
+function wrapSessionsWithExternal<T extends {
+  list: () => Promise<any[]>
+  events: (ref: string) => Promise<any>
+  eventStream?: (ref: string) => ReadableStream<Uint8Array>
+}>(
   raw: T,
-  store: ReturnType<typeof startExternalSessionTailer>,
+  store: ExternalSessionStore,
 ): T {
   return {
     ...raw,
@@ -659,6 +719,12 @@ function wrapSessionsWithExternal<T extends { list: () => Promise<any[]>; events
       }
       return raw.events(ref)
     },
+    eventStream: ((ref: string) => {
+      const s = store.find(ref)
+      if (s !== undefined) return externalSessionEventStream(ref, store)
+      if (raw.eventStream === undefined) throw new Error("session not found")
+      return raw.eventStream(ref)
+    }) as T["eventStream"],
   }
 }
 

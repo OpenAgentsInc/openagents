@@ -220,6 +220,60 @@ const latestShellAgentText = (
   return null
 }
 
+const shellExternalSessionRefFromEvents = (
+  events: ReadonlyArray<{ readonly detail: string; readonly full?: string }>,
+): string | null => {
+  for (const event of events) {
+    const text = shellEventText(event)
+    const match = /\bexternal session:\s*(session\.pylon\.[A-Za-z0-9._-]+)/.exec(text)
+    if (match?.[1]) return match[1]
+  }
+  return null
+}
+
+const shellEventDisplayLine = (event: {
+  readonly detail: string
+  readonly full?: string
+}): string | null => {
+  const text = shellEventText(event)
+  if (text === "") return null
+  if (/^you:\s*/i.test(text)) return null
+  if (/^external session:\s*session\.pylon\./i.test(text)) return null
+  if (
+    text === "thread started" ||
+    text === "turn started" ||
+    text === "turn completed" ||
+    text === "task started" ||
+    text === "task complete" ||
+    /^control session mode:/i.test(text)
+  ) {
+    return null
+  }
+  const agent = /^agent:\s*(.+)$/is.exec(text)
+  return agent?.[1]?.trim() ? agent[1].trim() : text
+}
+
+const shellStreamText = (
+  events: ReadonlyArray<{ readonly detail: string; readonly full?: string }>,
+): string | null => {
+  const lines: string[] = []
+  const seen = new Set<string>()
+  for (const event of events) {
+    const line = shellEventDisplayLine(event)
+    if (line === null) continue
+    if (line.startsWith("thinking tokens:")) {
+      const existing = lines.findIndex((entry) => entry.startsWith("thinking tokens:"))
+      if (existing >= 0) lines[existing] = line
+      else lines.push(line)
+      continue
+    }
+    if (seen.has(line)) continue
+    seen.add(line)
+    lines.push(line)
+  }
+  return lines.length > 0 ? lines.join("\n") : null
+}
+
 const shellTerminalFailureText = (
   model: Model,
   target: ShellCodingTarget,
@@ -243,7 +297,8 @@ const shellExternalSessionRef = (model: Model, sessionRef: string): string | nul
     | { detail?: { externalSessionRef?: unknown } }
     | undefined
   const external = artifact?.detail?.externalSessionRef
-  return typeof external === "string" && external.trim() !== "" ? external : null
+  if (typeof external === "string" && external.trim() !== "") return external
+  return shellExternalSessionRefFromEvents(node?.events?.[sessionRef] ?? [])
 }
 
 const reconcileShellCodingTarget = (
@@ -258,7 +313,9 @@ const reconcileShellCodingTarget = (
   const externalSessionRef = shellExternalSessionRef(model, sessionRef)
   const externalEvents =
     externalSessionRef === null ? [] : (node?.events?.[externalSessionRef] ?? [])
+  const streamEvents = [...events, ...externalEvents]
   const text =
+    shellStreamText(streamEvents) ??
     latestShellAgentText(events) ??
     latestShellAgentText(externalEvents) ??
     shellTerminalFailureText(model, target, sessionRef)

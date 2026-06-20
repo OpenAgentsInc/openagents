@@ -26,6 +26,7 @@ export const CODEX_LOCAL_DANGER_REQUIRES_OPT_IN_BLOCKER_REF =
 export interface CodexComposerCallbacks {
   onText?: (fullText: string) => void
   onEvent?: (summary: string, eventCount: number) => void
+  onThreadId?: (threadId: string, externalSessionRef: string) => void
   onUsage?: (usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => void
 }
 
@@ -89,9 +90,19 @@ type CodexSdkModule = {
 type CodexThreadEvent = {
   type?: string
   thread_id?: unknown
+  payload?: {
+    type?: unknown
+    role?: unknown
+    message?: unknown
+    info?: unknown
+    summary?: unknown
+    content?: unknown
+    last_agent_message?: unknown
+  }
   usage?: {
     input_tokens?: unknown
     output_tokens?: unknown
+    reasoning_output_tokens?: unknown
   }
   error?: { message?: unknown }
   message?: unknown
@@ -140,6 +151,45 @@ function completedTodos(items: unknown): string {
   return `todo list ${done}/${total}`
 }
 
+function textFromContent(content: unknown, blockType: string): string {
+  if (typeof content === "string") return content
+  if (!Array.isArray(content)) return ""
+  const block = content.find((entry: any) => entry?.type === blockType && typeof entry.text === "string")
+  return block?.text ?? ""
+}
+
+function reasoningSummaryText(summary: unknown): string {
+  if (typeof summary === "string") return summary.replace(/\s+/g, " ").trim()
+  if (!Array.isArray(summary)) return ""
+  return summary
+    .map((entry) => {
+      if (typeof entry === "string") return entry
+      if (entry !== null && typeof entry === "object" && typeof (entry as { text?: unknown }).text === "string") {
+        return (entry as { text: string }).text
+      }
+      return ""
+    })
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function tokenUsageMessage(info: unknown): string | null {
+  if (info === null || typeof info !== "object") return null
+  const record = info as Record<string, unknown>
+  const usage =
+    record.last_token_usage !== null && typeof record.last_token_usage === "object"
+      ? record.last_token_usage as Record<string, unknown>
+      : record.total_token_usage !== null && typeof record.total_token_usage === "object"
+        ? record.total_token_usage as Record<string, unknown>
+        : record
+  const output = numberOrZero(usage.output_tokens)
+  const reasoning = numberOrZero(usage.reasoning_output_tokens)
+  return output === 0 && reasoning === 0
+    ? null
+    : `thinking tokens: ${reasoning}; output tokens: ${output}`
+}
+
 export function summarizeCodexThreadEvent(raw: unknown): string {
   const event = raw as CodexThreadEvent
   const type = typeof event.type === "string" ? event.type : "event"
@@ -155,6 +205,35 @@ export function summarizeCodexThreadEvent(raw: unknown): string {
     return `error: ${message}`
   }
 
+  const payload = event.payload && typeof event.payload === "object" ? event.payload : null
+  const payloadType = typeof payload?.type === "string" ? payload.type : ""
+  if (type === "event_msg") {
+    if (payloadType === "task_started") return "task started"
+    if (payloadType === "task_complete") {
+      const text = typeof payload?.last_agent_message === "string"
+        ? payload.last_agent_message.replace(/\s+/g, " ").trim()
+        : ""
+      return text.length > 0 ? `agent: ${text.slice(0, 200)}` : "task complete"
+    }
+    if (payloadType === "agent_message") {
+      const text = typeof payload?.message === "string"
+        ? payload.message.replace(/\s+/g, " ").trim()
+        : ""
+      return text.length > 0 ? `agent: ${text.slice(0, 200)}` : "agent message"
+    }
+    if (payloadType === "token_count") return tokenUsageMessage(payload?.info) ?? "token count"
+  }
+  if (type === "response_item" && payload !== null) {
+    if (payloadType === "reasoning") {
+      const text = reasoningSummaryText(payload.summary)
+      return text.length > 0 ? `thinking: ${text.slice(0, 160)}` : "thinking…"
+    }
+    if (payloadType === "message" && payload.role === "assistant") {
+      const text = textFromContent(payload.content, "output_text").replace(/\s+/g, " ").trim()
+      return text.length > 0 ? `agent: ${text.slice(0, 200)}` : "agent message"
+    }
+  }
+
   const item = event.item
   if (!item || typeof item.type !== "string") return type
   // Surface the actual text so a remote viewer (the phone timeline) sees WHAT
@@ -162,10 +241,15 @@ export function summarizeCodexThreadEvent(raw: unknown): string {
   // whitespace-collapsed; the proof-serialization scanner still redacts secrets.
   const itemText = (() => {
     const t = (item as Record<string, unknown>).text
-    return typeof t === "string" ? t.replace(/\s+/g, " ").trim() : ""
+    if (typeof t === "string") return t.replace(/\s+/g, " ").trim()
+    const contentText = textFromContent((item as Record<string, unknown>).content, "output_text")
+    return contentText.replace(/\s+/g, " ").trim()
   })()
   if (item.type === "agent_message") return itemText ? `agent: ${itemText.slice(0, 200)}` : "agent message"
-  if (item.type === "reasoning") return itemText ? `thinking: ${itemText.slice(0, 160)}` : "reasoning"
+  if (item.type === "reasoning") {
+    const text = itemText || reasoningSummaryText((item as Record<string, unknown>).summary)
+    return text ? `thinking: ${text.slice(0, 160)}` : "thinking…"
+  }
   if (item.type === "command_execution") {
     const command = typeof item.command === "string" ? item.command : "command"
     const status = typeof item.status === "string" ? item.status : "running"
@@ -276,6 +360,7 @@ export async function runCodexComposerStream(
       callbacks.onEvent?.(summarizeCodexThreadEvent(raw), eventCount)
       if (event.type === "thread.started" && typeof event.thread_id === "string") {
         threadId = event.thread_id
+        callbacks.onThreadId?.(threadId, stableRef("session.pylon.codex_composer", threadId))
       }
       if (event.type === "turn.completed") {
         inputTokens = numberOrZero(event.usage?.input_tokens)

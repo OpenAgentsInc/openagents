@@ -163,7 +163,7 @@ async function fetchSessionEventRows(input: {
     const json = (await res.json()) as { ok?: unknown; result?: { recentEvents?: unknown } }
     const events = json.ok === true ? json.result?.recentEvents : undefined
     if (!Array.isArray(events)) return []
-    return events.slice(-12).map((e: any) => ({
+    return events.slice(-100).map((e: any) => ({
       eventIndex: Number(e.eventIndex ?? 0),
       phase: String(e.phase ?? "?"),
       state: String(e.state ?? "?"),
@@ -175,6 +175,18 @@ async function fetchSessionEventRows(input: {
   } catch {
     return []
   }
+}
+
+export function externalSessionRefsFromEventRows(events: readonly SessionEventRow[]): string[] {
+  const refs = new Set<string>()
+  for (const event of events) {
+    const text = `${event.detail}\n${event.full ?? ""}`
+    for (const match of text.matchAll(/\bexternal session:\s*(session\.pylon\.[A-Za-z0-9._-]+)/g)) {
+      const ref = match[1]?.trim()
+      if (ref) refs.add(ref)
+    }
+  }
+  return [...refs]
 }
 
 function eventRowsHaveAgentText(events: readonly SessionEventRow[]): boolean {
@@ -759,6 +771,16 @@ export async function fetchNodeState(input: {
       sessionRef: session.sessionRef,
       fetchFn,
     })
+    for (const externalSessionRef of externalSessionRefsFromEventRows(events[session.sessionRef] ?? [])) {
+      if (events[externalSessionRef] !== undefined) continue
+      const externalEvents = await fetchSessionEventRows({
+        baseUrl,
+        token: input.token,
+        sessionRef: externalSessionRef,
+        fetchFn,
+      })
+      if (externalEvents.length > 0) events[externalSessionRef] = externalEvents
+    }
     if (session.state === "completed" || session.state === "failed") {
       const stats = await fetchArtifactStats({
         baseUrl,

@@ -361,6 +361,65 @@ describe("zero-base shell: text bar → response loop", () => {
     )
   })
 
+  test("Codex shell turns render streamed thinking/token rows before final text", () => {
+    const start = Model.make({
+      ...initialModel,
+      pane: "shell",
+      shellTarget: "codex",
+      shellInput: "say ready",
+    })
+    const [submitted] = update(start, SubmittedShell())
+    const sessionRef = "session.pylon.control.live"
+    const [spawned] = update(
+      submitted,
+      SucceededShellCodingTurn({
+        target: "codex",
+        prompt: "say ready",
+        sessionRef,
+      }),
+    )
+
+    const [streaming] = update(
+      spawned,
+      GotNodeState({
+        node: {
+          ok: true,
+          schema: "test.node",
+          sessions: [{ sessionRef, state: "running" }],
+          events: {
+            [sessionRef]: [
+              {
+                eventIndex: 1,
+                phase: "composer_event",
+                state: "running",
+                observedAt: "t1",
+                detail: "thread started",
+              },
+              {
+                eventIndex: 2,
+                phase: "reasoning",
+                state: "running",
+                observedAt: "t2",
+                detail: "thinking tokens: 5; output tokens: 12",
+              },
+              {
+                eventIndex: 3,
+                phase: "composer_event",
+                state: "running",
+                observedAt: "t3",
+                detail: "agent: ready",
+              },
+            ],
+          },
+        },
+      }),
+    )
+
+    expect(streaming.shellTurns.at(-1)?.text).toBe(
+      "thinking tokens: 5; output tokens: 12\nready",
+    )
+  })
+
   test("coding target failures clear pending without adding to continuation state", () => {
     const start = Model.make({
       ...initialModel,

@@ -266,6 +266,76 @@ describe("CL-46 control verbs", () => {
     expect(state.events[externalSessionRef]?.[0]?.detail).toBe("agent: I am Codex.")
   })
 
+  test("fetchNodeState follows live external-session refs from running control events", async () => {
+    const sessionRef = "session.pylon.control.live"
+    const externalSessionRef = "session.pylon.codex_composer.live"
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/health")) {
+        return new Response(JSON.stringify({ ok: true, schema: "openagents.pylon.control.v0.3" }), { status: 200 })
+      }
+      const body = init?.body ? JSON.parse(String(init.body)) : {}
+      if (body.type === "session.list") {
+        return new Response(JSON.stringify({
+          ok: true,
+          result: [{
+            sessionRef,
+            adapter: "codex",
+            state: "running",
+            accountRefHash: null,
+            updatedAt: "2026-06-20T02:47:10.326Z",
+          }],
+        }), { status: 200 })
+      }
+      if (body.type === "session.events" && body.sessionRef === sessionRef) {
+        return new Response(JSON.stringify({
+          ok: true,
+          result: {
+            recentEvents: [
+              {
+                eventIndex: 2,
+                phase: "composer_event",
+                state: "running",
+                observedAt: "t",
+                messageText: `external session: ${externalSessionRef}`,
+              },
+            ],
+          },
+        }), { status: 200 })
+      }
+      if (body.type === "session.events" && body.sessionRef === externalSessionRef) {
+        return new Response(JSON.stringify({
+          ok: true,
+          result: {
+            recentEvents: [
+              {
+                eventIndex: 3,
+                phase: "reasoning",
+                state: "running",
+                observedAt: "t",
+                messageText: "thinking tokens: 5; output tokens: 12",
+              },
+              {
+                eventIndex: 4,
+                phase: "agent_message",
+                state: "running",
+                observedAt: "t",
+                messageText: "agent: streaming now",
+              },
+            ],
+          },
+        }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ ok: true, result: [] }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    const state = await fetchNodeState({ ...base, fetchFn })
+
+    expect(state.events[externalSessionRef]?.map(event => event.detail)).toEqual([
+      "thinking tokens: 5; output tokens: 12",
+      "agent: streaming now",
+    ])
+  })
+
   test("fetchAppleFmReadiness normalizes ready Pylon status", async () => {
     let captured: Record<string, unknown> | null = null
     const readiness = await fetchAppleFmReadiness({

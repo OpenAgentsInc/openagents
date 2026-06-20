@@ -19,6 +19,25 @@ async function* fakeCodexEvents() {
   yield { type: "thread.started", thread_id: "thread.test.codex" }
   yield { type: "turn.started" }
   yield {
+    type: "event_msg",
+    payload: {
+      type: "token_count",
+      info: {
+        last_token_usage: {
+          output_tokens: 11,
+          reasoning_output_tokens: 7,
+        },
+      },
+    },
+  }
+  yield {
+    type: "response_item",
+    payload: {
+      type: "reasoning",
+      summary: [{ text: "checking the patch path" }],
+    },
+  }
+  yield {
     type: "item.completed",
     item: {
       id: "cmd-1",
@@ -74,6 +93,7 @@ describe("Codex composer SDK stream", () => {
     let promptSeen = ""
     let signalSeen = false
     const eventSummaries: string[] = []
+    const threadRefs: string[] = []
     const textUpdates: string[] = []
     const usageUpdates: number[] = []
     const importer = async (specifier: string) => {
@@ -113,6 +133,7 @@ describe("Codex composer SDK stream", () => {
       {
         onEvent: (summary) => eventSummaries.push(summary),
         onText: (text) => textUpdates.push(text),
+        onThreadId: (_threadId, ref) => threadRefs.push(ref),
         onUsage: (usage) => usageUpdates.push(usage.totalTokens),
       },
     )
@@ -129,13 +150,16 @@ describe("Codex composer SDK stream", () => {
     })
     expect(clientEnv).toMatchObject({ CODEX_API_KEY: "test-key-shape" })
     expect(textUpdates).toEqual(["Patched the composer."])
+    expect(threadRefs).toEqual(["session.pylon.codex_composer.17d51880c7bad062ae498c8e"])
     expect(usageUpdates).toEqual([15])
+    expect(eventSummaries).toContain("thinking tokens: 7; output tokens: 11")
+    expect(eventSummaries).toContain("thinking: checking the patch path")
     expect(eventSummaries).toContain("completed: bun test exit 0")
     expect(eventSummaries).toContain("completed: update src/index.ts, add tests/index.test.ts")
     expect(result).toMatchObject({
       commandCount: 1,
       editedFileCount: 2,
-      eventCount: 6,
+      eventCount: 8,
       inputTokens: 10,
       outputTokens: 5,
       text: "Patched the composer.",

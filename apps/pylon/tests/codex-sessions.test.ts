@@ -18,8 +18,30 @@ describe("external Codex session normalization (#4951)", () => {
       .toMatchObject({ phase: "tool_use", messageText: "exec_command: rg foo" })
     expect(ev({ timestamp: "t", type: "response_item", payload: { type: "function_call_output", output: "exit 0\nok" } }))
       .toMatchObject({ phase: "tool_result", messageText: "result: exit 0 ok" })
+    expect(ev({ timestamp: "t", type: "response_item", payload: { type: "reasoning", summary: [{ text: "checking files" }] } }))
+      .toMatchObject({ phase: "reasoning", messageText: "thinking: checking files" })
     expect(ev({ timestamp: "t", type: "response_item", payload: { type: "reasoning", summary: [] } }))
-      .toMatchObject({ phase: "reasoning", messageText: "reasoning" })
+      .toMatchObject({ phase: "reasoning", messageText: "thinking…" })
+  })
+
+  test("normalizes Codex task status and thinking token counts", () => {
+    expect(ev({ timestamp: "t1", type: "event_msg", payload: { type: "task_started" } }))
+      .toMatchObject({ phase: "started", messageText: "task started" })
+    expect(ev({
+      timestamp: "t2",
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: {
+          last_token_usage: {
+            output_tokens: 12,
+            reasoning_output_tokens: 5,
+          },
+        },
+      },
+    })).toMatchObject({ phase: "reasoning", messageText: "thinking tokens: 5; output tokens: 12" })
+    expect(ev({ timestamp: "t3", type: "event_msg", payload: { type: "task_complete" } }))
+      .toMatchObject({ phase: "completed", messageText: "task complete" })
   })
 
   test("builds a Codex external session shape with latest activity", () => {

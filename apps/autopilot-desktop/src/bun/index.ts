@@ -15,6 +15,10 @@ import {
   superviseManagedNode,
 } from "./node-launcher"
 import { createNodeStatePoller } from "./node-state-poll"
+import {
+  createSessionEventStreamer,
+  mergeSessionEventRows,
+} from "./session-event-stream"
 import { persistAndMergeTranscripts } from "./transcript-store"
 import { loadPersistedCredential } from "./agent-onboarding"
 import {
@@ -89,6 +93,7 @@ import {
   type BuiltInAgentStartResponse,
   type ChooseIdentityParams,
   type ChooseIdentityResponse,
+  type NodeStateMessage,
   type DesktopRPCSchema,
   type IdentityChoiceStateResponse,
   type InstallReadinessResponse,
@@ -1151,16 +1156,33 @@ function startManagedNodeSupervisor(): void {
 
 startManagedNodeSupervisor()
 
+let latestNodeState: NodeStateMessage | null = null
+const pushNodeState = (rawMessage: NodeStateMessage): void => {
+  // CS-A3 (#5363): persist this poll/stream event tail (keyed by sessionRef)
+  // under the node home and merge the durable transcript back in, so a coding
+  // session's transcript survives app/node restart and live stream reconnects.
+  const message = persistAndMergeTranscripts(resolveHome(), rawMessage)
+  latestNodeState = message
+  rpc.send.nodeState(message)
+  rpc.send.notifications(notifier.ingest(message.sessions))
+  sessionEventStreamer.reconcile(message)
+}
+
+const sessionEventStreamer = createSessionEventStreamer({
+  baseUrl: controlBaseUrl,
+  tokenProvider: acceptedControlTokenForCommand,
+  onEvent(sessionRef, event) {
+    if (latestNodeState === null) return
+    const nextEvents = { ...(latestNodeState.events ?? {}) }
+    nextEvents[sessionRef] = mergeSessionEventRows(nextEvents[sessionRef] ?? [], event)
+    pushNodeState({ ...latestNodeState, events: nextEvents })
+  },
+})
+
 const poller = createNodeStatePoller({
   intervalMs: Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 2000,
   onState(rawMessage) {
-    // CS-A3 (#5363): persist this poll's per-session event tail (keyed by
-    // sessionRef) under the node home and merge the durable transcript back in,
-    // so a coding session's transcript survives app restart / node restart /
-    // reconnection - not just the node's in-memory event tail.
-    const message = persistAndMergeTranscripts(resolveHome(), rawMessage)
-    rpc.send.nodeState(message)
-    rpc.send.notifications(notifier.ingest(message.sessions))
+    pushNodeState(rawMessage)
   },
   async fetchNodeState() {
     // CL-45b: use the server-validated token so a stale token in an earlier
@@ -1219,6 +1241,7 @@ window.webview.on("dom-ready", () => {
 
 window.on("close", () => {
   poller.stop()
+  sessionEventStreamer.stop()
   if (pylonStatsTimer !== undefined) clearInterval(pylonStatsTimer)
   if (autoUpdateTimer !== undefined) clearInterval(autoUpdateTimer)
   // Stop supervising and kill only a node we launched ourselves; an adopted

@@ -22,6 +22,42 @@ function textFromContent(content: unknown, blockType: string): string {
   return block?.text ?? ""
 }
 
+function reasoningSummaryText(summary: unknown): string {
+  if (typeof summary === "string") return summary.replace(/\s+/g, " ").trim()
+  if (!Array.isArray(summary)) return ""
+  return summary
+    .map((entry) => {
+      if (typeof entry === "string") return entry
+      if (entry !== null && typeof entry === "object" && typeof (entry as { text?: unknown }).text === "string") {
+        return (entry as { text: string }).text
+      }
+      return ""
+    })
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function numberOrZero(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0
+}
+
+function tokenUsageMessage(info: unknown): string | null {
+  if (info === null || typeof info !== "object") return null
+  const record = info as Record<string, unknown>
+  const usage =
+    record.last_token_usage !== null && typeof record.last_token_usage === "object"
+      ? record.last_token_usage as Record<string, unknown>
+      : record.total_token_usage !== null && typeof record.total_token_usage === "object"
+        ? record.total_token_usage as Record<string, unknown>
+        : record
+  const output = numberOrZero(usage.output_tokens)
+  const reasoning = numberOrZero(usage.reasoning_output_tokens)
+  return output === 0 && reasoning === 0
+    ? null
+    : `thinking tokens: ${reasoning}; output tokens: ${output}`
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   if (value !== null && typeof value === "object") return value as Record<string, unknown>
   if (typeof value !== "string") return {}
@@ -57,6 +93,9 @@ export function normalizeCodexLine(raw: unknown): ExternalEvent | null {
   const observedAt = typeof o.timestamp === "string" ? o.timestamp : new Date().toISOString()
 
   if (type === "event_msg") {
+    if (payloadType === "task_started") {
+      return { observedAt, phase: "started", messageText: "task started" }
+    }
     if (payloadType === "agent_message" && typeof payload.message === "string" && payload.message.trim().length > 0) {
       return { observedAt, phase: "agent_message", messageText: `agent: ${clip(payload.message)}` }
     }
@@ -70,12 +109,26 @@ export function normalizeCodexLine(raw: unknown): ExternalEvent | null {
     if (payloadType === "task_complete" && typeof payload.last_agent_message === "string" && payload.last_agent_message.trim().length > 0) {
       return { observedAt, phase: "agent_message", messageText: `agent: ${clip(payload.last_agent_message)}` }
     }
+    if (payloadType === "task_complete") {
+      return { observedAt, phase: "completed", messageText: "task complete" }
+    }
+    if (payloadType === "token_count") {
+      const message = tokenUsageMessage(payload.info)
+      return message === null ? null : { observedAt, phase: "reasoning", messageText: message }
+    }
     return null
   }
 
   if (type !== "response_item") return null
 
-  if (payloadType === "reasoning") return { observedAt, phase: "reasoning", messageText: "reasoning" }
+  if (payloadType === "reasoning") {
+    const text = reasoningSummaryText(payload.summary)
+    return {
+      observedAt,
+      phase: "reasoning",
+      messageText: text.length > 0 ? `thinking: ${clip(text, 160)}` : "thinking…",
+    }
+  }
 
   if (payloadType === "message") {
     const role = typeof payload.role === "string" ? payload.role : ""

@@ -759,6 +759,14 @@ async function defaultControlSessionExecutor(
       },
       {
         onEvent: emitComposerEvent,
+        onThreadId: (_threadId, ref) => {
+          externalSessionRef = ref
+          input.emit({
+            phase: "composer_event",
+            message: `external session: ${ref}`,
+            composerEventIndex: eventCount + 1,
+          })
+        },
       },
     )
     await recordPylonDevCodexRun(
@@ -778,7 +786,7 @@ async function defaultControlSessionExecutor(
     editedFileCount = result.editedFileCount
     totalTokens = result.totalTokens
     externalSessionRef =
-      result.threadId === null ? null : stableRef("session.pylon.codex_composer", result.threadId)
+      result.threadId === null ? externalSessionRef : stableRef("session.pylon.codex_composer", result.threadId)
     responseDigestRef =
       result.text.length === 0 ? null : stableRef("digest.pylon.control_session.response", result.text)
     input.emit({
