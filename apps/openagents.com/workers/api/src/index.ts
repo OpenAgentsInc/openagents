@@ -415,6 +415,7 @@ import {
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
+import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
 import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
 import {
@@ -8433,6 +8434,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/site-referral-payouts',
     handler: (request, env) =>
       handleSiteReferralPayoutsPublicApi(request, env),
+  },
+  {
+    path: '/api/public/partner-payouts',
+    handler: (request, env) => handlePartnerPayoutsPublicApi(request, env),
   },
   {
     path: '/api/public/relay-health',
