@@ -65,7 +65,14 @@ import {
   liveChatWorldNetworkScene,
   withChatWorldPaymentLayer,
 } from "../shared/chat-world-visualization"
-import { chatWorldBuildFlags } from "../shared/chat-world-flags"
+import {
+  agentCharacterCreationFlag,
+  chatWorldBuildFlags,
+} from "../shared/chat-world-flags"
+import {
+  projectCharacterCreationOnboarding,
+  type CharacterCreationBeat,
+} from "../shared/character-creation-onboarding"
 
 import type {
   AccountRow,
@@ -5787,6 +5794,7 @@ const chatMessageView = (model: Model, message: ChatMessage): Html =>
 const CHAT_WORLD_FLAGS = chatWorldBuildFlags()
 const CHAT_WORLD_SCENE: boolean = CHAT_WORLD_FLAGS.CHAT_WORLD_SCENE
 const CHAT_WORLD_PAYMENTS: boolean = CHAT_WORLD_FLAGS.CHAT_WORLD_PAYMENTS
+const AGENT_CHARACTER_CREATION: boolean = agentCharacterCreationFlag()
 
 // A calm static seed scene: one hub + ~8 ring pylons. A couple are "working"
 // so the graph reads as a living-but-idle network rather than dead. This is a
@@ -5858,6 +5866,42 @@ const chatSceneBackground = (model: Model): Html =>
     chatSceneInspector(model),
   ])
 
+const characterCreationBeat = (beat: CharacterCreationBeat): Html =>
+  h.li([cls(`character-creation-beat character-creation-${beat.status}`)], [
+    h.span([cls("character-creation-dot")], []),
+    h.div([cls("character-creation-beat-copy")], [
+      h.strong([], [beat.label]),
+      h.span([], [beat.message]),
+    ]),
+  ])
+
+const characterCreationOverlay = (model: Model): Html => {
+  const projection = projectCharacterCreationOnboarding({
+    flagEnabled: AGENT_CHARACTER_CREATION,
+    onboardingStatus: modelOnboardingStatus(model),
+    chatWorldScene: modelChatWorldScene(model),
+  })
+  return projection.enabled
+    ? h.div([cls("character-creation-overlay")], [
+        h.div([cls("character-creation-head")], [
+          h.span([cls("character-creation-kicker mono")], ["character creation"]),
+          h.span([cls("character-creation-count mono")], [
+            `${projection.pylonOnlineCount} pylons online`,
+          ]),
+        ]),
+        h.div([cls("character-creation-mana")], [
+          h.span([
+            cls("character-creation-mana-fill"),
+            h.Style({ transform: `scaleX(${projection.mana})` }),
+          ], []),
+        ]),
+        h.ol([cls("character-creation-list")], [
+          ...projection.beats.map(characterCreationBeat),
+        ]),
+      ])
+    : h.empty
+}
+
 // The chat thread + composer, shared by both the plain and world-scene layouts.
 const chatThread = (model: Model): Html =>
   h.div(
@@ -5919,6 +5963,7 @@ const chatPane = (model: Model): Html =>
   verseVisible(model)
     ? h.div([cls("chat-pane chat-pane-world")], [
         chatSceneBackground(model),
+        characterCreationOverlay(model),
         h.div([cls("chat-content-overlay")], [
           paneTitle("Chat"),
           chatThread(model),

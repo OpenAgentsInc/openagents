@@ -29,3 +29,21 @@ export const chatWorldBuildFlags = (): ChatWorldFlags => {
     CHAT_WORLD_PAYMENTS: payments,
   }
 }
+
+export const agentCharacterCreationFlag = (): boolean =>
+  envFlag("VITE_AGENT_CHARACTER_CREATION")
+
+export const chatWorldMultiplayerFlag = (): boolean =>
+  envFlag("VITE_CHAT_WORLD_MULTIPLAYER")
+
+export const chatWorldGameLayerFlags = (): {
+  readonly hotbar: boolean
+  readonly reputation: boolean
+  readonly manaHud: boolean
+  readonly handTracking: boolean
+} => ({
+  hotbar: envFlag("VITE_CHAT_WORLD_HOTBAR"),
+  reputation: envFlag("VITE_CHAT_WORLD_REPUTATION"),
+  manaHud: envFlag("VITE_CHAT_WORLD_MANA_HUD"),
+  handTracking: envFlag("VITE_CHAT_WORLD_HAND_TRACKING"),
+})

@@ -926,7 +926,9 @@ export const update = (model: Model, message: Message): Result => {
               ? [LoadBuiltInAgentReadiness(), LoadAppleFmReadiness(), LoadPromiseSurfacingReadiness()]
               : isSettingsPane(message.pane)
                 ? [LoadInstallReadiness()]
-                : isOnboardingPane(message.pane)
+                : message.pane === "chat"
+                  ? [LoadOnboardingStatus()]
+                  : isOnboardingPane(message.pane)
                   ? [LoadIdentityChoiceState(), LoadOnboardingStatus()]
                   : noCommands),
           ...(isAccountManagingPane(message.pane)

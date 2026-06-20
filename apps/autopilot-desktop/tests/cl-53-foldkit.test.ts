@@ -363,14 +363,15 @@ describe("update reducer (CL-53)", () => {
     )
   })
 
-  test("NavigatedTo chat pane is local state only", () => {
+  test("NavigatedTo chat pane refreshes onboarding for character creation", () => {
     const [model, commands] = update(
       Model.make({ ...initialModel, expandedEvents: [1] }),
       NavigatedTo({ pane: "chat" }),
     )
     expect(model.pane).toBe("chat")
     expect(model.expandedEvents).toEqual([])
-    expect(commands).toHaveLength(0)
+    expect(commands).toHaveLength(1)
+    expect(commands[0]?.name).toBe("LoadOnboardingStatus")
   })
 
   test("incomplete onboarding status keeps the onboarding pane", () => {
