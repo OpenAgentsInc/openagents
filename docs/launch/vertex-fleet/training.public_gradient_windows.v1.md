@@ -51,6 +51,44 @@ been emitted from a live window. The blocker therefore stays listed.
 - Settlement receipts where real money moved
   (`blocker.product_promises.public_gradient_settlement_receipts_missing`).
 
+## 2026-06-20 live-window-runtime intake admission edge
+
+The live window runtime
+(`blocker.product_promises.public_gradient_live_window_runtime_missing`) had no
+front door: the regime gate
+(`tassadar-gradient-window-regime.ts`) only *evaluates a window that has already
+been processed* — it requires a full recompute/replication/canary receipt
+bundle, so it answers "may this window promote?". Nothing decided whether a
+freshly submitted candidate may even **enter quarantine** and consume those
+verification resources.
+
+This change adds that admission edge:
+
+- `tassadar-gradient-window-intake.ts`
+  - `admitTassadarGradientWindowToQuarantine(submission)` — a pure,
+    deterministic function over an untrusted submission. It **rejects** anything
+    malformed, unsafe (private/credential/payment material), compiled-core
+    targeting, frozen-core mutating, non-forward-pass, or missing the required
+    psionic-H1 / curated-data / construction / verification evidence, and
+    otherwise **admits** the candidate to quarantine. It never throws on bad
+    input (a hostile/malformed submission yields a `rejected` decision), so it
+    is safe at the edge of a real runtime.
+  - Admission grants **quarantine entry only** — no promotion, settlement,
+    canonical-checkpoint mutation, compiled-core-gradient, or direct-submission
+    authority. Admission is not acceptance: an admitted window can still be
+    blocked by the regime gate.
+  - Schema version
+    `openagents.training.public_gradient_window.intake_admission.v1`.
+- `tassadar-gradient-window-intake.test.ts` — exercises admission of a clean
+  submission and the rejection paths (compiled-core targeting, frozen-core
+  mutation, missing evidence, malformed input).
+
+This advances the live-window-runtime blocker by building the runtime's
+admission edge. It does **not** clear it: no live runtime yet receives real
+public submissions over a route, no quarantine store persists admitted windows,
+and no public window has been accepted, promoted, paid, or settled. The blocker
+stays listed.
+
 ## 2026-06-20 status projection slice
 
 `GET /api/public/training/public-gradient-windows` now exposes a public-safe,
