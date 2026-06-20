@@ -55,6 +55,7 @@ const fakeDb = (knownId: string | null): D1Database => {
 const route = async (db: D1Database, economicsId: string, init?: RequestInit) => {
   const routes = makePublicAcceptedOutcomeSettlementRoutes<{ db: D1Database }>({
     db: env => env.db,
+    nowIso: () => '2026-06-20T12:00:00.000Z',
   })
   const response = routes.routePublicAcceptedOutcomeSettlementRequest(
     new Request(
@@ -78,6 +79,12 @@ describe('public accepted-outcome settlement routes', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
+    // Public-projection staleness declaration (epic #4751): generatedAt plus a
+    // live-at-read contract that is never older than the request.
+    expect(body.generatedAt).toBe('2026-06-20T12:00:00.000Z')
+    expect(body.staleness.composition).toBe('live_at_read')
+    expect(body.staleness.contractVersion).toBe('projection_staleness.v1')
+    expect(body.staleness.maxStalenessSeconds).toBe(0)
     expect(body.settlement.settlementComplete).toBe(true)
     expect(body.settlement.settlementMachine.transitions).toHaveLength(8)
     expect(

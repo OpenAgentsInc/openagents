@@ -5,7 +5,10 @@
 //   import { makePublicAcceptedOutcomeSettlementRoutes } from '../public-accepted-outcome-settlement-routes'
 //
 //   const publicAcceptedOutcomeSettlementRoutes =
-//     makePublicAcceptedOutcomeSettlementRoutes<Env>({ db: env => env.DB })
+//     makePublicAcceptedOutcomeSettlementRoutes<Env>({
+//       db: env => env.DB,
+//       nowIso: currentIsoTimestamp,
+//     })
 //
 //   const settlementResponse =
 //     publicAcceptedOutcomeSettlementRoutes.routePublicAcceptedOutcomeSettlementRequest(
@@ -26,13 +29,27 @@ import {
   noStoreJsonResponse,
   serverError,
 } from './http/responses'
+import { liveAtReadStaleness } from './public-projection-staleness'
 
 type HttpResponse = globalThis.Response
 
 export type PublicAcceptedOutcomeSettlementRouteDependencies<Bindings> =
   Readonly<{
     db: (env: Bindings) => D1Database
+    // Public-projection staleness contract (epic #4751): this surface is
+    // composed live from the source economics row at request time, so every
+    // payload carries `generatedAt` plus the `live_at_read` contract. The clock
+    // is injected (the coordinator supplies the Worker's `currentIsoTimestamp`)
+    // so this route module owns no raw `new Date` / id / random primitive.
+    nowIso: () => string
   }>
+
+// The write-site transitions this live-at-read projection reflects: the bundle
+// is re-derived from the source economics row on every read, so it is never
+// older than the request.
+const SETTLEMENT_PROJECTION_REBUILDS_ON = [
+  'omni_accepted_outcome_economics_write',
+]
 
 const PREFIX = '/api/public/accepted-outcome/settlement/'
 
@@ -64,8 +81,15 @@ const readSettlementBundleResponse = <Bindings>(
           bundle === null
             ? notFound()
             : noStoreJsonResponse({
+                // Public-projection staleness declaration (epic #4751): this
+                // bundle is composed live from the source economics row on
+                // every read, so it is never older than the request.
+                generatedAt: dependencies.nowIso(),
                 settlement:
                   publicOmniAcceptedOutcomeSettlementBundleProjection(bundle),
+                staleness: liveAtReadStaleness(
+                  SETTLEMENT_PROJECTION_REBUILDS_ON,
+                ),
               }),
         ),
         // Both an unattributable record and a storage fault collapse to a 500
