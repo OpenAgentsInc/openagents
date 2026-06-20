@@ -114,12 +114,12 @@ describe('public product promises document', () => {
     // (evidence docs + an inert capability), the 2026-06-19.9 remote-bridge
     // decision-queue transport pass (a pure composing capability + evidence refs
     // on autopilot.decision_queue.v1 / mobile.autopilot_remote_control.v1), and
-    // the 2026-06-19.10 workrooms source-authority + approval-gated
-    // business-object writes pass (a pure source-authority model + write engine +
-    // a flag-gated INERT delivery seam + evidence refs on
-    // workrooms.source_authorized_business_objects.v1 /
-    // workrooms.omni_client_delivery_workrooms.v1) flip
-    // nothing, so the green count must stay exactly 20.
+    // the 2026-06-19.10 passes — workrooms source-authority + approval-gated
+    // business-object writes, and the registry completeness audit (two new
+    // records for built-but-unregistered capabilities:
+    // payments.autopilot_credits_purchase.v1 red +
+    // autopilot_sites.site_build_and_host.v1 yellow) — flip nothing, so the
+    // green count must stay exactly 20.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(20)
