@@ -32,6 +32,8 @@ type MarathonOperationsBody = Readonly<{
     flexibleLoadEvidenceCreated: boolean
     haltSlaMs: number
     predicateAvailable: boolean
+    preflightEndpoint: string
+    preflightRouteAvailable: boolean
     schemaVersion: string
   }>
   endpoint: string
@@ -121,6 +123,9 @@ describe('training marathon operations projection', () => {
       flexibleLoadEvidenceCreated: false,
       haltSlaMs: MaxCurtailmentHaltLatencyMs,
       predicateAvailable: true,
+      preflightEndpoint:
+        '/api/training/runs/{trainingRunRef}/curtailment-drill-preflight',
+      preflightRouteAvailable: true,
       schemaVersion: CurtailmentDrillSchemaVersion,
     })
     expect(projection.operationsSummary).toEqual({
@@ -189,6 +194,10 @@ describe('training marathon operations projection', () => {
     )
     expect(body.curtailmentSurface.drillScheduled).toBe(false)
     expect(body.curtailmentSurface.flexibleLoadEvidenceCreated).toBe(false)
+    expect(body.curtailmentSurface.preflightRouteAvailable).toBe(true)
+    expect(body.curtailmentSurface.preflightEndpoint).toBe(
+      '/api/training/runs/{trainingRunRef}/curtailment-drill-preflight',
+    )
     expect(body.operationsSummary).toMatchObject({
       blockerCount: 3,
       openReceiptGateCount: 3,

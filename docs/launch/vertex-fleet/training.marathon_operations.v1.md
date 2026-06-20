@@ -198,3 +198,31 @@ satisfy, not a completed drill. `curtailment_drill_missing` remains active until
 a scheduled live drill produces a receipt-backed outcome feeding the predicate.
 No curtailment event, load-shed proof, flexible-load claim, spend, settlement,
 model promotion, or green transition is created.
+
+## 2026-06-20 curtailment drill preflight route
+
+Blocker advanced: **`blocker.product_promises.curtailment_drill_missing`**
+(still listed).
+
+The curtailment-drill outcome predicate is now reachable through the Worker as an
+admin-gated preflight, mirroring the existing standby-dispatch preflight:
+
+- `POST /api/training/runs/{trainingRunRef}/curtailment-drill-preflight`
+  verifies the run exists, evaluates a public-safe `TrainingCurtailmentDrill`
+  descriptor, and returns the typed `drill_passed` / `drill_incomplete` gate.
+- The route fails malformed descriptors and path/body run-ref mismatches toward
+  `drill_incomplete`; it never turns an unscheduled, out-of-SLA, unsealed, or
+  unverified-resume descriptor into a pass.
+- The response carries the public run projection plus the gate only. It mutates
+  no run/window/lease state, writes no receipt, schedules/triggers no
+  curtailment, sheds no load, spends no funds, and grants no promise-state
+  authority.
+- `GET /api/public/training/marathon-operations` now reports
+  `curtailmentSurface.preflightRouteAvailable=true` and the preflight endpoint.
+- OpenAPI (`preflightTrainingCurtailmentDrill`, admin-bearer) and route/OpenAPI
+  tests cover the contract.
+
+This still does **not** clear `curtailment_drill_missing`: there is no live
+curtailment-event telemetry feed and no receipt-backed scheduled drill on a real
+run. The predicate is decided from a declared descriptor, not yet fed by a live
+grid demand-response signal. No promise state or blocker list was changed.

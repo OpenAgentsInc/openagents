@@ -3499,6 +3499,12 @@ const requestSchemas = (): JsonSchema => ({
   TrainingWindowBootstrapGrantEnvelope: objectSummary(
     "Typed bootstrap outcome envelope. A granted outcome carries the grant ref, the sealed window ref, the seal's checkpoint digest ref, seal receipt refs, echoed joiner receipt refs, and a display-only seal age; a queued outcome carries the join-lifecycle seal-in-flight deferral reason code; a refused outcome carries a typed no-durable-seal reason. None of the outcomes grant payout, settlement, or wallet authority.",
   ),
+  TrainingCurtailmentDrillPreflightRequest: objectSummary(
+    'Admin-only curtailment-drill preflight descriptor for training.marathon_operations.v1. The descriptor carries public-safe refs for the drill and run plus the scheduled flag, signal-acknowledgement state and ack latency, halt-completion state and halt latency, the durable-checkpoint-sealed flag, and the resume-verified flag. It is evaluated as a drill-outcome predicate only.',
+  ),
+  TrainingCurtailmentDrillPreflightEnvelope: objectSummary(
+    'Admin-only curtailment-drill preflight response with the public-safe run projection and a curtailmentDrill gate. The gate returns drill_passed only for a scheduled drill acknowledged inside the ack SLA, halted inside the load-shed SLA, durably sealed before halt, and resume-verified; malformed, mismatched, or out-of-SLA descriptors return drill_incomplete. It performs no dispatch, settlement, curtailment, or promise transition.',
+  ),
   TrainingStandbyDispatchPreflightRequest: objectSummary(
     'Admin-only standby dispatch preflight descriptor for training.marathon_operations.v1. The descriptor carries public-safe refs for the standby contributor, run, bootstrap/live seal windows, qualification and ban flags, live vacancy count, bootstrap-seal verification state, and heartbeat age. It is evaluated as an admissibility predicate only.',
   ),
@@ -5905,6 +5911,27 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Typed bootstrap outcome: granted, queued, or refused.',
           '#/components/schemas/TrainingWindowBootstrapGrantEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/curtailment-drill-preflight': {
+    post: operation({
+      operationId: 'preflightTrainingCurtailmentDrill',
+      summary: 'Preflight scheduled curtailment-drill outcome',
+      description:
+        'Admin-only route to evaluate whether a recorded scheduled curtailment drill on a live training run satisfies the curtailment-readiness conditions. This is a typed preflight only: unscheduled, malformed, mismatched, out-of-SLA, unsealed, or unverified-resume descriptors return drill_incomplete; a drill_passed verdict grants no dispatch, settlement, curtailment, drill receipt, or promise-state authority.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingCurtailmentDrillPreflightRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Typed curtailment-drill preflight verdict.',
+          '#/components/schemas/TrainingCurtailmentDrillPreflightEnvelope',
         ),
         ...errorResponses(),
       },
