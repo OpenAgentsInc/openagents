@@ -2740,6 +2740,8 @@ export const publicProductPromisesDocument = () => {
           'apps/autopilot-desktop/src/ui/view.ts',
           'apps/autopilot-desktop/tests/builtin-agent.test.ts',
           'apps/autopilot-desktop/tests/cl-53-foldkit.test.ts',
+          'apps/openagents.com/workers/api/src/builtin-compute-agent-metering-smoke.ts',
+          'apps/openagents.com/workers/api/src/builtin-compute-agent-metering-smoke.test.ts',
           'docs/launch/2026-06-19-coding-agent-live-verification.md',
         ],
         blockerRefs: [
