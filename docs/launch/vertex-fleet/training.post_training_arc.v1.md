@@ -4,6 +4,57 @@ Date: 2026-06-20
 
 ---
 
+## 2026-06-20 (f) — DPO grading challenge create-request builder
+
+Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+registry edit).
+
+### Blocker advanced
+
+`blocker.product_promises.preference_rollout_work_missing` — advanced, **not
+cleared**.
+
+The previous pass (e) added the DPO grading challenge VERIFIER but left a gap:
+there was no committed bridge from the verifier's `Cs336A5DpoGradingChallengeSpec`
+to the actual rail-side `TrainingVerificationChallengeCreateRequest` envelope a
+paid `cs336_a5_dpo_grading` dispatch would POST. This change adds that builder so
+the create-request is constructed and schema-validated in-repo rather than
+hand-assembled at dispatch time.
+
+### What was built
+
+- `apps/openagents.com/workers/api/src/cs336-a5-dpo-grading-challenge.ts`
+  - `Cs336A5DpoGradingHomeworkKind` (`admin_dispatched_homework`, the same lane
+    the 2026-06-11 alignment run recorded its challenges under).
+  - `buildCs336A5DpoGradingChallengeCreateRequest`: turns a DPO grading challenge
+    spec + `trainingRunRef` (+ optional `windowRef`) into a
+    `deterministic_recompute` / `per_contribution` create-request and **decodes
+    it against the real `training-verification` schema**, throwing
+    `Cs336A5DpoGradingChallengeError` if the request is structurally invalid
+    (e.g. a non-public-safe `trainingRunRef`) or the spec digest is malformed.
+    The payload carries only public-safe digests, counts, and refs.
+- `apps/openagents.com/workers/api/src/cs336-a5-dpo-grading-challenge.test.ts`
+  - 5 new committed tests (16 total in this file): schema-valid request build
+    with round-trip decode, `windowRef` omission, public-safety of the payload,
+    non-public-safe `trainingRunRef` rejection, and malformed-spec-digest
+    rejection.
+
+### Honesty boundary (why the blocker stays open)
+
+This only **constructs and validates** the request object — it does not submit
+it, create a challenge, take a lease, spend sats, or settle anything. No rail
+mutation, no hosted LLM, no real policy/reference model is involved. It is the
+request envelope a paid preference-grading dispatch would send, not the paid
+dispatch itself, so the blocker stays open.
+
+### What genuinely remains for `preference_rollout_work_missing`
+
+Still open: no paid `cs336_a5_dpo_grading` dispatch / lease / settlement / on-rail
+Verified challenge over preference pairs has run, and real model log-probs are
+not yet wired.
+
+---
+
 ## 2026-06-20 (e) — DPO preference-grading challenge verifier
 
 Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no

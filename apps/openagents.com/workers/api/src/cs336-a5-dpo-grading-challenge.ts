@@ -27,14 +27,18 @@
  * #4669 training boundary.
  */
 
+import { Schema as S } from 'effect'
+
 import {
   type Cs336A5DpoGradingResult,
   Cs336A5DpoDefaultBeta,
+  Cs336A5DpoJobKind,
   Cs336A5DpoPreferenceWorkloadRef,
   Cs336A5DpoUpdateBoundaryRef,
   runCs336A5DpoPreferenceGrading,
 } from './cs336-a5-dpo-preference-workload'
 import type { Cs336A5Split } from './cs336-a5-rollout-workload'
+import { TrainingVerificationChallengeCreateRequest } from './training-verification'
 import type {
   TrainingVerificationFailureCode,
   TrainingVerificationVerdict,
@@ -212,5 +216,80 @@ export const verifyCs336A5DpoGradingResponse = async (
     },
     state: 'Verified',
     verdictRefs: [spec.challengeRef],
+  }
+}
+
+/**
+ * The homework kind a paid `cs336_a5_dpo_grading` dispatch records under,
+ * matching the admin-dispatched lane the 2026-06-11 alignment run used for
+ * its rollout/grading challenges.
+ */
+export const Cs336A5DpoGradingHomeworkKind = 'admin_dispatched_homework'
+
+const decodeChallengeCreateRequest = S.decodeUnknownSync(
+  TrainingVerificationChallengeCreateRequest,
+)
+
+/**
+ * Bridges the DPO grading challenge spec into the exact rail-side
+ * `TrainingVerificationChallengeCreateRequest` envelope a paid
+ * `cs336_a5_dpo_grading` dispatch would POST — the same
+ * `deterministic_recompute` challenge shape the alignment run used. The
+ * built request is decoded against the real `training-verification` schema,
+ * so a structurally invalid request (e.g. a non-public-safe `trainingRunRef`)
+ * fails loudly here instead of at the rails.
+ *
+ * IMPORTANT HONESTY BOUNDARY: this only constructs and validates the request
+ * object. It does NOT submit it, create a challenge, take a lease, spend
+ * sats, or settle anything — no rail-side mutation occurs. The payload
+ * carries only public-safe digests, counts, and refs (never prompts,
+ * completions, log-probs, or weights), so
+ * `blocker.product_promises.preference_rollout_work_missing` stays open: the
+ * paid dispatch this request describes has not run.
+ */
+export const buildCs336A5DpoGradingChallengeCreateRequest = (
+  input: Readonly<{
+    spec: Cs336A5DpoGradingChallengeSpec
+    trainingRunRef: string
+    windowRef?: string
+  }>,
+): TrainingVerificationChallengeCreateRequest => {
+  const { spec, trainingRunRef, windowRef } = input
+
+  if (!digestPattern.test(spec.expectedDigestHex)) {
+    throw new Cs336A5DpoGradingChallengeError(
+      'Cannot build a DPO grading challenge request from a spec with a malformed expected digest.',
+    )
+  }
+
+  const challengeRequest = {
+    commitmentRefs: [
+      `commitment.cs336_a5_dpo_grading.${spec.splitRef}`,
+      spec.workloadRef,
+    ],
+    contributionRef: `contribution.cs336_a5_dpo_grading.${spec.splitRef}`,
+    homeworkKind: Cs336A5DpoGradingHomeworkKind,
+    payload: {
+      betaMicro: spec.betaMicro,
+      expectedDigestHex: spec.expectedDigestHex,
+      jobKind: Cs336A5DpoJobKind,
+      pairCount: spec.pairCount,
+      recomputedDigestRef: `recompute.cs336_a5_dpo_grading.${spec.splitRef}`,
+      splitRef: spec.splitRef,
+      updateBoundaryRef: spec.updateBoundaryRef,
+      workloadRef: spec.workloadRef,
+    },
+    samplingPolicy: 'per_contribution' as const,
+    trainingRunRef,
+    verificationClass: spec.verificationClass,
+    ...(windowRef === undefined ? {} : { windowRef }),
+  }
+
+  try {
+    return decodeChallengeCreateRequest(challengeRequest)
+  } catch {
+    throw new Cs336A5DpoGradingChallengeError(
+      'DPO grading challenge create-request failed training-verification schema validation; check trainingRunRef/windowRef are public-safe refs.',
+    )
   }
 }
