@@ -2,6 +2,52 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — crawl-shard plan → assignable/payable units bridge
+
+**Blocker advanced:** `blocker.product_promises.crawl_scale_corpus_missing`.
+
+`buildCs336A4CrawlShardPlan` emits a deterministic partition of a snapshot
+into shard units, and `buildCs336A4ProvenanceReceipt` closes a shard out
+keyed by an `inputShardRef` + a `Cs336A4SourceProvenance`. Nothing connected
+them: a plan shard is an index + a content-addressed `shardRef`, not an
+assignable, payable unit, and the provenance receipt's source descriptor had
+to be hand-retyped at the call site with no guarantee it matched the plan the
+shard came from. This change adds that bridge:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-assignment.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-assignment.test.ts` (14 tests)
+
+`deriveCs336A4CrawlShardAssignment` turns ONE plan shard into a deterministic,
+content-addressed, public-safe `Cs336A4CrawlShardAssignment`:
+
+- a content-addressed `assignmentRef` (stable per plan + shard index) — the
+  identifier an operator dispatches paid work against and that a provenance /
+  settlement receipt binds to;
+- the `inputShardRef` (the plan shard's `shardRef`) ready to feed the
+  provenance receipt;
+- a `provenanceSource` lifted verbatim from the plan (`Cs336A4SourceProvenance`),
+  so the receipt's source descriptor cannot drift from the plan it came from;
+- fail-closed integrity checks: rejects non-crawl acquisition modes,
+  out-of-range/non-integer indices, plan shards whose declared index or segment
+  range is internally inconsistent, and (via the public-safety guard) any
+  wallet/payment/URL/raw material.
+
+`deriveCs336A4CrawlShardAssignments` maps the whole plan to an ordered list of
+such assignments; a test asserts they tile the snapshot with no gaps/overlaps
+and feed `buildCs336A4ProvenanceReceipt` without re-typing the source.
+
+### What genuinely remains (blocker NOT cleared)
+
+`crawl_scale_corpus_missing` stays listed. This is the deterministic
+*conversion* of a plan shard into an assignable unit — it dispatches nothing
+and acquires nothing. No real crawl snapshot has been acquired, no assignment
+has been dispatched as PAID work or run through the deterministic refinery, and
+this bridge is not yet wired into the A4 dispatch/admission path. The promise's
+green criterion — refinery shards dispatched as paid assignments at crawl scale
+with deterministic-recompute verification — is unmet.
+`corpus_provenance_receipts_missing` and `eval_delta_payment_missing` are
+untouched by this update.
+
 ## 2026-06-20 update — deterministic crawl-snapshot shard plan
 
 **Blocker advanced:** `blocker.product_promises.crawl_scale_corpus_missing`.
