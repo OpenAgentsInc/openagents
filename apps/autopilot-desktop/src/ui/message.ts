@@ -494,11 +494,20 @@ export const SucceededComposerTurn = m("SucceededComposerTurn", {
 })
 export const FailedComposerTurn = m("FailedComposerTurn", { error: S.String })
 
-// ── #5453: Blueprint program chat pane ─────────────────────────────────────
-// Chat turns use the existing session.spawn RPC path; these messages only own
-// the local Foldkit state for the chat transcript and spawn settlement.
+// ── #5453/#5821: Verse chat + explicit Blueprint program chat ──────────────
+// The default chat button talks to Tassadar/OpenAgents through the host-side
+// Verse model turn. The older Blueprint/exact-replay session path is kept as an
+// explicit advanced command so it no longer owns first-paint chat semantics.
 export const ChangedChatInput = m("ChangedChatInput", { value: S.String })
 export const ClickedChatSubmit = m("ClickedChatSubmit")
+export const ClickedBlueprintChatSubmit = m("ClickedBlueprintChatSubmit")
+export const SucceededVerseTurn = m("SucceededVerseTurn", {
+  ok: S.Boolean,
+  text: S.String,
+  sourceRefs: S.Array(S.String),
+  blockerRefs: S.Array(S.String),
+})
+export const FailedVerseTurn = m("FailedVerseTurn", { error: S.String })
 export const SucceededChatTurn = m("SucceededChatTurn", { sessionRef: S.String })
 export const FailedChatTurn = m("FailedChatTurn", { error: S.String })
 
@@ -763,6 +772,9 @@ export const Message = S.Union([
   FailedComposerTurn,
   ChangedChatInput,
   ClickedChatSubmit,
+  ClickedBlueprintChatSubmit,
+  SucceededVerseTurn,
+  FailedVerseTurn,
   SucceededChatTurn,
   FailedChatTurn,
   SelectedComposerAccount,

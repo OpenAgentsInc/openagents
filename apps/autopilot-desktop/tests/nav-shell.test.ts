@@ -114,10 +114,11 @@ describe("#5464 command palette + registry", () => {
     }
   })
 
-  test("key actions are registered (spawn, intent, approvals, coordinator, replay)", () => {
+  test("key actions are registered (spawn, Blueprint, intent, approvals, coordinator, replay)", () => {
     const ids = new Set(paletteCommands.map((c) => c.id))
     for (const id of [
       "action.spawn",
+      "action.blueprint-chat",
       "action.submit-intent",
       "action.resolve-next-approval",
       "action.coordinator-pause",

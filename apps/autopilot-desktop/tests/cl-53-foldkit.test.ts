@@ -97,8 +97,10 @@ import {
   ClickedSubmitIntent,
   GotAppleFmReadiness,
   GotBuiltInAgentReadiness,
+  ClickedBlueprintChatSubmit,
   ChangedChatInput,
   ClickedChatSubmit,
+  SucceededVerseTurn,
   GotInstallReadiness,
   GotPromiseSurfacingReadiness,
   GotPromiseSurfacingResult,
@@ -489,15 +491,77 @@ describe("update reducer (CL-53)", () => {
     expect(model.askStatus.tone).toBe("success")
   })
 
-  // #5466 (EPIC #5461): the chat turn now routes through SEMANTIC signature
-  // selection and derives its program steps from the REAL session events. The
-  // objective carries the ROUTED signature ref (not a hardcoded one), and no
-  // step is "verified" until the live session reaches a real terminal phase.
-  test("chat submit routes semantically and stays unverified until live evidence", () => {
+  // #5821: the visible Verse Send button talks to Tassadar/OpenAgents through
+  // the model command. It must not spawn a Codex/Claude coding session.
+  test("default Verse chat submit dispatches a Tassadar model turn, not session spawn", () => {
+    const prompt = "What is my Pylon doing right now?"
+    const typed = update(initialModel, ChangedChatInput({ value: prompt }))[0]
+    const [pending, commands] = update(typed, ClickedChatSubmit())
+
+    expect(pending.chatPending).toBe(true)
+    expect(pending.chatInput).toBe("")
+    expect(pending.chatStatus.text).toContain("Tassadar")
+    expect(commands.map(command => command.name)).toEqual(["RespondToVerseInput"])
+    expect(commands[0]?.args).toEqual({ prompt })
+
+    const userMessage = pending.chatMessages[pending.chatMessages.length - 1]
+    expect(userMessage?.body).toBe(prompt)
+    expect(userMessage?.linkedSessionRef).toBeNull()
+    expect(userMessage?.steps).toEqual([])
+
+    const [answered] = update(
+      pending,
+      SucceededVerseTurn({
+        ok: true,
+        text: "Your Pylon is visible in the public Verse context.",
+        sourceRefs: ["https://openagents.com/api/public/pylon-stats"],
+        blockerRefs: [],
+      }),
+    )
+    expect(answered.chatPending).toBe(false)
+    expect(answered.chatStatus.tone).toBe("success")
+    expect(answered.chatSessionRef).toBeNull()
+    const assistantMessage =
+      answered.chatMessages[answered.chatMessages.length - 1]
+    expect(assistantMessage?.body).toContain("public Verse context")
+    expect(assistantMessage?.linkedSessionRef).toBeNull()
+    expect(assistantMessage?.steps).toEqual([])
+  })
+
+  test("default Verse chat surfaces one clean model blocker without session jargon", () => {
+    const prompt = "Talk to Tassadar"
+    const typed = update(initialModel, ChangedChatInput({ value: prompt }))[0]
+    const [pending] = update(typed, ClickedChatSubmit())
+    const [blocked] = update(
+      pending,
+      SucceededVerseTurn({
+        ok: false,
+        text: "I can't reach Tassadar yet: this desktop does not have an OpenAgents account token configured.",
+        sourceRefs: [],
+        blockerRefs: ["verse.auth.token_missing"],
+      }),
+    )
+
+    expect(blocked.chatPending).toBe(false)
+    expect(blocked.chatStatus.tone).toBe("error")
+    expect(blocked.chatStatus.text).toContain("verse.auth.token_missing")
+    const body = blocked.chatMessages[blocked.chatMessages.length - 1]?.body ?? ""
+    expect(body).toContain("OpenAgents account token")
+    expect(body).not.toContain("Codex")
+    expect(body).not.toContain("Claude")
+    expect(body).not.toContain("session")
+  })
+
+  // #5466 (EPIC #5461): the advanced Blueprint command still routes through
+  // SEMANTIC signature selection and derives its program steps from REAL session
+  // events. It is no longer the default Verse chat mechanic. The objective
+  // carries the ROUTED signature ref (not a hardcoded one), and no step is
+  // "verified" until the live session reaches a real terminal phase.
+  test("explicit Blueprint chat routes semantically and stays unverified until live evidence", () => {
     const prompt = "Continue the C1 Tassadar module proof."
     const selection = selectSignatureForMessage(prompt)
     const typed = update(initialModel, ChangedChatInput({ value: prompt }))[0]
-    const [pending, commands] = update(typed, ClickedChatSubmit())
+    const [pending, commands] = update(typed, ClickedBlueprintChatSubmit())
 
     expect(pending.chatPending).toBe(true)
     expect(pending.chatInput).toBe("")

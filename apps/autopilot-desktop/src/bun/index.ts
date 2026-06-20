@@ -51,6 +51,7 @@ import {
 import { projectInstallReadiness } from "../shared/install-readiness"
 import { buildInferenceGatewayReadiness } from "./inference-gateway"
 import { buildShellTurn, resolveShellAgentToken } from "./shell-turn"
+import { buildVerseTurn } from "./verse-turn"
 import {
   addManagedAccount,
   listManagedAccounts,
@@ -862,6 +863,18 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       // never crosses to the webview.
       async shellTurn(params) {
         return buildShellTurn({
+          prompt: params.prompt,
+          env: Bun.env,
+          agentToken: resolveShellAgentToken(Bun.env, () => {
+            const home = onboardingHome()
+            return home === null
+              ? null
+              : (loadPersistedCredential(home)?.token ?? null)
+          }),
+        })
+      },
+      async verseTurn(params) {
+        return buildVerseTurn({
           prompt: params.prompt,
           env: Bun.env,
           agentToken: resolveShellAgentToken(Bun.env, () => {

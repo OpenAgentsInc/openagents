@@ -60,9 +60,10 @@ not show the shell target tabs, `Claude Code`, or `Codex`.
   stacking exactly or being dragged off-screen. Parity: `paneLayerText(layer)`.
   Tests: `tests/pane-layer.test.ts`.
 - **The chat bar is the first input.** The launch copy should say
-  Verse/Pylon/Tassadar. The existing coding-session chat path is still present
-  until the Tassadar default chat path lands, but the first visible surface must
-  not invite the user to shell out to Codex/Claude/cloud-code.
+  Verse/Pylon/Tassadar. The visible Send action talks to Tassadar/OpenAgents
+  with public Pylon/training context and must not spawn Codex/Claude/cloud-code
+  sessions. Blueprint/exact-replay session chat remains an explicit advanced
+  command, not the first-paint mechanic.
 - **Programmatic shell control + parity stay intact.** Drive the fallback shell
   over the existing RPC path: Bun→webview `shellControl` (`shared/rpc.ts`,
   routed in `main.ts`) pushes the same inbound messages the UI dispatches
