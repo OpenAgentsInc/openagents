@@ -124,7 +124,7 @@ export function writeAnyWorkspaceFile(
         yield* Effect.tryPromise({
           try: () => mkdir(dirname(resolved.absolutePath), { recursive: true }),
           catch: () => undefined,
-        });
+        }).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
         const bom = yield* Effect.tryPromise({
           try: () =>
@@ -133,7 +133,7 @@ export function writeAnyWorkspaceFile(
               () => false,
             ),
           catch: () => false,
-        });
+        }).pipe(Effect.catch(() => Effect.succeed(false)));
 
         const next = splitBom(content);
         const desiredBom = bom || next.bom;
@@ -331,7 +331,7 @@ export function applyAnyWorkspaceFilePatch(
             await writeFile(resolved.absolutePath, contentLines.join("\n"), "utf8");
           },
           catch: () => undefined,
-        });
+        }).pipe(Effect.catch(() => Effect.succeed(undefined)));
         applied.push({ path: filePath, operation: "add", status: "ok" });
         continue;
       }
@@ -370,7 +370,7 @@ export function applyAnyWorkspaceFilePatch(
         const rawContent = yield* Effect.tryPromise({
           try: () => readFile(resolved.absolutePath, "utf8"),
           catch: () => null,
-        });
+        }).pipe(Effect.catch(() => Effect.succeed<string | null>(null)));
         if (rawContent === null) {
           applied.push({ path: filePath, operation: "update", status: "skipped: file not found" });
           continue;
@@ -390,7 +390,7 @@ export function applyAnyWorkspaceFilePatch(
         yield* Effect.tryPromise({
           try: () => writeFile(resolved.absolutePath, replaced, "utf8"),
           catch: () => undefined,
-        });
+        }).pipe(Effect.catch(() => Effect.succeed(undefined)));
         applied.push({ path: filePath, operation: "update", status: "ok" });
         continue;
       }
@@ -410,7 +410,7 @@ export function applyAnyWorkspaceFilePatch(
             await rm(resolved.absolutePath, { force: true });
           },
           catch: () => undefined,
-        });
+        }).pipe(Effect.catch(() => Effect.succeed(undefined)));
         applied.push({ path: filePath, operation: "delete", status: "ok" });
         continue;
       }

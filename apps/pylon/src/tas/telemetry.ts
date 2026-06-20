@@ -219,5 +219,5 @@ export function redactTelemetry(event: TasTelemetryEvent): PublicTelemetryEvent 
   return {
     ...redacted,
     redactionRefs,
-  } as PublicTelemetryEvent
+  } as unknown as PublicTelemetryEvent
 }

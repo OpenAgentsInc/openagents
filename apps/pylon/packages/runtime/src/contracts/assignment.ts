@@ -376,9 +376,17 @@ export function requirePsionicQwenAssignmentBackend(
 export function requireAssignmentGrantRefs(
   assignment: ProbeRunAssignment,
 ): Effect.Effect<
-  ProbeRunAssignment & { readonly providerAccountRef: ProviderAccountRef; readonly authGrantRef: ProviderAuthGrantRef },
+  ProbeRunAssignment & {
+    readonly provider: ProbeProvider;
+    readonly providerAccountRef: ProviderAccountRef;
+    readonly authGrantRef: ProviderAuthGrantRef;
+  },
   ProbeAssignmentParseError
 > {
+  if (assignment.provider === undefined) {
+    return Effect.fail(new ProbeAssignmentParseError({ reason: "assignment is missing provider" }));
+  }
+
   if (assignment.providerAccountRef === undefined) {
     return Effect.fail(new ProbeAssignmentParseError({ reason: "assignment is missing providerAccountRef" }));
   }
@@ -389,6 +397,7 @@ export function requireAssignmentGrantRefs(
 
   return Effect.succeed(
     assignment as ProbeRunAssignment & {
+      readonly provider: ProbeProvider;
       readonly providerAccountRef: ProviderAccountRef;
       readonly authGrantRef: ProviderAuthGrantRef;
     },
