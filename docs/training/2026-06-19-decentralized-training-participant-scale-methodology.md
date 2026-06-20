@@ -63,6 +63,17 @@ This is the rule implemented for the live metric, verbatim from the metric's own
 - `apps/openagents.com/workers/api/src/public-pylon-stats.ts`
   - The public aggregator that sums `summary.metrics.qualifiedContributorCount`
     across runs and carries the per-contributor `sourceRefs`.
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.ts`
+  - The standalone, pure **conformance verifier** that turns this prose rule
+    into an auditable gate: `verifyQualifiedContributorMethodology` recomputes a
+    run's qualified count from per-contributor evidence and confirms a published
+    count is neither inflated nor under-counted. It explicitly rejects
+    simulation-only (`realBitcoinMoved:false`), non-`settled`, and
+    wallet-side/not-provider-confirmed receipts — closing the gap where the
+    in-line `qualifiedContributorRefs` join trusts its caller to pre-filter the
+    receipt-ref map. Covered by
+    `qualified-contributor-methodology.test.ts` (13 tests, wired into
+    `check:deploy`).
 
 ## Public dereference path
 
@@ -97,10 +108,15 @@ not change that number; it only documents how it is derived.
 ## Green-readiness status for the methodology blockers
 
 - `consumer_compute_self_serve_scale_methodology_missing`: the methodology is now
-  written and dereferenceable here and is enforced in code with a live public
-  route. **Green-ready on this specific blocker pending owner review**; the other
+  written and dereferenceable here, enforced in code with a live public route,
+  and additionally backed by a standalone conformance verifier
+  (`qualified-contributor-methodology.ts`) that makes the rule independently
+  auditable and rejects simulation/non-settled/wallet-side receipts. **Green-ready
+  on this specific blocker pending owner review**; the honest remaining step is to
+  run the verifier against the live run's actual per-contributor evidence bundle
+  and cite its `conforms:true` verdict before any broad earning copy. The other
   two blockers on that promise (Windows/WSL coverage, Spark-helper autostart
-  receipt) are tracked separately.
+  receipt) are tracked separately and stay listed.
 - `largest_training_participant_methodology_missing`: the counting rule is
   written here. The *comparison* baseline is documented separately in
   `docs/training/2026-06-19-comparable-decentralized-training-runs-research.md`.
