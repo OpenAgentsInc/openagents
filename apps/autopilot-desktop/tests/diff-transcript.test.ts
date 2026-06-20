@@ -154,6 +154,28 @@ describe("transcript store: persistence + restart merge (#5363)", () => {
     expect(merged.map((m) => m.eventIndex)).toEqual([0, 1])
   })
 
+  test("poll preserves live event-only refs such as proof external-session aliases", () => {
+    const externalRef = "session.pylon.codex_composer.be4d2b8c1eb3512e70bf59be"
+    const merged = persistAndMergeTranscripts(home, {
+      ...liveMessage([ev({ eventIndex: 0, detail: "redaction blocked", phase: "redaction_blocked" })]),
+      events: {
+        "session.pylon.control.aaa": [
+          ev({ eventIndex: 0, detail: "", phase: "redaction_blocked" }),
+        ],
+        [externalRef]: [
+          ev({
+            eventIndex: 3,
+            phase: "agent_message",
+            state: "completed",
+            detail: "agent: I am Codex.",
+          }),
+        ],
+      },
+    })
+
+    expect(merged.events?.[externalRef]?.[0]?.detail).toBe("agent: I am Codex.")
+  })
+
   test("transcript reloads after a node restart drops the session from session.list", () => {
     // 1) A session runs and its transcript is persisted.
     persistAndMergeTranscripts(

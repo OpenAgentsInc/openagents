@@ -151,6 +151,14 @@ export function persistAndMergeTranscripts(
   // 2) Re-surface persisted sessions the node no longer lists (restart/aged out)
   //    as history rows, so their transcript still reloads. Bounded + newest-first.
   const listedRefs = new Set(message.sessions.map((s) => s.sessionRef))
+  // Keep live event-only refs, such as proof-linked external Codex/Claude
+  // aliases. They are not session.list rows, but reducers may need them.
+  for (const [ref, events] of Object.entries(liveEvents)) {
+    if (!listedRefs.has(ref) && mergedEvents[ref] === undefined) {
+      mergedEvents[ref] = [...events]
+    }
+  }
+
   const orphanRecords: SessionTranscriptRecord[] = []
   for (const ref of listPersistedSessionRefs(nodeHome)) {
     if (listedRefs.has(ref)) continue
