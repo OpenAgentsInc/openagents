@@ -173,14 +173,52 @@ production binding shape the harness was missing.
   refs into real adapter content is still missing, and there is no
   registered-agent production smoke. The blocker REMAINS listed.
 
+### 2026-06-20 update — env-gated executor bound into the live worker graph
+
+- `blocker.product_promises.production_hosted_gemini_executor_binding_missing`
+  — **further advanced, still NOT cleared.** The composition root existed but its
+  arming was a plain boolean: nothing read it off the worker `Env`, so the live
+  worker still had `executeReadyWork` UNSET (no hosted Gemini executor at all).
+  This change adds the env seam and binds it in:
+  - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-executor-env.ts`
+    — `hostedGeminiExecutorArmed(env)` (DOUBLE-gated: armed only when
+    `HOSTED_GEMINI_EXECUTOR_ENABLED` is on AND `VERTEX_SA_KEY` is present),
+    `resolveHostedGeminiExecutor(env, deps?)` (builds the real Vertex Gemini
+    adapter from env + composes `createHostedGeminiExecutorBinding`, or returns
+    `undefined` when not armed), and `makeHostedGeminiExecuteReadyWork(deps?)`
+    (the `(env, input) => Promise<closeout | undefined>` shape the route harness's
+    `dependencies.executeReadyWork` expects).
+  - `apps/openagents.com/workers/api/src/config.ts` — new default-OFF
+    `HOSTED_GEMINI_EXECUTOR_ENABLED` / optional `HOSTED_GEMINI_MODEL` config env.
+  - `apps/openagents.com/workers/api/src/index.ts` — wires
+    `executeReadyWork: makeHostedGeminiExecuteReadyWork()` into
+    `autopilotWorkRouteDependencies` (generic widened `WorkerBindings` → `Env`
+    so the dependency reads the config off the live env the route already gets).
+  - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-executor-env.test.ts`
+    (new, 8 cases): the armed matrix (flag×secret, affirmative/negative flag
+    values, blank secret), resolve returns `undefined` + never builds an adapter
+    when not armed, and the INERT `executeReadyWork` resolves `undefined` without
+    touching the adapter. Plus 2 route-harness cases in
+    `autopilot-work-routes.test.ts` (full file 45 pass): the env seam delivers a
+    paid hosted Gemini order end-to-end when the env is armed, and stays INERT
+    (no delivery, adapter untouched) when the flag is off.
+
+  **Honest scope:** the executor is now bound in the live worker graph, but it
+  is INERT on prod (no `HOSTED_GEMINI_EXECUTOR_ENABLED`, no `VERTEX_SA_KEY` for
+  this lane). The upstream ref-resolver that dereferences task/acceptance refs
+  into real adapter content is still missing (the runner builds a refs-only
+  prompt), and there is no registered-agent production smoke. The blocker
+  REMAINS listed.
+
 ## What remains (for green)
 
-- A real deployed `HostedGeminiInferenceCaller` (the hosted Gemini inference
-  call) wired into the worker dependency graph behind an armed flag. The whole
-  chain is now assemblable from one factory (`createHostedGeminiExecutorBinding`,
-  2026-06-20 update above) over an injected Vertex adapter + one flag, but that
-  binding is still injected — it is not yet bound in the live worker graph
-  (`index.ts`) behind an env-gated flag.
+- Arm the bound executor on a real deployment (`HOSTED_GEMINI_EXECUTOR_ENABLED`
+  + `VERTEX_SA_KEY`) and confirm a live hosted Gemini inference call serves a
+  paid placement. The chain is now assemblable from one factory
+  (`createHostedGeminiExecutorBinding`) over an injected Vertex adapter, env-gated
+  (`makeHostedGeminiExecuteReadyWork`), and BOUND in the live worker graph
+  (`index.ts`, 2026-06-20 update above) — but it is INERT until an operator both
+  arms the flag and provisions the secret for this lane.
 - An upstream ref-resolver that dereferences task/acceptance refs into the real
   content the hosted Gemini adapter should act on (the runner currently builds a
   refs-only prompt).

@@ -121,6 +121,16 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   VERTEX_SA_KEY?: string | undefined
   VERTEX_PROJECT_ID?: string | undefined
   VERTEX_LOCATION?: string | undefined
+  // Hosted Gemini Autopilot executor arming flag (api.hosted_gemini.v1, yellow;
+  // blocker.product_promises.production_hosted_gemini_executor_binding_missing).
+  // Default OFF. The hosted Gemini `executeReadyWork` binding stays INERT on the
+  // live Worker (no execution, no closeout) until this flag is on AND
+  // VERTEX_SA_KEY is present (DOUBLE-gated). Set "1"/"true"/"yes"/"on" to arm;
+  // optional HOSTED_GEMINI_MODEL overrides the requested model alias. Arming
+  // does NOT flip the promise: green still needs the upstream task-ref resolver
+  // and a registered-agent production smoke (see the launch worklog).
+  HOSTED_GEMINI_EXECUTOR_ENABLED?: string | undefined
+  HOSTED_GEMINI_MODEL?: string | undefined
   EXA_API_KEY?: string | undefined
   EXA_BASE_URL?: string | undefined
   EXA_DEFAULT_NUM_RESULTS?: string | undefined
