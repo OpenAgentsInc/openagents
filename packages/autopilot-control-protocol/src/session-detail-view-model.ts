@@ -1,4 +1,4 @@
-import { reduceSessionState } from "./session-state-reducer"
+import { reduceSessionState } from "./session-state-reducer.js"
 
 export type SessionDetailInput = {
   sessionRef: string

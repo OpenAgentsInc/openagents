@@ -1,4 +1,4 @@
-import { buildCloudPanel } from "./cloud-panel-view-model"
+import { buildCloudPanel } from "./cloud-panel-view-model.js"
 
 export type CloudCardRender = {
   visible: boolean

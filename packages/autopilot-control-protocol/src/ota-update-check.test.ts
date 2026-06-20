@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { decideUpdateApply } from "./ota-update-check"
+import { decideUpdateApply } from "./ota-update-check.js"
 
 describe("OTA update apply decision", () => {
   test("applies when runtime matches and manifest id differs from current update", () => {

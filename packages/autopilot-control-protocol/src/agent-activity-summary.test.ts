@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { summarizeAgentActivity } from "./agent-activity-summary"
+import { summarizeAgentActivity } from "./agent-activity-summary.js"
 
 describe("agent activity summary", () => {
   test("returns a stable empty summary for no events", () => {

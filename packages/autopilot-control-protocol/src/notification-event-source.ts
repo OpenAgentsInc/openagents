@@ -1,4 +1,4 @@
-import { buildNotification } from "./notification-dispatch"
+import { buildNotification } from "./notification-dispatch.js"
 
 export type NotificationSession = {
   sessionRef: string

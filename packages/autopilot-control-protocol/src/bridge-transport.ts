@@ -4,9 +4,9 @@
 // (POST /bridge with `Authorization: Bridge <pairingRef>:<jti>`). Pure +
 // transport-agnostic (inject fetch) so web / desktop / mobile share it.
 
-import { buildArtifactReadRequest, buildCancelRequest, buildHistoryRequest, buildListRequest } from "./bridge-client"
-import { buildDecisionResolveEnvelope } from "./bridge-decision-client"
-import { parseArtifactReadResponse, type ArtifactReadResponse } from "./artifact-content-view"
+import { buildArtifactReadRequest, buildCancelRequest, buildHistoryRequest, buildListRequest } from "./bridge-client.js"
+import { buildDecisionResolveEnvelope } from "./bridge-decision-client.js"
+import { parseArtifactReadResponse, type ArtifactReadResponse } from "./artifact-content-view.js"
 import {
   buildCoordinatorPauseEnvelope,
   buildCoordinatorResumeEnvelope,
@@ -15,10 +15,10 @@ import {
   buildSpawnEnvelope,
   buildTurnSteerEnvelope,
   type SpawnLane,
-} from "./bridge-steer-client"
-import type { Capability, PairingCredentialClaims, ProjectionLevel } from "./bridge"
-import type { DecisionVerb } from "./decision"
-import { decodeSessionSummary, type SessionSummary } from "./control"
+} from "./bridge-steer-client.js"
+import type { Capability, PairingCredentialClaims, ProjectionLevel } from "./bridge.js"
+import type { DecisionVerb } from "./decision.js"
+import { decodeSessionSummary, type SessionSummary } from "./control.js"
 
 export type BridgePairInput = {
   baseUrl: string

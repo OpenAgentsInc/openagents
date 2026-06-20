@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { nodeSummary } from "./node-summary-view"
+import { nodeSummary } from "./node-summary-view.js"
 
 describe("node summary view", () => {
   test("summarizes a named node with running sessions accounts and balance", () => {

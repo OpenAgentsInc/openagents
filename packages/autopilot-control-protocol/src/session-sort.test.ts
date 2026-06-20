@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { sortSessions, type SessionSortRow } from "./session-sort"
+import { sortSessions, type SessionSortRow } from "./session-sort.js"
 
 const session = (
   sessionRef: string,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { filterSessions, sortByUpdatedAtDesc } from "./session-filter"
+import { filterSessions, sortByUpdatedAtDesc } from "./session-filter.js"
 
 const rows = [
   {
@@ -53,7 +53,7 @@ describe("session filtering", () => {
   })
 
   test("keeps missing and blank filters unconstrained", () => {
-    expect(filterSessions(rows, { text: " ", state: "", agentKind: undefined }).map((row) => row.sessionRef)).toEqual([
+    expect(filterSessions(rows, { text: " ", state: "", agentKind: undefined } as unknown as Parameters<typeof filterSessions>[1]).map((row) => row.sessionRef)).toEqual([
       "local.alpha",
       "cloud.beta",
       "bridge.gamma",

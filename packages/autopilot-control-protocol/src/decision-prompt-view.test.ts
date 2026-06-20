@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectDecisionPrompt } from "./decision-prompt-view"
+import { projectDecisionPrompt } from "./decision-prompt-view.js"
 
 describe("decision prompt view projection", () => {
   test("projects a DecisionRecord-shaped approval from requestId and actionRef", () => {

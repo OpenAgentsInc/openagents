@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { describeOtaDirective } from "./ota-directive-view"
+import { describeOtaDirective } from "./ota-directive-view.js"
 
 describe("OTA directive view", () => {
   test("describes noUpdateAvailable directives", () => {

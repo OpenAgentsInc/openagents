@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectArtifactReview, type ArtifactReviewView } from "./artifact-review-view"
+import { projectArtifactReview, type ArtifactReviewView } from "./artifact-review-view.js"
 
 describe("artifact review view projection", () => {
   test("projects a direct camelCase artifact summary", () => {

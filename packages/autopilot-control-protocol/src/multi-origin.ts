@@ -1,4 +1,4 @@
-import type { SessionSummary } from "./control"
+import type { SessionSummary } from "./control.js"
 
 export type SessionOrigin = "local" | "bridge" | "cloud"
 

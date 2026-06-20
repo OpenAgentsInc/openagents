@@ -1,5 +1,5 @@
-import { sortNotificationFeed } from "./notification-feed-sort"
-import type { NotificationPriority } from "./notification-dispatch"
+import { sortNotificationFeed } from "./notification-feed-sort.js"
+import type { NotificationPriority } from "./notification-dispatch.js"
 
 export type NotificationCenterInputItem = {
   sessionRef: string

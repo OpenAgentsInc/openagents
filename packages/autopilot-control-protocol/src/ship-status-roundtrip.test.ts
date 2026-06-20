@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildShipStatusMessage } from "./ship-status-roundtrip"
+import { buildShipStatusMessage } from "./ship-status-roundtrip.js"
 
 describe("ship status round-trip message", () => {
   test("routes queued OTA status back to the originating client", () => {

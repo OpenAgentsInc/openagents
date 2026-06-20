@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { sessionListFixture } from "./fixtures"
-import { createBridgeTransport, pairBridge } from "./bridge-transport"
+import { sessionListFixture } from "./fixtures.js"
+import { createBridgeTransport, pairBridge } from "./bridge-transport.js"
 
 describe("client bridge transport (CL-14)", () => {
   test("pairBridge posts to /bridge/pair and returns claims", async () => {
@@ -27,7 +27,7 @@ describe("client bridge transport (CL-14)", () => {
     }) as unknown as typeof fetch
     const t = createBridgeTransport({ baseUrl: "https://node.example", credential: { pairingRef: "p1", jti: "j1" }, fetchImpl: okFetch })
     const sessions = await t.list()
-    expect(auth).toBe("Bridge p1:j1")
+    expect(auth as string | null).toBe("Bridge p1:j1")
     expect(sessions.length).toBe(sessionListFixture.length)
 
     const errFetch = (async () => new Response(JSON.stringify({ ok: false, error: "invalid or expired pairing" }), { status: 401 })) as unknown as typeof fetch
@@ -52,7 +52,7 @@ describe("client bridge transport (CL-14)", () => {
       fetchImpl,
     })
     const result = (await t.history("sess.42")) as { recentEvents: unknown[] }
-    expect(auth).toBe("Bridge p1:j1")
+    expect(auth as string | null).toBe("Bridge p1:j1")
     expect(body.verb).toBe("session.history")
     expect(body.sessionRef).toBe("sess.42")
     expect(result.recentEvents.length).toBe(1)
@@ -78,7 +78,7 @@ describe("client bridge transport (CL-14)", () => {
       fetchImpl,
     })
     const result = await t.readArtifact("sess.42")
-    expect(auth).toBe("Bridge p1:j1")
+    expect(auth as string | null).toBe("Bridge p1:j1")
     expect(body.verb).toBe("artifact.read")
     expect(body.capabilityRef).toBe("read_artifact")
     expect(body.sessionRef).toBe("sess.42")

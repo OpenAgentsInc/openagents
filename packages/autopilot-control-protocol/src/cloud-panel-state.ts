@@ -1,7 +1,7 @@
 import {
   cloudMeteringState,
   type CloudMeteringSourceReason,
-} from "./cloud-metering-source-state"
+} from "./cloud-metering-source-state.js"
 
 export type CloudPanelState = {
   state: "available" | "unavailable"

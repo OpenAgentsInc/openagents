@@ -1,4 +1,4 @@
-import { classifyByFingerprint } from "./fingerprint-classify"
+import { classifyByFingerprint } from "./fingerprint-classify.js"
 
 export type ShipFingerprintHistoryEntry = {
   fingerprint: string

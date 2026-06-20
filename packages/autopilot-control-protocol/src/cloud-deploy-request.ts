@@ -1,4 +1,4 @@
-import type { DeployPlan } from "./cloud-deploy"
+import type { DeployPlan } from "./cloud-deploy.js"
 
 type CloudDeployVerb = DeployPlan["request"]["type"]
 

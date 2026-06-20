@@ -6,11 +6,11 @@
 // framework — so each client just imports runConformanceMatrix() and asserts
 // every case is ok.
 
-import { isReadOnlyCapabilitySet, type Capability, type PairingCredentialClaims } from "./bridge"
-import { acceptEvent, initialCursor, needsResnapshot } from "./cursor"
-import { pendingDecision, resolveDecision } from "./decision"
-import { sessionEventStreamFixture } from "./fixtures"
-import { projectionLevelOf } from "./pairing-client"
+import { isReadOnlyCapabilitySet, type Capability, type PairingCredentialClaims } from "./bridge.js"
+import { acceptEvent, initialCursor, needsResnapshot } from "./cursor.js"
+import { pendingDecision, resolveDecision } from "./decision.js"
+import { sessionEventStreamFixture } from "./fixtures.js"
+import { projectionLevelOf } from "./pairing-client.js"
 
 export type ConformanceResult = { name: string; ok: boolean; detail?: string }
 

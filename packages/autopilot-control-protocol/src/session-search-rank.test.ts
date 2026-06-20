@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { rankSessionSearch, type SessionSearchRankRow } from "./session-search-rank"
+import { rankSessionSearch, type SessionSearchRankRow } from "./session-search-rank.js"
 
 const row = (
   sessionRef: string,

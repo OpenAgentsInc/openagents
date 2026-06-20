@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildApprovalResponse } from "./approval-answer"
+import { buildApprovalResponse } from "./approval-answer.js"
 
 describe("approval answer response builder", () => {
   test("builds approve responses without an answer payload", () => {

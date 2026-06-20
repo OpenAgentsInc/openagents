@@ -1,4 +1,4 @@
-import type { NotificationPriority } from "./notification-dispatch"
+import type { NotificationPriority } from "./notification-dispatch.js"
 
 export type NotificationFeedItem = {
   sessionRef: string

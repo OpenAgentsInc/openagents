@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectIntentHistory, type IntentHistoryView } from "./intent-history-view"
+import { projectIntentHistory, type IntentHistoryView } from "./intent-history-view.js"
 
 describe("intent history view projection", () => {
   test("projects a direct intent projection with status history", () => {

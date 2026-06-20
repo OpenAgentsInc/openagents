@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { groupSessionsByParent, type SessionGroupRow } from "./session-group-view"
+import { groupSessionsByParent, type SessionGroupRow } from "./session-group-view.js"
 
 const session = (
   sessionRef: string,

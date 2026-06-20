@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectAssignments, type AssignmentRow } from "./assignments-view"
+import { projectAssignments, type AssignmentRow } from "./assignments-view.js"
 
 describe("assignments view projection", () => {
   test("projects valid camelCase leases", () => {

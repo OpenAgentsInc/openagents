@@ -1,4 +1,4 @@
-import { validateAssignmentClaim } from "./assignment-claim-validate"
+import { validateAssignmentClaim } from "./assignment-claim-validate.js"
 
 export type BuildAssignmentClaimReceiptInput = {
   assignmentRef: string

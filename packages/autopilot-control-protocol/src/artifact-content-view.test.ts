@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildArtifactReadRequest } from "./bridge-client"
+import { buildArtifactReadRequest } from "./bridge-client.js"
 import {
   parseArtifactReadResponse,
   projectArtifactContentView,
-} from "./artifact-content-view"
+} from "./artifact-content-view.js"
 
 const baseRequest = {
   pairingRef: "pairing.fixture.0001",

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { formatSats, projectEarnings } from "./earnings-view"
+import { formatSats, projectEarnings } from "./earnings-view.js"
 
 describe("earnings view projection", () => {
   test("projects a known balance without exposing spend authority", () => {

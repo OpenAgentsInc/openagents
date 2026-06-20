@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectGrantedCapabilities } from "./bridge-capability-grant"
+import { projectGrantedCapabilities } from "./bridge-capability-grant.js"
 
 describe("bridge capability grant projection", () => {
   test("projects null claims to an empty read-only grant", () => {

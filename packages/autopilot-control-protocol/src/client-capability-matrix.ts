@@ -3,7 +3,7 @@ import {
   verbAllowedByCapabilities,
   type BridgeRequestVerb,
   type Capability,
-} from "./bridge"
+} from "./bridge.js"
 
 export type ClientSurface = "mobile" | "desktop" | "web"
 

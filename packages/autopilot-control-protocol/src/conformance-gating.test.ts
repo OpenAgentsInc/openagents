@@ -8,8 +8,8 @@ import {
   type PairingCredentialClaims,
   type ProjectionLevel,
   type SessionEvent,
-} from "./index"
-import { sessionEventStreamFixture } from "./fixtures"
+} from "./index.js"
+import { sessionEventStreamFixture } from "./fixtures.js"
 
 const projectionRank: Record<ProjectionLevel, number> = {
   public_safe: 0,

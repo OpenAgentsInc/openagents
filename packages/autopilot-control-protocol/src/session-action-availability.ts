@@ -1,4 +1,4 @@
-import { availableSteerVerbs, type AvailableSteerVerb, type SteerAvailabilityState } from "./steer-availability"
+import { availableSteerVerbs, type AvailableSteerVerb, type SteerAvailabilityState } from "./steer-availability.js"
 
 export type SessionActionsInput = {
   state: string

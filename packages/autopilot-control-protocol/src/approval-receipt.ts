@@ -1,4 +1,4 @@
-import type { ApprovalDecision } from "./approval-answer"
+import type { ApprovalDecision } from "./approval-answer.js"
 
 export type BuildApprovalReceiptInput = {
   ref: string

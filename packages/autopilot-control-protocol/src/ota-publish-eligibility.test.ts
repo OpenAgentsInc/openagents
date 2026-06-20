@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { decideOtaPublish } from "./ota-publish-eligibility"
+import { decideOtaPublish } from "./ota-publish-eligibility.js"
 
 describe("OTA publish eligibility", () => {
   test("requests a rebuild when native changes are present", () => {

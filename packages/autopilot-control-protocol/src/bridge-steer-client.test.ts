@@ -12,8 +12,8 @@ import {
   canSpawnSession,
   canSubmitIntent,
   canSteerTurn,
-} from "./bridge-steer-client"
-import { verbAllowedByCapabilities, type Capability } from "./bridge"
+} from "./bridge-steer-client.js"
+import { verbAllowedByCapabilities, type Capability } from "./bridge.js"
 
 const base = {
   pairingRef: "pairing.fixture.0001",

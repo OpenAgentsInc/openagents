@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { validateDeployRequest } from "./deploy-request-validate"
+import { validateDeployRequest } from "./deploy-request-validate.js"
 
 describe("deploy request validation", () => {
   test("accepts a Cloud Run production request", () => {

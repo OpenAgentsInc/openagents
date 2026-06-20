@@ -1,10 +1,10 @@
-import type { BridgeRequestEnvelope, BridgeRequestVerb } from "./bridge"
+import type { BridgeRequestEnvelope, BridgeRequestVerb } from "./bridge.js"
 import {
   decodeSessionEvent,
   decodeSessionSummary,
   type SessionEvent,
   type SessionSummary,
-} from "./control"
+} from "./control.js"
 
 type BaseReadRequestInput = {
   pairingRef: string

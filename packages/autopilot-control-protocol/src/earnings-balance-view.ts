@@ -1,4 +1,4 @@
-import { projectEarnings } from "./earnings-view"
+import { projectEarnings } from "./earnings-view.js"
 
 export type EarningsBalanceView = {
   balanceSats: number

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildNotificationFeed } from "./notification-render-model"
+import { buildNotificationFeed } from "./notification-render-model.js"
 
 describe("notification render model", () => {
   test("returns an empty feed for no events", () => {

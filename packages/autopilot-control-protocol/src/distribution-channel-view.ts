@@ -1,4 +1,4 @@
-import type { DistributionTarget } from "./distribution-notarize-plan"
+import type { DistributionTarget } from "./distribution-notarize-plan.js"
 
 export type DistributionChannelView = {
   channels: {

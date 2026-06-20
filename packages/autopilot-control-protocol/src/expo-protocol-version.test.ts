@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { negotiateProtocolVersion } from "./expo-protocol-version"
+import { negotiateProtocolVersion } from "./expo-protocol-version.js"
 
 describe("Expo protocol version negotiation", () => {
   test("defaults absent headers to protocol version 0 without directives", () => {

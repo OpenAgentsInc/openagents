@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { resolveOtaChannel } from "./ota-channel-resolve"
+import { resolveOtaChannel } from "./ota-channel-resolve.js"
 
 describe("OTA channel resolution", () => {
   test("routes production builds to the production channel and branch", () => {

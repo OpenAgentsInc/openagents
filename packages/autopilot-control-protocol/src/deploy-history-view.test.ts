@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   projectDeployHistory,
   type DeployHistoryView,
-} from "./deploy-history-view"
+} from "./deploy-history-view.js"
 
 describe("deploy history view projection", () => {
   test("projects and sorts a direct deploy history by at descending", () => {

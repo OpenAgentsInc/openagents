@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { createApprovalLedger } from "./approval-exactly-once"
+import { createApprovalLedger } from "./approval-exactly-once.js"
 
 describe("approval exactly-once ledger", () => {
   test("applies the first approve decision for a key", () => {

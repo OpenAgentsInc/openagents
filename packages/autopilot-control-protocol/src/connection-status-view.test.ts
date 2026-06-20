@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { connectionStatusView } from "./connection-status-view"
+import { connectionStatusView } from "./connection-status-view.js"
 
 describe("connection status view", () => {
   test("projects discovering without a known target", () => {

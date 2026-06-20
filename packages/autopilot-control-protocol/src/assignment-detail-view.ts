@@ -1,4 +1,4 @@
-import type { AssignmentState } from "./assignments-view"
+import type { AssignmentState } from "./assignments-view.js"
 
 type RawRecord = Record<string, unknown>
 

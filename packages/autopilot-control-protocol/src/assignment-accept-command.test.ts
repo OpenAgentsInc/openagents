@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildAssignmentAccept } from "./assignment-accept-command"
+import { buildAssignmentAccept } from "./assignment-accept-command.js"
 
 describe("assignment accept command builder", () => {
   test("builds an accept command for open assignments with a non-empty lease ref", () => {

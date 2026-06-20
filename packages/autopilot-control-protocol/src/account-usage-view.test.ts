@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectAccountUsage } from "./account-usage-view"
+import { projectAccountUsage } from "./account-usage-view.js"
 
 describe("account usage view projection", () => {
   test("projects per-account usage from camelCase fields", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { estimateCloudCost } from "./cloud-cost-estimate"
+import { estimateCloudCost } from "./cloud-cost-estimate.js"
 
 describe("cloud cost estimate", () => {
   test("estimates input and output token cost in sats", () => {

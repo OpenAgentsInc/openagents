@@ -1,11 +1,11 @@
 import {
   estimateCloudCost,
   type CloudCostEstimateInput,
-} from "./cloud-cost-estimate"
+} from "./cloud-cost-estimate.js"
 import {
   projectFailover,
   type ProviderFailoverAccount,
-} from "./provider-failover-state"
+} from "./provider-failover-state.js"
 
 export type CloudQuotaSummaryInput = {
   accounts: ProviderFailoverAccount[]

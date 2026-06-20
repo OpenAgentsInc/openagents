@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { computeCloudQuota, projectCloudQuota } from "./cloud-quota-view"
+import { computeCloudQuota, projectCloudQuota } from "./cloud-quota-view.js"
 
 describe("cloud quota view projection", () => {
   test("projects camelCase quota fields with derived remaining and percent", () => {

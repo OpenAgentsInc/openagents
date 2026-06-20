@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildDecisionResolve } from "./decision-resolve-command"
+import { buildDecisionResolve } from "./decision-resolve-command.js"
 
 describe("decision resolve command builder", () => {
   test("builds an approve command", () => {

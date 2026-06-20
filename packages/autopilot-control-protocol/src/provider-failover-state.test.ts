@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectFailover } from "./provider-failover-state"
+import { projectFailover } from "./provider-failover-state.js"
 
 describe("provider failover state projection", () => {
   test("keeps the primary active when it is ready and unlimited", () => {

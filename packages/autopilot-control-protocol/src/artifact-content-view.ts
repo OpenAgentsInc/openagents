@@ -14,7 +14,7 @@
 // proof and failure artifact shapes (see apps/pylon control-sessions
 // writeRetainedArtifact / writeFailureArtifact).
 
-import { projectArtifactReview, type ArtifactReviewView } from "./artifact-review-view"
+import { projectArtifactReview, type ArtifactReviewView } from "./artifact-review-view.js"
 
 export type ArtifactReadKind = "proof" | "failure" | "none"
 

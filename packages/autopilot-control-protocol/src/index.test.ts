@@ -13,12 +13,12 @@ import {
   resolveDecision,
   verbAllowedByCapabilities,
   type Capability,
-} from "./index"
+} from "./index.js"
 import {
   decisionRequestFixture,
   sessionEventStreamFixture,
   sessionListFixture,
-} from "./fixtures"
+} from "./fixtures.js"
 
 describe("control schema", () => {
   test("decodes the session list + event stream fixtures", () => {

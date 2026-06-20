@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectDeployStatus } from "./deploy-status-view"
+import { projectDeployStatus } from "./deploy-status-view.js"
 
 describe("deploy status view projection", () => {
   test("projects a direct deployed payload", () => {

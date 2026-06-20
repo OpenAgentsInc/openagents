@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { headerStats } from "./header-stats"
+import { headerStats } from "./header-stats.js"
 
 describe("header stats", () => {
   test("summarizes an empty header row", () => {

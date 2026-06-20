@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildNotification } from "./notification-dispatch"
+import { buildNotification } from "./notification-dispatch.js"
 
 describe("notification dispatch", () => {
   test("notifies needs_decision as high priority", () => {

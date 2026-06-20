@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { assertThemeParity, CANONICAL_DARK } from "./theme-parity"
+import { assertThemeParity, CANONICAL_DARK } from "./theme-parity.js"
 
 describe("theme parity", () => {
   test("accepts the canonical dark palette", () => {

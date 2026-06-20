@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { cloudMeteringState } from "./cloud-metering-source-state"
+import { cloudMeteringState } from "./cloud-metering-source-state.js"
 
 describe("cloud metering source state", () => {
   test("marks a fresh root usage feed available", () => {

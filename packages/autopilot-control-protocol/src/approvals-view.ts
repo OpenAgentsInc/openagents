@@ -1,4 +1,4 @@
-import type { DecisionRecord, DecisionState, DecisionVerb } from "./decision"
+import type { DecisionRecord, DecisionState, DecisionVerb } from "./decision.js"
 
 export type ApprovalRow = Pick<DecisionRecord, "requestId" | "actionRef" | "state"> & {
   resolvedVerb: string | null

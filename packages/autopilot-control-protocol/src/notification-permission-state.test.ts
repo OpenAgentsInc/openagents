@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectNotificationPermission } from "./notification-permission-state"
+import { projectNotificationPermission } from "./notification-permission-state.js"
 
 describe("notification permission state projection", () => {
   test("enables notifications when permission is granted and a push token exists", () => {

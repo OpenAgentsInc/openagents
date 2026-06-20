@@ -1,8 +1,8 @@
 import type {
   Capability,
   PairingCredentialClaims,
-} from "./bridge"
-import type { ProjectionLevel } from "./control"
+} from "./bridge.js"
+import type { ProjectionLevel } from "./control.js"
 
 export function isCredentialUsable(claims: PairingCredentialClaims, nowMs: number): boolean {
   const expiresAtMs = Date.parse(claims.expiresAt)

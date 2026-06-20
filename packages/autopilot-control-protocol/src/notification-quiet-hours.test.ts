@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { filterByQuietHours, inQuietHours } from "./notification-quiet-hours"
+import { filterByQuietHours, inQuietHours } from "./notification-quiet-hours.js"
 
 describe("notification quiet hours", () => {
   test("matches hours inside a same-day window", () => {

@@ -1,4 +1,4 @@
-import type { AssignmentRow } from "./assignments-view"
+import type { AssignmentRow } from "./assignments-view.js"
 
 type AssignmentsPollSummary = {
   open: number

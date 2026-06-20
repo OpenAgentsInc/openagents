@@ -1,4 +1,4 @@
-import { projectAssignmentDetail } from "./assignment-detail-view"
+import { projectAssignmentDetail } from "./assignment-detail-view.js"
 
 type RawRecord = Record<string, unknown>
 

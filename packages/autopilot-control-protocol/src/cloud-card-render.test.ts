@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { renderCloudCard } from "./cloud-card-render"
+import { renderCloudCard } from "./cloud-card-render.js"
 
 describe("cloud card render", () => {
   test("stays visible and honest when metering is absent", () => {

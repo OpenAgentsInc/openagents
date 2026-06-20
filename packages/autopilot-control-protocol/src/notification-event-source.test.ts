@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { notificationsFromSessions } from "./notification-event-source"
+import { notificationsFromSessions } from "./notification-event-source.js"
 
 describe("notification event source", () => {
   test("returns no notifications and preserves seen refs for no sessions", () => {

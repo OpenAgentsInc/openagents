@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { parseAutopilotDeepLink } from "./deeplink-parse"
+import { parseAutopilotDeepLink } from "./deeplink-parse.js"
 
 describe("autopilot deep link parsing", () => {
   test("parses session deep links into session refs", () => {

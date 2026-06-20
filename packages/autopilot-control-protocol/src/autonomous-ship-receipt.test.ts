@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildShipReceipt, validateShipReceipt } from "./autonomous-ship-receipt"
+import { buildShipReceipt, validateShipReceipt } from "./autonomous-ship-receipt.js"
 
 describe("autonomous ship receipt", () => {
   test("builds an allowed OTA receipt", () => {

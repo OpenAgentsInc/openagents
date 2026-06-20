@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { classifyByFingerprint } from "./fingerprint-classify"
+import { classifyByFingerprint } from "./fingerprint-classify.js"
 
 describe("fingerprint ship-mode classifier", () => {
   test("classifies a missing previous fingerprint as the initial ship", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { decisionBadge } from "./decision-badge"
+import { decisionBadge } from "./decision-badge.js"
 
 describe("decision badge", () => {
   test("hides when there are no pending decisions", () => {

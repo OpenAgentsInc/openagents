@@ -1,12 +1,12 @@
 import {
   estimateCloudCost,
   type CloudCostEstimateInput,
-} from "./cloud-cost-estimate"
-import { cloudMeteringState } from "./cloud-metering-source-state"
+} from "./cloud-cost-estimate.js"
+import { cloudMeteringState } from "./cloud-metering-source-state.js"
 import {
   projectCloudQuota,
   type CloudQuotaView,
-} from "./cloud-quota-view"
+} from "./cloud-quota-view.js"
 
 export type CloudPanelViewModel = {
   available: boolean

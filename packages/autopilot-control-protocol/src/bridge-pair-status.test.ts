@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectPairStatus } from "./bridge-pair-status"
+import { projectPairStatus } from "./bridge-pair-status.js"
 
 const nowIso = "2026-06-13T12:00:00.000Z"
 

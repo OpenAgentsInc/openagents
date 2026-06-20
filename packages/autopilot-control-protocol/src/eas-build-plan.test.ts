@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { planEasBuild } from "./eas-build-plan"
+import { planEasBuild } from "./eas-build-plan.js"
 
 describe("local mobile build plan", () => {
   test("does not build for an OTA update", () => {

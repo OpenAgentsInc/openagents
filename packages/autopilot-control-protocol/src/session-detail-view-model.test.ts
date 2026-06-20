@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   buildSessionDetail,
   type SessionDetailViewModel,
-} from "./session-detail-view-model"
+} from "./session-detail-view-model.js"
 
 describe("session detail view model", () => {
   test("builds an idle detail for a session with no events or artifact", () => {

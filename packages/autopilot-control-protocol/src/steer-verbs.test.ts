@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { applySteerVerb } from "./steer-verbs"
+import { applySteerVerb } from "./steer-verbs.js"
 
 describe("steer verb state machine", () => {
   test("pauses a running session", () => {

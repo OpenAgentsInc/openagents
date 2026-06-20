@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { nextRetry } from "./connection-retry"
+import { nextRetry } from "./connection-retry.js"
 
 describe("connection retry", () => {
   test("starts with a one second delay", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { explainShipGate } from "./ship-gate-explain"
+import { explainShipGate } from "./ship-gate-explain.js"
 
 describe("ship gate explanation", () => {
   test("blocks an OTA ship when spend gating denies it", () => {

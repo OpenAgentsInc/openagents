@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildSubscribeEnvelope, parseEventBatchResponse } from "./bridge-subscribe-client"
-import { CONTROL_SCHEMA_TAG } from "./control"
-import { sessionEventStreamFixture } from "./fixtures"
+import { buildSubscribeEnvelope, parseEventBatchResponse } from "./bridge-subscribe-client.js"
+import { CONTROL_SCHEMA_TAG } from "./control.js"
+import { sessionEventStreamFixture } from "./fixtures.js"
 
 const baseInput = {
   pairingRef: "pairing.fixture.0001",

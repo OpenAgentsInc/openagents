@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { capacityBar } from "./account-capacity-bar"
+import { capacityBar } from "./account-capacity-bar.js"
 
 describe("account capacity bar", () => {
   test("shows unknown usage as an empty ok bar", () => {

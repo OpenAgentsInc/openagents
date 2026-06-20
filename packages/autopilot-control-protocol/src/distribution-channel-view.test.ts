@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectDistributionChannels } from "./distribution-channel-view"
+import { projectDistributionChannels } from "./distribution-channel-view.js"
 
 describe("distribution channel view projection", () => {
   test("projects direct channel arrays", () => {

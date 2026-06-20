@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { nextDeployPoll } from "./deploy-poll-state"
+import { nextDeployPoll } from "./deploy-poll-state.js"
 
 describe("deploy poll state", () => {
   test("marks deployed as terminal without polling", () => {

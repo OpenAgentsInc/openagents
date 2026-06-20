@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test"
 
-import type { PairingCredentialClaims } from "./bridge"
+import type { PairingCredentialClaims } from "./bridge.js"
 import {
   createCredentialStore,
   hasCapability,
   isCredentialUsable,
   projectionLevelOf,
-} from "./pairing-client"
+} from "./pairing-client.js"
 
 const claims: PairingCredentialClaims = {
   pairingRef: "pairing.test",

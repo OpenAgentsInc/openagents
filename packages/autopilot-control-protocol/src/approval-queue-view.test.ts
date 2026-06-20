@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectApprovalQueue } from "./approval-queue-view"
+import { projectApprovalQueue } from "./approval-queue-view.js"
 
 describe("approval queue view projection", () => {
   test("projects a pending approvals list", () => {

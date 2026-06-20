@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { validateIntentDraft } from "./intent-validation"
+import { validateIntentDraft } from "./intent-validation.js"
 
 describe("intent draft validation", () => {
   test("accepts valid strings and trims both fields", () => {

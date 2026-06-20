@@ -1,4 +1,4 @@
-import type { Adapter, SessionState, SessionSummary } from "./control"
+import type { Adapter, SessionState, SessionSummary } from "./control.js"
 
 export type CloudCoordinatorSessionListRequestInput = {
   pairingRef: string

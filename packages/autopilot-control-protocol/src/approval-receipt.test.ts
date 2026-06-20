@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildApprovalReceipt, validateApprovalReceipt } from "./approval-receipt"
+import { buildApprovalReceipt, validateApprovalReceipt } from "./approval-receipt.js"
 
 describe("approval receipt", () => {
   test("builds approve receipts without answer state", () => {

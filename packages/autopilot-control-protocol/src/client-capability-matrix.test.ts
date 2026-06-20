@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { clientCapabilities, type ClientSurface } from "./client-capability-matrix"
+import { clientCapabilities, type ClientSurface } from "./client-capability-matrix.js"
 
 const readOnlyVerbs = [
   "bridge.clients.list",

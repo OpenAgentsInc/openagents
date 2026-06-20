@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectAccountRegistryDetail } from "./account-registry-detail-view"
+import { projectAccountRegistryDetail } from "./account-registry-detail-view.js"
 
 describe("account registry detail view projection", () => {
   test("returns an empty read-only projection for unavailable payloads", () => {

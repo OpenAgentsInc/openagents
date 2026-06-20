@@ -1,4 +1,4 @@
-import type { DeployValidationResult } from "./cloud-deploy"
+import type { DeployValidationResult } from "./cloud-deploy.js"
 
 export type DeployRequestTarget = "cloudrun" | "workers"
 export type DeployRequestEnv = "production" | "preview"
