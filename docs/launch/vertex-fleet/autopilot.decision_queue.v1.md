@@ -2,7 +2,27 @@
 
 **Promise state:** `planned` (no state change this run — Hard Rule 1)
 
-## Latest run (2026-06-20) — receipt-backed closeout on the LIVE review path
+## Latest run (2026-06-20) — worker-api closeout ledger (accumulation + audit)
+
+**Blocker advanced:** `blocker.product_promises.receipt_backed_command_closeout_missing`
+
+**New files:**
+
+| File | Purpose |
+|---|---|
+| `apps/openagents.com/workers/api/src/autopilot-decision-closeout-ledger.ts` | `createAutopilotDecisionCloseoutLedger()` — the storage + audit-index layer the worker-api closeout receipt was missing. `buildAutopilotDecisionCloseoutReceipt` already produces ONE verifiable closeout per `actOnDecision` review resolution, but those receipts had nowhere to accumulate, so no audit could answer "which queued decisions were closed out, by whom, with what outcome?". This in-memory ledger keys on the receipt's exactly-once `closeoutRef` and mirrors the protocol-side `createDecisionCloseoutLedger` contract — EXCEPT it understands the live review path's applied↔duplicate distinction: an idempotent replay produces the SAME `closeoutRef` but a different `outcome`/`decidedAt`/`line`, which a naive line-equality dedup (what the remote ledger does) would mis-flag as a conflict. Instead it converges on the closeout's stable IDENTITY (decision/work-order/action/state/actor/refs), so a replay is `deduped: true` (keeping the canonical `applied` record) while a genuinely different second closeout for the same `closeoutRef` is refused (`conflict`). Validates on append; serves `get` / `byWorkOrder` / `byActor` / `byOutcome` / `summary`; snapshots are mutation-safe. Pure + in-memory so a D1/KV store can wrap the same contract later without changing callers. |
+| `apps/openagents.com/workers/api/src/autopilot-decision-closeout-ledger.test.ts` | 9 tests: empty state, record/get, invalid rejection, applied→duplicate replay convergence (no growth, canonical applied kept), conflict refusal for a differing same-`closeoutRef` closeout, audit slices by work order / actor / outcome, summary by outcome+action, mutation-safe snapshots, ledger isolation. |
+
+**What it proves:** the live review-path closeout receipt is now genuinely
+*accumulable and auditable* — the missing half of "receipt-backed". A reviewer
+can record every resolution into one ledger, replays converge to one canonical
+closeout, and conflicting closeouts are refused, all enforced once in a pure,
+test-backed place. No promise state changes; no persistence/HTTP wiring is
+claimed (see "What remains").
+
+---
+
+## Earlier run (2026-06-20) — receipt-backed closeout on the LIVE review path
 
 **Blocker advanced:** `blocker.product_promises.receipt_backed_command_closeout_missing`
 
@@ -165,9 +185,11 @@ and is shared across desktop / web / Expo (the three client surfaces).
   **live worker-api HTTP path**: `actOnDecision` now produces and returns a
   canonical, tamper-verifiable `AutopilotDecisionCloseoutReceipt`
   (`autopilot-decision-closeout.ts`) for every review resolution, with an
-  exactly-once `closeoutRef` stable across idempotent replays. The remaining gap
-  is a *persistent* backing store (D1/KV) keyed by `closeoutRef` that appends
-  both surfaces' receipts (mirroring the in-memory ledger contract), the
-  call site that appends when `createRemoteDecisionQueue().resolve` returns a
-  terminal outcome, and a proof of at least one real receipt produced by a live
-  paired-node resolution.
+  exactly-once `closeoutRef` stable across idempotent replays. The worker-api
+  *in-memory* accumulation/audit layer now also exists and is tested
+  (`autopilot-decision-closeout-ledger.ts`, `createAutopilotDecisionCloseoutLedger`):
+  it converges idempotent replays and refuses conflicting closeouts keyed by
+  `closeoutRef`. The remaining gap is a *persistent* backing store (D1/KV)
+  wrapping that same contract, the `actOnDecision` call site that appends the
+  built receipt into the ledger, and a proof of at least one real receipt
+  produced by a live paired-node resolution.
