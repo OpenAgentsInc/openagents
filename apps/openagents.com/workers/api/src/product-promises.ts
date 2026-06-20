@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.23'
+export const PublicProductPromisesVersion = '2026-06-20.24'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -581,7 +581,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents/Pylon can make or beat a largest decentralized training run claim against a 200-contributor benchmark.',
         safeCopy:
-          'Do not make a largest-run claim yet; Episode 236 renews the target, but count methodology and comparable training-run evidence are missing.',
+          'Do not make a largest-run claim yet; Episode 236 renews the target, and the count methodology plus comparable training-run research are now documented, but the current public run remains far below comparable scale.',
         unsafeCopy:
           'Do not say OpenAgents has the largest decentralized training run, has beaten Bittensor, or has 200+ contributors unless current comparable evidence exists.',
         evidenceRefs: [
@@ -594,12 +594,10 @@ export const publicProductPromisesDocument = () => {
           'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
         ],
         blockerRefs: [
-          'blocker.product_promises.largest_training_participant_methodology_missing',
-          'blocker.product_promises.comparable_training_run_evidence_missing',
           'blocker.product_promises.public_training_contributor_receipts_missing',
         ],
         verification:
-          'Green requires participant count methodology, run definition, training evidence, accepted-work receipts, public verification, and a comparison rule that is current and comparable. The qualified-contributor counting rule is now written and dereferenceable (docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md, enforced in training-run-window-authority.ts) and the comparable runs are documented with citations (docs/training/2026-06-19-comparable-decentralized-training-runs-research.md: Templar Covenant-72B ~70 contributors, ~200 is the transcript target). This clears the methodology and comparable-evidence gaps as written evidence only; the promise stays red because the live run has two counted contributors, far below the comparable scale, so public_training_contributor_receipts_missing is unmet. No green flip without an actual comparable-scale run and an owner-signed receipt-first upgrade.',
+          'Green requires participant count methodology, run definition, training evidence, accepted-work receipts, public verification, and a comparison rule that is current and comparable. The qualified-contributor counting rule is now written and dereferenceable (docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md, enforced in training-run-window-authority.ts) and the comparable runs are documented with citations (docs/training/2026-06-19-comparable-decentralized-training-runs-research.md: Templar Covenant-72B ~70 contributors, ~200 is the transcript target). This clears the methodology and comparable-evidence gaps as written evidence only; the promise stays red because the live run has five counted realBitcoinMoved:true contributors, far below the comparable scale, so public_training_contributor_receipts_missing is unmet. No green flip without an actual comparable-scale run and an owner-signed receipt-first upgrade.',
         authorityBoundary:
           'Marketing comparisons do not grant proof. Public copy must degrade to the receipts actually available.',
       },
@@ -3502,6 +3500,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.20 is a training.ablation_system.v1 one-delta harness pass and flips NO promise state (stays planned, green count unchanged at 24). The public ablation derisking ledger now verifies its candidate entries through a typed one-delta manifest harness (harness.training_ablation.one_delta_manifest.v1): exactly one delta, public-safe refs, frozen baseline refs, fixed eval-plan refs, and fail-closed rejection for multi-delta or private-material manifests. GET /api/public/training/ablation-derisking-ledger now reports ablationHarnessAvailable:true, clears blocker.product_promises.ablation_harness_missing, and keeps evalSuiteReproductionAvailable:false, paidAblationDispatchAvailable:false, zero paid ablations, zero reproduced evals, zero accepted verdicts, and greenGateSatisfied:false. Remaining blockers are blocker.product_promises.eval_suite_reproduction_missing and blocker.product_promises.paid_ablation_dispatch_missing. No ablation execution, training dispatch, spend, settlement, eval reproduction, accepted verdict, model promotion, or public capability claim is created.',
         'Registry 2026-06-20.22 is an artanis.tassadar_evolution_loop.v1 distillation-dataset receipt pass and flips NO promise state (stays yellow, green count unchanged at 24). GET /api/public/artanis/tassadar-distillation-dataset now projects a public-safe, refs-only dataset-curation receipt over accepted Artanis admin executor-trace closeouts. The receipt is available only when at least 10 accepted exact-replay closeouts exist; production already has the source material via GET /api/public/artanis/tick-streak (longestStreak 12, targetReached true, 16 verified tick closeouts in the scanned window). The projection exposes assignment refs, digest prefixes, and dereferenceable closeout receipt refs only, and clears blocker.product_promises.tassadar_distillation_dataset_receipt_missing. It creates no raw trace export, training run, eval, settlement, model promotion, or model-capability claim. The promise stays yellow pending owner-signed green transition per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-20.23 is a training.model_ladder.v1 blocker-cleanup pass and flips NO promise state (stays planned, green count unchanged at 24). The per-rung economics-gate report format and R1 closeout criteria were already published and cited at docs/training/2026-06-19-model-ladder-rung-economics.md, and the verification copy already states that rung_economics_gate_format_missing is documented. This drops blocker.product_promises.rung_economics_gate_format_missing as stale. The remaining real blocker is blocker.product_promises.r1_full_rehearsal_missing: no rung above R0 has run to a closeout receipt. No rung run, training dispatch, spend, settlement, model artifact, eval, or capability claim is created.',
+        'Registry 2026-06-20.24 is a pylon.largest_decentralized_training_claim.v1 blocker-cleanup pass and flips NO promise state (stays red, green count unchanged at 24). The participant-count methodology and comparable-run research were already published and cited at docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md and docs/training/2026-06-19-comparable-decentralized-training-runs-research.md, and the verification copy already states that those gaps are cleared as written evidence. This drops blocker.product_promises.largest_training_participant_methodology_missing and blocker.product_promises.comparable_training_run_evidence_missing as stale. The remaining real blocker is blocker.product_promises.public_training_contributor_receipts_missing: the current live run has five counted realBitcoinMoved:true contributors, far below the cited comparable scale. No largest-run, 200-contributor, at-scale, training-performance, settlement, or world-first claim is created.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
