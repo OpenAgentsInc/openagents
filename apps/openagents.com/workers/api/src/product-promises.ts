@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.48'
+export const PublicProductPromisesVersion = '2026-06-20.49'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -481,7 +481,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'pylon.first_real_model_training_run.v1',
         productArea: 'training',
         audience: ['contributor', 'public'],
-        state: 'yellow',
+        state: 'planned',
         claim: 'Pylon starts the first real model-training run.',
         safeCopy:
           'A bounded public remote two-device real-gradient training run (CS336 A1 scale, run.cs336.a1.real_gradient.demo) is live with digest-committed shard gradients computed on two physical contributor machines, cross-device deterministic-recompute and Freivalds-Merkle verification, merge/eval refs, a published loss-under-budget curve, and settled Lightning closeouts. The model ladder’s network-scale rungs have not run; GET /api/public/training/model-ladder-rungs now projects r2NetworkRungReceiptAvailable=false.',
@@ -514,7 +514,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'training.public_distributed_training_run.v1',
         productArea: 'training',
         audience: ['contributor', 'operator', 'public'],
-        state: 'red',
+        state: 'planned',
         claim:
           'Pylons participate in public distributed model-training runs with visible run state, verified work, reported results, and contributor payment for useful work.',
         safeCopy:
@@ -597,7 +597,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'pylon.largest_decentralized_training_claim.v1',
         productArea: 'training',
         audience: ['contributor', 'operator', 'public'],
-        state: 'red',
+        state: 'planned',
         claim:
           'OpenAgents/Pylon can make or beat a largest decentralized training run claim against a 200-contributor benchmark.',
         safeCopy:
@@ -832,7 +832,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'models.tassadar_percepta_executor.v1',
         productArea: 'models',
         audience: ['contributor', 'operator', 'public'],
-        state: 'red',
+        state: 'planned',
         claim:
           'The Tassadar model direction uses a Percepta Executor Class architecture, with CPU computation transformation support added to Pylon v1.0 for experimental training.',
         safeCopy:
@@ -1289,7 +1289,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'marketplace.signature_monetization.v1',
         productArea: 'marketplace',
         audience: ['agent', 'developer', 'contributor'],
-        state: 'red',
+        state: 'planned',
         claim:
           'DSPy/GEPA signatures and agent workflow components can be discoverable and monetizable.',
         safeCopy:
@@ -1999,7 +1999,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'training.device_capability_dataset.v1',
         productArea: 'training',
         audience: ['contributor', 'operator', 'public'],
-        state: 'yellow',
+        state: 'planned',
         lastVerifiedAt: '2026-06-20',
         claim:
           'Benchmark assignments produce a public device-capability dataset across heterogeneous contributor hardware — matmul throughput, memory bandwidth, attention-kernel performance, sustained-versus-burst thermals — that honestly prices what each machine can earn.',
@@ -2118,7 +2118,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'compute.agentic_kernel_optimization_at_scale.v1',
         productArea: 'compute',
         audience: ['contributor', 'operator', 'public'],
-        state: 'red',
+        state: 'planned',
         claim:
           'Coding agents continuously write and optimize inference kernels across open models and device types (CUDA/Metal/WebGPU), measured by both throughput (tokens/second) and output-parity (an optimized kernel must reproduce identical outputs, verified by exact replay on an independent device), with that work dispatched and paid through the verified-work market as part of the decentralized inference and training mesh.',
         safeCopy:
@@ -3777,6 +3777,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.46 is a training.public_gradient_windows.v1 intake-predicate projection pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/public-gradient-windows now reports intakeAdmissionPredicateAvailable=true and intakeSurface.predicateAvailable=true with schemaVersion openagents.training.public_gradient_window.intake_admission.v1, while intakeSurface.quarantineRouteAvailable=false, acceptedSubmissionCount=0, admittedQuarantineRecordCount=0, liveWindowRuntimeAvailable=false, promotedWindowReceiptAvailable=false, settlementReceiptAvailable=false, and greenGateSatisfied=false. blocker.product_promises.public_gradient_live_window_runtime_missing remains active because no live route receives public submissions and no quarantine store persists admitted windows; promoted-window and settlement blockers are unchanged. No public window acceptance, checkpoint mutation, assignment, spend, settlement, promoted-window receipt, model promotion, or green transition is created. Evidence: docs/launch/vertex-fleet/training.public_gradient_windows.v1.md and apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.ts.',
         'Registry 2026-06-20.47: owner DELEGATED per-flip green sign-off to the operating agent (2026-06-20). Green transitions remain receipt-first and gates-must-be-met; they no longer require a separate owner sign-off when the operating agent is satisfied the promise is genuinely kept with a dereferenceable receipt. Under that delegation two promises flip yellow->green: proof.claim_upgrade_receipts.v1 (transition receipt promise_transition_20680b41-30ca-47d8-b265-bd5ed6fb7ea2, all checks passed) and artanis.tassadar_evolution_loop.v1 (transition receipt promise_transition_5df6cd60-a145-40d3-87e4-33422b2204f3, all checks passed; tick-streak 12>=10 + dereferenceable distillation dataset receipt). Green 24 -> 26. The receipt + gates-met integrity gate is unchanged; only the human sign-off step is delegated.',
         'Registry 2026-06-20.48 adds FIVE conservative new records for the agent-MMORPG / agent-world buildout (EPIC #5730, plan docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md) and flips NO existing promise (green count unchanged at 26). Three are yellow on what is MERGED to main behind default-off flags: autopilot.agent_world_scene.v1 (P0 scene-behind-chat mount, PR #5742, flag CHAT_WORLD_SCENE) + P1 live Pylon crystals from the public pylon-stats projection (PR #5743), autopilot.bitcoin_payment_visualization.v1 (P2 gold payment particles, PR #5743, evidence-bound — the mappers in chat-world-scene.ts refuse any particle without a sourceRef and PAYMENT_EVENT_KINDS is exactly {real_bitcoin_moved, settlement_recorded}), and autopilot.pylon_growth_visualization.v1 (P2 per-Pylon growth tiers from cumulative settled sats, #5737). All three stay yellow: the flags are OFF by default and the live in-app wiring (P2.5) plus default-on decision are pending; they are presentational projections of already-public Pylon/settlement data with no spend, payout, or settlement authority. Two are planned roadmap scope: autopilot.agent_character_creation.v1 (P3 #5738 — onboarding as warp-in spawn + customize + automated Forum intro + work search, building on the three-effect#10 W0 spawner/avatar/warp-in/bar primitives) and world.multiplayer_agent_world.v1 (P4 #5739 — walkable third-person multiplayer world over a SpacetimeDB openagents-world, de-risked behind the HTTP/SSE single-view path first). No new earning, multiplayer, onboarding, or settlement capability is asserted; every moving thing in the scene is bound to a real receipt or event. No promise_transition is required (new yellow/planned records create no state flip); any future green flip remains receipt-first and gates-must-be-met per proof.claim_upgrade_receipts.v1.',
+        'Registry 2026-06-20.49: owner-directed 48h revenue-loop tightening — postpone (yellow/red -> planned) 7 marketplace + advanced/research-training promises not on the revenue critical path (marketplace.signature_monetization, pylon.first_real_model_training_run, training.public_distributed_training_run, pylon.largest_decentralized_training_claim, models.tassadar_percepta_executor, training.device_capability_dataset, compute.agentic_kernel_optimization_at_scale). Code + promises retained; deprioritized from active driving. No green changed (green stays 26). Per docs/launch/2026-06-20-revenue-loop-promise-audit-and-tightening.md.',
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

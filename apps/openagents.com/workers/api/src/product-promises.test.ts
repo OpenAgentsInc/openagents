@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.48')
+    expect(decoded.version).toBe('2026-06-20.49')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -292,6 +292,10 @@ describe('public product promises document', () => {
     // autopilot.pylon_growth_visualization.v1 yellow; autopilot.agent_character_creation.v1,
     // world.multiplayer_agent_world.v1 planned) and flips NO promise state, so
     // green remains exactly 26.
+    // The 2026-06-20.49 owner-directed revenue-loop tightening postpones 7
+    // marketplace + advanced/research-training promises (yellow/red -> planned)
+    // and flips NO green promise, so green remains exactly 26 (yellow 28, red 15,
+    // planned 34, withdrawn 2, total 105).
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(26)
@@ -444,7 +448,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'training.device_capability_dataset.v1',
-          state: 'yellow',
+          state: 'planned',
           evidenceRefs: expect.arrayContaining([
             'docs/training/2026-06-20-cs336-a2-same-class-replication-status.md',
             'apps/openagents.com/workers/api/src/training-device-capability.ts',
@@ -533,7 +537,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'training.public_distributed_training_run.v1',
-          state: 'red',
+          state: 'planned',
           blockerRefs: [
             'blocker.product_promises.public_distributed_training_run_receipts_missing',
           ],
@@ -567,7 +571,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'pylon.largest_decentralized_training_claim.v1',
-          state: 'red',
+          state: 'planned',
           blockerRefs: [
             'blocker.product_promises.public_training_contributor_receipts_missing',
           ],
@@ -701,7 +705,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'models.tassadar_percepta_executor.v1',
-          state: 'red',
+          state: 'planned',
           evidenceRefs: expect.arrayContaining([
             'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
             'docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md',
@@ -1028,8 +1032,8 @@ describe('public product promises document', () => {
     const nonGreenPylonStates: Record<string, string> = {
       'pylon.v03_release_candidate.v1': 'green',
       'pylon.release_tomorrow.v1': 'green',
-      'pylon.first_real_model_training_run.v1': 'yellow',
-      'pylon.largest_decentralized_training_claim.v1': 'red',
+      'pylon.first_real_model_training_run.v1': 'planned',
+      'pylon.largest_decentralized_training_claim.v1': 'planned',
       'pylon.consumer_compute_earns_bitcoin_self_serve.v1': 'red',
       'pylon.v0_3_multi_earning_node.v1': 'red',
       'pylon.five_bitcoin_revenue_streams.v1': 'planned',
@@ -1098,7 +1102,7 @@ describe('public product promises document', () => {
     )
 
     expect(signaturePromise).toMatchObject({
-      state: 'red',
+      state: 'planned',
       blockerRefs: ['blocker.product_promises.signature_settlement_missing'],
       evidenceRefs: expect.arrayContaining([
         'apps/openagents.com/workers/api/src/signature-usage-metering.ts',
@@ -1290,12 +1294,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.48', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.49', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.48',
+      expectedVersion: '2026-06-20.49',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.48',
+      servedVersion: '2026-06-20.49',
       status: 'ready',
     })
     expect(
@@ -1305,7 +1309,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.48',
+      servedVersion: '2026-06-20.49',
       status: 'blocked',
     })
   })
